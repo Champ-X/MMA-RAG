@@ -5,7 +5,7 @@
 
 from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass
 
 from app.core.config import settings
@@ -56,13 +56,13 @@ class KnowledgeRouter:
             路由结果
         """
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             
             # 如果提供了 kb_context 且包含 kb_ids，直接使用指定的知识库
             if kb_context and kb_context.get("kb_ids"):
                 kb_ids = kb_context["kb_ids"]
                 logger.info(f"使用指定的知识库: {kb_ids}")
-                processing_time = (datetime.utcnow() - start_time).total_seconds()
+                processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
                 return RoutingResult(
                     target_kb_ids=kb_ids,
                     confidence_scores={kb_id: 1.0 for kb_id in kb_ids},
@@ -102,7 +102,7 @@ class KnowledgeRouter:
             routing_result = await self._apply_routing_strategy(kb_scores_raw)
             
             # 5. 计算处理时间
-            processing_time = (datetime.utcnow() - start_time).total_seconds()
+            processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
             
             audit_log(
                 f"知识库路由完成: {query_text[:50]}...",
