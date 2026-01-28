@@ -657,35 +657,30 @@ class VectorStore:
     async def delete_kb_portraits(self, kb_id: str) -> bool:
         """删除知识库画像"""
         try:
-            # 使用filter删除
-            filter_condition = Filter(
-                must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))]
-            )
-            
-            result = self.client.delete(
-                collection_name="kb_portraits",
-                points_selector=models.PointIdsList(points=[])
-            )
-            
-            # 由于delete接口限制，我们使用另一种方式
-            # 这里需要先查询再删除
+            # 先查询该知识库的所有画像
             search_results = await self.search_kb_portraits(kb_id, limit=1000)
             
-            if search_results:
-                # 提取有效的point ID，过滤掉None值
-                point_ids: List[Any] = []
-                for result in search_results:
-                    point_id = result.get("id")
-                    if point_id is not None:
-                        point_ids.append(point_id)
-                
-                if point_ids:
-                    self.client.delete(
-                        collection_name="kb_portraits",
-                        points_selector=models.PointIdsList(points=point_ids)
-                    )
+            if not search_results:
+                # 如果没有画像，直接返回成功（无需删除）
+                logger.debug(f"知识库 {kb_id} 没有画像需要删除")
+                return True
             
-            logger.info(f"删除知识库画像完成: {kb_id}")
+            # 提取有效的point ID，过滤掉None值
+            point_ids: List[Any] = []
+            for result in search_results:
+                point_id = result.get("id")
+                if point_id is not None:
+                    point_ids.append(point_id)
+            
+            if point_ids:
+                self.client.delete(
+                    collection_name="kb_portraits",
+                    points_selector=models.PointIdsList(points=point_ids)
+                )
+                logger.info(f"删除知识库画像完成: {kb_id}, 删除了 {len(point_ids)} 个画像")
+            else:
+                logger.warning(f"知识库 {kb_id} 的画像查询结果中没有有效的 point ID")
+            
             return True
             
         except Exception as e:
