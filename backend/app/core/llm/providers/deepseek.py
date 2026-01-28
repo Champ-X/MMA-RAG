@@ -14,11 +14,18 @@ logger = get_logger(__name__)
 
 
 class DeepSeekProvider(BaseLLMProvider):
-    """DeepSeek API 提供商（OpenAI 兼容格式）"""
-
+    """DeepSeek API 提供商（OpenAI 兼容格式）
+ 
+    注意：DeepSeek 官方文档当前推荐的 base_url 为
+    https://api.deepseek.com ，聊天接口路径为 /chat/completions ，
+    而不是早期版本中的 /v1/chat/completions。
+    """
+ 
     def __init__(self, api_key: str, base_url: Optional[str] = None):
         self.api_key = api_key
-        self.base_url = (base_url or "https://api.deepseek.com/v1").rstrip("/")
+        # 默认使用官方文档中的 base_url（不带 /v1）
+        # 这样下面拼接的就是 https://api.deepseek.com/chat/completions
+        self.base_url = (base_url or "https://api.deepseek.com").rstrip("/")
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",

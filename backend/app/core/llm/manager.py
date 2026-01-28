@@ -62,6 +62,9 @@ class LLMManager:
                 error=f"没有找到任务类型 {task_type} 对应的模型"
             )
         
+        # 记录主模型调用
+        logger.info(f"使用主模型: {model} (任务类型: {task_type})")
+        
         # 尝试主模型
         result = await self._call_with_model(
             "chat_completion", 
@@ -71,10 +74,13 @@ class LLMManager:
         
         # 如果失败且启用了故障转移，尝试备用模型
         if not result.success and fallback:
+            logger.warning(f"主模型 {model} 调用失败: {result.error}，开始故障转移")
+            # 将主模型传递给故障转移函数，以便正确跳过
             result = await self._try_fallback_models(
                 "chat_completion", 
                 task_type, 
-                {"messages": messages, **kwargs}
+                {"messages": messages, **kwargs},
+                primary_model=model  # 传递主模型名称
             )
         
         return result
@@ -134,10 +140,12 @@ class LLMManager:
         )
         
         if not result.success and fallback:
+            logger.warning(f"主模型 {model} 调用失败: {result.error}，开始故障转移")
             result = await self._try_fallback_models(
                 "rerank", 
                 task_type, 
-                {"query": query, "documents": documents, **kwargs}
+                {"query": query, "documents": documents, **kwargs},
+                primary_model=model  # 传递主模型名称
             )
         
         return result
@@ -151,20 +159,35 @@ class LLMManager:
         """使用指定模型调用方法"""
         
         try:
+            logger.debug(f"准备调用模型: {model}, 方法: {method}")
             model_config = self.registry.get_model_config(model)
+            
+            if not model_config:
+                error_msg = f"模型 {model} 没有在注册表中找到配置"
+                logger.error(error_msg)
+                return LLMCallResult(
+                    success=False,
+                    error=error_msg
+                )
+            
             provider_name = model_config.get("provider")
             
             if not provider_name:
+                error_msg = f"模型 {model} 没有配置提供商"
+                logger.error(error_msg)
                 return LLMCallResult(
                     success=False,
-                    error=f"模型 {model} 没有配置提供商"
+                    error=error_msg
                 )
             
+            logger.debug(f"模型 {model} 使用提供商: {provider_name}")
             provider = self.registry.get_provider(provider_name)
             if not provider:
+                error_msg = f"提供商 {provider_name} 不存在"
+                logger.error(error_msg)
                 return LLMCallResult(
                     success=False,
-                    error=f"提供商 {provider_name} 不存在"
+                    error=error_msg
                 )
             
             # 获取对应方法
@@ -210,15 +233,32 @@ class LLMManager:
         self, 
         method: str, 
         task_type: str, 
-        params: Dict[str, Any]
+        params: Dict[str, Any],
+        primary_model: Optional[str] = None
     ) -> LLMCallResult:
         """尝试故障转移模型（备用列表来自 registry.get_task_fallbacks）"""
         
         fallback_models = self.registry.get_task_fallbacks(task_type)
         
+        if not fallback_models:
+            logger.warning(f"任务类型 {task_type} 没有配置备用模型")
+            return LLMCallResult(
+                success=False,
+                error=f"没有可用的故障转移模型"
+            )
+        
+        logger.info(f"开始故障转移，共 {len(fallback_models)} 个备用模型: {fallback_models}")
+        
         for fallback_model in fallback_models:
-            if fallback_model in params.get("model", ""):
-                continue  # 跳过已尝试的主模型
+            # 跳过已尝试的主模型（精确匹配）
+            if primary_model and fallback_model == primary_model:
+                logger.debug(f"跳过备用模型 {fallback_model}（与主模型相同）")
+                continue
+            
+            # 也检查params中是否已有model参数（向后兼容）
+            if params.get("model") == fallback_model:
+                logger.debug(f"跳过备用模型 {fallback_model}（已在params中）")
+                continue
             
             logger.info(f"尝试故障转移模型: {fallback_model}")
             result = await self._call_with_model(method, fallback_model, params)
@@ -227,10 +267,13 @@ class LLMManager:
                 result.fallback_used = True
                 logger.info(f"故障转移成功: {fallback_model}")
                 return result
+            else:
+                logger.warning(f"故障转移模型 {fallback_model} 调用失败: {result.error}")
         
+        logger.error(f"所有故障转移模型都失败，共尝试 {len(fallback_models)} 个模型")
         return LLMCallResult(
             success=False,
-            error=f"所有模型调用失败，包括故障转移模型"
+            error=f"所有模型调用失败，包括故障转移模型（共 {len(fallback_models)} 个）"
         )
     
     def get_available_models(self, task_type: Optional[str] = None) -> List[str]:

@@ -32,8 +32,8 @@ class SiliconFlowProvider(BaseLLMProvider):
         # 大型模型（235B, 72B等）也需要更长超时
         if "235B" in model or "72B" in model:
             return 60.0
-        # 默认30秒
-        return 30.0
+        # 默认60秒
+        return 60.0
     
     async def chat_completion(
         self, 
@@ -54,7 +54,7 @@ class SiliconFlowProvider(BaseLLMProvider):
             "presence_penalty": kwargs.get("presence_penalty", 0.0)
         }
         
-        # 根据模型类型动态设置超时时间
+        # 根据模型类型动态设置超时时间（使用原始模型名称）
         timeout = self._get_timeout_for_model(model)
         
         try:

@@ -84,7 +84,7 @@ class SiliconFlowProvider(BaseLLMProvider):
                 return 90.0  # Thinking 模型建议90秒
             if "235B" in model or "72B" in model:
                 return 90.0  # 大型模型90秒
-            return 30.0  # 默认30秒
+            return 60.0  # 默认60秒
         
         timeout = _get_timeout_for_model(model)
         start_time = time.time()
@@ -385,7 +385,7 @@ class LLMRegistry:
         # 模型注册
         self._models = {
             # 聊天模型
-            "Qwen/Qwen3-VL-235B-A22B-Thinking": {
+            "Qwen/Qwen3-235B-A22B-Thinking-2507": {
                 "provider": "siliconflow",
                 "type": "chat",
                 "context_length": 256000, # 256K tokens
@@ -523,12 +523,12 @@ class LLMRegistry:
                 ],
             },
             "final_generation": {
-                "model": "Pro/deepseek-ai/DeepSeek-R1",
+                "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
                 "fallbacks": [
-                    "deepseek-ai/DeepSeek-R1", 
-                    "Qwen/Qwen3-235B-A22B-Instruct-2507", 
                     "deepseek-ai/DeepSeek-V3.2", 
-                    "Qwen/Qwen3-VL-235B-A22B-Thinking",
+                    "deepseek-ai/DeepSeek-R1",
+                    "Pro/deepseek-ai/DeepSeek-R1",
+                    "Qwen/Qwen3-235B-A22B-Thinking-2507",
                     "deepseek-chat",
                     "deepseek-reasoner"
                 ],
@@ -536,7 +536,8 @@ class LLMRegistry:
             "kb_portrait_generation": {
                 "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
                 "fallbacks": [
-                    "Pro/deepseek-ai/DeepSeek-R1", "deepseek-ai/DeepSeek-V3.2",
+                    "Pro/deepseek-ai/DeepSeek-R1",
+                    "deepseek-ai/DeepSeek-V3.2",
                     "deepseek-chat",
                     "deepseek-reasoner"
                 ],

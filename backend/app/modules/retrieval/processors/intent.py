@@ -153,7 +153,7 @@ class IntentProcessor:
             # 视觉需求（扩展关键词列表）
             visual_keywords = [
                 "visual", "图片", "图表", "架构图", "示意图", "流程图", "设计图", "可视化",
-                "查看图片", "显示图片", "展示图片", "图片中", "图表中", "图中",
+                "查看图片", "显示图片", "展示图片", "图片中", "图表中", "图中", "看看",
                 "image", "chart", "diagram", "graph", "figure", "visualization",
                 "结构图", "系统图", "网络图", "拓扑图"
             ]
@@ -208,7 +208,7 @@ class IntentProcessor:
             if not validated["needs_visual"]:
                 visual_keywords = [
                     "图片", "图表", "示意图", "流程图", "设计图", "可视化",
-                    "查看图片", "显示图片", "展示图片", "图片中", "图表中", "图中",
+                    "查看图片", "显示图片", "展示图片", "图片中", "图表中", "图中", "看看",
                     "image", "chart", "diagram", "graph", "figure", "visualization",
                     "架构图", "结构图", "系统图", "网络图", "拓扑图"
                 ]
