@@ -11,7 +11,7 @@ import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.config import settings
 from app.core.logger import get_logger, audit_log
@@ -500,7 +500,7 @@ class PortraitGenerator:
                 portrait["metadata"]["last_total_count"] = total_count
                 portrait["metadata"]["last_text_count"] = text_count
                 portrait["metadata"]["last_image_count"] = image_count
-                portrait["metadata"]["updated_at"] = datetime.utcnow().isoformat()
+                portrait["metadata"]["updated_at"] = datetime.now(timezone.utc).isoformat()
             
             # 存储到kb_portraits集合
             result = await self.vector_store.upsert_kb_portraits(kb_id, portraits)

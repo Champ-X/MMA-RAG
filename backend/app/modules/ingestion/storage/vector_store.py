@@ -5,7 +5,7 @@ Qdrant向量数据库适配器
 
 from typing import Dict, List, Any, Optional, Union, Tuple
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass
 import numpy as np
 
@@ -421,7 +421,7 @@ class VectorStore:
                     "chunk_index": chunk.get("chunk_index", 0),
                     "context_window": {},  # 先设为空，插入后再更新
                     "metadata": chunk.get("metadata", {}),
-                    "created_at": datetime.utcnow().isoformat()
+                    "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 
                 # 准备向量（支持密集向量和稀疏向量）
@@ -565,7 +565,7 @@ class VectorStore:
                     "image_source_type": image.get("image_source_type", "standalone_file"),
                     "width": image.get("width"),
                     "height": image.get("height"),
-                    "created_at": datetime.utcnow().isoformat()
+                    "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 
                 point = PointStruct(
@@ -622,7 +622,7 @@ class VectorStore:
                     "kb_id": kb_id,
                     "topic_summary": portrait["topic_summary"],
                     "cluster_size": portrait["cluster_size"],
-                    "created_at": datetime.utcnow().isoformat()
+                    "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 
                 # 如果portrait包含metadata，合并到payload中
