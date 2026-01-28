@@ -1,0 +1,36 @@
+@import 'katex/dist/katex.min.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+/* 轻量 dark-mode 基础 */
+.dark body {
+  background: rgb(2 6 23); /* slate-950 */
+  color: rgb(241 245 249); /* slate-100 */
+}
+
+/* highlight.js 在暗色模式下做个兜底反色 */
+.dark .hljs {
+  background: rgb(15 23 42) !important; /* slate-900 */
+  color: rgb(226 232 240) !important; /* slate-200 */
+}
+
+/* 隐藏滚动条但保持滚动功能 */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}

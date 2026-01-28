@@ -1,0 +1,385 @@
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { Send, Zap, Paperclip, SlidersHorizontal, X } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { ThinkingCapsule } from './ThinkingCapsule'
+import { MessageBubble } from './MessageBubble'
+import { CitationPopover } from './CitationPopover'
+import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
+import { useChatStore } from '@/store/useChatStore'
+import { useThinkingChain } from '@/hooks/useThinkingChain'
+import { useConfigStore } from '@/store/useConfigStore'
+import { cn } from '@/lib/utils'
+import type { CitationReference } from '@/types/sse'
+
+export function ChatInterface() {
+  const [input, setInput] = useState('')
+  const [attachments, setAttachments] = useState<Array<{ id: string; name: string; size: number }>>([])
+  const [citePopover, setCitePopover] = useState<{
+    open: boolean
+    rect: DOMRect | null
+    item: CitationReference | null
+  }>({ open: false, rect: null, item: null })
+  const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [inspectingItem, setInspectingItem] = useState<CitationReference | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const citePopoverRef = useRef<HTMLDivElement>(null)
+
+  const {
+    sessions,
+    activeSessionId,
+    getActiveSession,
+    createSession,
+    setLoading,
+    thinking,
+  } = useChatStore()
+
+  const { config } = useConfigStore()
+  const { sendMessage, isStreaming, error, progress } = useThinkingChain()
+
+  const activeSession = getActiveSession()
+  const messages = activeSession?.messages ?? []
+  const isLoading = isStreaming
+
+  const selectedModel = useMemo(() => {
+    return config.models.find(m => m.id === 'chat') || config.models[0] || null
+  }, [config.models])
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, thinking.currentStage])
+
+  useEffect(() => {
+    if (!activeSessionId && sessions.length === 0) {
+      createSession()
+    }
+  }, [activeSessionId, sessions.length, createSession])
+
+  // 自动调整输入框高度
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = '0px'
+    const next = Math.min(el.scrollHeight, 200)
+    el.style.height = `${Math.max(next, 56)}px`
+  }, [input])
+
+  const handleSend = async () => {
+    if (!input.trim() || isLoading || !activeSessionId) return
+    const text = input.trim()
+    setInput('')
+    setAttachments([])
+    setLoading(true)
+
+    try {
+      const kbIds = activeSession?.knowledgeBaseIds || config.defaultKnowledgeBaseIds || []
+      await sendMessage(text, kbIds.length > 0 ? kbIds : undefined)
+    } catch (e) {
+      console.error('发送失败', e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+    const newAttachments = files.slice(0, 5).map(f => ({
+      id: `a-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name: f.name,
+      size: f.size
+    }))
+    setAttachments(prev => [...newAttachments, ...prev].slice(0, 5))
+    if (e.target) e.target.value = ''
+  }
+
+  // 处理引用点击
+  const handleCitationClick = useCallback((refId: number | string, event: React.MouseEvent) => {
+    if (!activeSession) return
+
+    // 从消息中查找引用
+    let citation: CitationReference | null = null
+    for (const msg of activeSession.messages) {
+      if (msg.citations) {
+        const found = msg.citations.find(c => {
+          if (typeof c === 'object' && 'id' in c) {
+            return String(c.id) === String(refId)
+          }
+          return false
+        })
+        if (found && typeof found === 'object' && 'id' in found) {
+          citation = found as CitationReference
+          break
+        }
+      }
+    }
+
+    if (citation) {
+      const rect = event.currentTarget.getBoundingClientRect()
+      setCitePopover({ open: true, rect, item: citation })
+    }
+  }, [activeSession])
+
+  // 关闭引用悬浮卡片
+  const closeCitePopover = useCallback(() => {
+    setCitePopover({ open: false, rect: null, item: null })
+  }, [])
+
+  // 打开检查器
+  const openInspectorFromPopover = useCallback(() => {
+    if (citePopover.item) {
+      setInspectingItem(citePopover.item)
+      setInspectorOpen(true)
+      closeCitePopover()
+    }
+  }, [citePopover.item, closeCitePopover])
+
+  // 点击外部关闭悬浮卡片
+  useEffect(() => {
+    if (!citePopover.open) return
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (citePopoverRef.current && !citePopoverRef.current.contains(e.target as Node)) {
+        closeCitePopover()
+      }
+    }
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeCitePopover()
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [citePopover.open, closeCitePopover])
+
+  // 构建引用映射
+  const citationMap = useMemo(() => {
+    const map = new Map<number | string, CitationReference>()
+    if (activeSession) {
+      for (const msg of activeSession.messages) {
+        if (msg.citations) {
+          for (const cite of msg.citations) {
+            if (typeof cite === 'object' && 'id' in cite) {
+              map.set(cite.id, cite as CitationReference)
+            }
+          }
+        }
+      }
+    }
+    return map
+  }, [activeSession, messages])
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white/60 shadow-lg shadow-slate-900/5 backdrop-blur-xl dark:border-slate-800/60 dark:bg-slate-950/40">
+      {/* 顶部状态条 */}
+      <div className="flex items-center justify-between border-b border-slate-200/60 px-4 py-3 backdrop-blur dark:border-slate-800/60">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 rounded-xl bg-indigo-500/10 px-3 py-2 text-indigo-700 ring-1 ring-indigo-500/15 dark:text-indigo-200">
+            <Zap className="h-4 w-4" />
+            <div className="text-sm font-medium">
+              {selectedModel?.name || 'DeepSeek-V3'}
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-slate-900/5 px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-900/10 dark:bg-white/5 dark:text-slate-200 dark:ring-white/10">
+            检索模式：<span className="font-medium">自动</span>
+          </div>
+        </div>
+
+        <div className="hidden items-center gap-2 text-xs text-slate-500 dark:text-slate-400 md:flex">
+          <kbd className="rounded-md bg-slate-900/5 px-2 py-1 ring-1 ring-slate-900/10 dark:bg-white/5 dark:ring-white/10">
+            ⌘/Ctrl
+          </kbd>
+          <span>+</span>
+          <kbd className="rounded-md bg-slate-900/5 px-2 py-1 ring-1 ring-slate-900/10 dark:bg-white/5 dark:ring-white/10">
+            Enter
+          </kbd>
+          <span>发送</span>
+        </div>
+      </div>
+
+      {/* 消息区 */}
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="px-4 py-4">
+          <div className="mx-auto max-w-4xl flex flex-col gap-3">
+            {messages.length === 0 && (
+              <Card className="p-8 text-center">
+                <CardContent>
+                  <h3 className="mb-2 text-lg font-medium">
+                    你好，我是 Nexus
+                  </h3>
+                  <p className="text-muted-foreground">
+                    你可以在输入框上方展开配置面板，选择模型与知识库范围，然后开始提问。
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {messages.map((m, i) => (
+              <MessageBubble
+                key={m.id ?? i}
+                message={{
+                  id: m.id,
+                  type: m.role === 'user' ? 'user' : 'assistant',
+                  content: m.content,
+                  timestamp: new Date(m.timestamp).toISOString(),
+                  citations: m.citations,
+                  metadata: (m as any).metadata,
+                  thinking: (m as any).thinking,
+                }}
+                isStreaming={
+                  m.role === 'assistant' &&
+                  i === messages.length - 1 &&
+                  isStreaming
+                }
+                citationMap={citationMap}
+                onCiteClick={handleCitationClick}
+              />
+            ))}
+
+            {(progress.isThinking || isStreaming) && (
+              <ThinkingCapsule
+                thoughtData={thinking.thoughtData}
+              />
+            )}
+
+            {error && (
+              <Card className="border-destructive/50 bg-destructive/5">
+                <CardContent className="py-3 text-sm text-destructive">
+                  {error}
+                </CardContent>
+              </Card>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+      </ScrollArea>
+
+      {/* 输入区 */}
+      <div className="border-t border-slate-200/60 p-3 dark:border-slate-800/60">
+        {attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {attachments.map(a => (
+              <span
+                key={a.id}
+                className="inline-flex items-center gap-2 rounded-full bg-slate-900/5 px-3 py-1 text-xs text-slate-700 ring-1 ring-slate-900/10 dark:bg-white/5 dark:text-slate-200 dark:ring-white/10"
+              >
+                <span className="truncate">{a.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setAttachments(prev => prev.filter(x => x.id !== a.id))}
+                  className="rounded-full p-0.5 text-slate-500 hover:bg-slate-900/10 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-100"
+                  aria-label="移除附件"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-end gap-2">
+          <div className="relative min-w-0 flex-1">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                  e.preventDefault()
+                  handleSend()
+                }
+              }}
+              placeholder="输入你的问题…（支持 Markdown / LaTeX / 引用演示）"
+              rows={1}
+              className="max-h-40 w-full resize-none rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 pr-24 text-sm text-slate-900 shadow-sm shadow-slate-900/5 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-indigo-700 dark:focus:ring-indigo-500/10"
+              disabled={isLoading || !activeSessionId}
+            />
+
+            <div className="absolute bottom-2 right-2 flex items-center gap-1">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // TODO: 实现配置面板功能
+                    console.log('配置面板功能待实现')
+                  }}
+                  title="发送前配置"
+                  className="grid h-9 w-9 place-items-center rounded-xl text-slate-600 transition-all duration-200 hover:bg-slate-900/5 hover:text-slate-900 active:scale-95 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                title="添加附件"
+                className="grid h-9 w-9 place-items-center rounded-xl text-slate-600 transition-all duration-200 hover:bg-slate-900/5 hover:text-slate-900 active:scale-95 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
+              >
+                <Paperclip className="h-4 w-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSend}
+                title="发送"
+                className={cn(
+                  "grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-600 to-fuchsia-600 text-white shadow-md shadow-fuchsia-500/10 transition-all duration-200 hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                )}
+                disabled={!input.trim() && attachments.length === 0 || isLoading || !activeSessionId}
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={handleFileSelect}
+        />
+      </div>
+
+      {/* 引用悬浮卡片 */}
+      <div ref={citePopoverRef}>
+        <CitationPopover
+          open={citePopover.open}
+          rect={citePopover.rect}
+          item={citePopover.item}
+          onClose={closeCitePopover}
+          onOpenInspector={openInspectorFromPopover}
+        />
+      </div>
+
+      {/* 检查器侧边栏 */}
+      <InspectorDrawer
+        isOpen={inspectorOpen}
+        onClose={() => {
+          setInspectorOpen(false)
+          setInspectingItem(null)
+        }}
+        citations={inspectingItem ? [inspectingItem] : []}
+      />
+    </div>
+  )
+}
+
+export default ChatInterface

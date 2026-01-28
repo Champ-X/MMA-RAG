@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  # FastAPI 后端服务
+  backend:
+    build: ./backend
+    container_name: mmrag_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=admin
+      - MINIO_SECRET_KEY=admin123456
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
+    volumes:
+      - ./minio_data:/data
+      - ./qdrant_storage:/qdrant/storage
+    depends_on:
+      - minio
+      - qdrant
+      - redis
+    networks:
+      - mmrag_network
+
+  # MinIO 对象存储服务
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: mmrag_minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=admin123456
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./minio_data:/data
+    networks:
+      - mmrag_network
+
+  # Qdrant 向量数据库
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: mmrag_qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    networks:
+      - mmrag_network
+
+  # Redis 缓存服务
+  redis:
+    image: redis:7-alpine
+    container_name: mmrag_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - mmrag_network
+
+  # Celery Worker (异步任务处理)
+  celery_worker:
+    build: ./backend
+    container_name: mmrag_celery_worker
+    command: celery -A celery_app worker -Q knowledge,ingestion,retrieval,celery --loglevel=info
+    environment:
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=admin
+      - MINIO_SECRET_KEY=admin123456
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
+    volumes:
+      - ./minio_data:/data
+      - ./qdrant_storage:/qdrant/storage
+    depends_on:
+      - redis
+      - minio
+      - qdrant
+    networks:
+      - mmrag_network
+
+  # Celery Flower (任务监控界面)
+  celery_flower:
+    build: ./backend
+    container_name: mmrag_celery_flower
+    command: celery -A celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - celery_worker
+    networks:
+      - mmrag_network
+
+networks:
+  mmrag_network:
+    driver: bridge
+
+volumes:
+  minio_data:
+  qdrant_storage:

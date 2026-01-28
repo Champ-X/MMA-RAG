@@ -1,0 +1,72 @@
+# —— 操作系统 ——
+.DS_Store
+Thumbs.db
+
+# —— Python ——
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# —— Node / 前端 ——
+node_modules/
+frontend/dist/
+frontend/node_modules/
+*.tsbuildinfo
+.npm
+.yarn/
+.pnpm-store/
+
+# —— 日志与临时 ——
+*.log
+*.log.*
+logs/
+backend/logs/
+temp/
+tmp/
+*.tmp
+
+# —— 数据与存储（本地开发/持久化）——
+minio_data/
+qdrant_storage/
+
+# —— 测试与覆盖 ——
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# —— IDE / 编辑器 ——
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# —— Celery ——
+celerybeat-schedule
+celerybeat.pid
+
+# —— 构建与打包 ——
+*.zip
+*.tar.gz
+*.rar
+
+# —— 其它 ——
+*.bak
+*.backup
