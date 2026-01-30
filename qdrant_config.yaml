@@ -1,0 +1,7 @@
+# Qdrant 本地运行配置（无 Docker 时使用）
+# 使用方式：在项目根目录执行
+#   qdrant --config-path ./qdrant_config.yaml
+# 或：QDRANT__STORAGE__STORAGE_PATH=./qdrant_storage /path/to/qdrant
+
+storage:
+  storage_path: ./qdrant_storage
