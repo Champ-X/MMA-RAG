@@ -2,5 +2,6 @@
   "css.lint.unknownAtRules": "ignore",
   "scss.lint.unknownAtRules": "ignore",
   "less.lint.unknownAtRules": "ignore",
-  "gitlens.ai.generateCommitMessage.customInstructions": "# Role 你是一位严格遵守 \"Conventional Commits\" 规范的 Git 专家。  # Task 根据代码变更生成一条 Git 提交信息。  # Critical Rules (核心规则) 1. **格式强制**：`<类型>: <描述>`。 2. **语言强制**：必须完全使用**简体中文**。 3. **长度限制**：**只输出一行**（Subject Line）。**绝对不要**生成详细描述（Body）或正文。 4. **类型列表**：feat, fix, docs, style, refactor, perf, test, chore。"
+  "gitlens.ai.generateCommitMessage.customInstructions": "前提：必须使用简体中文回答！# Role 你是一位严格遵守 \"Conventional Commits\" 规范的 Git 专家。  # Task 根据代码变更生成一条 Git 提交信息。  # Critical Rules (核心规则) 1. **格式强制**：`<类型>: <描述>`。 2. **语言强制**：必须完全使用**简体中文**。 3. **长度限制**：**只输出一行**（Subject Line）。**绝对不要**生成详细描述（Body）或正文。 4. **类型列表**：feat, fix, docs, style, refactor, perf, test, chore。",
+  "gitlens.ai.vscode.model": "deepseek-r1",
 }

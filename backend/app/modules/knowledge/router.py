@@ -1,10 +1,10 @@
 """
 知识库智能路由控制器
-基于知识库画像进行动态路由选择（TopN 检索 + 加权求和 + 归一化 + 差距决策）
+基于知识库画像进行动态路由选择（TopN 检索 + 每 KB 前 K 节点平均 + 归一化 + 差距决策）
 """
 
+from collections import defaultdict
 from typing import Dict, List, Any, Optional, Tuple
-import numpy as np
 from datetime import datetime, timezone
 from dataclasses import dataclass
 
@@ -19,6 +19,8 @@ logger = get_logger(__name__)
 
 # 路由策略常量（与 ROUTING_STRATEGY_ANALYSIS 对齐）
 ROUTING_TOP_N = 30
+ROUTING_TOP_K_PER_KB = 5  # 每个 KB 只取前 K 个最相关节点求加权平均，缓解画像多的 KB 累加分数过高
+ROUTING_DECAY_ALPHA = 0.9  # 位置衰减：w_i = α^(i-1)，越靠前的节点权重越大
 ROUTING_ALL_LOW_THRESHOLD = 0.08
 ROUTING_GAP_DOMINANT = 0.25
 
@@ -95,7 +97,7 @@ class KnowledgeRouter:
                     processing_time=0.0
                 )
             
-            # 3. 按 kb_id 聚合：Score(KB_x) = Σ (Similarity(node) × log(ClusterSize))
+            # 3. 按 kb_id 聚合：每 KB 前 K 节点按 w_i=α^(i-1) 衰减加权平均
             kb_scores_raw = self._calculate_kb_scores_from_topn(topn_nodes)
             # 日志：每个知识库的原始得分（按得分降序）
             _log_kb_scores_raw(kb_scores_raw)
@@ -129,18 +131,33 @@ class KnowledgeRouter:
         topn_nodes: List[Dict[str, Any]]
     ) -> Dict[str, float]:
         """
-        对 TopN 节点按 kb_id 聚合，求和打分。
-        Score(KB_x) = Σ (Similarity(node) × log(ClusterSize))
+        对 TopN 节点按 kb_id 聚合打分。
+        每个 KB 只取前 ROUTING_TOP_K_PER_KB 个最相关节点（不足则全量），
+        按位置衰减加权平均：w_i = α^(i-1)，突出最相关画像。
+        Score(KB_x) = Σ(sim_i × α^(i-1)) / Σ(α^(i-1))
         """
-        kb_scores: Dict[str, float] = {}
+        # 按 kb_id 分组
+        kb_nodes: Dict[str, List[float]] = defaultdict(list)
         for node in topn_nodes:
             kb_id = node.get("kb_id") or ""
             if not kb_id:
                 continue
             sim = float(node.get("score", 0.0))
-            cs = int(node.get("cluster_size", 1))
-            w = np.log(cs + 1)
-            kb_scores[kb_id] = kb_scores.get(kb_id, 0.0) + sim * w
+            kb_nodes[kb_id].append(sim)
+
+        alpha = ROUTING_DECAY_ALPHA
+        kb_scores: Dict[str, float] = {}
+        k = ROUTING_TOP_K_PER_KB
+        for kb_id, sims in kb_nodes.items():
+            if not sims:
+                continue
+            sorted_sims = sorted(sims, reverse=True)
+            top_k = sorted_sims[:k]
+            # w_i = α^(i-1)，i 从 1 开始
+            weighted_sum = sum(s * (alpha ** i) for i, s in enumerate(top_k))
+            weight_sum = sum(alpha ** i for i in range(len(top_k)))
+            kb_scores[kb_id] = weighted_sum / weight_sum
+
         return kb_scores
 
     def _normalize_scores(self, kb_scores: Dict[str, float]) -> Dict[str, float]:
