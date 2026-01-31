@@ -161,64 +161,110 @@ class SiliconFlowProvider(BaseLLMProvider):
         
         timeout = _get_embedding_timeout(texts, model)
         start_time = time.time()
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.base_url}/embeddings",
-                    headers=self.headers,
-                    json=payload,
-                    timeout=timeout
-                )
-                response.raise_for_status()
-                result = response.json()
-                
+        max_retries = 5  # 对 5xx 最多重试 5 次（含首次）
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        f"{self.base_url}/embeddings",
+                        headers=self.headers,
+                        json=payload,
+                        timeout=timeout
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+                    
+                    duration = time.time() - start_time
+                    embeddings = [item["embedding"] for item in result["data"]]
+                    
+                    # 尝试从API响应中提取token使用量
+                    tokens_used = 0
+                    if "usage" in result:
+                        tokens_used = result["usage"].get("total_tokens", 0)
+                    elif "data" in result and result["data"]:
+                        # 某些API可能在data中返回usage信息
+                        first_item = result["data"][0]
+                        if "usage" in first_item:
+                            tokens_used = first_item["usage"].get("total_tokens", 0)
+                    
+                    log_llm_call(
+                        model=model,
+                        task_type="embedding",
+                        tokens_used=tokens_used,
+                        duration=duration,
+                        success=True
+                    )
+                    
+                    return embeddings
+            except httpx.HTTPStatusError as e:
+                last_error = e
+                if e.response.status_code >= 500 and attempt < max_retries - 1:
+                    wait_sec = 2 * (attempt + 1)
+                    logger.warning(
+                        "SiliconFlow embedding 5xx ({}), {}s 后重试 ({}/{}): {}",
+                        e.response.status_code, wait_sec, attempt + 1, max_retries, str(e),
+                    )
+                    await asyncio.sleep(wait_sec)
+                else:
+                    duration = time.time() - start_time
+                    log_llm_call(
+                        model=model,
+                        task_type="embedding",
+                        tokens_used=0,
+                        duration=duration,
+                        success=False
+                    )
+                    logger.error(f"SiliconFlow embedding错误 [{model}]: {e.response.status_code} - {e.response.text}")
+                    raise
+            except (httpx.RemoteProtocolError, httpx.ReadError, ConnectionError, OSError) as e:
+                # 连接/读流被对端关闭等瞬时错误，与 5xx 一样做有限次重试
+                last_error = e
+                if attempt < max_retries - 1:
+                    wait_sec = 2 * (attempt + 1)
+                    logger.warning(
+                        "SiliconFlow embedding 连接/读错误 ({}), {}s 后重试 ({}/{}): {}",
+                        type(e).__name__, wait_sec, attempt + 1, max_retries, str(e),
+                    )
+                    await asyncio.sleep(wait_sec)
+                else:
+                    duration = time.time() - start_time
+                    log_llm_call(
+                        model=model,
+                        task_type="embedding",
+                        tokens_used=0,
+                        duration=duration,
+                        success=False
+                    )
+                    logger.error(f"SiliconFlow embedding错误 [{model}]: {type(e).__name__}: {e}")
+                    raise
+            except httpx.TimeoutException as e:
                 duration = time.time() - start_time
-                embeddings = [item["embedding"] for item in result["data"]]
-                
-                # 尝试从API响应中提取token使用量
-                tokens_used = 0
-                if "usage" in result:
-                    tokens_used = result["usage"].get("total_tokens", 0)
-                elif "data" in result and result["data"]:
-                    # 某些API可能在data中返回usage信息
-                    first_item = result["data"][0]
-                    if "usage" in first_item:
-                        tokens_used = first_item["usage"].get("total_tokens", 0)
-                
+                error_msg = f"请求超时（超时设置: {timeout}秒，实际耗时: {duration:.2f}秒）"
                 log_llm_call(
                     model=model,
                     task_type="embedding",
-                    tokens_used=tokens_used,
+                    tokens_used=0,
                     duration=duration,
-                    success=True
+                    success=False
                 )
-                
-                return embeddings
-                
-        except httpx.TimeoutException as e:
-            duration = time.time() - start_time
-            error_msg = f"请求超时（超时设置: {timeout}秒，实际耗时: {duration:.2f}秒）"
-            log_llm_call(
-                model=model,
-                task_type="embedding",
-                tokens_used=0,
-                duration=duration,
-                success=False
-            )
-            logger.error(f"SiliconFlow embedding超时 [{model}]: {error_msg}")
-            raise TimeoutError(error_msg) from e
-        except Exception as e:
-            duration = time.time() - start_time
-            error_msg = f"{type(e).__name__}: {str(e)}"
-            log_llm_call(
-                model=model,
-                task_type="embedding",
-                tokens_used=0,
-                duration=duration,
-                success=False
-            )
-            logger.error(f"SiliconFlow embedding错误 [{model}]: {error_msg}")
-            raise
+                logger.error(f"SiliconFlow embedding超时 [{model}]: {error_msg}")
+                raise TimeoutError(error_msg) from e
+            except Exception as e:
+                duration = time.time() - start_time
+                error_msg = f"{type(e).__name__}: {str(e)}"
+                log_llm_call(
+                    model=model,
+                    task_type="embedding",
+                    tokens_used=0,
+                    duration=duration,
+                    success=False
+                )
+                logger.error(f"SiliconFlow embedding错误 [{model}]: {error_msg}")
+                raise
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("embedding 在重试后仍失败")
     
     async def rerank(self, query: str, documents: List[str], model: str) -> List[Dict[str, Any]]:
         """重排序实现"""

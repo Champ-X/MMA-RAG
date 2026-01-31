@@ -70,3 +70,4 @@ celerybeat.pid
 # —— 其它 ——
 *.bak
 *.backup
+.vscode/

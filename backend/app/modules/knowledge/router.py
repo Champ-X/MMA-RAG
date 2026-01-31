@@ -97,6 +97,8 @@ class KnowledgeRouter:
             
             # 3. 按 kb_id 聚合：Score(KB_x) = Σ (Similarity(node) × log(ClusterSize))
             kb_scores_raw = self._calculate_kb_scores_from_topn(topn_nodes)
+            # 日志：每个知识库的原始得分（按得分降序）
+            _log_kb_scores_raw(kb_scores_raw)
             
             # 4. 归一化与路由决策
             routing_result = await self._apply_routing_strategy(kb_scores_raw)
@@ -121,7 +123,7 @@ class KnowledgeRouter:
         except Exception as e:
             logger.error(f"知识库路由失败: {str(e)}")
             return await self._default_routing()
-    
+
     def _calculate_kb_scores_from_topn(
         self,
         topn_nodes: List[Dict[str, Any]]
@@ -140,7 +142,7 @@ class KnowledgeRouter:
             w = np.log(cs + 1)
             kb_scores[kb_id] = kb_scores.get(kb_id, 0.0) + sim * w
         return kb_scores
-    
+
     def _normalize_scores(self, kb_scores: Dict[str, float]) -> Dict[str, float]:
         """将各 KB 的 Score 归一化到 [0, 1]（min-max）。"""
         if not kb_scores:
@@ -165,6 +167,10 @@ class KnowledgeRouter:
             # 1. 全部偏小 → 路由失败，启用全库检索
             max_raw = max(kb_scores_raw.values())
             if max_raw < ROUTING_ALL_LOW_THRESHOLD:
+                logger.info(
+                    "知识库路由-决策: 全部得分偏低 max_raw=%.6f < 阈值%.2f -> low_confidence 启用全库检索",
+                    max_raw, ROUTING_ALL_LOW_THRESHOLD,
+                )
                 kbs = await self.kb_service.list_knowledge_bases(limit=1000)
                 all_kb_ids = [kb["id"] for kb in kbs]
                 return RoutingResult(
@@ -178,9 +184,13 @@ class KnowledgeRouter:
             # 2. 归一化到 [0, 1]
             normed = self._normalize_scores(kb_scores_raw)
             sorted_kbs = sorted(normed.items(), key=lambda x: x[1], reverse=True)
+            # 日志：每个知识库的归一化得分
+            normed_parts = [f"{kb_id}={score:.4f}" for kb_id, score in sorted_kbs]
+            logger.info("知识库路由-归一化得分: {}", " | ".join(normed_parts))
             
             # 3. 选出第一名；按与第一名的差距决定单库或多库
             first_id, first_score = sorted_kbs[0]
+            second_id = sorted_kbs[1][0] if len(sorted_kbs) > 1 else None
             second_score = sorted_kbs[1][1] if len(sorted_kbs) > 1 else 0.0
             gap = first_score - second_score
             
@@ -192,6 +202,12 @@ class KnowledgeRouter:
                 target_kb_ids = top2
                 routing_method = "dual_kb" if len(top2) == 2 else "single_kb"
             
+            logger.info(
+                "知识库路由-决策: 第一名={}({:.4f}) 第二名={}({:.4f}) gap={:.4f} 阈值=0.25 -> {} 目标KB={}",
+                first_id, first_score,
+                second_id or "-", second_score,
+                gap, routing_method, target_kb_ids,
+            )
             confidence_scores = {k: normed[k] for k in target_kb_ids}
             
             return RoutingResult(
@@ -323,3 +339,13 @@ class KnowledgeRouter:
         except Exception as e:
             logger.error(f"获取路由统计失败: {str(e)}")
             return {}
+
+
+def _log_kb_scores_raw(kb_scores_raw: Dict[str, float]) -> None:
+    """记录每个知识库的原始得分（按得分降序），便于排查路由决策。"""
+    if not kb_scores_raw:
+        logger.info("知识库路由-原始得分: (无)")
+        return
+    sorted_items = sorted(kb_scores_raw.items(), key=lambda x: x[1], reverse=True)
+    parts = [f"{kb_id}={score:.6f}" for kb_id, score in sorted_items]
+    logger.info("知识库路由-原始得分: {}", " | ".join(parts))

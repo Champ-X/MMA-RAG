@@ -321,14 +321,16 @@ class IngestionService:
         }
         clip_result = await self._vectorize_with_clip(clip_input_data, processing_id)
         
-        # 3. 文本向量化描述
-        text_vector_result = await self._vectorize_text([caption_result["caption"]])
+        # 3. 文本向量化描述（空描述用占位符，避免部分 API 对空输入返回 5xx）
+        caption = (caption_result.get("caption") or "").strip()
+        text_to_embed = caption if caption else " "
+        text_vector_result = await self._vectorize_text([text_to_embed])
         
         # 4. 存储到向量数据库
         image_data = [{
             "file_id": minio_storage_result["file_id"],
             "file_path": minio_storage_result["object_path"],
-            "caption": caption_result["caption"],
+            "caption": caption or caption_result.get("caption", ""),
             "clip_vector": clip_result["clip_vector"],  # 768 维
             "text_vector": text_vector_result["vectors"][0],  # 4096 维
             "image_format": parse_result.get("format"),  # 会被转换为 img_format
