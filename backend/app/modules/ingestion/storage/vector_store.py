@@ -350,35 +350,41 @@ class VectorStore:
             return
         
         try:
-            # 获取现有集合信息，检查哪些字段已有索引
-            existing_collection = self.client.get_collection(collection_name)
-            existing_schema = {}
-            
-            # 尝试获取现有的 payload schema
-            if hasattr(existing_collection, 'config'):
-                if hasattr(existing_collection.config, 'params'):
-                    if hasattr(existing_collection.config.params, 'payload_schema'):
-                        existing_schema = existing_collection.config.params.payload_schema or {}
-            
-            # 为每个字段创建 payload index
+            # 获取现有集合信息，得到“已有索引的字段名”集合（兼容多种 Qdrant 返回结构）
+            existing_index_fields: set = set()
+            try:
+                existing_collection = self.client.get_collection(collection_name)
+                raw_schema = getattr(existing_collection, "payload_schema", None)
+                if raw_schema is None and hasattr(existing_collection, "config") and hasattr(existing_collection.config, "params"):
+                    raw_schema = getattr(existing_collection.config.params, "payload_schema", None)
+                if raw_schema is not None:
+                    if isinstance(raw_schema, dict):
+                        existing_index_fields = set(raw_schema.keys())
+                    elif isinstance(raw_schema, (list, tuple)):
+                        for item in raw_schema:
+                            name = getattr(item, "field_name", None) or (item.get("field_name") if isinstance(item, dict) else None)
+                            if name:
+                                existing_index_fields.add(name)
+            except Exception:
+                pass
+
+            # 为每个字段创建 payload index；仅在实际新建时打 INFO，已存在则跳过不刷屏
             for field_name, field_type in payload_schema.items():
                 try:
-                    # 检查字段是否已有索引
-                    if field_name in existing_schema:
+                    if field_name in existing_index_fields:
                         logger.debug(f"字段 {field_name} 在集合 {collection_name} 中已有索引")
                         continue
-                    
-                    # 创建 payload index
                     self.client.create_payload_index(
                         collection_name=collection_name,
                         field_name=field_name,
                         field_schema=field_type
                     )
+                    existing_index_fields.add(field_name)
                     logger.info(f"为集合 {collection_name} 创建 payload index: {field_name} ({field_type})")
                 except Exception as idx_e:
                     error_msg = str(idx_e)
-                    # 忽略索引已存在的错误
                     if "already exists" in error_msg.lower() or "409" in error_msg:
+                        existing_index_fields.add(field_name)
                         logger.debug(f"字段 {field_name} 的索引已存在: {collection_name}")
                     else:
                         logger.warning(f"为字段 {field_name} 创建索引失败: {str(idx_e)}")
