@@ -122,8 +122,8 @@ export function InlineCitation({
                   <Image className="h-6 w-6 text-muted-foreground" />
                 </div>
               )}
-              <div className="px-2 py-1 bg-muted/60 text-xs truncate max-w-[160px]">
-                [{ref.id}] {ref.file_name}
+              <div className="px-2 py-1 text-[0px]">
+                {/* 图片缩略图下方不展示文字引用 */}
               </div>
             </button>
           ))}

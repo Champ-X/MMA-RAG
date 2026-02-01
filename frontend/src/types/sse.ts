@@ -45,6 +45,7 @@ export interface CitationReference {
   id: number;
   type: 'doc' | 'image';
   file_name: string;
+  file_path?: string;
   content: string;
   img_url?: string;
   scores: CitationScore;

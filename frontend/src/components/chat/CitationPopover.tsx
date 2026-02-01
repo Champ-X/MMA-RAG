@@ -120,28 +120,23 @@ export function CitationPopover({
             </button>
           </div>
 
-          {/* 图片区域 */}
-          {item.type === 'image' && item.img_url && (
-            <div className="flex-shrink-0 px-4 pt-3">
-              <div
-                className="rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-center"
-                style={{
-                  minHeight: '220px',
-                  maxHeight: `${Math.max(280, maxHeight - headerHeight - footerHeight - (item.content ? 130 : 50))}px`,
-                  overflow: 'hidden',
-                }}
-              >
-                <img
-                  src={item.img_url}
-                  alt={item.file_name}
-                  className="max-w-full max-h-full w-auto h-auto object-contain"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* 内容区域可滚动 */}
+          {/* 内容区域可滚动：图片与文字一起滚动 */}
           <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0 scrollbar-hide">
+            {item.type === 'image' && item.img_url && (
+              <div className="mb-3">
+                <div
+                  className="rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-center"
+                  style={{ minHeight: '220px', overflow: 'hidden' }}
+                >
+                  <img
+                    src={item.img_url}
+                    alt={item.file_name}
+                    className="max-w-full max-h-full w-auto h-auto object-contain"
+                  />
+                </div>
+              </div>
+            )}
+
             {item.type === 'image' ? (
               item.content && (
                 <div className="rounded-xl bg-purple-50 dark:bg-purple-900/20 p-3 text-xs text-slate-700 dark:text-slate-200 border border-purple-100 dark:border-purple-800/40">
