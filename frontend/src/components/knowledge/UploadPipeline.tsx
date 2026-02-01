@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   Upload,
   File,
@@ -10,7 +10,6 @@ import {
   Palette,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 
@@ -106,21 +105,30 @@ export function UploadPipeline({
       ? getStageIndex(uploadProgress.stage)
       : -1
 
+  // 上传成功后清空已选文件，避免重复上传
+  useEffect(() => {
+    if (uploadProgress?.stage === 'done') {
+      setSelectedFiles([])
+    }
+  }, [uploadProgress?.stage])
+
   return (
-    <Card className={cn('overflow-hidden', className)}>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Upload className="h-5 w-5" />
-          上传管道
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
+    <div className={cn('bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm', className)}>
+      <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800">
+        <h3 className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+          <div className="p-1.5 bg-gradient-to-tr from-indigo-50 to-fuchsia-50 dark:from-indigo-600/25 dark:to-fuchsia-600/15 text-indigo-600 dark:text-indigo-200 rounded-lg">
+            <Upload className="h-4 w-4" />
+          </div>
+          上传文件
+        </h3>
+      </div>
+      <div className="p-6 space-y-6">
         <div
           className={cn(
-            'cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition-colors',
+            'cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors',
             isDragging
-              ? 'border-primary bg-primary/5'
-              : 'border-muted-foreground/30 hover:border-muted-foreground/50'
+              ? 'border-indigo-400 dark:border-fuchsia-500 bg-indigo-50/50 dark:bg-fuchsia-500/10'
+              : 'border-slate-300 dark:border-slate-700 hover:border-fuchsia-400 dark:hover:border-fuchsia-500 hover:bg-slate-50 dark:hover:bg-slate-900/60'
           )}
           onDrop={handleDrop}
           onDragOver={(e) => {
@@ -133,10 +141,12 @@ export function UploadPipeline({
           }}
           onClick={() => fileInputRef.current?.click()}
         >
-          <Upload className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-          <p className="mb-2 font-medium">拖拽文件到此处或点击上传</p>
-          <p className="text-sm text-muted-foreground">
-            支持 PDF, DOCX, TXT, Markdown, PNG, JPG
+          <div className="w-12 h-12 bg-gradient-to-tr from-indigo-50 to-fuchsia-50 dark:from-indigo-600/25 dark:to-fuchsia-600/15 text-indigo-600 dark:text-indigo-200 rounded-full flex items-center justify-center mx-auto mb-3 border border-indigo-100/80 dark:border-slate-700">
+            <Upload size={24} />
+          </div>
+          <p className="mb-2 font-medium text-slate-700 dark:text-slate-200">拖拽文件到此处或点击上传</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            支持 PDF / DOCX / MD / JPG / PNG（≤ 50MB）
           </p>
           <input
             ref={fileInputRef}
@@ -151,7 +161,7 @@ export function UploadPipeline({
         {selectedFiles.length > 0 && (
           <>
             <div>
-              <h4 className="mb-3 font-medium">
+              <h4 className="mb-3 font-medium text-slate-800 dark:text-slate-100">
                 已选文件 ({selectedFiles.length})
               </h4>
               <div className="space-y-2">
@@ -170,22 +180,22 @@ export function UploadPipeline({
                     <div
                       key={i}
                       className={cn(
-                        'flex items-center justify-between rounded-lg border p-3',
-                        isCurrent && 'border-primary/50 bg-primary/5'
+                        'flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-800 p-3',
+                        isCurrent && 'border-indigo-400 dark:border-fuchsia-500 bg-indigo-50/50 dark:bg-fuchsia-500/10'
                       )}
                     >
                       <div className="flex items-center gap-3">
-                        <Icon className="h-4 w-4 text-muted-foreground" />
+                        <Icon className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                         <div>
-                          <p className="text-sm font-medium">{f.name}</p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{f.name}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
                             {formatFileSize(f.size)}
                           </p>
                         </div>
                       </div>
                       {isUploading ? (
                         isCurrent ? (
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-500 dark:border-fuchsia-500 border-t-transparent" />
                         ) : done ? (
                           <CheckCircle className="h-4 w-4 text-green-600" />
                         ) : null
@@ -193,7 +203,7 @@ export function UploadPipeline({
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                          className="h-8 w-8 p-0 text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400"
                           onClick={(e) => {
                             e.stopPropagation()
                             const next = selectedFiles.filter((_, j) => j !== i)
@@ -223,25 +233,25 @@ export function UploadPipeline({
                         key={s.id}
                         className={cn(
                           'flex flex-1 flex-col items-center gap-1 rounded-lg border py-2 transition-colors',
-                          active && 'border-primary bg-primary/10',
-                          past && 'border-green-500/50 bg-green-500/5',
-                          !active && !past && 'border-muted bg-muted/30'
+                          active && 'border-indigo-400 dark:border-fuchsia-500 bg-indigo-50/50 dark:bg-fuchsia-500/10',
+                          past && 'border-green-500/50 bg-green-500/5 dark:border-green-600/50 dark:bg-green-600/10',
+                          !active && !past && 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'
                         )}
                       >
                         <Icon
                           className={cn(
                             'h-5 w-5',
-                            active && 'text-primary',
-                            past && 'text-green-600',
-                            !active && !past && 'text-muted-foreground'
+                            active && 'text-indigo-600 dark:text-fuchsia-400',
+                            past && 'text-green-600 dark:text-green-400',
+                            !active && !past && 'text-slate-400 dark:text-slate-500'
                           )}
                         />
                         <span
                           className={cn(
                             'text-xs font-medium',
-                            active && 'text-primary',
-                            past && 'text-green-600',
-                            !active && !past && 'text-muted-foreground'
+                            active && 'text-indigo-600 dark:text-fuchsia-400',
+                            past && 'text-green-600 dark:text-green-400',
+                            !active && !past && 'text-slate-500 dark:text-slate-400'
                           )}
                         >
                           {s.label}
@@ -250,7 +260,7 @@ export function UploadPipeline({
                     )
                   })}
                 </div>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-slate-600 dark:text-slate-300">
                   {getStageMessage(uploadProgress)}
                   {uploadProgress.currentFile && (
                     <span className="ml-2 font-medium">
@@ -266,12 +276,12 @@ export function UploadPipeline({
                   }
                   className="h-2"
                 />
-                <div className="flex justify-between text-xs text-muted-foreground">
+                <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
                   <span>
                     {uploadProgress.completed}/{uploadProgress.total}
                   </span>
                   {uploadProgress.failed > 0 && (
-                    <span className="text-destructive">
+                    <span className="text-red-600 dark:text-red-400">
                       {uploadProgress.failed} 失败
                     </span>
                   )}
@@ -283,22 +293,19 @@ export function UploadPipeline({
               <div className="flex justify-end gap-2">
                 <Button
                   variant="outline"
+                  className="border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
                   onClick={() => {
                     setSelectedFiles([])
-                    onFileSelect([])
                   }}
                 >
                   清空
-                </Button>
-                <Button onClick={() => onFileSelect(selectedFiles)}>
-                  开始上传
                 </Button>
               </div>
             )}
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 

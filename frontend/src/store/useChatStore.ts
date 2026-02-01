@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { chatApi } from '@/services/api_client';
 
 export interface Message {
   id: string;
@@ -81,13 +82,22 @@ interface ChatStore {
     title?: string;
     knowledgeBaseIds?: string[];
   }) => string;
+
+  createSessionFromApi: (options?: {
+    title?: string;
+    knowledgeBaseIds?: string[];
+  }) => Promise<string>;
   
   switchSession: (sessionId: string) => void;
   
   deleteSession: (sessionId: string) => void;
   
   updateSessionTitle: (sessionId: string, title: string) => void;
-  
+
+  updateSessionKnowledgeBases: (sessionId: string, knowledgeBaseIds: string[]) => void;
+
+  loadSessionHistory: (sessionId: string) => Promise<void>;
+
   addMessage: (sessionId: string, message: Omit<Message, 'id' | 'timestamp'>) => void;
   
   updateMessage: (sessionId: string, messageId: string, updates: Partial<Message>) => void;
@@ -160,6 +170,36 @@ export const useChatStore = create<ChatStore>()(
         return sessionId;
       },
 
+      createSessionFromApi: async (options = {}) => {
+        try {
+          const res = await chatApi.createSession({
+            title: options.title,
+            knowledgeBaseIds: options.knowledgeBaseIds,
+          }) as { sessionId?: string; success?: boolean };
+          const sessionId = res?.sessionId || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const now = Date.now();
+          const newSession: ChatSession = {
+            id: sessionId,
+            title: options.title || `新对话 ${new Date().toLocaleString()}`,
+            messages: [],
+            knowledgeBaseIds: options.knowledgeBaseIds || [],
+            createdAt: now,
+            updatedAt: now,
+            isActive: true,
+          };
+          set((state) => {
+            const updatedSessions = state.sessions.map(s => ({ ...s, isActive: false }));
+            return {
+              sessions: [...updatedSessions, newSession],
+              activeSessionId: sessionId,
+            };
+          });
+          return sessionId;
+        } catch {
+          return get().createSession(options);
+        }
+      },
+
       // 切换会话
       switchSession: (sessionId) => {
         set((state) => ({
@@ -194,10 +234,45 @@ export const useChatStore = create<ChatStore>()(
       // 更新会话标题
       updateSessionTitle: (sessionId, title) => {
         set((state) => ({
-          sessions: state.sessions.map(s => 
+          sessions: state.sessions.map(s =>
             s.id === sessionId ? { ...s, title, updatedAt: Date.now() } : s
           ),
         }));
+      },
+
+      // 更新会话关联的知识库
+      updateSessionKnowledgeBases: (sessionId, knowledgeBaseIds) => {
+        set((state) => ({
+          sessions: state.sessions.map(s =>
+            s.id === sessionId ? { ...s, knowledgeBaseIds, updatedAt: Date.now() } : s
+          ),
+        }));
+      },
+
+      // 从后端加载会话历史
+      loadSessionHistory: async (sessionId) => {
+        try {
+          const res = await chatApi.getChatHistory(sessionId) as {
+            success?: boolean;
+            messages?: Array<{ role: string; content: string; timestamp?: string; citations?: unknown[] }>;
+          };
+          if (res?.success && Array.isArray(res.messages)) {
+            const messages: Message[] = res.messages.map((m, i) => ({
+              id: `msg_loaded_${sessionId}_${i}`,
+              role: m.role as 'user' | 'assistant',
+              content: m.content || '',
+              timestamp: m.timestamp ? new Date(m.timestamp).getTime() : Date.now(),
+              citations: m.citations as Message['citations'],
+            }));
+            set((state) => ({
+              sessions: state.sessions.map(s =>
+                s.id === sessionId ? { ...s, messages, updatedAt: Date.now() } : s
+              ),
+            }));
+          }
+        } catch {
+          // 忽略加载失败（如会话不存在）
+        }
       },
 
       // 添加消息

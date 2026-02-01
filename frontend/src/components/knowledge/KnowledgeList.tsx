@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, X } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
@@ -6,14 +6,51 @@ import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import { knowledgeApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
 import { StatusBadge, FileThumb, FileHero, CreateKbModal, StatItem } from './KnowledgeListHelpers'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 
-// 文件预览模态框（简化版，后续可扩展）
-function FilePreviewModal({ file, onClose, onDelete }: { file: any; onClose: () => void; onDelete: () => void }) {
+// 文件预览模态框（支持图片描述、文档分块、MD 预览）
+function FilePreviewModal({
+  file,
+  kbId,
+  onClose,
+  onDelete,
+}: {
+  file: any
+  kbId: string | null
+  onClose: () => void
+  onDelete: () => void
+}) {
+  const [tab, setTab] = React.useState<'preview' | 'chunks'>('preview')
+  const [details, setDetails] = React.useState<{
+    caption?: string
+    chunks?: Array<{ index: number; text: string }>
+    text_preview?: string
+  } | null>(null)
+  const [rawContent, setRawContent] = React.useState<string | null>(null)
+  const [loadingDetails, setLoadingDetails] = React.useState(false)
+
   const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(String(file?.type || '').toLowerCase())
   const isPdf = String(file?.type || '').toLowerCase() === 'pdf'
+  const isMd = String(file?.type || '').toLowerCase() === 'md'
+  const isTxt = String(file?.type || '').toLowerCase() === 'txt'
+  const isTextFile = isMd || isTxt
+  const isDoc = ['pdf', 'docx', 'doc', 'txt', 'md'].includes(String(file?.type || '').toLowerCase())
+  const hasChunks = (details?.chunks?.length ?? 0) > 0
+
+  React.useEffect(() => {
+    if (!file?.id || !kbId) return
+    setLoadingDetails(true)
+    setDetails(null)
+    setRawContent(null)
+    Promise.all([
+      knowledgeApi.getFilePreviewDetails(kbId, file.id),
+      isTextFile ? knowledgeApi.getFileTextContent(kbId, file.id).then((r) => r?.content ?? null).catch(() => null) : Promise.resolve(null),
+    ]).then(([d, content]) => {
+      setDetails(d ?? null)
+      setRawContent(content ?? null)
+    }).catch(() => setDetails(null)).finally(() => setLoadingDetails(false))
+  }, [file?.id, kbId, isTextFile])
+
+  const textPreview = file?.textPreview ?? details?.text_preview ?? rawContent
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -38,10 +75,71 @@ function FilePreviewModal({ file, onClose, onDelete }: { file: any; onClose: () 
           </button>
         </div>
 
+        {(hasChunks || isDoc) && (
+          <div className="px-6 pt-4 flex-shrink-0">
+            <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
+              <button
+                onClick={() => setTab('preview')}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                  tab === 'preview'
+                    ? 'bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                )}
+                type="button"
+              >
+                预览
+              </button>
+              {hasChunks && (
+                <button
+                  onClick={() => setTab('chunks')}
+                  className={cn(
+                    'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                    tab === 'chunks'
+                      ? 'bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 shadow-sm'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  )}
+                  type="button"
+                >
+                  分块（{details?.chunks?.length ?? 0}）
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto p-6 min-h-0">
-          {isImg && file.previewUrl ? (
-            <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 max-h-[60vh] overflow-y-auto">
-              <img src={file.previewUrl} alt={file.name} className="w-full h-auto" />
+          {tab === 'chunks' && hasChunks ? (
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-sm font-medium text-slate-800 dark:text-slate-100">
+                文档分块
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+                {details!.chunks!.map((c) => (
+                  <div key={c.index} className="p-4">
+                    <div className="text-xs font-mono text-slate-500 dark:text-slate-400 mb-2">chunk #{c.index}</div>
+                    <div className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
+                      {c.text}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : isImg && file.previewUrl ? (
+            <div className="space-y-4">
+              <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
+                <img src={file.previewUrl} alt={file.name} className="w-full h-auto max-h-[50vh] object-contain" />
+              </div>
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
+                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">图片描述</div>
+                {loadingDetails ? (
+                  <p className="text-sm text-slate-400">加载描述中…</p>
+                ) : details?.caption ? (
+                  <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">{details.caption}</p>
+                ) : (
+                  <p className="text-sm text-slate-400 italic">暂无描述（若为刚上传的图片，描述生成后刷新预览即可）</p>
+                )}
+              </div>
             </div>
           ) : isPdf && file.previewUrl ? (
             <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
@@ -51,14 +149,19 @@ function FilePreviewModal({ file, onClose, onDelete }: { file: any; onClose: () 
                 className="w-full h-[60vh] min-h-[400px] max-h-[600px]"
               />
             </div>
-          ) : file.textPreview ? (
+          ) : textPreview ? (
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
               <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">文本预览</div>
               <div className="max-h-[60vh] overflow-y-auto">
-                <pre className="text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-200 leading-relaxed">
-                  {file.textPreview}
+                <pre className="text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-200 leading-relaxed font-sans">
+                  {textPreview}
                 </pre>
               </div>
+            </div>
+          ) : loadingDetails && (isTextFile || isImg || isDoc) ? (
+            <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
+              <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent" />
+              <div className="mt-3 text-sm">加载预览中…</div>
             </div>
           ) : (
             <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
@@ -102,6 +205,7 @@ const KnowledgeList: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<UploadPipelineProgress | undefined>()
   const [uploading, setUploading] = useState(false)
   const [files, setFiles] = useState<any[]>([])
+  const [kbStats, setKbStats] = useState<{ documents: number; chunks: number; images: number } | null>(null)
 
   const {
     knowledgeBases,
@@ -114,6 +218,37 @@ const KnowledgeList: React.FC = () => {
   useEffect(() => {
     fetchKnowledgeBases()
   }, [fetchKnowledgeBases])
+
+  const fetchFiles = useCallback(async () => {
+    if (!activeKbId) return
+    try {
+      const res = await knowledgeApi.getKnowledgeBaseFiles(activeKbId)
+      const list = (res?.files || []).map((f: { id: string; name: string; size: number; date: string; type: string; preview_url?: string; text_preview?: string }) => ({
+        id: f.id,
+        name: f.name,
+        size: f.size >= 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} MB` : f.size >= 1024 ? `${(f.size / 1024).toFixed(1)} KB` : `${f.size} B`,
+        date: f.date ? new Date(f.date).toLocaleDateString() : '-',
+        type: f.type,
+        status: 'ready',
+        previewUrl: f.preview_url,
+        textPreview: f.text_preview,
+      }))
+      setFiles(list)
+    } catch {
+      setFiles([])
+    }
+  }, [activeKbId])
+
+  useEffect(() => {
+    if (viewState === 'detail' && activeKbId) fetchFiles()
+  }, [viewState, activeKbId, fetchFiles])
+
+  useEffect(() => {
+    if (viewState === 'detail' && activeKbId) {
+      setKbStats(null)
+      knowledgeApi.getKnowledgeBaseStats(activeKbId).then(setKbStats).catch(() => setKbStats(null))
+    }
+  }, [viewState, activeKbId])
 
   // 获取当前选中的 KB 对象
   const activeKb = knowledgeBases.find((k) => k.id === activeKbId)
@@ -203,7 +338,7 @@ const KnowledgeList: React.FC = () => {
         completed: fileList.length,
       }))
       await fetchKnowledgeBases()
-      // TODO: 刷新文件列表
+      await fetchFiles()
     } catch (e) {
       console.error('上传失败', e)
       setUploadProgress((prev) => (prev ? { ...prev, failed: prev.failed + 1 } : undefined))
@@ -228,12 +363,17 @@ const KnowledgeList: React.FC = () => {
     }
   }
 
-  const handleDeleteFile = (fileId: string) => {
-    if (!activeKb) return
+  const handleDeleteFile = async (fileId: string) => {
+    if (!activeKbId) return
     const ok = window.confirm('确定删除该文件？')
     if (!ok) return
-    // TODO: 调用 API 删除文件
-    setFiles((prev) => prev.filter((f) => f.id !== fileId))
+    try {
+      await knowledgeApi.deleteKnowledgeBaseFile(activeKbId, fileId)
+      setFiles((prev) => prev.filter((f) => f.id !== fileId))
+      await fetchKnowledgeBases()
+    } catch (e) {
+      console.error('删除文件失败', e)
+    }
   }
 
   // --- KB 列表视图 ---
@@ -375,26 +515,7 @@ const KnowledgeList: React.FC = () => {
         <div className="flex-1 flex overflow-hidden">
           {/* Main Area */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {/* Upload Area */}
-            <div className="bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-8 text-center hover:bg-slate-50 dark:hover:bg-slate-900/60 hover:border-fuchsia-400 transition-colors cursor-pointer relative">
-              <input
-                type="file"
-                multiple
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files.length > 0) {
-                    handleFileUpload(Array.from(e.target.files))
-                  }
-                }}
-              />
-              <div className="w-12 h-12 bg-gradient-to-tr from-indigo-50 to-fuchsia-50 dark:from-indigo-600/25 dark:to-fuchsia-600/15 text-indigo-600 dark:text-indigo-200 rounded-full flex items-center justify-center mx-auto mb-3 border border-indigo-100/80 dark:border-slate-700">
-                <Upload size={24} />
-              </div>
-              <h3 className="font-medium text-slate-700 dark:text-slate-200">点击上传文件</h3>
-              <p className="text-slate-400 text-sm mt-1">支持 PDF / DOCX / MD / JPG / PNG（≤ 50MB）</p>
-            </div>
-
-            {/* Upload Pipeline */}
+            {/* 统一上传入口（带进度） */}
             <UploadPipeline
               onFileSelect={handleFileUpload}
               isUploading={uploading}
@@ -543,22 +664,22 @@ const KnowledgeList: React.FC = () => {
               )}
             </div>
 
-            {/* Portrait Graph */}
+            {/* Portrait Graph（使用从向量库获取的统计） */}
             <PortraitGraph
               knowledgeBaseId={activeKb.id}
-              textCount={activeKb.stats?.chunks ?? 0}
-              imageCount={activeKb.stats?.images ?? 0}
+              textCount={kbStats?.chunks ?? activeKb.stats?.chunks ?? 0}
+              imageCount={kbStats?.images ?? activeKb.stats?.images ?? 0}
               onClusterSelect={() => {}}
             />
           </div>
 
-          {/* Detail Sidebar (Stats) */}
+          {/* Detail Sidebar (Stats，结合向量库数据) */}
           <div className="w-72 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-6 hidden xl:block">
             <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-4">知识库统计</h4>
             <div className="space-y-4">
-              <StatItem label="Total Chunks" value={activeKb.stats?.chunks ?? 0} />
-              <StatItem label="Total Images" value={activeKb.stats?.images ?? 0} />
-              <StatItem label="Documents" value={activeKb.stats?.documents ?? 0} />
+              <StatItem label="Total Chunks" value={kbStats?.chunks ?? activeKb.stats?.chunks ?? 0} />
+              <StatItem label="Total Images" value={kbStats?.images ?? activeKb.stats?.images ?? 0} />
+              <StatItem label="Documents" value={kbStats?.documents ?? activeKb.stats?.documents ?? 0} />
               <StatItem label="Vector Dim" value="1024 (Dense)" />
             </div>
 
@@ -577,6 +698,7 @@ const KnowledgeList: React.FC = () => {
         {previewFile && (
           <FilePreviewModal
             file={previewFile}
+            kbId={activeKbId}
             onClose={() => setPreviewFile(null)}
             onDelete={() => {
               handleDeleteFile(previewFile.id)

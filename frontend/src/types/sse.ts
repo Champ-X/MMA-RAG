@@ -9,6 +9,7 @@ export type ThoughtPhase = 'intent' | 'routing' | 'retrieval' | 'generation';
 export interface ThoughtEvent {
   type: ThoughtPhase;
   data: {
+    message?: string;
     intent_type?: string;
     original_query?: string;
     refined_query?: string;

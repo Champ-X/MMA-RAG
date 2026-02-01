@@ -112,15 +112,19 @@ class ApiClient {
     return response.data;
   }
 
-  // 多文件上传
+  // 多文件上传（支持额外 FormData 字段）
   async uploadFiles<T = any>(
     url: string,
     files: File[],
-    onProgress?: (progress: number, fileIndex: number) => void
+    onProgress?: (progress: number, fileIndex: number) => void,
+    extraFields?: Record<string, string>
   ): Promise<T> {
     const formData = new FormData();
+    if (extraFields) {
+      Object.entries(extraFields).forEach(([k, v]) => formData.append(k, v));
+    }
     files.forEach((file) => {
-      formData.append(`files`, file);
+      formData.append('files', file);
     });
 
     const response: AxiosResponse<T> = await this.instance.post(url, formData, {
@@ -166,13 +170,43 @@ export const knowledgeApi = {
   
   // 获取知识库详情
   getKnowledgeBase: (id: string) => apiClient.get(`/knowledge/${id}`),
+
+  // 获取知识库向量统计（用于数据源比例、主题统计）
+  getKnowledgeBaseStats: (id: string) =>
+    apiClient.get<{ documents: number; chunks: number; images: number }>(`/knowledge/${id}/stats`),
   
   // 获取知识库画像
   getKnowledgeBasePortrait: (id: string) => apiClient.get(`/knowledge/${id}/portrait`),
+
+  // 触发知识库画像生成/更新（超时 120s，因同步生成可能较慢）
+  regenerateKnowledgeBasePortrait: (id: string) =>
+    apiClient.post<{ status: string; message: string; clusters?: number }>(
+      `/knowledge/${id}/portrait/regenerate`,
+      undefined,
+      { timeout: 120000 }
+    ),
+
+  // 获取知识库文件列表
+  getKnowledgeBaseFiles: (id: string) =>
+    apiClient.get<{ files: Array<{ id: string; name: string; size: number; date: string; type: string; preview_url?: string; text_preview?: string }> }>(`/knowledge/${id}/files`),
+
+  // 删除知识库中的文件
+  deleteKnowledgeBaseFile: (kbId: string, fileId: string) =>
+    apiClient.delete(`/knowledge/${kbId}/files/${encodeURIComponent(fileId)}`),
+
+  // 获取文本文件原始内容（md/txt，用于预览避免下载）
+  getFileTextContent: (kbId: string, fileId: string) =>
+    apiClient.get<{ content: string }>(`/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/content`),
+
+  // 获取文件预览详情（caption、chunks、text_preview）
+  getFilePreviewDetails: (kbId: string, fileId: string) =>
+    apiClient.get<{ caption?: string; chunks?: Array<{ index: number; text: string }>; text_preview?: string }>(
+      `/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/preview`
+    ),
   
-  // 上传文件到知识库
+  // 上传文件到知识库（调用 /upload/batch）
   uploadFiles: (kbId: string, files: File[], onProgress?: (progress: number, fileIndex: number) => void) =>
-    apiClient.uploadFiles(`/knowledge/${kbId}/upload`, files, onProgress),
+    apiClient.uploadFiles(`/upload/batch`, files, onProgress, { kb_id: kbId }),
 };
 
 // 对话相关API
@@ -237,40 +271,30 @@ export const chatApi = {
   }) => apiClient.post('/chat/session', data),
 };
 
-// 调试相关API
+// 调试相关API（对接 /api/debug）
 export const debugApi = {
-  // 获取调试信息
-  getDebugInfo: (query: string, knowledgeBaseIds?: string[]) =>
-    apiClient.get('/debug/info', {
-      params: {
-        query,
-        knowledgeBaseIds: knowledgeBaseIds?.join(','),
-      },
-    }),
-  
-  // 获取检索详情
-  getRetrievalDetails: (query: string, knowledgeBaseIds?: string[]) =>
-    apiClient.get('/debug/retrieval', {
-      params: {
-        query,
-        knowledgeBaseIds: knowledgeBaseIds?.join(','),
-      },
-    }),
+  // 获取系统统计信息
+  getStats: () => apiClient.get('/debug/stats'),
+  // 获取检索调试详情（需 query_id）
+  getRetrievalDebug: (queryId: string) =>
+    apiClient.get(`/debug/retrieval-debug/${encodeURIComponent(queryId)}`),
+  // 获取组件健康状态
+  getComponentHealth: () => apiClient.get('/debug/health/components'),
 };
 
-// 系统相关API
+// 系统相关API（模型配置来自 /api/chat/models）
 export const systemApi = {
-  // 获取系统状态
-  getSystemStatus: () => apiClient.get('/system/status'),
-  
-  // 获取模型配置
-  getModelConfig: () => apiClient.get('/system/models'),
-  
-  // 更新模型配置
-  updateModelConfig: (config: any) => apiClient.put('/system/models', config),
-  
+  // 获取系统状态（使用 debug/stats）
+  getSystemStatus: () => apiClient.get('/debug/stats'),
+  // 获取模型配置（来自 chat/models）
+  getModelConfig: () => apiClient.get('/chat/models'),
+  // 更新模型配置（后端暂无写入接口，仅本地持久化）
+  updateModelConfig: async (config: any) => {
+    console.warn('模型配置写入接口暂未实现，配置仅保存于本地');
+    return config;
+  },
   // 获取系统指标
-  getMetrics: () => apiClient.get('/system/metrics'),
+  getMetrics: () => apiClient.get('/debug/stats'),
 };
 
 export default apiClient;

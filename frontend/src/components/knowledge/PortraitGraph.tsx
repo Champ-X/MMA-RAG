@@ -1,11 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
-import * as d3 from 'd3'
+import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Info, FileText, Image } from 'lucide-react'
+import { Info, FileText, Image, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { knowledgeApi } from '@/services/api_client'
+
+const BUBBLE_COLORS = [
+  'bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-violet-500',
+  'bg-cyan-500', 'bg-orange-500', 'bg-pink-500', 'bg-teal-500', 'bg-indigo-500',
+]
 
 export interface PortraitCluster {
   cluster_id: string
@@ -31,139 +35,74 @@ export function PortraitGraph({
   onClusterSelect,
   className,
 }: PortraitGraphProps) {
-  const svgRef = useRef<SVGSVGElement>(null)
   const [clusters, setClusters] = useState<PortraitCluster[]>([])
   const [loading, setLoading] = useState(true)
+  const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
+  const fetchPortrait = useCallback(async () => {
     setLoading(true)
-    const run = async () => {
-      try {
-        const res = await knowledgeApi.getKnowledgeBasePortrait(knowledgeBaseId)
-        const raw = res as {
-          clusters?: Array<{
-            cluster_id?: string
-            topic_summary?: string
-            cluster_size?: number
-          }>
-          topics?: Array<{ id?: string; summary?: string; size?: number }>
-        }
-        const list: PortraitCluster[] = []
-        if (Array.isArray(raw.clusters)) {
-          raw.clusters.forEach((c) => {
-            list.push({
-              cluster_id: c.cluster_id ?? String(list.length),
-              topic_summary: c.topic_summary ?? '',
-              cluster_size: c.cluster_size ?? 0,
-            })
-          })
-        } else if (Array.isArray(raw.topics)) {
-          raw.topics.forEach((t, i) => {
-            list.push({
-              cluster_id: t.id ?? String(i),
-              topic_summary: t.summary ?? '',
-              cluster_size: t.size ?? 0,
-            })
-          })
-        }
-        if (!cancelled) setClusters(list)
-      } catch {
-        const mock: PortraitCluster[] = [
-          { cluster_id: '1', topic_summary: '技术架构', cluster_size: 45 },
-          { cluster_id: '2', topic_summary: 'API 文档', cluster_size: 32 },
-          { cluster_id: '3', topic_summary: '数据库设计', cluster_size: 28 },
-          { cluster_id: '4', topic_summary: '前端开发', cluster_size: 25 },
-          { cluster_id: '5', topic_summary: '安全策略', cluster_size: 20 },
-          { cluster_id: '6', topic_summary: '性能监控', cluster_size: 18 },
-          { cluster_id: '7', topic_summary: '部署运维', cluster_size: 15 },
-        ]
-        if (!cancelled) setClusters(mock)
-      } finally {
-        if (!cancelled) setLoading(false)
+    setGenError(null)
+    try {
+      const res = await knowledgeApi.getKnowledgeBasePortrait(knowledgeBaseId)
+      const raw = res as {
+        clusters?: Array<{
+          cluster_id?: string
+          topic_summary?: string
+          cluster_size?: number
+        }>
+        topics?: Array<{ id?: string; summary?: string; size?: number }>
       }
+      const list: PortraitCluster[] = []
+      if (Array.isArray(raw.clusters)) {
+        raw.clusters.forEach((c) => {
+          list.push({
+            cluster_id: c.cluster_id ?? String(list.length),
+            topic_summary: c.topic_summary ?? '',
+            cluster_size: c.cluster_size ?? 0,
+          })
+        })
+      } else if (Array.isArray(raw.topics)) {
+        raw.topics.forEach((t, i) => {
+          list.push({
+            cluster_id: t.id ?? String(i),
+            topic_summary: t.summary ?? '',
+            cluster_size: t.size ?? 0,
+          })
+        })
+      }
+      setClusters(list)
+    } catch {
+      setClusters([])
+    } finally {
+      setLoading(false)
     }
-    run()
-    return () => { cancelled = true }
   }, [knowledgeBaseId])
 
   useEffect(() => {
-    if (!clusters.length || !svgRef.current) return
+    fetchPortrait()
+  }, [fetchPortrait])
 
-    const svg = d3.select(svgRef.current)
-    svg.selectAll('*').remove()
+  const handleRegenerate = async () => {
+    setGenerating(true)
+    setGenError(null)
+    try {
+      const res = await knowledgeApi.regenerateKnowledgeBasePortrait(knowledgeBaseId)
+      if (res.status === 'triggered') {
+        setGenError(null)
+        setTimeout(() => fetchPortrait(), 20000)
+      } else if (res.status === 'success') {
+        await fetchPortrait()
+      }
+    } catch (e: any) {
+      setGenError(e?.response?.data?.detail ?? e?.message ?? '生成失败')
+    } finally {
+      setGenerating(false)
+    }
+  }
 
-    const width = 800
-    const height = 400
-    const margin = { top: 20, right: 20, bottom: 20, left: 20 }
-
-    type NodeDatum = { value: number } & PortraitCluster
-    const pack = d3
-      .pack<NodeDatum>()
-      .size([width - margin.left - margin.right, height - margin.top - margin.bottom])
-      .padding(8)
-
-    const root = d3
-      .hierarchy({
-        children: clusters.map((c) => ({
-          ...c,
-          value: Math.max(1, c.cluster_size),
-        })),
-      } as { children: NodeDatum[] })
-      .sum((d) => {
-        const x = (d as { data?: { value?: number } }).data
-        return x && typeof x.value === 'number' ? x.value : 0
-      })
-
-    const tree = pack(root as unknown as d3.HierarchyNode<NodeDatum>)
-    const leaves = tree.leaves() as Array<d3.HierarchyCircularNode<NodeDatum>>
-
-    const g = svg
-      .attr('width', width)
-      .attr('height', height)
-      .append('g')
-      .attr('transform', `translate(${margin.left},${margin.top})`)
-
-    const color = d3.scaleOrdinal(d3.schemeCategory10)
-
-    g.selectAll('circle')
-      .data(leaves)
-      .enter()
-      .append('circle')
-      .attr('cx', (d) => d.x)
-      .attr('cy', (d) => d.y)
-      .attr('r', (d) => d.r)
-      .attr('fill', (_, i) => color(String(i)))
-      .attr('stroke', (d) =>
-        d.data.cluster_id === selectedId ? 'hsl(var(--primary))' : '#1e293b'
-      )
-      .attr('stroke-width', (d) =>
-        d.data.cluster_id === selectedId ? 3 : 1.5
-      )
-      .style('cursor', 'pointer')
-      .on('click', (_, d) => {
-        const id = d.data.cluster_id
-        setSelectedId((prev) => {
-          const next = prev === id ? null : id
-          onClusterSelect?.(next)
-          return next
-        })
-      })
-
-    g.selectAll('text')
-      .data(leaves)
-      .enter()
-      .append('text')
-      .attr('x', (d) => d.x)
-      .attr('y', (d) => d.y)
-      .attr('text-anchor', 'middle')
-      .attr('dy', '0.35em')
-      .attr('font-size', (d) => Math.min(12, d.r / 2))
-      .attr('fill', '#fff')
-      .attr('pointer-events', 'none')
-      .text((d) => d.data.topic_summary)
-  }, [clusters, selectedId, onClusterSelect])
+  const maxSize = clusters.length ? Math.max(...clusters.map((c) => c.cluster_size), 1) : 1
 
   const total = textCount + imageCount
   const textPct = total ? (textCount / total) * 100 : 50
@@ -183,17 +122,81 @@ export function PortraitGraph({
             <div className="flex h-80 items-center justify-center">
               <div className="text-center">
                 <div className="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                <p className="text-muted-foreground">正在生成画像…</p>
+                <p className="text-muted-foreground">正在加载画像…</p>
               </div>
             </div>
+          ) : clusters.length === 0 ? (
+            <div className="flex h-80 flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50">
+              <p className="text-base font-medium text-slate-700 dark:text-slate-200">暂无主题画像</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm text-center px-4">
+                知识库需有足够数据（约 10 条以上文本/图片）才能生成主题聚类画像。
+              </p>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleRegenerate}
+                disabled={generating || (textCount + imageCount) < 5}
+                className="gap-2"
+              >
+                {generating ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    生成中…
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4" />
+                    生成画像
+                  </>
+                )}
+              </Button>
+              {(textCount + imageCount) < 5 && (
+                <p className="text-xs text-amber-600">当前数据量较少，建议先上传更多文件</p>
+              )}
+              {genError && (
+                <p className="text-xs text-destructive">{genError}</p>
+              )}
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <svg ref={svgRef} className="w-full max-w-full" />
+            <div className="min-h-[320px] rounded-lg bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 p-6 flex flex-wrap items-center justify-center gap-4 content-center">
+              {clusters.map((c, i) => {
+                const sizePct = Math.max(15, Math.min(35, (c.cluster_size / maxSize) * 30 + 15))
+                const isSelected = c.cluster_id === selectedId
+                return (
+                  <button
+                    key={c.cluster_id}
+                    type="button"
+                    onClick={() => {
+                      const next = isSelected ? null : c.cluster_id
+                      setSelectedId(next)
+                      onClusterSelect?.(next ?? null)
+                    }}
+                    className={cn(
+                      'rounded-full flex items-center justify-center text-white font-medium transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2',
+                      BUBBLE_COLORS[i % BUBBLE_COLORS.length],
+                      isSelected && 'ring-2 ring-offset-2 ring-indigo-500 scale-105'
+                    )}
+                    style={{
+                      width: `${sizePct}%`,
+                      minWidth: 80,
+                      maxWidth: 180,
+                      aspectRatio: '1',
+                      padding: '0.5rem',
+                    }}
+                  >
+                    <span className="text-xs sm:text-sm leading-tight line-clamp-3 text-center px-1">
+                      {c.topic_summary || `主题 ${i + 1}`}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           )}
-          <p className="text-xs text-muted-foreground">
-            点击气泡可筛选该簇下的文档；气泡大小表示 cluster_size。
-          </p>
+          {clusters.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              点击气泡可筛选该簇下的文档；气泡大小表示 cluster_size。
+            </p>
+          )}
         </CardContent>
       </Card>
 

@@ -4,7 +4,7 @@ import { ThemeProvider } from '@/hooks/useTheme'
 import { AppLayout } from '@/components/layout/AppLayout'
 import ChatInterface from '@/components/chat/ChatInterface'
 import KnowledgeList from '@/components/knowledge/KnowledgeList'
-import ModelConfig from '@/components/settings/ModelConfig'
+import { SettingsPage } from '@/pages/SettingsPage'
 
 function App() {
   return (
@@ -15,14 +15,7 @@ function App() {
             <Route element={<AppLayout />}>
               <Route path="/" element={<ChatInterface />} />
               <Route path="/knowledge" element={<KnowledgeList />} />
-              <Route
-                path="/settings"
-                element={
-                  <div className="p-6 mx-auto max-w-4xl">
-                    <ModelConfig />
-                  </div>
-                }
-              />
+              <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Routes>
           <Toaster />

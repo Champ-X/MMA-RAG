@@ -202,21 +202,28 @@ async def stream_chat(
             
             # 发送连接事件
             yield f"data: {json.dumps({'type': 'connected', 'sessionId': current_session_id})}\n\n"
-            
+
+            def _thought_event(stage: str, msg: str) -> str:
+                """前端期望: type=thought, data={ type, data: { message } }"""
+                return json.dumps({
+                    "type": "thought",
+                    "data": {"type": stage, "data": {"message": msg}}
+                })
+
             # 1. 执行检索（发送思考事件）
-            yield f"data: {json.dumps({'type': 'thinking', 'stage': 'intent', 'message': '正在分析查询意图...'})}\n\n"
-            
+            yield f"data: {_thought_event('intent', '正在分析查询意图...')}\n\n"
+
             retrieval_result = await retrieval_service.search(
                 query=message,
                 kb_context=kb_context,
                 session_context=session_context
             )
-            
-            yield f"data: {json.dumps({'type': 'thinking', 'stage': 'retrieval', 'message': f'检索完成，找到 {len(retrieval_result.reranked_results)} 个相关结果'})}\n\n"
-            
+
+            yield f"data: {_thought_event('retrieval', f'检索完成，找到 {len(retrieval_result.reranked_results)} 个相关结果')}\n\n"
+
             # 2. 流式生成回答
-            yield f"data: {json.dumps({'type': 'thinking', 'stage': 'generation', 'message': '正在生成回答...'})}\n\n"
-            
+            yield f"data: {_thought_event('generation', '正在生成回答...')}\n\n"
+
             answer_chunks = []
             async for event in generation_service.stream_generate_response(
                 query=message,
@@ -224,22 +231,24 @@ async def stream_chat(
                 session_id=current_session_id,
                 kb_context=kb_context
             ):
-                # 转换事件格式为前端期望的格式
-                event_type = event.type.value if hasattr(event.type, 'value') else str(event.type)
-                
+                event_type = event.type.value if hasattr(event.type, "value") else str(event.type)
+
                 if event_type == "message":
                     chunk = event.data.get("content", "")
                     answer_chunks.append(chunk)
-                    yield f"data: {json.dumps({'type': 'message', 'content': chunk})}\n\n"
+                    yield f"data: {json.dumps({'type': 'message', 'data': {'delta': chunk}})}\n\n"
                 elif event_type == "thought":
-                    yield f"data: {json.dumps({'type': 'thinking', 'stage': event.data.get('stage', 'generation'), 'message': event.data.get('message', '')})}\n\n"
+                    stage = event.data.get("stage", "generation")
+                    msg = event.data.get("message", "")
+                    yield f"data: {_thought_event(stage, msg)}\n\n"
                 elif event_type == "citation":
-                    yield f"data: {json.dumps({'type': 'citation', 'citations': event.data.get('citations', [])})}\n\n"
+                    citations = event.data.get("citations", [])
+                    yield f"data: {json.dumps({'type': 'citation', 'data': {'references': citations}})}\n\n"
                 elif event_type == "error":
                     yield f"data: {json.dumps({'type': 'error', 'message': event.data.get('error', '未知错误')})}\n\n"
                 elif event_type == "done":
-                    break  # 完成事件，退出循环
-            
+                    break
+
             # 保存消息到会话
             full_answer = "".join(answer_chunks)
             session["messages"].append({
@@ -253,9 +262,9 @@ async def stream_chat(
                 "timestamp": datetime.utcnow().isoformat()
             })
             session["updated_at"] = datetime.utcnow().isoformat()
-            
-            # 发送完成事件
-            yield f"data: {json.dumps({'type': 'done', 'sessionId': current_session_id})}\n\n"
+
+            # 发送完成事件（前端期望 type=complete）
+            yield f"data: {json.dumps({'type': 'complete', 'sessionId': current_session_id})}\n\n"
             
         except Exception as e:
             logger.error(f"流式聊天失败: {str(e)}", exc_info=True)
@@ -336,11 +345,21 @@ async def create_session(request: Request):
 
 @router.get("/models")
 async def list_models():
-    """获取可用模型列表（从 LLMRegistry 动态读取，与模型配置单一数据源一致）"""
+    """获取可用模型列表与当前任务模型配置（从 LLMRegistry 动态读取）"""
     r = llm_manager.registry
+    task_keys = ["intent_recognition", "image_captioning", "final_generation", "reranking"]
+    current_config = {}
+    for task in task_keys:
+        model_name = r.get_task_model(task)
+        if model_name:
+            mc = r.get_model_config(model_name)
+            provider = mc.get("provider") or "siliconflow"
+            current_config[task] = {"model": model_name, "provider": provider}
+
     return {
         "chat_models": r.list_models("chat"),
         "embedding_models": r.list_models("embedding"),
         "vision_models": r.list_models("vision"),
         "reranker_models": r.list_models("reranker"),
+        "current_config": current_config,
     }

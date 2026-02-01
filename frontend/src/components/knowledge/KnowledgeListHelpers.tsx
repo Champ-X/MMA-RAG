@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, CheckCircle, Loader2, Image as ImageIcon, FileText, Database, ArrowLeft, ChevronRight, Upload, MoreVertical, Trash2, Search } from 'lucide-react'
+import { X, CheckCircle, Loader2, Image as ImageIcon, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // 状态徽章
@@ -35,10 +35,6 @@ function FileIcon({ type }: { type: string }) {
 
 function isImageType(type: string): boolean {
   return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(String(type || '').toLowerCase())
-}
-
-function isPdfType(type: string): boolean {
-  return String(type || '').toLowerCase() === 'pdf'
 }
 
 // 文件缩略图（表格视图）

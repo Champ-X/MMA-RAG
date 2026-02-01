@@ -128,6 +128,10 @@ class Settings(BaseSettings):
     # 知识库配置
     max_kb_portrait_size: int = Field(default=20, validation_alias="MAX_KB_PORTRAIT_SIZE")
     portrait_update_threshold: int = Field(default=50, validation_alias="PORTRAIT_UPDATE_THRESHOLD")
+    kb_storage_path: str = Field(
+        default="data/knowledge_bases.json",
+        validation_alias="KB_STORAGE_PATH"
+    )
     
     # Celery 配置（可选，如果不需要可以忽略）
     celery_broker_url: Optional[str] = Field(default=None, validation_alias="CELERY_BROKER_URL")
@@ -162,7 +166,8 @@ class Settings(BaseSettings):
         directories = [
             backend_dir / "logs",
             backend_dir / "temp",
-            backend_dir / "uploads"
+            backend_dir / "uploads",
+            backend_dir / "data",
         ]
         
         for directory in directories:

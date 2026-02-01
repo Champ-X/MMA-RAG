@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { systemApi } from '@/services/api_client';
 
 export interface ModelConfig {
   id: string;
@@ -22,9 +23,16 @@ export interface SystemConfig {
   language: 'zh-CN' | 'en-US';
 }
 
+export interface AvailableModels {
+  chat_models: string[];
+  vision_models: string[];
+  reranker_models: string[];
+}
+
 interface ConfigStore {
   // 状态
   config: SystemConfig;
+  availableModels: AvailableModels;
   isLoading: boolean;
   error: string | null;
   hasUnsavedChanges: boolean;
@@ -118,6 +126,7 @@ export const useConfigStore = create<ConfigStore>()(
     (set, get) => ({
       // 初始状态
       config: defaultConfig,
+      availableModels: { chat_models: [], vision_models: [], reranker_models: [] },
       isLoading: false,
       error: null,
       hasUnsavedChanges: false,
@@ -167,39 +176,55 @@ export const useConfigStore = create<ConfigStore>()(
         }));
       },
 
-      // 保存配置
+      // 保存配置（后端暂无写入接口，仅本地持久化）
       saveConfig: async () => {
         set({ isLoading: true, error: null });
 
         try {
-          // 这里应该调用API保存配置
-          // await systemApi.updateModelConfig(state.config);
-          
-          // 模拟API调用
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
+          await systemApi.updateModelConfig(get().config);
           set({ hasUnsavedChanges: false, isLoading: false });
         } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : '保存配置失败',
-            isLoading: false,
-          });
-          throw error;
+          set({ hasUnsavedChanges: false, isLoading: false });
         }
       },
 
-      // 加载配置
+      // 加载配置（从 /chat/models 获取当前配置与可用模型列表）
       loadConfig: async () => {
         set({ isLoading: true, error: null });
 
         try {
-          // 这里应该调用API加载配置
-          // const config = await systemApi.getModelConfig();
-          
-          // 模拟API调用
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          set({ isLoading: false });
+          const data = await systemApi.getModelConfig() as {
+            chat_models?: string[];
+            vision_models?: string[];
+            reranker_models?: string[];
+            current_config?: Record<string, { model: string; provider: string }>;
+          };
+          const availableModels = {
+            chat_models: data.chat_models ?? [],
+            vision_models: data.vision_models ?? [],
+            reranker_models: data.reranker_models ?? [],
+          };
+          const cc = data.current_config ?? {};
+          const norm = (p: string) => (p === 'deepseek' ? 'siliconflow' : p) as 'siliconflow' | 'openai';
+          set((state) => {
+            const models = state.config.models.map((m) => {
+              if (m.id === 'chat' && cc.final_generation) {
+                return { ...m, model: cc.final_generation.model, provider: norm(cc.final_generation.provider) };
+              }
+              if (m.id === 'caption' && cc.image_captioning) {
+                return { ...m, model: cc.image_captioning.model, provider: norm(cc.image_captioning.provider) };
+              }
+              if (m.id === 'rerank' && cc.reranking) {
+                return { ...m, model: cc.reranking.model, provider: norm(cc.reranking.provider) };
+              }
+              return m;
+            });
+            return {
+              config: { ...state.config, models },
+              availableModels,
+              isLoading: false,
+            };
+          });
         } catch (error) {
           set({
             error: error instanceof Error ? error.message : '加载配置失败',

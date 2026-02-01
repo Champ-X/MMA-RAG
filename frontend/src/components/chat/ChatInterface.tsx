@@ -6,6 +6,7 @@ import { ThinkingCapsule } from './ThinkingCapsule'
 import { MessageBubble } from './MessageBubble'
 import { CitationPopover } from './CitationPopover'
 import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
+import { ChatConfigPanel } from './ChatConfigPanel'
 import { useChatStore } from '@/store/useChatStore'
 import { useThinkingChain } from '@/hooks/useThinkingChain'
 import { useConfigStore } from '@/store/useConfigStore'
@@ -22,6 +23,7 @@ export function ChatInterface() {
   }>({ open: false, rect: null, item: null })
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [inspectingItem, setInspectingItem] = useState<CitationReference | null>(null)
+  const [configPanelOpen, setConfigPanelOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -32,6 +34,7 @@ export function ChatInterface() {
     activeSessionId,
     getActiveSession,
     createSession,
+    createSessionFromApi,
     setLoading,
     thinking,
   } = useChatStore()
@@ -57,9 +60,9 @@ export function ChatInterface() {
 
   useEffect(() => {
     if (!activeSessionId && sessions.length === 0) {
-      createSession()
+      createSessionFromApi().catch(() => createSession())
     }
-  }, [activeSessionId, sessions.length, createSession])
+  }, [activeSessionId, sessions.length, createSession, createSessionFromApi])
 
   // 自动调整输入框高度
   useEffect(() => {
@@ -314,10 +317,7 @@ export function ChatInterface() {
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => {
-                    // TODO: 实现配置面板功能
-                    console.log('配置面板功能待实现')
-                  }}
+                  onClick={() => setConfigPanelOpen(true)}
                   title="发送前配置"
                   className="grid h-9 w-9 place-items-center rounded-xl text-slate-600 transition-all duration-200 hover:bg-slate-900/5 hover:text-slate-900 active:scale-95 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
                 >
@@ -368,6 +368,9 @@ export function ChatInterface() {
           onOpenInspector={openInspectorFromPopover}
         />
       </div>
+
+      {/* 配置面板 */}
+      <ChatConfigPanel open={configPanelOpen} onOpenChange={setConfigPanelOpen} />
 
       {/* 检查器侧边栏 */}
       <InspectorDrawer

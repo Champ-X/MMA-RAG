@@ -34,6 +34,21 @@ class MinIOAdapter:
             return "kb-default"
         return f"kb-{_sanitize_bucket_name(kb_id)}"
 
+    def get_bucket_for_kb(self, kb_id: str) -> str:
+        """
+        根据 kb_id 解析实际存储桶名。
+        - 若 kb_id 本身是 MinIO 中存在的存储桶名，直接返回；
+        - 否则按约定返回 kb-{sanitize(kb_id)}。
+        """
+        if not kb_id:
+            return "kb-default"
+        try:
+            if self.client.bucket_exists(kb_id):
+                return kb_id
+        except Exception:
+            pass
+        return self.bucket_name_for_kb(kb_id)
+
     def __init__(self):
         self.client = minio.Minio(
             settings.minio_endpoint,
@@ -55,7 +70,7 @@ class MinIOAdapter:
 
     def ensure_bucket_for_kb(self, kb_id: str) -> None:
         """确保该知识库对应的存储桶存在；若不存在则创建。"""
-        bucket_name = self.bucket_name_for_kb(kb_id)
+        bucket_name = self.get_bucket_for_kb(kb_id)
         try:
             if not self.client.bucket_exists(bucket_name):
                 self.client.make_bucket(bucket_name)
@@ -92,9 +107,9 @@ class MinIOAdapter:
         """
         try:
             file_id = str(uuid.uuid4())
-            bucket_name = self.bucket_name_for_kb(kb_id)
             object_name = f"{file_type}/{file_id}_{Path(file_path).name}"
 
+            bucket_name = self.get_bucket_for_kb(kb_id)
             self.ensure_bucket_for_kb(kb_id)
 
             self.client.put_object(
@@ -172,6 +187,15 @@ class MinIOAdapter:
         except S3Error as e:
             logger.warning(f"检查存储桶存在性失败 {bucket}: {e}")
             return False
+
+    def list_bucket_names(self) -> List[str]:
+        """列出所有存储桶名称"""
+        try:
+            buckets = self.client.list_buckets()
+            return [b.name for b in buckets]
+        except Exception as e:
+            logger.warning(f"列出存储桶失败: {e}")
+            return []
 
     async def remove_bucket(self, bucket: str) -> bool:
         """删除空的存储桶"""

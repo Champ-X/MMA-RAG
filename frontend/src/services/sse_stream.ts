@@ -75,16 +75,27 @@ class SSEStreamManager {
           timestamp: Date.now(),
         };
 
-        switch (sseEvent.type) {
+        const evType = eventType as string;
+        switch (evType) {
           case 'thought':
             callbacks.onThought?.(sseEvent.data as ThoughtEvent);
             break;
+          case 'thinking': {
+            // 兼容后端旧格式: { type: 'thinking', stage, message }
+            const r = raw as { stage?: string; message?: string };
+            callbacks.onThought?.({
+              type: (r.stage as any) || 'generation',
+              data: { message: r.message },
+            });
+            break;
+          }
           case 'citation':
             callbacks.onCitation?.(sseEvent.data as CitationEvent);
             break;
           case 'message': {
-            const msg = sseEvent.data as MessageEvent | { delta?: string };
-            const delta = 'delta' in msg ? msg.delta : (msg as MessageEvent).delta;
+            const msg = sseEvent.data as MessageEvent | { delta?: string; content?: string };
+            const delta =
+              'delta' in msg ? msg.delta : (msg as any).content ?? (msg as MessageEvent).delta;
             if (delta != null) {
               callbacks.onMessage?.({
                 delta: typeof delta === 'string' ? delta : '',
@@ -94,6 +105,7 @@ class SSEStreamManager {
             break;
           }
           case 'complete':
+          case 'done':
             callbacks.onComplete?.();
             break;
           case 'error':
@@ -105,6 +117,8 @@ class SSEStreamManager {
                 delta: (sseEvent.data as any).delta,
                 isComplete: (sseEvent.data as any).isComplete,
               });
+            } else if (typeof (raw as any)?.content === 'string') {
+              callbacks.onMessage?.({ delta: (raw as any).content, isComplete: false });
             }
         }
       } catch (err) {
