@@ -15,6 +15,10 @@ interface InlineCitationProps {
   showImageThumbnails?: boolean
   /** id -> 完整引用，用于预加载的 citation 事件 */
   citationMap?: Map<number | string, CitationReference>
+  /** 点击引用时打开悬浮框（与正文内 [1] 按钮行为一致）；messageId 用于只从当前消息取引用 */
+  onCiteClick?: (refId: number | string, event: React.MouseEvent, messageId?: string) => void
+  /** 当前消息 id，点击引用时传给 onCiteClick，避免取到上一条消息的引用 */
+  messageId?: string
   className?: string
 }
 
@@ -36,6 +40,8 @@ export function InlineCitation({
   variant = 'inline',
   showImageThumbnails = true,
   citationMap,
+  onCiteClick,
+  messageId,
   className,
 }: InlineCitationProps) {
   const [selected, setSelected] = useState<CitationReference | null>(null)
@@ -57,7 +63,7 @@ export function InlineCitation({
   return (
     <>
       {variant === 'inline' && (
-        <div className={cn('flex flex-wrap gap-1', className)}>
+        <div className={cn('flex flex-wrap gap-1.5', className)}>
           {refs.map((ref) => {
             const Icon = getReferenceIcon(ref.type)
             const id = ref.id
@@ -67,12 +73,19 @@ export function InlineCitation({
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  'h-6 px-2 text-xs font-mono hover:bg-primary/10',
-                  ref.type === 'image' && 'text-blue-600'
+                  'h-7 px-2.5 text-xs font-mono rounded-xl border border-slate-200/70 bg-white/60 shadow-sm hover:bg-indigo-500/10 hover:border-indigo-300/50 dark:border-slate-700/70 dark:bg-slate-950/40 dark:hover:bg-indigo-500/15 dark:hover:border-indigo-500/30',
+                  ref.type === 'image' && 'text-blue-600 dark:text-blue-400'
                 )}
-                onClick={() => setSelected(ref)}
+                onClick={(e) => {
+                  setSelected(ref)
+                  if (onCiteClick) {
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const mockEvent = { currentTarget: { getBoundingClientRect: () => rect } } as React.MouseEvent
+                    onCiteClick(id, mockEvent, messageId)
+                  }
+                }}
               >
-                <Icon className="mr-1 h-3 w-3" />
+                <Icon className="mr-1.5 h-3.5 w-3.5" />
                 [{id}]
               </Button>
             )
@@ -81,13 +94,20 @@ export function InlineCitation({
       )}
 
       {variant === 'inline' && showImageThumbnails && imageRefs.length > 0 && (
-        <div className={cn('flex flex-wrap gap-2 mt-2', className)}>
+        <div className={cn('mt-3 flex flex-wrap gap-2', className)}>
           {imageRefs.map((ref) => (
             <button
               key={ref.id}
               type="button"
-              onClick={() => openLightbox(ref)}
-              className="rounded-lg border overflow-hidden hover:ring-2 ring-primary/40 transition-all"
+              onClick={(e) => {
+                openLightbox(ref)
+                if (onCiteClick) {
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  const mockEvent = { currentTarget: { getBoundingClientRect: () => rect } } as React.MouseEvent
+                  onCiteClick(ref.id, mockEvent, messageId)
+                }
+              }}
+              className="rounded-xl border border-slate-200/70 bg-white/60 overflow-hidden shadow-sm hover:ring-2 hover:ring-indigo-500/20 transition-all dark:border-slate-700/70 dark:bg-slate-950/40"
             >
               {ref.img_url ? (
                 <img
@@ -100,7 +120,7 @@ export function InlineCitation({
                   <Image className="h-6 w-6 text-muted-foreground" />
                 </div>
               )}
-              <div className="px-2 py-1 bg-muted/60 text-xs truncate max-w-[160px]">
+              <div className="px-2 py-1.5 bg-slate-100/80 dark:bg-slate-800/60 text-xs truncate max-w-[160px] text-slate-700 dark:text-slate-200">
                 [{ref.id}] {ref.file_name}
               </div>
             </button>
@@ -130,7 +150,14 @@ export function InlineCitation({
                 key={ref.id}
                 type="button"
                 className="inline-flex items-center gap-1 text-xs underline decoration-dotted cursor-help hover:text-primary"
-                onClick={() => setSelected(ref)}
+                onClick={(e) => {
+                  setSelected(ref)
+                  if (onCiteClick) {
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const mockEvent = { currentTarget: { getBoundingClientRect: () => rect } } as React.MouseEvent
+                    onCiteClick(ref.id, mockEvent, messageId)
+                  }
+                }}
               >
                 <Icon className="h-3 w-3" />
                 [{ref.id}]
@@ -207,7 +234,7 @@ function ReferenceDetailCard({
   const Icon = getReferenceIcon(reference.type)
 
   return (
-    <Card>
+    <Card className="rounded-2xl border border-slate-200/70 bg-white/80 shadow-lg shadow-slate-900/5 dark:border-slate-800/70 dark:bg-slate-950/50">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm flex items-center gap-2">

@@ -36,14 +36,25 @@ interface MessageBubbleProps {
   isStreaming?: boolean
   /** 预加载的引用 id -> 完整对象 */
   citationMap?: Map<number | string, CitationReference>
-  /** 点击引用时的回调 */
-  onCiteClick?: (refId: number | string, event: React.MouseEvent) => void
+  /** 点击引用时的回调；messageId 用于只从当前消息取引用，避免多条回答共用 [1][2] 时错用上一条的引用 */
+  onCiteClick?: (refId: number | string, event: React.MouseEvent, messageId?: string) => void
 }
 
 // 从文本中提取引用标记并转换为可点击按钮
-function injectCitations(children: React.ReactNode, onCiteClick?: (id: number | string, rect: DOMRect) => void, messageId?: string): React.ReactNode {
+function injectCitations(
+  children: React.ReactNode,
+  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void,
+  messageId?: string
+): React.ReactNode {
   if (typeof children === 'string') {
     return splitTextWithCitations(children, onCiteClick, messageId)
+  }
+  if (Array.isArray(children)) {
+    return children.map((child, idx) => (
+      <span key={`cnode_${messageId ?? 'm'}_${idx}`}>
+        {injectCitations(child, onCiteClick, messageId)}
+      </span>
+    ))
   }
   if (!React.isValidElement(children)) return children
   if (children.props?.children) {
@@ -55,26 +66,84 @@ function injectCitations(children: React.ReactNode, onCiteClick?: (id: number | 
   return children
 }
 
-function splitTextWithCitations(text: string, onCiteClick?: (id: number | string, rect: DOMRect) => void, messageId?: string) {
-  const re = /\[(\d+)\]/g
-  const matches = Array.from(text.matchAll(re))
+type CitationMatch = { start: number; end: number; n: number; leadingSpace?: boolean }
+
+function findAllCitationMatches(text: string): CitationMatch[] {
+  const list: CitationMatch[] = []
+  let m: RegExpExecArray | null
+  // [1], [2], [12]
+  const re1 = /\[(\d+)\]/g
+  while ((m = re1.exec(text)) !== null) {
+    list.push({ start: m.index, end: m.index + m[0].length, n: Number(m[1]) })
+  }
+  // 【1】, 【2】 (全角方括号)
+  const re2 = /【(\d+)】/g
+  while ((m = re2.exec(text)) !== null) {
+    list.push({ start: m.index, end: m.index + m[0].length, n: Number(m[1]) })
+  }
+  // （1）/(1) 等括号格式
+  const re2b = /[（(](\d+)[）)]/g
+  while ((m = re2b.exec(text)) !== null) {
+    list.push({ start: m.index, end: m.index + m[0].length, n: Number(m[1]) })
+  }
+  // 〔1〕 / 〖1〗 等方括号格式
+  const re2c = /〔(\d+)〕|〖(\d+)〗/g
+  while ((m = re2c.exec(text)) !== null) {
+    const n = Number(m[1] ?? m[2])
+    list.push({ start: m.index, end: m.index + m[0].length, n })
+  }
+  // 句末 " 4。"、" 1。" 等（空格+数字+句末标点），避免误伤 "3个"、"第1节"
+  const re3 = /[\s\u3000]+(\d+)(?=[。！？；;:：、）\)])/g
+  while ((m = re3.exec(text)) !== null) {
+    list.push({
+      start: m.index,
+      end: m.index + m[0].length,
+      n: Number(m[1]),
+      leadingSpace: true,
+    })
+  }
+  // 行末/段末 " 4"（无标点）
+  const re4 = /[\s\u3000]+(\d+)(?=$)/g
+  while ((m = re4.exec(text)) !== null) {
+    list.push({
+      start: m.index,
+      end: m.index + m[0].length,
+      n: Number(m[1]),
+      leadingSpace: true,
+    })
+  }
+  list.sort((a, b) => a.start - b.start)
+  // 去重重叠：同一位置只保留第一个
+  const merged: CitationMatch[] = []
+  for (const x of list) {
+    if (merged.length === 0 || x.start >= merged[merged.length - 1].end) {
+      merged.push(x)
+    }
+  }
+  return merged
+}
+
+function splitTextWithCitations(
+  text: string,
+  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void,
+  messageId?: string
+) {
+  const matches = findAllCitationMatches(text)
   if (matches.length === 0) return text
 
   const out: React.ReactNode[] = []
   let last = 0
-  matches.forEach((m, idx) => {
-    const start = m.index ?? 0
-    const end = start + m[0].length
-    if (start > last) out.push(text.slice(last, start))
-    const n = Number(m[1])
+  matches.forEach((match, idx) => {
+    if (match.start > last) out.push(text.slice(last, match.start))
+    if (match.leadingSpace) out.push(' ')
     out.push(
       <CitationInlineButton
-        key={`c_${messageId}_${idx}_${n}`}
-        n={n}
-        onClick={(rect) => onCiteClick?.(n, rect as any)}
+        key={`c_${messageId}_${idx}_${match.n}`}
+        n={match.n}
+        onClick={(rect) => onCiteClick?.(match.n, rect as any, messageId)}
       />
     )
-    last = end
+    last = match.end
   })
   if (last < text.length) out.push(text.slice(last))
   return out
@@ -135,20 +204,19 @@ export function MessageBubble({
               rehypePlugins={[rehypeKatex, rehypeHighlight]}
               components={{
                 p: ({ children }) => (
-                  <p>{injectCitations(children, (id, rect) => {
-                    // 创建一个模拟事件对象
+                  <p>{injectCitations(children, (id, rect, msgId) => {
                     const mockEvent = {
                       currentTarget: { getBoundingClientRect: () => rect }
                     } as React.MouseEvent
-                    onCiteClick?.(id, mockEvent)
+                    onCiteClick?.(id, mockEvent, msgId ?? message.id)
                   }, message.id)}</p>
                 ),
                 li: ({ children }) => (
-                  <li>{injectCitations(children, (id, rect) => {
+                  <li>{injectCitations(children, (id, rect, msgId) => {
                     const mockEvent = {
                       currentTarget: { getBoundingClientRect: () => rect }
                     } as React.MouseEvent
-                    onCiteClick?.(id, mockEvent)
+                    onCiteClick?.(id, mockEvent, msgId ?? message.id)
                   }, message.id)}</li>
                 ),
               }}
@@ -169,6 +237,8 @@ export function MessageBubble({
               variant="inline"
               showImageThumbnails
               citationMap={citationMap}
+              onCiteClick={onCiteClick}
+              messageId={message.id}
             />
           </div>
         )}

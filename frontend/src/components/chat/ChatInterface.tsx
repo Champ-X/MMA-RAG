@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { ThinkingCapsule } from './ThinkingCapsule'
 import { MessageBubble } from './MessageBubble'
 import { CitationPopover } from './CitationPopover'
+import { ConversationTabs } from './ConversationTabs'
 import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
 import { ChatConfigPanel } from './ChatConfigPanel'
 import { useChatStore } from '@/store/useChatStore'
@@ -25,9 +26,11 @@ export function ChatInterface() {
   const [inspectingItem, setInspectingItem] = useState<CitationReference | null>(null)
   const [configPanelOpen, setConfigPanelOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const citePopoverRef = useRef<HTMLDivElement>(null)
+  const prevIsStreamingRef = useRef(false)
 
   const {
     sessions,
@@ -35,6 +38,8 @@ export function ChatInterface() {
     getActiveSession,
     createSession,
     createSessionFromApi,
+    switchSession,
+    deleteSession,
     setLoading,
     thinking,
   } = useChatStore()
@@ -50,13 +55,30 @@ export function ChatInterface() {
     return config.models.find(m => m.id === 'chat') || config.models[0] || null
   }, [config.models])
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
+  const scrollToBottom = useCallback(() => {
+    const run = () => {
+      const viewport = scrollAreaRef.current?.firstElementChild as HTMLElement | null
+      if (viewport && viewport.scrollHeight > viewport.clientHeight) {
+        viewport.scrollTop = viewport.scrollHeight
+        return
+      }
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    }
+    requestAnimationFrame(() => requestAnimationFrame(run))
+  }, [])
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages, thinking.currentStage])
+  }, [messages.length, thinking.currentStage, scrollToBottom])
+
+  useEffect(() => {
+    const wasStreaming = prevIsStreamingRef.current
+    prevIsStreamingRef.current = isStreaming
+    if (wasStreaming && !isStreaming) {
+      const t = setTimeout(scrollToBottom, 120)
+      return () => clearTimeout(t)
+    }
+  }, [isStreaming, scrollToBottom])
 
   useEffect(() => {
     if (!activeSessionId && sessions.length === 0) {
@@ -81,8 +103,10 @@ export function ChatInterface() {
     setLoading(true)
 
     try {
-      const kbIds = activeSession?.knowledgeBaseIds || config.defaultKnowledgeBaseIds || []
-      await sendMessage(text, kbIds.length > 0 ? kbIds : undefined)
+      const kbMode = activeSession?.kbMode ?? 'auto'
+      const kbIds = activeSession?.knowledgeBaseIds ?? []
+      const toSend = kbMode === 'auto' ? undefined : kbIds.length > 0 ? kbIds : undefined
+      await sendMessage(text, toSend)
     } catch (e) {
       console.error('发送失败', e)
     } finally {
@@ -102,30 +126,40 @@ export function ChatInterface() {
     if (e.target) e.target.value = ''
   }
 
-  // 处理引用点击
-  const handleCitationClick = useCallback((refId: number | string, event: React.MouseEvent) => {
+  // 处理引用点击：必须从「当前被点击的那条消息」里取引用，避免多条回答共用 [1][2] 时取到上一条的引用
+  const handleCitationClick = useCallback((refId: number | string, event: React.MouseEvent, messageId?: string) => {
     if (!activeSession) return
 
-    // 从消息中查找引用
     let citation: CitationReference | null = null
-    for (const msg of activeSession.messages) {
-      if (msg.citations) {
+    if (messageId) {
+      const msg = activeSession.messages.find(m => m.id === messageId)
+      if (msg?.citations) {
         const found = msg.citations.find(c => {
-          if (typeof c === 'object' && 'id' in c) {
-            return String(c.id) === String(refId)
-          }
+          if (typeof c === 'object' && 'id' in c) return String(c.id) === String(refId)
           return false
         })
-        if (found && typeof found === 'object' && 'id' in found) {
-          citation = found as CitationReference
-          break
+        if (found && typeof found === 'object' && 'id' in found) citation = found as CitationReference
+      }
+    }
+    // 若已经指定 messageId 但未找到引用，避免错误回退到上一条消息
+    if (!citation && !messageId) {
+      for (const msg of activeSession.messages) {
+        if (msg.citations) {
+          const found = msg.citations.find(c => {
+            if (typeof c === 'object' && 'id' in c) return String(c.id) === String(refId)
+            return false
+          })
+          if (found && typeof found === 'object' && 'id' in found) {
+            citation = found as CitationReference
+            break
+          }
         }
       }
     }
 
     if (citation) {
-      const rect = event.currentTarget.getBoundingClientRect()
-      setCitePopover({ open: true, rect, item: citation })
+      const rect = event?.currentTarget?.getBoundingClientRect?.()
+      if (rect) setCitePopover({ open: true, rect, item: citation })
     }
   }, [activeSession])
 
@@ -185,8 +219,20 @@ export function ChatInterface() {
     return map
   }, [activeSession, messages])
 
+  const handleNewConversation = useCallback(() => {
+    createSessionFromApi().catch(() => createSession())
+  }, [createSessionFromApi, createSession])
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white/60 shadow-lg shadow-slate-900/5 backdrop-blur-xl dark:border-slate-800/60 dark:bg-slate-950/40">
+      {/* 对话标签栏 */}
+      <ConversationTabs
+        conversations={sessions}
+        activeConversationId={activeSessionId}
+        onSelect={switchSession}
+        onCreate={handleNewConversation}
+        onDelete={deleteSession}
+      />
       {/* 顶部状态条 */}
       <div className="flex items-center justify-between border-b border-slate-200/60 px-4 py-3 backdrop-blur dark:border-slate-800/60">
         <div className="flex items-center gap-2">
@@ -198,7 +244,13 @@ export function ChatInterface() {
           </div>
 
           <div className="rounded-xl bg-slate-900/5 px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-900/10 dark:bg-white/5 dark:text-slate-200 dark:ring-white/10">
-            检索模式：<span className="font-medium">自动</span>
+            检索模式：<span className="font-medium">
+              {activeSession?.kbMode === 'all'
+                ? '全部'
+                : activeSession?.kbMode === 'manual'
+                  ? `指定 ${activeSession?.knowledgeBaseIds?.length ?? 0} 个`
+                  : '智能路由'}
+            </span>
           </div>
         </div>
 
@@ -215,7 +267,7 @@ export function ChatInterface() {
       </div>
 
       {/* 消息区 */}
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
         <div className="px-4 py-4">
           <div className="mx-auto max-w-4xl flex flex-col gap-3">
             {messages.length === 0 && (

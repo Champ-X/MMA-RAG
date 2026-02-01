@@ -193,7 +193,7 @@ class SiliconFlowProvider(BaseLLMProvider):
         model: str,
         **kwargs
     ):
-        """流式聊天对话"""
+        """流式聊天对话。参见 SiliconFlow 流式文档：payload 中 stream=True，请求使用 stream 模式。"""
         
         payload = {
             "model": model,
@@ -213,11 +213,12 @@ class SiliconFlowProvider(BaseLLMProvider):
                 response.raise_for_status()
                 
                 async for chunk in response.aiter_lines():
+                    if isinstance(chunk, bytes):
+                        chunk = chunk.decode("utf-8")
                     if chunk.startswith("data: "):
-                        data_str = chunk[6:]  # 移除 "data: " 前缀
-                        if data_str.strip() == "[DONE]":
+                        data_str = chunk[6:].strip()
+                        if data_str == "[DONE]":
                             break
-                        
                         try:
                             chunk_data = json.loads(data_str)
                             yield chunk_data

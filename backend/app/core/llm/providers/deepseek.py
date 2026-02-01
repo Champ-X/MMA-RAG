@@ -4,7 +4,8 @@ DeepSeek API 提供商
 文档：deepseek-chat 对应 DeepSeek-V3.2 非思考模式，deepseek-reasoner 对应思考模式
 """
 
-from typing import Dict, List, Any, Optional
+import json
+from typing import Dict, List, Any, Optional, AsyncGenerator
 import time
 
 from app.core.llm import BaseLLMProvider  # 与 LLMRegistry._providers 类型一致
@@ -89,6 +90,47 @@ class DeepSeekProvider(BaseLLMProvider):
             duration = time.time() - start
             log_llm_call(model=model, task_type="chat", tokens_used=0, duration=duration, success=False)
             logger.error(f"DeepSeek chat 错误 [{model}]: {e}")
+            raise
+
+    async def stream_chat(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+        **kwargs
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """流式聊天对话（OpenAI 兼容 SSE）。"""
+        import httpx
+
+        max_tokens = kwargs.get("max_tokens") or self._get_max_tokens_for_model(model, 8192)
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "temperature": kwargs.get("temperature", 0.7),
+            "max_tokens": max_tokens,
+        }
+        timeout = 90.0 if "reasoner" in model.lower() else 60.0
+        try:
+            async with httpx.AsyncClient() as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    headers=self.headers,
+                    json=payload,
+                    timeout=timeout,
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                yield json.loads(data_str)
+                            except json.JSONDecodeError:
+                                continue
+        except Exception as e:
+            logger.error(f"DeepSeek stream_chat 错误 [{model}]: {e}")
             raise
 
     async def embed_texts(self, texts: List[str], model: str) -> List[List[float]]:

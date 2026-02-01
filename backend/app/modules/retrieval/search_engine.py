@@ -98,7 +98,21 @@ class HybridSearchEngine:
                 except Exception as e:
                     logger.error(f"{task_type}检索失败: {str(e)}")
                     results[task_type] = []
-            
+
+            # 当 Dense 与 Sparse 均无结果时，记录各目标 KB 的文本块数量，便于排查“未建索引”问题
+            dense_count = len(results.get("dense", []))
+            sparse_count = len(results.get("sparse", []))
+            if dense_count == 0 and sparse_count == 0 and target_kb_ids:
+                try:
+                    for kb_id in target_kb_ids:
+                        n_text, n_img = await self.vector_store.count_kb_chunks(kb_id)
+                        logger.warning(
+                            f"目标知识库无文本检索结果，请确认是否已对文本建索引: kb_id={kb_id}, "
+                            f"text_chunks={n_text}, image_vectors={n_img}"
+                        )
+                except Exception as e:
+                    logger.debug(f"统计目标KB文本块数量时出错: {e}")
+
             # 4. RRF融合
             fused_results = await self._fuse_results(results)
             

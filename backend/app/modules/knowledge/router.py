@@ -41,7 +41,24 @@ class KnowledgeRouter:
         self.kb_service = KnowledgeBaseService()
         self.portrait_generator = PortraitGenerator()
         self.llm_manager = llm_manager
-    
+
+    async def resolve_to_qdrant_kb_ids(self, kb_ids: List[str]) -> List[str]:
+        """
+        将前端/指定知识库传入的 ID（可能为 MinIO bucket 派生 id）解析为向量库 Qdrant 中实际存储的 kb_id，
+        检索时只使用 Qdrant 的 kb_id，不使用 MinIO bucket id，否则无法命中知识库。
+        """
+        seen: set = set()
+        out: List[str] = []
+        for kb_id in kb_ids:
+            if not kb_id:
+                continue
+            discovered = await self.kb_service._discover_kb_id_from_bucket_async(kb_id)
+            canonical = (discovered if discovered else kb_id).strip()
+            if canonical and canonical not in seen:
+                seen.add(canonical)
+                out.append(canonical)
+        return out
+
     async def route_query(
         self,
         query_text: str,

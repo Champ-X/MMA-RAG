@@ -71,10 +71,15 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
         content,
         {
           onThought: (e) => {
-            const phase = e.type as ThoughtPhase
+            const ev = e as { type?: string; data?: Record<string, unknown> & { data?: Record<string, unknown> } }
+            const phase = ev.type as ThoughtPhase
+            const inner = ev.data?.data ?? ev.data
+            const payload = (typeof inner === 'object' && inner !== null ? inner : {}) as Record<string, unknown>
+            const prev = useChatStore.getState().thinking.thoughtData
+            const merged = { ...prev, ...payload } as Record<string, unknown>
             setThinking({
               currentStage: phase,
-              thoughtData: e.data,
+              thoughtData: merged,
               stages: {
                 intent: phase === 'intent' ? 'processing' : phase === 'routing' || phase === 'retrieval' ? 'completed' : 'idle',
                 routing: phase === 'routing' ? 'processing' : phase === 'retrieval' ? 'completed' : 'idle',
@@ -82,7 +87,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
                 generation: phase === 'generation' ? 'processing' : 'idle',
               },
             })
-            options.onThought?.(e)
+            options.onThought?.(e as ThoughtEvent)
           },
           onCitation: (ev) => {
             const s = getActiveSession()
@@ -106,6 +111,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             options.onMessage?.(ev)
           },
           onComplete: () => {
+            const thoughtData = useChatStore.getState().thinking.thoughtData
             setThinking({
               currentStage: 'generation',
               stages: {
@@ -116,6 +122,11 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
               },
               progress: 100,
             })
+            const s = getActiveSession()
+            const last = s?.messages[s.messages.length - 1]
+            if (s && last && last.role === 'assistant' && last.id === currentMessageIdRef.current && thoughtData) {
+              updateMessage(s.id, last.id, { thinking: thoughtData })
+            }
             cleanup()
             options.onComplete?.()
           },

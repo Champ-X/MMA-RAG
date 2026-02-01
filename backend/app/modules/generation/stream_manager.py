@@ -3,7 +3,7 @@
 实现Server-Sent Events (SSE) 流式通信
 """
 
-from typing import Dict, List, Any, Optional, AsyncGenerator, Callable
+from typing import Dict, List, Any, Optional, AsyncGenerator, Callable, Union
 import asyncio
 import json
 import time
@@ -14,6 +14,27 @@ from enum import Enum
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
+    """将 ContextBuildResult.reference_map 转为前端 CitationReference 格式。"""
+    if not reference_map:
+        return []
+    refs = []
+    for k, v in sorted(reference_map.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0):
+        ref_id = int(k) if str(k).isdigit() else len(refs) + 1
+        file_name = v.file_path.split("/")[-1] if "/" in v.file_path else (v.file_path or "")
+        ref_type = "doc" if v.content_type == "doc" else "image"
+        score = float(v.metadata.get("score", 0.0)) if v.metadata else 0.0
+        refs.append({
+            "id": ref_id,
+            "type": ref_type,
+            "file_name": file_name,
+            "content": (v.content or "")[:500],
+            "img_url": v.presigned_url if ref_type == "image" else None,
+            "scores": {"dense": 0, "sparse": 0, "visual": 0, "rerank": score},
+        })
+    return refs
 
 class StreamEventType(Enum):
     """流式事件类型"""
@@ -144,10 +165,12 @@ class StreamManager:
         self,
         session_id: str,
         query: str,
-        context_builder: Callable,
-        llm_manager: Any
+        context_result: Any,
+        system_prompt: str,
+        user_input: str,
+        llm_manager: Any,
     ) -> AsyncGenerator[StreamEvent, None]:
-        """流式聊天响应"""
+        """流式聊天响应：使用真实 LLM 流式生成，并发送引用事件。思考事件由 chat.py 在检索后发送。"""
         try:
             session = await self.get_session(session_id)
             if not session:
@@ -157,46 +180,27 @@ class StreamManager:
                     timestamp=time.time()
                 )
                 return
-            
-            # 1. 发送连接事件
+
+            # 1. 发送连接事件（可选，与 chat.py 的 connected 一致）
             yield StreamEvent(
                 type=StreamEventType.CONNECTED,
                 data={"session_id": session_id, "query": query},
                 timestamp=time.time()
             )
-            
-            # 2. 开始思考阶段
-            await self._send_thought_event(session, "开始分析用户查询")
-            
-            # 3. 意图识别
-            await self._send_thought_event(session, "进行意图识别")
-            await asyncio.sleep(0.5)  # 模拟处理时间
-            
-            # 4. 检索阶段
-            await self._send_thought_event(session, "执行混合检索")
-            await asyncio.sleep(0.8)  # 模拟检索时间
-            
-            # 5. 重排阶段
-            await self._send_thought_event(session, "应用重排序")
-            await asyncio.sleep(0.3)  # 模拟重排时间
-            
-            # 6. 发送引用预加载
-            await self._send_citation_event(session, [])
-            
-            # 7. 开始生成回答
-            await self._send_thought_event(session, "开始生成回答")
-            
-            # 8. 模拟流式回答生成
-            async for chunk in self._generate_streaming_response(session, query, llm_manager):
-                yield chunk
-            
-            # 9. 完成事件
+
+            # 2. 真实流式生成 + 引用
+            async for event in self._generate_streaming_response(
+                session, query, context_result, system_prompt, user_input, llm_manager
+            ):
+                yield event
+
+            # 3. 完成事件
             yield StreamEvent(
                 type=StreamEventType.DONE,
-                data={"session_id": session_id, "total_chunks": 1},
+                data={"session_id": session_id},
                 timestamp=time.time()
             )
-            
+
         except Exception as e:
             logger.error(f"流式聊天响应失败: {str(e)}")
             yield StreamEvent(
@@ -242,34 +246,39 @@ class StreamManager:
         self,
         session: StreamSession,
         query: str,
-        llm_manager: Any
+        context_result: Any,
+        system_prompt: str,
+        user_input: str,
+        llm_manager: Any,
     ) -> AsyncGenerator[StreamEvent, None]:
-        """生成流式回答"""
+        """使用真实 LLM 流式生成回答，并在结束后发送引用事件。"""
         try:
-            # 这里实现实际的流式回答生成
-            # 暂时使用模拟回答
-            
-            response_text = f"基于您的查询 '{query}'，我需要为您提供一个详细的回答。这是一个多模态RAG系统的示例回答，包含了文档和图片信息的引用。[1][2]"
-            
-            # 模拟流式输出
-            words = response_text.split()
-            current_text = ""
-            
-            for word in words:
-                current_text += word + " "
-                
-                yield StreamEvent(
-                    type=StreamEventType.MESSAGE,
-                    data={
-                        "content": word + " ",
-                        "delta": True,
-                        "full_content": current_text.strip()
-                    },
-                    timestamp=time.time()
-                )
-                
-                await asyncio.sleep(0.1)  # 模拟打字效果
-            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_input},
+            ]
+            async for delta in llm_manager.stream_chat(
+                messages=messages,
+                task_type="final_generation",
+                temperature=0.3,
+            ):
+                if delta:
+                    yield StreamEvent(
+                        type=StreamEventType.MESSAGE,
+                        data={"content": delta, "delta": True},
+                        timestamp=time.time()
+                    )
+
+            # 流结束后发送引用（与前端 CitationReference 格式一致）
+            refs = _reference_map_to_frontend_refs(
+                getattr(context_result, "reference_map", None) or {}
+            )
+            yield StreamEvent(
+                type=StreamEventType.CITATION,
+                data={"references": refs},
+                timestamp=time.time()
+            )
+
         except Exception as e:
             logger.error(f"生成流式回答失败: {str(e)}")
             yield StreamEvent(

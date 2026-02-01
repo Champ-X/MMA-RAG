@@ -3,7 +3,7 @@ LLM管理器主类
 统一的LLM调用接口，支持模型路由和故障转移
 """
 
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, AsyncGenerator
 from . import LLMRegistry, BaseLLMProvider
 from app.core.logger import get_logger
 import asyncio
@@ -84,6 +84,43 @@ class LLMManager:
             )
         
         return result
+
+    async def stream_chat(
+        self,
+        messages: List[Dict[str, str]],
+        task_type: str = "final_generation",
+        model: Optional[str] = None,
+        **kwargs
+    ) -> AsyncGenerator[str, None]:
+        """流式聊天对话，逐块 yield 内容 delta。"""
+        if model is None:
+            model = self.registry.get_task_model(task_type)
+        if model is None:
+            raise ValueError(f"没有找到任务类型 {task_type} 对应的模型")
+        model_config = self.registry.get_model_config(model)
+        if not model_config:
+            raise ValueError(f"模型 {model} 没有在注册表中找到配置")
+        provider = self.registry.get_provider(model_config.get("provider") or "siliconflow")
+        if not provider:
+            raise ValueError(f"提供商不存在: {model_config.get('provider')}")
+        params = {
+            "messages": messages,
+            "model": model,
+            "temperature": kwargs.get("temperature", 0.3),
+            "max_tokens": kwargs.get("max_tokens") or model_config.get("context_length", 2000),
+        }
+        try:
+            async for chunk_data in provider.stream_chat(**params):
+                delta = (chunk_data or {}).get("choices", [{}])[0].get("delta") or {}
+                content = delta.get("content") or ""
+                reasoning_content = delta.get("reasoning_content") or ""
+                if content:
+                    yield content
+                if reasoning_content:
+                    yield reasoning_content
+        except Exception as e:
+            logger.error(f"流式聊天失败 [{model}]: {str(e)}")
+            raise
     
     async def embed(
         self, 

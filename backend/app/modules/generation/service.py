@@ -176,14 +176,35 @@ class GenerationService:
                 context=context_result.context_string
             )
             
-            # 开始流式响应
+            # 开始流式响应（传入 context、提示词与用户输入，供真实 LLM 流式生成）
+            answer_chunks: List[str] = []
             async for event in self.stream_manager.stream_chat_response(
                 session_id=session_id,
                 query=query,
-                context_builder=lambda: context_result,
-                llm_manager=self.llm_manager
+                context_result=context_result,
+                system_prompt=system_prompt,
+                user_input=user_input,
+                llm_manager=self.llm_manager,
             ):
-                yield event
+                # 收集流式内容以便后续筛掉未在回答中出现的引用
+                if event.type == StreamEventType.MESSAGE:
+                    chunk = event.data.get("content") or event.data.get("delta") or ""
+                    if chunk:
+                        answer_chunks.append(chunk)
+                    yield event
+                elif event.type == StreamEventType.CITATION:
+                    full_answer = "".join(answer_chunks)
+                    valid_references = self.context_builder.validate_references(
+                        full_answer,
+                        context_result.reference_map
+                    )
+                    yield StreamEvent(
+                        type=StreamEventType.CITATION,
+                        data={"references": valid_references},
+                        timestamp=event.timestamp,
+                    )
+                else:
+                    yield event
             
         except Exception as e:
             logger.error(f"流式生成失败: {str(e)}")

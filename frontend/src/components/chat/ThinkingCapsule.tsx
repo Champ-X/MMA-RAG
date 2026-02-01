@@ -26,20 +26,20 @@ export function ThinkingCapsule({
   const retrieval = {
     keywords: thoughtData?.sparse_keywords || [],
     subQueries: thoughtData?.sub_queries || [],
-    totalFound: undefined,
+    totalFound: thoughtData?.total_found,
     reranked: 2,
   }
 
   return (
-    <div className="w-full mb-2">
+    <div className="mb-2 w-full rounded-xl border border-slate-200/60 bg-slate-50/80 dark:border-slate-800/60 dark:bg-slate-900/30">
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-300 hover:text-slate-700 dark:hover:text-slate-100 transition-colors select-none"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100/50 hover:text-slate-800 dark:hover:bg-slate-800/50 dark:hover:text-slate-100"
       >
         <span className={cn(
-          "p-1 rounded",
-          open ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-100' : 'bg-slate-100 dark:bg-slate-800'
+          'rounded p-1',
+          open ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300' : 'bg-slate-200/80 dark:bg-slate-700/80 text-slate-600 dark:text-slate-400'
         )}>
           <Brain size={14} />
         </span>
@@ -47,7 +47,8 @@ export function ThinkingCapsule({
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
       </button>
       {open && (
-        <div className="mt-2 ml-2 pl-4 border-l-2 border-slate-200 dark:border-slate-700 space-y-3">
+        <div className="border-l-2 border-indigo-500/50 bg-white/30 px-4 pb-3 pt-1 dark:bg-slate-950/30">
+          <div className="ml-2 mt-2 space-y-3">
           {/* 阶段一：意图解析 */}
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
@@ -157,15 +158,16 @@ export function ThinkingCapsule({
                   </div>
                 </div>
               )}
-              {retrieval.totalFound !== undefined && (
+              {retrieval.totalFound !== undefined && retrieval.totalFound !== null && (
                 <div className="flex items-center gap-2 text-xs">
-                  <span className="text-slate-400 dark:text-slate-500 w-20">结果</span>
+                  <span className="w-20 flex-shrink-0 text-slate-400 dark:text-slate-500">结果</span>
                   <span className="text-slate-700 dark:text-slate-200">
                     检索到 {retrieval.totalFound} 个片段，重排后保留 Top {retrieval.reranked || 2}
                   </span>
                 </div>
               )}
             </div>
+          </div>
           </div>
         </div>
       )}

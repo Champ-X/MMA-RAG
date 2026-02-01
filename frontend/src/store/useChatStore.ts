@@ -2,12 +2,30 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { chatApi } from '@/services/api_client';
 
+export interface ThoughtData {
+  intent_type?: string;
+  original_query?: string;
+  refined_query?: string;
+  is_complex?: boolean;
+  needs_visual?: boolean;
+  sub_queries?: string[];
+  current_sub_step?: number;
+  target_kbs?: Array<{ id: string; name: string; score: number }>;
+  fallback_search?: boolean;
+  visual_activated?: boolean;
+  sparse_keywords?: string[];
+  search_strategies?: { dense: boolean; sparse: boolean; visual: boolean };
+  /** 检索结果数量（后端 total_found） */
+  total_found?: number;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
-  thinking?: {
+  /** 思考过程数据（流式结束后写入，供 ThinkingCapsule 展示） */
+  thinking?: ThoughtData | {
     stage: 'intent' | 'routing' | 'retrieval' | 'generation';
     status: 'processing' | 'completed' | 'failed';
     message: string;
@@ -31,29 +49,18 @@ export interface Message {
   error?: string;
 }
 
+export type KbMode = 'auto' | 'all' | 'manual'
+
 export interface ChatSession {
   id: string;
   title: string;
   messages: Message[];
   knowledgeBaseIds: string[];
+  /** 检索模式：智能路由 / 全部知识库 / 指定知识库 */
+  kbMode?: KbMode;
   createdAt: number;
   updatedAt: number;
   isActive: boolean;
-}
-
-export interface ThoughtData {
-  intent_type?: string;
-  original_query?: string;
-  refined_query?: string;
-  is_complex?: boolean;
-  needs_visual?: boolean;
-  sub_queries?: string[];
-  current_sub_step?: number;
-  target_kbs?: Array<{ id: string; name: string; score: number }>;
-  fallback_search?: boolean;
-  visual_activated?: boolean;
-  sparse_keywords?: string[];
-  search_strategies?: { dense: boolean; sparse: boolean; visual: boolean };
 }
 
 export interface ThinkingState {
@@ -94,7 +101,7 @@ interface ChatStore {
   
   updateSessionTitle: (sessionId: string, title: string) => void;
 
-  updateSessionKnowledgeBases: (sessionId: string, knowledgeBaseIds: string[]) => void;
+  updateSessionKnowledgeBases: (sessionId: string, knowledgeBaseIds: string[], kbMode?: KbMode) => void;
 
   loadSessionHistory: (sessionId: string) => Promise<void>;
 
@@ -152,6 +159,7 @@ export const useChatStore = create<ChatStore>()(
           title: options.title || `新对话 ${new Date().toLocaleString()}`,
           messages: [],
           knowledgeBaseIds: options.knowledgeBaseIds || [],
+          kbMode: 'auto',
           createdAt: now,
           updatedAt: now,
           isActive: true,
@@ -183,6 +191,7 @@ export const useChatStore = create<ChatStore>()(
             title: options.title || `新对话 ${new Date().toLocaleString()}`,
             messages: [],
             knowledgeBaseIds: options.knowledgeBaseIds || [],
+            kbMode: 'auto',
             createdAt: now,
             updatedAt: now,
             isActive: true,
@@ -213,19 +222,35 @@ export const useChatStore = create<ChatStore>()(
         }));
       },
 
-      // 删除会话
+      // 删除会话（若删光则自动新建一个，保证始终有会话）
       deleteSession: (sessionId) => {
         set((state) => {
           const updatedSessions = state.sessions.filter(s => s.id !== sessionId);
           let newActiveId = state.activeSessionId;
-          
-          // 如果删除的是当前活跃会话，选择第一个可用的会话
+          let sessions = updatedSessions;
+
           if (sessionId === state.activeSessionId) {
             newActiveId = updatedSessions.length > 0 ? updatedSessions[0].id : null;
           }
 
+          if (sessions.length === 0) {
+            const now = Date.now();
+            const newSession: ChatSession = {
+              id: `session_${now}_${Math.random().toString(36).substr(2, 9)}`,
+              title: `新对话 ${new Date().toLocaleString()}`,
+              messages: [],
+              knowledgeBaseIds: [],
+              kbMode: 'auto',
+              createdAt: now,
+              updatedAt: now,
+              isActive: true,
+            };
+            sessions = [newSession];
+            newActiveId = newSession.id;
+          }
+
           return {
-            sessions: updatedSessions,
+            sessions,
             activeSessionId: newActiveId,
           };
         });
@@ -240,11 +265,13 @@ export const useChatStore = create<ChatStore>()(
         }));
       },
 
-      // 更新会话关联的知识库
-      updateSessionKnowledgeBases: (sessionId, knowledgeBaseIds) => {
+      // 更新会话关联的知识库与检索模式
+      updateSessionKnowledgeBases: (sessionId, knowledgeBaseIds, kbMode) => {
         set((state) => ({
           sessions: state.sessions.map(s =>
-            s.id === sessionId ? { ...s, knowledgeBaseIds, updatedAt: Date.now() } : s
+            s.id === sessionId
+              ? { ...s, knowledgeBaseIds, ...(kbMode != null && { kbMode }), updatedAt: Date.now() }
+              : s
           ),
         }));
       },

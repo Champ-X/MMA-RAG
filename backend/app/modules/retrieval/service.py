@@ -253,11 +253,12 @@ class RetrievalService:
         self,
         context: RetrievalContext
     ) -> Dict[str, Any]:
-        """执行混合检索"""
+        """执行混合检索。仅使用 Qdrant 中的 kb_id，将指定知识库的 ID 解析为向量库实际存储的 kb_id 后再检索。"""
         try:
+            qdrant_kb_ids = await self.kb_router.resolve_to_qdrant_kb_ids(context.target_kb_ids)
             return await self.search_engine.search(
                 query_strategies=context.search_strategies,
-                target_kb_ids=context.target_kb_ids,
+                target_kb_ids=qdrant_kb_ids,
                 needs_visual=context.needs_visual,
                 intent_type=context.intent_type
             )
