@@ -46,6 +46,7 @@ export function InlineCitation({
 }: InlineCitationProps) {
   const [selected, setSelected] = useState<CitationReference | null>(null)
   const [lightboxOpen, setLightboxOpen] = useState(false)
+  const useInternalPreview = !onCiteClick
 
   const refs = references
     .map((r) => normalizeRef(r, citationMap))
@@ -56,6 +57,7 @@ export function InlineCitation({
   const imageRefs = refs.filter((r) => r.type === 'image')
 
   const openLightbox = (ref: CitationReference) => {
+    if (!useInternalPreview) return
     setSelected(ref)
     setLightboxOpen(true)
   }
@@ -63,7 +65,7 @@ export function InlineCitation({
   return (
     <>
       {variant === 'inline' && (
-        <div className={cn('flex flex-wrap gap-1.5', className)}>
+        <div className={cn('flex flex-wrap gap-1', className)}>
           {refs.map((ref) => {
             const Icon = getReferenceIcon(ref.type)
             const id = ref.id
@@ -73,11 +75,11 @@ export function InlineCitation({
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  'h-7 px-2.5 text-xs font-mono rounded-xl border border-slate-200/70 bg-white/60 shadow-sm hover:bg-indigo-500/10 hover:border-indigo-300/50 dark:border-slate-700/70 dark:bg-slate-950/40 dark:hover:bg-indigo-500/15 dark:hover:border-indigo-500/30',
-                  ref.type === 'image' && 'text-blue-600 dark:text-blue-400'
+                  'h-6 px-2 text-xs font-mono hover:bg-primary/10',
+                  ref.type === 'image' && 'text-blue-600'
                 )}
                 onClick={(e) => {
-                  setSelected(ref)
+                  if (useInternalPreview) setSelected(ref)
                   if (onCiteClick) {
                     const rect = e.currentTarget.getBoundingClientRect()
                     const mockEvent = { currentTarget: { getBoundingClientRect: () => rect } } as React.MouseEvent
@@ -85,7 +87,7 @@ export function InlineCitation({
                   }
                 }}
               >
-                <Icon className="mr-1.5 h-3.5 w-3.5" />
+                <Icon className="mr-1 h-3 w-3" />
                 [{id}]
               </Button>
             )
@@ -94,7 +96,7 @@ export function InlineCitation({
       )}
 
       {variant === 'inline' && showImageThumbnails && imageRefs.length > 0 && (
-        <div className={cn('mt-3 flex flex-wrap gap-2', className)}>
+        <div className={cn('flex flex-wrap gap-2 mt-2', className)}>
           {imageRefs.map((ref) => (
             <button
               key={ref.id}
@@ -107,7 +109,7 @@ export function InlineCitation({
                   onCiteClick(ref.id, mockEvent, messageId)
                 }
               }}
-              className="rounded-xl border border-slate-200/70 bg-white/60 overflow-hidden shadow-sm hover:ring-2 hover:ring-indigo-500/20 transition-all dark:border-slate-700/70 dark:bg-slate-950/40"
+              className="rounded-lg border overflow-hidden hover:ring-2 ring-primary/40 transition-all"
             >
               {ref.img_url ? (
                 <img
@@ -120,7 +122,7 @@ export function InlineCitation({
                   <Image className="h-6 w-6 text-muted-foreground" />
                 </div>
               )}
-              <div className="px-2 py-1.5 bg-slate-100/80 dark:bg-slate-800/60 text-xs truncate max-w-[160px] text-slate-700 dark:text-slate-200">
+              <div className="px-2 py-1 bg-muted/60 text-xs truncate max-w-[160px]">
                 [{ref.id}] {ref.file_name}
               </div>
             </button>
@@ -151,7 +153,7 @@ export function InlineCitation({
                 type="button"
                 className="inline-flex items-center gap-1 text-xs underline decoration-dotted cursor-help hover:text-primary"
                 onClick={(e) => {
-                  setSelected(ref)
+                  if (useInternalPreview) setSelected(ref)
                   if (onCiteClick) {
                     const rect = e.currentTarget.getBoundingClientRect()
                     const mockEvent = { currentTarget: { getBoundingClientRect: () => rect } } as React.MouseEvent
@@ -167,36 +169,38 @@ export function InlineCitation({
         </div>
       )}
 
-      {/* 引用详情弹层 */}
-      <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          {selected && (
-            <>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  {(() => {
-                    const Icon = getReferenceIcon(selected.type)
-                    return <Icon className="h-5 w-5" />
-                  })()}
-                  <span>【材料 {selected.id}】</span>
-                  <Badge variant="outline">
-                    {selected.type === 'doc' ? '文档' : '图片'}
-                  </Badge>
-                </DialogTitle>
-              </DialogHeader>
-              <ReferenceDetailCard
-                reference={selected}
-                onViewImage={
-                  selected.type === 'image' ? () => openLightbox(selected) : undefined
-                }
-              />
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* 引用详情弹层（仅在内部预览模式启用） */}
+      {useInternalPreview && (
+        <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+            {selected && (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    {(() => {
+                      const Icon = getReferenceIcon(selected.type)
+                      return <Icon className="h-5 w-5" />
+                    })()}
+                    <span>【材料 {selected.id}】</span>
+                    <Badge variant="outline">
+                      {selected.type === 'doc' ? '文档' : '图片'}
+                    </Badge>
+                  </DialogTitle>
+                </DialogHeader>
+                <ReferenceDetailCard
+                  reference={selected}
+                  onViewImage={
+                    selected.type === 'image' ? () => openLightbox(selected) : undefined
+                  }
+                />
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
 
-      {/* 图片 Lightbox */}
-      {selected?.type === 'image' && selected.img_url && (
+      {/* 图片 Lightbox（仅在内部预览模式启用） */}
+      {useInternalPreview && selected?.type === 'image' && selected.img_url && (
         <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
           <DialogContent className="max-w-4xl">
             <DialogHeader>
@@ -234,7 +238,7 @@ function ReferenceDetailCard({
   const Icon = getReferenceIcon(reference.type)
 
   return (
-    <Card className="rounded-2xl border border-slate-200/70 bg-white/80 shadow-lg shadow-slate-900/5 dark:border-slate-800/70 dark:bg-slate-950/50">
+    <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm flex items-center gap-2">

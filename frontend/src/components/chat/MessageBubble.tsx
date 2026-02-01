@@ -71,28 +71,23 @@ type CitationMatch = { start: number; end: number; n: number; leadingSpace?: boo
 function findAllCitationMatches(text: string): CitationMatch[] {
   const list: CitationMatch[] = []
   let m: RegExpExecArray | null
-  // [1], [2], [12]
   const re1 = /\[(\d+)\]/g
   while ((m = re1.exec(text)) !== null) {
     list.push({ start: m.index, end: m.index + m[0].length, n: Number(m[1]) })
   }
-  // 【1】, 【2】 (全角方括号)
   const re2 = /【(\d+)】/g
   while ((m = re2.exec(text)) !== null) {
     list.push({ start: m.index, end: m.index + m[0].length, n: Number(m[1]) })
   }
-  // （1）/(1) 等括号格式
   const re2b = /[（(](\d+)[）)]/g
   while ((m = re2b.exec(text)) !== null) {
     list.push({ start: m.index, end: m.index + m[0].length, n: Number(m[1]) })
   }
-  // 〔1〕 / 〖1〗 等方括号格式
   const re2c = /〔(\d+)〕|〖(\d+)〗/g
   while ((m = re2c.exec(text)) !== null) {
     const n = Number(m[1] ?? m[2])
     list.push({ start: m.index, end: m.index + m[0].length, n })
   }
-  // 句末 " 4。"、" 1。" 等（空格+数字+句末标点），避免误伤 "3个"、"第1节"
   const re3 = /[\s\u3000]+(\d+)(?=[。！？；;:：、）\)])/g
   while ((m = re3.exec(text)) !== null) {
     list.push({
@@ -102,7 +97,6 @@ function findAllCitationMatches(text: string): CitationMatch[] {
       leadingSpace: true,
     })
   }
-  // 行末/段末 " 4"（无标点）
   const re4 = /[\s\u3000]+(\d+)(?=$)/g
   while ((m = re4.exec(text)) !== null) {
     list.push({
@@ -113,7 +107,6 @@ function findAllCitationMatches(text: string): CitationMatch[] {
     })
   }
   list.sort((a, b) => a.start - b.start)
-  // 去重重叠：同一位置只保留第一个
   const merged: CitationMatch[] = []
   for (const x of list) {
     if (merged.length === 0 || x.start >= merged[merged.length - 1].end) {
@@ -173,7 +166,21 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const isUser = message.type === 'user'
   const refs = message.citations ?? []
-  const hasRefs = refs.length > 0
+  const uniqueRefs = refs.filter((ref, idx, arr) => {
+    const isObj = typeof ref === 'object' && ref != null && 'id' in ref
+    const type = isObj && 'type' in ref ? (ref as any).type : undefined
+    const fileName = isObj && 'file_name' in ref ? String((ref as any).file_name || '') : ''
+    const key = type === 'image' && fileName ? `image:${fileName}` : (isObj ? String((ref as any).id) : '')
+    if (!key) return true
+    return arr.findIndex(r => {
+      const rObj = typeof r === 'object' && r != null && 'id' in r
+      const rType = rObj && 'type' in r ? (r as any).type : undefined
+      const rFileName = rObj && 'file_name' in r ? String((r as any).file_name || '') : ''
+      const rKey = rType === 'image' && rFileName ? `image:${rFileName}` : (rObj ? String((r as any).id) : '')
+      return rKey === key
+    }) === idx
+  })
+  const hasRefs = uniqueRefs.length > 0
 
   return (
     <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
@@ -233,7 +240,7 @@ export function MessageBubble({
         {hasRefs && !isUser && (
           <div className="mt-3 space-y-2">
             <InlineCitation
-              references={refs}
+              references={uniqueRefs}
               variant="inline"
               showImageThumbnails
               citationMap={citationMap}

@@ -238,6 +238,23 @@ class ContextBuilder:
                         "chunk_index": image["metadata"].get("chunk_index")  # chunk 在文档中的索引（如果有）
                     }
                 )
+                # 提前生成图片预签名URL，供流式引用直接展示图片
+                try:
+                    kb_id = (reference.metadata or {}).get("kb_id")
+                    bucket = (
+                        self.minio_adapter.bucket_name_for_kb(kb_id)
+                        if kb_id
+                        else "images"
+                    )
+                    object_path = reference.file_path
+                    presigned_url = await self.minio_adapter.get_presigned_url(
+                        bucket=bucket,
+                        object_path=object_path,
+                        expires_hours=24
+                    )
+                    reference.presigned_url = presigned_url
+                except Exception as e:
+                    logger.error(f"生成图片预签名URL失败: {str(e)}")
                 reference_map[ref_id] = reference
             
             return reference_map
@@ -445,20 +462,19 @@ class ContextBuilder:
             unique_ref_nums = list(dict.fromkeys(references))  # 保持顺序的去重
             
             valid_references = []
-            seen_chunk_ids = set()  # 用于去重，确保每个 chunk_id 只出现一次
+            seen_keys = set()  # 用于去重，确保同一素材不重复出现
             
             for ref_num in unique_ref_nums:
                 if ref_num in reference_map:
                     reference = reference_map[ref_num]
                     chunk_id = reference.metadata.get("chunk_id")
-                    
-                    # 如果这个 chunk_id 已经出现过，跳过（避免重复引用）
-                    if chunk_id and chunk_id in seen_chunk_ids:
-                        logger.debug(f"跳过重复的 chunk_id: {chunk_id} (引用编号: {ref_num})")
+                    file_path = reference.file_path or ""
+                    dedupe_key = chunk_id or file_path
+                    if dedupe_key and dedupe_key in seen_keys:
+                        logger.debug(f"跳过重复引用: {dedupe_key} (引用编号: {ref_num})")
                         continue
-                    
-                    if chunk_id:
-                        seen_chunk_ids.add(chunk_id)
+                    if dedupe_key:
+                        seen_keys.add(dedupe_key)
                     
                     # 构建引用字典
                     ref_dict = {
@@ -467,7 +483,8 @@ class ContextBuilder:
                         "file_name": reference.file_path.split('/')[-1] if '/' in reference.file_path else reference.file_path,
                         "file_path": reference.file_path,
                         "content": reference.content[:200] if reference.content else "",  # 只保留前200字符
-                        "score": reference.metadata.get("score", 0.0),
+                        "img_url": reference.presigned_url if reference.content_type == "image" else None,
+                        "scores": {"rerank": reference.metadata.get("score", 0.0)},
                         "chunk_id": chunk_id,  # chunk 的 ID（Qdrant point ID）
                         "chunk_index": reference.metadata.get("chunk_index"),  # chunk 在文档中的索引
                         "metadata": reference.metadata
