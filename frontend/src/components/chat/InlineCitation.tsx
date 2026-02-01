@@ -96,7 +96,7 @@ export function InlineCitation({
       )}
 
       {variant === 'inline' && showImageThumbnails && imageRefs.length > 0 && (
-        <div className={cn('flex flex-wrap gap-2 mt-2', className)}>
+        <div className={cn('flex flex-wrap gap-2 mt-2 mb-0', className)}>
           {imageRefs.map((ref) => (
             <button
               key={ref.id}
@@ -109,22 +109,19 @@ export function InlineCitation({
                   onCiteClick(ref.id, mockEvent, messageId)
                 }
               }}
-              className="rounded-lg border overflow-hidden hover:ring-2 ring-primary/40 transition-all"
+              className="rounded-lg border overflow-hidden hover:ring-2 ring-primary/40 transition-all p-0"
             >
               {ref.img_url ? (
                 <img
                   src={ref.img_url}
                   alt={ref.file_name}
-                  className="h-20 w-auto max-w-[160px] object-cover"
+                  className="h-40 w-auto max-w-[320px] object-cover block"
                 />
               ) : (
-                <div className="h-20 w-32 bg-muted flex items-center justify-center">
+                <div className="h-40 w-64 bg-muted flex items-center justify-center">
                   <Image className="h-6 w-6 text-muted-foreground" />
                 </div>
               )}
-              <div className="px-2 py-1 text-[0px]">
-                {/* 图片缩略图下方不展示文字引用 */}
-              </div>
             </button>
           ))}
         </div>
