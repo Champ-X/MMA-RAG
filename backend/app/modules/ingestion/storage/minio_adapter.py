@@ -165,17 +165,36 @@ class MinIOAdapter:
             logger.error(f"文件删除失败 {bucket}/{object_path}: {str(e)}")
             return False
     
+    def bucket_exists(self, bucket: str) -> bool:
+        """检查存储桶是否存在"""
+        try:
+            return self.client.bucket_exists(bucket)
+        except S3Error as e:
+            logger.warning(f"检查存储桶存在性失败 {bucket}: {e}")
+            return False
+
+    async def remove_bucket(self, bucket: str) -> bool:
+        """删除空的存储桶"""
+        try:
+            self.client.remove_bucket(bucket)
+            logger.info(f"存储桶已删除: {bucket}")
+            return True
+        except S3Error as e:
+            logger.warning(f"删除存储桶失败 {bucket}: {e}")
+            return False
+
     async def list_files(
         self,
         bucket: str,
         prefix: str = "", 
         max_keys: int = 1000
     ) -> List[Dict[str, Any]]:
-        """列出文件"""
+        """列出文件（recursive=True 确保获取所有嵌套对象）"""
         try:
             objects = self.client.list_objects(
                 bucket,
-                prefix=prefix
+                prefix=prefix if prefix else None,
+                recursive=True,
             )
             
             files = []

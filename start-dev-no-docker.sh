@@ -72,6 +72,24 @@ else
     exit 1
 fi
 
+# 启动 Celery Worker（画像构建、文档解析等异步任务）
+echo "📦 启动 Celery Worker..."
+cd "$PROJECT_ROOT/backend"
+CELERY_CMD=""
+if command -v celery &> /dev/null; then
+    CELERY_CMD="celery"
+elif python3 -c "import celery" 2>/dev/null; then
+    CELERY_CMD="python3 -m celery"
+fi
+if [ -n "$CELERY_CMD" ]; then
+    $CELERY_CMD -A celery_app worker -Q knowledge,ingestion,retrieval -l info &
+    CELERY_PID=$!
+    echo "  ✅ Celery Worker 已启动 (PID: $CELERY_PID)"
+else
+    echo "  ⚠️  未找到 celery，画像异步构建将不会执行。安装: pip install celery"
+    CELERY_PID=""
+fi
+
 # 启动前端
 echo "⚛️  启动前端..."
 cd "$PROJECT_ROOT/frontend"
@@ -96,5 +114,10 @@ echo "💡 按 Ctrl+C 停止所有服务"
 echo ""
 
 # 捕获 Ctrl+C，清理子进程
-trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit 0" INT TERM
+cleanup() {
+    kill $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
+    [ -n "$CELERY_PID" ] && kill $CELERY_PID 2>/dev/null || true
+    exit 0
+}
+trap cleanup INT TERM
 wait

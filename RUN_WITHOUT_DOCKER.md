@@ -117,7 +117,7 @@ chmod +x start-dev-no-docker.sh
 ./start-dev-no-docker.sh
 ```
 
-脚本会检查上述三个服务是否可达，然后启动后端与前端。
+脚本会检查上述三个服务是否可达，然后启动后端、Celery Worker 和前端。知识库画像异步构建依赖 Celery，脚本会自动启动 Worker。
 
 ### 方式 2：手动启动
 
@@ -139,7 +139,7 @@ npm run dev
 
 **终端 3（可选）：Celery Worker**
 
-需要异步任务（如知识库画像）时再开：
+若使用 `start-dev-no-docker.sh`，Celery 会随脚本自动启动。若手动启动各服务，需要异步任务（如知识库画像）时再开：
 
 ```bash
 cd backend

@@ -286,22 +286,32 @@ class KnowledgeBaseService:
             raise
     
     async def _delete_kb_files(self, kb_id: str):
-        """删除知识库在 MinIO 中的所有文件。该知识库对应单一 Bucket，直接清空该桶内对象。"""
+        """删除知识库在 MinIO 中的所有文件及对应存储桶。"""
         try:
             bucket_name = self.minio_adapter.bucket_name_for_kb(kb_id)
+
+            if not self.minio_adapter.bucket_exists(bucket_name):
+                logger.info(f"知识库 MinIO 存储桶不存在，跳过删除: {bucket_name}")
+                return
+
             files = await self.minio_adapter.list_files(
                 bucket=bucket_name,
                 prefix="",
                 max_keys=10000
             )
+
             deleted_count = 0
-            for file_info in files:
-                try:
-                    await self.minio_adapter.delete_file(bucket_name, file_info["object_path"])
-                    deleted_count += 1
-                except Exception as e:
-                    logger.warning(f"删除文件失败 {file_info['object_path']}: {str(e)}")
-            logger.info(f"删除知识库 MinIO 文件完成: {deleted_count} 个 (bucket={bucket_name})")
+            object_paths = [f["object_path"] for f in files]
+            if object_paths:
+                for object_path in object_paths:
+                    try:
+                        await self.minio_adapter.delete_file(bucket_name, object_path)
+                        deleted_count += 1
+                    except Exception as e:
+                        logger.warning(f"删除文件失败 {object_path}: {str(e)}")
+
+            await self.minio_adapter.remove_bucket(bucket_name)
+            logger.info(f"删除知识库 MinIO 完成: {deleted_count} 个文件, 已删除存储桶 {bucket_name}")
         except Exception as e:
             logger.error(f"删除知识库文件失败: {str(e)}")
             raise
@@ -388,6 +398,91 @@ class KnowledgeBaseService:
                 "last_updated": datetime.utcnow().isoformat()
             }
     
+    async def list_kb_files(self, kb_id: str) -> List[Dict[str, Any]]:
+        """列出知识库下的文件"""
+        try:
+            if kb_id not in self._kb_storage:
+                return []
+            bucket_name = self.minio_adapter.bucket_name_for_kb(kb_id)
+            raw_files = await self.minio_adapter.list_files(bucket=bucket_name, prefix="", max_keys=1000)
+            files = []
+            for f in raw_files:
+                op = f.get("object_path", "")
+                parts = op.split("/")
+                if len(parts) < 2:
+                    continue
+                rest = parts[1]
+                under = rest.find("_")
+                file_id = rest[:under] if under >= 0 else rest
+                name = rest[under + 1:] if under >= 0 else rest
+                lm = f.get("last_modified")
+                date_str = (lm.isoformat() if lm is not None and hasattr(lm, "isoformat")
+                            else str(lm) if lm is not None else "")
+                files.append({
+                    "id": file_id,
+                    "name": name,
+                    "size": f.get("size") or 0,
+                    "date": date_str,
+                    "type": name.rsplit(".", 1)[-1].lower() if "." in name else "file",
+                })
+            return files
+        except Exception as e:
+            logger.error(f"列出知识库文件失败: {str(e)}")
+            return []
+
+    async def delete_kb_file(self, kb_id: str, file_id: str) -> bool:
+        """删除知识库下的单个文件及其向量"""
+        try:
+            if kb_id not in self._kb_storage:
+                return False
+            bucket_name = self.minio_adapter.bucket_name_for_kb(kb_id)
+            raw_files = await self.minio_adapter.list_files(bucket=bucket_name, prefix="", max_keys=1000)
+            object_path = None
+            for f in raw_files:
+                op = f.get("object_path", "")
+                if file_id in op and op.startswith(("documents/", "images/")):
+                    rest = op.split("/", 1)[1]
+                    if rest.startswith(file_id + "_"):
+                        object_path = op
+                        break
+            if not object_path:
+                return False
+            from qdrant_client.http.models import Filter, FieldCondition, MatchValue
+            filt = Filter(must=[
+                FieldCondition(key="kb_id", match=MatchValue(value=kb_id)),
+                FieldCondition(key="file_id", match=MatchValue(value=file_id)),
+            ])
+            deleted_chunk_count = 0
+            for coll in ["text_chunks", "image_vectors"]:
+                try:
+                    scroll_result = self.vector_store.client.scroll(
+                        collection_name=coll, scroll_filter=filt, limit=10000
+                    )
+                    point_ids = [p.id for p in (scroll_result[0] or []) if hasattr(p, "id")]
+                    if point_ids:
+                        deleted_chunk_count += len(point_ids)
+                        self.vector_store.client.delete(
+                            collection_name=coll,
+                            points_selector=models.PointIdsList(points=point_ids),
+                        )
+                except Exception as ex:
+                    logger.warning(f"删除向量失败 {coll}: {ex}")
+            await self.minio_adapter.delete_file(bucket_name, object_path)
+
+            # 删除 chunk 计入增量，达到阈值后触发画像重建（与上传逻辑一致）
+            if deleted_chunk_count > 0:
+                try:
+                    from app.core.portrait_trigger import increment_and_maybe_trigger
+
+                    increment_and_maybe_trigger(kb_id, deleted_chunk_count)
+                except Exception as trigger_err:
+                    logger.warning(f"删除文件后画像增量触发失败 kb_id={kb_id}: {trigger_err}")
+
+            return True
+        except Exception as e:
+            logger.error(f"删除知识库文件失败: {str(e)}")
+            return False
+
     async def search_knowledge_bases(
         self,
         query: str,

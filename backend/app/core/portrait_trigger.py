@@ -79,3 +79,23 @@ def increment_and_maybe_trigger(kb_id: str, delta: int) -> bool:
     except Exception as e:
         logger.warning(f"increment_and_maybe_trigger 失败 kb_id={kb_id} delta={delta}: {e}")
         return False
+
+
+def trigger_portrait_rebuild(kb_id: str, reason: str = "data_changed") -> bool:
+    """
+    直接触发知识库画像异步重建（用于删除文件等场景，数据量减少时需更新画像）。
+    使用 force_update=True 跳过增量检查，确保画像与当前数据一致。
+    返回是否成功触发。
+    """
+    try:
+        from app.modules.knowledge.portraits import build_kb_portrait_task
+
+        build_kb_portrait_task.delay(kb_id, force_update=True)
+        logger.info(f"画像重建已触发 kb_id={kb_id} reason={reason}")
+        return True
+    except ImportError as e:
+        logger.warning(f"未找到 Celery 画像任务，跳过触发 kb_id={kb_id}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"触发画像重建失败 kb_id={kb_id}: {e}")
+        return False
