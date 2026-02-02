@@ -396,6 +396,63 @@ class KnowledgeBaseService:
         )
         return res[0] if res else []
 
+    def _count_kb_points_sync(self, candidate: str) -> tuple:
+        """同步按 kb_id 统计 text_chunks 与 image_vectors 数量（使用 count 避免 scroll limit 导致漏统）。"""
+        from qdrant_client.http.models import Filter, FieldCondition, MatchValue
+        filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=candidate))])
+        try:
+            n_text = self.vector_store.client.count(
+                collection_name="text_chunks",
+                count_filter=filt,
+                exact=True,
+            ).count
+            n_img = self.vector_store.client.count(
+                collection_name="image_vectors",
+                count_filter=filt,
+                exact=True,
+            ).count
+            return (int(n_text), int(n_img))
+        except Exception as e:
+            logger.debug(f"count_kb_points_sync 失败 candidate={candidate}: {e}")
+            return (0, 0)
+
+    def _scroll_text_chunks_file_ids_sync(self, candidate: str, max_points: int = 100000) -> set:
+        """同步滚动 text_chunks 收集文档类文件的 file_id（用于文档数统计）。"""
+        from qdrant_client.http.models import Filter, FieldCondition, MatchValue
+
+        def _payload(p) -> dict:
+            if p is None:
+                return {}
+            return p if isinstance(p, dict) else {}
+
+        filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=candidate))])
+        file_ids: set = set()
+        offset = None
+        total_scrolled = 0
+        try:
+            while total_scrolled < max_points:
+                res = self.vector_store.client.scroll(
+                    collection_name="text_chunks",
+                    scroll_filter=filt,
+                    limit=5000,
+                    offset=offset,
+                    with_payload=True,
+                )
+                points = res[0] if res else []
+                for point in points:
+                    payload = _payload(getattr(point, "payload", None))
+                    fid = payload.get("file_id")
+                    if fid:
+                        file_ids.add(fid)
+                total_scrolled += len(points)
+                offset = res[1] if res and len(res) > 1 else None
+                if not points or offset is None:
+                    break
+            return file_ids
+        except Exception as e:
+            logger.debug(f"scroll_text_chunks_file_ids_sync 失败 candidate={candidate}: {e}")
+            return file_ids
+
     def _get_stats_by_bucket_files_sync(self, file_ids: List[str]) -> Dict[str, int]:
         """
         按 file_id 列表从向量库汇总统计（不限 kb_id）。
@@ -405,7 +462,7 @@ class KnowledgeBaseService:
 
         total_chunks = 0
         total_images = 0
-        seen_file_ids = set()
+        doc_file_ids = set()  # 仅统计有 text_chunk 的 file_id（文档类文件）
 
         for fid in file_ids:
             if not fid:
@@ -420,66 +477,51 @@ class KnowledgeBaseService:
                 text_points = tc[0] if tc else []
                 if text_points:
                     total_chunks += len(text_points)
-                    seen_file_ids.add(fid)
+                    doc_file_ids.add(fid)
 
                 im = self.vector_store.client.scroll(
                     collection_name="image_vectors",
                     scroll_filter=filt,
-                    limit=10,
+                    limit=10000,
                 )
                 image_points = im[0] if im else []
                 if image_points:
                     total_images += len(image_points)
-                    seen_file_ids.add(fid)
             except Exception:
                 pass
 
         return {
-            "total_documents": len(seen_file_ids),
+            "total_documents": len(doc_file_ids),
             "total_chunks": total_chunks,
             "total_images": total_images,
         }
 
     async def _get_kb_statistics(self, kb_id: str) -> Dict[str, Any]:
-        """获取知识库统计信息（兼容多种 kb_id 格式，以第一个有数据的为准）。scroll 在线程池执行避免阻塞。"""
-        from qdrant_client.http.models import Filter, FieldCondition, MatchValue
-
-        def _payload(p) -> Dict[str, Any]:
-            if p is None:
-                return {}
-            return p if isinstance(p, dict) else {}
-
+        """获取知识库统计信息（兼容多种 kb_id 格式，以第一个有数据的为准）。
+        文档数 = 有 text_chunk 的 file_id 个数；文本块/图片用 count() 精确统计，避免 scroll limit 漏统。
+        优先使用从 MinIO 桶内反查得到的实际 kb_id（解决 Qdrant 中 kb_id 与列表不一致）。
+        """
         loop = asyncio.get_event_loop()
-        for candidate in self._kb_id_candidates(kb_id):
+        candidates = list(self._kb_id_candidates(kb_id))
+        bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
+        if bucket_name and self.minio_adapter.bucket_exists(bucket_name):
+            discovered = await self._discover_kb_id_from_bucket_async(kb_id)
+            if discovered and discovered not in candidates:
+                candidates.insert(0, discovered)
+        for candidate in candidates:
             try:
-                text_points = await loop.run_in_executor(
+                total_chunks, total_images = await loop.run_in_executor(
                     None,
-                    lambda c=candidate: self._scroll_kb_points_sync(c, "text_chunks"),
+                    lambda c=candidate: self._count_kb_points_sync(c),
                 )
-                image_points = await loop.run_in_executor(
-                    None,
-                    lambda c=candidate: self._scroll_kb_points_sync(c, "image_vectors"),
-                )
-
-                if len(text_points) == 0 and len(image_points) == 0:
+                if total_chunks == 0 and total_images == 0:
                     continue
 
-                total_chunks = len(text_points)
-                total_images = len(image_points)
-
-                unique_file_ids = set()
-                for point in text_points:
-                    payload = _payload(getattr(point, "payload", None))
-                    fid = payload.get("file_id")
-                    if fid:
-                        unique_file_ids.add(fid)
-                for point in image_points:
-                    payload = _payload(getattr(point, "payload", None))
-                    fid = payload.get("file_id")
-                    if fid:
-                        unique_file_ids.add(fid)
-
-                total_documents = len(unique_file_ids)
+                doc_file_ids = await loop.run_in_executor(
+                    None,
+                    lambda c=candidate: self._scroll_text_chunks_file_ids_sync(c),
+                )
+                total_documents = len(doc_file_ids)
 
                 total_size_bytes = 0
                 bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
@@ -500,6 +542,8 @@ class KnowledgeBaseService:
                     "total_images": total_images,
                     "total_size_mb": total_size_mb,
                     "last_updated": datetime.utcnow().isoformat(),
+                    "text_vector_dim": 4096,
+                    "image_vector_dim": 768,
                 }
 
             except Exception as e:
@@ -539,6 +583,8 @@ class KnowledgeBaseService:
                             "total_images": fallback["total_images"],
                             "total_size_mb": total_size_mb,
                             "last_updated": datetime.utcnow().isoformat(),
+                            "text_vector_dim": 4096,
+                            "image_vector_dim": 768,
                         }
         except Exception as e:
             logger.debug(f"统计兜底失败 kb_id={kb_id}: {e}")
@@ -549,6 +595,8 @@ class KnowledgeBaseService:
             "total_images": 0,
             "total_size_mb": 0,
             "last_updated": datetime.utcnow().isoformat(),
+            "text_vector_dim": 4096,
+            "image_vector_dim": 768,
         }
     
     def _discover_kb_id_from_bucket_sync(self, bucket_name: str) -> Optional[str]:
@@ -559,7 +607,7 @@ class KnowledgeBaseService:
                     bucket_name, prefix=None, recursive=True
                 )
             )
-            for obj in raw[:5]:  # 尝试前 5 个对象
+            for obj in raw[:20]:  # 尝试前 20 个对象以命中已在向量库中的文件
                 op = obj.object_name
                 parts = op.split("/")
                 if len(parts) < 2:

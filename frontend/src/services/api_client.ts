@@ -171,9 +171,15 @@ export const knowledgeApi = {
   // 获取知识库详情
   getKnowledgeBase: (id: string) => apiClient.get(`/knowledge/${id}`),
 
-  // 获取知识库向量统计（用于数据源比例、主题统计）
+  // 获取知识库向量统计（用于数据源比例、主题统计、向量维度）
   getKnowledgeBaseStats: (id: string) =>
-    apiClient.get<{ documents: number; chunks: number; images: number }>(`/knowledge/${id}/stats`),
+    apiClient.get<{
+      documents: number
+      chunks: number
+      images: number
+      text_vector_dim?: number
+      image_vector_dim?: number
+    }>(`/knowledge/${id}/stats`),
   
   // 获取知识库画像
   getKnowledgeBasePortrait: (id: string) => apiClient.get(`/knowledge/${id}/portrait`),

@@ -205,7 +205,13 @@ const KnowledgeList: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<UploadPipelineProgress | undefined>()
   const [uploading, setUploading] = useState(false)
   const [files, setFiles] = useState<any[]>([])
-  const [kbStats, setKbStats] = useState<{ documents: number; chunks: number; images: number } | null>(null)
+  const [kbStats, setKbStats] = useState<{
+    documents: number
+    chunks: number
+    images: number
+    text_vector_dim?: number
+    image_vector_dim?: number
+  } | null>(null)
 
   const {
     knowledgeBases,
@@ -667,6 +673,7 @@ const KnowledgeList: React.FC = () => {
             {/* Portrait Graph（使用从向量库获取的统计） */}
             <PortraitGraph
               knowledgeBaseId={activeKb.id}
+              documentCount={kbStats?.documents ?? activeKb.stats?.documents ?? 0}
               textCount={kbStats?.chunks ?? activeKb.stats?.chunks ?? 0}
               imageCount={kbStats?.images ?? activeKb.stats?.images ?? 0}
               onClusterSelect={() => {}}
@@ -677,10 +684,17 @@ const KnowledgeList: React.FC = () => {
           <div className="w-72 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-6 hidden xl:block">
             <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-4">知识库统计</h4>
             <div className="space-y-4">
+              <StatItem label="Documents" value={kbStats?.documents ?? activeKb.stats?.documents ?? 0} />
               <StatItem label="Total Chunks" value={kbStats?.chunks ?? activeKb.stats?.chunks ?? 0} />
               <StatItem label="Total Images" value={kbStats?.images ?? activeKb.stats?.images ?? 0} />
-              <StatItem label="Documents" value={kbStats?.documents ?? activeKb.stats?.documents ?? 0} />
-              <StatItem label="Vector Dim" value="1024 (Dense)" />
+              <StatItem
+                label="Vector Dim"
+                value={
+                  kbStats?.text_vector_dim != null && kbStats?.image_vector_dim != null
+                    ? `文本 ${kbStats.text_vector_dim} / 图片 ${kbStats.image_vector_dim}`
+                    : '文本 4096 / 图片 768'
+                }
+              />
             </div>
 
             <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">

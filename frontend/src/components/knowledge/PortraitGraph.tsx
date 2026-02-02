@@ -19,7 +19,9 @@ export interface PortraitCluster {
 
 interface PortraitGraphProps {
   knowledgeBaseId: string
-  /** 文本条数，用于比例条 */
+  /** 文档类文件个数（有 text_chunk 的文件数） */
+  documentCount?: number
+  /** 文本块条数（chunk 数），用于比例条 */
   textCount?: number
   /** 图片条数，用于比例条 */
   imageCount?: number
@@ -30,6 +32,7 @@ interface PortraitGraphProps {
 
 export function PortraitGraph({
   knowledgeBaseId,
+  documentCount = 0,
   textCount = 0,
   imageCount = 0,
   onClusterSelect,
@@ -250,7 +253,7 @@ export function PortraitGraph({
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">
-                {clusters.reduce((a, c) => a + c.cluster_size, 0)}
+                {documentCount}
               </div>
               <div className="text-sm text-muted-foreground">文档数</div>
             </div>
@@ -258,7 +261,7 @@ export function PortraitGraph({
               <div className="text-2xl font-bold text-orange-600">
                 {textCount}
               </div>
-              <div className="text-sm text-muted-foreground">文本</div>
+              <div className="text-sm text-muted-foreground">文本块</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-violet-600">

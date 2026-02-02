@@ -17,14 +17,22 @@ kb_service = KnowledgeBaseService()
 portrait_generator = PortraitGenerator()
 
 
-def _stats_for_frontend(statistics: Optional[Dict[str, Any]]) -> Dict[str, int]:
-    """将后端 statistics 格式转换为前端 stats 格式"""
+def _stats_for_frontend(statistics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """将后端 statistics 格式转换为前端 stats 格式（含向量维度）"""
     if not statistics:
-        return {"documents": 0, "chunks": 0, "images": 0}
+        return {
+            "documents": 0,
+            "chunks": 0,
+            "images": 0,
+            "text_vector_dim": 4096,
+            "image_vector_dim": 768,
+        }
     return {
         "documents": statistics.get("total_documents", 0),
         "chunks": statistics.get("total_chunks", 0),
         "images": statistics.get("total_images", 0),
+        "text_vector_dim": statistics.get("text_vector_dim", 4096),
+        "image_vector_dim": statistics.get("image_vector_dim", 768),
     }
 
 
