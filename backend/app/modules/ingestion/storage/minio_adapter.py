@@ -11,6 +11,7 @@ from pathlib import Path
 
 import minio
 from minio.error import S3Error
+from minio.commonconfig import Tags as MinioTags
 
 from app.core.config import settings
 from app.core.logger import get_logger
@@ -196,6 +197,29 @@ class MinIOAdapter:
         except Exception as e:
             logger.warning(f"列出存储桶失败: {e}")
             return []
+
+    def get_bucket_tags(self, bucket_name: str) -> Dict[str, str]:
+        """获取存储桶标签（知识库元数据：name, description, created_at, updated_at, user_id）。"""
+        try:
+            tags = self.client.get_bucket_tags(bucket_name)
+            return dict(tags) if tags else {}
+        except S3Error as e:
+            if "NoSuchTagSet" in str(e) or "404" in str(e):
+                return {}
+            logger.warning(f"获取存储桶标签失败 {bucket_name}: {e}")
+            return {}
+
+    def set_bucket_tags(self, bucket_name: str, tags: Dict[str, str]) -> None:
+        """设置存储桶标签。键值均为字符串，用于存储知识库 name、description 等。"""
+        try:
+            t = MinioTags.new_bucket_tags()
+            for k, v in (tags or {}).items():
+                if v is not None:
+                    t[k] = str(v)[:256]  # MinIO 限制单值长度
+            self.client.set_bucket_tags(bucket_name, t)
+        except S3Error as e:
+            logger.warning(f"设置存储桶标签失败 {bucket_name}: {e}")
+            raise
 
     async def remove_bucket(self, bucket: str) -> bool:
         """删除空的存储桶"""

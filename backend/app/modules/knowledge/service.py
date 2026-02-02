@@ -1,17 +1,16 @@
 """
 知识库管理服务
-负责知识库的CRUD操作和基础管理功能
+负责知识库的CRUD操作和基础管理功能。
+知识库列表与元数据仅从 MinIO 获取（按存储桶列出，元数据存于桶标签）。
+注意：同一知识库在 MinIO 的 bucket id（桶名去掉 kb- 前缀）与 Qdrant 向量库 payload 中的 kb_id 可能不一致，检索/删除时通过 _kb_id_candidates 与 _discover_kb_id_from_bucket 兼容。
 """
 
 from typing import Dict, List, Any, Optional
 import asyncio
-import json
 import uuid
 from datetime import datetime
-from dataclasses import asdict, dataclass
-from pathlib import Path
+from dataclasses import dataclass
 
-from app.core.config import settings
 from app.core.logger import get_logger, audit_log
 from app.modules.ingestion.storage.vector_store import VectorStore
 from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
@@ -19,9 +18,17 @@ from qdrant_client.http import models
 
 logger = get_logger(__name__)
 
+# MinIO 桶标签键名，用于存储知识库元数据
+_TAG_NAME = "name"
+_TAG_DESCRIPTION = "description"
+_TAG_CREATED_AT = "created_at"
+_TAG_UPDATED_AT = "updated_at"
+_TAG_USER_ID = "user_id"
+
+
 @dataclass
 class KnowledgeBase:
-    """知识库数据类"""
+    """知识库数据类（id 为 MinIO bucket 派生 id，与 Qdrant payload 中的 kb_id 可能不同）"""
     id: str
     name: str
     description: str
@@ -30,88 +37,77 @@ class KnowledgeBase:
     user_id: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 
+
+def _kb_id_from_bucket_name(bucket_name: str) -> Optional[str]:
+    """从存储桶名得到知识库 id：kb-xxx -> xxx，非 kb- 前缀的桶忽略（不当作知识库）。"""
+    if not bucket_name or bucket_name == "kb-default":
+        return None
+    if bucket_name.startswith("kb-"):
+        return bucket_name[3:]
+    return None
+
+
+def _tags_to_kb(bucket_name: str, tags: Dict[str, str]) -> KnowledgeBase:
+    kb_id = _kb_id_from_bucket_name(bucket_name)
+    if not kb_id:
+        raise ValueError(f"invalid kb bucket name: {bucket_name}")
+    now = datetime.utcnow().isoformat()
+    return KnowledgeBase(
+        id=kb_id,
+        name=tags.get(_TAG_NAME) or kb_id,
+        description=tags.get(_TAG_DESCRIPTION) or "",
+        created_at=tags.get(_TAG_CREATED_AT) or now,
+        updated_at=tags.get(_TAG_UPDATED_AT) or now,
+        user_id=tags.get(_TAG_USER_ID) or None,
+        metadata={},
+    )
+
+
+def _kb_to_tags(kb: KnowledgeBase) -> Dict[str, str]:
+    return {
+        _TAG_NAME: kb.name,
+        _TAG_DESCRIPTION: kb.description,
+        _TAG_CREATED_AT: kb.created_at,
+        _TAG_UPDATED_AT: kb.updated_at,
+        **({_TAG_USER_ID: kb.user_id} if kb.user_id else {}),
+    }
+
+
 class KnowledgeBaseService:
-    """知识库管理服务"""
+    """知识库管理服务。数据源仅为 MinIO（列桶 + 桶标签），不再使用本地 JSON 文件。"""
 
-    def _storage_path(self) -> Path:
-        """获取知识库元数据持久化文件路径"""
-        backend_dir = Path(__file__).resolve().parent.parent.parent.parent
-        return (backend_dir / settings.kb_storage_path).resolve()
-
-    def _load_from_disk(self) -> None:
-        """从 JSON 文件加载知识库元数据"""
-        path = self._storage_path()
-        if not path.exists():
-            self._kb_storage = {}
-            return
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            self._kb_storage = {}
-            for kb_id, d in data.items():
-                self._kb_storage[kb_id] = KnowledgeBase(
-                    id=d.get("id", kb_id),
-                    name=d.get("name", ""),
-                    description=d.get("description", ""),
-                    created_at=d.get("created_at", ""),
-                    updated_at=d.get("updated_at", ""),
-                    user_id=d.get("user_id"),
-                    metadata=d.get("metadata") or {},
-                )
-            logger.info(f"已从 {path} 加载 {len(self._kb_storage)} 个知识库")
-        except Exception as e:
-            logger.warning(f"加载知识库元数据失败，将使用空存储: {e}")
-            self._kb_storage = {}
-
-    def _recover_from_minio(self) -> None:
-        """从 MinIO 所有存储桶同步知识库：未在 _kb_storage 中的桶将自动加入，显示名为存储桶名"""
+    def _load_from_minio(self) -> None:
+        """从 MinIO 列出所有 kb- 存储桶，用桶标签填充 _kb_storage。"""
+        self._kb_storage = {}
         try:
             bucket_names = self.minio_adapter.list_bucket_names()
-            recovered = 0
             for bucket_name in bucket_names:
-                # kb_id：对 kb- 开头的桶沿用原约定（向量库中存的是去掉前缀的 id）；其余桶直接用桶名
-                if bucket_name.startswith("kb-") and bucket_name != "kb-default":
-                    kb_id = bucket_name[3:]
-                else:
-                    kb_id = bucket_name
-                if kb_id not in self._kb_storage:
-                    now = datetime.utcnow().isoformat()
-                    self._kb_storage[kb_id] = KnowledgeBase(
-                        id=kb_id,
-                        name=kb_id,
-                        description="",
-                        created_at=now,
-                        updated_at=now,
-                        user_id=None,
-                        metadata={},
-                    )
-                    recovered += 1
-            if recovered > 0:
-                logger.info(f"从 MinIO 同步了 {recovered} 个知识库")
-                self._save_to_disk()
+                kb_id = _kb_id_from_bucket_name(bucket_name)
+                if not kb_id:
+                    continue
+                tags = self.minio_adapter.get_bucket_tags(bucket_name)
+                self._kb_storage[kb_id] = _tags_to_kb(bucket_name, tags)
+            logger.info(f"已从 MinIO 加载 {len(self._kb_storage)} 个知识库")
         except Exception as e:
-            logger.warning(f"从 MinIO 同步知识库失败: {e}")
+            logger.warning(f"从 MinIO 加载知识库失败，将使用空列表: {e}")
+            self._kb_storage = {}
 
-    def _save_to_disk(self) -> None:
-        """将知识库元数据持久化到 JSON 文件"""
-        path = self._storage_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            data = {
-                kb_id: asdict(kb)
-                for kb_id, kb in self._kb_storage.items()
-            }
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.error(f"保存知识库元数据失败: {e}")
+    def _ensure_kb_in_cache(self, kb_id: str) -> bool:
+        """若 kb_id 不在缓存中且对应 MinIO 桶存在，则从桶标签加载并加入缓存。返回是否在缓存中。"""
+        if kb_id in self._kb_storage:
+            return True
+        bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
+        if not self.minio_adapter.bucket_exists(bucket_name):
+            return False
+        tags = self.minio_adapter.get_bucket_tags(bucket_name)
+        self._kb_storage[kb_id] = _tags_to_kb(bucket_name, tags)
+        return True
 
     def __init__(self):
         self.vector_store = VectorStore()
         self.minio_adapter = MinIOAdapter()
         self._kb_storage: Dict[str, KnowledgeBase] = {}
-        self._load_from_disk()
-        self._recover_from_minio()
+        self._load_from_minio()
     
     async def create_knowledge_base(
         self,
@@ -120,36 +116,32 @@ class KnowledgeBaseService:
         user_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """创建知识库"""
+        """创建知识库（在 MinIO 建桶并写入桶标签，不再写本地 JSON）"""
         try:
             kb_id = str(uuid.uuid4())
-            
-            # 创建知识库记录
+            now = datetime.utcnow().isoformat()
             kb = KnowledgeBase(
                 id=kb_id,
                 name=name,
                 description=description,
-                created_at=datetime.utcnow().isoformat(),
-                updated_at=datetime.utcnow().isoformat(),
+                created_at=now,
+                updated_at=now,
                 user_id=user_id,
                 metadata=metadata or {}
             )
-            
-            # 存储到内存（生产环境应存储到数据库）
             self._kb_storage[kb_id] = kb
-            
-            # 创建存储桶目录结构
             await self._create_kb_structure(kb_id)
-            
+            self.minio_adapter.set_bucket_tags(
+                self.minio_adapter.bucket_name_for_kb(kb_id),
+                _kb_to_tags(kb),
+            )
             audit_log(
                 f"知识库创建成功: {name}",
                 kb_id=kb_id,
                 user_id=user_id,
                 kb_name=name
             )
-            
             logger.info(f"知识库创建成功: {kb_id} - {name}")
-            self._save_to_disk()
 
             return {
                 "id": kb_id,
@@ -165,8 +157,10 @@ class KnowledgeBaseService:
             raise
     
     async def get_knowledge_base(self, kb_id: str) -> Optional[Dict[str, Any]]:
-        """获取知识库信息"""
+        """获取知识库信息（若不在缓存则从 MinIO 桶标签加载）"""
         try:
+            if not self._ensure_kb_in_cache(kb_id):
+                return None
             kb = self._kb_storage.get(kb_id)
             if not kb:
                 return None
@@ -195,10 +189,10 @@ class KnowledgeBaseService:
         limit: int = 100,
         offset: int = 0
     ) -> List[Dict[str, Any]]:
-        """列出知识库"""
+        """列出知识库（每次从 MinIO 刷新桶列表与桶标签）"""
         try:
+            self._load_from_minio()
             kbs = []
-            
             for kb_id, kb in self._kb_storage.items():
                 # 如果指定了用户ID，过滤用户的知识库
                 if user_id and kb.user_id != user_id:
@@ -248,15 +242,14 @@ class KnowledgeBaseService:
                 kb.metadata = metadata
             
             kb.updated_at = datetime.utcnow().isoformat()
-            
+            bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
+            self.minio_adapter.set_bucket_tags(bucket_name, _kb_to_tags(kb))
             audit_log(
                 f"知识库更新成功: {kb_id}",
                 kb_id=kb_id,
                 updated_fields=["name" if name else None, "description" if description else None]
             )
-            
             logger.info(f"知识库更新成功: {kb_id}")
-            self._save_to_disk()
 
             return {
                 "id": kb.id,
@@ -271,20 +264,19 @@ class KnowledgeBaseService:
             raise
     
     async def delete_knowledge_base(self, kb_id: str) -> bool:
-        """删除知识库"""
+        """删除知识库（以 MinIO 桶存在为准；向量删除会尝试 _kb_id_candidates 以兼容 Qdrant 中不同 kb_id）"""
         try:
+            self._ensure_kb_in_cache(kb_id)
             if kb_id not in self._kb_storage:
                 return False
-            
             kb = self._kb_storage[kb_id]
             
-            # 清理相关数据
+            # 清理相关数据（MinIO bucket id 与 Qdrant payload kb_id 可能不同，对每个候选都删除向量与画像）
             try:
-                # 1. 删除向量数据库中的向量
-                await self._delete_kb_vectors(kb_id)
-                
-                # 2. 删除知识库画像
-                await self.vector_store.delete_kb_portraits(kb_id)
+                candidates = self._kb_id_candidates(kb_id)
+                for candidate in candidates:
+                    await self._delete_kb_vectors(candidate)
+                    await self.vector_store.delete_kb_portraits(candidate)
                 
                 # 3. 删除MinIO中的文件
                 await self._delete_kb_files(kb_id)
@@ -294,18 +286,13 @@ class KnowledgeBaseService:
                 logger.error(f"清理知识库数据时出错: {str(cleanup_error)}")
                 # 即使清理失败，也继续删除知识库记录
             
-            # 从存储中删除
             del self._kb_storage[kb_id]
-            
             audit_log(
                 f"知识库删除成功: {kb_id}",
                 kb_id=kb_id,
                 kb_name=kb.name
             )
-            
             logger.info(f"知识库删除成功: {kb_id}")
-            self._save_to_disk()
-
             return True
 
         except Exception as e:
@@ -674,11 +661,11 @@ class KnowledgeBaseService:
     async def get_file_text_content(self, kb_id: str, file_id: str) -> Optional[str]:
         """
         获取文本类文件（md/txt）的原始内容，用于预览（避免 iframe 触发下载）。
-        从 MinIO 读取并解码为 UTF-8 文本。
+        从 MinIO 读取并解码为 UTF-8 文本。不依赖 _kb_storage，以桶存在为准。
         """
-        if kb_id not in self._kb_storage:
-            return None
         bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
+        if not self.minio_adapter.bucket_exists(bucket_name):
+            return None
         raw_files = await self.minio_adapter.list_files(bucket=bucket_name, prefix="", max_keys=1000)
         object_path = None
         for f in raw_files:
@@ -887,9 +874,9 @@ class KnowledgeBaseService:
             return []
 
     async def delete_kb_file(self, kb_id: str, file_id: str) -> bool:
-        """删除知识库下的单个文件及其向量"""
+        """删除知识库下的单个文件及其向量（以 MinIO 桶存在为准）"""
         try:
-            if kb_id not in self._kb_storage:
+            if not self._ensure_kb_in_cache(kb_id):
                 return False
             bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
             raw_files = await self.minio_adapter.list_files(bucket=bucket_name, prefix="", max_keys=1000)
@@ -904,25 +891,30 @@ class KnowledgeBaseService:
             if not object_path:
                 return False
             from qdrant_client.http.models import Filter, FieldCondition, MatchValue
-            filt = Filter(must=[
-                FieldCondition(key="kb_id", match=MatchValue(value=kb_id)),
-                FieldCondition(key="file_id", match=MatchValue(value=file_id)),
-            ])
             deleted_chunk_count = 0
-            for coll in ["text_chunks", "image_vectors"]:
-                try:
-                    scroll_result = self.vector_store.client.scroll(
-                        collection_name=coll, scroll_filter=filt, limit=10000
-                    )
-                    point_ids = [p.id for p in (scroll_result[0] or []) if hasattr(p, "id")]
-                    if point_ids:
-                        deleted_chunk_count += len(point_ids)
-                        self.vector_store.client.delete(
-                            collection_name=coll,
-                            points_selector=models.PointIdsList(points=point_ids),
+            seen_point_ids: set = set()
+            for candidate in self._kb_id_candidates(kb_id):
+                filt = Filter(must=[
+                    FieldCondition(key="kb_id", match=MatchValue(value=candidate)),
+                    FieldCondition(key="file_id", match=MatchValue(value=file_id)),
+                ])
+                for coll in ["text_chunks", "image_vectors"]:
+                    try:
+                        scroll_result = self.vector_store.client.scroll(
+                            collection_name=coll, scroll_filter=filt, limit=10000
                         )
-                except Exception as ex:
-                    logger.warning(f"删除向量失败 {coll}: {ex}")
+                        point_ids = [p.id for p in (scroll_result[0] or []) if hasattr(p, "id")]
+                        for pid in point_ids:
+                            if pid not in seen_point_ids:
+                                seen_point_ids.add(pid)
+                                deleted_chunk_count += 1
+                        if point_ids:
+                            self.vector_store.client.delete(
+                                collection_name=coll,
+                                points_selector=models.PointIdsList(points=point_ids),
+                            )
+                    except Exception as ex:
+                        logger.warning(f"删除向量失败 {coll}: {ex}")
             await self.minio_adapter.delete_file(bucket_name, object_path)
 
             # 删除 chunk 计入增量，达到阈值后触发画像重建（与上传逻辑一致）

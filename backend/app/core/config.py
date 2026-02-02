@@ -36,10 +36,10 @@ class Settings(BaseSettings):
     # 数据库配置
     database_url: str = Field(default="sqlite:///./app.db", validation_alias="DATABASE_URL")
     
-    # MinIO 配置
+    # MinIO 配置（本地 MinIO 默认账号为 minioadmin/minioadmin）
     minio_endpoint: str = Field(default="localhost:9000", validation_alias="MINIO_ENDPOINT")
-    minio_access_key: str = Field(default="admin", validation_alias="MINIO_ACCESS_KEY")
-    minio_secret_key: str = Field(default="123456", validation_alias="MINIO_SECRET_KEY")
+    minio_access_key: str = Field(default="minioadmin", validation_alias="MINIO_ACCESS_KEY")
+    minio_secret_key: str = Field(default="minioadmin", validation_alias="MINIO_SECRET_KEY")
     minio_secure: bool = Field(default=False, validation_alias="MINIO_SECURE")
     
     # Qdrant 配置
@@ -125,14 +125,10 @@ class Settings(BaseSettings):
     max_context_length: int = Field(default=4000, validation_alias="MAX_CONTEXT_LENGTH")
     rerank_top_k: int = Field(default=10, validation_alias="RERANK_TOP_K")
     
-    # 知识库配置
+    # 知识库配置（知识库列表与元数据仅从 MinIO 获取，不再使用本地 JSON）
     max_kb_portrait_size: int = Field(default=20, validation_alias="MAX_KB_PORTRAIT_SIZE")
     portrait_update_threshold: int = Field(default=50, validation_alias="PORTRAIT_UPDATE_THRESHOLD")
-    kb_storage_path: str = Field(
-        default="data/knowledge_bases.json",
-        validation_alias="KB_STORAGE_PATH"
-    )
-    
+
     # Celery 配置（可选，如果不需要可以忽略）
     celery_broker_url: Optional[str] = Field(default=None, validation_alias="CELERY_BROKER_URL")
     celery_result_backend: Optional[str] = Field(default=None, validation_alias="CELERY_RESULT_BACKEND")
