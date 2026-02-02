@@ -1,15 +1,39 @@
-import { useEffect, useState, useCallback } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import * as d3 from 'd3'
+import { motion } from 'framer-motion'
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Info, FileText, Image, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { knowledgeApi } from '@/services/api_client'
 
-const BUBBLE_COLORS = [
-  'bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-violet-500',
-  'bg-cyan-500', 'bg-orange-500', 'bg-pink-500', 'bg-teal-500', 'bg-indigo-500',
+/** 莫兰迪色系：浅填充 + 同色系深色边框（[fill, border]） */
+const MORANDI_PALETTE: [string, string][] = [
+  ['#A8B5C4', '#7A8FA3'],
+  ['#9CB5A8', '#6B8F7A'],
+  ['#C4B89C', '#9A8A6B'],
+  ['#C4A8A8', '#9A7A7A'],
+  ['#B8A8C4', '#8A7A9A'],
+  ['#A8C4C4', '#7A9A9A'],
+  ['#C4B098', '#9A7A5C'],
+  ['#C4A8B8', '#9A7A8A'],
+  ['#B0B8C4', '#7A829A'],
+  ['#B8C4A8', '#8A9A7A'],
 ]
+
+/** 从 topic_summary 提取简短关键词（用于悬停展示） */
+function extractKeywords(summary: string, maxWords = 10): string[] {
+  if (!summary?.trim()) return []
+  const cleaned = summary.replace(/[，。、；：！？\s]+/g, ' ').trim()
+  const words = cleaned.split(/\s+/).filter(Boolean)
+  return words.slice(0, maxWords)
+}
 
 export interface PortraitCluster {
   cluster_id: string
@@ -106,6 +130,67 @@ export function PortraitGraph({
   }
 
   const maxSize = clusters.length ? Math.max(...clusters.map((c) => c.cluster_size), 1) : 1
+  const minSize = clusters.length ? Math.min(...clusters.map((c) => c.cluster_size), maxSize) : 1
+
+  /** 气泡半径：面积 ∝ cluster_size，半径 = sqrt(面积)，映射到 [minR, maxR] */
+  const MIN_R = 32
+  const MAX_R = 72
+  const scaleRadius = useCallback(
+    (size: number) => {
+      if (maxSize <= 0) return MIN_R
+      const t = (size - minSize) / (maxSize - minSize || 1)
+      const areaRatio = Math.min(1, Math.max(0, t) * 1.2)
+      const r = MIN_R + Math.sqrt(areaRatio) * (MAX_R - MIN_R)
+      return Math.round(r)
+    },
+    [maxSize, minSize]
+  )
+
+  /** 力导向布局节点位置 [x, y]，在容器尺寸确定后计算 */
+  const [layoutReady, setLayoutReady] = useState(false)
+  const [bubbleNodes, setBubbleNodes] = useState<Array<{ x: number; y: number; r: number; cluster: PortraitCluster; index: number }>>([])
+  const containerRef = useRef<HTMLDivElement>(null)
+  const chartWidth = 640
+  const chartHeight = 420
+
+  useEffect(() => {
+    if (clusters.length === 0) {
+      setBubbleNodes([])
+      setLayoutReady(true)
+      return
+    }
+    const cx = chartWidth / 2
+    const cy = chartHeight / 2
+    const nodes = clusters.map((c, i) => ({
+      id: c.cluster_id,
+      x: cx + (Math.random() - 0.5) * 120,
+      y: cy + (Math.random() - 0.5) * 100,
+      r: scaleRadius(c.cluster_size),
+      cluster: c,
+      index: i,
+    }))
+    const sim = d3
+      .forceSimulation(nodes as unknown as d3.SimulationNodeDatum[])
+      .force('center', d3.forceCenter(cx, cy))
+      .force(
+        'collision',
+        d3.forceCollide<d3.SimulationNodeDatum & { r: number }>().radius((d) => (d as { r: number }).r + 8)
+      )
+      .force('x', d3.forceX(cx).strength(0.05))
+      .force('y', d3.forceY(cy).strength(0.05))
+      .stop()
+    for (let i = 0; i < 120; i++) sim.tick()
+    setBubbleNodes(
+      nodes.map((n) => ({
+        x: (n as { x: number }).x,
+        y: (n as { y: number }).y,
+        r: n.r,
+        cluster: n.cluster,
+        index: n.index,
+      }))
+    )
+    setLayoutReady(true)
+  }, [clusters, scaleRadius])
 
   const total = textCount + imageCount
   const textPct = total ? (textCount / total) * 100 : 50
@@ -161,38 +246,102 @@ export function PortraitGraph({
               )}
             </div>
           ) : (
-            <div className="min-h-[320px] rounded-lg bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 p-6 flex flex-wrap items-center justify-center gap-4 content-center">
-              {clusters.map((c, i) => {
-                const sizePct = Math.max(15, Math.min(35, (c.cluster_size / maxSize) * 30 + 15))
-                const isSelected = c.cluster_id === selectedId
-                return (
-                  <button
-                    key={c.cluster_id}
-                    type="button"
-                    onClick={() => {
-                      const next = isSelected ? null : c.cluster_id
-                      setSelectedId(next)
-                      onClusterSelect?.(next ?? null)
-                    }}
-                    className={cn(
-                      'rounded-full flex items-center justify-center text-white font-medium transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2',
-                      BUBBLE_COLORS[i % BUBBLE_COLORS.length],
-                      isSelected && 'ring-2 ring-offset-2 ring-indigo-500 scale-105'
-                    )}
-                    style={{
-                      width: `${sizePct}%`,
-                      minWidth: 80,
-                      maxWidth: 180,
-                      aspectRatio: '1',
-                      padding: '0.5rem',
-                    }}
-                  >
-                    <span className="text-xs sm:text-sm leading-tight line-clamp-3 text-center px-1">
-                      {c.topic_summary || `主题 ${i + 1}`}
-                    </span>
-                  </button>
-                )
-              })}
+            <div
+              ref={containerRef}
+              className="relative min-h-[420px] w-full overflow-hidden rounded-xl border border-slate-200/80 dark:border-slate-700/80"
+              style={{
+                background:
+                  'linear-gradient(to right, rgba(148,163,184,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.06) 1px, transparent 1px)',
+                backgroundSize: '20px 20px',
+                backgroundColor: 'hsl(var(--muted) / 0.35)',
+              }}
+            >
+              <svg
+                width="100%"
+                height={chartHeight}
+                viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                className="block"
+                preserveAspectRatio="xMidYMid meet"
+              >
+                <defs>
+                  {MORANDI_PALETTE.map(([fill], i) => (
+                    <radialGradient key={i} id={`bubble-grad-${i}`} cx="35%" cy="35%" r="65%">
+                      <stop offset="0%" stopColor={fill} stopOpacity={0.95} />
+                      <stop offset="100%" stopColor={fill} stopOpacity={0.75} />
+                    </radialGradient>
+                  ))}
+                </defs>
+                {layoutReady &&
+                  bubbleNodes.map((node) => {
+                    const border = MORANDI_PALETTE[node.index % MORANDI_PALETTE.length][1]
+                    const isSelected = node.cluster.cluster_id === selectedId
+                    const keywordTip =
+                      extractKeywords(node.cluster.topic_summary).join(' · ') ||
+                      node.cluster.topic_summary?.slice(0, 80) ||
+                      ''
+                    return (
+                      <g
+                        key={node.cluster.cluster_id}
+                        transform={`translate(${node.x},${node.y})`}
+                        style={{ cursor: 'pointer' }}
+                        tabIndex={-1}
+                        role="button"
+                        aria-pressed={isSelected}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          const next = isSelected ? null : node.cluster.cluster_id
+                          setSelectedId(next)
+                          onClusterSelect?.(next ?? null)
+                          requestAnimationFrame(() => (document.activeElement as HTMLElement)?.blur())
+                        }}
+                      >
+                        <title>关键词：{keywordTip}</title>
+                        {/* 选中态：同色系圆环，替代浏览器默认的矩形焦点框 */}
+                        {isSelected && (
+                          <circle
+                            r={node.r + 5}
+                            fill="none"
+                            stroke={border}
+                            strokeWidth={2.5}
+                            strokeOpacity={0.85}
+                          />
+                        )}
+                        <motion.circle
+                          r={node.r}
+                          fill={`url(#bubble-grad-${node.index % MORANDI_PALETTE.length})`}
+                          stroke={border}
+                          strokeWidth={1.5}
+                          initial={{ scale: 0, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                          whileHover={{ scale: 1.08 }}
+                          whileTap={{ scale: 1.02 }}
+                          style={{
+                            filter: isSelected
+                              ? `drop-shadow(0 0 12px ${border}88)`
+                              : 'drop-shadow(0 2px 8px rgba(0,0,0,0.08))',
+                          }}
+                        />
+                        <foreignObject
+                          x={-node.r + 6}
+                          y={-node.r + 6}
+                          width={Math.max(0, node.r * 2 - 12)}
+                          height={Math.max(0, node.r * 2 - 12)}
+                          className="pointer-events-none"
+                        >
+                          <div className="flex h-full w-full items-center justify-center text-center">
+                            <span
+                              className="line-clamp-3 text-xs font-medium leading-tight text-slate-700 dark:text-slate-200"
+                              style={{ fontSize: Math.max(10, Math.min(12, node.r / 5)) }}
+                            >
+                              {node.cluster.topic_summary || `主题 ${node.index + 1}`}
+                            </span>
+                          </div>
+                        </foreignObject>
+                      </g>
+                    )
+                  })}
+              </svg>
             </div>
           )}
           {clusters.length > 0 && (
