@@ -5,6 +5,8 @@ MinIO存储适配器
 
 from typing import Dict, List, Any, Optional, BinaryIO
 import io
+import json
+import re
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -17,6 +19,24 @@ from app.core.config import settings
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+# S3/MinIO TagValue 仅接受 ASCII 字母数字、空格及 _ . : / = + - @
+_TAG_VALUE_SAFE_RE = re.compile(r"[^a-zA-Z0-9\s_.:/=+\-@]")
+
+
+def _sanitize_tag_value_for_minio(v: Optional[str]) -> str:
+    """确保标签值合法：非法字符替换为空格，空值用占位。"""
+    if v is None:
+        return "-"
+    s = str(v).strip()
+    s = _TAG_VALUE_SAFE_RE.sub(" ", s)
+    s = " ".join(s.split())[:256]
+    return s if s else "-"
+
+
+# 知识库元数据对象名（桶内 JSON，不受 S3 标签值限制，可存任意 UTF-8）
+KB_META_OBJECT = ".kb_meta.json"
+
 
 def _sanitize_bucket_name(kb_id: str) -> str:
     """将 kb_id 转为合法的 S3 存储桶名（小写、数字、连字符，3-63 字符）"""
@@ -214,11 +234,44 @@ class MinIOAdapter:
         try:
             t = MinioTags.new_bucket_tags()
             for k, v in (tags or {}).items():
-                if v is not None:
-                    t[k] = str(v)[:256]  # MinIO 限制单值长度
+                safe = _sanitize_tag_value_for_minio(v)
+                t[k] = safe
             self.client.set_bucket_tags(bucket_name, t)
         except S3Error as e:
             logger.warning(f"设置存储桶标签失败 {bucket_name}: {e}")
+            raise
+
+    def get_kb_metadata(self, bucket_name: str) -> Optional[Dict[str, Any]]:
+        """读取桶内 .kb_meta.json，返回 name/description/created_at/updated_at/user_id。不存在或解析失败返回 None。"""
+        try:
+            response = self.client.get_object(bucket_name, KB_META_OBJECT)
+            content = response.read()
+            response.close()
+            response.release_conn()
+            data = json.loads(content.decode("utf-8"))
+            return data if isinstance(data, dict) else None
+        except S3Error as e:
+            if "NoSuchKey" in str(e) or "404" in str(e):
+                return None
+            logger.warning(f"读取知识库元数据失败 {bucket_name}: {e}")
+            return None
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            logger.warning(f"解析知识库元数据失败 {bucket_name}: {e}")
+            return None
+
+    def put_kb_metadata(self, bucket_name: str, data: Dict[str, Any]) -> None:
+        """将 name/description/created_at/updated_at 等写入桶内 .kb_meta.json（任意 UTF-8，不受标签值限制）。"""
+        try:
+            body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+            self.client.put_object(
+                bucket_name=bucket_name,
+                object_name=KB_META_OBJECT,
+                data=io.BytesIO(body),
+                length=len(body),
+                content_type="application/json; charset=utf-8",
+            )
+        except S3Error as e:
+            logger.warning(f"写入知识库元数据失败 {bucket_name}: {e}")
             raise
 
     async def remove_bucket(self, bucket: str) -> bool:

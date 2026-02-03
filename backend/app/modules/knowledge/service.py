@@ -8,6 +8,7 @@
 from typing import Dict, List, Any, Optional
 import asyncio
 import random
+import re
 import uuid
 from datetime import datetime
 from dataclasses import dataclass
@@ -64,13 +65,44 @@ def _tags_to_kb(bucket_name: str, tags: Dict[str, str]) -> KnowledgeBase:
     )
 
 
+def _kb_from_meta(bucket_name: str, meta: Dict[str, Any]) -> KnowledgeBase:
+    """从桶内 .kb_meta.json 内容构建 KnowledgeBase（支持任意 UTF-8 名称/描述）。"""
+    kb_id = _kb_id_from_bucket_name(bucket_name)
+    if not kb_id:
+        raise ValueError(f"invalid kb bucket name: {bucket_name}")
+    now = datetime.utcnow().isoformat()
+    return KnowledgeBase(
+        id=kb_id,
+        name=meta.get("name") or kb_id,
+        description=meta.get("description") or "",
+        created_at=meta.get("created_at") or now,
+        updated_at=meta.get("updated_at") or now,
+        user_id=meta.get("user_id") or None,
+        metadata={},
+    )
+
+
+# S3/MinIO TagValue：仅允许 ASCII 字母数字、空格及 _ . : / = + - @；空字符串也可能被拒
+_TAG_VALUE_ALLOWED_RE = re.compile(r"[^a-zA-Z0-9\s_.:/=+\-@]")
+
+
+def _sanitize_tag_value(v: Optional[str]) -> str:
+    """将字符串消毒为 S3/MinIO 可接受的标签值（仅保留允许字符，空则返回占位）。"""
+    if v is None:
+        return "-"
+    s = str(v).strip()
+    s = _TAG_VALUE_ALLOWED_RE.sub(" ", s)
+    s = " ".join(s.split())[:256]
+    return s if s else "-"  # 空字符串会导致 MinIO TagValue invalid，用占位
+
+
 def _kb_to_tags(kb: KnowledgeBase) -> Dict[str, str]:
     return {
-        _TAG_NAME: kb.name,
-        _TAG_DESCRIPTION: kb.description,
-        _TAG_CREATED_AT: kb.created_at,
-        _TAG_UPDATED_AT: kb.updated_at,
-        **({_TAG_USER_ID: kb.user_id} if kb.user_id else {}),
+        _TAG_NAME: _sanitize_tag_value(kb.name),
+        _TAG_DESCRIPTION: _sanitize_tag_value(kb.description),
+        _TAG_CREATED_AT: _sanitize_tag_value(kb.created_at),
+        _TAG_UPDATED_AT: _sanitize_tag_value(kb.updated_at),
+        **({_TAG_USER_ID: _sanitize_tag_value(kb.user_id)} if kb.user_id else {}),
     }
 
 
@@ -78,7 +110,7 @@ class KnowledgeBaseService:
     """知识库管理服务。数据源仅为 MinIO（列桶 + 桶标签），不再使用本地 JSON 文件。"""
 
     def _load_from_minio(self) -> None:
-        """从 MinIO 列出所有 kb- 存储桶，用桶标签填充 _kb_storage。"""
+        """从 MinIO 列出所有 kb- 存储桶；优先用桶内 .kb_meta.json（支持任意 UTF-8），无则用桶标签。"""
         self._kb_storage = {}
         try:
             bucket_names = self.minio_adapter.list_bucket_names()
@@ -86,22 +118,30 @@ class KnowledgeBaseService:
                 kb_id = _kb_id_from_bucket_name(bucket_name)
                 if not kb_id:
                     continue
-                tags = self.minio_adapter.get_bucket_tags(bucket_name)
-                self._kb_storage[kb_id] = _tags_to_kb(bucket_name, tags)
+                meta = self.minio_adapter.get_kb_metadata(bucket_name)
+                if meta:
+                    self._kb_storage[kb_id] = _kb_from_meta(bucket_name, meta)
+                else:
+                    tags = self.minio_adapter.get_bucket_tags(bucket_name)
+                    self._kb_storage[kb_id] = _tags_to_kb(bucket_name, tags)
             logger.info(f"已从 MinIO 加载 {len(self._kb_storage)} 个知识库")
         except Exception as e:
             logger.warning(f"从 MinIO 加载知识库失败，将使用空列表: {e}")
             self._kb_storage = {}
 
     def _ensure_kb_in_cache(self, kb_id: str) -> bool:
-        """若 kb_id 不在缓存中且对应 MinIO 桶存在，则从桶标签加载并加入缓存。返回是否在缓存中。"""
+        """若 kb_id 不在缓存中且对应 MinIO 桶存在，则从 .kb_meta.json 或桶标签加载并加入缓存。返回是否在缓存中。"""
         if kb_id in self._kb_storage:
             return True
         bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
         if not self.minio_adapter.bucket_exists(bucket_name):
             return False
-        tags = self.minio_adapter.get_bucket_tags(bucket_name)
-        self._kb_storage[kb_id] = _tags_to_kb(bucket_name, tags)
+        meta = self.minio_adapter.get_kb_metadata(bucket_name)
+        if meta:
+            self._kb_storage[kb_id] = _kb_from_meta(bucket_name, meta)
+        else:
+            tags = self.minio_adapter.get_bucket_tags(bucket_name)
+            self._kb_storage[kb_id] = _tags_to_kb(bucket_name, tags)
         return True
 
     def __init__(self):
@@ -132,10 +172,19 @@ class KnowledgeBaseService:
             )
             self._kb_storage[kb_id] = kb
             await self._create_kb_structure(kb_id)
-            self.minio_adapter.set_bucket_tags(
-                self.minio_adapter.bucket_name_for_kb(kb_id),
-                _kb_to_tags(kb),
-            )
+            bucket_name = self.minio_adapter.bucket_name_for_kb(kb_id)
+            # 优先用 .kb_meta.json 持久化（任意 UTF-8），重启后可正确加载
+            self.minio_adapter.put_kb_metadata(bucket_name, {
+                "name": kb.name,
+                "description": kb.description,
+                "created_at": kb.created_at,
+                "updated_at": kb.updated_at,
+                **({"user_id": kb.user_id} if kb.user_id else {}),
+            })
+            try:
+                self.minio_adapter.set_bucket_tags(bucket_name, _kb_to_tags(kb))
+            except Exception as tag_err:
+                logger.debug(f"桶标签写入可选失败（已用 .kb_meta.json 持久化）: {tag_err}")
             audit_log(
                 f"知识库创建成功: {name}",
                 kb_id=kb_id,
@@ -190,9 +239,11 @@ class KnowledgeBaseService:
         limit: int = 100,
         offset: int = 0
     ) -> List[Dict[str, Any]]:
-        """列出知识库（每次从 MinIO 刷新桶列表与桶标签）"""
+        """列出知识库（使用内存缓存，避免每次从 MinIO 重载覆盖本进程内已更新的标题/描述）"""
         try:
-            self._load_from_minio()
+            # 仅首次或未加载时从 MinIO 拉取；后续列表用内存，保证本进程内编辑后刷新不丢
+            if not self._kb_storage:
+                self._load_from_minio()
             kbs = []
             for kb_id, kb in self._kb_storage.items():
                 # 如果指定了用户ID，过滤用户的知识库
@@ -244,7 +295,18 @@ class KnowledgeBaseService:
             
             kb.updated_at = datetime.utcnow().isoformat()
             bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
-            self.minio_adapter.set_bucket_tags(bucket_name, _kb_to_tags(kb))
+            # 用 .kb_meta.json 持久化名称/描述（任意 UTF-8），重启后可正确加载
+            self.minio_adapter.put_kb_metadata(bucket_name, {
+                "name": kb.name,
+                "description": kb.description,
+                "created_at": kb.created_at,
+                "updated_at": kb.updated_at,
+                **({"user_id": kb.user_id} if kb.user_id else {}),
+            })
+            try:
+                self.minio_adapter.set_bucket_tags(bucket_name, _kb_to_tags(kb))
+            except Exception as tag_err:
+                logger.debug(f"桶标签写入可选失败（已用 .kb_meta.json 持久化）: {tag_err}")
             audit_log(
                 f"知识库更新成功: {kb_id}",
                 kb_id=kb_id,

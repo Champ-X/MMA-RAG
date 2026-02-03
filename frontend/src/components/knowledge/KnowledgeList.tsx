@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, X } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import { knowledgeApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
-import { StatusBadge, FileThumb, FileHero, CreateKbModal, StatItem } from './KnowledgeListHelpers'
+import { StatusBadge, FileThumb, FileHero, CreateKbModal, EditKbModal, StatItem } from './KnowledgeListHelpers'
 
 // 文件预览模态框（支持图片描述、文档分块、MD 预览）
 function FilePreviewModal({
@@ -218,12 +218,23 @@ const KnowledgeList: React.FC = () => {
     loading,
     fetchKnowledgeBases,
     createKnowledgeBase,
+    updateKnowledgeBase,
     deleteKnowledgeBase,
   } = useKnowledgeStore()
+
+  const [menuOpenKbId, setMenuOpenKbId] = useState<string | null>(null)
+  const [editKb, setEditKb] = useState<{ id: string; name: string; description: string } | null>(null)
 
   useEffect(() => {
     fetchKnowledgeBases()
   }, [fetchKnowledgeBases])
+
+  useEffect(() => {
+    if (menuOpenKbId == null) return
+    const close = () => setMenuOpenKbId(null)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [menuOpenKbId])
 
   const fetchFiles = useCallback(async () => {
     if (!activeKbId) return
@@ -355,6 +366,7 @@ const KnowledgeList: React.FC = () => {
   }
 
   const handleDeleteKb = async (kbId: string) => {
+    setMenuOpenKbId(null)
     const kb = knowledgeBases.find((k) => k.id === kbId)
     const ok = window.confirm(`确定删除知识库「${kb?.name || kbId}」？此操作不可撤销。`)
     if (!ok) return
@@ -366,6 +378,15 @@ const KnowledgeList: React.FC = () => {
       }
     } catch (error) {
       console.error('删除知识库失败:', error)
+    }
+  }
+
+  const handleSaveEdit = async (id: string, name: string, description: string) => {
+    try {
+      await updateKnowledgeBase(id, { name, description })
+      setEditKb(null)
+    } catch (error) {
+      console.error('更新知识库失败:', error)
     }
   }
 
@@ -441,35 +462,69 @@ const KnowledgeList: React.FC = () => {
                         />
                       </div>
                       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent rounded-xl" />
-                      <div className="relative z-10 flex flex-col justify-end p-5 min-h-[180px]">
-                        <div className="flex justify-end absolute top-3 right-3">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDeleteKb(kb.id)
-                            }}
-                            className="text-white hover:text-white p-1.5 rounded-md bg-black/40 backdrop-blur-sm shadow-lg"
-                            title="删除知识库"
-                          >
-                            <MoreVertical size={16} />
-                          </button>
-                        </div>
-                        <h3 className="font-bold text-white mb-0.5 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_8px_rgba(0,0,0,0.7)]">
-                          {kb.name}
-                        </h3>
-                        <p className="text-white text-sm h-10 overflow-hidden text-ellipsis leading-relaxed line-clamp-2 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_6px_rgba(0,0,0,0.6)]">
-                          {kb.description || '暂无描述'}
-                        </p>
-                        <div className="mt-3 pt-3 border-t border-white/30 flex items-center justify-between text-xs text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
-                          <div className="flex items-center gap-2 min-h-[1rem]">
-                            <span className="inline-flex items-center gap-1.5">
-                              <FileText size={12} className="shrink-0" />
-                              {kb.stats?.documents ?? 0} 个文件
-                            </span>
-                            <span className="opacity-80">·</span>
-                            <span>{kb.stats?.images ?? 0} 张图片</span>
+                      <div className="relative z-10 flex flex-col min-h-[180px] p-5">
+                        {/* 设置按钮放在右下角，不遮挡封面图节点与左侧文件数 */}
+                        <div className="absolute bottom-3 right-3 pointer-events-none">
+                          <div className="pointer-events-auto relative">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setMenuOpenKbId((id) => (id === kb.id ? null : kb.id))
+                              }}
+                              className="flex h-8 w-8 items-center justify-center rounded-full border border-white/30 bg-white/15 text-white/90 shadow-md backdrop-blur-sm transition-all hover:bg-white/25 hover:text-white hover:border-white/40 active:scale-95"
+                              title="更多操作"
+                            >
+                              <MoreVertical size={16} strokeWidth={2} />
+                            </button>
+                            {menuOpenKbId === kb.id && (
+                              <div
+                                className="absolute right-0 bottom-full mb-1.5 py-1 min-w-[120px] rounded-xl bg-white/95 dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 shadow-xl backdrop-blur-sm z-50"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditKb({ id: kb.id, name: kb.name, description: kb.description ?? '' })
+                                    setMenuOpenKbId(null)
+                                  }}
+                                  className="w-full px-3 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-t-xl first:pt-2.5"
+                                >
+                                  <Pencil size={14} /> 编辑
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteKb(kb.id)}
+                                  className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-b-xl last:pb-2.5"
+                                >
+                                  <Trash2 size={14} /> 删除
+                                </button>
+                              </div>
+                            )}
                           </div>
-                          <span>{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
+                        </div>
+                        {/* 顶部弹性空间，把标题/描述整体压到下方 */}
+                        <div className="min-h-0 flex-1" />
+                        <div className="flex-shrink-0 pt-6">
+                          <h3 className="font-bold text-white mb-0.5 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_8px_rgba(0,0,0,0.7)]">
+                            {kb.name}
+                          </h3>
+                          <p className="text-white text-sm h-10 overflow-hidden text-ellipsis leading-relaxed line-clamp-2 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_6px_rgba(0,0,0,0.6)]">
+                            {kb.description || '暂无描述'}
+                          </p>
+                          <div className="mt-3 pt-3 pr-11 border-t border-white/30 flex items-center justify-between text-xs text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
+                            <div className="flex items-center gap-2 min-h-[1rem]">
+                              <span className="inline-flex items-center gap-1.5">
+                                <FileText size={12} className="shrink-0" />
+                                {kb.stats?.documents ?? 0} 个文件
+                              </span>
+                              <span className="opacity-80">·</span>
+                              <span className="inline-flex items-center gap-1.5">
+                                <ImageIcon size={12} className="shrink-0" />
+                                {kb.stats?.images ?? 0} 张图片
+                              </span>
+                            </div>
+                            <span>{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
+                          </div>
                         </div>
                       </div>
                     </>
@@ -479,16 +534,42 @@ const KnowledgeList: React.FC = () => {
                         <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 rounded-lg group-hover:bg-gradient-to-tr group-hover:from-indigo-600 group-hover:to-fuchsia-600 group-hover:text-white transition-colors">
                           <Database size={24} />
                         </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteKb(kb.id)
-                          }}
-                          className="text-slate-400 hover:text-red-500 p-1"
-                          title="删除知识库"
-                        >
-                          <MoreVertical size={16} />
-                        </button>
+                        <div className="relative">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setMenuOpenKbId((id) => (id === kb.id ? null : kb.id))
+                            }}
+                            className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 shadow-sm transition-all hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-500 active:scale-95"
+                            title="更多操作"
+                          >
+                            <MoreVertical size={16} strokeWidth={2} />
+                          </button>
+                          {menuOpenKbId === kb.id && (
+                            <div
+                              className="absolute right-0 top-full mt-1.5 py-1 min-w-[120px] rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl z-50"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditKb({ id: kb.id, name: kb.name, description: kb.description ?? '' })
+                                  setMenuOpenKbId(null)
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-t-xl first:pt-2.5"
+                              >
+                                <Pencil size={14} /> 编辑
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteKb(kb.id)}
+                                className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-b-xl last:pb-2.5"
+                              >
+                                <Trash2 size={14} /> 删除
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1">{kb.name}</h3>
                       <p className="text-slate-500 dark:text-slate-400 text-sm h-10 overflow-hidden text-ellipsis leading-relaxed line-clamp-2">
@@ -501,7 +582,10 @@ const KnowledgeList: React.FC = () => {
                             {kb.stats?.documents ?? 0} 个文件
                           </span>
                           <span className="opacity-70">·</span>
-                          <span>{kb.stats?.images ?? 0} 张图片</span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <ImageIcon size={12} className="shrink-0" />
+                            {kb.stats?.images ?? 0} 张图片
+                          </span>
                         </div>
                         <span>{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
                       </div>
@@ -518,6 +602,15 @@ const KnowledgeList: React.FC = () => {
           <CreateKbModal
             onClose={() => setShowCreateModal(false)}
             onCreate={handleCreateKb}
+          />
+        )}
+
+        {/* Edit Modal */}
+        {editKb && (
+          <EditKbModal
+            kb={editKb}
+            onClose={() => setEditKb(null)}
+            onSave={handleSaveEdit}
           />
         )}
 
