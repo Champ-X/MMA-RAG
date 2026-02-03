@@ -57,6 +57,112 @@ class IngestionService:
         # 处理状态存储（生产环境应使用Redis或数据库）
         self._processing_status: Dict[str, Dict[str, Any]] = {}
         
+    async def _get_actual_kb_id_for_upload(self, kb_id: str) -> str:
+        """
+        获取上传文件时应使用的实际 kb_id（从 MinIO 桶反查 Qdrant 中实际存在的 kb_id）。
+        如果桶内文件对应多个 kb_id，选择数据量最大的那个（解决历史数据迁移/ID变更问题）。
+        
+        Args:
+            kb_id: 前端传入的 kb_id
+            
+        Returns:
+            实际应使用的 kb_id（反查得到的数据量最大的或前端传入的）
+        """
+        try:
+            bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
+            if not self.minio_adapter.bucket_exists(bucket_name):
+                # 桶不存在，说明是新知识库，直接用前端传入的 kb_id
+                return kb_id
+            
+            # 从桶内收集所有 kb_id 及其数据量
+            try:
+                from qdrant_client.http.models import Filter, FieldCondition, MatchValue
+                from collections import defaultdict
+                
+                raw = list(
+                    self.minio_adapter.client.list_objects(
+                        bucket_name, prefix=None, recursive=True
+                    )
+                )
+                
+                # 统计每个 kb_id 的数据量（file_id 采样）
+                kb_id_counts = defaultdict(lambda: {"text": 0, "image": 0})
+                sampled_file_ids = set()
+                
+                for obj in raw[:50]:  # 采样前 50 个文件
+                    op = obj.object_name
+                    parts = op.split("/")
+                    if len(parts) < 2:
+                        continue
+                    rest = parts[1]
+                    under = rest.find("_")
+                    fid = rest[:under] if under >= 0 else rest
+                    if not fid or fid in sampled_file_ids:
+                        continue
+                    sampled_file_ids.add(fid)
+                    
+                    filt = Filter(must=[FieldCondition(key="file_id", match=MatchValue(value=fid))])
+                    
+                    # text_chunks
+                    try:
+                        res = self.vector_store.client.scroll(
+                            collection_name="text_chunks",
+                            scroll_filter=filt,
+                            limit=1,
+                            with_payload=True,
+                        )
+                        points = res[0] if res else []
+                        if points:
+                            p = getattr(points[0], "payload", None) or {}
+                            discovered_kb_id = p.get("kb_id")
+                            if discovered_kb_id:
+                                kb_id_counts[discovered_kb_id]["text"] += 1
+                    except:
+                        pass
+                    
+                    # image_vectors
+                    try:
+                        res = self.vector_store.client.scroll(
+                            collection_name="image_vectors",
+                            scroll_filter=filt,
+                            limit=1,
+                            with_payload=True,
+                        )
+                        points = res[0] if res else []
+                        if points:
+                            p = getattr(points[0], "payload", None) or {}
+                            discovered_kb_id = p.get("kb_id")
+                            if discovered_kb_id:
+                                kb_id_counts[discovered_kb_id]["image"] += 1
+                    except:
+                        pass
+                
+                # 选择数据量最大的 kb_id（优先文本数量）
+                if kb_id_counts:
+                    best_kb_id = max(
+                        kb_id_counts.items(),
+                        key=lambda x: (x[1]["text"], x[1]["image"])
+                    )[0]
+                    
+                    if best_kb_id != kb_id:
+                        total = kb_id_counts[best_kb_id]["text"] + kb_id_counts[best_kb_id]["image"]
+                        logger.info(
+                            f"桶 {bucket_name} 发现数据量最大的 kb_id: {best_kb_id} "
+                            f"(text:{kb_id_counts[best_kb_id]['text']}, "
+                            f"image:{kb_id_counts[best_kb_id]['image']})"
+                        )
+                    return best_kb_id
+                    
+            except Exception as e:
+                logger.debug(f"从桶反查 kb_id 失败 {bucket_name}: {e}")
+            
+            # 反查失败，使用前端传入的 kb_id
+            return kb_id
+            
+        except Exception as e:
+            logger.debug(f"获取实际 kb_id 失败: {e}")
+            return kb_id
+    
     async def process_file_upload(
         self,
         file_content: bytes,
@@ -79,6 +185,12 @@ class IngestionService:
         processing_id = str(uuid.uuid4())
         logger.info(f"开始处理文件上传: {file_path}, 处理ID: {processing_id}")
         
+        # 【关键修复】从 MinIO 桶内反查 Qdrant 中的实际 kb_id，确保新旧数据用同一 kb_id
+        # 如果反查失败或桶不存在，则使用前端传入的 kb_id
+        actual_kb_id = await self._get_actual_kb_id_for_upload(kb_id)
+        if actual_kb_id != kb_id:
+            logger.info(f"上传文件使用反查到的 kb_id: {kb_id} -> {actual_kb_id}")
+        
         # 初始化处理状态
         self._processing_status[processing_id] = {
             "processing_id": processing_id,
@@ -87,7 +199,7 @@ class IngestionService:
             "stage": "initializing",
             "message": "开始处理文件上传",
             "file_path": file_path,
-            "kb_id": kb_id,
+            "kb_id": actual_kb_id,
             "user_id": user_id,
             "started_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat(),
@@ -142,12 +254,12 @@ class IngestionService:
                 "message": f"正在处理{file_type}文件..."
             })
             
-            # 3. 根据文件类型处理
+            # 3. 根据文件类型处理（使用反查得到的实际 kb_id）
             if file_type in ["pdf", "docx", "txt", "md"]:
                 result = await self._process_document(
                     parse_result=parse_result,
                     storage_result=storage_result,
-                    kb_id=kb_id,
+                    kb_id=actual_kb_id,
                     processing_id=processing_id,
                     file_path=file_path
                 )
@@ -155,7 +267,7 @@ class IngestionService:
                 result = await self._process_image(
                     parse_result=parse_result,
                     storage_result=storage_result,
-                    kb_id=kb_id,
+                    kb_id=actual_kb_id,
                     processing_id=processing_id
                 )
             else:
@@ -166,9 +278,9 @@ class IngestionService:
                 from app.core.portrait_trigger import increment_and_maybe_trigger
                 delta = result.get("vectors_stored", 0) or 0
                 if isinstance(delta, (int, float)) and int(delta) > 0:
-                    increment_and_maybe_trigger(kb_id, int(delta))
+                    increment_and_maybe_trigger(actual_kb_id, int(delta))
             except Exception as e:
-                logger.warning(f"画像增量触发失败 kb_id={kb_id}: {e}")
+                logger.warning(f"画像增量触发失败 kb_id={actual_kb_id}: {e}")
             
             # 更新状态：处理完成
             self._update_processing_status(processing_id, {

@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { Send, Zap, Paperclip, SlidersHorizontal, X } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ThinkingCapsule } from './ThinkingCapsule'
 import { MessageBubble } from './MessageBubble'
 import { CitationPopover } from './CitationPopover'
 import { ConversationTabs } from './ConversationTabs'
@@ -283,33 +282,36 @@ export function ChatInterface() {
               </Card>
             )}
 
-            {messages.map((m, i) => (
-              <MessageBubble
-                key={m.id ?? i}
-                message={{
-                  id: m.id,
-                  type: m.role === 'user' ? 'user' : 'assistant',
-                  content: m.content,
-                  timestamp: new Date(m.timestamp).toISOString(),
-                  citations: m.citations,
-                  metadata: (m as any).metadata,
-                  thinking: (m as any).thinking,
-                }}
-                isStreaming={
-                  m.role === 'assistant' &&
-                  i === messages.length - 1 &&
-                  isStreaming
-                }
-                citationMap={citationMap}
-                onCiteClick={handleCitationClick}
-              />
-            ))}
-
-            {(progress.isThinking || isStreaming) && (
-              <ThinkingCapsule
-                thoughtData={thinking.thoughtData}
-              />
-            )}
+            {messages.map((m, i) => {
+              const isLastAndStreaming =
+                m.role === 'assistant' && i === messages.length - 1 && isStreaming
+              return (
+                <MessageBubble
+                  key={m.id ?? i}
+                  message={{
+                    id: m.id,
+                    type: m.role === 'user' ? 'user' : 'assistant',
+                    content: m.content,
+                    timestamp: new Date(m.timestamp).toISOString(),
+                    citations: m.citations,
+                    metadata: (m as any).metadata,
+                    thinking: (m as any).thinking,
+                  }}
+                  isStreaming={isLastAndStreaming}
+                  liveThinking={
+                    isLastAndStreaming
+                      ? {
+                          thoughtData: thinking.thoughtData,
+                          stages: thinking.stages,
+                          currentStage: thinking.currentStage,
+                        }
+                      : undefined
+                  }
+                  citationMap={citationMap}
+                  onCiteClick={handleCitationClick}
+                />
+              )
+            })}
 
             {error && (
               <Card className="border-destructive/50 bg-destructive/5">

@@ -3,7 +3,7 @@
 协调查询预处理、检索和重排的完整流程
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, AsyncGenerator, Tuple
 from datetime import datetime
 from dataclasses import dataclass
 
@@ -169,7 +169,131 @@ class RetrievalService:
         except Exception as e:
             logger.error(f"检索流程失败: {str(e)}")
             raise
-    
+
+    async def search_stream(
+        self,
+        query: str,
+        kb_context: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        session_context: Optional[List[Dict[str, str]]] = None,
+    ) -> AsyncGenerator[Tuple[str, Any], None]:
+        """
+        流式检索：每完成一个阶段就 yield (stage, payload)，最后 yield ("_result", retrieval_result)。
+        用于 SSE 流式聊天时按阶段推送思考过程，避免等全部检索完才一次性展示。
+        """
+        start_time = datetime.utcnow()
+        try:
+            logger.info(f"开始检索流程(流式): {query}")
+
+            # 1. 查询预处理 - One-Pass 意图识别
+            preprocessing_result = await self._preprocess_query(
+                query=query,
+                session_context=session_context or []
+            )
+            intent_payload = {
+                "message": "意图解析完成",
+                "intent_type": preprocessing_result.get("intent_type", "factual"),
+                "original_query": preprocessing_result.get("original_query", query),
+                "refined_query": preprocessing_result.get("refined_query", query),
+                "needs_visual": preprocessing_result.get("needs_visual", False),
+                "is_complex": preprocessing_result.get("is_complex", False),
+                "sub_queries": preprocessing_result.get("sub_queries", []) or [],
+            }
+            yield ("intent", intent_payload)
+
+            # 2. 知识库路由
+            routing_result = await self._route_to_knowledge_bases(
+                preprocessing_result["refined_query"],
+                kb_context=kb_context
+            )
+            target_kb_ids = getattr(routing_result, "target_kb_ids", []) or []
+            confidence_scores = getattr(routing_result, "confidence_scores", {}) or {}
+            target_kbs = [
+                {"id": kb_id, "name": kb_id, "score": float(confidence_scores.get(kb_id, 0))}
+                for kb_id in target_kb_ids
+            ]
+            routing_payload = {
+                "message": "智能路由完成",
+                "target_kbs": target_kbs,
+                "fallback_search": len(target_kb_ids) == 0,
+            }
+            yield ("routing", routing_payload)
+
+            # 3. 构建检索上下文
+            retrieval_context = RetrievalContext(
+                original_query=query,
+                refined_query=preprocessing_result["refined_query"],
+                intent_type=preprocessing_result["intent_type"],
+                is_complex=preprocessing_result["is_complex"],
+                needs_visual=preprocessing_result["needs_visual"],
+                search_strategies=preprocessing_result["search_strategies"],
+                target_kb_ids=target_kb_ids,
+                confidence_scores=confidence_scores,
+            )
+
+            # 4. 混合检索
+            search_results = await self._perform_hybrid_search(retrieval_context)
+
+            # 5. 两阶段重排
+            reranked_results = await self._apply_reranking(
+                retrieval_context, search_results
+            )
+            results_list = reranked_results.get("results", [])
+
+            # 6. 总处理时间与调试信息
+            processing_time = (datetime.utcnow() - start_time).total_seconds()
+            retrieval_context.processing_time = processing_time
+            debug_info = {
+                "preprocessing_time": preprocessing_result.get("processing_time", 0),
+                "routing_time": getattr(routing_result, "processing_time", 0),
+                "search_time": search_results.get("processing_time", 0),
+                "reranking_time": reranked_results.get("processing_time", 0),
+                "total_time": processing_time,
+                "routing_method": getattr(routing_result, "routing_method", ""),
+                "retrieval_strategy": search_results.get("strategy"),
+                "total_candidates": sum(
+                    len(results) for results in search_results.get("raw_results", {}).values()
+                ),
+            }
+            strategies = retrieval_context.search_strategies or {}
+            sparse_keywords = list(strategies.get("sparse_keywords", []) or [])
+            retrieval_payload = {
+                "message": f"检索完成，找到 {len(results_list)} 个相关结果",
+                "sparse_keywords": sparse_keywords,
+                "sub_queries": getattr(retrieval_context, "sub_queries", []) or preprocessing_result.get("sub_queries", []) or [],
+                "total_found": len(results_list),
+            }
+            yield ("retrieval", retrieval_payload)
+
+            self._update_retrieval_stats(
+                intent_type=preprocessing_result["intent_type"],
+                routing_method=getattr(routing_result, "routing_method", "unknown"),
+                retrieval_strategy=search_results.get("strategy", "unknown"),
+                processing_time=processing_time,
+                result_count=len(results_list),
+            )
+            audit_log(
+                f"检索流程完成: {query[:50]}...",
+                query_length=len(query),
+                intent_type=preprocessing_result["intent_type"],
+                target_kbs=retrieval_context.target_kb_ids,
+                result_count=len(results_list),
+                processing_time=processing_time,
+            )
+
+            retrieval_result = RetrievalResult(
+                context=retrieval_context,
+                raw_results=search_results.get("raw_results", {}),
+                reranked_results=results_list,
+                processing_time=processing_time,
+                debug_info=debug_info,
+            )
+            yield ("_result", retrieval_result)
+
+        except Exception as e:
+            logger.error(f"检索流程(流式)失败: {str(e)}")
+            raise
+
     async def _preprocess_query(
         self,
         query: str,

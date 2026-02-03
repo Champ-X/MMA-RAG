@@ -66,6 +66,18 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     setError(null)
     setCurrentResponse('')
 
+    // 流一开始就展示「意图识别」进行中，避免长时间只显示「等待思考阶段」
+    setThinking({
+      currentStage: 'intent',
+      thoughtData: {},
+      stages: {
+        intent: 'processing',
+        routing: 'idle',
+        retrieval: 'idle',
+        generation: 'idle',
+      },
+    })
+
     try {
       streamRef.current = createChatStream(
         content,
@@ -77,14 +89,17 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             const payload = (typeof inner === 'object' && inner !== null ? inner : {}) as Record<string, unknown>
             const prev = useChatStore.getState().thinking.thoughtData
             const merged = { ...prev, ...payload } as Record<string, unknown>
+            // 后端在每个阶段完成时推送事件（带结果），收到后：当前阶段标为已完成，下一阶段标为进行中
+            const nextPhase =
+              phase === 'intent' ? 'routing' : phase === 'routing' ? 'retrieval' : phase === 'retrieval' ? 'generation' : 'generation'
             setThinking({
-              currentStage: phase,
+              currentStage: nextPhase,
               thoughtData: merged,
               stages: {
-                intent: phase === 'intent' ? 'processing' : phase === 'routing' || phase === 'retrieval' ? 'completed' : 'idle',
-                routing: phase === 'routing' ? 'processing' : phase === 'retrieval' ? 'completed' : 'idle',
-                retrieval: phase === 'retrieval' ? 'processing' : 'idle',
-                generation: phase === 'generation' ? 'processing' : 'idle',
+                intent: phase === 'intent' ? 'completed' : ['routing', 'retrieval', 'generation'].includes(phase) ? 'completed' : 'idle',
+                routing: phase === 'routing' ? 'completed' : phase === 'retrieval' || phase === 'generation' ? 'completed' : phase === 'intent' ? 'processing' : 'idle',
+                retrieval: phase === 'retrieval' ? 'completed' : phase === 'generation' ? 'completed' : phase === 'routing' ? 'processing' : 'idle',
+                generation: phase === 'generation' ? 'completed' : phase === 'retrieval' ? 'processing' : 'idle',
               },
             })
             options.onThought?.(e as ThoughtEvent)

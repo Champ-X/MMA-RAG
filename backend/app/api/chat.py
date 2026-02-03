@@ -211,50 +211,22 @@ async def stream_chat(
                     "timestamp": datetime.utcnow().timestamp()
                 }, ensure_ascii=False)
 
-            # 1. 执行检索
-            retrieval_result = await retrieval_service.search(
+            # 1. 流式检索：每完成一个阶段立即推送 thought 事件，前端可逐步展示
+            retrieval_result = None
+            async for stage, payload in retrieval_service.search_stream(
                 query=message,
                 kb_context=kb_context,
                 session_context=session_context
-            )
-            ctx = retrieval_result.context
+            ):
+                if stage == "_result":
+                    retrieval_result = payload
+                    break
+                yield f"data: {_thought_event(stage, payload)}\n\n"
 
-            # 2. 结构化思考事件：intent
-            yield f"data: {_thought_event('intent', {
-                'message': '意图解析完成',
-                'intent_type': getattr(ctx, 'intent_type', 'factual'),
-                'original_query': getattr(ctx, 'original_query', message),
-                'refined_query': getattr(ctx, 'refined_query', message),
-                'needs_visual': getattr(ctx, 'needs_visual', False),
-                'is_complex': getattr(ctx, 'is_complex', False),
-                'sub_queries': getattr(ctx, 'sub_queries', []) or [],
-            })}\n\n"
+            if retrieval_result is None:
+                raise RuntimeError("检索流未返回结果")
 
-            # 3. 结构化思考事件：routing（目标知识库与得分）
-            target_kb_ids = getattr(ctx, 'target_kb_ids', []) or []
-            confidence_scores = getattr(ctx, 'confidence_scores', {}) or {}
-            target_kbs = [
-                {"id": kb_id, "name": kb_id, "score": float(confidence_scores.get(kb_id, 0))}
-                for kb_id in target_kb_ids
-            ]
-            yield f"data: {_thought_event('routing', {
-                'message': '智能路由完成',
-                'target_kbs': target_kbs,
-                'fallback_search': len(target_kb_ids) == 0,
-            })}\n\n"
-
-            # 4. 结构化思考事件：retrieval（关键词、结果数）
-            strategies = getattr(ctx, 'search_strategies', {}) or {}
-            sparse_keywords = list(strategies.get('sparse_keywords', []) or [])
-            total_found = len(retrieval_result.reranked_results)
-            yield f"data: {_thought_event('retrieval', {
-                'message': f'检索完成，找到 {total_found} 个相关结果',
-                'sparse_keywords': sparse_keywords,
-                'sub_queries': getattr(ctx, 'sub_queries', []) or [],
-                'total_found': total_found,
-            })}\n\n"
-
-            # 5. 生成阶段（简单提示）
+            # 2. 生成阶段（简单提示）
             yield f"data: {_thought_event('generation', {'message': '正在生成回答...'})}\n\n"
 
             answer_chunks = []

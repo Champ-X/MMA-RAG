@@ -8,7 +8,14 @@ import rehypeKatex from 'rehype-katex'
 import rehypeHighlight from 'rehype-highlight'
 import { cn } from '@/lib/utils'
 import type { CitationReference } from '@/types/sse'
-import type { ThoughtData } from '@/store/useChatStore'
+import type { ThoughtData, ThinkingState } from '@/store/useChatStore'
+
+/** 流式时从 ChatInterface 传入的实时思考数据，保证思考框在气泡顶部展示 */
+export interface LiveThinkingProps {
+  thoughtData?: ThoughtData | null
+  stages?: ThinkingState['stages']
+  currentStage?: string
+}
 
 export interface MessageBubbleMessage {
   id: string
@@ -34,6 +41,8 @@ interface MessageBubbleProps {
   message: MessageBubbleMessage
   /** 是否正在流式输出该条（显示光标） */
   isStreaming?: boolean
+  /** 流式时的实时思考数据，传入后思考框会在本气泡顶部展示，避免结束后跳到上方 */
+  liveThinking?: LiveThinkingProps
   /** 预加载的引用 id -> 完整对象 */
   citationMap?: Map<number | string, CitationReference>
   /** 点击引用时的回调；messageId 用于只从当前消息取引用，避免多条回答共用 [1][2] 时错用上一条的引用 */
@@ -161,10 +170,17 @@ function CitationInlineButton({ n, onClick }: { n: number; onClick?: (rect: DOMR
 export function MessageBubble({
   message,
   isStreaming = false,
+  liveThinking,
   citationMap,
   onCiteClick,
 }: MessageBubbleProps) {
   const isUser = message.type === 'user'
+  const showThinking = !isUser && (message.thinking || (isStreaming && liveThinking))
+  const thoughtData = isStreaming && liveThinking
+    ? liveThinking.thoughtData
+    : Array.isArray(message.thinking)
+      ? (message.thinking[0]?.data as ThoughtData) ?? null
+      : (message.thinking as ThoughtData) ?? null
   const refs = message.citations ?? []
   const uniqueRefs = refs.filter((ref, idx, arr) => {
     const isObj = typeof ref === 'object' && ref != null && 'id' in ref
@@ -186,19 +202,18 @@ export function MessageBubble({
     <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm',
+          'max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm',
           isUser
             ? 'rounded-tr-sm bg-gradient-to-br from-indigo-600 to-sky-500 text-white shadow-indigo-500/10'
-            : 'rounded-tl-sm border border-slate-200/70 bg-white/80 text-slate-900 shadow-slate-900/5 dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-100'
+            : 'rounded-tl-sm border border-slate-200/70 bg-white/80 text-slate-900 shadow-slate-900/5 dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-100',
+          !isUser && showThinking && 'min-w-[min(100%,24rem)]'
         )}
       >
-        {!isUser && message.thinking && (
+        {showThinking && (
           <ThinkingCapsule
-            thoughtData={
-              Array.isArray(message.thinking)
-                ? (message.thinking[0]?.data as ThoughtData) || null
-                : (message.thinking as ThoughtData)
-            }
+            thoughtData={thoughtData}
+            stages={liveThinking?.stages}
+            currentStage={liveThinking?.currentStage}
           />
         )}
 

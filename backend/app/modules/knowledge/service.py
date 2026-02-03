@@ -600,14 +600,23 @@ class KnowledgeBaseService:
         }
     
     def _discover_kb_id_from_bucket_sync(self, bucket_name: str) -> Optional[str]:
-        """从 MinIO 桶内第一个文件的向量中反查实际 kb_id（用于 kb_id 不一致时的兜底）。"""
+        """
+        从 MinIO 桶内文件反查 Qdrant 中实际存在的 kb_id。
+        如果桶内文件对应多个 kb_id，返回数据量最大的那个（解决历史数据迁移/ID变更问题）。
+        """
         try:
+            from collections import defaultdict
             raw = list(
                 self.minio_adapter.client.list_objects(
                     bucket_name, prefix=None, recursive=True
                 )
             )
-            for obj in raw[:20]:  # 尝试前 20 个对象以命中已在向量库中的文件
+            
+            # 统计每个 kb_id 的出现次数（采样文件）
+            kb_id_counts = defaultdict(lambda: {"text": 0, "image": 0})
+            sampled_file_ids = set()
+            
+            for obj in raw[:50]:  # 采样前 50 个文件
                 op = obj.object_name
                 parts = op.split("/")
                 if len(parts) < 2:
@@ -615,34 +624,60 @@ class KnowledgeBaseService:
                 rest = parts[1]
                 under = rest.find("_")
                 fid = rest[:under] if under >= 0 else rest
-                if not fid:
+                if not fid or fid in sampled_file_ids:
                     continue
+                sampled_file_ids.add(fid)
+                
                 from qdrant_client.http.models import Filter, FieldCondition, MatchValue
                 filt = Filter(must=[FieldCondition(key="file_id", match=MatchValue(value=fid))])
-                res = self.vector_store.client.scroll(
-                    collection_name="text_chunks",
-                    scroll_filter=filt,
-                    limit=1,
-                    with_payload=True,
+                
+                # text_chunks
+                try:
+                    res = self.vector_store.client.scroll(
+                        collection_name="text_chunks",
+                        scroll_filter=filt,
+                        limit=1,
+                        with_payload=True,
+                    )
+                    points = res[0] if res else []
+                    if points:
+                        p = getattr(points[0], "payload", None) or {}
+                        kid = p.get("kb_id")
+                        if kid:
+                            kb_id_counts[kid]["text"] += 1
+                except:
+                    pass
+                
+                # image_vectors
+                try:
+                    res = self.vector_store.client.scroll(
+                        collection_name="image_vectors",
+                        scroll_filter=filt,
+                        limit=1,
+                        with_payload=True,
+                    )
+                    points = res[0] if res else []
+                    if points:
+                        p = getattr(points[0], "payload", None) or {}
+                        kid = p.get("kb_id")
+                        if kid:
+                            kb_id_counts[kid]["image"] += 1
+                except:
+                    pass
+            
+            # 返回数据量最大的 kb_id（优先文本数量）
+            if kb_id_counts:
+                best_kb_id = max(
+                    kb_id_counts.items(),
+                    key=lambda x: (x[1]["text"], x[1]["image"])
+                )[0]
+                logger.debug(
+                    f"桶 {bucket_name} 反查到数据量最大的 kb_id: {best_kb_id} "
+                    f"(采样 text:{kb_id_counts[best_kb_id]['text']}, "
+                    f"image:{kb_id_counts[best_kb_id]['image']})"
                 )
-                points = res[0] if res else []
-                if points:
-                    p = getattr(points[0], "payload", None) or {}
-                    kid = p.get("kb_id")
-                    if kid:
-                        return kid
-                res = self.vector_store.client.scroll(
-                    collection_name="image_vectors",
-                    scroll_filter=filt,
-                    limit=1,
-                    with_payload=True,
-                )
-                points = res[0] if res else []
-                if points:
-                    p = getattr(points[0], "payload", None) or {}
-                    kid = p.get("kb_id")
-                    if kid:
-                        return kid
+                return best_kb_id
+                
         except Exception as e:
             logger.debug(f"从桶反查 kb_id 失败 {bucket_name}: {e}")
         return None
