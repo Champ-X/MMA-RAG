@@ -280,10 +280,11 @@ class StreamManager:
             )
 
         except Exception as e:
-            logger.error(f"生成流式回答失败: {str(e)}")
+            err_msg = str(e).strip() or repr(e)
+            logger.error(f"生成流式回答失败: {type(e).__name__} - {err_msg}", exc_info=True)
             yield StreamEvent(
                 type=StreamEventType.ERROR,
-                data={"error": str(e)},
+                data={"error": err_msg},
                 timestamp=time.time()
             )
     

@@ -3,7 +3,7 @@ LLM管理器主类
 统一的LLM调用接口，支持模型路由和故障转移
 """
 
-from typing import Dict, List, Any, Optional, Union, AsyncGenerator
+from typing import Dict, List, Any, Optional, Union, AsyncGenerator, cast
 from . import LLMRegistry, BaseLLMProvider
 from app.core.logger import get_logger
 import asyncio
@@ -110,16 +110,20 @@ class LLMManager:
             "max_tokens": kwargs.get("max_tokens") or model_config.get("context_length", 2000),
         }
         try:
-            async for chunk_data in provider.stream_chat(**params):
+            stream = cast(
+                AsyncGenerator[Dict[str, Any], None],
+                provider.stream_chat(**params),
+            )
+            async for chunk_data in stream:
                 delta = (chunk_data or {}).get("choices", [{}])[0].get("delta") or {}
                 content = delta.get("content") or ""
-                reasoning_content = delta.get("reasoning_content") or ""
+                # 仅将最终回答 content 推送给前端；不推送 reasoning_content（思考链），
+                # 避免前端消息气泡只显示“思考过程”而没有正式回答。检索阶段的思考由前端 ThinkingCapsule 展示。
                 if content:
                     yield content
-                if reasoning_content:
-                    yield reasoning_content
         except Exception as e:
-            logger.error(f"流式聊天失败 [{model}]: {str(e)}")
+            err_msg = str(e).strip() or repr(e)
+            logger.error(f"流式聊天失败 [{model}]: {type(e).__name__} - {err_msg}", exc_info=True)
             raise
     
     async def embed(

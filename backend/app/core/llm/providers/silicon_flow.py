@@ -206,34 +206,43 @@ class SiliconFlowProvider(BaseLLMProvider):
             "temperature": kwargs.get("temperature", 0.7),
             "max_tokens": kwargs.get("max_tokens", 2000)
         }
-        
+        timeout = self._get_timeout_for_model(model)
         try:
-            async with self.client.stream(
-                "POST",
-                f"{self.base_url}/chat/completions",
-                headers=self.headers,
-                json=payload
-            ) as response:
-                response.raise_for_status()
-                
-                async for chunk in response.aiter_lines():
-                    if isinstance(chunk, bytes):
-                        chunk = chunk.decode("utf-8")
-                    if chunk.startswith("data: "):
-                        data_str = chunk[6:].strip()
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            chunk_data = json.loads(data_str)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    headers=self.headers,
+                    json=payload
+                ) as response:
+                    response.raise_for_status()
+                    async for chunk in response.aiter_lines():
+                        if isinstance(chunk, bytes):
+                            chunk = chunk.decode("utf-8")
+                        if chunk.startswith("data: "):
+                            data_str = chunk[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk_data = json.loads(data_str)
+                            except json.JSONDecodeError:
+                                continue
+                            err = (chunk_data or {}).get("error")
+                            if err is not None:
+                                msg = err.get("message", err) if isinstance(err, dict) else str(err)
+                                logger.error(f"SiliconFlow 流式返回错误 [{model}]: {msg}")
+                                raise RuntimeError(f"流式 API 错误: {msg}")
                             yield chunk_data
-                        except json.JSONDecodeError:
-                            continue
-                            
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP错误: {e.response.status_code} - {e.response.text}")
+            body = getattr(e.response, "text", "") or ""
+            logger.error(f"SiliconFlow 流式 HTTP 错误 [{model}]: {e.response.status_code} - {body[:500]}")
             raise
+        except httpx.TimeoutException as e:
+            logger.error(f"SiliconFlow 流式超时 [{model}] (超时={timeout}s): {type(e).__name__} {repr(e)}")
+            raise TimeoutError(f"流式请求超时（{timeout}s）: {e}") from e
         except Exception as e:
-            logger.error(f"SiliconFlow streaming错误: {str(e)}")
+            err_msg = str(e).strip() or repr(e)
+            logger.error(f"SiliconFlow 流式错误 [{model}]: {type(e).__name__} - {err_msg}", exc_info=True)
             raise
     
     async def health_check(self) -> Dict[str, Any]:

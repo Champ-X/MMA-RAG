@@ -3,7 +3,7 @@ LLM提供商基础模块
 定义统一的提供商接口
 """
 
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, AsyncGenerator
 from abc import ABC, abstractmethod
 import asyncio
 
@@ -30,6 +30,16 @@ class BaseLLMProvider(ABC):
         """
         pass
     
+    @abstractmethod
+    async def stream_chat(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+        **kwargs
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """流式聊天对话，逐块 yield API 原始 chunk。"""
+        ...
+
     @abstractmethod
     async def embed_texts(
         self, 
