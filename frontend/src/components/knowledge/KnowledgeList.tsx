@@ -425,34 +425,88 @@ const KnowledgeList: React.FC = () => {
                     setActiveKbId(kb.id)
                     setViewState('detail')
                   }}
-                  className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 hover:shadow-md hover:border-fuchsia-300 dark:hover:border-fuchsia-500 transition-all cursor-pointer group"
+                  className={cn(
+                    'relative rounded-xl border border-slate-200 dark:border-slate-800 hover:shadow-md hover:border-fuchsia-300 dark:hover:border-fuchsia-500 transition-all cursor-pointer group overflow-hidden min-h-[180px]',
+                    kb.cover_url ? 'p-0' : 'bg-white dark:bg-slate-900 p-5'
+                  )}
                 >
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 rounded-lg group-hover:bg-gradient-to-tr group-hover:from-indigo-600 group-hover:to-fuchsia-600 group-hover:text-white transition-colors">
-                      <Database size={24} />
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDeleteKb(kb.id)
-                      }}
-                      className="text-slate-400 hover:text-red-500 p-1"
-                      title="删除知识库"
-                    >
-                      <MoreVertical size={16} />
-                    </button>
-                  </div>
-                  <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1">{kb.name}</h3>
-                  <p className="text-slate-500 dark:text-slate-400 text-sm h-10 overflow-hidden text-ellipsis leading-relaxed line-clamp-2">
-                    {kb.description || '暂无描述'}
-                  </p>
-
-                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-400">
-                    <div className="flex items-center gap-1">
-                      <FileText size={12} /> {kb.stats?.documents ?? 0} 个文件
-                    </div>
-                    <span>{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
-                  </div>
+                  {/* 有封面时：图片铺满整卡作为背景 */}
+                  {kb.cover_url ? (
+                    <>
+                      <div className="absolute inset-0">
+                        <img
+                          src={kb.cover_url}
+                          alt=""
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      </div>
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent rounded-xl" />
+                      <div className="relative z-10 flex flex-col justify-end p-5 min-h-[180px]">
+                        <div className="flex justify-end absolute top-3 right-3">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteKb(kb.id)
+                            }}
+                            className="text-white hover:text-white p-1.5 rounded-md bg-black/40 backdrop-blur-sm shadow-lg"
+                            title="删除知识库"
+                          >
+                            <MoreVertical size={16} />
+                          </button>
+                        </div>
+                        <h3 className="font-bold text-white mb-0.5 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_8px_rgba(0,0,0,0.7)]">
+                          {kb.name}
+                        </h3>
+                        <p className="text-white text-sm h-10 overflow-hidden text-ellipsis leading-relaxed line-clamp-2 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_6px_rgba(0,0,0,0.6)]">
+                          {kb.description || '暂无描述'}
+                        </p>
+                        <div className="mt-3 pt-3 border-t border-white/30 flex items-center justify-between text-xs text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
+                          <div className="flex items-center gap-2 min-h-[1rem]">
+                            <span className="inline-flex items-center gap-1.5">
+                              <FileText size={12} className="shrink-0" />
+                              {kb.stats?.documents ?? 0} 个文件
+                            </span>
+                            <span className="opacity-80">·</span>
+                            <span>{kb.stats?.images ?? 0} 张图片</span>
+                          </div>
+                          <span>{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 rounded-lg group-hover:bg-gradient-to-tr group-hover:from-indigo-600 group-hover:to-fuchsia-600 group-hover:text-white transition-colors">
+                          <Database size={24} />
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteKb(kb.id)
+                          }}
+                          className="text-slate-400 hover:text-red-500 p-1"
+                          title="删除知识库"
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+                      </div>
+                      <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1">{kb.name}</h3>
+                      <p className="text-slate-500 dark:text-slate-400 text-sm h-10 overflow-hidden text-ellipsis leading-relaxed line-clamp-2">
+                        {kb.description || '暂无描述'}
+                      </p>
+                      <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                        <div className="flex items-center gap-2 min-h-[1rem]">
+                          <span className="inline-flex items-center gap-1.5">
+                            <FileText size={12} className="shrink-0" />
+                            {kb.stats?.documents ?? 0} 个文件
+                          </span>
+                          <span className="opacity-70">·</span>
+                          <span>{kb.stats?.images ?? 0} 张图片</span>
+                        </div>
+                        <span>{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>

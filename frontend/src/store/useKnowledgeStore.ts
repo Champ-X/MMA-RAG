@@ -8,6 +8,7 @@ export interface KnowledgeBase {
   tags?: string[]
   created_at?: string
   updated_at?: string
+  cover_url?: string | null
   stats?: {
     documents: number
     chunks: number

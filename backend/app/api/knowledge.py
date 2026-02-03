@@ -3,6 +3,7 @@
 处理知识库的CRUD操作
 """
 
+import asyncio
 from fastapi import APIRouter, HTTPException
 from typing import List, Dict, Any, Optional
 from app.core.logger import get_logger
@@ -39,9 +40,13 @@ def _stats_for_frontend(statistics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 @router.get("/")
 async def list_knowledge_bases(user_id: Optional[str] = None):
-    """获取知识库列表"""
+    """获取知识库列表；若知识库内有图片则随机取一张作为 cover_url。"""
     try:
         kbs = await kb_service.list_knowledge_bases(user_id=user_id)
+        # 并行获取每个知识库的随机封面图
+        cover_urls = await asyncio.gather(
+            *[kb_service.get_random_cover_url(kb["id"]) for kb in kbs]
+        )
         return {
             "knowledge_bases": [
                 {
@@ -51,8 +56,9 @@ async def list_knowledge_bases(user_id: Optional[str] = None):
                     "created_at": kb["created_at"],
                     "updated_at": kb["updated_at"],
                     "stats": _stats_for_frontend(kb.get("statistics")),
+                    "cover_url": cover_urls[i] if i < len(cover_urls) else None,
                 }
-                for kb in kbs
+                for i, kb in enumerate(kbs)
             ]
         }
     except Exception as e:

@@ -7,6 +7,7 @@
 
 from typing import Dict, List, Any, Optional
 import asyncio
+import random
 import uuid
 from datetime import datetime
 from dataclasses import dataclass
@@ -741,6 +742,10 @@ class KnowledgeBaseService:
         """判断文件类型是否支持预览（图片、PDF、MD、TXT）"""
         return ext.lower() in ("jpg", "jpeg", "png", "gif", "webp", "pdf", "md", "txt")
 
+    def _is_image_type(self, ext: str) -> bool:
+        """判断是否为图片类型（用于封面展示）"""
+        return ext.lower() in ("jpg", "jpeg", "png", "gif", "webp")
+
     async def get_file_text_content(self, kb_id: str, file_id: str) -> Optional[str]:
         """
         获取文本类文件（md/txt）的原始内容，用于预览（避免 iframe 触发下载）。
@@ -955,6 +960,33 @@ class KnowledgeBaseService:
         except Exception as e:
             logger.error(f"列出知识库文件失败: {str(e)}")
             return []
+
+    async def get_random_cover_url(self, kb_id: str) -> Optional[str]:
+        """从知识库中随机取一张图片的预览 URL 作为封面；无图片时返回 None。"""
+        try:
+            bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
+            raw_files = await self.minio_adapter.list_files(bucket=bucket_name, prefix="", max_keys=500)
+            image_objects: List[str] = []
+            for f in raw_files:
+                op = f.get("object_path", "")
+                parts = op.split("/")
+                if len(parts) < 2:
+                    continue
+                rest = parts[1]
+                under = rest.find("_")
+                name = rest[under + 1:] if under >= 0 else rest
+                ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+                if self._is_image_type(ext):
+                    image_objects.append(op)
+            if not image_objects:
+                return None
+            chosen = random.choice(image_objects)
+            return await self.minio_adapter.get_presigned_url(
+                bucket_name, chosen, expires_hours=24
+            )
+        except Exception as e:
+            logger.debug(f"获取知识库封面图失败 {kb_id}: {e}")
+            return None
 
     async def delete_kb_file(self, kb_id: str, file_id: str) -> bool:
         """删除知识库下的单个文件及其向量（以 MinIO 桶存在为准）"""
