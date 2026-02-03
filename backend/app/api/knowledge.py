@@ -6,6 +6,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import List, Dict, Any, Optional
 from app.core.logger import get_logger
+from app.core.keyword_extract import extract_keywords_for_portrait
 from app.modules.knowledge.service import KnowledgeBaseService
 from app.modules.knowledge.portraits import PortraitGenerator
 
@@ -199,10 +200,12 @@ async def get_knowledge_base_portrait(kb_id: str):
         clusters = []
         for i, p in enumerate(portraits):
             payload = p.get("payload", {}) if isinstance(p.get("payload"), dict) else {}
+            topic_summary = payload.get("topic_summary", "")
             clusters.append({
                 "cluster_id": str(payload.get("cluster_id", p.get("id", i))),
-                "topic_summary": payload.get("topic_summary", ""),
+                "topic_summary": topic_summary,
                 "cluster_size": payload.get("cluster_size", 0),
+                "keywords": extract_keywords_for_portrait(topic_summary, top_k=10),
             })
         return {"clusters": clusters}
     except Exception as e:

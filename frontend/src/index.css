@@ -25,6 +25,15 @@ body {
   color: rgb(226 232 240) !important; /* slate-200 */
 }
 
+/* 气泡图：动态呼吸发光边框 */
+@keyframes bubble-breathe {
+  0%, 100% { opacity: 0.78; }
+  50% { opacity: 1; }
+}
+.bubble-breathe {
+  animation: bubble-breathe 2.8s ease-in-out infinite;
+}
+
 /* 隐藏滚动条但保持滚动功能 */
 .scrollbar-hide {
   -ms-overflow-style: none;  /* IE and Edge */
