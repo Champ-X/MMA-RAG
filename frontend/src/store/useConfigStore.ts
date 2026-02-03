@@ -5,7 +5,7 @@ import { systemApi } from '@/services/api_client';
 export interface ModelConfig {
   id: string;
   name: string;
-  provider: 'siliconflow' | 'openai';
+  provider: string;
   model: string;
   maxTokens: number;
   temperature: number;
@@ -23,7 +23,15 @@ export interface SystemConfig {
   language: 'zh-CN' | 'en-US';
 }
 
+export interface ModelsByProvider {
+  chat: string[];
+  vision: string[];
+  reranker: string[];
+}
+
 export interface AvailableModels {
+  providers: string[];
+  models_by_provider?: Record<string, ModelsByProvider>;
   chat_models: string[];
   vision_models: string[];
   reranker_models: string[];
@@ -126,7 +134,7 @@ export const useConfigStore = create<ConfigStore>()(
     (set, get) => ({
       // 初始状态
       config: defaultConfig,
-      availableModels: { chat_models: [], vision_models: [], reranker_models: [] },
+      availableModels: { providers: [], models_by_provider: {}, chat_models: [], vision_models: [], reranker_models: [] },
       isLoading: false,
       error: null,
       hasUnsavedChanges: false,
@@ -194,28 +202,31 @@ export const useConfigStore = create<ConfigStore>()(
 
         try {
           const data = await systemApi.getModelConfig() as {
+            providers?: string[];
+            models_by_provider?: Record<string, { chat: string[]; vision: string[]; reranker: string[] }>;
             chat_models?: string[];
             vision_models?: string[];
             reranker_models?: string[];
             current_config?: Record<string, { model: string; provider: string }>;
           };
           const availableModels = {
+            providers: data.providers ?? [],
+            models_by_provider: data.models_by_provider ?? {},
             chat_models: data.chat_models ?? [],
             vision_models: data.vision_models ?? [],
             reranker_models: data.reranker_models ?? [],
           };
           const cc = data.current_config ?? {};
-          const norm = (p: string) => (p === 'deepseek' ? 'siliconflow' : p) as 'siliconflow' | 'openai';
           set((state) => {
             const models = state.config.models.map((m) => {
               if (m.id === 'chat' && cc.final_generation) {
-                return { ...m, model: cc.final_generation.model, provider: norm(cc.final_generation.provider) };
+                return { ...m, model: cc.final_generation.model, provider: cc.final_generation.provider };
               }
               if (m.id === 'caption' && cc.image_captioning) {
-                return { ...m, model: cc.image_captioning.model, provider: norm(cc.image_captioning.provider) };
+                return { ...m, model: cc.image_captioning.model, provider: cc.image_captioning.provider };
               }
               if (m.id === 'rerank' && cc.reranking) {
-                return { ...m, model: cc.reranking.model, provider: norm(cc.reranking.provider) };
+                return { ...m, model: cc.reranking.model, provider: cc.reranking.provider };
               }
               return m;
             });

@@ -23,7 +23,11 @@ class SiliconFlowProvider(BaseLLMProvider):
         }
         # 默认超时30秒，但会在调用时根据模型类型动态调整
         self.client = httpx.AsyncClient(timeout=60.0)
-    
+
+    def set_registry(self, registry: Any) -> None:
+        """设置 registry 引用（可选，与 DeepSeek 等提供商接口一致）"""
+        pass
+
     def _get_timeout_for_model(self, model: str) -> float:
         """根据模型类型返回合适的超时时间（秒）"""
         # Thinking 模型（推理模型）需要更长的超时时间

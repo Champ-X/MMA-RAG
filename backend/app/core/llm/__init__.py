@@ -4,37 +4,17 @@
 """
 
 from typing import Dict, List, Any, Optional, Union
-from abc import ABC, abstractmethod
 import asyncio
 from app.core.config import settings
 from app.core.logger import get_logger, log_llm_call
 import time
 import json
 
-logger = get_logger(__name__)
-
-
-class BaseLLMProvider(ABC):
-    """LLM提供商基类"""
-    
-    @abstractmethod
-    async def chat_completion(self, messages: List[Dict[str, str]], **kwargs) -> Dict[str, Any]:
-        """聊天对话"""
-        pass
-    
-    @abstractmethod
-    async def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        """文本向量化"""
-        pass
-    
-    @abstractmethod
-    async def rerank(self, query: str, documents: List[str]) -> List[Dict[str, Any]]:
-        """重排序"""
-        pass
-
-
+from app.core.llm.providers.base import BaseLLMProvider
 # 使用 providers.silicon_flow 中的实现，确保 stream_chat 等流式接口可用（参见 SiliconFlow 流式文档）
 from app.core.llm.providers.silicon_flow import SiliconFlowProvider
+
+logger = get_logger(__name__)
 
 
 class LLMRegistry:
@@ -258,6 +238,10 @@ class LLMRegistry:
     def get_provider(self, provider_name: str) -> Optional[BaseLLMProvider]:
         """获取提供商"""
         return self._providers.get(provider_name)
+
+    def list_providers(self) -> List[str]:
+        """列出当前已配置的提供商名称（如 siliconflow、deepseek）"""
+        return list(self._providers.keys())
     
     def get_model_config(self, model_name: str) -> Dict[str, Any]:
         """获取模型配置"""
@@ -281,10 +265,23 @@ class LLMRegistry:
     def list_models(self, model_type: Optional[str] = None) -> List[str]:
         """列出可用模型"""
         if model_type:
-            return [name for name, config in self._models.items() 
+            return [name for name, config in self._models.items()
                    if config.get("type") == model_type]
         return list(self._models.keys())
-    
+
+    def list_models_by_provider(self) -> Dict[str, Dict[str, List[str]]]:
+        """按 provider 分组的模型列表，供前端按所选 provider 只显示该 provider 的模型。"""
+        result: Dict[str, Dict[str, List[str]]] = {}
+        for name, config in self._models.items():
+            provider = config.get("provider") or "siliconflow"
+            model_type = config.get("type")
+            if not model_type or model_type not in ("chat", "vision", "reranker"):
+                continue
+            if provider not in result:
+                result[provider] = {"chat": [], "vision": [], "reranker": []}
+            result[provider][model_type].append(name)
+        return result
+
     def add_model(self, name: str, config: Dict[str, Any]):
         """添加模型"""
         self._models[name] = config

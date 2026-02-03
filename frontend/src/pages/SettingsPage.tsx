@@ -12,26 +12,26 @@ function configToTaskMatrix(config: { models: Array<{ id: string; model?: string
         taskId: 'intent' as const,
         label: 'Intent Recognition',
         description: '意图识别与查询改写',
-        provider: (chat?.provider || 'siliconflow') as 'siliconflow' | 'openai',
+        provider: chat?.provider || 'siliconflow',
         model: chat?.model || 'Qwen-Turbo',
       },
       {
         taskId: 'caption' as const,
         label: 'Image Captioning',
         description: '图像描述与多模态理解',
-        provider: (caption?.provider || 'siliconflow') as 'siliconflow' | 'openai',
+        provider: caption?.provider || 'siliconflow',
         model: caption?.model || 'Qwen-VL-Max',
       },
       {
         taskId: 'generation' as const,
         label: 'Final Generation',
         description: '最终回答生成',
-        provider: (chat?.provider || 'siliconflow') as 'siliconflow' | 'openai',
+        provider: chat?.provider || 'siliconflow',
         model: chat?.model || 'DeepSeek-V3',
       },
     ] as TaskModelEntry[],
     reranker: {
-      provider: (rerank?.provider || 'siliconflow') as 'siliconflow' | 'openai',
+      provider: rerank?.provider || 'siliconflow',
       model: rerank?.model || 'BAAI/bge-reranker-large',
     },
   }
@@ -48,7 +48,7 @@ export function SettingsPage() {
 
   const handleSave = async (data: {
     taskMatrix: TaskModelEntry[]
-    reranker: { provider: 'siliconflow' | 'openai'; model: string }
+    reranker: { provider: string; model: string }
   }) => {
     const gen = data.taskMatrix.find(t => t.taskId === 'generation')
     const cap = data.taskMatrix.find(t => t.taskId === 'caption')

@@ -362,6 +362,8 @@ async def list_models():
             current_config[task] = {"model": model_name, "provider": provider}
 
     return {
+        "providers": r.list_providers(),
+        "models_by_provider": r.list_models_by_provider(),
         "chat_models": r.list_models("chat"),
         "embedding_models": r.list_models("embedding"),
         "vision_models": r.list_models("vision"),
