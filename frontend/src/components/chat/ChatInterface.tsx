@@ -34,6 +34,7 @@ export function ChatInterface() {
   const {
     sessions,
     activeSessionId,
+    streamingSessionId,
     getActiveSession,
     createSession,
     createSessionFromApi,
@@ -44,7 +45,7 @@ export function ChatInterface() {
   } = useChatStore()
 
   const { config } = useConfigStore()
-  const { sendMessage, isStreaming, error, progress } = useThinkingChain()
+  const { sendMessage, isStreaming, error } = useThinkingChain()
 
   const activeSession = getActiveSession()
   const messages = activeSession?.messages ?? []
@@ -268,7 +269,7 @@ export function ChatInterface() {
       {/* 消息区 */}
       <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
         <div className="px-4 py-4">
-          <div className="mx-auto max-w-4xl flex flex-col gap-3">
+          <div className="mx-auto max-w-4xl flex flex-col gap-6">
             {messages.length === 0 && (
               <Card className="p-8 text-center">
                 <CardContent>
@@ -283,8 +284,9 @@ export function ChatInterface() {
             )}
 
             {messages.map((m, i) => {
-              const isLastAndStreaming =
-                m.role === 'assistant' && i === messages.length - 1 && isStreaming
+              const isLastMessage = m.role === 'assistant' && i === messages.length - 1
+              const isThisTabStreaming = isStreaming && activeSessionId === streamingSessionId
+              const isLastAndStreaming = isLastMessage && isThisTabStreaming
               return (
                 <MessageBubble
                   key={m.id ?? i}

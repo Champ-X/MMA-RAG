@@ -19,6 +19,10 @@ interface InlineCitationProps {
   onCiteClick?: (refId: number | string, event: React.MouseEvent, messageId?: string) => void
   /** 当前消息 id，点击引用时传给 onCiteClick，避免取到上一条消息的引用 */
   messageId?: string
+  /** 引用 id -> 显示编号（连续 1,2,3...），用于底部引用按钮显示 */
+  displayIndexByRefId?: Map<number | string, number>
+  /** 额外在回答末尾展示的图片引用缩略图（与 references 去重后展示） */
+  imageThumbnailRefs?: Array<CitationReference | { id: number | string }>
   className?: string
 }
 
@@ -35,6 +39,24 @@ function getReferenceIcon(type: 'doc' | 'image') {
   return type === 'doc' ? FileText : Image
 }
 
+function normalizeContextWindow(raw: unknown): { prev: string; next: string } | null {
+  if (!raw) return null
+  if (typeof raw === 'string') {
+    try {
+      return normalizeContextWindow(JSON.parse(raw))
+    } catch {
+      return null
+    }
+  }
+  if (typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>
+    const prev = typeof obj.prev === 'string' ? obj.prev : ''
+    const next = typeof obj.next === 'string' ? obj.next : ''
+    if (prev || next) return { prev, next }
+  }
+  return null
+}
+
 export function InlineCitation({
   references,
   variant = 'inline',
@@ -42,6 +64,8 @@ export function InlineCitation({
   citationMap,
   onCiteClick,
   messageId,
+  displayIndexByRefId,
+  imageThumbnailRefs,
   className,
 }: InlineCitationProps) {
   const [selected, setSelected] = useState<CitationReference | null>(null)
@@ -52,9 +76,24 @@ export function InlineCitation({
     .map((r) => normalizeRef(r, citationMap))
     .filter((r): r is CitationReference => r != null)
 
-  if (refs.length === 0) return null
+  const imageRefsForThumbnails = (() => {
+    const fromRefs = refs.filter((r) => r.type === 'image')
+    const extra = (imageThumbnailRefs ?? [])
+      .map((r) => normalizeRef(r, citationMap))
+      .filter((r): r is CitationReference => r != null && r.type === 'image')
+    const seen = new Set<string | number>()
+    const out: CitationReference[] = []
+    for (const r of [...fromRefs, ...extra]) {
+      if (seen.has(r.id)) continue
+      seen.add(r.id)
+      out.push(r)
+    }
+    return out
+  })()
 
-  const imageRefs = refs.filter((r) => r.type === 'image')
+  if (refs.length === 0 && imageRefsForThumbnails.length === 0) return null
+
+  const imageRefs = imageRefsForThumbnails.length > 0 ? imageRefsForThumbnails : refs.filter((r) => r.type === 'image')
 
   const openLightbox = (ref: CitationReference) => {
     if (!useInternalPreview) return
@@ -64,11 +103,12 @@ export function InlineCitation({
 
   return (
     <>
-      {variant === 'inline' && (
+      {variant === 'inline' && refs.length > 0 && (
         <div className={cn('flex flex-wrap gap-1', className)}>
           {refs.map((ref) => {
             const Icon = getReferenceIcon(ref.type)
             const id = ref.id
+            const displayNum = displayIndexByRefId?.get(id) ?? id
             return (
               <Button
                 key={id}
@@ -88,7 +128,7 @@ export function InlineCitation({
                 }}
               >
                 <Icon className="mr-1 h-3 w-3" />
-                [{id}]
+                [{displayNum}]
               </Button>
             )
           })}
@@ -231,7 +271,7 @@ function ReferenceDetailCard({
   onViewImage?: () => void
 }) {
   const [contextLens, setContextLens] = useState<'prev' | 'curr' | 'next'>('curr')
-  const ctx = reference.debug_info?.context_window
+  const ctx = normalizeContextWindow(reference.debug_info?.context_window)
   const Icon = getReferenceIcon(reference.type)
 
   return (

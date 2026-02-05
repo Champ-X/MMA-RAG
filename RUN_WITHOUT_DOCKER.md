@@ -6,11 +6,13 @@
 
 项目依赖三个服务，均需在本机运行并监听对应端口：
 
-| 服务   | 端口        | 用途           |
-|--------|-------------|----------------|
-| Redis  | 6379        | 缓存 / Celery |
-| MinIO  | 9000, 9001  | 对象存储       |
-| Qdrant | 6333, 6334  | 向量数据库     |
+
+| 服务     | 端口         | 用途          |
+| ------ | ---------- | ----------- |
+| Redis  | 6379       | 缓存 / Celery |
+| MinIO  | 9000, 9001 | 对象存储        |
+| Qdrant | 6333, 6334 | 向量数据库       |
+
 
 ### 1. Redis（macOS 推荐用 Homebrew）
 
@@ -41,8 +43,8 @@ export MINIO_ROOT_PASSWORD=admin123456
 minio server ./minio_data --console-address ":9001"
 ```
 
-- API：<http://localhost:9000>
-- 控制台：<http://localhost:9001>（admin / admin123456）
+- API：[http://localhost:9000](http://localhost:9000)
+- 控制台：[http://localhost:9001](http://localhost:9001)（admin / admin123456）
 
 保持该终端不关，或改用 `nohup`/launchd 后台运行。
 
@@ -50,30 +52,21 @@ minio server ./minio_data --console-address ":9001"
 
 macOS 无 Homebrew 公式，需用官方二进制或 Qdrant Cloud。
 
+/Users/xiangqingping.1/qdrant --config-path ./qdrant_config.yaml
+
 **方式 A：本机二进制（推荐）**
 
 1. 打开 [Qdrant Releases](https://github.com/qdrant/qdrant/releases/latest)
 2. 按架构下载（保存位置任意，如下载目录即可）：
-   - Apple Silicon：`qdrant-aarch64-apple-darwin.tar.gz`
-   - Intel：`qdrant-x86_64-apple-darwin.tar.gz`
-3. 解压并运行。**新版 Qdrant 已取消 `--storage-path`**，需用配置文件或环境变量指定数据目录。项目内已提供 `qdrant_config.yaml`，将数据目录设为 `./qdrant_storage`。
-
-   - **在项目根目录运行**（推荐）：
-   ```bash
-   cd /path/to/MMAA-agent
-   mkdir -p ./qdrant_storage   # 若已有可跳过
-   /path/to/qdrant --config-path ./qdrant_config.yaml
-   ```
-   - 或使用环境变量（二进制可在任意目录）：
-   ```bash
-   QDRANT__STORAGE__STORAGE_PATH=/path/to/MMAA-agent/qdrant_storage /path/to/qdrant
-   ```
-
+  - Apple Silicon：`qdrant-aarch64-apple-darwin.tar.gz`
+  - Intel：`qdrant-x86_64-apple-darwin.tar.gz`
+3. 解压并运行。**新版 Qdrant 已取消 `--storage-path**`，需用配置文件或环境变量指定数据目录。项目内已提供 `qdrant_config.yaml`，将数据目录设为 `./qdrant_storage`。
+  - **在项目根目录运行**（推荐）：
+  - 或使用环境变量（二进制可在任意目录）：
    **macOS 安全提示**：首次运行若出现「无法验证开发者」或进程被 kill，需放行未公证的二进制：
-   - **推荐**：在 Finder 中右键 `qdrant` → 选择「打开」→ 弹窗里点「打开」，之后再在终端运行即可。
-   - 或去掉隔离属性：`xattr -d com.apple.quarantine /path/to/qdrant`（把路径换成你的 qdrant 实际路径）。
-
-   **控制台 /dashboard**：项目已包含 Qdrant Web UI 的构建产物（`static/` 目录）。请**在项目根目录**启动 Qdrant（例如 `qdrant --config-path ./qdrant_config.yaml`），然后访问 http://localhost:6333/dashboard 即可使用控制台。若之前未生成过 `static/`，可执行：`git clone --depth 1 https://github.com/qdrant/qdrant-web-ui.git _build_ui && cd _build_ui && npm install && npm run build-qdrant && mkdir -p ../static && cp -R dist/* ../static/ && cd .. && rm -rf _build_ui`（在项目根执行）。
+  - **推荐**：在 Finder 中右键 `qdrant` → 选择「打开」→ 弹窗里点「打开」，之后再在终端运行即可。
+  - 或去掉隔离属性：`xattr -d com.apple.quarantine /path/to/qdrant`（把路径换成你的 qdrant 实际路径）。
+   **控制台 /dashboard**：项目已包含 Qdrant Web UI 的构建产物（`static/` 目录）。请**在项目根目录**启动 Qdrant（例如 `qdrant --config-path ./qdrant_config.yaml`），然后访问 [http://localhost:6333/dashboard](http://localhost:6333/dashboard) 即可使用控制台。若之前未生成过 `static/`，可执行：`git clone --depth 1 https://github.com/qdrant/qdrant-web-ui.git _build_ui && cd _build_ui && npm install && npm run build-qdrant && mkdir -p ../static && cp -R dist/* ../static/ && cd .. && rm -rf _build_ui`（在项目根执行）。
 
 **方式 B：Qdrant Cloud**
 
@@ -150,13 +143,15 @@ celery -A celery_app worker -Q knowledge,ingestion,retrieval,celery --loglevel=i
 
 ## 四、访问地址
 
-| 服务       | 地址                      |
-|------------|---------------------------|
-| 前端       | http://localhost:5173     |
-| 后端 API   | http://localhost:8000     |
-| API 文档   | http://localhost:8000/docs |
-| MinIO 控制台 | http://localhost:9001   |
-| Qdrant 控制台 | http://localhost:6333/dashboard |
+
+| 服务         | 地址                                                                 |
+| ---------- | ------------------------------------------------------------------ |
+| 前端         | [http://localhost:5173](http://localhost:5173)                     |
+| 后端 API     | [http://localhost:8000](http://localhost:8000)                     |
+| API 文档     | [http://localhost:8000/docs](http://localhost:8000/docs)           |
+| MinIO 控制台  | [http://localhost:9001](http://localhost:9001)                     |
+| Qdrant 控制台 | [http://localhost:6333/dashboard](http://localhost:6333/dashboard) |
+
 
 ---
 

@@ -37,7 +37,10 @@ export interface CitationScore {
 }
 
 export interface CitationDebugInfo {
-  chunk_id: string;
+  /** 向量库 point id，用于 context_window 查询 */
+  chunk_id?: string;
+  /** 知识库 id，检查器展示用 */
+  kb_id?: string;
   context_window?: { prev: string; next: string };
 }
 

@@ -74,7 +74,10 @@ export function ThinkingCapsule({
           <div className="ml-2 mt-2 space-y-3">
           {/* 阶段一：意图解析 — 仅在该阶段开始后展示，流式更新 */}
           {intentActive && (
-          <div className="space-y-2 animate-fade-in">
+          <div className={cn(
+            'space-y-2 animate-fade-in rounded-r border-l-2 pl-2 -ml-0.5',
+            currentStage === 'intent' ? 'border-l-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20' : 'border-l-transparent'
+          )}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <Brain size={12} className="text-indigo-600" />
               <span>意图解析</span>
@@ -123,7 +126,10 @@ export function ThinkingCapsule({
 
           {/* 阶段二：智能路由 — 路由阶段开始后展示 */}
           {routingActive && (
-          <div className="space-y-2 animate-fade-in">
+          <div className={cn(
+            'space-y-2 animate-fade-in rounded-r border-l-2 pl-2 -ml-0.5',
+            currentStage === 'routing' ? 'border-l-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20' : 'border-l-transparent'
+          )}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <Network size={12} className="text-indigo-600" />
               <span>智能路由</span>
@@ -175,7 +181,10 @@ export function ThinkingCapsule({
 
           {/* 阶段三：检索策略 — 检索阶段开始后展示 */}
           {retrievalActive && (
-          <div className="space-y-2 animate-fade-in">
+          <div className={cn(
+            'space-y-2 animate-fade-in rounded-r border-l-2 pl-2 -ml-0.5',
+            currentStage === 'retrieval' ? 'border-l-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20' : 'border-l-transparent'
+          )}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <Search size={12} className="text-indigo-600" />
               <span>检索策略</span>

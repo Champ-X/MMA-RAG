@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Database, Settings, MessageSquare, Layers, User, Moon, Sun } from 'lucide-react'
 import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
 import { useChatStore } from '@/store/useChatStore'
 import { useTheme } from '@/hooks/useTheme'
 import { cn } from '@/lib/utils'
-import { AnimatePresence, motion } from 'framer-motion'
+import ChatInterface from '@/components/chat/ChatInterface'
+import KnowledgeList from '@/components/knowledge/KnowledgeList'
+import { SettingsPage } from '@/pages/SettingsPage'
 
 function NavButton({ 
   active, 
@@ -114,20 +116,26 @@ export function AppLayout() {
         </div>
       </aside>
 
-      {/* 主内容区域 */}
-      <div className="flex min-w-0 flex-1 flex-col p-4 md:p-6">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={location.pathname}
-            className="h-full min-h-0"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.18 }}
-          >
-            <Outlet />
-          </motion.div>
-        </AnimatePresence>
+      {/* 主内容区域：三视图常驻挂载，按路径显隐，避免对话页跳转时卸载中断流式等 */}
+      <div className="flex min-w-0 flex-1 flex-col p-4 md:p-6 relative overflow-hidden">
+        <div
+          className={cn('flex-1 min-h-0 overflow-hidden', location.pathname !== '/' && 'hidden')}
+          aria-hidden={location.pathname !== '/'}
+        >
+          <ChatInterface />
+        </div>
+        <div
+          className={cn('flex-1 min-h-0 overflow-hidden', location.pathname !== '/knowledge' && 'hidden')}
+          aria-hidden={location.pathname !== '/knowledge'}
+        >
+          <KnowledgeList />
+        </div>
+        <div
+          className={cn('flex-1 min-h-0 overflow-hidden', location.pathname !== '/settings' && 'hidden')}
+          aria-hidden={location.pathname !== '/settings'}
+        >
+          <SettingsPage />
+        </div>
       </div>
 
       <InspectorDrawer

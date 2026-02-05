@@ -19,12 +19,33 @@ function MetaRow({ k, v }: { k: string; v: string | number | undefined }) {
   )
 }
 
+function normalizeContextWindow(raw: unknown): { prev: string; next: string } | null {
+  if (!raw) return null
+  if (typeof raw === 'string') {
+    try {
+      return normalizeContextWindow(JSON.parse(raw))
+    } catch {
+      return null
+    }
+  }
+  if (typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>
+    const prev = typeof obj.prev === 'string' ? obj.prev : ''
+    const next = typeof obj.next === 'string' ? obj.next : ''
+    if (prev || next) return { prev, next }
+  }
+  return null
+}
+
 export function InspectorDrawer({
   isOpen,
   onClose,
   citations = [],
 }: InspectorDrawerProps) {
   const item = citations[0] || null
+  const contextWindow = normalizeContextWindow(item?.debug_info?.context_window)
+  const prevText = contextWindow?.prev ?? ''
+  const nextText = contextWindow?.next ?? ''
 
   return (
     <AnimatePresence>
@@ -41,7 +62,7 @@ export function InspectorDrawer({
           />
 
           <motion.div
-            className="absolute right-0 top-0 h-full w-[420px] max-w-[90vw] border-l border-slate-200/70 bg-white/85 shadow-2xl shadow-slate-900/20 backdrop-blur-xl dark:border-slate-800/70 dark:bg-slate-950/70"
+            className="absolute right-0 top-0 h-full w-[560px] max-w-[92vw] border-l border-slate-200/70 bg-white/85 shadow-2xl shadow-slate-900/20 backdrop-blur-xl dark:border-slate-800/70 dark:bg-slate-950/70"
             initial={{ x: 30, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 30, opacity: 0 }}
@@ -90,11 +111,15 @@ export function InspectorDrawer({
                     </div>
                     <div className="mt-3 grid gap-2 text-xs">
                       <MetaRow k="File" v={item.file_name} />
-                      <MetaRow k="Path" v={item.file_name} />
+                      <MetaRow k="Path" v={item.file_path || item.file_name} />
                       <MetaRow k="Type" v={item.type} />
                       <MetaRow
                         k="Chunk ID"
-                        v={item.debug_info?.chunk_id || `chunk_${item.id}`}
+                        v={item.debug_info?.chunk_id ?? '(未提供)'}
+                      />
+                      <MetaRow
+                        k="说明"
+                        v={item.debug_info?.chunk_id ? '向量库 point id，用于上下文窗口查询' : '缺少 point id 时无法拉取上一段/下一段'}
                       />
                       <MetaRow k="Vector ID" v={`vec_${item.id}`} />
                       <MetaRow
@@ -110,10 +135,7 @@ export function InspectorDrawer({
                             ?.toUpperCase() || 'UNKNOWN'
                         }
                       />
-                      <MetaRow
-                        k="KB ID"
-                        v={item.debug_info?.chunk_id?.split('_')[0] || '-'}
-                      />
+                      <MetaRow k="KB ID" v={item.debug_info?.kb_id ?? '-'} />
                     </div>
                   </div>
 
@@ -149,31 +171,30 @@ export function InspectorDrawer({
                           {item.content || '无内容'}
                         </pre>
                       </div>
-                      {item.debug_info?.context_window && (
-                        <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800/70 dark:bg-slate-950/40">
-                          <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
-                            上下文窗口
-                          </div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">
-                            前文（示例）
-                          </div>
-                          <pre className="whitespace-pre-wrap rounded-xl bg-slate-900/5 p-2 text-[10px] text-slate-600 dark:bg-white/5 dark:text-slate-300 mb-2">
-                            {item.debug_info.context_window.prev || '... 上一段相关内容 ...'}
-                          </pre>
-                          <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">
-                            当前片段（高亮）
-                          </div>
-                          <pre className="whitespace-pre-wrap rounded-xl bg-indigo-50 dark:bg-indigo-900/20 p-2 text-[10px] text-slate-800 dark:bg-white/5 dark:text-slate-100 border border-indigo-200 dark:border-indigo-800 mb-2">
-                            {item.content || '无内容'}
-                          </pre>
-                          <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">
-                            后文（示例）
-                          </div>
-                          <pre className="whitespace-pre-wrap rounded-xl bg-slate-900/5 p-2 text-[10px] text-slate-600 dark:bg-white/5 dark:text-slate-300">
-                            {item.debug_info.context_window.next || '... 下一段相关内容 ...'}
-                          </pre>
+                      {/* doc 类型始终展示上下文窗口（根据 context_window 展示上一 chunk / 下一 chunk） */}
+                      <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800/70 dark:bg-slate-950/40">
+                        <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
+                          上下文窗口
                         </div>
-                      )}
+                        <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                          上一 chunk
+                        </div>
+                        <pre className="whitespace-pre-wrap rounded-xl bg-slate-900/5 p-2 text-[10px] text-slate-600 dark:bg-white/5 dark:text-slate-300 mb-2">
+                          {prevText || '（无上一段）'}
+                        </pre>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                          当前片段
+                        </div>
+                        <pre className="whitespace-pre-wrap rounded-xl bg-indigo-50 dark:bg-indigo-900/20 p-2 text-[10px] text-slate-800 dark:bg-white/5 dark:text-slate-100 border border-indigo-200 dark:border-indigo-800 mb-2">
+                          {item.content || '无内容'}
+                        </pre>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                          下一 chunk
+                        </div>
+                        <pre className="whitespace-pre-wrap rounded-xl bg-slate-900/5 p-2 text-[10px] text-slate-600 dark:bg-white/5 dark:text-slate-300">
+                          {nextText || '（无下一段）'}
+                        </pre>
+                      </div>
                     </>
                   )}
                 </>

@@ -32,6 +32,8 @@ class RoutingResult:
     routing_method: str
     total_candidates: int
     processing_time: float
+    """目标知识库列表（含 id、name、score），供前端展示名称"""
+    target_kbs: Optional[List[Dict[str, Any]]] = None
 
 class KnowledgeRouter:
     """知识库智能路由控制器"""
@@ -41,6 +43,30 @@ class KnowledgeRouter:
         self.kb_service = KnowledgeBaseService()
         self.portrait_generator = PortraitGenerator()
         self.llm_manager = llm_manager
+
+    async def _enrich_target_kbs(
+        self,
+        target_kb_ids: List[str],
+        confidence_scores: Dict[str, float],
+    ) -> List[Dict[str, Any]]:
+        """根据 target_kb_ids 和 confidence_scores 构建含名称的 target_kbs（id、name、score）。"""
+        if not target_kb_ids:
+            return []
+        out: List[Dict[str, Any]] = []
+        for kb_id in target_kb_ids:
+            name = kb_id
+            try:
+                kb = await self.kb_service.get_knowledge_base(kb_id)
+                if kb and kb.get("name"):
+                    name = kb["name"]
+            except Exception as e:
+                logger.debug(f"获取知识库名称失败 kb_id={kb_id}: {e}")
+            out.append({
+                "id": kb_id,
+                "name": name,
+                "score": float(confidence_scores.get(kb_id, 0)),
+            })
+        return out
 
     async def resolve_to_qdrant_kb_ids(self, kb_ids: List[str]) -> List[str]:
         """
@@ -82,12 +108,16 @@ class KnowledgeRouter:
                 kb_ids = kb_context["kb_ids"]
                 logger.info(f"使用指定的知识库: {kb_ids}")
                 processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
+                target_kbs = await self._enrich_target_kbs(
+                    kb_ids, {kb_id: 1.0 for kb_id in kb_ids}
+                )
                 return RoutingResult(
                     target_kb_ids=kb_ids,
                     confidence_scores={kb_id: 1.0 for kb_id in kb_ids},
                     routing_method="explicit",
                     total_candidates=len(kb_ids),
-                    processing_time=processing_time
+                    processing_time=processing_time,
+                    target_kbs=target_kbs,
                 )
             
             # 1. 向量化查询文本（processed_query）
@@ -124,6 +154,13 @@ class KnowledgeRouter:
             
             # 5. 计算处理时间
             processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
+            routing_result.processing_time = processing_time
+
+            # 6. 填充 target_kbs（id、name、score）供前端展示知识库名称
+            routing_result.target_kbs = await self._enrich_target_kbs(
+                routing_result.target_kb_ids,
+                routing_result.confidence_scores,
+            )
             
             audit_log(
                 f"知识库路由完成: {query_text[:50]}...",
@@ -134,8 +171,6 @@ class KnowledgeRouter:
             )
             
             logger.info(f"知识库路由完成: 查询长度={len(query_text)}, 目标KB={routing_result.target_kb_ids}")
-            
-            routing_result.processing_time = processing_time
             
             return routing_result
             

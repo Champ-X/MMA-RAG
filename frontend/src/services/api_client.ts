@@ -88,13 +88,17 @@ class ApiClient {
     return response.data;
   }
 
-  // 文件上传
+  // 文件上传（支持额外 FormData 字段）
   async uploadFile<T = any>(
-    url: string, 
-    file: File, 
-    onProgress?: (progress: number) => void
+    url: string,
+    file: File,
+    onProgress?: (progress: number) => void,
+    extraFields?: Record<string, string>
   ): Promise<T> {
     const formData = new FormData();
+    if (extraFields) {
+      Object.entries(extraFields).forEach(([k, v]) => formData.append(k, v));
+    }
     formData.append('file', file);
 
     const response: AxiosResponse<T> = await this.instance.post(url, formData, {
@@ -213,6 +217,14 @@ export const knowledgeApi = {
   // 上传文件到知识库（调用 /upload/batch）
   uploadFiles: (kbId: string, files: File[], onProgress?: (progress: number, fileIndex: number) => void) =>
     apiClient.uploadFiles(`/upload/batch`, files, onProgress, { kb_id: kbId }),
+
+  // 上传单个文件（用于精细进度）
+  uploadSingleFile: (
+    kbId: string,
+    file: File,
+    fileType: string,
+    onProgress?: (progress: number) => void
+  ) => apiClient.uploadFile(`/upload/file`, file, onProgress, { kb_id: kbId, file_type: fileType }),
 };
 
 // 对话相关API

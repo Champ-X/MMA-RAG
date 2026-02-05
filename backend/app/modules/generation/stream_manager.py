@@ -26,14 +26,68 @@ def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
         file_name = v.file_path.split("/")[-1] if "/" in v.file_path else (v.file_path or "")
         ref_type = "doc" if v.content_type == "doc" else "image"
         score = float(v.metadata.get("score", 0.0)) if v.metadata else 0.0
-        refs.append({
+        item = {
             "id": ref_id,
             "type": ref_type,
             "file_name": file_name,
+            "file_path": v.file_path,
             "content": (v.content or "")[:500],
             "img_url": v.presigned_url if ref_type == "image" else None,
             "scores": {"dense": 0, "sparse": 0, "visual": 0, "rerank": score},
-        })
+        }
+        if ref_type == "doc":
+            meta = v.metadata or {}
+            chunk_id = meta.get("chunk_id")
+            # doc 引用始终带 debug_info；chunk_id 必须为检索返回的向量库 point id，缺则无法查上下文
+            item["debug_info"] = {
+                "chunk_id": str(chunk_id) if chunk_id is not None else None,
+                "kb_id": meta.get("kb_id"),
+            }
+            if chunk_id is None:
+                logger.warning("引用缺少 chunk_id（应为检索 point id），检查器将无法拉取上下文")
+        refs.append(item)
+    return refs
+
+
+async def _enrich_refs_with_context_window(
+    refs: List[Dict[str, Any]],
+    vector_store: Any,
+) -> List[Dict[str, Any]]:
+    """为 doc 类型引用补全 debug_info.context_window (prev/next 文本)。
+    引用处 chunk_id 已统一为向量库 point id，直接据此查询即可。
+    """
+    empty_ctx = {"prev": "", "next": ""}
+    if not vector_store:
+        for ref in refs:
+            if ref.get("type") == "doc":
+                d = ref.get("debug_info") or {}
+                d["context_window"] = empty_ctx
+                ref["debug_info"] = d
+        return refs
+    loop = asyncio.get_event_loop()
+    for ref in refs:
+        if ref.get("type") != "doc":
+            continue
+        debug_info = ref.get("debug_info") or {}
+        chunk_id = debug_info.get("chunk_id")
+        if not chunk_id:
+            debug_info["context_window"] = empty_ctx
+            ref["debug_info"] = debug_info
+            continue
+        try:
+            ctx = await loop.run_in_executor(
+                None,
+                lambda cid=str(chunk_id): vector_store.get_chunk_context_window_texts(cid),
+            )
+            debug_info["context_window"] = {
+                "prev": (ctx or {}).get("prev", "") or "",
+                "next": (ctx or {}).get("next", "") or "",
+            }
+            ref["debug_info"] = debug_info
+        except Exception as e:
+            logger.debug(f"补全 context_window 失败: chunk_id={chunk_id}, e={e}")
+            debug_info["context_window"] = empty_ctx
+            ref["debug_info"] = debug_info
     return refs
 
 class StreamEventType(Enum):
@@ -94,9 +148,10 @@ class StreamSession:
 class StreamManager:
     """SSE流式响应管理器"""
     
-    def __init__(self):
+    def __init__(self, vector_store: Any = None):
         self.active_streams: Dict[str, StreamSession] = {}
         self.session_timeout = 3600  # 会话超时时间（秒）
+        self.vector_store = vector_store
     
     async def create_session(
         self,
@@ -273,6 +328,8 @@ class StreamManager:
             refs = _reference_map_to_frontend_refs(
                 getattr(context_result, "reference_map", None) or {}
             )
+            if self.vector_store:
+                refs = await _enrich_refs_with_context_window(refs, self.vector_store)
             yield StreamEvent(
                 type=StreamEventType.CITATION,
                 data={"references": refs},

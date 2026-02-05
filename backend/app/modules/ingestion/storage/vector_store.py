@@ -4,6 +4,7 @@ Qdrant向量数据库适配器
 """
 
 from typing import Dict, List, Any, Optional, Union, Tuple
+import json
 import uuid
 from datetime import datetime, timezone
 from dataclasses import dataclass
@@ -417,7 +418,7 @@ class VectorStore:
                 if temp_id:
                     temp_id_to_real_id[temp_id] = point_id
                 
-                # 准备payload（context_window暂时为空，稍后更新）
+                # 准备payload（context_window 以 JSON 字符串存，与 PayloadSchemaType.TEXT 一致，稍后更新）
                 payload = {
                     "kb_id": kb_id,
                     "text_content": chunk["text"],
@@ -425,7 +426,7 @@ class VectorStore:
                     "file_path": chunk.get("file_path"),
                     "file_type": chunk.get("file_type"),
                     "chunk_index": chunk.get("chunk_index", 0),
-                    "context_window": {},  # 先设为空，插入后再更新
+                    "context_window": "{}",  # 先为空 JSON 字符串，插入后再 set_payload 更新
                     "metadata": chunk.get("metadata", {}),
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
@@ -487,12 +488,12 @@ class VectorStore:
                     if next_real_id:
                         updated_context_window["next_chunk_id"] = next_real_id
                 
-                # 如果context_window不为空，更新该point
+                # 如果context_window不为空，更新该point（存为 JSON 字符串，与 TEXT 一致）
                 if updated_context_window:
                     update_points.append({
                         "id": real_id,
                         "payload": {
-                            "context_window": updated_context_window
+                            "context_window": json.dumps(updated_context_window, ensure_ascii=False)
                         }
                     })
             
@@ -511,12 +512,12 @@ class VectorStore:
                             }
                         payload_to_points[payload_key]["point_ids"].append(point["id"])
                     
-                    # 批量更新
+                    # 批量更新（points 传 list 即可，与 PointIdsList 等价）
                     for payload_data in payload_to_points.values():
                         self.client.set_payload(
                             collection_name="text_chunks",
                             payload=payload_data["payload"],
-                            points=models.PointIdsList(points=payload_data["point_ids"])
+                            points=payload_data["point_ids"]
                         )
                     logger.info(f"更新了 {len(update_points)} 个chunk的context_window")
                 except Exception as update_e:
@@ -751,21 +752,21 @@ class VectorStore:
                 # 尝试作为可迭代对象处理
                 results = list(query_result) if query_result else []
             
-            # 转换结果格式
+            # 转换结果格式；id 统一为向量库 point id（字符串），供引用/检查器直接使用
             formatted_results = []
             for result in results:
                 try:
                     # 标准格式：result 是 ScoredPoint 对象
                     if hasattr(result, 'id') and hasattr(result, 'score'):
                         formatted_results.append({
-                            "id": result.id,
+                            "id": str(result.id) if result.id is not None else result.id,
                             "score": result.score,
                             "payload": result.payload if hasattr(result, 'payload') else {}
                         })
                     elif isinstance(result, (list, tuple)) and len(result) >= 2:
                         # 元组格式：(id, score, payload)
                         formatted_results.append({
-                            "id": result[0],
+                            "id": str(result[0]) if result[0] is not None else result[0],
                             "score": result[1] if len(result) > 1 else 0.0,
                             "payload": result[2] if len(result) > 2 else {}
                         })
@@ -835,19 +836,19 @@ class VectorStore:
             else:
                 results = list(query_result) if query_result else []
             
-            # 转换结果格式
+            # 转换结果格式；id 统一为向量库 point id（字符串）
             formatted_results = []
             for result in results:
                 try:
                     if hasattr(result, 'id') and hasattr(result, 'score'):
                         formatted_results.append({
-                            "id": result.id,
+                            "id": str(result.id) if result.id is not None else result.id,
                             "score": result.score,
                             "payload": result.payload if hasattr(result, 'payload') else {}
                         })
                     elif isinstance(result, (list, tuple)) and len(result) >= 2:
                         formatted_results.append({
-                            "id": result[0],
+                            "id": str(result[0]) if result[0] is not None else result[0],
                             "score": result[1] if len(result) > 1 else 0.0,
                             "payload": result[2] if len(result) > 2 else {}
                         })
@@ -904,21 +905,21 @@ class VectorStore:
                 # 尝试作为可迭代对象处理
                 results = list(query_result) if query_result else []
             
-            # 转换结果格式
+            # 转换结果格式；id 统一为向量库 point id（字符串）
             formatted_results = []
             for result in results:
                 try:
                     # 标准格式：result 是 ScoredPoint 对象
                     if hasattr(result, 'id') and hasattr(result, 'score'):
                         formatted_results.append({
-                            "id": result.id,
+                            "id": str(result.id) if result.id is not None else result.id,
                             "score": result.score,
                             "payload": result.payload if hasattr(result, 'payload') else {}
                         })
                     elif isinstance(result, (list, tuple)) and len(result) >= 2:
                         # 元组格式：(id, score, payload)
                         formatted_results.append({
-                            "id": result[0],
+                            "id": str(result[0]) if result[0] is not None else result[0],
                             "score": result[1] if len(result) > 1 else 0.0,
                             "payload": result[2] if len(result) > 2 else {}
                         })
@@ -1039,11 +1040,11 @@ class VectorStore:
                     payload = {}
                     
                     if hasattr(result, 'id') and hasattr(result, 'score'):
-                        result_id = result.id
+                        result_id = str(result.id) if result.id is not None else result.id
                         score = result.score
                         payload = result.payload if hasattr(result, 'payload') else {}
                     elif isinstance(result, (list, tuple)) and len(result) >= 2:
-                        result_id = result[0]
+                        result_id = str(result[0]) if result[0] is not None else result[0]
                         score = result[1] if len(result) > 1 else 0.0
                         payload = result[2] if len(result) > 2 else {}
                     
@@ -1120,13 +1121,13 @@ class VectorStore:
                 try:
                     if hasattr(result, 'id') and hasattr(result, 'score'):
                         formatted_results.append({
-                            "id": result.id,
+                            "id": str(result.id) if result.id is not None else result.id,
                             "score": result.score,
                             "payload": result.payload if hasattr(result, 'payload') else {}
                         })
                     elif isinstance(result, (list, tuple)) and len(result) >= 2:
                         formatted_results.append({
-                            "id": result[0],
+                            "id": str(result[0]) if result[0] is not None else result[0],
                             "score": result[1] if len(result) > 1 else 0.0,
                             "payload": result[2] if len(result) > 2 else {}
                         })
@@ -1380,7 +1381,102 @@ class VectorStore:
         except Exception as e:
             logger.error(f"fetch_texts_by_ids 失败: {str(e)}")
         return (texts_doc, texts_img)
-    
+
+    def get_point_id_by_file_id_and_chunk_index(
+        self, file_id: str, chunk_index: Optional[int] = None
+    ) -> Optional[str]:
+        """
+        按 MinIO 文档 file_id 与可选 chunk_index 解析出 Qdrant 的 point id。
+        引用/检查器已统一使用检索返回的 point id，本方法供管理或迁移等场景按 file_id 查询使用。
+        """
+        if not file_id:
+            return None
+        try:
+            must = [FieldCondition(key="file_id", match=MatchValue(value=str(file_id)))]
+            if chunk_index is not None:
+                must.append(
+                    FieldCondition(key="chunk_index", match=MatchValue(value=int(chunk_index)))
+                )
+            scroll_results = self.client.scroll(
+                collection_name="text_chunks",
+                scroll_filter=Filter(must=must),
+                limit=1,
+                with_payload=False,
+            )
+            points = scroll_results[0] if scroll_results else []
+            if not points:
+                return None
+            return str(points[0].id) if points[0].id is not None else None
+        except Exception as e:
+            logger.debug(f"get_point_id_by_file_id_and_chunk_index 失败: file_id={file_id}, e={e}")
+            return None
+
+    def get_chunk_context_window_texts(self, chunk_id: str) -> Optional[Dict[str, str]]:
+        """
+        根据 text_chunks 中某 chunk 的 context_window（prev_chunk_id, next_chunk_id）
+        拉取上一 chunk 和下一 chunk 的 text_content，用于检查器按 context_window 展示上下文。
+        chunk_id 为向量库 point id（检索结果已统一返回该 id，引用处直接使用）。
+        返回 {"prev": "...", "next": "..."}，缺失则为空字符串。
+        """
+        try:
+            norm_id = str(chunk_id) if chunk_id is not None else ""
+            if not norm_id:
+                return {"prev": "", "next": ""}
+            rows = self.client.retrieve(
+                collection_name="text_chunks",
+                ids=[norm_id],
+                with_payload=True,
+                with_vectors=False,
+            )
+            if not rows:
+                return {"prev": "", "next": ""}
+            # 转为普通 dict，避免 Pydantic/Record 等类型导致 .get 或嵌套访问异常
+            raw_payload = rows[0].payload
+            payload = dict(raw_payload) if raw_payload else {}
+            cw_raw = payload.get("context_window")
+            if cw_raw is None or cw_raw == "":
+                return {"prev": "", "next": ""}
+            # 兼容：Qdrant 中 context_window 为对象 {"prev_chunk_id":"...", "next_chunk_id":"..."}
+            # 可能是 JSON 字符串，或客户端解析后的 dict/对象
+            if isinstance(cw_raw, str):
+                try:
+                    cw = json.loads(cw_raw)
+                except Exception:
+                    return {"prev": "", "next": ""}
+            elif isinstance(cw_raw, dict):
+                cw = dict(cw_raw)
+            else:
+                # 兼容 Pydantic/对象：用 getattr 取字段
+                cw = {
+                    "prev_chunk_id": getattr(cw_raw, "prev_chunk_id", None) or (cw_raw.get("prev_chunk_id") if hasattr(cw_raw, "get") else None),
+                    "next_chunk_id": getattr(cw_raw, "next_chunk_id", None) or (cw_raw.get("next_chunk_id") if hasattr(cw_raw, "get") else None),
+                }
+            prev_id = cw.get("prev_chunk_id") or payload.get("context_window.prev_chunk_id")
+            next_id = cw.get("next_chunk_id") or payload.get("context_window.next_chunk_id")
+            ids_to_fetch = [x for x in (prev_id, next_id) if x]
+            if not ids_to_fetch:
+                return {"prev": "", "next": ""}
+            # 统一为字符串，避免 Qdrant 返回的 UUID 与 payload 中字符串 key 不一致
+            ids_str = [str(x) for x in ids_to_fetch]
+            rows2 = self.client.retrieve(
+                collection_name="text_chunks",
+                ids=ids_str,
+                with_payload=True,
+                with_vectors=False,
+            )
+            id_to_text: Dict[str, str] = {}
+            for r in rows2:
+                pid = str(r.id) if r.id is not None else ""
+                pl = dict(r.payload) if r.payload else {}
+                id_to_text[pid] = (pl.get("text_content") or "").strip()
+            return {
+                "prev": id_to_text.get(str(prev_id), "") if prev_id else "",
+                "next": id_to_text.get(str(next_id), "") if next_id else "",
+            }
+        except Exception as e:
+            logger.debug(f"get_chunk_context_window_texts 失败: chunk_id={chunk_id}, e={e}")
+            return {"prev": "", "next": ""}
+
     async def get_all_collections_stats(self) -> Dict[str, Any]:
         """获取所有集合统计信息"""
         try:

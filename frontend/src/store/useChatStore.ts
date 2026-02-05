@@ -80,6 +80,8 @@ interface ChatStore {
   // 状态
   sessions: ChatSession[];
   activeSessionId: string | null;
+  /** 当前正在接收流式回复的会话 id，用于切换标签时仍显示该会话的思考过程 */
+  streamingSessionId: string | null;
   isLoading: boolean;
   error: string | null;
   thinking: ThinkingState;
@@ -119,6 +121,8 @@ interface ChatStore {
   
   clearThinking: () => void;
   
+  setStreamingSessionId: (sessionId: string | null) => void;
+  
   // 获取器
   getActiveSession: () => ChatSession | null;
   
@@ -145,6 +149,7 @@ export const useChatStore = create<ChatStore>()(
       // 初始状态
       sessions: [],
       activeSessionId: null,
+      streamingSessionId: null,
       isLoading: false,
       error: null,
       thinking: initialThinking,
@@ -209,7 +214,7 @@ export const useChatStore = create<ChatStore>()(
         }
       },
 
-      // 切换会话
+      // 切换会话（不重置 thinking，避免正在流式的会话思考过程被清空）
       switchSession: (sessionId) => {
         set((state) => ({
           sessions: state.sessions.map(s => ({
@@ -218,7 +223,6 @@ export const useChatStore = create<ChatStore>()(
           })),
           activeSessionId: sessionId,
           error: null,
-          thinking: initialThinking,
         }));
       },
 
@@ -365,6 +369,10 @@ export const useChatStore = create<ChatStore>()(
       // 清除思维状态
       clearThinking: () => {
         set({ thinking: initialThinking });
+      },
+
+      setStreamingSessionId: (sessionId) => {
+        set({ streamingSessionId: sessionId });
       },
 
       // 获取活跃会话

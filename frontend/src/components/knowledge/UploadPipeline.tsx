@@ -8,6 +8,9 @@ import {
   FileSearch,
   Box,
   Palette,
+  Loader2,
+  ImageIcon,
+  Type,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -40,10 +43,17 @@ interface UploadPipelineProps {
   className?: string
 }
 
-const STAGES: { id: PipelineStage; label: string; icon: typeof Upload }[] = [
+const STAGES_DOC: { id: PipelineStage; label: string; icon: typeof Upload }[] = [
   { id: 'minio', label: 'MinIO 上传', icon: Upload },
-  { id: 'parsing', label: '解析', icon: FileSearch },
-  { id: 'vectorizing', label: '向量化', icon: Box },
+  { id: 'parsing', label: '解析分块', icon: FileSearch },
+  { id: 'vectorizing', label: '文本向量化', icon: Box },
+  { id: 'portrait', label: '画像更新', icon: Palette },
+]
+
+const STAGES_IMAGE: { id: PipelineStage; label: string; icon: typeof Upload }[] = [
+  { id: 'minio', label: 'MinIO 上传', icon: Upload },
+  { id: 'parsing', label: 'VLM 描述', icon: ImageIcon },
+  { id: 'vectorizing', label: 'CLIP·文本向量化', icon: Type },
   { id: 'portrait', label: '画像更新', icon: Palette },
 ]
 
@@ -52,9 +62,9 @@ function getStageMessage(p: UploadPipelineProgress): string {
     case 'minio':
       return '上传中…'
     case 'parsing':
-      return p.currentFileIsImage ? 'VLM Captioning…' : '识别中…'
+      return p.currentFileIsImage ? 'VLM Captioning…' : '解析分块…'
     case 'vectorizing':
-      return 'Embedding…'
+      return p.currentFileIsImage ? 'CLIP·Embedding…' : 'Embedding…'
     case 'portrait':
       return '正在更新知识库画像聚类…'
     case 'done':
@@ -65,7 +75,7 @@ function getStageMessage(p: UploadPipelineProgress): string {
 }
 
 function getStageIndex(stage: PipelineStage): number {
-  const i = STAGES.findIndex((s) => s.id === stage)
+  const i = STAGES_DOC.findIndex((s) => s.id === stage)
   return i >= 0 ? i : 0
 }
 
@@ -105,11 +115,19 @@ export function UploadPipeline({
       ? getStageIndex(uploadProgress.stage)
       : -1
 
-  // 上传成功后清空已选文件，避免重复上传
+  const isImagePipeline = Boolean(uploadProgress?.currentFileIsImage)
+  const STAGES = isImagePipeline ? STAGES_IMAGE : STAGES_DOC
+
+  const isAllDone = Boolean(uploadProgress?.stage === 'done')
+  const completedCount = uploadProgress?.completed ?? 0
+  const failedCount = uploadProgress?.failed ?? 0
+  const totalCount = uploadProgress?.total ?? 0
+
+  // 上传成功后延迟清空已选文件，便于用户看到完成摘要
   useEffect(() => {
-    if (uploadProgress?.stage === 'done') {
-      setSelectedFiles([])
-    }
+    if (uploadProgress?.stage !== 'done') return
+    const t = setTimeout(() => setSelectedFiles([]), 2500)
+    return () => clearTimeout(t)
   }, [uploadProgress?.stage])
 
   return (
@@ -161,10 +179,26 @@ export function UploadPipeline({
         {selectedFiles.length > 0 && (
           <>
             <div>
-              <h4 className="mb-3 font-medium text-slate-800 dark:text-slate-100">
-                已选文件 ({selectedFiles.length})
-              </h4>
-              <div className="space-y-2">
+              {isAllDone ? (
+                <div className="mb-3 rounded-lg border border-green-200 dark:border-green-800 bg-green-50/80 dark:bg-green-900/20 px-4 py-3">
+                  <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                    本次上传完成：成功 {completedCount}，{failedCount > 0 ? `失败 ${failedCount}` : '无失败'}
+                  </p>
+                  <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
+                    {totalCount} 个文件已处理
+                  </p>
+                </div>
+              ) : (
+                <h4 className="mb-3 font-medium text-slate-800 dark:text-slate-100">
+                  已选文件 ({selectedFiles.length})
+                </h4>
+              )}
+              <div className="space-y-3">
+                {isUploading && !isAllDone && (
+                  <div className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                    处理中
+                  </div>
+                )}
                 {selectedFiles.map((f, i) => {
                   const isImage = f.type.startsWith('image/')
                   const Icon = isImage ? Image : f.type.includes('pdf') ? FileText : File
@@ -175,13 +209,16 @@ export function UploadPipeline({
                     isUploading &&
                     uploadProgress &&
                     i < uploadProgress.completed + uploadProgress.failed
+                  const isPending = isUploading && !isCurrent && !done
 
                   return (
                     <div
                       key={i}
                       className={cn(
-                        'flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-800 p-3',
-                        isCurrent && 'border-indigo-400 dark:border-fuchsia-500 bg-indigo-50/50 dark:bg-fuchsia-500/10'
+                        'flex items-center justify-between rounded-lg border p-3',
+                        isCurrent && 'border-indigo-400 dark:border-fuchsia-500 bg-indigo-50/50 dark:bg-fuchsia-500/10',
+                        done && !isCurrent && 'border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10',
+                        isPending && 'border-slate-200 dark:border-slate-800'
                       )}
                     >
                       <div className="flex items-center gap-3">
@@ -193,12 +230,20 @@ export function UploadPipeline({
                           </p>
                         </div>
                       </div>
-                      {isUploading ? (
+                      {isUploading || isAllDone ? (
                         isCurrent ? (
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-500 dark:border-fuchsia-500 border-t-transparent" />
+                          <div className="flex items-center gap-2 text-indigo-600 dark:text-fuchsia-400">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span className="text-xs font-medium">处理中</span>
+                          </div>
                         ) : done ? (
-                          <CheckCircle className="h-4 w-4 text-green-600" />
-                        ) : null
+                          <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                            <CheckCircle className="h-4 w-4 shrink-0" />
+                            <span className="text-xs font-medium">已完成</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400 dark:text-slate-500">待处理</span>
+                        )
                       ) : (
                         <Button
                           variant="ghost"

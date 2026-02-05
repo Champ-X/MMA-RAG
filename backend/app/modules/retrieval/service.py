@@ -208,10 +208,12 @@ class RetrievalService:
             )
             target_kb_ids = getattr(routing_result, "target_kb_ids", []) or []
             confidence_scores = getattr(routing_result, "confidence_scores", {}) or {}
-            target_kbs = [
-                {"id": kb_id, "name": kb_id, "score": float(confidence_scores.get(kb_id, 0))}
-                for kb_id in target_kb_ids
-            ]
+            target_kbs = getattr(routing_result, "target_kbs", None)
+            if not target_kbs:
+                target_kbs = [
+                    {"id": kb_id, "name": kb_id, "score": float(confidence_scores.get(kb_id, 0))}
+                    for kb_id in target_kb_ids
+                ]
             routing_payload = {
                 "message": "智能路由完成",
                 "target_kbs": target_kbs,

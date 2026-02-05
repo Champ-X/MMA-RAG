@@ -1,4 +1,5 @@
 import React from 'react'
+import { User, Bot } from 'lucide-react'
 import { ThinkingCapsule } from './ThinkingCapsule'
 import { InlineCitation } from './InlineCitation'
 import ReactMarkdown from 'react-markdown'
@@ -49,19 +50,34 @@ interface MessageBubbleProps {
   onCiteClick?: (refId: number | string, event: React.MouseEvent, messageId?: string) => void
 }
 
-// 从文本中提取引用标记并转换为可点击按钮
+/** 正文中引用按首次出现顺序去重得到的 id 列表，用于连续编号 1,2,3... */
+function getOrderedRefIdsFromContent(content: string): (number | string)[] {
+  const matches = findAllCitationMatches(content)
+  const seen = new Set<number | string>()
+  const ordered: (number | string)[] = []
+  for (const m of matches) {
+    if (!seen.has(m.n)) {
+      seen.add(m.n)
+      ordered.push(m.n)
+    }
+  }
+  return ordered
+}
+
+// 从文本中提取引用标记并转换为可点击按钮；originalIdToDisplayIndex 用于连续编号展示
 function injectCitations(
   children: React.ReactNode,
   onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void,
-  messageId?: string
+  messageId?: string,
+  originalIdToDisplayIndex?: Map<number | string, number>
 ): React.ReactNode {
   if (typeof children === 'string') {
-    return splitTextWithCitations(children, onCiteClick, messageId)
+    return splitTextWithCitations(children, onCiteClick, messageId, originalIdToDisplayIndex)
   }
   if (Array.isArray(children)) {
     return children.map((child, idx) => (
       <span key={`cnode_${messageId ?? 'm'}_${idx}`}>
-        {injectCitations(child, onCiteClick, messageId)}
+        {injectCitations(child, onCiteClick, messageId, originalIdToDisplayIndex)}
       </span>
     ))
   }
@@ -69,7 +85,7 @@ function injectCitations(
   if (children.props?.children) {
     return React.cloneElement(children, {
       ...children.props,
-      children: injectCitations(children.props.children, onCiteClick, messageId)
+      children: injectCitations(children.props.children, onCiteClick, messageId, originalIdToDisplayIndex)
     } as any)
   }
   return children
@@ -128,7 +144,8 @@ function findAllCitationMatches(text: string): CitationMatch[] {
 function splitTextWithCitations(
   text: string,
   onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void,
-  messageId?: string
+  messageId?: string,
+  originalIdToDisplayIndex?: Map<number | string, number>
 ) {
   const matches = findAllCitationMatches(text)
   if (matches.length === 0) return text
@@ -138,10 +155,13 @@ function splitTextWithCitations(
   matches.forEach((match, idx) => {
     if (match.start > last) out.push(text.slice(last, match.start))
     if (match.leadingSpace) out.push(' ')
+    const displayN = originalIdToDisplayIndex != null
+      ? (originalIdToDisplayIndex.get(match.n) ?? match.n)
+      : match.n
     out.push(
       <CitationInlineButton
         key={`c_${messageId}_${idx}_${match.n}`}
-        n={match.n}
+        n={typeof displayN === 'number' ? displayN : Number(displayN) || 0}
         onClick={(rect) => onCiteClick?.(match.n, rect as any, messageId)}
       />
     )
@@ -182,7 +202,18 @@ export function MessageBubble({
       ? (message.thinking[0]?.data as ThoughtData) ?? null
       : (message.thinking as ThoughtData) ?? null
   const refs = message.citations ?? []
-  const uniqueRefs = refs.filter((ref, idx, arr) => {
+  const orderedRefIds = !isUser ? getOrderedRefIdsFromContent(message.content) : []
+  const originalIdToDisplayIndex = React.useMemo(() => {
+    const m = new Map<number | string, number>()
+    orderedRefIds.forEach((id, i) => m.set(id, i + 1))
+    return m
+  }, [orderedRefIds.join(',')])
+  const orderedRefs = React.useMemo(() => {
+    return orderedRefIds
+      .map((id) => citationMap?.get(id) ?? refs.find((r) => typeof r === 'object' && r != null && (r as any).id === id) ?? { id })
+      .filter((r): r is CitationReference | { id: number | string } => r != null && typeof r === 'object' && 'id' in r)
+  }, [orderedRefIds.join(','), citationMap, refs])
+  const uniqueRefs = orderedRefs.length > 0 ? orderedRefs : refs.filter((ref, idx, arr) => {
     const isObj = typeof ref === 'object' && ref != null && 'id' in ref
     const type = isObj && 'type' in ref ? (ref as any).type : undefined
     const fileName = isObj && 'file_name' in ref ? String((ref as any).file_name || '') : ''
@@ -196,19 +227,53 @@ export function MessageBubble({
       return rKey === key
     }) === idx
   })
-  const hasRefs = uniqueRefs.length > 0
+  const allImageRefsForThumbnails = React.useMemo(() => {
+    if (isUser) return []
+    const seen = new Set<string | number>()
+    const out: (CitationReference | { id: number | string })[] = []
+    for (const r of refs) {
+      const full = typeof r === 'object' && r != null && 'id' in r
+        ? (citationMap?.get((r as any).id) ?? r)
+        : null
+      if (full && (full as CitationReference).type === 'image') {
+        const key = (full as CitationReference).file_name ?? (full as any).id
+        if (!seen.has(key)) {
+          seen.add(key)
+          out.push(full as CitationReference)
+        }
+      }
+    }
+    return out
+  }, [refs, citationMap, isUser])
+  const hasRefs = uniqueRefs.length > 0 || allImageRefsForThumbnails.length > 0
 
-  return (
-    <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
-      <div
-        className={cn(
-          'max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm',
-          isUser
-            ? 'rounded-tr-sm bg-gradient-to-br from-indigo-600 to-sky-500 text-white shadow-indigo-500/10'
-            : 'rounded-tl-sm border border-slate-200/70 bg-white/80 text-slate-900 shadow-slate-900/5 dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-100',
-          !isUser && showThinking && 'min-w-[min(100%,24rem)]'
-        )}
-      >
+  const AvatarIcon = isUser ? User : Bot
+  const avatarBg = isUser
+    ? 'bg-gradient-to-br from-indigo-500 to-sky-500 text-white'
+    : 'bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white border border-slate-200/50 dark:border-slate-700/50'
+
+  const avatarEl = (
+    <div
+      className={cn(
+        'flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center shadow-md ring-2 ring-white/20 dark:ring-slate-800/50',
+        avatarBg
+      )}
+      aria-hidden
+    >
+      <AvatarIcon className="w-4 h-4" strokeWidth={2.5} />
+    </div>
+  )
+
+  const bubbleEl = (
+    <div
+      className={cn(
+        'max-w-[85%] rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-sm',
+        isUser
+          ? 'rounded-tr-sm bg-gradient-to-br from-indigo-600 to-sky-500 text-white shadow-indigo-500/10'
+          : 'rounded-tl-sm border border-slate-200/70 bg-white/80 text-slate-900 shadow-slate-900/5 dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-100',
+        !isUser && showThinking && 'min-w-[min(100%,24rem)]'
+      )}
+    >
         {showThinking && (
           <ThinkingCapsule
             thoughtData={thoughtData}
@@ -231,7 +296,7 @@ export function MessageBubble({
                       currentTarget: { getBoundingClientRect: () => rect }
                     } as React.MouseEvent
                     onCiteClick?.(id, mockEvent, msgId ?? message.id)
-                  }, message.id)}</p>
+                  }, message.id, originalIdToDisplayIndex)}</p>
                 ),
                 li: ({ children }) => (
                   <li>{injectCitations(children, (id, rect, msgId) => {
@@ -239,7 +304,7 @@ export function MessageBubble({
                       currentTarget: { getBoundingClientRect: () => rect }
                     } as React.MouseEvent
                     onCiteClick?.(id, mockEvent, msgId ?? message.id)
-                  }, message.id)}</li>
+                  }, message.id, originalIdToDisplayIndex)}</li>
                 ),
               }}
             >
@@ -261,10 +326,27 @@ export function MessageBubble({
               citationMap={citationMap}
               onCiteClick={onCiteClick}
               messageId={message.id}
+              displayIndexByRefId={originalIdToDisplayIndex}
+              imageThumbnailRefs={allImageRefsForThumbnails.length > 0 ? allImageRefsForThumbnails : undefined}
             />
           </div>
         )}
-      </div>
+    </div>
+  )
+
+  return (
+    <div className={cn('flex gap-6 items-start', isUser ? 'justify-end' : 'justify-start')}>
+      {isUser ? (
+        <>
+          {bubbleEl}
+          {avatarEl}
+        </>
+      ) : (
+        <>
+          {avatarEl}
+          {bubbleEl}
+        </>
+      )}
     </div>
   )
 }

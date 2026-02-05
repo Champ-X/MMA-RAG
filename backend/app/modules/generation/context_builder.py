@@ -123,7 +123,11 @@ class ContextBuilder:
             seen_chunk_ids = set()  # 用于去重，确保每个 chunk 只出现一次
             
             for result in retrieval_result.reranked_results:
-                chunk_id = result.get("id")
+                # 必须使用检索返回的 point id（向量库 chunk 的 id），用于引用与 context_window 查询
+                point_id = result.get("id")
+                chunk_id = str(point_id) if point_id is not None else None
+                if not chunk_id:
+                    continue
                 
                 # 跳过重复的 chunk（相同的 chunk_id）
                 if chunk_id in seen_chunk_ids:
@@ -147,7 +151,7 @@ class ContextBuilder:
                     file_path = payload.get("file_path", "")
                     file_type = "image"
                 
-                # 构建处理结果
+                # 构建处理结果（id 为检索返回的 point id，贯穿引用与检查器）
                 processed_result = {
                     "id": chunk_id,
                     "content_type": content_type,
@@ -216,7 +220,7 @@ class ContextBuilder:
                         "score": doc["score"],
                         "kb_id": doc["metadata"].get("kb_id"),
                         "file_type": doc["file_type"],
-                        "chunk_id": doc.get("id"),  # chunk 的 ID（Qdrant point ID）
+                        "chunk_id": doc.get("id"),  # 检索返回的 point id，直接用于 context_window 查询
                         "chunk_index": doc["metadata"].get("chunk_index")  # chunk 在文档中的索引
                     }
                 )
@@ -234,7 +238,7 @@ class ContextBuilder:
                         "score": image["score"],
                         "kb_id": image["metadata"].get("kb_id"),
                         "file_type": image["file_type"],
-                        "chunk_id": image.get("id"),  # chunk 的 ID（Qdrant point ID）
+                        "chunk_id": image.get("id"),  # 检索返回的 point id
                         "chunk_index": image["metadata"].get("chunk_index")  # chunk 在文档中的索引（如果有）
                     }
                 )

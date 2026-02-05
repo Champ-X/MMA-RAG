@@ -22,13 +22,16 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     updateMessage,
     setThinking,
     clearThinking,
+    setStreamingSessionId,
     getActiveSession,
+    getSessionById,
   } = useChatStore()
 
   const [isStreaming, setIsStreaming] = useState(false)
   const [currentResponse, setCurrentResponse] = useState('')
   const streamRef = useRef<{ close: () => void; isClosed: boolean } | null>(null)
   const currentMessageIdRef = useRef<string | null>(null)
+  const streamingSessionIdRef = useRef<string | null>(null)
   const contentBufferRef = useRef('')
   const [error, setError] = useState<string | null>(null)
 
@@ -36,6 +39,8 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     streamRef.current?.close()
     streamRef.current = null
     setIsStreaming(false)
+    setStreamingSessionId(null)
+    streamingSessionIdRef.current = null
     clearThinking()
     setCurrentResponse('')
     contentBufferRef.current = ''
@@ -60,11 +65,13 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     const after = getActiveSession()
     const last = after?.messages[after.messages.length - 1]
     currentMessageIdRef.current = last?.id ?? null
+    streamingSessionIdRef.current = session.id
 
     contentBufferRef.current = ''
     setIsStreaming(true)
     setError(null)
     setCurrentResponse('')
+    setStreamingSessionId(session.id)
 
     // 流一开始就展示「意图识别」进行中，避免长时间只显示「等待思考阶段」
     setThinking({
@@ -105,7 +112,8 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             options.onThought?.(e as ThoughtEvent)
           },
           onCitation: (ev) => {
-            const s = getActiveSession()
+            const sid = streamingSessionIdRef.current
+            const s = sid ? getSessionById(sid) : null
             const last = s?.messages[s?.messages.length - 1]
             if (s && last && last.id === currentMessageIdRef.current && ev.references?.length) {
               const prev = last.citations ?? []
@@ -118,7 +126,8 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             if (typeof ev.delta !== 'string') return
             contentBufferRef.current += ev.delta
             setCurrentResponse(contentBufferRef.current)
-            const s = getActiveSession()
+            const sid = streamingSessionIdRef.current
+            const s = sid ? getSessionById(sid) : null
             const last = s?.messages[s?.messages.length - 1]
             if (s && last && last.id === currentMessageIdRef.current) {
               updateMessage(s.id, last.id, { content: contentBufferRef.current })
@@ -137,8 +146,9 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
               },
               progress: 100,
             })
-            const s = getActiveSession()
-            const last = s?.messages[s.messages.length - 1]
+            const sid = streamingSessionIdRef.current
+            const s = sid ? getSessionById(sid) : null
+            const last = s?.messages[s?.messages.length - 1]
             if (s && last && last.role === 'assistant' && last.id === currentMessageIdRef.current && thoughtData) {
               updateMessage(s.id, last.id, { thinking: thoughtData })
             }
@@ -148,7 +158,8 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
           onError: (err) => {
             const msg = err instanceof Error ? err.message : '发生未知错误'
             setError(msg)
-            const s = getActiveSession()
+            const sid = streamingSessionIdRef.current
+            const s = sid ? getSessionById(sid) : null
             const last = s?.messages[s?.messages.length - 1]
             if (s && last && last.id === currentMessageIdRef.current) {
               updateMessage(s.id, last.id, { error: msg })

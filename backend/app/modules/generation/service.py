@@ -15,12 +15,22 @@ from app.core.logger import get_logger, audit_log
 
 logger = get_logger(__name__)
 
+
+def _get_vector_store():
+    try:
+        from app.modules.ingestion.storage.vector_store import VectorStore
+        return VectorStore()
+    except Exception as e:
+        logger.debug(f"VectorStore 未注入到 StreamManager: {e}")
+        return None
+
+
 class GenerationService:
     """LLM内容生成服务"""
     
     def __init__(self):
         self.context_builder = ContextBuilder()
-        self.stream_manager = StreamManager()
+        self.stream_manager = StreamManager(vector_store=_get_vector_store())
         self.prompt_manager = SystemPromptManager()
         self.llm_manager = llm_manager
     
@@ -198,9 +208,64 @@ class GenerationService:
                         full_answer,
                         context_result.reference_map
                     )
+                    # 合并 stream_manager 的引用（含 debug_info/context_window）与校验后的引用列表
+                    base_refs = (event.data or {}).get("references") or []
+                    base_by_id = {}
+                    for r in base_refs:
+                        if isinstance(r, dict) and "id" in r:
+                            base_by_id[str(r.get("id"))] = r
+
+                    merged_refs: List[Dict[str, Any]] = []
+                    for v in valid_references:
+                        if not isinstance(v, dict):
+                            continue
+                        ref_id = str(v.get("id"))
+                        base = base_by_id.get(ref_id)
+                        if base:
+                            merged = dict(base)
+                            # 补全基础字段
+                            if not merged.get("file_path") and v.get("file_path"):
+                                merged["file_path"] = v.get("file_path")
+                            if not merged.get("file_name") and v.get("file_name"):
+                                merged["file_name"] = v.get("file_name")
+                            if not merged.get("content") and v.get("content"):
+                                merged["content"] = v.get("content")
+                            if not merged.get("scores") and v.get("scores"):
+                                merged["scores"] = v.get("scores")
+                            if not merged.get("metadata") and v.get("metadata"):
+                                merged["metadata"] = v.get("metadata")
+                            # 兼容 chunk_id 顶层字段 -> debug_info
+                            chunk_id = v.get("chunk_id")
+                            if chunk_id:
+                                debug_info = merged.get("debug_info")
+                                if not isinstance(debug_info, dict):
+                                    debug_info = {}
+                                if not debug_info.get("chunk_id"):
+                                    debug_info["chunk_id"] = str(chunk_id)
+                                raw_metadata = v.get("metadata")
+                                metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+                                kb_id = metadata.get("kb_id")
+                                if kb_id is not None and not debug_info.get("kb_id"):
+                                    debug_info["kb_id"] = str(kb_id)
+                                merged["debug_info"] = debug_info
+                                merged.setdefault("chunk_id", str(chunk_id))
+                            merged_refs.append(merged)
+                        else:
+                            merged = dict(v)
+                            chunk_id = v.get("chunk_id")
+                            if chunk_id:
+                                debug_info = {"chunk_id": str(chunk_id)}
+                                raw_metadata = v.get("metadata") if isinstance(v, dict) else None
+                                metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+                                kb_id = metadata.get("kb_id")
+                                if kb_id is not None:
+                                    debug_info["kb_id"] = str(kb_id)
+                                merged["debug_info"] = debug_info
+                            merged_refs.append(merged)
+
                     yield StreamEvent(
                         type=StreamEventType.CITATION,
-                        data={"references": valid_references},
+                        data={"references": merged_refs},
                         timestamp=event.timestamp,
                     )
                 else:
