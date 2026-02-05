@@ -1051,22 +1051,24 @@ class KnowledgeBaseService:
             return None
 
     async def delete_kb_file(self, kb_id: str, file_id: str) -> bool:
-        """删除知识库下的单个文件及其向量（以 MinIO 桶存在为准）"""
+        """删除知识库下的单个文件及其向量（以 MinIO 桶存在为准）。先删向量再删 MinIO，向量删除失败则不删 MinIO。"""
         try:
             if not self._ensure_kb_in_cache(kb_id):
                 return False
             bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
             raw_files = await self.minio_adapter.list_files(bucket=bucket_name, prefix="", max_keys=1000)
-            object_path = None
+            # 收集该 file_id 在 MinIO 下的所有对象（文档 + 可能的多张图片等）
+            object_paths: List[str] = []
             for f in raw_files:
                 op = f.get("object_path", "")
                 if file_id in op and op.startswith(("documents/", "images/")):
                     rest = op.split("/", 1)[1]
                     if rest.startswith(file_id + "_"):
-                        object_path = op
-                        break
-            if not object_path:
+                        object_paths.append(op)
+            if not object_paths:
                 return False
+
+            # 先删除向量库中该文件对应的向量；失败则中止，不删 MinIO
             from qdrant_client.http.models import Filter, FieldCondition, MatchValue
             deleted_chunk_count = 0
             seen_point_ids: set = set()
@@ -1076,23 +1078,23 @@ class KnowledgeBaseService:
                     FieldCondition(key="file_id", match=MatchValue(value=file_id)),
                 ])
                 for coll in ["text_chunks", "image_vectors"]:
-                    try:
-                        scroll_result = self.vector_store.client.scroll(
-                            collection_name=coll, scroll_filter=filt, limit=10000
+                    scroll_result = self.vector_store.client.scroll(
+                        collection_name=coll, scroll_filter=filt, limit=10000
+                    )
+                    point_ids = [p.id for p in (scroll_result[0] or []) if hasattr(p, "id")]
+                    for pid in point_ids:
+                        if pid not in seen_point_ids:
+                            seen_point_ids.add(pid)
+                            deleted_chunk_count += 1
+                    if point_ids:
+                        self.vector_store.client.delete(
+                            collection_name=coll,
+                            points_selector=models.PointIdsList(points=point_ids),
                         )
-                        point_ids = [p.id for p in (scroll_result[0] or []) if hasattr(p, "id")]
-                        for pid in point_ids:
-                            if pid not in seen_point_ids:
-                                seen_point_ids.add(pid)
-                                deleted_chunk_count += 1
-                        if point_ids:
-                            self.vector_store.client.delete(
-                                collection_name=coll,
-                                points_selector=models.PointIdsList(points=point_ids),
-                            )
-                    except Exception as ex:
-                        logger.warning(f"删除向量失败 {coll}: {ex}")
-            await self.minio_adapter.delete_file(bucket_name, object_path)
+
+            # 向量删除成功后，再删除 MinIO 中该文件的所有对象
+            for object_path in object_paths:
+                await self.minio_adapter.delete_file(bucket_name, object_path)
 
             # 删除 chunk 计入增量，达到阈值后触发画像重建（与上传逻辑一致）
             if deleted_chunk_count > 0:
