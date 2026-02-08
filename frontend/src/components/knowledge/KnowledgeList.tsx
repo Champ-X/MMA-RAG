@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
-import { UploadPipeline, type UploadPipelineProgress, type PipelineStage } from './UploadPipeline'
+import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import { knowledgeApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
@@ -333,38 +333,6 @@ const KnowledgeList: React.FC = () => {
     return 'txt'
   }
 
-  const stageTickerRef = useRef<number | null>(null)
-
-  const stopStageTicker = () => {
-    if (stageTickerRef.current != null) {
-      window.clearInterval(stageTickerRef.current)
-      stageTickerRef.current = null
-    }
-  }
-
-  const startStageTicker = (fileName: string, isImage: boolean) => {
-    stopStageTicker()
-    const sequence: Array<{ stage: PipelineStage; progress: number }> = [
-      { stage: 'parsing', progress: 45 },
-      { stage: 'vectorizing', progress: 70 },
-      { stage: 'portrait', progress: 90 },
-    ]
-    let idx = 0
-    stageTickerRef.current = window.setInterval(() => {
-      const step = sequence[idx % sequence.length]
-      idx += 1
-      setUploadProgress((prev) => {
-        if (!prev || prev.currentFile !== fileName) return prev
-        return {
-          ...prev,
-          stage: step.stage,
-          stageProgress: step.progress,
-          currentFileIsImage: isImage,
-        }
-      })
-    }, 1200)
-  }
-
   // 处理文件上传（逐个上传，保证进度正确）
   const handleFileUpload = async (fileList: File[]) => {
     if (!activeKbId || fileList.length === 0) return
@@ -404,6 +372,23 @@ const KnowledgeList: React.FC = () => {
 
         try {
           await knowledgeApi.uploadSingleFile(activeKbId, file, fileType, (pct) => {
+            // 上传到 100% 后只设置一次「后端处理中」状态，避免进度在后几个阶段循环
+            if (pct >= 100 && !tickerStarted) {
+              tickerStarted = true
+              setUploadProgress((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      stage: 'parsing',
+                      stageProgress: 50,
+                      currentFile: file.name,
+                      currentFileIsImage: isImage,
+                    }
+                  : prev
+              )
+              return
+            }
+            if (pct >= 100) return
             setUploadProgress((prev) => {
               if (!prev) return prev
               return {
@@ -414,10 +399,6 @@ const KnowledgeList: React.FC = () => {
                 currentFileIsImage: isImage,
               }
             })
-            if (pct >= 100 && !tickerStarted) {
-              tickerStarted = true
-              startStageTicker(file.name, isImage)
-            }
           })
           completed += 1
           setUploadProgress((prev) => ({
@@ -435,8 +416,6 @@ const KnowledgeList: React.FC = () => {
           console.error('上传失败', e)
           failed += 1
           setUploadProgress((prev) => (prev ? { ...prev, failed } : prev))
-        } finally {
-          stopStageTicker()
         }
       }
 
@@ -454,7 +433,6 @@ const KnowledgeList: React.FC = () => {
       await fetchKnowledgeBases()
       await fetchFiles()
     } finally {
-      stopStageTicker()
       setUploading(false)
       setTimeout(() => setUploadProgress(undefined), 2000)
     }
