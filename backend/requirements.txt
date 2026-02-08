@@ -62,6 +62,12 @@ sse-starlette==1.8.2
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
+# 知识库导入：多渠道媒体搜索/下载（可选）
+# 仅在使用「从 URL 导入」或「按关键词搜索图片导入」时需要
+google-search-results>=2.4.2   # SerpAPI，用于 Google 图片搜索
+internetarchive>=3.0.0        # Internet Archive 搜索与下载
+# yt_dlp  # 若需 YouTube 等视频导入，可取消注释
+
 # 开发和测试
 pytest==7.4.3
 pytest-asyncio==0.21.1

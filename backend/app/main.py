@@ -33,7 +33,7 @@ app.add_middleware(
 )
 
 # 导入路由模块
-from app.api import chat, knowledge, upload, debug
+from app.api import chat, knowledge, upload, debug, import_api
 from app.core.logger import setup_logger
 
 # 设置日志
@@ -44,6 +44,7 @@ app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(knowledge.router, prefix="/api/knowledge", tags=["knowledge"])
 app.include_router(upload.router, prefix="/api/upload", tags=["upload"])
 app.include_router(debug.router, prefix="/api/debug", tags=["debug"])
+app.include_router(import_api.router, prefix="/api/import", tags=["import"])
 
 # 全局异常处理
 @app.exception_handler(Exception)

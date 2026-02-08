@@ -227,6 +227,119 @@ export const knowledgeApi = {
   ) => apiClient.uploadFile(`/upload/file`, file, onProgress, { kb_id: kbId, file_type: fileType }),
 };
 
+// 知识库导入 API（从 URL 或按关键词搜索图片导入）
+export const importApi = {
+  /** 从单个 URL 下载并导入知识库 */
+  importFromUrl: (body: { url: string; kb_id: string; filename?: string }) =>
+    apiClient.post<{
+      file_id: string
+      kb_id: string
+      filename: string
+      status: string
+      processing_id?: string
+      message: string
+      details?: { chunks_processed?: number; vectors_stored?: number; caption?: string }
+    }>(`/import/url`, body),
+
+  /** 按关键词从选定渠道搜索图片并导入知识库（一次性返回） */
+  importFromSearch: (body: {
+    kb_id: string
+    query: string
+    source: 'google_images' | 'pixabay' | 'internet_archive'
+    quantity?: number
+    pixabay_image_type?: string
+    pixabay_order?: string
+    archive_sort?: string
+    randomize?: boolean
+  }) =>
+    apiClient.post<{
+      kb_id: string
+      total: number
+      success_count: number
+      failed_count: number
+      results: Array<{
+        file_id?: string
+        filename: string
+        status: string
+        processing_id?: string
+        error?: string
+      }>
+      message: string
+    }>(`/import/search`, body, { timeout: 120000 }),
+
+  /** 按关键词搜索图片并导入知识库（SSE 流式进度） */
+  importFromSearchStream: (
+    params: {
+      kb_id: string
+      query: string
+      source: 'google_images' | 'pixabay' | 'internet_archive'
+      quantity?: number
+      pixabay_image_type?: string
+      pixabay_order?: string
+      archive_sort?: string
+      randomize?: boolean
+    },
+    onProgress: (event: {
+      stage: string
+      current?: number
+      total?: number
+      message?: string
+      success_count?: number
+      failed_count?: number
+    }) => void
+  ) => {
+    const base = apiClient.getBaseURL()
+    const q = new URLSearchParams()
+    q.set('kb_id', params.kb_id)
+    q.set('query', params.query)
+    q.set('source', params.source)
+    q.set('quantity', String(params.quantity ?? 5))
+    if (params.pixabay_image_type) q.set('pixabay_image_type', params.pixabay_image_type)
+    if (params.pixabay_order) q.set('pixabay_order', params.pixabay_order)
+    if (params.archive_sort) q.set('archive_sort', params.archive_sort)
+    if (params.randomize !== undefined) q.set('randomize', String(params.randomize))
+    const url = `${base}/import/search/stream?${q.toString()}`
+    return fetch(url, { method: 'GET' }).then(async (res) => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error((err as any)?.detail ?? res.statusText)
+      }
+      const reader = res.body?.getReader()
+      if (!reader) return
+      const decoder = new TextDecoder()
+      let buf = ''
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6)) as {
+                stage: string
+                current?: number
+                total?: number
+                message?: string
+                success_count?: number
+                failed_count?: number
+              }
+              onProgress(data)
+            } catch (_) {}
+          }
+        }
+      }
+      if (buf.startsWith('data: ')) {
+        try {
+          const data = JSON.parse(buf.slice(6))
+          onProgress(data)
+        } catch (_) {}
+      }
+    })
+  },
+};
+
 // 对话相关API
 export const chatApi = {
   // 发送消息

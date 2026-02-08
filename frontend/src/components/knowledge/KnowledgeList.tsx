@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2 } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
-import { knowledgeApi } from '@/services/api_client'
+import { knowledgeApi, importApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
 import { StatusBadge, FileThumb, FileHero, CreateKbModal, EditKbModal, StatItem } from './KnowledgeListHelpers'
 
@@ -194,6 +194,320 @@ function FilePreviewModal({
   )
 }
 
+// 从 URL 导入弹窗
+function ImportUrlModal({
+  kbId,
+  onClose,
+  onSuccess,
+}: {
+  kbId: string
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [url, setUrl] = useState('')
+  const [filename, setFilename] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!url.trim()) {
+      setError('请输入 URL')
+      return
+    }
+    setError(null)
+    setLoading(true)
+    try {
+      await importApi.importFromUrl({
+        url: url.trim(),
+        kb_id: kbId,
+        ...(filename.trim() ? { filename: filename.trim() } : {}),
+      })
+      onSuccess()
+      onClose()
+    } catch (err: any) {
+      setError(err?.response?.data?.detail ?? err?.message ?? '导入失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-950 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+            <Link2 size={20} /> 从 URL 导入
+          </h3>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+            <X size={18} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">URL *</label>
+            <input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://example.com/file.pdf"
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">文件名（可选）</label>
+            <input
+              type="text"
+              value={filename}
+              onChange={(e) => setFilename(e.target.value)}
+              placeholder="留空则使用 URL 中的文件名"
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+            />
+          </div>
+          {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-sm font-medium">
+              取消
+            </button>
+            <button type="submit" disabled={loading} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-500 disabled:opacity-50 flex items-center gap-2">
+              {loading ? <Loader2 size={16} className="animate-spin" /> : null}
+              导入
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// 按关键词搜索图片导入弹窗（含 Pixabay 筛选、随机性、进度展示）
+function ImportSearchModal({
+  kbId,
+  onClose,
+  onSuccess,
+}: {
+  kbId: string
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [query, setQuery] = useState('')
+  const [source, setSource] = useState<'google_images' | 'pixabay' | 'internet_archive'>('pixabay')
+  const [quantity, setQuantity] = useState(5)
+  const [pixabayImageType, setPixabayImageType] = useState('photo')
+  const [pixabayOrder, setPixabayOrder] = useState('popular')
+  const [archiveSort, setArchiveSort] = useState('relevance')
+  const [randomize, setRandomize] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<{ success_count: number; failed_count: number; total: number; message: string } | null>(null)
+  const [progress, setProgress] = useState<{
+    stage: string
+    current: number
+    total: number
+    message: string
+  } | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!query.trim()) {
+      setError('请输入搜索关键词')
+      return
+    }
+    setError(null)
+    setResult(null)
+    setProgress(null)
+    setLoading(true)
+    try {
+      await importApi.importFromSearchStream(
+        {
+          kb_id: kbId,
+          query: query.trim(),
+          source,
+          quantity: Math.min(20, Math.max(1, quantity)),
+          pixabay_image_type: source === 'pixabay' ? pixabayImageType : undefined,
+          pixabay_order: source === 'pixabay' ? pixabayOrder : undefined,
+          archive_sort: source === 'internet_archive' ? archiveSort : undefined,
+          randomize,
+        },
+        (event) => {
+          if (event.stage === 'done') {
+            setResult({
+              success_count: event.success_count ?? 0,
+              failed_count: event.failed_count ?? 0,
+              total: event.total ?? 0,
+              message: event.message ?? '',
+            })
+            if ((event.success_count ?? 0) > 0) onSuccess()
+            setProgress(null)
+          } else if (event.stage === 'error') {
+            setError(event.message ?? '导入失败')
+            setProgress(null)
+          } else {
+            setProgress({
+              stage: event.stage,
+              current: event.current ?? 0,
+              total: event.total ?? 0,
+              message: event.message ?? '',
+            })
+          }
+        }
+      )
+    } catch (err: any) {
+      setError(err?.message ?? '导入失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const stageLabel =
+    progress?.stage === 'searching'
+      ? '搜索中…'
+      : progress?.stage === 'downloading'
+        ? `下载 ${progress.current}/${progress.total}`
+        : progress?.stage === 'importing'
+          ? `导入 ${progress.current}/${progress.total}`
+          : progress?.stage
+            ? progress.stage
+            : ''
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-950 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+            <ImagePlus size={20} /> 搜索图片导入
+          </h3>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+            <X size={18} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">搜索关键词 *</label>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="例如：猫、风景"
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">渠道</label>
+            <select
+              value={source}
+              onChange={(e) => setSource(e.target.value as typeof source)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+            >
+              <option value="google_images">Google 图片 (SerpAPI)</option>
+              <option value="pixabay">Pixabay</option>
+              <option value="internet_archive">Internet Archive</option>
+            </select>
+          </div>
+          {source === 'pixabay' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Pixabay 图片类型</label>
+                <select
+                  value={pixabayImageType}
+                  onChange={(e) => setPixabayImageType(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                >
+                  <option value="all">全部</option>
+                  <option value="photo">照片</option>
+                  <option value="illustration">插画</option>
+                  <option value="vector">矢量</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Pixabay 排序</label>
+                <select
+                  value={pixabayOrder}
+                  onChange={(e) => setPixabayOrder(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                >
+                  <option value="popular">最受欢迎</option>
+                  <option value="latest">最新</option>
+                </select>
+              </div>
+            </>
+          )}
+          {source === 'internet_archive' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Archive 排序</label>
+              <select
+                value={archiveSort}
+                onChange={(e) => setArchiveSort(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+              >
+                <option value="relevance">相关度</option>
+                <option value="popular">最受欢迎</option>
+                <option value="newest">最新</option>
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">数量 (1–20)</label>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={quantity}
+              onChange={(e) => setQuantity(Number(e.target.value) || 5)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={randomize}
+              onChange={(e) => setRandomize(e.target.checked)}
+              className="rounded border-slate-300 dark:border-slate-600"
+            />
+            增加随机性（同关键词多次搜索得到不同图片）
+          </label>
+          {progress && (
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-3 space-y-2">
+              <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
+                <span>{stageLabel}</span>
+                {progress.total > 0 && (
+                  <span>{progress.current} / {progress.total}</span>
+                )}
+              </div>
+              {progress.total > 0 && (
+                <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500 dark:bg-indigo-600 transition-all duration-300"
+                    style={{ width: `${Math.min(100, (progress.current / progress.total) * 100)}%` }}
+                  />
+                </div>
+              )}
+              {progress.message && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate" title={progress.message}>{progress.message}</p>
+              )}
+            </div>
+          )}
+          {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
+          {result && (
+            <p className="text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-lg">
+              {result.message}
+            </p>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-sm font-medium">
+              {result ? '关闭' : '取消'}
+            </button>
+            <button type="submit" disabled={loading} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-500 disabled:opacity-50 flex items-center gap-2">
+              {loading ? <Loader2 size={16} className="animate-spin" /> : null}
+              {loading ? (progress ? '处理中…' : '连接中…') : '开始导入'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 const KnowledgeList: React.FC = () => {
   const [viewState, setViewState] = useState<'list' | 'detail'>('list')
   const [activeKbId, setActiveKbId] = useState<string | null>(null)
@@ -203,6 +517,8 @@ const KnowledgeList: React.FC = () => {
   const [previewFile, setPreviewFile] = useState<any>(null)
   const [dragOverlay, setDragOverlay] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadPipelineProgress | undefined>()
+  const [showImportUrlModal, setShowImportUrlModal] = useState(false)
+  const [showImportSearchModal, setShowImportSearchModal] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [files, setFiles] = useState<any[]>([])
   const [kbStats, setKbStats] = useState<{
@@ -741,12 +1057,31 @@ const KnowledgeList: React.FC = () => {
         <div className="flex-1 flex overflow-hidden">
           {/* Main Area */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {/* 统一上传入口（带进度） */}
-            <UploadPipeline
-              onFileSelect={handleFileUpload}
-              isUploading={uploading}
-              uploadProgress={uploadProgress}
-            />
+            {/* 上传与导入 */}
+            <div className="space-y-4">
+              <UploadPipeline
+                onFileSelect={handleFileUpload}
+                isUploading={uploading}
+                uploadProgress={uploadProgress}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-slate-500 dark:text-slate-400">自动导入：</span>
+                <button
+                  type="button"
+                  onClick={() => setShowImportUrlModal(true)}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium transition-colors"
+                >
+                  <Link2 size={16} /> 从 URL 导入
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowImportSearchModal(true)}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium transition-colors"
+                >
+                  <ImagePlus size={16} /> 搜索图片导入
+                </button>
+              </div>
+            </div>
 
             {/* File List */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
@@ -937,6 +1272,30 @@ const KnowledgeList: React.FC = () => {
             onDelete={() => {
               handleDeleteFile(previewFile.id)
               setPreviewFile(null)
+            }}
+          />
+        )}
+
+        {/* 从 URL 导入弹窗 */}
+        {showImportUrlModal && activeKbId && (
+          <ImportUrlModal
+            kbId={activeKbId}
+            onClose={() => setShowImportUrlModal(false)}
+            onSuccess={() => {
+              fetchFiles()
+              fetchKnowledgeBases()
+            }}
+          />
+        )}
+
+        {/* 搜索图片导入弹窗 */}
+        {showImportSearchModal && activeKbId && (
+          <ImportSearchModal
+            kbId={activeKbId}
+            onClose={() => setShowImportSearchModal(false)}
+            onSuccess={() => {
+              fetchFiles()
+              fetchKnowledgeBases()
             }}
           />
         )}
