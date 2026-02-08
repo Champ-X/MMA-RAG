@@ -370,6 +370,16 @@ function ImportSearchModal({
             ? progress.stage
             : ''
 
+  // 按阶段区分样式：搜索 / 下载 / 导入
+  const progressStageStyle =
+    progress?.stage === 'searching'
+      ? { border: 'border-l-4 border-l-slate-400', bg: 'bg-slate-50 dark:bg-slate-900', bar: 'bg-slate-500 dark:bg-slate-400', tag: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300', tagLabel: '搜索' }
+      : progress?.stage === 'downloading'
+        ? { border: 'border-l-4 border-l-blue-500', bg: 'bg-blue-50/50 dark:bg-blue-950/30', bar: 'bg-blue-500 dark:bg-blue-500', tag: 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300', tagLabel: '下载' }
+        : progress?.stage === 'importing'
+          ? { border: 'border-l-4 border-l-emerald-500', bg: 'bg-emerald-50/50 dark:bg-emerald-950/30', bar: 'bg-emerald-500 dark:bg-emerald-500', tag: 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300', tagLabel: '导入' }
+          : { border: '', bg: 'bg-slate-50 dark:bg-slate-900', bar: 'bg-indigo-500 dark:bg-indigo-600', tag: '', tagLabel: '' }
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white dark:bg-slate-950 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800">
@@ -467,17 +477,22 @@ function ImportSearchModal({
             增加随机性（同关键词多次搜索得到不同图片）
           </label>
           {progress && (
-            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-3 space-y-2">
-              <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
-                <span>{stageLabel}</span>
+            <div className={cn('rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2', progressStageStyle.border, progressStageStyle.bg)}>
+              <div className="flex items-center justify-between gap-2">
+                {progressStageStyle.tagLabel && (
+                  <span className={cn('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', progressStageStyle.tag)}>
+                    {progressStageStyle.tagLabel}
+                  </span>
+                )}
+                <span className="text-sm text-slate-600 dark:text-slate-300 flex-1 truncate">{stageLabel}</span>
                 {progress.total > 0 && (
-                  <span>{progress.current} / {progress.total}</span>
+                  <span className="text-sm font-medium text-slate-500 dark:text-slate-400 tabular-nums">{progress.current} / {progress.total}</span>
                 )}
               </div>
               {progress.total > 0 && (
                 <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                   <div
-                    className="h-full bg-indigo-500 dark:bg-indigo-600 transition-all duration-300"
+                    className={cn('h-full transition-all duration-300', progressStageStyle.bar)}
                     style={{ width: `${Math.min(100, (progress.current / progress.total) * 100)}%` }}
                   />
                 </div>
