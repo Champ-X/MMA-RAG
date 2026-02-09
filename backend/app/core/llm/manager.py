@@ -103,6 +103,10 @@ class LLMManager:
         provider = self.registry.get_provider(model_config.get("provider") or "siliconflow")
         if not provider:
             raise ValueError(f"提供商不存在: {model_config.get('provider')}")
+        
+        # 记录使用的模型
+        logger.info(f"使用主模型: {model} (任务类型: {task_type})")
+        
         params = {
             "messages": messages,
             "model": model,

@@ -312,17 +312,22 @@ class StreamManager:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_input},
             ]
+            logger.info("开始调用 final_generation 模型流式生成回答")
+            chunk_count = 0
             async for delta in llm_manager.stream_chat(
                 messages=messages,
                 task_type="final_generation",
                 temperature=0.3,
             ):
                 if delta:
+                    chunk_count += 1
                     yield StreamEvent(
                         type=StreamEventType.MESSAGE,
                         data={"content": delta, "delta": True},
                         timestamp=time.time()
                     )
+            
+            logger.info(f"final_generation 模型流式生成完成: 共收到 {chunk_count} 个数据块")
 
             # 流结束后发送引用（与前端 CitationReference 格式一致）
             refs = _reference_map_to_frontend_refs(

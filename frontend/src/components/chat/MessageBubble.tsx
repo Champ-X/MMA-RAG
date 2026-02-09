@@ -179,7 +179,7 @@ function CitationInlineButton({ n, onClick }: { n: number; onClick?: (rect: DOMR
         const rect = e.currentTarget.getBoundingClientRect()
         onClick?.(rect)
       }}
-      className="inline-flex items-center justify-center mx-0.5 text-[10px] font-bold rounded transition-all border align-text-top w-5 h-5 text-indigo-700 dark:text-indigo-200 bg-gradient-to-tr from-indigo-50 to-fuchsia-50 dark:from-indigo-600/25 dark:to-fuchsia-600/15 hover:from-indigo-100 hover:to-fuchsia-100 dark:hover:from-indigo-600/35 dark:hover:to-fuchsia-600/25 border-indigo-200/80 dark:border-slate-700"
+      className="inline-flex items-center justify-center mx-0.5 text-[9px] font-semibold rounded-[5px] transition-all border align-text-top min-w-[1rem] h-4 px-1 text-indigo-700 dark:text-indigo-200 bg-gradient-to-br from-indigo-50 via-purple-50 to-fuchsia-50 dark:from-indigo-600/30 dark:via-purple-600/20 dark:to-fuchsia-600/30 hover:from-indigo-100 hover:via-purple-100 hover:to-fuchsia-100 dark:hover:from-indigo-600/40 dark:hover:via-purple-600/30 dark:hover:to-fuchsia-600/40 border-indigo-300/60 dark:border-indigo-700/60 shadow-sm hover:shadow active:scale-95"
       title={`点击查看引用 ${n}`}
     >
       {n}
@@ -267,10 +267,10 @@ export function MessageBubble({
   const bubbleEl = (
     <div
       className={cn(
-        'max-w-[85%] rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-sm',
+        'max-w-[85%] rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-md transition-shadow',
         isUser
-          ? 'rounded-tr-sm bg-gradient-to-br from-indigo-600 to-sky-500 text-white shadow-indigo-500/10'
-          : 'rounded-tl-sm border border-slate-200/70 bg-white/80 text-slate-900 shadow-slate-900/5 dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-100',
+          ? 'rounded-tr-sm bg-gradient-to-br from-indigo-600 via-indigo-500 to-sky-500 text-white shadow-indigo-500/20 hover:shadow-indigo-500/30'
+          : 'rounded-tl-sm border border-slate-200/70 bg-white/90 text-slate-900 shadow-slate-900/10 dark:border-slate-800/70 dark:bg-slate-950/70 dark:text-slate-100 hover:shadow-lg',
         !isUser && showThinking && 'min-w-[min(100%,24rem)]'
       )}
     >

@@ -54,29 +54,33 @@ export function ThinkingCapsule({
     status === 'processing' ? '进行中…' : status === 'completed' ? '已完成' : status === 'failed' ? '失败' : ''
 
   return (
-    <div className="mb-2 w-full rounded-xl border border-slate-200/60 bg-slate-50/80 dark:border-slate-800/60 dark:bg-slate-900/30">
+    <div className="mb-2 w-full rounded-xl border border-slate-200/60 bg-gradient-to-br from-slate-50/90 to-slate-100/50 dark:from-slate-900/40 dark:to-slate-800/30 shadow-sm dark:border-slate-800/60">
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100/50 hover:text-slate-800 dark:hover:bg-slate-800/50 dark:hover:text-slate-100"
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100/70 hover:text-slate-900 dark:hover:bg-slate-800/60 dark:hover:text-slate-100 transition-colors rounded-t-xl"
       >
         <span className={cn(
-          'rounded p-1',
-          open ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300' : 'bg-slate-200/80 dark:bg-slate-700/80 text-slate-600 dark:text-slate-400'
+          'rounded-lg p-1.5 transition-all',
+          open 
+            ? 'bg-gradient-to-br from-indigo-500/20 to-purple-500/20 text-indigo-700 dark:text-indigo-300 shadow-sm' 
+            : 'bg-slate-200/80 dark:bg-slate-700/80 text-slate-600 dark:text-slate-400'
         )}>
           <Brain size={14} />
         </span>
-        <span>思考过程</span>
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <span className="font-semibold">思考过程</span>
+        {open ? <ChevronDown size={14} className="ml-auto" /> : <ChevronRight size={14} className="ml-auto" />}
       </button>
       {open && (
-        <div className="border-l-2 border-indigo-500/50 bg-white/30 px-5 pb-4 pt-2 dark:bg-slate-950/30">
-          <div className="ml-2 mt-2 space-y-3">
+        <div className="border-l-2 border-indigo-500/50 bg-white/40 px-5 pb-4 pt-3 dark:bg-slate-950/40 rounded-b-xl">
+          <div className="ml-2 mt-1 space-y-4">
           {/* 阶段一：意图解析 — 仅在该阶段开始后展示，流式更新 */}
           {intentActive && (
           <div className={cn(
-            'space-y-2 animate-fade-in rounded-r border-l-2 pl-2 -ml-0.5',
-            currentStage === 'intent' ? 'border-l-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20' : 'border-l-transparent'
+            'space-y-2 animate-fade-in rounded-r-lg border-l-[3px] pl-3 -ml-0.5 transition-all',
+            currentStage === 'intent' 
+              ? 'border-l-indigo-500 bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm' 
+              : 'border-l-slate-300 dark:border-l-slate-600'
           )}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <Brain size={12} className="text-indigo-600" />
@@ -127,8 +131,10 @@ export function ThinkingCapsule({
           {/* 阶段二：智能路由 — 路由阶段开始后展示 */}
           {routingActive && (
           <div className={cn(
-            'space-y-2 animate-fade-in rounded-r border-l-2 pl-2 -ml-0.5',
-            currentStage === 'routing' ? 'border-l-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20' : 'border-l-transparent'
+            'space-y-2 animate-fade-in rounded-r-lg border-l-[3px] pl-3 -ml-0.5 transition-all',
+            currentStage === 'routing' 
+              ? 'border-l-indigo-500 bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm' 
+              : 'border-l-slate-300 dark:border-l-slate-600'
           )}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <Network size={12} className="text-indigo-600" />
@@ -145,22 +151,28 @@ export function ThinkingCapsule({
             </div>
             <div className="ml-4 space-y-1.5">
               {Array.isArray(routing) && routing.length > 0 ? (
-                routing.map((kb: any, idx: number) => (
-                  <div key={idx} className="flex items-center gap-2 text-xs">
-                    <span className="text-slate-400 dark:text-slate-500 w-20">{kb.name}</span>
-                    <div className="flex-1 flex items-center gap-2">
-                      <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 rounded-full transition-all duration-300"
-                          style={{ width: `${(kb.score || 0) * 100}%` }}
-                        />
+                routing.map((kb: any, idx: number) => {
+                  const score = kb.score || 0
+                  const percentage = Math.round(score * 100)
+                  return (
+                    <div key={idx} className="flex items-center gap-3 text-xs">
+                      <span className="text-slate-500 dark:text-slate-400 w-20 font-medium truncate">{kb.name}</span>
+                      <div className="flex-1 flex items-center gap-2.5">
+                        <div className="flex-1 h-2 bg-slate-200/80 dark:bg-slate-700/60 rounded-full overflow-hidden shadow-inner">
+                          <div 
+                            className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-fuchsia-500 rounded-full transition-all duration-500 ease-out shadow-sm relative"
+                            style={{ width: `${score * 100}%` }}
+                          >
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent rounded-full animate-shimmer" />
+                          </div>
+                        </div>
+                        <span className="text-slate-700 dark:text-slate-200 text-[10px] font-semibold w-10 text-right tabular-nums">
+                          {percentage}%
+                        </span>
                       </div>
-                      <span className="text-slate-600 dark:text-slate-300 text-[10px] w-10 text-right">
-                        {Math.round((kb.score || 0) * 100)}%
-                      </span>
                     </div>
-                  </div>
-                ))
+                  )
+                })
               ) : (
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-slate-400 dark:text-slate-500 w-20">策略</span>
@@ -182,8 +194,10 @@ export function ThinkingCapsule({
           {/* 阶段三：检索策略 — 检索阶段开始后展示 */}
           {retrievalActive && (
           <div className={cn(
-            'space-y-2 animate-fade-in rounded-r border-l-2 pl-2 -ml-0.5',
-            currentStage === 'retrieval' ? 'border-l-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20' : 'border-l-transparent'
+            'space-y-2 animate-fade-in rounded-r-lg border-l-[3px] pl-3 -ml-0.5 transition-all',
+            currentStage === 'retrieval' 
+              ? 'border-l-indigo-500 bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm' 
+              : 'border-l-slate-300 dark:border-l-slate-600'
           )}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <Search size={12} className="text-indigo-600" />
@@ -202,9 +216,12 @@ export function ThinkingCapsule({
               {retrieval.keywords.length > 0 && (
                 <div className="flex items-start gap-2 text-xs">
                   <span className="text-slate-400 dark:text-slate-500 w-20 flex-shrink-0">关键词</span>
-                  <div className="flex-1 flex flex-wrap gap-1">
+                  <div className="flex-1 flex flex-wrap gap-1.5">
                     {retrieval.keywords.map((kw: string, idx: number) => (
-                      <span key={idx} className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded text-[10px] border border-slate-200 dark:border-slate-700">
+                      <span 
+                        key={idx} 
+                        className="px-2.5 py-1 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 text-blue-700 dark:text-blue-300 rounded-lg text-[10px] font-medium border border-blue-200/60 dark:border-blue-800/60 shadow-sm hover:shadow-md hover:scale-105 transition-all duration-200 cursor-default"
+                      >
                         {kw}
                       </span>
                     ))}

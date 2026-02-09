@@ -79,11 +79,13 @@ class GenerationService:
                 {"role": "user", "content": user_input}
             ]
             
+            logger.info("开始调用 final_generation 模型生成回答")
             llm_result = await self.llm_manager.chat(
                 messages=messages,
                 task_type="final_generation",
                 temperature=0.3
             )
+            logger.info(f"final_generation 模型调用完成: model={llm_result.model_used}, success={llm_result.success}")
             
             if not llm_result.success:
                 logger.error(f"LLM生成失败: {llm_result.error}")

@@ -269,14 +269,17 @@ export function ChatInterface() {
       {/* 消息区 */}
       <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
         <div className="px-4 py-4">
-          <div className="mx-auto max-w-4xl flex flex-col gap-6">
+          <div className="mx-auto max-w-4xl flex flex-col gap-8">
             {messages.length === 0 && (
-              <Card className="p-8 text-center">
+              <Card className="p-10 text-center border-slate-200/60 dark:border-slate-800/60 bg-gradient-to-br from-slate-50/80 to-white/60 dark:from-slate-900/60 dark:to-slate-950/40 shadow-lg">
                 <CardContent>
-                  <h3 className="mb-2 text-lg font-medium">
+                  <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 shadow-lg">
+                    <Zap className="h-8 w-8 text-white" />
+                  </div>
+                  <h3 className="mb-2 text-xl font-semibold text-slate-800 dark:text-slate-100">
                     你好，我是 Nexus
                   </h3>
-                  <p className="text-muted-foreground">
+                  <p className="text-slate-600 dark:text-slate-400">
                     你可以在输入框上方展开配置面板，选择模型与知识库范围，然后开始提问。
                   </p>
                 </CardContent>
@@ -328,20 +331,20 @@ export function ChatInterface() {
         </div>
       </ScrollArea>
 
-      {/* 输入区 */}
-      <div className="border-t border-slate-200/60 p-3 dark:border-slate-800/60">
+      {/* 输入区 - Gemini 风格悬浮框 */}
+      <div className="border-t border-slate-200/40 bg-gradient-to-t from-white via-white to-transparent dark:border-slate-800/40 dark:from-slate-950 dark:via-slate-950 px-4 py-4">
         {attachments.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-2">
+          <div className="mb-3 flex flex-wrap gap-2">
             {attachments.map(a => (
               <span
                 key={a.id}
-                className="inline-flex items-center gap-2 rounded-full bg-slate-900/5 px-3 py-1 text-xs text-slate-700 ring-1 ring-slate-900/10 dark:bg-white/5 dark:text-slate-200 dark:ring-white/10"
+                className="inline-flex items-center gap-2 rounded-full bg-white border border-slate-200/60 px-3 py-1.5 text-xs text-slate-700 shadow-sm dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
               >
                 <span className="truncate">{a.name}</span>
                 <button
                   type="button"
                   onClick={() => setAttachments(prev => prev.filter(x => x.id !== a.id))}
-                  className="rounded-full p-0.5 text-slate-500 hover:bg-slate-900/10 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-100"
+                  className="rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-colors"
                   aria-label="移除附件"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -351,8 +354,8 @@ export function ChatInterface() {
           </div>
         )}
 
-        <div className="flex items-end gap-2">
-          <div className="relative min-w-0 flex-1">
+        <div className="mx-auto max-w-4xl">
+          <div className="relative">
             <textarea
               ref={inputRef}
               value={input}
@@ -365,17 +368,26 @@ export function ChatInterface() {
               }}
               placeholder="输入你的问题…（支持 Markdown / LaTeX / 引用演示）"
               rows={1}
-              className="max-h-40 w-full resize-none rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 pr-24 text-sm text-slate-900 shadow-sm shadow-slate-900/5 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-indigo-700 dark:focus:ring-indigo-500/10"
+              className="w-full resize-none rounded-3xl border border-slate-200/80 bg-white px-6 py-4 pb-14 text-sm text-slate-900 shadow-lg shadow-slate-900/10 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-slate-300 focus:shadow-xl focus:shadow-slate-900/15 dark:border-slate-700/60 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:shadow-slate-900/30"
               disabled={isLoading || !activeSessionId}
             />
 
-            <div className="absolute bottom-2 right-2 flex items-center gap-1">
-              <div className="relative">
+            {/* 底部功能栏 - Gemini 风格 */}
+            <div className="absolute bottom-3 left-6 right-6 flex items-center justify-between pointer-events-none">
+              <div className="flex items-center gap-2 pointer-events-auto">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="添加附件"
+                  className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500 transition-all duration-200 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
                 <button
                   type="button"
                   onClick={() => setConfigPanelOpen(true)}
                   title="发送前配置"
-                  className="grid h-9 w-9 place-items-center rounded-xl text-slate-600 transition-all duration-200 hover:bg-slate-900/5 hover:text-slate-900 active:scale-95 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
+                  className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500 transition-all duration-200 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                 >
                   <SlidersHorizontal className="h-4 w-4" />
                 </button>
@@ -383,19 +395,10 @@ export function ChatInterface() {
 
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
-                title="添加附件"
-                className="grid h-9 w-9 place-items-center rounded-xl text-slate-600 transition-all duration-200 hover:bg-slate-900/5 hover:text-slate-900 active:scale-95 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
-              >
-                <Paperclip className="h-4 w-4" />
-              </button>
-
-              <button
-                type="button"
                 onClick={handleSend}
                 title="发送"
                 className={cn(
-                  "grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-600 to-fuchsia-600 text-white shadow-md shadow-fuchsia-500/10 transition-all duration-200 hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                  "pointer-events-auto flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 via-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-500/30 transition-all duration-200 hover:shadow-lg hover:shadow-indigo-500/40 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
                 )}
                 disabled={!input.trim() && attachments.length === 0 || isLoading || !activeSessionId}
               >
