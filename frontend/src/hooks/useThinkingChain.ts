@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useChatStore } from '@/store/useChatStore'
+import { useConfigStore } from '@/store/useConfigStore'
 import {
   createChatStream,
   type ThoughtEvent,
@@ -26,6 +27,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     getActiveSession,
     getSessionById,
   } = useChatStore()
+  const { config } = useConfigStore()
 
   const [isStreaming, setIsStreaming] = useState(false)
   const [currentResponse, setCurrentResponse] = useState('')
@@ -168,7 +170,11 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             options.onError?.(err)
           },
         },
-        { knowledgeBaseIds, sessionId: sessionId ?? session.id }
+        { 
+          knowledgeBaseIds, 
+          sessionId: sessionId ?? session.id,
+          model: config.models.find(m => m.id === 'chat')?.model
+        }
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : '发送失败')

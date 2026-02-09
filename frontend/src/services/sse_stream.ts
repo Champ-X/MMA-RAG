@@ -27,6 +27,7 @@ export interface StreamChatOptions {
   message: string;
   knowledgeBaseIds?: string[];
   sessionId?: string;
+  model?: string;
 }
 
 class SSEStreamManager {
@@ -47,6 +48,7 @@ class SSEStreamManager {
         knowledgeBaseIds: options.knowledgeBaseIds.join(','),
       }),
       ...(options.sessionId && { sessionId: options.sessionId }),
+      ...(options.model && { model: options.model }),
     });
 
     const url = `${getBaseURL()}/chat/stream?${params}`;
@@ -164,13 +166,14 @@ export const sseStreamManager = new SSEStreamManager();
 export function createChatStream(
   message: string,
   callbacks: StreamChatCallbacks,
-  opts?: { knowledgeBaseIds?: string[]; sessionId?: string }
+  opts?: { knowledgeBaseIds?: string[]; sessionId?: string; model?: string }
 ) {
   return sseStreamManager.streamChat(
     {
       message,
       knowledgeBaseIds: opts?.knowledgeBaseIds,
       sessionId: opts?.sessionId,
+      model: opts?.model,
     },
     callbacks
   );

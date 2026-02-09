@@ -45,25 +45,33 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
       setUserSelectedModel(null)
       return
     }
+    
+    // 对话框打开时，先从本地配置读取用户之前保存的模型选择
+    const savedChatModel = config.models.find(m => m.id === 'chat')?.model
+    if (savedChatModel) {
+      setCurrentChatModel(savedChatModel)
+      setUserSelectedModel(savedChatModel)
+    }
+    
     setModelsLoading(true)
     systemApi
       .getModelConfig()
       .then((data: { chat_models?: string[]; current_config?: { final_generation?: { model: string } } }) => {
         setChatModels(Array.isArray(data.chat_models) ? data.chat_models : [])
-        // 如果用户已经选择过模型，保持用户选择；否则使用后端配置
-        if (!userSelectedModel) {
+        // 如果本地没有保存的模型选择，才使用后端配置
+        if (!savedChatModel) {
           const model = data.current_config?.final_generation?.model
           setCurrentChatModel(model || config.models.find(m => m.id === 'chat')?.model || '')
         }
       })
       .catch(() => {
         setChatModels([])
-        if (!userSelectedModel) {
+        if (!savedChatModel) {
           setCurrentChatModel(config.models.find(m => m.id === 'chat')?.model || '')
         }
       })
       .finally(() => setModelsLoading(false))
-  }, [open]) // 移除 config.models 依赖，避免用户选择后被重置
+  }, [open, config.models]) // 添加 config.models 依赖，以便在配置更新时重新加载
 
   const toggleKb = (id: string) => {
     setSelectedKbIds(prev => {

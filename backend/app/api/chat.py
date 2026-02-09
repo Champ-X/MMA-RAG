@@ -157,7 +157,8 @@ async def chat_message(request: Request):
 async def stream_chat(
     message: str = Query(...),
     knowledgeBaseIds: Optional[str] = Query(None),
-    sessionId: Optional[str] = Query(None)
+    sessionId: Optional[str] = Query(None),
+    model: Optional[str] = Query(None)
 ):
     """流式聊天接口 (SSE)"""
     async def generate():
@@ -234,7 +235,8 @@ async def stream_chat(
                 query=message,
                 retrieval_result=retrieval_result,
                 session_id=current_session_id,
-                kb_context=kb_context
+                kb_context=kb_context,
+                model=model
             ):
                 event_type = event.type.value if hasattr(event.type, "value") else str(event.type)
 

@@ -224,6 +224,7 @@ class StreamManager:
         system_prompt: str,
         user_input: str,
         llm_manager: Any,
+        model: Optional[str] = None,
     ) -> AsyncGenerator[StreamEvent, None]:
         """流式聊天响应：使用真实 LLM 流式生成，并发送引用事件。思考事件由 chat.py 在检索后发送。"""
         try:
@@ -245,7 +246,7 @@ class StreamManager:
 
             # 2. 真实流式生成 + 引用
             async for event in self._generate_streaming_response(
-                session, query, context_result, system_prompt, user_input, llm_manager
+                session, query, context_result, system_prompt, user_input, llm_manager, model
             ):
                 yield event
 
@@ -305,6 +306,7 @@ class StreamManager:
         system_prompt: str,
         user_input: str,
         llm_manager: Any,
+        model: Optional[str] = None,
     ) -> AsyncGenerator[StreamEvent, None]:
         """使用真实 LLM 流式生成回答，并在结束后发送引用事件。"""
         try:
@@ -312,11 +314,13 @@ class StreamManager:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_input},
             ]
-            logger.info("开始调用 final_generation 模型流式生成回答")
+            model_name = model or llm_manager.registry.get_task_model("final_generation")
+            logger.info(f"开始调用 final_generation 模型流式生成回答: {model_name}")
             chunk_count = 0
             async for delta in llm_manager.stream_chat(
                 messages=messages,
                 task_type="final_generation",
+                model=model,
                 temperature=0.3,
             ):
                 if delta:

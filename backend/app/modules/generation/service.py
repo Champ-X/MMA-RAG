@@ -147,7 +147,8 @@ class GenerationService:
         query: str,
         retrieval_result: Any,
         session_id: str,
-        kb_context: Optional[Dict[str, Any]] = None
+        kb_context: Optional[Dict[str, Any]] = None,
+        model: Optional[str] = None
     ) -> AsyncGenerator[StreamEvent, None]:
         """
         流式生成回答
@@ -197,6 +198,7 @@ class GenerationService:
                 system_prompt=system_prompt,
                 user_input=user_input,
                 llm_manager=self.llm_manager,
+                model=model
             ):
                 # 收集流式内容以便后续筛掉未在回答中出现的引用
                 if event.type == StreamEventType.MESSAGE:
