@@ -62,6 +62,23 @@ class Settings(BaseSettings):
         default="pdf,docx,doc,txt,md,jpg,jpeg,png,gif",
         validation_alias="ALLOWED_EXTENSIONS"
     )
+
+    # 文件夹导入：允许的根路径白名单（逗号分隔），未配置则禁用文件夹导入
+    import_folder_allowed_base_paths: List[str] = Field(
+        default_factory=list,
+        validation_alias="IMPORT_FOLDER_ALLOWED_BASE_PATHS",
+    )
+
+    @field_validator("import_folder_allowed_base_paths", mode="before")
+    @classmethod
+    def parse_import_folder_allowed_base_paths(cls, v: Union[str, List[str], None]) -> List[str]:
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [p.strip() for p in v if isinstance(p, str) and p.strip()]
+        if isinstance(v, str):
+            return [p.strip() for p in v.split(",") if p.strip()]
+        return []
     
     @field_validator("max_file_size", mode="before")
     @classmethod

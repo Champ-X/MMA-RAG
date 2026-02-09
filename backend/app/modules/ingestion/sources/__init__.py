@@ -6,10 +6,12 @@
 from .base import ContentSourceResult, BaseContentSource
 from .url import UrlSource
 from .media_downloader import MediaDownloaderSource
+from .folder import FolderSource
 
 __all__ = [
     "ContentSourceResult",
     "BaseContentSource",
     "UrlSource",
     "MediaDownloaderSource",
+    "FolderSource",
 ]

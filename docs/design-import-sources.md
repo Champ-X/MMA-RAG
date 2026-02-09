@@ -57,6 +57,10 @@ backend/app/modules/ingestion/
   - `POST /api/import/url`  
     - Body：`{ "url": "https://...", "kb_id": "...", "filename": "可选覆盖名" }`  
     - 逻辑：用 `sources.url` 拉取 → 得到 `(content, filename)` → 调用 `ingestion_service.process_file_upload(...)` → 返回与上传接口一致的字段（如 `file_id`, `processing_id`, `status` 等），便于前端复用进度/结果展示。
+  - `POST /api/import/folder`（扩展 1：指定本地文件夹导入，已实现）  
+    - Body：`{ "folder_path": "/data/docs", "kb_id": "...", "recursive": true, "extensions": [".pdf", ".txt", ".md"], "exclude_patterns": ["__pycache__", "*.tmp"], "max_files": 500 }`  
+    - 逻辑：API 层校验 `folder_path` 必须在配置的白名单目录（`IMPORT_FOLDER_ALLOWED_BASE_PATHS`）下 → 用 `FolderSource.fetch_folder(...)` 遍历目录得到 `List[ContentSourceResult]` → 对每个文件调用 `process_file_upload`，返回与搜索导入一致的 `total/success_count/failed_count/results`。  
+    - 安全：未配置白名单或路径不在白名单内时返回 400；不配置则禁用文件夹导入。
 
 - 若后续有多种自动来源，可二选一：  
   - 每种一个端点：`/api/import/url`、`/api/import/rss`、…  
@@ -96,9 +100,17 @@ backend/app/modules/ingestion/
 
 ---
 
-## 8. 小结
+## 8. 扩展 1：指定本地文件夹导入（已实现）
+
+- **来源**：`ingestion/sources/folder.py` 的 `FolderSource`，遍历本地目录产出 `List[ContentSourceResult]`。
+- **API**：`POST /api/import/folder`，参数见上文；路径须在服务端配置的 `IMPORT_FOLDER_ALLOWED_BASE_PATHS`（逗号分隔的绝对路径）白名单内，未配置则不允许文件夹导入。
+- **环境变量**：`IMPORT_FOLDER_ALLOWED_BASE_PATHS`：允许的根路径，逗号分隔（如 `/data/kb_import,/var/docs`），不配置则禁用。
+
+---
+
+## 9. 小结
 
 - **管道统一**：所有写入知识库的路径都收敛到 `IngestionService.process_file_upload(bytes, path, kb_id, user_id)`。
 - **扩展点**：在 `ingestion/sources/` 下按「来源类型」实现不同 fetcher，产出 `(bytes, filename)` 后交给现有管道。
-- **API**：保留 `/api/upload/*`，新增 `/api/import/url`（及后续 `/api/import` + source_type），接口返回与上传一致，便于前端与任务复用。
-- 这样可以在不破坏现有模块化与单一职责的前提下，平滑加入「自动下载网络资源导入知识库」及后续更多自动导入方式。多渠道媒体下载器已按上述方式接入，支持单 URL 与按关键词搜索图片导入。
+- **API**：保留 `/api/upload/*`，新增 `/api/import/url`、`/api/import/search`、`/api/import/folder`（及后续 `/api/import` + source_type），接口返回与上传一致，便于前端与任务复用。
+- 这样可以在不破坏现有模块化与单一职责的前提下，平滑加入「自动下载网络资源导入知识库」及「指定本地文件夹导入」。多渠道媒体下载器已按上述方式接入，支持单 URL 与按关键词搜索图片导入；扩展 1 支持从白名单目录批量导入本地文件。

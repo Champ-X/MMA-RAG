@@ -267,6 +267,30 @@ export const importApi = {
       message: string
     }>(`/import/search`, body, { timeout: 120000 }),
 
+  /** 从指定本地文件夹导入知识库（路径须在服务端白名单内） */
+  importFromFolder: (body: {
+    folder_path: string
+    kb_id: string
+    recursive?: boolean
+    extensions?: string[]
+    exclude_patterns?: string[]
+    max_files?: number
+  }) =>
+    apiClient.post<{
+      kb_id: string
+      total: number
+      success_count: number
+      failed_count: number
+      results: Array<{
+        file_id?: string
+        filename: string
+        status: string
+        processing_id?: string
+        error?: string
+      }>
+      message: string
+    }>(`/import/folder`, body, { timeout: 300000 }),
+
   /** 按关键词搜索图片并导入知识库（SSE 流式进度） */
   importFromSearchStream: (
     params: {

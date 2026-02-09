@@ -6,16 +6,18 @@
 import asyncio
 import json
 import threading
+from pathlib import Path
 from queue import Empty, Queue
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, HttpUrl
 
+from app.core.config import settings
 from app.core.logger import get_logger
 from app.modules.ingestion.service import IngestionService
-from app.modules.ingestion.sources import UrlSource, MediaDownloaderSource
+from app.modules.ingestion.sources import UrlSource, MediaDownloaderSource, FolderSource
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -41,6 +43,32 @@ class ImportSearchBody(BaseModel):
     pixabay_order: Optional[str] = "popular"
     archive_sort: Optional[str] = "relevance"
     randomize: Optional[bool] = True
+
+
+class ImportFolderBody(BaseModel):
+    folder_path: str = Field(..., min_length=1)
+    kb_id: str = Field(..., min_length=1)
+    recursive: bool = True
+    extensions: Optional[List[str]] = None
+    exclude_patterns: Optional[List[str]] = None
+    max_files: int = Field(500, ge=1, le=2000)
+
+
+def _validate_folder_path_allowed(folder_path: str) -> Path:
+    """校验 folder_path 在配置的白名单目录下，返回解析后的绝对路径。否则抛出 ValueError。"""
+    allowed = settings.import_folder_allowed_base_paths or []
+    if not allowed:
+        raise ValueError("未配置文件夹导入白名单（IMPORT_FOLDER_ALLOWED_BASE_PATHS），不允许从本地文件夹导入。")
+    resolved = Path(folder_path).resolve()
+    for base_str in allowed:
+        base_resolved = Path(base_str).resolve()
+        try:
+            if resolved == base_resolved or resolved.is_relative_to(base_resolved):
+                return resolved
+        except AttributeError:
+            if resolved == base_resolved or (resolved.parts[: len(base_resolved.parts)] == base_resolved.parts):
+                return resolved
+    raise ValueError(f"路径不在允许的白名单内，请使用以下目录之一或其子目录: {allowed}")
 
 
 # ---------- 端点 ----------
@@ -150,6 +178,79 @@ async def import_from_search(body: ImportSearchBody):
         "failed_count": failed_count,
         "results": out_results,
         "message": f"搜索导入完成：成功 {success_count}，失败 {failed_count}。",
+    }
+
+
+@router.post("/folder")
+async def import_from_folder(body: ImportFolderBody):
+    """从指定本地文件夹遍历文件并导入知识库（路径须在配置的白名单内）。"""
+    try:
+        resolved_path = _validate_folder_path_allowed(body.folder_path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        folder_source = FolderSource()
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(
+            None,
+            lambda: folder_source.fetch_folder(
+                str(resolved_path),
+                recursive=body.recursive,
+                extensions=body.extensions,
+                exclude_patterns=body.exclude_patterns,
+                max_files=body.max_files,
+            ),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except (OSError, PermissionError) as e:
+        logger.warning("import_from_folder fetch_folder failed: %s", e)
+        raise HTTPException(status_code=403, detail=f"无法访问该目录: {e}")
+    except Exception as e:
+        logger.exception("import_from_folder fetch_folder failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if not results:
+        return {
+            "kb_id": body.kb_id,
+            "total": 0,
+            "success_count": 0,
+            "failed_count": 0,
+            "results": [],
+            "message": "该文件夹下没有符合条件的文件。",
+        }
+
+    success_count = 0
+    failed_count = 0
+    out_results = []
+    for r in results:
+        try:
+            ingest_result = await ingestion_service.process_file_upload(
+                file_content=r.content,
+                file_path=r.suggested_filename,
+                kb_id=body.kb_id,
+                user_id=None,
+            )
+            success_count += 1
+            out_results.append({
+                "file_id": ingest_result.get("file_id"),
+                "filename": r.suggested_filename,
+                "status": ingest_result.get("status", "completed"),
+                "processing_id": ingest_result.get("processing_id"),
+            })
+        except Exception as e:
+            failed_count += 1
+            logger.warning("导入单文件失败 %s: %s", r.suggested_filename, e)
+            out_results.append({"filename": r.suggested_filename, "status": "failed", "error": str(e)})
+
+    return {
+        "kb_id": body.kb_id,
+        "total": len(results),
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "results": out_results,
+        "message": f"文件夹导入完成：成功 {success_count}，失败 {failed_count}。",
     }
 
 

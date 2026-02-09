@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2 } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
@@ -280,6 +280,292 @@ function ImportUrlModal({
   )
 }
 
+// 从文件夹导入弹窗（支持选择本地文件夹 + 输入服务端路径）
+function ImportFolderModal({
+  kbId,
+  onClose,
+  onSuccess,
+  onUploadSingleFile,
+}: {
+  kbId: string
+  onClose: () => void
+  onSuccess: () => void
+  onUploadSingleFile: (kbId: string, file: File, fileType: string, onProgress?: (p: number) => void) => Promise<void>
+}) {
+  const [folderPath, setFolderPath] = useState('')
+  const [recursive, setRecursive] = useState(true)
+  const [extensionsStr, setExtensionsStr] = useState('')
+  const [excludeStr, setExcludeStr] = useState('')
+  const [maxFiles, setMaxFiles] = useState(500)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<{ success_count: number; failed_count: number; total: number } | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<File[] | null>(null)
+  const [pickingFolder, setPickingFolder] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null)
+
+  const supportsFolderPicker = typeof window !== 'undefined' && 'showDirectoryPicker' in window
+
+  const extensionsList = extensionsStr.trim()
+    ? extensionsStr.split(/[\s,]+/).map((s) => s.trim().toLowerCase()).filter(Boolean)
+    : null
+  const excludeList = excludeStr.trim()
+    ? excludeStr.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
+    : null
+
+  function matchesExclude(name: string, patterns: string[] | null): boolean {
+    if (!patterns || patterns.length === 0) return false
+    for (const p of patterns) {
+      if (p.startsWith('*')) {
+        if (name.toLowerCase().endsWith(p.slice(1).toLowerCase())) return true
+      } else if (p.endsWith('*')) {
+        if (name.toLowerCase().startsWith(p.slice(0, -1).toLowerCase())) return true
+      } else if (name.includes(p)) return true
+    }
+    return false
+  }
+
+  function matchesExtension(fileName: string, exts: string[] | null): boolean {
+    if (!exts || exts.length === 0) return true
+    const lower = fileName.toLowerCase()
+    return exts.some((e) => (e.startsWith('.') ? lower.endsWith(e) : lower.endsWith('.' + e)))
+  }
+
+  async function collectFilesFromHandle(
+    handle: FileSystemDirectoryHandle,
+    recursive: boolean,
+    pathPrefix: string,
+    extensions: string[] | null,
+    exclude: string[] | null,
+    maxFiles: number,
+    collected: File[]
+  ): Promise<void> {
+    if (collected.length >= maxFiles) return
+    for await (const entry of (handle as any).values()) {
+      if (collected.length >= maxFiles) break
+      const name = entry.name
+      const relPath = pathPrefix ? `${pathPrefix}/${name}` : name
+      if (entry.kind === 'file') {
+        if (matchesExclude(name, exclude)) continue
+        if (!matchesExtension(name, extensions)) continue
+        try {
+          const file = await entry.getFile()
+          const fileWithPath = new File([file], relPath, { type: file.type })
+          collected.push(fileWithPath)
+        } catch (_) {}
+        continue
+      }
+      if (entry.kind === 'directory' && recursive) {
+        if (matchesExclude(name, exclude)) continue
+        await collectFilesFromHandle(entry, true, relPath, extensions, exclude, maxFiles, collected)
+      }
+    }
+  }
+
+  const handleSelectLocalFolder = async () => {
+    if (!supportsFolderPicker) {
+      setError('当前浏览器不支持选择文件夹，请使用 Chrome/Edge 或下方输入服务端路径')
+      return
+    }
+    setError(null)
+    setResult(null)
+    setSelectedFiles(null)
+    setPickingFolder(true)
+    try {
+      const dirHandle = await (window as any).showDirectoryPicker()
+      const files: File[] = []
+      await collectFilesFromHandle(
+        dirHandle,
+        recursive,
+        '',
+        extensionsList,
+        excludeList,
+        maxFiles,
+        files
+      )
+      setSelectedFiles(files)
+      if (files.length === 0) setError('该文件夹下没有符合条件的文件')
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') setError(err?.message ?? '选择文件夹失败')
+    } finally {
+      setPickingFolder(false)
+    }
+  }
+
+  const handleUploadSelectedFiles = async () => {
+    if (!selectedFiles || selectedFiles.length === 0) return
+    setError(null)
+    setResult(null)
+    setLoading(true)
+    setUploadProgress({ current: 0, total: selectedFiles.length })
+    let successCount = 0
+    let failedCount = 0
+    for (let i = 0; i < selectedFiles.length; i++) {
+      setUploadProgress({ current: i + 1, total: selectedFiles.length })
+      const file = selectedFiles[i]
+      const ext = file.name.includes('.') ? file.name.split('.').pop()!.toLowerCase() : 'bin'
+      try {
+        await onUploadSingleFile(kbId, file, ext, undefined)
+        successCount += 1
+      } catch (_) {
+        failedCount += 1
+      }
+    }
+    setUploadProgress(null)
+    setResult({ success_count: successCount, failed_count: failedCount, total: selectedFiles.length })
+    if (successCount > 0) onSuccess()
+    setSelectedFiles(null)
+    setLoading(false)
+  }
+
+  const handleSubmitServerPath = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!folderPath.trim()) {
+      setError('请输入文件夹路径')
+      return
+    }
+    setError(null)
+    setResult(null)
+    setLoading(true)
+    try {
+      const res = await importApi.importFromFolder({
+        folder_path: folderPath.trim(),
+        kb_id: kbId,
+        recursive,
+        extensions: extensionsList && extensionsList.length > 0 ? extensionsList : undefined,
+        exclude_patterns: excludeList && excludeList.length > 0 ? excludeList : undefined,
+        max_files: maxFiles,
+      })
+      setResult({ success_count: res.success_count, failed_count: res.failed_count, total: res.total })
+      if (res.total > 0) onSuccess()
+    } catch (err: any) {
+      setError(err?.response?.data?.detail ?? err?.message ?? '导入失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-950 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center sticky top-0 bg-white dark:bg-slate-950 z-10">
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+            <FolderOpen size={20} /> 从文件夹导入
+          </h3>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          {/* 选择本地文件夹 */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">选择本机文件夹</label>
+            <button
+              type="button"
+              onClick={handleSelectLocalFolder}
+              disabled={pickingFolder || loading}
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-colors disabled:opacity-50"
+            >
+              {pickingFolder ? <Loader2 size={18} className="animate-spin" /> : <FolderOpen size={18} />}
+              {pickingFolder ? '正在打开…' : '选择本地文件夹'}
+            </button>
+            {!supportsFolderPicker && (
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">需使用 Chrome、Edge 等支持 File System Access 的浏览器</p>
+            )}
+            {selectedFiles != null && selectedFiles.length > 0 && (
+              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                <span className="text-sm text-slate-600 dark:text-slate-300">已选择 {selectedFiles.length} 个文件</span>
+                <button
+                  type="button"
+                  onClick={handleUploadSelectedFiles}
+                  disabled={loading}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500 disabled:opacity-50 flex items-center gap-1"
+                >
+                  {loading && uploadProgress ? (
+                    <>导入中 {uploadProgress.current}/{uploadProgress.total}</>
+                  ) : (
+                    '开始导入'
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">或输入服务端路径</label>
+            <form onSubmit={handleSubmitServerPath} className="space-y-4">
+              <input
+                type="text"
+                value={folderPath}
+                onChange={(e) => setFolderPath(e.target.value)}
+                placeholder="/data/docs 或白名单内的路径"
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="folder-recursive"
+                  checked={recursive}
+                  onChange={(e) => setRecursive(e.target.checked)}
+                  className="rounded border-slate-300 dark:border-slate-600"
+                />
+                <label htmlFor="folder-recursive" className="text-sm text-slate-700 dark:text-slate-200">递归子目录</label>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">文件类型（可选，逗号分隔）</label>
+                <input
+                  type="text"
+                  value={extensionsStr}
+                  onChange={(e) => setExtensionsStr(e.target.value)}
+                  placeholder=".pdf, .txt, .md"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">排除模式（可选）</label>
+                <input
+                  type="text"
+                  value={excludeStr}
+                  onChange={(e) => setExcludeStr(e.target.value)}
+                  placeholder="__pycache__, .git, *.tmp"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">最大文件数</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={2000}
+                  value={maxFiles}
+                  onChange={(e) => setMaxFiles(Number(e.target.value) || 500)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-sm font-medium">
+                  取消
+                </button>
+                <button type="submit" disabled={loading} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-500 disabled:opacity-50 flex items-center gap-2">
+                  {loading && !uploadProgress ? <Loader2 size={16} className="animate-spin" /> : null}
+                  从路径导入
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {result != null && (
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              成功 {result.success_count}，失败 {result.failed_count}，共 {result.total} 个文件。
+            </p>
+          )}
+          {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // 按关键词搜索图片导入弹窗（含 Pixabay 筛选、随机性、进度展示）
 function ImportSearchModal({
   kbId,
@@ -534,6 +820,7 @@ const KnowledgeList: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<UploadPipelineProgress | undefined>()
   const [showImportUrlModal, setShowImportUrlModal] = useState(false)
   const [showImportSearchModal, setShowImportSearchModal] = useState(false)
+  const [showImportFolderModal, setShowImportFolderModal] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [files, setFiles] = useState<any[]>([])
   const [kbStats, setKbStats] = useState<{
@@ -1095,6 +1382,13 @@ const KnowledgeList: React.FC = () => {
                 >
                   <ImagePlus size={16} /> 搜索图片导入
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setShowImportFolderModal(true)}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium transition-colors"
+                >
+                  <FolderOpen size={16} /> 从文件夹导入
+                </button>
               </div>
             </div>
 
@@ -1311,6 +1605,21 @@ const KnowledgeList: React.FC = () => {
             onSuccess={() => {
               fetchFiles()
               fetchKnowledgeBases()
+            }}
+          />
+        )}
+
+        {/* 从文件夹导入弹窗 */}
+        {showImportFolderModal && activeKbId && (
+          <ImportFolderModal
+            kbId={activeKbId}
+            onClose={() => setShowImportFolderModal(false)}
+            onSuccess={() => {
+              fetchFiles()
+              fetchKnowledgeBases()
+            }}
+            onUploadSingleFile={async (kbId, file, fileType, onProgress) => {
+              await knowledgeApi.uploadSingleFile(kbId, file, fileType, onProgress)
             }}
           />
         )}
