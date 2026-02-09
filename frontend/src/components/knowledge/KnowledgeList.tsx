@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { flushSync } from 'react-dom'
 import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
@@ -280,17 +281,18 @@ function ImportUrlModal({
   )
 }
 
-// 从文件夹导入弹窗（支持选择本地文件夹 + 输入服务端路径）
+// 从文件夹导入弹窗（支持选择本地文件夹 + 输入服务端路径，共用一个导入按钮；本地导入走父组件上传流水线以显示进度）
 function ImportFolderModal({
   kbId,
   onClose,
   onSuccess,
-  onUploadSingleFile,
+  onImportLocalFiles,
 }: {
   kbId: string
   onClose: () => void
   onSuccess: () => void
-  onUploadSingleFile: (kbId: string, file: File, fileType: string, onProgress?: (p: number) => void) => Promise<void>
+  /** 本地已选文件列表：关闭弹窗并由父组件按「上传流水线」逐个上传，显示每文件进度 */
+  onImportLocalFiles: (files: File[]) => void
 }) {
   const [folderPath, setFolderPath] = useState('')
   const [recursive, setRecursive] = useState(true)
@@ -302,7 +304,14 @@ function ImportFolderModal({
   const [result, setResult] = useState<{ success_count: number; failed_count: number; total: number } | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<File[] | null>(null)
   const [pickingFolder, setPickingFolder] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null)
+  const [folderProgress, setFolderProgress] = useState<{
+    stage: string
+    current?: number
+    total?: number
+    message?: string
+    success_count?: number
+    failed_count?: number
+  } | null>(null)
 
   const supportsFolderPicker = typeof window !== 'undefined' && 'showDirectoryPicker' in window
 
@@ -400,58 +409,55 @@ function ImportFolderModal({
     }
   }
 
-  const handleUploadSelectedFiles = async () => {
-    if (!selectedFiles || selectedFiles.length === 0) return
-    setError(null)
-    setResult(null)
-    setLoading(true)
-    setUploadProgress({ current: 0, total: selectedFiles.length })
-    let successCount = 0
-    let failedCount = 0
-    for (let i = 0; i < selectedFiles.length; i++) {
-      setUploadProgress({ current: i + 1, total: selectedFiles.length })
-      const file = selectedFiles[i]
-      const ext = file.name.includes('.') ? file.name.split('.').pop()!.toLowerCase() : 'bin'
-      try {
-        await onUploadSingleFile(kbId, file, ext, undefined)
-        successCount += 1
-      } catch (_) {
-        failedCount += 1
-      }
-    }
-    setUploadProgress(null)
-    setResult({ success_count: successCount, failed_count: failedCount, total: selectedFiles.length })
-    if (successCount > 0) onSuccess()
-    setSelectedFiles(null)
-    setLoading(false)
-  }
-
-  const handleSubmitServerPath = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!folderPath.trim()) {
-      setError('请输入文件夹路径')
+  const handleImport = async () => {
+    if (selectedFiles != null && selectedFiles.length > 0) {
+      onImportLocalFiles(selectedFiles)
+      onClose()
       return
     }
-    setError(null)
-    setResult(null)
-    setLoading(true)
-    try {
-      const res = await importApi.importFromFolder({
-        folder_path: folderPath.trim(),
-        kb_id: kbId,
-        recursive,
-        extensions: extensionsList && extensionsList.length > 0 ? extensionsList : undefined,
-        exclude_patterns: excludeList && excludeList.length > 0 ? excludeList : undefined,
-        max_files: maxFiles,
-      })
-      setResult({ success_count: res.success_count, failed_count: res.failed_count, total: res.total })
-      if (res.total > 0) onSuccess()
-    } catch (err: any) {
-      setError(err?.response?.data?.detail ?? err?.message ?? '导入失败')
-    } finally {
-      setLoading(false)
+    if (folderPath.trim()) {
+      setError(null)
+      setResult(null)
+      setFolderProgress(null)
+      setLoading(true)
+      try {
+        await importApi.importFromFolderStream(
+          {
+            folder_path: folderPath.trim(),
+            kb_id: kbId,
+            recursive,
+            extensions: extensionsList && extensionsList.length > 0 ? extensionsList : undefined,
+            exclude_patterns: excludeList && excludeList.length > 0 ? excludeList : undefined,
+            max_files: maxFiles,
+          },
+          (event) => {
+            if (event.stage === 'scan_complete') {
+              setFolderProgress({ stage: 'importing', current: 0, total: event.total ?? 0, message: '开始导入…' })
+            } else {
+              setFolderProgress(event)
+            }
+            if (event.stage === 'done') {
+              setResult({
+                success_count: event.success_count ?? 0,
+                failed_count: event.failed_count ?? 0,
+                total: event.total ?? 0,
+              })
+              if ((event.success_count ?? 0) > 0) onSuccess()
+            }
+          }
+        )
+      } catch (err: any) {
+        setError(err?.response?.data?.detail ?? err?.message ?? '导入失败')
+      } finally {
+        setLoading(false)
+        setFolderProgress(null)
+      }
+      return
     }
+    setError('请先选择本地文件夹或输入服务端路径')
   }
+
+  const canImport = (selectedFiles != null && selectedFiles.length > 0) || folderPath.trim().length > 0
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -527,45 +533,71 @@ function ImportFolderModal({
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">需使用 Chrome、Edge 等支持 File System Access 的浏览器</p>
             )}
             {selectedFiles != null && selectedFiles.length > 0 && (
-              <div className="mt-2 flex items-center gap-2 flex-wrap">
-                <span className="text-sm text-slate-600 dark:text-slate-300">已选择 {selectedFiles.length} 个文件（已按上方筛选条件过滤）</span>
-                <button
-                  type="button"
-                  onClick={handleUploadSelectedFiles}
-                  disabled={loading}
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500 disabled:opacity-50 flex items-center gap-1"
-                >
-                  {loading && uploadProgress ? (
-                    <>导入中 {uploadProgress.current}/{uploadProgress.total}</>
-                  ) : (
-                    '开始导入'
-                  )}
-                </button>
-              </div>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">已选择 {selectedFiles.length} 个文件（已按上方筛选条件过滤），点击下方「导入」将关闭弹窗并在本页显示每文件处理进度。</p>
             )}
           </div>
 
           {/* 或输入服务端路径 */}
           <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">或输入服务端路径</label>
-            <form onSubmit={handleSubmitServerPath} className="space-y-3">
-              <input
-                type="text"
-                value={folderPath}
-                onChange={(e) => setFolderPath(e.target.value)}
-                placeholder="/data/docs 或白名单内的路径"
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
-              />
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-sm font-medium">
-                  取消
-                </button>
-                <button type="submit" disabled={loading} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-500 disabled:opacity-50 flex items-center gap-2">
-                  {loading && !uploadProgress ? <Loader2 size={16} className="animate-spin" /> : null}
-                  从路径导入
-                </button>
+            <input
+              type="text"
+              value={folderPath}
+              onChange={(e) => setFolderPath(e.target.value)}
+              placeholder="/data/docs 或白名单内的路径"
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+            />
+          </div>
+
+          {/* 服务端路径导入进度 */}
+          {loading && folderProgress && (
+            <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/30 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
+                  {folderProgress.stage === 'scanning'
+                    ? '正在扫描文件夹…'
+                    : folderProgress.stage === 'importing'
+                      ? `正在导入 ${folderProgress.current ?? 0}/${folderProgress.total ?? 0}`
+                      : '处理中…'}
+                </span>
+                {folderProgress.total != null && folderProgress.total > 0 && (
+                  <span className="text-sm tabular-nums text-slate-500 dark:text-slate-400">
+                    {folderProgress.current ?? 0} / {folderProgress.total}
+                  </span>
+                )}
               </div>
-            </form>
+              {folderProgress.total != null && folderProgress.total > 0 && (
+                <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500 dark:bg-indigo-500 transition-all duration-300"
+                    style={{
+                      width: `${Math.min(100, ((folderProgress.current ?? 0) / folderProgress.total) * 100)}%`,
+                    }}
+                  />
+                </div>
+              )}
+              {folderProgress.message && folderProgress.stage === 'importing' && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate" title={folderProgress.message}>
+                  {folderProgress.message}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* 共用导入按钮 */}
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-200 dark:border-slate-700">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-sm font-medium">
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={handleImport}
+              disabled={!canImport || loading}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-500 disabled:opacity-50 flex items-center gap-2"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : null}
+              导入
+            </button>
           </div>
 
           {result != null && (
@@ -832,6 +864,7 @@ const KnowledgeList: React.FC = () => {
   const [previewFile, setPreviewFile] = useState<any>(null)
   const [dragOverlay, setDragOverlay] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadPipelineProgress | undefined>()
+  const [currentUploadFiles, setCurrentUploadFiles] = useState<File[] | null>(null)
   const [showImportUrlModal, setShowImportUrlModal] = useState(false)
   const [showImportSearchModal, setShowImportSearchModal] = useState(false)
   const [showImportFolderModal, setShowImportFolderModal] = useState(false)
@@ -968,6 +1001,7 @@ const KnowledgeList: React.FC = () => {
   // 处理文件上传（逐个上传，保证进度正确）
   const handleFileUpload = async (fileList: File[]) => {
     if (!activeKbId || fileList.length === 0) return
+    setCurrentUploadFiles(fileList)
     setUploading(true)
     setUploadProgress({
       stage: 'minio',
@@ -986,68 +1020,85 @@ const KnowledgeList: React.FC = () => {
       for (const file of fileList) {
         const isImage = file.type.startsWith('image/')
         const fileType = getFileType(file)
-        let tickerStarted = false
 
-        setUploadProgress((prev) => ({
-          ...(prev || {
-            total: fileList.length,
-            completed: 0,
-            failed: 0,
-            stageProgress: 0,
-            stage: 'minio',
-          }),
-          currentFile: file.name,
-          currentFileIsImage: isImage,
-          stage: 'minio',
-          stageProgress: 0,
-        }))
-
-        try {
-          await knowledgeApi.uploadSingleFile(activeKbId, file, fileType, (pct) => {
-            // 上传到 100% 后只设置一次「后端处理中」状态，避免进度在后几个阶段循环
-            if (pct >= 100 && !tickerStarted) {
-              tickerStarted = true
-              setUploadProgress((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      stage: 'parsing',
-                      stageProgress: 50,
-                      currentFile: file.name,
-                      currentFileIsImage: isImage,
-                    }
-                  : prev
-              )
-              return
-            }
-            if (pct >= 100) return
-            setUploadProgress((prev) => {
-              if (!prev) return prev
-              return {
-                ...prev,
-                stage: 'minio',
-                stageProgress: pct,
-                currentFile: file.name,
-                currentFileIsImage: isImage,
-              }
-            })
-          })
-          completed += 1
+        flushSync(() => {
           setUploadProgress((prev) => ({
             ...(prev || {
               total: fileList.length,
+              completed: 0,
+              failed: 0,
+              stageProgress: 0,
+              stage: 'minio',
+            }),
+            currentFile: file.name,
+            currentFileIsImage: isImage,
+            stage: 'minio',
+            stageProgress: 0,
+          }))
+        })
+        await new Promise((r) => setTimeout(r, 0))
+
+        try {
+          await knowledgeApi.uploadSingleFileStream(activeKbId, file, fileType, (status) => {
+            // 流式进度：后端 stage 映射到前端，且只前进不后退，与真实流程一致
+            const stage = status.stage
+            const progress = status.progress ?? 0
+            const frontStage: UploadPipelineProgress['stage'] | null =
+              stage === 'initializing' || stage === 'uploading'
+                ? 'minio'
+                : stage === 'parsing' || stage === 'processing'
+                  ? 'parsing'
+                  : stage === 'vectorizing'
+                    ? 'vectorizing'
+                    : stage === 'completed'
+                      ? 'portrait'
+                      : null
+            if (frontStage === null) return
+            const stageOrder: Record<UploadPipelineProgress['stage'], number> = {
+              idle: -1,
+              minio: 0,
+              parsing: 1,
+              vectorizing: 2,
+              portrait: 3,
+              done: 4,
+            }
+            flushSync(() => {
+              setUploadProgress((prev) => {
+                if (!prev) return prev
+                const currentIndex = stageOrder[prev.stage] ?? -1
+                const newIndex = stageOrder[frontStage]
+                if (newIndex < currentIndex) return prev
+                return {
+                  ...prev,
+                  stage: frontStage,
+                  stageProgress: progress,
+                  currentFile: file.name,
+                  currentFileIsImage: isImage,
+                }
+              })
+            })
+          })
+          completed += 1
+          flushSync(() => {
+            setUploadProgress((prev) => ({
+              ...(prev || {
+                total: fileList.length,
+                completed,
+                failed,
+              }),
               completed,
               failed,
-            }),
-            completed,
-            failed,
-            stage: 'portrait',
-            stageProgress: 100,
-          }))
+              stage: 'portrait',
+              stageProgress: 100,
+            }))
+          })
+          await new Promise((r) => setTimeout(r, 0))
         } catch (e) {
           console.error('上传失败', e)
           failed += 1
-          setUploadProgress((prev) => (prev ? { ...prev, failed } : prev))
+          flushSync(() => {
+            setUploadProgress((prev) => (prev ? { ...prev, failed } : prev))
+          })
         }
       }
 
@@ -1066,6 +1117,7 @@ const KnowledgeList: React.FC = () => {
       await fetchFiles()
     } finally {
       setUploading(false)
+      setCurrentUploadFiles(null)
       setTimeout(() => setUploadProgress(undefined), 2000)
     }
   }
@@ -1379,6 +1431,7 @@ const KnowledgeList: React.FC = () => {
                 onFileSelect={handleFileUpload}
                 isUploading={uploading}
                 uploadProgress={uploadProgress}
+                externalFiles={currentUploadFiles}
               />
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm text-slate-500 dark:text-slate-400">自动导入：</span>
@@ -1632,8 +1685,9 @@ const KnowledgeList: React.FC = () => {
               fetchFiles()
               fetchKnowledgeBases()
             }}
-            onUploadSingleFile={async (kbId, file, fileType, onProgress) => {
-              await knowledgeApi.uploadSingleFile(kbId, file, fileType, onProgress)
+            onImportLocalFiles={(files) => {
+              setShowImportFolderModal(false)
+              handleFileUpload(files)
             }}
           />
         )}

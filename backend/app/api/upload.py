@@ -3,8 +3,10 @@
 处理文档和图片的上传
 """
 
+import asyncio
+import json
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from typing import List
 import uuid
 from app.core.logger import get_logger
@@ -85,6 +87,66 @@ async def upload_file(
         logger.exception("上传异常堆栈")
         raise HTTPException(status_code=500, detail=err_msg or "文件上传处理失败，请查看服务端日志")
 
+
+@router.post("/file/stream")
+async def upload_file_stream(
+    kb_id: str = Form(...),
+    file: UploadFile = File(...),
+    file_type: str = Form(...),
+):
+    """上传单个文件，响应为流式：先返回 processing_id，再持续推送 stage/progress/message，最后返回 result。"""
+    try:
+        allowed_types = ["pdf", "docx", "doc", "txt", "md", "jpg", "jpeg", "png", "gif"]
+        if file_type not in allowed_types:
+            raise HTTPException(status_code=400, detail=f"不支持的文件类型: {file_type}")
+        file_content = await file.read()
+        if len(file_content) == 0:
+            raise HTTPException(status_code=400, detail="文件内容为空")
+        filename = file.filename or f"uploaded_file.{file_type}"
+        processing_id = str(uuid.uuid4())
+        logger.info("开始流式上传处理: %s, processing_id=%s", filename, processing_id)
+
+        async def stream_gen():
+            task = asyncio.create_task(
+                ingestion_service.process_file_upload(
+                    file_content=file_content,
+                    file_path=filename,
+                    kb_id=kb_id,
+                    user_id=None,
+                    processing_id=processing_id,
+                )
+            )
+            yield json.dumps({"processing_id": processing_id}) + "\n"
+            while True:
+                await asyncio.sleep(0.25)
+                status = await ingestion_service.get_processing_status(processing_id)
+                if status is None:
+                    break
+                yield json.dumps(status) + "\n"
+                if status.get("status") in ("completed", "failed"):
+                    break
+            try:
+                await task
+            except Exception as e:
+                logger.exception("流式上传后台任务异常")
+                yield json.dumps({"status": "failed", "error": str(e)}) + "\n"
+                return
+            final = await ingestion_service.get_processing_status(processing_id)
+            if final and final.get("result") is not None:
+                yield json.dumps({"result": final["result"]}) + "\n"
+
+        return StreamingResponse(
+            stream_gen(),
+            media_type="application/x-ndjson",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("upload_file_stream failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/batch")
 async def upload_batch(
     kb_id: str = Form(...),
@@ -149,11 +211,8 @@ async def upload_batch(
 
 @router.get("/progress/{task_id}")
 async def get_upload_progress(task_id: str):
-    """获取上传处理进度"""
-    return {
-        "task_id": task_id,
-        "status": "processing",
-        "progress": 65,
-        "stage": "vectorization",
-        "message": "正在进行向量化处理..."
-    }
+    """获取上传处理进度（对接 ingestion 的 processing_status）"""
+    status = await ingestion_service.get_processing_status(task_id)
+    if status.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="未找到该任务或任务已过期")
+    return status

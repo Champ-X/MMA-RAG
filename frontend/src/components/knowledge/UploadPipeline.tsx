@@ -40,6 +40,8 @@ interface UploadPipelineProps {
   onFileSelect: (files: File[]) => void
   isUploading?: boolean
   uploadProgress?: UploadPipelineProgress
+  /** 外部传入的文件列表（如从文件夹导入），有值时与 uploadProgress 一起展示进度 */
+  externalFiles?: File[] | null
   className?: string
 }
 
@@ -83,11 +85,15 @@ export function UploadPipeline({
   onFileSelect,
   isUploading = false,
   uploadProgress,
+  externalFiles = null,
   className,
 }: UploadPipelineProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const displayFiles = externalFiles && externalFiles.length > 0 ? externalFiles : selectedFiles
+  const hasFilesToShow = displayFiles.length > 0
 
   const handleFileSelect = (files: FileList | null) => {
     if (!files) return
@@ -123,12 +129,12 @@ export function UploadPipeline({
   const failedCount = uploadProgress?.failed ?? 0
   const totalCount = uploadProgress?.total ?? 0
 
-  // 上传成功后延迟清空已选文件，便于用户看到完成摘要
+  // 上传成功后延迟清空已选文件，便于用户看到完成摘要（仅内部选择，外部传入由父组件清空）
   useEffect(() => {
-    if (uploadProgress?.stage !== 'done') return
+    if (uploadProgress?.stage !== 'done' || (externalFiles && externalFiles.length > 0)) return
     const t = setTimeout(() => setSelectedFiles([]), 2500)
     return () => clearTimeout(t)
-  }, [uploadProgress?.stage])
+  }, [uploadProgress?.stage, externalFiles])
 
   return (
     <div className={cn('bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm', className)}>
@@ -176,7 +182,7 @@ export function UploadPipeline({
           />
         </div>
 
-        {selectedFiles.length > 0 && (
+        {hasFilesToShow && (
           <>
             <div>
               {isAllDone ? (
@@ -190,7 +196,7 @@ export function UploadPipeline({
                 </div>
               ) : (
                 <h4 className="mb-3 font-medium text-slate-800 dark:text-slate-100">
-                  已选文件 ({selectedFiles.length})
+                  已选文件 ({displayFiles.length})
                 </h4>
               )}
               <div className="space-y-3">
@@ -199,12 +205,12 @@ export function UploadPipeline({
                     处理中
                   </div>
                 )}
-                {selectedFiles.map((f, i) => {
+                {displayFiles.map((f, i) => {
                   const isImage = f.type.startsWith('image/')
                   const Icon = isImage ? Image : f.type.includes('pdf') ? FileText : File
                   const isCurrent =
                     isUploading &&
-                    uploadProgress?.currentFile === f.name
+                    uploadProgress?.currentFile === (f as File).name
                   const done =
                     isUploading &&
                     uploadProgress &&
@@ -224,9 +230,9 @@ export function UploadPipeline({
                       <div className="flex items-center gap-3">
                         <Icon className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                         <div>
-                          <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{f.name}</p>
+                          <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{(f as File).name}</p>
                           <p className="text-xs text-slate-500 dark:text-slate-400">
-                            {formatFileSize(f.size)}
+                            {formatFileSize((f as File).size)}
                           </p>
                         </div>
                       </div>

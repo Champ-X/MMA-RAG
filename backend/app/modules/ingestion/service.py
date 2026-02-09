@@ -168,7 +168,8 @@ class IngestionService:
         file_content: bytes,
         file_path: str,
         kb_id: str,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        processing_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         处理文件上传完整流程
@@ -178,11 +179,13 @@ class IngestionService:
             file_path: 文件路径
             kb_id: 知识库ID
             user_id: 用户ID
+            processing_id: 可选，由流式上传接口传入以便前端轮询/流式读取进度
             
         Returns:
             处理结果
         """
-        processing_id = str(uuid.uuid4())
+        if processing_id is None:
+            processing_id = str(uuid.uuid4())
         logger.info(f"开始处理文件上传: {file_path}, 处理ID: {processing_id}")
         
         # 【关键修复】从 MinIO 桶内反查 Qdrant 中的实际 kb_id，确保新旧数据用同一 kb_id
@@ -282,13 +285,14 @@ class IngestionService:
             except Exception as e:
                 logger.warning(f"画像增量触发失败 kb_id={actual_kb_id}: {e}")
             
-            # 更新状态：处理完成
+            # 更新状态：处理完成（写入 result 供流式上传接口读取）
             self._update_processing_status(processing_id, {
                 "status": "completed",
                 "progress": 100,
                 "stage": "completed",
                 "message": "文件处理完成",
-                "completed_at": datetime.utcnow().isoformat()
+                "completed_at": datetime.utcnow().isoformat(),
+                "result": result,
             })
             
             return result
@@ -402,7 +406,12 @@ class IngestionService:
         # 保存 MinIO 存储结果（包含 file_id）
         minio_storage_result = storage_result
         
-        # 1. 生成图片描述（VLM），按 SiliconFlow VLM 文档格式传参
+        # 1. 生成图片描述（VLM）：先推送阶段，再调用 VLM，便于前端进度与真实流程一致
+        self._update_processing_status(processing_id, {
+            "stage": "parsing",
+            "progress": 45,
+            "message": "VLM 生成图片描述",
+        })
         caption_result = await self._generate_image_caption(
             parse_result["base64_content"],
             processing_id,
@@ -424,7 +433,13 @@ class IngestionService:
                 base64_str = base64_str.split(",")[1]
             image_bytes = base64.b64decode(base64_str)
         
-        # 准备CLIP输入（使用原始图片bytes）
+        # 2. CLIP 图片向量化（推送阶段供前端进度）
+        self._update_processing_status(processing_id, {
+            "stage": "vectorizing",
+            "progress": 60,
+            "message": "CLIP 图片向量化",
+        })
+        logger.info("开始 CLIP 图片向量化 (processing_id=%s)", processing_id)
         clip_input_data = {
             "image_bytes": image_bytes,
             "width": parse_result.get("width"),
@@ -432,11 +447,15 @@ class IngestionService:
             "format": parse_result.get("format")
         }
         clip_result = await self._vectorize_with_clip(clip_input_data, processing_id)
+        logger.info("CLIP 图片向量化完成: 维度=%s (processing_id=%s)", clip_result.get("vector_dim", 768), processing_id)
         
         # 3. 文本向量化描述（空描述用占位符，避免部分 API 对空输入返回 5xx）
         caption = (caption_result.get("caption") or "").strip()
         text_to_embed = caption if caption else " "
+        self._update_processing_status(processing_id, {"message": "文本向量化"})
+        logger.info("开始文本向量化（图片描述） (processing_id=%s)", processing_id)
         text_vector_result = await self._vectorize_text([text_to_embed])
+        logger.info("文本向量化完成: 向量数=%s (processing_id=%s)", len(text_vector_result.get("vectors", [])), processing_id)
         
         # 4. 存储到向量数据库
         image_data = [{
@@ -859,7 +878,8 @@ class IngestionService:
                 }
             ]
             
-            # 调用VLM API
+            # 调用VLM API（大图或高 detail 可能需 1～3 分钟，提供方已对 VL 模型使用更长超时）
+            logger.info("开始调用 VLM 生成图片描述（可能需 1～3 分钟）")
             result = await self.llm_manager.chat(
                 messages=messages,
                 task_type="image_captioning",
@@ -867,7 +887,7 @@ class IngestionService:
                 fallback=True,
                 temperature=0.3  # 较低温度以获得更准确的描述
             )
-            
+            logger.info("VLM 图片描述调用返回: success=%s", result.success)
             if not result.success:
                 logger.error(f"VLM API调用失败: {result.error}")
                 # 如果API调用失败，返回默认描述
@@ -972,6 +992,7 @@ class IngestionService:
     ) -> Dict[str, Any]:
         """使用CLIP向量化图片"""
         try:
+            logger.info("CLIP 图片向量化: 开始 (processing_id=%s)", processing_id)
             # 懒加载模型
             self._load_clip_model()
             
@@ -1023,7 +1044,7 @@ class IngestionService:
             
             # clip-vit-large-patch14 的向量维度是 768
             assert len(clip_vector) == 768, f"向量维度错误: 期望768，实际{len(clip_vector)}"
-            
+            logger.info("CLIP 图片向量化: 完成, 维度=768 (processing_id=%s)", processing_id)
             return {
                 "clip_vector": clip_vector,
                 "model_used": "openai/clip-vit-large-patch14",
@@ -1037,15 +1058,15 @@ class IngestionService:
     async def _vectorize_text(self, texts: List[str]) -> Dict[str, Any]:
         """向量化文本"""
         try:
+            logger.info("文本向量化: 开始, 文本数=%s", len(texts))
             result = await self.llm_manager.embed(texts=texts)
-            
             if not result.success:
                 raise Exception(f"文本向量化失败: {result.error}")
             
             # 检查数据是否存在
             if result.data is None:
                 raise Exception("文本向量化返回的数据为空")
-            
+            logger.info("文本向量化: 完成, 向量数=%s", len(result.data))
             return {
                 "vectors": result.data,
                 "model_used": result.model_used

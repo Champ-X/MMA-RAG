@@ -30,6 +30,9 @@ class SiliconFlowProvider(BaseLLMProvider):
 
     def _get_timeout_for_model(self, model: str) -> float:
         """根据模型类型返回合适的超时时间（秒）"""
+        # VLM/视觉模型（图生描述等）处理大图较慢，需要更长超时
+        if "VL" in model or "Vision" in model or "vision" in model.lower() or "Caption" in model or "caption" in model.lower():
+            return 180.0  # 图生描述建议 180 秒，避免大图未完成即超时
         # Thinking 模型（推理模型）需要更长的超时时间
         if "Thinking" in model or "thinking" in model.lower():
             return 90.0  # 235B Thinking 模型建议90秒

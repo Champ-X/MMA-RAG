@@ -254,6 +254,87 @@ async def import_from_folder(body: ImportFolderBody):
     }
 
 
+@router.get("/folder/stream")
+async def import_from_folder_stream(
+    folder_path: str,
+    kb_id: str,
+    recursive: bool = True,
+    extensions: Optional[str] = None,
+    exclude_patterns: Optional[str] = None,
+    max_files: int = 500,
+):
+    """从指定本地文件夹导入知识库，通过 SSE 推送进度（scanning -> importing -> done）。"""
+    try:
+        resolved_path = _validate_folder_path_allowed(folder_path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    progress_queue: Queue = Queue()
+    results_container: list = []
+
+    def run_scan() -> None:
+        try:
+            folder_source = FolderSource()
+            res = folder_source.fetch_folder(
+                str(resolved_path),
+                recursive=recursive,
+                extensions=[x.strip() for x in extensions.split(",") if x.strip()] if extensions else None,
+                exclude_patterns=[x.strip() for x in exclude_patterns.split(",") if x.strip()] if exclude_patterns else None,
+                max_files=min(2000, max(1, max_files)),
+            )
+            results_container.append(res)
+            progress_queue.put({"stage": "scan_complete", "total": len(res)})
+        except Exception as e:
+            progress_queue.put({"stage": "error", "message": str(e)})
+
+    async def event_stream():
+        yield f"data: {json.dumps({'stage': 'scanning', 'message': '正在扫描文件夹…'})}\n\n"
+        loop = asyncio.get_event_loop()
+        thread = threading.Thread(target=run_scan)
+        thread.start()
+        event = None
+        while True:
+            try:
+                event = await loop.run_in_executor(None, lambda: progress_queue.get(timeout=0.3))
+            except Empty:
+                if not thread.is_alive():
+                    break
+                continue
+            yield f"data: {json.dumps(event)}\n\n"
+            if event.get("stage") in ("scan_complete", "error"):
+                break
+        thread.join()
+
+        if event is None or event.get("stage") == "error":
+            return
+        results = results_container[0] if results_container else []
+        if not results:
+            yield f"data: {json.dumps({'stage': 'done', 'success_count': 0, 'failed_count': 0, 'total': 0, 'message': '该文件夹下没有符合条件的文件'})}\n\n"
+            return
+        success_count = 0
+        failed_count = 0
+        for i, r in enumerate(results):
+            yield f"data: {json.dumps({'stage': 'importing', 'current': i + 1, 'total': len(results), 'message': r.suggested_filename})}\n\n"
+            try:
+                await ingestion_service.process_file_upload(
+                    file_content=r.content,
+                    file_path=r.suggested_filename,
+                    kb_id=kb_id,
+                    user_id=None,
+                )
+                success_count += 1
+            except Exception as e:
+                failed_count += 1
+                logger.warning("import_from_folder_stream single file failed: %s", e)
+        yield f"data: {json.dumps({'stage': 'done', 'success_count': success_count, 'failed_count': failed_count, 'total': len(results), 'message': f'成功 {success_count}，失败 {failed_count}'})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.get("/search/stream")
 async def import_from_search_stream(
     kb_id: str,

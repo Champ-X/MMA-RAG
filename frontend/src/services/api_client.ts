@@ -145,6 +145,95 @@ class ApiClient {
 
     return response.data;
   }
+
+  /**
+   * 流式单文件上传：POST 后响应为 NDJSON 流，先收到 processing_id，再持续收到 stage/message/progress，最后收到 result。
+   * 用于在「开始 CLIP / 文本向量化」时实时更新前端进度。
+   */
+  async uploadFileStream<T = any>(
+    url: string,
+    file: File,
+    extraFields: Record<string, string>,
+    onStatus?: (status: {
+      processing_id?: string
+      stage?: string
+      message?: string
+      progress?: number
+      status?: string
+      result?: T
+    }) => void
+  ): Promise<T> {
+    const formData = new FormData();
+    Object.entries(extraFields).forEach(([k, v]) => formData.append(k, v));
+    formData.append('file', file);
+
+    const baseURL = this.getBaseURL();
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const response = await fetch(`${baseURL}${url}`, {
+      method: 'POST',
+      body: formData,
+      headers,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      let detail = text;
+      try {
+        const j = JSON.parse(text);
+        if (j.detail) detail = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail);
+      } catch {
+        // ignore
+      }
+      throw new Error(detail || `上传失败: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('无法读取响应流');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result: T | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        let obj: Record<string, unknown>;
+        try {
+          obj = JSON.parse(trimmed) as Record<string, unknown>;
+        } catch {
+          continue; // skip malformed line
+        }
+        if (obj.status === 'failed') {
+          throw new Error(String(obj.error ?? obj.message ?? '处理失败'));
+        }
+          if (obj.result !== undefined) {
+            result = obj.result as T;
+          }
+        if (onStatus) onStatus(obj as Parameters<NonNullable<typeof onStatus>>[0]);
+      }
+    }
+    if (buffer.trim()) {
+      try {
+        const obj = JSON.parse(buffer.trim()) as Record<string, unknown>;
+        if (obj.result !== undefined) result = obj.result as T;
+        if (onStatus) onStatus(obj as Parameters<NonNullable<typeof onStatus>>[0]);
+      } catch {
+        // skip
+      }
+    }
+
+    if (result !== null) return result;
+    throw new Error('流式上传未返回 result');
+  }
 }
 
 // 创建单例实例
@@ -225,6 +314,33 @@ export const knowledgeApi = {
     fileType: string,
     onProgress?: (progress: number) => void
   ) => apiClient.uploadFile(`/upload/file`, file, onProgress, { kb_id: kbId, file_type: fileType }),
+
+  /**
+   * 流式单文件上传：响应为 NDJSON 流，可实时收到 stage/message/progress（含 CLIP、文本向量化阶段）。
+   * 返回与 uploadSingleFile 一致的 result 结构。
+   */
+  uploadSingleFileStream: (
+    kbId: string,
+    file: File,
+    fileType: string,
+    onStatus?: (status: {
+      processing_id?: string
+      stage?: string
+      message?: string
+      progress?: number
+      status?: string
+      result?: {
+        file_id?: string
+        kb_id?: string
+        filename?: string
+        status?: string
+        processing_id?: string
+        message?: string
+        details?: { chunks_processed?: number; vectors_stored?: number; caption?: string }
+      }
+    }) => void
+  ) =>
+    apiClient.uploadFileStream(`/upload/file/stream`, file, { kb_id: kbId, file_type: fileType }, onStatus),
 };
 
 // 知识库导入 API（从 URL 或按关键词搜索图片导入）
@@ -290,6 +406,74 @@ export const importApi = {
       }>
       message: string
     }>(`/import/folder`, body, { timeout: 300000 }),
+
+  /** 从指定本地文件夹导入知识库（SSE 流式进度：scanning -> importing -> done） */
+  importFromFolderStream: (
+    params: {
+      folder_path: string
+      kb_id: string
+      recursive?: boolean
+      extensions?: string[]
+      exclude_patterns?: string[]
+      max_files?: number
+    },
+    onProgress: (event: {
+      stage: string
+      current?: number
+      total?: number
+      message?: string
+      success_count?: number
+      failed_count?: number
+    }) => void
+  ) => {
+    const base = apiClient.getBaseURL()
+    const q = new URLSearchParams()
+    q.set('folder_path', params.folder_path)
+    q.set('kb_id', params.kb_id)
+    q.set('recursive', String(params.recursive !== false))
+    if (params.max_files != null) q.set('max_files', String(params.max_files))
+    if (params.extensions?.length) q.set('extensions', params.extensions.join(','))
+    if (params.exclude_patterns?.length) q.set('exclude_patterns', params.exclude_patterns.join(','))
+    const url = `${base}/import/folder/stream?${q.toString()}`
+    return fetch(url, { method: 'GET' }).then(async (res) => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error((err as any)?.detail ?? res.statusText)
+      }
+      const reader = res.body?.getReader()
+      if (!reader) return
+      const decoder = new TextDecoder()
+      let buf = ''
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6)) as {
+                stage: string
+                current?: number
+                total?: number
+                message?: string
+                success_count?: number
+                failed_count?: number
+              }
+              onProgress(data)
+            } catch (_) {}
+          }
+        }
+      }
+      if (buf.startsWith('data: ')) {
+        try {
+          const data = JSON.parse(buf.slice(6))
+          onProgress(data)
+        } catch (_) {}
+      }
+    })
+  },
 
   /** 按关键词搜索图片并导入知识库（SSE 流式进度） */
   importFromSearchStream: (
