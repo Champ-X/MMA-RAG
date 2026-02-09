@@ -271,37 +271,62 @@ export function UploadPipeline({
               </div>
             </div>
 
-            {/* 四阶段管道 */}
+            {/* 四阶段管道：步骤条 + 连接线 + 当前状态 */}
             {isUploading && uploadProgress && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
+              <div className="space-y-5">
+                <div className="relative flex items-start justify-between px-1">
+                  {/* 底部连接线（背景） */}
+                  <div
+                    className="absolute left-4 right-4 top-5 h-0.5 -translate-y-1/2 rounded-full bg-slate-200 dark:bg-slate-700"
+                    aria-hidden
+                  />
+                  {/* 已完成的连接线（渐变填充） */}
+                  <div
+                    className="absolute left-4 top-5 h-0.5 -translate-y-1/2 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 dark:from-emerald-500 dark:to-emerald-400 transition-all duration-500 ease-out"
+                    style={{
+                      width: currentStageIndex <= 0 ? '0%' : `calc((100% - 2rem) * ${currentStageIndex / Math.max(STAGES.length - 1, 1)})`,
+                    }}
+                    aria-hidden
+                  />
                   {STAGES.map((s, i) => {
                     const active = i === currentStageIndex
                     const past = i < currentStageIndex || uploadProgress.stage === 'done'
                     const Icon = s.icon
                     return (
-                      <div
-                        key={s.id}
-                        className={cn(
-                          'flex flex-1 flex-col items-center gap-1 rounded-lg border py-2 transition-colors',
-                          active && 'border-indigo-400 dark:border-fuchsia-500 bg-indigo-50/50 dark:bg-fuchsia-500/10',
-                          past && 'border-green-500/50 bg-green-500/5 dark:border-green-600/50 dark:bg-green-600/10',
-                          !active && !past && 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'
-                        )}
-                      >
-                        <Icon
+                      <div key={s.id} className="relative z-10 flex flex-1 flex-col items-center">
+                        <div
                           className={cn(
-                            'h-5 w-5',
-                            active && 'text-indigo-600 dark:text-fuchsia-400',
-                            past && 'text-green-600 dark:text-green-400',
-                            !active && !past && 'text-slate-400 dark:text-slate-500'
+                            'flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all duration-300',
+                            active &&
+                              'border-indigo-500 dark:border-fuchsia-400 bg-white dark:bg-slate-900 shadow-md shadow-indigo-200/50 dark:shadow-fuchsia-500/20 ring-4 ring-indigo-100 dark:ring-fuchsia-500/20',
+                            past &&
+                              'border-emerald-500 dark:border-emerald-400 bg-emerald-500/10 dark:bg-emerald-500/10',
+                            !active && !past && 'border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80'
                           )}
-                        />
+                        >
+                          {past && !active ? (
+                            <CheckCircle className="h-5 w-5 text-emerald-500 dark:text-emerald-400" />
+                          ) : (
+                            <Icon
+                              className={cn(
+                                'h-5 w-5 transition-colors',
+                                active && 'text-indigo-600 dark:text-fuchsia-400',
+                                !active && !past && 'text-slate-400 dark:text-slate-500'
+                              )}
+                            />
+                          )}
+                          {active && uploadProgress.stage !== 'done' && (
+                            <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
+                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-75 dark:bg-fuchsia-400" />
+                              <span className="relative inline-flex h-3 w-3 rounded-full bg-indigo-500 dark:bg-fuchsia-500" />
+                            </span>
+                          )}
+                        </div>
                         <span
                           className={cn(
-                            'text-xs font-medium',
+                            'mt-2 text-center text-xs font-medium transition-colors',
                             active && 'text-indigo-600 dark:text-fuchsia-400',
-                            past && 'text-green-600 dark:text-green-400',
+                            past && 'text-emerald-600 dark:text-emerald-400',
                             !active && !past && 'text-slate-500 dark:text-slate-400'
                           )}
                         >
@@ -311,28 +336,40 @@ export function UploadPipeline({
                     )
                   })}
                 </div>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  {getStageMessage(uploadProgress)}
-                  {uploadProgress.currentFile && (
-                    <span className="ml-2 font-medium">
-                      {uploadProgress.currentFile}
+
+                {/* 当前阶段说明 + 文件名 */}
+                <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3 border border-slate-100 dark:border-slate-700/80">
+                  <p className="text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2 flex-wrap">
+                    <span className="inline-flex items-center gap-1.5 text-indigo-600 dark:text-fuchsia-400 font-medium">
+                      {uploadProgress.stage === 'done' ? (
+                        <CheckCircle className="h-4 w-4 text-emerald-500" />
+                      ) : (
+                        <Loader2 className="h-4 w-4 animate-spin text-indigo-500 dark:text-fuchsia-400" />
+                      )}
+                      {getStageMessage(uploadProgress)}
                     </span>
-                  )}
-                </p>
-                <Progress
-                  value={
-                    uploadProgress.stage === 'done'
-                      ? 100
-                      : uploadProgress.stageProgress ?? 50
-                  }
-                  className="h-2"
-                />
+                    {uploadProgress.currentFile && (
+                      <span className="text-slate-500 dark:text-slate-400 truncate max-w-[200px]" title={uploadProgress.currentFile}>
+                        {uploadProgress.currentFile}
+                      </span>
+                    )}
+                  </p>
+                  <Progress
+                    value={
+                      uploadProgress.stage === 'done'
+                        ? 100
+                        : uploadProgress.stageProgress ?? 50
+                    }
+                    className="h-1.5 mt-2 rounded-full bg-slate-200 dark:bg-slate-700 [&>div]:rounded-full [&>div]:bg-gradient-to-r [&>div]:from-indigo-500 [&>div]:to-fuchsia-500 dark:[&>div]:from-fuchsia-500 dark:[&>div]:to-indigo-400 [&>div]:transition-all [&>div]:duration-500"
+                  />
+                </div>
+
                 <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
                   <span>
-                    {uploadProgress.completed}/{uploadProgress.total}
+                    已处理 {uploadProgress.completed}/{uploadProgress.total} 个文件
                   </span>
                   {uploadProgress.failed > 0 && (
-                    <span className="text-red-600 dark:text-red-400">
+                    <span className="text-red-600 dark:text-red-400 font-medium">
                       {uploadProgress.failed} 失败
                     </span>
                   )}

@@ -1433,29 +1433,43 @@ const KnowledgeList: React.FC = () => {
                 uploadProgress={uploadProgress}
                 externalFiles={currentUploadFiles}
               />
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-slate-500 dark:text-slate-400">自动导入：</span>
-                <button
-                  type="button"
-                  onClick={() => setShowImportUrlModal(true)}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium transition-colors"
-                >
-                  <Link2 size={16} /> 从 URL 导入
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowImportSearchModal(true)}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium transition-colors"
-                >
-                  <ImagePlus size={16} /> 搜索图片导入
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowImportFolderModal(true)}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium transition-colors"
-                >
-                  <FolderOpen size={16} /> 从文件夹导入
-                </button>
+              {/* 自动导入：卡片式入口 */}
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-4">
+                <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
+                  自动导入
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowImportUrlModal(true)}
+                    className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-sm font-medium shadow-sm transition-all hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50/80 dark:hover:bg-blue-950/40 hover:shadow hover:-translate-y-0.5"
+                  >
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
+                      <Link2 size={18} />
+                    </span>
+                    从 URL 导入
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowImportSearchModal(true)}
+                    className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-sm font-medium shadow-sm transition-all hover:border-violet-300 dark:hover:border-violet-600 hover:bg-violet-50/80 dark:hover:bg-violet-950/40 hover:shadow hover:-translate-y-0.5"
+                  >
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400">
+                      <ImagePlus size={18} />
+                    </span>
+                    搜索图片导入
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowImportFolderModal(true)}
+                    className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-sm font-medium shadow-sm transition-all hover:border-amber-300 dark:hover:border-amber-600 hover:bg-amber-50/80 dark:hover:bg-amber-950/40 hover:shadow hover:-translate-y-0.5"
+                  >
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400">
+                      <FolderOpen size={18} />
+                    </span>
+                    从文件夹导入
+                  </button>
+                </div>
               </div>
             </div>
 
