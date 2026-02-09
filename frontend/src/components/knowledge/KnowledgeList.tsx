@@ -331,6 +331,13 @@ function ImportFolderModal({
     return exts.some((e) => (e.startsWith('.') ? lower.endsWith(e) : lower.endsWith('.' + e)))
   }
 
+  const SKIP_SYSTEM_FILES = ['.ds_store', 'thumbs.db', 'desktop.ini']
+  function isSystemOrHiddenFile(name: string): boolean {
+    const lower = name.toLowerCase()
+    if (lower.startsWith('._')) return true
+    return SKIP_SYSTEM_FILES.includes(lower)
+  }
+
   async function collectFilesFromHandle(
     handle: FileSystemDirectoryHandle,
     recursive: boolean,
@@ -346,6 +353,7 @@ function ImportFolderModal({
       const name = entry.name
       const relPath = pathPrefix ? `${pathPrefix}/${name}` : name
       if (entry.kind === 'file') {
+        if (isSystemOrHiddenFile(name)) continue
         if (matchesExclude(name, exclude)) continue
         if (!matchesExtension(name, extensions)) continue
         try {
@@ -457,6 +465,52 @@ function ImportFolderModal({
           </button>
         </div>
         <div className="p-6 space-y-4">
+          {/* 筛选条件：对「选择本地文件夹」和「输入服务端路径」均生效 */}
+          <div className="space-y-3 pb-4 border-b border-slate-200 dark:border-slate-700">
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">筛选条件（对下方两种方式均生效）</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="folder-recursive"
+                checked={recursive}
+                onChange={(e) => setRecursive(e.target.checked)}
+                className="rounded border-slate-300 dark:border-slate-600"
+              />
+              <label htmlFor="folder-recursive" className="text-sm text-slate-700 dark:text-slate-200">递归子目录</label>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">文件类型（可选，逗号分隔，如 .pdf,.txt,.md）</label>
+              <input
+                type="text"
+                value={extensionsStr}
+                onChange={(e) => setExtensionsStr(e.target.value)}
+                placeholder=".pdf, .txt, .md"
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">排除模式（可选，逗号分隔）</label>
+              <input
+                type="text"
+                value={excludeStr}
+                onChange={(e) => setExcludeStr(e.target.value)}
+                placeholder="__pycache__, .git, *.tmp"
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">最大文件数</label>
+              <input
+                type="number"
+                min={1}
+                max={2000}
+                value={maxFiles}
+                onChange={(e) => setMaxFiles(Number(e.target.value) || 500)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+              />
+            </div>
+          </div>
+
           {/* 选择本地文件夹 */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">选择本机文件夹</label>
@@ -474,7 +528,7 @@ function ImportFolderModal({
             )}
             {selectedFiles != null && selectedFiles.length > 0 && (
               <div className="mt-2 flex items-center gap-2 flex-wrap">
-                <span className="text-sm text-slate-600 dark:text-slate-300">已选择 {selectedFiles.length} 个文件</span>
+                <span className="text-sm text-slate-600 dark:text-slate-300">已选择 {selectedFiles.length} 个文件（已按上方筛选条件过滤）</span>
                 <button
                   type="button"
                   onClick={handleUploadSelectedFiles}
@@ -491,9 +545,10 @@ function ImportFolderModal({
             )}
           </div>
 
+          {/* 或输入服务端路径 */}
           <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">或输入服务端路径</label>
-            <form onSubmit={handleSubmitServerPath} className="space-y-4">
+            <form onSubmit={handleSubmitServerPath} className="space-y-3">
               <input
                 type="text"
                 value={folderPath}
@@ -501,47 +556,6 @@ function ImportFolderModal({
                 placeholder="/data/docs 或白名单内的路径"
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
               />
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="folder-recursive"
-                  checked={recursive}
-                  onChange={(e) => setRecursive(e.target.checked)}
-                  className="rounded border-slate-300 dark:border-slate-600"
-                />
-                <label htmlFor="folder-recursive" className="text-sm text-slate-700 dark:text-slate-200">递归子目录</label>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">文件类型（可选，逗号分隔）</label>
-                <input
-                  type="text"
-                  value={extensionsStr}
-                  onChange={(e) => setExtensionsStr(e.target.value)}
-                  placeholder=".pdf, .txt, .md"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">排除模式（可选）</label>
-                <input
-                  type="text"
-                  value={excludeStr}
-                  onChange={(e) => setExcludeStr(e.target.value)}
-                  placeholder="__pycache__, .git, *.tmp"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">最大文件数</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={2000}
-                  value={maxFiles}
-                  onChange={(e) => setMaxFiles(Number(e.target.value) || 500)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-                />
-              </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-sm font-medium">
                   取消

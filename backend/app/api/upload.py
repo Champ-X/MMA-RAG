@@ -72,9 +72,18 @@ async def upload_file(
             }
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"文件上传失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        err_msg = str(e).strip() or repr(e) or type(e).__name__
+        logger.error(
+            "文件上传失败: %s (type=%s, filename=%s)",
+            err_msg,
+            type(e).__name__,
+            getattr(file, "filename", ""),
+        )
+        logger.exception("上传异常堆栈")
+        raise HTTPException(status_code=500, detail=err_msg or "文件上传处理失败，请查看服务端日志")
 
 @router.post("/batch")
 async def upload_batch(
