@@ -25,6 +25,10 @@ export interface ThoughtEvent {
       sparse: boolean;
       visual: boolean;
     };
+    /** 检索结果数量（粗排后的候选数量） */
+    total_found?: number;
+    /** 重排后保留的数量 */
+    reranked_count?: number;
   };
 }
 

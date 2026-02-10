@@ -15,8 +15,10 @@ export interface ThoughtData {
   visual_activated?: boolean;
   sparse_keywords?: string[];
   search_strategies?: { dense: boolean; sparse: boolean; visual: boolean };
-  /** 检索结果数量（后端 total_found） */
+  /** 检索结果数量（后端 total_found，粗排后的候选数量） */
   total_found?: number;
+  /** 重排后保留的数量（后端 reranked_count） */
+  reranked_count?: number;
 }
 
 export interface Message {

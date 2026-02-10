@@ -35,7 +35,7 @@ export function ThinkingCapsule({
     keywords: thoughtData?.sparse_keywords || [],
     subQueries: thoughtData?.sub_queries || [],
     totalFound: thoughtData?.total_found,
-    reranked: 2,
+    reranked: thoughtData?.reranked_count,
   }
 
   // 有 stages 时按阶段流式展示；无 stages（如历史消息）时按 thoughtData 有则展示
@@ -245,7 +245,7 @@ export function ThinkingCapsule({
                 <div className="flex items-center gap-2 text-xs">
                   <span className="w-20 flex-shrink-0 text-slate-400 dark:text-slate-500">结果</span>
                   <span className="text-slate-700 dark:text-slate-200">
-                    检索到 {retrieval.totalFound} 个片段，重排后保留 Top {retrieval.reranked || 2}
+                    检索到 {retrieval.totalFound} 个片段{retrieval.reranked !== undefined && retrieval.reranked !== null ? `，重排后保留 Top ${retrieval.reranked}` : ''}
                   </span>
                 </div>
               )}

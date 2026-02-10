@@ -259,11 +259,15 @@ class RetrievalService:
             }
             strategies = retrieval_context.search_strategies or {}
             sparse_keywords = list(strategies.get("sparse_keywords", []) or [])
+            # 获取重排统计信息
+            coarse_ranking_count = reranked_results.get("coarse_ranking_count", 0)
+            final_ranking_count = reranked_results.get("final_ranking_count", len(results_list))
             retrieval_payload = {
                 "message": f"检索完成，找到 {len(results_list)} 个相关结果",
                 "sparse_keywords": sparse_keywords,
                 "sub_queries": getattr(retrieval_context, "sub_queries", []) or preprocessing_result.get("sub_queries", []) or [],
-                "total_found": len(results_list),
+                "total_found": coarse_ranking_count if coarse_ranking_count > 0 else len(results_list),  # 粗排后的候选数量
+                "reranked_count": final_ranking_count,  # 重排后保留的数量
             }
             yield ("retrieval", retrieval_payload)
 
