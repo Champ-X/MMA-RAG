@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Database, Settings, MessageSquare, Layers, User, Moon, Sun } from 'lucide-react'
+import { Database, Settings, MessageSquare, Layers, User, Moon, Sun, Network } from 'lucide-react'
 import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
 import { useChatStore } from '@/store/useChatStore'
 import { useTheme } from '@/hooks/useTheme'
@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import ChatInterface from '@/components/chat/ChatInterface'
 import KnowledgeList from '@/components/knowledge/KnowledgeList'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { ArchitecturePage } from '@/pages/ArchitecturePage'
 
 function NavButton({ 
   active, 
@@ -61,6 +62,7 @@ export function AppLayout() {
     if (location.pathname === '/') return 'chat'
     if (location.pathname === '/knowledge') return 'knowledge'
     if (location.pathname === '/settings') return 'settings'
+    if (location.pathname === '/architecture') return 'architecture'
     return 'chat'
   }
 
@@ -87,6 +89,12 @@ export function AppLayout() {
               onClick={() => navigate('/knowledge')} 
               icon={<Database size={20} />} 
               label="知识库"
+            />
+            <NavButton 
+              active={activeView === 'architecture'} 
+              onClick={() => navigate('/architecture')} 
+              icon={<Network size={20} />} 
+              label="架构"
             />
             <NavButton 
               active={activeView === 'settings'} 
@@ -135,6 +143,12 @@ export function AppLayout() {
           aria-hidden={location.pathname !== '/settings'}
         >
           <SettingsPage />
+        </div>
+        <div
+          className={cn('flex-1 min-h-0 overflow-hidden', location.pathname !== '/architecture' && 'hidden')}
+          aria-hidden={location.pathname !== '/architecture'}
+        >
+          <ArchitecturePage />
         </div>
       </div>
 

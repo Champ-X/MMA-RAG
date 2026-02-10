@@ -43,3 +43,76 @@ body {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;  /* Chrome, Safari and Opera */
 }
+
+/* 架构页面动画 */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-from-top {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes zoom-in {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+.fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.slide-in-from-top-2 {
+  animation: slide-in-from-top 0.3s ease-out;
+}
+
+.zoom-in-95 {
+  animation: zoom-in 0.2s ease-out;
+}
+
+/* 改善中文换行，避免在词语中间换行 */
+.text-chinese-break {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  white-space: normal;
+  line-break: auto;
+  hyphens: none;
+}
+
+/* 针对描述性段落的优化 - 中英文混合文本 */
+.text-description {
+  /* 中文使用 keep-all，避免在词语中间换行 */
+  word-break: keep-all;
+  /* 英文单词优先保持完整，必要时才换行 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  white-space: normal;
+  /* 优化换行行为，避免在标点前换行 */
+  line-break: auto;
+  hyphens: none;
+  /* 确保合理的字符间距 */
+  word-spacing: normal;
+}
