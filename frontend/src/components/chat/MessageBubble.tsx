@@ -267,11 +267,11 @@ export function MessageBubble({
   const bubbleEl = (
     <div
       className={cn(
-        'max-w-[85%] rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-md transition-shadow',
+        'max-w-[92%] rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-md transition-shadow',
         isUser
           ? 'rounded-tr-sm bg-gradient-to-br from-indigo-600 via-indigo-500 to-sky-500 text-white shadow-indigo-500/20 hover:shadow-indigo-500/30'
           : 'rounded-tl-sm border border-slate-200/70 bg-white/90 text-slate-900 shadow-slate-900/10 dark:border-slate-800/70 dark:bg-slate-950/70 dark:text-slate-100 hover:shadow-lg',
-        !isUser && showThinking && 'min-w-[min(100%,24rem)]'
+        !isUser && showThinking && 'min-w-[min(100%,28rem)]'
       )}
     >
         {showThinking && (

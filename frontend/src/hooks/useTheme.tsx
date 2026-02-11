@@ -28,7 +28,14 @@ export function ThemeProvider({
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem(storageKey, theme)
-      document.documentElement.setAttribute('data-theme', theme)
+      const root = document.documentElement
+      root.setAttribute('data-theme', theme)
+      // 同时设置 class 以支持 Tailwind dark mode
+      if (theme === 'dark') {
+        root.classList.add('dark')
+      } else {
+        root.classList.remove('dark')
+      }
     }
   }, [theme, storageKey])
 
