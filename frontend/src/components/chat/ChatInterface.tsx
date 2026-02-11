@@ -349,14 +349,12 @@ export function ChatInterface() {
             <div className="flex flex-shrink-0 items-center justify-between px-4 py-2">
               <div className="flex items-center gap-2">
                 {/* 检索模式信息 */}
-                <div className="flex items-center gap-1.5 rounded-full border border-slate-300/80 bg-white/60 backdrop-blur-sm px-3 py-1.5 text-xs font-medium text-slate-700 ring-1 ring-slate-900/5 transition-all duration-200 hover:border-slate-400/80 hover:bg-white/80 dark:border-slate-600/80 dark:bg-slate-700/60 dark:text-slate-200 dark:ring-white/5 dark:hover:border-slate-500/80 dark:hover:bg-slate-700/80">
-                  检索模式：<span className="font-semibold">
-                    {activeSession?.kbMode === 'all'
-                      ? '全部'
-                      : activeSession?.kbMode === 'manual'
-                        ? `指定 ${activeSession?.knowledgeBaseIds?.length ?? 0} 个`
-                        : '智能路由'}
-                  </span>
+                <div className="flex items-center gap-1.5 rounded-full border border-slate-300/80 bg-white/60 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-900/5 transition-all duration-200 hover:border-slate-400/80 hover:bg-white/80 dark:border-slate-600/80 dark:bg-slate-700/60 dark:text-slate-200 dark:ring-white/5 dark:hover:border-slate-500/80 dark:hover:bg-slate-700/80">
+                  {activeSession?.kbMode === 'all'
+                    ? '全部'
+                    : activeSession?.kbMode === 'manual'
+                      ? `指定 ${activeSession?.knowledgeBaseIds?.length ?? 0} 个`
+                      : '智能路由'}
                 </div>
 
                 <button

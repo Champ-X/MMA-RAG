@@ -109,10 +109,10 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-md rounded-3xl border border-slate-200/60 bg-white/85 shadow-2xl shadow-slate-900/20 backdrop-blur-xl dark:border-slate-700/50 dark:bg-slate-950/90"
+        className="max-w-md max-h-[90vh] flex flex-col rounded-3xl border border-slate-200/60 bg-white/85 shadow-2xl shadow-slate-900/20 backdrop-blur-xl dark:border-slate-700/50 dark:bg-slate-950/90"
         onClick={e => e.stopPropagation()}
       >
-        <DialogHeader className="pb-4">
+        <DialogHeader className="flex-shrink-0 pb-3">
           <DialogTitle className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/10 to-purple-500/10">
               <SlidersHorizontal className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
@@ -121,10 +121,11 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5 py-1">
+        <ScrollArea className="flex-1 min-h-0 overflow-y-auto">
+          <div className="space-y-4 py-1 pr-4 pb-2">
           {/* 检索模式：智能路由 / 全部 / 指定 */}
-          <div className="rounded-2xl border border-slate-200/50 bg-white/50 p-5 shadow-sm backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-900/50">
-            <div className="mb-4 flex items-center gap-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <div className="rounded-2xl border border-slate-200/50 bg-white/50 p-4 shadow-sm backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-900/50">
+            <div className="mb-3 flex items-center gap-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/40">
                 <Database className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
               </div>
@@ -135,44 +136,44 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
                 type="button"
                 onClick={() => setKbMode('auto')}
                 className={cn(
-                  'flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-200 shadow-sm backdrop-blur-sm',
+                  'flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-200 shadow-sm backdrop-blur-sm whitespace-nowrap',
                   kbMode === 'auto'
                     ? 'border-indigo-400/50 bg-indigo-500/15 text-indigo-700 shadow-md shadow-indigo-500/15 dark:bg-indigo-500/20 dark:text-indigo-200'
                     : 'border-slate-200/80 bg-white/60 text-slate-600 hover:bg-white/80 hover:border-slate-300/80 dark:border-slate-600/80 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/80'
                 )}
               >
-                <Route className="h-4 w-4" />
-                智能路由
+                <Route className="h-4 w-4 flex-shrink-0" />
+                <span>智能路由</span>
               </button>
               <button
                 type="button"
                 onClick={() => setKbMode('all')}
                 className={cn(
-                  'flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-200 shadow-sm backdrop-blur-sm',
+                  'flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-200 shadow-sm backdrop-blur-sm whitespace-nowrap',
                   kbMode === 'all'
                     ? 'border-indigo-400/50 bg-indigo-500/15 text-indigo-700 shadow-md shadow-indigo-500/15 dark:bg-indigo-500/20 dark:text-indigo-200'
                     : 'border-slate-200/80 bg-white/60 text-slate-600 hover:bg-white/80 hover:border-slate-300/80 dark:border-slate-600/80 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/80'
                 )}
               >
-                <List className="h-4 w-4" />
-                全部
+                <List className="h-4 w-4 flex-shrink-0" />
+                <span>全部</span>
               </button>
               <button
                 type="button"
                 onClick={() => setKbMode('manual')}
                 className={cn(
-                  'flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-200 shadow-sm backdrop-blur-sm',
+                  'flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-200 shadow-sm backdrop-blur-sm whitespace-nowrap',
                   kbMode === 'manual'
                     ? 'border-indigo-400/50 bg-indigo-500/15 text-indigo-700 shadow-md shadow-indigo-500/15 dark:bg-indigo-500/20 dark:text-indigo-200'
                     : 'border-slate-200/80 bg-white/60 text-slate-600 hover:bg-white/80 hover:border-slate-300/80 dark:border-slate-600/80 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/80'
                 )}
               >
-                <CheckSquare className="h-4 w-4" />
-                指定
+                <CheckSquare className="h-4 w-4 flex-shrink-0" />
+                <span>指定</span>
               </button>
             </div>
             {kbMode === 'manual' && (
-              <ScrollArea className="mt-4 max-h-40 rounded-xl border border-slate-200/50 bg-white/40 backdrop-blur-sm dark:border-slate-700/50 dark:bg-slate-800/50 p-2.5 shadow-inner">
+              <ScrollArea className="mt-4 max-h-48 rounded-xl border border-slate-200/50 bg-white/40 backdrop-blur-sm dark:border-slate-700/50 dark:bg-slate-800/50 p-2.5 shadow-inner">
                 {knowledgeBases.length === 0 ? (
                   <p className="py-4 text-center text-sm text-slate-500 dark:text-slate-400">暂无知识库，请先创建</p>
                 ) : (
@@ -207,8 +208,8 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
           </div>
 
           {/* 对话模型（从后端拉取，仅展示） */}
-          <div className="rounded-2xl border border-slate-200/50 bg-white/50 p-5 shadow-sm backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-900/50">
-            <div className="mb-4 flex items-center gap-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <div className="rounded-2xl border border-slate-200/50 bg-white/50 p-4 shadow-sm backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-900/50">
+            <div className="mb-3 flex items-center gap-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/40">
                 <Zap className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
               </div>
@@ -243,9 +244,10 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
             )}
             <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">当前使用后端配置的 final_generation 模型</p>
           </div>
-        </div>
+          </div>
+        </ScrollArea>
 
-        <div className="flex justify-end gap-3 border-t border-slate-200/50 pt-5 dark:border-slate-800/50">
+        <div className="flex flex-shrink-0 justify-end gap-3 border-t border-slate-200/50 pt-4 mt-3 dark:border-slate-800/50">
           <Button 
             variant="outline" 
             onClick={() => onOpenChange(false)}
