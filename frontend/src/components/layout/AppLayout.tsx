@@ -125,7 +125,7 @@ export function AppLayout() {
       </aside>
 
       {/* 主内容区域：三视图常驻挂载，按路径显隐，避免对话页跳转时卸载中断流式等 */}
-      <div className="flex min-w-0 flex-1 flex-col p-4 md:p-6 relative overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col p-2 md:p-3 relative overflow-hidden">
         <div
           className={cn('flex-1 min-h-0 overflow-hidden', location.pathname !== '/' && 'hidden')}
           aria-hidden={location.pathname !== '/'}

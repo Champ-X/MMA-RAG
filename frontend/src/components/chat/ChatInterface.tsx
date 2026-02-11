@@ -253,8 +253,8 @@ export function ChatInterface() {
 
       {/* 消息区 */}
       <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
-        <div className="px-4 pt-4 pb-2">
-          <div className="mx-auto max-w-4xl flex flex-col gap-8">
+        <div className="px-3 pt-3 pb-1">
+          <div className="mx-auto max-w-4xl flex flex-col gap-6">
             {messages.length === 0 && (
               <Card className="p-10 text-center border-slate-200/60 dark:border-slate-800/60 bg-gradient-to-br from-slate-50/80 to-white/60 dark:from-slate-900/60 dark:to-slate-950/40 shadow-lg">
                 <CardContent>
@@ -317,7 +317,7 @@ export function ChatInterface() {
       </ScrollArea>
 
       {/* 输入区 - Gemini 风格悬浮框 */}
-      <div className="relative px-4 pb-4">
+      <div className="relative px-3 pb-3">
         {attachments.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-2">
             {attachments.map(a => (
