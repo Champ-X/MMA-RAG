@@ -9,7 +9,6 @@ import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
 import { ChatConfigPanel } from './ChatConfigPanel'
 import { useChatStore } from '@/store/useChatStore'
 import { useThinkingChain } from '@/hooks/useThinkingChain'
-import { useConfigStore } from '@/store/useConfigStore'
 import { cn } from '@/lib/utils'
 import type { CitationReference } from '@/types/sse'
 
@@ -44,16 +43,12 @@ export function ChatInterface() {
     thinking,
   } = useChatStore()
 
-  const { config } = useConfigStore()
   const { sendMessage, isStreaming, error } = useThinkingChain()
 
   const activeSession = getActiveSession()
   const messages = activeSession?.messages ?? []
   const isLoading = isStreaming
 
-  const selectedModel = useMemo(() => {
-    return config.models.find(m => m.id === 'chat') || config.models[0] || null
-  }, [config.models])
 
   const scrollToBottom = useCallback(() => {
     const run = () => {
@@ -90,9 +85,17 @@ export function ChatInterface() {
   useEffect(() => {
     const el = inputRef.current
     if (!el) return
-    el.style.height = '0px'
-    const next = Math.min(el.scrollHeight, 200)
-    el.style.height = `${Math.max(next, 56)}px`
+    // 重置高度以获取准确的 scrollHeight
+    el.style.height = 'auto'
+    // 强制重排以获取准确的 scrollHeight
+    const scrollHeight = el.scrollHeight
+    // 最大高度约 8 行（8 * 24px ≈ 192px），最小高度 56px
+    const minHeight = 56
+    const maxHeight = 192
+    const newHeight = Math.max(minHeight, Math.min(scrollHeight, maxHeight))
+    el.style.height = `${newHeight}px`
+    // 当内容超过最大高度时，显示滚动条
+    el.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden'
   }, [input])
 
   const handleSend = async () => {
@@ -233,42 +236,10 @@ export function ChatInterface() {
         onCreate={handleNewConversation}
         onDelete={deleteSession}
       />
-      {/* 顶部状态条 */}
-      <div className="flex items-center justify-between border-b border-slate-200/60 px-4 py-3 backdrop-blur dark:border-slate-800/60">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 rounded-xl bg-indigo-500/10 px-3 py-2 text-indigo-700 ring-1 ring-indigo-500/15 dark:text-indigo-200">
-            <Zap className="h-4 w-4" />
-            <div className="text-sm font-medium">
-              {selectedModel?.name || 'DeepSeek-V3'}
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-slate-900/5 px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-900/10 dark:bg-white/5 dark:text-slate-200 dark:ring-white/10">
-            检索模式：<span className="font-medium">
-              {activeSession?.kbMode === 'all'
-                ? '全部'
-                : activeSession?.kbMode === 'manual'
-                  ? `指定 ${activeSession?.knowledgeBaseIds?.length ?? 0} 个`
-                  : '智能路由'}
-            </span>
-          </div>
-        </div>
-
-        <div className="hidden items-center gap-2 text-xs text-slate-500 dark:text-slate-400 md:flex">
-          <kbd className="rounded-md bg-slate-900/5 px-2 py-1 ring-1 ring-slate-900/10 dark:bg-white/5 dark:ring-white/10">
-            ⌘/Ctrl
-          </kbd>
-          <span>+</span>
-          <kbd className="rounded-md bg-slate-900/5 px-2 py-1 ring-1 ring-slate-900/10 dark:bg-white/5 dark:ring-white/10">
-            Enter
-          </kbd>
-          <span>发送</span>
-        </div>
-      </div>
 
       {/* 消息区 */}
       <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
-        <div className="px-4 py-4">
+        <div className="px-4 pt-4 pb-2">
           <div className="mx-auto max-w-4xl flex flex-col gap-8">
             {messages.length === 0 && (
               <Card className="p-10 text-center border-slate-200/60 dark:border-slate-800/60 bg-gradient-to-br from-slate-50/80 to-white/60 dark:from-slate-900/60 dark:to-slate-950/40 shadow-lg">
@@ -332,7 +303,7 @@ export function ChatInterface() {
       </ScrollArea>
 
       {/* 输入区 - Gemini 风格悬浮框 */}
-      <div className="border-t border-slate-200/40 bg-gradient-to-t from-white via-white to-transparent dark:border-slate-800/40 dark:from-slate-950 dark:via-slate-950 px-4 py-4">
+      <div className="relative px-4 pb-4">
         {attachments.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-2">
             {attachments.map(a => (
@@ -354,8 +325,9 @@ export function ChatInterface() {
           </div>
         )}
 
-        <div className="mx-auto max-w-4xl">
-          <div className="relative">
+        <div className="mx-auto max-w-4xl relative">
+          {/* 一体化输入框：flex 布局，textarea 与按钮区分离，从根本避免遮挡 */}
+          <div className="flex flex-col overflow-hidden rounded-3xl bg-white border border-slate-200/60 shadow-lg shadow-slate-900/10 dark:bg-slate-800 dark:border-slate-700/60 dark:shadow-slate-900/30">
             <textarea
               ref={inputRef}
               value={input}
@@ -366,44 +338,60 @@ export function ChatInterface() {
                   handleSend()
                 }
               }}
-              placeholder="输入你的问题…（支持 Markdown / LaTeX / 引用演示）"
+              placeholder="输入你的问题"
               rows={1}
-              className="w-full resize-none rounded-3xl border border-slate-200/80 bg-white px-6 py-4 pb-14 text-sm text-slate-900 shadow-lg shadow-slate-900/10 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-slate-300 focus:shadow-xl focus:shadow-slate-900/15 dark:border-slate-700/60 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:shadow-slate-900/30"
+              className="w-full resize-none border-0 bg-transparent px-6 py-4 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:ring-0 dark:text-slate-100 dark:placeholder:text-slate-500 disabled:opacity-50 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:hover:bg-slate-400 dark:[&::-webkit-scrollbar-thumb]:bg-slate-600 dark:[&::-webkit-scrollbar-thumb]:hover:bg-slate-500"
+              style={{ minHeight: '56px', maxHeight: '192px' }}
               disabled={isLoading || !activeSessionId}
             />
 
-            {/* 底部功能栏 - Gemini 风格 */}
-            <div className="absolute bottom-3 left-6 right-6 flex items-center justify-between pointer-events-none">
-              <div className="flex items-center gap-2 pointer-events-auto">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  title="添加附件"
-                  className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500 transition-all duration-200 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                >
-                  <Paperclip className="h-4 w-4" />
-                </button>
+            {/* 底部功能栏 - 独立区域，与文字区物理分离 */}
+            <div className="flex flex-shrink-0 items-center justify-between px-4 py-2">
+              <div className="flex items-center gap-2">
+                {/* 检索模式信息 */}
+                <div className="flex items-center gap-1.5 rounded-full border border-slate-300/80 bg-white/60 backdrop-blur-sm px-3 py-1.5 text-xs font-medium text-slate-700 ring-1 ring-slate-900/5 transition-all duration-200 hover:border-slate-400/80 hover:bg-white/80 dark:border-slate-600/80 dark:bg-slate-700/60 dark:text-slate-200 dark:ring-white/5 dark:hover:border-slate-500/80 dark:hover:bg-slate-700/80">
+                  检索模式：<span className="font-semibold">
+                    {activeSession?.kbMode === 'all'
+                      ? '全部'
+                      : activeSession?.kbMode === 'manual'
+                        ? `指定 ${activeSession?.knowledgeBaseIds?.length ?? 0} 个`
+                        : '智能路由'}
+                  </span>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => setConfigPanelOpen(true)}
                   title="发送前配置"
-                  className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500 transition-all duration-200 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                  className="flex items-center gap-1.5 rounded-full border border-slate-300/80 bg-white/60 backdrop-blur-sm px-3 py-1.5 text-xs font-medium text-slate-700 ring-1 ring-slate-900/5 transition-all duration-200 hover:border-slate-400/80 hover:bg-white/80 active:scale-95 dark:border-slate-600/80 dark:bg-slate-700/60 dark:text-slate-200 dark:ring-white/5 dark:hover:border-slate-500/80 dark:hover:bg-slate-700/80"
                 >
-                  <SlidersHorizontal className="h-4 w-4" />
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  <span>配置</span>
                 </button>
               </div>
 
-              <button
-                type="button"
-                onClick={handleSend}
-                title="发送"
-                className={cn(
-                  "pointer-events-auto flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 via-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-500/30 transition-all duration-200 hover:shadow-lg hover:shadow-indigo-500/40 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
-                )}
-                disabled={!input.trim() && attachments.length === 0 || isLoading || !activeSessionId}
-              >
-                <Send className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="添加附件"
+                  className="flex h-8 w-8 items-center justify-center text-slate-700 transition-all duration-200 hover:text-slate-900 hover:scale-110 active:scale-95 dark:text-slate-300 dark:hover:text-slate-100"
+                >
+                  <Paperclip className="h-5 w-5" strokeWidth={2} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  title="发送"
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-purple-600 text-white shadow-md shadow-purple-500/30 transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/40 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+                  )}
+                  disabled={(!input.trim() && attachments.length === 0) || isLoading || !activeSessionId}
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
