@@ -1,13 +1,15 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { Send, Zap, Paperclip, SlidersHorizontal, X } from 'lucide-react'
+import { Send, Zap, Paperclip, Database, X } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageBubble } from './MessageBubble'
 import { CitationPopover } from './CitationPopover'
 import { ConversationTabs } from './ConversationTabs'
 import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
-import { ChatConfigPanel } from './ChatConfigPanel'
+import { KnowledgeBaseConfigPanel } from './KnowledgeBaseConfigPanel'
+import { ModelConfigPanel } from './ModelConfigPanel'
 import { useChatStore } from '@/store/useChatStore'
+import { useConfigStore } from '@/store/useConfigStore'
 import { useThinkingChain } from '@/hooks/useThinkingChain'
 import { cn } from '@/lib/utils'
 import type { CitationReference } from '@/types/sse'
@@ -22,7 +24,8 @@ export function ChatInterface() {
   }>({ open: false, rect: null, item: null })
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [inspectingItem, setInspectingItem] = useState<CitationReference | null>(null)
-  const [configPanelOpen, setConfigPanelOpen] = useState(false)
+  const [kbConfigPanelOpen, setKbConfigPanelOpen] = useState(false)
+  const [modelConfigPanelOpen, setModelConfigPanelOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -44,10 +47,21 @@ export function ChatInterface() {
   } = useChatStore()
 
   const { sendMessage, isStreaming, error } = useThinkingChain()
+  const { config } = useConfigStore()
 
   const activeSession = getActiveSession()
   const messages = activeSession?.messages ?? []
   const isLoading = isStreaming
+
+  // 获取当前选中的模型名称，简化显示
+  const currentModel = useMemo(() => {
+    const chatModel = config.models.find(m => m.id === 'chat')?.model || ''
+    // 如果模型名称包含斜杠，只显示最后一部分；否则显示完整名称
+    if (chatModel.includes('/')) {
+      return chatModel.split('/').pop() || chatModel
+    }
+    return chatModel || '模型'
+  }, [config.models])
 
 
   const scrollToBottom = useCallback(() => {
@@ -348,23 +362,30 @@ export function ChatInterface() {
             {/* 底部功能栏 - 独立区域，与文字区物理分离 */}
             <div className="flex flex-shrink-0 items-center justify-between px-4 py-2">
               <div className="flex items-center gap-2">
-                {/* 检索模式信息 */}
-                <div className="flex items-center gap-1.5 rounded-full border border-slate-300/80 bg-white/60 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-900/5 transition-all duration-200 hover:border-slate-400/80 hover:bg-white/80 dark:border-slate-600/80 dark:bg-slate-700/60 dark:text-slate-200 dark:ring-white/5 dark:hover:border-slate-500/80 dark:hover:bg-slate-700/80">
-                  {activeSession?.kbMode === 'all'
-                    ? '全部'
-                    : activeSession?.kbMode === 'manual'
-                      ? `指定 ${activeSession?.knowledgeBaseIds?.length ?? 0} 个`
-                      : '智能路由'}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setKbConfigPanelOpen(true)}
+                  title="知识库范围配置"
+                  className="group flex items-center gap-1.5 rounded-full border border-blue-200/60 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-blue-700 shadow-sm shadow-blue-500/10 ring-1 ring-blue-200/30 transition-all duration-200 hover:border-blue-300/80 hover:from-blue-100/90 hover:to-indigo-100/90 hover:shadow-md hover:shadow-blue-500/20 hover:ring-blue-300/50 active:scale-95 dark:border-blue-500/40 dark:from-blue-900/30 dark:to-indigo-900/30 dark:text-blue-200 dark:ring-blue-500/20 dark:hover:border-blue-400/60 dark:hover:from-blue-800/40 dark:hover:to-indigo-800/40"
+                >
+                  <Database className="h-3.5 w-3.5 text-blue-600 dark:text-blue-300 transition-transform duration-200 group-hover:scale-110" />
+                  <span>
+                    {activeSession?.kbMode === 'all'
+                      ? '全部'
+                      : activeSession?.kbMode === 'manual'
+                        ? `指定 ${activeSession?.knowledgeBaseIds?.length ?? 0} 个`
+                        : '智能路由'}
+                  </span>
+                </button>
 
                 <button
                   type="button"
-                  onClick={() => setConfigPanelOpen(true)}
-                  title="发送前配置"
-                  className="flex items-center gap-1.5 rounded-full border border-slate-300/80 bg-white/60 backdrop-blur-sm px-3 py-1.5 text-xs font-medium text-slate-700 ring-1 ring-slate-900/5 transition-all duration-200 hover:border-slate-400/80 hover:bg-white/80 active:scale-95 dark:border-slate-600/80 dark:bg-slate-700/60 dark:text-slate-200 dark:ring-white/5 dark:hover:border-slate-500/80 dark:hover:bg-slate-700/80"
+                  onClick={() => setModelConfigPanelOpen(true)}
+                  title="对话模型选择"
+                  className="group flex items-center gap-1.5 rounded-full border border-purple-200/60 bg-gradient-to-r from-purple-50/80 to-pink-50/80 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-purple-700 shadow-sm shadow-purple-500/10 ring-1 ring-purple-200/30 transition-all duration-200 hover:border-purple-300/80 hover:from-purple-100/90 hover:to-pink-100/90 hover:shadow-md hover:shadow-purple-500/20 hover:ring-purple-300/50 active:scale-95 dark:border-purple-500/40 dark:from-purple-900/30 dark:to-pink-900/30 dark:text-purple-200 dark:ring-purple-500/20 dark:hover:border-purple-400/60 dark:hover:from-purple-800/40 dark:hover:to-pink-800/40"
                 >
-                  <SlidersHorizontal className="h-3.5 w-3.5" />
-                  <span>配置</span>
+                  <Zap className="h-3.5 w-3.5 flex-shrink-0 text-purple-600 dark:text-purple-300 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-12" />
+                  <span className="truncate max-w-[120px]">{currentModel}</span>
                 </button>
               </div>
 
@@ -415,7 +436,8 @@ export function ChatInterface() {
       </div>
 
       {/* 配置面板 */}
-      <ChatConfigPanel open={configPanelOpen} onOpenChange={setConfigPanelOpen} />
+      <KnowledgeBaseConfigPanel open={kbConfigPanelOpen} onOpenChange={setKbConfigPanelOpen} />
+      <ModelConfigPanel open={modelConfigPanelOpen} onOpenChange={setModelConfigPanelOpen} />
 
       {/* 检查器侧边栏 */}
       <InspectorDrawer
