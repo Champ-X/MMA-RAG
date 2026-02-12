@@ -136,6 +136,10 @@ export function InspectorDrawer({
                         }
                       />
                       <MetaRow k="KB ID" v={item.debug_info?.kb_id ?? '-'} />
+                      <MetaRow
+                        k="Vector Dim"
+                        v={item.type === 'image' ? 'CLIP: 768, Text: 4096' : 'Text: 4096'}
+                      />
                     </div>
                   </div>
 
@@ -151,12 +155,6 @@ export function InspectorDrawer({
                           </div>
                           <div className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed">
                             {item.content}
-                          </div>
-                          <div className="mt-3 pt-3 border-t border-slate-200/70 dark:border-slate-800/70 text-[10px] text-slate-500 dark:text-slate-400">
-                            <div className="grid grid-cols-[80px_1fr] gap-2">
-                              <span>Vector Dim:</span>
-                              <span>CLIP: 512, Text: 1024</span>
-                            </div>
                           </div>
                         </div>
                       )}

@@ -72,15 +72,15 @@ export function ThinkingCapsule({
         {open ? <ChevronDown size={14} className="ml-auto" /> : <ChevronRight size={14} className="ml-auto" />}
       </button>
       {open && (
-        <div className="border-l-2 border-indigo-500/50 bg-white/40 px-5 pb-4 pt-3 dark:bg-slate-950/40 rounded-b-xl">
-          <div className="ml-2 mt-1 space-y-4">
+        <div className="bg-white/40 px-5 pb-4 pt-3 dark:bg-slate-950/40 rounded-b-xl">
+          <div className="mt-1 space-y-4">
           {/* 阶段一：意图解析 — 仅在该阶段开始后展示，流式更新 */}
           {intentActive && (
           <div className={cn(
-            'space-y-2 animate-fade-in rounded-r-lg border-l-[3px] pl-3 -ml-0.5 transition-all',
+            'space-y-2 animate-fade-in rounded-lg transition-all',
             currentStage === 'intent' 
-              ? 'border-l-indigo-500 bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm' 
-              : 'border-l-slate-300 dark:border-l-slate-600'
+              ? 'bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm p-3' 
+              : ''
           )}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <Brain size={12} className="text-indigo-600" />
@@ -131,10 +131,10 @@ export function ThinkingCapsule({
           {/* 阶段二：智能路由 — 路由阶段开始后展示 */}
           {routingActive && (
           <div className={cn(
-            'space-y-2 animate-fade-in rounded-r-lg border-l-[3px] pl-3 -ml-0.5 transition-all',
+            'space-y-2 animate-fade-in rounded-lg transition-all',
             currentStage === 'routing' 
-              ? 'border-l-indigo-500 bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm' 
-              : 'border-l-slate-300 dark:border-l-slate-600'
+              ? 'bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm p-3' 
+              : ''
           )}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <Network size={12} className="text-indigo-600" />
@@ -194,10 +194,10 @@ export function ThinkingCapsule({
           {/* 阶段三：检索策略 — 检索阶段开始后展示 */}
           {retrievalActive && (
           <div className={cn(
-            'space-y-2 animate-fade-in rounded-r-lg border-l-[3px] pl-3 -ml-0.5 transition-all',
+            'space-y-2 animate-fade-in rounded-lg transition-all',
             currentStage === 'retrieval' 
-              ? 'border-l-indigo-500 bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm' 
-              : 'border-l-slate-300 dark:border-l-slate-600'
+              ? 'bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm p-3' 
+              : ''
           )}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <Search size={12} className="text-indigo-600" />

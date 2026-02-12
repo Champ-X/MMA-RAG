@@ -213,20 +213,37 @@ export function MessageBubble({
       .map((id) => citationMap?.get(id) ?? refs.find((r) => typeof r === 'object' && r != null && (r as any).id === id) ?? { id })
       .filter((r): r is CitationReference | { id: number | string } => r != null && typeof r === 'object' && 'id' in r)
   }, [orderedRefIds.join(','), citationMap, refs])
-  const uniqueRefs = orderedRefs.length > 0 ? orderedRefs : refs.filter((ref, idx, arr) => {
-    const isObj = typeof ref === 'object' && ref != null && 'id' in ref
-    const type = isObj && 'type' in ref ? (ref as any).type : undefined
-    const fileName = isObj && 'file_name' in ref ? String((ref as any).file_name || '') : ''
-    const key = type === 'image' && fileName ? `image:${fileName}` : (isObj ? String((ref as any).id) : '')
-    if (!key) return true
-    return arr.findIndex(r => {
-      const rObj = typeof r === 'object' && r != null && 'id' in r
-      const rType = rObj && 'type' in r ? (r as any).type : undefined
-      const rFileName = rObj && 'file_name' in r ? String((r as any).file_name || '') : ''
-      const rKey = rType === 'image' && rFileName ? `image:${rFileName}` : (rObj ? String((r as any).id) : '')
-      return rKey === key
-    }) === idx
-  })
+  
+  // 去重函数：用于过滤重复的引用
+  const deduplicateRefs = React.useCallback((refsToDedup: Array<CitationReference | { id: number | string }>) => {
+    return refsToDedup.filter((ref, idx, arr) => {
+      const isObj = typeof ref === 'object' && ref != null && 'id' in ref
+      if (!isObj) return false
+      const type = 'type' in ref ? (ref as any).type : undefined
+      const fileName = 'file_name' in ref ? String((ref as any).file_name || '') : ''
+      // 对于图片类型，使用 file_name 去重；对于文档类型，使用 id 去重
+      const key = type === 'image' && fileName ? `image:${fileName}` : String((ref as any).id)
+      return arr.findIndex(r => {
+        const rObj = typeof r === 'object' && r != null && 'id' in r
+        if (!rObj) return false
+        const rType = 'type' in r ? (r as any).type : undefined
+        const rFileName = 'file_name' in r ? String((r as any).file_name || '') : ''
+        const rKey = rType === 'image' && rFileName ? `image:${rFileName}` : String((r as any).id)
+        return rKey === key
+      }) === idx
+    })
+  }, [])
+  
+  const uniqueRefs = React.useMemo(() => {
+    // 如果文本中有引用标记，使用 orderedRefs；否则使用所有 refs（去重后）
+    if (orderedRefs.length > 0) {
+      return orderedRefs
+    }
+    // 当文本中没有引用标记时，仍然显示所有可用的引用
+    return deduplicateRefs(refs.filter((ref): ref is CitationReference | { id: number | string } => 
+      typeof ref === 'object' && ref != null && 'id' in ref
+    ))
+  }, [orderedRefs, refs, deduplicateRefs])
   const allImageRefsForThumbnails = React.useMemo(() => {
     if (isUser) return []
     const seen = new Set<string | number>()

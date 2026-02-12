@@ -30,9 +30,17 @@ function normalizeRef(
   r: CitationReference | { id: number | string },
   map?: Map<number | string, CitationReference>
 ): CitationReference | null {
+  // 如果引用对象已经有完整的字段，直接返回
   if ('type' in r && 'file_name' in r) return r as CitationReference
+  // 尝试从 citationMap 中获取完整的引用对象
   const full = map?.get(r.id)
-  return full ?? null
+  if (full) return full
+  // 如果 citationMap 中没有，但引用对象有 id，尝试使用原始对象（可能后端已经发送了完整数据）
+  if ('id' in r && typeof r === 'object' && r != null) {
+    // 检查是否有必要的字段，即使没有 type 和 file_name，也尝试返回（可能是部分数据）
+    return r as CitationReference
+  }
+  return null
 }
 
 function getReferenceIcon(type: 'doc' | 'image') {
@@ -106,7 +114,9 @@ export function InlineCitation({
       {variant === 'inline' && refs.length > 0 && (
         <div className={cn('flex flex-wrap gap-1', className)}>
           {refs.map((ref) => {
-            const Icon = getReferenceIcon(ref.type)
+            // 确保 type 字段存在，默认为 'doc'
+            const refType = (ref.type === 'doc' || ref.type === 'image') ? ref.type : 'doc'
+            const Icon = getReferenceIcon(refType)
             const id = ref.id
             const displayNum = displayIndexByRefId?.get(id) ?? id
             return (
@@ -116,7 +126,7 @@ export function InlineCitation({
                 size="sm"
                 className={cn(
                   'h-6 px-2 text-xs font-mono hover:bg-primary/10',
-                  ref.type === 'image' && 'text-blue-600'
+                  refType === 'image' && 'text-blue-600'
                 )}
                 onClick={(e) => {
                   if (useInternalPreview) setSelected(ref)
@@ -183,7 +193,9 @@ export function InlineCitation({
       {variant === 'tooltip' && (
         <div className={cn('inline-flex flex-wrap gap-1', className)}>
           {refs.map((ref) => {
-            const Icon = getReferenceIcon(ref.type)
+            // 确保 type 字段存在，默认为 'doc'
+            const refType = (ref.type === 'doc' || ref.type === 'image') ? ref.type : 'doc'
+            const Icon = getReferenceIcon(refType)
             return (
               <button
                 key={ref.id}
@@ -215,7 +227,8 @@ export function InlineCitation({
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
                     {(() => {
-                      const Icon = getReferenceIcon(selected.type)
+                      const refType = (selected.type === 'doc' || selected.type === 'image') ? selected.type : 'doc'
+                      const Icon = getReferenceIcon(refType)
                       return <Icon className="h-5 w-5" />
                     })()}
                     <span>【材料 {selected.id}】</span>
@@ -272,7 +285,8 @@ function ReferenceDetailCard({
 }) {
   const [contextLens, setContextLens] = useState<'prev' | 'curr' | 'next'>('curr')
   const ctx = normalizeContextWindow(reference.debug_info?.context_window)
-  const Icon = getReferenceIcon(reference.type)
+  const refType = (reference.type === 'doc' || reference.type === 'image') ? reference.type : 'doc'
+  const Icon = getReferenceIcon(refType)
 
   return (
     <Card>
