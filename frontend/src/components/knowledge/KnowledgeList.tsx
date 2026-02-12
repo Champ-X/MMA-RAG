@@ -1165,17 +1165,24 @@ const KnowledgeList: React.FC = () => {
     return (
       <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative">
         {/* Header */}
-        <div className="px-8 py-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">知识库</h1>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">管理数据集、上传文件并查看索引状态。</p>
+        <div className="relative px-8 py-7 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-indigo-50/70 via-white to-fuchsia-50/70 dark:from-indigo-950/30 dark:via-slate-950 dark:to-fuchsia-950/30" />
+          <div className="absolute -top-14 -left-10 h-40 w-40 rounded-full bg-indigo-200/40 blur-3xl dark:bg-indigo-500/20" />
+          <div className="absolute -bottom-16 right-6 h-44 w-44 rounded-full bg-fuchsia-200/40 blur-3xl dark:bg-fuchsia-500/20" />
+          <div className="relative z-10 flex flex-wrap items-start justify-between gap-5">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">知识库</h1>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">管理数据集、上传文件并查看索引状态。</p>
+            </div>
+            <div className="pt-1">
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="group inline-flex items-center gap-2 bg-gradient-to-tr from-indigo-600 to-fuchsia-600 text-white px-4 py-2.5 rounded-xl hover:from-indigo-500 hover:to-fuchsia-500 transition-all shadow-md shadow-fuchsia-600/20 font-medium text-sm hover:-translate-y-0.5"
+              >
+                <Plus size={18} className="transition-transform group-hover:rotate-90" /> 新建知识库
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 bg-gradient-to-tr from-indigo-600 to-fuchsia-600 text-white px-4 py-2 rounded-lg hover:from-indigo-500 hover:to-fuchsia-500 transition-colors shadow-sm shadow-fuchsia-600/10 font-medium text-sm"
-          >
-            <Plus size={18} /> 新建知识库
-          </button>
         </div>
 
         {/* Content */}
@@ -1261,14 +1268,14 @@ const KnowledgeList: React.FC = () => {
                         </div>
                         {/* 顶部弹性空间，把标题/描述整体压到下方 */}
                         <div className="min-h-0 flex-1" />
-                        <div className="flex-shrink-0 pt-6">
-                          <h3 className="font-bold text-white mb-0.5 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_8px_rgba(0,0,0,0.7)]">
+                        <div className="flex-shrink-0 pt-8">
+                          <h3 className="font-bold text-white mb-1 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_8px_rgba(0,0,0,0.7)]">
                             {kb.name}
                           </h3>
-                          <p className="text-white text-sm h-10 overflow-hidden text-ellipsis leading-relaxed line-clamp-2 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_6px_rgba(0,0,0,0.6)]">
+                          <p className="text-white text-sm h-9 overflow-hidden text-ellipsis leading-relaxed line-clamp-2 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_6px_rgba(0,0,0,0.6)]">
                             {kb.description || '暂无描述'}
                           </p>
-                          <div className="mt-3 pt-3 pr-11 border-t border-white/30 flex items-center justify-between text-xs text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
+                          <div className="mt-1.5 pt-2 pr-11 border-t border-white/30 flex items-center justify-between text-xs text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
                             <div className="flex items-center gap-2 min-h-[1rem]">
                               <span className="inline-flex items-center gap-1.5">
                                 <FileText size={12} className="shrink-0" />
