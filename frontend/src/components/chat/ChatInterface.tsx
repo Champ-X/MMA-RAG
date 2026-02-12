@@ -256,16 +256,19 @@ export function ChatInterface() {
         <div className="px-3 pt-3 pb-1">
           <div className="mx-auto max-w-4xl flex flex-col gap-6">
             {messages.length === 0 && (
-              <Card className="p-10 text-center border-slate-200/60 dark:border-slate-800/60 bg-gradient-to-br from-slate-50/80 to-white/60 dark:from-slate-900/60 dark:to-slate-950/40 shadow-lg">
-                <CardContent>
-                  <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 shadow-lg">
-                    <Zap className="h-8 w-8 text-white" />
+              <Card className="relative mx-auto w-full max-w-2xl rounded-[30px] overflow-hidden border-0 bg-gradient-to-b from-slate-50 via-white to-slate-100/70 dark:from-slate-900/85 dark:via-slate-900/70 dark:to-slate-950/60 shadow-[0_12px_34px_rgba(15,23,42,0.08)] dark:shadow-[0_18px_40px_rgba(2,6,23,0.45)] ring-1 ring-slate-200/70 dark:ring-slate-700/60">
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white/70 to-transparent dark:from-white/5" />
+                <div className="pointer-events-none absolute -top-16 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-violet-400/20 blur-3xl dark:bg-fuchsia-500/15" />
+                <div className="pointer-events-none absolute -bottom-12 -right-8 h-32 w-32 rounded-full bg-sky-300/20 blur-3xl dark:bg-indigo-500/15" />
+                <CardContent className="relative z-10 p-10 sm:p-12 text-center">
+                  <div className="mb-6 inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-[0_10px_24px_rgba(168,85,247,0.35)] dark:shadow-[0_10px_24px_rgba(168,85,247,0.25)] ring-4 ring-white/85 dark:ring-slate-800/85">
+                    <Zap className="h-9 w-9 text-white drop-shadow-sm" strokeWidth={2.25} />
                   </div>
-                  <h3 className="mb-2 text-xl font-semibold text-slate-800 dark:text-slate-100">
+                  <h3 className="mb-3 text-2xl font-semibold tracking-tight text-slate-800 dark:text-slate-100">
                     你好，我是 Nexus
                   </h3>
-                  <p className="text-slate-600 dark:text-slate-400">
-                    你可以在输入框上方展开配置面板，选择模型与知识库范围，然后开始提问。
+                  <p className="mx-auto max-w-md text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">
+                    在输入框上方设置对话模型与知识库范围后，输入问题即可对话。
                   </p>
                 </CardContent>
               </Card>
