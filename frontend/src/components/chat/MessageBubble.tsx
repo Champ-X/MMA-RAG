@@ -267,10 +267,10 @@ export function MessageBubble({
   const bubbleEl = (
     <div
       className={cn(
-        'max-w-[92%] rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-md transition-shadow',
+        'rounded-2xl px-4 py-3.5 text-sm leading-relaxed transition-all',
         isUser
-          ? 'rounded-tr-sm bg-gradient-to-br from-indigo-600 via-indigo-500 to-sky-500 text-white shadow-indigo-500/20 hover:shadow-indigo-500/30'
-          : 'rounded-tl-sm border border-slate-200/70 bg-white/90 text-slate-900 shadow-slate-900/10 dark:border-slate-800/70 dark:bg-slate-950/70 dark:text-slate-100 hover:shadow-lg',
+          ? 'inline-block w-auto max-w-[calc(100%-2.5rem)] rounded-tr-sm bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/30'
+          : 'w-full max-w-[calc(100%-2.5rem)] rounded-tl-sm border border-slate-200/60 bg-white text-slate-900 shadow-sm dark:border-slate-700/60 dark:bg-slate-900 dark:text-slate-100 hover:shadow-md',
         !isUser && showThinking && 'min-w-[min(100%,28rem)]'
       )}
     >
@@ -283,7 +283,7 @@ export function MessageBubble({
         )}
 
         {isUser ? (
-          <div>{message.content}</div>
+          <div className="break-words">{message.content}</div>
         ) : (
           <div className="prose prose-slate max-w-none text-sm dark:prose-invert prose-pre:rounded-xl prose-pre:border prose-pre:border-slate-200/70 prose-pre:bg-slate-900/5 prose-pre:shadow-sm dark:prose-pre:border-slate-800/70 dark:prose-pre:bg-white/5">
             <ReactMarkdown
@@ -335,16 +335,20 @@ export function MessageBubble({
   )
 
   return (
-    <div className={cn('flex gap-6 items-start', isUser ? 'justify-end' : 'justify-start')}>
+    <div className="flex items-start gap-2">
       {isUser ? (
         <>
-          {bubbleEl}
+          <div className="flex-1 flex justify-end min-w-0">
+            {bubbleEl}
+          </div>
           {avatarEl}
         </>
       ) : (
         <>
           {avatarEl}
-          {bubbleEl}
+          <div className="flex-1 min-w-0">
+            {bubbleEl}
+          </div>
         </>
       )}
     </div>

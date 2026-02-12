@@ -253,7 +253,7 @@ export function ChatInterface() {
 
       {/* 消息区 */}
       <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
-        <div className="px-3 pt-3 pb-1">
+        <div className="px-2 pt-3 pb-1">
           <div className="mx-auto max-w-4xl flex flex-col gap-6">
             {messages.length === 0 && (
               <div className="relative mx-auto w-full max-w-2xl py-10 sm:py-12 text-center">
