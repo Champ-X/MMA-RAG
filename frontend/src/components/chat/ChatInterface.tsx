@@ -256,13 +256,40 @@ export function ChatInterface() {
         <div className="px-3 pt-3 pb-1">
           <div className="mx-auto max-w-4xl flex flex-col gap-6">
             {messages.length === 0 && (
-              <Card className="relative mx-auto w-full max-w-2xl rounded-[30px] overflow-hidden border-0 bg-gradient-to-b from-slate-50 via-white to-slate-100/70 dark:from-slate-900/85 dark:via-slate-900/70 dark:to-slate-950/60 shadow-[0_12px_34px_rgba(15,23,42,0.08)] dark:shadow-[0_18px_40px_rgba(2,6,23,0.45)] ring-1 ring-slate-200/70 dark:ring-slate-700/60">
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white/70 to-transparent dark:from-white/5" />
-                <div className="pointer-events-none absolute -top-16 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-violet-400/20 blur-3xl dark:bg-fuchsia-500/15" />
-                <div className="pointer-events-none absolute -bottom-12 -right-8 h-32 w-32 rounded-full bg-sky-300/20 blur-3xl dark:bg-indigo-500/15" />
-                <CardContent className="relative z-10 p-10 sm:p-12 text-center">
+              <div className="relative mx-auto w-full max-w-2xl py-10 sm:py-12 text-center">
+                <div className="pointer-events-none absolute left-1/2 top-4 h-44 w-44 -translate-x-1/2 rounded-full bg-violet-400/20 blur-3xl dark:bg-fuchsia-500/15" />
+                <div className="pointer-events-none absolute left-1/2 top-20 h-36 w-72 -translate-x-1/2 rounded-full bg-sky-300/20 blur-3xl dark:bg-indigo-500/15" />
+                <div className="relative z-10">
                   <div className="mb-6 inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-[0_10px_24px_rgba(168,85,247,0.35)] dark:shadow-[0_10px_24px_rgba(168,85,247,0.25)] ring-4 ring-white/85 dark:ring-slate-800/85">
-                    <Zap className="h-9 w-9 text-white drop-shadow-sm" strokeWidth={2.25} />
+                    <svg
+                      viewBox="0 0 64 64"
+                      aria-hidden="true"
+                      className="h-14 w-14 text-white drop-shadow-sm"
+                    >
+                      <defs>
+                        <linearGradient id="nexusOrb" x1="0" y1="0" x2="1" y2="1">
+                          <stop offset="0%" stopColor="currentColor" stopOpacity="0.95" />
+                          <stop offset="100%" stopColor="currentColor" stopOpacity="0.6" />
+                        </linearGradient>
+                      </defs>
+                      <circle cx="32" cy="32" r="7" fill="currentColor" />
+                      <path
+                        d="M10 35c0-12 10-22 22-22 11 0 20 7 22 17"
+                        fill="none"
+                        stroke="url(#nexusOrb)"
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M54 29c0 12-10 22-22 22-11 0-20-7-22-17"
+                        fill="none"
+                        stroke="url(#nexusOrb)"
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                      />
+                      <circle cx="53.5" cy="29" r="3.1" fill="currentColor" />
+                      <circle cx="10.5" cy="35" r="3.1" fill="currentColor" />
+                    </svg>
                   </div>
                   <h3 className="mb-3 text-2xl font-semibold tracking-tight text-slate-800 dark:text-slate-100">
                     你好，我是 Nexus
@@ -270,8 +297,8 @@ export function ChatInterface() {
                   <p className="mx-auto max-w-md text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">
                     在输入框上方设置对话模型与知识库范围后，输入问题即可对话。
                   </p>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
 
             {messages.map((m, i) => {
