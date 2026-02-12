@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Multi-Modal RAG Agent 本地启动脚本（无 Docker）
-# 依赖：本机已安装并启动 Redis、MinIO、Qdrant
+# 依赖：本机已安装 Redis、MinIO、Qdrant（脚本会尝试自动启动未运行的服务）
 
 set -e
 
@@ -16,8 +16,17 @@ if [ -f .env ] && [ ! -f backend/.env ]; then
     echo "📋 已从项目根复制 .env 到 backend/"
 fi
 
-# 检查本机依赖服务是否可达
-echo "🔍 检查依赖服务..."
+# 从 .env 读取 MinIO 账号（与后端一致），默认 minioadmin
+minio_user="minioadmin"
+minio_pass="minioadmin"
+if [ -f backend/.env ]; then
+    while IFS='=' read -r key value; do
+        case "$key" in MINIO_ACCESS_KEY) minio_user="${value%%#*}" ;; MINIO_SECRET_KEY) minio_pass="${value%%#*}" ;; esac
+    done < <(grep -E '^MINIO_ACCESS_KEY=|^MINIO_SECRET_KEY=' backend/.env 2>/dev/null || true)
+fi
+# 去除引号与空格
+minio_user=$(echo "$minio_user" | tr -d '"' | tr -d "'" | xargs)
+minio_pass=$(echo "$minio_pass" | tr -d '"' | tr -d "'" | xargs)
 
 check_redis() {
     if command -v redis-cli &> /dev/null; then
@@ -26,7 +35,7 @@ check_redis() {
             return 0
         fi
     fi
-    echo "  ❌ Redis 未运行。请先执行: brew services start redis 或 redis-server"
+    echo "  ❌ Redis 未运行"
     return 1
 }
 
@@ -35,7 +44,7 @@ check_minio() {
         echo "  ✅ MinIO (localhost:9000 / 9001)"
         return 0
     fi
-    echo "  ❌ MinIO 未运行。请参考 RUN_WITHOUT_DOCKER.md 启动 MinIO"
+    echo "  ❌ MinIO 未运行"
     return 1
 }
 
@@ -48,6 +57,95 @@ check_qdrant() {
     return 0
 }
 
+# 尝试自动启动 Redis（macOS Homebrew）
+start_redis_if_needed() {
+    check_redis && return 0
+    if command -v brew &>/dev/null; then
+        echo "  ⏳ 尝试启动 Redis: brew services start redis ..."
+        brew services start redis 2>/dev/null || true
+        for i in 1 2 3 4 5; do sleep 1; check_redis && return 0; done
+    fi
+    return 1
+}
+
+# 尝试自动启动 MinIO
+start_minio_if_needed() {
+    check_minio && return 0
+    if ! command -v minio &>/dev/null; then
+        echo "  ❌ 未找到 minio 命令。请安装: brew install minio/stable/minio"
+        return 1
+    fi
+    mkdir -p "$PROJECT_ROOT/minio_data"
+    echo "  ⏳ 正在后台启动 MinIO ..."
+    (
+        cd "$PROJECT_ROOT"
+        export MINIO_ROOT_USER="$minio_user"
+        export MINIO_ROOT_PASSWORD="$minio_pass"
+        nohup minio server ./minio_data --console-address ":9001" > minio.log 2>&1 &
+        echo $! > minio.pid
+    )
+    for i in 1 2 3 4 5 6 7 8; do
+        sleep 1
+        if check_minio; then
+            echo "  ✅ MinIO 已自动启动 (PID: $(cat "$PROJECT_ROOT/minio.pid" 2>/dev/null))"
+            return 0
+        fi
+    done
+    echo "  ❌ MinIO 启动超时，请查看 $PROJECT_ROOT/minio.log"
+    return 1
+}
+
+# 尝试自动启动 Qdrant（仅当未使用 Qdrant Cloud 时）
+start_qdrant_if_needed() {
+    check_qdrant && return 0
+    QDRANT_BIN=""
+    if [ -n "$QDRANT_BIN" ]; then
+        [ "${QDRANT_BIN#/}" = "$QDRANT_BIN" ] && QDRANT_BIN="$(cd "$PROJECT_ROOT" && command -v "$QDRANT_BIN")" || true
+    elif command -v qdrant &>/dev/null; then
+        QDRANT_BIN="$(command -v qdrant)"
+    elif [ -x "$HOME/qdrant" ]; then
+        QDRANT_BIN="$HOME/qdrant"
+    elif [ -x "/Users/xiangqingping.1/qdrant" ]; then
+        QDRANT_BIN="/Users/xiangqingping.1/qdrant"
+    fi
+    if [ -z "$QDRANT_BIN" ] || [ ! -x "$QDRANT_BIN" ]; then
+        echo "  ⚠️  未找到 qdrant 可执行文件。若使用 Qdrant Cloud 可忽略；否则请从 https://github.com/qdrant/qdrant/releases 下载并设置 PATH 或 QDRANT_BIN"
+        return 0
+    fi
+    QDRANT_CONFIG="$PROJECT_ROOT/qdrant_config.yaml"
+    if [ ! -f "$QDRANT_CONFIG" ]; then
+        echo "  ⚠️  未找到配置文件 $QDRANT_CONFIG，跳过自动启动 Qdrant"
+        return 0
+    fi
+    echo "  ⏳ 正在后台启动 Qdrant ($QDRANT_BIN) ..."
+    (
+        cd "$PROJECT_ROOT"
+        nohup "$QDRANT_BIN" --config-path "$QDRANT_CONFIG" > qdrant.log 2>&1 &
+        echo $! > qdrant.pid
+    )
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        sleep 1
+        if curl -s --connect-timeout 2 http://localhost:6333 &>/dev/null; then
+            echo "  ✅ Qdrant 已自动启动 (PID: $(cat "$PROJECT_ROOT/qdrant.pid" 2>/dev/null))"
+            return 0
+        fi
+    done
+    echo "  ❌ Qdrant 启动超时或未就绪。请查看日志: $PROJECT_ROOT/qdrant.log"
+    if [ -f "$PROJECT_ROOT/qdrant.log" ]; then
+        echo "  📄 最后几行日志:"
+        tail -5 "$PROJECT_ROOT/qdrant.log" | sed 's/^/     /'
+    fi
+    return 0
+}
+
+# 先尝试自动启动依赖，再检查
+echo "🔍 检查并自动启动依赖服务..."
+start_redis_if_needed || true
+start_minio_if_needed || true
+start_qdrant_if_needed || true
+
+echo ""
+echo "🔍 最终依赖检查..."
 REDIS_OK=0
 MINIO_OK=0
 check_redis || REDIS_OK=1
