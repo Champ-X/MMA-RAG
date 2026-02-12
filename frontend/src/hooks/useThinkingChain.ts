@@ -35,6 +35,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
   const currentMessageIdRef = useRef<string | null>(null)
   const streamingSessionIdRef = useRef<string | null>(null)
   const contentBufferRef = useRef('')
+  const currentUserQueryRef = useRef<string | null>(null) // 保存当前用户查询
   const [error, setError] = useState<string | null>(null)
 
   const cleanup = () => {
@@ -68,6 +69,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     const last = after?.messages[after.messages.length - 1]
     currentMessageIdRef.current = last?.id ?? null
     streamingSessionIdRef.current = session.id
+    currentUserQueryRef.current = content // 保存用户原始查询
 
     contentBufferRef.current = ''
     setIsStreaming(true)
@@ -154,6 +156,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             if (s && last && last.role === 'assistant' && last.id === currentMessageIdRef.current && thoughtData) {
               updateMessage(s.id, last.id, { thinking: thoughtData })
             }
+            currentUserQueryRef.current = null // 清除保存的查询
             cleanup()
             options.onComplete?.()
           },
@@ -166,6 +169,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             if (s && last && last.id === currentMessageIdRef.current) {
               updateMessage(s.id, last.id, { error: msg })
             }
+            currentUserQueryRef.current = null // 清除保存的查询
             cleanup()
             options.onError?.(err)
           },
@@ -183,7 +187,11 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     }
   }
 
-  const stopStreaming = () => cleanup()
+  const stopStreaming = () => {
+    const userQuery = currentUserQueryRef.current // 获取用户原始查询
+    cleanup()
+    return userQuery // 返回用户原始查询，用于填充输入框
+  }
 
   useEffect(() => {
     return () => cleanup()

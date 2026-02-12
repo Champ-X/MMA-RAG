@@ -36,6 +36,7 @@ export interface MessageBubbleMessage {
     routing?: any
     retrieval?: any
   } | ThoughtData | null
+  error?: string
 }
 
 interface MessageBubbleProps {
@@ -196,6 +197,7 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const isUser = message.type === 'user'
   const showThinking = !isUser && (message.thinking || (isStreaming && liveThinking))
+  const isStoppedHint = !isUser && message.error === 'stopped_hint' // 终止提示消息
   const thoughtData = isStreaming && liveThinking
     ? liveThinking.thoughtData
     : Array.isArray(message.thinking)
@@ -287,67 +289,78 @@ export function MessageBubble({
         'rounded-2xl px-4 py-3.5 text-sm leading-relaxed transition-all',
         isUser
           ? 'inline-block w-auto max-w-[calc(100%-2.5rem)] rounded-tr-sm bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/30'
-          : 'w-full max-w-[calc(100%-2.5rem)] rounded-tl-sm border border-slate-200/60 bg-white text-slate-900 shadow-sm dark:border-slate-700/60 dark:bg-slate-900 dark:text-slate-100 hover:shadow-md',
-        !isUser && showThinking && 'min-w-[min(100%,28rem)]'
+          : isStoppedHint
+            ? 'w-auto mx-auto border-0 bg-transparent shadow-none' // 终止提示：无边框、透明背景、居中
+            : 'w-full max-w-[calc(100%-2.5rem)] rounded-tl-sm border border-slate-200/60 bg-white text-slate-900 shadow-sm dark:border-slate-700/60 dark:bg-slate-900 dark:text-slate-100 hover:shadow-md',
+        !isUser && showThinking && !isStoppedHint && 'min-w-[min(100%,28rem)]'
       )}
     >
-        {showThinking && (
-          <ThinkingCapsule
-            thoughtData={thoughtData}
-            stages={liveThinking?.stages}
-            currentStage={liveThinking?.currentStage}
-          />
-        )}
-
-        {isUser ? (
-          <div className="break-words">{message.content}</div>
-        ) : (
-          <div className="prose prose-slate max-w-none text-sm dark:prose-invert prose-pre:rounded-xl prose-pre:border prose-pre:border-slate-200/70 prose-pre:bg-slate-900/5 prose-pre:shadow-sm dark:prose-pre:border-slate-800/70 dark:prose-pre:bg-white/5">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeKatex, rehypeHighlight]}
-              components={{
-                p: ({ children }) => (
-                  <p>{injectCitations(children, (id, rect, msgId) => {
-                    const mockEvent = {
-                      currentTarget: { getBoundingClientRect: () => rect }
-                    } as React.MouseEvent
-                    onCiteClick?.(id, mockEvent, msgId ?? message.id)
-                  }, message.id, originalIdToDisplayIndex)}</p>
-                ),
-                li: ({ children }) => (
-                  <li>{injectCitations(children, (id, rect, msgId) => {
-                    const mockEvent = {
-                      currentTarget: { getBoundingClientRect: () => rect }
-                    } as React.MouseEvent
-                    onCiteClick?.(id, mockEvent, msgId ?? message.id)
-                  }, message.id, originalIdToDisplayIndex)}</li>
-                ),
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
-
-            {isStreaming && message.content && (
-              <span className="ml-0.5 inline-block h-4 w-2 animate-pulse rounded-sm bg-slate-400 align-middle dark:bg-slate-500" />
-            )}
-          </div>
-        )}
-
-        {hasRefs && !isUser && (
-          <div className="mt-3 space-y-2">
-            <InlineCitation
-              references={uniqueRefs}
-              variant="inline"
-              showImageThumbnails
-              citationMap={citationMap}
-              onCiteClick={onCiteClick}
-              messageId={message.id}
-              displayIndexByRefId={originalIdToDisplayIndex}
-              imageThumbnailRefs={allImageRefsForThumbnails.length > 0 ? allImageRefsForThumbnails : undefined}
+      {isStoppedHint ? (
+        // 终止提示消息 - 类似 Gemini 的显示方式：居中、浅灰色背景
+        <div className="rounded-md bg-slate-100 dark:bg-slate-800/60 px-3 py-1.5 text-xs text-slate-500 dark:text-slate-400">
+          你已让系统停止这条回答
+        </div>
+      ) : (
+        <>
+          {showThinking && (
+            <ThinkingCapsule
+              thoughtData={thoughtData}
+              stages={liveThinking?.stages}
+              currentStage={liveThinking?.currentStage}
             />
-          </div>
-        )}
+          )}
+
+          {isUser ? (
+            <div className="break-words">{message.content}</div>
+          ) : (
+            <div className="prose prose-slate max-w-none text-sm dark:prose-invert prose-pre:rounded-xl prose-pre:border prose-pre:border-slate-200/70 prose-pre:bg-slate-900/5 prose-pre:shadow-sm dark:prose-pre:border-slate-800/70 dark:prose-pre:bg-white/5">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex, rehypeHighlight]}
+                components={{
+                  p: ({ children }) => (
+                    <p>{injectCitations(children, (id, rect, msgId) => {
+                      const mockEvent = {
+                        currentTarget: { getBoundingClientRect: () => rect }
+                      } as React.MouseEvent
+                      onCiteClick?.(id, mockEvent, msgId ?? message.id)
+                    }, message.id, originalIdToDisplayIndex)}</p>
+                  ),
+                  li: ({ children }) => (
+                    <li>{injectCitations(children, (id, rect, msgId) => {
+                      const mockEvent = {
+                        currentTarget: { getBoundingClientRect: () => rect }
+                      } as React.MouseEvent
+                      onCiteClick?.(id, mockEvent, msgId ?? message.id)
+                    }, message.id, originalIdToDisplayIndex)}</li>
+                  ),
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
+
+              {isStreaming && message.content && (
+                <span className="ml-0.5 inline-block h-4 w-2 animate-pulse rounded-sm bg-slate-400 align-middle dark:bg-slate-500" />
+              )}
+            </div>
+          )}
+
+          {hasRefs && !isUser && (
+            <div className="mt-3 space-y-2">
+              <InlineCitation
+                references={uniqueRefs}
+                variant="inline"
+                showImageThumbnails
+                citationMap={citationMap}
+                onCiteClick={onCiteClick}
+                messageId={message.id}
+                displayIndexByRefId={originalIdToDisplayIndex}
+                imageThumbnailRefs={allImageRefsForThumbnails.length > 0 ? allImageRefsForThumbnails : undefined}
+              />
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 
@@ -360,6 +373,11 @@ export function MessageBubble({
           </div>
           {avatarEl}
         </>
+      ) : isStoppedHint ? (
+        // 终止提示不显示头像，居中显示
+        <div className="flex-1 flex justify-center min-w-0">
+          {bubbleEl}
+        </div>
       ) : (
         <>
           {avatarEl}

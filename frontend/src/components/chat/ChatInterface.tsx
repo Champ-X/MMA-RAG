@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { Send, Zap, Paperclip, Database, X } from 'lucide-react'
+import { Send, Zap, Paperclip, Database, X, Square } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageBubble } from './MessageBubble'
@@ -44,9 +44,11 @@ export function ChatInterface() {
     deleteSession,
     setLoading,
     thinking,
+    addMessage,
+    updateMessage,
   } = useChatStore()
 
-  const { sendMessage, isStreaming, error } = useThinkingChain()
+  const { sendMessage, stopStreaming, isStreaming, error } = useThinkingChain()
   const { config } = useConfigStore()
 
   const activeSession = getActiveSession()
@@ -128,6 +130,38 @@ export function ChatInterface() {
       console.error('发送失败', e)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleStop = () => {
+    if (!activeSessionId || !isStreaming) return
+    
+    // 获取用户原始查询
+    const userQuery = stopStreaming()
+    
+    // 添加终止提示消息
+    const lastMessage = activeSession?.messages[activeSession.messages.length - 1]
+    if (lastMessage && lastMessage.role === 'assistant') {
+      // 标记最后一条消息为已终止
+      updateMessage(activeSessionId, lastMessage.id, { 
+        error: 'stopped', // 使用 error 字段标记终止状态
+      })
+    }
+    
+    // 添加终止提示系统消息
+    addMessage(activeSessionId, {
+      role: 'assistant',
+      content: '',
+      error: 'stopped_hint', // 特殊标记，用于显示终止提示
+    })
+    
+    // 将用户原始查询填充到输入框
+    if (userQuery) {
+      setInput(userQuery)
+      // 聚焦输入框
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 100)
     }
   }
 
@@ -316,6 +350,7 @@ export function ChatInterface() {
                     citations: m.citations,
                     metadata: (m as any).metadata,
                     thinking: (m as any).thinking,
+                    error: m.error,
                   }}
                   isStreaming={isLastAndStreaming}
                   liveThinking={
@@ -429,17 +464,30 @@ export function ChatInterface() {
                   <Paperclip className="h-5 w-5" strokeWidth={2} />
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleSend}
-                  title="发送"
-                  className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-purple-600 text-white shadow-md shadow-purple-500/30 transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/40 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
-                  )}
-                  disabled={(!input.trim() && attachments.length === 0) || isLoading || !activeSessionId}
-                >
-                  <Send className="h-4 w-4" />
-                </button>
+                {isStreaming ? (
+                  <button
+                    type="button"
+                    onClick={handleStop}
+                    title="停止生成"
+                    className={cn(
+                      "flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 text-white shadow-md shadow-blue-500/30 transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/40 hover:scale-105 active:scale-95"
+                    )}
+                  >
+                    <Square className="h-3.5 w-3.5 fill-current" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSend}
+                    title="发送"
+                    className={cn(
+                      "flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-purple-600 text-white shadow-md shadow-purple-500/30 transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/40 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+                    )}
+                    disabled={(!input.trim() && attachments.length === 0) || isLoading || !activeSessionId}
+                  >
+                    <Send className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
           </div>
