@@ -128,13 +128,15 @@ class PDFParser(DocumentParser):
         if not client:
             raise ValueError("PaddleOCR 客户端不可用")
         
-        # 调用 PaddleOCR API
+        from app.core.config import settings
+        max_pixels = getattr(settings, "paddleocr_max_pixels", None)
         result_data = client.parse_pdf(
             file_content=file_content,
             file_type=0,  # PDF
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
-            use_chart_recognition=False
+            use_chart_recognition=False,
+            max_pixels=max_pixels,
         )
         
         layout_results = result_data.get("layoutParsingResults", [])

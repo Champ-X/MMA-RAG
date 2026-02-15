@@ -19,7 +19,8 @@ from datetime import datetime
 logger = get_logger(__name__)
 
 MODEL_ID = "opendatalab/MinerU2.5-2509-1.2B"
-_PDF_DPI = 200
+# 本地渲染 PDF 默认 DPI，可通过配置 MINERU_PDF_RENDER_DPI 覆盖（越高越清晰，默认 300）
+_PDF_DPI_DEFAULT = 300
 MINERU_API_BASE = "https://mineru.net/api/v4"
 MINERU_API_POLL_INTERVAL = 5
 MINERU_API_POLL_TIMEOUT = 600
@@ -28,7 +29,7 @@ MINERU_API_POLL_TIMEOUT = 600
 _mineru_client: Any = None
 
 
-def _pdf_bytes_to_images(file_content: bytes, dpi: int = _PDF_DPI) -> List[Any]:
+def _pdf_bytes_to_images(file_content: bytes, dpi: int = _PDF_DPI_DEFAULT) -> List[Any]:
     """将 PDF 二进制内容每一页渲染为 PIL Image。"""
     import fitz  # PyMuPDF
     from PIL import Image
@@ -161,7 +162,7 @@ def parse_pdf_via_api(
     file_name = Path(file_path).name or "document.pdf"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
 
-    # 1. 申请上传链接
+    # 1. 申请上传链接（MinerU API 当前不支持 DPI/清晰度参数，提取图片由服务端固定策略渲染）
     r = requests.post(
         f"{MINERU_API_BASE}/file-urls/batch",
         headers=headers,
@@ -405,7 +406,13 @@ def parse_pdf(file_content: bytes) -> Dict[str, Any]:
     if not client:
         raise ValueError("MinerU 客户端不可用")
 
-    images = _pdf_bytes_to_images(file_content, dpi=_PDF_DPI)
+    try:
+        from app.core.config import settings
+        dpi = getattr(settings, "mineru_pdf_render_dpi", None) or _PDF_DPI_DEFAULT
+    except Exception:
+        dpi = _PDF_DPI_DEFAULT
+    dpi = max(72, min(600, int(dpi)))
+    images = _pdf_bytes_to_images(file_content, dpi=dpi)
     total_pages = len(images)
     pages_content = []
     markdown_parts = []

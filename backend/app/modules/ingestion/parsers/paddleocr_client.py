@@ -39,7 +39,8 @@ class PaddleOCRClient:
         use_doc_orientation_classify: bool = False,
         use_doc_unwarping: bool = False,
         use_chart_recognition: bool = False,
-        timeout: int = 300
+        timeout: int = 300,
+        max_pixels: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         解析 PDF 文件
@@ -51,6 +52,7 @@ class PaddleOCRClient:
             use_doc_unwarping: 是否使用图片扭曲矫正
             use_chart_recognition: 是否使用图表识别
             timeout: 请求超时时间（秒）
+            max_pixels: VLM 预处理图像像素上限（仅当服务端支持时生效，越大越清晰）
             
         Returns:
             解析结果字典，包含 layoutParsingResults 等字段
@@ -77,7 +79,11 @@ class PaddleOCRClient:
                 "useDocUnwarping": use_doc_unwarping,
                 "useChartRecognition": use_chart_recognition,
             }
+            if max_pixels is not None and max_pixels > 0:
+                payload["maxPixels"] = max_pixels
             
+            if not self.api_url:
+                raise ValueError("PaddleOCR API URL 未配置")
             logger.info(f"正在调用 PaddleOCR API: {self.api_url}")
             logger.debug(f"文件大小: {len(file_content) / 1024:.2f} KB")
             

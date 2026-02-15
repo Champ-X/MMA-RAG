@@ -59,10 +59,14 @@ class Settings(BaseSettings):
     # PaddleOCR API 配置（PDF 解析备选）
     paddleocr_api_url: Optional[str] = Field(default=None, validation_alias="PADDLEOCR_API_URL")
     paddleocr_token: Optional[str] = Field(default=None, validation_alias="PADDLEOCR_TOKEN")
+    # VLM 预处理图像像素上限，部分 API 支持，值越大图像越清晰、显存/耗时越高（仅当服务端支持时生效）
+    paddleocr_max_pixels: Optional[int] = Field(default=None, validation_alias="PADDLEOCR_MAX_PIXELS")
 
     # MinerU PDF 解析：优先 API（需 MINERU_TOKEN），失败则本地模型
     mineru_token: Optional[str] = Field(default=None, validation_alias="MINERU_TOKEN")
     mineru_pdf_enabled: bool = Field(default=True, validation_alias="MINERU_PDF_ENABLED")
+    # 本地 MinerU 渲染 PDF 页面的 DPI，越高图片越清晰（默认 300，原 200）
+    mineru_pdf_render_dpi: int = Field(default=300, validation_alias="MINERU_PDF_RENDER_DPI")
     
     # 文件上传配置
     max_file_size: int = Field(default=100 * 1024 * 1024, validation_alias="MAX_FILE_SIZE")  # 100MB
