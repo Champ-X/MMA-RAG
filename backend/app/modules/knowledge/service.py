@@ -1078,14 +1078,19 @@ class KnowledgeBaseService:
                 return False
             bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
             raw_files = await self.minio_adapter.list_files(bucket=bucket_name, prefix="", max_keys=1000)
-            # 收集该 file_id 在 MinIO 下的所有对象（文档 + 可能的多张图片等）
+            # 收集该 file_id 在 MinIO 下的所有对象：主文档 + 由该文档解析出的图片（MinerU/PaddleOCR 上传时路径为 images/{uuid}_{file_id}_page*_img*.jpg）
             object_paths: List[str] = []
             for f in raw_files:
                 op = f.get("object_path", "")
-                if file_id in op and op.startswith(("documents/", "images/")):
-                    rest = op.split("/", 1)[1]
-                    if rest.startswith(file_id + "_"):
-                        object_paths.append(op)
+                if not op.startswith(("documents/", "images/")):
+                    continue
+                rest = op.split("/", 1)[1]
+                if rest.startswith(file_id + "_"):
+                    object_paths.append(op)
+                    continue
+                # 解析出的图片：路径形如 images/{uuid}_{file_id}_page{N}_img{M}.jpg，rest 中含 file_id 且含 _page、_img
+                if op.startswith("images/") and file_id in rest and "_page" in rest and "_img" in rest:
+                    object_paths.append(op)
             if not object_paths:
                 return False
 
