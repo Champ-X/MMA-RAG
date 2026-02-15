@@ -330,8 +330,9 @@ class IngestionService:
         # 保存 MinIO 存储结果（包含 file_id）
         minio_storage_result = storage_result
         
-        # 0. 处理 PDF 中提取的图片（如果有）
+        # 0. 处理 PDF 中提取的图片（如果有），并收集 (markdown_ref, caption) 用于后续插回
         extracted_images_count = 0
+        caption_replacements: List[tuple] = []  # (markdown_ref, vlm_caption)
         if parse_result.get("file_type") == "pdf" and "extracted_images" in parse_result:
             extracted_images = parse_result.get("extracted_images", [])
             if extracted_images:
@@ -343,14 +344,21 @@ class IngestionService:
                 })
                 
                 file_id = minio_storage_result.get("file_id")
-                
+                full_md = parse_result.get("markdown") or ""
+
                 for img_idx, img_info in enumerate(extracted_images):
                     try:
                         page_num = img_info.get("page", 1)
                         image_index = img_info.get("image_index", img_idx)
                         image_bytes = img_info.get("image_bytes")
                         image_path = img_info.get("image_path", "")
-                        
+                        markdown_ref = img_info.get("markdown_ref")
+                        meta = img_info.get("metadata") or {}
+                        document_caption = meta.get("document_caption") or img_info.get("document_caption") or ""
+                        surrounding_context = self._get_surrounding_context_for_image(
+                            full_md, markdown_ref or "", page_num, parse_result
+                        )
+
                         if not image_bytes:
                             logger.warning(f"跳过第 {page_num} 页第 {image_index} 张图片：缺少图片数据")
                             continue
@@ -380,28 +388,42 @@ class IngestionService:
                             file_type="images"
                         )
                         
-                        # 处理图片（VLM描述、CLIP向量化、存储）
-                        # 为每张图片创建独立的 processing_id（可选，或使用主 processing_id）
+                        # 处理图片（带文档标题与位置上下文的 VLM、CLIP、存储），并收集 markdown_ref 与 caption 用于插回
                         image_result = await self._process_image(
                             parse_result=image_parse_result,
                             storage_result=image_storage_result,
                             kb_id=kb_id,
-                            processing_id=processing_id,  # 使用同一个 processing_id
-                            image_source_type="pdf_extracted"  # 标记为从 PDF 提取的图片
+                            processing_id=processing_id,
+                            image_source_type="pdf_extracted",
+                            document_caption=document_caption or None,
+                            surrounding_context=surrounding_context if surrounding_context != "无" else None,
+                            markdown_ref=markdown_ref,
                         )
-                        
+                        if markdown_ref and image_result.get("caption"):
+                            cap = image_result["caption"]
+                            if cap.startswith("无法生成") or cap == "VLM API返回空响应":
+                                cap = "解析失败"
+                            caption_replacements.append((markdown_ref, cap))
+
                         extracted_images_count += 1
                         logger.info(f"PDF 图片处理完成: {image_filename}, 向量数: {image_result.get('vectors_stored', 0)}")
                         
                     except Exception as e:
                         logger.error(f"处理 PDF 图片失败 (第 {img_info.get('page', '?')} 页第 {img_info.get('image_index', '?')} 张): {str(e)}", exc_info=True)
-                        # 继续处理其他图片
                         continue
                 
                 logger.info(f"PDF 图片处理完成: {extracted_images_count}/{len(extracted_images)} 张图片成功处理")
         
-        # 1. 文本分块
-        chunks = await self._split_text_into_chunks(parse_result)
+        # 1. 用「补全后的 markdown」做文本分块：将 VLM 图注插回占位符后再 chunk
+        parse_result_for_chunking = parse_result
+        if caption_replacements and parse_result.get("markdown"):
+            enriched_markdown = parse_result["markdown"]
+            for ref, vlm_caption in caption_replacements:
+                replacement = f"\n\n[图注：{vlm_caption}]\n\n"
+                enriched_markdown = enriched_markdown.replace(ref, replacement, 1)
+            parse_result_for_chunking = {**parse_result, "markdown": enriched_markdown}
+            logger.info("已将 %d 条 VLM 图注插回 Markdown，使用补全后的文本进行分块", len(caption_replacements))
+        chunks = await self._split_text_into_chunks(parse_result_for_chunking)
         
         # 为每个chunk添加file_path和file_type信息
         object_path = minio_storage_result.get("object_path", file_path or "")
@@ -470,7 +492,10 @@ class IngestionService:
         storage_result: Dict[str, Any],
         kb_id: str,
         processing_id: str,
-        image_source_type: str = "standalone_file"
+        image_source_type: str = "standalone_file",
+        document_caption: Optional[str] = None,
+        surrounding_context: Optional[str] = None,
+        markdown_ref: Optional[str] = None,
     ) -> Dict[str, Any]:
         """处理图片文件
         
@@ -480,6 +505,9 @@ class IngestionService:
             kb_id: 知识库ID
             processing_id: 处理ID
             image_source_type: 图片来源类型，默认为 "standalone_file"，PDF提取的图片使用 "pdf_extracted"
+            document_caption: 文档中该图的标题/说明（可选，用于 VLM 上下文）
+            surrounding_context: 该图所在段落或页面上下文（可选）
+            markdown_ref: 该图在 markdown 中的占位符，用于后续插回图注（可选）
         """
         
         # 保存 MinIO 存储结果（包含 file_id）
@@ -495,6 +523,8 @@ class IngestionService:
             parse_result["base64_content"],
             processing_id,
             image_format=parse_result.get("format"),
+            document_caption=document_caption,
+            surrounding_context=surrounding_context,
         )
         
         audit_log(
@@ -554,7 +584,7 @@ class IngestionService:
             images=image_data
         )
         
-        return {
+        result = {
             "processing_id": processing_id,
             "status": "completed",
             "file_id": minio_storage_result["file_id"],
@@ -562,7 +592,10 @@ class IngestionService:
             "vectors_stored": vector_storage_result["points_inserted"],
             "file_type": "image"
         }
-    
+        if markdown_ref is not None:
+            result["markdown_ref"] = markdown_ref
+        return result
+
     async def _split_text_into_chunks(self, parse_result: Dict[str, Any]) -> List[Dict[str, Any]]:
         """将文本分割成块"""
         chunks = []
@@ -968,16 +1001,68 @@ class IngestionService:
         except Exception as e:
             logger.error(f"文本向量化失败: {str(e)}")
             raise
-    
+
+    def _get_surrounding_context_for_image(
+        self,
+        markdown: str,
+        markdown_ref: str,
+        page_num: Optional[int],
+        parse_result: Dict[str, Any],
+        max_chars: int = 1200,
+    ) -> str:
+        """从完整 markdown 中根据图片占位符定位所在段落，作为 VLM 的位置上下文；若无则用该页整页文本。"""
+        if not markdown or not markdown_ref:
+            return self._fallback_page_context(page_num, parse_result, max_chars)
+        idx = markdown.find(markdown_ref)
+        if idx < 0:
+            return self._fallback_page_context(page_num, parse_result, max_chars)
+        # 按双换行切段，找包含该占位符的段，并取前后各一段
+        segments = markdown.split("\n\n")
+        start = 0
+        for i, seg in enumerate(segments):
+            if markdown_ref in seg:
+                start = max(0, i - 1)
+                end = min(len(segments), i + 2)
+                context = "\n\n".join(segments[start:end]).strip()
+                if len(context) > max_chars:
+                    context = context[: max_chars - 3] + "..."
+                return context or "无"
+        return self._fallback_page_context(page_num, parse_result, max_chars)
+
+    def _fallback_page_context(
+        self,
+        page_num: Optional[int],
+        parse_result: Dict[str, Any],
+        max_chars: int,
+    ) -> str:
+        """用该图所在页的整页文本作为保底上下文。"""
+        if not page_num or not parse_result.get("pages"):
+            return "无"
+        for p in parse_result["pages"]:
+            if p.get("page") == page_num and (p.get("markdown") or p.get("text")):
+                text = (p.get("markdown") or p.get("text") or "").strip()
+                if len(text) > max_chars:
+                    text = text[: max_chars - 3] + "..."
+                return text or "无"
+        return "无"
+
     async def _generate_image_caption(
         self,
         base64_image: str,
         processing_id: str,
         image_format: Optional[str] = None,
+        document_caption: Optional[str] = None,
+        surrounding_context: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """生成图片描述。请求格式按 SiliconFlow VLM 文档：image_url 含 url、detail。"""
+        """生成图片描述。可传入文档标题与位置上下文以提升与文档语义的一致性。"""
         try:
-            prompt_text = prompt_engine.render_template("image_captioning")
+            doc = (document_caption or "").strip() or "无"
+            ctx = (surrounding_context or "").strip() or "无"
+            prompt_text = prompt_engine.render_template(
+                "image_captioning",
+                document_caption=doc,
+                surrounding_context=ctx,
+            )
 
             # 提取纯 base64，兼容已有 data URL 前缀
             raw_b64 = (

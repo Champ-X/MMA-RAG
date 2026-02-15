@@ -47,13 +47,26 @@ def _pdf_bytes_to_images(file_content: bytes, dpi: int = _PDF_DPI) -> List[Any]:
     return out
 
 
-def _blocks_to_markdown(blocks: List[Any], page_num: Optional[int] = None) -> str:
-    """将 ContentBlock 列表转为 Markdown 片段。"""
+def _blocks_to_markdown(
+    blocks: List[Any],
+    page_num: Optional[int] = None,
+    include_page_header: bool = True,
+) -> str:
+    """将 ContentBlock 列表转为 Markdown 片段。为 image 块插入占位符，便于后续用 VLM 图注替换。"""
     parts = []
-    if page_num is not None:
+    if page_num is not None and include_page_header:
         parts.append(f"\n\n---\n\n## 第 {page_num} 页\n\n")
+    img_idx = 0
     for b in blocks:
         t = getattr(b, "type", None) or (b.get("type") if isinstance(b, dict) else None)
+        if t == "image":
+            # 插入与 _extract_image_crops 一致的占位符，保证与 extracted_images 顺序对应
+            placeholder = f"![](page{page_num or 0}_img{img_idx}.png)"
+            parts.append("\n\n")
+            parts.append(placeholder)
+            parts.append("\n\n")
+            img_idx += 1
+            continue
         c = getattr(b, "content", None) if not isinstance(b, dict) else b.get("content")
         if not c:
             continue
@@ -115,12 +128,15 @@ def _extract_image_crops(
         except Exception as e:
             logger.debug("MinerU 裁剪页面图失败 (page=%s, bbox=%s): %s", page_num, bbox, e)
             continue
+        # 与 _blocks_to_markdown 中占位符一致，供流水线定位与 VLM 图注插回
+        markdown_ref = f"![](page{page_num}_img{img_idx}.png)"
         out.append({
             "page": page_num,
             "image_index": img_idx,
             "image_bytes": image_bytes,
             "image_path": f"page{page_num}_img{img_idx}.png",
-            "metadata": {"extracted_from": "mineru-vl-2.5", "page": page_num},
+            "markdown_ref": markdown_ref,
+            "metadata": {"extracted_from": "mineru-vl-2.5", "page": page_num, "document_caption": None},
         })
     return out
 
@@ -256,12 +272,28 @@ def parse_pdf_via_api(
                 continue
             idx = page_image_index.get(page_idx, 0)
             page_image_index[page_idx] = idx + 1
+            # 文档标题/说明：content_list 中 image 项可能有 image_caption（列表）
+            doc_caption = ""
+            cap_list = item.get("image_caption") or item.get("caption") or []
+            if isinstance(cap_list, list) and cap_list:
+                doc_caption = " ".join(str(c).strip() for c in cap_list if c).strip()
+            elif isinstance(cap_list, str):
+                doc_caption = cap_list.strip()
+            # 与 full_markdown 中占位符一致，便于后续定位与替换
+            img_name = Path(img_path).name or f"page{page_num}_img{idx}.jpg"
+            ref_path = f"images/{img_name}" if "images/" not in (img_path or "") else (img_path or "").replace("\\", "/")
+            markdown_ref = f"![]({ref_path})"
             extracted_images.append({
                 "page": page_num,
                 "image_index": idx,
                 "image_bytes": image_bytes,
-                "image_path": Path(img_path).name or f"page{page_num}_img{idx}.jpg",
-                "metadata": {"extracted_from": "mineru-api", "page": page_num},
+                "image_path": img_name,
+                "markdown_ref": markdown_ref,
+                "metadata": {
+                    "extracted_from": "mineru-api",
+                    "page": page_num,
+                    "document_caption": doc_caption or None,
+                },
             })
 
         # 按 page_idx 分组构建 pages
@@ -383,7 +415,7 @@ def parse_pdf(file_content: bytes) -> Dict[str, Any]:
         page_num = idx + 1
         logger.info("MinerU 解析第 %d/%d 页", page_num, total_pages)
         blocks = client.two_step_extract(img)
-        page_md = _blocks_to_markdown(blocks, page_num=None)
+        page_md = _blocks_to_markdown(blocks, page_num=page_num, include_page_header=False)
         # 从 image 类型块按 bbox 裁剪出图片，供后续 VLM/向量化
         page_images = _extract_image_crops(img, blocks, page_num)
         extracted_images.extend(page_images)
