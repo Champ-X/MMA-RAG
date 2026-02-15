@@ -4,7 +4,9 @@
 """
 
 import asyncio
+from urllib.parse import quote
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from typing import List, Dict, Any, Optional
 from app.core.logger import get_logger
 from app.core.keyword_extract import extract_keywords_for_portrait
@@ -180,6 +182,38 @@ async def get_file_preview(kb_id: str, file_id: str):
         raise
     except Exception as e:
         logger.error(f"获取文件预览失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{kb_id}/files/{file_id}/stream")
+async def stream_file_for_preview(kb_id: str, file_id: str):
+    """流式返回文件内容，用于页面内预览（PDF 等），设置 Content-Disposition: inline 避免浏览器直接下载"""
+    try:
+        kb = await kb_service.get_knowledge_base(kb_id)
+        if not kb:
+            raise HTTPException(status_code=404, detail="知识库不存在")
+        info = await kb_service.get_file_stream_info(kb_id, file_id)
+        if not info:
+            raise HTTPException(status_code=404, detail="文件不存在")
+        bucket_name, object_path, filename = info
+        content = await kb_service.minio_adapter.get_file_content(bucket_name, object_path)
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        media_type = "application/pdf" if ext == "pdf" else "application/octet-stream"
+        # Content-Disposition：非 ASCII 文件名用 RFC 5987 编码，避免 latin-1 报错
+        try:
+            filename.encode("ascii")
+            content_disp = f'inline; filename="{filename}"'
+        except UnicodeEncodeError:
+            content_disp = f"inline; filename*=UTF-8''{quote(filename, safe='')}"
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={"Content-Disposition": content_disp},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"流式预览失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

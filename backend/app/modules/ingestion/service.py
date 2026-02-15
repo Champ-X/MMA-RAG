@@ -32,7 +32,7 @@ os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 if TYPE_CHECKING:
     from transformers import CLIPModel, CLIPProcessor
 
-from .parsers.factory import ParserFactory
+from .parsers.factory import ParserFactory, FileType
 from .storage.minio_adapter import MinIOAdapter
 from .storage.vector_store import VectorStore
 from app.core.llm.manager import llm_manager
@@ -330,6 +330,76 @@ class IngestionService:
         # 保存 MinIO 存储结果（包含 file_id）
         minio_storage_result = storage_result
         
+        # 0. 处理 PDF 中提取的图片（如果有）
+        extracted_images_count = 0
+        if parse_result.get("file_type") == "pdf" and "extracted_images" in parse_result:
+            extracted_images = parse_result.get("extracted_images", [])
+            if extracted_images:
+                logger.info(f"发现 {len(extracted_images)} 张从 PDF 提取的图片，开始处理")
+                self._update_processing_status(processing_id, {
+                    "stage": "processing_images",
+                    "progress": 25,
+                    "message": f"正在处理 PDF 中的 {len(extracted_images)} 张图片..."
+                })
+                
+                file_id = minio_storage_result.get("file_id")
+                
+                for img_idx, img_info in enumerate(extracted_images):
+                    try:
+                        page_num = img_info.get("page", 1)
+                        image_index = img_info.get("image_index", img_idx)
+                        image_bytes = img_info.get("image_bytes")
+                        image_path = img_info.get("image_path", "")
+                        
+                        if not image_bytes:
+                            logger.warning(f"跳过第 {page_num} 页第 {image_index} 张图片：缺少图片数据")
+                            continue
+                        
+                        # 更新进度
+                        self._update_processing_status(processing_id, {
+                            "message": f"正在处理图片 {img_idx + 1}/{len(extracted_images)} (第 {page_num} 页)"
+                        })
+                        
+                        # 使用 ImageParser 解析图片
+                        image_parser = self.parser_factory.get_parser(FileType.IMAGE)
+                        if not image_parser:
+                            logger.error("ImageParser 不可用，跳过图片处理")
+                            continue
+                        
+                        # 生成图片文件名
+                        image_filename = f"{file_id}_page{page_num}_img{image_index}.jpg"
+                        
+                        # 解析图片
+                        image_parse_result = await image_parser.parse(image_bytes, image_filename)
+                        
+                        # 上传图片到 MinIO
+                        image_storage_result = await self.minio_adapter.upload_file(
+                            file_content=image_bytes,
+                            file_path=image_filename,
+                            kb_id=kb_id,
+                            file_type="images"
+                        )
+                        
+                        # 处理图片（VLM描述、CLIP向量化、存储）
+                        # 为每张图片创建独立的 processing_id（可选，或使用主 processing_id）
+                        image_result = await self._process_image(
+                            parse_result=image_parse_result,
+                            storage_result=image_storage_result,
+                            kb_id=kb_id,
+                            processing_id=processing_id,  # 使用同一个 processing_id
+                            image_source_type="pdf_extracted"  # 标记为从 PDF 提取的图片
+                        )
+                        
+                        extracted_images_count += 1
+                        logger.info(f"PDF 图片处理完成: {image_filename}, 向量数: {image_result.get('vectors_stored', 0)}")
+                        
+                    except Exception as e:
+                        logger.error(f"处理 PDF 图片失败 (第 {img_info.get('page', '?')} 页第 {img_info.get('image_index', '?')} 张): {str(e)}", exc_info=True)
+                        # 继续处理其他图片
+                        continue
+                
+                logger.info(f"PDF 图片处理完成: {extracted_images_count}/{len(extracted_images)} 张图片成功处理")
+        
         # 1. 文本分块
         chunks = await self._split_text_into_chunks(parse_result)
         
@@ -399,9 +469,18 @@ class IngestionService:
         parse_result: Dict[str, Any],
         storage_result: Dict[str, Any],
         kb_id: str,
-        processing_id: str
+        processing_id: str,
+        image_source_type: str = "standalone_file"
     ) -> Dict[str, Any]:
-        """处理图片文件"""
+        """处理图片文件
+        
+        Args:
+            parse_result: 图片解析结果
+            storage_result: MinIO 存储结果
+            kb_id: 知识库ID
+            processing_id: 处理ID
+            image_source_type: 图片来源类型，默认为 "standalone_file"，PDF提取的图片使用 "pdf_extracted"
+        """
         
         # 保存 MinIO 存储结果（包含 file_id）
         minio_storage_result = storage_result
@@ -465,7 +544,7 @@ class IngestionService:
             "clip_vector": clip_result["clip_vector"],  # 768 维
             "text_vector": text_vector_result["vectors"][0],  # 4096 维
             "image_format": parse_result.get("format"),  # 会被转换为 img_format
-            "image_source_type": "standalone_file",
+            "image_source_type": image_source_type,
             "width": parse_result.get("width"),
             "height": parse_result.get("height")
         }]
@@ -489,16 +568,63 @@ class IngestionService:
         chunks = []
         
         if parse_result["file_type"] == "pdf":
-            # PDF分页处理
-            for page in parse_result["pages"]:
-                if page["text"].strip():
-                    chunks.append({
-                        "text": page["text"].strip(),
-                        "metadata": {
-                            "page": page["page"],
-                            "file_type": "pdf"
+            # 如果 PDF 解析结果包含 markdown 字段（MinerU/PaddleOCR），使用完整 markdown 进行分块
+            if "markdown" in parse_result and parse_result["markdown"]:
+                logger.info("使用 PDF 解析生成的完整 Markdown 进行分块")
+                markdown_text = parse_result["markdown"]
+                
+                # 使用 MarkdownParser 的逻辑提取段落
+                from .parsers.factory import MarkdownParser
+                markdown_parser = MarkdownParser()
+                
+                # 提取标题
+                lines = markdown_text.split('\n')
+                headers = []
+                for line in lines:
+                    if line.startswith('#'):
+                        headers.append({
+                            "level": len(line) - len(line.lstrip('#')),
+                            "text": line.lstrip('#').strip()
+                        })
+                
+                # 构建智能段落
+                paragraphs = markdown_parser._build_smart_paragraphs(markdown_text, headers)
+                
+                # 转换为 chunks
+                for paragraph in paragraphs:
+                    if paragraph.get("text", "").strip():
+                        chunk_metadata = {
+                            "file_type": "pdf",
+                            "parser": parse_result.get("metadata", {}).get("parser", "pymupdf"),
                         }
-                    })
+                        
+                        # 添加标题信息
+                        if paragraph.get("header"):
+                            header = paragraph["header"]
+                            chunk_metadata["header_level"] = header.get("level")
+                            chunk_metadata["header_text"] = header.get("text")
+                        
+                        # 添加代码块标记
+                        if paragraph.get("has_code"):
+                            chunk_metadata["has_code"] = True
+                        
+                        chunks.append({
+                            "text": paragraph["text"].strip(),
+                            "metadata": chunk_metadata
+                        })
+            else:
+                # 使用原有的按页分块逻辑（PyMuPDF 解析结果）
+                logger.info("使用按页分块逻辑（PyMuPDF 解析结果）")
+                for page in parse_result["pages"]:
+                    if page.get("text", "").strip():
+                        chunks.append({
+                            "text": page["text"].strip(),
+                            "metadata": {
+                                "page": page["page"],
+                                "file_type": "pdf",
+                                "parser": parse_result.get("metadata", {}).get("parser", "pymupdf")
+                            }
+                        })
         
         elif parse_result["file_type"] in ["docx", "txt", "md"]:
             # 段落处理
@@ -879,7 +1005,7 @@ class IngestionService:
             ]
             
             # 调用VLM API（大图或高 detail 可能需 1～3 分钟，提供方已对 VL 模型使用更长超时）
-            logger.info("开始调用 VLM 生成图片描述（可能需 1～3 分钟）")
+            logger.info("开始调用 VLM 生成图片描述")
             result = await self.llm_manager.chat(
                 messages=messages,
                 task_type="image_captioning",
@@ -1022,12 +1148,16 @@ class IngestionService:
             if self._clip_model is None or self._clip_processor is None:
                 raise RuntimeError("CLIP模型未加载")
             
-            inputs = self._clip_processor(images=image, return_tensors="pt")
+            # CLIPProcessor 类型未声明 return_tensors，先调用再手动转为 tensor
+            inputs = self._clip_processor(images=image)
+            pixel_values = inputs.get("pixel_values")
+            if pixel_values is not None and not isinstance(pixel_values, torch.Tensor):
+                inputs = {**inputs, "pixel_values": torch.tensor(pixel_values)}
             
             # 移动到正确的设备
             if torch.cuda.is_available():
                 device = torch.device("cuda")
-                inputs = {k: v.to(device) if hasattr(v, 'to') else v for k, v in inputs.items()}
+                inputs = {k: v.to(device) if hasattr(v, "to") else v for k, v in inputs.items()}
             
             # 生成向量
             with torch.no_grad():

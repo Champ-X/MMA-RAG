@@ -64,6 +64,12 @@ class ApiClient {
     return response.data;
   }
 
+  // GET 请求返回 Blob（用于 PDF 等流式预览）
+  async getBlob(url: string, config?: AxiosRequestConfig): Promise<Blob> {
+    const response = await this.instance.get(url, { ...config, responseType: 'blob' });
+    return response.data as Blob;
+  }
+
   // POST请求
   async post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
     const response: AxiosResponse<T> = await this.instance.post(url, data, config);
@@ -302,7 +308,11 @@ export const knowledgeApi = {
     apiClient.get<{ caption?: string; chunks?: Array<{ index: number; text: string }>; text_preview?: string }>(
       `/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/preview`
     ),
-  
+
+  // 获取文件流（用于页面内 PDF 预览，返回 Blob）
+  getFileStream: (kbId: string, fileId: string) =>
+    apiClient.getBlob(`/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/stream`),
+
   // 上传文件到知识库（调用 /upload/batch）
   uploadFiles: (kbId: string, files: File[], onProgress?: (progress: number, fileIndex: number) => void) =>
     apiClient.uploadFiles(`/upload/batch`, files, onProgress, { kb_id: kbId }),

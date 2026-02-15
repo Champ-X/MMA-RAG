@@ -11,6 +11,7 @@ from pathlib import Path
 import uuid
 
 from app.core.logger import get_logger
+from datetime import datetime
 
 logger = get_logger(__name__)
 
@@ -56,7 +57,144 @@ class PDFParser(DocumentParser):
         return FileType.PDF
     
     async def parse(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
-        """解析PDF文件"""
+        """解析PDF：优先 MinerU API，失败则本地 MinerU2.5，再 PaddleOCR-VL-1.5，最后 PyMuPDF"""
+        from app.core.config import settings
+
+        # 1. 优先 MinerU API（需 MINERU_TOKEN）
+        token = getattr(settings, "mineru_token", None)
+        if token and getattr(settings, "mineru_pdf_enabled", True):
+            try:
+                from .mineru_client import parse_pdf_via_api
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: parse_pdf_via_api(file_content, file_path, token),
+                )
+                if result is not None:
+                    logger.info("使用 MinerU API 解析 PDF")
+                    return result
+            except Exception as e:
+                logger.warning("MinerU API 解析失败，尝试本地模型: %s", e)
+
+        # 2. 备选 本地 MinerU2.5
+        try:
+            from .mineru_client import get_mineru_client, parse_pdf as mineru_parse_pdf
+            if getattr(settings, "mineru_pdf_enabled", True):
+                client = get_mineru_client()
+                if client:
+                    logger.info("使用 MinerU2.5 解析 PDF")
+                    loop = asyncio.get_event_loop()
+                    return await loop.run_in_executor(
+                        None, lambda: mineru_parse_pdf(file_content)
+                    )
+        except Exception as e:
+            logger.warning("MinerU 本地解析失败，尝试 PaddleOCR: %s", e)
+
+        # 3. 备选 PaddleOCR-VL-1.5
+        try:
+            from .paddleocr_client import get_paddleocr_client
+
+            ocr_client = get_paddleocr_client()
+            if ocr_client:
+                logger.info("使用 PaddleOCR-VL-1.5 解析 PDF")
+                return await self._parse_with_paddleocr(file_content, file_path)
+        except Exception as e:
+            logger.warning("PaddleOCR 解析失败，回退到 PyMuPDF: %s", e)
+
+        # 4. 回退 PyMuPDF
+        return await self._parse_with_pymupdf(file_content, file_path)
+    
+    async def _parse_with_paddleocr(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
+        """使用 PaddleOCR-VL-1.5 解析 PDF"""
+        from .paddleocr_client import get_paddleocr_client
+        
+        client = get_paddleocr_client()
+        if not client:
+            raise ValueError("PaddleOCR 客户端不可用")
+        
+        # 调用 PaddleOCR API
+        result_data = client.parse_pdf(
+            file_content=file_content,
+            file_type=0,  # PDF
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_chart_recognition=False
+        )
+        
+        layout_results = result_data.get("layoutParsingResults", [])
+        total_pages = len(layout_results)
+        
+        # 提取每页的 markdown 和图片信息
+        pages_content = []
+        extracted_images = []
+        markdown_parts = []
+        
+        for page_index, page_result in enumerate(layout_results):
+            page_num = page_index + 1
+            markdown_data = page_result.get("markdown", {})
+            markdown_text = markdown_data.get("text", "")
+            markdown_images = markdown_data.get("images", {})
+            
+            # 收集该页的图片信息
+            page_images = []
+            for img_path, img_url in markdown_images.items():
+                try:
+                    # 下载图片
+                    image_bytes = client.download_image(img_url)
+                    
+                    # 添加到提取的图片列表
+                    image_info = {
+                        "page": page_num,
+                        "image_index": len(page_images),
+                        "image_bytes": image_bytes,
+                        "image_path": img_path,
+                        "image_url": img_url,
+                        "metadata": {
+                            "extracted_from": "paddleocr",
+                            "page": page_num
+                        }
+                    }
+                    extracted_images.append(image_info)
+                    page_images.append(image_info)
+                    
+                except Exception as e:
+                    logger.warning(f"下载第 {page_num} 页图片失败 ({img_path}): {str(e)}")
+                    # 继续处理其他图片
+            
+            # 构建页面内容
+            pages_content.append({
+                "page": page_num,
+                "markdown": markdown_text,
+                "text": markdown_text,  # 兼容旧格式
+                "images": page_images,
+                "metadata": {
+                    "parser": "paddleocr-vl-1.5"
+                }
+            })
+            
+            # 拼接 markdown（使用分隔符）
+            if markdown_text.strip():
+                if markdown_parts:
+                    markdown_parts.append(f"\n\n---\n\n## 第 {page_num} 页\n\n")
+                markdown_parts.append(markdown_text)
+        
+        # 拼接完整的 markdown
+        full_markdown = "\n\n".join(markdown_parts)
+        
+        return {
+            "file_type": "pdf",
+            "markdown": full_markdown,
+            "pages": pages_content,
+            "extracted_images": extracted_images,
+            "total_pages": total_pages,
+            "metadata": {
+                "parser": "paddleocr-vl-1.5",
+                "extracted_at": datetime.utcnow().isoformat() + "Z"
+            }
+        }
+    
+    async def _parse_with_pymupdf(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
+        """使用 PyMuPDF 解析 PDF（原有方法）"""
         try:
             import fitz  # PyMuPDF
             
@@ -111,7 +249,8 @@ class PDFParser(DocumentParser):
                 "tables": tables,
                 "total_pages": total_pages,
                 "metadata": {
-                    "extracted_at": "2024-01-01T00:00:00Z"
+                    "parser": "pymupdf",
+                    "extracted_at": datetime.utcnow().isoformat() + "Z"
                 }
             }
             

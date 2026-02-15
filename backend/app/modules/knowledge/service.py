@@ -1023,6 +1023,27 @@ class KnowledgeBaseService:
             logger.error(f"列出知识库文件失败: {str(e)}")
             return []
 
+    async def get_file_stream_info(self, kb_id: str, file_id: str) -> Optional[tuple[str, str, str]]:
+        """获取用于流式预览的文件信息，返回 (bucket_name, object_path, filename) 或 None。仅返回 documents/ 下的主文档。"""
+        try:
+            if not self._ensure_kb_in_cache(kb_id):
+                return None
+            bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
+            raw_files = await self.minio_adapter.list_files(bucket=bucket_name, prefix="", max_keys=1000)
+            for f in raw_files:
+                op = f.get("object_path", "")
+                if not op.startswith("documents/"):
+                    continue
+                rest = op.split("/", 1)[1] if "/" in op else ""
+                if not rest.startswith(file_id + "_"):
+                    continue
+                name = rest[len(file_id) + 1:] if len(rest) > len(file_id) + 1 else rest
+                return (bucket_name, op, name)
+            return None
+        except Exception as e:
+            logger.debug(f"获取文件流信息失败 {kb_id}/{file_id}: {e}")
+            return None
+
     async def get_random_cover_url(self, kb_id: str) -> Optional[str]:
         """从知识库中随机取一张图片的预览 URL 作为封面；无图片时返回 None。"""
         try:

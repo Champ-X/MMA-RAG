@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     # DeepSeek API 配置（可选，配置后可使用 deepseek-chat / deepseek-reasoner 等模型）
     deepseek_api_key: Optional[str] = Field(default=None, validation_alias="DEEPSEEK_API_KEY")
     
+    # PaddleOCR API 配置（PDF 解析备选）
+    paddleocr_api_url: Optional[str] = Field(default=None, validation_alias="PADDLEOCR_API_URL")
+    paddleocr_token: Optional[str] = Field(default=None, validation_alias="PADDLEOCR_TOKEN")
+
+    # MinerU PDF 解析：优先 API（需 MINERU_TOKEN），失败则本地模型
+    mineru_token: Optional[str] = Field(default=None, validation_alias="MINERU_TOKEN")
+    mineru_pdf_enabled: bool = Field(default=True, validation_alias="MINERU_PDF_ENABLED")
+    
     # 文件上传配置
     max_file_size: int = Field(default=100 * 1024 * 1024, validation_alias="MAX_FILE_SIZE")  # 100MB
     allowed_extensions_str: str = Field(

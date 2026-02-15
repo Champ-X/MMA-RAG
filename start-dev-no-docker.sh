@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Multi-Modal RAG Agent 本地启动脚本（无 Docker）
-# 依赖：本机已安装 Redis、MinIO、Qdrant（脚本会尝试自动启动未运行的服务）
+# 依赖：本机已安装 Redis、MinIO、Qdrant（脚本会尝试自动启动 Redis/MinIO；Qdrant 请运行前手动启动）
 
 set -e
 
@@ -54,6 +54,7 @@ check_qdrant() {
         return 0
     fi
     echo "  ⚠️  Qdrant 未在 localhost:6333 运行（若使用 Qdrant Cloud 可忽略）"
+    echo "     请先手动启动：/Users/xiangqingping.1/qdrant --config-path ./qdrant_config.yaml"
     return 0
 }
 
@@ -95,54 +96,10 @@ start_minio_if_needed() {
     return 1
 }
 
-# 尝试自动启动 Qdrant（仅当未使用 Qdrant Cloud 时）
-start_qdrant_if_needed() {
-    check_qdrant && return 0
-    QDRANT_BIN=""
-    if [ -n "$QDRANT_BIN" ]; then
-        [ "${QDRANT_BIN#/}" = "$QDRANT_BIN" ] && QDRANT_BIN="$(cd "$PROJECT_ROOT" && command -v "$QDRANT_BIN")" || true
-    elif command -v qdrant &>/dev/null; then
-        QDRANT_BIN="$(command -v qdrant)"
-    elif [ -x "$HOME/qdrant" ]; then
-        QDRANT_BIN="$HOME/qdrant"
-    elif [ -x "/Users/xiangqingping.1/qdrant" ]; then
-        QDRANT_BIN="/Users/xiangqingping.1/qdrant"
-    fi
-    if [ -z "$QDRANT_BIN" ] || [ ! -x "$QDRANT_BIN" ]; then
-        echo "  ⚠️  未找到 qdrant 可执行文件。若使用 Qdrant Cloud 可忽略；否则请从 https://github.com/qdrant/qdrant/releases 下载并设置 PATH 或 QDRANT_BIN"
-        return 0
-    fi
-    QDRANT_CONFIG="$PROJECT_ROOT/qdrant_config.yaml"
-    if [ ! -f "$QDRANT_CONFIG" ]; then
-        echo "  ⚠️  未找到配置文件 $QDRANT_CONFIG，跳过自动启动 Qdrant"
-        return 0
-    fi
-    echo "  ⏳ 正在后台启动 Qdrant ($QDRANT_BIN) ..."
-    (
-        cd "$PROJECT_ROOT"
-        nohup "$QDRANT_BIN" --config-path "$QDRANT_CONFIG" > qdrant.log 2>&1 &
-        echo $! > qdrant.pid
-    )
-    for i in 1 2 3 4 5 6 7 8 9 10; do
-        sleep 1
-        if curl -s --connect-timeout 2 http://localhost:6333 &>/dev/null; then
-            echo "  ✅ Qdrant 已自动启动 (PID: $(cat "$PROJECT_ROOT/qdrant.pid" 2>/dev/null))"
-            return 0
-        fi
-    done
-    echo "  ❌ Qdrant 启动超时或未就绪。请查看日志: $PROJECT_ROOT/qdrant.log"
-    if [ -f "$PROJECT_ROOT/qdrant.log" ]; then
-        echo "  📄 最后几行日志:"
-        tail -5 "$PROJECT_ROOT/qdrant.log" | sed 's/^/     /'
-    fi
-    return 0
-}
-
-# 先尝试自动启动依赖，再检查
+# 先尝试自动启动 Redis、MinIO（Qdrant 请运行前手动启动）
 echo "🔍 检查并自动启动依赖服务..."
 start_redis_if_needed || true
 start_minio_if_needed || true
-start_qdrant_if_needed || true
 
 echo ""
 echo "🔍 最终依赖检查..."

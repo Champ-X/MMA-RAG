@@ -28,6 +28,8 @@ function FilePreviewModal({
   } | null>(null)
   const [rawContent, setRawContent] = React.useState<string | null>(null)
   const [loadingDetails, setLoadingDetails] = React.useState(false)
+  const [pdfObjectUrl, setPdfObjectUrl] = React.useState<string | null>(null)
+  const [pdfLoading, setPdfLoading] = React.useState(false)
 
   const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(String(file?.type || '').toLowerCase())
   const isPdf = String(file?.type || '').toLowerCase() === 'pdf'
@@ -50,6 +52,35 @@ function FilePreviewModal({
       setRawContent(content ?? null)
     }).catch(() => setDetails(null)).finally(() => setLoadingDetails(false))
   }, [file?.id, kbId, isTextFile])
+
+  // PDF 使用 stream 接口获取 Blob 并生成 object URL，在 iframe 内展示，避免直接打开 presigned URL 触发下载
+  const pdfObjectUrlRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (!isPdf || !kbId || !file?.id) {
+      pdfObjectUrlRef.current = null
+      setPdfObjectUrl(null)
+      return
+    }
+    setPdfLoading(true)
+    setPdfObjectUrl(null)
+    pdfObjectUrlRef.current = null
+    knowledgeApi.getFileStream(kbId, file.id)
+      .then((blob) => {
+        const url = URL.createObjectURL(blob)
+        pdfObjectUrlRef.current = url
+        setPdfObjectUrl(url)
+      })
+      .catch(() => setPdfObjectUrl(null))
+      .finally(() => setPdfLoading(false))
+    return () => {
+      const url = pdfObjectUrlRef.current
+      if (url) {
+        URL.revokeObjectURL(url)
+        pdfObjectUrlRef.current = null
+      }
+      setPdfObjectUrl(null)
+    }
+  }, [isPdf, kbId, file?.id])
 
   const textPreview = file?.textPreview ?? details?.text_preview ?? rawContent
 
@@ -142,13 +173,18 @@ function FilePreviewModal({
                 )}
               </div>
             </div>
-          ) : isPdf && file.previewUrl ? (
+          ) : isPdf && pdfObjectUrl ? (
             <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
               <iframe
                 title={file.name}
-                src={file.previewUrl}
+                src={pdfObjectUrl}
                 className="w-full h-[60vh] min-h-[400px] max-h-[600px]"
               />
+            </div>
+          ) : isPdf && pdfLoading ? (
+            <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
+              <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-transparent" />
+              <div className="mt-3 text-sm">PDF 加载中…</div>
             </div>
           ) : textPreview ? (
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
