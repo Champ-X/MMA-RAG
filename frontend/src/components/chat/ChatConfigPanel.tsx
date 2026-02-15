@@ -173,7 +173,7 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
               </button>
             </div>
             {kbMode === 'manual' && (
-              <ScrollArea className="mt-4 max-h-48 rounded-xl border border-slate-200/50 bg-white/40 backdrop-blur-sm dark:border-slate-700/50 dark:bg-slate-800/50 p-2.5 shadow-inner">
+              <ScrollArea className="mt-4 max-h-[min(50vh,320px)] h-auto rounded-xl border border-slate-200/50 bg-white/40 backdrop-blur-sm dark:border-slate-700/50 dark:bg-slate-800/50 p-2.5 shadow-inner">
                 {knowledgeBases.length === 0 ? (
                   <p className="py-4 text-center text-sm text-slate-500 dark:text-slate-400">暂无知识库，请先创建</p>
                 ) : (
