@@ -3,10 +3,11 @@
 支持多种文件格式的差异化解析
 """
 
-from typing import Dict, List, Any, Optional, Union, Protocol
+from typing import Dict, List, Any, Optional, Union, Protocol, Tuple
 from abc import ABC, abstractmethod
 from enum import Enum
 import asyncio
+import re
 from pathlib import Path
 import uuid
 
@@ -14,6 +15,21 @@ from app.core.logger import get_logger
 from datetime import datetime
 
 logger = get_logger(__name__)
+
+
+def _extract_image_refs_from_markdown_text(text: str) -> List[Tuple[str, str]]:
+    """
+    从 markdown/HTML 文本中按出现顺序提取图片引用，返回 [(完整引用串, 路径), ...]。
+    支持 Markdown ![](path) 与 HTML <img src="path" ...>。
+    """
+    # (完整引用串, 路径, 起始位置)
+    with_pos: List[Tuple[str, str, int]] = []
+    for m in re.finditer(r"!\[[^\]]*\]\s*\(\s*([^)]+)\s*\)", text):
+        with_pos.append((m.group(0), m.group(1).strip(), m.start()))
+    for m in re.finditer(r'<img[^>]+src=["\']([^"\']+)["\'][^>]*>', text):
+        with_pos.append((m.group(0), m.group(1).strip(), m.start()))
+    with_pos.sort(key=lambda x: x[2])
+    return [(r[0], r[1]) for r in with_pos]
 
 class FileType(Enum):
     """文件类型枚举"""
@@ -134,45 +150,59 @@ class PDFParser(DocumentParser):
             markdown_data = page_result.get("markdown", {})
             markdown_text = markdown_data.get("text", "")
             markdown_images = markdown_data.get("images", {})
-            
-            # 收集该页的图片信息
+            # 文档标题/说明：API 若有 image_captions 或 imageCaptions 则填入
+            image_captions = markdown_data.get("image_captions") or markdown_data.get("imageCaptions") or page_result.get("image_captions") or page_result.get("imageCaptions") or {}
+
+            # 按 markdown 中图片引用出现顺序解析，保证与 full_markdown 一一对应，便于 VLM 图注插回
+            refs_ordered = _extract_image_refs_from_markdown_text(markdown_text)
             page_images = []
-            for img_path, img_url in markdown_images.items():
+            for img_index, (ref_string, path_in_text) in enumerate(refs_ordered):
+                # 用路径匹配 markdown_images 的 key（支持路径、反斜杠、basename）
+                path_n = path_in_text.replace("\\", "/")
+                img_url = markdown_images.get(path_in_text) or markdown_images.get(path_n)
+                if not img_url and path_in_text:
+                    for k, v in markdown_images.items():
+                        if Path(k).name == Path(path_in_text).name:
+                            img_url = v
+                            break
+                if not img_url:
+                    logger.debug("PaddleOCR 页 %s 中引用路径未在 images 中找到: %s", page_num, path_in_text)
+                    continue
                 try:
-                    # 下载图片
                     image_bytes = client.download_image(img_url)
-                    
-                    # 添加到提取的图片列表
+                    img_path = path_in_text
+                    doc_caption = None
+                    if isinstance(image_captions, dict):
+                        doc_caption = image_captions.get(path_in_text) or image_captions.get(path_n) or image_captions.get(Path(path_in_text).name)
+                    if isinstance(image_captions, list) and img_index < len(image_captions):
+                        cap = image_captions[img_index]
+                        doc_caption = cap if isinstance(cap, str) else (cap.get("text") or cap.get("caption") if isinstance(cap, dict) else None)
+
                     image_info = {
                         "page": page_num,
                         "image_index": len(page_images),
                         "image_bytes": image_bytes,
-                        "image_path": img_path,
-                        "image_url": img_url,
+                        "image_path": Path(img_path).name or f"page{page_num}_img{len(page_images)}.jpg",
+                        "markdown_ref": ref_string,
                         "metadata": {
                             "extracted_from": "paddleocr",
-                            "page": page_num
-                        }
+                            "page": page_num,
+                            "document_caption": doc_caption,
+                        },
                     }
                     extracted_images.append(image_info)
                     page_images.append(image_info)
-                    
                 except Exception as e:
-                    logger.warning(f"下载第 {page_num} 页图片失败 ({img_path}): {str(e)}")
-                    # 继续处理其他图片
+                    logger.warning("下载第 %s 页图片失败 (ref=%s): %s", page_num, path_in_text[:50], e)
             
             # 构建页面内容
             pages_content.append({
                 "page": page_num,
                 "markdown": markdown_text,
-                "text": markdown_text,  # 兼容旧格式
+                "text": markdown_text,
                 "images": page_images,
-                "metadata": {
-                    "parser": "paddleocr-vl-1.5"
-                }
+                "metadata": {"parser": "paddleocr-vl-1.5"},
             })
-            
-            # 拼接 markdown（使用分隔符）
             if markdown_text.strip():
                 if markdown_parts:
                     markdown_parts.append(f"\n\n---\n\n## 第 {page_num} 页\n\n")
