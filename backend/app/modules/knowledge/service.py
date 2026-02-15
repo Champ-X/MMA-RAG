@@ -336,10 +336,19 @@ class KnowledgeBaseService:
             
             # 清理相关数据（MinIO bucket id 与 Qdrant payload kb_id 可能不同，对每个候选都删除向量与画像）
             try:
-                candidates = self._kb_id_candidates(kb_id)
+                candidates = list(self._kb_id_candidates(kb_id))
+                try:
+                    discovered = await self._discover_kb_id_from_bucket_async(kb_id)
+                    if discovered and discovered not in candidates:
+                        candidates.append(discovered)
+                except Exception as e:
+                    logger.debug(f"删除知识库时反查 kb_id 失败(可忽略): {e}")
                 for candidate in candidates:
-                    await self._delete_kb_vectors(candidate)
-                    await self.vector_store.delete_kb_portraits(candidate)
+                    try:
+                        await self._delete_kb_vectors(candidate)
+                        await self.vector_store.delete_kb_portraits(candidate)
+                    except Exception as e:
+                        logger.warning(f"删除知识库向量/画像失败 candidate={candidate}: {e}")
                 
                 # 3. 删除MinIO中的文件
                 await self._delete_kb_files(kb_id)
@@ -372,48 +381,8 @@ class KnowledgeBaseService:
             raise
     
     async def _delete_kb_vectors(self, kb_id: str):
-        """删除知识库的所有向量"""
-        try:
-            from qdrant_client.http.models import Filter, FieldCondition, MatchValue
-            
-            # 删除文本块向量
-            filter_condition = Filter(
-                must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))]
-            )
-            
-            # 先查询所有相关的点ID
-            scroll_result = self.vector_store.client.scroll(
-                collection_name="text_chunks",
-                scroll_filter=filter_condition,
-                limit=10000  # 设置一个较大的限制
-            )
-            
-            text_point_ids = [point.id for point in scroll_result[0] if hasattr(point, 'id')]
-            if text_point_ids:
-                self.vector_store.client.delete(
-                    collection_name="text_chunks",
-                    points_selector=models.PointIdsList(points=text_point_ids)
-                )
-                logger.info(f"删除文本块向量: {len(text_point_ids)} 个")
-            
-            # 删除图片向量
-            scroll_result = self.vector_store.client.scroll(
-                collection_name="image_vectors",
-                scroll_filter=filter_condition,
-                limit=10000
-            )
-            
-            image_point_ids = [point.id for point in scroll_result[0] if hasattr(point, 'id')]
-            if image_point_ids:
-                self.vector_store.client.delete(
-                    collection_name="image_vectors",
-                    points_selector=models.PointIdsList(points=image_point_ids)
-                )
-                logger.info(f"删除图片向量: {len(image_point_ids)} 个")
-            
-        except Exception as e:
-            logger.error(f"删除知识库向量失败: {str(e)}")
-            raise
+        """删除知识库在 text_chunks、image_vectors 中该 kb_id 的所有向量（按 filter 删除，可靠）。"""
+        await self.vector_store.delete_kb_vectors(kb_id)
     
     async def _delete_kb_files(self, kb_id: str):
         """删除知识库在 MinIO 中的所有文件及对应存储桶。"""
@@ -1094,29 +1063,52 @@ class KnowledgeBaseService:
             if not object_paths:
                 return False
 
-            # 先删除向量库中该文件对应的向量；失败则中止，不删 MinIO
-            from qdrant_client.http.models import Filter, FieldCondition, MatchValue
+            # 先删除向量库中该文件对应的向量（按 filter 删除，可靠）；若全部失败则不删 MinIO
+            # 文档 chunk：kb_id + file_id；图片：kb_id + (file_id 或 source_file_id)，以覆盖 PDF 解析图（其 file_id 为图片自身 UUID）
+            from qdrant_client.http.models import Filter, FieldCondition, MatchValue, FilterSelector
             deleted_chunk_count = 0
-            seen_point_ids: set = set()
             for candidate in self._kb_id_candidates(kb_id):
-                filt = Filter(must=[
+                filt_text = Filter(must=[
                     FieldCondition(key="kb_id", match=MatchValue(value=candidate)),
                     FieldCondition(key="file_id", match=MatchValue(value=file_id)),
                 ])
-                for coll in ["text_chunks", "image_vectors"]:
-                    scroll_result = self.vector_store.client.scroll(
-                        collection_name=coll, scroll_filter=filt, limit=10000
+                filt_image = Filter(
+                    must=[FieldCondition(key="kb_id", match=MatchValue(value=candidate))],
+                    should=[
+                        FieldCondition(key="file_id", match=MatchValue(value=file_id)),
+                        FieldCondition(key="source_file_id", match=MatchValue(value=file_id)),
+                    ],
+                )
+                try:
+                    self.vector_store.client.delete(
+                        collection_name="text_chunks",
+                        points_selector=FilterSelector(filter=filt_text),
                     )
-                    point_ids = [p.id for p in (scroll_result[0] or []) if hasattr(p, "id")]
-                    for pid in point_ids:
-                        if pid not in seen_point_ids:
-                            seen_point_ids.add(pid)
-                            deleted_chunk_count += 1
-                    if point_ids:
-                        self.vector_store.client.delete(
-                            collection_name=coll,
-                            points_selector=models.PointIdsList(points=point_ids),
-                        )
+                    deleted_chunk_count += 1
+                except Exception as del_e:
+                    logger.warning(f"删除文件文本向量失败 candidate={candidate}: {del_e}")
+                try:
+                    self.vector_store.client.delete(
+                        collection_name="image_vectors",
+                        points_selector=FilterSelector(filter=filt_image),
+                    )
+                    deleted_chunk_count += 1
+                except Exception as del_e:
+                    logger.warning(f"删除文件图片向量失败 candidate={candidate}: {del_e}")
+            if deleted_chunk_count == 0:
+                logger.error(f"删除文件向量全部失败，不删除 MinIO 对象 kb_id={kb_id} file_id={file_id}")
+                return False
+
+            # 删除 chunk 后、删 MinIO 前：若可能变空，先拿到用于画像的 discovered kb_id（桶内还有文件时才能反查）
+            portrait_candidate_ids: List[str] = []
+            if deleted_chunk_count > 0:
+                portrait_candidate_ids = list(self._kb_id_candidates(kb_id))
+                try:
+                    discovered = await self._discover_kb_id_from_bucket_async(kb_id)
+                    if discovered and discovered not in portrait_candidate_ids:
+                        portrait_candidate_ids.append(discovered)
+                except Exception as e:
+                    logger.debug(f"删除文件时反查 kb_id 失败(可忽略): {e}")
 
             # 向量删除成功后，再删除 MinIO 中该文件的所有对象
             for object_path in object_paths:
@@ -1130,6 +1122,23 @@ class KnowledgeBaseService:
                     increment_and_maybe_trigger(kb_id, deleted_chunk_count)
                 except Exception as trigger_err:
                     logger.warning(f"删除文件后画像增量触发失败 kb_id={kb_id}: {trigger_err}")
+
+                # 若删除后该知识库已无 chunk（所有候选合计为 0），则删除所有可能存在的画像（避免漏删不同 kb_id 格式）
+                total_remaining = 0
+                for cid in portrait_candidate_ids:
+                    try:
+                        n_text, n_img = await self.vector_store.count_kb_chunks(cid)
+                        total_remaining += n_text + n_img
+                    except Exception as e:
+                        logger.warning(f"统计 chunk 失败 candidate={cid}: {e}")
+                if total_remaining == 0:
+                    for cid in portrait_candidate_ids:
+                        try:
+                            await self._delete_kb_vectors(cid)
+                            await self.vector_store.delete_kb_portraits(cid)
+                            logger.info(f"知识库已为空，已清理三集合(向量+画像): {cid}")
+                        except Exception as e:
+                            logger.warning(f"删除空知识库向量/画像失败 candidate={cid}: {e}")
 
             return True
         except Exception as e:

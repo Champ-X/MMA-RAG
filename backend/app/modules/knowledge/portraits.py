@@ -74,6 +74,12 @@ class PortraitGenerator:
             samples = await self._sample_vectors(kb_id)
             
             if len(samples) < 10:
+                # 知识库为空或数据不足时，删除已有画像，避免保留过期画像
+                try:
+                    await self.vector_store.delete_kb_portraits(kb_id)
+                    logger.info(f"知识库数据不足，已删除该知识库画像: {kb_id}")
+                except Exception as del_err:
+                    logger.warning(f"删除空知识库画像失败 kb_id={kb_id}: {del_err}")
                 return {
                     "status": "insufficient_data",
                     "message": "知识库数据量不足，无法生成画像",

@@ -16,7 +16,9 @@ from qdrant_client.http.models import (
     Distance, VectorParams, NamedVector,
     PointStruct, Filter, FieldCondition, MatchValue,
     PayloadSchemaType, Query, Fusion, Prefetch, FusionQuery,
-    SparseVectorParams, SparseIndexParams
+    SparseVectorParams, SparseIndexParams,
+    FilterSelector,
+    Condition,
 )
 
 from app.core.config import settings
@@ -562,7 +564,7 @@ class VectorStore:
                     "text_vec": image["text_vector"]
                 }
                 
-                # 准备payload（按照规范字段名）
+                # 准备payload（按照规范字段名；PDF 解析图写入 source_file_id 便于删除文档时一并删图）
                 payload = {
                     "kb_id": kb_id,
                     "file_id": image.get("file_id"),
@@ -574,6 +576,8 @@ class VectorStore:
                     "height": image.get("height"),
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
+                if image.get("source_file_id"):
+                    payload["source_file_id"] = image["source_file_id"]
                 
                 point = PointStruct(
                     id=point_id,
@@ -661,37 +665,47 @@ class VectorStore:
             logger.error(f"知识库画像插入失败: {str(e)}")
             raise
     
-    async def delete_kb_portraits(self, kb_id: str) -> bool:
-        """删除知识库画像"""
+    def _delete_points_by_kb_id_filter(
+        self, collection_name: str, filter_condition: "Filter"
+    ) -> bool:
+        """按 filter 删除集合中的点（同步，供内部调用）。"""
         try:
-            # 先查询该知识库的所有画像
-            search_results = await self.search_kb_portraits(kb_id, limit=1000)
-            
-            if not search_results:
-                # 如果没有画像，直接返回成功（无需删除）
-                logger.debug(f"知识库 {kb_id} 没有画像需要删除")
-                return True
-            
-            # 提取有效的point ID，过滤掉None值
-            point_ids: List[Any] = []
-            for result in search_results:
-                point_id = result.get("id")
-                if point_id is not None:
-                    point_ids.append(point_id)
-            
-            if point_ids:
-                self.client.delete(
-                    collection_name="kb_portraits",
-                    points_selector=models.PointIdsList(points=point_ids)
-                )
-                logger.info(f"删除知识库画像完成: {kb_id}, 删除了 {len(point_ids)} 个画像")
-            else:
-                logger.warning(f"知识库 {kb_id} 的画像查询结果中没有有效的 point ID")
-            
+            self.client.delete(
+                collection_name=collection_name,
+                points_selector=FilterSelector(filter=filter_condition),
+            )
             return True
-            
+        except Exception as e:
+            logger.error(f"按 filter 删除 {collection_name} 失败: {str(e)}")
+            return False
+
+    async def delete_kb_portraits(self, kb_id: str) -> bool:
+        """删除知识库画像（按 kb_id 条件删除，避免依赖 scroll 返回的 id）"""
+        try:
+            filter_condition = Filter(
+                must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))]
+            )
+            ok = self._delete_points_by_kb_id_filter("kb_portraits", filter_condition)
+            if ok:
+                logger.info(f"删除知识库画像完成: {kb_id}")
+            return ok
         except Exception as e:
             logger.error(f"删除知识库画像失败: {str(e)}")
+            return False
+
+    async def delete_kb_vectors(self, kb_id: str) -> bool:
+        """删除知识库在 text_chunks、image_vectors 中该 kb_id 的所有点（按 filter 删除，可靠）。"""
+        try:
+            filter_condition = Filter(
+                must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))]
+            )
+            ok_text = self._delete_points_by_kb_id_filter("text_chunks", filter_condition)
+            ok_img = self._delete_points_by_kb_id_filter("image_vectors", filter_condition)
+            if ok_text or ok_img:
+                logger.info(f"删除知识库向量完成: {kb_id} (text_chunks={ok_text}, image_vectors={ok_img})")
+            return ok_text and ok_img
+        except Exception as e:
+            logger.error(f"删除知识库向量失败: {str(e)}")
             return False
     
     async def search_text_chunks(
@@ -1392,7 +1406,9 @@ class VectorStore:
         if not file_id:
             return None
         try:
-            must = [FieldCondition(key="file_id", match=MatchValue(value=str(file_id)))]
+            must: List[Condition] = [
+                FieldCondition(key="file_id", match=MatchValue(value=str(file_id)))
+            ]
             if chunk_index is not None:
                 must.append(
                     FieldCondition(key="chunk_index", match=MatchValue(value=int(chunk_index)))

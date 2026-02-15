@@ -388,7 +388,7 @@ class IngestionService:
                             file_type="images"
                         )
                         
-                        # 处理图片（带文档标题与位置上下文的 VLM、CLIP、存储），并收集 markdown_ref 与 caption 用于插回
+                        # 处理图片（带文档标题与位置上下文的 VLM、CLIP、存储），并收集 markdown_ref 与 caption 用于插回；传入原始文档 file_id 便于删除文档时一并删图
                         image_result = await self._process_image(
                             parse_result=image_parse_result,
                             storage_result=image_storage_result,
@@ -398,6 +398,7 @@ class IngestionService:
                             document_caption=document_caption or None,
                             surrounding_context=surrounding_context if surrounding_context != "无" else None,
                             markdown_ref=markdown_ref,
+                            source_file_id=file_id,
                         )
                         if markdown_ref and image_result.get("caption"):
                             cap = image_result["caption"]
@@ -496,6 +497,7 @@ class IngestionService:
         document_caption: Optional[str] = None,
         surrounding_context: Optional[str] = None,
         markdown_ref: Optional[str] = None,
+        source_file_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """处理图片文件
         
@@ -508,6 +510,7 @@ class IngestionService:
             document_caption: 文档中该图的标题/说明（可选，用于 VLM 上下文）
             surrounding_context: 该图所在段落或页面上下文（可选）
             markdown_ref: 该图在 markdown 中的占位符，用于后续插回图注（可选）
+            source_file_id: 来源文档的 file_id（PDF 解析图必填），用于删除文档时一并删除 image_vectors
         """
         
         # 保存 MinIO 存储结果（包含 file_id）
@@ -566,7 +569,7 @@ class IngestionService:
         text_vector_result = await self._vectorize_text([text_to_embed])
         logger.info("文本向量化完成: 向量数=%s (processing_id=%s)", len(text_vector_result.get("vectors", [])), processing_id)
         
-        # 4. 存储到向量数据库
+        # 4. 存储到向量数据库（PDF 解析图写入 source_file_id，删除文档时按此字段删图）
         image_data = [{
             "file_id": minio_storage_result["file_id"],
             "file_path": minio_storage_result["object_path"],
@@ -576,7 +579,8 @@ class IngestionService:
             "image_format": parse_result.get("format"),  # 会被转换为 img_format
             "image_source_type": image_source_type,
             "width": parse_result.get("width"),
-            "height": parse_result.get("height")
+            "height": parse_result.get("height"),
+            "source_file_id": source_file_id,
         }]
         
         vector_storage_result = await self.vector_store.upsert_image_vectors(
