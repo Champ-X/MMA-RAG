@@ -205,7 +205,7 @@ async def import_from_folder(body: ImportFolderBody):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (OSError, PermissionError) as e:
-        logger.warning("import_from_folder fetch_folder failed: %s", e)
+        logger.warning("import_from_folder fetch_folder failed: {}", e)
         raise HTTPException(status_code=403, detail=f"无法访问该目录: {e}")
     except Exception as e:
         logger.exception("import_from_folder fetch_folder failed")
@@ -244,7 +244,7 @@ async def import_from_folder(body: ImportFolderBody):
             })
         except Exception as e:
             failed_count += 1
-            logger.warning("导入单文件失败 %s: %s", r.suggested_filename, e)
+            logger.warning("导入单文件失败 {}: {}", r.suggested_filename, e)
             out_results.append({"filename": r.suggested_filename, "status": "failed", "error": str(e)})
 
     return {
@@ -330,7 +330,7 @@ async def import_from_folder_stream(
                 success_count += 1
             except Exception as e:
                 failed_count += 1
-                logger.warning("import_from_folder_stream single file failed: %s", e)
+                logger.warning("import_from_folder_stream single file failed: {}", e)
         yield f"data: {json.dumps({'stage': 'done', 'success_count': success_count, 'failed_count': failed_count, 'total': len(results), 'message': f'成功 {success_count}，失败 {failed_count}'})}\n\n"
 
     return StreamingResponse(
@@ -414,7 +414,7 @@ async def import_from_search_stream(
                 success_count += 1
             except Exception as e:
                 failed_count += 1
-                logger.warning("import_from_search_stream single file failed: %s", e)
+                logger.warning("import_from_search_stream single file failed: {}", e)
         yield f"data: {json.dumps({'stage': 'done', 'success_count': success_count, 'failed_count': failed_count, 'total': len(results), 'message': f'成功 {success_count}，失败 {failed_count}'})}\n\n"
 
     return StreamingResponse(

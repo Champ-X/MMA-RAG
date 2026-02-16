@@ -51,15 +51,15 @@ async def _fetch_image_from_url(url: str, timeout: int, max_size: int) -> Option
             r.raise_for_status()
             content = r.content
             if len(content) > max_size:
-                logger.warning("Markdown 图片 URL 超过大小限制，已跳过: %s (size=%s)", url[:80], len(content))
+                logger.warning("Markdown 图片 URL 超过大小限制，已跳过: {} (size={})", url[:80], len(content))
                 return None
             ct = (r.headers.get("content-type") or "").split(";")[0].strip().lower()
             if not _is_image_bytes(content) and not ct.startswith("image/"):
-                logger.debug("Markdown 图片 URL 非图片类型，已跳过: %s (content-type=%s)", url[:80], ct)
+                logger.debug("Markdown 图片 URL 非图片类型，已跳过: {} (content-type={})", url[:80], ct)
                 return None
             return content
     except Exception as e:
-        logger.debug("Markdown 图片 URL 下载失败: %s (%s)", url[:80], e)
+        logger.debug("Markdown 图片 URL 下载失败: {} ({})", url[:80], e)
         return None
 
 
@@ -112,7 +112,7 @@ def _read_local_image_if_allowed(
             return None
         return data
     except Exception as e:
-        logger.debug("读取本地图片失败 %s: %s", path[:80], e)
+        logger.debug("读取本地图片失败 {}: {}", path[:80], e)
         return None
 
 
@@ -132,7 +132,7 @@ async def _extract_all_images_from_markdown(
     refs_ordered = _extract_image_refs_from_markdown_text(content)
     if refs_ordered and allowed_local_base_paths:
         logger.info(
-            "Markdown 发现 %d 处图片引用，本地路径白名单已配置（%d 项），将尝试读取本地图片",
+            "Markdown 发现 {} 处图片引用，本地路径白名单已配置（{} 项），将尝试读取本地图片",
             len(refs_ordered),
             len(allowed_local_base_paths),
         )
@@ -148,7 +148,7 @@ async def _extract_all_images_from_markdown(
                     image_bytes = base64.b64decode(b64, validate=True)
                     source = "markdown-inline-base64"
                 except Exception as e:
-                    logger.debug("跳过无效 base64 图片: %s", e)
+                    logger.debug("跳过无效 base64 图片: {}", e)
                     continue
         elif path.startswith("http://") or path.startswith("https://"):
             if fetch_urls:
@@ -162,9 +162,9 @@ async def _extract_all_images_from_markdown(
                 image_bytes = _read_local_image_if_allowed(path, allowed_local_base_paths, max_size)
                 if image_bytes is not None:
                     source = "markdown-local-path"
-                    logger.info("Markdown 已从本地路径读取图片: %s", path[:80] + ("..." if len(path) > 80 else ""))
+                    logger.info("Markdown 已从本地路径读取图片: {}", path[:80] + ("..." if len(path) > 80 else ""))
                 else:
-                    logger.warning("Markdown 本地图片未读取（路径不在白名单下或文件不存在）: %s", path[:80] + ("..." if len(path) > 80 else ""))
+                    logger.warning("Markdown 本地图片未读取（路径不在白名单下或文件不存在）: {}", path[:80] + ("..." if len(path) > 80 else ""))
         else:
             # 相对路径：仅当提供 asset_map 时解析
             if asset_map:
@@ -263,7 +263,7 @@ class PDFParser(DocumentParser):
                     logger.info("使用 MinerU API 解析 PDF")
                     return result
             except Exception as e:
-                logger.warning("MinerU API 解析失败，尝试本地模型: %s", e)
+                logger.warning("MinerU API 解析失败，尝试本地模型: {}", e)
 
         # 2. 备选 本地 MinerU2.5
         try:
@@ -277,7 +277,7 @@ class PDFParser(DocumentParser):
                         None, lambda: mineru_parse_pdf(file_content)
                     )
         except Exception as e:
-            logger.warning("MinerU 本地解析失败，尝试 PaddleOCR: %s", e)
+            logger.warning("MinerU 本地解析失败，尝试 PaddleOCR: {}", e)
 
         # 3. 备选 PaddleOCR-VL-1.5
         try:
@@ -288,7 +288,7 @@ class PDFParser(DocumentParser):
                 logger.info("使用 PaddleOCR-VL-1.5 解析 PDF")
                 return await self._parse_with_paddleocr(file_content, file_path)
         except Exception as e:
-            logger.warning("PaddleOCR 解析失败，回退到 PyMuPDF: %s", e)
+            logger.warning("PaddleOCR 解析失败，回退到 PyMuPDF: {}", e)
 
         # 4. 回退 PyMuPDF
         return await self._parse_with_pymupdf(file_content, file_path)
@@ -341,7 +341,7 @@ class PDFParser(DocumentParser):
                             img_url = v
                             break
                 if not img_url:
-                    logger.debug("PaddleOCR 页 %s 中引用路径未在 images 中找到: %s", page_num, path_in_text)
+                    logger.debug("PaddleOCR 页 {} 中引用路径未在 images 中找到: {}", page_num, path_in_text)
                     continue
                 try:
                     image_bytes = client.download_image(img_url)
@@ -368,7 +368,7 @@ class PDFParser(DocumentParser):
                     extracted_images.append(image_info)
                     page_images.append(image_info)
                 except Exception as e:
-                    logger.warning("下载第 %s 页图片失败 (ref=%s): %s", page_num, path_in_text[:50], e)
+                    logger.warning("下载第 {} 页图片失败 (ref={}): {}", page_num, path_in_text[:50], e)
             
             # 构建页面内容
             pages_content.append({
@@ -519,7 +519,7 @@ class DocxParser(DocumentParser):
                     logger.info("使用 MinerU API 解析 Word(docx)")
                     return result
             except Exception as e:
-                logger.warning("MinerU API 解析 docx 失败，尝试本地 MinerU: %s", e)
+                logger.warning("MinerU API 解析 docx 失败，尝试本地 MinerU: {}", e)
 
         # 2. 备选 本地 MinerU2.5（需 LibreOffice 将 docx 转 PDF 再按页 MinerU 提取）
         try:
@@ -533,7 +533,7 @@ class DocxParser(DocumentParser):
                         None, lambda: mineru_parse_docx(file_content)
                     )
         except Exception as e:
-            logger.warning("MinerU 本地解析 docx 失败，回退 python-docx: %s", e)
+            logger.warning("MinerU 本地解析 docx 失败，回退 python-docx: {}", e)
 
         # 3. 回退 python-docx
         return await self._parse_with_docx(file_content, file_path)
@@ -574,7 +574,7 @@ class DocxParser(DocumentParser):
                 }
             }
         except Exception as e:
-            logger.error("DOCX 解析失败: %s", e)
+            logger.error("DOCX 解析失败: {}", e)
             raise
 
 
@@ -601,7 +601,7 @@ class PptxParser(DocumentParser):
                     logger.info("使用 MinerU API 解析 PPTX")
                     return result
             except Exception as e:
-                logger.warning("MinerU API 解析 pptx 失败，尝试本地 MinerU: %s", e)
+                logger.warning("MinerU API 解析 pptx 失败，尝试本地 MinerU: {}", e)
 
         # 2. 备选 本地 MinerU2.5（需 LibreOffice 将 pptx 转 PDF 再按页 MinerU 提取）
         try:
@@ -615,7 +615,7 @@ class PptxParser(DocumentParser):
                         None, lambda: mineru_parse_pptx(file_content)
                     )
         except Exception as e:
-            logger.warning("MinerU 本地解析 pptx 失败，回退 python-pptx: %s", e)
+            logger.warning("MinerU 本地解析 pptx 失败，回退 python-pptx: {}", e)
 
         # 3. 回退 python-pptx（仅文本）
         return await self._parse_with_pptx(file_content, file_path)
@@ -645,7 +645,7 @@ class PptxParser(DocumentParser):
                 }
             }
         except Exception as e:
-            logger.error("PPTX 解析失败: %s", e)
+            logger.error("PPTX 解析失败: {}", e)
             raise
 
 
@@ -744,7 +744,7 @@ class MarkdownParser(DocumentParser):
                 allowed_local_base_paths=allowed_local if allowed_local else None,
             )
             if extracted_images:
-                logger.info("从 Markdown 中提取 %d 张图片（含链接/内联）", len(extracted_images))
+                logger.info("从 Markdown 中提取 {} 张图片（含链接/内联）", len(extracted_images))
             
             result: Dict[str, Any] = {
                 "file_type": "md",

@@ -104,7 +104,7 @@ async def upload_file_stream(
             raise HTTPException(status_code=400, detail="文件内容为空")
         filename = file.filename or f"uploaded_file.{file_type}"
         processing_id = str(uuid.uuid4())
-        logger.info("开始流式上传处理: %s, processing_id=%s", filename, processing_id)
+        logger.info("开始流式上传处理: {}, processing_id={}", filename, processing_id)
 
         async def stream_gen():
             task = asyncio.create_task(

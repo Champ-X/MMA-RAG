@@ -60,7 +60,7 @@ def _get_libreoffice_cmd() -> Optional[List[str]]:
         if shutil.which(configured):
             _libreoffice_cmd = [configured]
             return _libreoffice_cmd
-        logger.debug("LIBREOFFICE_PATH 已设置但未找到可执行文件: %s", configured)
+        logger.debug("LIBREOFFICE_PATH 已设置但未找到可执行文件: {}", configured)
     if shutil.which("libreoffice"):
         _libreoffice_cmd = ["libreoffice"]
         return _libreoffice_cmd
@@ -120,7 +120,7 @@ def _office_to_pdf_bytes(file_content: bytes, file_ext: str) -> Optional[bytes]:
                 check=True,
             )
         except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
-            logger.debug("LibreOffice 转换 Office 为 PDF 失败: %s", e)
+            logger.debug("LibreOffice 转换 Office 为 PDF 失败: {}", e)
             return None
         # LibreOffice 输出文件名为 doc.pdf（与源文件同主名）
         out_pdf = os.path.join(tmpdir, "doc.pdf")
@@ -227,7 +227,7 @@ def _extract_image_crops(
             crop.save(buf, format="PNG")
             image_bytes = buf.getvalue()
         except Exception as e:
-            logger.debug("MinerU 裁剪页面图失败 (page=%s, bbox=%s): %s", page_num, bbox, e)
+            logger.debug("MinerU 裁剪页面图失败 (page={}, bbox={}): {}", page_num, bbox, e)
             continue
         # 与 _blocks_to_markdown 中占位符一致，供流水线定位与 VLM 图注插回
         markdown_ref = f"![](page{page_num}_img{img_idx}.png)"
@@ -273,7 +273,7 @@ def _parse_via_api_impl(
         timeout=30,
     )
     if r.status_code != 200 or r.json().get("code") != 0:
-        logger.debug("MinerU API 申请上传链接失败: %s", r.text[:200])
+        logger.debug("MinerU API 申请上传链接失败: {}", r.text[:200])
         return None
     data = r.json()
     batch_id = data["data"]["batch_id"]
@@ -290,7 +290,7 @@ def _parse_via_api_impl(
         timeout=120,
     )
     if ru.status_code not in (200, 204):
-        logger.debug("MinerU API 上传失败: %s", ru.status_code)
+        logger.debug("MinerU API 上传失败: {}", ru.status_code)
         return None
 
     # 3. 轮询结果
@@ -316,9 +316,9 @@ def _parse_via_api_impl(
             zip_url = first.get("full_zip_url")
             break
         if state == "failed":
-            logger.warning("MinerU API 解析失败: %s", first.get("err_msg", "unknown"))
+            logger.warning("MinerU API 解析失败: {}", first.get("err_msg", "unknown"))
             return None
-        logger.debug("MinerU API 任务状态: %s", state)
+        logger.debug("MinerU API 任务状态: {}", state)
         time.sleep(poll_interval)
     if not zip_url:
         logger.warning("MinerU API 轮询超时或未返回 zip")
@@ -436,7 +436,7 @@ def _parse_via_api_impl(
             })
 
         if extracted_images:
-            logger.info("MinerU API 从文档中提取 %d 张图片", len(extracted_images))
+            logger.info("MinerU API 从文档中提取 {} 张图片", len(extracted_images))
 
         return {
             "file_type": file_type,
@@ -532,10 +532,10 @@ def get_mineru_client(enable: bool = True) -> Optional[Any]:
         logger.info("MinerU2.5 客户端初始化成功")
         return _mineru_client
     except ImportError as e:
-        logger.debug("MinerU 不可用（未安装 mineru-vl-utils）: %s", e)
+        logger.debug("MinerU 不可用（未安装 mineru-vl-utils）: {}", e)
         return None
     except Exception as e:
-        logger.warning("MinerU 客户端初始化失败: %s", e)
+        logger.warning("MinerU 客户端初始化失败: {}", e)
         return None
 
 
@@ -562,7 +562,7 @@ def parse_pdf(file_content: bytes) -> Dict[str, Any]:
 
     for idx, img in enumerate(images):
         page_num = idx + 1
-        logger.info("MinerU 解析第 %d/%d 页", page_num, total_pages)
+        logger.info("MinerU 解析第 {}/{} 页", page_num, total_pages)
         blocks = client.two_step_extract(img)
         page_md = _blocks_to_markdown(blocks, page_num=page_num, include_page_header=False)
         # 从 image 类型块按 bbox 裁剪出图片，供后续 VLM/向量化
@@ -582,7 +582,7 @@ def parse_pdf(file_content: bytes) -> Dict[str, Any]:
 
     full_markdown = "\n\n".join(markdown_parts).strip() if markdown_parts else ""
     if extracted_images:
-        logger.info("MinerU 从 PDF 中提取 %d 张图片", len(extracted_images))
+        logger.info("MinerU 从 PDF 中提取 {} 张图片", len(extracted_images))
 
     return {
         "file_type": "pdf",
@@ -650,7 +650,7 @@ def _parse_office_images_to_result(
     extracted_images: List[Dict[str, Any]] = []
     for idx, img in enumerate(images):
         page_num = idx + 1
-        logger.info("MinerU 解析 %s 第 %d/%d 页", file_type, page_num, total_pages)
+        logger.info("MinerU 解析 {} 第 {}/{} 页", file_type, page_num, total_pages)
         blocks = client.two_step_extract(img)
         page_md = _blocks_to_markdown(blocks, page_num=page_num, include_page_header=False)
         page_images = _extract_image_crops(img, blocks, page_num)
@@ -668,7 +668,7 @@ def _parse_office_images_to_result(
             markdown_parts.append(page_md)
     full_markdown = "\n\n".join(markdown_parts).strip() if markdown_parts else ""
     if extracted_images:
-        logger.info("MinerU 从 %s 中提取 %d 张图片", file_type, len(extracted_images))
+        logger.info("MinerU 从 {} 中提取 {} 张图片", file_type, len(extracted_images))
     return {
         "file_type": file_type,
         "markdown": full_markdown,

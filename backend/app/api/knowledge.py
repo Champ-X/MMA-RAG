@@ -204,7 +204,7 @@ async def stream_file_for_preview(kb_id: str, file_id: str):
                 from app.modules.ingestion.parsers.mineru_client import office_to_pdf_bytes
                 pdf_bytes = office_to_pdf_bytes(content, ext)
             except Exception as e:
-                logger.debug("Office 转 PDF 失败: %s", e)
+                logger.debug("Office 转 PDF 失败: {}", e)
                 pdf_bytes = None
             if pdf_bytes:
                 preview_filename = filename.rsplit(".", 1)[0] + ".pdf"

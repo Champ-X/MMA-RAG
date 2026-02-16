@@ -59,7 +59,7 @@ class FolderSource(BaseContentSource):
 
         for p in iterator:
             if len(results) >= max_files:
-                logger.warning("文件夹导入达到 max_files=%s，停止收集", max_files)
+                logger.warning("文件夹导入达到 max_files={}，停止收集", max_files)
                 break
             if not p.is_file():
                 continue
@@ -72,7 +72,7 @@ class FolderSource(BaseContentSource):
             try:
                 content = p.read_bytes()
             except (OSError, IOError) as e:
-                logger.warning("跳过无法读取的文件 %s: %s", p, e)
+                logger.warning("跳过无法读取的文件 {}: {}", p, e)
                 continue
             # 使用相对路径作为 suggested_filename，避免重名
             try:

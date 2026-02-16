@@ -427,7 +427,7 @@ class IngestionService:
                 replacement = f"\n\n[图注：{vlm_caption}]\n\n"
                 enriched_markdown = enriched_markdown.replace(ref, replacement, 1)
             parse_result_for_chunking = {**parse_result, "markdown": enriched_markdown}
-            logger.info("已将 %d 条 VLM 图注插回 Markdown，使用补全后的文本进行分块", len(caption_replacements))
+            logger.info("已将 {} 条 VLM 图注插回 Markdown，使用补全后的文本进行分块", len(caption_replacements))
         chunks = await self._split_text_into_chunks(parse_result_for_chunking)
         
         # 为每个chunk添加file_path和file_type信息
@@ -555,7 +555,7 @@ class IngestionService:
             "progress": 60,
             "message": "CLIP 图片向量化",
         })
-        logger.info("开始 CLIP 图片向量化 (processing_id=%s)", processing_id)
+        logger.info("开始 CLIP 图片向量化 (processing_id={})", processing_id)
         clip_input_data = {
             "image_bytes": image_bytes,
             "width": parse_result.get("width"),
@@ -563,15 +563,15 @@ class IngestionService:
             "format": parse_result.get("format")
         }
         clip_result = await self._vectorize_with_clip(clip_input_data, processing_id)
-        logger.info("CLIP 图片向量化完成: 维度=%s (processing_id=%s)", clip_result.get("vector_dim", 768), processing_id)
+        logger.info("CLIP 图片向量化完成: 维度={} (processing_id={})", clip_result.get("vector_dim", 768), processing_id)
         
         # 3. 文本向量化描述（空描述用占位符，避免部分 API 对空输入返回 5xx）
         caption = (caption_result.get("caption") or "").strip()
         text_to_embed = caption if caption else " "
         self._update_processing_status(processing_id, {"message": "文本向量化"})
-        logger.info("开始文本向量化（图片描述） (processing_id=%s)", processing_id)
+        logger.info("开始文本向量化（图片描述） (processing_id={})", processing_id)
         text_vector_result = await self._vectorize_text([text_to_embed])
-        logger.info("文本向量化完成: 向量数=%s (processing_id=%s)", len(text_vector_result.get("vectors", [])), processing_id)
+        logger.info("文本向量化完成: 向量数={} (processing_id={})", len(text_vector_result.get("vectors", [])), processing_id)
         
         # 4. 存储到向量数据库（PDF 解析图写入 source_file_id，删除文档时按此字段删图）
         image_data = [{
@@ -611,7 +611,7 @@ class IngestionService:
 
         # PDF / docx / pptx / md 有 markdown 时按 markdown 分块（md 含内联 base64 图注插回后也走此分支）
         if file_type in ["pdf", "docx", "pptx", "md"] and "markdown" in parse_result and parse_result["markdown"]:
-            logger.info("使用解析生成的完整 Markdown 进行分块 (file_type=%s)", file_type)
+            logger.info("使用解析生成的完整 Markdown 进行分块 (file_type={})", file_type)
             markdown_text = parse_result["markdown"]
             from .parsers.factory import MarkdownParser
             markdown_parser = MarkdownParser()
@@ -1101,7 +1101,7 @@ class IngestionService:
                 fallback=True,
                 temperature=0.3  # 较低温度以获得更准确的描述
             )
-            logger.info("VLM 图片描述调用返回: success=%s", result.success)
+            logger.info("VLM 图片描述调用返回: success={}", result.success)
             if not result.success:
                 logger.error(f"VLM API调用失败: {result.error}")
                 # 如果API调用失败，返回默认描述
@@ -1206,7 +1206,7 @@ class IngestionService:
     ) -> Dict[str, Any]:
         """使用CLIP向量化图片"""
         try:
-            logger.info("CLIP 图片向量化: 开始 (processing_id=%s)", processing_id)
+            logger.info("CLIP 图片向量化: 开始 (processing_id={})", processing_id)
             # 懒加载模型
             self._load_clip_model()
             
@@ -1262,7 +1262,7 @@ class IngestionService:
             
             # clip-vit-large-patch14 的向量维度是 768
             assert len(clip_vector) == 768, f"向量维度错误: 期望768，实际{len(clip_vector)}"
-            logger.info("CLIP 图片向量化: 完成, 维度=768 (processing_id=%s)", processing_id)
+            logger.info("CLIP 图片向量化: 完成, 维度=768 (processing_id={})", processing_id)
             return {
                 "clip_vector": clip_vector,
                 "model_used": "openai/clip-vit-large-patch14",
@@ -1276,7 +1276,7 @@ class IngestionService:
     async def _vectorize_text(self, texts: List[str]) -> Dict[str, Any]:
         """向量化文本"""
         try:
-            logger.info("文本向量化: 开始, 文本数=%s", len(texts))
+            logger.info("文本向量化: 开始, 文本数={}", len(texts))
             result = await self.llm_manager.embed(texts=texts)
             if not result.success:
                 raise Exception(f"文本向量化失败: {result.error}")
@@ -1284,7 +1284,7 @@ class IngestionService:
             # 检查数据是否存在
             if result.data is None:
                 raise Exception("文本向量化返回的数据为空")
-            logger.info("文本向量化: 完成, 向量数=%s", len(result.data))
+            logger.info("文本向量化: 完成, 向量数={}", len(result.data))
             return {
                 "vectors": result.data,
                 "model_used": result.model_used
