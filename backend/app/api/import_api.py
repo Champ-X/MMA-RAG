@@ -221,6 +221,8 @@ async def import_from_folder(body: ImportFolderBody):
             "message": "该文件夹下没有符合条件的文件。",
         }
 
+    # 构建 path -> bytes，供 Markdown 解析相对路径图片（如 ![](./images/fig.png)）
+    asset_map = {r.suggested_filename: r.content for r in results}
     success_count = 0
     failed_count = 0
     out_results = []
@@ -231,6 +233,7 @@ async def import_from_folder(body: ImportFolderBody):
                 file_path=r.suggested_filename,
                 kb_id=body.kb_id,
                 user_id=None,
+                asset_map=asset_map,
             )
             success_count += 1
             out_results.append({
@@ -311,6 +314,7 @@ async def import_from_folder_stream(
         if not results:
             yield f"data: {json.dumps({'stage': 'done', 'success_count': 0, 'failed_count': 0, 'total': 0, 'message': '该文件夹下没有符合条件的文件'})}\n\n"
             return
+        asset_map = {r.suggested_filename: r.content for r in results}
         success_count = 0
         failed_count = 0
         for i, r in enumerate(results):
@@ -321,6 +325,7 @@ async def import_from_folder_stream(
                     file_path=r.suggested_filename,
                     kb_id=kb_id,
                     user_id=None,
+                    asset_map=asset_map,
                 )
                 success_count += 1
             except Exception as e:

@@ -10,11 +10,16 @@ import os
 import re
 from pathlib import Path
 
+# 优先从 backend 目录加载 .env，避免从项目根启动时漏读 backend/.env 中的配置
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+_ENV_FILE = _BACKEND_DIR / ".env"
+
+
 class Settings(BaseSettings):
     """应用设置类"""
     
     model_config = SettingsConfigDict(  # type: ignore[assignment]
-        env_file=".env",
+        env_file=str(_ENV_FILE) if _ENV_FILE.exists() else ".env",
         env_file_encoding="utf-8",
         extra="ignore"  # 忽略 .env 文件中未定义的字段
     )
@@ -83,6 +88,22 @@ class Settings(BaseSettings):
         validation_alias="IMPORT_FOLDER_ALLOWED_BASE_PATHS",
     )
 
+    # Markdown 链接图片：是否下载 http(s) 图片，超时(秒)，单图最大字节数（默认 5MB）
+    markdown_fetch_image_urls: bool = Field(default=True, validation_alias="MARKDOWN_FETCH_IMAGE_URLS")
+    markdown_image_url_timeout: int = Field(default=10, validation_alias="MARKDOWN_IMAGE_URL_TIMEOUT")
+    markdown_image_url_max_size: int = Field(default=5 * 1024 * 1024, validation_alias="MARKDOWN_IMAGE_URL_MAX_SIZE")
+    # Markdown 本地绝对路径图片：env 中为逗号分隔字符串，由下方 computed 暴露为 List[str]（避免 pydantic-settings 对 List 做 json.loads 报错）
+    markdown_local_image_allowed_base_paths_str: str = Field(
+        default="",
+        validation_alias="MARKDOWN_LOCAL_IMAGE_ALLOWED_BASE_PATHS",
+    )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def markdown_local_image_allowed_base_paths(self) -> List[str]:
+        s = (self.markdown_local_image_allowed_base_paths_str or "").strip().strip("'\"")
+        return [p.strip().strip("'\"").strip() for p in s.split(",") if p.strip()]
+
     @field_validator("import_folder_allowed_base_paths", mode="before")
     @classmethod
     def parse_import_folder_allowed_base_paths(cls, v: Union[str, List[str], None]) -> List[str]:
@@ -93,7 +114,7 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [p.strip() for p in v.split(",") if p.strip()]
         return []
-    
+
     @field_validator("max_file_size", mode="before")
     @classmethod
     def parse_max_file_size(cls, v: Union[str, int]) -> int:

@@ -170,6 +170,7 @@ class IngestionService:
         kb_id: str,
         user_id: Optional[str] = None,
         processing_id: Optional[str] = None,
+        asset_map: Optional[Dict[str, bytes]] = None,
     ) -> Dict[str, Any]:
         """
         处理文件上传完整流程
@@ -180,6 +181,7 @@ class IngestionService:
             kb_id: 知识库ID
             user_id: 用户ID
             processing_id: 可选，由流式上传接口传入以便前端轮询/流式读取进度
+            asset_map: 可选，路径 -> 字节 映射，供 Markdown 解析相对路径图片（如文件夹导入时传入）
             
         Returns:
             处理结果
@@ -217,8 +219,9 @@ class IngestionService:
                 "message": "正在解析文件..."
             })
             
-            # 1. 解析文件
-            parse_result = await self.parser_factory.parse_file(file_content, file_path)
+            # 1. 解析文件（asset_map 供 Markdown 相对路径图片解析，如文件夹导入时传入）
+            parse_kwargs = dict(asset_map=asset_map) if asset_map else {}
+            parse_result = await self.parser_factory.parse_file(file_content, file_path, **parse_kwargs)
             file_type = parse_result["file_type"]
             
             audit_log(
@@ -333,7 +336,7 @@ class IngestionService:
         # 0. 处理 PDF 中提取的图片（如果有），并收集 (markdown_ref, caption) 用于后续插回
         extracted_images_count = 0
         caption_replacements: List[tuple] = []  # (markdown_ref, vlm_caption)
-        if parse_result.get("file_type") in ["pdf", "docx", "pptx"] and "extracted_images" in parse_result:
+        if parse_result.get("file_type") in ["pdf", "docx", "pptx", "md"] and "extracted_images" in parse_result:
             extracted_images = parse_result.get("extracted_images", [])
             if extracted_images:
                 logger.info(f"发现 {len(extracted_images)} 张从文档提取的图片，开始处理")
@@ -389,12 +392,13 @@ class IngestionService:
                         )
                         
                         # 处理图片（带文档标题与位置上下文的 VLM、CLIP、存储），并收集 markdown_ref 与 caption 用于插回；传入原始文档 file_id 便于删除文档时一并删图
+                        image_source_type = "markdown_extracted" if parse_result.get("file_type") == "md" else "pdf_extracted"
                         image_result = await self._process_image(
                             parse_result=image_parse_result,
                             storage_result=image_storage_result,
                             kb_id=kb_id,
                             processing_id=processing_id,
-                            image_source_type="pdf_extracted",
+                            image_source_type=image_source_type,
                             document_caption=document_caption or None,
                             surrounding_context=surrounding_context if surrounding_context != "无" else None,
                             markdown_ref=markdown_ref,
@@ -407,13 +411,13 @@ class IngestionService:
                             caption_replacements.append((markdown_ref, cap))
 
                         extracted_images_count += 1
-                        logger.info(f"PDF 图片处理完成: {image_filename}, 向量数: {image_result.get('vectors_stored', 0)}")
+                        logger.info(f"文档内图片处理完成: {image_filename}, 向量数: {image_result.get('vectors_stored', 0)}")
                         
                     except Exception as e:
                         logger.error(f"处理 PDF 图片失败 (第 {img_info.get('page', '?')} 页第 {img_info.get('image_index', '?')} 张): {str(e)}", exc_info=True)
                         continue
                 
-                logger.info(f"PDF 图片处理完成: {extracted_images_count}/{len(extracted_images)} 张图片成功处理")
+                logger.info(f"文档内图片处理完成: {extracted_images_count}/{len(extracted_images)} 张图片成功处理")
         
         # 1. 用「补全后的 markdown」做文本分块：将 VLM 图注插回占位符后再 chunk
         parse_result_for_chunking = parse_result
@@ -605,8 +609,8 @@ class IngestionService:
         chunks = []
         file_type = parse_result["file_type"]
 
-        # PDF / docx / pptx 使用 MinerU 或 PaddleOCR 时：有 markdown + pages，按 markdown 分块
-        if file_type in ["pdf", "docx", "pptx"] and "markdown" in parse_result and parse_result["markdown"]:
+        # PDF / docx / pptx / md 有 markdown 时按 markdown 分块（md 含内联 base64 图注插回后也走此分支）
+        if file_type in ["pdf", "docx", "pptx", "md"] and "markdown" in parse_result and parse_result["markdown"]:
             logger.info("使用解析生成的完整 Markdown 进行分块 (file_type=%s)", file_type)
             markdown_text = parse_result["markdown"]
             from .parsers.factory import MarkdownParser

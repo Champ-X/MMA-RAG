@@ -7,14 +7,185 @@ from typing import Dict, List, Any, Optional, Union, Protocol, Tuple
 from abc import ABC, abstractmethod
 from enum import Enum
 import asyncio
+import base64
 import re
+import os
 from pathlib import Path
+from urllib.parse import unquote
 import uuid
 
 from app.core.logger import get_logger
 from datetime import datetime
 
 logger = get_logger(__name__)
+
+# 常见图片魔术头，用于校验 URL 下载内容是否为图片
+_IMAGE_MAGIC = [
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+    (b"RIFF", "image/webp"),  # WEBP 需再检查 8:12 是否为 WEBP
+    (b"BM", "image/bmp"),
+]
+
+
+def _is_image_bytes(data: bytes) -> bool:
+    """根据魔术头判断是否为常见图片格式。"""
+    if len(data) < 12:
+        return data.startswith(b"\xff\xd8\xff") or data.startswith(b"\x89PNG") or data[:6] in (b"GIF87a", b"GIF89a") or data.startswith(b"BM")
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return True
+    for magic, _ in _IMAGE_MAGIC:
+        if data.startswith(magic):
+            return True
+    return False
+
+
+async def _fetch_image_from_url(url: str, timeout: int, max_size: int) -> Optional[bytes]:
+    """异步下载 URL，校验为图片且不超过 max_size，返回 bytes 或 None。"""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            r = await client.get(url)
+            r.raise_for_status()
+            content = r.content
+            if len(content) > max_size:
+                logger.warning("Markdown 图片 URL 超过大小限制，已跳过: %s (size=%s)", url[:80], len(content))
+                return None
+            ct = (r.headers.get("content-type") or "").split(";")[0].strip().lower()
+            if not _is_image_bytes(content) and not ct.startswith("image/"):
+                logger.debug("Markdown 图片 URL 非图片类型，已跳过: %s (content-type=%s)", url[:80], ct)
+                return None
+            return content
+    except Exception as e:
+        logger.debug("Markdown 图片 URL 下载失败: %s (%s)", url[:80], e)
+        return None
+
+
+def _resolve_relative_path(file_path: str, ref_path: str) -> str:
+    """将相对 ref_path 相对 file_path 所在目录解析为规范路径（与 asset_map 的 key 一致）。"""
+    base = Path(file_path).parent
+    # 去掉 ref 中的 leading ./
+    ref = ref_path.strip().lstrip("./")
+    resolved = (base / ref).as_posix()
+    return resolved
+
+
+def _read_local_image_if_allowed(
+    path: str,
+    allowed_base_paths: List[str],
+    max_size: int,
+) -> Optional[bytes]:
+    """
+    当 path 为本地绝对路径（/path 或 file:///path）且位于 allowed_base_paths 之下时，读取文件并返回字节。
+    """
+    if not allowed_base_paths:
+        return None
+    path = path.strip()
+    if path.lower().startswith("file://"):
+        path = unquote(path[7:].lstrip("/"))
+        if path and not path.startswith("/"):
+            path = os.path.abspath("/" + path) if os.name != "nt" else path
+    if not path or (not path.startswith("/") and len(path) < 2):
+        return None
+    if os.name == "nt" and path.startswith("/") and not path.startswith("//"):
+        path = path.lstrip("/")
+    try:
+        p = Path(path).resolve()
+        if not p.is_file():
+            return None
+        real_str = str(p)
+        allowed = False
+        for base in allowed_base_paths:
+            base_p = Path(base).resolve()
+            base_str = str(base_p)
+            if real_str == base_str or real_str.startswith(base_str + os.sep):
+                allowed = True
+                break
+        if not allowed:
+            return None
+        data = p.read_bytes()
+        if len(data) > max_size:
+            return None
+        if not _is_image_bytes(data):
+            return None
+        return data
+    except Exception as e:
+        logger.debug("读取本地图片失败 %s: %s", path[:80], e)
+        return None
+
+
+async def _extract_all_images_from_markdown(
+    content: str,
+    file_path: str = "",
+    asset_map: Optional[Dict[str, bytes]] = None,
+    fetch_urls: bool = True,
+    timeout: int = 10,
+    max_size: int = 5 * 1024 * 1024,
+    allowed_local_base_paths: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    从 Markdown 中按出现顺序提取所有图片：data: base64、http(s) 链接、相对路径（需提供 asset_map）。
+    返回与 PDF/DOCX/PPTX 兼容的 extracted_images 项列表。
+    """
+    refs_ordered = _extract_image_refs_from_markdown_text(content)
+    if refs_ordered and allowed_local_base_paths:
+        logger.info(
+            "Markdown 发现 %d 处图片引用，本地路径白名单已配置（%d 项），将尝试读取本地图片",
+            len(refs_ordered),
+            len(allowed_local_base_paths),
+        )
+    extracted: List[Dict[str, Any]] = []
+    for idx, (ref_string, path) in enumerate(refs_ordered):
+        path = path.strip()
+        image_bytes: Optional[bytes] = None
+        source: str = "markdown"
+        if path.lower().startswith("data:"):
+            if ";base64," in path:
+                try:
+                    b64 = path.split(";base64,", 1)[1]
+                    image_bytes = base64.b64decode(b64, validate=True)
+                    source = "markdown-inline-base64"
+                except Exception as e:
+                    logger.debug("跳过无效 base64 图片: %s", e)
+                    continue
+        elif path.startswith("http://") or path.startswith("https://"):
+            if fetch_urls:
+                image_bytes = await _fetch_image_from_url(path, timeout, max_size)
+                source = "markdown-url"
+            else:
+                continue
+        elif path.startswith("/") or path.lower().startswith("file://"):
+            # 本地绝对路径：仅在配置白名单内时读取
+            if allowed_local_base_paths:
+                image_bytes = _read_local_image_if_allowed(path, allowed_local_base_paths, max_size)
+                if image_bytes is not None:
+                    source = "markdown-local-path"
+                    logger.info("Markdown 已从本地路径读取图片: %s", path[:80] + ("..." if len(path) > 80 else ""))
+                else:
+                    logger.warning("Markdown 本地图片未读取（路径不在白名单下或文件不存在）: %s", path[:80] + ("..." if len(path) > 80 else ""))
+        else:
+            # 相对路径：仅当提供 asset_map 时解析
+            if asset_map:
+                key = _resolve_relative_path(file_path, path)
+                image_bytes = asset_map.get(key)
+                if image_bytes is None:
+                    # 尝试无前导 ./ 的 key
+                    key_alt = (Path(file_path).parent / path.strip().lstrip("./")).as_posix()
+                    image_bytes = asset_map.get(key_alt)
+                if image_bytes is not None:
+                    source = "markdown-relative"
+        if image_bytes and len(image_bytes) > 0:
+            extracted.append({
+                "page": 1,
+                "image_index": len(extracted),
+                "image_bytes": image_bytes,
+                "image_path": path[:200] if not path.startswith("data:") else "",
+                "markdown_ref": ref_string,
+                "metadata": {"extracted_from": source},
+            })
+    return extracted
 
 
 def _extract_image_refs_from_markdown_text(text: str) -> List[Tuple[str, str]]:
@@ -46,13 +217,14 @@ class DocumentParser(ABC):
     """文档解析器基类"""
     
     @abstractmethod
-    async def parse(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
+    async def parse(self, file_content: bytes, file_path: str, **kwargs: Any) -> Dict[str, Any]:
         """
         解析文件内容
         
         Args:
             file_content: 文件二进制内容
             file_path: 文件路径
+            **kwargs: 扩展参数（如 asset_map 供 Markdown 相对路径图片解析）
             
         Returns:
             解析结果字典
@@ -73,7 +245,7 @@ class PDFParser(DocumentParser):
     def supports_file_type(self) -> FileType:
         return FileType.PDF
     
-    async def parse(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
+    async def parse(self, file_content: bytes, file_path: str, **kwargs: Any) -> Dict[str, Any]:
         """解析PDF：优先 MinerU API，失败则本地 MinerU2.5，再 PaddleOCR-VL-1.5，最后 PyMuPDF"""
         from app.core.config import settings
 
@@ -330,7 +502,7 @@ class DocxParser(DocumentParser):
     def supports_file_type(self) -> FileType:
         return FileType.DOCX
 
-    async def parse(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
+    async def parse(self, file_content: bytes, file_path: str, **kwargs: Any) -> Dict[str, Any]:
         from app.core.config import settings
 
         # 1. 优先 MinerU API
@@ -412,7 +584,7 @@ class PptxParser(DocumentParser):
     def supports_file_type(self) -> FileType:
         return FileType.PPTX
 
-    async def parse(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
+    async def parse(self, file_content: bytes, file_path: str, **kwargs: Any) -> Dict[str, Any]:
         from app.core.config import settings
 
         # 1. 优先 MinerU API
@@ -483,7 +655,7 @@ class TextParser(DocumentParser):
     def supports_file_type(self) -> FileType:
         return FileType.TXT
     
-    async def parse(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
+    async def parse(self, file_content: bytes, file_path: str, **kwargs: Any) -> Dict[str, Any]:
         """解析文本文件"""
         try:
             # 检测编码
@@ -514,8 +686,8 @@ class MarkdownParser(DocumentParser):
     def supports_file_type(self) -> FileType:
         return FileType.MD
     
-    async def parse(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
-        """解析Markdown文件"""
+    async def parse(self, file_content: bytes, file_path: str, **kwargs: Any) -> Dict[str, Any]:
+        """解析 Markdown 文件；支持通过 kwargs.asset_map 传入相对路径图片字节（如文件夹导入）。"""
         try:
             content = file_content.decode('utf-8', errors='ignore')
             
@@ -555,20 +727,44 @@ class MarkdownParser(DocumentParser):
             # 生成智能段落：将标题和紧随的内容绑定在一起
             paragraphs = self._build_smart_paragraphs(content, headers)
             
-            return {
+            # 提取所有图片（base64、http(s)、相对路径 asset_map、本地绝对路径白名单），与 PDF/DOCX/PPTX 一致走 VLM/CLIP 流水线
+            from app.core.config import settings
+            fetch_urls = getattr(settings, "markdown_fetch_image_urls", True)
+            timeout = getattr(settings, "markdown_image_url_timeout", 10)
+            max_size = getattr(settings, "markdown_image_url_max_size", 5 * 1024 * 1024)
+            asset_map = (kwargs.get("asset_map") or None) if kwargs else None
+            allowed_local = getattr(settings, "markdown_local_image_allowed_base_paths", None) or []
+            extracted_images = await _extract_all_images_from_markdown(
+                content,
+                file_path=file_path,
+                asset_map=asset_map,
+                fetch_urls=fetch_urls,
+                timeout=timeout,
+                max_size=max_size,
+                allowed_local_base_paths=allowed_local if allowed_local else None,
+            )
+            if extracted_images:
+                logger.info("从 Markdown 中提取 %d 张图片（含链接/内联）", len(extracted_images))
+            
+            result: Dict[str, Any] = {
                 "file_type": "md",
                 "content": content,
                 "html_content": html_content,
                 "headers": headers,
                 "code_blocks": code_blocks,
                 "paragraphs": paragraphs,  # 添加智能段落
+                "markdown": content,  # 供 service 分块与图片上下文使用
                 "metadata": {
+                    "parser": "markdown",
                     "total_headers": len(headers),
                     "total_code_blocks": len(code_blocks),
                     "total_paragraphs": len(paragraphs),
                     "extracted_at": "2024-01-01T00:00:00Z"
                 }
             }
+            if extracted_images:
+                result["extracted_images"] = extracted_images
+            return result
             
         except Exception as e:
             logger.error(f"Markdown解析失败: {str(e)}")
@@ -758,7 +954,7 @@ class ImageParser(DocumentParser):
     def supports_file_type(self) -> FileType:
         return FileType.IMAGE
     
-    async def parse(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
+    async def parse(self, file_content: bytes, file_path: str, **kwargs: Any) -> Dict[str, Any]:
         """解析图片文件"""
         try:
             import base64
@@ -854,9 +1050,10 @@ class ParserFactory:
     async def parse_file(
         cls, 
         file_content: bytes, 
-        file_path: str
+        file_path: str,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
-        """解析文件"""
+        """解析文件；kwargs 会传给解析器（如 asset_map 供 Markdown 相对路径图片）。"""
         file_type = cls.detect_file_type(file_path, file_content)
         
         if file_type == FileType.UNKNOWN:
@@ -867,7 +1064,7 @@ class ParserFactory:
             raise ValueError(f"没有找到 {file_type.value} 的解析器")
         
         logger.info(f"开始解析文件: {file_path}, 类型: {file_type.value}")
-        result = await parser.parse(file_content, file_path)
+        result = await parser.parse(file_content, file_path, **kwargs)
         
         # 添加文件信息
         result["file_info"] = {
