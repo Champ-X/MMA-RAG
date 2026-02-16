@@ -36,6 +36,7 @@ class FileType(Enum):
     PDF = "pdf"
     DOCX = "docx"
     DOC = "doc"
+    PPTX = "pptx"
     TXT = "txt"
     MD = "md"
     IMAGE = "image"
@@ -324,32 +325,63 @@ class PDFParser(DocumentParser):
             return await self.parse(file_content, file_path)
 
 class DocxParser(DocumentParser):
-    """DOCX文档解析器"""
-    
+    """DOCX文档解析器：优先 MinerU API，失败则本地 MinerU2.5（需 LibreOffice），最后 python-docx"""
+
     def supports_file_type(self) -> FileType:
         return FileType.DOCX
-    
+
     async def parse(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
-        """解析DOCX文件"""
+        from app.core.config import settings
+
+        # 1. 优先 MinerU API
+        token = getattr(settings, "mineru_token", None)
+        if token and getattr(settings, "mineru_pdf_enabled", True):
+            try:
+                from .mineru_client import parse_docx_via_api
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: parse_docx_via_api(file_content, file_path, token),
+                )
+                if result is not None:
+                    logger.info("使用 MinerU API 解析 Word(docx)")
+                    return result
+            except Exception as e:
+                logger.warning("MinerU API 解析 docx 失败，尝试本地 MinerU: %s", e)
+
+        # 2. 备选 本地 MinerU2.5（需 LibreOffice 将 docx 转 PDF 再按页 MinerU 提取）
+        try:
+            from .mineru_client import get_mineru_client, parse_docx as mineru_parse_docx
+            if getattr(settings, "mineru_pdf_enabled", True):
+                client = get_mineru_client()
+                if client:
+                    logger.info("使用 MinerU2.5 解析 Word(docx)")
+                    loop = asyncio.get_event_loop()
+                    return await loop.run_in_executor(
+                        None, lambda: mineru_parse_docx(file_content)
+                    )
+        except Exception as e:
+            logger.warning("MinerU 本地解析 docx 失败，回退 python-docx: %s", e)
+
+        # 3. 回退 python-docx
+        return await self._parse_with_docx(file_content, file_path)
+
+    async def _parse_with_docx(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
+        """使用 python-docx 解析 DOCX（原有逻辑）"""
         try:
             from docx import Document
             import io
-            
-            # 读取DOCX内容
+
             doc = Document(io.BytesIO(file_content))
-            
             paragraphs = []
             tables = []
-            
-            # 提取段落
+
             for para in doc.paragraphs:
                 if para.text.strip():
                     paragraphs.append({
                         "text": para.text.strip(),
                         "style": para.style.name if para.style else "Normal"
                     })
-            
-            # 提取表格
             for table in doc.tables:
                 table_data = []
                 for row in table.rows:
@@ -358,7 +390,7 @@ class DocxParser(DocumentParser):
                         row_data.append(cell.text.strip())
                     table_data.append(row_data)
                 tables.append(table_data)
-            
+
             return {
                 "file_type": "docx",
                 "paragraphs": paragraphs,
@@ -366,13 +398,84 @@ class DocxParser(DocumentParser):
                 "metadata": {
                     "total_paragraphs": len(paragraphs),
                     "total_tables": len(tables),
-                    "extracted_at": "2024-01-01T00:00:00Z"
+                    "extracted_at": datetime.utcnow().isoformat() + "Z"
                 }
             }
-            
         except Exception as e:
-            logger.error(f"DOCX解析失败: {str(e)}")
+            logger.error("DOCX 解析失败: %s", e)
             raise
+
+
+class PptxParser(DocumentParser):
+    """PPTX文档解析器：优先 MinerU API，失败则本地 MinerU2.5（需 LibreOffice），最后 python-pptx"""
+
+    def supports_file_type(self) -> FileType:
+        return FileType.PPTX
+
+    async def parse(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
+        from app.core.config import settings
+
+        # 1. 优先 MinerU API
+        token = getattr(settings, "mineru_token", None)
+        if token and getattr(settings, "mineru_pdf_enabled", True):
+            try:
+                from .mineru_client import parse_pptx_via_api
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: parse_pptx_via_api(file_content, file_path, token),
+                )
+                if result is not None:
+                    logger.info("使用 MinerU API 解析 PPTX")
+                    return result
+            except Exception as e:
+                logger.warning("MinerU API 解析 pptx 失败，尝试本地 MinerU: %s", e)
+
+        # 2. 备选 本地 MinerU2.5（需 LibreOffice 将 pptx 转 PDF 再按页 MinerU 提取）
+        try:
+            from .mineru_client import get_mineru_client, parse_pptx as mineru_parse_pptx
+            if getattr(settings, "mineru_pdf_enabled", True):
+                client = get_mineru_client()
+                if client:
+                    logger.info("使用 MinerU2.5 解析 PPTX")
+                    loop = asyncio.get_event_loop()
+                    return await loop.run_in_executor(
+                        None, lambda: mineru_parse_pptx(file_content)
+                    )
+        except Exception as e:
+            logger.warning("MinerU 本地解析 pptx 失败，回退 python-pptx: %s", e)
+
+        # 3. 回退 python-pptx（仅文本）
+        return await self._parse_with_pptx(file_content, file_path)
+
+    async def _parse_with_pptx(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
+        """使用 python-pptx 解析 PPTX（仅文本，无布局/图片）"""
+        try:
+            import io
+            from pptx import Presentation
+
+            prs = Presentation(io.BytesIO(file_content))
+            paragraphs = []
+            for slide_idx, slide in enumerate(prs.slides):
+                for shape in slide.shapes:
+                    if hasattr(shape, "text") and shape.text.strip():
+                        paragraphs.append({
+                            "text": shape.text.strip(),
+                            "slide_index": slide_idx + 1,
+                        })
+            return {
+                "file_type": "pptx",
+                "paragraphs": paragraphs,
+                "metadata": {
+                    "total_paragraphs": len(paragraphs),
+                    "total_slides": len(prs.slides),
+                    "extracted_at": datetime.utcnow().isoformat() + "Z"
+                }
+            }
+        except Exception as e:
+            logger.error("PPTX 解析失败: %s", e)
+            raise
+
 
 class TextParser(DocumentParser):
     """文本文件解析器"""
@@ -692,6 +795,7 @@ class ParserFactory:
     _parsers: Dict[FileType, DocumentParser] = {
         FileType.PDF: PDFParser(),
         FileType.DOCX: DocxParser(),
+        FileType.PPTX: PptxParser(),
         FileType.TXT: TextParser(),
         FileType.MD: MarkdownParser(),
         FileType.IMAGE: ImageParser()
@@ -709,6 +813,8 @@ class ParserFactory:
             return FileType.DOCX
         elif file_ext in ["doc"]:
             return FileType.DOC
+        elif file_ext in ["pptx"]:
+            return FileType.PPTX
         elif file_ext in ["txt"]:
             return FileType.TXT
         elif file_ext in ["md", "markdown"]:

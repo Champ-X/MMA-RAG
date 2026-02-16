@@ -240,7 +240,7 @@ class IngestionService:
                 file_content=file_content,
                 file_path=file_path,
                 kb_id=kb_id,
-                file_type="documents" if file_type in ["pdf", "docx", "txt", "md"] else "images"
+                file_type="documents" if file_type in ["pdf", "docx", "pptx", "txt", "md"] else "images"
             )
             
             audit_log(
@@ -258,7 +258,7 @@ class IngestionService:
             })
             
             # 3. 根据文件类型处理（使用反查得到的实际 kb_id）
-            if file_type in ["pdf", "docx", "txt", "md"]:
+            if file_type in ["pdf", "docx", "pptx", "txt", "md"]:
                 result = await self._process_document(
                     parse_result=parse_result,
                     storage_result=storage_result,
@@ -333,14 +333,14 @@ class IngestionService:
         # 0. 处理 PDF 中提取的图片（如果有），并收集 (markdown_ref, caption) 用于后续插回
         extracted_images_count = 0
         caption_replacements: List[tuple] = []  # (markdown_ref, vlm_caption)
-        if parse_result.get("file_type") == "pdf" and "extracted_images" in parse_result:
+        if parse_result.get("file_type") in ["pdf", "docx", "pptx"] and "extracted_images" in parse_result:
             extracted_images = parse_result.get("extracted_images", [])
             if extracted_images:
-                logger.info(f"发现 {len(extracted_images)} 张从 PDF 提取的图片，开始处理")
+                logger.info(f"发现 {len(extracted_images)} 张从文档提取的图片，开始处理")
                 self._update_processing_status(processing_id, {
                     "stage": "processing_images",
                     "progress": 25,
-                    "message": f"正在处理 PDF 中的 {len(extracted_images)} 张图片..."
+                    "message": f"正在处理文档中的 {len(extracted_images)} 张图片..."
                 })
                 
                 file_id = minio_storage_result.get("file_id")
@@ -603,67 +603,53 @@ class IngestionService:
     async def _split_text_into_chunks(self, parse_result: Dict[str, Any]) -> List[Dict[str, Any]]:
         """将文本分割成块"""
         chunks = []
-        
-        if parse_result["file_type"] == "pdf":
-            # 如果 PDF 解析结果包含 markdown 字段（MinerU/PaddleOCR），使用完整 markdown 进行分块
-            if "markdown" in parse_result and parse_result["markdown"]:
-                logger.info("使用 PDF 解析生成的完整 Markdown 进行分块")
-                markdown_text = parse_result["markdown"]
-                
-                # 使用 MarkdownParser 的逻辑提取段落
-                from .parsers.factory import MarkdownParser
-                markdown_parser = MarkdownParser()
-                
-                # 提取标题
-                lines = markdown_text.split('\n')
-                headers = []
-                for line in lines:
-                    if line.startswith('#'):
-                        headers.append({
-                            "level": len(line) - len(line.lstrip('#')),
-                            "text": line.lstrip('#').strip()
-                        })
-                
-                # 构建智能段落
-                paragraphs = markdown_parser._build_smart_paragraphs(markdown_text, headers)
-                
-                # 转换为 chunks
-                for paragraph in paragraphs:
-                    if paragraph.get("text", "").strip():
-                        chunk_metadata = {
+        file_type = parse_result["file_type"]
+
+        # PDF / docx / pptx 使用 MinerU 或 PaddleOCR 时：有 markdown + pages，按 markdown 分块
+        if file_type in ["pdf", "docx", "pptx"] and "markdown" in parse_result and parse_result["markdown"]:
+            logger.info("使用解析生成的完整 Markdown 进行分块 (file_type=%s)", file_type)
+            markdown_text = parse_result["markdown"]
+            from .parsers.factory import MarkdownParser
+            markdown_parser = MarkdownParser()
+            lines = markdown_text.split("\n")
+            headers = []
+            for line in lines:
+                if line.startswith("#"):
+                    headers.append({
+                        "level": len(line) - len(line.lstrip("#")),
+                        "text": line.lstrip("#").strip()
+                    })
+            paragraphs = markdown_parser._build_smart_paragraphs(markdown_text, headers)
+            for paragraph in paragraphs:
+                if paragraph.get("text", "").strip():
+                    chunk_metadata = {
+                        "file_type": file_type,
+                        "parser": parse_result.get("metadata", {}).get("parser", "pymupdf"),
+                    }
+                    if paragraph.get("header"):
+                        header = paragraph["header"]
+                        chunk_metadata["header_level"] = header.get("level")
+                        chunk_metadata["header_text"] = header.get("text")
+                    if paragraph.get("has_code"):
+                        chunk_metadata["has_code"] = True
+                    chunks.append({
+                        "text": paragraph["text"].strip(),
+                        "metadata": chunk_metadata
+                    })
+        elif file_type == "pdf":
+            # PDF 无 markdown 时按页分块（PyMuPDF 解析结果）
+            logger.info("使用按页分块逻辑（PyMuPDF 解析结果）")
+            for page in parse_result.get("pages", []):
+                if page.get("text", "").strip():
+                    chunks.append({
+                        "text": page["text"].strip(),
+                        "metadata": {
+                            "page": page["page"],
                             "file_type": "pdf",
-                            "parser": parse_result.get("metadata", {}).get("parser", "pymupdf"),
+                            "parser": parse_result.get("metadata", {}).get("parser", "pymupdf")
                         }
-                        
-                        # 添加标题信息
-                        if paragraph.get("header"):
-                            header = paragraph["header"]
-                            chunk_metadata["header_level"] = header.get("level")
-                            chunk_metadata["header_text"] = header.get("text")
-                        
-                        # 添加代码块标记
-                        if paragraph.get("has_code"):
-                            chunk_metadata["has_code"] = True
-                        
-                        chunks.append({
-                            "text": paragraph["text"].strip(),
-                            "metadata": chunk_metadata
-                        })
-            else:
-                # 使用原有的按页分块逻辑（PyMuPDF 解析结果）
-                logger.info("使用按页分块逻辑（PyMuPDF 解析结果）")
-                for page in parse_result["pages"]:
-                    if page.get("text", "").strip():
-                        chunks.append({
-                            "text": page["text"].strip(),
-                            "metadata": {
-                                "page": page["page"],
-                                "file_type": "pdf",
-                                "parser": parse_result.get("metadata", {}).get("parser", "pymupdf")
-                            }
-                        })
-        
-        elif parse_result["file_type"] in ["docx", "txt", "md"]:
+                    })
+        elif file_type in ["docx", "pptx", "txt", "md"]:
             # 段落处理
             # 检查是否有 paragraphs 字段
             if "paragraphs" in parse_result:

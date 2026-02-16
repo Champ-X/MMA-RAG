@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     # 文件上传配置
     max_file_size: int = Field(default=100 * 1024 * 1024, validation_alias="MAX_FILE_SIZE")  # 100MB
     allowed_extensions_str: str = Field(
-        default="pdf,docx,doc,txt,md,jpg,jpeg,png,gif",
+        default="pdf,docx,doc,pptx,txt,md,jpg,jpeg,png,gif",
         validation_alias="ALLOWED_EXTENSIONS"
     )
 

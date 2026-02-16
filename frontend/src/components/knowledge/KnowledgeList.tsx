@@ -36,7 +36,7 @@ function FilePreviewModal({
   const isMd = String(file?.type || '').toLowerCase() === 'md'
   const isTxt = String(file?.type || '').toLowerCase() === 'txt'
   const isTextFile = isMd || isTxt
-  const isDoc = ['pdf', 'docx', 'doc', 'txt', 'md'].includes(String(file?.type || '').toLowerCase())
+  const isDoc = ['pdf', 'docx', 'doc', 'pptx', 'txt', 'md'].includes(String(file?.type || '').toLowerCase())
   const hasChunks = (details?.chunks?.length ?? 0) > 0
 
   React.useEffect(() => {

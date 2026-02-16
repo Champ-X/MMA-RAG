@@ -1,5 +1,6 @@
 """
-MinerU PDF 解析：优先 MinerU API（需 MINERU_TOKEN），备选本地 MinerU2.5 模型。
+MinerU 文档解析：支持 PDF、Word(docx)、PPTX。
+优先 MinerU API（需 MINERU_TOKEN），备选本地 MinerU2.5 模型。
 输出与 PaddleOCR 兼容的解析结果结构（markdown、pages、extracted_images）。
 """
 
@@ -7,6 +8,9 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import subprocess
+import tempfile
 import time
 import zipfile
 from collections import defaultdict
@@ -46,6 +50,35 @@ def _pdf_bytes_to_images(file_content: bytes, dpi: int = _PDF_DPI_DEFAULT) -> Li
     finally:
         doc.close()
     return out
+
+
+def _office_bytes_to_images(file_content: bytes, file_ext: str, dpi: int = _PDF_DPI_DEFAULT) -> List[Any]:
+    """
+    将 Word(docx) / PPTX 二进制内容转为每页/每页幻灯的 PIL Image 列表。
+    通过 LibreOffice 转 PDF 再渲染；若 LibreOffice 不可用则返回空列表。
+    file_ext: "docx" | "pptx"
+    """
+    suffix = f".{file_ext}" if not file_ext.startswith(".") else file_ext
+    with tempfile.TemporaryDirectory(prefix="mineru_office_") as tmpdir:
+        src = os.path.join(tmpdir, f"doc{suffix}")
+        with open(src, "wb") as f:
+            f.write(file_content)
+        out_pdf = os.path.join(tmpdir, "out.pdf")
+        try:
+            subprocess.run(
+                ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", tmpdir, src],
+                capture_output=True,
+                timeout=120,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+            logger.debug("LibreOffice 转换 Office 为 PDF 失败: %s", e)
+            return []
+        if not os.path.isfile(out_pdf):
+            return []
+        with open(out_pdf, "rb") as f:
+            pdf_bytes = f.read()
+    return _pdf_bytes_to_images(pdf_bytes, dpi=dpi)
 
 
 def _blocks_to_markdown(
@@ -142,16 +175,18 @@ def _extract_image_crops(
     return out
 
 
-def parse_pdf_via_api(
+def _parse_via_api_impl(
     file_content: bytes,
     file_path: str,
     token: str,
+    file_type: str,
     poll_interval: int = MINERU_API_POLL_INTERVAL,
     poll_timeout: int = MINERU_API_POLL_TIMEOUT,
 ) -> Optional[Dict[str, Any]]:
     """
-    通过 MinerU API 解析 PDF，返回与 parse_pdf 兼容的结构；失败返回 None。
+    通过 MinerU API 解析文档（PDF/docx/pptx），返回统一结构；失败返回 None。
     同步阻塞，调用方应在 executor 中执行。
+    file_type: "pdf" | "docx" | "pptx"
     """
     try:
         import requests
@@ -159,10 +194,11 @@ def parse_pdf_via_api(
         logger.warning("未安装 requests，无法使用 MinerU API")
         return None
 
-    file_name = Path(file_path).name or "document.pdf"
+    default_names = {"pdf": "document.pdf", "docx": "document.docx", "pptx": "document.pptx"}
+    file_name = Path(file_path).name or default_names.get(file_type, "document.pdf")
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
 
-    # 1. 申请上传链接（MinerU API 当前不支持 DPI/清晰度参数，提取图片由服务端固定策略渲染）
+    # 1. 申请上传链接
     r = requests.post(
         f"{MINERU_API_BASE}/file-urls/batch",
         headers=headers,
@@ -333,10 +369,10 @@ def parse_pdf_via_api(
             })
 
         if extracted_images:
-            logger.info("MinerU API 从 PDF 中提取 %d 张图片", len(extracted_images))
+            logger.info("MinerU API 从文档中提取 %d 张图片", len(extracted_images))
 
         return {
-            "file_type": "pdf",
+            "file_type": file_type,
             "markdown": full_markdown or "\n\n".join(p["markdown"] for p in pages_content).strip(),
             "pages": pages_content,
             "extracted_images": extracted_images,
@@ -347,6 +383,45 @@ def parse_pdf_via_api(
             },
         }
     return None
+
+
+def parse_pdf_via_api(
+    file_content: bytes,
+    file_path: str,
+    token: str,
+    poll_interval: int = MINERU_API_POLL_INTERVAL,
+    poll_timeout: int = MINERU_API_POLL_TIMEOUT,
+) -> Optional[Dict[str, Any]]:
+    """通过 MinerU API 解析 PDF，返回与 parse_pdf 兼容的结构；失败返回 None。"""
+    return _parse_via_api_impl(
+        file_content, file_path, token, "pdf", poll_interval, poll_timeout
+    )
+
+
+def parse_docx_via_api(
+    file_content: bytes,
+    file_path: str,
+    token: str,
+    poll_interval: int = MINERU_API_POLL_INTERVAL,
+    poll_timeout: int = MINERU_API_POLL_TIMEOUT,
+) -> Optional[Dict[str, Any]]:
+    """通过 MinerU API 解析 Word(docx)，返回与 parse_pdf 兼容的结构；失败返回 None。"""
+    return _parse_via_api_impl(
+        file_content, file_path, token, "docx", poll_interval, poll_timeout
+    )
+
+
+def parse_pptx_via_api(
+    file_content: bytes,
+    file_path: str,
+    token: str,
+    poll_interval: int = MINERU_API_POLL_INTERVAL,
+    poll_timeout: int = MINERU_API_POLL_TIMEOUT,
+) -> Optional[Dict[str, Any]]:
+    """通过 MinerU API 解析 PPTX，返回与 parse_pdf 兼容的结构；失败返回 None。"""
+    return _parse_via_api_impl(
+        file_content, file_path, token, "pptx", poll_interval, poll_timeout
+    )
 
 
 def get_mineru_client(enable: bool = True) -> Optional[Any]:
@@ -450,6 +525,91 @@ def parse_pdf(file_content: bytes) -> Dict[str, Any]:
         "total_pages": total_pages,
         "metadata": {
             "parser": "mineru-vl-2.5",
+            "extracted_at": datetime.utcnow().isoformat() + "Z",
+        },
+    }
+
+
+def parse_docx(file_content: bytes) -> Dict[str, Any]:
+    """
+    使用 MinerU2.5 解析 Word(docx)：先通过 LibreOffice 转为 PDF 再按页渲染为图，逐页 MinerU 提取。
+    返回与 parse_pdf 兼容的结果结构。调用方应在 executor 中执行（同步阻塞）。
+    """
+    client = get_mineru_client()
+    if not client:
+        raise ValueError("MinerU 客户端不可用")
+    try:
+        from app.core.config import settings
+        dpi = getattr(settings, "mineru_pdf_render_dpi", None) or _PDF_DPI_DEFAULT
+    except Exception:
+        dpi = _PDF_DPI_DEFAULT
+    dpi = max(72, min(600, int(dpi)))
+    images = _office_bytes_to_images(file_content, "docx", dpi=dpi)
+    if not images:
+        raise ValueError("LibreOffice 不可用或 docx 转 PDF 失败，无法使用本地 MinerU 解析 docx")
+    return _parse_office_images_to_result(client, images, "docx", "mineru-vl-2.5")
+
+
+def parse_pptx(file_content: bytes) -> Dict[str, Any]:
+    """
+    使用 MinerU2.5 解析 PPTX：先通过 LibreOffice 转为 PDF 再按页渲染为图，逐页 MinerU 提取。
+    返回与 parse_pdf 兼容的结果结构。调用方应在 executor 中执行（同步阻塞）。
+    """
+    client = get_mineru_client()
+    if not client:
+        raise ValueError("MinerU 客户端不可用")
+    try:
+        from app.core.config import settings
+        dpi = getattr(settings, "mineru_pdf_render_dpi", None) or _PDF_DPI_DEFAULT
+    except Exception:
+        dpi = _PDF_DPI_DEFAULT
+    dpi = max(72, min(600, int(dpi)))
+    images = _office_bytes_to_images(file_content, "pptx", dpi=dpi)
+    if not images:
+        raise ValueError("LibreOffice 不可用或 pptx 转 PDF 失败，无法使用本地 MinerU 解析 pptx")
+    return _parse_office_images_to_result(client, images, "pptx", "mineru-vl-2.5")
+
+
+def _parse_office_images_to_result(
+    client: Any,
+    images: List[Any],
+    file_type: str,
+    parser_tag: str,
+) -> Dict[str, Any]:
+    """将多页 PIL 图像用 MinerU 逐页提取，返回统一结构（markdown、pages、extracted_images）。"""
+    total_pages = len(images)
+    pages_content = []
+    markdown_parts = []
+    extracted_images: List[Dict[str, Any]] = []
+    for idx, img in enumerate(images):
+        page_num = idx + 1
+        logger.info("MinerU 解析 %s 第 %d/%d 页", file_type, page_num, total_pages)
+        blocks = client.two_step_extract(img)
+        page_md = _blocks_to_markdown(blocks, page_num=page_num, include_page_header=False)
+        page_images = _extract_image_crops(img, blocks, page_num)
+        extracted_images.extend(page_images)
+        pages_content.append({
+            "page": page_num,
+            "markdown": page_md,
+            "text": page_md,
+            "images": page_images,
+            "metadata": {"parser": parser_tag},
+        })
+        if page_md.strip():
+            if markdown_parts:
+                markdown_parts.append(f"\n\n---\n\n## 第 {page_num} 页\n\n")
+            markdown_parts.append(page_md)
+    full_markdown = "\n\n".join(markdown_parts).strip() if markdown_parts else ""
+    if extracted_images:
+        logger.info("MinerU 从 %s 中提取 %d 张图片", file_type, len(extracted_images))
+    return {
+        "file_type": file_type,
+        "markdown": full_markdown,
+        "pages": pages_content,
+        "extracted_images": extracted_images,
+        "total_pages": total_pages,
+        "metadata": {
+            "parser": parser_tag,
             "extracted_at": datetime.utcnow().isoformat() + "Z",
         },
     }
