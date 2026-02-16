@@ -24,7 +24,7 @@ export function StatusBadge({ status }: { status: string }) {
 // 文件图标
 function FileIcon({ type }: { type: string }) {
   const lowerType = String(type || '').toLowerCase()
-  if (['jpg', 'png', 'jpeg', 'gif', 'webp'].includes(lowerType)) {
+  if (['jpg', 'png', 'jpeg', 'gif', 'webp', 'tiff', 'tif'].includes(lowerType)) {
     return <ImageIcon size={16} className="text-purple-500" />
   }
   if (lowerType === 'pdf') {
@@ -34,7 +34,7 @@ function FileIcon({ type }: { type: string }) {
 }
 
 function isImageType(type: string): boolean {
-  return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(String(type || '').toLowerCase())
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'tif'].includes(String(type || '').toLowerCase())
 }
 
 // 文件缩略图（表格视图）

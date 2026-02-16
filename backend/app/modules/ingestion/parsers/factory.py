@@ -819,7 +819,7 @@ class ParserFactory:
             return FileType.TXT
         elif file_ext in ["md", "markdown"]:
             return FileType.MD
-        elif file_ext in ["jpg", "jpeg", "png", "gif", "bmp", "tiff"]:
+        elif file_ext in ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif"]:
             return FileType.IMAGE
         
         # 基于内容检测（简单实现）
@@ -827,11 +827,14 @@ class ParserFactory:
             # 尝试检测PDF
             if file_content.startswith(b'%PDF'):
                 return FileType.PDF
-            
-            # 尝试检测图片文件头
+            # 图片文件头：JPEG, PNG, GIF, BMP, WebP(RIFF....WEBP), TIFF(II* 或 MM\0*)
             if file_content.startswith((b'\xff\xd8\xff', b'\x89PNG', b'GIF', b'BM')):
                 return FileType.IMAGE
-        except:
+            if len(file_content) >= 12 and file_content[:4] == b'RIFF' and file_content[8:12] == b'WEBP':
+                return FileType.IMAGE
+            if len(file_content) >= 4 and file_content[:2] in (b'II', b'MM') and file_content[2:4] in (b'\x2a\x00', b'\x00\x2a'):
+                return FileType.IMAGE
+        except Exception:
             pass
         
         return FileType.UNKNOWN

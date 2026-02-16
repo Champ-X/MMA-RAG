@@ -1062,7 +1062,16 @@ class IngestionService:
             )
             # MIME 与真实格式一致，见 https://docs.siliconflow.cn/cn/userguide/capabilities/vision
             fmt = (image_format or "PNG").upper()
-            mime = "png" if fmt == "PNG" else "jpeg"
+            if fmt == "PNG":
+                mime = "png"
+            elif fmt in ("JPEG", "JPG"):
+                mime = "jpeg"
+            elif fmt == "WEBP":
+                mime = "webp"
+            elif fmt in ("TIFF", "TIF"):
+                mime = "tiff"
+            else:
+                mime = "png"
             data_url = f"data:image/{mime};base64,{raw_b64}"
 
             # SiliconFlow VLM：content 为数组，image_url 需含 url、detail（auto/low/high）

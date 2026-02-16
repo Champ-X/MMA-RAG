@@ -170,13 +170,13 @@ export function UploadPipeline({
           </div>
           <p className="mb-2 font-medium text-slate-700 dark:text-slate-200">拖拽文件到此处或点击上传</p>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            支持 PDF / DOCX / PPTX / MD / JPG / PNG（≤ 50MB）
+            支持 PDF / DOCX / PPTX / MD / JPG / PNG / WebP / TIFF（≤ 50MB）
           </p>
           <input
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".pdf,.docx,.doc,.pptx,.txt,.md,.png,.jpg,.jpeg"
+            accept=".pdf,.docx,.doc,.pptx,.txt,.md,.png,.jpg,.jpeg,.gif,.webp,.tiff,.tif"
             onChange={(e) => handleFileSelect(e.target.files)}
             className="hidden"
           />

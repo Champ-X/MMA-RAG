@@ -31,7 +31,7 @@ function FilePreviewModal({
   const [pdfObjectUrl, setPdfObjectUrl] = React.useState<string | null>(null)
   const [pdfLoading, setPdfLoading] = React.useState(false)
 
-  const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(String(file?.type || '').toLowerCase())
+  const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'tif'].includes(String(file?.type || '').toLowerCase())
   /** PDF、PPTX、DOCX 均可通过 stream 接口以 PDF 形式在页内预览（后端对 PPTX/DOCX 会先转为 PDF） */
   const isPdfOrOfficeViewable = ['pdf', 'pptx', 'docx'].includes(String(file?.type || '').toLowerCase())
   const isMd = String(file?.type || '').toLowerCase() === 'md'
