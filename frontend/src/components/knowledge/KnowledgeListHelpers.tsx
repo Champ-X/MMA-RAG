@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, CheckCircle, Loader2, Image as ImageIcon, FileText, Database, Sparkles, Type, FileText as FileTextIcon } from 'lucide-react'
+import { X, CheckCircle, Loader2, Image as ImageIcon, FileText, FileCode, Presentation, FileSpreadsheet, Database, Sparkles, Type } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // 状态徽章
@@ -21,16 +21,38 @@ export function StatusBadge({ status }: { status: string }) {
   return <span className="text-slate-400 text-xs">Unknown</span>
 }
 
-// 文件图标
-function FileIcon({ type }: { type: string }) {
+// 文件类型图标配置：不同文档类型使用不同图标与配色，便于一眼区分
+const FILE_ICON_SIZE_DEFAULT = 16
+function FileIcon({ type, size = FILE_ICON_SIZE_DEFAULT }: { type: string; size?: number }) {
   const lowerType = String(type || '').toLowerCase()
+  const s = size
+
+  // 图片
   if (['jpg', 'png', 'jpeg', 'gif', 'webp', 'tiff', 'tif'].includes(lowerType)) {
-    return <ImageIcon size={16} className="text-purple-500" />
+    return <ImageIcon size={s} className="text-purple-500" />
   }
+  // PDF
   if (lowerType === 'pdf') {
-    return <FileText size={16} className="text-red-500" />
+    return <FileText size={s} className="text-red-500" />
   }
-  return <FileText size={16} className="text-blue-500" />
+  // Markdown / 代码类
+  if (['md', 'markdown', 'txt', 'json', 'xml', 'html', 'htm', 'yml', 'yaml'].includes(lowerType)) {
+    return <FileCode size={s} className="text-amber-600 dark:text-amber-400" />
+  }
+  // PowerPoint
+  if (['pptx', 'ppt'].includes(lowerType)) {
+    return <Presentation size={s} className="text-orange-600 dark:text-orange-400" />
+  }
+  // Word
+  if (['docx', 'doc'].includes(lowerType)) {
+    return <FileText size={s} className="text-blue-600 dark:text-blue-400" />
+  }
+  // Excel / 表格
+  if (['xlsx', 'xls', 'csv'].includes(lowerType)) {
+    return <FileSpreadsheet size={s} className="text-emerald-600 dark:text-emerald-400" />
+  }
+  // 默认文档
+  return <FileText size={s} className="text-slate-500 dark:text-slate-400" />
 }
 
 function isImageType(type: string): boolean {
@@ -57,6 +79,21 @@ export function FileThumb({ file }: { file: any }) {
   )
 }
 
+// 画廊卡片用图标尺寸，更大更易辨认
+const FILE_HERO_ICON_SIZE = 40
+
+// 按文件类型返回卡片图标区域的背景样式（浅色强调）
+function getFileHeroIconBg(type: string): string {
+  const lower = String(type || '').toLowerCase()
+  if (['jpg', 'png', 'jpeg', 'gif', 'webp', 'tiff', 'tif'].includes(lower)) return 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800'
+  if (lower === 'pdf') return 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800'
+  if (['md', 'markdown', 'txt', 'json', 'xml', 'html', 'htm', 'yml', 'yaml'].includes(lower)) return 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800'
+  if (['pptx', 'ppt'].includes(lower)) return 'bg-orange-50 dark:bg-orange-950/40 border-orange-200 dark:border-orange-800'
+  if (['docx', 'doc'].includes(lower)) return 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800'
+  if (['xlsx', 'xls', 'csv'].includes(lower)) return 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800'
+  return 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+}
+
 // 文件主图（画廊视图）
 export function FileHero({ file }: { file: any }) {
   const isImg = isImageType(file?.type)
@@ -72,10 +109,10 @@ export function FileHero({ file }: { file: any }) {
   }
   return (
     <div className="flex flex-col items-center justify-center text-slate-400">
-      <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-        <FileIcon type={file?.type} />
+      <div className={cn('p-4 rounded-xl border', getFileHeroIconBg(file?.type))}>
+        <FileIcon type={file?.type} size={FILE_HERO_ICON_SIZE} />
       </div>
-      <div className="mt-2 text-xs">
+      <div className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
         {String(file?.type || 'file').toUpperCase()}
       </div>
     </div>
