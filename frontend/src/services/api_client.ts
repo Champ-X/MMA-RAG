@@ -313,6 +313,10 @@ export const knowledgeApi = {
   getFileStream: (kbId: string, fileId: string) =>
     apiClient.getBlob(`/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/stream`),
 
+  /** Markdown 预览中本地路径图片的 API URL（path 为 md 中的 src，如 /Users/.../image.png） */
+  getFilePreviewAssetUrl: (kbId: string, fileId: string, path: string) =>
+    `${apiClient.getBaseURL()}/knowledge/${encodeURIComponent(kbId)}/files/${encodeURIComponent(fileId)}/preview-asset?path=${encodeURIComponent(path)}`,
+
   // 上传文件到知识库（调用 /upload/batch）
   uploadFiles: (kbId: string, files: File[], onProgress?: (progress: number, fileIndex: number) => void) =>
     apiClient.uploadFiles(`/upload/batch`, files, onProgress, { kb_id: kbId }),

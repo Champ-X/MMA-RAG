@@ -4,8 +4,10 @@
 """
 
 import asyncio
-from urllib.parse import quote
-from fastapi import APIRouter, HTTPException
+from pathlib import Path
+from urllib.parse import quote, unquote
+import os
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 from typing import List, Dict, Any, Optional
 from app.core.logger import get_logger
@@ -149,6 +151,49 @@ async def list_kb_files(kb_id: str):
     except Exception as e:
         logger.error(f"获取文件列表失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{kb_id}/files/{file_id}/preview-asset")
+async def get_file_preview_asset(
+    kb_id: str,
+    file_id: str,
+    path: str = Query(..., description="URL 编码后的图片路径（md 中的本地绝对路径）"),
+):
+    """为 Markdown 预览提供本地路径图片：当 path 位于配置白名单内时返回图片字节，便于前端显示 md 内 ![](/path) 图片。"""
+    try:
+        from app.core.config import settings
+        raw_path = unquote(path.strip())
+        if not raw_path or (not raw_path.startswith("/") and not raw_path.lower().startswith("file://")):
+            raise HTTPException(status_code=400, detail="path 须为绝对路径或 file://")
+        if raw_path.lower().startswith("file://"):
+            raw_path = unquote(raw_path[7:].lstrip("/"))
+            if raw_path and not raw_path.startswith("/"):
+                raw_path = os.path.abspath("/" + raw_path) if os.name != "nt" else raw_path
+        allowed = getattr(settings, "markdown_local_image_allowed_base_paths", None) or []
+        if not allowed:
+            raise HTTPException(status_code=403, detail="未配置 Markdown 本地图片白名单")
+        p = Path(raw_path).resolve()
+        if not p.is_file():
+            raise HTTPException(status_code=404, detail="文件不存在")
+        real_str = str(p)
+        allowed_flag = False
+        for base in allowed:
+            base_p = Path(base).resolve()
+            base_str = str(base_p)
+            if real_str == base_str or real_str.startswith(base_str + os.sep):
+                allowed_flag = True
+                break
+        if not allowed_flag:
+            raise HTTPException(status_code=403, detail="路径不在白名单内")
+        content = p.read_bytes()
+        ext = p.suffix.lower()
+        media = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp"}.get(ext.lstrip("."), "application/octet-stream")
+        return Response(content=content, media_type=media)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.debug("preview-asset 失败: {}", e)
+        raise HTTPException(status_code=500, detail="读取图片失败")
 
 
 @router.get("/{kb_id}/files/{file_id}/content")

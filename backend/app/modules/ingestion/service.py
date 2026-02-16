@@ -420,14 +420,25 @@ class IngestionService:
                 logger.info(f"文档内图片处理完成: {extracted_images_count}/{len(extracted_images)} 张图片成功处理")
         
         # 1. 用「补全后的 markdown」做文本分块：将 VLM 图注插回占位符后再 chunk
+        # 按原文位置从后往前替换，避免图注内容中若含其它图片的 ref 串时被误替换导致重复/嵌套
         parse_result_for_chunking = parse_result
         if caption_replacements and parse_result.get("markdown"):
-            enriched_markdown = parse_result["markdown"]
+            full_md = parse_result["markdown"]
+            search_start = 0
+            items: List[tuple] = []  # (pos, ref, replacement)
             for ref, vlm_caption in caption_replacements:
+                pos = full_md.find(ref, search_start)
+                if pos < 0:
+                    continue
                 replacement = f"\n\n[图注：{vlm_caption}]\n\n"
-                enriched_markdown = enriched_markdown.replace(ref, replacement, 1)
+                items.append((pos, ref, replacement))
+                search_start = pos + len(ref)
+            items.sort(key=lambda x: x[0], reverse=True)
+            enriched_markdown = full_md
+            for pos, ref, replacement in items:
+                enriched_markdown = enriched_markdown[:pos] + replacement + enriched_markdown[pos + len(ref) :]
             parse_result_for_chunking = {**parse_result, "markdown": enriched_markdown}
-            logger.info("已将 {} 条 VLM 图注插回 Markdown，使用补全后的文本进行分块", len(caption_replacements))
+            logger.info("已将 {} 条 VLM 图注插回 Markdown，使用补全后的文本进行分块", len(items))
         chunks = await self._split_text_into_chunks(parse_result_for_chunking)
         
         # 为每个chunk添加file_path和file_type信息
@@ -573,7 +584,7 @@ class IngestionService:
         text_vector_result = await self._vectorize_text([text_to_embed])
         logger.info("文本向量化完成: 向量数={} (processing_id={})", len(text_vector_result.get("vectors", [])), processing_id)
         
-        # 4. 存储到向量数据库（PDF 解析图写入 source_file_id，删除文档时按此字段删图）
+        # 4. 存储到向量数据库（PDF 解析图写入 source_file_id，markdown_ref 供预览时替换为可访问图片 URL）
         image_data = [{
             "file_id": minio_storage_result["file_id"],
             "file_path": minio_storage_result["object_path"],
@@ -586,6 +597,8 @@ class IngestionService:
             "height": parse_result.get("height"),
             "source_file_id": source_file_id,
         }]
+        if markdown_ref is not None:
+            image_data[0]["markdown_ref"] = markdown_ref
         
         vector_storage_result = await self.vector_store.upsert_image_vectors(
             kb_id=kb_id,

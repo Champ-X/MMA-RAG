@@ -780,7 +780,7 @@ class KnowledgeBaseService:
     async def get_file_text_content(self, kb_id: str, file_id: str) -> Optional[str]:
         """
         获取文本类文件（md/txt）的原始内容，用于预览（避免 iframe 触发下载）。
-        从 MinIO 读取并解码为 UTF-8 文本。不依赖 _kb_storage，以桶存在为准。
+        从 MinIO 读取并解码为 UTF-8 文本。对 md 文件会将文档内图片的本地路径替换为 MinIO 预签名 URL，便于前端正常显示图片。
         """
         bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
         if not self.minio_adapter.bucket_exists(bucket_name):
@@ -798,10 +798,32 @@ class KnowledgeBaseService:
             return None
         try:
             content = await self.minio_adapter.get_file_content(bucket_name, object_path)
-            return content.decode("utf-8", errors="replace")
+            content = content.decode("utf-8", errors="replace")
         except Exception as e:
-            logger.debug(f"读取文件内容失败 {object_path}: {e}")
+            logger.debug("读取文件内容失败 {}: {}", object_path, e)
             return None
+        # 对 md：将正文中的图片引用（本地路径）替换为已上传到 MinIO 的图片预签名 URL，以便预览时能显示
+        if object_path.lower().endswith(".md") or object_path.lower().endswith(".markdown"):
+            loop = asyncio.get_event_loop()
+            image_points = await loop.run_in_executor(
+                None,
+                lambda: self._scroll_image_points_by_source_file_id(kb_id, file_id),
+            )
+            for point in image_points:
+                payload = getattr(point, "payload", None) or {}
+                ref = (payload.get("markdown_ref") or "").strip()
+                img_path = (payload.get("file_path") or "").strip()
+                if not ref or not img_path:
+                    continue
+                try:
+                    url = await self.minio_adapter.get_presigned_url(bucket_name, img_path, expires_hours=24)
+                    # 保持 ![alt](...) 结构，仅将括号内路径换为 URL
+                    new_ref = re.sub(r"\]\s*\(\s*[^)]+\s*\)", "](" + url + ")", ref, count=1)
+                    content = content.replace(ref, new_ref, 1)
+                except Exception as e:
+                    logger.debug("生成图片预签名 URL 失败 {}: {}", img_path, e)
+                    continue
+        return content
 
     def _scroll_image_points_by_file_id(self, file_id: str):
         """按 file_id 全局查询 image_vectors（不限制 kb_id），用于兜底。"""
@@ -814,6 +836,31 @@ class KnowledgeBaseService:
             with_payload=True,
         )
         return res[0] if res else []
+
+    def _scroll_image_points_by_source_file_id(self, kb_id: str, source_file_id: str) -> List[Any]:
+        """按 source_file_id 查询该文档关联的图片向量（含 markdown_ref、file_path），用于 md 预览时替换图片 URL。"""
+        from qdrant_client.http.models import Filter, FieldCondition, MatchValue
+        for candidate in self._kb_id_candidates(kb_id):
+            try:
+                filt = Filter(
+                    must=[
+                        FieldCondition(key="kb_id", match=MatchValue(value=candidate)),
+                        FieldCondition(key="source_file_id", match=MatchValue(value=source_file_id)),
+                    ]
+                )
+                res = self.vector_store.client.scroll(
+                    collection_name="image_vectors",
+                    scroll_filter=filt,
+                    limit=100,
+                    with_payload=True,
+                )
+                points = res[0] if res else []
+                if points:
+                    return points
+            except Exception as e:
+                logger.debug("按 source_file_id 查询图片失败 candidate={}: {}", candidate, e)
+                continue
+        return []
 
     def _scroll_image_points(self, candidate: str, file_id: str, with_file_filter: bool):
         """同步 scroll image_vectors，在线程中调用以避免阻塞事件循环。"""

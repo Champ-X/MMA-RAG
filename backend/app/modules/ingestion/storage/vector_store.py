@@ -578,7 +578,9 @@ class VectorStore:
                 }
                 if image.get("source_file_id"):
                     payload["source_file_id"] = image["source_file_id"]
-                
+                if image.get("markdown_ref"):
+                    payload["markdown_ref"] = image["markdown_ref"]
+
                 point = PointStruct(
                     id=point_id,
                     vector=vectors,

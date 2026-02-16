@@ -6,6 +6,7 @@ import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import { knowledgeApi, importApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
+import ReactMarkdown from 'react-markdown'
 import { StatusBadge, FileThumb, FileHero, CreateKbModal, EditKbModal, StatItem } from './KnowledgeListHelpers'
 
 // 文件预览模态框（支持图片描述、文档分块、MD 预览）
@@ -83,7 +84,8 @@ function FilePreviewModal({
     }
   }, [isPdfOrOfficeViewable, kbId, file?.id])
 
-  const textPreview = file?.textPreview ?? details?.text_preview ?? rawContent
+  // Markdown 预览仅使用原始文件内容（MinIO 中的原文），避免显示插入了图注后的分块文本导致重复/错乱
+  const textPreview = isMd ? (rawContent ?? '') : (file?.textPreview ?? details?.text_preview ?? rawContent ?? '')
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -189,11 +191,29 @@ function FilePreviewModal({
             </div>
           ) : textPreview ? (
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
-              <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">文本预览</div>
-              <div className="max-h-[60vh] overflow-y-auto">
-                <pre className="text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-200 leading-relaxed font-sans">
-                  {textPreview}
-                </pre>
+              <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
+                {isMd ? 'Markdown 预览' : '文本预览'}
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto prose prose-slate dark:prose-invert prose-sm max-w-none">
+                {isMd ? (
+                  <ReactMarkdown
+                    components={{
+                      img: ({ src, alt, ...rest }) => {
+                        const isLocalPath = typeof src === 'string' && (src.startsWith('/') || src.toLowerCase().startsWith('file://'))
+                        const imgSrc = isLocalPath && kbId && file?.id
+                          ? knowledgeApi.getFilePreviewAssetUrl(kbId, file.id, src)
+                          : src
+                        return <img src={imgSrc} alt={alt ?? ''} {...rest} className="max-w-full h-auto rounded border border-slate-200 dark:border-slate-700" />
+                      },
+                    }}
+                  >
+                    {textPreview}
+                  </ReactMarkdown>
+                ) : (
+                  <pre className="text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-200 leading-relaxed font-sans">
+                    {textPreview}
+                  </pre>
+                )}
               </div>
             </div>
           ) : loadingDetails && (isTextFile || isImg || isDoc) ? (
