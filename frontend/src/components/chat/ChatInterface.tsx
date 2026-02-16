@@ -405,8 +405,8 @@ export function ChatInterface() {
         )}
 
         <div className="mx-auto max-w-4xl relative">
-          {/* 一体化输入框：flex 布局，textarea 与按钮区分离，从根本避免遮挡 */}
-          <div className="flex flex-col overflow-hidden rounded-3xl bg-white border border-slate-200/60 shadow-lg shadow-slate-900/10 dark:bg-slate-800 dark:border-slate-700/60 dark:shadow-slate-900/30">
+          {/* 一体化输入框：flex 布局，textarea 与按钮区分离；focus 时极细 indigo/fuchsia 环与品牌一致 */}
+          <div className="flex flex-col overflow-hidden rounded-3xl bg-white border border-slate-200/60 shadow-lg shadow-slate-900/10 transition-[box-shadow] duration-200 focus-within:ring-2 focus-within:ring-indigo-400/40 focus-within:shadow-[0_0_0_1px_rgba(217,70,239,0.22)] dark:bg-slate-800 dark:border-slate-700/60 dark:shadow-slate-900/30 dark:focus-within:ring-indigo-400/35 dark:focus-within:shadow-[0_0_0_1px_rgba(217,70,239,0.28)]">
             <textarea
               ref={inputRef}
               value={input}
