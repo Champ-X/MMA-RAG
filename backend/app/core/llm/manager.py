@@ -8,9 +8,57 @@ from . import LLMRegistry, BaseLLMProvider
 from app.core.logger import get_logger
 import asyncio
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 logger = get_logger(__name__)
+
+# 模型调用重试：最大重试次数、退避秒数（第 1、2 次重试前等待）
+_CALL_MAX_RETRIES = 2
+_CALL_RETRY_BACKOFF = (1.0, 2.0)
+_EVENT_LOOP_CLOSED_MSG = "Event loop is closed"
+
+# 用于「在新事件循环中执行」的线程池，避免阻塞主循环
+_executor: Optional[ThreadPoolExecutor] = None
+
+def _get_executor() -> ThreadPoolExecutor:
+    global _executor
+    if _executor is None:
+        _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="llm_loop")
+    return _executor
+
+
+def _is_transient_error(e: Exception) -> bool:
+    """是否为可重试的瞬时错误（网络、超时、Event loop 关闭等）"""
+    err_str = str(e).strip()
+    if _EVENT_LOOP_CLOSED_MSG in err_str or "event loop" in err_str.lower():
+        return True
+    if isinstance(e, (ConnectionError, TimeoutError, asyncio.TimeoutError)):
+        return True
+    try:
+        import httpx
+        if isinstance(e, (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError)):
+            return True
+        resp = getattr(e, "response", None)
+        code = getattr(resp, "status_code", None) if resp is not None else None
+        if code is not None and 500 <= code < 600:
+            return True
+    except ImportError:
+        pass
+    return False
+
+
+def _run_async_in_new_loop(func, kwargs: Dict[str, Any]) -> Any:
+    """在独立线程中创建新事件循环并执行 func(**kwargs)，用于恢复「Event loop is closed」等场景。"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(func(**kwargs))
+    finally:
+        try:
+            loop.close()
+        except Exception:
+            pass
 
 @dataclass
 class LLMCallResult:
@@ -131,11 +179,11 @@ class LLMManager:
             raise
     
     async def embed(
-        self, 
-        texts: List[str], 
+        self,
+        texts: List[str],
         task_type: str = "embedding",
         model: Optional[str] = None,
-        fallback: bool = False,
+        fallback: bool = True,
         **kwargs
     ) -> LLMCallResult:
         """文本向量化"""
@@ -150,12 +198,23 @@ class LLMManager:
             )
         
         result = await self._call_with_model(
-            "embed_texts", 
-            model, 
+            "embed_texts",
+            model,
             {"texts": texts, **kwargs}
         )
-        
-        # 嵌入模型通常不需要故障转移
+        # 失败时尝试故障转移（含重试后仍失败的情况，如 Event loop is closed）
+        if not result.success and fallback:
+            fallback_models = self.registry.get_task_fallbacks(task_type)
+            if fallback_models:
+                for fb in fallback_models:
+                    if fb == model:
+                        continue
+                    logger.warning(f"embed_texts 主模型 {model} 失败，尝试备用: {fb}")
+                    r = await self._call_with_model("embed_texts", fb, {"texts": texts, **kwargs})
+                    if r.success:
+                        r.fallback_used = True
+                        return r
+                logger.error("embed_texts 所有模型（含备用）均失败")
         return result
     
     async def rerank(
@@ -254,13 +313,56 @@ class LLMManager:
                 params["model"] = model
             
             start_time = time.time()
-            data = await method_func(**params)
+            last_error: Optional[Exception] = None
+            for attempt in range(_CALL_MAX_RETRIES + 1):
+                try:
+                    data = await method_func(**params)
+                    duration = time.time() - start_time
+                    return LLMCallResult(
+                        success=True,
+                        data=data,
+                        duration=duration,
+                        model_used=model,
+                        fallback_used=False
+                    )
+                except Exception as e:
+                    last_error = e
+                    if not _is_transient_error(e):
+                        logger.error(f"模型调用失败（不可重试） {model}.{method}: {str(e)}")
+                        break
+                    is_loop_closed = _EVENT_LOOP_CLOSED_MSG in str(e) or "event loop" in str(e).lower()
+                    if is_loop_closed:
+                        logger.warning(f"模型调用遇到 Event loop 关闭，在新事件循环中重试: {model}.{method}")
+                        try:
+                            data = await asyncio.get_event_loop().run_in_executor(
+                                _get_executor(),
+                                _run_async_in_new_loop,
+                                method_func,
+                                params,
+                            )
+                            duration = time.time() - start_time
+                            return LLMCallResult(
+                                success=True,
+                                data=data,
+                                duration=duration,
+                                model_used=model,
+                                fallback_used=False
+                            )
+                        except Exception as e2:
+                            last_error = e2
+                            logger.warning(f"新事件循环中重试仍失败: {e2}")
+                        break
+                    if attempt < _CALL_MAX_RETRIES:
+                        backoff = _CALL_RETRY_BACKOFF[attempt] if attempt < len(_CALL_RETRY_BACKOFF) else 2.0
+                        await asyncio.sleep(backoff)
+                        logger.info(f"模型调用重试 ({attempt + 1}/{_CALL_MAX_RETRIES}) {model}.{method}: {str(e)}")
+                    else:
+                        logger.error(f"模型调用失败（已重试 {_CALL_MAX_RETRIES} 次） {model}.{method}: {str(e)}")
+                        break
             duration = time.time() - start_time
-            
             return LLMCallResult(
-                success=True,
-                data=data,
-                duration=duration,
+                success=False,
+                error=str(last_error) if last_error else "unknown",
                 model_used=model,
                 fallback_used=False
             )
