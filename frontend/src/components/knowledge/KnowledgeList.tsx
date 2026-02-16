@@ -1268,7 +1268,7 @@ const KnowledgeList: React.FC = () => {
                     setViewState('detail')
                   }}
                   className={cn(
-                    'relative rounded-xl border border-slate-200 dark:border-slate-800 hover:shadow-md hover:border-fuchsia-300 dark:hover:border-fuchsia-500 transition-all cursor-pointer group overflow-hidden min-h-[180px]',
+                    'relative rounded-xl border border-slate-200 dark:border-slate-800 hover:shadow-md hover:border-fuchsia-300 dark:hover:border-fuchsia-500 transition-all cursor-pointer group overflow-hidden min-h-[128px]',
                     kb.cover_url ? 'p-0' : 'bg-white dark:bg-slate-900 p-5'
                   )}
                 >
@@ -1283,68 +1283,65 @@ const KnowledgeList: React.FC = () => {
                         />
                       </div>
                       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent rounded-xl" />
-                      <div className="relative z-10 flex flex-col min-h-[180px] p-5">
-                        {/* 设置按钮放在右下角，不遮挡封面图节点与左侧文件数 */}
-                        <div className="absolute bottom-3 right-3 pointer-events-none">
-                          <div className="pointer-events-auto relative">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setMenuOpenKbId((id) => (id === kb.id ? null : kb.id))
-                              }}
-                              className="flex h-8 w-8 items-center justify-center rounded-full border border-white/30 bg-white/15 text-white/90 shadow-md backdrop-blur-sm transition-all hover:bg-white/25 hover:text-white hover:border-white/40 active:scale-95"
-                              title="更多操作"
-                            >
-                              <MoreVertical size={16} strokeWidth={2} />
-                            </button>
-                            {menuOpenKbId === kb.id && (
-                              <div
-                                className="absolute right-0 bottom-full mb-1.5 py-1 min-w-[120px] rounded-xl bg-white/95 dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 shadow-xl backdrop-blur-sm z-50"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditKb({ id: kb.id, name: kb.name, description: kb.description ?? '' })
-                                    setMenuOpenKbId(null)
-                                  }}
-                                  className="w-full px-3 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-t-xl first:pt-2.5"
-                                >
-                                  <Pencil size={14} /> 编辑
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteKb(kb.id)}
-                                  className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-b-xl last:pb-2.5"
-                                >
-                                  <Trash2 size={14} /> 删除
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        {/* 顶部弹性空间，把标题/描述整体压到下方 */}
-                        <div className="min-h-0 flex-1" />
-                        <div className="flex-shrink-0 pt-8">
+                      <div className="relative z-10 flex flex-col min-h-[128px] p-3.5">
+                        {/* 顶部弹性空间，把标题/描述整体压到中下位置 */}
+                        <div className="min-h-[1.25rem] flex-1" />
+                        <div className="flex-shrink-0 pt-4 pb-1">
                           <h3 className="font-bold text-white mb-1 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_8px_rgba(0,0,0,0.7)]">
                             {kb.name}
                           </h3>
                           <p className="text-white text-sm h-9 overflow-hidden text-ellipsis leading-relaxed line-clamp-2 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_6px_rgba(0,0,0,0.6)]">
                             {kb.description || '暂无描述'}
                           </p>
-                          <div className="mt-1.5 pt-2 pr-11 border-t border-white/30 flex items-center justify-between text-xs text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
-                            <div className="flex items-center gap-2 min-h-[1rem]">
-                              <span className="inline-flex items-center gap-1.5">
+                          <div className="mt-2 pt-2.5 border-t border-white/30 flex items-center justify-between gap-2 text-xs text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
+                            <div className="flex items-center gap-2 min-h-[1rem] min-w-0 flex-1">
+                              <span className="inline-flex items-center gap-1.5 shrink-0">
                                 <FileText size={12} className="shrink-0" />
                                 {kb.stats?.documents ?? 0} 个文件
                               </span>
-                              <span className="opacity-80">·</span>
-                              <span className="inline-flex items-center gap-1.5">
+                              <span className="opacity-80 shrink-0">·</span>
+                              <span className="inline-flex items-center gap-1.5 shrink-0">
                                 <ImageIcon size={12} className="shrink-0" />
                                 {kb.stats?.images ?? 0} 张图片
                               </span>
                             </div>
-                            <span>{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
+                            <span className="shrink-0">{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
+                            <div className="relative shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setMenuOpenKbId((id) => (id === kb.id ? null : kb.id))
+                                }}
+                                className="flex h-7 w-7 items-center justify-center rounded-full border border-white/30 bg-white/15 text-white/90 shadow-md backdrop-blur-sm transition-all hover:bg-white/25 hover:text-white hover:border-white/40 active:scale-95"
+                                title="更多操作"
+                              >
+                                <MoreVertical size={14} strokeWidth={2} />
+                              </button>
+                              {menuOpenKbId === kb.id && (
+                                <div
+                                  className="absolute right-0 bottom-full mb-1.5 py-1 min-w-[120px] rounded-xl bg-white/95 dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 shadow-xl backdrop-blur-sm z-50"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditKb({ id: kb.id, name: kb.name, description: kb.description ?? '' })
+                                      setMenuOpenKbId(null)
+                                    }}
+                                    className="w-full px-3 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-t-xl first:pt-2.5"
+                                  >
+                                    <Pencil size={14} /> 编辑
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteKb(kb.id)}
+                                    className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-b-xl last:pb-2.5"
+                                  >
+                                    <Trash2 size={14} /> 删除
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
