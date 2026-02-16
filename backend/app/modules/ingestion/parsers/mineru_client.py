@@ -10,6 +10,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import time
 import zipfile
@@ -32,6 +33,48 @@ MINERU_API_POLL_TIMEOUT = 600
 # 懒加载：模型 + Processor + MinerUClient
 _mineru_client: Any = None
 
+# LibreOffice 可执行路径缓存（macOS Cask 安装后不在 PATH，需用 .app 内 soffice）
+_libreoffice_cmd: Optional[List[str]] = None
+
+
+def _get_libreoffice_cmd() -> Optional[List[str]]:
+    """
+    返回用于 subprocess 的 LibreOffice 命令列表。
+    优先级：配置 LIBREOFFICE_PATH > PATH 中的 libreoffice/soffice > macOS 默认 .app 路径。
+    便于迁移：不同环境通过环境变量指定可执行路径即可，无需改代码。
+    """
+    global _libreoffice_cmd
+    if _libreoffice_cmd is not None:
+        return _libreoffice_cmd if _libreoffice_cmd else None
+    import shutil
+    try:
+        from app.core.config import settings
+        configured = getattr(settings, "libreoffice_path", None) or os.environ.get("LIBREOFFICE_PATH")
+    except Exception:
+        configured = os.environ.get("LIBREOFFICE_PATH")
+    if configured:
+        configured = configured.strip()
+        if os.path.isfile(configured) or (os.path.isabs(configured) and os.path.exists(configured)):
+            _libreoffice_cmd = [configured]
+            return _libreoffice_cmd
+        if shutil.which(configured):
+            _libreoffice_cmd = [configured]
+            return _libreoffice_cmd
+        logger.debug("LIBREOFFICE_PATH 已设置但未找到可执行文件: %s", configured)
+    if shutil.which("libreoffice"):
+        _libreoffice_cmd = ["libreoffice"]
+        return _libreoffice_cmd
+    if shutil.which("soffice"):
+        _libreoffice_cmd = ["soffice"]
+        return _libreoffice_cmd
+    if sys.platform == "darwin":
+        mac_path = "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+        if os.path.isfile(mac_path):
+            _libreoffice_cmd = [mac_path]
+            return _libreoffice_cmd
+    _libreoffice_cmd = []
+    return None
+
 
 def _pdf_bytes_to_images(file_content: bytes, dpi: int = _PDF_DPI_DEFAULT) -> List[Any]:
     """将 PDF 二进制内容每一页渲染为 PIL Image。"""
@@ -52,32 +95,56 @@ def _pdf_bytes_to_images(file_content: bytes, dpi: int = _PDF_DPI_DEFAULT) -> Li
     return out
 
 
-def _office_bytes_to_images(file_content: bytes, file_ext: str, dpi: int = _PDF_DPI_DEFAULT) -> List[Any]:
+def _office_to_pdf_bytes(file_content: bytes, file_ext: str) -> Optional[bytes]:
     """
-    将 Word(docx) / PPTX 二进制内容转为每页/每页幻灯的 PIL Image 列表。
-    通过 LibreOffice 转 PDF 再渲染；若 LibreOffice 不可用则返回空列表。
-    file_ext: "docx" | "pptx"
+    将 Word(docx) / PPTX 转为 PDF 二进制，用于预览等。依赖 LibreOffice。
+    file_ext: "docx" | "pptx"，返回 PDF 字节，失败返回 None。
     """
-    suffix = f".{file_ext}" if not file_ext.startswith(".") else file_ext
+    file_ext = file_ext.lower().lstrip(".")
+    if file_ext not in ("docx", "pptx"):
+        return None
+    suffix = f".{file_ext}"
     with tempfile.TemporaryDirectory(prefix="mineru_office_") as tmpdir:
         src = os.path.join(tmpdir, f"doc{suffix}")
         with open(src, "wb") as f:
             f.write(file_content)
-        out_pdf = os.path.join(tmpdir, "out.pdf")
+        cmd = _get_libreoffice_cmd()
+        if not cmd:
+            logger.debug("未找到 LibreOffice 可执行文件（PATH 或 macOS /Applications/LibreOffice.app）")
+            return None
         try:
             subprocess.run(
-                ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", tmpdir, src],
+                cmd + ["--headless", "--convert-to", "pdf", "--outdir", tmpdir, src],
                 capture_output=True,
                 timeout=120,
                 check=True,
             )
         except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
             logger.debug("LibreOffice 转换 Office 为 PDF 失败: %s", e)
-            return []
+            return None
+        # LibreOffice 输出文件名为 doc.pdf（与源文件同主名）
+        out_pdf = os.path.join(tmpdir, "doc.pdf")
         if not os.path.isfile(out_pdf):
-            return []
+            return None
         with open(out_pdf, "rb") as f:
-            pdf_bytes = f.read()
+            return f.read()
+    return None
+
+
+def office_to_pdf_bytes(file_content: bytes, file_ext: str) -> Optional[bytes]:
+    """将 docx/pptx 转为 PDF 字节，供预览等使用。依赖 LibreOffice，失败返回 None。"""
+    return _office_to_pdf_bytes(file_content, file_ext)
+
+
+def _office_bytes_to_images(file_content: bytes, file_ext: str, dpi: int = _PDF_DPI_DEFAULT) -> List[Any]:
+    """
+    将 Word(docx) / PPTX 二进制内容转为每页/每页幻灯的 PIL Image 列表。
+    通过 LibreOffice 转 PDF 再渲染；若 LibreOffice 不可用则返回空列表。
+    file_ext: "docx" | "pptx"
+    """
+    pdf_bytes = _office_to_pdf_bytes(file_content, file_ext)
+    if not pdf_bytes:
+        return []
     return _pdf_bytes_to_images(pdf_bytes, dpi=dpi)
 
 

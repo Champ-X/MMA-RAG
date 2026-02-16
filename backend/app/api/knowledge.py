@@ -187,7 +187,7 @@ async def get_file_preview(kb_id: str, file_id: str):
 
 @router.get("/{kb_id}/files/{file_id}/stream")
 async def stream_file_for_preview(kb_id: str, file_id: str):
-    """流式返回文件内容，用于页面内预览（PDF 等），设置 Content-Disposition: inline 避免浏览器直接下载"""
+    """流式返回文件内容，用于页面内预览。PDF 直接返回；PPTX/DOCX 转为 PDF 后返回以便像 PDF 一样在页内阅读。"""
     try:
         kb = await kb_service.get_knowledge_base(kb_id)
         if not kb:
@@ -198,8 +198,31 @@ async def stream_file_for_preview(kb_id: str, file_id: str):
         bucket_name, object_path, filename = info
         content = await kb_service.minio_adapter.get_file_content(bucket_name, object_path)
         ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        # PPTX/DOCX：转为 PDF 后返回，前端用 PDF 预览组件即可直接阅读
+        if ext in ("pptx", "docx"):
+            try:
+                from app.modules.ingestion.parsers.mineru_client import office_to_pdf_bytes
+                pdf_bytes = office_to_pdf_bytes(content, ext)
+            except Exception as e:
+                logger.debug("Office 转 PDF 失败: %s", e)
+                pdf_bytes = None
+            if pdf_bytes:
+                preview_filename = filename.rsplit(".", 1)[0] + ".pdf"
+                try:
+                    preview_filename.encode("ascii")
+                    content_disp = f'inline; filename="{preview_filename}"'
+                except UnicodeEncodeError:
+                    content_disp = f"inline; filename*=UTF-8''{quote(preview_filename, safe='')}"
+                return Response(
+                    content=pdf_bytes,
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": content_disp},
+                )
+            raise HTTPException(
+                status_code=503,
+                detail="PPTX/DOCX 页面内预览需要服务器安装 LibreOffice，当前不可用；请使用下方「分块」查看解析文本。",
+            )
         media_type = "application/pdf" if ext == "pdf" else "application/octet-stream"
-        # Content-Disposition：非 ASCII 文件名用 RFC 5987 编码，避免 latin-1 报错
         try:
             filename.encode("ascii")
             content_disp = f'inline; filename="{filename}"'

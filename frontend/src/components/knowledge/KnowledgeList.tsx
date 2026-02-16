@@ -32,7 +32,8 @@ function FilePreviewModal({
   const [pdfLoading, setPdfLoading] = React.useState(false)
 
   const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(String(file?.type || '').toLowerCase())
-  const isPdf = String(file?.type || '').toLowerCase() === 'pdf'
+  /** PDF、PPTX、DOCX 均可通过 stream 接口以 PDF 形式在页内预览（后端对 PPTX/DOCX 会先转为 PDF） */
+  const isPdfOrOfficeViewable = ['pdf', 'pptx', 'docx'].includes(String(file?.type || '').toLowerCase())
   const isMd = String(file?.type || '').toLowerCase() === 'md'
   const isTxt = String(file?.type || '').toLowerCase() === 'txt'
   const isTextFile = isMd || isTxt
@@ -53,10 +54,10 @@ function FilePreviewModal({
     }).catch(() => setDetails(null)).finally(() => setLoadingDetails(false))
   }, [file?.id, kbId, isTextFile])
 
-  // PDF 使用 stream 接口获取 Blob 并生成 object URL，在 iframe 内展示，避免直接打开 presigned URL 触发下载
+  // PDF / PPTX / DOCX 使用 stream 接口获取 Blob（PPTX/DOCX 后端会转为 PDF）并生成 object URL，在 iframe 内展示
   const pdfObjectUrlRef = React.useRef<string | null>(null)
   React.useEffect(() => {
-    if (!isPdf || !kbId || !file?.id) {
+    if (!isPdfOrOfficeViewable || !kbId || !file?.id) {
       pdfObjectUrlRef.current = null
       setPdfObjectUrl(null)
       return
@@ -80,7 +81,7 @@ function FilePreviewModal({
       }
       setPdfObjectUrl(null)
     }
-  }, [isPdf, kbId, file?.id])
+  }, [isPdfOrOfficeViewable, kbId, file?.id])
 
   const textPreview = file?.textPreview ?? details?.text_preview ?? rawContent
 
@@ -173,7 +174,7 @@ function FilePreviewModal({
                 )}
               </div>
             </div>
-          ) : isPdf && pdfObjectUrl ? (
+          ) : isPdfOrOfficeViewable && pdfObjectUrl ? (
             <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
               <iframe
                 title={file.name}
@@ -181,10 +182,10 @@ function FilePreviewModal({
                 className="w-full h-[60vh] min-h-[400px] max-h-[600px]"
               />
             </div>
-          ) : isPdf && pdfLoading ? (
+          ) : isPdfOrOfficeViewable && pdfLoading ? (
             <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
               <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-transparent" />
-              <div className="mt-3 text-sm">PDF 加载中…</div>
+              <div className="mt-3 text-sm">文档加载中…</div>
             </div>
           ) : textPreview ? (
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">

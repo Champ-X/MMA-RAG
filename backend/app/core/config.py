@@ -67,7 +67,9 @@ class Settings(BaseSettings):
     mineru_pdf_enabled: bool = Field(default=True, validation_alias="MINERU_PDF_ENABLED")
     # 本地 MinerU 渲染 PDF 页面的 DPI，越高图片越清晰（默认 300，原 200）
     mineru_pdf_render_dpi: int = Field(default=300, validation_alias="MINERU_PDF_RENDER_DPI")
-    
+    # LibreOffice 可执行路径（可选）。用于 docx/pptx 转 PDF（解析与预览）。未设置时自动探测：PATH 中的 libreoffice/soffice，或 macOS /Applications/LibreOffice.app
+    libreoffice_path: Optional[str] = Field(default=None, validation_alias="LIBREOFFICE_PATH")
+
     # 文件上传配置
     max_file_size: int = Field(default=100 * 1024 * 1024, validation_alias="MAX_FILE_SIZE")  # 100MB
     allowed_extensions_str: str = Field(
