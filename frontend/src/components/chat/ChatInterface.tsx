@@ -309,7 +309,7 @@ export function ChatInterface() {
                     你好，我是 Nexus
                   </h3>
                   <p className="mx-auto max-w-md text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">
-                    在输入框上方设置对话模型与知识库范围后，输入问题即可对话。
+                    在输入框设置对话模型与知识库范围后，输入问题即可对话。
                   </p>
                 </div>
               </div>
