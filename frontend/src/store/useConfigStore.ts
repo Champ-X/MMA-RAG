@@ -193,6 +193,7 @@ export const useConfigStore = create<ConfigStore>()(
           set({ hasUnsavedChanges: false, isLoading: false });
         } catch (error) {
           set({ hasUnsavedChanges: false, isLoading: false });
+          throw error;
         }
       },
 

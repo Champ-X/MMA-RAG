@@ -1,4 +1,4 @@
-import { forwardRef, useState, ImgHTMLAttributes } from 'react'
+import { forwardRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 export interface AvatarProps {
