@@ -169,7 +169,7 @@ export function CreateKbModal({ onClose, onCreate }: { onClose: () => void; onCr
           </div>
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
-              <FileTextIcon size={16} className="text-indigo-500" />
+              <FileText size={16} className="text-indigo-500" />
               描述
             </label>
             <div className="relative">
