@@ -9,20 +9,22 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ScatterChart, FileText, Image, RefreshCw } from 'lucide-react'
+import { ScatterChart, FileText, Image, RefreshCw, LayoutList } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { knowledgeApi } from '@/services/api_client'
 
-/** 用户指定五色：["#987284","#75b9be","#d0d6b5","#f9b5ac","#ee7674"]，弥散渐变由每色派生 */
+/** 柔和同系色阶：indigo → violet → fuchsia 降饱和、提明度，过渡平滑不跳色 */
 const MESH_PALETTES = {
-  c0: { fill: '#987284', centerLight: '#b8a0a8', mid: '#987284', edge: '#7a5c68', glowBorder: 'rgba(152,114,132,0.88)' },
-  c1: { fill: '#75b9be', centerLight: '#9ec9cc', mid: '#75b9be', edge: '#5a969a', glowBorder: 'rgba(117,185,190,0.88)' },
-  c2: { fill: '#d0d6b5', centerLight: '#e2e6cf', mid: '#d0d6b5', edge: '#a8ad8f', glowBorder: 'rgba(208,214,181,0.88)' },
-  c3: { fill: '#f9b5ac', centerLight: '#fcd4cf', mid: '#f9b5ac', edge: '#e08a82', glowBorder: 'rgba(249,181,172,0.88)' },
-  c4: { fill: '#ee7674', centerLight: '#f4a2a0', mid: '#ee7674', edge: '#c85c5a', glowBorder: 'rgba(238,118,116,0.88)' },
+  c0: { fill: '#a5b4fc', centerLight: '#e0e7ff', mid: '#818cf8', edge: '#6366f1', glowBorder: 'rgba(99,102,241,0.52)' },
+  c1: { fill: '#b8a9f8', centerLight: '#e8e4ff', mid: '#a78bfa', edge: '#7c3aed', glowBorder: 'rgba(124,58,237,0.5)' },
+  c2: { fill: '#c4b5fd', centerLight: '#ede9fe', mid: '#a78bfa', edge: '#8b5cf6', glowBorder: 'rgba(139,92,246,0.5)' },
+  c3: { fill: '#d4b8fc', centerLight: '#f3e8ff', mid: '#c084fc', edge: '#a855f7', glowBorder: 'rgba(168,85,247,0.5)' },
+  c4: { fill: '#e9b8fc', centerLight: '#fae8ff', mid: '#e879f9', edge: '#d946ef', glowBorder: 'rgba(217,70,239,0.5)' },
+  c5: { fill: '#f0c6fc', centerLight: '#fdf4ff', mid: '#f0abfc', edge: '#e879f9', glowBorder: 'rgba(232,121,249,0.5)' },
+  c6: { fill: '#f5d0fe', centerLight: '#fdf4ff', mid: '#f5d0fe', edge: '#e879f9', glowBorder: 'rgba(232,121,249,0.48)' },
 } as const
 
-const MESH_TIER_IDS = ['c0', 'c1', 'c2', 'c3', 'c4'] as const
+const MESH_TIER_IDS = ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6'] as const
 
 function getBubbleTierId(_heat: number, index: number): (typeof MESH_TIER_IDS)[number] {
   return MESH_TIER_IDS[index % MESH_TIER_IDS.length]
@@ -254,13 +256,16 @@ export function PortraitGraph({
           {loading ? (
             <div className="flex h-80 items-center justify-center">
               <div className="text-center">
-                <div className="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <div className="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-2 border-indigo-400 border-t-fuchsia-400 dark:border-indigo-500 dark:border-t-fuchsia-500" />
                 <p className="text-muted-foreground">正在加载画像…</p>
               </div>
             </div>
           ) : clusters.length === 0 ? (
-            <div className="flex h-80 flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50">
-              <p className="text-base font-medium text-slate-700 dark:text-slate-200">暂无主题画像</p>
+            <div className="flex h-80 flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-gradient-to-br from-indigo-50/40 via-transparent to-fuchsia-50/40 dark:from-indigo-950/30 dark:via-transparent dark:to-fuchsia-950/30">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100/80 dark:bg-indigo-900/40 text-indigo-500 dark:text-indigo-400">
+                <ScatterChart className="h-6 w-6" strokeWidth={2} />
+              </span>
+              <p className="text-base font-medium text-slate-700 dark:text-slate-200 mt-2">暂无主题画像</p>
               <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm text-center px-4">
                 知识库需有足够数据（约 10 条以上文本/图片）才能生成主题聚类画像。
               </p>
@@ -292,15 +297,21 @@ export function PortraitGraph({
             </div>
           ) : (
             <div ref={containerRef} className="relative min-h-[520px] w-full overflow-hidden rounded-xl border border-slate-200/40 dark:border-slate-700/50 portrait-chart-container">
-              {/* 纯净模式：中心微光；深色模式：深蓝黑 */}
+              {/* 亮色：径向渐变 + 极淡 indigo/fuchsia 中心光晕；暗色：带蓝深色 + 极弱径向景深 */}
               <div
                 className="absolute inset-0 z-0 rounded-[inherit] opacity-100 dark:opacity-0"
                 style={{
-                  background: 'radial-gradient(ellipse 90% 80% at 50% 50%, rgba(255,255,255,0.99) 0%, rgba(250,251,253,0.97) 45%, rgba(248,250,252,0.95) 100%)',
+                  background: 'radial-gradient(ellipse 90% 80% at 50% 50%, rgba(255,255,255,0.99) 0%, rgba(250,251,253,0.97) 45%, rgba(248,250,252,0.95) 100%), radial-gradient(ellipse 75% 65% at 50% 50%, rgba(224,231,255,0.25) 0%, rgba(129,140,248,0.08) 35%, rgba(217,70,239,0.05) 60%, transparent 100%)',
                 }}
                 aria-hidden
               />
-              <div className="absolute inset-0 z-0 hidden rounded-[inherit] bg-[#0c1222] dark:block" aria-hidden />
+              <div
+                className="absolute inset-0 z-0 hidden rounded-[inherit] dark:block"
+                style={{
+                  background: 'radial-gradient(ellipse 85% 75% at 50% 50%, rgba(15,23,42,0.97) 0%, #0f172a 60%, #0c1222 100%), radial-gradient(ellipse 50% 50% at 50% 50%, rgba(99,102,241,0.04) 0%, transparent 70%)',
+                }}
+                aria-hidden
+              />
               <svg
                 width="100%"
                 height={chartHeight}
@@ -309,26 +320,37 @@ export function PortraitGraph({
                 preserveAspectRatio="xMidYMid meet"
               >
                 <defs>
-                  {/* 弥散渐变：电光蓝/绿/暖/紫/灰蓝，玻璃拟态发光体 */}
+                  {/* 柔和弥散渐变：中心更亮、边缘过渡更顺，整体偏 pastel */}
                   {MESH_TIER_IDS.map((tierId) => {
                     const { fill, centerLight, mid, edge } = MESH_PALETTES[tierId]
                     return (
-                      <radialGradient key={tierId} id={`bubble-grad-${tierId}`} cx="28%" cy="28%" r="78%">
-                        <stop offset="0%" stopColor={centerLight} stopOpacity={0.94} />
-                        <stop offset="35%" stopColor={fill} stopOpacity={0.9} />
-                        <stop offset="65%" stopColor={mid} stopOpacity={0.84} />
-                        <stop offset="100%" stopColor={edge} stopOpacity={0.74} />
+                      <radialGradient key={tierId} id={`bubble-grad-${tierId}`} cx="30%" cy="30%" r="75%">
+                        <stop offset="0%" stopColor={centerLight} stopOpacity={0.92} />
+                        <stop offset="25%" stopColor={centerLight} stopOpacity={0.88} />
+                        <stop offset="50%" stopColor={fill} stopOpacity={0.82} />
+                        <stop offset="78%" stopColor={mid} stopOpacity={0.76} />
+                        <stop offset="100%" stopColor={edge} stopOpacity={0.68} />
                       </radialGradient>
                     )
                   })}
-                  {/* 内阴影：玻璃拟态 */}
+                  {/* 内阴影：轻微玻璃感，不抢色 */}
                   <filter id="bubble-inner-shadow" x="-30%" y="-30%" width="160%" height="160%">
-                    <feOffset in="SourceAlpha" dx="2" dy="2" result="offset" />
-                    <feGaussianBlur in="offset" stdDeviation="3" result="blur" />
-                    <feFlood floodColor="rgb(0,0,0)" floodOpacity="0.14" result="shadowFill" />
+                    <feOffset in="SourceAlpha" dx="1.5" dy="1.5" result="offset" />
+                    <feGaussianBlur in="offset" stdDeviation="2.2" result="blur" />
+                    <feFlood floodColor="rgb(0,0,0)" floodOpacity="0.08" result="shadowFill" />
                     <feComposite in="shadowFill" in2="blur" operator="in" result="shadowShape" />
                     <feComposite in="shadowShape" in2="SourceAlpha" operator="in" result="innerOnly" />
                     <feComposite in="SourceGraphic" in2="innerOnly" operator="over" result="comp" />
+                  </filter>
+                  {/* 选中态：主色外发光（模糊描边 + 半透明 indigo/fuchsia） */}
+                  <filter id="bubble-selected-glow" x="-80%" y="-80%" width="260%" height="260%">
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+                    <feFlood floodColor="#6366f1" floodOpacity="0.45" result="fill" />
+                    <feComposite in="fill" in2="blur" operator="in" result="glow" />
+                    <feMerge>
+                      <feMergeNode in="glow" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
                   </filter>
                 </defs>
                 {/* 悬停时：从当前气泡到其他气泡的关系连线 */}
@@ -346,11 +368,10 @@ export function PortraitGraph({
                             y1={hovered.y}
                             x2={other.x}
                             y2={other.y}
-                            stroke="currentColor"
-                            strokeOpacity={0.2}
-                            strokeWidth={1}
-                            strokeDasharray="4 3"
-                            className="text-slate-400 dark:text-slate-500"
+                            stroke="#6366f1"
+                            strokeOpacity={0.42}
+                            strokeWidth={1.2}
+                            strokeDasharray="5 4"
                           />
                         ))}
                     </g>
@@ -366,7 +387,7 @@ export function PortraitGraph({
                     const allKeywords = (node.cluster.keywords && node.cluster.keywords.length > 0)
                       ? node.cluster.keywords
                       : extractKeywords(node.cluster.topic_summary)
-                    const maxWords = node.r < 50 ? 3 : node.r < 68 ? 5 : 8
+                    const maxWords = node.r < 50 ? 2 : node.r < 68 ? 4 : 6
                     const keywords = allKeywords.slice(0, maxWords)
                     const hasKeywords = keywords.length > 0
                     const baseFont = Math.max(10, Math.min(13, Math.round(node.r / 5)))
@@ -403,11 +424,11 @@ export function PortraitGraph({
                       >
                         <motion.g
                           animate={{
-                            y: [0, 3, -2, 0],
-                            x: [0, 1, -1, 0],
+                            y: [0, 1.2, -0.8, 0],
+                            x: [0, 0.6, -0.5, 0],
                           }}
                           transition={{
-                            duration: 3.2 + (node.index % 5) * 0.4,
+                            duration: 5.2 + (node.index % 4) * 0.5,
                             repeat: Infinity,
                             repeatType: 'reverse',
                           }}
@@ -431,17 +452,19 @@ export function PortraitGraph({
                             fill="none"
                             stroke={palette.glowBorder}
                             strokeWidth={1}
-                            strokeOpacity={0.88}
+                            strokeOpacity={0.58}
                             className="bubble-breathe"
                           />
                           {isSelected && (
-                            <circle
-                              r={node.r + 6}
-                              fill="none"
-                              stroke={palette.glowBorder}
-                              strokeWidth={2}
-                              strokeOpacity={0.9}
-                            />
+                            <g filter="url(#bubble-selected-glow)">
+                              <circle
+                                r={node.r + 6}
+                                fill="none"
+                                stroke="#6366f1"
+                                strokeWidth={2.5}
+                                strokeOpacity={0.95}
+                              />
+                            </g>
                           )}
                           <foreignObject
                           x={-node.r + 4}
@@ -464,7 +487,7 @@ export function PortraitGraph({
                                     maxWidth: `${Math.min(node.r * 1.6, 96)}px`,
                                     overflow: 'hidden',
                                     textOverflow: 'ellipsis',
-                                    textShadow: '0 1px 3px rgba(0,0,0,0.2), 0 0 1px rgba(255,255,255,0.5)',
+                                    textShadow: '0 0 1px rgba(0,0,0,0.8), 0 1px 2px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.3), 0 0 1px rgba(255,255,255,0.4)',
                                   }}
                                   title={keywords[0]}
                                 >
@@ -492,7 +515,7 @@ export function PortraitGraph({
                                         maxWidth: `${Math.min(node.r * 1.1, 64)}px`,
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis',
-                                        textShadow: '0 0 1px rgba(0,0,0,0.15)',
+                                        textShadow: '0 0 1px rgba(0,0,0,0.6), 0 1px 2px rgba(0,0,0,0.35)',
                                       }}
                                       title={word}
                                     >
@@ -543,7 +566,7 @@ export function PortraitGraph({
               >
                 <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5 dark:border-slate-700">
                   <div className="flex items-center gap-2">
-                    <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                    <span className="rounded-md bg-gradient-to-r from-indigo-100 to-fuchsia-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:from-indigo-900/40 dark:to-fuchsia-900/40 dark:text-indigo-200">
                       主题摘要
                     </span>
                     <span className="text-xs text-muted-foreground">
@@ -582,70 +605,76 @@ export function PortraitGraph({
       </Card>
 
       {/* 数据源比例条 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">数据源比例</CardTitle>
+      <Card className="overflow-hidden border-slate-200/60 dark:border-slate-700/60">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-semibold text-slate-800 dark:text-slate-100">数据源比例</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <div className="flex h-8 overflow-hidden rounded-lg bg-muted">
-              <div
-                className="flex items-center justify-center gap-2 bg-blue-500/80 text-white transition-all"
-                style={{ width: `${textPct}%` }}
-              >
-                <FileText className="h-4 w-4" />
-                <span className="text-sm font-medium">Text</span>
-              </div>
-              <div
-                className="flex items-center justify-center gap-2 bg-violet-500/80 text-white transition-all"
-                style={{ width: `${imagePct}%` }}
-              >
-                <Image className="h-4 w-4" />
-                <span className="text-sm font-medium">Image</span>
-              </div>
+        <CardContent className="space-y-3">
+          <div className="flex h-10 overflow-hidden rounded-xl bg-slate-100/90 dark:bg-slate-800/50 shadow-inner">
+            <div
+              className="flex items-center justify-center gap-2 rounded-l-xl bg-gradient-to-r from-indigo-400 via-indigo-500 to-indigo-600 text-white shadow-sm transition-all duration-300 min-w-0"
+              style={{ width: `${textPct}%` }}
+            >
+              <FileText className="h-4 w-4 flex-shrink-0 opacity-95" />
+              <span className="text-sm font-medium truncate">Text</span>
             </div>
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>
-                Text {textCount} ({textPct.toFixed(0)}%)
-              </span>
-              <span>
-                Image {imageCount} ({imagePct.toFixed(0)}%)
-              </span>
+            <div
+              className="flex items-center justify-center gap-2 rounded-r-xl bg-gradient-to-r from-fuchsia-400 via-fuchsia-500 to-fuchsia-600 text-white shadow-sm transition-all duration-300 min-w-0"
+              style={{ width: `${imagePct}%` }}
+            >
+              <Image className="h-4 w-4 flex-shrink-0 opacity-95" />
+              <span className="text-sm font-medium truncate">Image</span>
             </div>
+          </div>
+          <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
+            <span className="font-medium">Text {textCount} <span className="text-slate-400 dark:text-slate-500">({textPct.toFixed(0)}%)</span></span>
+            <span className="font-medium">Image {imageCount} <span className="text-slate-400 dark:text-slate-500">({imagePct.toFixed(0)}%)</span></span>
           </div>
         </CardContent>
       </Card>
 
       {/* 主题统计 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">主题统计</CardTitle>
+      <Card className="overflow-hidden border-slate-200/60 dark:border-slate-700/60">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-semibold text-slate-800 dark:text-slate-100">主题统计</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-xl bg-gradient-to-br from-indigo-50/90 to-indigo-100/50 dark:from-indigo-950/40 dark:to-indigo-900/20 border border-indigo-100/80 dark:border-indigo-800/40 px-4 py-3 text-center">
+              <div className="text-2xl font-bold tabular-nums text-indigo-600 dark:text-indigo-400">
                 {clusters.length}
               </div>
-              <div className="text-sm text-muted-foreground">主题数</div>
+              <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-indigo-700/80 dark:text-indigo-300/90">
+                <ScatterChart className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
+                <span>主题数</span>
+              </div>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">
+            <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 px-4 py-3 text-center">
+              <div className="text-2xl font-bold tabular-nums text-slate-600 dark:text-slate-300">
                 {documentCount}
               </div>
-              <div className="text-sm text-muted-foreground">文档数</div>
+              <div className="mt-1 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                <FileText className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
+                <span>文档数</span>
+              </div>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-orange-600">
+            <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 px-4 py-3 text-center">
+              <div className="text-2xl font-bold tabular-nums text-slate-600 dark:text-slate-300">
                 {textCount}
               </div>
-              <div className="text-sm text-muted-foreground">文本块</div>
+              <div className="mt-1 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                <LayoutList className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
+                <span>文本块</span>
+              </div>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-violet-600">
+            <div className="rounded-xl bg-gradient-to-br from-fuchsia-50/90 to-fuchsia-100/50 dark:from-fuchsia-950/40 dark:to-fuchsia-900/20 border border-fuchsia-100/80 dark:border-fuchsia-800/40 px-4 py-3 text-center">
+              <div className="text-2xl font-bold tabular-nums text-fuchsia-600 dark:text-fuchsia-400">
                 {imageCount}
               </div>
-              <div className="text-sm text-muted-foreground">图片</div>
+              <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-fuchsia-700/80 dark:text-fuchsia-300/90">
+                <Image className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
+                <span>图片</span>
+              </div>
             </div>
           </div>
         </CardContent>
