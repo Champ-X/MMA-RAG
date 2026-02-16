@@ -150,20 +150,30 @@ class IntentProcessor:
             # 复杂度判断
             is_complex = "complex" in content_lower or "复杂" in content_lower
             
-            # 视觉需求（扩展关键词列表）
-            visual_keywords = [
+            # 视觉意图判断（基于关键词的简单fallback逻辑）
+            visual_keywords_explicit = [
                 "visual", "图片", "图表", "架构图", "示意图", "流程图", "设计图", "可视化",
                 "查看图片", "显示图片", "展示图片", "图片中", "图表中", "图中", "看看",
                 "image", "chart", "diagram", "graph", "figure", "visualization",
                 "结构图", "系统图", "网络图", "拓扑图"
             ]
-            needs_visual = any(keyword in content_lower for keyword in visual_keywords)
+            has_explicit_visual = any(keyword in content_lower for keyword in visual_keywords_explicit)
+            
+            # 简单的视觉意图判断（fallback逻辑）
+            if has_explicit_visual:
+                visual_intent = "explicit_demand"
+                visual_reasoning = "检测到明确的视觉相关关键词"
+            else:
+                # 简单的隐性判断（fallback，实际应该由LLM判断）
+                visual_intent = "unnecessary"
+                visual_reasoning = "未检测到明确的视觉需求"
             
             return {
                 "reasoning": content[:200],  # 取前200字符作为推理
                 "intent_type": intent_type,
                 "is_complex": is_complex,
-                "needs_visual": needs_visual,
+                "visual_intent": visual_intent,
+                "visual_reasoning": visual_reasoning,
                 "search_strategies": {
                     "dense_query": content.split("dense_query")[-1] if "dense_query" in content else content[:100],
                     "sparse_keywords": ["查询", "信息"],  # 默认关键词
@@ -189,7 +199,8 @@ class IntentProcessor:
                 "reasoning": analysis.get("reasoning", "基于查询内容分析"),
                 "intent_type": analysis.get("intent_type", "factual"),
                 "is_complex": analysis.get("is_complex", False),
-                "needs_visual": analysis.get("needs_visual", False),
+                "visual_intent": analysis.get("visual_intent", "unnecessary"),
+                "visual_reasoning": analysis.get("visual_reasoning", "未检测到明确的视觉需求"),
                 "search_strategies": {
                     "dense_query": analysis.get("search_strategies", {}).get("dense_query", original_query),
                     "sparse_keywords": analysis.get("search_strategies", {}).get("sparse_keywords", []),
@@ -203,19 +214,46 @@ class IntentProcessor:
             if validated["intent_type"] not in valid_intent_types:
                 validated["intent_type"] = "factual"
             
-            # 基于原始查询的关键词检查，作为needs_visual的后备验证
-            # 如果LLM没有正确识别，但查询中包含视觉相关关键词，强制设置为True
-            if not validated["needs_visual"]:
-                visual_keywords = [
-                    "图片", "图表", "示意图", "流程图", "设计图", "可视化",
-                    "查看图片", "显示图片", "展示图片", "图片中", "图表中", "图中", "看看",
-                    "image", "chart", "diagram", "graph", "figure", "visualization",
-                    "架构图", "结构图", "系统图", "网络图", "拓扑图"
-                ]
-                query_lower = original_query.lower()
-                if any(keyword in query_lower for keyword in visual_keywords):
-                    logger.info(f"检测到视觉相关关键词，强制设置needs_visual=True: {original_query}")
-                    validated["needs_visual"] = True
+            # 验证visual_intent值
+            valid_visual_intents = ["explicit_demand", "implicit_enrichment", "unnecessary"]
+            
+            # 明确的视觉请求关键词（优先级最高，必须判断为explicit_demand）
+            # 包含原来的所有关键词，并新增明确的视觉请求词
+            explicit_visual_request_keywords = [
+                # 新增的明确视觉请求词
+                "看看", "给我看", "看一下", "展示", "显示",
+                "有图吗", "有图片吗", "有图表吗", "有架构图吗", "有示意图吗",
+                "show me", "let me see", "display", "view",
+                # 保留原来的所有关键词
+                "图片", "图表", "示意图", "流程图", "设计图", "可视化",
+                "查看图片", "显示图片", "展示图片", "图片中", "图表中", "图中",
+                "image", "chart", "diagram", "graph", "figure", "visualization",
+                "架构图", "结构图", "系统图", "网络图", "拓扑图"
+            ]
+            
+            query_lower = original_query.lower()
+            has_explicit_visual_request = any(keyword in query_lower for keyword in explicit_visual_request_keywords)
+            
+            if validated["visual_intent"] not in valid_visual_intents:
+                # 如果LLM返回了无效值，尝试从关键词推断
+                if has_explicit_visual_request:
+                    logger.info(f"检测到明确的视觉请求关键词，设置visual_intent=explicit_demand: {original_query}")
+                    validated["visual_intent"] = "explicit_demand"
+                    validated["visual_reasoning"] = "检测到明确的视觉请求关键词"
+                else:
+                    validated["visual_intent"] = "unnecessary"
+                    validated["visual_reasoning"] = "未检测到明确的视觉需求"
+            elif has_explicit_visual_request and validated["visual_intent"] != "explicit_demand":
+                # 即使LLM返回了有效的visual_intent，但如果包含明确的视觉请求词，必须强制覆盖为explicit_demand
+                logger.info(
+                    f"检测到明确的视觉请求关键词，强制覆盖visual_intent: "
+                    f"{validated['visual_intent']} -> explicit_demand, 查询: {original_query}"
+                )
+                validated["visual_intent"] = "explicit_demand"
+                validated["visual_reasoning"] = (
+                    f"检测到明确的视觉请求关键词（如'看看'、'给我看'等），"
+                    f"即使查询内容本身也具有视觉导向性，也应优先判断为显式需求"
+                )
             
             # 确保sparse_keywords是列表
             if not isinstance(validated["search_strategies"]["sparse_keywords"], list):
@@ -238,7 +276,8 @@ class IntentProcessor:
             "reasoning": "使用默认规则进行简单分析",
             "intent_type": "factual",
             "is_complex": False,
-            "needs_visual": False,
+            "visual_intent": "unnecessary",
+            "visual_reasoning": "使用默认规则，未检测到明确的视觉需求",
             "search_strategies": {
                 "dense_query": query,
                 "sparse_keywords": [],

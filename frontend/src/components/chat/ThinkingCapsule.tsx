@@ -26,7 +26,8 @@ export function ThinkingCapsule({
     type: thoughtData?.intent_type,
     originalQuery: thoughtData?.original_query,
     refinedQuery: thoughtData?.refined_query,
-    needsVisual: thoughtData?.needs_visual,
+    visualIntent: thoughtData?.visual_intent,
+    visualReasoning: thoughtData?.visual_reasoning,
   }
 
   const routing = thoughtData?.target_kbs || (thoughtData?.fallback_search ? { strategy: 'fallback' as const } : thoughtData?.target_kbs ? undefined : { strategy: 'weighted' as const })
@@ -116,12 +117,25 @@ export function ThinkingCapsule({
                   <span className="text-slate-700 dark:text-slate-200 flex-1 font-medium">{intent.refinedQuery}</span>
                 </div>
               )}
-              {intent.needsVisual && (
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="text-slate-400 dark:text-slate-500 w-20">视觉模式</span>
-                  <span className="text-purple-600 dark:text-purple-400 flex items-center gap-1">
-                    <ImageIcon size={12} /> 图像检索已启用
-                  </span>
+              {intent.visualIntent && intent.visualIntent !== 'unnecessary' && (
+                <div className="flex items-start gap-2 text-xs">
+                  <span className="text-slate-400 dark:text-slate-500 w-20 flex-shrink-0">视觉意图</span>
+                  <div className="flex-1 space-y-1">
+                    <span className={cn(
+                      "inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium",
+                      intent.visualIntent === 'explicit_demand' 
+                        ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+                        : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                    )}>
+                      <ImageIcon size={12} />
+                      {intent.visualIntent === 'explicit_demand' ? '显式需求' : '隐性增益'}
+                    </span>
+                    {intent.visualReasoning && (
+                      <div className="text-slate-600 dark:text-slate-400 text-xs mt-1">
+                        {intent.visualReasoning}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

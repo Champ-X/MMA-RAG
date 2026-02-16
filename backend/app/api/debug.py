@@ -50,7 +50,8 @@ async def get_retrieval_debug_info(query_id: str):
         "intent_analysis": {
             "intent_type": "factual",
             "is_complex": False,
-            "needs_visual": False
+            "visual_intent": "unnecessary",
+            "visual_reasoning": "未检测到明确的视觉需求"
         },
         "search_strategies": {
             "dense_query": "向量数据库的混合检索实现方法",

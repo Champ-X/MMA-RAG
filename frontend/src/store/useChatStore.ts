@@ -7,7 +7,8 @@ export interface ThoughtData {
   original_query?: string;
   refined_query?: string;
   is_complex?: boolean;
-  needs_visual?: boolean;
+  visual_intent?: 'explicit_demand' | 'implicit_enrichment' | 'unnecessary';
+  visual_reasoning?: string;
   sub_queries?: string[];
   current_sub_step?: number;
   target_kbs?: Array<{ id: string; name: string; score: number }>;

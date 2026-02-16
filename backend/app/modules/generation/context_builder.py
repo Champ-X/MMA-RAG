@@ -44,7 +44,8 @@ class ContextBuilder:
         # 上下文配置
         self.max_context_length = 4000  # 最大上下文长度
         self.max_chunks = 15           # 最大文本块数量
-        self.max_images = 5            # 最大图片数量
+        self.max_images = 5            # 最大图片数量（默认）
+        self.max_images_implicit = 8   # implicit_enrichment时的最大图片数量（提升图片丰富度，接近显式模式）
     
     async def build_context(
         self,
@@ -119,8 +120,18 @@ class ContextBuilder:
     async def _process_retrieval_results(self, retrieval_result: Any) -> List[Dict[str, Any]]:
         """处理检索结果"""
         try:
+            # 根据visual_intent调整图片配额
+            visual_intent = None
+            if hasattr(retrieval_result, 'context') and hasattr(retrieval_result.context, 'visual_intent'):
+                visual_intent = retrieval_result.context.visual_intent
+            
+            # 对于implicit_enrichment，增加图片配额
+            max_images = self.max_images_implicit if visual_intent == "implicit_enrichment" else self.max_images
+            
             processed_results = []
             seen_chunk_ids = set()  # 用于去重，确保每个 chunk 只出现一次
+            doc_count = 0
+            image_count = 0
             
             for result in retrieval_result.reranked_results:
                 # 必须使用检索返回的 point id（向量库 chunk 的 id），用于引用与 context_window 查询
@@ -172,7 +183,7 @@ class ContextBuilder:
             # 按分数排序
             processed_results.sort(key=lambda x: x["score"], reverse=True)
             
-            # 限制结果数量
+            # 限制结果数量（使用动态的max_images）
             limited_results = []
             doc_count = 0
             image_count = 0
@@ -180,7 +191,7 @@ class ContextBuilder:
             for result in processed_results:
                 if result["content_type"] == "doc" and doc_count >= self.max_chunks:
                     continue
-                if result["content_type"] == "image" and image_count >= self.max_images:
+                if result["content_type"] == "image" and image_count >= max_images:
                     continue
                 
                 limited_results.append(result)
@@ -189,6 +200,12 @@ class ContextBuilder:
                     doc_count += 1
                 else:
                     image_count += 1
+            
+            if visual_intent == "implicit_enrichment":
+                logger.info(
+                    f"Implicit enrichment图片配额优化: 使用max_images={max_images}, "
+                    f"实际保留{image_count}张图片, {doc_count}个文本块"
+                )
             
             return limited_results
             

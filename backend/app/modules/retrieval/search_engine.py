@@ -38,7 +38,7 @@ class HybridSearchEngine:
         self,
         query_strategies: Dict[str, Any],
         target_kb_ids: List[str],
-        needs_visual: bool = False,
+        visual_intent: str = "unnecessary",
         intent_type: str = "factual"
     ) -> Dict[str, Any]:
         """
@@ -47,7 +47,7 @@ class HybridSearchEngine:
         Args:
             query_strategies: 查询策略
             target_kb_ids: 目标知识库ID列表
-            needs_visual: 是否需要视觉检索
+            visual_intent: 视觉意图（explicit_demand, implicit_enrichment, unnecessary）
             intent_type: 意图类型
             
         Returns:
@@ -56,7 +56,7 @@ class HybridSearchEngine:
         start_time = datetime.utcnow()
         
         try:
-            logger.info(f"开始混合检索: KB={len(target_kb_ids)}, Visual={needs_visual}")
+            logger.info(f"开始混合检索: KB={len(target_kb_ids)}, Visual Intent={visual_intent}")
             
             # 构建检索任务
             search_tasks = []
@@ -79,12 +79,13 @@ class HybridSearchEngine:
             )
             search_tasks.append(("sparse", sparse_task))
             
-            # 3. Visual检索（如果需要）
-            if needs_visual:
+            # 3. Visual检索（基于visual_intent的机会主义检索策略）
+            if visual_intent in ["explicit_demand", "implicit_enrichment"]:
                 visual_task = self._visual_search(
                     query_strategies.get("dense_query", ""),
                     query_strategies.get("multi_view_queries", []),
-                    target_kb_ids
+                    target_kb_ids,
+                    visual_intent=visual_intent
                 )
                 search_tasks.append(("visual", visual_task))
             
@@ -113,8 +114,8 @@ class HybridSearchEngine:
                 except Exception as e:
                     logger.debug(f"统计目标KB文本块数量时出错: {e}")
 
-            # 4. RRF融合
-            fused_results = await self._fuse_results(results)
+            # 4. RRF融合（根据visual_intent动态调整权重）
+            fused_results = await self._fuse_results(results, visual_intent=visual_intent)
             
             processing_time = (datetime.utcnow() - start_time).total_seconds()
             
@@ -307,11 +308,39 @@ class HybridSearchEngine:
         self,
         query: str,
         multi_view_queries: List[str],
-        target_kb_ids: List[str]
+        target_kb_ids: List[str],
+        visual_intent: str = "explicit_demand"
     ) -> List[Dict[str, Any]]:
-        """Visual图像检索（真正的双路RRF：文本语义向量 + CLIP视觉特征向量）"""
+        """
+        Visual图像检索（真正的双路RRF：文本语义向量 + CLIP视觉特征向量）
+        基于visual_intent实现机会主义检索策略
+        
+        Args:
+            query: 查询文本
+            multi_view_queries: 多视角查询列表
+            target_kb_ids: 目标知识库ID列表
+            visual_intent: 视觉意图（explicit_demand, implicit_enrichment）
+        """
         try:
-            logger.info(f"Visual检索开始: 查询='{query}...'")
+            logger.info(f"Visual检索开始: 查询='{query}...', Visual Intent={visual_intent}")
+            
+            # 根据visual_intent设置检索参数
+            if visual_intent == "explicit_demand":
+                # 显式需求：扩大召回范围，放宽相似度阈值
+                limit = 20
+                score_threshold = 0.0
+                logger.info("Visual检索策略: explicit_demand - 扩大召回范围")
+            elif visual_intent == "implicit_enrichment":
+                # 隐性增益：进一步优化图片丰富度，缩小与显式模式的差距
+                # 注意：Qdrant使用余弦相似度，对于归一化向量，分数范围是0-1
+                # 为了提升图片丰富度，采用更接近显式模式的策略
+                limit = 20  # 增加到20，与显式模式一致，提供更多图片候选
+                score_threshold = 0.1  # 进一步降低阈值到0.4，接近显式模式的0.0，召回更多相关图片
+                logger.info(f"Visual检索策略: implicit_enrichment - 优化图片丰富度，limit={limit}, 相似度阈值={score_threshold} (接近显式模式)")
+            else:
+                # 不应该到达这里，但为了安全起见
+                limit = 10
+                score_threshold = 0.0
             
             # 1. 生成文本语义向量（用于匹配VLM生成的图片描述）
             logger.info("Visual检索步骤1: 生成文本语义向量（匹配图片描述）")
@@ -340,8 +369,8 @@ class HybridSearchEngine:
                     text_query_vector=text_query_vector,
                     clip_query_vector=clip_text_vector,
                     kb_ids=target_kb_ids,
-                    limit=10,
-                    score_threshold=0.0
+                    limit=limit,
+                    score_threshold=score_threshold
                 )
                 
                 # 标记结果来源
@@ -350,12 +379,38 @@ class HybridSearchEngine:
                     result["dual_rrf"] = True
                     result["text_vec_score"] = result.get("scores", {}).get("text_vec", 0.0)
                     result["clip_vec_score"] = result.get("scores", {}).get("clip_vec", 0.0)
+                    result["visual_intent"] = visual_intent
+                
+                # 统计分数分布（用于分析和优化阈值）
+                if search_results:
+                    scores = [r.get("score", 0.0) for r in search_results]
+                    max_score = max(scores) if scores else 0.0
+                    min_score = min(scores) if scores else 0.0
+                    avg_score = sum(scores) / len(scores) if scores else 0.0
+                    logger.debug(
+                        f"Visual检索分数分布: max={max_score:.3f}, min={min_score:.3f}, "
+                        f"avg={avg_score:.3f}, count={len(search_results)}"
+                    )
                 
                 logger.info(
-                    f"Visual检索完成（双路RRF）: {len(search_results)} 个图片结果 "
+                    f"Visual检索完成（双路RRF）: {len(search_results)} 个图片结果, "
+                    f"Visual Intent={visual_intent}, Score Threshold={score_threshold} "
                     f"(文本语义匹配: {sum(1 for r in search_results if r.get('text_vec_score', 0) > 0)}个, "
                     f"CLIP视觉匹配: {sum(1 for r in search_results if r.get('clip_vec_score', 0) > 0)}个)"
                 )
+                
+                # 对于implicit_enrichment，记录检索结果
+                if visual_intent == "implicit_enrichment":
+                    if len(search_results) == 0:
+                        logger.info(
+                            f"Implicit enrichment: 未找到相关图片（相似度阈值{score_threshold}），"
+                            f"返回空列表（机会主义策略）"
+                        )
+                    else:
+                        logger.info(
+                            f"Implicit enrichment: 成功检索到{len(search_results)}张图片候选 "
+                            f"(阈值={score_threshold}, limit={limit})"
+                        )
                 
                 return search_results
             else:
@@ -364,8 +419,8 @@ class HybridSearchEngine:
                 search_results = await self.vector_store.search_image_vectors(
                     query_vector=text_query_vector,
                     kb_ids=target_kb_ids,
-                    limit=10,
-                    score_threshold=0.0
+                    limit=limit,
+                    score_threshold=score_threshold
                 )
                 
                 # 标记结果
@@ -373,8 +428,31 @@ class HybridSearchEngine:
                     result["search_type"] = "visual"
                     result["dual_rrf"] = False
                     result["text_vec_score"] = result.get("score", 0.0)
+                    result["visual_intent"] = visual_intent
                 
-                logger.info(f"Visual检索完成（单路文本语义）: {len(search_results)} 个图片结果")
+                # 统计分数分布（用于分析和优化阈值）
+                if search_results:
+                    scores = [r.get("score", 0.0) for r in search_results]
+                    max_score = max(scores) if scores else 0.0
+                    min_score = min(scores) if scores else 0.0
+                    avg_score = sum(scores) / len(scores) if scores else 0.0
+                    logger.debug(
+                        f"Visual检索分数分布: max={max_score:.3f}, min={min_score:.3f}, "
+                        f"avg={avg_score:.3f}, count={len(search_results)}"
+                    )
+                
+                logger.info(
+                    f"Visual检索完成（单路文本语义）: {len(search_results)} 个图片结果, "
+                    f"Visual Intent={visual_intent}, Score Threshold={score_threshold}"
+                )
+                
+                # 对于implicit_enrichment，如果没有找到相关图片，返回空列表（机会主义策略）
+                if visual_intent == "implicit_enrichment" and len(search_results) == 0:
+                    logger.info(
+                        f"Implicit enrichment: 未找到相关图片（相似度阈值{score_threshold}），"
+                        f"返回空列表（机会主义策略）"
+                    )
+                
                 return search_results
             
         except Exception as e:
@@ -521,18 +599,42 @@ class HybridSearchEngine:
                 return all_search_results[0]["results"]
             return []
     
-    async def _fuse_results(self, raw_results: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
-        """RRF融合结果"""
+    async def _fuse_results(
+        self, 
+        raw_results: Dict[str, List[Dict[str, Any]]], 
+        visual_intent: str = "unnecessary"
+    ) -> List[Dict[str, Any]]:
+        """
+        RRF融合结果
+        根据visual_intent动态调整权重
+        
+        Args:
+            raw_results: 原始检索结果
+            visual_intent: 视觉意图（explicit_demand, implicit_enrichment, unnecessary）
+        """
         try:
             # 使用RRF算法融合结果
             fused_results = {}
+            
+            # 根据visual_intent动态调整权重
+            dynamic_weights = self.rrf_weights.copy()
+            if visual_intent == "explicit_demand":
+                # 显式需求：提高视觉检索权重，确保图片排在前面
+                dynamic_weights["visual"] = 1.2
+            elif visual_intent == "implicit_enrichment":
+                # 隐性增益：提高权重到1.15，更接近显式模式的1.2，确保图片在融合时有更好的排名
+                # 但仍保持平衡，避免过度挤掉文本（文本权重dense=1.0, sparse=0.8）
+                dynamic_weights["visual"] = 1.15
+            else:
+                # unnecessary: 视觉检索权重为0（实际上不应该有visual结果）
+                dynamic_weights["visual"] = 0.0
             
             # 遍历每种检索类型的结果
             for search_type, results in raw_results.items():
                 if not results:
                     continue
                 
-                weight = self.rrf_weights.get(search_type, 1.0)
+                weight = dynamic_weights.get(search_type, 1.0)
                 
                 # 为每个结果计算RRF分数
                 for rank, result in enumerate(results):
@@ -565,7 +667,10 @@ class HybridSearchEngine:
             max_results = 50
             final_results = sorted_results[:max_results]
             
-            logger.info(f"RRF融合完成: {len(raw_results)} 种检索 -> {len(final_results)} 个融合结果")
+            logger.info(
+                f"RRF融合完成: {len(raw_results)} 种检索 -> {len(final_results)} 个融合结果, "
+                f"Visual Intent={visual_intent}, Visual Weight={dynamic_weights.get('visual', 0.0)}"
+            )
             
             return final_results
             

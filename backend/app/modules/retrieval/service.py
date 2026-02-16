@@ -23,7 +23,8 @@ class RetrievalContext:
     refined_query: str
     intent_type: str
     is_complex: bool
-    needs_visual: bool
+    visual_intent: str  # 视觉意图：explicit_demand, implicit_enrichment, unnecessary
+    visual_reasoning: str  # 视觉意图推理说明
     search_strategies: Dict[str, Any]
     target_kb_ids: List[str]
     confidence_scores: Dict[str, float]
@@ -102,7 +103,8 @@ class RetrievalService:
                 refined_query=preprocessing_result["refined_query"],
                 intent_type=preprocessing_result["intent_type"],
                 is_complex=preprocessing_result["is_complex"],
-                needs_visual=preprocessing_result["needs_visual"],
+                visual_intent=preprocessing_result.get("visual_intent", "unnecessary"),
+                visual_reasoning=preprocessing_result.get("visual_reasoning", "未检测到明确的视觉需求"),
                 search_strategies=preprocessing_result["search_strategies"],
                 target_kb_ids=routing_result.target_kb_ids,
                 confidence_scores=routing_result.confidence_scores
@@ -195,7 +197,8 @@ class RetrievalService:
                 "intent_type": preprocessing_result.get("intent_type", "factual"),
                 "original_query": preprocessing_result.get("original_query", query),
                 "refined_query": preprocessing_result.get("refined_query", query),
-                "needs_visual": preprocessing_result.get("needs_visual", False),
+                "visual_intent": preprocessing_result.get("visual_intent", "unnecessary"),
+                "visual_reasoning": preprocessing_result.get("visual_reasoning", "未检测到明确的视觉需求"),
                 "is_complex": preprocessing_result.get("is_complex", False),
                 "sub_queries": preprocessing_result.get("sub_queries", []) or [],
             }
@@ -227,7 +230,8 @@ class RetrievalService:
                 refined_query=preprocessing_result["refined_query"],
                 intent_type=preprocessing_result["intent_type"],
                 is_complex=preprocessing_result["is_complex"],
-                needs_visual=preprocessing_result["needs_visual"],
+                visual_intent=preprocessing_result.get("visual_intent", "unnecessary"),
+                visual_reasoning=preprocessing_result.get("visual_reasoning", "未检测到明确的视觉需求"),
                 search_strategies=preprocessing_result["search_strategies"],
                 target_kb_ids=target_kb_ids,
                 confidence_scores=confidence_scores,
@@ -333,7 +337,8 @@ class RetrievalService:
                 "refined_query": final_refined_query,
                 "intent_type": intent_result.get("intent_type", "factual"),
                 "is_complex": intent_result.get("is_complex", False),
-                "needs_visual": intent_result.get("needs_visual", False),
+                "visual_intent": intent_result.get("visual_intent", "unnecessary"),
+                "visual_reasoning": intent_result.get("visual_reasoning", "未检测到明确的视觉需求"),
                 "search_strategies": {
                     "dense_query": final_refined_query,
                     "multi_view_queries": rewriter_result.get("multi_view_queries", []),
@@ -353,7 +358,8 @@ class RetrievalService:
                 "refined_query": query,
                 "intent_type": "factual",
                 "is_complex": False,
-                "needs_visual": False,
+                "visual_intent": "unnecessary",
+                "visual_reasoning": "使用默认规则，未检测到明确的视觉需求",
                 "search_strategies": {
                     "dense_query": query,
                     "multi_view_queries": [],
@@ -389,7 +395,7 @@ class RetrievalService:
             return await self.search_engine.search(
                 query_strategies=context.search_strategies,
                 target_kb_ids=qdrant_kb_ids,
-                needs_visual=context.needs_visual,
+                visual_intent=context.visual_intent,
                 intent_type=context.intent_type
             )
         except Exception as e:

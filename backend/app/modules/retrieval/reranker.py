@@ -21,8 +21,8 @@ class Reranker:
         # 重排序参数
         self.cross_encoder_weight = 0.7  # Cross-Encoder权重
         self.rrf_weight = 0.3          # RRF权重
-        self.top_k = 20                # Cross-Encoder处理的候选数量
-        self.final_top_k = 10          # 最终返回结果数量
+        self.top_k = 30                # Cross-Encoder处理的候选数量（从20增加到30，提高重排质量）
+        self.final_top_k = 10          # 最终返回结果数量（从10增加到15，提高图片丰富度）
     
     async def rerank(
         self,
@@ -54,8 +54,10 @@ class Reranker:
                 query, coarse_ranking, context
             )
             
-            # 3. 最终排序和限制数量
-            final_results = reranked_results[:self.final_top_k]
+            # 3. 最终排序和限制数量，并对implicit_enrichment进行图片保护
+            final_results = self._apply_final_ranking_with_image_protection(
+                reranked_results, context
+            )
             
             processing_time = (datetime.utcnow() - start_time).total_seconds()
             
@@ -84,6 +86,73 @@ class Reranker:
                 "processing_time": (datetime.utcnow() - start_time).total_seconds(),
                 "error": str(e)
             }
+    
+    def _apply_final_ranking_with_image_protection(
+        self,
+        reranked_results: List[Dict[str, Any]],
+        context: Optional[Any] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        应用最终排序，并对implicit_enrichment进行图片保护
+        
+        对于implicit_enrichment，确保至少保留一定数量的图片结果，
+        避免图片被文本结果完全挤掉
+        """
+        try:
+            # 检查是否是implicit_enrichment
+            visual_intent = None
+            if context and hasattr(context, 'visual_intent'):
+                visual_intent = context.visual_intent
+            
+            # 如果不是implicit_enrichment，直接返回Top-K
+            if visual_intent != "implicit_enrichment":
+                return reranked_results[:self.final_top_k]
+            
+            # 对于implicit_enrichment，进行图片保护
+            # 分离图片和文本结果
+            image_results = []
+            text_results = []
+            
+            for result in reranked_results:
+                payload = result.get("payload", {})
+                # 判断是否为图片：如果有caption字段，则为图片
+                is_image = "caption" in payload
+                if is_image:
+                    image_results.append(result)
+                else:
+                    text_results.append(result)
+            
+            # 图片保护策略：对于implicit_enrichment，确保保留足够的图片
+            # 由于final_top_k增加到15，可以保留更多图片（8-10张），接近显式模式的效果
+            # 策略：优先保留所有高分图片，确保图片丰富度
+            min_images = min(10, len(image_results))  # 最多保留10张图片，大幅提升图片丰富度
+            if min_images > 0:
+                # 优先选择分数最高的图片
+                top_images = image_results[:min_images]
+                
+                # 剩余位置分配给文本结果
+                remaining_slots = self.final_top_k - len(top_images)
+                top_texts = text_results[:remaining_slots] if remaining_slots > 0 else []
+                
+                # 合并结果：先放文本（保持文本优先），再放图片
+                # 这样可以确保文本结果在前面，图片作为补充
+                final_results = top_texts + top_images
+                
+                logger.info(
+                    f"Implicit enrichment图片保护: 保留{len(top_images)}张图片, "
+                    f"{len(top_texts)}个文本结果, 总计{len(final_results)}个结果 "
+                    f"(top_k={self.top_k}, final_top_k={self.final_top_k})"
+                )
+                
+                return final_results
+            else:
+                # 如果没有图片，直接返回文本结果
+                return text_results[:self.final_top_k]
+                
+        except Exception as e:
+            logger.error(f"应用图片保护失败: {str(e)}")
+            # 如果出错，返回原始排序结果
+            return reranked_results[:self.final_top_k]
     
     def _prepare_coarse_ranking(self, raw_results: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         """准备粗排候选列表"""
@@ -223,9 +292,9 @@ class Reranker:
             else:
                 logger.warning("解析后的重排分数为空，可能解析失败")
             
-            # 合并原始分数和Cross-Encoder分数
+            # 合并原始分数和Cross-Encoder分数（传入context以支持图片保护）
             final_ranking = self._merge_scores(
-                query, candidates_to_rerank, reranked_scores
+                query, candidates_to_rerank, reranked_scores, context
             )
             
             # 按最终分数排序
@@ -353,10 +422,21 @@ class Reranker:
         self,
         query: str,
         candidates: List[Dict[str, Any]],
-        reranked_scores: List[Dict[str, Any]]
+        reranked_scores: List[Dict[str, Any]],
+        context: Optional[Any] = None
     ) -> List[Dict[str, Any]]:
-        """合并原始分数和Cross-Encoder分数"""
+        """
+        合并原始分数和Cross-Encoder分数
+        
+        对于implicit_enrichment的图片，给予特殊保护：
+        - 降低Cross-Encoder权重（图片caption短，可能被打低分）
+        - 提高RRF权重（向量检索对图片更公平）
+        """
         try:
+            # 检查是否是implicit_enrichment
+            visual_intent = None
+            if context and hasattr(context, 'visual_intent'):
+                visual_intent = context.visual_intent
             # 构建reranked_scores的索引
             # 根据 SiliconFlow API 文档，每个结果包含 index 和 relevance_score
             score_index = {}
@@ -455,18 +535,72 @@ class Reranker:
                 # 获取原始分数
                 original_score = candidate.get("total_score", 0.0)
                 
-                # 对于第一位，如果原始分数明显高于第二位，使用动态权重
-                if i == 0 and len(candidates) >= 2:
-                    first_original_score = candidates[0].get("total_score", 0.0)
-                    second_original_score = candidates[1].get("total_score", 0.0)
-                    if first_original_score > 0 and second_original_score > 0:
-                        score_gap_ratio = (first_original_score - second_original_score) / first_original_score
-                        if score_gap_ratio > 0.2:
-                            # 第一位使用更高的原始分数权重
+                # 判断是否为图片
+                is_image = "caption" in candidate.get("payload", {})
+                
+                # 对于implicit_enrichment的图片，给予特殊保护
+                # 因为图片caption短，Cross-Encoder可能打分偏低，需要降低Cross-Encoder权重
+                if visual_intent == "implicit_enrichment" and is_image:
+                    # 图片保护：降低Cross-Encoder权重，提高RRF权重
+                    # Cross-Encoder权重降低到50%，RRF权重提高到150%
+                    image_cross_weight = self.cross_encoder_weight * 0.5
+                    image_rrf_weight = self.rrf_weight * 1.5
+                    
+                    logger.debug(
+                        f"图片保护机制激活: 候选{i} (图片), "
+                        f"Cross-Encoder分数={cross_encoder_score:.3f}, "
+                        f"RRF分数={original_score:.3f}, "
+                        f"权重调整: Cross={image_cross_weight:.2f}, RRF={image_rrf_weight:.2f}"
+                    )
+                    
+                    # 对于第一位图片，如果原始分数明显高于第二位，使用动态权重
+                    if i == 0 and len(candidates) >= 2:
+                        first_original_score = candidates[0].get("total_score", 0.0)
+                        second_original_score = candidates[1].get("total_score", 0.0)
+                        if first_original_score > 0 and second_original_score > 0:
+                            score_gap_ratio = (first_original_score - second_original_score) / first_original_score
+                            if score_gap_ratio > 0.2:
+                                # 第一位图片使用更高的RRF权重
+                                dynamic_image_rrf_weight = min(2.0, image_rrf_weight * (1 + score_gap_ratio))
+                                dynamic_image_cross_weight = 1.0 - (dynamic_image_rrf_weight - image_rrf_weight)
+                                final_score = (
+                                    dynamic_image_cross_weight * cross_encoder_score +
+                                    dynamic_image_rrf_weight * original_score
+                                )
+                            else:
+                                final_score = (
+                                    image_cross_weight * cross_encoder_score +
+                                    image_rrf_weight * original_score
+                                )
+                        else:
                             final_score = (
-                                dynamic_cross_weight * cross_encoder_score +
-                                dynamic_rrf_weight * original_score
+                                image_cross_weight * cross_encoder_score +
+                                image_rrf_weight * original_score
                             )
+                    else:
+                        final_score = (
+                            image_cross_weight * cross_encoder_score +
+                            image_rrf_weight * original_score
+                        )
+                else:
+                    # 对于文本或非implicit_enrichment，使用标准权重
+                    # 对于第一位，如果原始分数明显高于第二位，使用动态权重
+                    if i == 0 and len(candidates) >= 2:
+                        first_original_score = candidates[0].get("total_score", 0.0)
+                        second_original_score = candidates[1].get("total_score", 0.0)
+                        if first_original_score > 0 and second_original_score > 0:
+                            score_gap_ratio = (first_original_score - second_original_score) / first_original_score
+                            if score_gap_ratio > 0.2:
+                                # 第一位使用更高的原始分数权重
+                                final_score = (
+                                    dynamic_cross_weight * cross_encoder_score +
+                                    dynamic_rrf_weight * original_score
+                                )
+                            else:
+                                final_score = (
+                                    self.cross_encoder_weight * cross_encoder_score +
+                                    self.rrf_weight * original_score
+                                )
                         else:
                             final_score = (
                                 self.cross_encoder_weight * cross_encoder_score +
@@ -477,12 +611,6 @@ class Reranker:
                             self.cross_encoder_weight * cross_encoder_score +
                             self.rrf_weight * original_score
                         )
-                else:
-                    # 其他位置使用标准权重
-                    final_score = (
-                        self.cross_encoder_weight * cross_encoder_score +
-                        self.rrf_weight * original_score
-                    )
                 
                 # 构建最终结果
                 final_candidate = {
