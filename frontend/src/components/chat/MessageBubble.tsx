@@ -1,5 +1,6 @@
 import React from 'react'
 import { User, Bot } from 'lucide-react'
+import { Avatar } from '@/components/ui/avatar'
 import { ThinkingCapsule } from './ThinkingCapsule'
 import { InlineCitation } from './InlineCitation'
 import ReactMarkdown from 'react-markdown'
@@ -269,18 +270,15 @@ export function MessageBubble({
   const AvatarIcon = isUser ? User : Bot
   const avatarBg = isUser
     ? 'bg-gradient-to-br from-indigo-500 to-sky-500 text-white'
-    : 'bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white border border-slate-200/50 dark:border-slate-700/50'
+    : 'bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white'
 
   const avatarEl = (
-    <div
-      className={cn(
-        'flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center shadow-md ring-2 ring-white/20 dark:ring-slate-800/50',
-        avatarBg
-      )}
-      aria-hidden
-    >
-      <AvatarIcon className="w-4 h-4" strokeWidth={2.5} />
-    </div>
+    <Avatar
+      size="md"
+      fallback={<AvatarIcon className="w-4 h-4" strokeWidth={2.5} />}
+      rootClassName="shadow-md ring-2 ring-white/20 dark:ring-slate-800/50"
+      fallbackClassName={avatarBg}
+    />
   )
 
   const bubbleEl = (

@@ -294,36 +294,16 @@ export function ChatInterface() {
                 <div className="pointer-events-none absolute left-1/2 top-4 h-44 w-44 -translate-x-1/2 rounded-full bg-violet-400/20 blur-3xl dark:bg-fuchsia-500/15" />
                 <div className="pointer-events-none absolute left-1/2 top-20 h-36 w-72 -translate-x-1/2 rounded-full bg-sky-300/20 blur-3xl dark:bg-indigo-500/15" />
                 <div className="relative z-10">
-                  <div className="mb-6 inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-[0_10px_24px_rgba(168,85,247,0.35)] dark:shadow-[0_10px_24px_rgba(168,85,247,0.25)] ring-4 ring-white/85 dark:ring-slate-800/85">
-                    <svg
-                      viewBox="0 0 64 64"
-                      aria-hidden="true"
-                      className="h-14 w-14 text-white drop-shadow-sm"
-                    >
-                      <defs>
-                        <linearGradient id="nexusOrb" x1="0" y1="0" x2="1" y2="1">
-                          <stop offset="0%" stopColor="currentColor" stopOpacity="0.95" />
-                          <stop offset="100%" stopColor="currentColor" stopOpacity="0.6" />
-                        </linearGradient>
-                      </defs>
-                      <circle cx="32" cy="32" r="7" fill="currentColor" />
-                      <path
-                        d="M10 35c0-12 10-22 22-22 11 0 20 7 22 17"
-                        fill="none"
-                        stroke="url(#nexusOrb)"
-                        strokeWidth="4"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M54 29c0 12-10 22-22 22-11 0-20-7-22-17"
-                        fill="none"
-                        stroke="url(#nexusOrb)"
-                        strokeWidth="4"
-                        strokeLinecap="round"
-                      />
-                      <circle cx="53.5" cy="29" r="3.1" fill="currentColor" />
-                      <circle cx="10.5" cy="35" r="3.1" fill="currentColor" />
-                    </svg>
+                  <div
+                    className="mb-6 inline-flex h-36 w-36 items-center justify-center rounded-full overflow-hidden ring-4 ring-indigo-300/70 dark:ring-indigo-400/50 ring-offset-1 ring-offset-slate-50 dark:ring-offset-slate-950 shadow-[0_0_28px_rgba(99,102,241,0.35),0_0_56px_rgba(217,70,239,0.18)] dark:shadow-[0_0_32px_rgba(99,102,241,0.4),0_0_64px_rgba(217,70,239,0.22)]"
+                  >
+                    <img
+                      src="/logo.png"
+                      alt=""
+                      className="h-full w-full object-contain select-none"
+                      style={{ background: 'transparent' }}
+                      aria-hidden
+                    />
                   </div>
                   <h3 className="mb-3 text-2xl font-semibold tracking-tight text-slate-800 dark:text-slate-100">
                     你好，我是 Nexus

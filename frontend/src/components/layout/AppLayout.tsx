@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Database, Settings, MessageSquare, Layers, User, Moon, Sun, Network } from 'lucide-react'
+import { Avatar } from '@/components/ui/avatar'
 import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
 import { useChatStore } from '@/store/useChatStore'
 import { useTheme } from '@/hooks/useTheme'
@@ -115,12 +116,13 @@ export function AppLayout() {
             {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </button>
 
-          <div
-            title="用户"
-            className="grid h-11 w-11 place-items-center rounded-xl bg-white/5 text-slate-200 ring-1 ring-white/10"
-          >
-            <User className="h-5 w-5" />
-          </div>
+          <span title="用户" className="block">
+            <Avatar
+              size="lg"
+              fallback={<User className="h-5 w-5" strokeWidth={2} />}
+              rootClassName="ring-2 ring-white/20 dark:ring-slate-700/50 bg-gradient-to-br from-indigo-500/90 to-fuchsia-500/90 text-white shadow-md"
+            />
+          </span>
         </div>
       </aside>
 
