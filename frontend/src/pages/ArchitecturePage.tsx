@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { cn } from '@/lib/utils'
 import { architectureSections, coreModules, type ArchitectureSectionId } from '@/data/architectureData'
 import { ArchitectureNav } from '@/components/architecture/ArchitectureNav'
 import { OverviewSection } from '@/components/architecture/OverviewSection'

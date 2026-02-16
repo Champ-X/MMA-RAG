@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import { knowledgeApi, importApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
-import { StatusBadge, FileThumb, FileHero, CreateKbModal, EditKbModal, StatItem } from './KnowledgeListHelpers'
+import { StatusBadge, FileThumb, FileHero, CreateKbModal, EditKbModal } from './KnowledgeListHelpers'
 
 // 文件预览模态框（支持图片描述、文档分块、MD 预览）
 function FilePreviewModal({
@@ -1687,27 +1687,55 @@ const KnowledgeList: React.FC = () => {
           </div>
 
           {/* Detail Sidebar (Stats，结合向量库数据) */}
-          <div className="w-72 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-6 hidden xl:block">
-            <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-4">知识库统计</h4>
-            <div className="space-y-4">
-              <StatItem label="Documents" value={kbStats?.documents ?? activeKb.stats?.documents ?? 0} />
-              <StatItem label="Total Chunks" value={kbStats?.chunks ?? activeKb.stats?.chunks ?? 0} />
-              <StatItem label="Total Images" value={kbStats?.images ?? activeKb.stats?.images ?? 0} />
-              <StatItem
-                label="Vector Dim"
-                value={
-                  kbStats?.text_vector_dim != null && kbStats?.image_vector_dim != null
-                    ? `文本 ${kbStats.text_vector_dim} / 图片 ${kbStats.image_vector_dim}`
-                    : '文本 4096 / 图片 768'
-                }
-              />
+          <div className="w-72 border-l border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 p-6 hidden xl:block flex flex-col">
+            <div className="rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 shadow-sm">
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-indigo-500/10 to-fuchsia-500/10 dark:from-indigo-400/20 dark:to-fuchsia-400/20">
+                  <Database size={18} className="text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <h4 className="font-semibold text-slate-800 dark:text-slate-100">知识库统计</h4>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors">
+                  <span className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                    <FileText size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                    Documents
+                  </span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-100 tabular-nums">{kbStats?.documents ?? activeKb.stats?.documents ?? 0}</span>
+                </div>
+                <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors">
+                  <span className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                    <Layers size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    Total Chunks
+                  </span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-100 tabular-nums">{kbStats?.chunks ?? activeKb.stats?.chunks ?? 0}</span>
+                </div>
+                <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors">
+                  <span className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                    <ImageIcon size={14} className="text-fuchsia-600 dark:text-fuchsia-400 shrink-0" />
+                    Total Images
+                  </span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-100 tabular-nums">{kbStats?.images ?? activeKb.stats?.images ?? 0}</span>
+                </div>
+                <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors">
+                  <span className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 shrink-0">
+                    <Box size={14} className="text-violet-600 dark:text-violet-400 shrink-0" />
+                    Vector Dim
+                  </span>
+                  <span className="font-medium text-slate-800 dark:text-slate-100 text-xs text-right flex flex-col items-end gap-0.5">
+                    <span className="tabular-nums">文本 {kbStats?.text_vector_dim ?? 4096}</span>
+                    <span className="tabular-nums">图片 {kbStats?.image_vector_dim ?? 768}</span>
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
+            <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
               <button
                 onClick={() => handleDeleteKb(activeKbId!)}
-                className="w-full py-2 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-sm font-medium transition-colors"
+                className="w-full py-2.5 px-4 flex items-center justify-center gap-2 rounded-xl border border-red-200 dark:border-red-800/60 text-red-600 dark:text-red-400 bg-white dark:bg-slate-950 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm font-medium transition-all hover:border-red-300 dark:hover:border-red-700 shadow-sm"
               >
+                <Trash2 size={16} />
                 删除知识库
               </button>
             </div>

@@ -26,7 +26,7 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
   const [chatModels, setChatModels] = useState<string[]>([])
   const [currentChatModel, setCurrentChatModel] = useState<string>('')
   const [modelsLoading, setModelsLoading] = useState(false)
-  const [userSelectedModel, setUserSelectedModel] = useState<string | null>(null)
+  const [_userSelectedModel, setUserSelectedModel] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) fetchKnowledgeBases()

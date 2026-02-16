@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Info, FileText, Image, RefreshCw } from 'lucide-react'
+import { ScatterChart, FileText, Image, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { knowledgeApi } from '@/services/api_client'
 
@@ -242,10 +242,12 @@ export function PortraitGraph({
   return (
     <div className={cn('space-y-4', className)}>
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Info className="h-5 w-5" />
-            知识库画像 · 主题气泡图
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2.5 text-base">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500/15 to-fuchsia-500/15 dark:from-indigo-400/20 dark:to-fuchsia-400/20 border border-indigo-200/50 dark:border-indigo-500/30">
+              <ScatterChart className="h-4 w-4 text-indigo-600 dark:text-indigo-400" strokeWidth={2.5} />
+            </span>
+            <span>知识库主题气泡图</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
