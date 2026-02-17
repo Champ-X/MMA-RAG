@@ -81,7 +81,38 @@ class LLMRegistry:
                 "context_length": 160000, # 160K tokens
                 "description": "DeepSeek V3.2 模型"
             },
-            
+            # Siliconflow 新增模型
+            "Pro/MiniMaxAI/MiniMax-M2.5": {
+                "provider": "siliconflow",
+                "type": "chat",
+                "context_length": 200000,  # 200K tokens
+                "description": "MiniMax M2.5 对话模型"
+            },
+            "Pro/moonshotai/Kimi-K2.5": {
+                "provider": "siliconflow",
+                "type": "chat,vision",  # 对话、视觉、推理
+                "context_length": 256000,  # 256K tokens
+                "description": "Kimi K2.5 对话、视觉、推理"
+            },
+            "moonshotai/Kimi-K2-Thinking": {
+                "provider": "siliconflow",
+                "type": "chat",
+                "context_length": 256000,  # 256K tokens
+                "description": "Kimi K2 思考模型（对话、推理）"
+            },
+            "Pro/zai-org/GLM-5": {
+                "provider": "siliconflow",
+                "type": "chat",
+                "context_length": 200000,  # 200K tokens
+                "description": "GLM-5 对话、推理"
+            },
+            "zai-org/GLM-4.6V": {
+                "provider": "siliconflow",
+                "type": "vision",
+                "context_length": 128000,  # 128K tokens
+                "description": "GLM-4.6V 视觉模型"
+            },
+
             # 嵌入模型
             "Qwen/Qwen3-Embedding-8B": {
                 "provider": "siliconflow",
@@ -158,9 +189,13 @@ class LLMRegistry:
             "intent_recognition": {
                 "model": "Pro/deepseek-ai/DeepSeek-V3.2",
                 "fallbacks": [
-                    "deepseek-ai/DeepSeek-V3.2", 
-                    "Pro/deepseek-ai/DeepSeek-R1", 
+                    "deepseek-ai/DeepSeek-V3.2",
+                    "Pro/deepseek-ai/DeepSeek-R1",
                     "Qwen/Qwen3-235B-A22B-Instruct-2507",
+                    "Pro/moonshotai/Kimi-K2.5",
+                    "Pro/zai-org/GLM-5",
+                    "moonshotai/Kimi-K2-Thinking",
+                    "Pro/MiniMaxAI/MiniMax-M2.5",
                     "deepseek-chat",
                     "deepseek-reasoner"
                 ],
@@ -170,6 +205,10 @@ class LLMRegistry:
                 "fallbacks": [
                     "Pro/deepseek-ai/DeepSeek-R1",
                     "Qwen/Qwen3-235B-A22B-Instruct-2507",
+                    "Pro/moonshotai/Kimi-K2.5",
+                    "Pro/zai-org/GLM-5",
+                    "moonshotai/Kimi-K2-Thinking",
+                    "Pro/MiniMaxAI/MiniMax-M2.5",
                     "deepseek-chat",
                     "deepseek-reasoner"
                 ],
@@ -178,8 +217,10 @@ class LLMRegistry:
                 "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
                 "fallbacks": [
                     "Qwen/Qwen3-Omni-30B-A3B-Captioner",
+                    "Pro/moonshotai/Kimi-K2.5",
                     "Qwen/Qwen3-Omni-30B-A3B-Instruct",
                     "Qwen/Qwen3-VL-235B-A22B-Instruct",
+                    "zai-org/GLM-4.6V",
                 ],
             },
             "final_generation": {
@@ -189,6 +230,10 @@ class LLMRegistry:
                     "deepseek-ai/DeepSeek-R1",
                     "Pro/deepseek-ai/DeepSeek-R1",
                     "Qwen/Qwen3-235B-A22B-Thinking-2507",
+                    "Pro/moonshotai/Kimi-K2.5",
+                    "Pro/zai-org/GLM-5",
+                    "moonshotai/Kimi-K2-Thinking",
+                    "Pro/MiniMaxAI/MiniMax-M2.5",
                     "deepseek-chat",
                     "deepseek-reasoner"
                 ],
@@ -198,6 +243,10 @@ class LLMRegistry:
                 "fallbacks": [
                     "Pro/deepseek-ai/DeepSeek-R1",
                     "deepseek-ai/DeepSeek-V3.2",
+                    "Pro/moonshotai/Kimi-K2.5",
+                    "Pro/zai-org/GLM-5",
+                    "moonshotai/Kimi-K2-Thinking",
+                    "Pro/MiniMaxAI/MiniMax-M2.5",
                     "deepseek-chat",
                     "deepseek-reasoner"
                 ],
@@ -263,23 +312,33 @@ class LLMRegistry:
             self._task_config[task_type]["fallbacks"] = list(fallbacks)
     
     def list_models(self, model_type: Optional[str] = None) -> List[str]:
-        """列出可用模型"""
+        """列出可用模型。config.type 可为逗号分隔的多类型（如 chat,vision）。"""
         if model_type:
-            return [name for name, config in self._models.items()
-                   if config.get("type") == model_type]
+            def _match(cfg: Dict[str, Any]) -> bool:
+                t = cfg.get("type")
+                if not t:
+                    return False
+                types = [s.strip() for s in str(t).split(",") if s.strip()]
+                return model_type in types
+            return [name for name, config in self._models.items() if _match(config)]
         return list(self._models.keys())
 
     def list_models_by_provider(self) -> Dict[str, Dict[str, List[str]]]:
-        """按 provider 分组的模型列表，供前端按所选 provider 只显示该 provider 的模型。"""
+        """按 provider 分组的模型列表，供前端按所选 provider 只显示该 provider 的模型。
+        config.type 可为逗号分隔的多类型（如 chat,vision），模型会出现在对应类型的列表中。
+        """
         result: Dict[str, Dict[str, List[str]]] = {}
         for name, config in self._models.items():
             provider = config.get("provider") or "siliconflow"
-            model_type = config.get("type")
-            if not model_type or model_type not in ("chat", "vision", "reranker"):
+            raw_type = config.get("type")
+            if not raw_type:
                 continue
+            types = [s.strip() for s in str(raw_type).split(",") if s.strip()]
             if provider not in result:
                 result[provider] = {"chat": [], "vision": [], "reranker": []}
-            result[provider][model_type].append(name)
+            for t in types:
+                if t in ("chat", "vision", "reranker"):
+                    result[provider][t].append(name)
         return result
 
     def add_model(self, name: str, config: Dict[str, Any]):

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { SlidersHorizontal, Database, Zap, Route, List, CheckSquare } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,8 @@ import { useConfigStore } from '@/store/useConfigStore'
 import { useChatStore } from '@/store/useChatStore'
 import { systemApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
+import { groupChatModelsByVendor, getModelVendor, VENDOR_DISPLAY_NAMES, VENDOR_LOGOS } from '@/lib/modelVendors'
+import { VendorModelSelect } from './VendorModelSelect'
 import type { KbMode } from '@/store/useChatStore'
 
 interface ChatConfigPanelProps {
@@ -82,12 +84,14 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
     })
   }
 
-  const handleModelSelect = (modelName: string) => {
+  const applyModel = (modelName: string) => {
+    if (!modelName) return
     setCurrentChatModel(modelName)
     setUserSelectedModel(modelName)
-    // 更新本地配置（虽然后端暂无更新接口，但前端先保存选择）
     updateModelConfig('chat', { model: modelName })
   }
+
+  const groupedByVendor = useMemo(() => groupChatModelsByVendor(chatModels), [chatModels])
 
   const handleApply = () => {
     if (!activeSession) return
@@ -207,7 +211,7 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
             </p>
           </div>
 
-          {/* 对话模型（从后端拉取，仅展示） */}
+          {/* 对话模型（每个厂商一个下拉框） */}
           <div className="rounded-2xl border border-slate-200/50 bg-white/50 p-4 shadow-sm backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-900/50">
             <div className="mb-3 flex items-center gap-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/40">
@@ -217,29 +221,45 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
             </div>
             {modelsLoading ? (
               <p className="text-sm text-slate-500 dark:text-slate-400">加载中…</p>
+            ) : groupedByVendor.length === 0 ? (
+              <span className="text-sm text-slate-500 dark:text-slate-400">
+                {config.models.find(m => m.id === 'chat')?.name || '对话模型'}
+              </span>
             ) : (
-              <div className="flex flex-wrap gap-2">
-                {chatModels.length === 0 ? (
-                  <span className="text-sm text-slate-500 dark:text-slate-400">
-                    {config.models.find(m => m.id === 'chat')?.name || '对话模型'}
-                  </span>
-                ) : (
-                  chatModels.map(m => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => handleModelSelect(m)}
-                      className={cn(
-                        'rounded-xl border px-3 py-1.5 text-sm font-medium transition-all duration-200 shadow-sm cursor-pointer backdrop-blur-sm',
-                        m === currentChatModel
-                          ? 'border-indigo-400/50 bg-indigo-500/15 text-indigo-700 shadow-md shadow-indigo-500/15 dark:bg-indigo-500/20 dark:text-indigo-200'
-                          : 'border-slate-200/80 bg-white/60 text-slate-600 hover:bg-white/80 hover:border-slate-300/80 dark:border-slate-600/80 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/80'
-                      )}
-                    >
-                      {m}
-                    </button>
-                  ))
-                )}
+              <div className="space-y-4">
+                {groupedByVendor.map(([vendor, list]) => {
+                  const isCurrentVendor = currentChatModel && getModelVendor(currentChatModel) === vendor
+                  const value = isCurrentVendor ? currentChatModel : ''
+                  return (
+                    <div key={vendor} className="space-y-1.5">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        {VENDOR_LOGOS[vendor] && (
+                          <img
+                            src={VENDOR_LOGOS[vendor]}
+                            alt=""
+                            className="h-5 w-5 rounded object-contain"
+                            width={20}
+                            height={20}
+                          />
+                        )}
+                        <span>{VENDOR_DISPLAY_NAMES[vendor]}</span>
+                        {isCurrentVendor && (
+                          <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-normal text-indigo-600 dark:text-indigo-400">
+                            当前使用
+                          </span>
+                        )}
+                      </label>
+                      <VendorModelSelect
+                        value={value}
+                        list={list}
+                        isActive={!!isCurrentVendor}
+                        onSelect={applyModel}
+                        buttonClassName="min-h-[40px] py-2"
+                        ariaLabel={`选择 ${vendor} 模型`}
+                      />
+                    </div>
+                  )
+                })}
               </div>
             )}
             <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">当前使用后端配置的 final_generation 模型</p>

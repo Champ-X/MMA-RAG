@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Zap } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { useConfigStore } from '@/store/useConfigStore'
 import { systemApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
+import { groupChatModelsByVendor, getModelVendor, VENDOR_DISPLAY_NAMES, VENDOR_LOGOS } from '@/lib/modelVendors'
+import { VendorModelSelect } from './VendorModelSelect'
 
 interface ModelConfigPanelProps {
   open: boolean
@@ -52,10 +53,10 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
       .finally(() => setModelsLoading(false))
   }, [open, config.models])
 
-  const handleModelSelect = (modelName: string) => {
+  const applyModel = (modelName: string) => {
+    if (!modelName) return
     setCurrentChatModel(modelName)
     setUserSelectedModel(modelName)
-    // 更新本地配置（虽然后端暂无更新接口，但前端先保存选择）
     updateModelConfig('chat', { model: modelName })
   }
 
@@ -63,67 +64,87 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
     onOpenChange(false)
   }
 
+  const groupedByVendor = useMemo(() => groupChatModelsByVendor(chatModels), [chatModels])
+
+  const selectBaseClass =
+    'w-full min-h-[44px] rounded-xl border-2 flex items-center text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600'
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-md max-h-[90vh] flex flex-col rounded-3xl border border-slate-200/60 bg-white/85 shadow-2xl shadow-slate-900/20 backdrop-blur-xl dark:border-slate-700/50 dark:bg-slate-950/90"
+        className="max-w-md flex flex-col gap-0 rounded-3xl border border-slate-200/60 bg-white/95 shadow-2xl shadow-slate-900/15 backdrop-blur-xl dark:border-slate-700/50 dark:bg-slate-950/95"
         onClick={e => e.stopPropagation()}
       >
-        <DialogHeader className="flex-shrink-0 pb-3">
+        <DialogHeader className="flex-shrink-0 pb-4">
           <DialogTitle className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/10 to-purple-500/10">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/15 to-purple-500/15 ring-1 ring-indigo-500/20 dark:ring-indigo-400/30">
               <Zap className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
             </div>
             对话模型
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 overflow-y-auto">
-          <div className="py-1 pr-4 pb-2">
-            <div className="rounded-2xl border border-slate-200/50 bg-white/50 p-4 shadow-sm backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-900/50">
-              {modelsLoading ? (
-                <p className="text-sm text-slate-500 dark:text-slate-400">加载中…</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {chatModels.length === 0 ? (
-                    <span className="text-sm text-slate-500 dark:text-slate-400">
-                      {config.models.find(m => m.id === 'chat')?.name || '对话模型'}
-                    </span>
-                  ) : (
-                    chatModels.map(m => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => handleModelSelect(m)}
-                        className={cn(
-                          'rounded-xl border px-3 py-1.5 text-sm font-medium transition-all duration-200 shadow-sm cursor-pointer backdrop-blur-sm',
-                          m === currentChatModel
-                            ? 'border-indigo-400/50 bg-indigo-500/15 text-indigo-700 shadow-md shadow-indigo-500/15 dark:bg-indigo-500/20 dark:text-indigo-200'
-                            : 'border-slate-200/80 bg-white/60 text-slate-600 hover:bg-white/80 hover:border-slate-300/80 dark:border-slate-600/80 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/80'
-                        )}
-                      >
-                        {m}
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-              <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">当前使用后端配置的 final_generation 模型</p>
-            </div>
+        <div className="flex flex-col gap-4 pb-1">
+          <div className="space-y-4">
+            {modelsLoading ? (
+              <div className={cn(selectBaseClass, 'flex items-center text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600')}>
+                加载中…
+              </div>
+            ) : groupedByVendor.length === 0 ? (
+              <div className={cn(selectBaseClass, 'flex items-center text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600')}>
+                {config.models.find(m => m.id === 'chat')?.name || '暂无模型'}
+              </div>
+            ) : (
+              groupedByVendor.map(([vendor, list]) => {
+                const isCurrentVendor = currentChatModel && getModelVendor(currentChatModel) === vendor
+                const value = isCurrentVendor ? currentChatModel : ''
+                return (
+                  <div key={vendor} className="space-y-1.5">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {VENDOR_LOGOS[vendor] && (
+                        <img
+                          src={VENDOR_LOGOS[vendor]}
+                          alt=""
+                          className="h-5 w-5 rounded object-contain"
+                          width={20}
+                          height={20}
+                        />
+                      )}
+                      <span>{VENDOR_DISPLAY_NAMES[vendor]}</span>
+                      {isCurrentVendor && (
+                        <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-normal text-indigo-600 dark:text-indigo-400">
+                          当前使用
+                        </span>
+                      )}
+                    </label>
+                    <VendorModelSelect
+                      value={value}
+                      list={list}
+                      isActive={!!isCurrentVendor}
+                      onSelect={applyModel}
+                      ariaLabel={`选择 ${vendor} 模型`}
+                    />
+                  </div>
+                )
+              })
+            )}
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              当前使用后端 final_generation 配置，选择后将写入本地配置
+            </p>
           </div>
-        </ScrollArea>
+        </div>
 
-        <div className="flex flex-shrink-0 justify-end gap-3 border-t border-slate-200/50 pt-4 mt-3 dark:border-slate-800/50">
-          <Button 
-            variant="outline" 
+        <div className="flex flex-shrink-0 justify-end gap-3 border-t border-slate-200/50 pt-4 mt-2 dark:border-slate-800/50">
+          <Button
+            variant="outline"
             onClick={() => onOpenChange(false)}
-            className="rounded-xl border-slate-200/80 bg-white/50 backdrop-blur-sm hover:bg-white/70 dark:border-slate-600/80 dark:bg-slate-800/50 dark:hover:bg-slate-700/70"
+            className="rounded-xl border-slate-200/80 hover:bg-slate-50 dark:border-slate-600/80 dark:hover:bg-slate-800/80"
           >
             取消
           </Button>
-          <Button 
+          <Button
             onClick={handleApply}
-            className="rounded-xl bg-indigo-500/90 backdrop-blur-sm text-white shadow-md shadow-indigo-500/25 hover:bg-indigo-500 hover:shadow-lg hover:shadow-indigo-500/30"
+            className="rounded-xl bg-indigo-500 text-white shadow-md hover:bg-indigo-600 hover:shadow-lg"
           >
             应用
           </Button>
