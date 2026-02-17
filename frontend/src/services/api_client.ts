@@ -359,7 +359,7 @@ export const knowledgeApi = {
 
 // 知识库导入 API（从 URL 或按关键词搜索图片导入）
 export const importApi = {
-  /** 从单个 URL 下载并导入知识库 */
+  /** 从单个 URL 下载并导入知识库（大 PDF 等处理较久，超时设为 3 分钟） */
   importFromUrl: (body: { url: string; kb_id: string; filename?: string }) =>
     apiClient.post<{
       file_id: string
@@ -369,7 +369,7 @@ export const importApi = {
       processing_id?: string
       message: string
       details?: { chunks_processed?: number; vectors_stored?: number; caption?: string }
-    }>(`/import/url`, body),
+    }>(`/import/url`, body, { timeout: 180000 }),
 
   /** 按关键词从选定渠道搜索图片并导入知识库（一次性返回） */
   importFromSearch: (body: {

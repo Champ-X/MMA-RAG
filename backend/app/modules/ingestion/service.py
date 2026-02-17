@@ -238,10 +238,13 @@ class IngestionService:
                 "message": "正在上传文件到存储..."
             })
             
-            # 2. 上传到MinIO
+            # 2. 上传到MinIO（若文件名无扩展名则用解析得到的 file_type 补全，便于列表按格式显示如 PDF）
+            upload_file_path = file_path
+            if not Path(file_path).suffix and file_type:
+                upload_file_path = f"{file_path.rstrip('.')}.{file_type}"
             storage_result = await self.minio_adapter.upload_file(
                 file_content=file_content,
-                file_path=file_path,
+                file_path=upload_file_path,
                 kb_id=kb_id,
                 file_type="documents" if file_type in ["pdf", "docx", "pptx", "txt", "md"] else "images"
             )
