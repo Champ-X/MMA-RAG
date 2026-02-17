@@ -283,13 +283,33 @@ function ParagraphImageDisplay({
   messageId?: string
 }) {
   const [failedImages, setFailedImages] = React.useState<Set<number | string>>(new Set())
+  const [loadedImages, setLoadedImages] = React.useState<Set<number | string>>(new Set())
+  const imageRefs = React.useRef<Map<number | string, HTMLImageElement>>(new Map())
 
   if (citations.length === 0) return null
+
+  // 当 citations 变化时，检查图片是否已经加载完成（从缓存中）
+  React.useEffect(() => {
+    citations.forEach((citation) => {
+      if (failedImages.has(citation.id)) return
+      
+      const img = imageRefs.current.get(citation.id)
+      if (img && img.complete && img.naturalHeight !== 0) {
+        // 图片已经加载完成（可能是从缓存中）
+        setLoadedImages((prev) => new Set(prev).add(citation.id))
+      }
+    })
+  }, [citations, failedImages])
 
   const handleImageError = (citationId: number | string, e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     e.preventDefault()
     e.stopPropagation()
     setFailedImages((prev) => new Set(prev).add(citationId))
+    setLoadedImages((prev) => {
+      const next = new Set(prev)
+      next.delete(citationId)
+      return next
+    })
     // 隐藏图片元素和父容器
     const img = e.currentTarget
     img.style.display = 'none'
@@ -297,6 +317,10 @@ function ParagraphImageDisplay({
     if (button) {
       button.style.display = 'none'
     }
+  }
+
+  const handleImageLoad = (citationId: number | string) => {
+    setLoadedImages((prev) => new Set(prev).add(citationId))
   }
 
   // 仅过滤加载失败图片；“首次引用去重”在父组件渲染阶段完成
@@ -309,28 +333,49 @@ function ParagraphImageDisplay({
 
   return (
     <div className="flex flex-wrap justify-center gap-3 mt-3 mb-0">
-      {validCitations.map((citation) => (
-        <button
-          key={citation.id}
-          type="button"
-          onClick={(e) => {
-            if (onCiteClick) {
-              const rect = e.currentTarget.getBoundingClientRect()
-              onCiteClick(citation.id, rect, messageId)
-            }
-          }}
-          className="rounded-lg border-0 overflow-hidden hover:ring-2 ring-primary/40 transition-all p-0 m-0"
-          style={{ display: failedImages.has(citation.id) ? 'none' : 'inline-block' }}
-        >
-          <img
-            src={citation.img_url}
-            alt=""
-            className="max-h-64 max-w-full object-contain block m-0 p-0"
-            style={{ display: 'block' }}
-            onError={(e) => handleImageError(citation.id, e)}
-          />
-        </button>
-      ))}
+      {validCitations.map((citation) => {
+        const isFailed = failedImages.has(citation.id)
+        const isLoaded = loadedImages.has(citation.id)
+        
+        if (isFailed) return null
+        
+        return (
+          <button
+            key={citation.id}
+            type="button"
+            onClick={(e) => {
+              if (onCiteClick) {
+                const rect = e.currentTarget.getBoundingClientRect()
+                onCiteClick(citation.id, rect, messageId)
+              }
+            }}
+            className="rounded-lg border-0 overflow-hidden hover:ring-2 ring-primary/40 transition-all p-0 m-0 relative"
+          >
+            {!isLoaded && (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-100 dark:bg-slate-800 z-10">
+                <div className="animate-spin h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full" />
+              </div>
+            )}
+            <img
+              ref={(el) => {
+                if (el) {
+                  imageRefs.current.set(citation.id, el)
+                } else {
+                  imageRefs.current.delete(citation.id)
+                }
+              }}
+              src={citation.img_url}
+              alt={citation.file_name || ''}
+              className="max-h-64 max-w-full object-contain block m-0 p-0"
+              style={{ opacity: isLoaded ? 1 : 0, transition: 'opacity 0.2s' }}
+              onError={(e) => handleImageError(citation.id, e)}
+              onLoad={() => handleImageLoad(citation.id)}
+              // 防止显示 broken image 图标
+              onAbort={(e) => handleImageError(citation.id, e as any)}
+            />
+          </button>
+        )
+      })}
     </div>
   )
 }

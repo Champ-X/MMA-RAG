@@ -1,5 +1,7 @@
-import { X, Eye } from 'lucide-react'
+import { X, Eye, Image } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useState } from 'react'
+import React from 'react'
 import type { CitationReference } from '@/types/sse'
 
 interface CitationPopoverProps {
@@ -8,6 +10,69 @@ interface CitationPopoverProps {
   item: CitationReference | null
   onClose: () => void
   onOpenInspector: () => void
+}
+
+// 图片显示组件，带错误处理
+function ImageDisplayWithErrorHandler({ imgUrl, fileName }: { imgUrl: string; fileName?: string }) {
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const imgRef = React.useRef<HTMLImageElement>(null)
+
+  // 检查图片是否已经加载完成（从缓存中）
+  React.useEffect(() => {
+    const img = imgRef.current
+    if (img && img.complete && img.naturalHeight !== 0) {
+      setImageLoaded(true)
+    }
+  }, [])
+  
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setImageError(true)
+    setImageLoaded(false)
+  }
+  
+  const handleImageLoad = () => {
+    setImageLoaded(true)
+  }
+  
+  return (
+    <div className="mb-3">
+      <div
+        className="rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-center relative"
+        style={{ minHeight: '220px', overflow: 'hidden' }}
+      >
+        {imageError ? (
+          <div className="flex flex-col items-center justify-center gap-2 p-4">
+            <Image className="h-8 w-8 text-slate-400 dark:text-slate-500" />
+            <p className="text-xs text-slate-500 dark:text-slate-400">图片加载失败</p>
+            {fileName && (
+              <p className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-full">{fileName}</p>
+            )}
+          </div>
+        ) : (
+          <>
+            {!imageLoaded && (
+              <div className="absolute inset-0 flex items-center justify-center z-10">
+                <div className="animate-spin h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full" />
+              </div>
+            )}
+            <img
+              ref={imgRef}
+              src={imgUrl}
+              alt={fileName}
+              className="max-w-full max-h-full w-auto h-auto object-contain"
+              style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s' }}
+              onError={handleImageError}
+              onLoad={handleImageLoad}
+              onAbort={handleImageError}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export function CitationPopover({
@@ -123,18 +188,7 @@ export function CitationPopover({
           {/* 内容区域可滚动：图片与文字一起滚动 */}
           <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0 scrollbar-hide">
             {item.type === 'image' && item.img_url && (
-              <div className="mb-3">
-                <div
-                  className="rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-center"
-                  style={{ minHeight: '220px', overflow: 'hidden' }}
-                >
-                  <img
-                    src={item.img_url}
-                    alt={item.file_name}
-                    className="max-w-full max-h-full w-auto h-auto object-contain"
-                  />
-                </div>
-              </div>
+              <ImageDisplayWithErrorHandler imgUrl={item.img_url} fileName={item.file_name} />
             )}
 
             {item.type === 'image' ? (

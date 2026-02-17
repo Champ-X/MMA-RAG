@@ -1,11 +1,12 @@
 import { useState } from 'react'
+import React from 'react'
+import type { CitationReference } from '@/types/sse'
 import { FileText, Image, ExternalLink, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
-import type { CitationReference } from '@/types/sse'
 
 interface InlineCitationProps {
   /** 引用列表：完整对象或 id。若为 id，需同时提供 citationMap */
@@ -45,6 +46,135 @@ function normalizeRef(
 
 function getReferenceIcon(type: 'doc' | 'image') {
   return type === 'doc' ? FileText : Image
+}
+
+// 图片 Lightbox 内容组件，带错误处理
+function ImageLightboxContent({ imgUrl, fileName }: { imgUrl: string; fileName?: string }) {
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const imgRef = React.useRef<HTMLImageElement>(null)
+
+  // 检查图片是否已经加载完成（从缓存中）
+  React.useEffect(() => {
+    const img = imgRef.current
+    if (img && img.complete && img.naturalHeight !== 0) {
+      setImageLoaded(true)
+    }
+  }, [])
+  
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setImageError(true)
+    setImageLoaded(false)
+  }
+  
+  const handleImageLoad = () => {
+    setImageLoaded(true)
+  }
+  
+  if (imageError) {
+    return (
+      <div className="w-full h-[70vh] bg-slate-100 dark:bg-slate-800 rounded-lg flex flex-col items-center justify-center gap-3">
+        <Image className="h-12 w-12 text-slate-400 dark:text-slate-500" />
+        <p className="text-sm text-slate-500 dark:text-slate-400">图片加载失败</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500">{fileName || '未知文件'}</p>
+      </div>
+    )
+  }
+  
+  return (
+    <div className="relative w-full">
+      {!imageLoaded && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-100 dark:bg-slate-800 rounded-lg z-10">
+          <div className="animate-spin h-8 w-8 border-2 border-indigo-500 border-t-transparent rounded-full" />
+        </div>
+      )}
+      <img
+        ref={imgRef}
+        src={imgUrl}
+        alt={fileName}
+        className="max-w-full max-h-[70vh] object-contain rounded-lg"
+        style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s' }}
+        onError={handleImageError}
+        onLoad={handleImageLoad}
+        onAbort={handleImageError}
+      />
+    </div>
+  )
+}
+
+// 图片缩略图按钮组件，带错误处理
+function ImageThumbnailButton({
+  citation,
+  onLightboxClick,
+  onCiteClick,
+}: {
+  citation: CitationReference
+  onLightboxClick: () => void
+  onCiteClick?: (e: React.MouseEvent<HTMLButtonElement>) => void
+}) {
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const imgRef = React.useRef<HTMLImageElement>(null)
+
+  // 检查图片是否已经加载完成（从缓存中）
+  React.useEffect(() => {
+    const img = imgRef.current
+    if (img && img.complete && img.naturalHeight !== 0) {
+      setImageLoaded(true)
+    }
+  }, [])
+
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setImageError(true)
+    setImageLoaded(false)
+  }
+
+  const handleImageLoad = () => {
+    setImageLoaded(true)
+  }
+
+  if (imageError) return null
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        if (!imageError) {
+          onLightboxClick()
+          onCiteClick?.(e)
+        }
+      }}
+      className="rounded-lg border overflow-hidden hover:ring-2 ring-primary/40 transition-all p-0 relative"
+    >
+      {citation.img_url ? (
+        <>
+          {!imageLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-100 dark:bg-slate-800 z-10">
+              <div className="animate-spin h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full" />
+            </div>
+          )}
+          <img
+            ref={imgRef}
+            src={citation.img_url}
+            alt={citation.file_name}
+            className="h-40 w-auto max-w-[320px] object-cover block"
+            style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s' }}
+            onError={handleImageError}
+            onLoad={handleImageLoad}
+            onAbort={handleImageError}
+          />
+        </>
+      ) : (
+        <div className="h-40 w-64 bg-muted flex items-center justify-center">
+          <Image className="h-6 w-6 text-muted-foreground" />
+        </div>
+      )}
+    </button>
+  )
 }
 
 function normalizeContextWindow(raw: unknown): { prev: string; next: string } | null {
@@ -147,33 +277,18 @@ export function InlineCitation({
 
       {variant === 'inline' && showImageThumbnails && imageRefs.length > 0 && (
         <div className={cn('flex flex-wrap gap-2 mt-2 mb-0', className)}>
-          {imageRefs.map((ref) => (
-            <button
+          {imageRefs.map((ref) => {
+            return <ImageThumbnailButton
               key={ref.id}
-              type="button"
-              onClick={(e) => {
-                openLightbox(ref)
-                if (onCiteClick) {
-                  const rect = e.currentTarget.getBoundingClientRect()
-                  const mockEvent = { currentTarget: { getBoundingClientRect: () => rect } } as React.MouseEvent
-                  onCiteClick(ref.id, mockEvent, messageId)
-                }
-              }}
-              className="rounded-lg border overflow-hidden hover:ring-2 ring-primary/40 transition-all p-0"
-            >
-              {ref.img_url ? (
-                <img
-                  src={ref.img_url}
-                  alt={ref.file_name}
-                  className="h-40 w-auto max-w-[320px] object-cover block"
-                />
-              ) : (
-                <div className="h-40 w-64 bg-muted flex items-center justify-center">
-                  <Image className="h-6 w-6 text-muted-foreground" />
-                </div>
-              )}
-            </button>
-          ))}
+              citation={ref}
+              onLightboxClick={() => openLightbox(ref)}
+              onCiteClick={onCiteClick ? (e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                const mockEvent = { currentTarget: { getBoundingClientRect: () => rect } } as React.MouseEvent
+                onCiteClick(ref.id, mockEvent, messageId)
+              } : undefined}
+            />
+          })}
         </div>
       )}
 
@@ -257,12 +372,8 @@ export function InlineCitation({
               <DialogTitle>{selected.file_name}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="flex justify-center">
-                <img
-                  src={selected.img_url}
-                  alt={selected.file_name}
-                  className="max-w-full max-h-[70vh] object-contain rounded-lg"
-                />
+              <div className="flex justify-center relative">
+                <ImageLightboxContent imgUrl={selected.img_url} fileName={selected.file_name} />
               </div>
               <div className="bg-muted/50 p-4 rounded-lg">
                 <h4 className="font-medium mb-2">视觉描述</h4>
