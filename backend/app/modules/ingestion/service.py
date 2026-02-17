@@ -42,6 +42,17 @@ from app.core.logger import get_logger, audit_log
 
 logger = get_logger(__name__)
 
+_ingestion_service_instance: Optional["IngestionService"] = None
+
+
+def get_ingestion_service() -> "IngestionService":
+    """返回全局单例 IngestionService，保证 upload 与 import 等路由共用同一实例，轮询进度一致。"""
+    global _ingestion_service_instance
+    if _ingestion_service_instance is None:
+        _ingestion_service_instance = IngestionService()
+    return _ingestion_service_instance
+
+
 class IngestionService:
     """数据输入处理服务"""
     
@@ -1310,6 +1321,19 @@ class IngestionService:
             logger.error(f"文本向量化失败: {str(e)}")
             raise
     
+    def register_processing_initial(self, processing_id: str, file_path: str, kb_id: str) -> None:
+        """预注册处理状态（用于 URL 异步导入等，在后台任务启动前即可被轮询到）"""
+        self._processing_status[processing_id] = {
+            "processing_id": processing_id,
+            "status": "processing",
+            "progress": 0,
+            "stage": "initializing",
+            "message": "正在准备…",
+            "file_path": file_path,
+            "kb_id": kb_id,
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+
     def _update_processing_status(
         self, 
         processing_id: str, 

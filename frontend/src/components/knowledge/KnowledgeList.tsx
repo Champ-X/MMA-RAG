@@ -254,15 +254,18 @@ function FilePreviewModal({
   )
 }
 
-// 从 URL 导入弹窗
+// 从 URL 导入弹窗（提交后先下载，再在后台处理；立即关闭弹窗并在上传流水线中展示进度）
 function ImportUrlModal({
   kbId,
   onClose,
   onSuccess,
+  onStartImport,
 }: {
   kbId: string
   onClose: () => void
   onSuccess: () => void
+  /** 已开始后台导入时回调，用于在上传流水线中展示进度（轮询 processing_id） */
+  onStartImport?: (payload: { processing_id: string; filename: string }) => void
 }) {
   const [url, setUrl] = useState('')
   const [filename, setFilename] = useState('')
@@ -278,6 +281,18 @@ function ImportUrlModal({
     setError(null)
     setLoading(true)
     try {
+      const res = await importApi.importFromUrlStart({
+        url: url.trim(),
+        kb_id: kbId,
+        ...(filename.trim() ? { filename: filename.trim() } : {}),
+      })
+      const data = res as { processing_id?: string; filename?: string }
+      if (data?.processing_id && data?.filename && onStartImport) {
+        onStartImport({ processing_id: data.processing_id, filename: data.filename })
+        onClose()
+        return
+      }
+      // 若未返回 processing_id（如旧后端）， fallback 为同步等待
       await importApi.importFromUrl({
         url: url.trim(),
         kb_id: kbId,
@@ -928,6 +943,8 @@ const KnowledgeList: React.FC = () => {
   const [showImportSearchModal, setShowImportSearchModal] = useState(false)
   const [showImportFolderModal, setShowImportFolderModal] = useState(false)
   const [uploading, setUploading] = useState(false)
+  /** URL 异步导入的 processing_id，用于轮询进度并在上传流水线中展示 */
+  const [urlImportProcessingId, setUrlImportProcessingId] = useState<string | null>(null)
   const [files, setFiles] = useState<any[]>([])
   const [kbStats, setKbStats] = useState<{
     documents: number
@@ -990,6 +1007,87 @@ const KnowledgeList: React.FC = () => {
       knowledgeApi.getKnowledgeBaseStats(activeKbId).then(setKbStats).catch(() => setKbStats(null))
     }
   }, [viewState, activeKbId])
+
+  // URL 异步导入：轮询进度并更新上传流水线展示（与普通上传同一套进度样式）
+  useEffect(() => {
+    if (!urlImportProcessingId) return
+    const stageOrder: Record<UploadPipelineProgress['stage'], number> = {
+      idle: -1,
+      minio: 0,
+      parsing: 1,
+      vectorizing: 2,
+      portrait: 3,
+      done: 4,
+    }
+    const poll = async () => {
+      try {
+        const status = await knowledgeApi.getUploadProgress(urlImportProcessingId)
+        if (!status) return
+        const stage = status.stage
+        const progress = status.progress ?? 0
+        const frontStage: UploadPipelineProgress['stage'] | null =
+          stage === 'initializing' || stage === 'uploading'
+            ? 'minio'
+            : stage === 'parsing' || stage === 'processing'
+              ? 'parsing'
+              : stage === 'vectorizing'
+                ? 'vectorizing'
+                : stage === 'completed'
+                  ? 'portrait'
+                  : null
+        if (status.status === 'completed') {
+          flushSync(() => {
+            setUploadProgress((prev) =>
+              prev
+                ? { ...prev, stage: 'done', stageProgress: 100, completed: 1, failed: prev.failed }
+                : prev
+            )
+          })
+          setUrlImportProcessingId(null)
+          fetchFiles()
+          fetchKnowledgeBases()
+          setTimeout(() => {
+            setUploading(false)
+            setCurrentUploadFiles(null)
+            setTimeout(() => setUploadProgress(undefined), 500)
+          }, 2500)
+          return
+        }
+        if (status.status === 'failed') {
+          flushSync(() => {
+            setUploadProgress((prev) =>
+              prev
+                ? { ...prev, stage: 'done', failed: (prev.failed || 0) + 1, completed: prev.completed }
+                : prev
+            )
+          })
+          setUrlImportProcessingId(null)
+          setTimeout(() => {
+            setUploading(false)
+            setCurrentUploadFiles(null)
+            setTimeout(() => setUploadProgress(undefined), 500)
+          }, 2500)
+          return
+        }
+        if (frontStage !== null) {
+          flushSync(() => {
+            setUploadProgress((prev) => {
+              if (!prev) return prev
+              const currentIndex = stageOrder[prev.stage] ?? -1
+              const newIndex = stageOrder[frontStage]
+              if (newIndex < currentIndex) return prev
+              return { ...prev, stage: frontStage, stageProgress: progress }
+            })
+          })
+        }
+      } catch {
+        // 轮询出错可忽略，下次再试
+      }
+    }
+    poll()
+    const interval = setInterval(poll, 1500)
+    return () => clearInterval(interval)
+  }, [urlImportProcessingId])
 
   // 获取当前选中的 KB 对象
   const activeKb = knowledgeBases.find((k) => k.id === activeKbId)
@@ -1765,6 +1863,20 @@ const KnowledgeList: React.FC = () => {
             onSuccess={() => {
               fetchFiles()
               fetchKnowledgeBases()
+            }}
+            onStartImport={({ processing_id, filename: urlFilename }) => {
+              setShowImportUrlModal(false)
+              setCurrentUploadFiles([new File([], urlFilename, { type: 'application/octet-stream' })])
+              setUploading(true)
+              setUploadProgress({
+                stage: 'minio',
+                stageProgress: 0,
+                total: 1,
+                completed: 0,
+                failed: 0,
+                currentFile: urlFilename,
+              })
+              setUrlImportProcessingId(processing_id)
             }}
           />
         )}

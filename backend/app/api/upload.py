@@ -10,13 +10,14 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from typing import List
 import uuid
 from app.core.logger import get_logger
-from app.modules.ingestion.service import IngestionService
+from app.modules.ingestion.service import get_ingestion_service
 
 router = APIRouter()
 logger = get_logger(__name__)
 
-# 创建 IngestionService 实例（单例模式）
-ingestion_service = IngestionService()
+
+def _ingestion():
+    return get_ingestion_service()
 
 @router.post("/file")
 async def upload_file(
@@ -49,7 +50,7 @@ async def upload_file(
         # 2. 保存到MinIO
         # 3. 生成向量
         # 4. 存储到Qdrant
-        result = await ingestion_service.process_file_upload(
+        result = await _ingestion().process_file_upload(
             file_content=file_content,
             file_path=filename,
             kb_id=kb_id,
@@ -108,7 +109,7 @@ async def upload_file_stream(
 
         async def stream_gen():
             task = asyncio.create_task(
-                ingestion_service.process_file_upload(
+                _ingestion().process_file_upload(
                     file_content=file_content,
                     file_path=filename,
                     kb_id=kb_id,
@@ -119,7 +120,7 @@ async def upload_file_stream(
             yield json.dumps({"processing_id": processing_id}) + "\n"
             while True:
                 await asyncio.sleep(0.25)
-                status = await ingestion_service.get_processing_status(processing_id)
+                status = await _ingestion().get_processing_status(processing_id)
                 if status is None:
                     break
                 yield json.dumps(status) + "\n"
@@ -131,7 +132,7 @@ async def upload_file_stream(
                 logger.exception("流式上传后台任务异常")
                 yield json.dumps({"status": "failed", "error": str(e)}) + "\n"
                 return
-            final = await ingestion_service.get_processing_status(processing_id)
+            final = await _ingestion().get_processing_status(processing_id)
             if final and final.get("result") is not None:
                 yield json.dumps({"result": final["result"]}) + "\n"
 
@@ -174,7 +175,7 @@ async def upload_batch(
             logger.info(f"批量上传处理文件: {filename}, 大小: {file_size} bytes")
             
             # 调用 IngestionService 处理文件上传
-            result = await ingestion_service.process_file_upload(
+            result = await _ingestion().process_file_upload(
                 file_content=file_content,
                 file_path=filename,
                 kb_id=kb_id,
@@ -212,7 +213,7 @@ async def upload_batch(
 @router.get("/progress/{task_id}")
 async def get_upload_progress(task_id: str):
     """获取上传处理进度（对接 ingestion 的 processing_status）"""
-    status = await ingestion_service.get_processing_status(task_id)
+    status = await _ingestion().get_processing_status(task_id)
     if status.get("status") == "not_found":
         raise HTTPException(status_code=404, detail="未找到该任务或任务已过期")
     return status

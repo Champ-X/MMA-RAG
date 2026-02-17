@@ -355,11 +355,32 @@ export const knowledgeApi = {
     }) => void
   ) =>
     apiClient.uploadFileStream(`/upload/file/stream`, file, { kb_id: kbId, file_type: fileType }, onStatus),
+
+  /** 获取上传/导入任务进度（用于 URL 导入轮询） */
+  getUploadProgress: (taskId: string) =>
+    apiClient.get<{
+      processing_id: string
+      status: string
+      stage?: string
+      progress?: number
+      message?: string
+      result?: { file_id?: string }
+      error?: string
+    }>(`/upload/progress/${taskId}`),
 };
 
 // 知识库导入 API（从 URL 或按关键词搜索图片导入）
 export const importApi = {
-  /** 从单个 URL 下载并导入知识库（大 PDF 等处理较久，超时设为 3 分钟） */
+  /** 从 URL 开始导入：先下载，再后台处理，立即返回 202 + processing_id，前端可轮询进度并在上传流水线中展示 */
+  importFromUrlStart: (body: { url: string; kb_id: string; filename?: string }) =>
+    apiClient.post<{
+      processing_id: string
+      kb_id: string
+      filename: string
+      message: string
+    }>(`/import/url/start`, body, { timeout: 60000, validateStatus: (s) => s === 202 || (s >= 200 && s < 300) }),
+
+  /** 从单个 URL 下载并同步导入知识库（保留兼容，推荐用 importFromUrlStart + 轮询进度） */
   importFromUrl: (body: { url: string; kb_id: string; filename?: string }) =>
     apiClient.post<{
       file_id: string

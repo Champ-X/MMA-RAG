@@ -11,18 +11,17 @@ from queue import Empty, Queue
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field, HttpUrl
 
 from app.core.config import settings
 from app.core.logger import get_logger
-from app.modules.ingestion.service import IngestionService
+from app.modules.ingestion.service import get_ingestion_service
 from app.modules.ingestion.sources import UrlSource, MediaDownloaderSource, FolderSource
 
 router = APIRouter()
 logger = get_logger(__name__)
-
-ingestion_service = IngestionService()
+ingestion_service = get_ingestion_service()
 
 
 # ---------- 请求体 ----------
@@ -74,9 +73,51 @@ def _validate_folder_path_allowed(folder_path: str) -> Path:
 # ---------- 端点 ----------
 
 
+@router.post("/url/start")
+async def import_from_url_start(body: ImportUrlBody):
+    """从 URL 下载文件并异步导入知识库。先下载，再在后台执行解析/向量化，立即返回 processing_id 供前端轮询进度。"""
+    import uuid
+    try:
+        url_source = UrlSource()
+        result = await url_source.fetch_async(str(body.url))
+        filename = body.filename or result.suggested_filename
+        content = result.content
+        kb_id = str(body.kb_id)
+        processing_id = str(uuid.uuid4())
+        ingestion_service.register_processing_initial(processing_id, filename, kb_id)
+
+        async def run_ingest():
+            try:
+                await ingestion_service.process_file_upload(
+                    file_content=content,
+                    file_path=filename,
+                    kb_id=kb_id,
+                    user_id=None,
+                    processing_id=processing_id,
+                )
+            except Exception as e:
+                logger.exception("import_from_url background ingest failed: %s", e)
+
+        asyncio.create_task(run_ingest())
+        return JSONResponse(
+            status_code=202,
+            content={
+                "processing_id": processing_id,
+                "kb_id": kb_id,
+                "filename": filename,
+                "message": "已开始处理，请轮询 /api/upload/progress/{processing_id} 获取进度",
+            },
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("import_from_url_start failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/url")
 async def import_from_url(body: ImportUrlBody):
-    """从单个 URL 下载文件并导入知识库。"""
+    """从单个 URL 下载文件并同步导入知识库（保留以兼容旧调用，推荐使用 /url/start + 轮询进度）。"""
     try:
         url_source = UrlSource()
         result = await url_source.fetch_async(str(body.url))
