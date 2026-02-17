@@ -71,7 +71,8 @@ function injectCitations(
   children: React.ReactNode,
   onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void,
   messageId?: string,
-  originalIdToDisplayIndex?: Map<number | string, number>
+  originalIdToDisplayIndex?: Map<number | string, number>,
+  citationMap?: Map<number | string, CitationReference>
 ): React.ReactNode {
   if (typeof children === 'string') {
     return splitTextWithCitations(children, onCiteClick, messageId, originalIdToDisplayIndex)
@@ -79,7 +80,7 @@ function injectCitations(
   if (Array.isArray(children)) {
     return children.map((child, idx) => (
       <span key={`cnode_${messageId ?? 'm'}_${idx}`}>
-        {injectCitations(child, onCiteClick, messageId, originalIdToDisplayIndex)}
+        {injectCitations(child, onCiteClick, messageId, originalIdToDisplayIndex, citationMap)}
       </span>
     ))
   }
@@ -87,7 +88,7 @@ function injectCitations(
   if (children.props?.children) {
     return React.cloneElement(children, {
       ...children.props,
-      children: injectCitations(children.props.children, onCiteClick, messageId, originalIdToDisplayIndex)
+      children: injectCitations(children.props.children, onCiteClick, messageId, originalIdToDisplayIndex, citationMap)
     } as any)
   }
   return children
@@ -160,17 +161,86 @@ function splitTextWithCitations(
     const displayN = originalIdToDisplayIndex != null
       ? (originalIdToDisplayIndex.get(match.n) ?? match.n)
       : match.n
+    
     out.push(
       <CitationInlineButton
         key={`c_${messageId}_${idx}_${match.n}`}
         n={typeof displayN === 'number' ? displayN : Number(displayN) || 0}
-        onClick={(rect) => onCiteClick?.(match.n, rect as any, messageId)}
+        onClick={(rect) => onCiteClick?.(match.n, rect, messageId)}
       />
     )
     last = match.end
   })
   if (last < text.length) out.push(text.slice(last))
   return out
+}
+
+// 从 React 节点中递归提取文本内容
+function extractTextFromNode(node: React.ReactNode): string {
+  if (typeof node === 'string') return node
+  if (typeof node === 'number') return String(node)
+  if (Array.isArray(node)) {
+    return node.map(extractTextFromNode).join('')
+  }
+  if (React.isValidElement(node) && node.props?.children) {
+    return extractTextFromNode(node.props.children)
+  }
+  return ''
+}
+
+// 从 citationMap 或 refs 中查找 citation 的辅助函数
+function findCitationById(
+  refId: number | string,
+  citationMap?: Map<number | string, CitationReference>,
+  refs?: Array<CitationReference | { id: number | string }>
+): CitationReference | null {
+  // 优先从 citationMap 获取完整对象
+  let citation = citationMap?.get(refId)
+  
+  // 如果 citationMap 中没有，从 refs 中查找
+  if (!citation) {
+    const refItem = refs?.find((r) => {
+      if (typeof r !== 'object' || r == null || !('id' in r)) return false
+      const rId = String((r as any).id)
+      const matchId = String(refId)
+      return rId === matchId
+    })
+    
+    // 如果 refs 中的项有完整信息，直接使用；否则尝试从 citationMap 获取
+    if (refItem && 'type' in refItem && 'img_url' in refItem) {
+      citation = refItem as CitationReference
+    } else if (refItem && 'id' in refItem) {
+      // 如果只有 id，尝试从 citationMap 获取完整对象
+      citation = citationMap?.get((refItem as any).id)
+    }
+  }
+  
+  return citation || null
+}
+
+// 从文本中提取图片引用ID列表
+function extractImageRefIdsFromText(
+  text: string,
+  citationMap?: Map<number | string, CitationReference>,
+  refs?: Array<CitationReference | { id: number | string }>
+): CitationReference[] {
+  const matches = findAllCitationMatches(text)
+  const imageRefs: CitationReference[] = []
+  const seen = new Set<number | string>()
+  
+  for (const match of matches) {
+    if (seen.has(match.n)) continue
+    
+    const citation = findCitationById(match.n, citationMap, refs)
+    
+    // 确保是图片类型且有 img_url
+    if (citation && 'type' in citation && citation.type === 'image' && 'img_url' in citation && citation.img_url) {
+      seen.add(match.n)
+      imageRefs.push(citation)
+    }
+  }
+  
+  return imageRefs
 }
 
 function CitationInlineButton({ n, onClick }: { n: number; onClick?: (rect: DOMRect) => void }) {
@@ -186,6 +256,82 @@ function CitationInlineButton({ n, onClick }: { n: number; onClick?: (rect: DOMR
     >
       {n}
     </button>
+  )
+}
+
+// 创建 onCiteClick 回调的辅助函数
+function createCiteClickHandler(
+  onCiteClick?: (refId: number | string, event: React.MouseEvent, messageId?: string) => void,
+  messageId?: string
+) {
+  return (id: number | string, rect: DOMRect, msgId?: string) => {
+    const mockEvent = {
+      currentTarget: { getBoundingClientRect: () => rect }
+    } as React.MouseEvent
+    onCiteClick?.(id, mockEvent, msgId ?? messageId)
+  }
+}
+
+// 段落下方居中显示的图片组件
+function ParagraphImageDisplay({
+  citations,
+  onCiteClick,
+  messageId,
+}: {
+  citations: CitationReference[]
+  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void
+  messageId?: string
+}) {
+  const [failedImages, setFailedImages] = React.useState<Set<number | string>>(new Set())
+
+  if (citations.length === 0) return null
+
+  const handleImageError = (citationId: number | string, e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setFailedImages((prev) => new Set(prev).add(citationId))
+    // 隐藏图片元素和父容器
+    const img = e.currentTarget
+    img.style.display = 'none'
+    const button = img.closest('button')
+    if (button) {
+      button.style.display = 'none'
+    }
+  }
+
+  // 仅过滤加载失败图片；“首次引用去重”在父组件渲染阶段完成
+  const validCitations = React.useMemo(
+    () => citations.filter((citation) => !failedImages.has(citation.id)),
+    [citations, failedImages]
+  )
+
+  if (validCitations.length === 0) return null
+
+  return (
+    <div className="flex flex-wrap justify-center gap-3 mt-3 mb-0">
+      {validCitations.map((citation) => (
+        <button
+          key={citation.id}
+          type="button"
+          onClick={(e) => {
+            if (onCiteClick) {
+              const rect = e.currentTarget.getBoundingClientRect()
+              onCiteClick(citation.id, rect, messageId)
+            }
+          }}
+          className="rounded-lg border-0 overflow-hidden hover:ring-2 ring-primary/40 transition-all p-0 m-0"
+          style={{ display: failedImages.has(citation.id) ? 'none' : 'inline-block' }}
+        >
+          <img
+            src={citation.img_url}
+            alt=""
+            className="max-h-64 max-w-full object-contain block m-0 p-0"
+            style={{ display: 'block' }}
+            onError={(e) => handleImageError(citation.id, e)}
+          />
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -216,6 +362,33 @@ export function MessageBubble({
       .map((id) => citationMap?.get(id) ?? refs.find((r) => typeof r === 'object' && r != null && (r as any).id === id) ?? { id })
       .filter((r): r is CitationReference | { id: number | string } => r != null && typeof r === 'object' && 'id' in r)
   }, [orderedRefIds.join(','), citationMap, refs])
+  
+  // 预先扫描整个内容，找出每个图片第一次出现的引用ID
+  // 使用 useMemo 确保只在内容变化时重新计算
+  const imageFirstRefIdMap = React.useMemo(() => {
+    if (isUser) return new Map<string, number | string>()
+    
+    const map = new Map<string, number | string>()
+    const seenImages = new Set<string>()
+    
+    // 按照文本顺序扫描所有引用
+    const matches = findAllCitationMatches(message.content)
+    
+    for (const match of matches) {
+      const citation = findCitationById(match.n, citationMap, refs)
+      
+      // 如果是图片类型，记录第一次出现的引用ID
+      if (citation && 'type' in citation && citation.type === 'image' && 'img_url' in citation && citation.img_url) {
+        const imageKey = citation.img_url || citation.file_name || String(citation.id)
+        if (!seenImages.has(imageKey)) {
+          seenImages.add(imageKey)
+          map.set(imageKey, match.n)
+        }
+      }
+    }
+    
+    return map
+  }, [message.content, citationMap, refs, isUser])
   
   // 去重函数：用于过滤重复的引用
   const deduplicateRefs = React.useCallback((refsToDedup: Array<CitationReference | { id: number | string }>) => {
@@ -267,6 +440,55 @@ export function MessageBubble({
   }, [refs, citationMap, isUser])
   const hasRefs = uniqueRefs.length > 0 || allImageRefsForThumbnails.length > 0
 
+  // 创建 markdown 组件的工厂函数
+  const markdownComponents = React.useMemo(() => {
+    const handleCiteClick = createCiteClickHandler(onCiteClick, message.id)
+    
+    const createComponent = (tag: 'p' | 'li', className: string) => {
+      return (props: { children?: React.ReactNode }) => {
+        const { children } = props
+        if (!children) return null
+        
+        const textContent = extractTextFromNode(children)
+        const allImageRefs = extractImageRefIdsFromText(textContent, citationMap, refs)
+        
+        // 只显示在该段落/列表项中第一次出现的图片
+        const newImageRefs = allImageRefs.filter((citation) => {
+          const imageKey = citation.img_url || citation.file_name || String(citation.id)
+          const firstRefId = imageFirstRefIdMap.get(imageKey)
+          
+          // 如果该图片的第一次出现的引用ID在当前段落/列表项中，则显示
+          if (firstRefId === undefined) return false
+          
+          const matches = findAllCitationMatches(textContent)
+          return matches.some(m => String(m.n) === String(firstRefId))
+        })
+        
+        const Tag = tag
+        
+        return (
+          <>
+            <Tag className={className}>
+              {injectCitations(children, handleCiteClick, message.id, originalIdToDisplayIndex, citationMap)}
+            </Tag>
+            {newImageRefs.length > 0 && (
+              <ParagraphImageDisplay
+                citations={newImageRefs}
+                onCiteClick={handleCiteClick}
+                messageId={message.id}
+              />
+            )}
+          </>
+        )
+      }
+    }
+    
+    return {
+      p: createComponent('p', 'mb-2 leading-relaxed'),
+      li: createComponent('li', 'mb-0'),
+    }
+  }, [imageFirstRefIdMap, citationMap, refs, originalIdToDisplayIndex, message.id, onCiteClick])
+
   const AvatarIcon = isUser ? User : Bot
   const avatarBg = isUser
     ? 'bg-gradient-to-br from-indigo-500 to-sky-500 text-white'
@@ -311,28 +533,11 @@ export function MessageBubble({
           {isUser ? (
             <div className="break-words">{message.content}</div>
           ) : (
-            <div className="prose prose-slate max-w-none text-sm dark:prose-invert prose-pre:rounded-xl prose-pre:border prose-pre:border-slate-200/70 prose-pre:bg-slate-900/5 prose-pre:shadow-sm dark:prose-pre:border-slate-800/70 dark:prose-pre:bg-white/5">
+            <div className="prose prose-slate max-w-none text-sm dark:prose-invert prose-pre:rounded-xl prose-pre:border prose-pre:border-slate-200/70 prose-pre:bg-slate-900/5 prose-pre:shadow-sm dark:prose-pre:border-slate-800/70 dark:prose-pre:bg-white/5 [&>p:has(+div)]:!mb-0 [&>p]:mb-2 [&>p:last-child]:mb-0 [&>li]:mb-1">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex, rehypeHighlight]}
-                components={{
-                  p: ({ children }) => (
-                    <p>{injectCitations(children, (id, rect, msgId) => {
-                      const mockEvent = {
-                        currentTarget: { getBoundingClientRect: () => rect }
-                      } as React.MouseEvent
-                      onCiteClick?.(id, mockEvent, msgId ?? message.id)
-                    }, message.id, originalIdToDisplayIndex)}</p>
-                  ),
-                  li: ({ children }) => (
-                    <li>{injectCitations(children, (id, rect, msgId) => {
-                      const mockEvent = {
-                        currentTarget: { getBoundingClientRect: () => rect }
-                      } as React.MouseEvent
-                      onCiteClick?.(id, mockEvent, msgId ?? message.id)
-                    }, message.id, originalIdToDisplayIndex)}</li>
-                  ),
-                }}
+                components={markdownComponents as any}
               >
                 {message.content}
               </ReactMarkdown>
