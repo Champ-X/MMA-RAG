@@ -686,15 +686,30 @@ function ImportFolderModal({
   )
 }
 
-// 按关键词搜索图片导入弹窗（含 Pixabay 筛选、随机性、进度展示）
+// 搜索图片导入参数（与 importFromSearchStream 一致，用于关闭弹窗后在上传流水线中展示进度）
+export type SearchImportParams = {
+  kb_id: string
+  query: string
+  source: 'google_images' | 'pixabay' | 'internet_archive'
+  quantity?: number
+  pixabay_image_type?: string
+  pixabay_order?: string
+  archive_sort?: string
+  randomize?: boolean
+}
+
+// 按关键词搜索图片导入弹窗（支持关闭弹窗后在上传流水线中展示进度）
 function ImportSearchModal({
   kbId,
   onClose,
   onSuccess,
+  onStartImport,
 }: {
   kbId: string
   onClose: () => void
   onSuccess: () => void
+  /** 开始导入时回调，关闭弹窗并由父组件在上传流水线中展示进度 */
+  onStartImport?: (params: SearchImportParams) => void
 }) {
   const [query, setQuery] = useState('')
   const [source, setSource] = useState<'google_images' | 'pixabay' | 'internet_archive'>('pixabay')
@@ -713,6 +728,17 @@ function ImportSearchModal({
     message: string
   } | null>(null)
 
+  const buildParams = (): SearchImportParams => ({
+    kb_id: kbId,
+    query: query.trim(),
+    source,
+    quantity: Math.min(20, Math.max(1, quantity)),
+    pixabay_image_type: source === 'pixabay' ? pixabayImageType : undefined,
+    pixabay_order: source === 'pixabay' ? pixabayOrder : undefined,
+    archive_sort: source === 'internet_archive' ? archiveSort : undefined,
+    randomize,
+  })
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!query.trim()) {
@@ -722,42 +748,36 @@ function ImportSearchModal({
     setError(null)
     setResult(null)
     setProgress(null)
+    const params = buildParams()
+    if (onStartImport) {
+      onStartImport(params)
+      onClose()
+      return
+    }
     setLoading(true)
     try {
-      await importApi.importFromSearchStream(
-        {
-          kb_id: kbId,
-          query: query.trim(),
-          source,
-          quantity: Math.min(20, Math.max(1, quantity)),
-          pixabay_image_type: source === 'pixabay' ? pixabayImageType : undefined,
-          pixabay_order: source === 'pixabay' ? pixabayOrder : undefined,
-          archive_sort: source === 'internet_archive' ? archiveSort : undefined,
-          randomize,
-        },
-        (event) => {
-          if (event.stage === 'done') {
-            setResult({
-              success_count: event.success_count ?? 0,
-              failed_count: event.failed_count ?? 0,
-              total: event.total ?? 0,
-              message: event.message ?? '',
-            })
-            if ((event.success_count ?? 0) > 0) onSuccess()
-            setProgress(null)
-          } else if (event.stage === 'error') {
-            setError(event.message ?? '导入失败')
-            setProgress(null)
-          } else {
-            setProgress({
-              stage: event.stage,
-              current: event.current ?? 0,
-              total: event.total ?? 0,
-              message: event.message ?? '',
-            })
-          }
+      await importApi.importFromSearchStream(params, (event) => {
+        if (event.stage === 'done') {
+          setResult({
+            success_count: event.success_count ?? 0,
+            failed_count: event.failed_count ?? 0,
+            total: event.total ?? 0,
+            message: event.message ?? '',
+          })
+          if ((event.success_count ?? 0) > 0) onSuccess()
+          setProgress(null)
+        } else if (event.stage === 'error') {
+          setError(event.message ?? '导入失败')
+          setProgress(null)
+        } else {
+          setProgress({
+            stage: event.stage,
+            current: event.current ?? 0,
+            total: event.total ?? 0,
+            message: event.message ?? '',
+          })
         }
-      )
+      })
     } catch (err: any) {
       setError(err?.message ?? '导入失败')
     } finally {
@@ -1881,7 +1901,7 @@ const KnowledgeList: React.FC = () => {
           />
         )}
 
-        {/* 搜索图片导入弹窗 */}
+        {/* 搜索图片导入弹窗：开始导入后关闭弹窗，在上传流水线中展示进度 */}
         {showImportSearchModal && activeKbId && (
           <ImportSearchModal
             kbId={activeKbId}
@@ -1889,6 +1909,98 @@ const KnowledgeList: React.FC = () => {
             onSuccess={() => {
               fetchFiles()
               fetchKnowledgeBases()
+            }}
+            onStartImport={(params) => {
+              setShowImportSearchModal(false)
+              const total = params.quantity ?? 5
+              setCurrentUploadFiles(
+                Array.from({ length: total }, (_, i) => new File([], `搜索图片 ${i + 1}`, { type: 'image/jpeg' }))
+              )
+              setUploading(true)
+              setUploadProgress({
+                stage: 'minio',
+                stageProgress: 0,
+                total,
+                completed: 0,
+                failed: 0,
+                currentFile: '搜索中…',
+                currentFileIsImage: true,
+              })
+              importApi
+                .importFromSearchStream(params, (event) => {
+                  if (event.stage === 'done') {
+                    flushSync(() => {
+                      setUploadProgress((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              stage: 'done',
+                              stageProgress: 100,
+                              completed: event.success_count ?? 0,
+                              failed: event.failed_count ?? 0,
+                            }
+                          : prev
+                      )
+                    })
+                    fetchFiles()
+                    fetchKnowledgeBases()
+                    setTimeout(() => {
+                      setUploading(false)
+                      setCurrentUploadFiles(null)
+                      setTimeout(() => setUploadProgress(undefined), 500)
+                    }, 2500)
+                    return
+                  }
+                  if (event.stage === 'error') {
+                    flushSync(() => {
+                      setUploadProgress((prev) =>
+                        prev ? { ...prev, stage: 'done', failed: prev.total, completed: 0 } : prev
+                      )
+                    })
+                    setTimeout(() => {
+                      setUploading(false)
+                      setCurrentUploadFiles(null)
+                      setTimeout(() => setUploadProgress(undefined), 500)
+                    }, 2500)
+                    return
+                  }
+                  const cur = event.current ?? 0
+                  const tot = event.total ?? total
+                  const progressPct = tot > 0 ? Math.round((cur / tot) * 100) : 0
+                  const frontStage: UploadPipelineProgress['stage'] =
+                    event.stage === 'searching'
+                      ? 'minio'
+                      : event.stage === 'downloading'
+                        ? 'minio'
+                        : event.stage === 'importing'
+                          ? 'parsing'
+                          : 'minio'
+                  // 导入阶段：用占位名「搜索图片 N」匹配列表项，使上面文件列表能正确高亮当前/已完成；并随当前文件数更新 completed
+                  const listCurrentFile =
+                    event.stage === 'importing' && cur >= 1 ? `搜索图片 ${cur}` : event.message ?? undefined
+                  const completedSoFar =
+                    event.stage === 'importing' && cur >= 1 ? Math.max(0, cur - 1) : undefined
+                  flushSync(() => {
+                    setUploadProgress((prev) => {
+                      if (!prev) return prev
+                      const next = {
+                        ...prev,
+                        stage: frontStage,
+                        stageProgress: progressPct,
+                        currentFile: listCurrentFile ?? prev.currentFile,
+                        total: tot,
+                      }
+                      if (completedSoFar !== undefined) next.completed = completedSoFar
+                      return next
+                    })
+                  })
+                })
+                .catch(() => {
+                  setUploading(false)
+                  setCurrentUploadFiles(null)
+                  setUploadProgress((prev) => (prev ? { ...prev, stage: 'done', failed: prev.total } : undefined))
+                  setTimeout(() => setUploadProgress(undefined), 500)
+                })
             }}
           />
         )}
