@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
@@ -1535,53 +1535,52 @@ const KnowledgeList: React.FC = () => {
         <div className="flex-1 flex overflow-hidden">
           {/* Main Area */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {/* 上传与导入 */}
-            <div className="space-y-4">
-              <UploadPipeline
-                onFileSelect={handleFileUpload}
-                isUploading={uploading}
-                uploadProgress={uploadProgress}
-                externalFiles={currentUploadFiles}
-              />
-              {/* 自动导入：卡片式入口 */}
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-4">
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
-                  自动导入
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowImportUrlModal(true)}
-                    className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-sm font-medium shadow-sm transition-all hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50/80 dark:hover:bg-blue-950/40 hover:shadow hover:-translate-y-0.5"
-                  >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
-                      <Link2 size={18} />
-                    </span>
-                    从 URL 导入
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowImportSearchModal(true)}
-                    className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-sm font-medium shadow-sm transition-all hover:border-violet-300 dark:hover:border-violet-600 hover:bg-violet-50/80 dark:hover:bg-violet-950/40 hover:shadow hover:-translate-y-0.5"
-                  >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400">
-                      <ImagePlus size={18} />
-                    </span>
-                    搜索图片导入
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowImportFolderModal(true)}
-                    className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-sm font-medium shadow-sm transition-all hover:border-amber-300 dark:hover:border-amber-600 hover:bg-amber-50/80 dark:hover:bg-amber-950/40 hover:shadow hover:-translate-y-0.5"
-                  >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400">
-                      <FolderOpen size={18} />
-                    </span>
-                    从文件夹导入
-                  </button>
-                </div>
+            {/* 上传与导入：拖拽/选择上传与自动导入同框 */}
+            <UploadPipeline
+              onFileSelect={handleFileUpload}
+              isUploading={uploading}
+              uploadProgress={uploadProgress}
+              externalFiles={currentUploadFiles}
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/15 dark:bg-amber-400/20 text-amber-600 dark:text-amber-400">
+                  <Zap size={12} />
+                </span>
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 tracking-tight">自动导入</span>
               </div>
-            </div>
+              <div className="flex flex-wrap gap-4">
+                <button
+                  type="button"
+                  onClick={() => setShowImportUrlModal(true)}
+                  className="group flex-1 min-w-[140px] inline-flex items-center gap-3 px-4 py-3.5 rounded-xl border border-slate-200/80 dark:border-slate-600/80 bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 text-sm font-medium shadow-sm transition-all duration-200 hover:border-blue-300 dark:hover:border-blue-500/80 hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 dark:hover:from-blue-950/40 dark:hover:to-indigo-950/30 hover:shadow-md hover:shadow-blue-500/10 hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/12 dark:bg-blue-400/20 text-blue-600 dark:text-blue-400 shadow-inner group-hover:bg-blue-500/20 dark:group-hover:bg-blue-400/30 transition-colors">
+                    <Link2 size={20} />
+                  </span>
+                  <span className="text-left">从 URL 导入</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowImportSearchModal(true)}
+                  className="group flex-1 min-w-[140px] inline-flex items-center gap-3 px-4 py-3.5 rounded-xl border border-slate-200/80 dark:border-slate-600/80 bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 text-sm font-medium shadow-sm transition-all duration-200 hover:border-violet-300 dark:hover:border-violet-500/80 hover:bg-gradient-to-br hover:from-violet-50 hover:to-fuchsia-50 dark:hover:from-violet-950/40 dark:hover:to-fuchsia-950/30 hover:shadow-md hover:shadow-violet-500/10 hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/12 dark:bg-violet-400/20 text-violet-600 dark:text-violet-400 shadow-inner group-hover:bg-violet-500/20 dark:group-hover:bg-violet-400/30 transition-colors">
+                    <ImagePlus size={20} />
+                  </span>
+                  <span className="text-left">搜索图片导入</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowImportFolderModal(true)}
+                  className="group flex-1 min-w-[140px] inline-flex items-center gap-3 px-4 py-3.5 rounded-xl border border-slate-200/80 dark:border-slate-600/80 bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 text-sm font-medium shadow-sm transition-all duration-200 hover:border-amber-300 dark:hover:border-amber-500/80 hover:bg-gradient-to-br hover:from-amber-50 hover:to-orange-50 dark:hover:from-amber-950/40 dark:hover:to-orange-950/30 hover:shadow-md hover:shadow-amber-500/10 hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/12 dark:bg-amber-400/20 text-amber-600 dark:text-amber-400 shadow-inner group-hover:bg-amber-500/20 dark:group-hover:bg-amber-400/30 transition-colors">
+                    <FolderOpen size={20} />
+                  </span>
+                  <span className="text-left">从文件夹导入</span>
+                </button>
+              </div>
+            </UploadPipeline>
 
             {/* File List */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">

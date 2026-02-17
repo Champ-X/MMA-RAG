@@ -43,6 +43,8 @@ interface UploadPipelineProps {
   /** 外部传入的文件列表（如从文件夹导入），有值时与 uploadProgress 一起展示进度 */
   externalFiles?: File[] | null
   className?: string
+  /** 卡片底部插槽，如「自动导入」入口，与上传区域同框展示 */
+  children?: React.ReactNode
 }
 
 const STAGES_DOC: { id: PipelineStage; label: string; icon: typeof Upload }[] = [
@@ -87,6 +89,7 @@ export function UploadPipeline({
   uploadProgress,
   externalFiles = null,
   className,
+  children,
 }: UploadPipelineProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
@@ -181,6 +184,12 @@ export function UploadPipeline({
             className="hidden"
           />
         </div>
+
+        {children != null && (
+          <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+            {children}
+          </div>
+        )}
 
         {hasFilesToShow && (
           <>
