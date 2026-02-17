@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Brain, Network, Search, ChevronDown, ChevronRight, CheckCircle, Image as ImageIcon, Loader2 } from 'lucide-react'
+import { Brain, Network, Search, ChevronDown, ChevronRight, CheckCircle, Image as ImageIcon, Loader2, Sparkles, FileText, Wand2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ThoughtData, ThinkingState } from '@/store/useChatStore'
 
@@ -39,6 +39,17 @@ export function ThinkingCapsule({
     reranked: thoughtData?.reranked_count,
   }
 
+  // 获取生成阶段的状态信息
+  // 如果生成已完成，强制清除状态信息，避免显示旧的动效
+  // 检查 message.thinking 中的完成标记
+  const isGenerationCompleted = stages?.generation === 'completed' || (thoughtData as any)?._generation_completed === true
+  const generationStatus = isGenerationCompleted
+    ? null 
+    : ((thoughtData as any)?.generation_status || (thoughtData as any)?.status)
+  const generationMessage = isGenerationCompleted
+    ? ''
+    : ((thoughtData as any)?.generation_message || (thoughtData as any)?.message || '')
+
   // 有 stages 时按阶段流式展示；无 stages（如历史消息）时按 thoughtData 有则展示
   const intentActive =
     (stages?.intent && stages.intent !== 'idle') ||
@@ -49,7 +60,19 @@ export function ThinkingCapsule({
   const retrievalActive =
     (stages?.retrieval && stages.retrieval !== 'idle') ||
     (!!thoughtData && ((thoughtData.sparse_keywords?.length ?? 0) > 0 || (thoughtData.sub_queries?.length ?? 0) > 0 || thoughtData.total_found != null))
-  const hasAnyStage = intentActive || routingActive || retrievalActive
+  // 生成阶段只有在以下情况才显示：
+  // 1. 明确收到 generation 阶段的事件（currentStage === 'generation'）
+  // 2. 或者生成阶段状态为 processing 或 completed
+  // 3. 或者有明确的生成状态信息
+  // 4. 或者从 message.thinking 中检测到完成标记
+  // 注意：检索阶段完成时，不应该显示生成阶段，直到明确收到 generation 事件
+  const generationActive =
+    isGenerationCompleted || stages?.generation === 'completed' // 已完成时也要显示完成状态
+      ? true
+      : (currentStage === 'generation' && stages?.generation !== 'idle') || // 必须是 generation 阶段且状态不是 idle
+        (stages?.generation === 'processing') || // 或者明确是 processing 状态
+        (!!generationStatus && currentStage === 'generation') // 或者有生成状态且当前阶段是 generation
+  const hasAnyStage = intentActive || routingActive || retrievalActive || generationActive
 
   const stageLabel = (status: StageStatus) =>
     status === 'processing' ? '进行中…' : status === 'completed' ? '已完成' : status === 'failed' ? '失败' : ''
@@ -261,6 +284,114 @@ export function ThinkingCapsule({
                   <span className="text-slate-700 dark:text-slate-200">
                     检索到 {retrieval.totalFound} 个片段{retrieval.reranked !== undefined && retrieval.reranked !== null ? `，重排后保留 Top ${retrieval.reranked}` : ''}
                   </span>
+                </div>
+              )}
+            </div>
+          </div>
+          )}
+
+          {/* 阶段四：生成回答 — 只有在明确收到 generation 事件后才显示 */}
+          {generationActive && (
+          <div className={cn(
+            'space-y-2 animate-fade-in rounded-lg transition-all',
+            currentStage === 'generation' 
+              ? 'bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm p-3' 
+              : ''
+          )}>
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
+              <Sparkles size={12} className="text-indigo-600" />
+              <span>生成回答</span>
+              {stages?.generation === 'processing' && (
+                <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                  <Loader2 size={10} className="animate-spin" />
+                  {stageLabel(stages.generation)}
+                </span>
+              )}
+              {stages?.generation === 'completed' && (
+                <span className="text-emerald-600 dark:text-emerald-400 text-[10px]">{stageLabel('completed')}</span>
+              )}
+            </div>
+            <div className="ml-4 space-y-2">
+              {/* 生成完成后，隐藏动效，只显示完成状态 */}
+              {isGenerationCompleted || stages?.generation === 'completed' ? (
+                <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gradient-to-r from-emerald-50/80 via-teal-50/60 to-cyan-50/80 dark:from-emerald-950/30 dark:via-teal-950/20 dark:to-cyan-950/30 border border-emerald-200/60 dark:border-emerald-800/40 shadow-sm">
+                  <div className="relative">
+                    <CheckCircle size={16} className="text-emerald-500 dark:text-emerald-400" strokeWidth={2.5} />
+                    <div className="absolute inset-0 animate-ping opacity-20">
+                      <CheckCircle size={16} className="text-emerald-400" />
+                    </div>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                      回答已就绪
+                    </span>
+                    <span className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 mt-0.5">
+                      内容已生成完成
+                    </span>
+                  </div>
+                </div>
+              ) : !stages?.generation || stages.generation === 'idle' ? null : generationStatus === 'preparing' || generationStatus === 'building_context' || (!generationStatus && stages?.generation === 'processing') ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                    <div className="relative">
+                      <Loader2 size={14} className="animate-spin text-indigo-500" />
+                      <div className="absolute inset-0 animate-ping">
+                        <Loader2 size={14} className="text-indigo-300 opacity-30" />
+                      </div>
+                    </div>
+                    <span className="animate-pulse">{generationMessage || '正在准备生成回答...'}</span>
+                  </div>
+                  {/* 进度条动效 */}
+                  <div className="h-1.5 bg-slate-200/60 dark:bg-slate-700/40 rounded-full overflow-hidden relative">
+                    <div className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-fuchsia-500 rounded-full transition-all duration-1000" style={{ width: '60%' }}>
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-shimmer" />
+                    </div>
+                  </div>
+                </div>
+              ) : generationStatus === 'preparing_prompt' ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                    <FileText size={14} className="text-purple-500 animate-pulse" />
+                    <span>{generationMessage || '正在准备提示词...'}</span>
+                  </div>
+                  {/* 进度条动效 */}
+                  <div className="h-1.5 bg-slate-200/60 dark:bg-slate-700/40 rounded-full overflow-hidden relative">
+                    <div className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-fuchsia-500 rounded-full transition-all duration-1000" style={{ width: '80%' }}>
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-shimmer" />
+                    </div>
+                  </div>
+                </div>
+              ) : generationStatus === 'generating' || (!generationStatus && stages?.generation === 'processing') ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                    <Wand2 size={14} className="text-fuchsia-500 animate-bounce" />
+                    <span className="animate-pulse">{generationMessage || '正在生成回答...'}</span>
+                  </div>
+                  {/* 波浪动效进度条 */}
+                  <div className="h-1.5 bg-slate-200/60 dark:bg-slate-700/40 rounded-full overflow-hidden relative">
+                    <div className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-fuchsia-500 rounded-full transition-all duration-1000" style={{ width: '95%' }}>
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-shimmer" />
+                    </div>
+                  </div>
+                  {/* 闪烁的提示文字 */}
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-ping" />
+                      <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-ping" style={{ animationDelay: '0.2s' }} />
+                      <span className="w-1.5 h-1.5 bg-fuchsia-400 rounded-full animate-ping" style={{ animationDelay: '0.4s' }} />
+                    </span>
+                    <span>模型正在思考中，请稍候...</span>
+                  </div>
+                </div>
+              ) : generationMessage ? (
+                <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                  <Loader2 size={12} className="animate-spin text-indigo-500" />
+                  <span>{generationMessage}</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  <Loader2 size={12} className="animate-spin flex-shrink-0" />
+                  <span>正在生成回答...</span>
                 </div>
               )}
             </div>

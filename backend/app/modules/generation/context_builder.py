@@ -5,6 +5,7 @@
 
 from typing import Dict, List, Any, Optional, Tuple
 import uuid
+import asyncio
 from datetime import datetime
 from dataclasses import dataclass
 
@@ -244,6 +245,29 @@ class ContextBuilder:
                 reference_map[ref_id] = reference
             
             # 图片从len(docs)+1开始编号
+            # 并行生成图片预签名URL以提高性能
+            async def _generate_presigned_url_for_image(image: Dict[str, Any], ref_id: str) -> Tuple[str, Optional[str]]:
+                """为单个图片生成预签名URL"""
+                try:
+                    kb_id = image["metadata"].get("kb_id")
+                    bucket = (
+                        self.minio_adapter.bucket_name_for_kb(kb_id)
+                        if kb_id
+                        else "images"
+                    )
+                    object_path = image["file_path"]
+                    presigned_url = await self.minio_adapter.get_presigned_url(
+                        bucket=bucket,
+                        object_path=object_path,
+                        expires_hours=24
+                    )
+                    return ref_id, presigned_url
+                except Exception as e:
+                    logger.error(f"生成图片预签名URL失败: {str(e)}")
+                    return ref_id, None
+            
+            # 创建所有图片引用对象
+            image_references = []
             for i, image in enumerate(images, len(docs) + 1):
                 ref_id = str(i)
                 reference = ReferenceMap(
@@ -259,24 +283,29 @@ class ContextBuilder:
                         "chunk_index": image["metadata"].get("chunk_index")  # chunk 在文档中的索引（如果有）
                     }
                 )
-                # 提前生成图片预签名URL，供流式引用直接展示图片
-                try:
-                    kb_id = (reference.metadata or {}).get("kb_id")
-                    bucket = (
-                        self.minio_adapter.bucket_name_for_kb(kb_id)
-                        if kb_id
-                        else "images"
-                    )
-                    object_path = reference.file_path
-                    presigned_url = await self.minio_adapter.get_presigned_url(
-                        bucket=bucket,
-                        object_path=object_path,
-                        expires_hours=24
-                    )
-                    reference.presigned_url = presigned_url
-                except Exception as e:
-                    logger.error(f"生成图片预签名URL失败: {str(e)}")
-                reference_map[ref_id] = reference
+                image_references.append((ref_id, reference, image))
+            
+            # 并行生成所有图片的预签名URL
+            if image_references:
+                presigned_tasks = [
+                    _generate_presigned_url_for_image(image, ref_id)
+                    for ref_id, _, image in image_references
+                ]
+                presigned_results = await asyncio.gather(*presigned_tasks, return_exceptions=True)
+                
+                # 将预签名URL分配给对应的引用对象
+                presigned_map = {}
+                for result in presigned_results:
+                    if isinstance(result, Exception):
+                        logger.error(f"生成预签名URL时出错: {result}")
+                        continue
+                    ref_id, presigned_url = result
+                    presigned_map[ref_id] = presigned_url
+                
+                # 设置预签名URL并添加到引用映射
+                for ref_id, reference, _ in image_references:
+                    reference.presigned_url = presigned_map.get(ref_id)
+                    reference_map[ref_id] = reference
             
             return reference_map
             

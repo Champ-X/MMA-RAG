@@ -172,11 +172,25 @@ class GenerationService:
             
             session = self.stream_manager.active_streams[session_id]
             
+            # 发送"开始准备上下文"事件
+            yield StreamEvent(
+                type=StreamEventType.THOUGHT,
+                data={"stage": "generation", "message": "正在构建上下文...", "status": "building_context"},
+                timestamp=datetime.utcnow().timestamp()
+            )
+            
             # 构建上下文
             context_result = await self.context_builder.build_context(
                 retrieval_result=retrieval_result,
                 query=query,
                 kb_context=kb_context
+            )
+            
+            # 发送"准备提示词"事件
+            yield StreamEvent(
+                type=StreamEventType.THOUGHT,
+                data={"stage": "generation", "message": "正在准备提示词...", "status": "preparing_prompt"},
+                timestamp=datetime.utcnow().timestamp()
             )
             
             # 构建系统提示词
@@ -187,6 +201,13 @@ class GenerationService:
             user_input = self.context_builder.formatter.format_user_query(
                 query=query,
                 context=context_result.context_string
+            )
+            
+            # 发送"开始生成"事件，让前端知道流式生成即将开始
+            yield StreamEvent(
+                type=StreamEventType.THOUGHT,
+                data={"stage": "generation", "message": "正在生成回答...", "status": "generating"},
+                timestamp=datetime.utcnow().timestamp()
             )
             
             # 开始流式响应（传入 context、提示词与用户输入，供真实 LLM 流式生成）

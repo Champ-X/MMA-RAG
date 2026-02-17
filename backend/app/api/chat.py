@@ -227,8 +227,8 @@ async def stream_chat(
             if retrieval_result is None:
                 raise RuntimeError("检索流未返回结果")
 
-            # 2. 生成阶段（简单提示）
-            yield f"data: {_thought_event('generation', {'message': '正在生成回答...'})}\n\n"
+            # 2. 生成阶段：立即发送准备生成事件，让前端知道正在准备
+            yield f"data: {_thought_event('generation', {'message': '正在准备生成回答...', 'status': 'preparing'})}\n\n"
 
             answer_chunks = []
             async for event in generation_service.stream_generate_response(
@@ -246,8 +246,15 @@ async def stream_chat(
                     yield f"data: {json.dumps({'type': 'message', 'data': {'delta': chunk}})}\n\n"
                 elif event_type == "thought":
                     stage = event.data.get("stage", "generation")
-                    msg = event.data.get("message", "")
-                    yield f"data: {_thought_event(stage, msg)}\n\n"
+                    # 支持传递完整的数据对象，而不仅仅是消息字符串
+                    if isinstance(event.data.get("message"), dict):
+                        payload = event.data.get("message", {})
+                    else:
+                        payload = {"message": event.data.get("message", "")}
+                    # 合并其他字段（如 status）
+                    if "status" in event.data:
+                        payload["status"] = event.data["status"]
+                    yield f"data: {_thought_event(stage, payload)}\n\n"
                 elif event_type == "citation":
                     refs = event.data.get("references", event.data.get("citations", []))
                     yield f"data: {json.dumps({'type': 'citation', 'data': {'references': refs}}, ensure_ascii=False)}\n\n"

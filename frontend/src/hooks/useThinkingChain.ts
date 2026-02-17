@@ -100,9 +100,34 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             const payload = (typeof inner === 'object' && inner !== null ? inner : {}) as Record<string, unknown>
             const prev = useChatStore.getState().thinking.thoughtData
             const merged = { ...prev, ...payload } as Record<string, unknown>
+            
+            // 提取生成阶段的状态信息
+            if (phase === 'generation' && payload.status) {
+              merged.generation_status = payload.status
+              merged.generation_message = payload.message || ''
+            }
+            
             // 后端在每个阶段完成时推送事件（带结果），收到后：当前阶段标为已完成，下一阶段标为进行中
+            // 注意：只有在收到 generation 阶段的事件时，才将 currentStage 设置为 'generation'
             const nextPhase =
-              phase === 'intent' ? 'routing' : phase === 'routing' ? 'retrieval' : phase === 'retrieval' ? 'generation' : 'generation'
+              phase === 'intent' ? 'routing' 
+              : phase === 'routing' ? 'retrieval' 
+              : phase === 'retrieval' ? 'retrieval' // 检索阶段完成后，仍然保持在 retrieval，直到收到 generation 事件
+              : phase === 'generation' ? 'generation' 
+              : 'retrieval'
+            
+            // 根据阶段设置状态
+            let generationStage: 'idle' | 'processing' | 'completed' | 'failed' = 'idle'
+            if (phase === 'generation') {
+              if (payload.status === 'preparing' || payload.status === 'building_context' || payload.status === 'preparing_prompt' || payload.status === 'generating') {
+                generationStage = 'processing'
+              } else {
+                generationStage = 'completed'
+              }
+            }
+            // 只有在明确收到 generation 阶段事件时，才设置 generation 为 processing
+            // 检索阶段完成时，不自动激活生成阶段
+            
             setThinking({
               currentStage: nextPhase,
               thoughtData: merged,
@@ -110,7 +135,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
                 intent: phase === 'intent' ? 'completed' : ['routing', 'retrieval', 'generation'].includes(phase) ? 'completed' : 'idle',
                 routing: phase === 'routing' ? 'completed' : phase === 'retrieval' || phase === 'generation' ? 'completed' : phase === 'intent' ? 'processing' : 'idle',
                 retrieval: phase === 'retrieval' ? 'completed' : phase === 'generation' ? 'completed' : phase === 'routing' ? 'processing' : 'idle',
-                generation: phase === 'generation' ? 'completed' : phase === 'retrieval' ? 'processing' : 'idle',
+                generation: generationStage !== 'idle' ? generationStage : (phase === 'generation' ? 'processing' : 'idle'),
               },
             })
             options.onThought?.(e as ThoughtEvent)
@@ -140,8 +165,17 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
           },
           onComplete: () => {
             const thoughtData = useChatStore.getState().thinking.thoughtData
+            // 清除生成阶段的状态信息，避免显示旧的动效
+            const cleanedThoughtData = { ...thoughtData }
+            if (cleanedThoughtData) {
+              delete (cleanedThoughtData as any).generation_status
+              delete (cleanedThoughtData as any).generation_message
+            }
+            
+            // 先设置完成状态，确保前端能正确显示
             setThinking({
               currentStage: 'generation',
+              thoughtData: cleanedThoughtData,
               stages: {
                 intent: 'completed',
                 routing: 'completed',
@@ -150,14 +184,27 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
               },
               progress: 100,
             })
+            
+            // 保存思考数据到消息中，同时保存完成状态信息
             const sid = streamingSessionIdRef.current
             const s = sid ? getSessionById(sid) : null
             const last = s?.messages[s?.messages.length - 1]
-            if (s && last && last.role === 'assistant' && last.id === currentMessageIdRef.current && thoughtData) {
-              updateMessage(s.id, last.id, { thinking: thoughtData })
+            if (s && last && last.role === 'assistant' && last.id === currentMessageIdRef.current && cleanedThoughtData) {
+              // 保存思考数据，并添加完成状态标记
+              const thinkingWithStatus = {
+                ...cleanedThoughtData,
+                _generation_completed: true, // 标记生成已完成
+              }
+              updateMessage(s.id, last.id, { thinking: thinkingWithStatus })
             }
+            
             currentUserQueryRef.current = null // 清除保存的查询
-            cleanup()
+            
+            // 延迟清理，确保状态更新完成后再清理
+            setTimeout(() => {
+              cleanup()
+            }, 100)
+            
             options.onComplete?.()
           },
           onError: (err) => {
