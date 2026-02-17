@@ -285,21 +285,53 @@ function ParagraphImageDisplay({
   const [failedImages, setFailedImages] = React.useState<Set<number | string>>(new Set())
   const [loadedImages, setLoadedImages] = React.useState<Set<number | string>>(new Set())
   const imageRefs = React.useRef<Map<number | string, HTMLImageElement>>(new Map())
+  const failedImagesRef = React.useRef<Set<number | string>>(new Set())
+  const loadedImagesRef = React.useRef<Set<number | string>>(new Set())
+
+  // 同步 state 到 ref（避免在 useEffect 中依赖 Set）
+  React.useEffect(() => {
+    failedImagesRef.current = failedImages
+  }, [failedImages])
+  
+  React.useEffect(() => {
+    loadedImagesRef.current = loadedImages
+  }, [loadedImages])
 
   if (citations.length === 0) return null
 
   // 当 citations 变化时，检查图片是否已经加载完成（从缓存中）
+  // 使用稳定的字符串作为依赖，避免数组引用变化导致的重新计算
+  const citationIds = React.useMemo(() => {
+    try {
+      const ids = citations.map(c => String(c?.id ?? '')).filter(Boolean).sort().join(',')
+      return ids
+    } catch {
+      return ''
+    }
+  }, [citations])
+  
   React.useEffect(() => {
+    if (!citationIds) return
+    
     citations.forEach((citation) => {
-      if (failedImages.has(citation.id)) return
+      if (!citation?.id) return
+      
+      // 使用 ref 检查状态，避免依赖 Set 对象
+      if (failedImagesRef.current.has(citation.id)) return
+      if (loadedImagesRef.current.has(citation.id)) return
       
       const img = imageRefs.current.get(citation.id)
       if (img && img.complete && img.naturalHeight !== 0) {
         // 图片已经加载完成（可能是从缓存中）
-        setLoadedImages((prev) => new Set(prev).add(citation.id))
+        setLoadedImages((prevLoaded) => {
+          if (prevLoaded.has(citation.id)) return prevLoaded
+          return new Set(prevLoaded).add(citation.id)
+        })
       }
     })
-  }, [citations, failedImages])
+    // 只依赖 citationIds 字符串，避免无限循环
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [citationIds])
 
   const handleImageError = (citationId: number | string, e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     e.preventDefault()
@@ -310,9 +342,15 @@ function ParagraphImageDisplay({
       next.delete(citationId)
       return next
     })
-    // 隐藏图片元素和父容器
+    // 立即隐藏图片元素和父容器，防止显示破损图标
     const img = e.currentTarget
+    img.setAttribute('data-error', 'true')
     img.style.display = 'none'
+    img.style.visibility = 'hidden'
+    img.style.opacity = '0'
+    img.style.width = '0'
+    img.style.height = '0'
+    // 隐藏父容器（button）
     const button = img.closest('button')
     if (button) {
       button.style.display = 'none'
@@ -324,9 +362,14 @@ function ParagraphImageDisplay({
   }
 
   // 仅过滤加载失败图片；“首次引用去重”在父组件渲染阶段完成
+  // 使用稳定的字符串作为依赖，避免 Set 对象引用变化导致的重新计算
+  const failedIdsStr = React.useMemo(() => {
+    return Array.from(failedImages).sort().join(',')
+  }, [failedImages])
+  
   const validCitations = React.useMemo(
     () => citations.filter((citation) => !failedImages.has(citation.id)),
-    [citations, failedImages]
+    [citations, failedIdsStr]
   )
 
   if (validCitations.length === 0) return null
@@ -360,6 +403,19 @@ function ParagraphImageDisplay({
               ref={(el) => {
                 if (el) {
                   imageRefs.current.set(citation.id, el)
+                  
+                  // 立即检查是否已加载（从缓存）
+                  if (el.complete && el.naturalHeight !== 0 && !loadedImagesRef.current.has(citation.id)) {
+                    // 图片已从缓存加载，立即显示
+                    setLoadedImages((prev) => {
+                      if (prev.has(citation.id)) return prev
+                      return new Set(prev).add(citation.id)
+                    })
+                  } else if (!el.complete) {
+                    // 图片未加载，先隐藏防止显示破损图标
+                    el.style.visibility = 'hidden'
+                    el.style.opacity = '0'
+                  }
                 } else {
                   imageRefs.current.delete(citation.id)
                 }
@@ -367,11 +423,31 @@ function ParagraphImageDisplay({
               src={citation.img_url}
               alt={citation.file_name || ''}
               className="max-h-64 max-w-full object-contain block m-0 p-0"
-              style={{ opacity: isLoaded ? 1 : 0, transition: 'opacity 0.2s' }}
-              onError={(e) => handleImageError(citation.id, e)}
+              style={{ 
+                opacity: isLoaded ? 1 : 0, 
+                transition: isLoaded ? 'opacity 0.2s' : 'none',
+                visibility: isLoaded ? 'visible' : 'hidden'
+              }}
+              onError={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleImageError(citation.id, e)
+              }}
               onLoad={() => handleImageLoad(citation.id)}
               // 防止显示 broken image 图标
-              onAbort={(e) => handleImageError(citation.id, e as any)}
+              onAbort={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleImageError(citation.id, e as any)
+              }}
+              // 添加额外的错误处理
+              onLoadStart={() => {
+                // 确保加载开始时图片是隐藏的
+                const img = imageRefs.current.get(citation.id)
+                if (img) {
+                  img.style.visibility = 'hidden'
+                }
+              }}
             />
           </button>
         )

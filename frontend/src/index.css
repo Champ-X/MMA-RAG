@@ -116,3 +116,20 @@ body {
   /* 确保合理的字符间距 */
   word-spacing: normal;
 }
+
+/* 防止显示破损图片图标 - 仅针对加载失败的图片 */
+img.error,
+img[data-error="true"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+}
+
+/* 隐藏的图片完全不可见 */
+img[style*="display: none"] {
+  display: none !important;
+}

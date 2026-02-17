@@ -21,8 +21,13 @@ function ImageDisplayWithErrorHandler({ imgUrl, fileName }: { imgUrl: string; fi
   // 检查图片是否已经加载完成（从缓存中）
   React.useEffect(() => {
     const img = imgRef.current
-    if (img && img.complete && img.naturalHeight !== 0) {
-      setImageLoaded(true)
+    if (img) {
+      if (img.complete && img.naturalHeight !== 0) {
+        setImageLoaded(true)
+        img.style.visibility = 'visible'
+      } else {
+        img.style.visibility = 'hidden'
+      }
     }
   }, [])
   
@@ -31,10 +36,22 @@ function ImageDisplayWithErrorHandler({ imgUrl, fileName }: { imgUrl: string; fi
     e.stopPropagation()
     setImageError(true)
     setImageLoaded(false)
+    // 立即隐藏图片元素，防止显示破损图标
+    const img = e.currentTarget
+    img.setAttribute('data-error', 'true')
+    img.style.display = 'none'
+    img.style.visibility = 'hidden'
+    img.style.opacity = '0'
+    img.style.width = '0'
+    img.style.height = '0'
   }
   
   const handleImageLoad = () => {
     setImageLoaded(true)
+    const img = imgRef.current
+    if (img) {
+      img.style.visibility = 'visible'
+    }
   }
   
   return (
@@ -63,7 +80,19 @@ function ImageDisplayWithErrorHandler({ imgUrl, fileName }: { imgUrl: string; fi
               src={imgUrl}
               alt={fileName}
               className="max-w-full max-h-full w-auto h-auto object-contain"
-              style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s' }}
+              style={{ 
+                opacity: imageLoaded ? 1 : 0, 
+                transition: imageLoaded ? 'opacity 0.2s' : 'none',
+                visibility: imageLoaded ? 'visible' : 'hidden'
+              }}
+              onLoadStart={() => {
+                const img = imgRef.current
+                if (img && !imageLoaded) {
+                  // 加载开始时隐藏，防止显示破损图标
+                  img.style.visibility = 'hidden'
+                  img.style.opacity = '0'
+                }
+              }}
               onError={handleImageError}
               onLoad={handleImageLoad}
               onAbort={handleImageError}
