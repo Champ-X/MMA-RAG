@@ -224,7 +224,7 @@ class LLMRegistry:
                 ],
             },
             "final_generation": {
-                "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+                "model": "Pro/moonshotai/Kimi-K2.5",
                 "fallbacks": [
                     "deepseek-ai/DeepSeek-V3.2", 
                     "deepseek-ai/DeepSeek-R1",

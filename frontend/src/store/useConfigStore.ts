@@ -84,7 +84,7 @@ const defaultConfig: SystemConfig = {
       id: 'chat',
       name: '对话模型',
       provider: 'siliconflow',
-      model: 'deepseek-chat',
+      model: 'Pro/moonshotai/Kimi-K2.5',
       maxTokens: 4096,
       temperature: 0.7,
       topP: 0.9,
