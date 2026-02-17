@@ -335,7 +335,7 @@ class HybridSearchEngine:
                 # 注意：Qdrant使用余弦相似度，对于归一化向量，分数范围是0-1
                 # 为了提升图片丰富度，采用更接近显式模式的策略
                 limit = 20  # 增加到20，与显式模式一致，提供更多图片候选
-                score_threshold = 0.1  # 进一步降低阈值到0.4，接近显式模式的0.0，召回更多相关图片
+                score_threshold = 0.3  # 进一步降低阈值到0.4，接近显式模式的0.0，召回更多相关图片
                 logger.info(f"Visual检索策略: implicit_enrichment - 优化图片丰富度，limit={limit}, 相似度阈值={score_threshold} (接近显式模式)")
             else:
                 # 不应该到达这里，但为了安全起见
@@ -624,7 +624,7 @@ class HybridSearchEngine:
             elif visual_intent == "implicit_enrichment":
                 # 隐性增益：提高权重到1.15，更接近显式模式的1.2，确保图片在融合时有更好的排名
                 # 但仍保持平衡，避免过度挤掉文本（文本权重dense=1.0, sparse=0.8）
-                dynamic_weights["visual"] = 1.15
+                dynamic_weights["visual"] = 0.9
             else:
                 # unnecessary: 视觉检索权重为0（实际上不应该有visual结果）
                 dynamic_weights["visual"] = 0.0

@@ -45,7 +45,7 @@ class ContextBuilder:
         self.max_context_length = 4000  # 最大上下文长度
         self.max_chunks = 15           # 最大文本块数量
         self.max_images = 5            # 最大图片数量（默认）
-        self.max_images_implicit = 8   # implicit_enrichment时的最大图片数量（提升图片丰富度，接近显式模式）
+        self.max_images_implicit = 6   # implicit_enrichment时的最大图片数量（稍低于原8，控制图片占比）
     
     async def build_context(
         self,

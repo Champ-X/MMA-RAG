@@ -21,7 +21,7 @@ class Reranker:
         # 重排序参数
         self.cross_encoder_weight = 0.7  # Cross-Encoder权重
         self.rrf_weight = 0.3          # RRF权重
-        self.top_k = 30                # Cross-Encoder处理的候选数量（从20增加到30，提高重排质量）
+        self.top_k = 20                # Cross-Encoder处理的候选数量（从20增加到30，提高重排质量）
         self.final_top_k = 10          # 最终返回结果数量（从10增加到15，提高图片丰富度）
     
     async def rerank(
