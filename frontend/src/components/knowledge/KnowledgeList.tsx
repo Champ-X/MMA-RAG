@@ -308,43 +308,46 @@ function ImportUrlModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-950 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Link2 size={20} /> 从 URL 导入
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 overflow-hidden">
+        <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20">
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/15 dark:bg-blue-400/20 text-blue-600 dark:text-blue-400 shadow-sm">
+              <Link2 size={20} />
+            </span>
+            从 URL 导入
           </h3>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭">
             <X size={18} />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">URL *</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">URL <span className="text-red-500">*</span></label>
             <input
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://example.com/file.pdf"
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400 dark:focus:ring-blue-400/20 dark:focus:border-blue-500 transition-shadow"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">文件名（可选）</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">文件名 <span className="text-slate-400 font-normal">(可选)</span></label>
             <input
               type="text"
               value={filename}
               onChange={(e) => setFilename(e.target.value)}
               placeholder="留空则使用 URL 中的文件名"
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400 dark:focus:ring-blue-400/20 dark:focus:border-blue-500 transition-shadow"
             />
           </div>
-          {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-sm font-medium">
+          {error && <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl">{error}</p>}
+          <div className="flex justify-end gap-3 pt-1">
+            <button type="button" onClick={onClose} className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
               取消
             </button>
-            <button type="submit" disabled={loading} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-500 disabled:opacity-50 flex items-center gap-2">
+            <button type="submit" disabled={loading} className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all">
               {loading ? <Loader2 size={16} className="animate-spin" /> : null}
               导入
             </button>
@@ -533,61 +536,47 @@ function ImportFolderModal({
 
   const canImport = (selectedFiles != null && selectedFiles.length > 0) || folderPath.trim().length > 0
 
+  const inputClass =
+    'w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/25 focus:border-amber-400 dark:focus:ring-amber-400/20 dark:focus:border-amber-500 transition-shadow'
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-950 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center sticky top-0 bg-white dark:bg-slate-950 z-10">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <FolderOpen size={20} /> 从文件夹导入
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 max-h-[90vh] overflow-y-auto">
+        <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-amber-50/80 to-orange-50/60 dark:from-amber-950/30 dark:to-orange-950/20 sticky top-0 z-10">
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 dark:bg-amber-400/20 text-amber-600 dark:text-amber-400 shadow-sm">
+              <FolderOpen size={20} />
+            </span>
+            从文件夹导入
           </h3>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭">
             <X size={18} />
           </button>
         </div>
-        <div className="p-6 space-y-4">
-          {/* 筛选条件：对「选择本地文件夹」和「输入服务端路径」均生效 */}
-          <div className="space-y-3 pb-4 border-b border-slate-200 dark:border-slate-700">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">筛选条件（对下方两种方式均生效）</p>
-            <div className="flex items-center gap-2">
+        <div className="p-6 space-y-5">
+          {/* 筛选条件 */}
+          <div className="space-y-4 pb-5 border-b border-slate-200 dark:border-slate-700">
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">筛选条件 <span className="text-slate-400 font-normal">（对下方两种方式均生效）</span></p>
+            <label className="flex items-center gap-2.5 cursor-pointer">
               <input
                 type="checkbox"
                 id="folder-recursive"
                 checked={recursive}
                 onChange={(e) => setRecursive(e.target.checked)}
-                className="rounded border-slate-300 dark:border-slate-600"
+                className="rounded border-slate-300 dark:border-slate-600 text-amber-600 focus:ring-amber-500/20"
               />
-              <label htmlFor="folder-recursive" className="text-sm text-slate-700 dark:text-slate-200">递归子目录</label>
+              <span className="text-sm text-slate-700 dark:text-slate-200">递归子目录</span>
+            </label>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">文件类型 <span className="text-slate-400 font-normal">(可选，逗号分隔)</span></label>
+              <input type="text" value={extensionsStr} onChange={(e) => setExtensionsStr(e.target.value)} placeholder=".pdf, .txt, .md" className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">文件类型（可选，逗号分隔，如 .pdf,.txt,.md）</label>
-              <input
-                type="text"
-                value={extensionsStr}
-                onChange={(e) => setExtensionsStr(e.target.value)}
-                placeholder=".pdf, .txt, .md"
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
-              />
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">排除模式 <span className="text-slate-400 font-normal">(可选，逗号分隔)</span></label>
+              <input type="text" value={excludeStr} onChange={(e) => setExcludeStr(e.target.value)} placeholder="__pycache__, .git, *.tmp" className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">排除模式（可选，逗号分隔）</label>
-              <input
-                type="text"
-                value={excludeStr}
-                onChange={(e) => setExcludeStr(e.target.value)}
-                placeholder="__pycache__, .git, *.tmp"
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">最大文件数</label>
-              <input
-                type="number"
-                min={1}
-                max={2000}
-                value={maxFiles}
-                onChange={(e) => setMaxFiles(Number(e.target.value) || 500)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-              />
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">最大文件数</label>
+              <input type="number" min={1} max={2000} value={maxFiles} onChange={(e) => setMaxFiles(Number(e.target.value) || 500)} className={inputClass} />
             </div>
           </div>
 
@@ -598,76 +587,57 @@ function ImportFolderModal({
               type="button"
               onClick={handleSelectLocalFolder}
               disabled={pickingFolder || loading}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-colors disabled:opacity-50"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/30 text-slate-700 dark:text-slate-200 hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 transition-colors disabled:opacity-50"
             >
               {pickingFolder ? <Loader2 size={18} className="animate-spin" /> : <FolderOpen size={18} />}
               {pickingFolder ? '正在打开…' : '选择本地文件夹'}
             </button>
             {!supportsFolderPicker && (
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">需使用 Chrome、Edge 等支持 File System Access 的浏览器</p>
+              <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">需使用 Chrome、Edge 等支持 File System Access 的浏览器</p>
             )}
             {selectedFiles != null && selectedFiles.length > 0 && (
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">已选择 {selectedFiles.length} 个文件（已按上方筛选条件过滤），点击下方「导入」将关闭弹窗并在本页显示每文件处理进度。</p>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/50 px-3 py-2 rounded-xl">已选择 {selectedFiles.length} 个文件，点击下方「导入」将关闭弹窗并在本页显示每文件处理进度。</p>
             )}
           </div>
 
           {/* 或输入服务端路径 */}
-          <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-5">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">或输入服务端路径</label>
-            <input
-              type="text"
-              value={folderPath}
-              onChange={(e) => setFolderPath(e.target.value)}
-              placeholder="/data/docs 或白名单内的路径"
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
-            />
+            <input type="text" value={folderPath} onChange={(e) => setFolderPath(e.target.value)} placeholder="/data/docs 或白名单内的路径" className={inputClass} />
           </div>
 
           {/* 服务端路径导入进度 */}
           {loading && folderProgress && (
-            <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/30 p-3 space-y-2">
+            <div className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20 p-4 space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
-                  {folderProgress.stage === 'scanning'
-                    ? '正在扫描文件夹…'
-                    : folderProgress.stage === 'importing'
-                      ? `正在导入 ${folderProgress.current ?? 0}/${folderProgress.total ?? 0}`
-                      : '处理中…'}
+                <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                  {folderProgress.stage === 'scanning' ? '正在扫描文件夹…' : folderProgress.stage === 'importing' ? `正在导入 ${folderProgress.current ?? 0}/${folderProgress.total ?? 0}` : '处理中…'}
                 </span>
                 {folderProgress.total != null && folderProgress.total > 0 && (
-                  <span className="text-sm tabular-nums text-slate-500 dark:text-slate-400">
-                    {folderProgress.current ?? 0} / {folderProgress.total}
-                  </span>
+                  <span className="text-sm tabular-nums text-slate-500 dark:text-slate-400">{folderProgress.current ?? 0} / {folderProgress.total}</span>
                 )}
               </div>
               {folderProgress.total != null && folderProgress.total > 0 && (
                 <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-                  <div
-                    className="h-full bg-indigo-500 dark:bg-indigo-500 transition-all duration-300"
-                    style={{
-                      width: `${Math.min(100, ((folderProgress.current ?? 0) / folderProgress.total) * 100)}%`,
-                    }}
-                  />
+                  <div className="h-full bg-amber-500 dark:bg-amber-500 transition-all duration-300" style={{ width: `${Math.min(100, ((folderProgress.current ?? 0) / folderProgress.total) * 100)}%` }} />
                 </div>
               )}
               {folderProgress.message && folderProgress.stage === 'importing' && (
-                <p className="text-xs text-slate-500 dark:text-slate-400 truncate" title={folderProgress.message}>
-                  {folderProgress.message}
-                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate" title={folderProgress.message}>{folderProgress.message}</p>
               )}
             </div>
           )}
 
           {/* 共用导入按钮 */}
-          <div className="flex justify-end gap-2 pt-4 border-t border-slate-200 dark:border-slate-700">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-sm font-medium">
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
+            <button type="button" onClick={onClose} className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
               取消
             </button>
             <button
               type="button"
               onClick={handleImport}
               disabled={!canImport || loading}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-500 disabled:opacity-50 flex items-center gap-2"
+              className="px-5 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-amber-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all"
             >
               {loading ? <Loader2 size={16} className="animate-spin" /> : null}
               导入
@@ -675,11 +645,11 @@ function ImportFolderModal({
           </div>
 
           {result != null && (
-            <p className="text-sm text-slate-600 dark:text-slate-300">
+            <p className="text-sm text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/50 px-3 py-2 rounded-xl">
               成功 {result.success_count}，失败 {result.failed_count}，共 {result.total} 个文件。
             </p>
           )}
-          {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
+          {error && <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl">{error}</p>}
         </div>
       </div>
     </div>
@@ -806,35 +776,31 @@ function ImportSearchModal({
           ? { border: 'border-l-4 border-l-emerald-500', bg: 'bg-emerald-50/50 dark:bg-emerald-950/30', bar: 'bg-emerald-500 dark:bg-emerald-500', tag: 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300', tagLabel: '导入' }
           : { border: '', bg: 'bg-slate-50 dark:bg-slate-900', bar: 'bg-indigo-500 dark:bg-indigo-600', tag: '', tagLabel: '' }
 
+  const inputClass =
+    'w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/25 focus:border-violet-400 dark:focus:ring-violet-400/20 dark:focus:border-violet-500 transition-shadow'
+  const selectClass = inputClass
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-950 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <ImagePlus size={20} /> 搜索图片导入
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 overflow-hidden">
+        <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-violet-50/80 to-fuchsia-50/60 dark:from-violet-950/30 dark:to-fuchsia-950/20">
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/15 dark:bg-violet-400/20 text-violet-600 dark:text-violet-400 shadow-sm">
+              <ImagePlus size={20} />
+            </span>
+            搜索图片导入
           </h3>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭">
             <X size={18} />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">搜索关键词 *</label>
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="例如：猫、风景"
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
-            />
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">搜索关键词 <span className="text-red-500">*</span></label>
+            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="例如：猫、风景" className={inputClass} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">渠道</label>
-            <select
-              value={source}
-              onChange={(e) => setSource(e.target.value as typeof source)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-            >
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">渠道</label>
+            <select value={source} onChange={(e) => setSource(e.target.value as typeof source)} className={selectClass}>
               <option value="google_images">Google 图片 (SerpAPI)</option>
               <option value="pixabay">Pixabay</option>
               <option value="internet_archive">Internet Archive</option>
@@ -843,12 +809,8 @@ function ImportSearchModal({
           {source === 'pixabay' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Pixabay 图片类型</label>
-                <select
-                  value={pixabayImageType}
-                  onChange={(e) => setPixabayImageType(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-                >
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Pixabay 图片类型</label>
+                <select value={pixabayImageType} onChange={(e) => setPixabayImageType(e.target.value)} className={selectClass}>
                   <option value="all">全部</option>
                   <option value="photo">照片</option>
                   <option value="illustration">插画</option>
@@ -856,12 +818,8 @@ function ImportSearchModal({
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Pixabay 排序</label>
-                <select
-                  value={pixabayOrder}
-                  onChange={(e) => setPixabayOrder(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-                >
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Pixabay 排序</label>
+                <select value={pixabayOrder} onChange={(e) => setPixabayOrder(e.target.value)} className={selectClass}>
                   <option value="popular">最受欢迎</option>
                   <option value="latest">最新</option>
                 </select>
@@ -870,12 +828,8 @@ function ImportSearchModal({
           )}
           {source === 'internet_archive' && (
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Archive 排序</label>
-              <select
-                value={archiveSort}
-                onChange={(e) => setArchiveSort(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-              >
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Archive 排序</label>
+              <select value={archiveSort} onChange={(e) => setArchiveSort(e.target.value)} className={selectClass}>
                 <option value="relevance">相关度</option>
                 <option value="popular">最受欢迎</option>
                 <option value="newest">最新</option>
@@ -883,62 +837,37 @@ function ImportSearchModal({
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">数量 (1–20)</label>
-            <input
-              type="number"
-              min={1}
-              max={20}
-              value={quantity}
-              onChange={(e) => setQuantity(Number(e.target.value) || 5)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-            />
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">数量 (1–20)</label>
+            <input type="number" min={1} max={20} value={quantity} onChange={(e) => setQuantity(Number(e.target.value) || 5)} className={inputClass} />
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-            <input
-              type="checkbox"
-              checked={randomize}
-              onChange={(e) => setRandomize(e.target.checked)}
-              className="rounded border-slate-300 dark:border-slate-600"
-            />
-            增加随机性（同关键词多次搜索得到不同图片）
+          <label className="flex items-center gap-2.5 cursor-pointer">
+            <input type="checkbox" checked={randomize} onChange={(e) => setRandomize(e.target.checked)} className="rounded border-slate-300 dark:border-slate-600 text-violet-600 focus:ring-violet-500/20" />
+            <span className="text-sm text-slate-700 dark:text-slate-200">增加随机性（同关键词多次搜索得到不同图片）</span>
           </label>
           {progress && (
-            <div className={cn('rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2', progressStageStyle.border, progressStageStyle.bg)}>
+            <div className={cn('rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-2', progressStageStyle.border, progressStageStyle.bg)}>
               <div className="flex items-center justify-between gap-2">
                 {progressStageStyle.tagLabel && (
-                  <span className={cn('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', progressStageStyle.tag)}>
-                    {progressStageStyle.tagLabel}
-                  </span>
+                  <span className={cn('inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium', progressStageStyle.tag)}>{progressStageStyle.tagLabel}</span>
                 )}
                 <span className="text-sm text-slate-600 dark:text-slate-300 flex-1 truncate">{stageLabel}</span>
-                {progress.total > 0 && (
-                  <span className="text-sm font-medium text-slate-500 dark:text-slate-400 tabular-nums">{progress.current} / {progress.total}</span>
-                )}
+                {progress.total > 0 && <span className="text-sm font-medium text-slate-500 dark:text-slate-400 tabular-nums">{progress.current} / {progress.total}</span>}
               </div>
               {progress.total > 0 && (
                 <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-                  <div
-                    className={cn('h-full transition-all duration-300', progressStageStyle.bar)}
-                    style={{ width: `${Math.min(100, (progress.current / progress.total) * 100)}%` }}
-                  />
+                  <div className={cn('h-full transition-all duration-300', progressStageStyle.bar)} style={{ width: `${Math.min(100, (progress.current / progress.total) * 100)}%` }} />
                 </div>
               )}
-              {progress.message && (
-                <p className="text-xs text-slate-500 dark:text-slate-400 truncate" title={progress.message}>{progress.message}</p>
-              )}
+              {progress.message && <p className="text-xs text-slate-500 dark:text-slate-400 truncate" title={progress.message}>{progress.message}</p>}
             </div>
           )}
-          {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
-          {result && (
-            <p className="text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-lg">
-              {result.message}
-            </p>
-          )}
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-sm font-medium">
+          {error && <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl">{error}</p>}
+          {result && <p className="text-sm text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/50 px-3 py-2 rounded-xl">{result.message}</p>}
+          <div className="flex justify-end gap-3 pt-1">
+            <button type="button" onClick={onClose} className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
               {result ? '关闭' : '取消'}
             </button>
-            <button type="submit" disabled={loading} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-500 disabled:opacity-50 flex items-center gap-2">
+            <button type="submit" disabled={loading} className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-violet-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all">
               {loading ? <Loader2 size={16} className="animate-spin" /> : null}
               {loading ? (progress ? '处理中…' : '连接中…') : '开始导入'}
             </button>
