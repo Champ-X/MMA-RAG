@@ -392,6 +392,40 @@ export const importApi = {
       details?: { chunks_processed?: number; vectors_stored?: number; caption?: string }
     }>(`/import/url`, body, { timeout: 180000 }),
 
+  /** 热点/新闻导入（异步）：立即返回 202 + processing_id，后台拉取→整理→入库，前端轮询进度 */
+  importHotTopicsStart: (body: {
+    kb_id: string
+    query?: string
+    topic?: 'general' | 'news' | 'finance'
+    time_range?: 'day' | 'week' | 'month' | 'year'
+    max_results?: number
+    use_llm_summary?: boolean
+  }) =>
+    apiClient.post<{
+      processing_id: string
+      kb_id: string
+      filename: string
+      message: string
+    }>(`/import/hot-topics/start`, body, { timeout: 15000, validateStatus: (s) => s === 202 }),
+
+  /** 热点/新闻导入（同步）：Tavily 拉取后整理成 Markdown 导入知识库，可选参数不传用后端默认 */
+  importHotTopics: (body: {
+    kb_id: string
+    query?: string
+    topic?: 'general' | 'news' | 'finance'
+    time_range?: 'day' | 'week' | 'month' | 'year'
+    max_results?: number
+    use_llm_summary?: boolean
+  }) =>
+    apiClient.post<{
+      file_id: string | null
+      kb_id: string
+      status: string
+      processing_id?: string
+      message: string
+      details?: { chunks_processed?: number; vectors_stored?: number }
+    }>(`/import/hot-topics`, body, { timeout: 600000 }),
+
   /** 按关键词从选定渠道搜索图片并导入知识库（一次性返回） */
   importFromSearch: (body: {
     kb_id: string

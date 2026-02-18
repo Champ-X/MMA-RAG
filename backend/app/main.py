@@ -3,6 +3,8 @@ Multi-Modal RAG Agent 主应用入口
 FastAPI 应用配置文件
 """
 
+import logging
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +15,19 @@ from dotenv import load_dotenv
 
 # 加载环境变量
 load_dotenv()
+
+
+class _SuppressProgressPollAccessLog(logging.Filter):
+    """过滤 uvicorn 对 /api/upload/progress 的访问日志，避免前端轮询产生大量重复 200 OK 日志。"""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+        except Exception:
+            msg = getattr(record, "msg", "") or ""
+        if "/upload/progress" in msg or "/api/upload/progress" in msg:
+            return False
+        return True
 
 # 创建 FastAPI 应用实例
 app = FastAPI(
@@ -38,6 +53,9 @@ from app.core.logger import setup_logger
 
 # 设置日志
 logger = setup_logger()
+
+# 抑制进度轮询的访问日志（前端每 1.5s 轮询一次，LLM 整理阶段会持续数十秒，产生大量重复 200 OK）
+logging.getLogger("uvicorn.access").addFilter(_SuppressProgressPollAccessLog())
 
 # 注册路由
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])

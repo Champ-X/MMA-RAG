@@ -67,6 +67,7 @@ passlib[bcrypt]==1.7.4
 # 仅在使用「从 URL 导入」或「按关键词搜索图片导入」时需要
 google-search-results>=2.4.2   # SerpAPI，用于 Google 图片搜索
 internetarchive>=3.0.0        # Internet Archive 搜索与下载
+tavily-python                 # Tavily 热点/新闻导入知识库（Search + 可选 Extract）
 # yt_dlp  # 若需 YouTube 等视频导入，可取消注释
 
 # 开发和测试

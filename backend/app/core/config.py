@@ -184,6 +184,21 @@ class Settings(BaseSettings):
     # Celery 配置（可选，如果不需要可以忽略）
     celery_broker_url: Optional[str] = Field(default=None, validation_alias="CELERY_BROKER_URL")
     celery_result_backend: Optional[str] = Field(default=None, validation_alias="CELERY_RESULT_BACKEND")
+
+    # Tavily 联网搜索（热点/新闻导入知识库）
+    tavily_api_key: Optional[str] = Field(default=None, validation_alias="TAVILY_API_KEY")
+    tavily_search_depth: str = Field(default="basic", validation_alias="TAVILY_SEARCH_DEPTH")
+    tavily_max_results: int = Field(default=10, ge=1, le=20, validation_alias="TAVILY_MAX_RESULTS")
+    tavily_hot_topics_default_query: str = Field(
+        default="科技热点 互联网新闻 AI动态",
+        validation_alias="TAVILY_HOT_TOPICS_DEFAULT_QUERY",
+    )
+    tavily_hot_topics_topic: str = Field(default="news", validation_alias="TAVILY_HOT_TOPICS_TOPIC")
+    tavily_hot_topics_time_range: str = Field(default="day", validation_alias="TAVILY_HOT_TOPICS_TIME_RANGE")
+    tavily_use_extract: bool = Field(default=False, validation_alias="TAVILY_USE_EXTRACT")
+    tavily_extract_max_urls: int = Field(default=5, ge=1, le=20, validation_alias="TAVILY_EXTRACT_MAX_URLS")
+    # 定时热点导入：目标知识库 ID（为空则仅允许手动 API 触发）
+    tavily_hot_topics_kb_id: Optional[str] = Field(default=None, validation_alias="TAVILY_HOT_TOPICS_KB_ID")
     
     def get_minio_config(self) -> Dict[str, Any]:
         """获取 MinIO 配置字典"""

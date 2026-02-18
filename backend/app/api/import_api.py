@@ -6,6 +6,7 @@
 import asyncio
 import json
 import threading
+import uuid
 from pathlib import Path
 from queue import Empty, Queue
 from typing import List, Optional
@@ -18,6 +19,7 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.modules.ingestion.service import get_ingestion_service
 from app.modules.ingestion.sources import UrlSource, MediaDownloaderSource, FolderSource
+from app.modules.ingestion.hot_topics_ingest import run_hot_topics_ingest
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -53,6 +55,17 @@ class ImportFolderBody(BaseModel):
     max_files: int = Field(500, ge=1, le=2000)
 
 
+class ImportHotTopicsBody(BaseModel):
+    kb_id: str = Field(..., min_length=1)
+    query: Optional[str] = None
+    topic: Optional[str] = Field(None, description="general | news | finance")
+    time_range: Optional[str] = Field(None, description="day | week | month | year")
+    max_results: Optional[int] = Field(None, ge=1, le=20)
+    use_extract: Optional[bool] = None
+    extract_max_urls: Optional[int] = Field(None, ge=1, le=20)
+    use_llm_summary: bool = True
+
+
 def _validate_folder_path_allowed(folder_path: str) -> Path:
     """校验 folder_path 在配置的白名单目录下，返回解析后的绝对路径。否则抛出 ValueError。"""
     allowed = settings.import_folder_allowed_base_paths or []
@@ -71,6 +84,86 @@ def _validate_folder_path_allowed(folder_path: str) -> Path:
 
 
 # ---------- 端点 ----------
+
+
+@router.post("/hot-topics")
+async def import_hot_topics(body: ImportHotTopicsBody):
+    """基于 Tavily 拉取热点/新闻，整理成 Markdown 后导入指定知识库。需配置 TAVILY_API_KEY。"""
+    if not (getattr(settings, "tavily_api_key", None) or "").strip():
+        raise HTTPException(
+            status_code=503,
+            detail="未配置 TAVILY_API_KEY，无法使用热点导入。请在 backend/.env 中设置 TAVILY_API_KEY。",
+        )
+    try:
+        result = await run_hot_topics_ingest(
+            kb_id=body.kb_id,
+            query=body.query,
+            topic=body.topic,
+            time_range=body.time_range,
+            max_results=body.max_results,
+            use_extract=body.use_extract,
+            extract_max_urls=body.extract_max_urls,
+            use_llm_summary=body.use_llm_summary,
+        )
+        return {
+            "file_id": result.get("file_id"),
+            "kb_id": body.kb_id,
+            "status": result.get("status", "completed"),
+            "processing_id": result.get("processing_id"),
+            "message": "热点导入完成",
+            "details": {
+                "chunks_processed": result.get("chunks_processed"),
+                "vectors_stored": result.get("vectors_stored"),
+            },
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("import_hot_topics failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/hot-topics/start")
+async def import_hot_topics_start(body: ImportHotTopicsBody):
+    """异步热点导入：立即返回 processing_id，后台执行拉取→整理→入库，前端轮询 /api/upload/progress/{processing_id} 查看进度。"""
+    if not (getattr(settings, "tavily_api_key", None) or "").strip():
+        raise HTTPException(
+            status_code=503,
+            detail="未配置 TAVILY_API_KEY，无法使用热点导入。请在 backend/.env 中设置 TAVILY_API_KEY。",
+        )
+    processing_id = str(uuid.uuid4())
+    placeholder_filename = "热点导入中.md"
+    ingestion_service.register_processing_initial(processing_id, placeholder_filename, body.kb_id)
+
+    async def run_ingest():
+        try:
+            await run_hot_topics_ingest(
+                kb_id=body.kb_id,
+                query=body.query,
+                topic=body.topic,
+                time_range=body.time_range,
+                max_results=body.max_results,
+                use_extract=body.use_extract,
+                extract_max_urls=body.extract_max_urls,
+                use_llm_summary=body.use_llm_summary,
+                processing_id=processing_id,
+            )
+        except Exception as e:
+            logger.exception("import_hot_topics_start background ingest failed: {}", e)
+            ingestion_service.update_processing_status(
+                processing_id, status="failed", message=str(e)
+            )
+
+    asyncio.create_task(run_ingest())
+    return JSONResponse(
+        status_code=202,
+        content={
+            "processing_id": processing_id,
+            "kb_id": body.kb_id,
+            "filename": placeholder_filename,
+            "message": "已开始热点导入，请轮询 /api/upload/progress/{processing_id} 获取进度",
+        },
+    )
 
 
 @router.post("/url/start")

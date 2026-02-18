@@ -1343,6 +1343,12 @@ class IngestionService:
         if processing_id in self._processing_status:
             self._processing_status[processing_id].update(updates)
             self._processing_status[processing_id]["updated_at"] = datetime.utcnow().isoformat()
+
+    def update_processing_status(self, processing_id: str, **updates: Any) -> None:
+        """供外部（如热点导入编排）更新处理状态，便于前端轮询到拉取/整理等阶段。"""
+        if processing_id in self._processing_status:
+            self._processing_status[processing_id].update(updates)
+            self._processing_status[processing_id]["updated_at"] = datetime.utcnow().isoformat()
     
     async def get_processing_status(self, processing_id: str) -> Dict[str, Any]:
         """

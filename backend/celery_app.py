@@ -4,6 +4,7 @@ Celery 异步任务配置
 """
 
 from celery import Celery
+from celery.schedules import crontab
 from dotenv import load_dotenv
 import os
 
@@ -19,6 +20,7 @@ celery_app = Celery(
         "app.modules.ingestion.service",
         "app.modules.knowledge.portraits",
         "app.modules.retrieval.service",
+        "app.tasks.scheduled_hot_topics",
     ]
 )
 
@@ -35,6 +37,15 @@ celery_app.conf.update(
         "app.modules.ingestion.service.process_document": {"queue": "ingestion"},
         "app.modules.knowledge.portraits.build_kb_portrait_task": {"queue": "knowledge"},
         "app.modules.retrieval.service.search_documents": {"queue": "retrieval"},
+        "app.tasks.scheduled_hot_topics.ingest_hot_topics_task": {"queue": "ingestion"},
+    },
+    # 定时任务（Beat）：每日 08:00 UTC 执行热点导入（若配置了 TAVILY_HOT_TOPICS_KB_ID）
+    beat_schedule={
+        "ingest-hot-topics-daily": {
+            "task": "app.tasks.scheduled_hot_topics.ingest_hot_topics_task",
+            "schedule": crontab(hour="8", minute="0"),
+            "options": {"queue": "ingestion"},
+        },
     },
     
     # 任务超时配置

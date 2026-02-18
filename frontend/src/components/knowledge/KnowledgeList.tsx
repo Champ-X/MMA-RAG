@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
@@ -348,6 +348,135 @@ function ImportUrlModal({
               取消
             </button>
             <button type="submit" disabled={loading} className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all">
+              {loading ? <Loader2 size={16} className="animate-spin" /> : null}
+              导入
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// 热点资讯导入弹窗（关键词、主题、时间范围、条数均可选，不填用后端默认；支持异步启动后在上传流水线展示进度）
+function ImportHotTopicsModal({
+  kbId,
+  onClose,
+  onSuccess,
+  onStartImport,
+}: {
+  kbId: string
+  onClose: () => void
+  onSuccess: () => void
+  /** 异步导入已启动时回调，关闭弹窗并在上传流水线中展示进度（轮询 processing_id） */
+  onStartImport?: (payload: { processing_id: string; filename: string }) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [topic, setTopic] = useState<'' | 'general' | 'news' | 'finance'>('')
+  const [timeRange, setTimeRange] = useState<'' | 'day' | 'week' | 'month' | 'year'>('')
+  const [maxResults, setMaxResults] = useState(10)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      const body: {
+        kb_id: string
+        query?: string
+        topic?: 'general' | 'news' | 'finance'
+        time_range?: 'day' | 'week' | 'month' | 'year'
+        max_results?: number
+      } = { kb_id: kbId, max_results: Math.min(20, Math.max(1, maxResults)) }
+      if (query.trim()) body.query = query.trim()
+      if (topic) body.topic = topic
+      if (timeRange) body.time_range = timeRange
+      const res = await importApi.importHotTopicsStart(body)
+      const data = res as { processing_id?: string; filename?: string }
+      if (data?.processing_id && data?.filename && onStartImport) {
+        onStartImport({ processing_id: data.processing_id, filename: data.filename })
+        onClose()
+        return
+      }
+      await importApi.importHotTopics(body)
+      onSuccess()
+      onClose()
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail
+      setError(typeof detail === 'string' ? detail : detail?.msg ?? err?.message ?? '热点导入失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const inputClass =
+    'w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-400 dark:focus:ring-emerald-400/20 dark:focus:border-emerald-500 transition-shadow'
+  const selectClass = inputClass
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 overflow-hidden">
+        <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-emerald-50/80 to-teal-50/60 dark:from-emerald-950/30 dark:to-teal-950/20">
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 dark:bg-emerald-400/20 text-emerald-600 dark:text-emerald-400 shadow-sm">
+              <Newspaper size={20} />
+            </span>
+            热点资讯导入
+          </h3>
+          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭">
+            <X size={18} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">关键词 <span className="text-slate-400 font-normal">(可选)</span></label>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="如：科技热点 今日要闻、AI 大模型 融资"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">主题 <span className="text-slate-400 font-normal">(可选)</span></label>
+            <select value={topic} onChange={(e) => setTopic(e.target.value as '' | 'general' | 'news' | 'finance')} className={selectClass}>
+              <option value="">使用默认</option>
+              <option value="general">综合 (general)</option>
+              <option value="news">新闻 (news)</option>
+              <option value="finance">财经 (finance)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">时间范围 <span className="text-slate-400 font-normal">(可选)</span></label>
+            <select value={timeRange} onChange={(e) => setTimeRange(e.target.value as '' | 'day' | 'week' | 'month' | 'year')} className={selectClass}>
+              <option value="">使用默认</option>
+              <option value="day">近一天 (day)</option>
+              <option value="week">近一周 (week)</option>
+              <option value="month">近一月 (month)</option>
+              <option value="year">近一年 (year)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">条数上限</label>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={maxResults}
+              onChange={(e) => setMaxResults(parseInt(e.target.value, 10) || 10)}
+              className={inputClass}
+            />
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">1–20 条，默认 10</p>
+          </div>
+          {error && <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl">{error}</p>}
+          <div className="flex justify-end gap-3 pt-1">
+            <button type="button" onClick={onClose} className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
+              取消
+            </button>
+            <button type="submit" disabled={loading} className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-emerald-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all">
               {loading ? <Loader2 size={16} className="animate-spin" /> : null}
               导入
             </button>
@@ -891,6 +1020,7 @@ const KnowledgeList: React.FC = () => {
   const [showImportUrlModal, setShowImportUrlModal] = useState(false)
   const [showImportSearchModal, setShowImportSearchModal] = useState(false)
   const [showImportFolderModal, setShowImportFolderModal] = useState(false)
+  const [showImportHotTopicsModal, setShowImportHotTopicsModal] = useState(false)
   const [uploading, setUploading] = useState(false)
   /** URL 异步导入的 processing_id，用于轮询进度并在上传流水线中展示 */
   const [urlImportProcessingId, setUrlImportProcessingId] = useState<string | null>(null)
@@ -975,7 +1105,7 @@ const KnowledgeList: React.FC = () => {
         const stage = status.stage
         const progress = status.progress ?? 0
         const frontStage: UploadPipelineProgress['stage'] | null =
-          stage === 'initializing' || stage === 'uploading'
+          stage === 'initializing' || stage === 'uploading' || stage === 'fetching' || stage === 'summarizing'
             ? 'minio'
             : stage === 'parsing' || stage === 'processing'
               ? 'parsing'
@@ -1025,7 +1155,9 @@ const KnowledgeList: React.FC = () => {
               const currentIndex = stageOrder[prev.stage] ?? -1
               const newIndex = stageOrder[frontStage]
               if (newIndex < currentIndex) return prev
-              return { ...prev, stage: frontStage, stageProgress: progress }
+              const next: UploadPipelineProgress = { ...prev, stage: frontStage, stageProgress: progress }
+              if (stage === 'fetching' || stage === 'summarizing') next.currentFile = status.message || prev.currentFile
+              return next
             })
           })
         }
@@ -1579,6 +1711,16 @@ const KnowledgeList: React.FC = () => {
                   </span>
                   <span className="text-left">从文件夹导入</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setShowImportHotTopicsModal(true)}
+                  className="group flex-1 min-w-[140px] inline-flex items-center gap-3 px-4 py-3.5 rounded-xl border border-slate-200/80 dark:border-slate-600/80 bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 text-sm font-medium shadow-sm transition-all duration-200 hover:border-emerald-300 dark:hover:border-emerald-500/80 hover:bg-gradient-to-br hover:from-emerald-50 hover:to-teal-50 dark:hover:from-emerald-950/40 dark:hover:to-teal-950/30 hover:shadow-md hover:shadow-emerald-500/10 hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/12 dark:bg-emerald-400/20 text-emerald-600 dark:text-emerald-400 shadow-inner group-hover:bg-emerald-500/20 dark:group-hover:bg-emerald-400/30 transition-colors">
+                    <Newspaper size={20} />
+                  </span>
+                  <span className="text-left">热点资讯导入</span>
+                </button>
               </div>
             </UploadPipeline>
 
@@ -1945,6 +2087,32 @@ const KnowledgeList: React.FC = () => {
             onImportLocalFiles={(files) => {
               setShowImportFolderModal(false)
               handleFileUpload(files)
+            }}
+          />
+        )}
+
+        {/* 热点资讯导入弹窗：异步启动后在上传流水线展示进度 */}
+        {showImportHotTopicsModal && activeKbId && (
+          <ImportHotTopicsModal
+            kbId={activeKbId}
+            onClose={() => setShowImportHotTopicsModal(false)}
+            onSuccess={() => {
+              fetchFiles()
+              fetchKnowledgeBases()
+            }}
+            onStartImport={({ processing_id, filename: hotTopicsFilename }) => {
+              setShowImportHotTopicsModal(false)
+              setCurrentUploadFiles([new File([], hotTopicsFilename, { type: 'application/octet-stream' })])
+              setUploading(true)
+              setUploadProgress({
+                stage: 'minio',
+                stageProgress: 0,
+                total: 1,
+                completed: 0,
+                failed: 0,
+                currentFile: hotTopicsFilename,
+              })
+              setUrlImportProcessingId(processing_id)
             }}
           />
         )}
