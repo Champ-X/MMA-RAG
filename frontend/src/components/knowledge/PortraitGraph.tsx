@@ -7,7 +7,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScatterChart, FileText, Image, RefreshCw, LayoutList } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -377,16 +376,24 @@ export function PortraitGraph({
                 size="sm"
                 onClick={handleRegenerate}
                 disabled={generating}
-                className="group gap-2 rounded-lg border-indigo-200/60 bg-gradient-to-r from-indigo-50/50 to-fuchsia-50/50 text-indigo-700 shadow-sm transition-all duration-200 hover:border-indigo-300/80 hover:from-indigo-100/70 hover:to-fuchsia-100/70 hover:shadow-md hover:shadow-indigo-500/10 dark:border-indigo-500/30 dark:from-indigo-950/40 dark:to-fuchsia-950/40 dark:text-indigo-300 dark:hover:border-indigo-400/50 dark:hover:from-indigo-900/50 dark:hover:to-fuchsia-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="group gap-2 rounded-xl border-indigo-200/50 bg-gradient-to-r from-indigo-50/50 to-fuchsia-50/50 text-indigo-700 shadow-sm transition-all duration-200 hover:border-indigo-300/70 hover:from-indigo-100/70 hover:to-fuchsia-100/70 hover:shadow-md hover:shadow-indigo-500/10 dark:border-indigo-500/25 dark:from-indigo-950/40 dark:to-fuchsia-950/40 dark:text-indigo-300 dark:hover:border-indigo-400/40 dark:hover:from-indigo-900/50 dark:hover:to-fuchsia-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {generating ? (
                   <>
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+                    <div className="relative">
+                      <div className="absolute inset-0 rounded-full bg-indigo-200/40 dark:bg-indigo-800/20 blur-sm animate-pulse" />
+                      <RefreshCw className="relative h-3.5 w-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+                    </div>
                     <span className="font-medium">生成中…</span>
                   </>
                 ) : (
                   <>
-                    <RefreshCw className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 transition-transform duration-300 group-hover:rotate-180" />
+                    <div className="relative">
+                      {/* 悬停时的光晕效果 */}
+                      <div className="absolute inset-0 -m-0.5 rounded-full bg-gradient-to-br from-indigo-200/0 to-fuchsia-200/0 group-hover:from-indigo-200/50 group-hover:to-fuchsia-200/50 dark:group-hover:from-indigo-800/30 dark:group-hover:to-fuchsia-800/30 blur-md transition-all duration-300" />
+                      {/* 图标 */}
+                      <RefreshCw className="relative h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 transition-all duration-300 group-hover:rotate-180 group-hover:text-fuchsia-600 dark:group-hover:text-fuchsia-400" />
+                    </div>
                     <span className="font-medium">重新生成</span>
                   </>
                 )}
@@ -793,9 +800,22 @@ export function PortraitGraph({
           })()}
 
           {clusters.length > 0 && (
-            <p className="text-xs text-muted-foreground">
-              气泡内为主题关键词；点击气泡可查看主题摘要并筛选该簇文档，再次点击同一气泡或点击空白处关闭摘要；气泡大小表示 cluster_size。
-            </p>
+            <div className="rounded-lg border border-slate-200/60 dark:border-slate-700/60 bg-gradient-to-br from-slate-50/50 to-indigo-50/30 dark:from-slate-800/30 dark:to-indigo-950/20 px-3 py-2">
+              <div className="flex items-center gap-2.5">
+                <div className="flex-shrink-0">
+                  <div className="rounded-md bg-indigo-100/80 dark:bg-indigo-900/40 p-1.5">
+                    <ScatterChart className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" strokeWidth={2} />
+                  </div>
+                </div>
+                <p className="flex-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  <span className="font-semibold text-indigo-700 dark:text-indigo-300">气泡内为主题关键词</span>
+                  <span className="text-slate-300 dark:text-slate-600 mx-2.5">•</span>
+                  <span className="font-medium text-slate-700 dark:text-slate-200">点击气泡查看主题摘要并筛选文档</span>
+                  <span className="text-slate-300 dark:text-slate-600 mx-2.5">•</span>
+                  <span className="font-medium text-fuchsia-700 dark:text-fuchsia-300">气泡大小表示文档数量</span>
+                </p>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -876,21 +896,6 @@ export function PortraitGraph({
         </CardContent>
       </Card>
 
-      {selectedId && (
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary">已选: {selectedId}</Badge>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setSelectedId(null)
-              onClusterSelect?.(null)
-            }}
-          >
-            清除筛选
-          </Button>
-        </div>
-      )}
     </div>
   )
 }
