@@ -79,6 +79,8 @@ export function PortraitGraph({
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const pollingIntervalRef = useRef<number | null>(null)
+  const pollingTimeoutRef = useRef<number | null>(null)
   /** 点击气泡后展示 topic_summary 的浮层；再次点击同一气泡或点击外部关闭 */
   const [summaryPopupNode, setSummaryPopupNode] = useState<{
     cluster: PortraitCluster
@@ -134,6 +136,20 @@ export function PortraitGraph({
     fetchPortrait()
   }, [fetchPortrait])
 
+  // 清理轮询定时器
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current)
+        pollingTimeoutRef.current = null
+      }
+    }
+  }, [])
+
   /** 点击气泡外或摘要浮层外时关闭摘要浮层 */
   useEffect(() => {
     if (!summaryPopupNode) return
@@ -151,19 +167,122 @@ export function PortraitGraph({
   }, [summaryPopupNode])
 
   const handleRegenerate = async () => {
+    // 清理之前的轮询
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current)
+      pollingIntervalRef.current = null
+    }
+    if (pollingTimeoutRef.current) {
+      clearTimeout(pollingTimeoutRef.current)
+      pollingTimeoutRef.current = null
+    }
+
+    // 记录生成前的数据状态，用于判断数据是否真的更新了
+    const previousClustersHash = clusters.length > 0 
+      ? clusters.map(c => `${c.cluster_id}-${c.cluster_size}-${c.topic_summary?.slice(0, 50)}`).join('|')
+      : ''
+
     setGenerating(true)
     setGenError(null)
     try {
       const res = await knowledgeApi.regenerateKnowledgeBasePortrait(knowledgeBaseId)
       if (res.status === 'triggered') {
+        // 异步任务已启动，开始轮询检查
         setGenError(null)
-        setTimeout(() => fetchPortrait(), 20000)
+        
+        // 设置最大轮询时间（3分钟）
+        pollingTimeoutRef.current = setTimeout(() => {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current)
+            pollingIntervalRef.current = null
+          }
+          setGenerating(false)
+          setGenError('生成超时，请稍后手动刷新查看结果')
+        }, 180000) // 3分钟超时
+
+        // 轮询检查函数（静默检查，不设置 loading 状态）
+        const checkPortraitStatus = async () => {
+          try {
+            const res = await knowledgeApi.getKnowledgeBasePortrait(knowledgeBaseId)
+            const raw = res as {
+              clusters?: Array<{
+                cluster_id?: string
+                topic_summary?: string
+                cluster_size?: number
+                keywords?: string[]
+              }>
+              topics?: Array<{ id?: string; summary?: string; size?: number }>
+            }
+            const list: PortraitCluster[] = []
+            if (Array.isArray(raw.clusters)) {
+              raw.clusters.forEach((c) => {
+                list.push({
+                  cluster_id: c.cluster_id ?? String(list.length),
+                  topic_summary: c.topic_summary ?? '',
+                  cluster_size: c.cluster_size ?? 0,
+                  keywords: Array.isArray(c.keywords) ? c.keywords : undefined,
+                })
+              })
+            } else if (Array.isArray(raw.topics)) {
+              raw.topics.forEach((t, i) => {
+                list.push({
+                  cluster_id: t.id ?? String(i),
+                  topic_summary: t.summary ?? '',
+                  cluster_size: t.size ?? 0,
+                })
+              })
+            }
+            
+            // 检查数据是否真的更新了（通过比较数据哈希）
+            const currentClustersHash = list.length > 0
+              ? list.map(c => `${c.cluster_id}-${c.cluster_size}-${c.topic_summary?.slice(0, 50)}`).join('|')
+              : ''
+            
+            // 只有当数据发生变化时才停止轮询（避免检测到旧数据立即停止）
+            const dataChanged = currentClustersHash !== previousClustersHash
+            
+            if (list.length > 0 && dataChanged) {
+              // 先停止轮询和超时
+              if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current)
+                pollingIntervalRef.current = null
+              }
+              if (pollingTimeoutRef.current) {
+                clearTimeout(pollingTimeoutRef.current)
+                pollingTimeoutRef.current = null
+              }
+              // 使用 fetchPortrait 确保状态一致更新
+              setGenerating(false)
+              await fetchPortrait()
+            } else if (list.length > 0 && !dataChanged) {
+              // 数据还没更新，继续轮询（不停止）
+              // 这种情况发生在重新生成时，旧数据还在，需要等待新数据生成
+            }
+          } catch (err) {
+            // 轮询时出错，继续轮询（不停止）
+            console.error('轮询检查画像状态失败:', err)
+          }
+        }
+
+        // 等待一段时间后再开始检查，给后端一些时间开始生成
+        // 避免立即检测到旧数据
+        setTimeout(async () => {
+          // 检查是否还在生成中（通过检查 ref 是否还存在）
+          if (pollingTimeoutRef.current) {
+            await checkPortraitStatus()
+            // 如果还在生成中（超时定时器还在），开始定期轮询（每5秒检查一次）
+            if (pollingTimeoutRef.current && !pollingIntervalRef.current) {
+              pollingIntervalRef.current = setInterval(checkPortraitStatus, 5000)
+            }
+          }
+        }, 3000) // 等待3秒后再开始检查
       } else if (res.status === 'success') {
+        // 同步生成完成，直接刷新
         await fetchPortrait()
+        setGenerating(false)
       }
     } catch (e: any) {
       setGenError(e?.response?.data?.detail ?? e?.message ?? '生成失败')
-    } finally {
       setGenerating(false)
     }
   }
@@ -245,12 +364,35 @@ export function PortraitGraph({
     <div className={cn('space-y-4', className)}>
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2.5 text-base">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500/15 to-fuchsia-500/15 dark:from-indigo-400/20 dark:to-fuchsia-400/20 border border-indigo-200/50 dark:border-indigo-500/30">
-              <ScatterChart className="h-4 w-4 text-indigo-600 dark:text-indigo-400" strokeWidth={2.5} />
-            </span>
-            <span>知识库主题气泡图</span>
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2.5 text-base">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500/15 to-fuchsia-500/15 dark:from-indigo-400/20 dark:to-fuchsia-400/20 border border-indigo-200/50 dark:border-indigo-500/30">
+                <ScatterChart className="h-4 w-4 text-indigo-600 dark:text-indigo-400" strokeWidth={2.5} />
+              </span>
+              <span>知识库主题气泡图</span>
+            </CardTitle>
+            {clusters.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRegenerate}
+                disabled={generating}
+                className="group gap-2 rounded-lg border-indigo-200/60 bg-gradient-to-r from-indigo-50/50 to-fuchsia-50/50 text-indigo-700 shadow-sm transition-all duration-200 hover:border-indigo-300/80 hover:from-indigo-100/70 hover:to-fuchsia-100/70 hover:shadow-md hover:shadow-indigo-500/10 dark:border-indigo-500/30 dark:from-indigo-950/40 dark:to-fuchsia-950/40 dark:text-indigo-300 dark:hover:border-indigo-400/50 dark:hover:from-indigo-900/50 dark:hover:to-fuchsia-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {generating ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+                    <span className="font-medium">生成中…</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 transition-transform duration-300 group-hover:rotate-180" />
+                    <span className="font-medium">重新生成</span>
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? (
@@ -262,41 +404,95 @@ export function PortraitGraph({
             </div>
           ) : clusters.length === 0 ? (
             <div className="flex h-80 flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-gradient-to-br from-indigo-50/40 via-transparent to-fuchsia-50/40 dark:from-indigo-950/30 dark:via-transparent dark:to-fuchsia-950/30">
-              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100/80 dark:bg-indigo-900/40 text-indigo-500 dark:text-indigo-400">
-                <ScatterChart className="h-6 w-6" strokeWidth={2} />
-              </span>
-              <p className="text-base font-medium text-slate-700 dark:text-slate-200 mt-2">暂无主题画像</p>
-              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm text-center px-4">
-                知识库需有足够数据（约 10 条以上文本/图片）才能生成主题聚类画像。
-              </p>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleRegenerate}
-                disabled={generating || (textCount + imageCount) < 5}
-                className="gap-2"
-              >
-                {generating ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    生成中…
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4" />
-                    生成画像
-                  </>
-                )}
-              </Button>
-              {(textCount + imageCount) < 5 && (
-                <p className="text-xs text-amber-600">当前数据量较少，建议先上传更多文件</p>
-              )}
-              {genError && (
-                <p className="text-xs text-destructive">{genError}</p>
+              {generating ? (
+                <>
+                  <div className="relative">
+                    <div className="h-16 w-16 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600 dark:border-indigo-800 dark:border-t-indigo-400" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <ScatterChart className="h-6 w-6 text-indigo-600 dark:text-indigo-400" strokeWidth={2} />
+                    </div>
+                  </div>
+                  <div className="text-center space-y-2">
+                    <p className="text-base font-medium text-slate-700 dark:text-slate-200">正在生成主题画像</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm px-4">
+                      正在分析知识库内容并生成主题聚类，请稍候…
+                    </p>
+                    <div className="flex items-center justify-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse" />
+                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: '0.2s' }} />
+                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: '0.4s' }} />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100/80 dark:bg-indigo-900/40 text-indigo-500 dark:text-indigo-400">
+                    <ScatterChart className="h-6 w-6" strokeWidth={2} />
+                  </span>
+                  <p className="text-base font-medium text-slate-700 dark:text-slate-200 mt-2">暂无主题画像</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm text-center px-4">
+                    知识库需有足够数据（约 10 条以上文本/图片）才能生成主题聚类画像。
+                  </p>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleRegenerate}
+                    disabled={generating || (textCount + imageCount) < 5}
+                    className="gap-2"
+                  >
+                    {generating ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        生成中…
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4" />
+                        生成画像
+                      </>
+                    )}
+                  </Button>
+                  {(textCount + imageCount) < 5 && (
+                    <p className="text-xs text-amber-600">当前数据量较少，建议先上传更多文件</p>
+                  )}
+                  {genError && (
+                    <p className="text-xs text-destructive">{genError}</p>
+                  )}
+                </>
               )}
             </div>
           ) : (
             <div ref={containerRef} className="relative min-h-[520px] w-full overflow-hidden rounded-xl border border-slate-200/40 dark:border-slate-700/50 portrait-chart-container">
+              {/* 生成中的遮罩层 */}
+              {generating && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="absolute inset-0 z-[100] flex items-center justify-center rounded-xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md"
+                >
+                  <div className="text-center space-y-4">
+                    <div className="relative mx-auto" style={{ width: '64px', height: '64px' }}>
+                      <div className="absolute inset-0 animate-spin rounded-full border-4 border-fuchsia-200 border-t-fuchsia-600 dark:border-fuchsia-800 dark:border-t-fuchsia-400" />
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <ScatterChart className="h-6 w-6 text-fuchsia-600 dark:text-fuchsia-400" strokeWidth={2} />
+                      </div>
+                    </div>
+                    <div className="text-center space-y-2">
+                      <p className="text-base font-medium text-slate-700 dark:text-slate-200">正在更新画像</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm px-4">
+                        正在分析知识库内容并重新生成主题聚类，请稍候…
+                      </p>
+                      <div className="flex items-center justify-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+                        <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 animate-pulse" />
+                        <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 animate-pulse" style={{ animationDelay: '0.2s' }} />
+                        <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 animate-pulse" style={{ animationDelay: '0.4s' }} />
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
               {/* 亮色：径向渐变 + 极淡 indigo/fuchsia 中心光晕；暗色：带蓝深色 + 极弱径向景深 */}
               <div
                 className="absolute inset-0 z-0 rounded-[inherit] opacity-100 dark:opacity-0"

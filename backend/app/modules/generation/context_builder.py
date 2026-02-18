@@ -296,11 +296,12 @@ class ContextBuilder:
                 # 将预签名URL分配给对应的引用对象
                 presigned_map = {}
                 for result in presigned_results:
-                    if isinstance(result, Exception):
+                    if isinstance(result, BaseException):
                         logger.error(f"生成预签名URL时出错: {result}")
                         continue
-                    ref_id, presigned_url = result
-                    presigned_map[ref_id] = presigned_url
+                    if isinstance(result, tuple) and len(result) == 2:
+                        ref_id, presigned_url = result
+                        presigned_map[ref_id] = presigned_url
                 
                 # 设置预签名URL并添加到引用映射
                 for ref_id, reference, _ in image_references:

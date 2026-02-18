@@ -6,6 +6,7 @@ SiliconFlow API提供商实现
 from typing import Dict, List, Any, Optional
 import httpx
 import json
+import asyncio
 from .base import BaseLLMProvider
 from app.core.logger import get_logger
 
@@ -35,14 +36,14 @@ class SiliconFlowProvider(BaseLLMProvider):
             model: 模型名称
             is_stream: 是否为流式调用，流式调用需要更长的超时时间
         """
-        base_timeout = 60.0
+        base_timeout = 100.0
         
         # VLM/视觉模型（图生描述等）处理大图较慢，需要更长超时
         if "VL" in model or "Vision" in model or "vision" in model.lower() or "Caption" in model or "caption" in model.lower():
             base_timeout = 180.0  # 图生描述建议 180 秒，避免大图未完成即超时
         # Thinking 模型（推理模型）需要更长的超时时间
         elif "Thinking" in model or "thinking" in model.lower():
-            base_timeout = 90.0  # 235B Thinking 模型建议90秒
+            base_timeout = 120.0  # 235B Thinking 模型建议90秒
         # 大型模型（235B, 72B等）也需要更长超时
         elif "235B" in model or "72B" in model:
             base_timeout = 60.0
@@ -138,6 +139,7 @@ class SiliconFlowProvider(BaseLLMProvider):
         }
         
         try:
+            # 尝试使用现有的 client
             response = await self.client.post(
                 f"{self.base_url}/embeddings",
                 headers=self.headers,
@@ -157,8 +159,37 @@ class SiliconFlowProvider(BaseLLMProvider):
             logger.error(f"HTTP错误: {e.response.status_code} - {e.response.text}")
             raise
         except Exception as e:
-            logger.error(f"SiliconFlow embedding错误: {str(e)}")
-            raise
+            err_msg = str(e)
+            # 如果是事件循环相关的错误，使用新的 client 重试
+            # 不记录为ERROR，因为 manager 会处理重试
+            if "Event loop is closed" in err_msg or "event loop" in err_msg.lower():
+                # 只记录DEBUG级别，让 manager 处理重试逻辑
+                logger.debug(f"SiliconFlow embedding遇到事件循环问题，尝试使用新 client: {err_msg}")
+                try:
+                    # 创建新的 client 并重试
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        response = await client.post(
+                            f"{self.base_url}/embeddings",
+                            headers=self.headers,
+                            json=payload
+                        )
+                        response.raise_for_status()
+                        result = response.json()
+                        
+                        embeddings = []
+                        for item in result.get("data", []):
+                            embeddings.append(item.get("embedding", []))
+                        
+                        logger.debug("SiliconFlow embedding使用新 client 重试成功")
+                        return embeddings
+                except Exception as e2:
+                    # 重试失败，抛出异常让 manager 处理
+                    # manager 会记录WARNING并尝试在新事件循环中重试
+                    raise e2
+            else:
+                # 非事件循环错误，记录ERROR并抛出
+                logger.error(f"SiliconFlow embedding错误: {err_msg}")
+                raise
     
     async def rerank(
         self, 

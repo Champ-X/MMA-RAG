@@ -560,5 +560,26 @@ if _celery_app is not None:
     def build_kb_portrait_task(self, kb_id: str, force_update: bool = False):  # type: ignore[misc]
         """Celery 任务：在 Worker 中执行知识库画像构建（异步流水线）。"""
         import asyncio
+        
         gen = PortraitGenerator()
-        return asyncio.run(gen.update_kb_portrait(kb_id, force_update=force_update))
+        
+        # 安全地运行异步代码，处理事件循环问题
+        # 在 Celery worker 中，确保使用新的事件循环
+        try:
+            # 尝试获取当前事件循环
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    # 如果循环已关闭，创建新的
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+            except RuntimeError:
+                # 没有事件循环，创建新的
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            # 使用 run_until_complete 执行异步代码
+            return loop.run_until_complete(gen.update_kb_portrait(kb_id, force_update=force_update))
+        except Exception as e:
+            logger.error(f"Celery 任务执行失败 (kb_id={kb_id}): {str(e)}", exc_info=True)
+            raise
