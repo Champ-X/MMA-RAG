@@ -150,22 +150,39 @@ async def run_hot_topics_ingest(
 
     # 2. 整理成 Markdown
     if use_llm_summary:
+        # 优化：减少每条内容长度，避免 prompt 过长导致超时
+        # 根据条数动态调整每条的字符上限：条数多时每条更短，条数少时每条可稍长
+        # 目标：总 prompt 控制在约 15,000-20,000 字符（约 20,000-30,000 tokens），避免超时
+        max_items = len(items)
+        if max_items <= 5:
+            chars_per_item = 2000  # 条数少时每条可较长
+        elif max_items <= 8:
+            chars_per_item = 1500  # 中等条数
+        else:
+            chars_per_item = 1000  # 条数多时每条较短，避免总 prompt 过长
+        
         context_parts = []
         for i, item in enumerate(items, 1):
+            content_preview = (item.get('content', '') or '').strip()
+            if len(content_preview) > chars_per_item:
+                content_preview = content_preview[:chars_per_item] + "..."
             context_parts.append(
-                f"[{i}] 标题: {item.get('title', '')}\nURL: {item.get('url', '')}\n内容摘要:\n{item.get('content', '')[:3000]}"
+                f"[{i}] 标题: {item.get('title', '')}\nURL: {item.get('url', '')}\n内容摘要:\n{content_preview}"
             )
         context = "\n\n---\n\n".join(context_parts)
-        user_content = f"今日日期：{date_str}\n\n请根据以下热点搜索结果整理成一篇「每日热点摘要」Markdown：\n\n{context}"
+        user_content = f"今日日期：{date_str}\n\n请根据以下热点搜索结果整理成一篇「每日热点摘要」Markdown（共 {max_items} 条）：\n\n{context}"
         messages = [
             {"role": "system", "content": HOT_TOPICS_SUMMARY_SYSTEM},
             {"role": "user", "content": user_content},
         ]
         try:
+            # 热点整理需要处理长 prompt，显式设置 max_tokens 避免输出被截断
+            # 同时传递超时提示，让 LLM provider 使用更长的超时时间
             llm_result = await llm_manager.chat(
                 messages=messages,
                 task_type="final_generation",
                 temperature=0.3,
+                max_tokens=4000,  # 10 条 × 每条约 300-400 tokens = 3000-4000 tokens
             )
             content_md = _extract_llm_content(llm_result)
             if not content_md:
