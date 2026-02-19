@@ -97,3 +97,59 @@ export function groupChatModelsByVendor(models: string[]): [VendorKey, string[]]
   }
   return VENDOR_ORDER.map(key => [key, map.get(key) ?? []] as [VendorKey, string[]]).filter(([, list]) => list.length > 0)
 }
+
+/** 供应商类型（提供商） */
+export type ProviderKey = 'OpenRouter' | 'AliyunBailian' | 'SiliconFlow' | 'DeepSeek' | null
+
+/** 供应商 logo 路径映射 */
+export const PROVIDER_LOGOS: Record<Exclude<ProviderKey, null>, string> = {
+  OpenRouter: '/vendor-logos/openrouter.png',
+  AliyunBailian: '/vendor-logos/bailian.png',
+  SiliconFlow: '/vendor-logos/siliconcloud.png',
+  DeepSeek: '/vendor-logos/deepseek.png',
+}
+
+/**
+ * 从模型名称中提取供应商（provider）信息
+ * 首先检查是否有供应商前缀，如果没有则根据模型名称模式推断供应商
+ */
+export function getModelProvider(modelId: string): ProviderKey {
+  const id = modelId.trim()
+  
+  // 1. 检查是否有供应商前缀
+  if (id.startsWith('openrouter:')) {
+    return 'OpenRouter'
+  }
+  if (id.startsWith('aliyun_bailian:')) {
+    return 'AliyunBailian'
+  }
+  if (id.startsWith('siliconflow:') || id.startsWith('siliconcloud:')) {
+    return 'SiliconFlow'
+  }
+  if (id.startsWith('deepseek:')) {
+    return 'DeepSeek'
+  }
+  
+  // 2. 如果没有前缀，根据模型名称模式推断供应商
+  // DeepSeek 官方 API 直接提供的模型（provider 是 "deepseek"）
+  if (id === 'deepseek-chat' || id === 'deepseek-reasoner') {
+    return 'DeepSeek'
+  }
+  
+  // SiliconFlow 提供的模型（provider 是 "siliconflow"）
+  // 包括：Qwen 模型、通过 SiliconFlow 提供的 DeepSeek 模型、MiniMax、Moonshot、ZAI 等
+  if (
+    id.startsWith('Qwen/') ||
+    id.startsWith('Pro/deepseek-ai/') ||
+    id.startsWith('deepseek-ai/') ||
+    id.startsWith('Pro/MiniMaxAI/') ||
+    id.startsWith('Pro/moonshotai/') ||
+    id.startsWith('moonshotai/') ||
+    id.startsWith('Pro/zai-org/') ||
+    id.startsWith('zai-org/')
+  ) {
+    return 'SiliconFlow'
+  }
+  
+  return null
+}

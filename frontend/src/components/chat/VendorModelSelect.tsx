@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getModelProvider, PROVIDER_LOGOS } from '@/lib/modelVendors'
 
 interface VendorModelSelectProps {
   value: string
@@ -69,25 +70,39 @@ export function VendorModelSelect({
           role="listbox"
           className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-xl border-2 border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
         >
-          {list.map((m) => (
-            <li
-              key={m}
-              role="option"
-              aria-selected={value === m}
-              onClick={() => {
-                onSelect(m)
-                setOpen(false)
-              }}
-              className={cn(
-                'cursor-pointer px-4 py-2.5 text-sm transition-colors',
-                value === m
-                  ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200'
-                  : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700'
-              )}
-            >
-              {m}
-            </li>
-          ))}
+          {list.map((m) => {
+            const provider = getModelProvider(m)
+            const providerLogo = provider ? PROVIDER_LOGOS[provider] : null
+            
+            return (
+              <li
+                key={m}
+                role="option"
+                aria-selected={value === m}
+                onClick={() => {
+                  onSelect(m)
+                  setOpen(false)
+                }}
+                className={cn(
+                  'cursor-pointer px-4 py-2.5 text-sm transition-colors relative',
+                  value === m
+                    ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200'
+                    : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700'
+                )}
+              >
+                <span className="block truncate pr-6">{m}</span>
+                {providerLogo && (
+                  <img
+                    src={providerLogo}
+                    alt={provider || ''}
+                    className="absolute right-3 top-2.5 h-3.5 w-3.5 rounded object-contain"
+                    width={14}
+                    height={14}
+                  />
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>
