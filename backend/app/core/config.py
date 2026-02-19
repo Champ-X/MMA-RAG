@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     # DeepSeek API 配置（可选，配置后可使用 deepseek-chat / deepseek-reasoner 等模型）
     deepseek_api_key: Optional[str] = Field(default=None, validation_alias="DEEPSEEK_API_KEY")
     
+    # OpenRouter API 配置（可选，配置后可使用 OpenRouter 提供的模型）
+    openrouter_api_key: Optional[str] = Field(default=None, validation_alias="OPENROUTER_API_KEY")
+    
+    # 阿里云百炼 API 配置（可选，配置后可使用阿里云百炼提供的模型）
+    aliyun_bailian_api_key: Optional[str] = Field(default=None, validation_alias="ALIYUN_BAILIAN_API_KEY")
+    
     # PaddleOCR API 配置（PDF 解析备选）
     paddleocr_api_url: Optional[str] = Field(default=None, validation_alias="PADDLEOCR_API_URL")
     paddleocr_token: Optional[str] = Field(default=None, validation_alias="PADDLEOCR_TOKEN")

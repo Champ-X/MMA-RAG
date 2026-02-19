@@ -42,6 +42,22 @@ class LLMRegistry:
             deepseek_provider.set_registry(self)
             self._providers["deepseek"] = deepseek_provider
 
+        # OpenRouter 提供商（可选，需配置 OPENROUTER_API_KEY）
+        openrouter_key = getattr(settings, "openrouter_api_key", None)
+        if openrouter_key:
+            from app.core.llm.providers.openrouter import OpenRouterProvider
+            openrouter_provider = OpenRouterProvider(openrouter_key)
+            openrouter_provider.set_registry(self)
+            self._providers["openrouter"] = openrouter_provider
+
+        # 阿里云百炼 提供商（可选，需配置 ALIYUN_BAILIAN_API_KEY）
+        aliyun_bailian_key = getattr(settings, "aliyun_bailian_api_key", None)
+        if aliyun_bailian_key:
+            from app.core.llm.providers.aliyun_bailian import AliyunBailianProvider
+            aliyun_bailian_provider = AliyunBailianProvider(aliyun_bailian_key)
+            aliyun_bailian_provider.set_registry(self)
+            self._providers["aliyun_bailian"] = aliyun_bailian_provider
+
         # 模型注册
         self._models = {
             # 聊天模型
@@ -182,6 +198,160 @@ class LLMRegistry:
                 "description": "DeepSeek-V3.2 思考模式（官方 API 模型名）",
             }
 
+        # OpenRouter 模型（仅当已配置 OPENROUTER_API_KEY 时注册）
+        # 使用 openrouter:model_name 格式避免冲突
+        if "openrouter" in self._providers:
+            openrouter_models = {
+                "openrouter:qwen/qwen3-embedding-8b": {
+                    "provider": "openrouter",
+                    "type": "embedding",
+                    "context_length": 32000,
+                    "description": "Qwen3 嵌入模型（OpenRouter）",
+                    "raw_model": "qwen/qwen3-embedding-8b",  # 实际API调用的模型名
+                },
+                "openrouter:google/gemini-3-flash-preview": {
+                    "provider": "openrouter",
+                    "type": "chat,vision,audio,video",
+                    "context_length": 1048576,
+                    "description": "Google Gemini 3 Flash Preview（OpenRouter）",
+                    "raw_model": "google/gemini-3-flash-preview",
+                },
+                "openrouter:google/gemini-2.5-flash": {
+                    "provider": "openrouter",
+                    "type": "chat,vision,audio,video",
+                    "context_length": 1048576,
+                    "description": "Google Gemini 2.5 Flash（OpenRouter）",
+                    "raw_model": "google/gemini-2.5-flash",
+                },
+                "openrouter:google/gemini-3-pro-preview": {
+                    "provider": "openrouter",
+                    "type": "chat,vision,audio,video",
+                    "context_length": 1048576,
+                    "description": "Google Gemini 3 Pro Preview（OpenRouter）",
+                    "raw_model": "google/gemini-3-pro-preview",
+                },
+                "openrouter:qwen/qwen3.5-plus-02-15": {
+                    "provider": "openrouter",
+                    "type": "chat,vision,video",
+                    "context_length": 1000000,
+                    "description": "Qwen3.5 Plus 02-15（OpenRouter）",
+                    "raw_model": "qwen/qwen3.5-plus-02-15",
+                },
+                "openrouter:qwen/qwen3.5-397b-a17b": {
+                    "provider": "openrouter",
+                    "type": "chat,vision,video",
+                    "context_length": 262144,
+                    "description": "Qwen3.5 397B A17B（OpenRouter）",
+                    "raw_model": "qwen/qwen3.5-397b-a17b",
+                },
+                "openrouter:qwen/qwen-plus": {
+                    "provider": "openrouter",
+                    "type": "chat",
+                    "context_length": 1000000,
+                    "description": "Qwen Plus（OpenRouter）",
+                    "raw_model": "qwen/qwen-plus",
+                },
+                "openrouter:openai/gpt-5.2-chat": {
+                    "provider": "openrouter",
+                    "type": "chat,vision",
+                    "context_length": 128000,
+                    "description": "OpenAI GPT-5.2 Chat（OpenRouter）",
+                    "raw_model": "openai/gpt-5.2-chat",
+                },
+            }
+            self._models.update(openrouter_models)
+
+        # 阿里云百炼模型（仅当已配置 ALIYUN_BAILIAN_API_KEY 时注册）
+        # 使用 aliyun_bailian:model_name 格式避免冲突
+        if "aliyun_bailian" in self._providers:
+            aliyun_bailian_models = {
+                "aliyun_bailian:qwen3.5-plus": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,video",
+                    "context_length": 991000,  # 991K
+                    "description": "Qwen3.5 Plus（阿里云百炼）",
+                    "raw_model": "qwen3.5-plus",
+                },
+                "aliyun_bailian:qwen3.5-397b-a17b": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,video",
+                    "context_length": 254000,  # 254K
+                    "description": "Qwen3.5 397B A17B（阿里云百炼）",
+                    "raw_model": "qwen3.5-397b-a17b",
+                },
+                "aliyun_bailian:qwen3-max": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat",
+                    "context_length": 252000,  # 252K
+                    "description": "Qwen3 Max（阿里云百炼）",
+                    "raw_model": "qwen3-max",
+                },
+                "aliyun_bailian:qwen3-vl-rerank": {
+                    "provider": "aliyun_bailian",
+                    "type": "reranker",
+                    "context_length": 800000,  # 800K
+                    "description": "Qwen3 VL Rerank（阿里云百炼）",
+                    "raw_model": "qwen3-vl-rerank",
+                },
+                "aliyun_bailian:qwen3-rerank": {
+                    "provider": "aliyun_bailian",
+                    "type": "reranker",
+                    "context_length": 30000,  # 30K
+                    "description": "Qwen3 Rerank（阿里云百炼）",
+                    "raw_model": "qwen3-rerank",
+                },
+                "aliyun_bailian:text-embedding-v4": {
+                    "provider": "aliyun_bailian",
+                    "type": "embedding",
+                    "context_length": 32000,  # 32K
+                    "description": "Text Embedding V4（阿里云百炼）",
+                    "raw_model": "text-embedding-v4",
+                },
+                "aliyun_bailian:qwen3-vl-embedding": {
+                    "provider": "aliyun_bailian",
+                    "type": "embedding",
+                    "context_length": 32000,  # 32K
+                    "description": "Qwen3 VL Embedding（阿里云百炼）",
+                    "raw_model": "qwen3-vl-embedding",
+                },
+                "aliyun_bailian:qwen3-omni-30b-a3b-captioner": {
+                    "provider": "aliyun_bailian",
+                    "type": "audio",
+                    "context_length": 32000,  # 32K
+                    "description": "Qwen3 Omni 30B A3B Captioner（阿里云百炼）",
+                    "raw_model": "qwen3-omni-30b-a3b-captioner",
+                },
+                "aliyun_bailian:qwen3-vl-flash": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,video",
+                    "context_length": 30000,  # 30K
+                    "description": "Qwen3 VL Flash（阿里云百炼）",
+                    "raw_model": "qwen3-vl-flash",
+                },
+                "aliyun_bailian:qwen3-vl-plus": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,video",
+                    "context_length": 30000,  # 30K
+                    "description": "Qwen3 VL Plus（阿里云百炼）",
+                    "raw_model": "qwen3-vl-plus",
+                },
+                "aliyun_bailian:qwen3-omni-flash": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,audio,video",
+                    "context_length": 48000,  # 48K
+                    "description": "Qwen3 Omni Flash（阿里云百炼）",
+                    "raw_model": "qwen3-omni-flash",
+                },
+                "aliyun_bailian:qwen-omni-turbo": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,audio,video",
+                    "context_length": 30000,  # 30K
+                    "description": "Qwen Omni Turbo（阿里云百炼）",
+                    "raw_model": "qwen-omni-turbo",
+                },
+            }
+            self._models.update(aliyun_bailian_models)
+
         # 任务路由与备用模型（单一数据源）
         # 增/删模型：只改上方 _models；改某任务用谁、失败后换谁：只改此 _task_config。
         # 结构: task_type -> {"model": 主模型, "fallbacks": [备用模型列表]}
@@ -293,8 +463,31 @@ class LLMRegistry:
         return list(self._providers.keys())
     
     def get_model_config(self, model_name: str) -> Dict[str, Any]:
-        """获取模型配置"""
+        """获取模型配置
+        支持两种格式：
+        1. 直接模型名（如 "Qwen/Qwen3-235B-A22B-Instruct-2507"）
+        2. provider:model 格式（如 "openrouter:qwen/qwen3.5-plus-02-15"）
+        """
+        # 如果包含冒号，尝试解析为 provider:model 格式
+        if ":" in model_name:
+            parts = model_name.split(":", 1)
+            if len(parts) == 2:
+                provider, model = parts
+                # 查找完整名称
+                full_name = f"{provider}:{model}"
+                config = self._models.get(full_name)
+                if config:
+                    return config
+                # 如果没找到，尝试直接查找（向后兼容）
+                return self._models.get(model_name, {})
         return self._models.get(model_name, {})
+    
+    def get_raw_model_name(self, model_name: str) -> str:
+        """获取实际API调用的模型名称
+        如果模型配置中有 raw_model 字段，返回它；否则返回原始模型名
+        """
+        config = self.get_model_config(model_name)
+        return config.get("raw_model", model_name)
     
     def get_task_model(self, task_type: str) -> Optional[str]:
         """根据任务类型获取主模型"""

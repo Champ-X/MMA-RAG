@@ -12,6 +12,7 @@ import { useChatStore } from '@/store/useChatStore'
 import { useConfigStore } from '@/store/useConfigStore'
 import { useThinkingChain } from '@/hooks/useThinkingChain'
 import { cn } from '@/lib/utils'
+import { getModelVendor, VENDOR_LOGOS } from '@/lib/modelVendors'
 import type { CitationReference } from '@/types/sse'
 
 export function ChatInterface() {
@@ -63,6 +64,14 @@ export function ChatInterface() {
       return chatModel.split('/').pop() || chatModel
     }
     return chatModel || '模型'
+  }, [config.models])
+
+  // 获取当前模型的厂商logo
+  const currentModelLogo = useMemo(() => {
+    const chatModel = config.models.find(m => m.id === 'chat')?.model || ''
+    if (!chatModel) return null
+    const vendor = getModelVendor(chatModel)
+    return VENDOR_LOGOS[vendor] || null
   }, [config.models])
 
 
@@ -435,7 +444,17 @@ export function ChatInterface() {
                   title="对话模型选择"
                   className="group flex items-center gap-1.5 rounded-full border border-purple-200/60 bg-gradient-to-r from-purple-50/80 to-pink-50/80 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-purple-700 shadow-sm shadow-purple-500/10 ring-1 ring-purple-200/30 transition-all duration-200 hover:border-purple-300/80 hover:from-purple-100/90 hover:to-pink-100/90 hover:shadow-md hover:shadow-purple-500/20 hover:ring-purple-300/50 active:scale-95 dark:border-purple-500/40 dark:from-purple-900/30 dark:to-pink-900/30 dark:text-purple-200 dark:ring-purple-500/20 dark:hover:border-purple-400/60 dark:hover:from-purple-800/40 dark:hover:to-pink-800/40"
                 >
-                  <Zap className="h-3.5 w-3.5 flex-shrink-0 text-purple-600 dark:text-purple-300 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-12" />
+                  {currentModelLogo ? (
+                    <img
+                      src={currentModelLogo}
+                      alt=""
+                      className="h-3.5 w-3.5 flex-shrink-0 rounded object-contain transition-transform duration-200 group-hover:scale-110"
+                      width={14}
+                      height={14}
+                    />
+                  ) : (
+                    <Zap className="h-3.5 w-3.5 flex-shrink-0 text-purple-600 dark:text-purple-300 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-12" />
+                  )}
                   <span className="truncate max-w-[120px]">{currentModel}</span>
                 </button>
               </div>

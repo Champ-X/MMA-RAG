@@ -155,11 +155,22 @@ class LLMManager:
         # 记录使用的模型
         logger.info(f"使用主模型: {model} (任务类型: {task_type})")
         
+        # 获取实际API调用的模型名（如果有raw_model字段则使用它，否则使用原始模型名）
+        raw_model_name = self.registry.get_raw_model_name(model)
+        
+        # 获取模型配置
+        model_config = self.registry.get_model_config(model)
+        
+        # max_tokens 应该表示输出的最大token数，而不是总上下文长度
+        # 如果没有指定，使用合理的默认值（6000，与 SiliconFlow 保持一致），而不是 context_length
+        # context_length 是总上下文长度（输入+输出），不应该直接用作 max_tokens
+        default_max_tokens = kwargs.get("max_tokens") or 6000
+        
         params = {
             "messages": messages,
-            "model": model,
+            "model": raw_model_name,  # 使用raw_model_name
             "temperature": kwargs.get("temperature", 0.3),
-            "max_tokens": kwargs.get("max_tokens") or model_config.get("context_length", 2000),
+            "max_tokens": default_max_tokens,
         }
         try:
             stream = cast(
@@ -297,20 +308,21 @@ class LLMManager:
             # 获取对应方法
             method_func = getattr(provider, method)
             
+            # 获取实际API调用的模型名（如果有raw_model字段则使用它，否则使用原始模型名）
+            raw_model_name = self.registry.get_raw_model_name(model)
+            
             # 添加模型参数
             if method == "chat_completion":
-                params["model"] = model
-                # 如果没有指定max_tokens，根据模型的context_length设置
+                params["model"] = raw_model_name  # 使用raw_model_name
+                # 如果没有指定max_tokens，使用合理的默认值（2000，与 SiliconFlow 保持一致）
+                # max_tokens 表示输出的最大token数，不应该直接使用 context_length（总上下文长度）
                 if "max_tokens" not in params or params.get("max_tokens") is None:
-                    context_length = model_config.get("context_length", 2000)
-                    # max_tokens应该是输出token的最大值，设置为context_length的80%或context_length本身
-                    # 但考虑到实际使用，设置为context_length的值（用户要求设置为最大值）
-                    params["max_tokens"] = context_length
-                    logger.debug(f"根据模型 {model} 的 context_length ({context_length}) 设置 max_tokens={params['max_tokens']}")
+                    params["max_tokens"] = 2000
+                    logger.debug(f"模型 {model} 未指定 max_tokens，使用默认值 2000")
             elif method == "embed_texts":
-                params["model"] = model
+                params["model"] = raw_model_name  # 使用raw_model_name
             elif method == "rerank":
-                params["model"] = model
+                params["model"] = raw_model_name  # 使用raw_model_name
             
             start_time = time.time()
             last_error: Optional[Exception] = None

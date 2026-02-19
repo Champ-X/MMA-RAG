@@ -109,7 +109,7 @@ class DeepSeekProvider(BaseLLMProvider):
             "temperature": kwargs.get("temperature", 0.7),
             "max_tokens": max_tokens,
         }
-        timeout = 90.0 if "reasoner" in model.lower() else 60.0
+        timeout = 120.0 if "reasoner" in model.lower() else 60.0  # reasoner需要更长的超时时间
         try:
             async with httpx.AsyncClient() as client:
                 async with client.stream(
@@ -119,16 +119,39 @@ class DeepSeekProvider(BaseLLMProvider):
                     json=payload,
                     timeout=timeout,
                 ) as response:
-                    response.raise_for_status()
+                    if response.status_code != 200:
+                        # 读取错误响应
+                        error_text = ""
+                        try:
+                            async for line in response.aiter_lines():
+                                error_text += line + "\n"
+                        except:
+                            pass
+                        error_detail = error_text[:500] if error_text else response.text[:500]
+                        logger.error(f"DeepSeek stream_chat HTTP错误 [{model}]: {response.status_code} - {error_detail}")
+                        response.raise_for_status()
                     async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
                         if line.startswith("data: "):
                             data_str = line[6:].strip()
                             if data_str == "[DONE]":
                                 break
                             try:
-                                yield json.loads(data_str)
+                                chunk_data = json.loads(data_str)
+                                yield chunk_data
                             except json.JSONDecodeError:
+                                # 忽略无效的JSON行
                                 continue
+        except httpx.HTTPStatusError as e:
+            error_detail = ""
+            if e.response is not None:
+                try:
+                    error_detail = e.response.text[:500]
+                except:
+                    pass
+            logger.error(f"DeepSeek stream_chat HTTP错误 [{model}]: {e.response.status_code if e.response else 'Unknown'} - {error_detail}")
+            raise
         except Exception as e:
             logger.error(f"DeepSeek stream_chat 错误 [{model}]: {e}")
             raise
