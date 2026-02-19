@@ -604,9 +604,81 @@ export function MessageBubble({
       }
     }
     
+    // 自定义 img 组件，防止显示破损图片图标
+    const ImageComponent = React.memo(({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
+      const [imageError, setImageError] = React.useState(false)
+      const [imageLoaded, setImageLoaded] = React.useState(false)
+      const imgRef = React.useRef<HTMLImageElement>(null)
+      
+      const handleError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setImageError(true)
+        setImageLoaded(false)
+        
+        // 立即隐藏图片元素，防止显示破损图标
+        const img = e.currentTarget
+        img.setAttribute('data-error', 'true')
+        img.style.display = 'none'
+        img.style.visibility = 'hidden'
+        img.style.opacity = '0'
+      }
+      
+      const handleLoad = () => {
+        setImageLoaded(true)
+        setImageError(false)
+      }
+      
+      React.useEffect(() => {
+        const img = imgRef.current
+        if (img) {
+          // 加载开始时隐藏，防止显示破损图标
+          if (!img.complete) {
+            img.style.visibility = 'hidden'
+            img.style.opacity = '0'
+          } else if (img.naturalHeight !== 0) {
+            // 图片已从缓存加载
+            setImageLoaded(true)
+          }
+        }
+      }, [src])
+      
+      if (imageError) {
+        return null
+      }
+      
+      return (
+        <img
+          ref={imgRef}
+          src={src}
+          alt={alt}
+          {...props}
+          style={{
+            ...props.style,
+            opacity: imageLoaded ? 1 : 0,
+            transition: imageLoaded ? 'opacity 0.2s' : 'none',
+            visibility: imageLoaded ? 'visible' : 'hidden',
+          }}
+          onError={handleError}
+          onLoad={handleLoad}
+          onAbort={handleError}
+          onLoadStart={() => {
+            const img = imgRef.current
+            if (img && !imageLoaded) {
+              img.style.visibility = 'hidden'
+              img.style.opacity = '0'
+            }
+          }}
+          className={cn('max-w-full h-auto rounded border border-slate-200 dark:border-slate-700', props.className)}
+        />
+      )
+    })
+    ImageComponent.displayName = 'MarkdownImage'
+    
     return {
       p: createComponent('p', 'mb-2 leading-relaxed'),
       li: createComponent('li', 'mb-0'),
+      img: ImageComponent,
     }
   }, [imageFirstRefIdMap, citationMap, refs, originalIdToDisplayIndex, message.id, onCiteClick])
 
