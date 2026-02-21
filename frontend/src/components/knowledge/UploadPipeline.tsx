@@ -13,6 +13,9 @@ import {
   Type,
   Music,
   Video,
+  ChevronDown,
+  ChevronUp,
+  Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -63,6 +66,11 @@ const STAGES_IMAGE: { id: PipelineStage; label: string; icon: typeof Upload }[] 
   { id: 'portrait', label: '画像更新', icon: Palette },
 ]
 
+/** 超过该数量时使用紧凑可折叠列表，避免占满整屏 */
+const COLLAPSE_THRESHOLD = 6
+/** 折叠时展示的文件条数 */
+const COLLAPSED_VISIBLE = 5
+
 function getStageMessage(p: UploadPipelineProgress): string {
   switch (p.stage) {
     case 'minio':
@@ -95,10 +103,17 @@ export function UploadPipeline({
 }: UploadPipelineProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [showAllFiles, setShowAllFiles] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const displayFiles = externalFiles && externalFiles.length > 0 ? externalFiles : selectedFiles
   const hasFilesToShow = displayFiles.length > 0
+  const useCompactList = displayFiles.length > COLLAPSE_THRESHOLD
+  const isExpanded = showAllFiles || !useCompactList
+  const visibleFiles = useCompactList && !showAllFiles
+    ? displayFiles.slice(0, COLLAPSED_VISIBLE)
+    : displayFiles
+  const hasMoreHidden = useCompactList && !showAllFiles && displayFiles.length > COLLAPSED_VISIBLE
 
   const handleFileSelect = (files: FileList | null) => {
     if (!files) return
@@ -140,6 +155,11 @@ export function UploadPipeline({
     const t = setTimeout(() => setSelectedFiles([]), 2500)
     return () => clearTimeout(t)
   }, [uploadProgress?.stage, externalFiles])
+
+  // 文件列表清空时收起展开状态，下次多选时默认折叠
+  useEffect(() => {
+    if (displayFiles.length === 0) setShowAllFiles(false)
+  }, [displayFiles.length])
 
   return (
     <div className={cn('bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm', className)}>
@@ -206,17 +226,49 @@ export function UploadPipeline({
                   </p>
                 </div>
               ) : (
-                <h4 className="mb-3 font-medium text-slate-800 dark:text-slate-100">
-                  已选文件 ({displayFiles.length})
-                </h4>
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h4 className="font-medium text-slate-800 dark:text-slate-100">
+                    已选文件 ({displayFiles.length})
+                  </h4>
+                  {useCompactList && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 -mr-1"
+                      onClick={() => setShowAllFiles((v) => !v)}
+                    >
+                      {showAllFiles ? (
+                        <>
+                          <ChevronUp className="h-3.5 w-3.5 mr-0.5" />
+                          收起
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-3.5 w-3.5 mr-0.5" />
+                          展开全部
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
               )}
-              <div className="space-y-3">
+              <div
+                className={cn(
+                  'space-y-2',
+                  useCompactList && isExpanded && 'max-h-[260px] overflow-y-auto overscroll-contain rounded-lg border border-slate-100 dark:border-slate-800 p-1'
+                )}
+              >
                 {isUploading && !isAllDone && (
-                  <div className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                    处理中
+                  <div className="flex items-center gap-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 px-3 py-2 border border-slate-100 dark:border-slate-700/80">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-75 dark:bg-fuchsia-400" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-indigo-500 dark:bg-fuchsia-500" />
+                    </span>
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-300 tracking-wide">处理中</span>
                   </div>
                 )}
-                {displayFiles.map((f, i) => {
+                {visibleFiles.map((f) => {
+                  const i = displayFiles.indexOf(f)
                   const isImage = f.type.startsWith('image/')
                   const isAudio = f.type.startsWith('audio/')
                   const isVideo = f.type.startsWith('video/')
@@ -229,58 +281,110 @@ export function UploadPipeline({
                     uploadProgress &&
                     i < uploadProgress.completed + uploadProgress.failed
                   const isPending = isUploading && !isCurrent && !done
+                  const compact = useCompactList
+                  const stageProgress = isCurrent && uploadProgress?.stage !== 'done' ? (uploadProgress?.stageProgress ?? 0) : null
 
                   return (
                     <div
                       key={i}
                       className={cn(
-                        'flex items-center justify-between rounded-lg border p-3',
-                        isCurrent && 'border-indigo-400 dark:border-fuchsia-500 bg-indigo-50/50 dark:bg-fuchsia-500/10',
-                        done && !isCurrent && 'border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10',
-                        isPending && 'border-slate-200 dark:border-slate-800'
+                        'relative flex flex-col rounded-xl border gap-2 overflow-hidden transition-all duration-200 ease-out',
+                        compact ? 'px-2.5 py-1.5' : 'p-3',
+                        isCurrent && 'border-indigo-300 dark:border-fuchsia-500/80 bg-indigo-50/60 dark:bg-fuchsia-500/10 shadow-sm shadow-indigo-100/50 dark:shadow-fuchsia-900/10',
+                        done && !isCurrent && 'border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/50 dark:bg-emerald-900/10 shadow-sm shadow-emerald-100/30 dark:shadow-emerald-900/5',
+                        isPending && 'border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800/30 hover:bg-slate-50/80 dark:hover:bg-slate-800/60'
                       )}
                     >
-                      <div className="flex items-center gap-3">
-                        <Icon className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                        <div>
-                          <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{(f as File).name}</p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            {formatFileSize((f as File).size)}
-                          </p>
+                      <div className="flex items-center justify-between gap-2 min-w-0">
+                        <div className={cn('flex items-center gap-2 min-w-0 flex-1', compact ? 'gap-2' : 'gap-3')}>
+                          <div className={cn(
+                            'flex shrink-0 items-center justify-center rounded-lg transition-colors',
+                            compact ? 'p-1' : 'p-1.5',
+                            isCurrent && 'bg-indigo-100/80 dark:bg-fuchsia-500/20',
+                            done && !isCurrent && 'bg-emerald-100/80 dark:bg-emerald-500/20',
+                            isPending && 'bg-slate-100 dark:bg-slate-700/50'
+                          )}>
+                            <Icon className={cn(
+                              compact ? 'h-3.5 w-3.5' : 'h-4 w-4',
+                              isCurrent && 'text-indigo-600 dark:text-fuchsia-400',
+                              done && !isCurrent && 'text-emerald-600 dark:text-emerald-400',
+                              isPending && 'text-slate-500 dark:text-slate-400'
+                            )} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            {compact ? (
+                              <p className="text-xs font-medium text-slate-800 dark:text-slate-100 flex items-baseline gap-1.5 min-w-0" title={(f as File).name}>
+                                <span className="truncate min-w-0">{(f as File).name}</span>
+                                <span className="text-slate-400 dark:text-slate-500 font-normal shrink-0">{formatFileSize((f as File).size)}</span>
+                              </p>
+                            ) : (
+                              <>
+                                <p className={cn(
+                                  'font-medium text-slate-800 dark:text-slate-100 truncate',
+                                  isCurrent && 'text-indigo-900 dark:text-fuchsia-100',
+                                  done && !isCurrent && 'text-emerald-900 dark:text-emerald-100',
+                                  isPending && 'text-slate-800 dark:text-slate-200'
+                                )} title={(f as File).name}>
+                                  {(f as File).name}
+                                </p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                  {formatFileSize((f as File).size)}
+                                </p>
+                              </>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      {isUploading || isAllDone ? (
-                        isCurrent ? (
-                          <div className="flex items-center gap-2 text-indigo-600 dark:text-fuchsia-400">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            <span className="text-xs font-medium">处理中</span>
-                          </div>
-                        ) : done ? (
-                          <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-                            <CheckCircle className="h-4 w-4 shrink-0" />
-                            <span className="text-xs font-medium">已完成</span>
-                          </div>
+                        {isUploading || isAllDone ? (
+                          isCurrent ? (
+                            <div className="flex items-center gap-1.5 shrink-0 rounded-full bg-indigo-100 dark:bg-fuchsia-500/20 px-2.5 py-1 text-indigo-700 dark:text-fuchsia-300">
+                              <Loader2 className={cn('animate-spin shrink-0', compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+                              <span className={cn('font-medium', compact ? 'text-[10px]' : 'text-xs')}>处理中</span>
+                            </div>
+                          ) : done ? (
+                            <div className="flex items-center gap-1.5 shrink-0 rounded-full bg-emerald-100 dark:bg-emerald-500/20 px-2.5 py-1 text-emerald-700 dark:text-emerald-300">
+                              <CheckCircle className={cn('shrink-0', compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+                              <span className={cn('font-medium', compact ? 'text-[10px]' : 'text-xs')}>已完成</span>
+                            </div>
+                          ) : (
+                            <span className={cn('shrink-0 rounded-full bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 text-slate-500 dark:text-slate-400 font-medium', compact ? 'text-[10px]' : 'text-xs')}>待处理</span>
+                          )
                         ) : (
-                          <span className="text-xs text-slate-400 dark:text-slate-500">待处理</span>
-                        )
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            const next = selectedFiles.filter((_, j) => j !== i)
-                            setSelectedFiles(next)
-                            onFileSelect(next)
-                          }}
-                        >
-                          ×
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={cn('shrink-0 text-slate-500 hover:text-red-500 hover:bg-red-50 dark:text-slate-400 dark:hover:text-red-400 dark:hover:bg-red-900/20 rounded-lg transition-colors', compact ? 'h-6 w-6 p-0' : 'h-8 w-8 p-0')}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const next = selectedFiles.filter((_, j) => j !== i)
+                              setSelectedFiles(next)
+                              onFileSelect(next)
+                            }}
+                          >
+                            ×
+                          </Button>
+                        )}
+                      </div>
+                      {stageProgress != null && !compact && (
+                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-100 dark:bg-slate-700/80 rounded-b-xl overflow-hidden">
+                          <div
+                            className="h-full rounded-r-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 dark:from-fuchsia-500 dark:to-indigo-400 transition-all duration-500 ease-out"
+                            style={{ width: `${Math.min(100, Math.max(0, stageProgress))}%` }}
+                          />
+                        </div>
                       )}
                     </div>
                   )
                 })}
+                {hasMoreHidden && (
+                  <button
+                    type="button"
+                    className="w-full rounded-lg border border-dashed border-slate-200 dark:border-slate-700 py-2 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-50 dark:text-slate-400 dark:hover:text-slate-300 dark:hover:bg-slate-800/50 transition-colors flex items-center justify-center gap-1"
+                    onClick={() => setShowAllFiles(true)}
+                  >
+                    <ChevronDown className="h-3.5 w-3.5" />
+                    展开显示全部 {displayFiles.length} 个文件
+                  </button>
+                )}
               </div>
             </div>
 
@@ -391,15 +495,30 @@ export function UploadPipeline({
             )}
 
             {!isUploading && (
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end pt-1">
                 <Button
                   variant="outline"
-                  className="border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className={cn(
+                    'rounded-xl border-2 px-4 py-2.5 font-medium transition-all duration-200 ease-out shadow-sm',
+                    isAllDone
+                      ? 'border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-800/30 hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-md hover:shadow-emerald-100/50 dark:hover:shadow-emerald-900/20'
+                      : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-500 hover:shadow-md'
+                  )}
                   onClick={() => {
                     setSelectedFiles([])
                   }}
                 >
-                  清空
+                  {isAllDone ? (
+                    <>
+                      <CheckCircle className="mr-2 h-4 w-4 text-emerald-500 dark:text-emerald-400" />
+                      清空列表
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="mr-2 h-4 w-4 opacity-80" />
+                      清空
+                    </>
+                  )}
                 </Button>
               </div>
             )}
