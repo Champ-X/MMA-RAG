@@ -578,6 +578,7 @@ class KnowledgeBaseService:
                     "last_updated": datetime.utcnow().isoformat(),
                     "text_vector_dim": 4096,
                     "image_vector_dim": 768,
+                    "audio_vector_dim": 512,
                 }
 
             except Exception as e:
@@ -621,6 +622,7 @@ class KnowledgeBaseService:
                             "last_updated": datetime.utcnow().isoformat(),
                             "text_vector_dim": 4096,
                             "image_vector_dim": 768,
+                            "audio_vector_dim": 512,
                         }
         except Exception as e:
             logger.debug(f"统计兜底失败 kb_id={kb_id}: {e}")
@@ -634,6 +636,7 @@ class KnowledgeBaseService:
             "last_updated": datetime.utcnow().isoformat(),
             "text_vector_dim": 4096,
             "image_vector_dim": 768,
+            "audio_vector_dim": 512,
         }
 
     def _discover_kb_id_from_bucket_sync(self, bucket_name: str) -> Optional[str]:

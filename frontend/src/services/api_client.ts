@@ -276,8 +276,10 @@ export const knowledgeApi = {
       documents: number
       chunks: number
       images: number
+      audio?: number
       text_vector_dim?: number
       image_vector_dim?: number
+      audio_vector_dim?: number
     }>(`/knowledge/${id}/stats`),
   
   // 获取知识库画像

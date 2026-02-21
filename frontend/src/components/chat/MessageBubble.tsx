@@ -542,32 +542,32 @@ function ParagraphAudioDisplay({
           <div
             key={citation.id}
             data-audio-key={key}
-            className="paragraph-audio-card relative overflow-hidden rounded-2xl border border-amber-200/80 dark:border-amber-700/60 bg-gradient-to-br from-amber-50 via-orange-50/95 to-amber-100/90 dark:from-amber-950/60 dark:via-slate-900/50 dark:to-amber-950/50 w-full min-w-[374px] max-w-[500px] p-0 shadow-lg shadow-amber-500/5 dark:shadow-amber-500/10 hover:shadow-xl hover:shadow-amber-500/10 dark:hover:shadow-amber-500/15 hover:border-amber-300/80 dark:hover:border-amber-600/70 transition-all duration-300"
+            className="paragraph-audio-card relative overflow-hidden rounded-2xl border border-slate-200/90 dark:border-slate-600/70 bg-gradient-to-br from-slate-50 via-violet-50/30 to-slate-100/90 dark:from-slate-900/80 dark:via-violet-950/20 dark:to-slate-900/80 w-full min-w-[374px] max-w-[500px] p-0 shadow-lg shadow-slate-500/5 dark:shadow-slate-500/10 hover:shadow-xl hover:shadow-violet-500/5 dark:hover:shadow-violet-500/10 hover:border-violet-200/80 dark:hover:border-violet-700/50 transition-all duration-300"
           >
             {/* 左侧装饰条 */}
-            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-amber-400 via-orange-400 to-amber-500 dark:from-amber-500 dark:via-orange-500 dark:to-amber-600 rounded-l-2xl" />
+            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-violet-400 via-indigo-400 to-violet-500 dark:from-violet-500 dark:via-indigo-500 dark:to-violet-600 rounded-l-2xl" />
             <div className="pl-4 pr-4 pt-2.5 pb-2.5">
               {/* 标题行 */}
               <button
                 type="button"
                 onClick={handleOpenPopover}
-                className="flex items-center gap-2.5 w-full text-left mb-2 group rounded-lg -mx-1 px-1 py-0.5 hover:bg-amber-100/50 dark:hover:bg-amber-900/30 transition-colors"
+                className="flex items-center gap-2.5 w-full text-left mb-2 group rounded-lg -mx-1 px-1 py-0.5 hover:bg-violet-100/40 dark:hover:bg-violet-900/20 transition-colors"
               >
-                <span className="flex items-center justify-center shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-800/60 dark:to-orange-900/50 text-amber-700 dark:text-amber-300 group-hover:from-amber-200 group-hover:to-orange-200 dark:group-hover:from-amber-700 dark:group-hover:to-orange-800 border border-amber-200/60 dark:border-amber-700/50 shadow-sm transition-all">
+                <span className="flex items-center justify-center shrink-0 w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-violet-600 dark:text-violet-400 group-hover:bg-violet-100 dark:group-hover:bg-violet-900/40 border border-slate-200/80 dark:border-slate-600/60 shadow-sm transition-all">
                   <Music className="h-4 w-4" strokeWidth={2} />
                 </span>
                 <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate flex items-baseline gap-1.5">
-                  <span className="font-mono text-amber-600 dark:text-amber-400 font-bold tabular-nums">[{displayNum}]</span>
+                  <span className="font-mono text-violet-600 dark:text-violet-400 font-bold tabular-nums">[{displayNum}]</span>
                   <span className="text-slate-600 dark:text-slate-300">音频引用</span>
                 </span>
               </button>
               {/* 播放器区域 */}
               {hasAudioUrl ? (
-                <div className="rounded-xl bg-white/95 dark:bg-slate-800/90 border border-amber-100/90 dark:border-slate-600/80 p-2 mb-2 shadow-inner ring-1 ring-black/5 dark:ring-white/5">
+                <div className="rounded-xl bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-600/80 p-2 mb-2 shadow-inner ring-1 ring-black/5 dark:ring-white/5">
                   <audio
                     src={resolvedUrl!}
                     controls
-                    className="w-full h-8 rounded-lg [&::-webkit-media-controls-panel]:bg-amber-50/80 dark:[&::-webkit-media-controls-panel]:bg-slate-800/80"
+                    className="w-full h-8 rounded-lg [&::-webkit-media-controls-panel]:bg-slate-50/80 dark:[&::-webkit-media-controls-panel]:bg-slate-800/80"
                     preload="metadata"
                     onClick={(e) => e.stopPropagation()}
                   />
@@ -577,7 +577,7 @@ function ParagraphAudioDisplay({
                   type="button"
                   onClick={handleClickPlay}
                   disabled={loadingRefId === citation.id}
-                  className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl bg-white/80 dark:bg-slate-800/70 text-amber-800 dark:text-amber-200 hover:bg-amber-50 dark:hover:bg-slate-800/90 border border-amber-200/80 dark:border-amber-700/50 transition-all mb-2 disabled:opacity-60 shadow-sm text-sm font-medium ring-1 ring-amber-500/10 dark:ring-amber-500/20"
+                  className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl bg-white/80 dark:bg-slate-800/70 text-violet-700 dark:text-violet-300 hover:bg-violet-50/80 dark:hover:bg-slate-800/90 border border-slate-200/80 dark:border-slate-600/60 transition-all mb-2 disabled:opacity-60 shadow-sm text-sm font-medium ring-1 ring-violet-500/10 dark:ring-violet-500/20"
                 >
                   {loadingRefId === citation.id ? (
                     <span className="font-medium">加载中…</span>
@@ -597,7 +597,7 @@ function ParagraphAudioDisplay({
               )}
               {/* 转写/描述内容（不区分歌词或语音，不显示标签） */}
               {citation.content && (
-                <div className="rounded-xl bg-white/80 dark:bg-slate-800/60 border border-amber-100/70 dark:border-slate-600/60 px-3 py-1.5 ring-1 ring-black/5 dark:ring-white/5">
+                <div className="rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-600/60 px-3 py-1.5 ring-1 ring-black/5 dark:ring-white/5">
                   <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">{citation.content}</p>
                 </div>
               )}

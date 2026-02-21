@@ -24,7 +24,7 @@ portrait_generator = PortraitGenerator()
 
 
 def _stats_for_frontend(statistics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """将后端 statistics 格式转换为前端 stats 格式（含向量维度、音频数）"""
+    """将后端 statistics 格式转换为前端 stats 格式（含向量维度、音频数、CLAP 维度）"""
     if not statistics:
         return {
             "documents": 0,
@@ -33,6 +33,7 @@ def _stats_for_frontend(statistics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "audio": 0,
             "text_vector_dim": 4096,
             "image_vector_dim": 768,
+            "audio_vector_dim": 512,
         }
     return {
         "documents": statistics.get("total_documents", 0),
@@ -41,6 +42,7 @@ def _stats_for_frontend(statistics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "audio": statistics.get("total_audio", 0),
         "text_vector_dim": statistics.get("text_vector_dim", 4096),
         "image_vector_dim": statistics.get("image_vector_dim", 768),
+        "audio_vector_dim": statistics.get("audio_vector_dim", 512),
     }
 
 

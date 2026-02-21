@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
@@ -1107,6 +1107,7 @@ const KnowledgeList: React.FC = () => {
     audio?: number
     text_vector_dim?: number
     image_vector_dim?: number
+    audio_vector_dim?: number
   } | null>(null)
 
   const {
@@ -1985,32 +1986,40 @@ const KnowledgeList: React.FC = () => {
                 <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors">
                   <span className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
                     <FileText size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
-                    Documents
+                    文档数
                   </span>
                   <span className="font-semibold text-slate-800 dark:text-slate-100 tabular-nums">{kbStats?.documents ?? activeKb.stats?.documents ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors">
                   <span className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
                     <Layers size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
-                    Total Chunks
+                    文本块数
                   </span>
                   <span className="font-semibold text-slate-800 dark:text-slate-100 tabular-nums">{kbStats?.chunks ?? activeKb.stats?.chunks ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors">
                   <span className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
                     <ImageIcon size={14} className="text-fuchsia-600 dark:text-fuchsia-400 shrink-0" />
-                    Total Images
+                    图片数
                   </span>
                   <span className="font-semibold text-slate-800 dark:text-slate-100 tabular-nums">{kbStats?.images ?? activeKb.stats?.images ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors">
+                  <span className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                    <Music size={14} className="text-violet-600 dark:text-violet-400 shrink-0" />
+                    音频数
+                  </span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-100 tabular-nums">{kbStats?.audio ?? (activeKb.stats as { audio?: number })?.audio ?? 0}</span>
+                </div>
+                <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors">
                   <span className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 shrink-0">
                     <Box size={14} className="text-violet-600 dark:text-violet-400 shrink-0" />
-                    Vector Dim
+                    向量维度
                   </span>
                   <span className="font-medium text-slate-800 dark:text-slate-100 text-xs text-right flex flex-col items-end gap-0.5">
                     <span className="tabular-nums">文本 {kbStats?.text_vector_dim ?? 4096}</span>
                     <span className="tabular-nums">图片 {kbStats?.image_vector_dim ?? 768}</span>
+                    <span className="tabular-nums">音频 {kbStats?.audio_vector_dim ?? 512}</span>
                   </span>
                 </div>
               </div>
