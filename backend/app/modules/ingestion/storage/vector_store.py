@@ -15,7 +15,7 @@ from qdrant_client.http import models
 from qdrant_client.http.models import (
     Distance, VectorParams, NamedVector,
     PointStruct, Filter, FieldCondition, MatchValue,
-    PayloadSchemaType, Query, Fusion, Prefetch, FusionQuery,
+    PayloadSchemaType, Fusion, Prefetch, FusionQuery,
     SparseVectorParams, SparseIndexParams,
     FilterSelector,
     Condition,
@@ -98,6 +98,56 @@ class VectorStore:
                     "cluster_size": PayloadSchemaType.INTEGER,
                     "created_at": PayloadSchemaType.TEXT
                 }
+            },
+            "audio_vectors": {
+                # 双向量：text_vec（描述性文本嵌入）+ clap_vec（CLAP 声学特征），同一点上挂载稀疏向量
+                "is_multi_vector": True,
+                "vectors_config": {
+                    "text_vec": VectorParams(size=4096, distance=Distance.COSINE),  # 音频描述性文本向量
+                    "clap_vec": VectorParams(size=512, distance=Distance.COSINE)   # CLAP 声学特征（laion/clap-htsat-fused 512 维）
+                },
+                "sparse_vectors_config": {
+                    "sparse": SparseVectorParams(
+                        index=SparseIndexParams(on_disk=False)
+                    )
+                },
+                "payload_schema": {
+                    "kb_id": PayloadSchemaType.KEYWORD,
+                    "file_id": PayloadSchemaType.KEYWORD,
+                    "file_path": PayloadSchemaType.TEXT,
+                    "transcript": PayloadSchemaType.TEXT,
+                    "description": PayloadSchemaType.TEXT,
+                    "duration": PayloadSchemaType.FLOAT,
+                    "audio_format": PayloadSchemaType.KEYWORD,
+                    "sample_rate": PayloadSchemaType.INTEGER,
+                    "channels": PayloadSchemaType.INTEGER,
+                    "bitrate": PayloadSchemaType.INTEGER,
+                    "source_type": PayloadSchemaType.KEYWORD,
+                    "source_file_id": PayloadSchemaType.KEYWORD,
+                    "created_at": PayloadSchemaType.TEXT
+                }
+            },
+            "video_vectors": {
+                # 视频向量使用多向量配置：text_vec (4096维) 和 clip_vec (768维，关键帧CLIP向量)
+                "is_multi_vector": True,
+                "vectors_config": {
+                    "text_vec": VectorParams(size=4096, distance=Distance.COSINE),  # 视频描述文本向量
+                    "clip_vec": VectorParams(size=768, distance=Distance.COSINE)       # 关键帧CLIP向量
+                },
+                "payload_schema": {
+                    "kb_id": PayloadSchemaType.KEYWORD,
+                    "file_id": PayloadSchemaType.KEYWORD,
+                    "file_path": PayloadSchemaType.TEXT,
+                    "description": PayloadSchemaType.TEXT,
+                    "duration": PayloadSchemaType.FLOAT,
+                    "video_format": PayloadSchemaType.KEYWORD,
+                    "resolution": PayloadSchemaType.TEXT,
+                    "fps": PayloadSchemaType.FLOAT,
+                    "key_frames": PayloadSchemaType.TEXT,  # JSON存储为TEXT
+                    "has_audio": PayloadSchemaType.BOOL,
+                    "audio_file_id": PayloadSchemaType.KEYWORD,
+                    "created_at": PayloadSchemaType.TEXT
+                }
             }
         }
         
@@ -114,6 +164,37 @@ class VectorStore:
                 try:
                     existing_collection = self.client.get_collection(collection_name)
                     logger.debug(f"集合已存在: {collection_name}")
+                    
+                    # 多向量集合：检查现有向量名是否与配置一致（如 audio_vectors 从 dense 升级为 text_vec+clap_vec）
+                    if is_multi_vector:
+                        expected_vector_names = set(config["vectors_config"].keys())
+                        existing_vector_names = set()
+                        try:
+                            if hasattr(existing_collection, "config") and hasattr(existing_collection.config, "params"):
+                                if hasattr(existing_collection.config.params, "vectors") and isinstance(existing_collection.config.params.vectors, dict):
+                                    existing_vector_names = set(existing_collection.config.params.vectors.keys())
+                        except Exception:
+                            pass
+                        if expected_vector_names and existing_vector_names != expected_vector_names:
+                            logger.warning(
+                                f"集合 {collection_name} 的向量名与配置不一致: 现有={existing_vector_names}, 期望={expected_vector_names}。将删除并重新创建。"
+                            )
+                            try:
+                                self.client.delete_collection(collection_name)
+                                logger.info(f"已删除旧集合: {collection_name}")
+                            except Exception as del_e:
+                                logger.error(f"删除集合失败 {collection_name}: {del_e}")
+                            else:
+                                create_kwargs = {
+                                    "collection_name": collection_name,
+                                    "vectors_config": config["vectors_config"],
+                                }
+                                if config.get("sparse_vectors_config"):
+                                    create_kwargs["sparse_vectors_config"] = config["sparse_vectors_config"]
+                                self.client.create_collection(**create_kwargs)
+                                self._setup_payload_schema(collection_name, config)
+                                logger.info(f"已重新创建集合: {collection_name} (多向量: {expected_vector_names})")
+                            continue
                     
                     # 对于多向量集合，不检查维度（结构复杂）
                     if not is_multi_vector:
@@ -287,37 +368,35 @@ class VectorStore:
                     error_msg = str(get_e)
                     if "not found" in error_msg.lower() or "404" in error_msg:
                         vectors_config = config["vectors_config"]
-                        
-                        if is_multi_vector:
-                            # 多向量集合：使用字典格式
-                            logger.info(f"创建多向量集合: {collection_name} (clip_vec: 768, text_vec: 4096)")
-                        else:
-                            # 单向量集合
-                            vector_size = config.get("vector_size", "未知")
-                            has_sparse = bool(config.get("sparse_vectors_config"))
-                            sparse_info = " + 稀疏向量" if has_sparse else ""
-                            logger.info(f"创建向量集合: {collection_name} (维度: {vector_size}{sparse_info})")
-                        
-                        # 检查是否有稀疏向量配置
                         sparse_vectors_config = config.get("sparse_vectors_config")
                         
-                        # 如果需要稀疏向量，使用 Named Vector 格式
-                        if sparse_vectors_config:
-                            # 将单向量配置转换为 Named Vector 格式
-                            vectors_config_dict = {
-                                "dense": vectors_config  # 包装为 Named Vector
-                            }
-                            create_kwargs = {
-                                "collection_name": collection_name,
-                                "vectors_config": vectors_config_dict,
-                                "sparse_vectors_config": sparse_vectors_config
-                            }
-                        else:
-                            # 不需要稀疏向量，使用单向量格式
+                        if is_multi_vector:
+                            # 多向量集合：vectors_config 已是 { text_vec, clip_vec } 等字典
                             create_kwargs = {
                                 "collection_name": collection_name,
                                 "vectors_config": vectors_config
                             }
+                            if sparse_vectors_config:
+                                create_kwargs["sparse_vectors_config"] = sparse_vectors_config
+                            logger.info(f"创建多向量集合: {collection_name} (含 {len(vectors_config)} 个向量{' + 稀疏' if sparse_vectors_config else ''})")
+                        else:
+                            # 单向量集合
+                            vector_size = config.get("vector_size", "未知")
+                            has_sparse = bool(sparse_vectors_config)
+                            sparse_info = " + 稀疏向量" if has_sparse else ""
+                            logger.info(f"创建向量集合: {collection_name} (维度: {vector_size}{sparse_info})")
+                            if sparse_vectors_config:
+                                vectors_config_dict = {"dense": vectors_config}
+                                create_kwargs = {
+                                    "collection_name": collection_name,
+                                    "vectors_config": vectors_config_dict,
+                                    "sparse_vectors_config": sparse_vectors_config
+                                }
+                            else:
+                                create_kwargs = {
+                                    "collection_name": collection_name,
+                                    "vectors_config": vectors_config
+                                }
                         
                         self.client.create_collection(**create_kwargs)
                         # 设置 payload schema
@@ -604,6 +683,174 @@ class VectorStore:
             
         except Exception as e:
             logger.error(f"图片向量插入失败: {str(e)}")
+            raise
+    
+    async def upsert_audio_vectors(
+        self,
+        kb_id: str,
+        audios: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        批量插入音频向量
+        
+        Args:
+            kb_id: 知识库ID
+            audios: 音频信息列表
+            
+        Returns:
+            插入结果
+        """
+        try:
+            points = []
+            
+            for audio in audios:
+                point_id = str(uuid.uuid4())
+                
+                # 准备向量：同一 Point 挂载 text_vec（描述性文本嵌入）+ clap_vec（CLAP 声学特征）+ sparse
+                vectors = {
+                    "text_vec": audio["text_vector"],
+                    "clap_vec": audio.get("clap_vector") or [0.0] * 512  # 缺失时用零向量占位
+                }
+                
+                # 添加稀疏向量（如果存在）：须转换为 Qdrant SparseVector 格式
+                if "sparse_vector" in audio and audio["sparse_vector"]:
+                    sparse_dict = audio["sparse_vector"]
+                    vectors["sparse"] = models.SparseVector(
+                        indices=list(sparse_dict.keys()),
+                        values=list(sparse_dict.values())
+                    )
+                
+                # 准备payload
+                payload = {
+                    "kb_id": kb_id,
+                    "file_id": audio.get("file_id"),
+                    "file_path": audio.get("file_path"),
+                    "transcript": audio.get("transcript", ""),
+                    "description": audio.get("description", ""),
+                    "duration": audio.get("duration", 0.0),
+                    "audio_format": audio.get("audio_format", ""),
+                    "sample_rate": audio.get("sample_rate", 0),
+                    "channels": audio.get("channels", 0),
+                    "bitrate": audio.get("bitrate", 0),
+                    "source_type": audio.get("source_type", "standalone_file"),
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                if audio.get("source_file_id"):
+                    payload["source_file_id"] = audio["source_file_id"]
+
+                point = PointStruct(
+                    id=point_id,
+                    vector=vectors,
+                    payload=payload
+                )
+                points.append(point)
+            
+            # 批量插入
+            operation_info = self.client.upsert(
+                collection_name="audio_vectors",
+                points=points
+            )
+            
+            logger.info(f"音频向量插入完成: {len(points)} 个, 操作ID: {operation_info.operation_id}")
+            
+            return {
+                "operation_id": operation_info.operation_id,
+                "points_inserted": len(points),
+                "status": "success"
+            }
+            
+        except Exception as e:
+            logger.error(f"音频向量插入失败: {str(e)}")
+            raise
+    
+    async def upsert_video_vectors(
+        self,
+        kb_id: str,
+        videos: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        批量插入视频向量
+        
+        Args:
+            kb_id: 知识库ID
+            videos: 视频信息列表
+            
+        Returns:
+            插入结果
+        """
+        try:
+            points = []
+            
+            for video in videos:
+                point_id = str(uuid.uuid4())
+                
+                # 准备Named Vector（text_vec + clip_vec）
+                vectors = {
+                    "text_vec": video["text_vector"]
+                }
+                
+                # 如果有关键帧CLIP向量，使用第一个关键帧的CLIP向量作为代表
+                # 或者使用所有关键帧CLIP向量的平均值
+                if "key_frames" in video and video["key_frames"]:
+                    key_frames = video["key_frames"]
+                    if isinstance(key_frames, list) and len(key_frames) > 0:
+                        # 使用第一个关键帧的CLIP向量
+                        first_frame = key_frames[0] if isinstance(key_frames[0], dict) else {}
+                        if "clip_vector" in first_frame:
+                            vectors["clip_vec"] = first_frame["clip_vector"]
+                        else:
+                            # 如果没有CLIP向量，使用零向量占位
+                            vectors["clip_vec"] = [0.0] * 768
+                    else:
+                        vectors["clip_vec"] = [0.0] * 768
+                else:
+                    vectors["clip_vec"] = [0.0] * 768
+                
+                # 准备payload
+                payload = {
+                    "kb_id": kb_id,
+                    "file_id": video.get("file_id"),
+                    "file_path": video.get("file_path"),
+                    "description": video.get("description", ""),
+                    "duration": video.get("duration", 0.0),
+                    "video_format": video.get("video_format", ""),
+                    "resolution": video.get("resolution", ""),
+                    "fps": video.get("fps", 0.0),
+                    "has_audio": video.get("has_audio", False),
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                
+                # 关键帧信息存储为JSON字符串
+                if "key_frames" in video:
+                    import json
+                    payload["key_frames"] = json.dumps(video["key_frames"], ensure_ascii=False)
+                
+                if video.get("audio_file_id"):
+                    payload["audio_file_id"] = video["audio_file_id"]
+
+                point = PointStruct(
+                    id=point_id,
+                    vector=vectors,
+                    payload=payload
+                )
+                points.append(point)
+            
+            # 批量插入
+            operation_info = self.client.upsert(
+                collection_name="video_vectors",
+                points=points
+            )
+            
+            logger.info(f"视频向量插入完成: {len(points)} 个, 操作ID: {operation_info.operation_id}")
+            
+            return {
+                "operation_id": operation_info.operation_id,
+                "points_inserted": len(points),
+                "status": "success"
+            }
+            
+        except Exception as e:
+            logger.error(f"视频向量插入失败: {str(e)}")
             raise
     
     async def upsert_kb_portraits(
@@ -1275,6 +1522,24 @@ class VectorStore:
             logger.error(f"count_kb_chunks 失败: {str(e)}")
             return (0, 0)
 
+    async def count_kb_audio(self, kb_id: str) -> int:
+        """
+        按 kb_id 统计 audio_vectors 中的点数量。
+        用于排查「有音频意图但检索为 0」时区分是知识库无音频数据还是检索/过滤问题。
+        """
+        try:
+            filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))])
+            return int(
+                self.client.count(
+                    collection_name="audio_vectors",
+                    count_filter=filt,
+                    exact=True,
+                ).count
+            )
+        except Exception as e:
+            logger.debug("count_kb_audio 失败: kb_id={}, e={}", kb_id, e)
+            return 0
+
     async def scroll_text_chunks_for_sampling(
         self,
         kb_id: str,
@@ -1356,6 +1621,44 @@ class VectorStore:
             logger.error(f"scroll_image_vectors_for_sampling 失败: {str(e)}")
             return ([], None)
 
+    async def scroll_audio_vectors_for_sampling(
+        self,
+        kb_id: str,
+        limit: int,
+        offset: Optional[Any] = None,
+        batch_size: int = 500,
+    ) -> Tuple[List[Tuple[str, List[float]]], Optional[Any]]:
+        """
+        按 kb_id 滚动拉取音频向量 (id, text_vec)，用于画像采样。
+        返回 ([(id, vector), ...], next_offset)。
+        """
+        try:
+            filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))])
+            scroll_limit = min(limit, batch_size)
+            kwargs: Dict[str, Any] = {
+                "collection_name": "audio_vectors",
+                "scroll_filter": filt,
+                "limit": scroll_limit,
+                "with_payload": False,
+                "with_vectors": ["text_vec"],
+            }
+            if offset is not None:
+                kwargs["offset"] = offset
+            out: List[Tuple[str, List[float]]] = []
+            res = self.client.scroll(**kwargs)
+            records, next_offset = res[0], res[1] if len(res) > 1 else None
+            for r in records:
+                vid = str(r.id) if r.id is not None else ""
+                v = None
+                if hasattr(r, "vector") and r.vector is not None and isinstance(r.vector, dict):
+                    v = r.vector.get("text_vec")
+                if vid and v is not None and isinstance(v, list):
+                    out.append((vid, v))
+            return (out, next_offset)
+        except Exception as e:
+            logger.error(f"scroll_audio_vectors_for_sampling 失败: {str(e)}")
+            return ([], None)
+
     async def fetch_texts_by_ids(
         self,
         ids_doc: List[str],
@@ -1392,11 +1695,38 @@ class VectorStore:
                     pid = str(r.id) if r.id is not None else ""
                     payload = r.payload or {}
                     text = (payload.get("caption") or "").strip()
-                    if pid:
-                        texts_img[pid] = text
+                if pid:
+                    texts_img[pid] = text
         except Exception as e:
             logger.error(f"fetch_texts_by_ids 失败: {str(e)}")
         return (texts_doc, texts_img)
+
+    async def fetch_audio_texts_by_ids(self, ids_audio: List[str]) -> Dict[str, str]:
+        """
+        按 point id 批量拉取音频文本：audio_vectors 的 transcript 或 description。
+        返回 audio_id -> 文本（优先 transcript，缺则用 description）。
+        """
+        result: Dict[str, str] = {}
+        if not ids_audio:
+            return result
+        try:
+            rows = self.client.retrieve(
+                collection_name="audio_vectors",
+                ids=ids_audio,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for r in rows:
+                pid = str(r.id) if r.id is not None else ""
+                if not pid:
+                    continue
+                payload = r.payload or {}
+                text = (payload.get("transcript") or payload.get("description") or "").strip()
+                if text:
+                    result[pid] = text
+        except Exception as e:
+            logger.error(f"fetch_audio_texts_by_ids 失败: {str(e)}")
+        return result
 
     def get_point_id_by_file_id_and_chunk_index(
         self, file_id: str, chunk_index: Optional[int] = None
@@ -1511,6 +1841,232 @@ class VectorStore:
             logger.error(f"获取所有集合统计失败: {str(e)}")
             return {}
     
+    async def search_audio_vectors(
+        self,
+        query_vector: List[float],
+        sparse_vector: Optional[Dict[int, float]] = None,
+        target_kb_ids: Optional[List[str]] = None,
+        limit: int = 10,
+        score_threshold: float = 0.0
+    ) -> List[Dict[str, Any]]:
+        """搜索音频向量"""
+        try:
+            # 构建过滤条件
+            search_filter = None
+            if target_kb_ids:
+                search_filter = Filter(
+                    should=[FieldCondition(
+                        key="kb_id",
+                        match=MatchValue(value=kb_id)
+                    ) for kb_id in target_kb_ids]
+                )
+            
+            # 如果有稀疏向量，使用混合检索
+            if sparse_vector:
+                # 转换为Qdrant的SparseVector格式
+                sparse_vec = models.SparseVector(
+                    indices=list(sparse_vector.keys()),
+                    values=list(sparse_vector.values())
+                )
+                prefetch_queries = [
+                    Prefetch(
+                        query=query_vector,
+                        using="text_vec",
+                        limit=limit * 2
+                    ),
+                    Prefetch(
+                        query=sparse_vec,
+                        using="sparse",
+                        limit=limit * 2
+                    )
+                ]
+                # 使用query_points进行混合检索（prefetch 与 query 分开传参）
+                search_results = self.client.query_points(
+                    collection_name="audio_vectors",
+                    prefetch=prefetch_queries,
+                    query=FusionQuery(fusion=Fusion.RRF),
+                    query_filter=search_filter,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                    with_payload=True,
+                    with_vectors=False
+                )
+            else:
+                # 仅使用文本语义向量检索（audio_vectors 的 text_vec）
+                search_results = self.client.query_points(
+                    collection_name="audio_vectors",
+                    query=query_vector,
+                    using="text_vec",
+                    query_filter=search_filter,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                    with_payload=True,
+                    with_vectors=False
+                )
+            
+            # 格式化结果
+            results = []
+            if hasattr(search_results, 'points'):
+                for point in search_results.points:
+                    results.append({
+                        "id": str(point.id),
+                        "score": float(point.score) if hasattr(point, 'score') else 0.0,
+                        "payload": point.payload or {}
+                    })
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"音频向量检索失败: {str(e)}", exc_info=True)
+            return []
+    
+    async def search_audio_vectors_dual_rrf(
+        self,
+        text_query_vector: List[float],
+        clap_query_vector: List[float],
+        sparse_vector: Optional[Dict[int, float]] = None,
+        target_kb_ids: Optional[List[str]] = None,
+        limit: int = 20,
+        score_threshold: float = 0.0
+    ) -> List[Dict[str, Any]]:
+        """搜索音频向量（双路或三路 RRF：text_vec + clap_vec [+ sparse]）
+        参考图片的 text_vec + clip_vec 双路检索，音频使用 text_vec（描述语义）+ clap_vec（声学特征）。"""
+        try:
+            search_filter = None
+            if target_kb_ids:
+                search_filter = Filter(
+                    should=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id)) for kb_id in target_kb_ids]
+                )
+            prefetch_queries = [
+                Prefetch(query=text_query_vector, using="text_vec", limit=limit * 2),
+                Prefetch(query=clap_query_vector, using="clap_vec", limit=limit * 2),
+            ]
+            if sparse_vector:
+                sparse_vec = models.SparseVector(
+                    indices=list(sparse_vector.keys()),
+                    values=list(sparse_vector.values())
+                )
+                prefetch_queries.append(Prefetch(query=sparse_vec, using="sparse", limit=limit * 2))
+            search_results = self.client.query_points(
+                collection_name="audio_vectors",
+                prefetch=prefetch_queries,
+                query=FusionQuery(fusion=Fusion.RRF),
+                query_filter=search_filter,
+                limit=limit,
+                score_threshold=score_threshold,
+                with_payload=True,
+                with_vectors=False
+            )
+            results = []
+            if hasattr(search_results, "points"):
+                for point in search_results.points:
+                    results.append({
+                        "id": str(point.id),
+                        "score": float(point.score) if hasattr(point, "score") else 0.0,
+                        "payload": point.payload or {}
+                    })
+            return results
+        except Exception as e:
+            logger.error("音频双路 RRF 检索失败: %s", e, exc_info=True)
+            return []
+    
+    def scroll_audio_points_by_file_id(
+        self,
+        kb_id: Optional[str],
+        file_id: str,
+        limit: int = 1,
+    ) -> List[Any]:
+        """按 file_id（及可选 kb_id）滚动拉取 audio_vectors 中的点，用于预览详情（transcript、description）。"""
+        try:
+            must = [FieldCondition(key="file_id", match=MatchValue(value=file_id))]
+            if kb_id:
+                must.append(FieldCondition(key="kb_id", match=MatchValue(value=kb_id)))
+            scroll_results = self.client.scroll(
+                collection_name="audio_vectors",
+                scroll_filter=Filter(must=must),
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+            points = scroll_results[0] if scroll_results else []
+            return points
+        except Exception as e:
+            logger.debug(f"scroll_audio_points_by_file_id 失败: kb_id={kb_id}, file_id={file_id}, e={e}")
+            return []
+    
+    async def search_video_vectors(
+        self,
+        query_vector: List[float],
+        clip_vector: Optional[List[float]] = None,
+        target_kb_ids: Optional[List[str]] = None,
+        limit: int = 10,
+        score_threshold: float = 0.0
+    ) -> List[Dict[str, Any]]:
+        """搜索视频向量"""
+        try:
+            # 构建过滤条件
+            search_filter = None
+            if target_kb_ids:
+                search_filter = Filter(
+                    should=[FieldCondition(
+                        key="kb_id",
+                        match=MatchValue(value=kb_id)
+                    ) for kb_id in target_kb_ids]
+                )
+            
+            # 如果有关键帧CLIP向量，使用双路RRF检索（prefetch 与 query 分开传参）
+            if clip_vector:
+                prefetch_queries = [
+                    Prefetch(
+                        query=query_vector,
+                        using="text_vec",
+                        limit=limit * 2
+                    ),
+                    Prefetch(
+                        query=clip_vector,
+                        using="clip_vec",
+                        limit=limit * 2
+                    )
+                ]
+                search_results = self.client.query_points(
+                    collection_name="video_vectors",
+                    prefetch=prefetch_queries,
+                    query=FusionQuery(fusion=Fusion.RRF),
+                    query_filter=search_filter,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                    with_payload=True,
+                    with_vectors=False
+                )
+            else:
+                # 仅使用文本向量检索
+                search_results = self.client.query_points(
+                    collection_name="video_vectors",
+                    query=query_vector,
+                    using="text_vec",
+                    query_filter=search_filter,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                    with_payload=True,
+                    with_vectors=False
+                )
+            
+            # 格式化结果
+            results = []
+            if hasattr(search_results, 'points'):
+                for point in search_results.points:
+                    results.append({
+                        "id": str(point.id),
+                        "score": float(point.score) if hasattr(point, 'score') else 0.0,
+                        "payload": point.payload or {}
+                    })
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"视频向量检索失败: {str(e)}", exc_info=True)
+            return []
+
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""
         try:

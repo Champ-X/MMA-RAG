@@ -34,7 +34,7 @@ class VectorSample:
     """向量样本数据类（懒加载：采样时仅 id/vector/source_type，主题抽取前按 id 回查文本）"""
     id: str
     vector: List[float]
-    source_type: str  # "doc" 或 "image"
+    source_type: str  # "doc" | "image" | "audio"
     content: Optional[str] = None  # 主题抽取时按需回填，采样阶段不加载
 
 class PortraitGenerator:
@@ -82,7 +82,7 @@ class PortraitGenerator:
                     logger.warning(f"删除空知识库画像失败 kb_id={kb_id}: {del_err}")
                 return {
                     "status": "insufficient_data",
-                    "message": "知识库数据量不足，无法生成画像",
+                    "message": "知识库数据量不足，无法生成画像（需至少约 10 条文本/图片/音频）",
                     "sample_count": len(samples)
                 }
             
@@ -135,9 +135,10 @@ class PortraitGenerator:
         try:
             from datetime import timedelta
             
-            # 1. 获取当前知识库的数据量（按 kb 统计）
+            # 1. 获取当前知识库的数据量（按 kb 统计：文本、图片、音频）
             n_text, n_img = await self.vector_store.count_kb_chunks(kb_id)
-            current_total = n_text + n_img
+            n_audio = await self.vector_store.count_kb_audio(kb_id)
+            current_total = n_text + n_img + n_audio
             
             # 2. 获取上次画像更新的时间
             existing_portraits = await self.vector_store.search_kb_portraits(kb_id, limit=1)
@@ -229,12 +230,13 @@ class PortraitGenerator:
     async def _sample_vectors(self, kb_id: str) -> List[VectorSample]:
         """
         采样向量数据（懒加载：仅 id / vector / source_type）。
-        - N_text + N_img < 5000：全量提取。
-        - 否则按比例 S 分配 S_text、S_img，分别在两集合蓄水池采样。
+        - N_text + N_img + N_audio < 5000：全量提取。
+        - 否则按比例 S 分配 S_text、S_img、S_audio，分别在三个集合蓄水池采样。
         """
         try:
             n_text, n_img = await self.vector_store.count_kb_chunks(kb_id)
-            total = n_text + n_img
+            n_audio = await self.vector_store.count_kb_audio(kb_id)
+            total = n_text + n_img + n_audio
             if total < 10:
                 logger.info(f"知识库数据量不足: {kb_id}, total={total}")
                 return []
@@ -242,14 +244,15 @@ class PortraitGenerator:
             use_full = total < SAMPLE_FULL_THRESHOLD
             if use_full:
                 s = total
-                s_text, s_img = n_text, n_img
+                s_text, s_img, s_audio = n_text, n_img, n_audio
             else:
                 s = max(SAMPLE_MIN, min(SAMPLE_MAX, int(total * 0.2)))
                 if total > 0:
                     s_text = max(0, int(s * n_text / total))
-                    s_img = s - s_text
+                    s_img = max(0, int(s * n_img / total))
+                    s_audio = s - s_text - s_img
                 else:
-                    s_text = s_img = 0
+                    s_text = s_img = s_audio = 0
 
             samples: List[VectorSample] = []
             batch = 500
@@ -274,24 +277,41 @@ class PortraitGenerator:
                         break
                 return out
 
+            async def drain_audio(lim: int) -> List[Tuple[str, List[float]]]:
+                out: List[Tuple[str, List[float]]] = []
+                off: Optional[Any] = None
+                while True:
+                    chunk, off = await self._run_scroll_audio(kb_id, lim, off, batch)
+                    out.extend(chunk)
+                    if off is None:
+                        break
+                return out
+
             if use_full:
                 all_text = await drain_text(n_text + 1)
                 all_img = await drain_img(n_img + 1)
+                all_audio = await drain_audio(n_audio + 1)
                 for pid, vec in all_text:
                     samples.append(VectorSample(id=pid, vector=vec, source_type="doc"))
                 for pid, vec in all_img:
                     samples.append(VectorSample(id=pid, vector=vec, source_type="image"))
+                for pid, vec in all_audio:
+                    samples.append(VectorSample(id=pid, vector=vec, source_type="audio"))
             else:
                 stream_text = await drain_text(s_text + 1)
                 stream_img = await drain_img(s_img + 1)
+                stream_audio = await drain_audio(s_audio + 1)
                 chosen_text = self._reservoir_sample(stream_text, s_text)
                 chosen_img = self._reservoir_sample(stream_img, s_img)
+                chosen_audio = self._reservoir_sample(stream_audio, s_audio)
                 for pid, vec in chosen_text:
                     samples.append(VectorSample(id=pid, vector=vec, source_type="doc"))
                 for pid, vec in chosen_img:
                     samples.append(VectorSample(id=pid, vector=vec, source_type="image"))
+                for pid, vec in chosen_audio:
+                    samples.append(VectorSample(id=pid, vector=vec, source_type="audio"))
 
-            logger.info(f"向量采样完成: {kb_id}, 样本数: {len(samples)} (text={n_text}, img={n_img})")
+            logger.info(f"向量采样完成: {kb_id}, 样本数: {len(samples)} (text={n_text}, img={n_img}, audio={n_audio})")
             return samples
 
         except Exception as e:
@@ -319,7 +339,18 @@ class PortraitGenerator:
         return await self.vector_store.scroll_image_vectors_for_sampling(
             kb_id, limit=limit, offset=offset, batch_size=batch_size
         )
-    
+
+    async def _run_scroll_audio(
+        self,
+        kb_id: str,
+        limit: int,
+        offset: Optional[Any],
+        batch_size: int,
+    ) -> Tuple[List[Tuple[str, List[float]]], Optional[Any]]:
+        return await self.vector_store.scroll_audio_vectors_for_sampling(
+            kb_id, limit=limit, offset=offset, batch_size=batch_size
+        )
+
     async def _perform_clustering(
         self, 
         samples: List[VectorSample]
@@ -412,16 +443,27 @@ class PortraitGenerator:
 
                 ids_doc = [s.id for s, _ in nearest if s.source_type == "doc"]
                 ids_img = [s.id for s, _ in nearest if s.source_type == "image"]
+                ids_audio = [s.id for s, _ in nearest if s.source_type == "audio"]
                 texts_doc, texts_img = await self.vector_store.fetch_texts_by_ids(
                     ids_doc, ids_img
                 )
+                texts_audio: Dict[str, str] = {}
+                if ids_audio:
+                    texts_audio = await self.vector_store.fetch_audio_texts_by_ids(ids_audio)
 
                 content_pieces: List[str] = []
                 for s, _ in nearest:
-                    t = texts_doc.get(s.id) if s.source_type == "doc" else texts_img.get(s.id)
+                    if s.source_type == "doc":
+                        t = texts_doc.get(s.id)
+                        prefix = "[文档片段]"
+                    elif s.source_type == "image":
+                        t = texts_img.get(s.id)
+                        prefix = "[图片描述]"
+                    else:
+                        t = texts_audio.get(s.id)
+                        prefix = "[音频转写/描述]"
                     if not (t and t.strip()):
                         continue
-                    prefix = "[文档片段]" if s.source_type == "doc" else "[图片描述]"
                     content_pieces.append(f"{prefix} {t.strip()}")
                 if not content_pieces:
                     content_pieces = ["该聚类包含向量数据，但缺少文本内容用于主题生成。"]
@@ -495,8 +537,9 @@ class PortraitGenerator:
         """存储画像到向量数据库（Replace 策略：先删旧再插入）"""
         try:
             n_text, n_img = await self.vector_store.count_kb_chunks(kb_id)
-            total_count = n_text + n_img
-            text_count, image_count = n_text, n_img
+            n_audio = await self.vector_store.count_kb_audio(kb_id)
+            total_count = n_text + n_img + n_audio
+            text_count, image_count, audio_count = n_text, n_img, n_audio
             
             # 在portraits的metadata中添加数据量信息
             for portrait in portraits:
@@ -506,6 +549,7 @@ class PortraitGenerator:
                 portrait["metadata"]["last_total_count"] = total_count
                 portrait["metadata"]["last_text_count"] = text_count
                 portrait["metadata"]["last_image_count"] = image_count
+                portrait["metadata"]["last_audio_count"] = audio_count
                 portrait["metadata"]["updated_at"] = datetime.now(timezone.utc).isoformat()
             
             # 存储到kb_portraits集合
@@ -513,7 +557,7 @@ class PortraitGenerator:
             
             logger.info(
                 f"知识库画像存储完成: {kb_id}, 画像数: {len(portraits)}, "
-                f"数据量: {total_count} (文本: {text_count}, 图片: {image_count})"
+                f"数据量: {total_count} (文本: {text_count}, 图片: {image_count}, 音频: {audio_count})"
             )
             
             return result

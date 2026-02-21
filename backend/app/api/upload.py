@@ -28,7 +28,16 @@ async def upload_file(
     """上传单个文件"""
     try:
         # 验证文件类型（与 config.allowed_extensions_str 保持一致）
-        allowed_types = ["pdf", "docx", "doc", "pptx", "txt", "md", "jpg", "jpeg", "png", "gif", "webp", "tiff", "tif"]
+        allowed_types = [
+            # 文档类型
+            "pdf", "docx", "doc", "pptx", "txt", "md",
+            # 图片类型
+            "jpg", "jpeg", "png", "gif", "webp", "tiff", "tif",
+            # 音频类型
+            "mp3", "wav", "m4a", "flac", "aac", "ogg", "wma", "opus",
+            # 视频类型
+            "mp4", "avi", "mov", "mkv", "webm", "flv", "wmv", "m4v"
+        ]
         if file_type not in allowed_types:
             raise HTTPException(status_code=400, detail=f"不支持的文件类型: {file_type}")
         
@@ -97,7 +106,16 @@ async def upload_file_stream(
 ):
     """上传单个文件，响应为流式：先返回 processing_id，再持续推送 stage/progress/message，最后返回 result。"""
     try:
-        allowed_types = ["pdf", "docx", "doc", "pptx", "txt", "md", "jpg", "jpeg", "png", "gif", "webp", "tiff", "tif"]
+        allowed_types = [
+            # 文档类型
+            "pdf", "docx", "doc", "pptx", "txt", "md",
+            # 图片类型
+            "jpg", "jpeg", "png", "gif", "webp", "tiff", "tif",
+            # 音频类型
+            "mp3", "wav", "m4a", "flac", "aac", "ogg", "wma", "opus",
+            # 视频类型
+            "mp4", "avi", "mov", "mkv", "webm", "flv", "wmv", "m4v"
+        ]
         if file_type not in allowed_types:
             raise HTTPException(status_code=400, detail=f"不支持的文件类型: {file_type}")
         file_content = await file.read()

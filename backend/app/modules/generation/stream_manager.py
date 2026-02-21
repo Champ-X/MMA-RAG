@@ -24,7 +24,7 @@ def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
     for k, v in sorted(reference_map.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0):
         ref_id = int(k) if str(k).isdigit() else len(refs) + 1
         file_name = v.file_path.split("/")[-1] if "/" in v.file_path else (v.file_path or "")
-        ref_type = "doc" if v.content_type == "doc" else "image"
+        ref_type = v.content_type if v.content_type in ("doc", "image", "audio", "video") else ("doc" if v.content_type == "doc" else "image")
         score = float(v.metadata.get("score", 0.0)) if v.metadata else 0.0
         item = {
             "id": ref_id,
@@ -33,10 +33,11 @@ def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
             "file_path": v.file_path,
             "content": (v.content or "")[:500],
             "img_url": v.presigned_url if ref_type == "image" else None,
+            "audio_url": getattr(v, "presigned_url", None) if ref_type == "audio" else None,
             "scores": {"dense": 0, "sparse": 0, "visual": 0, "rerank": score},
         }
+        meta = v.metadata or {}
         if ref_type == "doc":
-            meta = v.metadata or {}
             chunk_id = meta.get("chunk_id")
             # doc 引用始终带 debug_info；chunk_id 必须为检索返回的向量库 point id，缺则无法查上下文
             item["debug_info"] = {
@@ -45,6 +46,9 @@ def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
             }
             if chunk_id is None:
                 logger.warning("引用缺少 chunk_id（应为检索 point id），检查器将无法拉取上下文")
+        elif ref_type in ("audio", "video"):
+            # 音频/视频引用带 kb_id，便于前端按需请求播放地址
+            item["debug_info"] = {"kb_id": meta.get("kb_id")}
         refs.append(item)
     return refs
 

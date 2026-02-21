@@ -1,4 +1,4 @@
-import { X, Eye } from 'lucide-react'
+import { X, Eye, Music } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { CitationReference } from '@/types/sse'
@@ -105,6 +105,30 @@ export function InspectorDrawer({
                     </div>
                   )}
 
+                  {item.type === 'audio' && (item.audio_url || item.content) && (
+                    <div className="mb-4 rounded-2xl border border-amber-200/70 dark:border-amber-800/70 bg-amber-50/50 dark:bg-amber-950/30 p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Music size={18} className="text-amber-600 dark:text-amber-400" />
+                        <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          音频
+                        </div>
+                      </div>
+                      {item.audio_url && (
+                        <audio
+                          src={item.audio_url}
+                          controls
+                          className="w-full h-10 rounded-lg"
+                          preload="metadata"
+                        />
+                      )}
+                      {item.content && (
+                        <div className="mt-3 text-xs text-slate-600 dark:text-slate-300 line-clamp-4">
+                          {item.content}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="rounded-2xl border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800/70 dark:bg-slate-950/40">
                     <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                       元数据
@@ -119,7 +143,13 @@ export function InspectorDrawer({
                       />
                       <MetaRow
                         k="说明"
-                        v={item.debug_info?.chunk_id ? '向量库 point id，用于上下文窗口查询' : '缺少 point id 时无法拉取上一段/下一段'}
+                        v={
+                          item.type === 'audio'
+                            ? '音频引用，无上下文窗口'
+                            : item.debug_info?.chunk_id
+                              ? '向量库 point id，用于上下文窗口查询'
+                              : '缺少 point id 时无法拉取上一段/下一段'
+                        }
                       />
                       <MetaRow k="Vector ID" v={`vec_${item.id}`} />
                       <MetaRow
@@ -138,7 +168,13 @@ export function InspectorDrawer({
                       <MetaRow k="KB ID" v={item.debug_info?.kb_id ?? '-'} />
                       <MetaRow
                         k="Vector Dim"
-                        v={item.type === 'image' ? 'CLIP: 768, Text: 4096' : 'Text: 4096'}
+                        v={
+                          item.type === 'image'
+                            ? 'CLIP: 768, Text: 4096'
+                            : item.type === 'audio'
+                              ? 'CLAP: 512, Text: 4096'
+                              : 'Text: 4096'
+                        }
                       />
                     </div>
                   </div>
@@ -156,6 +192,19 @@ export function InspectorDrawer({
                           <div className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed">
                             {item.content}
                           </div>
+                        </div>
+                      )}
+                    </>
+                  ) : item.type === 'audio' ? (
+                    <>
+                      {item.content && (
+                        <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800/70 dark:bg-slate-950/40">
+                          <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
+                            转写/描述
+                          </div>
+                          <pre className="whitespace-pre-wrap rounded-xl bg-slate-900/5 p-3 text-xs text-slate-800 dark:bg-white/5 dark:text-slate-100">
+                            {item.content}
+                          </pre>
                         </div>
                       )}
                     </>

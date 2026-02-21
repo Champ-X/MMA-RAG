@@ -220,6 +220,23 @@ export function CitationPopover({
               <ImageDisplayWithErrorHandler imgUrl={item.img_url} fileName={item.file_name} />
             )}
 
+            {item.type === 'audio' && (
+              <>
+                {item.audio_url && (
+                  <div className="mb-3 rounded-xl border border-amber-200/70 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/30 p-3">
+                    <audio src={item.audio_url} controls className="w-full h-9 rounded-lg" preload="metadata" />
+                  </div>
+                )}
+                {(item.content || !item.audio_url) && (
+                  <div className="rounded-xl bg-amber-50/50 dark:bg-amber-900/20 p-3 text-xs text-slate-700 dark:text-slate-200 border border-amber-100 dark:border-amber-800/40">
+                    <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                      {item.content || '无内容'}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
             {item.type === 'image' ? (
               item.content && (
                 <div className="rounded-xl bg-purple-50 dark:bg-purple-900/20 p-3 text-xs text-slate-700 dark:text-slate-200 border border-purple-100 dark:border-purple-800/40">
@@ -232,11 +249,11 @@ export function CitationPopover({
                   </div>
                 </div>
               )
-            ) : (
+            ) : item.type !== 'audio' ? (
               <div className="rounded-xl bg-slate-900/5 p-3 text-xs text-slate-700 dark:bg-white/5 dark:text-slate-200 whitespace-pre-wrap">
                 {item.content || '无内容'}
               </div>
-            )}
+            ) : null}
           </div>
 
           <div className="flex-shrink-0 flex items-center justify-between px-4 pb-3 border-t border-slate-200/70 dark:border-slate-800/70">

@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ScatterChart, FileText, Image, RefreshCw, LayoutList } from 'lucide-react'
+import { ScatterChart, FileText, Image, Music, RefreshCw, LayoutList } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { knowledgeApi } from '@/services/api_client'
 
@@ -60,19 +60,25 @@ interface PortraitGraphProps {
   textCount?: number
   /** 图片条数，用于比例条 */
   imageCount?: number
+  /** 音频条数（参与画像与数据量判断） */
+  audioCount?: number
   /** 选中簇时过滤下方列表 */
   onClusterSelect?: (clusterId: string | null) => void
   className?: string
 }
+
+const PORTRAIT_DATA_THRESHOLD = 10
 
 export function PortraitGraph({
   knowledgeBaseId,
   documentCount = 0,
   textCount = 0,
   imageCount = 0,
+  audioCount = 0,
   onClusterSelect,
   className,
 }: PortraitGraphProps) {
+  const totalDataCount = textCount + imageCount + audioCount
   const [clusters, setClusters] = useState<PortraitCluster[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
@@ -349,9 +355,10 @@ export function PortraitGraph({
     setLayoutReady(true)
   }, [clusters, scaleRadius])
 
-  const total = textCount + imageCount
-  const textPct = total ? (textCount / total) * 100 : 50
-  const imagePct = total ? (imageCount / total) * 100 : 50
+  const total = textCount + imageCount + audioCount
+  const textPct = total ? (textCount / total) * 100 : 33
+  const imagePct = total ? (imageCount / total) * 100 : 33
+  const audioPct = total ? (audioCount / total) * 100 : 34
 
   /** 热度 0~1：按 cluster_size 归一化，用于逻辑色与视觉层级 */
   const heatByNode = useCallback(
@@ -438,13 +445,13 @@ export function PortraitGraph({
                   </span>
                   <p className="text-base font-medium text-slate-700 dark:text-slate-200 mt-2">暂无主题画像</p>
                   <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm text-center px-4">
-                    知识库需有足够数据（约 10 条以上文本/图片）才能生成主题聚类画像。
+                    知识库需有足够数据（约 10 条以上文本/图片/音频）才能生成主题聚类画像。
                   </p>
                   <Button
                     variant="default"
                     size="sm"
                     onClick={handleRegenerate}
-                    disabled={generating || (textCount + imageCount) < 5}
+                    disabled={generating || totalDataCount < PORTRAIT_DATA_THRESHOLD}
                     className="gap-2"
                   >
                     {generating ? (
@@ -459,8 +466,8 @@ export function PortraitGraph({
                       </>
                     )}
                   </Button>
-                  {(textCount + imageCount) < 5 && (
-                    <p className="text-xs text-amber-600">当前数据量较少，建议先上传更多文件</p>
+                  {totalDataCount < PORTRAIT_DATA_THRESHOLD && (
+                    <p className="text-xs text-amber-600">当前数据量较少，建议先上传更多文件（需至少约 10 条）</p>
                   )}
                   {genError && (
                     <p className="text-xs text-destructive">{genError}</p>
@@ -835,16 +842,31 @@ export function PortraitGraph({
               <span className="text-sm font-medium truncate">Text</span>
             </div>
             <div
-              className="flex items-center justify-center gap-2 rounded-r-xl bg-gradient-to-r from-fuchsia-400 via-fuchsia-500 to-fuchsia-600 text-white shadow-sm transition-all duration-300 min-w-0"
+              className={cn(
+                "flex items-center justify-center gap-2 bg-gradient-to-r from-fuchsia-400 via-fuchsia-500 to-fuchsia-600 text-white shadow-sm transition-all duration-300 min-w-0",
+                audioCount === 0 && "rounded-r-xl"
+              )}
               style={{ width: `${imagePct}%` }}
             >
               <Image className="h-4 w-4 flex-shrink-0 opacity-95" />
               <span className="text-sm font-medium truncate">Image</span>
             </div>
+            {audioCount > 0 && (
+              <div
+                className="flex items-center justify-center gap-2 rounded-r-xl bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 text-white shadow-sm transition-all duration-300 min-w-0"
+                style={{ width: `${audioPct}%` }}
+              >
+                <Music className="h-4 w-4 flex-shrink-0 opacity-95" />
+                <span className="text-sm font-medium truncate">Audio</span>
+              </div>
+            )}
           </div>
-          <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
+          <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
             <span className="font-medium">Text {textCount} <span className="text-slate-400 dark:text-slate-500">({textPct.toFixed(0)}%)</span></span>
             <span className="font-medium">Image {imageCount} <span className="text-slate-400 dark:text-slate-500">({imagePct.toFixed(0)}%)</span></span>
+            {audioCount > 0 && (
+              <span className="font-medium">Audio {audioCount} <span className="text-slate-400 dark:text-slate-500">({audioPct.toFixed(0)}%)</span></span>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -890,6 +912,15 @@ export function PortraitGraph({
               <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-fuchsia-700/80 dark:text-fuchsia-300/90">
                 <Image className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
                 <span>图片</span>
+              </div>
+            </div>
+            <div className="rounded-xl bg-gradient-to-br from-amber-50/90 to-amber-100/50 dark:from-amber-950/40 dark:to-amber-900/20 border border-amber-100/80 dark:border-amber-800/40 px-4 py-3 text-center">
+              <div className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
+                {audioCount}
+              </div>
+              <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-amber-700/80 dark:text-amber-300/90">
+                <Music className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
+                <span>音频</span>
               </div>
             </div>
           </div>

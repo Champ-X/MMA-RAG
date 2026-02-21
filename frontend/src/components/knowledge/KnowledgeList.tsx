@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import { knowledgeApi, importApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
-import { StatusBadge, FileThumb, FileHero, CreateKbModal, EditKbModal } from './KnowledgeListHelpers'
+import { StatusBadge, FileThumb, FileHero, CreateKbModal, EditKbModal, isAudioType } from './KnowledgeListHelpers'
 
 // 文件预览模态框（支持图片描述、文档分块、MD 预览）
 function FilePreviewModal({
@@ -26,19 +26,26 @@ function FilePreviewModal({
     caption?: string
     chunks?: Array<{ index: number; text: string }>
     text_preview?: string
+    transcript?: string
+    description?: string
   } | null>(null)
   const [rawContent, setRawContent] = React.useState<string | null>(null)
   const [loadingDetails, setLoadingDetails] = React.useState(false)
   const [pdfObjectUrl, setPdfObjectUrl] = React.useState<string | null>(null)
   const [pdfLoading, setPdfLoading] = React.useState(false)
+  const [audioObjectUrl, setAudioObjectUrl] = React.useState<string | null>(null)
+  const [audioLoading, setAudioLoading] = React.useState(false)
 
-  const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'tif'].includes(String(file?.type || '').toLowerCase())
+  const fileTypeLower = String(file?.type || '').toLowerCase()
+  const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'tif'].includes(fileTypeLower)
   /** PDF、PPTX、DOCX 均可通过 stream 接口以 PDF 形式在页内预览（后端对 PPTX/DOCX 会先转为 PDF） */
-  const isPdfOrOfficeViewable = ['pdf', 'pptx', 'docx'].includes(String(file?.type || '').toLowerCase())
-  const isMd = String(file?.type || '').toLowerCase() === 'md'
-  const isTxt = String(file?.type || '').toLowerCase() === 'txt'
+  const isPdfOrOfficeViewable = ['pdf', 'pptx', 'docx'].includes(fileTypeLower)
+  /** 音频格式：通过 stream 接口获取 Blob 后使用 <audio> 播放 */
+  const isAudio = fileTypeLower.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg', 'wma', 'opus'].includes(fileTypeLower)
+  const isMd = fileTypeLower === 'md'
+  const isTxt = fileTypeLower === 'txt'
   const isTextFile = isMd || isTxt
-  const isDoc = ['pdf', 'docx', 'doc', 'pptx', 'txt', 'md'].includes(String(file?.type || '').toLowerCase())
+  const isDoc = ['pdf', 'docx', 'doc', 'pptx', 'txt', 'md'].includes(fileTypeLower)
   const hasChunks = (details?.chunks?.length ?? 0) > 0
 
   React.useEffect(() => {
@@ -83,6 +90,35 @@ function FilePreviewModal({
       setPdfObjectUrl(null)
     }
   }, [isPdfOrOfficeViewable, kbId, file?.id])
+
+  // 音频预览：通过 stream 获取 Blob 并生成 object URL，供 <audio> 使用
+  const audioObjectUrlRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (!isAudio || !kbId || !file?.id) {
+      audioObjectUrlRef.current = null
+      setAudioObjectUrl(null)
+      return
+    }
+    setAudioLoading(true)
+    setAudioObjectUrl(null)
+    audioObjectUrlRef.current = null
+    knowledgeApi.getFileStream(kbId, file.id)
+      .then((blob) => {
+        const url = URL.createObjectURL(blob)
+        audioObjectUrlRef.current = url
+        setAudioObjectUrl(url)
+      })
+      .catch(() => setAudioObjectUrl(null))
+      .finally(() => setAudioLoading(false))
+    return () => {
+      const url = audioObjectUrlRef.current
+      if (url) {
+        URL.revokeObjectURL(url)
+        audioObjectUrlRef.current = null
+      }
+      setAudioObjectUrl(null)
+    }
+  }, [isAudio, kbId, file?.id])
 
   // Markdown 预览仅使用原始文件内容（MinIO 中的原文），避免显示插入了图注后的分块文本导致重复/错乱
   const textPreview = isMd ? (rawContent ?? '') : (file?.textPreview ?? details?.text_preview ?? rawContent ?? '')
@@ -189,6 +225,45 @@ function FilePreviewModal({
             <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
               <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-transparent" />
               <div className="mt-3 text-sm">文档加载中…</div>
+            </div>
+          ) : isAudio && audioObjectUrl ? (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-6">
+                <audio
+                  controls
+                  src={audioObjectUrl}
+                  className="w-full max-w-md mx-auto"
+                  preload="metadata"
+                >
+                  您的浏览器不支持音频播放。
+                </audio>
+                <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 text-center">{file.name}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
+                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">音频描述</div>
+                {loadingDetails ? (
+                  <p className="text-sm text-slate-400">加载描述中…</p>
+                ) : (details?.caption ?? details?.transcript ?? details?.description) ? (
+                  <div className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap space-y-2">
+                    {details?.description && <p>{details.description}</p>}
+                    {details?.transcript && (
+                      <p className={details?.description ? 'border-t border-slate-200 dark:border-slate-700 pt-2 mt-2' : ''}>
+                        <span className="text-slate-500 dark:text-slate-400 text-xs font-medium">转写内容：</span>
+                        <br />
+                        {details.transcript}
+                      </p>
+                    )}
+                    {!details?.description && !details?.transcript && details?.caption && <p>{details.caption}</p>}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400 italic">暂无描述（若为刚上传的音频，描述生成后刷新预览即可）</p>
+                )}
+              </div>
+            </div>
+          ) : isAudio && audioLoading ? (
+            <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
+              <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent" />
+              <div className="mt-3 text-sm">音频加载中…</div>
             </div>
           ) : textPreview ? (
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
@@ -1029,6 +1104,7 @@ const KnowledgeList: React.FC = () => {
     documents: number
     chunks: number
     images: number
+    audio?: number
     text_vector_dim?: number
     image_vector_dim?: number
   } | null>(null)
@@ -1233,6 +1309,8 @@ const KnowledgeList: React.FC = () => {
     const ext = name.includes('.') ? name.split('.').pop() || '' : ''
     if (ext) return ext
     if (file.type.startsWith('image/')) return 'jpg'
+    if (file.type.startsWith('audio/')) return 'mp3'
+    if (file.type.startsWith('video/')) return 'mp4'
     return 'txt'
   }
 
@@ -1830,36 +1908,53 @@ const KnowledgeList: React.FC = () => {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {filteredFiles.map((file) => (
-                        <button
-                          key={file.id}
-                          onClick={() => setPreviewFile(file)}
-                          className="text-left bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-fuchsia-300 dark:hover:border-fuchsia-500 hover:shadow-sm transition-all overflow-hidden group"
-                          type="button"
-                          title="点击预览"
-                        >
-                          <div className="relative">
-                            <div className="h-36 bg-slate-50 dark:bg-slate-900 overflow-hidden flex items-center justify-center">
-                              <FileHero file={file} />
+                      {filteredFiles.map((file) => {
+                        const isAudio = isAudioType(file?.type)
+                        return (
+                          <button
+                            key={file.id}
+                            onClick={() => setPreviewFile(file)}
+                            className={cn(
+                              'text-left rounded-xl border transition-all overflow-hidden group',
+                              isAudio
+                                ? 'bg-gradient-to-b from-violet-50/80 to-white dark:from-violet-950/30 dark:to-slate-900 border-violet-200/80 dark:border-violet-800/60 hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-md hover:shadow-violet-500/10'
+                                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-fuchsia-300 dark:hover:border-fuchsia-500 hover:shadow-sm'
+                            )}
+                            type="button"
+                            title={isAudio ? '点击播放或查看详情' : '点击预览'}
+                          >
+                            <div className="relative">
+                              <div className={cn('h-36 overflow-hidden flex items-center justify-center', isAudio ? 'bg-violet-50/50 dark:bg-violet-950/30' : 'bg-slate-50 dark:bg-slate-900')}>
+                                <FileHero file={file} />
+                              </div>
+                              <div className="absolute top-3 left-3">
+                                <StatusBadge status={file.status} />
+                              </div>
+                              {isAudio && (
+                                <div className="absolute bottom-3 right-3 flex items-center justify-center w-9 h-9 rounded-full bg-violet-500/90 dark:bg-violet-600/90 text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Play size={18} className="ml-0.5" fill="currentColor" />
+                                </div>
+                              )}
                             </div>
-                            <div className="absolute top-3 left-3">
-                              <StatusBadge status={file.status} />
+                            <div className="p-4">
+                              <div className="font-semibold text-slate-800 dark:text-slate-100 truncate">{file.name}</div>
+                              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                                <span>{file.size}</span>
+                                <span>{file.date}</span>
+                              </div>
+                              <div className="mt-3 flex justify-end">
+                                <span className={cn(
+                                  'text-xs inline-flex items-center gap-1 transition-colors',
+                                  isAudio ? 'text-violet-500 dark:text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300' : 'text-slate-400 group-hover:text-fuchsia-600'
+                                )}>
+                                  {isAudio && <Play size={12} className="opacity-80" />}
+                                  点击查看详情
+                                </span>
+                              </div>
                             </div>
-                          </div>
-                          <div className="p-4">
-                            <div className="font-semibold text-slate-800 dark:text-slate-100 truncate">{file.name}</div>
-                            <div className="mt-2 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between">
-                              <span>{file.size}</span>
-                              <span>{file.date}</span>
-                            </div>
-                            <div className="mt-3 flex justify-end">
-                              <span className="text-xs text-slate-400 group-hover:text-fuchsia-600 transition-colors">
-                                点击查看详情
-                              </span>
-                            </div>
-                          </div>
-                        </button>
-                      ))}
+                          </button>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -1872,6 +1967,7 @@ const KnowledgeList: React.FC = () => {
               documentCount={kbStats?.documents ?? activeKb.stats?.documents ?? 0}
               textCount={kbStats?.chunks ?? activeKb.stats?.chunks ?? 0}
               imageCount={kbStats?.images ?? activeKb.stats?.images ?? 0}
+              audioCount={kbStats?.audio ?? (activeKb.stats as { audio?: number })?.audio ?? 0}
               onClusterSelect={() => {}}
             />
           </div>

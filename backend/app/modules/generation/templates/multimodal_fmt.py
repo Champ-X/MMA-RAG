@@ -17,7 +17,9 @@ class MultiModalFormatter:
         # 格式化模板
         self.templates = {
             "document_chunk": self._get_document_chunk_template(),
-            "image_content": self._get_image_content_template()
+            "image_content": self._get_image_content_template(),
+            "audio_content": self._get_audio_content_template(),
+            "video_content": self._get_video_content_template()
         }
     
     def _get_document_chunk_template(self) -> str:
@@ -31,6 +33,22 @@ class MultiModalFormatter:
         return """【材料 {index}】 (类型: 图片 | 来源: {file_path})
 [视觉描述]：
 {caption}"""
+    
+    def _get_audio_content_template(self) -> str:
+        """音频内容模板"""
+        return """【材料 {index}】 (类型: 音频 | 来源: {file_path})
+时长：{duration}
+转写文本：
+{transcript}
+描述：{description}"""
+    
+    def _get_video_content_template(self) -> str:
+        """视频内容模板"""
+        return """【材料 {index}】 (类型: 视频 | 来源: {file_path})
+时长：{duration}
+描述：{description}
+关键帧：
+{key_frames}"""
     
     def format_document_chunk(
         self,
@@ -91,6 +109,84 @@ class MultiModalFormatter:
         except Exception as e:
             logger.error(f"图片内容格式化失败: {str(e)}")
             return f"【材料 {index}】 (类型: 图片 | 来源: {file_path})\n[视觉描述]：格式化失败"
+    
+    def format_audio_content(
+        self,
+        index: str,
+        transcript: str,
+        description: str,
+        file_path: str,
+        metadata: Dict[str, Any]
+    ) -> str:
+        """格式化音频内容"""
+        try:
+            cleaned_transcript = self._clean_content(transcript)
+            cleaned_description = self._clean_content(description)
+            
+            # 截断过长内容
+            max_transcript_length = 500
+            if len(cleaned_transcript) > max_transcript_length:
+                cleaned_transcript = cleaned_transcript[:max_transcript_length] + "..."
+            
+            duration = metadata.get("duration", 0.0)
+            duration_str = f"{int(duration // 60)}分{int(duration % 60)}秒" if duration > 0 else "未知"
+            
+            formatted = self.templates["audio_content"].format(
+                index=index,
+                file_path=file_path,
+                duration=duration_str,
+                transcript=cleaned_transcript,
+                description=cleaned_description
+            )
+            
+            return formatted
+            
+        except Exception as e:
+            logger.error(f"音频内容格式化失败: {str(e)}")
+            return f"【材料 {index}】 (类型: 音频 | 来源: {file_path})\n格式化失败"
+    
+    def format_video_content(
+        self,
+        index: str,
+        description: str,
+        file_path: str,
+        metadata: Dict[str, Any]
+    ) -> str:
+        """格式化视频内容"""
+        try:
+            cleaned_description = self._clean_content(description)
+            
+            duration = metadata.get("duration", 0.0)
+            duration_str = f"{int(duration // 60)}分{int(duration % 60)}秒" if duration > 0 else "未知"
+            
+            # 格式化关键帧
+            key_frames = metadata.get("key_frames", [])
+            key_frames_text = ""
+            if key_frames:
+                key_frames_list = []
+                for i, frame in enumerate(key_frames[:5], 1):  # 最多显示5个关键帧
+                    if isinstance(frame, dict):
+                        timestamp = frame.get("timestamp", 0.0)
+                        frame_desc = frame.get("description", "")
+                        timestamp_str = f"{int(timestamp // 60)}:{int(timestamp % 60):02d}"
+                        key_frames_list.append(f"- {timestamp_str} - {frame_desc}")
+                key_frames_text = "\n".join(key_frames_list) if key_frames_list else "无关键帧信息"
+            else:
+                key_frames_text = "无关键帧信息"
+            
+            formatted = self.templates["video_content"].format(
+                index=index,
+                file_path=file_path,
+                duration=duration_str,
+                description=cleaned_description,
+                key_frames=key_frames_text
+            )
+            
+            return formatted
+            
+        except Exception as e:
+            logger.error(f"视频内容格式化失败: {str(e)}")
+            return f"【材料 {index}】 (类型: 视频 | 来源: {file_path})\n格式化失败"
     
     def _clean_content(self, content: str) -> str:
         """清理内容"""

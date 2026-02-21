@@ -176,9 +176,30 @@ class Reranker:
                             # 否则使用source_score
                             total_score = source_score
                     
+                    # 音频/视频结果可能无 payload，需构建合成 payload 供下游 context_builder 使用
+                    payload = result.get("payload") or {}
+                    if result.get("content_type") == "audio" and not payload.get("transcript"):
+                        meta = result.get("metadata") or {}
+                        payload = {
+                            "transcript": result.get("content", ""),
+                            "description": meta.get("description", ""),
+                            "file_path": result.get("file_path", ""),
+                            "file_id": result.get("file_id"),
+                            "duration": meta.get("duration", 0.0),
+                            "audio_format": meta.get("audio_format", ""),
+                        }
+                    elif result.get("content_type") == "video" and not payload.get("description"):
+                        meta = result.get("metadata") or {}
+                        payload = {
+                            "description": result.get("content", "") or meta.get("description", ""),
+                            "file_path": result.get("file_path", ""),
+                            "file_id": result.get("file_id"),
+                            "duration": meta.get("duration", 0.0),
+                        }
                     candidate = {
                         "id": result["id"],
-                        "payload": result.get("payload", {}),
+                        "payload": payload,
+                        "content_type": result.get("content_type"),
                         "scores": scores,
                         "search_type": search_type,
                         "source_score": source_score,
@@ -311,20 +332,28 @@ class Reranker:
         """构建文档内容用于重排序"""
         try:
             payload = candidate.get("payload", {})
-            content_type = payload.get("text_content") and "text" or "image"
+            content_type = candidate.get("content_type")
+            if not content_type:
+                content_type = "text" if payload.get("text_content") else ("image" if payload.get("caption") else ("audio" if payload.get("transcript") else "doc"))
             
-            if content_type == "text":
-                # 文本内容
+            if content_type == "audio":
+                transcript = payload.get("transcript", "")
+                description = payload.get("description", "")
+                file_path = payload.get("file_path", "")
+                content = f"[音频/歌曲] 来源: {file_path}\n转写/歌词: {transcript}\n描述: {description}"
+            elif content_type == "video":
+                description = payload.get("description", "")
+                file_path = payload.get("file_path", "")
+                content = f"[视频] 来源: {file_path}\n描述: {description}"
+            elif payload.get("text_content"):
+                # 文本/文档内容
                 text_content = payload.get("text_content", "")
                 file_path = payload.get("file_path", "")
-                
                 content = f"[文档片段] 来源: {file_path}\n内容: {text_content}"
-                
             else:
                 # 图片内容
                 caption = payload.get("caption", "")
                 file_path = payload.get("file_path", "")
-                
                 content = f"[图片描述] 来源: {file_path}\n描述: {caption}"
             
             # 限制内容长度
@@ -616,6 +645,7 @@ class Reranker:
                 final_candidate = {
                     "id": candidate["id"],
                     "payload": candidate["payload"],
+                    "content_type": candidate.get("content_type"),
                     "original_score": original_score,
                     "cross_encoder_score": cross_encoder_score,
                     "final_score": final_score,

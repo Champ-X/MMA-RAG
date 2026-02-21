@@ -303,11 +303,15 @@ export const knowledgeApi = {
   getFileTextContent: (kbId: string, fileId: string) =>
     apiClient.get<{ content: string }>(`/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/content`),
 
-  // 获取文件预览详情（caption、chunks、text_preview）
+  // 获取文件预览详情（caption、chunks、text_preview；音频含 transcript、description）
   getFilePreviewDetails: (kbId: string, fileId: string) =>
-    apiClient.get<{ caption?: string; chunks?: Array<{ index: number; text: string }>; text_preview?: string }>(
-      `/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/preview`
-    ),
+    apiClient.get<{
+      caption?: string
+      chunks?: Array<{ index: number; text: string }>
+      text_preview?: string
+      transcript?: string
+      description?: string
+    }>(`/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/preview`),
 
   // 获取文件流（用于页面内 PDF 预览，返回 Blob）
   getFileStream: (kbId: string, fileId: string) =>
@@ -677,6 +681,10 @@ export const chatApi = {
     title?: string;
     knowledgeBaseIds?: string[];
   }) => apiClient.post('/chat/session', data),
+
+  // 按需获取引用音频播放地址（用于「点击播放」）
+  getReferenceAudioUrl: (params: { kb_id?: string; file_path: string }) =>
+    apiClient.post<{ audio_url: string }>('/chat/reference-audio-url', params),
 };
 
 // 调试相关API（对接 /api/debug）

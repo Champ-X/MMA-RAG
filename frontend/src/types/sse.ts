@@ -50,11 +50,13 @@ export interface CitationDebugInfo {
 
 export interface CitationReference {
   id: number;
-  type: 'doc' | 'image';
+  type: 'doc' | 'image' | 'audio' | 'video';
   file_name: string;
   file_path?: string;
   content: string;
   img_url?: string;
+  /** 音频播放地址（预签名 URL），仅 type 为 audio 时有值 */
+  audio_url?: string | null;
   scores: CitationScore;
   debug_info?: CitationDebugInfo;
 }

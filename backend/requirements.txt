@@ -39,6 +39,14 @@ httpx==0.25.2
 Pillow==10.1.0
 opencv-python==4.8.1.78
 
+# 音频处理
+librosa>=0.10.0          # 音频分析和处理
+pydub>=0.25.1             # 音频格式转换
+soundfile>=0.12.1         # 音频文件读写
+
+# 视频处理
+ffmpeg-python>=0.2.0      # FFmpeg封装（可选，用于视频音频提取）
+
 # 工具库
 python-dotenv==1.0.0
 aiofiles==23.2.1

@@ -30,7 +30,7 @@ warnings.filterwarnings("ignore", message=".*overriden.*")
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 
 if TYPE_CHECKING:
-    from transformers import CLIPModel, CLIPProcessor
+    from transformers import CLIPModel, CLIPProcessor, ClapModel, ClapProcessor
 
 from .parsers.factory import ParserFactory, FileType
 from .storage.minio_adapter import MinIOAdapter
@@ -64,6 +64,8 @@ class IngestionService:
         self.sparse_encoder = get_sparse_encoder()  # BGE-M3 稀疏向量编码器
         self._clip_model: Optional["CLIPModel"] = None
         self._clip_processor: Optional["CLIPProcessor"] = None
+        self._clap_model: Optional["ClapModel"] = None
+        self._clap_processor: Optional["ClapProcessor"] = None
         
         # 处理状态存储（生产环境应使用Redis或数据库）
         self._processing_status: Dict[str, Dict[str, Any]] = {}
@@ -253,11 +255,24 @@ class IngestionService:
             upload_file_path = file_path
             if not Path(file_path).suffix and file_type:
                 upload_file_path = f"{file_path.rstrip('.')}.{file_type}"
+            
+            # 确定文件类型对应的存储目录
+            if file_type in ["pdf", "docx", "pptx", "txt", "md"]:
+                storage_file_type = "documents"
+            elif file_type == "image":
+                storage_file_type = "images"
+            elif file_type == "audio":
+                storage_file_type = "audios"
+            elif file_type == "video":
+                storage_file_type = "videos"
+            else:
+                storage_file_type = "documents"  # 默认
+            
             storage_result = await self.minio_adapter.upload_file(
                 file_content=file_content,
                 file_path=upload_file_path,
                 kb_id=kb_id,
-                file_type="documents" if file_type in ["pdf", "docx", "pptx", "txt", "md"] else "images"
+                file_type=storage_file_type
             )
             
             audit_log(
@@ -289,6 +304,22 @@ class IngestionService:
                     storage_result=storage_result,
                     kb_id=actual_kb_id,
                     processing_id=processing_id
+                )
+            elif file_type == "audio":
+                result = await self._process_audio(
+                    parse_result=parse_result,
+                    storage_result=storage_result,
+                    kb_id=actual_kb_id,
+                    processing_id=processing_id,
+                    file_content=file_content
+                )
+            elif file_type == "video":
+                result = await self._process_video(
+                    parse_result=parse_result,
+                    storage_result=storage_result,
+                    kb_id=actual_kb_id,
+                    processing_id=processing_id,
+                    file_content=file_content
                 )
             else:
                 raise ValueError(f"不支持的文件类型: {file_type}")
@@ -630,6 +661,273 @@ class IngestionService:
         if markdown_ref is not None:
             result["markdown_ref"] = markdown_ref
         return result
+    
+    async def _process_audio(
+        self,
+        parse_result: Dict[str, Any],
+        storage_result: Dict[str, Any],
+        kb_id: str,
+        processing_id: str,
+        file_content: bytes
+    ) -> Dict[str, Any]:
+        """处理音频文件"""
+        try:
+            self._update_processing_status(processing_id, {
+                "stage": "transcribing",
+                "progress": 30,
+                "message": "音频转文本(ASR)...",
+            })
+            
+            # 1. 音频转文本(ASR)
+            audio_format = parse_result.get("format", "mp3")
+            transcript_result = await self._transcribe_audio(file_content, audio_format, processing_id)
+            transcript = transcript_result.get("transcript", "")
+            
+            self._update_processing_status(processing_id, {
+                "stage": "describing",
+                "progress": 50,
+                "message": "生成音频描述...",
+            })
+            
+            # 2. 音频描述生成（可选）
+            description = await self._generate_audio_description(
+                file_content, 
+                transcript, 
+                audio_format,
+                processing_id
+            )
+            
+            # 3. 文本向量化（transcript + description）
+            self._update_processing_status(processing_id, {
+                "stage": "vectorizing",
+                "progress": 70,
+                "message": "音频文本向量化...",
+            })
+            
+            combined_text = f"{transcript}\n{description}".strip()
+            if not combined_text:
+                combined_text = "音频文件"  # 占位符
+            
+            # 生成密集向量
+            embed_result = await self.llm_manager.embed(
+                texts=[combined_text],
+                task_type="embedding"
+            )
+            if not embed_result.success:
+                raise ValueError(f"音频文本向量化失败: {embed_result.error}")
+            
+            text_vector = embed_result.data[0] if isinstance(embed_result.data, list) else embed_result.data
+            
+            # 生成稀疏向量（与 text chunk 一致：存 Dict[int, float]）
+            sparse_result = self.sparse_encoder.encode_query(combined_text)
+            sparse_vector = sparse_result.get("sparse") if sparse_result else None
+            
+            # 3.5 CLAP 声学特征（与 text_vec 同点存储）
+            self._update_processing_status(processing_id, {
+                "stage": "clap",
+                "progress": 78,
+                "message": "提取音频声学特征(CLAP)...",
+            })
+            loop = asyncio.get_event_loop()
+            try:
+                clap_vector = await loop.run_in_executor(
+                    None,
+                    lambda: self._extract_audio_clap_features(file_content, audio_format),
+                )
+            except Exception as e:
+                logger.warning("CLAP 特征提取失败，使用零向量占位: {}", e)
+                clap_vector = [0.0] * 512
+            
+            # 4. 存储到Qdrant（同一 Point：text_vec + clap_vec + sparse）
+            self._update_processing_status(processing_id, {
+                "stage": "storing",
+                "progress": 85,
+                "message": "存储音频向量...",
+            })
+            
+            audio_data = {
+                "file_id": storage_result["file_id"],
+                "file_path": storage_result["object_path"],
+                "transcript": transcript,
+                "description": description,
+                "duration": parse_result.get("duration", 0.0),
+                "audio_format": audio_format,
+                "sample_rate": parse_result.get("sample_rate", 0),
+                "channels": parse_result.get("channels", 0),
+                "bitrate": parse_result.get("bitrate", 0),
+                "source_type": "standalone_file",
+                "text_vector": text_vector,
+                "clap_vector": clap_vector,
+            }
+            if sparse_vector:
+                audio_data["sparse_vector"] = sparse_vector
+            
+            vector_storage_result = await self.vector_store.upsert_audio_vectors(
+                kb_id=kb_id,
+                audios=[audio_data]
+            )
+            
+            return {
+                "processing_id": processing_id,
+                "status": "completed",
+                "file_id": storage_result["file_id"],
+                "transcript": transcript,
+                "description": description,
+                "vectors_stored": vector_storage_result["points_inserted"],
+                "file_type": "audio"
+            }
+            
+        except Exception as e:
+            try:
+                err_msg = str(e)
+            except (KeyError, TypeError, AttributeError):
+                err_msg = repr(e)[:500]
+            logger.error("音频处理失败: %s", err_msg, exc_info=True)
+            raise
+    
+    async def _process_video(
+        self,
+        parse_result: Dict[str, Any],
+        storage_result: Dict[str, Any],
+        kb_id: str,
+        processing_id: str,
+        file_content: bytes
+    ) -> Dict[str, Any]:
+        """处理视频文件"""
+        try:
+            self._update_processing_status(processing_id, {
+                "stage": "extracting",
+                "progress": 20,
+                "message": "提取视频关键帧...",
+            })
+            
+            # 1. 关键帧提取
+            key_frames = await self._extract_key_frames(file_content, processing_id)
+            
+            self._update_processing_status(processing_id, {
+                "stage": "describing",
+                "progress": 40,
+                "message": "生成关键帧描述...",
+            })
+            
+            # 2. 关键帧描述生成
+            key_frame_descriptions = []
+            for frame in key_frames:
+                frame_description = await self._generate_image_caption(
+                    frame["base64_content"],
+                    processing_id,
+                    image_format="jpg"
+                )
+                key_frame_descriptions.append(frame_description["caption"])
+                frame["description"] = frame_description["caption"]
+            
+            # 3. 提取音频（如果有）
+            audio_file_id = None
+            audio_transcript = None
+            if parse_result.get("has_audio", False):
+                self._update_processing_status(processing_id, {
+                    "stage": "extracting_audio",
+                    "progress": 50,
+                    "message": "提取视频音频...",
+                })
+                audio_result = await self._extract_video_audio(
+                    file_content,
+                    storage_result["file_id"],
+                    kb_id,
+                    processing_id
+                )
+                if audio_result:
+                    audio_file_id = audio_result.get("audio_file_id")
+                    audio_transcript = audio_result.get("transcript", "")
+            
+            # 4. 视频整体描述生成
+            self._update_processing_status(processing_id, {
+                "stage": "describing_video",
+                "progress": 60,
+                "message": "生成视频整体描述...",
+            })
+            
+            video_description = await self._generate_video_description(
+                file_content,
+                key_frame_descriptions,
+                audio_transcript,
+                parse_result.get("format", "mp4"),
+                processing_id
+            )
+            
+            # 5. 向量化
+            self._update_processing_status(processing_id, {
+                "stage": "vectorizing",
+                "progress": 75,
+                "message": "视频向量化...",
+            })
+            
+            # 文本向量化（视频描述）
+            combined_text = video_description
+            if audio_transcript:
+                combined_text = f"{video_description}\n音频转写: {audio_transcript}"
+            
+            embed_result = await self.llm_manager.embed(
+                texts=[combined_text],
+                task_type="embedding"
+            )
+            if not embed_result.success:
+                raise ValueError(f"视频文本向量化失败: {embed_result.error}")
+            
+            text_vector = embed_result.data[0] if isinstance(embed_result.data, list) else embed_result.data
+            
+            # 关键帧CLIP向量化
+            for frame in key_frames:
+                if "image_bytes" in frame:
+                    clip_input_data = {
+                        "image_bytes": base64.b64decode(frame["base64_content"].split(",")[-1]),
+                        "width": frame.get("width", 1920),
+                        "height": frame.get("height", 1080),
+                        "format": "jpg"
+                    }
+                    clip_result = await self._vectorize_with_clip(clip_input_data, processing_id)
+                    frame["clip_vector"] = clip_result["clip_vector"]
+            
+            # 6. 存储到Qdrant
+            self._update_processing_status(processing_id, {
+                "stage": "storing",
+                "progress": 90,
+                "message": "存储视频向量...",
+            })
+            
+            video_data = {
+                "file_id": storage_result["file_id"],
+                "file_path": storage_result["object_path"],
+                "description": video_description,
+                "duration": parse_result.get("duration", 0.0),
+                "video_format": parse_result.get("format", "mp4"),
+                "resolution": parse_result.get("resolution", ""),
+                "fps": parse_result.get("fps", 0.0),
+                "has_audio": parse_result.get("has_audio", False),
+                "key_frames": key_frames,
+                "text_vector": text_vector
+            }
+            if audio_file_id:
+                video_data["audio_file_id"] = audio_file_id
+            
+            vector_storage_result = await self.vector_store.upsert_video_vectors(
+                kb_id=kb_id,
+                videos=[video_data]
+            )
+            
+            return {
+                "processing_id": processing_id,
+                "status": "completed",
+                "file_id": storage_result["file_id"],
+                "description": video_description,
+                "key_frames_count": len(key_frames),
+                "vectors_stored": vector_storage_result["points_inserted"],
+                "file_type": "video"
+            }
+            
+        except Exception as e:
+            logger.error(f"视频处理失败: {str(e)}", exc_info=True)
+            raise
 
     async def _split_text_into_chunks(self, parse_result: Dict[str, Any]) -> List[Dict[str, Any]]:
         """将文本分割成块"""
@@ -1226,6 +1524,117 @@ class IngestionService:
                 logger.error(f"CLIP模型加载失败: {str(e)}")
                 raise
     
+    def _load_clap_model(self):
+        """懒加载 CLAP 模型和处理器（laion/clap-htsat-fused），用于提取音频声学特征。"""
+        if self._clap_model is None or self._clap_processor is None:
+            try:
+                import torch
+                model_name = "laion/clap-htsat-fused"
+                logger.info("正在加载 CLAP 模型: {}", model_name)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    from transformers import ClapModel, ClapProcessor
+                    loaded_model = ClapModel.from_pretrained(model_name)
+                    loaded_processor = ClapProcessor.from_pretrained(model_name)
+                loaded_model.eval()
+                if torch.cuda.is_available():
+                    loaded_model.to(torch.device("cuda"))  # type: ignore[call-arg]
+                    logger.info("CLAP 模型已加载到 GPU")
+                else:
+                    logger.info("CLAP 模型已加载到 CPU")
+                self._clap_model = loaded_model
+                self._clap_processor = loaded_processor
+            except Exception as e:
+                logger.error("CLAP 模型加载失败: {}", e)
+                raise
+    
+    def _extract_audio_clap_features(
+        self,
+        audio_bytes: bytes,
+        audio_format: str,
+    ) -> List[float]:
+        """从音频字节中提取 CLAP 声学特征向量（512 维），用于与 text_vec 同点存储。"""
+        import torch
+        import numpy as np
+        self._load_clap_model()
+        if self._clap_model is None or self._clap_processor is None:
+            raise RuntimeError("CLAP 模型未加载")
+        # 将字节解码为波形：librosa 支持从 bytes，并统一到 48kHz（CLAP 期望）
+        try:
+            import librosa
+            waveform, sr = librosa.load(BytesIO(audio_bytes), sr=48000, mono=True)
+        except Exception as e:
+            logger.warning("librosa 加载失败，尝试 soundfile: {}", e)
+            import soundfile as sf
+            data, sr = sf.read(BytesIO(audio_bytes))
+            if data.ndim > 1:
+                data = data.mean(axis=1)
+            import librosa
+            waveform = librosa.resample(data.astype(np.float32), orig_sr=sr, target_sr=48000)
+            sr = 48000
+        # 直接调用 feature_extractor（ClapProcessor 继承自 ProcessorMixin），避免对 __call__ kwargs 的类型误报
+        extractor = getattr(self._clap_processor, "feature_extractor")
+        inputs = extractor(
+            [waveform],
+            sampling_rate=48000,
+            return_tensors="pt",
+        )
+        device = next(self._clap_model.parameters()).device
+        inputs = {k: v.to(device) if hasattr(v, "to") else v for k, v in inputs.items()}
+        with torch.no_grad():
+            audio_features = self._clap_model.get_audio_features(**inputs)
+        if audio_features is None:
+            raise ValueError("CLAP get_audio_features 返回空")
+        # 归一化（与 CLIP 一致，便于相似度计算）
+        audio_features = audio_features / audio_features.norm(dim=-1, keepdim=True)
+        vec = audio_features.cpu().numpy()[0].tolist()
+        # laion/clap-htsat-fused 输出 512 维
+        if len(vec) != 512:
+            logger.warning("CLAP 输出维度为 {}，将截断或补零至 512", len(vec))
+            vec = (vec + [0.0] * 512)[:512]
+        return vec
+    
+    def _get_clap_text_vector(self, text: str) -> List[float]:
+        """用 CLAP 文本编码器将查询文本编码为 512 维向量，用于与 audio_vectors 的 clap_vec 做相似度检索。"""
+        import torch
+        import numpy as np
+        self._load_clap_model()
+        if self._clap_model is None or self._clap_processor is None:
+            raise RuntimeError("CLAP 模型未加载")
+        inputs = self._clap_processor(text=[text])
+        device = next(self._clap_model.parameters()).device
+
+        def _to_device_tensor(v: Any) -> Any:
+            if hasattr(v, "to"):
+                return v.to(device)
+            if isinstance(v, list):
+                return torch.tensor(v, device=device)
+            if isinstance(v, np.ndarray):
+                return torch.tensor(v, device=device)
+            return v
+
+        inputs = {k: _to_device_tensor(v) for k, v in inputs.items()}
+        with torch.no_grad():
+            text_features = self._clap_model.get_text_features(**inputs)
+        if text_features is None:
+            raise ValueError("CLAP get_text_features 返回空")
+        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+        vec = text_features.cpu().numpy()[0].tolist()
+        if len(vec) != 512:
+            vec = (vec + [0.0] * 512)[:512]
+        return vec
+    
+    async def get_clap_text_vector_for_query(self, text: str) -> Optional[List[float]]:
+        """异步封装：在 executor 中生成查询文本的 CLAP 向量，供检索双路 RRF 使用。"""
+        if not text or not text.strip():
+            return None
+        try:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, lambda: self._get_clap_text_vector(text.strip()))
+        except Exception as e:
+            logger.warning("CLAP 文本向量生成失败: {}", str(e))
+            return None
+    
     async def _vectorize_with_clip(
         self, 
         image_data: Dict[str, Any], 
@@ -1378,6 +1787,322 @@ class IngestionService:
                 "error": str(e)
             }
     
+    async def _transcribe_audio(
+        self,
+        audio_bytes: bytes,
+        audio_format: str,
+        processing_id: str
+    ) -> Dict[str, Any]:
+        """音频转文本(ASR)"""
+        try:
+            # 将音频转换为 base64（OpenRouter 要求 base64，不支持直接 URL）
+            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+            
+            # 使用专门的音频转文本 prompt
+            prompt_text = prompt_engine.render_template("audio_transcription")
+            
+            # 构建多模态消息：OpenRouter 使用 input_audio 类型（见 https://openrouter.ai/docs/features/multimodal/audio）
+            # 必须使用 type: "input_audio" 与 input_audio: { data, format }，否则模型收不到音频
+            format_for_api = (audio_format or "mp3").lower()
+            if format_for_api == "mpeg":
+                format_for_api = "mp3"
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": prompt_text
+                        },
+                        {
+                            "type": "input_audio",
+                            "input_audio": {
+                                "data": audio_base64,
+                                "format": format_for_api
+                            }
+                        }
+                    ]
+                }
+            ]
+            
+            # 调用支持音频的多模态LLM（audio_transcription 任务路由到 qwen3-omni-flash / gemini 等）
+            result = await self.llm_manager.chat(
+                messages=messages,
+                task_type="audio_transcription",
+                model=None
+            )
+            
+            if not result.success:
+                logger.warning(f"音频转文本失败，使用占位符: {result.error}")
+                return {"transcript": "音频转文本失败，请查看原始文件。"}
+            
+            # 提取transcript（result.data 可能为 None）
+            data = result.data
+            transcript = (data.get("choices", [{}])[0].get("message", {}).get("content", "") or "") if data else ""
+            if not transcript:
+                transcript = "音频转文本结果为空"
+            
+            return {"transcript": transcript}
+            
+        except Exception as e:
+            logger.error(f"音频转文本失败: {str(e)}")
+            return {"transcript": f"音频转文本处理失败: {str(e)}"}
+    
+    async def _generate_audio_description(
+        self,
+        audio_bytes: bytes,
+        transcript: str,
+        audio_format: str,
+        processing_id: str
+    ) -> str:
+        """生成音频描述"""
+        try:
+            # 如果已有transcript，基于transcript生成描述
+            if transcript and len(transcript.strip()) > 10:
+                prompt = f"""请基于以下音频转写文本，生成一段简洁的音频内容描述，包括：
+1. 音频的主要内容
+2. 说话人的语气和情感
+3. 场景或背景信息
+
+转写文本：
+{transcript}
+
+描述："""
+                
+                messages = [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+                
+                result = await self.llm_manager.chat(
+                    messages=messages,
+                    task_type="final_generation"
+                )
+                
+                if result.success and result.data is not None:
+                    data = result.data
+                    description = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if description:
+                        return description
+            
+            # 如果转写失败或为空，返回默认描述
+            return "音频文件，内容待处理"
+            
+        except Exception as e:
+            logger.error(f"音频描述生成失败: {str(e)}")
+            return "音频文件"
+    
+    async def _extract_key_frames(
+        self,
+        video_bytes: bytes,
+        processing_id: str,
+        interval: float = 10.0
+    ) -> List[Dict[str, Any]]:
+        """提取视频关键帧"""
+        try:
+            import cv2
+            import numpy as np
+            import tempfile
+            import os
+            
+            # 保存到临时文件
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
+                tmp_file.write(video_bytes)
+                tmp_path = tmp_file.name
+            
+            try:
+                cap = cv2.VideoCapture(tmp_path)
+                if not cap.isOpened():
+                    raise ValueError("无法打开视频文件")
+                
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                duration = frame_count / fps if fps > 0 else 0
+                
+                key_frames = []
+                frame_interval = int(fps * interval)  # 每interval秒提取一帧
+                
+                frame_index = 0
+                while frame_index < frame_count:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+                    ret, frame = cap.read()
+                    
+                    if not ret:
+                        break
+                    
+                    # 转换为RGB
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    
+                    # 转换为base64
+                    from PIL import Image
+                    pil_image = Image.fromarray(frame_rgb)
+                    buffer = BytesIO()
+                    pil_image.save(buffer, format='JPEG')
+                    frame_bytes = buffer.getvalue()
+                    frame_base64 = base64.b64encode(frame_bytes).decode('utf-8')
+                    
+                    timestamp = frame_index / fps if fps > 0 else 0
+                    
+                    key_frames.append({
+                        "timestamp": float(timestamp),
+                        "frame_index": int(frame_index),
+                        "base64_content": f"data:image/jpeg;base64,{frame_base64}",
+                        "image_bytes": frame_bytes,
+                        "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                        "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                        "description": ""  # 稍后填充
+                    })
+                    
+                    frame_index += frame_interval
+                
+                cap.release()
+                
+                return key_frames
+                
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"关键帧提取失败: {str(e)}")
+            return []
+    
+    async def _extract_video_audio(
+        self,
+        video_bytes: bytes,
+        video_file_id: str,
+        kb_id: str,
+        processing_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """提取视频中的音频轨道"""
+        try:
+            import subprocess
+            import tempfile
+            import os
+            
+            # 保存视频到临时文件
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_video:
+                tmp_video.write(video_bytes)
+                tmp_video_path = tmp_video.name
+            
+            # 提取音频到临时文件
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_audio:
+                tmp_audio_path = tmp_audio.name
+            
+            try:
+                # 使用ffmpeg提取音频
+                # 注意：需要系统安装ffmpeg
+                result = subprocess.run(
+                    [
+                        "ffmpeg", "-i", tmp_video_path,
+                        "-vn", "-acodec", "libmp3lame",
+                        "-y", tmp_audio_path
+                    ],
+                    capture_output=True,
+                    timeout=300  # 5分钟超时
+                )
+                
+                if result.returncode != 0:
+                    logger.warning(f"ffmpeg提取音频失败: {result.stderr.decode()}")
+                    return None
+                
+                # 读取提取的音频
+                with open(tmp_audio_path, "rb") as f:
+                    audio_bytes = f.read()
+                
+                # 上传音频到MinIO
+                audio_storage_result = await self.minio_adapter.upload_file(
+                    file_content=audio_bytes,
+                    file_path=f"{video_file_id}_audio.mp3",
+                    kb_id=kb_id,
+                    file_type="audios"
+                )
+                
+                # 处理音频（转文本）
+                audio_transcript_result = await self._transcribe_audio(
+                    audio_bytes,
+                    "mp3",
+                    processing_id
+                )
+                
+                return {
+                    "audio_file_id": audio_storage_result["file_id"],
+                    "transcript": audio_transcript_result.get("transcript", "")
+                }
+                
+            finally:
+                try:
+                    os.unlink(tmp_video_path)
+                    if os.path.exists(tmp_audio_path):
+                        os.unlink(tmp_audio_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"视频音频提取失败: {str(e)}")
+            return None
+    
+    async def _generate_video_description(
+        self,
+        video_bytes: bytes,
+        key_frame_descriptions: List[str],
+        audio_transcript: Optional[str],
+        video_format: str,
+        processing_id: str
+    ) -> str:
+        """生成视频整体描述"""
+        try:
+            # 构建描述提示词
+            key_frames_text = "\n".join([
+                f"关键帧 {i+1}: {desc}" 
+                for i, desc in enumerate(key_frame_descriptions[:5])  # 限制前5个关键帧
+            ])
+            
+            audio_text = f"\n音频转写: {audio_transcript}" if audio_transcript else ""
+            
+            prompt = f"""请基于以下视频关键帧描述和音频转写，生成一段简洁的视频整体描述，包括：
+1. 视频的主要内容
+2. 关键场景和动作
+3. 整体风格和特点
+
+关键帧描述：
+{key_frames_text}
+{audio_text}
+
+视频描述："""
+            
+            messages = [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+            
+            result = await self.llm_manager.chat(
+                messages=messages,
+                task_type="final_generation"
+            )
+            
+            if result.success and result.data is not None:
+                data = result.data
+                description = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                if description:
+                    return description
+            
+            # 如果生成失败，使用关键帧描述的摘要
+            if key_frame_descriptions:
+                return f"视频内容，包含{len(key_frame_descriptions)}个关键场景: " + "; ".join(key_frame_descriptions[:3])
+            
+            return "视频文件"
+            
+        except Exception as e:
+            logger.error(f"视频描述生成失败: {str(e)}")
+            return "视频文件"
+
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""
         try:

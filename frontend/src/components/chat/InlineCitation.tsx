@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import React from 'react'
 import type { CitationReference } from '@/types/sse'
-import { FileText, Image, ExternalLink, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
+import { FileText, Image, Music, ExternalLink, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -44,8 +44,11 @@ function normalizeRef(
   return null
 }
 
-function getReferenceIcon(type: 'doc' | 'image') {
-  return type === 'doc' ? FileText : Image
+function getReferenceIcon(type: 'doc' | 'image' | 'audio' | 'video') {
+  if (type === 'doc') return FileText
+  if (type === 'image') return Image
+  if (type === 'audio') return Music
+  return FileText
 }
 
 // 图片 Lightbox 内容组件，带错误处理
@@ -309,7 +312,7 @@ export function InlineCitation({
         <div className={cn('flex flex-wrap gap-1', className)}>
           {refs.map((ref) => {
             // 确保 type 字段存在，默认为 'doc'
-            const refType = (ref.type === 'doc' || ref.type === 'image') ? ref.type : 'doc'
+            const refType = (ref.type === 'doc' || ref.type === 'image' || ref.type === 'audio' || ref.type === 'video') ? ref.type : 'doc'
             const Icon = getReferenceIcon(refType)
             const id = ref.id
             const displayNum = displayIndexByRefId?.get(id) ?? id
@@ -373,7 +376,7 @@ export function InlineCitation({
         <div className={cn('inline-flex flex-wrap gap-1', className)}>
           {refs.map((ref) => {
             // 确保 type 字段存在，默认为 'doc'
-            const refType = (ref.type === 'doc' || ref.type === 'image') ? ref.type : 'doc'
+            const refType = (ref.type === 'doc' || ref.type === 'image' || ref.type === 'audio' || ref.type === 'video') ? ref.type : 'doc'
             const Icon = getReferenceIcon(refType)
             return (
               <button
@@ -406,13 +409,13 @@ export function InlineCitation({
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
                     {(() => {
-                      const refType = (selected.type === 'doc' || selected.type === 'image') ? selected.type : 'doc'
+                      const refType = (selected.type === 'doc' || selected.type === 'image' || selected.type === 'audio' || selected.type === 'video') ? selected.type : 'doc'
                       const Icon = getReferenceIcon(refType)
                       return <Icon className="h-5 w-5" />
                     })()}
                     <span>【材料 {selected.id}】</span>
                     <Badge variant="outline">
-                      {selected.type === 'doc' ? '文档' : '图片'}
+                      {selected.type === 'doc' ? '文档' : selected.type === 'image' ? '图片' : selected.type === 'audio' ? '音频' : '视频'}
                     </Badge>
                   </DialogTitle>
                 </DialogHeader>
@@ -460,8 +463,9 @@ function ReferenceDetailCard({
 }) {
   const [contextLens, setContextLens] = useState<'prev' | 'curr' | 'next'>('curr')
   const ctx = normalizeContextWindow(reference.debug_info?.context_window)
-  const refType = (reference.type === 'doc' || reference.type === 'image') ? reference.type : 'doc'
+  const refType = (reference.type === 'doc' || reference.type === 'image' || reference.type === 'audio' || reference.type === 'video') ? reference.type : 'doc'
   const Icon = getReferenceIcon(refType)
+  const typeLabel = reference.type === 'doc' ? '文档' : reference.type === 'image' ? '图片' : reference.type === 'audio' ? '音频' : '视频'
 
   return (
     <Card>
@@ -471,7 +475,7 @@ function ReferenceDetailCard({
             <Icon className="h-4 w-4" />
             <span>【材料 {reference.id}】</span>
             <Badge variant="outline" className="text-xs">
-              {reference.type === 'doc' ? '文档' : '图片'}
+              {typeLabel}
             </Badge>
           </CardTitle>
           {reference.type === 'image' && reference.img_url && (
@@ -486,9 +490,15 @@ function ReferenceDetailCard({
           <p className="text-xs text-muted-foreground mb-1">文件名</p>
           <p className="text-sm font-medium">{reference.file_name}</p>
         </div>
+        {reference.type === 'audio' && reference.audio_url && (
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">播放</p>
+            <audio src={reference.audio_url} controls className="w-full h-9 rounded-lg" preload="metadata" />
+          </div>
+        )}
         <div>
           <p className="text-xs text-muted-foreground mb-1">
-            {reference.type === 'doc' ? '内容片段' : '视觉描述'}
+            {reference.type === 'doc' ? '内容片段' : reference.type === 'image' ? '视觉描述' : reference.type === 'audio' ? '转写/描述' : '描述'}
           </p>
           <p className="text-sm bg-muted/50 p-2 rounded text-xs">{reference.content}</p>
         </div>
@@ -563,6 +573,14 @@ function ReferenceDetailCard({
               <Eye className="mr-2 h-3 w-3" />
               查看大图
             </Button>
+          )}
+          {reference.type === 'audio' && reference.audio_url && (
+            <a href={reference.audio_url} target="_blank" rel="noopener noreferrer" className="flex-1">
+              <Button variant="outline" size="sm" className="w-full">
+                <Music className="mr-2 h-3 w-3" />
+                播放/下载
+              </Button>
+            </a>
           )}
           <Button variant="outline" size="sm" className="flex-1">
             <ExternalLink className="mr-2 h-3 w-3" />

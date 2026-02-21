@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, CheckCircle, Loader2, Image as ImageIcon, FileText, FileCode, Presentation, FileSpreadsheet, Database, Sparkles, Type, Pencil, Check } from 'lucide-react'
+import { X, CheckCircle, Loader2, Image as ImageIcon, FileText, FileCode, Presentation, FileSpreadsheet, Database, Sparkles, Type, Pencil, Check, Music } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // 状态徽章
@@ -51,12 +51,21 @@ function FileIcon({ type, size = FILE_ICON_SIZE_DEFAULT }: { type: string; size?
   if (['xlsx', 'xls', 'csv'].includes(lowerType)) {
     return <FileSpreadsheet size={s} className="text-emerald-600 dark:text-emerald-400" />
   }
+  // 音频
+  if (lowerType.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg', 'wma', 'opus'].includes(lowerType)) {
+    return <Music size={s} className="text-violet-600 dark:text-violet-400" />
+  }
   // 默认文档
   return <FileText size={s} className="text-slate-500 dark:text-slate-400" />
 }
 
 function isImageType(type: string): boolean {
   return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'tif'].includes(String(type || '').toLowerCase())
+}
+
+export function isAudioType(type: string): boolean {
+  const lower = String(type || '').toLowerCase()
+  return lower.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg', 'wma', 'opus'].includes(lower)
 }
 
 // 文件缩略图（表格视图）
@@ -91,12 +100,16 @@ function getFileHeroIconBg(type: string): string {
   if (['pptx', 'ppt'].includes(lower)) return 'bg-orange-50 dark:bg-orange-950/40 border-orange-200 dark:border-orange-800'
   if (['docx', 'doc'].includes(lower)) return 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800'
   if (['xlsx', 'xls', 'csv'].includes(lower)) return 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800'
+  if (lower.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg', 'wma', 'opus'].includes(lower)) {
+    return 'bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-800'
+  }
   return 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
 }
 
 // 文件主图（画廊视图）
 export function FileHero({ file }: { file: any }) {
   const isImg = isImageType(file?.type)
+  const isAudio = isAudioType(file?.type)
   if (isImg && file?.previewUrl) {
     return (
       <img
@@ -112,8 +125,19 @@ export function FileHero({ file }: { file: any }) {
       <div className={cn('p-4 rounded-xl border', getFileHeroIconBg(file?.type))}>
         <FileIcon type={file?.type} size={FILE_HERO_ICON_SIZE} />
       </div>
-      <div className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-        {String(file?.type || 'file').toUpperCase()}
+      {isAudio && (
+        <div className="mt-2 flex items-end gap-0.5 h-3" aria-hidden>
+          {[0.4, 0.7, 1, 0.6, 0.9].map((h, i) => (
+            <span
+              key={i}
+              className="w-1 rounded-full bg-violet-400/70 dark:bg-violet-400/60 min-h-[4px] group-hover:opacity-90 transition-opacity"
+              style={{ height: `${h * 100}%` }}
+            />
+          ))}
+        </div>
+      )}
+      <div className={cn('text-xs font-medium text-slate-500 dark:text-slate-400', isAudio ? 'mt-1' : 'mt-2')}>
+        {isAudio ? '音频' : String(file?.type || 'file').toUpperCase()}
       </div>
     </div>
   )

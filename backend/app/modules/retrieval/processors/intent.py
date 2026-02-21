@@ -168,12 +168,35 @@ class IntentProcessor:
                 visual_intent = "unnecessary"
                 visual_reasoning = "未检测到明确的视觉需求"
             
+            # 音频意图判断（fallback，与视觉意图结构对齐：explicit > implicit > unnecessary）
+            explicit_audio_keywords_fallback = [
+                "找音频", "找音乐", "找歌", "有录音吗", "有音乐吗", "播放", "听一下", "听这段", "放一下", "给我听",
+                "有没有音频", "play", "listen to", "find the song", "audio", "music", "podcast", "recording",
+                "音频", "音乐", "歌曲", "播客", "录音", "语音", "播放一下"
+            ]
+            implicit_audio_keywords_fallback = [
+                "歌词", "旋律", "创作背景", "播客", "访谈", "会议纪要", "演讲", "培训录音",
+                "lyrics", "melody", "podcast", "interview", "meeting", "recording"
+            ]
+            has_explicit_audio = any(kw in content_lower for kw in explicit_audio_keywords_fallback)
+            has_implicit_audio = any(kw in content_lower for kw in implicit_audio_keywords_fallback)
+            if has_explicit_audio:
+                audio_intent = "explicit_demand"
+                audio_reasoning = "检测到明确的音频请求关键词"
+            elif has_implicit_audio:
+                audio_intent = "implicit_enrichment"
+                audio_reasoning = "检测到与音频载体强相关的主题（歌词/播客/会议等）"
+            else:
+                audio_intent = "unnecessary"
+                audio_reasoning = "未检测到音频需求"
             return {
                 "reasoning": content[:200],  # 取前200字符作为推理
                 "intent_type": intent_type,
                 "is_complex": is_complex,
                 "visual_intent": visual_intent,
                 "visual_reasoning": visual_reasoning,
+                "audio_intent": audio_intent,
+                "audio_reasoning": audio_reasoning,
                 "search_strategies": {
                     "dense_query": content.split("dense_query")[-1] if "dense_query" in content else content[:100],
                     "sparse_keywords": ["查询", "信息"],  # 默认关键词
@@ -201,6 +224,8 @@ class IntentProcessor:
                 "is_complex": analysis.get("is_complex", False),
                 "visual_intent": analysis.get("visual_intent", "unnecessary"),
                 "visual_reasoning": analysis.get("visual_reasoning", "未检测到明确的视觉需求"),
+                "audio_intent": analysis.get("audio_intent", "unnecessary"),
+                "audio_reasoning": analysis.get("audio_reasoning", "未检测到音频需求"),
                 "search_strategies": {
                     "dense_query": analysis.get("search_strategies", {}).get("dense_query", original_query),
                     "sparse_keywords": analysis.get("search_strategies", {}).get("sparse_keywords", []),
@@ -263,6 +288,43 @@ class IntentProcessor:
             if not isinstance(validated["search_strategies"]["multi_view_queries"], list):
                 validated["search_strategies"]["multi_view_queries"] = []
             
+            # 验证 audio_intent（与 visual_intent 逻辑对齐：明确请求词优先，无效时按关键词推断）
+            valid_audio_intents = ["explicit_demand", "implicit_enrichment", "unnecessary"]
+            # 明确的音频请求词（优先级最高，必须判断为 explicit_demand）
+            explicit_audio_request_keywords = [
+                "找音频", "找音乐", "找歌", "有录音吗", "有音乐吗", "播放", "听一下", "听这段", "放一下", "给我听",
+                "有没有音频", "play", "listen to", "find the song", "audio", "music", "podcast", "recording",
+                "音频", "音乐", "歌曲", "播客", "录音", "语音", "播放一下"
+            ]
+            # 隐性音频相关词（无明确请求时可推断为 implicit_enrichment）
+            implicit_audio_keywords = [
+                "歌词", "旋律", "创作背景", "播客", "访谈", "会议纪要", "演讲", "培训录音",
+                "lyrics", "melody", "interview", "meeting"
+            ]
+            query_lower_audio = original_query.lower()
+            has_explicit_audio_request = any(kw in query_lower_audio for kw in explicit_audio_request_keywords)
+            has_implicit_audio_topic = any(kw in query_lower_audio for kw in implicit_audio_keywords)
+            if validated["audio_intent"] not in valid_audio_intents:
+                if has_explicit_audio_request:
+                    logger.info("检测到明确的音频请求关键词，设置audio_intent=explicit_demand: {}", original_query)
+                    validated["audio_intent"] = "explicit_demand"
+                    validated["audio_reasoning"] = "检测到明确的音频请求关键词"
+                elif has_implicit_audio_topic:
+                    validated["audio_intent"] = "implicit_enrichment"
+                    validated["audio_reasoning"] = "检测到与音频载体强相关的主题（歌词/播客/会议等）"
+                else:
+                    validated["audio_intent"] = "unnecessary"
+                    validated["audio_reasoning"] = "未检测到音频需求"
+            elif has_explicit_audio_request and validated["audio_intent"] != "explicit_demand":
+                logger.info(
+                    "检测到明确的音频请求关键词，强制覆盖audio_intent: {} -> explicit_demand, 查询: {}",
+                    validated["audio_intent"], original_query
+                )
+                validated["audio_intent"] = "explicit_demand"
+                validated["audio_reasoning"] = (
+                    "检测到明确的音频请求关键词（如'找歌'、'播放'、'有录音吗'等），优先判断为显式需求"
+                )
+            
             return validated
             
         except Exception as e:
@@ -278,6 +340,8 @@ class IntentProcessor:
             "is_complex": False,
             "visual_intent": "unnecessary",
             "visual_reasoning": "使用默认规则，未检测到明确的视觉需求",
+            "audio_intent": "unnecessary",
+            "audio_reasoning": "使用默认规则，未检测到音频需求",
             "search_strategies": {
                 "dense_query": query,
                 "sparse_keywords": [],

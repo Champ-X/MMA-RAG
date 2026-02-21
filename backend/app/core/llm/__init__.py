@@ -442,6 +442,16 @@ class LLMRegistry:
                 "model": "Qwen/Qwen3-Embedding-8B",
                 "fallbacks": [],
             },
+            # 音频转写：优先 OpenRouter Gemini（与当前 content 格式兼容），阿里云 Omni 需 WebSocket/专用格式
+            "audio_transcription": {
+                "model": "aliyun_bailian:qwen3-omni-flash",
+                "fallbacks": [
+                    "openrouter:google/gemini-3-flash-preview",
+                    "openrouter:google/gemini-2.5-flash",
+                    "openrouter:google/gemini-3-pro-preview",
+                    "aliyun_bailian:qwen-omni-turbo",
+                ],
+            },
         }
         # 若设置了环境变量 DEFAULT_CHAT_MODEL 等，则覆盖对应任务的主模型（与 config 单一语义）
         def _apply(s: Any, task: str) -> None:

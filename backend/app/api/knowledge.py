@@ -24,12 +24,13 @@ portrait_generator = PortraitGenerator()
 
 
 def _stats_for_frontend(statistics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """将后端 statistics 格式转换为前端 stats 格式（含向量维度）"""
+    """将后端 statistics 格式转换为前端 stats 格式（含向量维度、音频数）"""
     if not statistics:
         return {
             "documents": 0,
             "chunks": 0,
             "images": 0,
+            "audio": 0,
             "text_vector_dim": 4096,
             "image_vector_dim": 768,
         }
@@ -37,6 +38,7 @@ def _stats_for_frontend(statistics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "documents": statistics.get("total_documents", 0),
         "chunks": statistics.get("total_chunks", 0),
         "images": statistics.get("total_images", 0),
+        "audio": statistics.get("total_audio", 0),
         "text_vector_dim": statistics.get("text_vector_dim", 4096),
         "image_vector_dim": statistics.get("image_vector_dim", 768),
     }
@@ -267,7 +269,23 @@ async def stream_file_for_preview(kb_id: str, file_id: str):
                 status_code=503,
                 detail="PPTX/DOCX 页面内预览需要服务器安装 LibreOffice，当前不可用；请使用下方「分块」查看解析文本。",
             )
-        media_type = "application/pdf" if ext == "pdf" else "application/octet-stream"
+        if ext == "pdf":
+            media_type = "application/pdf"
+        else:
+            # 常见音视频格式，便于前端 <audio>/<video> 正确解析
+            media_type = {
+                "mp3": "audio/mpeg",
+                "wav": "audio/wav",
+                "m4a": "audio/mp4",
+                "aac": "audio/aac",
+                "ogg": "audio/ogg",
+                "flac": "audio/flac",
+                "opus": "audio/opus",
+                "wma": "audio/x-ms-wma",
+                "mp4": "video/mp4",
+                "webm": "video/webm",
+                "ogv": "video/ogg",
+            }.get(ext, "application/octet-stream")
         try:
             filename.encode("ascii")
             content_disp = f'inline; filename="{filename}"'
@@ -353,7 +371,7 @@ async def regenerate_knowledge_base_portrait(kb_id: str):
         if result.get("status") == "insufficient_data":
             raise HTTPException(
                 status_code=400,
-                detail=result.get("message", "知识库数据量不足，至少需要约 10 条文本/图片才能生成画像"),
+                detail=result.get("message", "知识库数据量不足，至少需要约 10 条文本/图片/音频才能生成画像"),
             )
         return {
             "status": "success",

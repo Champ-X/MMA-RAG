@@ -12,6 +12,48 @@ from app.core.logger import get_logger, log_llm_call
 
 logger = get_logger(__name__)
 
+# 官方文档：qwen3-omni-flash 等 Omni 模型「stream 必须设置为 True，否则会报错」
+_OMNI_MODELS_REQUIRE_STREAM = ("qwen3-omni-flash", "qwen-omni-turbo")
+
+
+def _is_omni_model_require_stream(model: str) -> bool:
+    """是否为必须使用 stream=True 的 Omni 模型"""
+    model_lower = (model or "").strip().lower()
+    return any(omni in model_lower for omni in _OMNI_MODELS_REQUIRE_STREAM)
+
+
+def _normalize_messages_for_aliyun_audio(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """将 messages 中 input_audio 的 base64 转为 DashScope 要求的 data URI（data:audio/xxx;base64,xxx）。"""
+    out: List[Dict[str, Any]] = []
+    for msg in messages:
+        new_msg = dict(msg)
+        content = new_msg.get("content")
+        if isinstance(content, list):
+            new_content = []
+            for block in content:
+                if not isinstance(block, dict):
+                    new_content.append(block)
+                    continue
+                if block.get("type") == "input_audio":
+                    ia = block.get("input_audio") or {}
+                    data = ia.get("data")
+                    if isinstance(data, str) and data and not data.startswith("http") and not data.startswith("data:"):
+                        fmt = (ia.get("format") or "mp3").strip().lower() or "mp3"
+                        if fmt == "mpeg":
+                            fmt = "mp3"
+                        data_uri = f"data:audio/{fmt};base64,{data}"
+                        new_content.append({
+                            **block,
+                            "input_audio": {**ia, "data": data_uri},
+                        })
+                    else:
+                        new_content.append(block)
+                else:
+                    new_content.append(block)
+            new_msg["content"] = new_content
+        out.append(new_msg)
+    return out
+
 
 class AliyunBailianProvider(BaseLLMProvider):
     """阿里云百炼 API 提供商（OpenAI 兼容格式）"""
@@ -57,22 +99,25 @@ class AliyunBailianProvider(BaseLLMProvider):
     async def chat_completion(
         self, messages: List[Dict[str, str]], model: str, **kwargs
     ) -> Dict[str, Any]:
-        """聊天对话（OpenAI 兼容的 /chat/completions）"""
+        """聊天对话（OpenAI 兼容的 /chat/completions）。
+        qwen3-omni-flash 等 Omni 模型要求 stream=True，本方法会在内部用流式请求并聚合成非流式返回。
+        音频块 input_audio.data 若为 base64，会规范化为 DashScope 要求的 data URI。
+        """
         import httpx
+
+        messages = _normalize_messages_for_aliyun_audio(messages)
 
         # 获取 max_tokens，确保类型正确
         max_tokens = kwargs.get("max_tokens")
         if max_tokens is None:
             max_tokens = self._get_max_tokens_for_model(model, 8192)
         else:
-            # 确保是整数类型
             try:
                 max_tokens = int(max_tokens)
             except (ValueError, TypeError):
                 logger.warning(f"阿里云百炼 chat_completion [{model}]: max_tokens 值无效 ({max_tokens})，使用默认值8192")
                 max_tokens = 8192
         
-        # 阿里云百炼限制：max_tokens范围是[1, 65536]
         original_max_tokens = max_tokens
         if max_tokens > 65536:
             logger.warning(f"阿里云百炼 chat_completion [{model}]: max_tokens {original_max_tokens} 超过限制65536，已限制为65536")
@@ -81,15 +126,23 @@ class AliyunBailianProvider(BaseLLMProvider):
             logger.warning(f"阿里云百炼 chat_completion [{model}]: max_tokens {original_max_tokens} 小于1，已设置为1")
             max_tokens = 1
 
+        use_stream = kwargs.get("stream", False)
+        # Omni 模型必须 stream=True，否则 API 返回 400。若调用方未开流式，则内部用流式聚合后返回
+        if _is_omni_model_require_stream(model) and not use_stream:
+            return await self._chat_completion_omni_via_stream(
+                messages=messages,
+                model=model,
+                max_tokens=max_tokens,
+                kwargs=kwargs,
+            )
+
         payload = {
             "model": model,
             "messages": messages,
-            "stream": kwargs.get("stream", False),
+            "stream": use_stream,
             "temperature": kwargs.get("temperature", 0.7),
             "max_tokens": max_tokens,
         }
-        
-        # 添加可选参数
         if "top_p" in kwargs:
             payload["top_p"] = kwargs["top_p"]
         if "top_k" in kwargs:
@@ -124,6 +177,101 @@ class AliyunBailianProvider(BaseLLMProvider):
             duration = time.time() - start
             log_llm_call(model=model, task_type="chat", tokens_used=0, duration=duration, success=False)
             logger.error(f"阿里云百炼 chat 错误 [{model}]: {e}")
+            raise
+
+    async def _chat_completion_omni_via_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        model: str,
+        max_tokens: int,
+        kwargs: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """对 Omni 模型用 stream=True 请求并聚合成非流式返回（仅文本输出）。"""
+        import httpx
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "temperature": kwargs.get("temperature", 0.7),
+            "max_tokens": max_tokens,
+        }
+        if "top_p" in kwargs:
+            payload["top_p"] = kwargs["top_p"]
+        if "top_k" in kwargs:
+            payload["top_k"] = kwargs["top_k"]
+        # 仅要文本输出（如转写）时传 modalities=["text"]，避免服务端按多模态输出校验
+        payload["modalities"] = ["text"]
+        payload["stream_options"] = {"include_usage": True}
+
+        timeout = 120.0
+        start = time.time()
+        content_parts: List[str] = []
+        usage: Optional[Dict[str, Any]] = None
+
+        try:
+            stream_headers = {**self.headers, "Accept": "text/event-stream"}
+            async with httpx.AsyncClient() as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    headers=stream_headers,
+                    json=payload,
+                    timeout=timeout,
+                ) as response:
+                    if response.status_code != 200:
+                        error_text = ""
+                        try:
+                            async for line in response.aiter_lines():
+                                error_text += line + "\n"
+                                if len(error_text) > 1000:
+                                    break
+                        except Exception:
+                            pass
+                        logger.error(f"阿里云百炼 Omni stream [{model}]: HTTP {response.status_code} - {error_text[:500]}")
+                        response.raise_for_status()
+
+                    async for line in response.aiter_lines():
+                        line = line.strip()
+                        if not line or line.startswith(":"):
+                            continue
+                        if not line.startswith("data: "):
+                            continue
+                        data_str = line[6:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+                        if "error" in chunk:
+                            err = chunk["error"]
+                            raise ValueError(err.get("message", str(err)))
+                        if "usage" in chunk:
+                            usage = chunk["usage"]
+                        if chunk.get("choices"):
+                            delta = chunk["choices"][0].get("delta") or {}
+                            part = delta.get("content") or ""
+                            if part:
+                                content_parts.append(part)
+                    duration = time.time() - start
+                    aggregated = "".join(content_parts)
+                    total_tokens = (usage or {}).get("total_tokens", 0)
+                    log_llm_call(model=model, task_type="chat", tokens_used=total_tokens, duration=duration, success=True)
+                    return {
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {"role": "assistant", "content": aggregated},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                        "usage": usage or {"total_tokens": 0, "prompt_tokens": 0, "completion_tokens": 0},
+                    }
+        except Exception as e:
+            duration = time.time() - start
+            log_llm_call(model=model, task_type="chat", tokens_used=0, duration=duration, success=False)
+            logger.error(f"阿里云百炼 Omni stream 聚合失败 [{model}]: {e}")
             raise
 
     async def stream_chat(

@@ -15,6 +15,7 @@ from app.core.logger import get_logger
 from app.core.llm.manager import llm_manager
 from app.modules.retrieval.service import RetrievalService
 from app.modules.generation.service import GenerationService
+from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -285,6 +286,36 @@ async def stream_chat(
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
     
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/reference-audio-url")
+async def get_reference_audio_url(request: Request):
+    """根据 kb_id 与 file_path 返回音频预签名 URL，供前端「点击播放」按需拉取播放地址。"""
+    try:
+        body = await request.json()
+        kb_id = (body.get("kb_id") or "").strip()
+        file_path = (body.get("file_path") or "").strip()
+        if not file_path:
+            raise HTTPException(status_code=400, detail="file_path 不能为空")
+        if not kb_id:
+            raise HTTPException(
+                status_code=400,
+                detail="缺少知识库 ID，无法生成播放地址；请从引用详情或检查器中查看",
+            )
+        minio_adapter = MinIOAdapter()
+        bucket = minio_adapter.get_bucket_for_kb(kb_id)
+        audio_url = await minio_adapter.get_presigned_url(
+            bucket=bucket,
+            object_path=file_path,
+            expires_hours=24,
+        )
+        return {"audio_url": audio_url}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.debug("生成引用音频预签名 URL 失败: %s", e)
+        raise HTTPException(status_code=500, detail="无法生成播放地址")
+
 
 @router.get("/history")
 async def get_chat_history(sessionId: Optional[str] = Query(None)):

@@ -1,5 +1,5 @@
 import React from 'react'
-import { User, Bot } from 'lucide-react'
+import { User, Bot, Music, Play } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { ThinkingCapsule } from './ThinkingCapsule'
 import { InlineCitation } from './InlineCitation'
@@ -9,6 +9,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import rehypeHighlight from 'rehype-highlight'
 import { cn } from '@/lib/utils'
+import { chatApi } from '@/services/api_client'
 import type { CitationReference } from '@/types/sse'
 import type { ThoughtData, ThinkingState } from '@/store/useChatStore'
 
@@ -218,7 +219,7 @@ function findCitationById(
   return citation || null
 }
 
-// 从文本中提取图片引用ID列表
+// 从文本中提取图片引用ID列表（仅 type===image，避免音频被当图片展示）
 function extractImageRefIdsFromText(
   text: string,
   citationMap?: Map<number | string, CitationReference>,
@@ -241,6 +242,26 @@ function extractImageRefIdsFromText(
   }
   
   return imageRefs
+}
+
+// 从文本中提取音频引用ID列表（用于段落下方展示音频卡片）
+function extractAudioRefIdsFromText(
+  text: string,
+  citationMap?: Map<number | string, CitationReference>,
+  refs?: Array<CitationReference | { id: number | string }>
+): CitationReference[] {
+  const matches = findAllCitationMatches(text)
+  const audioRefs: CitationReference[] = []
+  const seen = new Set<number | string>()
+  for (const match of matches) {
+    if (seen.has(match.n)) continue
+    const citation = findCitationById(match.n, citationMap, refs)
+    if (citation && 'type' in citation && citation.type === 'audio') {
+      seen.add(match.n)
+      audioRefs.push(citation)
+    }
+  }
+  return audioRefs
 }
 
 function CitationInlineButton({ n, onClick }: { n: number; onClick?: (rect: DOMRect) => void }) {
@@ -272,7 +293,7 @@ function createCiteClickHandler(
   }
 }
 
-// 段落下方居中显示的图片组件
+// 段落下方居中显示的图片组件（仅展示 type===image 且有 img_url 的引用，避免音频被当图片展示）
 function ParagraphImageDisplay({
   citations,
   onCiteClick,
@@ -282,6 +303,10 @@ function ParagraphImageDisplay({
   onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void
   messageId?: string
 }) {
+  const imageOnlyCitations = React.useMemo(
+    () => citations.filter((c): c is CitationReference => c?.type === 'image' && !!c?.img_url),
+    [citations]
+  )
   const [failedImages, setFailedImages] = React.useState<Set<number | string>>(new Set())
   const [loadedImages, setLoadedImages] = React.useState<Set<number | string>>(new Set())
   const imageRefs = React.useRef<Map<number | string, HTMLImageElement>>(new Map())
@@ -297,23 +322,23 @@ function ParagraphImageDisplay({
     loadedImagesRef.current = loadedImages
   }, [loadedImages])
 
-  if (citations.length === 0) return null
+  if (imageOnlyCitations.length === 0) return null
 
   // 当 citations 变化时，检查图片是否已经加载完成（从缓存中）
   // 使用稳定的字符串作为依赖，避免数组引用变化导致的重新计算
   const citationIds = React.useMemo(() => {
     try {
-      const ids = citations.map(c => String(c?.id ?? '')).filter(Boolean).sort().join(',')
+      const ids = imageOnlyCitations.map(c => String(c?.id ?? '')).filter(Boolean).sort().join(',')
       return ids
     } catch {
       return ''
     }
-  }, [citations])
+  }, [imageOnlyCitations])
   
   React.useEffect(() => {
     if (!citationIds) return
     
-    citations.forEach((citation) => {
+    imageOnlyCitations.forEach((citation) => {
       if (!citation?.id) return
       
       // 使用 ref 检查状态，避免依赖 Set 对象
@@ -368,8 +393,8 @@ function ParagraphImageDisplay({
   }, [failedImages])
   
   const validCitations = React.useMemo(
-    () => citations.filter((citation) => !failedImages.has(citation.id)),
-    [citations, failedIdsStr]
+    () => imageOnlyCitations.filter((citation) => !failedImages.has(citation.id)),
+    [imageOnlyCitations, failedIdsStr]
   )
 
   if (validCitations.length === 0) return null
@@ -456,6 +481,133 @@ function ParagraphImageDisplay({
   )
 }
 
+// 段落下方展示的音频引用卡片（图标 + 标签 + 可点击播放，不打开弹层）
+function ParagraphAudioDisplay({
+  citations,
+  onCiteClick,
+  messageId,
+  displayIndexByRefId,
+}: {
+  citations: CitationReference[]
+  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void
+  messageId?: string
+  displayIndexByRefId?: Map<number | string, number>
+}) {
+  const [fetchedAudioUrls, setFetchedAudioUrls] = React.useState<Record<string, string>>({})
+  const [loadingRefId, setLoadingRefId] = React.useState<string | number | null>(null)
+
+  if (citations.length === 0) return null
+
+  return (
+    <div className="flex flex-wrap justify-center gap-3 mt-3 mb-0">
+      {citations.map((citation) => {
+        const displayNum = displayIndexByRefId?.get(citation.id) ?? citation.id
+        const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
+        const resolvedUrl = citation.type === 'audio' && (citation.audio_url || fetchedAudioUrls[key])
+        const hasAudioUrl = !!resolvedUrl
+
+        const handleOpenPopover = (e: React.MouseEvent) => {
+          if (onCiteClick) {
+            const rect = e.currentTarget.closest('.paragraph-audio-card')?.getBoundingClientRect() ?? (e.currentTarget as HTMLElement).getBoundingClientRect()
+            onCiteClick(citation.id, rect, messageId)
+          }
+        }
+
+        const handleClickPlay = async () => {
+          if (hasAudioUrl) return
+          if (!citation.file_path && onCiteClick) {
+            onCiteClick(citation.id, new DOMRect(0, 0, 0, 0), messageId)
+            return
+          }
+          setLoadingRefId(citation.id)
+          try {
+            const res = await chatApi.getReferenceAudioUrl({
+              kb_id: citation.debug_info?.kb_id ?? undefined,
+              file_path: citation.file_path!,
+            })
+            if (res?.audio_url) setFetchedAudioUrls((prev) => ({ ...prev, [key]: res.audio_url }))
+          } catch {
+            // 失败时打开弹层，用户可在弹层/检查器中查看
+            if (onCiteClick) {
+              const el = document.querySelector(`.paragraph-audio-card[data-audio-key="${key}"]`) as HTMLElement
+              const rect = el?.getBoundingClientRect?.() ?? new DOMRect(0, 0, 0, 0)
+              onCiteClick(citation.id, rect, messageId)
+            }
+          } finally {
+            setLoadingRefId(null)
+          }
+        }
+
+        return (
+          <div
+            key={citation.id}
+            data-audio-key={key}
+            className="paragraph-audio-card relative overflow-hidden rounded-2xl border border-amber-200/70 dark:border-amber-800/50 bg-gradient-to-br from-amber-50/95 via-orange-50/90 to-amber-100/80 dark:from-amber-950/50 dark:via-slate-900/40 dark:to-amber-950/40 w-full min-w-[374px] max-w-[500px] p-0 shadow-md hover:shadow-lg transition-all duration-200"
+          >
+            {/* 左侧装饰条 */}
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-400 via-orange-400 to-amber-500 dark:from-amber-500 dark:via-orange-500 dark:to-amber-600 rounded-l-2xl" />
+            <div className="pl-3 pr-3 pt-1.5 pb-1.5">
+              {/* 标题行：方形图标框 */}
+              <button
+                type="button"
+                onClick={handleOpenPopover}
+                className="flex items-center gap-2 w-full text-left mb-1 group"
+              >
+                <span className="flex items-center justify-center shrink-0 w-8 h-8 rounded-lg bg-amber-100/90 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 group-hover:bg-amber-200/90 dark:group-hover:bg-amber-800/50 transition-colors">
+                  <Music className="h-4 w-4" />
+                </span>
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
+                  <span className="font-mono text-amber-700 dark:text-amber-300 font-semibold">[{displayNum}]</span>
+                  <span className="ml-1 text-slate-600 dark:text-slate-300">音频引用</span>
+                </span>
+              </button>
+              {/* 播放器 */}
+              {hasAudioUrl ? (
+                <div className="rounded-lg bg-white/90 dark:bg-slate-800/80 border border-amber-100/80 dark:border-slate-700/80 p-1 mb-1 shadow-inner">
+                  <audio
+                    src={resolvedUrl!}
+                    controls
+                    className="w-full h-7 rounded [&::-webkit-media-controls-panel]:bg-amber-50/50"
+                    preload="metadata"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleClickPlay}
+                  disabled={loadingRefId === citation.id}
+                  className="w-full flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg bg-amber-100/90 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 hover:bg-amber-200/90 dark:hover:bg-amber-800/60 border border-amber-200/60 dark:border-amber-700/50 transition-colors mb-1 disabled:opacity-60 shadow-sm text-sm"
+                >
+                  {loadingRefId === citation.id ? (
+                    <span className="font-medium">加载中…</span>
+                  ) : (
+                    <>
+                      <Play className="h-4 w-4 flex-shrink-0" />
+                      <span className="font-medium">点击播放</span>
+                    </>
+                  )}
+                </button>
+              )}
+              {/* 文件名 + 歌词 同一行或极简 */}
+              {citation.file_name && (
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate mb-0.5 font-mono" title={citation.file_name}>
+                  {citation.file_name}
+                </p>
+              )}
+              {citation.content && (
+                <div className="rounded bg-white/70 dark:bg-slate-800/50 border border-amber-100/60 dark:border-slate-700/60 px-2 py-0.5">
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-tight line-clamp-2">{citation.content}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function MessageBubble({
   message,
   isStreaming = false,
@@ -508,6 +660,25 @@ export function MessageBubble({
       }
     }
     
+    return map
+  }, [message.content, citationMap, refs, isUser])
+
+  // 每个音频引用第一次出现的引用ID（用于段落内只展示首次出现的音频）
+  const audioFirstRefIdMap = React.useMemo(() => {
+    if (isUser) return new Map<string, number | string>()
+    const map = new Map<string, number | string>()
+    const seen = new Set<string>()
+    const matches = findAllCitationMatches(message.content)
+    for (const match of matches) {
+      const citation = findCitationById(match.n, citationMap, refs)
+      if (citation && 'type' in citation && citation.type === 'audio') {
+        const key = citation.file_name || String(citation.id)
+        if (!seen.has(key)) {
+          seen.add(key)
+          map.set(key, match.n)
+        }
+      }
+    }
     return map
   }, [message.content, citationMap, refs, isUser])
   
@@ -572,15 +743,19 @@ export function MessageBubble({
         
         const textContent = extractTextFromNode(children)
         const allImageRefs = extractImageRefIdsFromText(textContent, citationMap, refs)
+        const allAudioRefs = extractAudioRefIdsFromText(textContent, citationMap, refs)
         
-        // 只显示在该段落/列表项中第一次出现的图片
         const newImageRefs = allImageRefs.filter((citation) => {
           const imageKey = citation.img_url || citation.file_name || String(citation.id)
           const firstRefId = imageFirstRefIdMap.get(imageKey)
-          
-          // 如果该图片的第一次出现的引用ID在当前段落/列表项中，则显示
           if (firstRefId === undefined) return false
-          
+          const matches = findAllCitationMatches(textContent)
+          return matches.some(m => String(m.n) === String(firstRefId))
+        })
+        const newAudioRefs = allAudioRefs.filter((citation) => {
+          const audioKey = citation.file_name || String(citation.id)
+          const firstRefId = audioFirstRefIdMap.get(audioKey)
+          if (firstRefId === undefined) return false
           const matches = findAllCitationMatches(textContent)
           return matches.some(m => String(m.n) === String(firstRefId))
         })
@@ -597,6 +772,14 @@ export function MessageBubble({
                 citations={newImageRefs}
                 onCiteClick={handleCiteClick}
                 messageId={message.id}
+              />
+            )}
+            {newAudioRefs.length > 0 && (
+              <ParagraphAudioDisplay
+                citations={newAudioRefs}
+                onCiteClick={handleCiteClick}
+                messageId={message.id}
+                displayIndexByRefId={originalIdToDisplayIndex}
               />
             )}
           </>

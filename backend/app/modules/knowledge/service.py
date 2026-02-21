@@ -546,7 +546,8 @@ class KnowledgeBaseService:
                     None,
                     lambda c=candidate: self._count_kb_points_sync(c),
                 )
-                if total_chunks == 0 and total_images == 0:
+                total_audio = await self.vector_store.count_kb_audio(candidate)
+                if total_chunks == 0 and total_images == 0 and total_audio == 0:
                     continue
 
                 doc_file_ids = await loop.run_in_executor(
@@ -572,6 +573,7 @@ class KnowledgeBaseService:
                     "total_documents": total_documents,
                     "total_chunks": total_chunks,
                     "total_images": total_images,
+                    "total_audio": total_audio,
                     "total_size_mb": total_size_mb,
                     "last_updated": datetime.utcnow().isoformat(),
                     "text_vector_dim": 4096,
@@ -608,11 +610,13 @@ class KnowledgeBaseService:
                     )
                     if fallback["total_chunks"] > 0 or fallback["total_images"] > 0:
                         total_size_mb = round(total_size_bytes / (1024 * 1024), 2)
+                        total_audio_fb = await self.vector_store.count_kb_audio(kb_id)
                         logger.debug(f"通过 MinIO 桶文件兜底获取统计: kb_id={kb_id}")
                         return {
                             "total_documents": fallback["total_documents"],
                             "total_chunks": fallback["total_chunks"],
                             "total_images": fallback["total_images"],
+                            "total_audio": total_audio_fb,
                             "total_size_mb": total_size_mb,
                             "last_updated": datetime.utcnow().isoformat(),
                             "text_vector_dim": 4096,
@@ -625,12 +629,13 @@ class KnowledgeBaseService:
             "total_documents": 0,
             "total_chunks": 0,
             "total_images": 0,
+            "total_audio": 0,
             "total_size_mb": 0,
             "last_updated": datetime.utcnow().isoformat(),
             "text_vector_dim": 4096,
             "image_vector_dim": 768,
         }
-    
+
     def _discover_kb_id_from_bucket_sync(self, bucket_name: str) -> Optional[str]:
         """
         从 MinIO 桶内文件反查 Qdrant 中实际存在的 kb_id。
@@ -644,8 +649,8 @@ class KnowledgeBaseService:
                 )
             )
             
-            # 统计每个 kb_id 的出现次数（采样文件）
-            kb_id_counts = defaultdict(lambda: {"text": 0, "image": 0})
+            # 统计每个 kb_id 的出现次数（采样文件），含 text / image / audio，以便纯音频库也能反查到 Qdrant 中的 kb_id
+            kb_id_counts = defaultdict(lambda: {"text": 0, "image": 0, "audio": 0})
             sampled_file_ids = set()
             
             for obj in raw[:50]:  # 采样前 50 个文件
@@ -677,7 +682,7 @@ class KnowledgeBaseService:
                         kid = p.get("kb_id")
                         if kid:
                             kb_id_counts[kid]["text"] += 1
-                except:
+                except Exception:
                     pass
                 
                 # image_vectors
@@ -694,19 +699,36 @@ class KnowledgeBaseService:
                         kid = p.get("kb_id")
                         if kid:
                             kb_id_counts[kid]["image"] += 1
-                except:
+                except Exception:
+                    pass
+                
+                # audio_vectors（与图片检索一致：纯音频库时也需反查到 Qdrant 中的 kb_id，否则检索用 bucket id 会命中 0）
+                try:
+                    res = self.vector_store.client.scroll(
+                        collection_name="audio_vectors",
+                        scroll_filter=filt,
+                        limit=1,
+                        with_payload=True,
+                    )
+                    points = res[0] if res else []
+                    if points:
+                        p = getattr(points[0], "payload", None) or {}
+                        kid = p.get("kb_id")
+                        if kid:
+                            kb_id_counts[kid]["audio"] += 1
+                except Exception:
                     pass
             
-            # 返回数据量最大的 kb_id（优先文本数量）
+            # 返回数据量最大的 kb_id（优先 text > image > audio）
             if kb_id_counts:
                 best_kb_id = max(
                     kb_id_counts.items(),
-                    key=lambda x: (x[1]["text"], x[1]["image"])
+                    key=lambda x: (x[1]["text"], x[1]["image"], x[1]["audio"])
                 )[0]
+                c = kb_id_counts[best_kb_id]
                 logger.debug(
-                    f"桶 {bucket_name} 反查到数据量最大的 kb_id: {best_kb_id} "
-                    f"(采样 text:{kb_id_counts[best_kb_id]['text']}, "
-                    f"image:{kb_id_counts[best_kb_id]['image']})"
+                    "桶 {} 反查到数据量最大的 kb_id: {} (采样 text:{}, image:{}, audio:{})",
+                    bucket_name, best_kb_id, c["text"], c["image"], c["audio"]
                 )
                 return best_kb_id
                 
@@ -915,7 +937,7 @@ class KnowledgeBaseService:
         不依赖 _kb_storage，直接按候选查询向量库，以支持已有知识库中的文件。
         图片描述：先按 (kb_id, file_id) 查；若所有候选都无结果，则直接按 file_id 全局查。
         """
-        result: Dict[str, Any] = {"caption": None, "chunks": [], "text_preview": None}
+        result: Dict[str, Any] = {"caption": None, "chunks": [], "text_preview": None, "transcript": None, "description": None}
         from qdrant_client.http.models import Filter, FieldCondition, MatchValue
 
         def _payload(p) -> Dict[str, Any]:
@@ -998,13 +1020,69 @@ class KnowledgeBaseService:
             except Exception as e:
                 logger.debug(f"file_id 全局查询 text_chunks 失败 {file_id}: {e}")
 
+        # 音频预览：从 audio_vectors 取 transcript、description，供前端展示（参考图片 caption）
+        for candidate in self._kb_id_candidates(kb_id):
+            try:
+                audio_points = await loop.run_in_executor(
+                    None,
+                    lambda c=candidate: self.vector_store.scroll_audio_points_by_file_id(c, file_id, limit=1),
+                )
+                if audio_points:
+                    p = _payload(getattr(audio_points[0], "payload", None))
+                    result["transcript"] = (p.get("transcript") or "").strip() or None
+                    result["description"] = (p.get("description") or "").strip() or None
+                    if result["description"] or result["transcript"]:
+                        desc = (result["description"] or "") + ("\n\n" if result["description"] and result["transcript"] else "") + (result["transcript"] or "")
+                        result["caption"] = result["caption"] or desc.strip() or None
+                    break
+            except Exception as e:
+                logger.debug(f"获取音频预览详情失败 candidate={candidate} {kb_id}/{file_id}: {e}")
+        if not result["transcript"] and not result["description"]:
+            try:
+                audio_points = await loop.run_in_executor(
+                    None,
+                    lambda: self.vector_store.scroll_audio_points_by_file_id(None, file_id, limit=1),
+                )
+                if audio_points:
+                    p = _payload(getattr(audio_points[0], "payload", None))
+                    result["transcript"] = (p.get("transcript") or "").strip() or None
+                    result["description"] = (p.get("description") or "").strip() or None
+                    if result["description"] or result["transcript"]:
+                        desc = (result["description"] or "") + ("\n\n" if result["description"] and result["transcript"] else "") + (result["transcript"] or "")
+                        result["caption"] = result["caption"] or desc.strip() or None
+                    logger.debug(f"通过 file_id 全局查询找到音频预览: {file_id}")
+            except Exception as e:
+                logger.debug(f"file_id 全局查询音频预览失败 {file_id}: {e}")
+
         return result
 
     async def list_kb_files(self, kb_id: str) -> List[Dict[str, Any]]:
-        """列出知识库下的文件，图片和 PDF 附带 preview_url。不依赖 _kb_storage，按 kb_id 解析桶名以支持已有知识库。"""
+        """列出知识库下的文件，图片和 PDF 附带 preview_url。不依赖 _kb_storage，按 kb_id 解析桶名以支持已有知识库。
+        若传入的 kb_id 对应桶不存在，则尝试候选 kb_id 的桶（兼容前端/API 传入的格式与 MinIO 实际桶名不一致）。"""
+        raw_files: List[Dict[str, Any]] = []
+        bucket_used: Optional[str] = None
+        bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
+        if self.minio_adapter.bucket_exists(bucket_name):
+            try:
+                raw_files = await self.minio_adapter.list_files(bucket=bucket_name, prefix="", max_keys=1000)
+                bucket_used = bucket_name
+            except Exception as e:
+                logger.debug(f"列出桶 {bucket_name} 失败: {e}")
+        if not raw_files:
+            for candidate in self._kb_id_candidates(kb_id):
+                if candidate == kb_id:
+                    continue
+                try:
+                    cand_bucket = self.minio_adapter.get_bucket_for_kb(candidate)
+                    if self.minio_adapter.bucket_exists(cand_bucket):
+                        raw_files = await self.minio_adapter.list_files(bucket=cand_bucket, prefix="", max_keys=1000)
+                        if raw_files:
+                            bucket_used = cand_bucket
+                            logger.debug(f"列出文件使用候选桶: kb_id={kb_id} -> candidate={candidate}, bucket={cand_bucket}")
+                            break
+                except Exception as e:
+                    logger.debug(f"候选 kb_id={candidate} 列出文件失败: {e}")
         try:
-            bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
-            raw_files = await self.minio_adapter.list_files(bucket=bucket_name, prefix="", max_keys=1000)
             files = []
             for f in raw_files:
                 op = f.get("object_path", "")
@@ -1026,10 +1104,10 @@ class KnowledgeBaseService:
                     "date": date_str,
                     "type": ext,
                 }
-                if self._is_previewable_type(ext):
+                if self._is_previewable_type(ext) and bucket_used:
                     try:
                         item["preview_url"] = await self.minio_adapter.get_presigned_url(
-                            bucket_name, op, expires_hours=24
+                            bucket_used, op, expires_hours=24
                         )
                     except Exception as e:
                         logger.debug(f"生成预览 URL 失败 {op}: {e}")
@@ -1040,7 +1118,8 @@ class KnowledgeBaseService:
             return []
 
     async def get_file_stream_info(self, kb_id: str, file_id: str) -> Optional[tuple[str, str, str]]:
-        """获取用于流式预览的文件信息，返回 (bucket_name, object_path, filename) 或 None。仅返回 documents/ 下的主文档。"""
+        """获取用于流式预览的文件信息，返回 (bucket_name, object_path, filename) 或 None。
+        支持 documents/、audios/、videos/ 下的主文件（object_path 形如 prefix/file_id_filename）。"""
         try:
             if not self._ensure_kb_in_cache(kb_id):
                 return None
@@ -1048,7 +1127,7 @@ class KnowledgeBaseService:
             raw_files = await self.minio_adapter.list_files(bucket=bucket_name, prefix="", max_keys=1000)
             for f in raw_files:
                 op = f.get("object_path", "")
-                if not op.startswith("documents/"):
+                if not op.startswith(("documents/", "audios/", "videos/")):
                     continue
                 rest = op.split("/", 1)[1] if "/" in op else ""
                 if not rest.startswith(file_id + "_"):

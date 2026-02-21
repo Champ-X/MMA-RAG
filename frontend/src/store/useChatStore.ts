@@ -9,6 +9,8 @@ export interface ThoughtData {
   is_complex?: boolean;
   visual_intent?: 'explicit_demand' | 'implicit_enrichment' | 'unnecessary';
   visual_reasoning?: string;
+  audio_intent?: 'explicit_demand' | 'implicit_enrichment' | 'unnecessary';
+  audio_reasoning?: string;
   sub_queries?: string[];
   current_sub_step?: number;
   target_kbs?: Array<{ id: string; name: string; score: number }>;
@@ -37,10 +39,11 @@ export interface Message {
   }[];
   citations?: Array<{
     id: number | string;
-    type?: 'doc' | 'image';
+    type?: 'doc' | 'image' | 'audio' | 'video';
     file_name?: string;
     content?: string;
     img_url?: string;
+    audio_url?: string | null;
     scores?: { dense?: number; sparse?: number; visual?: number; rerank?: number };
     debug_info?: { chunk_id?: string; context_window?: { prev: string; next: string } };
     url?: string;

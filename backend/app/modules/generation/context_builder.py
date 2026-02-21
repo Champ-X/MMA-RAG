@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 class ReferenceMap:
     """引用映射数据类"""
     id: str
-    content_type: str  # "doc" 或 "image"
+    content_type: str  # "doc" | "image" | "audio" | "video"
     file_path: str
     content: str
     metadata: Dict[str, Any]
@@ -75,6 +75,9 @@ class ContextBuilder:
             
             # 2. 生成引用映射
             reference_map = await self._generate_reference_map(processed_results)
+            
+            # 2b. 为音频（及视频）引用生成 presigned_url，便于前端展示播放器
+            await self._enrich_audio_video_presigned_urls(reference_map)
             
             # 3. 构建上下文字符串
             context_string = await self._build_context_string(
@@ -149,21 +152,56 @@ class ContextBuilder:
                 seen_chunk_ids.add(chunk_id)
                 
                 payload = result.get("payload", {})
-                
-                # 确定内容类型
-                content_type = "image" if "caption" in payload else "doc"
+                # 确定内容类型：优先用重排结果中的 content_type，再按 payload 推断
+                content_type = result.get("content_type")
+                if not content_type:
+                    content_type = "image" if "caption" in payload else ("audio" if "transcript" in payload else ("video" if "description" in payload and payload.get("file_path") else "doc"))
                 
                 # 提取内容
-                if content_type == "doc":
-                    content = payload.get("text_content", "")
-                    file_path = payload.get("file_path", "")
-                    file_type = payload.get("file_type", "unknown")
-                else:  # image
+                if content_type == "image":
                     content = payload.get("caption", "")
                     file_path = payload.get("file_path", "")
                     file_type = "image"
+                elif content_type == "audio":
+                    content = payload.get("transcript", "") or payload.get("description", "")
+                    file_path = payload.get("file_path", "")
+                    file_type = payload.get("audio_format", "audio") or "audio"
+                    # metadata 中保留 description、duration 等供 format_audio_content 使用
+                    payload_meta = {
+                        "kb_id": payload.get("kb_id"),
+                        "description": payload.get("description", ""),
+                        "duration": payload.get("duration", 0.0),
+                        "original_score": result.get("original_score"),
+                        "cross_encoder_score": result.get("cross_encoder_score"),
+                    }
+                elif content_type == "video":
+                    content = payload.get("description", "")
+                    file_path = payload.get("file_path", "")
+                    file_type = "video"
+                    payload_meta = {
+                        "kb_id": payload.get("kb_id"),
+                        "duration": payload.get("duration", 0.0),
+                        "original_score": result.get("original_score"),
+                        "cross_encoder_score": result.get("cross_encoder_score"),
+                    }
+                else:  # doc
+                    content = payload.get("text_content", "")
+                    file_path = payload.get("file_path", "")
+                    file_type = payload.get("file_type", "unknown")
+                    payload_meta = {
+                        "kb_id": payload.get("kb_id"),
+                        "chunk_index": payload.get("chunk_index"),
+                        "original_score": result.get("original_score"),
+                        "cross_encoder_score": result.get("cross_encoder_score"),
+                    }
                 
                 # 构建处理结果（id 为检索返回的 point id，贯穿引用与检查器）
+                metadata = payload_meta if content_type in ("audio", "video") else {
+                    "kb_id": payload.get("kb_id"),
+                    "chunk_index": payload.get("chunk_index"),
+                    "original_score": result.get("original_score"),
+                    "cross_encoder_score": result.get("cross_encoder_score"),
+                }
                 processed_result = {
                     "id": chunk_id,
                     "content_type": content_type,
@@ -171,12 +209,7 @@ class ContextBuilder:
                     "file_path": file_path,
                     "file_type": file_type,
                     "score": result.get("final_score", 0.0),
-                    "metadata": {
-                        "kb_id": payload.get("kb_id"),
-                        "chunk_index": payload.get("chunk_index"),
-                        "original_score": result.get("original_score"),
-                        "cross_encoder_score": result.get("cross_encoder_score")
-                    }
+                    "metadata": metadata,
                 }
                 
                 processed_results.append(processed_result)
@@ -194,12 +227,11 @@ class ContextBuilder:
                     continue
                 if result["content_type"] == "image" and image_count >= max_images:
                     continue
-                
+                # audio / video 不单独设上限，与 doc 一起计入上下文
                 limited_results.append(result)
-                
                 if result["content_type"] == "doc":
                     doc_count += 1
-                else:
+                elif result["content_type"] == "image":
                     image_count += 1
             
             if visual_intent == "implicit_enrichment":
@@ -308,11 +340,95 @@ class ContextBuilder:
                     reference.presigned_url = presigned_map.get(ref_id)
                     reference_map[ref_id] = reference
             
+            # 音频从 len(docs)+len(images)+1 开始编号（与 _build_context_string 顺序一致），并生成预签名 URL 供前端播放
+            audios = [r for r in processed_results if r["content_type"] == "audio"]
+            start_audio = len(docs) + len(images) + 1
+            audio_refs_for_presigned = []
+            for i, audio in enumerate(audios, start_audio):
+                ref_id = str(i)
+                reference = ReferenceMap(
+                    id=ref_id,
+                    content_type=audio["content_type"],
+                    file_path=audio["file_path"],
+                    content=audio["content"],
+                    metadata={
+                        "score": audio["score"],
+                        "kb_id": audio["metadata"].get("kb_id"),
+                        "file_type": audio["file_type"],
+                        "chunk_id": audio.get("id"),
+                        "description": audio["metadata"].get("description", ""),
+                        "duration": audio["metadata"].get("duration", 0.0),
+                    }
+                )
+                reference_map[ref_id] = reference
+                audio_refs_for_presigned.append((ref_id, reference, audio))
+            if audio_refs_for_presigned:
+                async def _presigned_audio(ref_id: str, ref: ReferenceMap, aud: Dict[str, Any]) -> None:
+                    try:
+                        kb_id = aud["metadata"].get("kb_id")
+                        bucket = self.minio_adapter.bucket_name_for_kb(kb_id) if kb_id else None
+                        if bucket and aud.get("file_path"):
+                            url = await self.minio_adapter.get_presigned_url(
+                                bucket=bucket,
+                                object_path=aud["file_path"],
+                                expires_hours=24,
+                            )
+                            ref.presigned_url = url
+                    except Exception as e:
+                        logger.debug("音频预签名URL生成失败: ref_id=%s, e=%s", ref_id, e)
+                await asyncio.gather(*[_presigned_audio(rid, ref, aud) for rid, ref, aud in audio_refs_for_presigned])
+            
+            # 视频紧接着音频编号
+            videos = [r for r in processed_results if r["content_type"] == "video"]
+            start_video = start_audio + len(audios)
+            for i, video in enumerate(videos, start_video):
+                ref_id = str(i)
+                reference = ReferenceMap(
+                    id=ref_id,
+                    content_type=video["content_type"],
+                    file_path=video["file_path"],
+                    content=video["content"],
+                    metadata={
+                        "score": video["score"],
+                        "kb_id": video["metadata"].get("kb_id"),
+                        "file_type": video["file_type"],
+                        "chunk_id": video.get("id"),
+                        "duration": video["metadata"].get("duration", 0.0),
+                    }
+                )
+                reference_map[ref_id] = reference
+            
             return reference_map
             
         except Exception as e:
             logger.error(f"生成引用映射失败: {str(e)}")
             return {}
+    
+    async def _enrich_audio_video_presigned_urls(self, reference_map: Dict[str, ReferenceMap]) -> None:
+        """为 reference_map 中 content_type 为 audio/video 的引用生成 presigned_url，便于前端展示播放器。"""
+        for ref_id, reference in reference_map.items():
+            if reference.content_type not in ("audio", "video"):
+                continue
+            if not reference.file_path:
+                continue
+            try:
+                kb_id = (reference.metadata or {}).get("kb_id")
+                bucket = (
+                    self.minio_adapter.bucket_name_for_kb(kb_id)
+                    if kb_id
+                    else None
+                )
+                if bucket:
+                    reference.presigned_url = await self.minio_adapter.get_presigned_url(
+                        bucket=bucket,
+                        object_path=reference.file_path,
+                        expires_hours=24
+                    )
+                else:
+                    reference.presigned_url = None
+            except Exception as e:
+                logger.debug("生成音频/视频预签名URL失败: ref_id=%s, e=%s", ref_id, e)
+                reference.presigned_url = None
     
     async def _build_context_string(
         self,
@@ -330,14 +446,17 @@ class ContextBuilder:
             # 按类型分组处理
             docs = [r for r in processed_results if r["content_type"] == "doc"]
             images = [r for r in processed_results if r["content_type"] == "image"]
+            audios = [r for r in processed_results if r["content_type"] == "audio"]
+            videos = [r for r in processed_results if r["content_type"] == "video"]
             
-            # 如果包含图片，在标题后添加提示
-            if images:
-                context_parts.append("**注意**：以下材料包含图片内容，请仔细阅读图片的【视觉描述】，判断其是否与用户查询相关。\n")
+            # 如果包含多媒体内容，在标题后添加提示
+            if images or audios or videos:
+                context_parts.append("**注意**：以下材料包含多媒体内容（图片/音频/视频），请仔细阅读相关描述和转写文本，判断其是否与用户查询相关。\n")
             
             # 处理文档
-            for i, doc in enumerate(docs, 1):
-                ref_id = str(i)
+            current_index = 1
+            for doc in docs:
+                ref_id = str(current_index)
                 
                 # 使用模态格式化器
                 doc_format = self.formatter.format_document_chunk(
@@ -349,10 +468,11 @@ class ContextBuilder:
                 
                 context_parts.append(doc_format)
                 context_parts.append("")  # 空行分隔
+                current_index += 1
             
             # 处理图片
-            for i, image in enumerate(images, len(docs) + 1):
-                ref_id = str(i)
+            for image in images:
+                ref_id = str(current_index)
                 
                 # 使用模态格式化器
                 image_format = self.formatter.format_image_content(
@@ -364,6 +484,40 @@ class ContextBuilder:
                 
                 context_parts.append(image_format)
                 context_parts.append("")  # 空行分隔
+                current_index += 1
+            
+            # 处理音频
+            for audio in audios:
+                ref_id = str(current_index)
+                
+                # 使用模态格式化器
+                audio_format = self.formatter.format_audio_content(
+                    index=ref_id,
+                    transcript=audio.get("content", ""),
+                    description=audio.get("metadata", {}).get("description", ""),
+                    file_path=audio["file_path"],
+                    metadata=audio.get("metadata", {})
+                )
+                
+                context_parts.append(audio_format)
+                context_parts.append("")  # 空行分隔
+                current_index += 1
+            
+            # 处理视频
+            for video in videos:
+                ref_id = str(current_index)
+                
+                # 使用模态格式化器
+                video_format = self.formatter.format_video_content(
+                    index=ref_id,
+                    description=video.get("content", ""),
+                    file_path=video["file_path"],
+                    metadata=video.get("metadata", {})
+                )
+                
+                context_parts.append(video_format)
+                context_parts.append("")  # 空行分隔
+                current_index += 1
             
             # 添加用户问题
             context_parts.append(f"用户问题：{query}")
@@ -493,6 +647,28 @@ class ContextBuilder:
                 except Exception as e:
                     logger.error(f"生成文档预签名URL失败: {str(e)}")
                     preview["presigned_url"] = None
+
+            elif reference.content_type == "audio":
+                try:
+                    kb_id = (reference.metadata or {}).get("kb_id")
+                    bucket = (
+                        self.minio_adapter.bucket_name_for_kb(kb_id)
+                        if kb_id
+                        else None
+                    )
+                    if bucket and reference.file_path:
+                        presigned_url = await self.minio_adapter.get_presigned_url(
+                            bucket=bucket,
+                            object_path=reference.file_path,
+                            expires_hours=24
+                        )
+                        preview["presigned_url"] = presigned_url
+                        reference.presigned_url = presigned_url
+                    else:
+                        preview["presigned_url"] = None
+                except Exception as e:
+                    logger.debug(f"生成音频预签名URL失败: {e}")
+                    preview["presigned_url"] = None
             
             return preview
             
@@ -527,17 +703,21 @@ class ContextBuilder:
                     if dedupe_key:
                         seen_keys.add(dedupe_key)
                     
-                    # 构建引用字典
+                    # 构建引用字典（支持 doc / image / audio / video）
+                    ref_id = reference.id
+                    if isinstance(ref_id, str) and ref_id.isdigit():
+                        ref_id = int(ref_id)
                     ref_dict = {
-                        "id": reference.id,  # 引用编号（1, 2, 3...）
-                        "type": reference.content_type,  # "doc" 或 "image"
-                        "file_name": reference.file_path.split('/')[-1] if '/' in reference.file_path else reference.file_path,
+                        "id": ref_id,
+                        "type": reference.content_type,
+                        "file_name": reference.file_path.split('/')[-1] if reference.file_path and '/' in reference.file_path else (reference.file_path or ""),
                         "file_path": reference.file_path,
-                        "content": reference.content[:200] if reference.content else "",  # 只保留前200字符
+                        "content": reference.content[:200] if reference.content else "",
                         "img_url": reference.presigned_url if reference.content_type == "image" else None,
+                        "audio_url": reference.presigned_url if reference.content_type == "audio" else None,
                         "scores": {"rerank": reference.metadata.get("score", 0.0)},
-                        "chunk_id": chunk_id,  # chunk 的 ID（Qdrant point ID）
-                        "chunk_index": reference.metadata.get("chunk_index"),  # chunk 在文档中的索引
+                        "chunk_id": chunk_id,
+                        "chunk_index": reference.metadata.get("chunk_index"),
                         "metadata": reference.metadata
                     }
                     valid_references.append(ref_dict)

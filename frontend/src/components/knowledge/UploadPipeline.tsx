@@ -11,6 +11,8 @@ import {
   Loader2,
   ImageIcon,
   Type,
+  Music,
+  Video,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -173,13 +175,13 @@ export function UploadPipeline({
           </div>
           <p className="mb-2 font-medium text-slate-700 dark:text-slate-200">拖拽文件到此处或点击上传</p>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            支持 PDF / DOCX / PPTX / MD / JPG / PNG / WebP / TIFF（≤ 50MB）
+            支持 PDF / DOCX / PPTX / MD / 图片 / 音频（MP3/WAV/M4A 等）/ 视频（MP4/AVI/MOV 等）（≤ 50MB）
           </p>
           <input
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".pdf,.docx,.doc,.pptx,.txt,.md,.png,.jpg,.jpeg,.gif,.webp,.tiff,.tif"
+            accept=".pdf,.docx,.doc,.pptx,.txt,.md,.png,.jpg,.jpeg,.gif,.webp,.tiff,.tif,.mp3,.wav,.m4a,.flac,.aac,.ogg,.wma,.opus,.mp4,.avi,.mov,.mkv,.webm,.flv,.wmv,.m4v"
             onChange={(e) => handleFileSelect(e.target.files)}
             className="hidden"
           />
@@ -216,7 +218,9 @@ export function UploadPipeline({
                 )}
                 {displayFiles.map((f, i) => {
                   const isImage = f.type.startsWith('image/')
-                  const Icon = isImage ? Image : f.type.includes('pdf') ? FileText : File
+                  const isAudio = f.type.startsWith('audio/')
+                  const isVideo = f.type.startsWith('video/')
+                  const Icon = isImage ? Image : isAudio ? Music : isVideo ? Video : f.type.includes('pdf') ? FileText : File
                   const isCurrent =
                     isUploading &&
                     uploadProgress?.currentFile === (f as File).name

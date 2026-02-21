@@ -28,7 +28,9 @@ class HybridSearchEngine:
         self.rrf_weights = {
             "dense": 1.0,
             "sparse": 0.8,
-            "visual": 1.2  # 视觉检索权重稍高
+            "visual": 1.2,  # 视觉检索权重稍高
+            "audio": 1.0,   # 音频检索权重
+            "video": 1.1    # 视频检索权重（稍高于音频，因为包含视觉信息）
         }
         
         # RRF参数
@@ -39,6 +41,7 @@ class HybridSearchEngine:
         query_strategies: Dict[str, Any],
         target_kb_ids: List[str],
         visual_intent: str = "unnecessary",
+        audio_intent: str = "unnecessary",
         intent_type: str = "factual"
     ) -> Dict[str, Any]:
         """
@@ -48,6 +51,7 @@ class HybridSearchEngine:
             query_strategies: 查询策略
             target_kb_ids: 目标知识库ID列表
             visual_intent: 视觉意图（explicit_demand, implicit_enrichment, unnecessary）
+            audio_intent: 音频意图（explicit_demand, implicit_enrichment, unnecessary）
             intent_type: 意图类型
             
         Returns:
@@ -56,7 +60,7 @@ class HybridSearchEngine:
         start_time = datetime.utcnow()
         
         try:
-            logger.info(f"开始混合检索: KB={len(target_kb_ids)}, Visual Intent={visual_intent}")
+            logger.info(f"开始混合检索: KB={len(target_kb_ids)}, Visual={visual_intent}, Audio={audio_intent}")
             
             # 构建检索任务
             search_tasks = []
@@ -70,12 +74,13 @@ class HybridSearchEngine:
             )
             search_tasks.append(("dense", dense_task))
             
-            # 2. Sparse关键词检索（使用 BGE-M3 稀疏向量）
+            # 2. Sparse关键词检索（使用 BGE-M3 稀疏向量，始终启用）
             sparse_task = self._sparse_search(
                 dense_query=query_strategies.get("dense_query", ""),
                 keywords=query_strategies.get("sparse_keywords", []),
                 target_kb_ids=target_kb_ids,
-                intent_type=intent_type
+                intent_type=intent_type,
+                fallback_query=query_strategies.get("original_query", "")
             )
             search_tasks.append(("sparse", sparse_task))
             
@@ -89,6 +94,24 @@ class HybridSearchEngine:
                 )
                 search_tasks.append(("visual", visual_task))
             
+            # 4. Audio检索（基于 audio_intent：unnecessary 时直接返回空；explicit/implicit 时使用 CLAP 双路 RRF）
+            audio_task = self._audio_search(
+                query_strategies.get("dense_query", ""),
+                target_kb_ids,
+                audio_intent=audio_intent,
+                limit=10
+            )
+            search_tasks.append(("audio", audio_task))
+            
+            # 5. Video检索
+            video_task = self._video_search(
+                query_strategies.get("dense_query", ""),
+                target_kb_ids,
+                visual_query=query_strategies.get("dense_query", "") if visual_intent != "unnecessary" else None,
+                limit=10
+            )
+            search_tasks.append(("video", video_task))
+            
             # 并行执行检索任务
             results = {}
             for task_type, task in search_tasks:
@@ -100,22 +123,40 @@ class HybridSearchEngine:
                     logger.error(f"{task_type}检索失败: {str(e)}")
                     results[task_type] = []
 
-            # 当 Dense 与 Sparse 均无结果时，记录各目标 KB 的文本块数量，便于排查“未建索引”问题
+            # 当 Dense 与 Sparse 均无结果时，记录各目标 KB 的文本/图/音频数量，便于排查“未建索引”问题
             dense_count = len(results.get("dense", []))
             sparse_count = len(results.get("sparse", []))
             if dense_count == 0 and sparse_count == 0 and target_kb_ids:
                 try:
                     for kb_id in target_kb_ids:
                         n_text, n_img = await self.vector_store.count_kb_chunks(kb_id)
+                        n_audio = await self.vector_store.count_kb_audio(kb_id)
                         logger.warning(
-                            f"目标知识库无文本检索结果，请确认是否已对文本建索引: kb_id={kb_id}, "
-                            f"text_chunks={n_text}, image_vectors={n_img}"
+                            "目标知识库无文本检索结果，请确认是否已对文本建索引: kb_id={}, "
+                            "text_chunks={}, image_vectors={}, audio_vectors={}",
+                            kb_id, n_text, n_img, n_audio
                         )
                 except Exception as e:
-                    logger.debug(f"统计目标KB文本块数量时出错: {e}")
+                    logger.debug("统计目标KB数量时出错: {}", e)
+            # 当有音频意图但音频检索为 0 时，打印各目标 KB 的 audio_vectors 数量，便于区分「库内无音频」与「有数据但未命中」
+            audio_count = len(results.get("audio", []))
+            if audio_count == 0 and audio_intent in ["explicit_demand", "implicit_enrichment"] and target_kb_ids:
+                try:
+                    parts = []
+                    for kb_id in target_kb_ids:
+                        n_audio = await self.vector_store.count_kb_audio(kb_id)
+                        parts.append(f"{kb_id}={n_audio}")
+                    logger.info(
+                        "音频检索为 0（audio_intent={}），目标知识库 audio_vectors 数量: {}",
+                        audio_intent, ", ".join(parts)
+                    )
+                except Exception as e:
+                    logger.debug("统计目标KB音频数量时出错: {}", e)
 
-            # 4. RRF融合（根据visual_intent动态调整权重）
-            fused_results = await self._fuse_results(results, visual_intent=visual_intent)
+            # 4. RRF融合（根据 visual_intent / audio_intent 动态调整权重）
+            fused_results = await self._fuse_results(
+                results, visual_intent=visual_intent, audio_intent=audio_intent
+            )
             
             processing_time = (datetime.utcnow() - start_time).total_seconds()
             
@@ -242,26 +283,30 @@ class HybridSearchEngine:
         dense_query: str,
         keywords: List[str],
         target_kb_ids: List[str],
-        intent_type: str
+        intent_type: str,
+        fallback_query: str = ""
     ) -> List[Dict[str, Any]]:
         """
-        Sparse关键词检索（使用 BGE-M3 稀疏向量）
+        Sparse关键词检索（使用 BGE-M3 稀疏向量，始终启用）
         
         Args:
             dense_query: 密集查询文本（优先使用）
             keywords: 关键词列表（备用）
             target_kb_ids: 目标知识库ID列表
             intent_type: 意图类型
+            fallback_query: 当 dense_query 与 keywords 均空时使用的备用查询（如 original_query）
             
         Returns:
             检索结果列表
         """
         try:
-            # 优先使用 dense_query，如果没有则使用关键词拼接
+            # 优先使用 dense_query，其次 keywords 拼接，最后 fallback_query，确保 sparse 始终有输入
             if dense_query and dense_query.strip():
                 query_text = dense_query.strip()
             elif keywords:
-                query_text = " ".join(keywords)
+                query_text = " ".join(str(k) for k in keywords if k)
+            elif fallback_query and str(fallback_query).strip():
+                query_text = str(fallback_query).strip()
             else:
                 logger.info("无查询文本和关键词，跳过Sparse检索")
                 return []
@@ -602,32 +647,36 @@ class HybridSearchEngine:
     async def _fuse_results(
         self, 
         raw_results: Dict[str, List[Dict[str, Any]]], 
-        visual_intent: str = "unnecessary"
+        visual_intent: str = "unnecessary",
+        audio_intent: str = "unnecessary"
     ) -> List[Dict[str, Any]]:
         """
         RRF融合结果
-        根据visual_intent动态调整权重
+        根据 visual_intent / audio_intent 动态调整权重
         
         Args:
             raw_results: 原始检索结果
             visual_intent: 视觉意图（explicit_demand, implicit_enrichment, unnecessary）
+            audio_intent: 音频意图（explicit_demand, implicit_enrichment, unnecessary）
         """
         try:
-            # 使用RRF算法融合结果
             fused_results = {}
-            
-            # 根据visual_intent动态调整权重
             dynamic_weights = self.rrf_weights.copy()
             if visual_intent == "explicit_demand":
-                # 显式需求：提高视觉检索权重，确保图片排在前面
                 dynamic_weights["visual"] = 1.2
             elif visual_intent == "implicit_enrichment":
-                # 隐性增益：提高权重到1.15，更接近显式模式的1.2，确保图片在融合时有更好的排名
-                # 但仍保持平衡，避免过度挤掉文本（文本权重dense=1.0, sparse=0.8）
                 dynamic_weights["visual"] = 0.9
             else:
-                # unnecessary: 视觉检索权重为0（实际上不应该有visual结果）
                 dynamic_weights["visual"] = 0.0
+            if audio_intent == "explicit_demand":
+                dynamic_weights["audio"] = 1.2
+            elif audio_intent == "implicit_enrichment":
+                dynamic_weights["audio"] = 0.9
+            else:
+                dynamic_weights["audio"] = 0.0
+            # sparse 始终启用，保持默认权重（与 rrf_weights 一致）
+            if "sparse" not in dynamic_weights or dynamic_weights.get("sparse", 0) <= 0:
+                dynamic_weights["sparse"] = self.rrf_weights.get("sparse", 0.8)
             
             # 遍历每种检索类型的结果
             for search_type, results in raw_results.items():
@@ -648,7 +697,12 @@ class HybridSearchEngine:
                             "id": result_id,
                             "scores": {},
                             "total_score": 0.0,
-                            "payload": result.get("payload", {})
+                            "payload": result.get("payload", {}),
+                            "content_type": result.get("content_type", "doc"),  # 保留内容类型
+                            "file_id": result.get("file_id"),
+                            "file_path": result.get("file_path"),
+                            "content": result.get("content", ""),
+                            "metadata": result.get("metadata", {})
                         }
                     
                     # 累加该结果在所有检索类型中的分数
@@ -669,7 +723,8 @@ class HybridSearchEngine:
             
             logger.info(
                 f"RRF融合完成: {len(raw_results)} 种检索 -> {len(final_results)} 个融合结果, "
-                f"Visual Intent={visual_intent}, Visual Weight={dynamic_weights.get('visual', 0.0)}"
+                f"Visual={visual_intent}(w={dynamic_weights.get('visual', 0.0)}), "
+                f"Audio={audio_intent}(w={dynamic_weights.get('audio', 0.0)})"
             )
             
             return final_results
@@ -717,6 +772,146 @@ class HybridSearchEngine:
             logger.error(f"获取检索统计失败: {str(e)}")
             return {}
     
+    async def _audio_search(
+        self,
+        query: str,
+        target_kb_ids: List[str],
+        audio_intent: str = "unnecessary",
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """音频检索。基于 audio_intent：unnecessary 不检索；explicit/implicit 时使用 text_vec + clap_vec 双路 RRF（可选 sparse）。"""
+        try:
+            if audio_intent == "unnecessary":
+                return []
+            # 1. 文本向量化查询
+            embed_result = await self.llm_manager.embed(texts=[query])
+            if not embed_result.success or not embed_result.data:
+                logger.error("音频检索向量化失败")
+                return []
+            query_vector = embed_result.data[0] if isinstance(embed_result.data, list) else embed_result.data
+            sparse_result = self.sparse_encoder.encode_query(query)
+            sparse_vector = sparse_result.get("sparse") if sparse_result else None
+            # 2. 有音频意图时尝试 CLAP 双路 RRF（text_vec + clap_vec [+ sparse]）
+            if audio_intent in ["explicit_demand", "implicit_enrichment"]:
+                clap_vector = None
+                try:
+                    clap_vector = await self.ingestion_service.get_clap_text_vector_for_query(query)
+                except Exception as e:
+                    logger.warning("CLAP 查询向量生成失败，回退单路: %s", e)
+                if clap_vector:
+                    search_results = await self.vector_store.search_audio_vectors_dual_rrf(
+                        text_query_vector=query_vector,
+                        clap_query_vector=clap_vector,
+                        sparse_vector=sparse_vector,
+                        target_kb_ids=target_kb_ids,
+                        limit=limit * 2 if audio_intent == "implicit_enrichment" else limit,
+                        score_threshold=0.0 if audio_intent == "explicit_demand" else 0.2
+                    )
+                else:
+                    search_results = await self.vector_store.search_audio_vectors(
+                        query_vector=query_vector,
+                        sparse_vector=sparse_vector,
+                        target_kb_ids=target_kb_ids,
+                        limit=limit
+                    )
+            else:
+                search_results = await self.vector_store.search_audio_vectors(
+                    query_vector=query_vector,
+                    sparse_vector=sparse_vector,
+                    target_kb_ids=target_kb_ids,
+                    limit=limit
+                )
+            # 3. 格式化结果（保留完整 payload 供下游 context_builder 取 kb_id 等）
+            formatted_results = []
+            for result in search_results:
+                payload = result.get("payload", {})
+                formatted_results.append({
+                    "id": result.get("id"),
+                    "content": payload.get("transcript", ""),
+                    "content_type": "audio",
+                    "file_id": payload.get("file_id"),
+                    "file_path": payload.get("file_path"),
+                    "score": result.get("score", 0.0),
+                    "payload": payload,
+                    "metadata": {
+                        "duration": payload.get("duration", 0.0),
+                        "audio_format": payload.get("audio_format", ""),
+                        "description": payload.get("description", ""),
+                        "transcript": payload.get("transcript", "")
+                    }
+                })
+            return formatted_results
+        except Exception as e:
+            logger.error("音频检索失败: %s", e, exc_info=True)
+            return []
+    
+    async def _video_search(
+        self,
+        query: str,
+        target_kb_ids: List[str],
+        visual_query: Optional[str] = None,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """视频检索"""
+        try:
+            # 1. 文本向量化查询
+            embed_result = await self.llm_manager.embed(texts=[query])
+            if not embed_result.success or not embed_result.data:
+                logger.error("视频检索向量化失败")
+                return []
+            
+            query_vector = embed_result.data[0] if isinstance(embed_result.data, list) else embed_result.data
+            
+            # 2. 如果visual_query存在，生成CLIP向量
+            clip_vector = None
+            if visual_query:
+                try:
+                    clip_vector = await self._generate_clip_text_vector(visual_query)
+                except Exception as e:
+                    logger.warning(f"视频检索CLIP向量生成失败: {str(e)}")
+            
+            # 3. 检索video_vectors集合
+            search_results = await self.vector_store.search_video_vectors(
+                query_vector=query_vector,
+                clip_vector=clip_vector,
+                target_kb_ids=target_kb_ids,
+                limit=limit
+            )
+            
+            # 4. 格式化结果（保留完整 payload 供下游 context_builder 取 kb_id 等）
+            formatted_results = []
+            for result in search_results:
+                payload = result.get("payload", {})
+                key_frames_json = payload.get("key_frames", "[]")
+                try:
+                    import json
+                    key_frames = json.loads(key_frames_json) if isinstance(key_frames_json, str) else key_frames_json
+                except Exception:
+                    key_frames = []
+                formatted_results.append({
+                    "id": result.get("id"),
+                    "content": payload.get("description", ""),
+                    "content_type": "video",
+                    "file_id": payload.get("file_id"),
+                    "file_path": payload.get("file_path"),
+                    "score": result.get("score", 0.0),
+                    "payload": payload,
+                    "metadata": {
+                        "duration": payload.get("duration", 0.0),
+                        "video_format": payload.get("video_format", ""),
+                        "resolution": payload.get("resolution", ""),
+                        "fps": payload.get("fps", 0.0),
+                        "key_frames": key_frames,
+                        "has_audio": payload.get("has_audio", False),
+                        "audio_file_id": payload.get("audio_file_id")
+                    }
+                })
+            return formatted_results
+            
+        except Exception as e:
+            logger.error(f"视频检索失败: {str(e)}", exc_info=True)
+            return []
+
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""
         try:

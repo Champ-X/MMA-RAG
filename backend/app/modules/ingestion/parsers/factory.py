@@ -211,6 +211,8 @@ class FileType(Enum):
     TXT = "txt"
     MD = "md"
     IMAGE = "image"
+    AUDIO = "audio"      # mp3, wav, m4a, flac, aac, ogg等
+    VIDEO = "video"      # mp4, avi, mov, mkv, webm等
     UNKNOWN = "unknown"
 
 class DocumentParser(ABC):
@@ -630,9 +632,10 @@ class PptxParser(DocumentParser):
             paragraphs = []
             for slide_idx, slide in enumerate(prs.slides):
                 for shape in slide.shapes:
-                    if hasattr(shape, "text") and shape.text.strip():
+                    text = getattr(shape, "text", "")
+                    if text and text.strip():
                         paragraphs.append({
-                            "text": shape.text.strip(),
+                            "text": text.strip(),
                             "slide_index": slide_idx + 1,
                         })
             return {
@@ -985,6 +988,175 @@ class ImageParser(DocumentParser):
             logger.error(f"图片解析失败: {str(e)}")
             raise
 
+class AudioParser(DocumentParser):
+    """音频解析器"""
+    
+    def supports_file_type(self) -> FileType:
+        return FileType.AUDIO
+    
+    async def parse(self, file_content: bytes, file_path: str, **kwargs: Any) -> Dict[str, Any]:
+        """解析音频文件，提取元数据"""
+        try:
+            import librosa
+            import soundfile as sf
+            from io import BytesIO
+            
+            # 使用librosa读取音频元数据
+            audio_io = BytesIO(file_content)
+            audio_io.seek(0)
+            
+            # 尝试使用soundfile读取元数据（更快，不需要解码音频）
+            try:
+                with sf.SoundFile(audio_io) as audio_file:
+                    duration = len(audio_file) / audio_file.samplerate
+                    sample_rate = audio_file.samplerate
+                    channels = audio_file.channels
+                    format_name = audio_file.format
+                    subtype = audio_file.subtype
+            except Exception:
+                # 如果soundfile失败，使用librosa（需要解码，较慢）
+                audio_io.seek(0)
+                y, sample_rate = librosa.load(audio_io, sr=None, duration=0.1)  # 只加载一小段来获取元数据
+                duration = librosa.get_duration(y=y, sr=sample_rate)
+                channels = 1  # librosa默认转换为单声道
+                format_name = Path(file_path).suffix.lower().lstrip('.')
+                subtype = None
+            
+            # 估算比特率（如果无法直接获取）
+            file_size = len(file_content)
+            bitrate = int((file_size * 8) / duration) if duration > 0 else 0  # bps
+            bitrate_kbps = bitrate // 1000  # 转换为kbps
+            
+            return {
+                "file_type": "audio",
+                "duration": float(duration),
+                "sample_rate": int(sample_rate),
+                "channels": int(channels),
+                "format": format_name or Path(file_path).suffix.lower().lstrip('.'),
+                "bitrate": bitrate_kbps,
+                "file_size": file_size,
+                "metadata": {
+                    "subtype": subtype,
+                    "extracted_at": datetime.now().isoformat()
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"音频解析失败: {str(e)}")
+            # 如果解析失败，返回基本信息
+            return {
+                "file_type": "audio",
+                "duration": 0.0,
+                "sample_rate": 44100,  # 默认值
+                "channels": 2,  # 默认值
+                "format": Path(file_path).suffix.lower().lstrip('.'),
+                "bitrate": 0,
+                "file_size": len(file_content),
+                "metadata": {
+                    "extracted_at": datetime.now().isoformat(),
+                    "parse_error": str(e)
+                }
+            }
+
+class VideoParser(DocumentParser):
+    """视频解析器"""
+    
+    def supports_file_type(self) -> FileType:
+        return FileType.VIDEO
+    
+    async def parse(self, file_content: bytes, file_path: str, **kwargs: Any) -> Dict[str, Any]:
+        """解析视频文件，提取元数据"""
+        try:
+            import cv2
+            import numpy as np
+            from io import BytesIO
+            
+            # 将bytes转换为numpy数组
+            video_bytes = np.frombuffer(file_content, dtype=np.uint8)
+            
+            # 使用OpenCV读取视频信息
+            # 注意：cv2.VideoCapture需要文件路径或URL，不能直接读取bytes
+            # 我们需要先保存到临时文件或使用其他方法
+            import tempfile
+            import os
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file_path).suffix) as tmp_file:
+                tmp_file.write(file_content)
+                tmp_path = tmp_file.name
+            
+            try:
+                cap = cv2.VideoCapture(tmp_path)
+                
+                if not cap.isOpened():
+                    raise ValueError("无法打开视频文件")
+                
+                # 获取视频属性
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                duration = frame_count / fps if fps > 0 else 0
+                
+                # 检查是否有音频轨道
+                has_audio = False
+                try:
+                    # 尝试读取第一帧来检测音频
+                    # OpenCV无法直接检测音频，我们假设如果视频文件较大可能包含音频
+                    file_size = len(file_content)
+                    has_audio = file_size > (width * height * frame_count * 3)  # 粗略估算
+                except:
+                    pass
+                
+                # 获取编码格式（如果可用）
+                fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
+                codec = "".join([chr((fourcc >> 8 * i) & 0xFF) for i in range(4)])
+                
+                cap.release()
+                
+                return {
+                    "file_type": "video",
+                    "duration": float(duration),
+                    "fps": float(fps),
+                    "resolution": f"{width}x{height}",
+                    "width": width,
+                    "height": height,
+                    "frame_count": frame_count,
+                    "format": Path(file_path).suffix.lower().lstrip('.'),
+                    "codec": codec if codec.strip() else "unknown",
+                    "has_audio": has_audio,
+                    "file_size": len(file_content),
+                    "metadata": {
+                        "extracted_at": datetime.now().isoformat()
+                    }
+                }
+            finally:
+                # 清理临时文件
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
+            
+        except Exception as e:
+            logger.error(f"视频解析失败: {str(e)}")
+            # 如果解析失败，返回基本信息
+            return {
+                "file_type": "video",
+                "duration": 0.0,
+                "fps": 30.0,  # 默认值
+                "resolution": "1920x1080",  # 默认值
+                "width": 1920,
+                "height": 1080,
+                "frame_count": 0,
+                "format": Path(file_path).suffix.lower().lstrip('.'),
+                "codec": "unknown",
+                "has_audio": False,
+                "file_size": len(file_content),
+                "metadata": {
+                    "extracted_at": datetime.now().isoformat(),
+                    "parse_error": str(e)
+                }
+            }
+
 class ParserFactory:
     """解析器工厂"""
     
@@ -994,7 +1166,9 @@ class ParserFactory:
         FileType.PPTX: PptxParser(),
         FileType.TXT: TextParser(),
         FileType.MD: MarkdownParser(),
-        FileType.IMAGE: ImageParser()
+        FileType.IMAGE: ImageParser(),
+        FileType.AUDIO: AudioParser(),
+        FileType.VIDEO: VideoParser()
     }
     
     @classmethod
@@ -1017,6 +1191,10 @@ class ParserFactory:
             return FileType.MD
         elif file_ext in ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif"]:
             return FileType.IMAGE
+        elif file_ext in ["mp3", "wav", "m4a", "flac", "aac", "ogg", "wma", "opus"]:
+            return FileType.AUDIO
+        elif file_ext in ["mp4", "avi", "mov", "mkv", "webm", "flv", "wmv", "m4v"]:
+            return FileType.VIDEO
         
         # 基于内容检测（简单实现）
         try:
