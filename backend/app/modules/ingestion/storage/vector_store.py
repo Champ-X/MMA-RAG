@@ -908,16 +908,21 @@ class VectorStore:
             return False
 
     async def delete_kb_vectors(self, kb_id: str) -> bool:
-        """删除知识库在 text_chunks、image_vectors 中该 kb_id 的所有点（按 filter 删除，可靠）。"""
+        """删除知识库在 text_chunks、image_vectors、audio_vectors、video_vectors 中该 kb_id 的所有点（按 filter 删除，可靠）。"""
         try:
             filter_condition = Filter(
                 must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))]
             )
             ok_text = self._delete_points_by_kb_id_filter("text_chunks", filter_condition)
             ok_img = self._delete_points_by_kb_id_filter("image_vectors", filter_condition)
-            if ok_text or ok_img:
-                logger.info(f"删除知识库向量完成: {kb_id} (text_chunks={ok_text}, image_vectors={ok_img})")
-            return ok_text and ok_img
+            ok_audio = self._delete_points_by_kb_id_filter("audio_vectors", filter_condition)
+            ok_video = self._delete_points_by_kb_id_filter("video_vectors", filter_condition)
+            if ok_text or ok_img or ok_audio or ok_video:
+                logger.info(
+                    f"删除知识库向量完成: {kb_id} "
+                    f"(text_chunks={ok_text}, image_vectors={ok_img}, audio_vectors={ok_audio}, video_vectors={ok_video})"
+                )
+            return ok_text and ok_img and ok_audio and ok_video
         except Exception as e:
             logger.error(f"删除知识库向量失败: {str(e)}")
             return False

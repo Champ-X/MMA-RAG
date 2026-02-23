@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import React from 'react'
 import type { CitationReference } from '@/types/sse'
-import { FileText, Image, Music, ExternalLink, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
+import { FileText, Image, Music, Video, ExternalLink, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -48,6 +48,7 @@ function getReferenceIcon(type: 'doc' | 'image' | 'audio' | 'video') {
   if (type === 'doc') return FileText
   if (type === 'image') return Image
   if (type === 'audio') return Music
+  if (type === 'video') return Video
   return FileText
 }
 

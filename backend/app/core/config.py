@@ -110,6 +110,8 @@ class Settings(BaseSettings):
     video_max_chunk_duration_seconds: float = Field(default=480.0, validation_alias="VIDEO_MAX_CHUNK_DURATION_SECONDS")  # 单次 MLLM 能处理的最长片段（如 8 分钟），长视频按此切 chunk
     video_segment_max_seconds: float = Field(default=120.0, validation_alias="VIDEO_SEGMENT_MAX_SECONDS")  # 短视频「整片一段」时单次送 MLLM 的时长上限，超过则拆多段以覆盖全片（避免只产出前 20～40s）
     video_chunk_overlap_seconds: float = Field(default=10.0, validation_alias="VIDEO_CHUNK_OVERLAP_SECONDS")  # 窗口重叠时长
+    # 长视频分段切段使用的 ffmpeg 可执行路径；未设置时使用 PATH 中的 ffmpeg（需系统已安装，如 macOS: brew install ffmpeg）
+    ffmpeg_path: Optional[str] = Field(default=None, validation_alias="FFMPEG_PATH")
 
     @computed_field  # type: ignore[prop-decorator]
     @property

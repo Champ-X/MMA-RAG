@@ -272,6 +272,13 @@ class LLMRegistry:
                     "description": "Qwen3.5 Plus（阿里云百炼）",
                     "raw_model": "qwen3.5-plus",
                 },
+                "aliyun_bailian:qwen3.5-plus-2026-02-15": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,video",
+                    "context_length": 991000,  # 991K
+                    "description": "Qwen3.5 Plus 2026-02-15（阿里云百炼，推荐视频解析）",
+                    "raw_model": "qwen3.5-plus-2026-02-15",
+                },
                 "aliyun_bailian:qwen3.5-397b-a17b": {
                     "provider": "aliyun_bailian",
                     "type": "chat,vision,video",
@@ -454,8 +461,9 @@ class LLMRegistry:
             },
             # 视频解析：长视频场景划分+关键帧、短视频整体描述，需支持多图/视觉
             "video_parsing": {
-                "model": "aliyun_bailian:qwen3.5-plus",
+                "model": "aliyun_bailian:qwen3.5-plus-2026-02-15",
                 "fallbacks": [
+                    "aliyun_bailian:qwen3.5-plus",
                     "openrouter:google/gemini-3-pro-preview",
                     "openrouter:google/gemini-3-flash-preview",
                     "openrouter:google/gemini-2.5-flash",

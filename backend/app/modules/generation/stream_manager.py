@@ -34,9 +34,17 @@ def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
             "content": (v.content or "")[:500],
             "img_url": v.presigned_url if ref_type == "image" else None,
             "audio_url": getattr(v, "presigned_url", None) if ref_type == "audio" else None,
+            "video_url": getattr(v, "presigned_url", None) if ref_type == "video" else None,
             "scores": {"dense": 0, "sparse": 0, "visual": 0, "rerank": score},
         }
         meta = v.metadata or {}
+        if ref_type == "video":
+            st = meta.get("scene_start_time")
+            en = meta.get("scene_end_time")
+            if st is not None:
+                item["start_sec"] = float(st)
+            if en is not None:
+                item["end_sec"] = float(en)
         if ref_type == "doc":
             chunk_id = meta.get("chunk_id")
             # doc 引用始终带 debug_info；chunk_id 必须为检索返回的向量库 point id，缺则无法查上下文

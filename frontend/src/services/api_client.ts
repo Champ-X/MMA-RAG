@@ -687,6 +687,9 @@ export const chatApi = {
   // 按需获取引用音频播放地址（用于「点击播放」）
   getReferenceAudioUrl: (params: { kb_id?: string; file_path: string }) =>
     apiClient.post<{ audio_url: string }>('/chat/reference-audio-url', params),
+  // 按需获取引用视频播放地址（用于「点击播放」）
+  getReferenceVideoUrl: (params: { kb_id?: string; file_path: string }) =>
+    apiClient.post<{ video_url: string }>('/chat/reference-video-url', params),
 };
 
 // 调试相关API（对接 /api/debug）

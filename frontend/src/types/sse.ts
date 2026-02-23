@@ -57,6 +57,12 @@ export interface CitationReference {
   img_url?: string;
   /** 音频播放地址（预签名 URL），仅 type 为 audio 时有值 */
   audio_url?: string | null;
+  /** 视频播放地址（预签名 URL），仅 type 为 video 时有值 */
+  video_url?: string | null;
+  /** 视频片段起始时间（秒），仅 type 为 video 时可选，用于跳转到指定时间点 */
+  start_sec?: number;
+  /** 视频片段结束时间（秒），仅 type 为 video 时可选 */
+  end_sec?: number;
   scores: CitationScore;
   debug_info?: CitationDebugInfo;
 }

@@ -1,5 +1,5 @@
 import React from 'react'
-import { User, Bot, Music, Play } from 'lucide-react'
+import { User, Bot, Music, Play, Video } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { ThinkingCapsule } from './ThinkingCapsule'
 import { InlineCitation } from './InlineCitation'
@@ -262,6 +262,26 @@ function extractAudioRefIdsFromText(
     }
   }
   return audioRefs
+}
+
+// 从文本中提取视频引用ID列表（用于段落下方展示视频卡片）
+function extractVideoRefIdsFromText(
+  text: string,
+  citationMap?: Map<number | string, CitationReference>,
+  refs?: Array<CitationReference | { id: number | string }>
+): CitationReference[] {
+  const matches = findAllCitationMatches(text)
+  const videoRefs: CitationReference[] = []
+  const seen = new Set<number | string>()
+  for (const match of matches) {
+    if (seen.has(match.n)) continue
+    const citation = findCitationById(match.n, citationMap, refs)
+    if (citation && 'type' in citation && citation.type === 'video') {
+      seen.add(match.n)
+      videoRefs.push(citation)
+    }
+  }
+  return videoRefs
 }
 
 function CitationInlineButton({ n, onClick }: { n: number; onClick?: (rect: DOMRect) => void }) {
@@ -609,6 +629,207 @@ function ParagraphAudioDisplay({
   )
 }
 
+// 带时间点跳转的视频播放器：加载后跳到 start_sec，可选在 end_sec 暂停
+function VideoPlayerWithSeek({
+  src,
+  startSec,
+  endSec,
+  className,
+  onClick,
+}: {
+  src: string
+  startSec?: number | null
+  endSec?: number | null
+  className?: string
+  onClick?: (e: React.MouseEvent<HTMLVideoElement>) => void
+}) {
+  const videoRef = React.useRef<HTMLVideoElement>(null)
+  const hasSeeked = React.useRef(false)
+  React.useEffect(() => {
+    hasSeeked.current = false
+  }, [src])
+  React.useEffect(() => {
+    const el = videoRef.current
+    if (!el || startSec == null || !Number.isFinite(startSec)) return
+    const onCanPlay = () => {
+      if (hasSeeked.current) return
+      el.currentTime = startSec
+      hasSeeked.current = true
+    }
+    el.addEventListener('canplay', onCanPlay)
+    if (el.readyState >= 2) {
+      el.currentTime = startSec
+      hasSeeked.current = true
+    }
+    return () => {
+      el.removeEventListener('canplay', onCanPlay)
+    }
+  }, [src, startSec])
+  React.useEffect(() => {
+    if (endSec == null || !Number.isFinite(endSec)) return
+    const el = videoRef.current
+    if (!el) return
+    const onTimeUpdate = () => {
+      if (el.currentTime >= endSec) el.pause()
+    }
+    el.addEventListener('timeupdate', onTimeUpdate)
+    return () => el.removeEventListener('timeupdate', onTimeUpdate)
+  }, [endSec])
+  return (
+    <video
+      ref={videoRef}
+      src={src}
+      controls
+      preload="metadata"
+      className={className}
+      onClick={onClick}
+    />
+  )
+}
+
+// 将秒数格式化为 MM:SS 或 HH:MM:SS
+function formatTimeLabel(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return '0:00'
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  const s = Math.floor(sec % 60)
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+// 段落下方展示的视频引用卡片（图标 + 标签 + 可点击播放，不打开弹层）
+function ParagraphVideoDisplay({
+  citations,
+  onCiteClick,
+  messageId,
+  displayIndexByRefId,
+}: {
+  citations: CitationReference[]
+  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void
+  messageId?: string
+  displayIndexByRefId?: Map<number | string, number>
+}) {
+  const [fetchedVideoUrls, setFetchedVideoUrls] = React.useState<Record<string, string>>({})
+  const [loadingRefId, setLoadingRefId] = React.useState<string | number | null>(null)
+
+  if (citations.length === 0) return null
+
+  return (
+    <div className="flex flex-wrap justify-center gap-3 mt-3 mb-0">
+      {citations.map((citation) => {
+        const displayNum = displayIndexByRefId?.get(citation.id) ?? citation.id
+        const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
+        const resolvedUrl = citation.type === 'video' && (citation.video_url || fetchedVideoUrls[key])
+        const hasVideoUrl = !!resolvedUrl
+        const startSec = citation.start_sec != null ? Number(citation.start_sec) : null
+        const endSec = citation.end_sec != null ? Number(citation.end_sec) : null
+
+        const handleOpenPopover = (e: React.MouseEvent) => {
+          if (onCiteClick) {
+            const rect = e.currentTarget.closest('.paragraph-video-card')?.getBoundingClientRect() ?? (e.currentTarget as HTMLElement).getBoundingClientRect()
+            onCiteClick(citation.id, rect, messageId)
+          }
+        }
+
+        const handleClickPlay = async () => {
+          if (hasVideoUrl) return
+          if (!citation.file_path && onCiteClick) {
+            onCiteClick(citation.id, new DOMRect(0, 0, 0, 0), messageId)
+            return
+          }
+          setLoadingRefId(citation.id)
+          try {
+            const res = await chatApi.getReferenceVideoUrl({
+              kb_id: citation.debug_info?.kb_id ?? undefined,
+              file_path: citation.file_path!,
+            })
+            if (res?.video_url) setFetchedVideoUrls((prev) => ({ ...prev, [key]: res.video_url }))
+          } catch {
+            if (onCiteClick) {
+              const el = document.querySelector(`.paragraph-video-card[data-video-key="${key}"]`) as HTMLElement
+              const rect = el?.getBoundingClientRect?.() ?? new DOMRect(0, 0, 0, 0)
+              onCiteClick(citation.id, rect, messageId)
+            }
+          } finally {
+            setLoadingRefId(null)
+          }
+        }
+
+        return (
+          <div
+            key={citation.id}
+            data-video-key={key}
+            className="paragraph-video-card relative overflow-hidden rounded-2xl border border-slate-200/90 dark:border-slate-600/70 bg-gradient-to-br from-slate-50 via-sky-50/30 to-slate-100/90 dark:from-slate-900/80 dark:via-sky-950/20 dark:to-slate-900/80 w-full min-w-[374px] max-w-[500px] p-0 shadow-lg shadow-slate-500/5 dark:shadow-slate-500/10 hover:shadow-xl hover:shadow-sky-500/5 dark:hover:shadow-sky-500/10 hover:border-sky-200/80 dark:hover:border-sky-700/50 transition-all duration-300"
+          >
+            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-sky-400 via-cyan-400 to-sky-500 dark:from-sky-500 dark:via-cyan-500 dark:to-sky-600 rounded-l-2xl" />
+            <div className="pl-4 pr-4 pt-2.5 pb-2.5">
+              <button
+                type="button"
+                onClick={handleOpenPopover}
+                className="flex items-center gap-2.5 w-full text-left mb-2 group rounded-lg -mx-1 px-1 py-0.5 hover:bg-sky-100/40 dark:hover:bg-sky-900/20 transition-colors"
+              >
+                <span className="flex items-center justify-center shrink-0 w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-sky-600 dark:text-sky-400 group-hover:bg-sky-100 dark:group-hover:bg-sky-900/40 border border-slate-200/80 dark:border-slate-600/60 shadow-sm transition-all">
+                  <Video className="h-4 w-4" strokeWidth={2} />
+                </span>
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate flex items-baseline gap-1.5">
+                  <span className="font-mono text-sky-600 dark:text-sky-400 font-bold tabular-nums">[{displayNum}]</span>
+                  <span className="text-slate-600 dark:text-slate-300">视频引用</span>
+                </span>
+              </button>
+              {hasVideoUrl ? (
+                <div className="rounded-xl bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-600/80 p-2 mb-2 shadow-inner ring-1 ring-black/5 dark:ring-white/5">
+                  {(startSec != null || endSec != null) && (
+                    <p className="text-[11px] text-sky-600 dark:text-sky-400 mb-1.5 font-medium">
+                      {startSec != null && endSec != null
+                        ? `片段 ${formatTimeLabel(startSec)} - ${formatTimeLabel(endSec)}`
+                        : startSec != null
+                          ? `从 ${formatTimeLabel(startSec)} 开始`
+                          : `至 ${formatTimeLabel(endSec!)} 结束`}
+                    </p>
+                  )}
+                  <VideoPlayerWithSeek
+                    src={resolvedUrl!}
+                    startSec={startSec}
+                    endSec={endSec}
+                    className="w-full rounded-lg max-h-[240px] object-contain [&::-webkit-media-controls-panel]:bg-slate-50/80 dark:[&::-webkit-media-controls-panel]:bg-slate-800/80"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleClickPlay}
+                  disabled={loadingRefId === citation.id}
+                  className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl bg-white/80 dark:bg-slate-800/70 text-sky-700 dark:text-sky-300 hover:bg-sky-50/80 dark:hover:bg-slate-800/90 border border-slate-200/80 dark:border-slate-600/60 transition-all mb-2 disabled:opacity-60 shadow-sm text-sm font-medium ring-1 ring-sky-500/10 dark:ring-sky-500/20"
+                >
+                  {loadingRefId === citation.id ? (
+                    <span className="font-medium">加载中…</span>
+                  ) : (
+                    <>
+                      <Play className="h-4 w-4 flex-shrink-0" fill="currentColor" />
+                      <span className="font-medium">点击播放</span>
+                    </>
+                  )}
+                </button>
+              )}
+              {citation.file_name && (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mb-1.5 font-mono pl-0.5" title={citation.file_name}>
+                  {citation.file_name}
+                </p>
+              )}
+              {citation.content && (
+                <div className="rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-600/60 px-3 py-1.5 ring-1 ring-black/5 dark:ring-white/5">
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">{citation.content}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function MessageBubble({
   message,
   isStreaming = false,
@@ -682,6 +903,25 @@ export function MessageBubble({
     }
     return map
   }, [message.content, citationMap, refs, isUser])
+
+  // 每个视频引用第一次出现的引用ID（用于段落内只展示首次出现的视频）
+  const videoFirstRefIdMap = React.useMemo(() => {
+    if (isUser) return new Map<string, number | string>()
+    const map = new Map<string, number | string>()
+    const seen = new Set<string>()
+    const matches = findAllCitationMatches(message.content)
+    for (const match of matches) {
+      const citation = findCitationById(match.n, citationMap, refs)
+      if (citation && 'type' in citation && citation.type === 'video') {
+        const key = citation.file_name || String(citation.id)
+        if (!seen.has(key)) {
+          seen.add(key)
+          map.set(key, match.n)
+        }
+      }
+    }
+    return map
+  }, [message.content, citationMap, refs, isUser])
   
   // 去重函数：用于过滤重复的引用
   const deduplicateRefs = React.useCallback((refsToDedup: Array<CitationReference | { id: number | string }>) => {
@@ -745,6 +985,7 @@ export function MessageBubble({
         const textContent = extractTextFromNode(children)
         const allImageRefs = extractImageRefIdsFromText(textContent, citationMap, refs)
         const allAudioRefs = extractAudioRefIdsFromText(textContent, citationMap, refs)
+        const allVideoRefs = extractVideoRefIdsFromText(textContent, citationMap, refs)
         
         const newImageRefs = allImageRefs.filter((citation) => {
           const imageKey = citation.img_url || citation.file_name || String(citation.id)
@@ -756,6 +997,13 @@ export function MessageBubble({
         const newAudioRefs = allAudioRefs.filter((citation) => {
           const audioKey = citation.file_name || String(citation.id)
           const firstRefId = audioFirstRefIdMap.get(audioKey)
+          if (firstRefId === undefined) return false
+          const matches = findAllCitationMatches(textContent)
+          return matches.some(m => String(m.n) === String(firstRefId))
+        })
+        const newVideoRefs = allVideoRefs.filter((citation) => {
+          const videoKey = citation.file_name || String(citation.id)
+          const firstRefId = videoFirstRefIdMap.get(videoKey)
           if (firstRefId === undefined) return false
           const matches = findAllCitationMatches(textContent)
           return matches.some(m => String(m.n) === String(firstRefId))
@@ -778,6 +1026,14 @@ export function MessageBubble({
             {newAudioRefs.length > 0 && (
               <ParagraphAudioDisplay
                 citations={newAudioRefs}
+                onCiteClick={handleCiteClick}
+                messageId={message.id}
+                displayIndexByRefId={originalIdToDisplayIndex}
+              />
+            )}
+            {newVideoRefs.length > 0 && (
+              <ParagraphVideoDisplay
+                citations={newVideoRefs}
                 onCiteClick={handleCiteClick}
                 messageId={message.id}
                 displayIndexByRefId={originalIdToDisplayIndex}

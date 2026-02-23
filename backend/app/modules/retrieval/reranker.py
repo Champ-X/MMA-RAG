@@ -188,14 +188,16 @@ class Reranker:
                             "duration": meta.get("duration", 0.0),
                             "audio_format": meta.get("audio_format", ""),
                         }
-                    elif result.get("content_type") == "video" and not payload.get("description"):
-                        meta = result.get("metadata") or {}
-                        payload = {
-                            "description": result.get("content", "") or meta.get("description", ""),
-                            "file_path": result.get("file_path", ""),
-                            "file_id": result.get("file_id"),
-                            "duration": meta.get("duration", 0.0),
-                        }
+                    elif result.get("content_type") == "video":
+                        # 保留 Qdrant 完整 payload（含 kb_id、scene_start_time、scene_end_time 等），仅缺 description 时补全
+                        if not payload.get("description"):
+                            meta = result.get("metadata") or {}
+                            payload = {
+                                **payload,
+                                "description": result.get("content", "")
+                                or payload.get("scene_summary", "")
+                                or meta.get("description", ""),
+                            }
                     candidate = {
                         "id": result["id"],
                         "payload": payload,

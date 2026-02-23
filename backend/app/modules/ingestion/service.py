@@ -1039,13 +1039,31 @@ class IngestionService:
                     except Exception:
                         pass
         else:
-            # >8 分钟：按段切分，每段视频交给 MLLM，不做固定抽帧
+            # >8 分钟：按段切分，每段视频交给 MLLM，不做固定抽帧（方案：滑动窗口 480s + 重叠 10s）
             import tempfile
+            step = max(1.0, max_chunk - overlap)
+            num_chunks_expected = max(1, int((duration - overlap) / step) + (1 if (duration - overlap) % step > 0 else 0))
+            logger.info(
+                f"长视频分段: duration={duration:.1f}s, window={max_chunk:.0f}s, overlap={overlap:.0f}s, 预计 {num_chunks_expected} 段 MLLM 调用"
+            )
             fd_full = -1
             full_path: Optional[str] = None
             try:
                 fd_full, full_path = tempfile.mkstemp(suffix=".mp4")
-                os.write(fd_full, file_content)
+                if file_content and len(file_content) >= 1000:
+                    os.write(fd_full, file_content)
+                else:
+                    # 流式上传等场景可能未带完整 body，从 MinIO 拉取
+                    bucket = storage_result.get("bucket")
+                    object_path = storage_result.get("object_path")
+                    if bucket and object_path:
+                        try:
+                            content = await self.minio_adapter.get_file_content(bucket, object_path)
+                            if content and len(content) >= 1000:
+                                os.write(fd_full, content)
+                                logger.info(f"长视频从 MinIO 拉取完整文件用于分段: {len(content)} bytes")
+                        except Exception as e:
+                            logger.warning("长视频从 MinIO 拉取失败: %s", e)
             except Exception as e:
                 logger.warning("长视频写入临时文件失败: %s", e)
                 full_path = None
@@ -1057,19 +1075,29 @@ class IngestionService:
                         pass
             scenes = []
             all_scenes: List[Dict[str, Any]] = []
-            step = max(1.0, max_chunk - overlap)
             chunk_start = 0.0
+            chunk_index = 0
             try:
-                if full_path and os.path.exists(full_path):
+                if full_path and os.path.exists(full_path) and os.path.getsize(full_path) >= 1000:
                     while chunk_start < duration:
                         chunk_dur = min(max_chunk, duration - chunk_start)
                         if chunk_dur <= 0:
                             break
                         segment_path = self._extract_video_segment_to_file(full_path, chunk_start, chunk_dur)
                         if not segment_path:
+                            logger.warning(f"长视频段 {chunk_index} 提取失败: start={chunk_start:.1f}, dur={chunk_dur:.1f}")
                             chunk_start += step
+                            chunk_index += 1
                             continue
                         try:
+                            # 后段解析时传入前段场景描述，便于 MLLM 理解叙事连贯性
+                            prev_summary_text: Optional[str] = None
+                            if chunk_index > 0 and all_scenes:
+                                prev_summary_text = "\n\n".join(
+                                    f"[前段场景{i+1}] {s.get('scene_summary', '').strip()}"
+                                    for i, s in enumerate(all_scenes)
+                                )
+                            logger.info(f"长视频段 {chunk_index}: start={chunk_start:.1f}, dur={chunk_dur:.1f}, 调用 MLLM")
                             scenes_chunk = await self._parse_video_scenes_mllm(
                                 file_content=b"",
                                 duration=chunk_dur,
@@ -1079,8 +1107,10 @@ class IngestionService:
                                 video_url=None,
                                 video_local_path=segment_path,
                                 video_fps=video_fps,
+                                previous_segments_summary=prev_summary_text,
                             )
-                            for s in scenes_chunk:
+                            logger.info(f"长视频段 {chunk_index} MLLM 返回 {len(scenes_chunk) if scenes_chunk else 0} 个场景")
+                            for s in scenes_chunk or []:
                                 all_scenes.append({
                                     "start_time": float(s.get("start_time", 0)) + chunk_start,
                                     "end_time": float(s.get("end_time", 0)) + chunk_start,
@@ -1098,8 +1128,12 @@ class IngestionService:
                                 except Exception:
                                     pass
                         chunk_start += step
+                        chunk_index += 1
                     all_scenes = self._merge_overlapping_scenes(all_scenes, overlap)
                     scenes = all_scenes
+                else:
+                    reason = "临时文件不存在或为空" if not full_path else "临时文件大小不足"
+                    logger.warning("长视频分段未执行: %s (请确认上传为完整文件或 MinIO 可访问)", reason)
             finally:
                 if full_path and os.path.exists(full_path):
                     try:
@@ -2340,25 +2374,41 @@ class IngestionService:
     def _extract_video_segment_to_file(
         self, full_video_path: str, start_sec: float, duration_sec: float
     ) -> Optional[str]:
-        """用 ffmpeg 从完整视频中切出 [start_sec, start_sec+duration_sec] 段，写入临时文件，返回路径。"""
+        """用 ffmpeg 从完整视频中切出 [start_sec, start_sec+duration_sec] 段，写入临时文件，返回路径。
+        -ss 置于 -i 前以启用快速定位，适合 -c copy 按关键帧切段。"""
         import subprocess
         import tempfile
+        from app.core.config import settings
         if duration_sec <= 0:
             return None
+        if not os.path.exists(full_video_path) or os.path.getsize(full_video_path) == 0:
+            logger.warning(f"_extract_video_segment_to_file: 源文件不存在或为空 {full_video_path}")
+            return None
+        ffmpeg_bin = (getattr(settings, "ffmpeg_path", None) or "").strip() or "ffmpeg"
+        segment_path: Optional[str] = None
         fd, segment_path = tempfile.mkstemp(suffix=".mp4")
         try:
             os.close(fd)
+            # -ss 在 -i 前：快速 seek，与 -c copy 配合按关键帧切段，避免先解码再截取导致失败
             result = subprocess.run(
                 [
-                    "ffmpeg", "-y", "-i", full_video_path,
-                    "-ss", str(start_sec), "-t", str(duration_sec),
-                    "-c", "copy", "-avoid_negative_ts", "1",
+                    ffmpeg_bin, "-y",
+                    "-ss", str(start_sec),
+                    "-i", full_video_path,
+                    "-t", str(duration_sec),
+                    "-c", "copy",
+                    "-avoid_negative_ts", "1",
                     segment_path,
                 ],
                 capture_output=True,
                 timeout=120,
             )
             if result.returncode != 0 or not os.path.exists(segment_path) or os.path.getsize(segment_path) == 0:
+                stderr = (result.stderr or b"").decode("utf-8", errors="replace").strip()
+                msg = stderr[-800:] if len(stderr) > 800 else stderr
+                logger.warning(
+                    f"ffmpeg 切段失败 start={start_sec:.1f} dur={duration_sec:.1f} returncode={result.returncode}: {msg or '(无 stderr)'}"
+                )
                 if os.path.exists(segment_path):
                     try:
                         os.unlink(segment_path)
@@ -2366,13 +2416,32 @@ class IngestionService:
                         pass
                 return None
             return segment_path
+        except subprocess.TimeoutExpired:
+            logger.warning(f"ffmpeg 切段超时 start={start_sec:.1f} dur={duration_sec:.1f}")
+            try:
+                if segment_path and os.path.exists(segment_path):
+                    os.unlink(segment_path)
+            except Exception:
+                pass
+            return None
+        except FileNotFoundError:
+            logger.warning(
+                "ffmpeg 未找到（当前使用: %s）。请安装 ffmpeg（如 macOS: brew install ffmpeg）或在本机 .env 中设置 FFMPEG_PATH 为可执行文件完整路径。",
+                ffmpeg_bin,
+            )
+            try:
+                if segment_path and os.path.exists(segment_path):
+                    os.unlink(segment_path)
+            except Exception:
+                pass
+            return None
         except Exception as e:
             logger.debug("_extract_video_segment_to_file 失败: %s", e)
-            if os.path.exists(segment_path):
-                try:
+            try:
+                if segment_path and os.path.exists(segment_path):
                     os.unlink(segment_path)
-                except Exception:
-                    pass
+            except Exception:
+                pass
             return None
 
     async def _parse_video_scenes_mllm(
@@ -2386,17 +2455,23 @@ class IngestionService:
         video_url: Optional[str] = None,
         video_local_path: Optional[str] = None,
         video_fps: int = 2,
+        previous_segments_summary: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         视频场景+关键帧解析。仅支持将视频交给 MLLM 解析（video_local_path 或 video_url），
         不做固定关键帧抽帧。优先本地上传（file://），避免 MinIO presigned URL 外网不可达导致 400。
+        previous_segments_summary：长视频多段时，前几段已解析的场景描述拼接文本，供 MLLM 理解连贯性。
         参见 docs/视频模态技术方案.md 3.2 / 3.3。
         """
+        prev_summary = (previous_segments_summary or "").strip()
+        if not prev_summary:
+            prev_summary = "（本段为视频首段，无前文。）"
         # 优先：本地上传（百炼 MultiModalConversation file://），单次调用覆盖全片；不依赖 URL 被外网访问
         if video_local_path and os.path.exists(video_local_path):
             prompt_text = prompt_engine.render_template(
                 "video_scene_parsing",
                 chunk_duration_seconds=int(duration),
+                previous_segments_summary=prev_summary,
             )
             msg_content = [
                 {"type": "video_local", "path": video_local_path, "fps": video_fps},
@@ -2445,6 +2520,7 @@ class IngestionService:
             prompt_text = prompt_engine.render_template(
                 "video_scene_parsing",
                 chunk_duration_seconds=int(duration),
+                previous_segments_summary=prev_summary,
             )
             msg_content = [
                 {"type": "video_url", "video_url": {"url": video_url}, "fps": video_fps},

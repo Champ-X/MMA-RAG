@@ -1,8 +1,49 @@
 import { X, Eye, Image } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import React from 'react'
 import type { CitationReference } from '@/types/sse'
+
+function formatTimeLabel(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return '0:00'
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  const s = Math.floor(sec % 60)
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+function VideoWithSeek({ src, startSec, endSec }: { src: string; startSec?: number | null; endSec?: number | null }) {
+  const ref = useRef<HTMLVideoElement>(null)
+  const hasSeeked = useRef(false)
+  useEffect(() => {
+    hasSeeked.current = false
+  }, [src])
+  useEffect(() => {
+    const el = ref.current
+    if (!el || startSec == null || !Number.isFinite(startSec)) return
+    const onCanPlay = () => {
+      if (hasSeeked.current) return
+      el.currentTime = startSec
+      hasSeeked.current = true
+    }
+    el.addEventListener('canplay', onCanPlay)
+    if (el.readyState >= 2) {
+      el.currentTime = startSec
+      hasSeeked.current = true
+    }
+    return () => el.removeEventListener('canplay', onCanPlay)
+  }, [src, startSec])
+  useEffect(() => {
+    if (endSec == null || !Number.isFinite(endSec)) return
+    const el = ref.current
+    if (!el) return
+    const onTimeUpdate = () => { if (el.currentTime >= endSec) el.pause() }
+    el.addEventListener('timeupdate', onTimeUpdate)
+    return () => el.removeEventListener('timeupdate', onTimeUpdate)
+  }, [endSec])
+  return <video ref={ref} src={src} controls className="w-full rounded-lg max-h-[220px] object-contain" preload="metadata" />
+}
 
 interface CitationPopoverProps {
   open: boolean
@@ -118,9 +159,12 @@ export function CitationPopover({
   const footerHeight = 50
   const imageMinHeight = item.type === 'image' ? 250 : 0
   const captionHeight = item.type === 'image' && item.content ? 100 : 0
+  const videoMinHeight = item.type === 'video' ? 220 : 0
   const estimatedHeight = item.type === 'image'
     ? headerHeight + imageMinHeight + captionHeight + footerHeight
-    : headerHeight + 150 + footerHeight
+    : item.type === 'video'
+      ? headerHeight + videoMinHeight + (item.content ? 80 : 0) + footerHeight
+      : headerHeight + 150 + footerHeight
 
   const pad = 16
   const gap = 12
@@ -164,7 +208,7 @@ export function CitationPopover({
       placement = 'above'
     }
   } else {
-    const minRequiredHeight = headerHeight + (item.type === 'image' ? 200 : 100) + footerHeight
+    const minRequiredHeight = headerHeight + (item.type === 'image' ? 200 : item.type === 'video' ? 200 : 100) + footerHeight
     if (spaceBelow >= spaceAbove) {
       top = rect.bottom + gap
       maxHeight = Math.max(minRequiredHeight, Math.min(estimatedHeight, spaceBelow))
@@ -237,6 +281,32 @@ export function CitationPopover({
               </>
             )}
 
+            {item.type === 'video' && (
+              <>
+                {item.video_url && (
+                  <div className="mb-3 rounded-xl border border-sky-200/70 dark:border-sky-800/50 bg-sky-50/50 dark:bg-sky-950/30 p-3">
+                    {(item.start_sec != null || item.end_sec != null) && (
+                      <p className="text-xs text-sky-600 dark:text-sky-400 mb-1.5 font-medium">
+                        {item.start_sec != null && item.end_sec != null
+                          ? `片段 ${formatTimeLabel(item.start_sec)} - ${formatTimeLabel(item.end_sec)}`
+                          : item.start_sec != null
+                            ? `从 ${formatTimeLabel(item.start_sec)} 开始`
+                            : `至 ${formatTimeLabel(item.end_sec!)} 结束`}
+                      </p>
+                    )}
+                    <VideoWithSeek src={item.video_url} startSec={item.start_sec} endSec={item.end_sec} />
+                  </div>
+                )}
+                {(item.content || !item.video_url) && (
+                  <div className="rounded-xl bg-sky-50/50 dark:bg-sky-900/20 p-3 text-xs text-slate-700 dark:text-slate-200 border border-sky-100 dark:border-sky-800/40">
+                    <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                      {item.content || '无内容'}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
             {item.type === 'image' ? (
               item.content && (
                 <div className="rounded-xl bg-purple-50 dark:bg-purple-900/20 p-3 text-xs text-slate-700 dark:text-slate-200 border border-purple-100 dark:border-purple-800/40">
@@ -249,7 +319,7 @@ export function CitationPopover({
                   </div>
                 </div>
               )
-            ) : item.type !== 'audio' ? (
+            ) : item.type !== 'audio' && item.type !== 'video' ? (
               <div className="rounded-xl bg-slate-900/5 p-3 text-xs text-slate-700 dark:bg-white/5 dark:text-slate-200 whitespace-pre-wrap">
                 {item.content || '无内容'}
               </div>

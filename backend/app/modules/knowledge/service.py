@@ -381,7 +381,7 @@ class KnowledgeBaseService:
             raise
     
     async def _delete_kb_vectors(self, kb_id: str):
-        """删除知识库在 text_chunks、image_vectors 中该 kb_id 的所有向量（按 filter 删除，可靠）。"""
+        """删除知识库在 text_chunks、image_vectors、audio_vectors、video_vectors 中该 kb_id 的所有向量（按 filter 删除，可靠）。"""
         await self.vector_store.delete_kb_vectors(kb_id)
     
     async def _delete_kb_files(self, kb_id: str):
@@ -1171,6 +1171,14 @@ class KnowledgeBaseService:
                 except Exception as e:
                     logger.debug(f"候选 kb_id={candidate} 列出文件失败: {e}")
         try:
+            # 构建「视频 uuid -> 视频文件名（无扩展名）」映射，用于关键帧展示名加前缀以区分所属视频
+            video_uuid_to_basename: Dict[str, str] = {}
+            for f in raw_files:
+                op = f.get("object_path", "")
+                parts = op.split("/")
+                if parts[0] == "videos" and len(parts) == 2 and "_" in parts[1]:
+                    uid, fname = parts[1].split("_", 1)
+                    video_uuid_to_basename[uid] = fname.rsplit(".", 1)[0] if "." in fname else fname
             files = []
             for f in raw_files:
                 op = f.get("object_path", "")
@@ -1180,10 +1188,12 @@ class KnowledgeBaseService:
                 lm = f.get("last_modified")
                 date_str = (lm.isoformat() if lm is not None and hasattr(lm, "isoformat")
                             else str(lm) if lm is not None else "")
-                # 关键帧：videos/{file_id}/keyframes/{filename}.jpg，展示为图片且 name 为实际文件名
+                # 关键帧：videos/{file_id}/keyframes/{filename}.jpg，展示为图片；name 加视频名前缀便于区分所属视频
                 if (parts[0] == "videos" and len(parts) >= 4 and parts[2] == "keyframes"):
                     file_id = parts[1]
-                    name = parts[-1]
+                    frame_fname = parts[-1]
+                    video_basename = video_uuid_to_basename.get(file_id)
+                    name = f"{video_basename}_{frame_fname}" if video_basename else frame_fname
                     ext = name.rsplit(".", 1)[-1].lower() if "." in name else "file"
                     item = {
                         "id": op,

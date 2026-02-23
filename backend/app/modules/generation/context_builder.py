@@ -73,8 +73,13 @@ class ContextBuilder:
             # 1. 处理检索结果
             processed_results = await self._process_retrieval_results(retrieval_result)
             
+            # 检索目标知识库 ID 列表，用于在 payload 无 kb_id 时（如历史视频数据）补全引用
+            target_kb_ids = []
+            if hasattr(retrieval_result, "context") and hasattr(retrieval_result.context, "target_kb_ids"):
+                target_kb_ids = getattr(retrieval_result.context, "target_kb_ids", []) or []
+            
             # 2. 生成引用映射
-            reference_map = await self._generate_reference_map(processed_results)
+            reference_map = await self._generate_reference_map(processed_results, target_kb_ids=target_kb_ids)
             
             # 2b. 为音频（及视频）引用生成 presigned_url，便于前端展示播放器
             await self._enrich_audio_video_presigned_urls(reference_map)
@@ -175,15 +180,24 @@ class ContextBuilder:
                         "cross_encoder_score": result.get("cross_encoder_score"),
                     }
                 elif content_type == "video":
-                    content = payload.get("description", "")
-                    file_path = payload.get("file_path", "")
+                    content = (
+                        result.get("content", "")
+                        or payload.get("scene_summary", "")
+                        or payload.get("description", "")
+                    )
+                    file_path = payload.get("file_path", "") or result.get("file_path", "")
                     file_type = "video"
                     payload_meta = {
                         "kb_id": payload.get("kb_id"),
                         "duration": payload.get("duration", 0.0),
                         "original_score": result.get("original_score"),
                         "cross_encoder_score": result.get("cross_encoder_score"),
+                        "scene_start_time": payload.get("scene_start_time"),
+                        "scene_end_time": payload.get("scene_end_time"),
                     }
+                    # 合并检索返回的 metadata（含 key_frames 等），供 format_video_content 与前端展示
+                    result_meta = result.get("metadata") or {}
+                    payload_meta = {**payload_meta, **result_meta}
                 else:  # doc
                     content = payload.get("text_content", "")
                     file_path = payload.get("file_path", "")
@@ -247,12 +261,15 @@ class ContextBuilder:
             return []
     
     async def _generate_reference_map(
-        self, 
-        processed_results: List[Dict[str, Any]]
+        self,
+        processed_results: List[Dict[str, Any]],
+        target_kb_ids: Optional[List[str]] = None,
     ) -> Dict[str, ReferenceMap]:
-        """生成引用映射"""
+        """生成引用映射。target_kb_ids 为检索目标知识库列表，用于在 payload 无 kb_id 时补全音频/视频引用。"""
         try:
             reference_map = {}
+            target_kb_ids = target_kb_ids or []
+            fallback_kb_id = target_kb_ids[0] if target_kb_ids else None
             
             # 按类型分组，确保文档在前、图片在后，与_build_context_string保持一致
             docs = [r for r in processed_results if r["content_type"] == "doc"]
@@ -353,7 +370,7 @@ class ContextBuilder:
                     content=audio["content"],
                     metadata={
                         "score": audio["score"],
-                        "kb_id": audio["metadata"].get("kb_id"),
+                        "kb_id": audio["metadata"].get("kb_id") or fallback_kb_id,
                         "file_type": audio["file_type"],
                         "chunk_id": audio.get("id"),
                         "description": audio["metadata"].get("description", ""),
@@ -390,10 +407,12 @@ class ContextBuilder:
                     content=video["content"],
                     metadata={
                         "score": video["score"],
-                        "kb_id": video["metadata"].get("kb_id"),
+                        "kb_id": video["metadata"].get("kb_id") or fallback_kb_id,
                         "file_type": video["file_type"],
                         "chunk_id": video.get("id"),
                         "duration": video["metadata"].get("duration", 0.0),
+                        "scene_start_time": video["metadata"].get("scene_start_time"),
+                        "scene_end_time": video["metadata"].get("scene_end_time"),
                     }
                 )
                 reference_map[ref_id] = reference
@@ -715,11 +734,20 @@ class ContextBuilder:
                         "content": reference.content[:200] if reference.content else "",
                         "img_url": reference.presigned_url if reference.content_type == "image" else None,
                         "audio_url": reference.presigned_url if reference.content_type == "audio" else None,
+                        "video_url": getattr(reference, "presigned_url", None) if reference.content_type == "video" else None,
                         "scores": {"rerank": reference.metadata.get("score", 0.0)},
                         "chunk_id": chunk_id,
                         "chunk_index": reference.metadata.get("chunk_index"),
                         "metadata": reference.metadata
                     }
+                    if reference.content_type == "video":
+                        st = reference.metadata.get("scene_start_time")
+                        en = reference.metadata.get("scene_end_time")
+                        if st is not None:
+                            ref_dict["start_sec"] = float(st)
+                        if en is not None:
+                            ref_dict["end_sec"] = float(en)
+                        ref_dict["debug_info"] = {"kb_id": reference.metadata.get("kb_id")}
                     valid_references.append(ref_dict)
                 else:
                     logger.warning(f"发现无效引用: [{ref_num}]")
