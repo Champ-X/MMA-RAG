@@ -697,6 +697,17 @@ function formatTimeLabel(sec: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
+// 短文件名展示：优先取最后一段 _ 后的名称（如 UUID_Peaky.mp4 → Peaky.mp4），否则截断
+function shortenFileName(fileName: string, maxLen = 24): string {
+  if (!fileName || fileName.length <= maxLen) return fileName
+  const lastPart = fileName.includes('_') ? fileName.split('_').pop() ?? fileName : fileName
+  if (lastPart.length <= maxLen) return lastPart
+  const ext = lastPart.includes('.') ? lastPart.slice(lastPart.lastIndexOf('.')) : ''
+  const base = lastPart.slice(0, lastPart.length - ext.length)
+  if (base.length + ext.length <= maxLen) return lastPart
+  return base.slice(0, Math.max(0, maxLen - ext.length - 1)) + '…' + ext
+}
+
 // 段落下方展示的视频引用卡片（图标 + 标签 + 可点击播放，不打开弹层）
 function ParagraphVideoDisplay({
   citations,
@@ -711,8 +722,18 @@ function ParagraphVideoDisplay({
 }) {
   const [fetchedVideoUrls, setFetchedVideoUrls] = React.useState<Record<string, string>>({})
   const [loadingRefId, setLoadingRefId] = React.useState<string | number | null>(null)
+  const [expandedDesc, setExpandedDesc] = React.useState<Set<string>>(new Set())
 
   if (citations.length === 0) return null
+
+  const toggleDesc = (k: string) => {
+    setExpandedDesc((prev) => {
+      const next = new Set(prev)
+      if (next.has(k)) next.delete(k)
+      else next.add(k)
+      return next
+    })
+  }
 
   return (
     <div className="flex flex-wrap justify-center gap-3 mt-3 mb-0">
@@ -723,6 +744,17 @@ function ParagraphVideoDisplay({
         const hasVideoUrl = !!resolvedUrl
         const startSec = citation.start_sec != null ? Number(citation.start_sec) : null
         const endSec = citation.end_sec != null ? Number(citation.end_sec) : null
+        const segmentLabel =
+          startSec != null && endSec != null
+            ? `片段 ${formatTimeLabel(startSec)} - ${formatTimeLabel(endSec)}`
+            : startSec != null
+              ? `从 ${formatTimeLabel(startSec)} 开始`
+              : endSec != null
+                ? `至 ${formatTimeLabel(endSec)} 结束`
+                : null
+        const descExpanded = expandedDesc.has(key)
+        const content = citation.content?.trim() ?? ''
+        const canExpand = content.length > 120
 
         const handleOpenPopover = (e: React.MouseEvent) => {
           if (onCiteClick) {
@@ -759,39 +791,37 @@ function ParagraphVideoDisplay({
           <div
             key={citation.id}
             data-video-key={key}
-            className="paragraph-video-card relative overflow-hidden rounded-2xl border border-slate-200/90 dark:border-slate-600/70 bg-gradient-to-br from-slate-50 via-sky-50/30 to-slate-100/90 dark:from-slate-900/80 dark:via-sky-950/20 dark:to-slate-900/80 w-full min-w-[374px] max-w-[500px] p-0 shadow-lg shadow-slate-500/5 dark:shadow-slate-500/10 hover:shadow-xl hover:shadow-sky-500/5 dark:hover:shadow-sky-500/10 hover:border-sky-200/80 dark:hover:border-sky-700/50 transition-all duration-300"
+            className="paragraph-video-card relative overflow-hidden rounded-2xl border border-slate-200/70 dark:border-slate-600/50 bg-white dark:bg-slate-900/80 w-full min-w-[400px] max-w-[560px] p-0 shadow-sm shadow-slate-300/10 dark:shadow-slate-950/40 ring-1 ring-slate-200/40 dark:ring-slate-700/40 hover:shadow-md hover:ring-sky-200/50 dark:hover:ring-sky-800/40 hover:border-sky-200/80 dark:hover:border-sky-600/50 transition-all duration-200"
           >
-            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-sky-400 via-cyan-400 to-sky-500 dark:from-sky-500 dark:via-cyan-500 dark:to-sky-600 rounded-l-2xl" />
-            <div className="pl-4 pr-4 pt-2.5 pb-2.5">
+            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-sky-400 via-sky-500 to-cyan-500 dark:from-sky-500 dark:via-cyan-500 dark:to-sky-600 rounded-l-2xl shadow-[2px_0_8px_-2px_rgba(14,165,233,0.25)] dark:shadow-[2px_0_8px_-2px_rgba(14,165,233,0.2)]" aria-hidden />
+            <div className="pl-[18px] pr-4 pt-2.5 pb-2.5">
               <button
                 type="button"
                 onClick={handleOpenPopover}
-                className="flex items-center gap-2.5 w-full text-left mb-2 group rounded-lg -mx-1 px-1 py-0.5 hover:bg-sky-100/40 dark:hover:bg-sky-900/20 transition-colors"
+                className="flex items-center gap-3 w-full text-left mb-1.5 group rounded-xl -mx-0.5 px-1.5 py-0.5 hover:bg-sky-50/70 dark:hover:bg-sky-900/30 transition-colors duration-150"
               >
-                <span className="flex items-center justify-center shrink-0 w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-sky-600 dark:text-sky-400 group-hover:bg-sky-100 dark:group-hover:bg-sky-900/40 border border-slate-200/80 dark:border-slate-600/60 shadow-sm transition-all">
-                  <Video className="h-4 w-4" strokeWidth={2} />
+                <span className="flex items-center justify-center shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-sky-50 to-cyan-50/80 dark:from-sky-900/50 dark:to-cyan-900/30 text-sky-600 dark:text-sky-400 group-hover:from-sky-100 group-hover:to-cyan-100/80 dark:group-hover:from-sky-800/60 dark:group-hover:to-cyan-800/40 border border-sky-200/50 dark:border-sky-700/40 shadow-sm transition-all duration-150">
+                  <Video className="h-4.5 w-4.5" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
                 </span>
-                <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate flex items-baseline gap-1.5">
+                <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate flex items-baseline gap-2 tracking-tight">
                   <span className="font-mono text-sky-600 dark:text-sky-400 font-bold tabular-nums">[{displayNum}]</span>
                   <span className="text-slate-600 dark:text-slate-300">视频引用</span>
                 </span>
               </button>
               {hasVideoUrl ? (
-                <div className="rounded-xl bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-600/80 p-2 mb-2 shadow-inner ring-1 ring-black/5 dark:ring-white/5">
-                  {(startSec != null || endSec != null) && (
-                    <p className="text-[11px] text-sky-600 dark:text-sky-400 mb-1.5 font-medium">
-                      {startSec != null && endSec != null
-                        ? `片段 ${formatTimeLabel(startSec)} - ${formatTimeLabel(endSec)}`
-                        : startSec != null
-                          ? `从 ${formatTimeLabel(startSec)} 开始`
-                          : `至 ${formatTimeLabel(endSec!)} 结束`}
-                    </p>
+                <div className="rounded-xl overflow-hidden bg-slate-50/90 dark:bg-slate-800/90 border border-slate-200/60 dark:border-slate-600/50 p-0.5 mb-1 shadow-inner shadow-slate-200/30 dark:shadow-slate-900/50">
+                  {segmentLabel && (
+                    <div className="mb-0.5 flex items-center">
+                      <span className="inline-flex items-center px-1 py-0.5 rounded-full text-[10px] font-medium bg-sky-100/90 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300 border border-sky-200/60 dark:border-sky-700/50 shadow-sm shadow-sky-500/5">
+                        {segmentLabel}
+                      </span>
+                    </div>
                   )}
                   <VideoPlayerWithSeek
                     src={resolvedUrl!}
                     startSec={startSec}
                     endSec={endSec}
-                    className="w-full rounded-lg max-h-[240px] object-contain [&::-webkit-media-controls-panel]:bg-slate-50/80 dark:[&::-webkit-media-controls-panel]:bg-slate-800/80"
+                    className="w-full rounded-lg min-h-[220px] max-h-[380px] object-contain shadow-sm [&::-webkit-media-controls-panel]:bg-slate-100/95 dark:[&::-webkit-media-controls-panel]:bg-slate-800/95"
                     onClick={(e) => e.stopPropagation()}
                   />
                 </div>
@@ -800,26 +830,80 @@ function ParagraphVideoDisplay({
                   type="button"
                   onClick={handleClickPlay}
                   disabled={loadingRefId === citation.id}
-                  className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl bg-white/80 dark:bg-slate-800/70 text-sky-700 dark:text-sky-300 hover:bg-sky-50/80 dark:hover:bg-slate-800/90 border border-slate-200/80 dark:border-slate-600/60 transition-all mb-2 disabled:opacity-60 shadow-sm text-sm font-medium ring-1 ring-sky-500/10 dark:ring-sky-500/20"
+                  className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-gradient-to-b from-sky-50/90 to-cyan-50/50 dark:from-sky-950/50 dark:to-cyan-950/30 text-sky-700 dark:text-sky-300 hover:from-sky-100 hover:to-cyan-100/60 dark:hover:from-sky-900/60 dark:hover:to-cyan-900/40 border border-sky-200/60 dark:border-sky-700/50 transition-all duration-150 mb-2 disabled:opacity-60 text-sm font-medium shadow-sm"
                 >
                   {loadingRefId === citation.id ? (
-                    <span className="font-medium">加载中…</span>
+                    <span>加载中…</span>
                   ) : (
                     <>
                       <Play className="h-4 w-4 flex-shrink-0" fill="currentColor" />
-                      <span className="font-medium">点击播放</span>
+                      <span>点击播放</span>
                     </>
                   )}
                 </button>
               )}
               {citation.file_name && (
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mb-1.5 font-mono pl-0.5" title={citation.file_name}>
-                  {citation.file_name}
+                <p
+                  className="text-[10px] text-slate-400 dark:text-slate-500 truncate mb-1 font-mono pl-0.5 tracking-tight"
+                  title={citation.file_name}
+                >
+                  {shortenFileName(citation.file_name)}
                 </p>
               )}
-              {citation.content && (
-                <div className="rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-600/60 px-3 py-1.5 ring-1 ring-black/5 dark:ring-white/5">
-                  <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">{citation.content}</p>
+              {content && (
+                <div className="rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/50 dark:border-slate-600/40 px-2.5 py-1.5 shadow-inner shadow-slate-200/20 dark:shadow-slate-900/30">
+                  <p
+                    className={cn(
+                      'text-[11px] text-slate-600 dark:text-slate-300 leading-snug',
+                      !descExpanded && canExpand && 'line-clamp-2'
+                    )}
+                  >
+                    {content}
+                  </p>
+                  {canExpand && (
+                    <button
+                      type="button"
+                      onClick={() => toggleDesc(key)}
+                      className="mt-1 text-[11px] font-medium text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 hover:underline underline-offset-1 transition-colors"
+                    >
+                      {descExpanded ? '收起' : '展开'}
+                    </button>
+                  )}
+                </div>
+              )}
+              {citation.key_frames && citation.key_frames.length > 0 && (
+                <div className="mt-2.5">
+                  <p className="text-[11px] text-sky-600 dark:text-sky-400 font-medium mb-1.5 tracking-tight">关键帧</p>
+                  <div className="flex flex-wrap gap-2">
+                    {citation.key_frames
+                      .filter((f) => f.img_url)
+                      .map((frame, idx) => (
+                        <div
+                          key={idx}
+                          className="rounded-lg overflow-hidden border border-slate-200/60 dark:border-slate-600/50 bg-white dark:bg-slate-800/80 shadow-sm hover:shadow-md hover:border-slate-300/50 dark:hover:border-slate-500/50 transition-all duration-150"
+                        >
+                          <img
+                            src={frame.img_url}
+                            alt={frame.description || `关键帧 ${idx + 1}`}
+                            className="w-24 h-[54px] object-cover block"
+                          />
+                          {(frame.timestamp != null || frame.description) && (
+                            <div className="px-1.5 py-0.5 bg-slate-100/80 dark:bg-slate-800/80">
+                              {frame.timestamp != null && (
+                                <span className="text-[10px] text-sky-600 dark:text-sky-400 font-mono mr-1">
+                                  {formatTimeLabel(frame.timestamp)}
+                                </span>
+                              )}
+                              {frame.description && (
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1" title={frame.description}>
+                                  {frame.description}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                  </div>
                 </div>
               )}
             </div>

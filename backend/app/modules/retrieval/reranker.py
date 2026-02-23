@@ -224,19 +224,18 @@ class Reranker:
             return []
     
     def _deduplicate_candidates(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """去重候选结果"""
+        """去重候选结果。同一 id 可能既来自 visual（关键帧图）又来自 video（视频片段），优先保留 video 避免视频被图片排挤。"""
         try:
-            seen_ids = set()
-            unique_candidates = []
-            
+            unique_by_id: Dict[str, Dict[str, Any]] = {}
             for candidate in candidates:
                 candidate_id = candidate["id"]
-                if candidate_id not in seen_ids:
-                    seen_ids.add(candidate_id)
-                    unique_candidates.append(candidate)
-            
-            return unique_candidates
-            
+                if candidate_id not in unique_by_id:
+                    unique_by_id[candidate_id] = candidate
+                else:
+                    # 同一 id 已存在（通常先来自 visual 后来自 video），优先保留 video
+                    if candidate.get("content_type") == "video":
+                        unique_by_id[candidate_id] = candidate
+            return list(unique_by_id.values())
         except Exception as e:
             logger.error(f"候选去重失败: {str(e)}")
             return candidates

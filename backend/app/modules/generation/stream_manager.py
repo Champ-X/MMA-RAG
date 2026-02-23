@@ -45,6 +45,9 @@ def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
                 item["start_sec"] = float(st)
             if en is not None:
                 item["end_sec"] = float(en)
+            kf = meta.get("key_frames")
+            if kf:
+                item["key_frames"] = kf
         if ref_type == "doc":
             chunk_id = meta.get("chunk_id")
             # doc 引用始终带 debug_info；chunk_id 必须为检索返回的向量库 point id，缺则无法查上下文

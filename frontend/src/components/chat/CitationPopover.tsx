@@ -13,6 +13,16 @@ function formatTimeLabel(sec: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
+function shortenFileName(fileName: string, maxLen = 24): string {
+  if (!fileName || fileName.length <= maxLen) return fileName
+  const lastPart = fileName.includes('_') ? fileName.split('_').pop() ?? fileName : fileName
+  if (lastPart.length <= maxLen) return lastPart
+  const ext = lastPart.includes('.') ? lastPart.slice(lastPart.lastIndexOf('.')) : ''
+  const base = lastPart.slice(0, lastPart.length - ext.length)
+  if (base.length + ext.length <= maxLen) return lastPart
+  return base.slice(0, Math.max(0, maxLen - ext.length - 1)) + '…' + ext
+}
+
 function VideoWithSeek({ src, startSec, endSec }: { src: string; startSec?: number | null; endSec?: number | null }) {
   const ref = useRef<HTMLVideoElement>(null)
   const hasSeeked = useRef(false)
@@ -42,7 +52,15 @@ function VideoWithSeek({ src, startSec, endSec }: { src: string; startSec?: numb
     el.addEventListener('timeupdate', onTimeUpdate)
     return () => el.removeEventListener('timeupdate', onTimeUpdate)
   }, [endSec])
-  return <video ref={ref} src={src} controls className="w-full rounded-lg max-h-[220px] object-contain" preload="metadata" />
+  return (
+    <video
+      ref={ref}
+      src={src}
+      controls
+      preload="metadata"
+      className="w-full rounded-lg min-h-[220px] max-h-[380px] object-contain [&::-webkit-media-controls-panel]:bg-slate-100/90 dark:[&::-webkit-media-controls-panel]:bg-slate-800/90"
+    />
+  )
 }
 
 interface CitationPopoverProps {
@@ -284,23 +302,60 @@ export function CitationPopover({
             {item.type === 'video' && (
               <>
                 {item.video_url && (
-                  <div className="mb-3 rounded-xl border border-sky-200/70 dark:border-sky-800/50 bg-sky-50/50 dark:bg-sky-950/30 p-3">
+                  <div className="mb-3 rounded-xl overflow-hidden border border-sky-200/70 dark:border-sky-800/50 bg-slate-100/80 dark:bg-slate-800/80 p-3 ring-1 ring-slate-200/50 dark:ring-slate-600/30">
                     {(item.start_sec != null || item.end_sec != null) && (
-                      <p className="text-xs text-sky-600 dark:text-sky-400 mb-1.5 font-medium">
-                        {item.start_sec != null && item.end_sec != null
-                          ? `片段 ${formatTimeLabel(item.start_sec)} - ${formatTimeLabel(item.end_sec)}`
-                          : item.start_sec != null
-                            ? `从 ${formatTimeLabel(item.start_sec)} 开始`
-                            : `至 ${formatTimeLabel(item.end_sec!)} 结束`}
-                      </p>
+                      <div className="mb-2 flex items-center">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300 border border-sky-200/70 dark:border-sky-700/50">
+                          {item.start_sec != null && item.end_sec != null
+                            ? `片段 ${formatTimeLabel(item.start_sec)} - ${formatTimeLabel(item.end_sec)}`
+                            : item.start_sec != null
+                              ? `从 ${formatTimeLabel(item.start_sec)} 开始`
+                              : `至 ${formatTimeLabel(item.end_sec!)} 结束`}
+                        </span>
+                      </div>
                     )}
                     <VideoWithSeek src={item.video_url} startSec={item.start_sec} endSec={item.end_sec} />
                   </div>
                 )}
                 {(item.content || !item.video_url) && (
-                  <div className="rounded-xl bg-sky-50/50 dark:bg-sky-900/20 p-3 text-xs text-slate-700 dark:text-slate-200 border border-sky-100 dark:border-sky-800/40">
+                  <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/50 p-3 text-xs text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50">
                     <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
                       {item.content || '无内容'}
+                    </div>
+                  </div>
+                )}
+                {item.key_frames && item.key_frames.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs text-sky-600 dark:text-sky-400 font-medium mb-2">关键帧</p>
+                    <div className="flex flex-wrap gap-2">
+                      {item.key_frames
+                        .filter((f: { img_url?: string }) => f.img_url)
+                        .map((frame: { img_url?: string; timestamp?: number; description?: string }, idx: number) => (
+                          <div
+                            key={idx}
+                            className="rounded-lg overflow-hidden border border-sky-200/70 dark:border-sky-800/50 bg-white/80 dark:bg-slate-800/60"
+                          >
+                            <img
+                              src={frame.img_url}
+                              alt={frame.description || `关键帧 ${idx + 1}`}
+                              className="w-28 h-[63px] object-cover block"
+                            />
+                            {(frame.timestamp != null || frame.description) && (
+                              <div className="px-2 py-1 bg-sky-50/50 dark:bg-sky-900/20">
+                                {frame.timestamp != null && (
+                                  <span className="text-[10px] text-sky-600 dark:text-sky-400 font-mono mr-1">
+                                    {formatTimeLabel(frame.timestamp)}
+                                  </span>
+                                )}
+                                {frame.description && (
+                                  <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-2" title={frame.description}>
+                                    {frame.description}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
                     </div>
                   </div>
                 )}
@@ -327,8 +382,8 @@ export function CitationPopover({
           </div>
 
           <div className="flex-shrink-0 flex items-center justify-between px-4 pb-3 border-t border-slate-200/70 dark:border-slate-800/70">
-            <div className="text-xs text-slate-500 dark:text-slate-400 truncate flex-1 mr-2">
-              {item.file_name || '未知路径'}
+            <div className="text-xs text-slate-500 dark:text-slate-400 truncate flex-1 mr-2" title={item.file_name || undefined}>
+              {item.file_name ? shortenFileName(item.file_name) : '未知路径'}
             </div>
             <button
               type="button"

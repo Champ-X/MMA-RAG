@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Brain, Network, Search, ChevronDown, ChevronRight, CheckCircle, Image as ImageIcon, Music, Loader2, Sparkles, FileText, Wand2 } from 'lucide-react'
+import { Brain, Network, Search, ChevronDown, ChevronRight, CheckCircle, Image as ImageIcon, Music, Video, Loader2, Sparkles, FileText, Wand2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ThoughtData, ThinkingState } from '@/store/useChatStore'
 
@@ -30,6 +30,8 @@ export function ThinkingCapsule({
     visualReasoning: thoughtData?.visual_reasoning,
     audioIntent: thoughtData?.audio_intent,
     audioReasoning: thoughtData?.audio_reasoning,
+    videoIntent: thoughtData?.video_intent,
+    videoReasoning: thoughtData?.video_reasoning,
   }
 
   const routing = thoughtData?.target_kbs || (thoughtData?.fallback_search ? { strategy: 'fallback' as const } : thoughtData?.target_kbs ? undefined : { strategy: 'weighted' as const })
@@ -179,6 +181,27 @@ export function ThinkingCapsule({
                     {intent.audioReasoning && (
                       <div className="text-slate-600 dark:text-slate-400 text-xs mt-1">
                         {intent.audioReasoning}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {intent.videoIntent && intent.videoIntent !== 'unnecessary' && (
+                <div className="flex items-start gap-2 text-xs">
+                  <span className="text-slate-400 dark:text-slate-500 w-20 flex-shrink-0">视频意图</span>
+                  <div className="flex-1 space-y-1">
+                    <span className={cn(
+                      "inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium",
+                      intent.videoIntent === 'explicit_demand'
+                        ? "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
+                        : "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300"
+                    )}>
+                      <Video size={12} />
+                      {intent.videoIntent === 'explicit_demand' ? '显式需求' : '隐性增益'}
+                    </span>
+                    {intent.videoReasoning && (
+                      <div className="text-slate-600 dark:text-slate-400 text-xs mt-1">
+                        {intent.videoReasoning}
                       </div>
                     )}
                   </div>

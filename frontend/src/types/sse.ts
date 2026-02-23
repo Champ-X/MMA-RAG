@@ -63,6 +63,13 @@ export interface CitationReference {
   start_sec?: number;
   /** 视频片段结束时间（秒），仅 type 为 video 时可选 */
   end_sec?: number;
+  /** 视频关键帧列表（仅 type 为 video 时），含缩略图 URL 与描述，用于在回答中展示 */
+  key_frames?: Array<{
+    timestamp?: number;
+    description?: string;
+    frame_image_path?: string;
+    img_url?: string;
+  }>;
   scores: CitationScore;
   debug_info?: CitationDebugInfo;
 }

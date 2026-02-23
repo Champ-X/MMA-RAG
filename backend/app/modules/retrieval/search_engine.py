@@ -42,6 +42,7 @@ class HybridSearchEngine:
         target_kb_ids: List[str],
         visual_intent: str = "unnecessary",
         audio_intent: str = "unnecessary",
+        video_intent: str = "unnecessary",
         intent_type: str = "factual"
     ) -> Dict[str, Any]:
         """
@@ -153,9 +154,9 @@ class HybridSearchEngine:
                 except Exception as e:
                     logger.debug("统计目标KB音频数量时出错: {}", e)
 
-            # 4. RRF融合（根据 visual_intent / audio_intent 动态调整权重）
+            # 4. RRF融合（根据 visual_intent / audio_intent / video_intent 动态调整权重）
             fused_results = await self._fuse_results(
-                results, visual_intent=visual_intent, audio_intent=audio_intent
+                results, visual_intent=visual_intent, audio_intent=audio_intent, video_intent=video_intent
             )
             
             processing_time = (datetime.utcnow() - start_time).total_seconds()
@@ -437,6 +438,40 @@ class HybridSearchEngine:
                         f"avg={avg_score:.3f}, count={len(search_results)}"
                     )
                 
+                # 4. 用同一批向量查 video_vectors 中的关键帧（关键帧存于 video_vectors 的 clip_vec），补齐显式视觉需求下的「图片」来源
+                video_keyframe_results = await self.vector_store.search_video_vectors(
+                    query_vector=text_query_vector,
+                    clip_vector=clip_text_vector,
+                    target_kb_ids=target_kb_ids,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                )
+                for v in video_keyframe_results:
+                    payload = v.get("payload") or {}
+                    caption = payload.get("frame_description") or payload.get("scene_summary") or ""
+                    file_path = payload.get("frame_image_path") or ""
+                    if not file_path:
+                        continue
+                    search_results.append({
+                        "id": v.get("id"),
+                        "score": v.get("score", 0.0),
+                        "payload": {
+                            "caption": caption,
+                            "file_path": file_path,
+                            "kb_id": payload.get("kb_id"),
+                            "file_id": payload.get("file_id"),
+                        },
+                        "scores": {"text_vec": 0.0, "clip_vec": v.get("score", 0.0), "rrf_fused": v.get("score", 0.0)},
+                        "search_type": "visual",
+                        "dual_rrf": True,
+                        "text_vec_score": 0.0,
+                        "clip_vec_score": v.get("score", 0.0),
+                        "visual_intent": visual_intent,
+                        "from_video_keyframe": True,
+                    })
+                if video_keyframe_results:
+                    logger.info("Visual检索补充: 从 video_vectors 关键帧召回 %s 条，合并为图片结果", len([r for r in search_results if r.get("from_video_keyframe")]))
+                
                 logger.info(
                     f"Visual检索完成（双路RRF）: {len(search_results)} 个图片结果, "
                     f"Visual Intent={visual_intent}, Score Threshold={score_threshold} "
@@ -485,6 +520,38 @@ class HybridSearchEngine:
                         f"Visual检索分数分布: max={max_score:.3f}, min={min_score:.3f}, "
                         f"avg={avg_score:.3f}, count={len(search_results)}"
                     )
+                
+                # 用文本向量查 video_vectors 关键帧（scene_vec/frame_vec），补齐图片来源
+                video_keyframe_results = await self.vector_store.search_video_vectors(
+                    query_vector=text_query_vector,
+                    clip_vector=None,
+                    target_kb_ids=target_kb_ids,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                )
+                for v in video_keyframe_results:
+                    payload = v.get("payload") or {}
+                    file_path = payload.get("frame_image_path") or ""
+                    if not file_path:
+                        continue
+                    caption = payload.get("frame_description") or payload.get("scene_summary") or ""
+                    search_results.append({
+                        "id": v.get("id"),
+                        "score": v.get("score", 0.0),
+                        "payload": {
+                            "caption": caption,
+                            "file_path": file_path,
+                            "kb_id": payload.get("kb_id"),
+                            "file_id": payload.get("file_id"),
+                        },
+                        "search_type": "visual",
+                        "dual_rrf": False,
+                        "text_vec_score": v.get("score", 0.0),
+                        "visual_intent": visual_intent,
+                        "from_video_keyframe": True,
+                    })
+                if video_keyframe_results:
+                    logger.info("Visual检索补充: 从 video_vectors 关键帧召回 %s 条，合并为图片结果", len([r for r in search_results if r.get("from_video_keyframe")]))
                 
                 logger.info(
                     f"Visual检索完成（单路文本语义）: {len(search_results)} 个图片结果, "
@@ -645,25 +712,23 @@ class HybridSearchEngine:
             return []
     
     async def _fuse_results(
-        self, 
-        raw_results: Dict[str, List[Dict[str, Any]]], 
+        self,
+        raw_results: Dict[str, List[Dict[str, Any]]],
         visual_intent: str = "unnecessary",
-        audio_intent: str = "unnecessary"
+        audio_intent: str = "unnecessary",
+        video_intent: str = "unnecessary"
     ) -> List[Dict[str, Any]]:
         """
         RRF融合结果
-        根据 visual_intent / audio_intent 动态调整权重
-        
-        Args:
-            raw_results: 原始检索结果
-            visual_intent: 视觉意图（explicit_demand, implicit_enrichment, unnecessary）
-            audio_intent: 音频意图（explicit_demand, implicit_enrichment, unnecessary）
+        根据 visual_intent / audio_intent / video_intent 动态调整权重。
+        当存在视频意图时降低视觉权重，避免视频片段被关键帧图片排挤。
         """
         try:
             fused_results = {}
             dynamic_weights = self.rrf_weights.copy()
             if visual_intent == "explicit_demand":
-                dynamic_weights["visual"] = 1.2
+                # 有视频显式需求时略降视觉权重，让视频片段能进入 top-k
+                dynamic_weights["visual"] = 0.9 if video_intent == "explicit_demand" else 1.2
             elif visual_intent == "implicit_enrichment":
                 dynamic_weights["visual"] = 0.9
             else:
@@ -674,6 +739,12 @@ class HybridSearchEngine:
                 dynamic_weights["audio"] = 0.9
             else:
                 dynamic_weights["audio"] = 0.0
+            if video_intent == "explicit_demand":
+                dynamic_weights["video"] = 1.2
+            elif video_intent == "implicit_enrichment":
+                dynamic_weights["video"] = 1.0
+            else:
+                dynamic_weights["video"] = self.rrf_weights.get("video", 0.8)
             # sparse 始终启用，保持默认权重（与 rrf_weights 一致）
             if "sparse" not in dynamic_weights or dynamic_weights.get("sparse", 0) <= 0:
                 dynamic_weights["sparse"] = self.rrf_weights.get("sparse", 0.8)
@@ -704,6 +775,15 @@ class HybridSearchEngine:
                             "content": result.get("content", ""),
                             "metadata": result.get("metadata", {})
                         }
+                    else:
+                        # 同一 id 可能既来自 visual（关键帧图）又来自 video（视频片段），
+                        # 优先保留 video 类型，避免视频被图片排挤、最终上下文只有图没有视频
+                        new_type = result.get("content_type", "doc")
+                        if new_type == "video":
+                            fused_results[result_id]["content_type"] = "video"
+                            fused_results[result_id]["file_path"] = result.get("file_path") or fused_results[result_id].get("file_path")
+                            fused_results[result_id]["content"] = result.get("content", "") or fused_results[result_id].get("content", "")
+                            fused_results[result_id]["metadata"] = result.get("metadata", {}) or fused_results[result_id].get("metadata", {})
                     
                     # 累加该结果在所有检索类型中的分数
                     fused_results[result_id]["scores"][search_type] = rrf_score
@@ -724,7 +804,8 @@ class HybridSearchEngine:
             logger.info(
                 f"RRF融合完成: {len(raw_results)} 种检索 -> {len(final_results)} 个融合结果, "
                 f"Visual={visual_intent}(w={dynamic_weights.get('visual', 0.0)}), "
-                f"Audio={audio_intent}(w={dynamic_weights.get('audio', 0.0)})"
+                f"Audio={audio_intent}(w={dynamic_weights.get('audio', 0.0)}), "
+                f"Video={video_intent}(w={dynamic_weights.get('video', 0.0)})"
             )
             
             return final_results

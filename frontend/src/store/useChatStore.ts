@@ -11,6 +11,8 @@ export interface ThoughtData {
   visual_reasoning?: string;
   audio_intent?: 'explicit_demand' | 'implicit_enrichment' | 'unnecessary';
   audio_reasoning?: string;
+  video_intent?: 'explicit_demand' | 'implicit_enrichment' | 'unnecessary';
+  video_reasoning?: string;
   sub_queries?: string[];
   current_sub_step?: number;
   target_kbs?: Array<{ id: string; name: string; score: number }>;

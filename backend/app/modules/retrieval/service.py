@@ -27,6 +27,8 @@ class RetrievalContext:
     visual_reasoning: str  # 视觉意图推理说明
     audio_intent: str  # 音频意图：explicit_demand, implicit_enrichment, unnecessary
     audio_reasoning: str  # 音频意图推理说明
+    video_intent: str  # 视频意图：explicit_demand, implicit_enrichment, unnecessary
+    video_reasoning: str  # 视频意图推理说明
     search_strategies: Dict[str, Any]
     target_kb_ids: List[str]
     confidence_scores: Dict[str, float]
@@ -109,6 +111,8 @@ class RetrievalService:
                 visual_reasoning=preprocessing_result.get("visual_reasoning", "未检测到明确的视觉需求"),
                 audio_intent=preprocessing_result.get("audio_intent", "unnecessary"),
                 audio_reasoning=preprocessing_result.get("audio_reasoning", "未检测到音频需求"),
+                video_intent=preprocessing_result.get("video_intent", "unnecessary"),
+                video_reasoning=preprocessing_result.get("video_reasoning", "未检测到视频需求"),
                 search_strategies=preprocessing_result["search_strategies"],
                 target_kb_ids=routing_result.target_kb_ids,
                 confidence_scores=routing_result.confidence_scores
@@ -205,6 +209,8 @@ class RetrievalService:
                 "visual_reasoning": preprocessing_result.get("visual_reasoning", "未检测到明确的视觉需求"),
                 "audio_intent": preprocessing_result.get("audio_intent", "unnecessary"),
                 "audio_reasoning": preprocessing_result.get("audio_reasoning", "未检测到音频需求"),
+                "video_intent": preprocessing_result.get("video_intent", "unnecessary"),
+                "video_reasoning": preprocessing_result.get("video_reasoning", "未检测到视频需求"),
                 "is_complex": preprocessing_result.get("is_complex", False),
                 "sub_queries": preprocessing_result.get("sub_queries", []) or [],
             }
@@ -240,6 +246,8 @@ class RetrievalService:
                 visual_reasoning=preprocessing_result.get("visual_reasoning", "未检测到明确的视觉需求"),
                 audio_intent=preprocessing_result.get("audio_intent", "unnecessary"),
                 audio_reasoning=preprocessing_result.get("audio_reasoning", "未检测到音频需求"),
+                video_intent=preprocessing_result.get("video_intent", "unnecessary"),
+                video_reasoning=preprocessing_result.get("video_reasoning", "未检测到视频需求"),
                 search_strategies=preprocessing_result["search_strategies"],
                 target_kb_ids=target_kb_ids,
                 confidence_scores=confidence_scores,
@@ -349,6 +357,8 @@ class RetrievalService:
                 "visual_reasoning": intent_result.get("visual_reasoning", "未检测到明确的视觉需求"),
                 "audio_intent": intent_result.get("audio_intent", "unnecessary"),
                 "audio_reasoning": intent_result.get("audio_reasoning", "未检测到音频需求"),
+                "video_intent": intent_result.get("video_intent", "unnecessary"),
+                "video_reasoning": intent_result.get("video_reasoning", "未检测到视频需求"),
                 "search_strategies": {
                     "dense_query": final_refined_query,
                     "original_query": intent_result.get("original_query", query),
@@ -373,6 +383,8 @@ class RetrievalService:
                 "visual_reasoning": "使用默认规则，未检测到明确的视觉需求",
                 "audio_intent": "unnecessary",
                 "audio_reasoning": "使用默认规则，未检测到音频需求",
+                "video_intent": "unnecessary",
+                "video_reasoning": "使用默认规则，未检测到视频需求",
                 "search_strategies": {
                     "dense_query": query,
                     "original_query": query,
@@ -411,6 +423,7 @@ class RetrievalService:
                 target_kb_ids=qdrant_kb_ids,
                 visual_intent=context.visual_intent,
                 audio_intent=context.audio_intent,
+                video_intent=context.video_intent,
                 intent_type=context.intent_type
             )
         except Exception as e:

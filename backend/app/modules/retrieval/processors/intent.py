@@ -189,18 +189,42 @@ class IntentProcessor:
             else:
                 audio_intent = "unnecessary"
                 audio_reasoning = "未检测到音频需求"
+            # 视频意图（与视觉/音频对齐：explicit > implicit > unnecessary）
+            explicit_video_keywords_fallback = [
+                "视频", "片段", "视频片段", "视频画面", "画面解释", "结合视频", "结合画面",
+                "有视频吗", "找视频", "播放视频", "看一下视频", "看视频", "展示视频",
+                "video", "clip", "segment", "show me the video", "play the clip"
+            ]
+            implicit_video_keywords_fallback = [
+                "教程", "演示", "录屏", "回放", "直播", "纪录片", "演讲视频", "会议录像",
+                "操作演示", "教学视频", "发布会", "录播", "直播回放", "教程视频", "录播课",
+                "tutorial", "demo", "recording", "playback", "webinar", "keynote"
+            ]
+            has_explicit_video = any(kw in content_lower for kw in explicit_video_keywords_fallback)
+            has_implicit_video = any(kw in content_lower for kw in implicit_video_keywords_fallback)
+            if has_explicit_video:
+                video_intent = "explicit_demand"
+                video_reasoning = "检测到明确的视频请求关键词"
+            elif has_implicit_video:
+                video_intent = "implicit_enrichment"
+                video_reasoning = "检测到与视频载体强相关的主题（教程、演示、录播等），判为隐性增益"
+            else:
+                video_intent = "unnecessary"
+                video_reasoning = "未检测到视频需求"
             return {
-                "reasoning": content[:200],  # 取前200字符作为推理
+                "reasoning": content[:200],
                 "intent_type": intent_type,
                 "is_complex": is_complex,
                 "visual_intent": visual_intent,
                 "visual_reasoning": visual_reasoning,
                 "audio_intent": audio_intent,
                 "audio_reasoning": audio_reasoning,
+                "video_intent": video_intent,
+                "video_reasoning": video_reasoning,
                 "search_strategies": {
                     "dense_query": content.split("dense_query")[-1] if "dense_query" in content else content[:100],
-                    "sparse_keywords": ["查询", "信息"],  # 默认关键词
-                    "multi_view_queries": [content[:100]]  # 默认多视角查询
+                    "sparse_keywords": ["查询", "信息"],
+                    "multi_view_queries": [content[:100]]
                 },
                 "sub_queries": []
             }
@@ -226,6 +250,8 @@ class IntentProcessor:
                 "visual_reasoning": analysis.get("visual_reasoning", "未检测到明确的视觉需求"),
                 "audio_intent": analysis.get("audio_intent", "unnecessary"),
                 "audio_reasoning": analysis.get("audio_reasoning", "未检测到音频需求"),
+                "video_intent": analysis.get("video_intent", "unnecessary"),
+                "video_reasoning": analysis.get("video_reasoning", "未检测到视频需求"),
                 "search_strategies": {
                     "dense_query": analysis.get("search_strategies", {}).get("dense_query", original_query),
                     "sparse_keywords": analysis.get("search_strategies", {}).get("sparse_keywords", []),
@@ -239,46 +265,56 @@ class IntentProcessor:
             if validated["intent_type"] not in valid_intent_types:
                 validated["intent_type"] = "factual"
             
-            # 验证visual_intent值
+            # 验证 visual_intent（与 audio_intent 逻辑对齐：显式请求词优先，无效时按显式/隐性关键词推断）
             valid_visual_intents = ["explicit_demand", "implicit_enrichment", "unnecessary"]
-            
-            # 明确的视觉请求关键词（优先级最高，必须判断为explicit_demand）
-            # 包含原来的所有关键词，并新增明确的视觉请求词
+            # 明确的视觉请求词（优先级最高，必须判断为 explicit_demand）
             explicit_visual_request_keywords = [
-                # 新增的明确视觉请求词
                 "看看", "给我看", "看一下", "展示", "显示",
                 "有图吗", "有图片吗", "有图表吗", "有架构图吗", "有示意图吗",
                 "show me", "let me see", "display", "view",
-                # 保留原来的所有关键词
                 "图片", "图表", "示意图", "流程图", "设计图", "可视化",
                 "查看图片", "显示图片", "展示图片", "图片中", "图表中", "图中",
                 "image", "chart", "diagram", "graph", "figure", "visualization",
                 "架构图", "结构图", "系统图", "网络图", "拓扑图"
             ]
-            
+            # 隐性视觉相关主题（无明确请求时可推断为 implicit_enrichment：空间结构性/视觉审美性/数据对比性）
+            implicit_visual_keywords = [
+                "风光", "景色", "日出", "日落", "建筑", "外观", "造型", "界面", "UI", "布局",
+                "系统架构", "技术架构", "架构设计", "拓扑", "数据对比", "营收对比", "性能对比", "指标对比",
+                "产品图", "实物图", "截图", "照片", "实拍", "设计", "可视化展示",
+                "landscape", "architecture", "layout", "design", "screenshot", "photo"
+            ]
             query_lower = original_query.lower()
-            has_explicit_visual_request = any(keyword in query_lower for keyword in explicit_visual_request_keywords)
-            
+            has_explicit_visual_request = any(kw in query_lower for kw in explicit_visual_request_keywords)
+            has_implicit_visual_topic = any(kw in query_lower for kw in implicit_visual_keywords)
             if validated["visual_intent"] not in valid_visual_intents:
-                # 如果LLM返回了无效值，尝试从关键词推断
                 if has_explicit_visual_request:
-                    logger.info(f"检测到明确的视觉请求关键词，设置visual_intent=explicit_demand: {original_query}")
+                    logger.info("检测到明确的视觉请求关键词，设置visual_intent=explicit_demand: {}", original_query)
                     validated["visual_intent"] = "explicit_demand"
                     validated["visual_reasoning"] = "检测到明确的视觉请求关键词"
+                elif has_implicit_visual_topic:
+                    validated["visual_intent"] = "implicit_enrichment"
+                    validated["visual_reasoning"] = "检测到与视觉/空间/展示强相关的主题（架构、风光、对比等），判为隐性增益"
                 else:
                     validated["visual_intent"] = "unnecessary"
                     validated["visual_reasoning"] = "未检测到明确的视觉需求"
             elif has_explicit_visual_request and validated["visual_intent"] != "explicit_demand":
-                # 即使LLM返回了有效的visual_intent，但如果包含明确的视觉请求词，必须强制覆盖为explicit_demand
                 logger.info(
-                    f"检测到明确的视觉请求关键词，强制覆盖visual_intent: "
-                    f"{validated['visual_intent']} -> explicit_demand, 查询: {original_query}"
+                    "检测到明确的视觉请求关键词，强制覆盖visual_intent: {} -> explicit_demand, 查询: {}",
+                    validated["visual_intent"], original_query
                 )
                 validated["visual_intent"] = "explicit_demand"
                 validated["visual_reasoning"] = (
-                    f"检测到明确的视觉请求关键词（如'看看'、'给我看'等），"
-                    f"即使查询内容本身也具有视觉导向性，也应优先判断为显式需求"
+                    "检测到明确的视觉请求关键词（如'看看'、'给我看'等），优先判断为显式需求"
                 )
+            elif has_implicit_visual_topic and validated["visual_intent"] == "unnecessary":
+                # 与音频一致：查询具有隐性视觉主题但 LLM 判为 unnecessary 时，用关键词补正为 implicit_enrichment
+                logger.info(
+                    "检测到隐性视觉相关主题，补正visual_intent: unnecessary -> implicit_enrichment, 查询: {}",
+                    original_query
+                )
+                validated["visual_intent"] = "implicit_enrichment"
+                validated["visual_reasoning"] = "检测到与视觉/空间/展示强相关的主题（架构、风光、对比等），判为隐性增益"
             
             # 确保sparse_keywords是列表
             if not isinstance(validated["search_strategies"]["sparse_keywords"], list):
@@ -324,6 +360,46 @@ class IntentProcessor:
                 validated["audio_reasoning"] = (
                     "检测到明确的音频请求关键词（如'找歌'、'播放'、'有录音吗'等），优先判断为显式需求"
                 )
+            # 视频意图（与视觉/音频对齐：显式请求词优先，无效时按显式/隐性关键词推断）
+            valid_video_intents = ["explicit_demand", "implicit_enrichment", "unnecessary"]
+            explicit_video_keywords = [
+                "视频", "片段", "视频片段", "视频画面", "画面解释", "结合视频", "结合画面",
+                "有视频吗", "找视频", "播放视频", "看一下视频", "看视频", "展示视频",
+                "video", "clip", "segment", "show me the video", "play the clip"
+            ]
+            implicit_video_keywords = [
+                "教程", "演示", "录屏", "回放", "直播", "纪录片", "演讲视频", "会议录像",
+                "操作演示", "教学视频", "发布会", "录播", "直播回放", "教程视频", "录播课",
+                "tutorial", "demo", "recording", "playback", "webinar", "keynote"
+            ]
+            query_lower_video = original_query.lower()
+            has_explicit_video_request = any(kw in query_lower_video for kw in explicit_video_keywords)
+            has_implicit_video_topic = any(kw in query_lower_video for kw in implicit_video_keywords)
+            if validated.get("video_intent") not in valid_video_intents:
+                if has_explicit_video_request:
+                    logger.info("检测到明确的视频请求关键词，设置video_intent=explicit_demand: {}", original_query)
+                    validated["video_intent"] = "explicit_demand"
+                    validated["video_reasoning"] = "检测到明确的视频请求关键词"
+                elif has_implicit_video_topic:
+                    validated["video_intent"] = "implicit_enrichment"
+                    validated["video_reasoning"] = "检测到与视频载体强相关的主题（教程、演示、录播等），判为隐性增益"
+                else:
+                    validated["video_intent"] = "unnecessary"
+                    validated["video_reasoning"] = "未检测到视频需求"
+            elif has_explicit_video_request and validated.get("video_intent") != "explicit_demand":
+                logger.info(
+                    "检测到明确的视频请求关键词，强制覆盖video_intent: {} -> explicit_demand, 查询: {}",
+                    validated["video_intent"], original_query
+                )
+                validated["video_intent"] = "explicit_demand"
+                validated["video_reasoning"] = "检测到明确的视频请求关键词（如'结合视频'、'看视频'等），优先判断为显式需求"
+            elif has_implicit_video_topic and validated.get("video_intent") == "unnecessary":
+                logger.info(
+                    "检测到隐性视频相关主题，补正video_intent: unnecessary -> implicit_enrichment, 查询: {}",
+                    original_query
+                )
+                validated["video_intent"] = "implicit_enrichment"
+                validated["video_reasoning"] = "检测到与视频载体强相关的主题（教程、演示、录播等），判为隐性增益"
             
             return validated
             
@@ -342,6 +418,8 @@ class IntentProcessor:
             "visual_reasoning": "使用默认规则，未检测到明确的视觉需求",
             "audio_intent": "unnecessary",
             "audio_reasoning": "使用默认规则，未检测到音频需求",
+            "video_intent": "unnecessary",
+            "video_reasoning": "使用默认规则，未检测到视频需求",
             "search_strategies": {
                 "dense_query": query,
                 "sparse_keywords": [],
