@@ -58,7 +58,7 @@ function VideoWithSeek({ src, startSec, endSec }: { src: string; startSec?: numb
       src={src}
       controls
       preload="metadata"
-      className="w-full rounded-lg min-h-[220px] max-h-[380px] object-contain [&::-webkit-media-controls-panel]:bg-slate-100/90 dark:[&::-webkit-media-controls-panel]:bg-slate-800/90"
+      className="w-full h-auto aspect-video rounded-lg object-contain bg-black"
     />
   )
 }
@@ -302,9 +302,9 @@ export function CitationPopover({
             {item.type === 'video' && (
               <>
                 {item.video_url && (
-                  <div className="mb-3 rounded-xl overflow-hidden border border-sky-200/70 dark:border-sky-800/50 bg-slate-100/80 dark:bg-slate-800/80 p-3 ring-1 ring-slate-200/50 dark:ring-slate-600/30">
+                  <div className="mb-2.5 rounded-xl overflow-hidden border border-sky-200/70 dark:border-sky-800/50 bg-slate-100/80 dark:bg-slate-800/80 p-2 ring-1 ring-slate-200/50 dark:ring-slate-600/30">
                     {(item.start_sec != null || item.end_sec != null) && (
-                      <div className="mb-2 flex items-center">
+                      <div className="mb-1.0 flex items-center">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300 border border-sky-200/70 dark:border-sky-700/50">
                           {item.start_sec != null && item.end_sec != null
                             ? `片段 ${formatTimeLabel(item.start_sec)} - ${formatTimeLabel(item.end_sec)}`
@@ -318,8 +318,8 @@ export function CitationPopover({
                   </div>
                 )}
                 {(item.content || !item.video_url) && (
-                  <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/50 p-3 text-xs text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50">
-                    <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                  <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/50 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50">
+                    <div className="text-slate-600 dark:text-slate-300 leading-snug whitespace-pre-wrap">
                       {item.content || '无内容'}
                     </div>
                   </div>

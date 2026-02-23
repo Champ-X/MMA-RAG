@@ -809,9 +809,9 @@ function ParagraphVideoDisplay({
                 </span>
               </button>
               {hasVideoUrl ? (
-                <div className="rounded-xl overflow-hidden bg-slate-50/90 dark:bg-slate-800/90 border border-slate-200/60 dark:border-slate-600/50 p-0.5 mb-1 shadow-inner shadow-slate-200/30 dark:shadow-slate-900/50">
+                <div className="rounded-xl overflow-hidden bg-slate-50/90 dark:bg-slate-800/90 border border-slate-200/60 dark:border-slate-600/50 p-0 mb-0.5 shadow-inner shadow-slate-200/30 dark:shadow-slate-900/50">
                   {segmentLabel && (
-                    <div className="mb-0.5 flex items-center">
+                    <div className="mb-0.5 mt-0.5 flex items-center px-0.5">
                       <span className="inline-flex items-center px-1 py-0.5 rounded-full text-[10px] font-medium bg-sky-100/90 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300 border border-sky-200/60 dark:border-sky-700/50 shadow-sm shadow-sky-500/5">
                         {segmentLabel}
                       </span>
@@ -821,7 +821,7 @@ function ParagraphVideoDisplay({
                     src={resolvedUrl!}
                     startSec={startSec}
                     endSec={endSec}
-                    className="w-full rounded-lg min-h-[220px] max-h-[380px] object-contain shadow-sm [&::-webkit-media-controls-panel]:bg-slate-100/95 dark:[&::-webkit-media-controls-panel]:bg-slate-800/95"
+                    className="w-full h-auto aspect-video rounded-lg object-contain bg-black shadow-sm"
                     onClick={(e) => e.stopPropagation()}
                   />
                 </div>
@@ -844,14 +844,14 @@ function ParagraphVideoDisplay({
               )}
               {citation.file_name && (
                 <p
-                  className="text-[10px] text-slate-400 dark:text-slate-500 truncate mb-1 font-mono pl-0.5 tracking-tight"
+                  className="text-[10px] text-slate-400 dark:text-slate-500 truncate mb-0.5 font-mono pl-0.5 tracking-tight"
                   title={citation.file_name}
                 >
                   {shortenFileName(citation.file_name)}
                 </p>
               )}
               {content && (
-                <div className="rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/50 dark:border-slate-600/40 px-2.5 py-1.5 shadow-inner shadow-slate-200/20 dark:shadow-slate-900/30">
+                <div className="rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/50 dark:border-slate-600/40 px-2.5 py-1 shadow-inner shadow-slate-200/20 dark:shadow-slate-900/30">
                   <p
                     className={cn(
                       'text-[11px] text-slate-600 dark:text-slate-300 leading-snug',
@@ -864,7 +864,7 @@ function ParagraphVideoDisplay({
                     <button
                       type="button"
                       onClick={() => toggleDesc(key)}
-                      className="mt-1 text-[11px] font-medium text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 hover:underline underline-offset-1 transition-colors"
+                      className="mt-0.5 text-[11px] font-medium text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 hover:underline underline-offset-1 transition-colors"
                     >
                       {descExpanded ? '收起' : '展开'}
                     </button>
