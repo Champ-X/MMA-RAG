@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ScatterChart, FileText, Image, Music, RefreshCw, LayoutList } from 'lucide-react'
+import { ScatterChart, FileText, Image, Music, Video, RefreshCw, LayoutList } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { knowledgeApi } from '@/services/api_client'
 
@@ -62,6 +62,8 @@ interface PortraitGraphProps {
   imageCount?: number
   /** 音频条数（参与画像与数据量判断） */
   audioCount?: number
+  /** 视频条数（参与数据源比例与主题统计） */
+  videoCount?: number
   /** 选中簇时过滤下方列表 */
   onClusterSelect?: (clusterId: string | null) => void
   className?: string
@@ -75,10 +77,11 @@ export function PortraitGraph({
   textCount = 0,
   imageCount = 0,
   audioCount = 0,
+  videoCount = 0,
   onClusterSelect,
   className,
 }: PortraitGraphProps) {
-  const totalDataCount = textCount + imageCount + audioCount
+  const totalDataCount = textCount + imageCount + audioCount + videoCount
   const [clusters, setClusters] = useState<PortraitCluster[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
@@ -355,10 +358,11 @@ export function PortraitGraph({
     setLayoutReady(true)
   }, [clusters, scaleRadius])
 
-  const total = textCount + imageCount + audioCount
-  const textPct = total ? (textCount / total) * 100 : 33
-  const imagePct = total ? (imageCount / total) * 100 : 33
-  const audioPct = total ? (audioCount / total) * 100 : 34
+  const total = textCount + imageCount + audioCount + videoCount
+  const textPct = total ? (textCount / total) * 100 : 25
+  const imagePct = total ? (imageCount / total) * 100 : 25
+  const audioPct = total ? (audioCount / total) * 100 : 25
+  const videoPct = total ? (videoCount / total) * 100 : 25
 
   /** 热度 0~1：按 cluster_size 归一化，用于逻辑色与视觉层级 */
   const heatByNode = useCallback(
@@ -844,7 +848,7 @@ export function PortraitGraph({
             <div
               className={cn(
                 "flex items-center justify-center gap-2 bg-gradient-to-r from-fuchsia-400 via-fuchsia-500 to-fuchsia-600 text-white shadow-sm transition-all duration-300 min-w-0",
-                audioCount === 0 && "rounded-r-xl"
+                audioCount === 0 && videoCount === 0 && "rounded-r-xl"
               )}
               style={{ width: `${imagePct}%` }}
             >
@@ -853,11 +857,23 @@ export function PortraitGraph({
             </div>
             {audioCount > 0 && (
               <div
-                className="flex items-center justify-center gap-2 rounded-r-xl bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 text-white shadow-sm transition-all duration-300 min-w-0"
+                className={cn(
+                  "flex items-center justify-center gap-2 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 text-white shadow-sm transition-all duration-300 min-w-0",
+                  videoCount === 0 && "rounded-r-xl"
+                )}
                 style={{ width: `${audioPct}%` }}
               >
                 <Music className="h-4 w-4 flex-shrink-0 opacity-95" />
                 <span className="text-sm font-medium truncate">Audio</span>
+              </div>
+            )}
+            {videoCount > 0 && (
+              <div
+                className="flex items-center justify-center gap-2 rounded-r-xl bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600 text-white shadow-sm transition-all duration-300 min-w-0"
+                style={{ width: `${videoPct}%` }}
+              >
+                <Video className="h-4 w-4 flex-shrink-0 opacity-95" />
+                <span className="text-sm font-medium truncate">Video</span>
               </div>
             )}
           </div>
@@ -866,6 +882,9 @@ export function PortraitGraph({
             <span className="font-medium">Image {imageCount} <span className="text-slate-400 dark:text-slate-500">({imagePct.toFixed(0)}%)</span></span>
             {audioCount > 0 && (
               <span className="font-medium">Audio {audioCount} <span className="text-slate-400 dark:text-slate-500">({audioPct.toFixed(0)}%)</span></span>
+            )}
+            {videoCount > 0 && (
+              <span className="font-medium">Video {videoCount} <span className="text-slate-400 dark:text-slate-500">({videoPct.toFixed(0)}%)</span></span>
             )}
           </div>
         </CardContent>
@@ -877,7 +896,7 @@ export function PortraitGraph({
           <CardTitle className="text-base font-semibold text-slate-800 dark:text-slate-100">主题统计</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             <div className="rounded-xl bg-gradient-to-br from-indigo-50/90 to-indigo-100/50 dark:from-indigo-950/40 dark:to-indigo-900/20 border border-indigo-100/80 dark:border-indigo-800/40 px-4 py-3 text-center">
               <div className="text-2xl font-bold tabular-nums text-indigo-600 dark:text-indigo-400">
                 {clusters.length}
@@ -921,6 +940,15 @@ export function PortraitGraph({
               <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-amber-700/80 dark:text-amber-300/90">
                 <Music className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
                 <span>音频</span>
+              </div>
+            </div>
+            <div className="rounded-xl bg-gradient-to-br from-emerald-50/90 to-emerald-100/50 dark:from-emerald-950/40 dark:to-emerald-900/20 border border-emerald-100/80 dark:border-emerald-800/40 px-4 py-3 text-center">
+              <div className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                {videoCount}
+              </div>
+              <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-emerald-700/80 dark:text-emerald-300/90">
+                <Video className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
+                <span>视频</span>
               </div>
             </div>
           </div>

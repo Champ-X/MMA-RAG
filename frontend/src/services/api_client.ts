@@ -277,6 +277,7 @@ export const knowledgeApi = {
       chunks: number
       images: number
       audio?: number
+      video?: number
       text_vector_dim?: number
       image_vector_dim?: number
       audio_vector_dim?: number

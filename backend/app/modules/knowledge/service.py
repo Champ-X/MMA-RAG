@@ -547,7 +547,8 @@ class KnowledgeBaseService:
                     lambda c=candidate: self._count_kb_points_sync(c),
                 )
                 total_audio = await self.vector_store.count_kb_audio(candidate)
-                if total_chunks == 0 and total_images == 0 and total_audio == 0:
+                total_video = await self.vector_store.count_kb_video(candidate)
+                if total_chunks == 0 and total_images == 0 and total_audio == 0 and total_video == 0:
                     continue
 
                 doc_file_ids = await loop.run_in_executor(
@@ -574,6 +575,7 @@ class KnowledgeBaseService:
                     "total_chunks": total_chunks,
                     "total_images": total_images,
                     "total_audio": total_audio,
+                    "total_video": total_video,
                     "total_size_mb": total_size_mb,
                     "last_updated": datetime.utcnow().isoformat(),
                     "text_vector_dim": 4096,
@@ -612,12 +614,14 @@ class KnowledgeBaseService:
                     if fallback["total_chunks"] > 0 or fallback["total_images"] > 0:
                         total_size_mb = round(total_size_bytes / (1024 * 1024), 2)
                         total_audio_fb = await self.vector_store.count_kb_audio(kb_id)
+                        total_video_fb = await self.vector_store.count_kb_video(kb_id)
                         logger.debug(f"通过 MinIO 桶文件兜底获取统计: kb_id={kb_id}")
                         return {
                             "total_documents": fallback["total_documents"],
                             "total_chunks": fallback["total_chunks"],
                             "total_images": fallback["total_images"],
                             "total_audio": total_audio_fb,
+                            "total_video": total_video_fb,
                             "total_size_mb": total_size_mb,
                             "last_updated": datetime.utcnow().isoformat(),
                             "text_vector_dim": 4096,
@@ -632,6 +636,7 @@ class KnowledgeBaseService:
             "total_chunks": 0,
             "total_images": 0,
             "total_audio": 0,
+            "total_video": 0,
             "total_size_mb": 0,
             "last_updated": datetime.utcnow().isoformat(),
             "text_vector_dim": 4096,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
@@ -1166,6 +1166,7 @@ const KnowledgeList: React.FC = () => {
     chunks: number
     images: number
     audio?: number
+    video?: number
     text_vector_dim?: number
     image_vector_dim?: number
     audio_vector_dim?: number
@@ -1589,8 +1590,8 @@ const KnowledgeList: React.FC = () => {
                     setViewState('detail')
                   }}
                   className={cn(
-                    'relative rounded-xl border border-slate-200 dark:border-slate-800 hover:shadow-md hover:border-fuchsia-300 dark:hover:border-fuchsia-500 transition-all cursor-pointer group overflow-hidden min-h-[128px]',
-                    kb.cover_url ? 'p-0' : 'bg-white dark:bg-slate-900 p-5'
+                    'relative rounded-xl border border-slate-200 dark:border-slate-800 hover:shadow-md hover:border-fuchsia-300 dark:hover:border-fuchsia-500 transition-all cursor-pointer group overflow-hidden min-h-[180px] h-full flex flex-col',
+                    kb.cover_url ? 'p-0' : 'bg-white dark:bg-slate-900 pt-5 px-5 pb-3.5'
                   )}
                 >
                   {/* 有封面时：图片铺满整卡作为背景 */}
@@ -1604,9 +1605,9 @@ const KnowledgeList: React.FC = () => {
                         />
                       </div>
                       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent rounded-xl" />
-                      <div className="relative z-10 flex flex-col min-h-[128px] p-3.5">
-                        {/* 顶部弹性空间，把标题/描述整体压到中下位置 */}
-                        <div className="min-h-[1.25rem] flex-1" />
+                      <div className="relative z-10 flex flex-col h-full min-h-0 p-3.5">
+                        {/* 顶部弹性空间，把标题/描述与统计条整体压到底部 */}
+                        <div className="min-h-0 flex-1" />
                         <div className="flex-shrink-0 pt-4 pb-1">
                           <h3 className="font-bold text-white mb-1 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_8px_rgba(0,0,0,0.7)]">
                             {kb.name}
@@ -1615,7 +1616,7 @@ const KnowledgeList: React.FC = () => {
                             {kb.description || '暂无描述'}
                           </p>
                           <div className="mt-2 pt-2.5 border-t border-white/30 flex items-center justify-between gap-2 text-xs text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
-                            <div className="flex items-center gap-2 min-h-[1rem] min-w-0 flex-1">
+                            <div className="flex items-center gap-2 min-h-[1rem] min-w-0 flex-1 flex-wrap">
                               <span className="inline-flex items-center gap-1.5 shrink-0">
                                 <FileText size={12} className="shrink-0" />
                                 {kb.stats?.documents ?? 0} 个文件
@@ -1624,6 +1625,16 @@ const KnowledgeList: React.FC = () => {
                               <span className="inline-flex items-center gap-1.5 shrink-0">
                                 <ImageIcon size={12} className="shrink-0" />
                                 {kb.stats?.images ?? 0} 张图片
+                              </span>
+                              <span className="opacity-80 shrink-0">·</span>
+                              <span className="inline-flex items-center gap-1.5 shrink-0">
+                                <Music size={12} className="shrink-0" />
+                                {kb.stats?.audio ?? 0} 条音频
+                              </span>
+                              <span className="opacity-80 shrink-0">·</span>
+                              <span className="inline-flex items-center gap-1.5 shrink-0">
+                                <Video size={12} className="shrink-0" />
+                                {kb.stats?.video ?? 0} 个视频
                               </span>
                             </div>
                             <span className="shrink-0">{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
@@ -1669,24 +1680,54 @@ const KnowledgeList: React.FC = () => {
                     </>
                   ) : (
                     <>
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 rounded-lg group-hover:bg-gradient-to-tr group-hover:from-indigo-600 group-hover:to-fuchsia-600 group-hover:text-white transition-colors">
-                          <Database size={24} />
+                      <div className="min-h-0 flex-1 flex flex-col">
+                        <div className="mb-4">
+                          <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 rounded-lg group-hover:bg-gradient-to-tr group-hover:from-indigo-600 group-hover:to-fuchsia-600 group-hover:text-white transition-colors inline-block">
+                            <Database size={24} />
+                          </div>
                         </div>
-                        <div className="relative">
+                        <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1">{kb.name}</h3>
+                        <p className="text-slate-500 dark:text-slate-400 text-sm h-10 overflow-hidden text-ellipsis leading-relaxed line-clamp-2 flex-1 min-h-0">
+                          {kb.description || '暂无描述'}
+                        </p>
+                      </div>
+                      <div className="flex-shrink-0 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-xs text-slate-400">
+                        <div className="flex items-center gap-2 min-h-[1rem] min-w-0 flex-1 flex-wrap">
+                          <span className="inline-flex items-center gap-1.5">
+                            <FileText size={12} className="shrink-0" />
+                            {kb.stats?.documents ?? 0} 个文件
+                          </span>
+                          <span className="opacity-70">·</span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <ImageIcon size={12} className="shrink-0" />
+                            {kb.stats?.images ?? 0} 张图片
+                          </span>
+                          <span className="opacity-70">·</span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <Music size={12} className="shrink-0" />
+                            {kb.stats?.audio ?? 0} 条音频
+                          </span>
+                          <span className="opacity-70">·</span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <Video size={12} className="shrink-0" />
+                            {kb.stats?.video ?? 0} 个视频
+                          </span>
+                        </div>
+                        <span className="shrink-0">{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
+                        <div className="relative shrink-0">
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
                               setMenuOpenKbId((id) => (id === kb.id ? null : kb.id))
                             }}
-                            className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 shadow-sm transition-all hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-500 active:scale-95"
+                            className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 shadow-sm transition-all hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-500 active:scale-95"
                             title="更多操作"
                           >
-                            <MoreVertical size={16} strokeWidth={2} />
+                            <MoreVertical size={14} strokeWidth={2} />
                           </button>
                           {menuOpenKbId === kb.id && (
                             <div
-                              className="absolute right-0 top-full mt-1.5 py-1 min-w-[120px] rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl z-50"
+                              className="absolute right-0 bottom-full mb-1.5 py-1 min-w-[120px] rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl z-50"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <button
@@ -1709,24 +1750,6 @@ const KnowledgeList: React.FC = () => {
                             </div>
                           )}
                         </div>
-                      </div>
-                      <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1">{kb.name}</h3>
-                      <p className="text-slate-500 dark:text-slate-400 text-sm h-10 overflow-hidden text-ellipsis leading-relaxed line-clamp-2">
-                        {kb.description || '暂无描述'}
-                      </p>
-                      <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-400">
-                        <div className="flex items-center gap-2 min-h-[1rem]">
-                          <span className="inline-flex items-center gap-1.5">
-                            <FileText size={12} className="shrink-0" />
-                            {kb.stats?.documents ?? 0} 个文件
-                          </span>
-                          <span className="opacity-70">·</span>
-                          <span className="inline-flex items-center gap-1.5">
-                            <ImageIcon size={12} className="shrink-0" />
-                            {kb.stats?.images ?? 0} 张图片
-                          </span>
-                        </div>
-                        <span>{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
                       </div>
                     </>
                   )}
@@ -2040,6 +2063,7 @@ const KnowledgeList: React.FC = () => {
               textCount={kbStats?.chunks ?? activeKb.stats?.chunks ?? 0}
               imageCount={kbStats?.images ?? activeKb.stats?.images ?? 0}
               audioCount={kbStats?.audio ?? (activeKb.stats as { audio?: number })?.audio ?? 0}
+              videoCount={kbStats?.video ?? (activeKb.stats as { video?: number })?.video ?? 0}
               onClusterSelect={() => {}}
             />
           </div>
@@ -2081,6 +2105,13 @@ const KnowledgeList: React.FC = () => {
                     音频数
                   </span>
                   <span className="font-semibold text-slate-800 dark:text-slate-100 tabular-nums">{kbStats?.audio ?? (activeKb.stats as { audio?: number })?.audio ?? 0}</span>
+                </div>
+                <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors">
+                  <span className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                    <Video size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    视频数
+                  </span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-100 tabular-nums">{kbStats?.video ?? (activeKb.stats as { video?: number })?.video ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors">
                   <span className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 shrink-0">

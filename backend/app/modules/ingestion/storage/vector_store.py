@@ -1510,6 +1510,21 @@ class VectorStore:
             logger.debug("count_kb_audio 失败: kb_id={}, e={}", kb_id, e)
             return 0
 
+    async def count_kb_video(self, kb_id: str) -> int:
+        """按 kb_id 统计 video_vectors 中的点数量。"""
+        try:
+            filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))])
+            return int(
+                self.client.count(
+                    collection_name="video_vectors",
+                    count_filter=filt,
+                    exact=True,
+                ).count
+            )
+        except Exception as e:
+            logger.debug("count_kb_video 失败: kb_id={}, e={}", kb_id, e)
+            return 0
+
     async def scroll_text_chunks_for_sampling(
         self,
         kb_id: str,
