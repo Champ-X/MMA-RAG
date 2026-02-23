@@ -904,25 +904,6 @@ export function MessageBubble({
     return map
   }, [message.content, citationMap, refs, isUser])
 
-  // 每个视频引用第一次出现的引用ID（用于段落内只展示首次出现的视频）
-  const videoFirstRefIdMap = React.useMemo(() => {
-    if (isUser) return new Map<string, number | string>()
-    const map = new Map<string, number | string>()
-    const seen = new Set<string>()
-    const matches = findAllCitationMatches(message.content)
-    for (const match of matches) {
-      const citation = findCitationById(match.n, citationMap, refs)
-      if (citation && 'type' in citation && citation.type === 'video') {
-        const key = citation.file_name || String(citation.id)
-        if (!seen.has(key)) {
-          seen.add(key)
-          map.set(key, match.n)
-        }
-      }
-    }
-    return map
-  }, [message.content, citationMap, refs, isUser])
-  
   // 去重函数：用于过滤重复的引用
   const deduplicateRefs = React.useCallback((refsToDedup: Array<CitationReference | { id: number | string }>) => {
     return refsToDedup.filter((ref, idx, arr) => {
@@ -1001,13 +982,8 @@ export function MessageBubble({
           const matches = findAllCitationMatches(textContent)
           return matches.some(m => String(m.n) === String(firstRefId))
         })
-        const newVideoRefs = allVideoRefs.filter((citation) => {
-          const videoKey = citation.file_name || String(citation.id)
-          const firstRefId = videoFirstRefIdMap.get(videoKey)
-          if (firstRefId === undefined) return false
-          const matches = findAllCitationMatches(textContent)
-          return matches.some(m => String(m.n) === String(firstRefId))
-        })
+        // 视频引用：段落内出现的每个引用编号都展示一张卡片（[1][2][3][4] 可能对应不同片段），不做按 file_name 去重
+        const newVideoRefs = allVideoRefs
         
         const Tag = tag
         
