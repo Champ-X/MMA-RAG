@@ -7,7 +7,7 @@ import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import { knowledgeApi, importApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
-import { StatusBadge, FileThumb, FileHero, CreateKbModal, EditKbModal, isAudioType } from './KnowledgeListHelpers'
+import { StatusBadge, FileThumb, FileHero, CreateKbModal, EditKbModal, isAudioType, isVideoType } from './KnowledgeListHelpers'
 
 // 文件预览模态框（支持图片描述、文档分块、MD 预览）
 function FilePreviewModal({
@@ -35,6 +35,8 @@ function FilePreviewModal({
   const [pdfLoading, setPdfLoading] = React.useState(false)
   const [audioObjectUrl, setAudioObjectUrl] = React.useState<string | null>(null)
   const [audioLoading, setAudioLoading] = React.useState(false)
+  const [videoObjectUrl, setVideoObjectUrl] = React.useState<string | null>(null)
+  const [videoLoading, setVideoLoading] = React.useState(false)
 
   const fileTypeLower = String(file?.type || '').toLowerCase()
   const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'tif'].includes(fileTypeLower)
@@ -42,6 +44,7 @@ function FilePreviewModal({
   const isPdfOrOfficeViewable = ['pdf', 'pptx', 'docx'].includes(fileTypeLower)
   /** 音频格式：通过 stream 接口获取 Blob 后使用 <audio> 播放 */
   const isAudio = fileTypeLower.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg', 'wma', 'opus'].includes(fileTypeLower)
+  const isVideo = isVideoType(file?.type)
   const isMd = fileTypeLower === 'md'
   const isTxt = fileTypeLower === 'txt'
   const isTextFile = isMd || isTxt
@@ -119,6 +122,35 @@ function FilePreviewModal({
       setAudioObjectUrl(null)
     }
   }, [isAudio, kbId, file?.id])
+
+  // 视频预览：通过 stream 获取 Blob 并生成 object URL，供 <video> 使用
+  const videoObjectUrlRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (!isVideo || !kbId || !file?.id) {
+      videoObjectUrlRef.current = null
+      setVideoObjectUrl(null)
+      return
+    }
+    setVideoLoading(true)
+    setVideoObjectUrl(null)
+    videoObjectUrlRef.current = null
+    knowledgeApi.getFileStream(kbId, file.id)
+      .then((blob) => {
+        const url = URL.createObjectURL(blob)
+        videoObjectUrlRef.current = url
+        setVideoObjectUrl(url)
+      })
+      .catch(() => setVideoObjectUrl(null))
+      .finally(() => setVideoLoading(false))
+    return () => {
+      const url = videoObjectUrlRef.current
+      if (url) {
+        URL.revokeObjectURL(url)
+        videoObjectUrlRef.current = null
+      }
+      setVideoObjectUrl(null)
+    }
+  }, [isVideo, kbId, file?.id])
 
   // Markdown 预览仅使用原始文件内容（MinIO 中的原文），避免显示插入了图注后的分块文本导致重复/错乱
   const textPreview = isMd ? (rawContent ?? '') : (file?.textPreview ?? details?.text_preview ?? rawContent ?? '')
@@ -206,8 +238,8 @@ function FilePreviewModal({
                 <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">图片描述</div>
                 {loadingDetails ? (
                   <p className="text-sm text-slate-400">加载描述中…</p>
-                ) : details?.caption ? (
-                  <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">{details.caption}</p>
+                ) : (details?.caption ?? details?.description) ? (
+                  <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">{details.caption ?? details.description}</p>
                 ) : (
                   <p className="text-sm text-slate-400 italic">暂无描述（若为刚上传的图片，描述生成后刷新预览即可）</p>
                 )}
@@ -264,6 +296,35 @@ function FilePreviewModal({
             <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
               <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent" />
               <div className="mt-3 text-sm">音频加载中…</div>
+            </div>
+          ) : isVideo && videoObjectUrl ? (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-6">
+                <video
+                  controls
+                  src={videoObjectUrl}
+                  className="w-full max-w-full rounded-lg bg-black"
+                  preload="metadata"
+                >
+                  您的浏览器不支持视频播放。
+                </video>
+                <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 text-center">{file.name}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
+                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">视频描述</div>
+                {loadingDetails ? (
+                  <p className="text-sm text-slate-400">加载描述中…</p>
+                ) : (details?.caption ?? details?.description) ? (
+                  <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">{details.caption ?? details.description}</p>
+                ) : (
+                  <p className="text-sm text-slate-400 italic">暂无描述（若为刚上传的视频，描述生成后刷新预览即可）</p>
+                )}
+              </div>
+            </div>
+          ) : isVideo && videoLoading ? (
+            <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
+              <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent" />
+              <div className="mt-3 text-sm">视频加载中…</div>
             </div>
           ) : textPreview ? (
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
@@ -1911,6 +1972,8 @@ const KnowledgeList: React.FC = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {filteredFiles.map((file) => {
                         const isAudio = isAudioType(file?.type)
+                        const isVideo = isVideoType(file?.type)
+                        const isMedia = isAudio || isVideo
                         return (
                           <button
                             key={file.id}
@@ -1919,20 +1982,28 @@ const KnowledgeList: React.FC = () => {
                               'text-left rounded-xl border transition-all overflow-hidden group',
                               isAudio
                                 ? 'bg-gradient-to-b from-violet-50/80 to-white dark:from-violet-950/30 dark:to-slate-900 border-violet-200/80 dark:border-violet-800/60 hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-md hover:shadow-violet-500/10'
-                                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-fuchsia-300 dark:hover:border-fuchsia-500 hover:shadow-sm'
+                                : isVideo
+                                  ? 'bg-gradient-to-b from-sky-50/80 to-white dark:from-sky-950/30 dark:to-slate-900 border-sky-200/80 dark:border-sky-800/60 hover:border-sky-400 dark:hover:border-sky-500 hover:shadow-md hover:shadow-sky-500/10'
+                                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-fuchsia-300 dark:hover:border-fuchsia-500 hover:shadow-sm'
                             )}
                             type="button"
-                            title={isAudio ? '点击播放或查看详情' : '点击预览'}
+                            title={isMedia ? '点击播放或查看详情' : '点击预览'}
                           >
                             <div className="relative">
-                              <div className={cn('h-36 overflow-hidden flex items-center justify-center', isAudio ? 'bg-violet-50/50 dark:bg-violet-950/30' : 'bg-slate-50 dark:bg-slate-900')}>
+                              <div className={cn(
+                                'h-36 overflow-hidden flex items-center justify-center',
+                                isAudio ? 'bg-violet-50/50 dark:bg-violet-950/30' : isVideo ? 'bg-sky-50/50 dark:bg-sky-950/30' : 'bg-slate-50 dark:bg-slate-900'
+                              )}>
                                 <FileHero file={file} />
                               </div>
                               <div className="absolute top-3 left-3">
                                 <StatusBadge status={file.status} />
                               </div>
-                              {isAudio && (
-                                <div className="absolute bottom-3 right-3 flex items-center justify-center w-9 h-9 rounded-full bg-violet-500/90 dark:bg-violet-600/90 text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                              {isMedia && (
+                                <div className={cn(
+                                  'absolute bottom-3 right-3 flex items-center justify-center w-9 h-9 rounded-full text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity',
+                                  isVideo ? 'bg-sky-500/90 dark:bg-sky-600/90' : 'bg-violet-500/90 dark:bg-violet-600/90'
+                                )}>
                                   <Play size={18} className="ml-0.5" fill="currentColor" />
                                 </div>
                               )}
@@ -1946,9 +2017,9 @@ const KnowledgeList: React.FC = () => {
                               <div className="mt-3 flex justify-end">
                                 <span className={cn(
                                   'text-xs inline-flex items-center gap-1 transition-colors',
-                                  isAudio ? 'text-violet-500 dark:text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300' : 'text-slate-400 group-hover:text-fuchsia-600'
+                                  isAudio ? 'text-violet-500 dark:text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300' : isVideo ? 'text-sky-500 dark:text-sky-400 group-hover:text-sky-600 dark:group-hover:text-sky-300' : 'text-slate-400 group-hover:text-fuchsia-600'
                                 )}>
-                                  {isAudio && <Play size={12} className="opacity-80" />}
+                                  {isMedia && <Play size={12} className="opacity-80" />}
                                   点击查看详情
                                 </span>
                               </div>

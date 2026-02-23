@@ -878,19 +878,22 @@ class HybridSearchEngine:
                 limit=limit
             )
             
-            # 4. 格式化结果（保留完整 payload 供下游 context_builder 取 kb_id 等）
+            # 4. 格式化结果（一关键帧一点），再按方案六「场景聚合去重」：同 segment_id 合并为一块，保留得分最高的一帧为代表
             formatted_results = []
             for result in search_results:
                 payload = result.get("payload", {})
-                key_frames_json = payload.get("key_frames", "[]")
-                try:
-                    import json
-                    key_frames = json.loads(key_frames_json) if isinstance(key_frames_json, str) else key_frames_json
-                except Exception:
-                    key_frames = []
+                ts = payload.get("frame_timestamp", 0.0)
+                frame_desc = payload.get("frame_description", "")
+                frame_image_path = payload.get("frame_image_path", "")
+                key_frames = [{
+                    "timestamp": ts,
+                    "description": frame_desc,
+                    "frame_image_path": frame_image_path,
+                }]
+                content = payload.get("scene_summary", "") or frame_desc
                 formatted_results.append({
                     "id": result.get("id"),
-                    "content": payload.get("description", ""),
+                    "content": content,
                     "content_type": "video",
                     "file_id": payload.get("file_id"),
                     "file_path": payload.get("file_path"),
@@ -903,10 +906,27 @@ class HybridSearchEngine:
                         "fps": payload.get("fps", 0.0),
                         "key_frames": key_frames,
                         "has_audio": payload.get("has_audio", False),
-                        "audio_file_id": payload.get("audio_file_id")
-                    }
+                        "audio_file_id": payload.get("audio_file_id"),
+                        "segment_id": payload.get("segment_id"),
+                        "frame_timestamp": ts,
+                        "frame_image_path": frame_image_path,
+                    },
                 })
-            return formatted_results
+            # Group by (file_id, segment_id)，保留每组得分最高的作为代表，形成「一个 Context 块 per segment」
+            grouped: Dict[tuple, List[Dict]] = {}
+            for r in formatted_results:
+                fid = r.get("file_id", "")
+                sid = r.get("metadata", {}).get("segment_id", "")
+                key = (fid, sid)
+                if key not in grouped:
+                    grouped[key] = []
+                grouped[key].append(r)
+            by_segment = []
+            for key, group in grouped.items():
+                best = max(group, key=lambda x: x.get("score", 0.0))
+                by_segment.append(best)
+            by_segment.sort(key=lambda x: -x.get("score", 0.0))
+            return by_segment
             
         except Exception as e:
             logger.error(f"视频检索失败: {str(e)}", exc_info=True)

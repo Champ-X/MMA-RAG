@@ -950,6 +950,91 @@ class KnowledgeBaseService:
 
         loop = asyncio.get_event_loop()
 
+        # 关键帧：file_id 为 object_path（videos/{uuid}/keyframes/xxx.jpg），从 video_vectors 取 scene_summary + frame_description 作为图片描述
+        if file_id.startswith("videos/") and "/keyframes/" in file_id:
+            for candidate in self._kb_id_candidates(kb_id):
+                try:
+                    video_points = await loop.run_in_executor(
+                        None,
+                        lambda c=candidate: self.vector_store.scroll_video_points_by_frame_image_path(file_id, c, limit=1),
+                    )
+                    if video_points:
+                        p = _payload(getattr(video_points[0], "payload", None))
+                        scene_summary = (p.get("scene_summary") or "").strip()
+                        frame_description = (p.get("frame_description") or "").strip()
+                        if scene_summary or frame_description:
+                            result["caption"] = (scene_summary + ("\n\n" if scene_summary and frame_description else "") + frame_description).strip() or None
+                            result["description"] = frame_description or None
+                            return result
+                except Exception as e:
+                    logger.debug(f"获取关键帧预览详情失败 candidate={candidate} {kb_id}/{file_id}: {e}")
+            if not result["caption"]:
+                try:
+                    video_points = await loop.run_in_executor(
+                        None,
+                        lambda: self.vector_store.scroll_video_points_by_frame_image_path(file_id, None, limit=1),
+                    )
+                    if video_points:
+                        p = _payload(getattr(video_points[0], "payload", None))
+                        scene_summary = (p.get("scene_summary") or "").strip()
+                        frame_description = (p.get("frame_description") or "").strip()
+                        if scene_summary or frame_description:
+                            result["caption"] = (scene_summary + ("\n\n" if scene_summary and frame_description else "") + frame_description).strip() or None
+                            result["description"] = frame_description or None
+                            logger.debug(f"通过 frame_image_path 全局查询找到关键帧描述: {file_id}")
+                            return result
+                except Exception as e:
+                    logger.debug(f"frame_image_path 全局查询关键帧描述失败 {file_id}: {e}")
+
+        # 视频主文件：file_id 为 uuid（无斜杠），从 video_vectors 拉取所有点，按 segment 顺序拼接全部 scene_summary 作为视频描述
+        if "/" not in file_id:
+            def _video_description_for(file_id: str, kb_id: Optional[str]) -> Optional[str]:
+                points = self.vector_store.scroll_video_points_by_file_id(file_id, kb_id, limit=500)
+                if not points:
+                    return None
+                # 按 segment_id、frame_timestamp 排序，同一 segment 只保留一条 scene_summary，再按序拼接
+                ordered: List[tuple] = []
+                for pt in points:
+                    p = _payload(getattr(pt, "payload", None))
+                    seg = p.get("segment_id") or ""
+                    ts = p.get("frame_timestamp") is not None and float(p.get("frame_timestamp")) or 0.0
+                    summary = (p.get("scene_summary") or "").strip()
+                    if summary:
+                        ordered.append((seg, ts, summary))
+                ordered.sort(key=lambda x: (x[0], x[1]))
+                seen_seg: set = set()
+                summaries: List[str] = []
+                for seg, _ts, summary in ordered:
+                    if seg not in seen_seg:
+                        seen_seg.add(seg)
+                        summaries.append(summary)
+                return "\n\n".join(summaries).strip() or None
+
+            for candidate in self._kb_id_candidates(kb_id):
+                try:
+                    desc = await loop.run_in_executor(
+                        None,
+                        lambda c=candidate: _video_description_for(file_id, c),
+                    )
+                    if desc:
+                        result["caption"] = desc
+                        result["description"] = desc
+                        return result
+                except Exception as e:
+                    logger.debug(f"获取视频主文件预览详情失败 candidate={candidate} {kb_id}/{file_id}: {e}")
+            try:
+                desc = await loop.run_in_executor(
+                    None,
+                    lambda: _video_description_for(file_id, None),
+                )
+                if desc:
+                    result["caption"] = desc
+                    result["description"] = desc
+                    logger.debug(f"通过 file_id 全局查询找到视频描述: {file_id}")
+                    return result
+            except Exception as e:
+                logger.debug(f"file_id 全局查询视频描述失败 {file_id}: {e}")
+
         # 第一轮：按 kb_id 候选 + file_id 查询
         for candidate in self._kb_id_candidates(kb_id):
             try:
@@ -1092,21 +1177,34 @@ class KnowledgeBaseService:
                 parts = op.split("/")
                 if len(parts) < 2:
                     continue
-                rest = parts[1]
-                under = rest.find("_")
-                file_id = rest[:under] if under >= 0 else rest
-                name = rest[under + 1:] if under >= 0 else rest
                 lm = f.get("last_modified")
                 date_str = (lm.isoformat() if lm is not None and hasattr(lm, "isoformat")
                             else str(lm) if lm is not None else "")
-                ext = name.rsplit(".", 1)[-1].lower() if "." in name else "file"
-                item = {
-                    "id": file_id,
-                    "name": name,
-                    "size": f.get("size") or 0,
-                    "date": date_str,
-                    "type": ext,
-                }
+                # 关键帧：videos/{file_id}/keyframes/{filename}.jpg，展示为图片且 name 为实际文件名
+                if (parts[0] == "videos" and len(parts) >= 4 and parts[2] == "keyframes"):
+                    file_id = parts[1]
+                    name = parts[-1]
+                    ext = name.rsplit(".", 1)[-1].lower() if "." in name else "file"
+                    item = {
+                        "id": op,
+                        "name": name,
+                        "size": f.get("size") or 0,
+                        "date": date_str,
+                        "type": ext,
+                    }
+                else:
+                    rest = parts[1]
+                    under = rest.find("_")
+                    file_id = rest[:under] if under >= 0 else rest
+                    name = rest[under + 1:] if under >= 0 else rest
+                    ext = name.rsplit(".", 1)[-1].lower() if "." in name else "file"
+                    item = {
+                        "id": file_id,
+                        "name": name,
+                        "size": f.get("size") or 0,
+                        "date": date_str,
+                        "type": ext,
+                    }
                 if self._is_previewable_type(ext) and bucket_used:
                     try:
                         item["preview_url"] = await self.minio_adapter.get_presigned_url(
@@ -1122,8 +1220,15 @@ class KnowledgeBaseService:
 
     async def get_file_stream_info(self, kb_id: str, file_id: str) -> Optional[tuple[str, str, str]]:
         """获取用于流式预览的文件信息，返回 (bucket_name, object_path, filename) 或 None。
-        支持 documents/、audios/、videos/ 下的主文件（object_path 形如 prefix/file_id_filename）。"""
+        支持关键帧 object_path（videos/.../keyframes/xxx.jpg）、documents/、audios/、videos/ 主文件。"""
         try:
+            # 关键帧：file_id 即为 object_path
+            if file_id.startswith("videos/") and "/keyframes/" in file_id:
+                bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
+                if not bucket_name:
+                    return None
+                filename = file_id.rsplit("/", 1)[-1] if "/" in file_id else file_id
+                return (bucket_name, file_id, filename)
             if not self._ensure_kb_in_cache(kb_id):
                 return None
             bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
@@ -1170,30 +1275,41 @@ class KnowledgeBaseService:
             return None
 
     async def delete_kb_file(self, kb_id: str, file_id: str) -> bool:
-        """删除知识库下的单个文件及其向量（以 MinIO 桶存在为准）。先删向量再删 MinIO，向量删除失败则不删 MinIO。"""
+        """删除知识库下的单个文件及其向量（以 MinIO 桶存在为准）。先删向量再删 MinIO，向量删除失败则不删 MinIO。
+        若 file_id 为关键帧的 object_path（形如 videos/xxx/keyframes/seg_0_80_0.jpg），则仅删除该 MinIO 对象。"""
         try:
             if not self._ensure_kb_in_cache(kb_id):
                 return False
             bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
+            # 关键帧单项删除：前端传入的 id 为 object_path
+            if file_id.startswith("videos/") and "/keyframes/" in file_id:
+                try:
+                    await self.minio_adapter.delete_file(bucket_name, file_id)
+                    return True
+                except Exception as e:
+                    logger.warning("删除关键帧 MinIO 对象失败 {}: {}", file_id, e)
+                    return False
             raw_files = await self.minio_adapter.list_files(bucket=bucket_name, prefix="", max_keys=1000)
-            # 收集该 file_id 在 MinIO 下的所有对象：主文档 + 由该文档解析出的图片（MinerU/PaddleOCR 上传时路径为 images/{uuid}_{file_id}_page*_img*.jpg）
+            # 收集该 file_id 在 MinIO 下的所有对象：文档、图片、音频、视频（含 videos/{file_id}/keyframes/）
             object_paths: List[str] = []
             for f in raw_files:
                 op = f.get("object_path", "")
-                if not op.startswith(("documents/", "images/")):
-                    continue
-                rest = op.split("/", 1)[1]
-                if rest.startswith(file_id + "_"):
+                rest = op.split("/", 1)[1] if "/" in op else op
+                if op.startswith("documents/") or op.startswith("images/"):
+                    if rest.startswith(file_id + "_"):
+                        object_paths.append(op)
+                        continue
+                    if op.startswith("images/") and file_id in rest and "_page" in rest and "_img" in rest:
+                        object_paths.append(op)
+                elif op.startswith("audios/") and rest.startswith(file_id + "_"):
                     object_paths.append(op)
-                    continue
-                # 解析出的图片：路径形如 images/{uuid}_{file_id}_page{N}_img{M}.jpg，rest 中含 file_id 且含 _page、_img
-                if op.startswith("images/") and file_id in rest and "_page" in rest and "_img" in rest:
-                    object_paths.append(op)
+                elif op.startswith("videos/"):
+                    if rest.startswith(file_id + "_") or rest.startswith(file_id + "/"):
+                        object_paths.append(op)
             if not object_paths:
                 return False
 
-            # 先删除向量库中该文件对应的向量（按 filter 删除，可靠）；若全部失败则不删 MinIO
-            # 文档 chunk：kb_id + file_id；图片：kb_id + (file_id 或 source_file_id)，以覆盖 PDF 解析图（其 file_id 为图片自身 UUID）
+            # 先删除向量库中该文件对应的向量（按 filter 删除）；若全部失败则不删 MinIO
             from qdrant_client.http.models import Filter, FieldCondition, MatchValue, FilterSelector
             deleted_chunk_count = 0
             for candidate in self._kb_id_candidates(kb_id):
@@ -1224,6 +1340,16 @@ class KnowledgeBaseService:
                     deleted_chunk_count += 1
                 except Exception as del_e:
                     logger.warning(f"删除文件图片向量失败 candidate={candidate}: {del_e}")
+                try:
+                    self.vector_store.client.delete(
+                        collection_name="audio_vectors",
+                        points_selector=FilterSelector(filter=filt_text),
+                    )
+                    deleted_chunk_count += 1
+                except Exception as del_e:
+                    logger.warning(f"删除文件音频向量失败 candidate={candidate}: {del_e}")
+                if self.vector_store.delete_video_points_by_file_id(candidate, file_id):
+                    deleted_chunk_count += 1
             if deleted_chunk_count == 0:
                 logger.error(f"删除文件向量全部失败，不删除 MinIO 对象 kb_id={kb_id} file_id={file_id}")
                 return False

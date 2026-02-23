@@ -128,22 +128,28 @@ class VectorStore:
                 }
             },
             "video_vectors": {
-                # 视频向量使用多向量配置：text_vec (4096维) 和 clip_vec (768维，关键帧CLIP向量)
+                # 视频向量：一关键帧一点，三向量 scene_vec(4096) + frame_vec(4096) + clip_vec(768)，参见 docs/视频模态技术方案.md
                 "is_multi_vector": True,
                 "vectors_config": {
-                    "text_vec": VectorParams(size=4096, distance=Distance.COSINE),  # 视频描述文本向量
-                    "clip_vec": VectorParams(size=768, distance=Distance.COSINE)       # 关键帧CLIP向量
+                    "scene_vec": VectorParams(size=4096, distance=Distance.COSINE),   # 场景摘要向量
+                    "frame_vec": VectorParams(size=4096, distance=Distance.COSINE),  # 关键帧描述向量
+                    "clip_vec": VectorParams(size=768, distance=Distance.COSINE)       # 关键帧 CLIP 向量
                 },
                 "payload_schema": {
                     "kb_id": PayloadSchemaType.KEYWORD,
                     "file_id": PayloadSchemaType.KEYWORD,
                     "file_path": PayloadSchemaType.TEXT,
-                    "description": PayloadSchemaType.TEXT,
+                    "segment_id": PayloadSchemaType.KEYWORD,
+                    "scene_start_time": PayloadSchemaType.FLOAT,
+                    "scene_end_time": PayloadSchemaType.FLOAT,
+                    "scene_summary": PayloadSchemaType.TEXT,
+                    "frame_timestamp": PayloadSchemaType.FLOAT,
+                    "frame_description": PayloadSchemaType.TEXT,
+                    "frame_image_path": PayloadSchemaType.TEXT,
                     "duration": PayloadSchemaType.FLOAT,
                     "video_format": PayloadSchemaType.KEYWORD,
                     "resolution": PayloadSchemaType.TEXT,
                     "fps": PayloadSchemaType.FLOAT,
-                    "key_frames": PayloadSchemaType.TEXT,  # JSON存储为TEXT
                     "has_audio": PayloadSchemaType.BOOL,
                     "audio_file_id": PayloadSchemaType.KEYWORD,
                     "created_at": PayloadSchemaType.TEXT
@@ -766,89 +772,48 @@ class VectorStore:
     async def upsert_video_vectors(
         self,
         kb_id: str,
-        videos: List[Dict[str, Any]]
+        keyframe_points: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
-        批量插入视频向量
-        
+        按关键帧批量插入视频向量（一关键帧一点，三向量 scene_vec / frame_vec / clip_vec）。
+        参见 docs/视频模态技术方案.md。
+
         Args:
             kb_id: 知识库ID
-            videos: 视频信息列表
-            
+            keyframe_points: 关键帧点列表，每项需含 scene_vec, frame_vec, clip_vec (List[float]) 及 payload 字段
+
         Returns:
             插入结果
         """
         try:
             points = []
-            
-            for video in videos:
+            for kp in keyframe_points:
                 point_id = str(uuid.uuid4())
-                
-                # 准备Named Vector（text_vec + clip_vec）
                 vectors = {
-                    "text_vec": video["text_vector"]
+                    "scene_vec": kp["scene_vec"],
+                    "frame_vec": kp["frame_vec"],
+                    "clip_vec": kp["clip_vec"],
                 }
-                
-                # 如果有关键帧CLIP向量，使用第一个关键帧的CLIP向量作为代表
-                # 或者使用所有关键帧CLIP向量的平均值
-                if "key_frames" in video and video["key_frames"]:
-                    key_frames = video["key_frames"]
-                    if isinstance(key_frames, list) and len(key_frames) > 0:
-                        # 使用第一个关键帧的CLIP向量
-                        first_frame = key_frames[0] if isinstance(key_frames[0], dict) else {}
-                        if "clip_vector" in first_frame:
-                            vectors["clip_vec"] = first_frame["clip_vector"]
-                        else:
-                            # 如果没有CLIP向量，使用零向量占位
-                            vectors["clip_vec"] = [0.0] * 768
-                    else:
-                        vectors["clip_vec"] = [0.0] * 768
-                else:
-                    vectors["clip_vec"] = [0.0] * 768
-                
-                # 准备payload
-                payload = {
-                    "kb_id": kb_id,
-                    "file_id": video.get("file_id"),
-                    "file_path": video.get("file_path"),
-                    "description": video.get("description", ""),
-                    "duration": video.get("duration", 0.0),
-                    "video_format": video.get("video_format", ""),
-                    "resolution": video.get("resolution", ""),
-                    "fps": video.get("fps", 0.0),
-                    "has_audio": video.get("has_audio", False),
-                    "created_at": datetime.now(timezone.utc).isoformat()
-                }
-                
-                # 关键帧信息存储为JSON字符串
-                if "key_frames" in video:
-                    import json
-                    payload["key_frames"] = json.dumps(video["key_frames"], ensure_ascii=False)
-                
-                if video.get("audio_file_id"):
-                    payload["audio_file_id"] = video["audio_file_id"]
-
-                point = PointStruct(
-                    id=point_id,
-                    vector=vectors,
-                    payload=payload
-                )
+                payload = dict(kp.get("payload", {}))
+                payload["kb_id"] = kb_id
+                if "created_at" not in payload:
+                    payload["created_at"] = datetime.now(timezone.utc).isoformat()
+                point = PointStruct(id=point_id, vector=vectors, payload=payload)
                 points.append(point)
-            
-            # 批量插入
+
+            if not points:
+                return {"operation_id": None, "points_inserted": 0, "status": "success"}
+
             operation_info = self.client.upsert(
                 collection_name="video_vectors",
-                points=points
+                points=points,
             )
-            
-            logger.info(f"视频向量插入完成: {len(points)} 个, 操作ID: {operation_info.operation_id}")
-            
+            logger.info(f"视频向量插入完成: {len(points)} 个关键帧, 操作ID: {operation_info.operation_id}")
             return {
                 "operation_id": operation_info.operation_id,
                 "points_inserted": len(points),
-                "status": "success"
+                "status": "success",
             }
-            
         except Exception as e:
             logger.error(f"视频向量插入失败: {str(e)}")
             raise
@@ -1993,79 +1958,134 @@ class VectorStore:
         except Exception as e:
             logger.debug(f"scroll_audio_points_by_file_id 失败: kb_id={kb_id}, file_id={file_id}, e={e}")
             return []
-    
+
+    def scroll_video_points_by_frame_image_path(
+        self,
+        frame_image_path: str,
+        kb_id: Optional[str] = None,
+        limit: int = 1,
+    ) -> List[Any]:
+        """按 frame_image_path（关键帧 object_path）滚动拉取 video_vectors 中的点，用于预览详情（scene_summary、frame_description）。"""
+        try:
+            must = [FieldCondition(key="frame_image_path", match=MatchValue(value=frame_image_path))]
+            if kb_id:
+                must.append(FieldCondition(key="kb_id", match=MatchValue(value=kb_id)))
+            scroll_results = self.client.scroll(
+                collection_name="video_vectors",
+                scroll_filter=Filter(must=must),
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+            points = scroll_results[0] if scroll_results else []
+            return points
+        except Exception as e:
+            logger.debug(
+                "scroll_video_points_by_frame_image_path 失败: frame_image_path=%s kb_id=%s e=%s",
+                frame_image_path, kb_id, e,
+            )
+            return []
+
     async def search_video_vectors(
         self,
         query_vector: List[float],
         clip_vector: Optional[List[float]] = None,
         target_kb_ids: Optional[List[str]] = None,
         limit: int = 10,
-        score_threshold: float = 0.0
+        score_threshold: float = 0.0,
     ) -> List[Dict[str, Any]]:
-        """搜索视频向量"""
+        """
+        视频向量检索：scene_vec / frame_vec / clip_vec 三路 Prefetch + RRF 融合。
+        query_vector 用于 scene_vec 与 frame_vec（同一文本嵌入），clip_vector 用于 clip_vec。
+        """
         try:
-            # 构建过滤条件
             search_filter = None
             if target_kb_ids:
                 search_filter = Filter(
-                    should=[FieldCondition(
-                        key="kb_id",
-                        match=MatchValue(value=kb_id)
-                    ) for kb_id in target_kb_ids]
+                    should=[
+                        FieldCondition(key="kb_id", match=MatchValue(value=kid))
+                        for kid in target_kb_ids
+                    ]
                 )
-            
-            # 如果有关键帧CLIP向量，使用双路RRF检索（prefetch 与 query 分开传参）
+
+            prefetch_queries = [
+                Prefetch(query=query_vector, using="scene_vec", limit=limit * 2),
+                Prefetch(query=query_vector, using="frame_vec", limit=limit * 2),
+            ]
             if clip_vector:
-                prefetch_queries = [
-                    Prefetch(
-                        query=query_vector,
-                        using="text_vec",
-                        limit=limit * 2
-                    ),
-                    Prefetch(
-                        query=clip_vector,
-                        using="clip_vec",
-                        limit=limit * 2
-                    )
-                ]
-                search_results = self.client.query_points(
-                    collection_name="video_vectors",
-                    prefetch=prefetch_queries,
-                    query=FusionQuery(fusion=Fusion.RRF),
-                    query_filter=search_filter,
-                    limit=limit,
-                    score_threshold=score_threshold,
-                    with_payload=True,
-                    with_vectors=False
+                prefetch_queries.append(
+                    Prefetch(query=clip_vector, using="clip_vec", limit=limit * 2),
                 )
-            else:
-                # 仅使用文本向量检索
-                search_results = self.client.query_points(
-                    collection_name="video_vectors",
-                    query=query_vector,
-                    using="text_vec",
-                    query_filter=search_filter,
-                    limit=limit,
-                    score_threshold=score_threshold,
-                    with_payload=True,
-                    with_vectors=False
-                )
-            
-            # 格式化结果
+
+            search_results = self.client.query_points(
+                collection_name="video_vectors",
+                prefetch=prefetch_queries,
+                query=FusionQuery(fusion=Fusion.RRF),
+                query_filter=search_filter,
+                limit=limit,
+                score_threshold=score_threshold,
+                with_payload=True,
+                with_vectors=False,
+            )
+
             results = []
-            if hasattr(search_results, 'points'):
+            if hasattr(search_results, "points"):
                 for point in search_results.points:
                     results.append({
                         "id": str(point.id),
-                        "score": float(point.score) if hasattr(point, 'score') else 0.0,
-                        "payload": point.payload or {}
+                        "score": float(point.score) if hasattr(point, "score") else 0.0,
+                        "payload": point.payload or {},
                     })
-            
             return results
-            
         except Exception as e:
-            logger.error(f"视频向量检索失败: {str(e)}", exc_info=True)
+            logger.error("视频向量检索失败: %s", str(e), exc_info=True)
             return []
+
+    def scroll_video_points_by_file_id(
+        self,
+        file_id: str,
+        kb_id: Optional[str] = None,
+        limit: int = 1,
+    ) -> List[Any]:
+        """按 file_id（视频主文件 uuid）滚动拉取 video_vectors 中的点，用于视频预览详情（取首条 scene_summary 等）。"""
+        try:
+            must = [FieldCondition(key="file_id", match=MatchValue(value=file_id))]
+            if kb_id:
+                must.append(FieldCondition(key="kb_id", match=MatchValue(value=kb_id)))
+            scroll_results = self.client.scroll(
+                collection_name="video_vectors",
+                scroll_filter=Filter(must=must),
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+            points = scroll_results[0] if scroll_results else []
+            return points
+        except Exception as e:
+            logger.debug(
+                "scroll_video_points_by_file_id 失败: file_id=%s kb_id=%s e=%s",
+                file_id, kb_id, e,
+            )
+            return []
+
+    def delete_video_points_by_file_id(
+        self,
+        kb_id: Optional[str],
+        file_id: str,
+    ) -> bool:
+        """按 file_id 删除 video_vectors 中该视频的所有关键帧点。"""
+        try:
+            must = [FieldCondition(key="file_id", match=MatchValue(value=file_id))]
+            if kb_id:
+                must.append(FieldCondition(key="kb_id", match=MatchValue(value=kb_id)))
+            self.client.delete(
+                collection_name="video_vectors",
+                points_selector=FilterSelector(filter=Filter(must=must)),
+            )
+            return True
+        except Exception as e:
+            logger.debug("delete_video_points_by_file_id 失败: kb_id=%s file_id=%s e=%s", kb_id, file_id, e)
+            return False
 
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""

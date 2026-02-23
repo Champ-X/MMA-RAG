@@ -452,6 +452,19 @@ class LLMRegistry:
                     "aliyun_bailian:qwen-omni-turbo",
                 ],
             },
+            # 视频解析：长视频场景划分+关键帧、短视频整体描述，需支持多图/视觉
+            "video_parsing": {
+                "model": "aliyun_bailian:qwen3.5-plus",
+                "fallbacks": [
+                    "openrouter:google/gemini-3-pro-preview",
+                    "openrouter:google/gemini-3-flash-preview",
+                    "openrouter:google/gemini-2.5-flash",
+                    "aliyun_bailian:qwen3-omni-flash",
+                    "aliyun_bailian:qwen3-omni-turbo",
+                    "openrouter:qwen/qwen3.5-plus-02-15",
+                    "openrouter:qwen/qwen3.5-397b-a17b",
+                ],
+            },
         }
         # 若设置了环境变量 DEFAULT_CHAT_MODEL 等，则覆盖对应任务的主模型（与 config 单一语义）
         def _apply(s: Any, task: str) -> None:
@@ -462,6 +475,7 @@ class LLMRegistry:
         _apply(getattr(settings, "default_embedding_model", None), "embedding")
         _apply(getattr(settings, "default_vision_model", None), "image_captioning")
         _apply(getattr(settings, "default_reranker_model", None), "reranking")
+        _apply(getattr(settings, "default_video_parsing_model", None), "video_parsing")
         self._task_routing = {k: v["model"] for k, v in self._task_config.items()}
     
     def get_provider(self, provider_name: str) -> Optional[BaseLLMProvider]:

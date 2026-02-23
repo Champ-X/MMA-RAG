@@ -104,6 +104,13 @@ class Settings(BaseSettings):
         validation_alias="MARKDOWN_LOCAL_IMAGE_ALLOWED_BASE_PATHS",
     )
 
+    # 视频模态：长短视频分流与长视频滑动窗口（参见 docs/视频模态技术方案.md）
+    video_long_threshold_seconds: float = Field(default=480.0, validation_alias="VIDEO_LONG_THRESHOLD_SECONDS")  # 超过此时长走长视频滑动窗口（与方案 480s 一致；≤ 此时长按短视频单 chunk）
+    video_chunk_window_seconds: float = Field(default=480.0, validation_alias="VIDEO_CHUNK_WINDOW_SECONDS")  # 长视频每段窗口时长（如 8 分钟）
+    video_max_chunk_duration_seconds: float = Field(default=480.0, validation_alias="VIDEO_MAX_CHUNK_DURATION_SECONDS")  # 单次 MLLM 能处理的最长片段（如 8 分钟），长视频按此切 chunk
+    video_segment_max_seconds: float = Field(default=120.0, validation_alias="VIDEO_SEGMENT_MAX_SECONDS")  # 短视频「整片一段」时单次送 MLLM 的时长上限，超过则拆多段以覆盖全片（避免只产出前 20～40s）
+    video_chunk_overlap_seconds: float = Field(default=10.0, validation_alias="VIDEO_CHUNK_OVERLAP_SECONDS")  # 窗口重叠时长
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def markdown_local_image_allowed_base_paths(self) -> List[str]:
@@ -177,7 +184,12 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="DEFAULT_RERANKER_MODEL"
     )
-    
+    # 视频解析（场景划分+关键帧 / 视频整体描述）：与音频解析一样可指定专用模型
+    default_video_parsing_model: Optional[str] = Field(
+        default=None,
+        validation_alias="DEFAULT_VIDEO_PARSING_MODEL"
+    )
+
     # 检索配置
     max_retrieval_results: int = Field(default=20, validation_alias="MAX_RETRIEVAL_RESULTS")
     max_context_length: int = Field(default=4000, validation_alias="MAX_CONTEXT_LENGTH")

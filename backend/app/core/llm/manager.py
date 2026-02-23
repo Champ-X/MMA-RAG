@@ -92,8 +92,8 @@ class LLMManager:
         self._initialized = True
     
     async def chat(
-        self, 
-        messages: List[Dict[str, str]], 
+        self,
+        messages: List[Dict[str, Any]],
         task_type: str = "final_generation",
         model: Optional[str] = None,
         fallback: bool = True,
@@ -112,7 +112,10 @@ class LLMManager:
         
         # 记录主模型调用
         logger.info(f"使用主模型: {model} (任务类型: {task_type})")
-        
+        # 视频解析多图+长 prompt，易超时；统一加长超时
+        if task_type == "video_parsing" and "timeout" not in kwargs:
+            kwargs = {**kwargs, "timeout": 180}
+
         # 尝试主模型
         result = await self._call_with_model(
             "chat_completion", 
@@ -135,7 +138,7 @@ class LLMManager:
 
     async def stream_chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         task_type: str = "final_generation",
         model: Optional[str] = None,
         **kwargs

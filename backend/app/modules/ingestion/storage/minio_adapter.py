@@ -112,26 +112,35 @@ class MinIOAdapter:
         file_content: bytes,
         file_path: str,
         kb_id: str,
-        file_type: str
+        file_type: str,
+        *,
+        custom_object_path: Optional[str] = None,
+        file_id_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        上传文件到 MinIO。同一知识库的所有数据（文档+图片）存于同一 Bucket。
+        上传文件到 MinIO。同一知识库的所有数据（文档+图片+视频等）存于同一 Bucket。
 
         Args:
             file_content: 文件二进制内容
-            file_path: 原始文件路径
+            file_path: 原始文件路径（或用于 content-type 推断的文件名）
             kb_id: 知识库ID
-            file_type: 文件类型 (documents/images)，在桶内作为目录前缀区分
+            file_type: 文件类型 (documents/images/audios/videos)，在桶内作为目录前缀区分
+            custom_object_path: 若提供，则直接作为 object_name（用于关键帧等：videos/{file_id}/keyframes/xxx.jpg）
+            file_id_override: 与 custom_object_path 配合使用，返回中的 file_id 使用该值（不生成新 UUID）
 
         Returns:
             上传结果信息，含 bucket、object_path（供向量 payload 与预签名 URL 使用）
         """
         try:
-            file_id = str(uuid.uuid4())
-            object_name = f"{file_type}/{file_id}_{Path(file_path).name}"
-
             bucket_name = self.get_bucket_for_kb(kb_id)
             self.ensure_bucket_for_kb(kb_id)
+
+            if custom_object_path:
+                object_name = custom_object_path
+                file_id = file_id_override if file_id_override else str(uuid.uuid4())
+            else:
+                file_id = str(uuid.uuid4())
+                object_name = f"{file_type}/{file_id}_{Path(file_path).name}"
 
             self.client.put_object(
                 bucket_name=bucket_name,

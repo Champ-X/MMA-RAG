@@ -69,6 +69,9 @@ celerybeat.pid
 *.tar.gz
 *.rar
 
+# —— 测试用大媒体（不提交到仓库）——
+tests/video/*.mp4
+
 # —— 其它 ——
 *.bak
 *.backup

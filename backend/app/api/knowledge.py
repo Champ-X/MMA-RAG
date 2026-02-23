@@ -157,7 +157,7 @@ async def list_kb_files(kb_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{kb_id}/files/{file_id}/preview-asset")
+@router.get("/{kb_id}/files/{file_id:path}/preview-asset")
 async def get_file_preview_asset(
     kb_id: str,
     file_id: str,
@@ -200,7 +200,7 @@ async def get_file_preview_asset(
         raise HTTPException(status_code=500, detail="读取图片失败")
 
 
-@router.get("/{kb_id}/files/{file_id}/content")
+@router.get("/{kb_id}/files/{file_id:path}/content")
 async def get_file_content(kb_id: str, file_id: str):
     """获取文本类文件（md/txt）的原始内容，用于预览（避免 iframe 触发下载）"""
     try:
@@ -218,7 +218,7 @@ async def get_file_content(kb_id: str, file_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{kb_id}/files/{file_id}/preview")
+@router.get("/{kb_id}/files/{file_id:path}/preview")
 async def get_file_preview(kb_id: str, file_id: str):
     """获取文件预览详情：图片描述、文档分块、文本预览"""
     try:
@@ -234,7 +234,7 @@ async def get_file_preview(kb_id: str, file_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{kb_id}/files/{file_id}/stream")
+@router.get("/{kb_id}/files/{file_id:path}/stream")
 async def stream_file_for_preview(kb_id: str, file_id: str):
     """流式返回文件内容，用于页面内预览。PDF 直接返回；PPTX/DOCX 转为 PDF 后返回以便像 PDF 一样在页内阅读。"""
     try:
@@ -305,7 +305,7 @@ async def stream_file_for_preview(kb_id: str, file_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/{kb_id}/files/{file_id}")
+@router.delete("/{kb_id}/files/{file_id:path}")
 async def delete_kb_file(kb_id: str, file_id: str):
     """删除知识库下的单个文件"""
     try:

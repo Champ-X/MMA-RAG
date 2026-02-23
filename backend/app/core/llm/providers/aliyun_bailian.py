@@ -96,16 +96,126 @@ class AliyunBailianProvider(BaseLLMProvider):
         
         return default_max_tokens
 
+    def _extract_video_local_from_messages(self, messages: List[Dict[str, Any]]) -> Optional[tuple]:
+        """若最后一条 user 消息的 content 中含 type=video_local，返回 (path, fps, text)。"""
+        for msg in reversed(messages):
+            if msg.get("role") != "user":
+                continue
+            content = msg.get("content")
+            if not isinstance(content, list):
+                return None
+            path: Optional[str] = None
+            fps = 2
+            text = ""
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "video_local":
+                    path = block.get("path") or block.get("video_path")
+                    fps = int(block.get("fps", 2)) if block.get("fps") is not None else 2
+                elif block.get("type") == "text":
+                    text = (block.get("text") or "").strip()
+            if path and text:
+                return (path, fps, text)
+        return None
+
+    async def _chat_completion_video_local(
+        self, path: str, fps: int, text: str, model: str, kwargs: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """本地上传视频：DashScope MultiModalConversation（file://），同步 call 在线程中执行。"""
+        import asyncio
+        video_path = f"file://{path}" if not path.startswith("file://") else path
+        dashscope_messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"video": video_path, "fps": fps},
+                    {"text": text},
+                ],
+            }
+        ]
+
+        def _call() -> Dict[str, Any]:
+            import dashscope
+            from dashscope import MultiModalConversation
+            dashscope.api_key = self.api_key
+            dashscope.base_http_api_url = "https://dashscope.aliyuncs.com/api/v1"
+            resp = MultiModalConversation.call(
+                api_key=self.api_key,
+                model=model,
+                messages=dashscope_messages,
+            )
+            if resp.status_code != 200 or not getattr(resp, "output", None):
+                raise RuntimeError(getattr(resp, "message", str(resp)) or "MultiModalConversation 调用失败")
+            choices = getattr(resp.output, "choices", None) or []
+            if not choices:
+                raise RuntimeError("MultiModalConversation 返回无 choices")
+            msg = getattr(choices[0], "message", None)
+            if not msg:
+                raise RuntimeError("MultiModalConversation 返回无 message")
+            content = getattr(msg, "content", None)
+            if content is None:
+                text_out = ""
+            elif isinstance(content, str):
+                text_out = content
+            elif isinstance(content, list):
+                # DashScope 多模态可能返回 [{"type":"text","text":"..."}]、[{"content":"..."}] 或对象列表（.text 属性）
+                parts = []
+                for p in content:
+                    part = None
+                    if isinstance(p, dict):
+                        part = p.get("text") or p.get("content")
+                    elif hasattr(p, "text") and getattr(p, "text", None):
+                        part = getattr(p, "text")
+                    elif hasattr(p, "content") and getattr(p, "content", None):
+                        part = getattr(p, "content")
+                    if part is not None:
+                        parts.append(part if isinstance(part, str) else str(part))
+                    else:
+                        parts.append(str(p))
+                text_out = "".join(parts)
+            else:
+                text_out = str(content)
+            return {
+                "choices": [{"message": {"role": "assistant", "content": text_out}}],
+                "usage": getattr(resp, "usage", None) or {},
+            }
+
+        timeout = float(kwargs.get("timeout", 90))
+        loop = asyncio.get_event_loop()
+        start = time.time()
+        try:
+            data = await asyncio.wait_for(loop.run_in_executor(None, _call), timeout=timeout)
+            duration = time.time() - start
+            tokens = (data.get("usage") or {}).get("total_tokens", 0)
+            log_llm_call(model=model, task_type="chat", tokens_used=tokens, duration=duration, success=True)
+            return data
+        except asyncio.TimeoutError:
+            duration = time.time() - start
+            log_llm_call(model=model, task_type="chat", tokens_used=0, duration=duration, success=False)
+            logger.error("阿里云百炼 video_local 超时 [%s]: %ss", model, timeout)
+            raise TimeoutError(f"阿里云百炼 请求超时（{timeout}s）")
+        except Exception as e:
+            duration = time.time() - start
+            log_llm_call(model=model, task_type="chat", tokens_used=0, duration=duration, success=False)
+            logger.error("阿里云百炼 video_local 错误 [%s]: %s", model, e)
+            raise
+
     async def chat_completion(
         self, messages: List[Dict[str, str]], model: str, **kwargs
     ) -> Dict[str, Any]:
         """聊天对话（OpenAI 兼容的 /chat/completions）。
+        若 content 含 type=video_local（本地上传），则走 DashScope MultiModalConversation（file://）。
         qwen3-omni-flash 等 Omni 模型要求 stream=True，本方法会在内部用流式请求并聚合成非流式返回。
         音频块 input_audio.data 若为 base64，会规范化为 DashScope 要求的 data URI。
         """
         import httpx
 
         messages = _normalize_messages_for_aliyun_audio(messages)
+        video_local = self._extract_video_local_from_messages(messages)
+        if video_local:
+            path, fps, text = video_local
+            return await self._chat_completion_video_local(path=path, fps=fps, text=text, model=model, kwargs=kwargs)
 
         # 获取 max_tokens，确保类型正确
         max_tokens = kwargs.get("max_tokens")
@@ -152,7 +262,7 @@ class AliyunBailianProvider(BaseLLMProvider):
         if "presence_penalty" in kwargs:
             payload["presence_penalty"] = kwargs["presence_penalty"]
 
-        timeout = 90.0
+        timeout = float(kwargs.get("timeout", 90))
         start = time.time()
         try:
             async with httpx.AsyncClient() as client:

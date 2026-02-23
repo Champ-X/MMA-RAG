@@ -12,8 +12,8 @@ class BaseLLMProvider(ABC):
     
     @abstractmethod
     async def chat_completion(
-        self, 
-        messages: List[Dict[str, str]], 
+        self,
+        messages: List[Dict[str, Any]],
         model: str,
         **kwargs
     ) -> Dict[str, Any]:
@@ -33,7 +33,7 @@ class BaseLLMProvider(ABC):
     @abstractmethod
     async def stream_chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         model: str,
         **kwargs
     ) -> AsyncGenerator[Dict[str, Any], None]:

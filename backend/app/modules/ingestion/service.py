@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 from .parsers.factory import ParserFactory, FileType
 from .storage.minio_adapter import MinIOAdapter
 from .storage.vector_store import VectorStore
+from app.core.config import settings
 from app.core.llm.manager import llm_manager
 from app.core.llm.prompt_engine import prompt_engine
 from app.core.sparse_encoder import get_sparse_encoder
@@ -793,141 +794,388 @@ class IngestionService:
         processing_id: str,
         file_content: bytes
     ) -> Dict[str, Any]:
-        """处理视频文件"""
+        """
+        处理视频文件。长短分流：≤阈值走固定间隔关键帧+VLM；>阈值走滑动窗口+MLLM 语义解析。
+        统一按「一关键帧一点」写入 scene_vec / frame_vec / clip_vec。参见 docs/视频模态技术方案.md。
+        """
         try:
-            self._update_processing_status(processing_id, {
-                "stage": "extracting",
-                "progress": 20,
-                "message": "提取视频关键帧...",
-            })
-            
-            # 1. 关键帧提取
-            key_frames = await self._extract_key_frames(file_content, processing_id)
-            
-            self._update_processing_status(processing_id, {
-                "stage": "describing",
-                "progress": 40,
-                "message": "生成关键帧描述...",
-            })
-            
-            # 2. 关键帧描述生成
-            key_frame_descriptions = []
-            for frame in key_frames:
-                frame_description = await self._generate_image_caption(
-                    frame["base64_content"],
-                    processing_id,
-                    image_format="jpg"
+            duration = float(parse_result.get("duration", 0.0))
+            file_id = storage_result["file_id"]
+            file_path = storage_result["object_path"]
+            video_format = parse_result.get("format", "mp4")
+            resolution = parse_result.get("resolution", "")
+            fps = float(parse_result.get("fps", 0.0))
+            has_audio = parse_result.get("has_audio", False)
+            threshold = getattr(settings, "video_long_threshold_seconds", 120.0)
+
+            if duration <= threshold:
+                return await self._process_video_short(
+                    parse_result=parse_result,
+                    storage_result=storage_result,
+                    kb_id=kb_id,
+                    processing_id=processing_id,
+                    file_content=file_content,
+                    duration=duration,
+                    file_id=file_id,
+                    file_path=file_path,
+                    video_format=video_format,
+                    resolution=resolution,
+                    fps=fps,
+                    has_audio=has_audio,
                 )
-                key_frame_descriptions.append(frame_description["caption"])
-                frame["description"] = frame_description["caption"]
-            
-            # 3. 提取音频（如果有）
-            audio_file_id = None
-            audio_transcript = None
-            if parse_result.get("has_audio", False):
-                self._update_processing_status(processing_id, {
-                    "stage": "extracting_audio",
-                    "progress": 50,
-                    "message": "提取视频音频...",
-                })
-                audio_result = await self._extract_video_audio(
-                    file_content,
-                    storage_result["file_id"],
-                    kb_id,
-                    processing_id
-                )
-                if audio_result:
-                    audio_file_id = audio_result.get("audio_file_id")
-                    audio_transcript = audio_result.get("transcript", "")
-            
-            # 4. 视频整体描述生成
-            self._update_processing_status(processing_id, {
-                "stage": "describing_video",
-                "progress": 60,
-                "message": "生成视频整体描述...",
-            })
-            
-            video_description = await self._generate_video_description(
-                file_content,
-                key_frame_descriptions,
-                audio_transcript,
-                parse_result.get("format", "mp4"),
-                processing_id
-            )
-            
-            # 5. 向量化
-            self._update_processing_status(processing_id, {
-                "stage": "vectorizing",
-                "progress": 75,
-                "message": "视频向量化...",
-            })
-            
-            # 文本向量化（视频描述）
-            combined_text = video_description
-            if audio_transcript:
-                combined_text = f"{video_description}\n音频转写: {audio_transcript}"
-            
-            embed_result = await self.llm_manager.embed(
-                texts=[combined_text],
-                task_type="embedding"
-            )
-            if not embed_result.success:
-                raise ValueError(f"视频文本向量化失败: {embed_result.error}")
-            
-            text_vector = embed_result.data[0] if isinstance(embed_result.data, list) else embed_result.data
-            
-            # 关键帧CLIP向量化
-            for frame in key_frames:
-                if "image_bytes" in frame:
-                    clip_input_data = {
-                        "image_bytes": base64.b64decode(frame["base64_content"].split(",")[-1]),
-                        "width": frame.get("width", 1920),
-                        "height": frame.get("height", 1080),
-                        "format": "jpg"
-                    }
-                    clip_result = await self._vectorize_with_clip(clip_input_data, processing_id)
-                    frame["clip_vector"] = clip_result["clip_vector"]
-            
-            # 6. 存储到Qdrant
-            self._update_processing_status(processing_id, {
-                "stage": "storing",
-                "progress": 90,
-                "message": "存储视频向量...",
-            })
-            
-            video_data = {
-                "file_id": storage_result["file_id"],
-                "file_path": storage_result["object_path"],
-                "description": video_description,
-                "duration": parse_result.get("duration", 0.0),
-                "video_format": parse_result.get("format", "mp4"),
-                "resolution": parse_result.get("resolution", ""),
-                "fps": parse_result.get("fps", 0.0),
-                "has_audio": parse_result.get("has_audio", False),
-                "key_frames": key_frames,
-                "text_vector": text_vector
-            }
-            if audio_file_id:
-                video_data["audio_file_id"] = audio_file_id
-            
-            vector_storage_result = await self.vector_store.upsert_video_vectors(
+            return await self._process_video_long(
+                parse_result=parse_result,
+                storage_result=storage_result,
                 kb_id=kb_id,
-                videos=[video_data]
+                processing_id=processing_id,
+                file_content=file_content,
+                duration=duration,
+                file_id=file_id,
+                file_path=file_path,
+                video_format=video_format,
+                resolution=resolution,
+                fps=fps,
+                has_audio=has_audio,
             )
-            
-            return {
-                "processing_id": processing_id,
-                "status": "completed",
-                "file_id": storage_result["file_id"],
-                "description": video_description,
-                "key_frames_count": len(key_frames),
-                "vectors_stored": vector_storage_result["points_inserted"],
-                "file_type": "video"
-            }
-            
         except Exception as e:
-            logger.error(f"视频处理失败: {str(e)}", exc_info=True)
+            logger.error("视频处理失败: %s", str(e), exc_info=True)
             raise
+
+    async def _process_video_short(
+        self,
+        parse_result: Dict[str, Any],
+        storage_result: Dict[str, Any],
+        kb_id: str,
+        processing_id: str,
+        file_content: bytes,
+        duration: float,
+        file_id: str,
+        file_path: str,
+        video_format: str,
+        resolution: str,
+        fps: float,
+        has_audio: bool,
+    ) -> Dict[str, Any]:
+        """短视频：与长视频一致，关键帧由 MLLM 场景解析产出（单 chunk），再按时间戳截帧、向量化、入库。"""
+        audio_file_id = None
+        if has_audio:
+            self._update_processing_status(processing_id, {
+                "stage": "extracting_audio",
+                "progress": 20,
+                "message": "提取视频音频...",
+            })
+            audio_result = await self._extract_video_audio(
+                file_content, file_id, kb_id, processing_id
+            )
+            if audio_result:
+                audio_file_id = audio_result.get("audio_file_id")
+
+        self._update_processing_status(processing_id, {
+            "stage": "parsing",
+            "progress": 40,
+            "message": "MLLM 场景与关键帧解析（单段）...",
+        })
+        # 优先本地上传（video_local），避免 MinIO presigned URL 从外网不可达导致主模型/备用模型 400
+        video_local_path: Optional[str] = None
+        if file_content:
+            import tempfile
+            fd = -1
+            try:
+                fd, video_local_path = tempfile.mkstemp(suffix=".mp4")
+                os.write(fd, file_content)
+            except Exception as e:
+                logger.warning("写入视频临时文件失败: {}", e)
+                video_local_path = None
+            finally:
+                if fd >= 0:
+                    try:
+                        os.close(fd)
+                    except Exception:
+                        pass
+        video_url: Optional[str] = None
+        if not video_local_path:
+            try:
+                bucket = storage_result.get("bucket")
+                object_path = storage_result.get("object_path")
+                if bucket and object_path:
+                    video_url = await self.minio_adapter.get_presigned_url(bucket, object_path, expires_hours=2)
+            except Exception as e:
+                logger.warning("获取视频 presigned URL 失败: {}", e)
+        video_fps = min(2, int(fps)) if fps and fps > 0 else 2
+        try:
+            scenes = await self._parse_video_scenes_mllm(
+                file_content=file_content,
+                duration=duration,
+                processing_id=processing_id,
+                window_seconds=max(duration, 1.0),
+                overlap_seconds=0.0,
+                video_url=video_url,
+                video_local_path=video_local_path,
+                video_fps=video_fps,
+            )
+        finally:
+            if video_local_path and os.path.exists(video_local_path):
+                try:
+                    os.unlink(video_local_path)
+                except Exception:
+                    pass
+        if not scenes:
+            # 解析失败时兜底：单场景、单关键帧（中点），避免空写入
+            scenes = [{
+                "start_time": 0.0,
+                "end_time": duration,
+                "scene_summary": "视频内容，解析未返回场景。",
+                "keyframes": [{"timestamp": duration / 2.0, "description": "视频画面"}],
+            }]
+
+        self._update_processing_status(processing_id, {
+            "stage": "vectorizing",
+            "progress": 70,
+            "message": "提取关键帧并向量化...",
+        })
+        keyframe_points = await self._build_keyframe_points_from_scenes(
+            file_content=file_content,
+            scenes=scenes,
+            file_id=file_id,
+            file_path=file_path,
+            kb_id=kb_id,
+            duration=duration,
+            video_format=video_format,
+            resolution=resolution,
+            fps=fps,
+            has_audio=has_audio,
+            audio_file_id=audio_file_id,
+            processing_id=processing_id,
+        )
+
+        self._update_processing_status(processing_id, {
+            "stage": "storing",
+            "progress": 90,
+            "message": "存储视频向量...",
+        })
+        vector_storage_result = await self.vector_store.upsert_video_vectors(
+            kb_id=kb_id,
+            keyframe_points=keyframe_points,
+        )
+        first_summary = scenes[0].get("scene_summary", "") if scenes else ""
+        return {
+            "processing_id": processing_id,
+            "status": "completed",
+            "file_id": file_id,
+            "description": first_summary[:200] + ("..." if len(first_summary) > 200 else ""),
+            "key_frames_count": len(keyframe_points),
+            "vectors_stored": vector_storage_result["points_inserted"],
+            "file_type": "video",
+        }
+
+    async def _process_video_long(
+        self,
+        parse_result: Dict[str, Any],
+        storage_result: Dict[str, Any],
+        kb_id: str,
+        processing_id: str,
+        file_content: bytes,
+        duration: float,
+        file_id: str,
+        file_path: str,
+        video_format: str,
+        resolution: str,
+        fps: float,
+        has_audio: bool,
+    ) -> Dict[str, Any]:
+        """长视频：超过 8 分钟则按 8 分钟分段，每段视频交给 MLLM 解析（不固定抽帧）；≤8 分钟则整段一次交给 MLLM。"""
+        window = getattr(settings, "video_chunk_window_seconds", 480.0)
+        overlap = getattr(settings, "video_chunk_overlap_seconds", 10.0)
+        max_chunk = getattr(settings, "video_max_chunk_duration_seconds", 480.0)
+        video_fps = min(2, int(fps)) if fps and fps > 0 else 2
+        self._update_processing_status(processing_id, {
+            "stage": "parsing",
+            "progress": 25,
+            "message": "长视频语义解析（分段交给 MLLM）...",
+        })
+
+        if duration <= max_chunk:
+            # ≤8 分钟：整段视频一次交给 MLLM，优先本地上传（避免 presigned URL 外网不可达）
+            video_local_path_long: Optional[str] = None
+            if file_content:
+                import tempfile
+                fd_long = -1
+                try:
+                    fd_long, video_local_path_long = tempfile.mkstemp(suffix=".mp4")
+                    os.write(fd_long, file_content)
+                except Exception as e:
+                    logger.warning("写入视频临时文件失败: {}", e)
+                    video_local_path_long = None
+                finally:
+                    if fd_long >= 0:
+                        try:
+                            os.close(fd_long)
+                        except Exception:
+                            pass
+            video_url_arg: Optional[str] = None
+            if not video_local_path_long:
+                try:
+                    bucket = storage_result.get("bucket")
+                    object_path = storage_result.get("object_path")
+                    if bucket and object_path:
+                        video_url_arg = await self.minio_adapter.get_presigned_url(bucket, object_path, expires_hours=2)
+                except Exception as e:
+                    logger.warning("获取视频 presigned URL 失败: {}", e)
+            try:
+                scenes = await self._parse_video_scenes_mllm(
+                    file_content=file_content,
+                    duration=duration,
+                    processing_id=processing_id,
+                    window_seconds=window,
+                    overlap_seconds=overlap,
+                    video_url=video_url_arg,
+                    video_local_path=video_local_path_long,
+                    video_fps=video_fps,
+                )
+            finally:
+                if video_local_path_long and os.path.exists(video_local_path_long):
+                    try:
+                        os.unlink(video_local_path_long)
+                    except Exception:
+                        pass
+        else:
+            # >8 分钟：按段切分，每段视频交给 MLLM，不做固定抽帧
+            import tempfile
+            fd_full = -1
+            full_path: Optional[str] = None
+            try:
+                fd_full, full_path = tempfile.mkstemp(suffix=".mp4")
+                os.write(fd_full, file_content)
+            except Exception as e:
+                logger.warning("长视频写入临时文件失败: %s", e)
+                full_path = None
+            finally:
+                if fd_full >= 0:
+                    try:
+                        os.close(fd_full)
+                    except Exception:
+                        pass
+            scenes = []
+            all_scenes: List[Dict[str, Any]] = []
+            step = max(1.0, max_chunk - overlap)
+            chunk_start = 0.0
+            try:
+                if full_path and os.path.exists(full_path):
+                    while chunk_start < duration:
+                        chunk_dur = min(max_chunk, duration - chunk_start)
+                        if chunk_dur <= 0:
+                            break
+                        segment_path = self._extract_video_segment_to_file(full_path, chunk_start, chunk_dur)
+                        if not segment_path:
+                            chunk_start += step
+                            continue
+                        try:
+                            scenes_chunk = await self._parse_video_scenes_mllm(
+                                file_content=b"",
+                                duration=chunk_dur,
+                                processing_id=processing_id,
+                                window_seconds=chunk_dur,
+                                overlap_seconds=0.0,
+                                video_url=None,
+                                video_local_path=segment_path,
+                                video_fps=video_fps,
+                            )
+                            for s in scenes_chunk:
+                                all_scenes.append({
+                                    "start_time": float(s.get("start_time", 0)) + chunk_start,
+                                    "end_time": float(s.get("end_time", 0)) + chunk_start,
+                                    "scene_summary": s.get("scene_summary", ""),
+                                    "keyframes": [
+                                        {"timestamp": float(kf.get("timestamp", 0)) + chunk_start, "description": kf.get("description", "")}
+                                        for kf in (s.get("keyframes") or [])
+                                        if isinstance(kf, dict)
+                                    ],
+                                })
+                        finally:
+                            if segment_path and os.path.exists(segment_path):
+                                try:
+                                    os.unlink(segment_path)
+                                except Exception:
+                                    pass
+                        chunk_start += step
+                    all_scenes = self._merge_overlapping_scenes(all_scenes, overlap)
+                    scenes = all_scenes
+            finally:
+                if full_path and os.path.exists(full_path):
+                    try:
+                        os.unlink(full_path)
+                    except Exception:
+                        pass
+
+        if not scenes:
+            logger.warning("长视频 MLLM 未返回场景，回退为短视频流程")
+            return await self._process_video_short(
+                parse_result=parse_result,
+                storage_result=storage_result,
+                kb_id=kb_id,
+                processing_id=processing_id,
+                file_content=file_content,
+                duration=duration,
+                file_id=file_id,
+                file_path=file_path,
+                video_format=video_format,
+                resolution=resolution,
+                fps=fps,
+                has_audio=has_audio,
+            )
+
+        audio_file_id = None
+        if has_audio:
+            self._update_processing_status(processing_id, {
+                "stage": "extracting_audio",
+                "progress": 50,
+                "message": "提取视频音频...",
+            })
+            audio_result = await self._extract_video_audio(
+                file_content, file_id, kb_id, processing_id
+            )
+            if audio_result:
+                audio_file_id = audio_result.get("audio_file_id")
+
+        self._update_processing_status(processing_id, {
+            "stage": "vectorizing",
+            "progress": 70,
+            "message": "提取关键帧并向量化...",
+        })
+        keyframe_points = await self._build_keyframe_points_from_scenes(
+            file_content=file_content,
+            scenes=scenes,
+            file_id=file_id,
+            file_path=file_path,
+            kb_id=kb_id,
+            duration=duration,
+            video_format=video_format,
+            resolution=resolution,
+            fps=fps,
+            has_audio=has_audio,
+            audio_file_id=audio_file_id,
+            processing_id=processing_id,
+        )
+
+        self._update_processing_status(processing_id, {
+            "stage": "storing",
+            "progress": 90,
+            "message": "存储视频向量...",
+        })
+        vector_storage_result = await self.vector_store.upsert_video_vectors(
+            kb_id=kb_id,
+            keyframe_points=keyframe_points,
+        )
+        first_summary = scenes[0].get("scene_summary", "") if scenes else ""
+        return {
+            "processing_id": processing_id,
+            "status": "completed",
+            "file_id": file_id,
+            "description": first_summary[:200] + ("..." if len(first_summary) > 200 else ""),
+            "key_frames_count": sum(len(s.get("keyframes", [])) for s in scenes),
+            "vectors_stored": vector_storage_result["points_inserted"],
+            "file_type": "video",
+        }
 
     async def _split_text_into_chunks(self, parse_result: Dict[str, Any]) -> List[Dict[str, Any]]:
         """将文本分割成块"""
@@ -2045,63 +2293,376 @@ class IngestionService:
         except Exception as e:
             logger.error(f"视频音频提取失败: {str(e)}")
             return None
-    
-    async def _generate_video_description(
-        self,
-        video_bytes: bytes,
-        key_frame_descriptions: List[str],
-        audio_transcript: Optional[str],
-        video_format: str,
-        processing_id: str
-    ) -> str:
-        """生成视频整体描述"""
+
+    def _extract_frame_at_timestamp(self, video_bytes: bytes, timestamp_sec: float) -> Optional[bytes]:
+        """从视频字节中截取指定时间戳的一帧，返回 JPEG 字节。先按 POS_MSEC 定位，失败则按帧索引 POS_FRAMES 重试（部分编码下按时间 seek 不可靠）。"""
         try:
-            # 构建描述提示词
-            key_frames_text = "\n".join([
-                f"关键帧 {i+1}: {desc}" 
-                for i, desc in enumerate(key_frame_descriptions[:5])  # 限制前5个关键帧
-            ])
-            
-            audio_text = f"\n音频转写: {audio_transcript}" if audio_transcript else ""
-            
-            prompt = f"""请基于以下视频关键帧描述和音频转写，生成一段简洁的视频整体描述，包括：
-1. 视频的主要内容
-2. 关键场景和动作
-3. 整体风格和特点
-
-关键帧描述：
-{key_frames_text}
-{audio_text}
-
-视频描述："""
-            
-            messages = [
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-            
-            result = await self.llm_manager.chat(
-                messages=messages,
-                task_type="final_generation"
-            )
-            
-            if result.success and result.data is not None:
-                data = result.data
-                description = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                if description:
-                    return description
-            
-            # 如果生成失败，使用关键帧描述的摘要
-            if key_frame_descriptions:
-                return f"视频内容，包含{len(key_frame_descriptions)}个关键场景: " + "; ".join(key_frame_descriptions[:3])
-            
-            return "视频文件"
-            
+            import cv2
+            import tempfile
+            import os
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+                tmp.write(video_bytes)
+                tmp_path = tmp.name
+            try:
+                cap = cv2.VideoCapture(tmp_path)
+                if not cap.isOpened():
+                    return None
+                fps = cap.get(cv2.CAP_PROP_FPS) or 1.0
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+                # 先按毫秒 seek（部分文件对 POS_FRAMES 更稳，所以失败时再按帧索引试）
+                cap.set(cv2.CAP_PROP_POS_MSEC, timestamp_sec * 1000)
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    # 按帧索引重试：避免只抽到前 20～30s 就失败导致 MLLM 只解析前段
+                    if total_frames > 0:
+                        frame_idx = min(int(timestamp_sec * fps), total_frames - 1)
+                        frame_idx = max(0, frame_idx)
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                        ret, frame = cap.read()
+                cap.release()
+                if not ret or frame is None:
+                    return None
+                from PIL import Image
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                pil_image = Image.fromarray(frame_rgb)
+                buf = BytesIO()
+                pil_image.save(buf, format="JPEG")
+                return buf.getvalue()
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
         except Exception as e:
-            logger.error(f"视频描述生成失败: {str(e)}")
-            return "视频文件"
+            logger.debug("_extract_frame_at_timestamp 失败: %s", e)
+            return None
+
+    def _extract_video_segment_to_file(
+        self, full_video_path: str, start_sec: float, duration_sec: float
+    ) -> Optional[str]:
+        """用 ffmpeg 从完整视频中切出 [start_sec, start_sec+duration_sec] 段，写入临时文件，返回路径。"""
+        import subprocess
+        import tempfile
+        if duration_sec <= 0:
+            return None
+        fd, segment_path = tempfile.mkstemp(suffix=".mp4")
+        try:
+            os.close(fd)
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-y", "-i", full_video_path,
+                    "-ss", str(start_sec), "-t", str(duration_sec),
+                    "-c", "copy", "-avoid_negative_ts", "1",
+                    segment_path,
+                ],
+                capture_output=True,
+                timeout=120,
+            )
+            if result.returncode != 0 or not os.path.exists(segment_path) or os.path.getsize(segment_path) == 0:
+                if os.path.exists(segment_path):
+                    try:
+                        os.unlink(segment_path)
+                    except Exception:
+                        pass
+                return None
+            return segment_path
+        except Exception as e:
+            logger.debug("_extract_video_segment_to_file 失败: %s", e)
+            if os.path.exists(segment_path):
+                try:
+                    os.unlink(segment_path)
+                except Exception:
+                    pass
+            return None
+
+    async def _parse_video_scenes_mllm(
+        self,
+        file_content: bytes,
+        duration: float,
+        processing_id: str,
+        window_seconds: float = 480.0,
+        overlap_seconds: float = 10.0,
+        *,
+        video_url: Optional[str] = None,
+        video_local_path: Optional[str] = None,
+        video_fps: int = 2,
+    ) -> List[Dict[str, Any]]:
+        """
+        视频场景+关键帧解析。仅支持将视频交给 MLLM 解析（video_local_path 或 video_url），
+        不做固定关键帧抽帧。优先本地上传（file://），避免 MinIO presigned URL 外网不可达导致 400。
+        参见 docs/视频模态技术方案.md 3.2 / 3.3。
+        """
+        # 优先：本地上传（百炼 MultiModalConversation file://），单次调用覆盖全片；不依赖 URL 被外网访问
+        if video_local_path and os.path.exists(video_local_path):
+            prompt_text = prompt_engine.render_template(
+                "video_scene_parsing",
+                chunk_duration_seconds=int(duration),
+            )
+            msg_content = [
+                {"type": "video_local", "path": video_local_path, "fps": video_fps},
+                {"type": "text", "text": prompt_text},
+            ]
+            logger.info("video_parsing 使用 video_local 本地上传（fps={}）", video_fps)
+            result = await self.llm_manager.chat(
+                messages=[{"role": "user", "content": msg_content}],
+                task_type="video_parsing",
+            )
+            if not result.success or not result.data:
+                return []
+            raw = result.data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if not raw:
+                return []
+            # content 可能是 str 或从 list 拼出的 str，统一按 str 处理
+            if isinstance(raw, list):
+                raw = "".join(
+                    (p.get("text") or p.get("content") or str(p)) if isinstance(p, dict) else str(p)
+                    for p in raw
+                )
+            arr = self._extract_scenes_json_array(raw)
+            if not arr:
+                logger.warning(
+                    "video_parsing video_local 返回内容解析为场景数组失败，raw 前 500 字符: {}",
+                    (raw[:500] + "..." if len(raw) > 500 else raw) if raw else "(空)",
+                )
+                return []
+            return [
+                {
+                    "start_time": float(s.get("start_time", 0)),
+                    "end_time": float(s.get("end_time", 0)),
+                    "scene_summary": s.get("scene_summary", ""),
+                    "keyframes": [
+                        {"timestamp": float(kf.get("timestamp", 0)), "description": kf.get("description", "")}
+                        for kf in (s.get("keyframes") or [])
+                        if isinstance(kf, dict)
+                    ],
+                }
+                for s in arr
+                if isinstance(s, dict)
+            ]
+
+        # 备选：传视频 URL（需 URL 可被模型服务拉取，MinIO 内网时易 400）
+        if video_url:
+            prompt_text = prompt_engine.render_template(
+                "video_scene_parsing",
+                chunk_duration_seconds=int(duration),
+            )
+            msg_content = [
+                {"type": "video_url", "video_url": {"url": video_url}, "fps": video_fps},
+                {"type": "text", "text": prompt_text},
+            ]
+            logger.info("video_parsing 使用 video_url 单次调用（fps={}）", video_fps)
+            result = await self.llm_manager.chat(
+                messages=[{"role": "user", "content": msg_content}],
+                task_type="video_parsing",
+            )
+            if result.success and result.data:
+                raw = result.data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                if raw:
+                    arr = self._extract_scenes_json_array(raw)
+                    if arr:
+                        return [
+                            {
+                                "start_time": float(s.get("start_time", 0)),
+                                "end_time": float(s.get("end_time", 0)),
+                                "scene_summary": s.get("scene_summary", ""),
+                                "keyframes": [
+                                    {"timestamp": float(kf.get("timestamp", 0)), "description": kf.get("description", "")}
+                                    for kf in (s.get("keyframes") or [])
+                                    if isinstance(kf, dict)
+                                ],
+                            }
+                            for s in arr
+                            if isinstance(s, dict)
+                        ]
+        logger.warning(
+            "video_parsing 未提供 video_url 或 video_local_path，无法将视频交给 MLLM 解析（不做固定关键帧抽帧）"
+        )
+        return []
+
+    @staticmethod
+    def _extract_scenes_json_array(raw: str):  # -> Optional[List[Any]]
+        """
+        从 MLLM 返回文本中抽取场景 JSON 数组。兼容被 markdown 代码块或前后说明文字包裹的情况。
+        """
+        import re
+        import json as json_lib
+        if not raw or not raw.strip():
+            return None
+        text = raw.strip()
+        # 1) 去掉 ```json ... ``` 或 ``` ... ```
+        for pattern in (r"^```(?:json)?\s*\n?", r"\n?\s*```\s*$"):
+            text = re.sub(pattern, "", text)
+        text = text.strip()
+        # 2) 去掉首部说明文字，从第一个 [ 开始（兼容「以下是…」「根据视频…」等前缀）
+        first_bracket = text.find("[")
+        if first_bracket > 0:
+            text = text[first_bracket:]
+        # 3) 容忍尾部逗号（部分模型会输出 ,] 或 ,}）
+        text = re.sub(r",\s*]", "]", text)
+        text = re.sub(r",\s*}", "}", text)
+        # 4) 直接解析
+        try:
+            arr = json_lib.loads(text)
+            return arr if isinstance(arr, list) else [arr]
+        except json_lib.JSONDecodeError:
+            pass
+        # 5) 找第一个 '[' 起、括号匹配的 JSON 数组子串
+        start = text.find("[")
+        if start == -1:
+            return None
+        depth = 0
+        in_string = None
+        escape = False
+        for i in range(start, len(text)):
+            c = text[i]
+            if escape:
+                escape = False
+                continue
+            if c == "\\" and in_string:
+                escape = True
+                continue
+            if in_string:
+                if c == in_string:
+                    in_string = None
+                continue
+            if c in ('"', "'"):
+                in_string = c
+                continue
+            if c == "[":
+                depth += 1
+            elif c == "]":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        arr = json_lib.loads(text[start : i + 1])
+                        return arr if isinstance(arr, list) else [arr]
+                    except json_lib.JSONDecodeError:
+                        break
+        return None
+
+    def _merge_overlapping_scenes(
+        self,
+        scenes: List[Dict[str, Any]],
+        overlap_seconds: float,
+    ) -> List[Dict[str, Any]]:
+        """相邻场景在重叠区内交叉且摘要相似则合并为一（方案 3.3 可选）。"""
+        if len(scenes) <= 1:
+            return scenes
+        scenes = sorted(scenes, key=lambda s: s.get("start_time", 0))
+        merged: List[Dict[str, Any]] = [scenes[0]]
+        for s in scenes[1:]:
+            prev = merged[-1]
+            prev_end = prev.get("end_time", 0)
+            curr_start = s.get("start_time", 0)
+            curr_end = s.get("end_time", 0)
+            prev_sum = (prev.get("scene_summary") or "")[:80]
+            curr_sum = (s.get("scene_summary") or "")[:80]
+            # 时间在重叠区内交叉：上一段 end 与当前 start 的间隙小于重叠时长，或存在重叠
+            in_overlap = (curr_start - prev_end) < overlap_seconds or curr_start < prev_end
+            # 简单相似：前缀一致或较长公共子串（避免过度合并）
+            similar = prev_sum == curr_sum or (len(prev_sum) > 20 and prev_sum[:20] == curr_sum[:20])
+            if in_overlap and similar:
+                prev["end_time"] = max(prev_end, curr_end)
+                prev["keyframes"] = (prev.get("keyframes") or []) + (s.get("keyframes") or [])
+                prev["scene_summary"] = prev.get("scene_summary") or s.get("scene_summary", "")
+            else:
+                merged.append(s)
+        return merged
+
+    async def _build_keyframe_points_from_scenes(
+        self,
+        file_content: bytes,
+        scenes: List[Dict[str, Any]],
+        file_id: str,
+        file_path: str,
+        kb_id: str,
+        duration: float,
+        video_format: str,
+        resolution: str,
+        fps: float,
+        has_audio: bool,
+        audio_file_id: Optional[str],
+        processing_id: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        根据 MLLM 解析出的场景列表：按时间戳截帧、上传关键帧图、计算 scene_vec/frame_vec/clip_vec，组装 keyframe_points。
+        """
+        keyframe_points: List[Dict[str, Any]] = []
+        scene_summaries = [s.get("scene_summary", "") for s in scenes]
+        embed_scene = await self.llm_manager.embed(texts=scene_summaries, task_type="embedding")
+        if not embed_scene.success:
+            raise ValueError("场景摘要向量化失败")
+        scene_vectors = embed_scene.data if isinstance(embed_scene.data, list) else [embed_scene.data]
+        for seg_idx, scene in enumerate(scenes):
+            scene_vec = scene_vectors[seg_idx] if seg_idx < len(scene_vectors) else scene_vectors[0]
+            scene_start = float(scene.get("start_time", 0))
+            scene_end = float(scene.get("end_time", 0))
+            scene_summary = scene.get("scene_summary", "")
+            segment_id = f"seg_{seg_idx}"
+            kfs = scene.get("keyframes") or []
+            if not kfs:
+                ts = (scene_start + scene_end) / 2
+                kfs = [{"timestamp": ts, "description": scene_summary[:100]}]
+            frame_descriptions = [k.get("description", "") for k in kfs]
+            embed_frames = await self.llm_manager.embed(texts=frame_descriptions, task_type="embedding")
+            if not embed_frames.success:
+                frame_vecs = [scene_vec] * len(kfs)
+            else:
+                frame_vecs = embed_frames.data if isinstance(embed_frames.data, list) else [embed_frames.data]
+            for i, kf in enumerate(kfs):
+                ts = float(kf.get("timestamp", 0))
+                desc = kf.get("description", "")
+                frame_bytes = self._extract_frame_at_timestamp(file_content, ts)
+                frame_image_path = ""
+                clip_vec = [0.0] * 768
+                if frame_bytes:
+                    seg_ts = f"{segment_id}_{ts:.1f}".replace(".", "_")
+                    custom_path = f"videos/{file_id}/keyframes/{seg_ts}.jpg"
+                    await self.minio_adapter.upload_file(
+                        file_content=frame_bytes,
+                        file_path="frame.jpg",
+                        kb_id=kb_id,
+                        file_type="videos",
+                        custom_object_path=custom_path,
+                        file_id_override=file_id,
+                    )
+                    frame_image_path = custom_path
+                    clip_input = {
+                        "image_bytes": frame_bytes,
+                        "width": 1920,
+                        "height": 1080,
+                        "format": "jpg",
+                    }
+                    try:
+                        clip_result = await self._vectorize_with_clip(clip_input, processing_id)
+                        clip_vec = clip_result["clip_vector"]
+                    except Exception as e:
+                        logger.debug("关键帧 CLIP 向量化失败: %s", e)
+                payload = {
+                    "file_id": file_id,
+                    "file_path": file_path,
+                    "segment_id": segment_id,
+                    "scene_start_time": scene_start,
+                    "scene_end_time": scene_end,
+                    "scene_summary": scene_summary,
+                    "frame_timestamp": ts,
+                    "frame_description": desc,
+                    "frame_image_path": frame_image_path,
+                    "duration": duration,
+                    "video_format": video_format,
+                    "resolution": resolution,
+                    "fps": fps,
+                    "has_audio": has_audio,
+                }
+                if audio_file_id:
+                    payload["audio_file_id"] = audio_file_id
+                keyframe_points.append({
+                    "scene_vec": scene_vec,
+                    "frame_vec": frame_vecs[i] if i < len(frame_vecs) else scene_vec,
+                    "clip_vec": clip_vec,
+                    "payload": payload,
+                })
+        return keyframe_points
 
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""

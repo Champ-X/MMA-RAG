@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, CheckCircle, Loader2, Image as ImageIcon, FileText, FileCode, Presentation, FileSpreadsheet, Database, Sparkles, Type, Pencil, Check, Music } from 'lucide-react'
+import { X, CheckCircle, Loader2, Image as ImageIcon, FileText, FileCode, Presentation, FileSpreadsheet, Database, Sparkles, Type, Pencil, Check, Music, Video } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // 状态徽章
@@ -55,6 +55,10 @@ function FileIcon({ type, size = FILE_ICON_SIZE_DEFAULT }: { type: string; size?
   if (lowerType.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg', 'wma', 'opus'].includes(lowerType)) {
     return <Music size={s} className="text-violet-600 dark:text-violet-400" />
   }
+  // 视频
+  if (['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'].includes(lowerType)) {
+    return <Video size={s} className="text-sky-600 dark:text-sky-400" />
+  }
   // 默认文档
   return <FileText size={s} className="text-slate-500 dark:text-slate-400" />
 }
@@ -66,6 +70,11 @@ function isImageType(type: string): boolean {
 export function isAudioType(type: string): boolean {
   const lower = String(type || '').toLowerCase()
   return lower.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg', 'wma', 'opus'].includes(lower)
+}
+
+export function isVideoType(type: string): boolean {
+  const lower = String(type || '').toLowerCase()
+  return ['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'].includes(lower)
 }
 
 // 文件缩略图（表格视图）
@@ -103,6 +112,9 @@ function getFileHeroIconBg(type: string): string {
   if (lower.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg', 'wma', 'opus'].includes(lower)) {
     return 'bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-800'
   }
+  if (['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'].includes(lower)) {
+    return 'bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800'
+  }
   return 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
 }
 
@@ -110,6 +122,7 @@ function getFileHeroIconBg(type: string): string {
 export function FileHero({ file }: { file: any }) {
   const isImg = isImageType(file?.type)
   const isAudio = isAudioType(file?.type)
+  const isVideo = isVideoType(file?.type)
   if (isImg && file?.previewUrl) {
     return (
       <img
@@ -125,19 +138,22 @@ export function FileHero({ file }: { file: any }) {
       <div className={cn('p-4 rounded-xl border', getFileHeroIconBg(file?.type))}>
         <FileIcon type={file?.type} size={FILE_HERO_ICON_SIZE} />
       </div>
-      {isAudio && (
+      {(isAudio || isVideo) && (
         <div className="mt-2 flex items-end gap-0.5 h-3" aria-hidden>
           {[0.4, 0.7, 1, 0.6, 0.9].map((h, i) => (
             <span
               key={i}
-              className="w-1 rounded-full bg-violet-400/70 dark:bg-violet-400/60 min-h-[4px] group-hover:opacity-90 transition-opacity"
+              className={cn(
+                'w-1 rounded-full min-h-[4px] group-hover:opacity-90 transition-opacity',
+                isVideo ? 'bg-sky-400/70 dark:bg-sky-400/60' : 'bg-violet-400/70 dark:bg-violet-400/60'
+              )}
               style={{ height: `${h * 100}%` }}
             />
           ))}
         </div>
       )}
-      <div className={cn('text-xs font-medium text-slate-500 dark:text-slate-400', isAudio ? 'mt-1' : 'mt-2')}>
-        {isAudio ? '音频' : String(file?.type || 'file').toUpperCase()}
+      <div className={cn('text-xs font-medium text-slate-500 dark:text-slate-400', (isAudio || isVideo) ? 'mt-1' : 'mt-2')}>
+        {isAudio ? '音频' : isVideo ? '视频' : String(file?.type || 'file').toUpperCase()}
       </div>
     </div>
   )
