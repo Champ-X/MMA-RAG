@@ -17,16 +17,16 @@ export function OverviewSection() {
         </h1>
         <div className="space-y-3 max-w-4xl">
           <p className="break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-            本项目是一个面向多知识库、多模态场景的 RAG（Retrieval-Augmented Generation）Agent 系统，旨在解决企业级知识管理中的核心挑战：如何在多个异构知识库中，高效、准确地检索并生成包含文档与图像的统一回答。
+            本项目是一个面向多知识库、多模态场景的 RAG（Retrieval-Augmented Generation）Agent 系统，旨在解决企业级知识管理中的核心挑战：如何在多个异构知识库中，高效、准确地检索并生成包含文档与图像的统一回答。支持多种内容来源（本地上传、URL、文件夹、热点订阅等），并可扩展音频/视频模态。
           </p>
           <div className="space-y-2">
             <p className="break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
               <span className="font-semibold text-slate-700 dark:text-slate-200">核心设计理念：</span>
-              采用领域驱动设计（DDD）架构，将系统划分为 Ingestion、Knowledge、Retrieval、Generation 与 LLM Manager 五个核心业务模块，每个模块职责清晰、可独立演进，同时通过统一的接口协作完成端到端的 RAG 流程。
+              采用领域驱动设计（DDD）架构，将系统划分为 Ingestion、Knowledge、Retrieval、Generation 与 LLM Manager 五个核心业务模块，每个模块职责清晰、可独立演进，通过统一接口协作完成端到端 RAG 流程；LLM 调用由 Core 层统一管理，支持多厂商 API 与任务路由。
             </p>
             <p className="break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
               <span className="font-semibold text-slate-700 dark:text-slate-200">关键技术特性：</span>
-              系统支持文档与图像的统一检索，通过智能知识库画像路由实现多库场景下的精准选库，采用三路混合检索（语义向量、稀疏向量、视觉特征）提升召回质量，并具备完整的思考链可视化能力，让用户能够理解系统每一步的决策过程。
+              文档与图像统一检索；基于 K-Means + LLM 主题摘要的知识库画像与加权路由；三路混合检索（Dense 语义向量、BGE-M3 稀疏向量、CLIP + VLM 视觉特征）与两阶段重排（RRF 粗排 + Cross-Encoder 精排）；One-Pass 意图识别与视觉/音频/视频意图分支；完整思考链可视化与引用展示。
             </p>
             <p className="break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
               <span className="font-semibold text-slate-700 dark:text-slate-200">本页说明：</span>
@@ -84,7 +84,7 @@ export function OverviewSection() {
               {overviewStats.coreApis}+{overviewStats.modelTasks}
             </div>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              MinIO / Qdrant / Redis + 多任务 LLM 能力（意图、生成、重排等）
+              MinIO / Qdrant / Redis + 多任务 LLM（意图、VLM、生成、重排、画像等）
             </p>
           </CardContent>
         </Card>

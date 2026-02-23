@@ -71,7 +71,7 @@ export const architectureSections: ArchitectureSection[] = [
   {
     id: 'data-flow',
     title: '数据流与存储',
-    subtitle: '文件 → MinIO → Qdrant → 检索 → 引用映射 → 前端 Citation',
+    subtitle: '多来源接入 → MinIO → Dense+BGE-M3+CLIP 向量化 → Qdrant → 检索 → 引用映射 → 前端 Citation',
   },
   {
     id: 'tech-stack',
@@ -82,8 +82,8 @@ export const architectureSections: ArchitectureSection[] = [
 
 export const overviewStats = {
   modules: 5,
-  coreApis: 4,
-  modelTasks: 4,
+  coreApis: 5,
+  modelTasks: 5,
 }
 
 export interface InnovationPoint {
@@ -105,7 +105,7 @@ export const innovationPoints: InnovationPoint[] = [
   {
     id: 'hybrid-search',
     title: '三路融合混合检索',
-    description: 'Dense（语义向量）+ Sparse（BGE-M3稀疏向量）+ Visual（CLIP视觉特征）三路并行检索与RRF融合',
+    description: 'Dense（语义向量）+ Sparse（BGE-M3 稀疏向量）+ Visual（CLIP + VLM 描述）三路并行检索，经 RRF 粗排与 Cross-Encoder 精排',
     impact: '在复杂查询场景下能更稳定地召回真正相关的片段',
     icon: '🔍',
   },
@@ -119,8 +119,8 @@ export const innovationPoints: InnovationPoint[] = [
   {
     id: 'one-pass-intent',
     title: 'One-Pass 意图识别',
-    description: '将意图分类、查询改写、关键词提取等任务统一为一次 LLM 调用，输出结构化 JSON',
-    impact: '在保证分析质量的前提下显著降低请求整体延迟',
+    description: '将意图分类、查询改写、关键词/多视角生成与 visual/audio/video 意图统一为一次 LLM 调用，输出结构化 IntentObject',
+    impact: '在保证分析质量的前提下显著降低请求整体延迟，并统一控制多模态检索分支',
     icon: '🚀',
   },
   {
@@ -186,6 +186,7 @@ export const performanceMetrics: PerformanceMetric[] = [
 export const overviewTags = [
   '多模态 RAG',
   '智能路由',
+  'BGE-M3 稀疏检索',
   '混合检索',
   '流式思考链',
   '可视化调试',
@@ -205,32 +206,32 @@ export const requestFlowSteps: RequestFlowStep[] = [
   {
     id: 'intent',
     title: 'One-Pass 意图识别',
-    short: 'IntentProcessor.one_pass_intent',
+    short: 'IntentProcessor.process',
     description:
-      'RetrievalService 调用 IntentProcessor，将意图分类、查询改写、关键词提取统一为一次 LLM 调用，输出结构化 JSON，相比多轮调用整体延迟显著更低。',
+      '将意图分类、查询改写、关键词/多视角生成与 visual_intent/audio_intent/video_intent 统一为一次 LLM 调用，输出结构化 IntentObject（refined_query、sparse_keywords、multi_view_queries 等），供检索与路由使用；解析失败时回退默认意图保证下游可执行。',
     backendEntry: 'backend/app/modules/retrieval/processors/intent.py::IntentProcessor.process',
     estimatedTime: '200-500ms',
-    keyTechnologies: ['LLM', 'JSON Schema', 'One-Pass Processing'],
+    keyTechnologies: ['LLM', 'JSON Schema', 'One-Pass', 'Visual/Audio/Video Intent'],
   },
   {
     id: 'routing',
     title: '知识库画像路由',
     short: 'KnowledgeRouter.route_query',
     description:
-      '基于知识库画像与路由算法，对候选知识库进行加权打分，选择 Top-K 目标知识库，并输出带置信度的路由结果。通过 K-Means 聚类 + LLM 主题摘要生成画像，在复杂多知识库场景中能够更稳定地命中合适的知识库。',
+      '若未指定知识库：refined_query 向量在 kb_portraits 全局 TopN 检索，按 KB 取前 K 节点做位置衰减加权平均，归一化后按阈值决定单库/多库/全库，输出 target_kb_ids 与置信度。画像由 K-Means + LLM 主题摘要生成并 Replace 更新。',
     backendEntry: 'backend/app/modules/knowledge/router.py::KnowledgeRouter.route_query',
     estimatedTime: '100-300ms',
-    keyTechnologies: ['K-Means', 'LLM Summary', 'Weighted Scoring'],
+    keyTechnologies: ['TopN Retrieval', 'Per-KB Weighted Avg', 'Normalize', 'Single/Multi/Full KB'],
   },
   {
     id: 'hybrid-search',
     title: '三路混合检索',
-    short: 'Dense + Sparse + Visual',
+    short: 'Dense + Sparse (BGE-M3) + Visual',
     description:
-      'HybridSearchEngine 同时发起语义向量检索、稀疏向量检索和视觉特征检索，并通过 RRF 等策略融合结果，相比传统单一检索方式在多样化查询场景下有更好的召回质量。',
+      'HybridSearchEngine 同时发起语义向量检索、BGE-M3 稀疏向量检索和视觉特征（CLIP + VLM 描述）检索，经加权 RRF 融合后与 Cross-Encoder 精排配合，在多样化查询场景下有更好的召回质量。',
     backendEntry: 'backend/app/modules/retrieval/search_engine.py::HybridSearchEngine',
     estimatedTime: '300-800ms',
-    keyTechnologies: ['Dense Vector', 'Sparse Vector (BGE-M3)', 'CLIP Visual', 'RRF Fusion'],
+    keyTechnologies: ['Dense Vector', 'BGE-M3 Sparse', 'CLIP Visual', 'RRF Fusion'],
   },
   {
     id: 'rerank',
@@ -245,12 +246,12 @@ export const requestFlowSteps: RequestFlowStep[] = [
   {
     id: 'prompt',
     title: '系统提示词与多模态格式化',
-    short: 'SystemPromptManager + Formatter',
+    short: 'ContextBuilder + prompt.py + Formatter',
     description:
-      'SystemPromptManager 根据意图类型选择合适的系统提示词，多模态 Formatter 负责将文本与图片引用映射到统一 Prompt 格式。支持文档/图片 Type A/B 插槽设计，动态引用映射。',
-    backendEntry: 'backend/app/modules/generation/templates/system_prompts.py::SystemPromptManager',
+      'ContextBuilder 按重排结果生成 ReferenceMap（序号、content_type、presigned_url、chunk_id）；模板来自 core/llm/prompt.py，按意图类型选用系统提示词；MultiModalFormatter 将文档/图片/音视频按 Type A/B 插槽填入 Prompt，规定 [id] 引用与诚实回答原则。',
+    backendEntry: 'backend/app/modules/generation/context_builder.py + backend/app/core/llm/prompt.py',
     estimatedTime: '< 50ms',
-    keyTechnologies: ['Template Engine', 'Multi-Modal Formatting', 'Citation Mapping'],
+    keyTechnologies: ['ReferenceMap', 'Prompt Templates', 'Type A/B Slots', 'Citation [id]'],
   },
   {
     id: 'generation',
@@ -268,20 +269,21 @@ export const coreModules: ModuleInfo[] = [
   {
     id: 'ingestion',
     name: 'Ingestion - 数据输入处理与存储',
-    role: '负责文件解析、切分、多模态向量化，以及写入 MinIO 与 Qdrant。',
+    role: '负责文件解析、切分、多模态向量化（Dense + BGE-M3 稀疏 + VLM/CLIP），以及写入 MinIO 与 Qdrant。',
     color: 'green',
     highlights: [
-      '统一入口：IngestionService.process_file_upload 作为唯一写入入口，完成解析 → MinIO → 向量化 → Qdrant 全流程',
-      '多模态解析器工厂：支持 PDF（PyMuPDF）、文本（Markdown/Plain）、图片（PIL/OpenCV）的差异化解析策略',
-      '智能文档切分：基于语义边界与长度限制的 Chunking，保留上下文连贯性',
-      '多模态向量化：文本走 BGE Embedding，图片走 VLM + CLIP 双路融合，生成统一向量表示',
-      '存储适配器：MinIOAdapter 负责对象存储（按知识库分 bucket），VectorStore 负责向量与稀疏索引写入 Qdrant',
-      '可扩展内容来源层：支持本地文件上传、URL 下载、RSS 订阅等多种内容来源，统一接入处理管道',
-      '异步任务支持：大文件导入通过 Celery 异步处理，前端可流式查看进度',
+      '统一入口：IngestionService 完成解析 → MinIO → 向量化 → Qdrant 全流程；支持本地上传、URL、文件夹、热点订阅等多来源接入',
+      '解析器工厂：PDF（PyMuPDF，可选 MinerU）、DOCX（python-docx）、TXT/Markdown、图片（PIL）；文档内嵌图先 VLM 描述再插回原文后分块',
+      '分块策略：递归语义分块（段落/句子 + max/min 长度）、重叠窗口；chunk 携带 context_window 供调试拉取前后文',
+      '文档向量化：Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏编码，双向量写入 text_chunks',
+      '图片向量化：VLM 生成 caption + 同模型文本向量（text_vec）+ CLIP 视觉向量（clip_vec），Named Vector 写入 image_vectors',
+      '存储：MinIOAdapter 按知识库与类型组织；VectorStore 写入 text_chunks / image_vectors / kb_portraits',
+      '异步管道：Celery + Redis 处理长耗时导入，前端可轮询或流式查看进度',
     ],
     codeRefs: [
       { label: 'IngestionService', path: 'backend/app/modules/ingestion/service.py' },
       { label: 'ParserFactory', path: 'backend/app/modules/ingestion/parsers/factory.py' },
+      { label: 'sources', path: 'backend/app/modules/ingestion/sources/' },
       { label: 'MinIOAdapter', path: 'backend/app/modules/ingestion/storage/minio_adapter.py' },
       { label: 'VectorStore', path: 'backend/app/modules/ingestion/storage/vector_store.py' },
     ],
@@ -289,15 +291,15 @@ export const coreModules: ModuleInfo[] = [
   {
     id: 'knowledge',
     name: 'Knowledge - 知识库管理与画像',
-    role: '围绕知识库生命周期进行管理，并基于内容生成结构化画像，支撑智能路由。',
+    role: '知识库 CRUD 与画像生成（K-Means + LLM 主题摘要），以及基于画像的 TopN 检索 + 加权路由决策。',
     color: 'blue',
     highlights: [
-      '知识库 CRUD：支持创建、查询、更新、删除知识库，维护知识库元数据与统计信息',
-      '画像生成算法：PortraitGenerator 使用 K-Means 聚类分析知识库向量分布，结合 LLM 主题摘要生成结构化画像',
-      '画像存储结构：包含主题关键词、向量中心点、覆盖领域、内容类型分布等维度',
-      '动态路由决策：KnowledgeRouter 基于查询向量与画像向量相似度，加权投票选择 Top-K 目标知识库',
-      '画像更新机制：支持增量更新与全量重构，当知识库内容变化时自动触发画像刷新',
-      '路由策略配置：支持加权路由、全库搜索、手动锁定等多种路由策略，适应不同场景需求',
+      '知识库 CRUD：创建、查询、更新、删除知识库，维护元数据与统计；支持用户指定知识库时跳过路由',
+      '画像生成：从 Text/Image Collection 按比例采样向量（懒加载正文），K = sqrt(N/2) 限制内 K-Means 聚类',
+      '主题摘要：每簇取近中心 5～10 样本，以 [文档片段]/[图片描述] 前缀拼成 content_pieces，LLM 生成 topic_summary 后向量化写入 kb_portraits',
+      '画像更新：增量/全量触发；Replace 策略（先删该 KB 旧画像再插入新画像）',
+      '路由决策：refined_query 向量在 kb_portraits 全局 TopN 检索；每 KB 取前 K 节点位置衰减加权平均，归一化后按阈值决定单库/多库/全库',
+      '路由策略：全部得分偏低时全库检索；第一名与第二名差距 ≥ 阈值则单库，否则取前两库',
     ],
     codeRefs: [
       { label: 'KnowledgeBaseService', path: 'backend/app/modules/knowledge/service.py' },
@@ -308,15 +310,15 @@ export const coreModules: ModuleInfo[] = [
   {
     id: 'retrieval',
     name: 'Retrieval - 语义路由与混合检索',
-    role: '从意图识别到混合检索与重排，构成查询前处理与检索主通路。',
+    role: 'One-Pass 意图识别（含 visual/audio/video 意图）、三路混合检索与两阶段重排，构成检索主通路。',
     color: 'blue',
     highlights: [
-      'One-Pass 意图识别：IntentProcessor 将意图分类、查询改写、关键词提取统一为一次 LLM 调用，输出结构化 IntentObject（包含 intent_type、refined_query、keywords 等）',
-      '查询改写策略：QueryRewriter 支持 SPLADE 稀疏检索优化与 Multi-view 查询重构，提升检索召回率',
-      '三路混合检索：HybridSearchEngine 同时发起 Dense（语义向量）、Sparse（BGE-M3 稀疏向量）、Visual（CLIP 视觉特征）检索，通过 RRF 融合结果',
-      '两阶段重排：先用 RRF 对多路检索结果粗排，再用 Cross-Encoder 对 Top-K 候选精排，选出最有价值的片段',
-      '检索上下文构建：RetrievalContext 封装查询意图、目标知识库、检索策略等上下文信息，贯穿整个检索流程',
-      '调试信息输出：RetrievalResult 包含详细的检索统计、各阶段耗时、命中片段详情等，支持前端可视化展示',
+      'One-Pass 意图识别：意图分类、查询改写、关键词/多视角生成、visual_intent/audio_intent/video_intent 统一一次 LLM 调用，输出 IntentObject',
+      '查询策略：refined_query 用于 Dense 与路由；sparse_keywords 与 dense_query 拼接送 BGE-M3 稀疏检索；multi_view_queries 用于 Dense 多视角',
+      '三路混合检索：Dense（主查询 + 多视角融合）、Sparse（BGE-M3 稀疏向量）、Visual（text_vec + clip_vec 双路 RRF），按 visual_intent 决定是否走图/权重',
+      '两阶段重排：加权 RRF 粗排（dense/sparse/visual 可配权重）→ Cross-Encoder 精排，精排分与 RRF 分合并取 final_top_k；implicit 时图片保护',
+      'RetrievalContext：封装 target_kb_ids、search_strategies、visual_intent 等，贯穿检索与重排',
+      '检索结果含各阶段耗时与命中详情，支持前端 ThinkingCapsule 与调试展示',
     ],
     codeRefs: [
       { label: 'RetrievalService', path: 'backend/app/modules/retrieval/service.py' },
@@ -329,39 +331,40 @@ export const coreModules: ModuleInfo[] = [
   {
     id: 'generation',
     name: 'Generation - 上下文构建与生成',
-    role: '将检索结果拼装成可控的上下文，并驱动 LLM 给出带引用的最终回答。',
+    role: '将重排结果转为引用映射与多模态 Prompt，驱动 LLM 生成，并通过 SSE 推送 thought/citation/message。',
     color: 'purple',
     highlights: [
-      '多模态上下文构建：ContextBuilder 支持文本片段与图片引用的混合组装，按相关性排序并控制总长度',
-      '动态引用映射：将内部 UUID 映射为数字 ID 与可读信息（文件名、页码等），便于前端展示与用户点击',
-      '系统提示词管理：SystemPromptManager 根据意图类型（factual/analytical/creative）选择合适的系统提示词模板',
-      '多模态格式化：MultiModalFormatter 支持文档/图片 Type A/B 插槽设计，将引用信息嵌入到 Prompt 中',
-      '流式生成：StreamManager 通过 SSE 实时推送思考链（thought）、引用（citation）、回答内容（message）到前端',
-      '思考链可视化：GenerationService 在生成过程中输出意图识别、知识库路由、检索策略等阶段信息，映射到前端 ThinkingCapsule',
+      '上下文构建：ContextBuilder 按分数排序分配序号 1,2,3…，生成 ReferenceMap（doc/image/audio/video、presigned_url、chunk_id 等）',
+      '长度控制：max_context_length、max_chunks、max_images（implicit 时略多），按相关性填入 Type A/B 模板',
+      '系统提示词：按意图类型选用模板，规定 [id] 引用、多模态描述与诚实回答原则；prompt 模板集中在 core/llm/prompt.py',
+      '多模态格式化：文档【材料 n】类型:文档|来源；图片【材料 n】类型:图片|视觉描述，支持音频/视频及关键帧引用',
+      '流式输出：StreamManager 发送 thought（意图/路由/检索策略）、citation（引用元数据与 debug_info）、message（LLM delta）',
+      '前端：ThinkingCapsule 消费 thought；CitationPopover 悬停 [n] 展示引用；支持 context_window 与灯箱/播放器',
     ],
     codeRefs: [
       { label: 'GenerationService', path: 'backend/app/modules/generation/service.py' },
       { label: 'ContextBuilder', path: 'backend/app/modules/generation/context_builder.py' },
-      { label: 'SystemPromptManager', path: 'backend/app/modules/generation/templates/system_prompts.py' },
+      { label: 'MultiModalFormatter', path: 'backend/app/modules/generation/templates/multimodal_fmt.py' },
       { label: 'StreamManager', path: 'backend/app/modules/generation/stream_manager.py' },
     ],
   },
   {
     id: 'llm-manager',
     name: 'LLM Manager - 模型管理与路由',
-    role: '统一管理多家模型服务、不同任务类型与熔断重试策略。',
+    role: '按 task_type 路由到对应模型与 Provider，统一 chat/embed/rerank 接口，支持多厂商 API 与提示词集中管理。',
     color: 'purple',
     highlights: [
-      '统一协议接口：LLMManager 抽象出统一的 chat/embedding/vision 接口，兼容 SiliconFlow、OpenAI、DeepSeek 等多厂商 API',
-      '模型注册表：LLMRegistry 按任务类型（intent_recognition、final_generation、reranking 等）注册与路由不同模型',
-      '智能路由策略：根据任务类型、模型可用性、负载情况自动选择最合适的模型，支持故障转移',
-      '熔断与重试：内置 Circuit Breaker 机制，当模型服务异常时自动熔断，支持指数退避重试策略',
-      '审计与统计：记录每次调用的 Token 使用量、响应时间、成功/失败状态，支持后续分析与优化',
-      'Prompt 引擎：PromptEngine 支持模板渲染、变量替换、多轮对话历史格式化等功能',
+      '任务路由：intent_recognition、image_captioning、final_generation、reranking、kb_portrait_generation 等映射到具体模型与 Provider',
+      '统一接口：chat（多轮消息、temperature）、embed（文本列表）、rerank（query + documents）；底层 Provider 实现 OpenAI 兼容协议',
+      '多厂商 Provider：SiliconFlow、OpenRouter、阿里云百炼、DeepSeek 等，Manager 负责拼装请求与解析响应',
+      '提示词：prompt.py 集中所有模板字符串，prompt_engine 提供 render_template，业务层只传变量',
+      '可观测与弹性：记录 task_type、模型、耗时、Token、成功/失败；支持超时重试与可选故障转移',
+      '核心设施：sparse_encoder（BGE-M3）、portrait_trigger、keyword_extract 等由 Core 层提供',
     ],
     codeRefs: [
       { label: 'LLMManager', path: 'backend/app/core/llm/manager.py' },
-      { label: 'LLMRegistry', path: 'backend/app/core/llm/registry.py' },
+      { label: 'LLMRegistry', path: 'backend/app/core/llm/__init__.py' },
+      { label: 'prompt.py', path: 'backend/app/core/llm/prompt.py' },
       { label: 'PromptEngine', path: 'backend/app/core/llm/prompt_engine.py' },
     ],
   },
@@ -370,23 +373,23 @@ export const coreModules: ModuleInfo[] = [
 export const dataFlowStages: DataFlowStage[] = [
   {
     id: 'upload',
-    title: '文件上传',
-    description: '前端通过 UploadPipeline 将本地文件上传到 /api/upload/file 或 /file/stream 接口。',
+    title: '文件与多来源接入',
+    description: '本地上传通过 /api/upload 或 /file/stream；导入任务（URL、文件夹、Tavily 热点、媒体下载等）经 import_api 提交，由 Ingestion 统一执行下载与后续管道。',
   },
   {
     id: 'minio',
     title: '对象存储 MinIO',
-    description: 'IngestionService 调用 MinIOAdapter 将原始文件写入 MinIO，不同知识库映射到不同 bucket。',
+    description: 'MinIOAdapter 按知识库与类型（文档/图片等）组织路径，写入 MinIO；对象路径与 file_id 与向量库 Payload 一致，便于 Presigned URL 与删除联动。',
   },
   {
     id: 'vectorize',
     title: '多模态向量化',
-    description: '解析后的文本与图片分别走 Embedding / VLM / CLIP 等管道，生成统一向量表示。',
+    description: '文本走 Dense（Qwen3-Embedding-8B）+ BGE-M3 稀疏编码；图片走 VLM 描述 + 文本向量化与 CLIP 视觉向量，写入 Qdrant。',
   },
   {
     id: 'qdrant',
     title: '向量与稀疏索引',
-    description: '向量写入 Qdrant，配合稀疏向量与元数据索引，构建跨模态检索底座。',
+    description: 'Qdrant 存储 text_chunks（dense + sparse）、image_vectors（clip_vec + text_vec）、kb_portraits，支撑混合检索与路由。',
   },
   {
     id: 'redis-celery',
@@ -401,7 +404,7 @@ export const dataFlowStages: DataFlowStage[] = [
   {
     id: 'citation',
     title: '引用映射与前端展示',
-    description: '后端将内部 UUID 映射为数字 ID 与可读信息，前端通过 Citation 组件展示可点击引用。',
+    description: 'ReferenceMap 提供序号、类型、file_name、content 摘要、presigned_url（图/音视频）；SSE citation 事件带 debug_info（chunk_id、context_window）。前端 CitationPopover 悬停 [n] 展示，支持灯箱与播放器。',
   },
 ]
 
@@ -454,21 +457,33 @@ export const techStackItems: TechStackItem[] = [
   // model - 全部保留（都是核心）
   {
     id: 'siliconflow',
-    name: 'SiliconFlow API',
+    name: 'SiliconFlow / OpenRouter / 阿里云百炼',
     category: 'model',
-    description: '统一模型接入平台，支持多家模型服务与多任务类型路由。',
+    description: '多厂商 API 统一由 LLMManager 路由，按 task_type 选择模型与 Provider（OpenAI 兼容协议）。',
   },
   {
     id: 'deepseek',
     name: 'DeepSeek / Qwen 系列',
     category: 'model',
-    description: '用于意图识别与最终回答生成的主力大语言模型。',
+    description: '意图识别、最终生成、画像摘要等对话类任务；VLM 用于图片描述（如 Qwen3-VL）。',
+  },
+  {
+    id: 'embedding',
+    name: 'Qwen3-Embedding-8B',
+    category: 'model',
+    description: '文本 Dense 向量（4096 维），用于 text_chunks、image text_vec 与 kb_portraits。',
   },
   {
     id: 'bge',
-    name: 'BGE 系列向量模型',
+    name: 'BGE-M3 / BGE-Reranker',
     category: 'model',
-    description: '用于文本向量化（Embedding）与 Cross-Encoder 重排任务。',
+    description: 'BGE-M3 稀疏编码与稀疏检索；BGE-Reranker 或 Qwen3-Reranker 用于 Cross-Encoder 精排。',
+  },
+  {
+    id: 'clip',
+    name: 'CLIP (clip-vit-large-patch14)',
+    category: 'model',
+    description: '图片视觉向量（768 维），与 text_vec 双路写入 image_vectors，检索时 Prefetch + Fusion RRF。',
   },
   // infra - 只保留核心
   {

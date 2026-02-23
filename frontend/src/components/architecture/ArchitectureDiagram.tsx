@@ -78,7 +78,7 @@ export function ArchitectureDiagram() {
                     </div>
                     <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-200">Ingestion</span>
                   </div>
-                  <p className="relative text-[10px] leading-tight break-words text-indigo-900/80 dark:text-indigo-100/90">文件解析、多模态向量化，写入 MinIO 与 Qdrant</p>
+                  <p className="relative text-[10px] leading-tight break-words text-indigo-900/80 dark:text-indigo-100/90">文件解析、Dense+BGE-M3+CLIP 向量化，多来源接入，写入 MinIO 与 Qdrant</p>
                 </div>
                 <div className="group/module relative overflow-hidden rounded-lg border border-sky-200/50 bg-gradient-to-br from-sky-50/80 to-sky-100/40 p-3 transition-all duration-300 hover:scale-105 hover:border-sky-300/70 hover:bg-sky-100/90 hover:shadow-lg dark:border-sky-800/50 dark:from-sky-950/40 dark:to-sky-900/30 dark:hover:border-sky-700/70 dark:hover:bg-sky-900/50">
                   <div className="absolute inset-0 bg-gradient-to-br from-sky-500/0 to-cyan-500/0 transition-all duration-300 group-hover/module:from-sky-500/10 group-hover/module:to-cyan-500/10" />
@@ -98,7 +98,7 @@ export function ArchitectureDiagram() {
                     </div>
                     <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-200">Retrieval</span>
                   </div>
-                  <p className="relative text-[10px] leading-tight break-words text-emerald-900/80 dark:text-emerald-100/90">意图识别、混合检索与两阶段重排优化</p>
+                  <p className="relative text-[10px] leading-tight break-words text-emerald-900/80 dark:text-emerald-100/90">One-Pass 意图、三路混合检索（Dense+Sparse+Visual）与两阶段重排</p>
                 </div>
                 <div className="group/module relative overflow-hidden rounded-lg border border-purple-200/50 bg-gradient-to-br from-purple-50/80 to-purple-100/40 p-3 transition-all duration-300 hover:scale-105 hover:border-purple-300/70 hover:bg-purple-100/90 hover:shadow-lg dark:border-purple-800/50 dark:from-purple-950/40 dark:to-purple-900/30 dark:hover:border-purple-700/70 dark:hover:bg-purple-900/50">
                   <div className="absolute inset-0 bg-gradient-to-br from-purple-500/0 to-pink-500/0 transition-all duration-300 group-hover/module:from-purple-500/10 group-hover/module:to-pink-500/10" />
@@ -156,10 +156,10 @@ export function ArchitectureDiagram() {
                 </div>
                 <div className="relative space-y-1.5 text-center">
                   <div className="rounded-lg bg-violet-100/50 px-2.5 py-1.5 text-[10px] leading-tight text-violet-900/90 dark:bg-violet-900/30 dark:text-violet-100/90">
-                    <p className="break-words font-medium">SiliconFlow / DeepSeek / Qwen</p>
+                    <p className="break-words font-medium">SiliconFlow / OpenRouter / 阿里云百炼 / DeepSeek / Qwen</p>
                   </div>
                   <div className="rounded-lg bg-violet-100/50 px-2.5 py-1.5 text-[10px] leading-tight text-violet-900/90 dark:bg-violet-900/30 dark:text-violet-100/90">
-                    <p className="break-words font-medium">Embedding / Reranker / VLM / CLIP</p>
+                    <p className="break-words font-medium">Qwen3-Embedding / BGE-M3 / Reranker / VLM / CLIP</p>
                   </div>
                 </div>
               </div>

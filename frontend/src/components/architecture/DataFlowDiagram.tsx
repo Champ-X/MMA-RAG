@@ -3,9 +3,9 @@ import { dataFlowStages } from '@/data/architectureData'
 
 export function DataFlowDiagram() {
   const ingestionStages = [
-    { id: 'upload', icon: <FileText className="h-4 w-4 text-sky-500" />, title: '上传入口', label: 'Frontend → /api/upload/file' },
+    { id: 'upload', icon: <FileText className="h-4 w-4 text-sky-500" />, title: '多来源接入', label: '上传 / URL / 文件夹 / 热点' },
     { id: 'minio', icon: <Database className="h-4 w-4 text-amber-600" />, title: 'MinIO', label: '对象存储' },
-    { id: 'vectorize-qdrant', icon: <Activity className="h-4 w-4 text-emerald-600" />, title: '向量化 & Qdrant', label: '多模态向量 + 稀疏索引' },
+    { id: 'vectorize-qdrant', icon: <Activity className="h-4 w-4 text-emerald-600" />, title: '向量化 & Qdrant', label: 'Dense + BGE-M3 稀疏 + CLIP' },
     { id: 'redis-celery', icon: <Server className="h-4 w-4 text-rose-600" />, title: 'Redis & Celery', label: '异步任务与进度' },
   ]
 
@@ -22,7 +22,7 @@ export function DataFlowDiagram() {
       </div>
 
       <p className="max-w-4xl break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-        下面的流程图从"用户上传文件"开始，沿着 Ingestion → 存储 → 检索 → 生成 → 引用展示的顺序，描述了数据在系统中的完整旅程。
+        下面的流程图从「多来源接入」（本地上传或 URL/文件夹/热点导入）开始，沿 Ingestion → MinIO → 向量化与 Qdrant → 检索与生成 → 引用展示，描述数据在系统中的完整旅程。
       </p>
 
       <div className="space-y-6 rounded-2xl border border-amber-100/80 bg-gradient-to-br from-amber-50/60 via-slate-50/80 to-slate-50/80 p-6 shadow-lg dark:border-amber-900/80 dark:from-amber-950/30 dark:via-slate-950 dark:to-slate-950">
