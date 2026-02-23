@@ -344,8 +344,11 @@ async def get_knowledge_base_portrait(kb_id: str):
 
 
 @router.post("/{kb_id}/portrait/regenerate")
-async def regenerate_knowledge_base_portrait(kb_id: str):
-    """触发知识库画像生成/更新。若 Celery 可用则异步执行，否则同步执行（可能较慢）。"""
+async def regenerate_knowledge_base_portrait(
+    kb_id: str,
+    sync: bool = Query(False, description="为 true 时在 API 进程内同步执行，保证使用最新代码（含视频关键帧）；否则优先走 Celery 异步"),
+):
+    """触发知识库画像生成/更新。sync=true 时在 API 内同步执行（推荐手动触发时使用）；否则若 Celery 可用则异步执行。"""
     try:
         kb = await kb_service.get_knowledge_base(kb_id)
         if not kb:
@@ -361,21 +364,23 @@ async def regenerate_knowledge_base_portrait(kb_id: str):
         except Exception as _:
             pass
 
-        try:
-            from app.modules.knowledge.portraits import build_kb_portrait_task
-            build_kb_portrait_task.delay(effective_kb_id, True)
-            return {
-                "status": "triggered",
-                "message": "画像生成已启动，请稍后刷新页面查看。首次生成可能需要 1–2 分钟。",
-            }
-        except Exception as _:
-            pass
+        # sync=True 时强制在 API 进程内同步执行，确保使用当前代码（含视频关键帧统计）
+        if not sync:
+            try:
+                from app.modules.knowledge.portraits import build_kb_portrait_task
+                build_kb_portrait_task.delay(effective_kb_id, True)
+                return {
+                    "status": "triggered",
+                    "message": "画像生成已启动，请稍后刷新页面查看。首次生成可能需要 1–2 分钟。",
+                }
+            except Exception as _:
+                pass
 
         result = await portrait_generator.update_kb_portrait(effective_kb_id, force_update=True)
         if result.get("status") == "insufficient_data":
             raise HTTPException(
                 status_code=400,
-                detail=result.get("message", "知识库数据量不足，至少需要约 10 条文本/图片/音频才能生成画像"),
+                detail=result.get("message", "知识库数据量不足，至少需要约 10 条文本/图片/音频/视频关键帧才能生成画像"),
             )
         return {
             "status": "success",

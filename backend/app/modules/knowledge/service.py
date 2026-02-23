@@ -1002,7 +1002,8 @@ class KnowledgeBaseService:
                 for pt in points:
                     p = _payload(getattr(pt, "payload", None))
                     seg = p.get("segment_id") or ""
-                    ts = p.get("frame_timestamp") is not None and float(p.get("frame_timestamp")) or 0.0
+                    ft = p.get("frame_timestamp")
+                    ts = float(ft) if ft is not None else 0.0
                     summary = (p.get("scene_summary") or "").strip()
                     if summary:
                         ordered.append((seg, ts, summary))
@@ -1393,12 +1394,14 @@ class KnowledgeBaseService:
                 except Exception as trigger_err:
                     logger.warning(f"删除文件后画像增量触发失败 kb_id={kb_id}: {trigger_err}")
 
-                # 若删除后该知识库已无 chunk（所有候选合计为 0），则删除所有可能存在的画像（避免漏删不同 kb_id 格式）
+                # 若删除后该知识库已无 chunk（文本+图片+音频+视频关键帧合计为 0），则删除所有可能存在的画像
                 total_remaining = 0
                 for cid in portrait_candidate_ids:
                     try:
                         n_text, n_img = await self.vector_store.count_kb_chunks(cid)
-                        total_remaining += n_text + n_img
+                        n_audio = await self.vector_store.count_kb_audio(cid)
+                        n_video = await self.vector_store.count_kb_video(cid)
+                        total_remaining += n_text + n_img + n_audio + n_video
                     except Exception as e:
                         logger.warning(f"统计 chunk 失败 candidate={cid}: {e}")
                 if total_remaining == 0:

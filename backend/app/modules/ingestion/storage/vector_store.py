@@ -1644,6 +1644,45 @@ class VectorStore:
             logger.error(f"scroll_audio_vectors_for_sampling 失败: {str(e)}")
             return ([], None)
 
+    async def scroll_video_vectors_for_sampling(
+        self,
+        kb_id: str,
+        limit: int,
+        offset: Optional[Any] = None,
+        batch_size: int = 500,
+    ) -> Tuple[List[Tuple[str, List[float]]], Optional[Any]]:
+        """
+        按 kb_id 滚动拉取视频关键帧向量 (id, frame_vec)，用于画像采样。
+        以「一关键帧一点」为计量单位，与 text/image/audio 同一语义空间（frame_vec 为 4096 维文本嵌入）。
+        返回 ([(id, vector), ...], next_offset)。
+        """
+        try:
+            filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))])
+            scroll_limit = min(limit, batch_size)
+            kwargs: Dict[str, Any] = {
+                "collection_name": "video_vectors",
+                "scroll_filter": filt,
+                "limit": scroll_limit,
+                "with_payload": False,
+                "with_vectors": ["frame_vec"],
+            }
+            if offset is not None:
+                kwargs["offset"] = offset
+            out: List[Tuple[str, List[float]]] = []
+            res = self.client.scroll(**kwargs)
+            records, next_offset = res[0], res[1] if len(res) > 1 else None
+            for r in records:
+                vid = str(r.id) if r.id is not None else ""
+                v = None
+                if hasattr(r, "vector") and r.vector is not None and isinstance(r.vector, dict):
+                    v = r.vector.get("frame_vec")
+                if vid and v is not None and isinstance(v, list):
+                    out.append((vid, v))
+            return (out, next_offset)
+        except Exception as e:
+            logger.error(f"scroll_video_vectors_for_sampling 失败: {str(e)}")
+            return ([], None)
+
     async def fetch_texts_by_ids(
         self,
         ids_doc: List[str],
@@ -1711,6 +1750,35 @@ class VectorStore:
                     result[pid] = text
         except Exception as e:
             logger.error(f"fetch_audio_texts_by_ids 失败: {str(e)}")
+        return result
+
+    async def fetch_video_texts_by_ids(self, ids_video: List[str]) -> Dict[str, str]:
+        """
+        按 point id 批量拉取视频关键帧文本：video_vectors 的 scene_summary 与 frame_description。
+        用于画像主题生成时拼接为 [视频关键帧] 内容。
+        返回 video_point_id -> 文本（场景摘要 + 关键帧描述）。
+        """
+        result: Dict[str, str] = {}
+        if not ids_video:
+            return result
+        try:
+            rows = self.client.retrieve(
+                collection_name="video_vectors",
+                ids=ids_video,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for r in rows:
+                pid = str(r.id) if r.id is not None else ""
+                if not pid:
+                    continue
+                payload = r.payload or {}
+                scene = (payload.get("scene_summary") or "").strip()
+                frame = (payload.get("frame_description") or "").strip()
+                parts = [p for p in (scene, frame) if p]
+                result[pid] = "；".join(parts) if parts else ""
+        except Exception as e:
+            logger.error(f"fetch_video_texts_by_ids 失败: {str(e)}")
         return result
 
     def get_point_id_by_file_id_and_chunk_index(
@@ -1963,7 +2031,7 @@ class VectorStore:
     ) -> List[Any]:
         """按 file_id（及可选 kb_id）滚动拉取 audio_vectors 中的点，用于预览详情（transcript、description）。"""
         try:
-            must = [FieldCondition(key="file_id", match=MatchValue(value=file_id))]
+            must: List[Condition] = [FieldCondition(key="file_id", match=MatchValue(value=file_id))]
             if kb_id:
                 must.append(FieldCondition(key="kb_id", match=MatchValue(value=kb_id)))
             scroll_results = self.client.scroll(
@@ -1987,7 +2055,7 @@ class VectorStore:
     ) -> List[Any]:
         """按 frame_image_path（关键帧 object_path）滚动拉取 video_vectors 中的点，用于预览详情（scene_summary、frame_description）。"""
         try:
-            must = [FieldCondition(key="frame_image_path", match=MatchValue(value=frame_image_path))]
+            must: List[Condition] = [FieldCondition(key="frame_image_path", match=MatchValue(value=frame_image_path))]
             if kb_id:
                 must.append(FieldCondition(key="kb_id", match=MatchValue(value=kb_id)))
             scroll_results = self.client.scroll(
@@ -2069,7 +2137,7 @@ class VectorStore:
     ) -> List[Any]:
         """按 file_id（视频主文件 uuid）滚动拉取 video_vectors 中的点，用于视频预览详情（取首条 scene_summary 等）。"""
         try:
-            must = [FieldCondition(key="file_id", match=MatchValue(value=file_id))]
+            must: List[Condition] = [FieldCondition(key="file_id", match=MatchValue(value=file_id))]
             if kb_id:
                 must.append(FieldCondition(key="kb_id", match=MatchValue(value=kb_id)))
             scroll_results = self.client.scroll(
@@ -2095,7 +2163,7 @@ class VectorStore:
     ) -> bool:
         """按 file_id 删除 video_vectors 中该视频的所有关键帧点。"""
         try:
-            must = [FieldCondition(key="file_id", match=MatchValue(value=file_id))]
+            must: List[Condition] = [FieldCondition(key="file_id", match=MatchValue(value=file_id))]
             if kb_id:
                 must.append(FieldCondition(key="kb_id", match=MatchValue(value=kb_id)))
             self.client.delete(

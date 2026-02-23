@@ -286,12 +286,12 @@ export const knowledgeApi = {
   // 获取知识库画像
   getKnowledgeBasePortrait: (id: string) => apiClient.get(`/knowledge/${id}/portrait`),
 
-  // 触发知识库画像生成/更新（超时 120s，因同步生成可能较慢）
-  regenerateKnowledgeBasePortrait: (id: string) =>
+  // 触发知识库画像生成/更新（sync=true 在 API 内同步执行，保证含视频关键帧等最新逻辑；超时 120s）
+  regenerateKnowledgeBasePortrait: (id: string, sync = true) =>
     apiClient.post<{ status: string; message: string; clusters?: number }>(
       `/knowledge/${id}/portrait/regenerate`,
       undefined,
-      { timeout: 120000 }
+      { params: { sync }, timeout: 120000 }
     ),
 
   // 获取知识库文件列表

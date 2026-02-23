@@ -449,7 +449,7 @@ export function PortraitGraph({
                   </span>
                   <p className="text-base font-medium text-slate-700 dark:text-slate-200 mt-2">暂无主题画像</p>
                   <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm text-center px-4">
-                    知识库需有足够数据（约 10 条以上文本/图片/音频）才能生成主题聚类画像。
+                    知识库需有足够数据（约 10 条以上文本/图片/音频/视频关键帧）才能生成主题聚类画像。
                   </p>
                   <Button
                     variant="default"
