@@ -769,6 +769,9 @@ class VectorStore:
             logger.error(f"音频向量插入失败: {str(e)}")
             raise
     
+    # Qdrant 单次请求 JSON 限制 32MB；实测每点（3×768 维向量 + payload）序列化后约 190KB+，故一批 100 条约 19MB，安全低于限制
+    VIDEO_VECTORS_UPSERT_BATCH_SIZE = 100
+
     async def upsert_video_vectors(
         self,
         kb_id: str,
@@ -777,6 +780,7 @@ class VectorStore:
         """
         按关键帧批量插入视频向量（一关键帧一点，三向量 scene_vec / frame_vec / clip_vec）。
         参见 docs/视频模态技术方案.md。
+        大视频会按批 upsert，避免单次 payload 超过 Qdrant 32MB 限制。
 
         Args:
             kb_id: 知识库ID
@@ -804,14 +808,27 @@ class VectorStore:
             if not points:
                 return {"operation_id": None, "points_inserted": 0, "status": "success"}
 
-            operation_info = self.client.upsert(
-                collection_name="video_vectors",
-                points=points,
+            batch_size = self.VIDEO_VECTORS_UPSERT_BATCH_SIZE
+            total_inserted = 0
+            last_operation_id = None
+            for i in range(0, len(points), batch_size):
+                batch = points[i : i + batch_size]
+                operation_info = self.client.upsert(
+                    collection_name="video_vectors",
+                    points=batch,
+                )
+                total_inserted += len(batch)
+                last_operation_id = operation_info.operation_id
+                logger.debug(
+                    f"视频向量批次插入: {len(batch)} 个关键帧 (总进度 {total_inserted}/{len(points)}), 操作ID: {operation_info.operation_id}"
+                )
+
+            logger.info(
+                f"视频向量插入完成: {total_inserted} 个关键帧 (分 {((len(points) + batch_size - 1) // batch_size)} 批), 操作ID: {last_operation_id}"
             )
-            logger.info(f"视频向量插入完成: {len(points)} 个关键帧, 操作ID: {operation_info.operation_id}")
             return {
-                "operation_id": operation_info.operation_id,
-                "points_inserted": len(points),
+                "operation_id": last_operation_id,
+                "points_inserted": total_inserted,
                 "status": "success",
             }
         except Exception as e:

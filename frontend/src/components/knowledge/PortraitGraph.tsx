@@ -831,34 +831,44 @@ export function PortraitGraph({
         </CardContent>
       </Card>
 
-      {/* 数据源比例条 */}
+      {/* 数据源比例条：仅显示占比 > 0 的类型 */}
       <Card className="overflow-hidden border-slate-200/60 dark:border-slate-700/60">
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-semibold text-slate-800 dark:text-slate-100">数据源比例</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex h-10 overflow-hidden rounded-xl bg-slate-100/90 dark:bg-slate-800/50 shadow-inner">
-            <div
-              className="flex items-center justify-center gap-2 rounded-l-xl bg-gradient-to-r from-indigo-400 via-indigo-500 to-indigo-600 text-white shadow-sm transition-all duration-300 min-w-0"
-              style={{ width: `${textPct}%` }}
-            >
-              <FileText className="h-4 w-4 flex-shrink-0 opacity-95" />
-              <span className="text-sm font-medium truncate">Text</span>
-            </div>
-            <div
-              className={cn(
-                "flex items-center justify-center gap-2 bg-gradient-to-r from-fuchsia-400 via-fuchsia-500 to-fuchsia-600 text-white shadow-sm transition-all duration-300 min-w-0",
-                audioCount === 0 && videoCount === 0 && "rounded-r-xl"
-              )}
-              style={{ width: `${imagePct}%` }}
-            >
-              <Image className="h-4 w-4 flex-shrink-0 opacity-95" />
-              <span className="text-sm font-medium truncate">Image</span>
-            </div>
+            {textCount > 0 && (
+              <div
+                className={cn(
+                  "flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-400 via-indigo-500 to-indigo-600 text-white shadow-sm transition-all duration-300 min-w-0",
+                  imageCount === 0 && audioCount === 0 && videoCount === 0 && "rounded-r-xl",
+                  "rounded-l-xl"
+                )}
+                style={{ width: `${textPct}%` }}
+              >
+                <FileText className="h-4 w-4 flex-shrink-0 opacity-95" />
+                <span className="text-sm font-medium truncate">Text</span>
+              </div>
+            )}
+            {imageCount > 0 && (
+              <div
+                className={cn(
+                  "flex items-center justify-center gap-2 bg-gradient-to-r from-fuchsia-400 via-fuchsia-500 to-fuchsia-600 text-white shadow-sm transition-all duration-300 min-w-0",
+                  textCount === 0 && "rounded-l-xl",
+                  audioCount === 0 && videoCount === 0 && "rounded-r-xl"
+                )}
+                style={{ width: `${imagePct}%` }}
+              >
+                <Image className="h-4 w-4 flex-shrink-0 opacity-95" />
+                <span className="text-sm font-medium truncate">Image</span>
+              </div>
+            )}
             {audioCount > 0 && (
               <div
                 className={cn(
                   "flex items-center justify-center gap-2 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 text-white shadow-sm transition-all duration-300 min-w-0",
+                  textCount === 0 && imageCount === 0 && "rounded-l-xl",
                   videoCount === 0 && "rounded-r-xl"
                 )}
                 style={{ width: `${audioPct}%` }}
@@ -869,7 +879,10 @@ export function PortraitGraph({
             )}
             {videoCount > 0 && (
               <div
-                className="flex items-center justify-center gap-2 rounded-r-xl bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600 text-white shadow-sm transition-all duration-300 min-w-0"
+                className={cn(
+                  "flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600 text-white shadow-sm transition-all duration-300 min-w-0 rounded-r-xl",
+                  textCount === 0 && imageCount === 0 && audioCount === 0 && "rounded-l-xl"
+                )}
                 style={{ width: `${videoPct}%` }}
               >
                 <Video className="h-4 w-4 flex-shrink-0 opacity-95" />
@@ -878,8 +891,12 @@ export function PortraitGraph({
             )}
           </div>
           <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
-            <span className="font-medium">Text {textCount} <span className="text-slate-400 dark:text-slate-500">({textPct.toFixed(0)}%)</span></span>
-            <span className="font-medium">Image {imageCount} <span className="text-slate-400 dark:text-slate-500">({imagePct.toFixed(0)}%)</span></span>
+            {textCount > 0 && (
+              <span className="font-medium">Text {textCount} <span className="text-slate-400 dark:text-slate-500">({textPct.toFixed(0)}%)</span></span>
+            )}
+            {imageCount > 0 && (
+              <span className="font-medium">Image {imageCount} <span className="text-slate-400 dark:text-slate-500">({imagePct.toFixed(0)}%)</span></span>
+            )}
             {audioCount > 0 && (
               <span className="font-medium">Audio {audioCount} <span className="text-slate-400 dark:text-slate-500">({audioPct.toFixed(0)}%)</span></span>
             )}
