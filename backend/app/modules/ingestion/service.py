@@ -88,7 +88,7 @@ class IngestionService:
                 # 桶不存在，说明是新知识库，直接用前端传入的 kb_id
                 return kb_id
             
-            # 从桶内收集所有 kb_id 及其数据量
+            # 从桶内收集所有 kb_id 及其数据量（含 text/image/audio/video，以便纯视频/纯音频库一致使用 Qdrant 中的 kb_id）
             try:
                 from qdrant_client.http.models import Filter, FieldCondition, MatchValue
                 from collections import defaultdict
@@ -99,11 +99,10 @@ class IngestionService:
                     )
                 )
                 
-                # 统计每个 kb_id 的数据量（file_id 采样）
-                kb_id_counts = defaultdict(lambda: {"text": 0, "image": 0})
+                kb_id_counts = defaultdict(lambda: {"text": 0, "image": 0, "audio": 0, "video": 0})
                 sampled_file_ids = set()
                 
-                for obj in raw[:50]:  # 采样前 50 个文件
+                for obj in raw[:80]:  # 采样前 80 个文件（含 videos/uuid/keyframes/ 下多条）
                     op = obj.object_name
                     parts = op.split("/")
                     if len(parts) < 2:
@@ -131,7 +130,7 @@ class IngestionService:
                             discovered_kb_id = p.get("kb_id")
                             if discovered_kb_id:
                                 kb_id_counts[discovered_kb_id]["text"] += 1
-                    except:
+                    except Exception:
                         pass
                     
                     # image_vectors
@@ -148,22 +147,56 @@ class IngestionService:
                             discovered_kb_id = p.get("kb_id")
                             if discovered_kb_id:
                                 kb_id_counts[discovered_kb_id]["image"] += 1
-                    except:
+                    except Exception:
+                        pass
+                    
+                    # audio_vectors
+                    try:
+                        res = self.vector_store.client.scroll(
+                            collection_name="audio_vectors",
+                            scroll_filter=filt,
+                            limit=1,
+                            with_payload=True,
+                        )
+                        points = res[0] if res else []
+                        if points:
+                            p = getattr(points[0], "payload", None) or {}
+                            discovered_kb_id = p.get("kb_id")
+                            if discovered_kb_id:
+                                kb_id_counts[discovered_kb_id]["audio"] += 1
+                    except Exception:
+                        pass
+                    
+                    # video_vectors（纯视频库时桶内仅有 videos/uuid/keyframes/，需据此反查 kb_id）
+                    try:
+                        res = self.vector_store.client.scroll(
+                            collection_name="video_vectors",
+                            scroll_filter=filt,
+                            limit=1,
+                            with_payload=True,
+                        )
+                        points = res[0] if res else []
+                        if points:
+                            p = getattr(points[0], "payload", None) or {}
+                            discovered_kb_id = p.get("kb_id")
+                            if discovered_kb_id:
+                                kb_id_counts[discovered_kb_id]["video"] += 1
+                    except Exception:
                         pass
                 
-                # 选择数据量最大的 kb_id（优先文本数量）
+                # 选择数据量最大的 kb_id（优先 text > image > audio > video）
                 if kb_id_counts:
                     best_kb_id = max(
                         kb_id_counts.items(),
-                        key=lambda x: (x[1]["text"], x[1]["image"])
+                        key=lambda x: (x[1]["text"], x[1]["image"], x[1]["audio"], x[1]["video"])
                     )[0]
                     
                     if best_kb_id != kb_id:
-                        total = kb_id_counts[best_kb_id]["text"] + kb_id_counts[best_kb_id]["image"]
+                        total = sum(kb_id_counts[best_kb_id].values())
                         logger.info(
                             f"桶 {bucket_name} 发现数据量最大的 kb_id: {best_kb_id} "
-                            f"(text:{kb_id_counts[best_kb_id]['text']}, "
-                            f"image:{kb_id_counts[best_kb_id]['image']})"
+                            f"(text:{kb_id_counts[best_kb_id]['text']}, image:{kb_id_counts[best_kb_id]['image']}, "
+                            f"audio:{kb_id_counts[best_kb_id]['audio']}, video:{kb_id_counts[best_kb_id]['video']})"
                         )
                     return best_kb_id
                     

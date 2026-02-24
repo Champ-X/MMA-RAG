@@ -657,15 +657,16 @@ class KnowledgeBaseService:
                 )
             )
             
-            # 统计每个 kb_id 的出现次数（采样文件），含 text / image / audio，以便纯音频库也能反查到 Qdrant 中的 kb_id
-            kb_id_counts = defaultdict(lambda: {"text": 0, "image": 0, "audio": 0})
+            # 统计每个 kb_id 的出现次数（采样文件），含 text / image / audio / video，以便纯视频/纯音频库也能反查到 Qdrant 中的 kb_id
+            kb_id_counts = defaultdict(lambda: {"text": 0, "image": 0, "audio": 0, "video": 0})
             sampled_file_ids = set()
             
-            for obj in raw[:50]:  # 采样前 50 个文件
+            for obj in raw[:80]:  # 采样前 80 个文件（含 videos/uuid/keyframes/ 下多条）
                 op = obj.object_name
                 parts = op.split("/")
                 if len(parts) < 2:
                     continue
+                # 文档/图片: documents/fileid_xxx 或 images/fileid_xxx；视频: videos/uuid/keyframes/xxx -> file_id=uuid
                 rest = parts[1]
                 under = rest.find("_")
                 fid = rest[:under] if under >= 0 else rest
@@ -710,7 +711,7 @@ class KnowledgeBaseService:
                 except Exception:
                     pass
                 
-                # audio_vectors（与图片检索一致：纯音频库时也需反查到 Qdrant 中的 kb_id，否则检索用 bucket id 会命中 0）
+                # audio_vectors（纯音频库时也需反查到 Qdrant 中的 kb_id）
                 try:
                     res = self.vector_store.client.scroll(
                         collection_name="audio_vectors",
@@ -726,17 +727,34 @@ class KnowledgeBaseService:
                             kb_id_counts[kid]["audio"] += 1
                 except Exception:
                     pass
+                
+                # video_vectors（纯视频库时也需反查到 Qdrant 中的 kb_id，路径 videos/uuid/keyframes/xxx 中 fid=uuid）
+                try:
+                    res = self.vector_store.client.scroll(
+                        collection_name="video_vectors",
+                        scroll_filter=filt,
+                        limit=1,
+                        with_payload=True,
+                    )
+                    points = res[0] if res else []
+                    if points:
+                        p = getattr(points[0], "payload", None) or {}
+                        kid = p.get("kb_id")
+                        if kid:
+                            kb_id_counts[kid]["video"] += 1
+                except Exception:
+                    pass
             
-            # 返回数据量最大的 kb_id（优先 text > image > audio）
+            # 返回数据量最大的 kb_id（优先 text > image > audio > video）
             if kb_id_counts:
                 best_kb_id = max(
                     kb_id_counts.items(),
-                    key=lambda x: (x[1]["text"], x[1]["image"], x[1]["audio"])
+                    key=lambda x: (x[1]["text"], x[1]["image"], x[1]["audio"], x[1]["video"])
                 )[0]
                 c = kb_id_counts[best_kb_id]
                 logger.debug(
-                    "桶 {} 反查到数据量最大的 kb_id: {} (采样 text:{}, image:{}, audio:{})",
-                    bucket_name, best_kb_id, c["text"], c["image"], c["audio"]
+                    "桶 %s 反查到数据量最大的 kb_id: %s (采样 text:%s, image:%s, audio:%s, video:%s)",
+                    bucket_name, best_kb_id, c["text"], c["image"], c["audio"], c["video"]
                 )
                 return best_kb_id
                 
