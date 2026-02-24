@@ -609,10 +609,10 @@ function ParagraphAudioDisplay({
                   )}
                 </button>
               )}
-              {/* 文件名 */}
+              {/* 文件名：与视频引用一致，去掉 ID 前缀只显示实际文件名 */}
               {citation.file_name && (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mb-1.5 font-mono pl-0.5" title={citation.file_name}>
-                  {citation.file_name}
+                  {shortenFileName(citation.file_name)}
                 </p>
               )}
               {/* 转写/描述内容（不区分歌词或语音，不显示标签） */}

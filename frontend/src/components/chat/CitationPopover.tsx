@@ -58,7 +58,7 @@ function VideoWithSeek({ src, startSec, endSec }: { src: string; startSec?: numb
       src={src}
       controls
       preload="metadata"
-      className="w-full h-auto aspect-video rounded-lg object-contain bg-black"
+      className="w-full h-auto min-h-[200px] aspect-video rounded-lg object-contain bg-black"
     />
   )
 }
@@ -116,8 +116,8 @@ function ImageDisplayWithErrorHandler({ imgUrl, fileName }: { imgUrl: string; fi
   return (
     <div className="mb-3">
       <div
-        className="rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-center relative"
-        style={{ minHeight: '220px', overflow: 'hidden' }}
+        className="rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-center relative shadow-inner"
+        style={{ minHeight: '280px', overflow: 'hidden' }}
       >
         {imageError ? (
           <div className="flex flex-col items-center justify-center gap-2 p-4">
@@ -172,20 +172,24 @@ export function CitationPopover({
 }: CitationPopoverProps) {
   if (!open || !item || !rect) return null
 
-  const width = 400
-  const headerHeight = 60
-  const footerHeight = 50
-  const imageMinHeight = item.type === 'image' ? 250 : 0
-  const captionHeight = item.type === 'image' && item.content ? 100 : 0
-  const videoMinHeight = item.type === 'video' ? 220 : 0
+  // 增大弹窗尺寸：音频/视频有更多展示空间
+  const width = 520
+  const headerHeight = 64
+  const footerHeight = 56
+  const imageMinHeight = item.type === 'image' ? 320 : 0
+  const captionHeight = item.type === 'image' && item.content ? 120 : 0
+  const videoMinHeight = item.type === 'video' ? 300 : 0
+  const audioMinHeight = item.type === 'audio' ? 140 : 0
   const estimatedHeight = item.type === 'image'
     ? headerHeight + imageMinHeight + captionHeight + footerHeight
     : item.type === 'video'
-      ? headerHeight + videoMinHeight + (item.content ? 80 : 0) + footerHeight
-      : headerHeight + 150 + footerHeight
+      ? headerHeight + videoMinHeight + (item.content ? 100 : 0) + footerHeight
+      : item.type === 'audio'
+        ? headerHeight + audioMinHeight + (item.content ? 120 : 0) + footerHeight
+        : headerHeight + 260 + footerHeight
 
-  const pad = 16
-  const gap = 12
+  const pad = 20
+  const gap = 14
 
   const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1200
   const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800
@@ -226,7 +230,7 @@ export function CitationPopover({
       placement = 'above'
     }
   } else {
-    const minRequiredHeight = headerHeight + (item.type === 'image' ? 200 : item.type === 'video' ? 200 : 100) + footerHeight
+    const minRequiredHeight = headerHeight + (item.type === 'image' ? 280 : item.type === 'video' ? 280 : item.type === 'audio' ? 180 : 200) + footerHeight
     if (spaceBelow >= spaceAbove) {
       top = rect.bottom + gap
       maxHeight = Math.max(minRequiredHeight, Math.min(estimatedHeight, spaceBelow))
@@ -255,21 +259,21 @@ export function CitationPopover({
             width,
             maxHeight: `${maxHeight}px`,
           }}
-          className="z-40 flex flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white/85 shadow-2xl shadow-slate-900/15 backdrop-blur-xl dark:border-slate-800/70 dark:bg-slate-950/70"
+          className="z-40 flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.25),0_0_0_1px_rgba(255,255,255,0.05)_inset] backdrop-blur-xl dark:border-slate-700/80 dark:bg-slate-950/85 dark:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.5)]"
         >
-          <div className="flex-shrink-0 flex items-center justify-between border-b border-slate-200/70 px-4 py-3 dark:border-slate-800/70">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+          <div className="flex-shrink-0 flex items-center justify-between border-b border-slate-200/80 dark:border-slate-700/80 px-5 py-3.5 bg-slate-50/50 dark:bg-slate-900/30">
+            <div className="min-w-0 flex-1 mr-3">
+              <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100" title={item.file_name || undefined}>
                 {item.file_name || '未知文件'}
               </div>
-              <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium">
                 Score: {item.scores?.rerank?.toFixed(2) || item.scores?.dense?.toFixed(2) || '0.00'}
               </div>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="flex-shrink-0 grid h-8 w-8 place-items-center rounded-xl text-slate-500 hover:bg-slate-900/5 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-100"
+              className="flex-shrink-0 grid h-9 w-9 place-items-center rounded-xl text-slate-500 hover:bg-slate-200/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-100 transition-colors"
               aria-label="关闭"
             >
               <X className="h-4 w-4" />
@@ -277,7 +281,7 @@ export function CitationPopover({
           </div>
 
           {/* 内容区域可滚动：图片与文字一起滚动 */}
-          <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0 scrollbar-hide">
+          <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0 scrollbar-hide">
             {item.type === 'image' && item.img_url && (
               <ImageDisplayWithErrorHandler imgUrl={item.img_url} fileName={item.file_name} />
             )}
@@ -285,13 +289,13 @@ export function CitationPopover({
             {item.type === 'audio' && (
               <>
                 {item.audio_url && (
-                  <div className="mb-3 rounded-xl border border-amber-200/70 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/30 p-3">
-                    <audio src={item.audio_url} controls className="w-full h-9 rounded-lg" preload="metadata" />
+                  <div className="mb-4 rounded-xl border border-amber-200/70 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-950/40 p-4 shadow-sm">
+                    <audio src={item.audio_url} controls className="w-full h-12 rounded-lg" preload="metadata" />
                   </div>
                 )}
                 {(item.content || !item.audio_url) && (
-                  <div className="rounded-xl bg-amber-50/50 dark:bg-amber-900/20 p-3 text-xs text-slate-700 dark:text-slate-200 border border-amber-100 dark:border-amber-800/40">
-                    <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                  <div className="rounded-xl bg-amber-50/50 dark:bg-amber-900/20 p-4 text-sm text-slate-700 dark:text-slate-200 border border-amber-100/80 dark:border-amber-800/40 leading-relaxed">
+                    <div className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap max-h-[200px] overflow-y-auto">
                       {item.content || '无内容'}
                     </div>
                   </div>
@@ -302,10 +306,10 @@ export function CitationPopover({
             {item.type === 'video' && (
               <>
                 {item.video_url && (
-                  <div className="mb-2.5 rounded-xl overflow-hidden border border-sky-200/70 dark:border-sky-800/50 bg-slate-100/80 dark:bg-slate-800/80 p-2 ring-1 ring-slate-200/50 dark:ring-slate-600/30">
+                  <div className="mb-4 rounded-xl overflow-hidden border border-sky-200/70 dark:border-sky-800/50 bg-slate-100/80 dark:bg-slate-800/80 p-3 ring-1 ring-slate-200/50 dark:ring-slate-600/30 shadow-sm">
                     {(item.start_sec != null || item.end_sec != null) && (
-                      <div className="mb-1.0 flex items-center">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300 border border-sky-200/70 dark:border-sky-700/50">
+                      <div className="mb-2 flex items-center">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300 border border-sky-200/70 dark:border-sky-700/50">
                           {item.start_sec != null && item.end_sec != null
                             ? `片段 ${formatTimeLabel(item.start_sec)} - ${formatTimeLabel(item.end_sec)}`
                             : item.start_sec != null
@@ -318,8 +322,8 @@ export function CitationPopover({
                   </div>
                 )}
                 {(item.content || !item.video_url) && (
-                  <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/50 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50">
-                    <div className="text-slate-600 dark:text-slate-300 leading-snug whitespace-pre-wrap">
+                  <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50">
+                    <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap max-h-[180px] overflow-y-auto">
                       {item.content || '无内容'}
                     </div>
                   </div>
@@ -364,31 +368,31 @@ export function CitationPopover({
 
             {item.type === 'image' ? (
               item.content && (
-                <div className="rounded-xl bg-purple-50 dark:bg-purple-900/20 p-3 text-xs text-slate-700 dark:text-slate-200 border border-purple-100 dark:border-purple-800/40">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Eye size={12} className="text-purple-600 dark:text-purple-400" />
+                <div className="rounded-xl bg-purple-50/80 dark:bg-purple-900/20 p-4 text-sm text-slate-700 dark:text-slate-200 border border-purple-100/80 dark:border-purple-800/40">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Eye size={14} className="text-purple-600 dark:text-purple-400 shrink-0" />
                     <span className="font-semibold text-purple-700 dark:text-purple-300">VLM Caption</span>
                   </div>
-                  <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                  <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap max-h-[160px] overflow-y-auto">
                     {item.content}
                   </div>
                 </div>
               )
             ) : item.type !== 'audio' && item.type !== 'video' ? (
-              <div className="rounded-xl bg-slate-900/5 p-3 text-xs text-slate-700 dark:bg-white/5 dark:text-slate-200 whitespace-pre-wrap">
+              <div className="rounded-xl bg-slate-100/50 dark:bg-slate-800/30 p-4 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
                 {item.content || '无内容'}
               </div>
             ) : null}
           </div>
 
-          <div className="flex-shrink-0 flex items-center justify-between px-4 pb-3 border-t border-slate-200/70 dark:border-slate-800/70">
-            <div className="text-xs text-slate-500 dark:text-slate-400 truncate flex-1 mr-2" title={item.file_name || undefined}>
-              {item.file_name ? shortenFileName(item.file_name) : '未知路径'}
+          <div className="flex-shrink-0 flex items-center justify-between gap-3 px-5 py-3.5 border-t border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-900/30">
+            <div className="text-xs text-slate-500 dark:text-slate-400 truncate flex-1 min-w-0" title={item.file_name || undefined}>
+              {item.file_name ? shortenFileName(item.file_name, 32) : '未知路径'}
             </div>
             <button
               type="button"
               onClick={onOpenInspector}
-              className="flex-shrink-0 rounded-xl bg-gradient-to-br from-indigo-600 to-fuchsia-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-fuchsia-500/10 transition-all duration-200 hover:brightness-110 active:scale-95"
+              className="flex-shrink-0 rounded-xl bg-gradient-to-br from-indigo-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-fuchsia-500/20 transition-all duration-200 hover:brightness-110 hover:shadow-lg hover:shadow-fuchsia-500/25 active:scale-[0.98]"
             >
               打开检查器
             </button>
