@@ -1,260 +1,173 @@
-# Multi-Modal 智能路由可扩展知识库RAG Agent
+# MMAA · Multi-Modal 智能路由可扩展知识库 RAG Agent
 
-一个基于多模态智能路由的知识库RAG系统，支持文档和图像处理，具备可视化思考过程和深度调试功能。
+面向多知识库、多模态场景的 RAG（Retrieval-Augmented Generation）Agent：支持文档与图像的统一检索与生成，基于知识库画像的智能路由，三路混合检索（Dense + BGE-M3 稀疏 + Visual）与两阶段重排，具备可解释的思考链与引用展示。
 
-## 🚀 项目特色
+## 项目特色
 
-### 核心功能
-- **多模态数据处理**: 支持PDF、文档、图片等多种格式的智能解析和向量化
-- **智能路由系统**: 基于知识库画像的动态路由，支持实时路由决策
-- **混合检索策略**: Dense + Sparse + Visual 三路融合检索，提升检索准确性
-- **可视化思考过程**: 实时展示AI的意图识别、知识库路由、检索策略等思考步骤
-- **深度RAG调试**: 提供完整的检索链路调试信息，支持结果溯源
+### 核心能力
+- **多模态数据处理**：PDF、Word、TXT、Markdown、图片等解析；文档内嵌图 VLM 描述后插回原文再分块；支持本地上传、URL、文件夹、热点订阅等多来源接入。
+- **智能知识库路由**：基于 K-Means + LLM 主题摘要的画像生成，TopN 检索 + 每 KB 加权聚合，自动决策单库/多库/全库。
+- **三路混合检索**：Dense（Qwen3-Embedding）+ Sparse（BGE-M3）+ Visual（CLIP + VLM 描述），加权 RRF 粗排 + Cross-Encoder 精排。
+- **One-Pass 意图识别**：意图分类、查询改写、关键词/多视角生成与 visual/audio/video 意图一次 LLM 调用，输出结构化 IntentObject。
+- **可解释与调试**：SSE 推送思考链（意图、路由、检索策略），引用悬浮与 context_window 前后文透视。
 
 ### 技术架构
-- **后端**: FastAPI + Python，模块化DDD架构
-- **前端**: React + TypeScript + Vite，现代组件化设计
-- **存储**: MinIO (文件) + Qdrant (向量) + Redis (缓存)
-- **模型**: SiliconFlow API，支持多模型接入
-- **部署**: Docker容器化，支持一键部署
+- **后端**：FastAPI + Python 3.9+，DDD 模块化（Ingestion / Knowledge / Retrieval / Generation），Core 层 LLM Manager + BGE-M3 稀疏编码。
+- **前端**：React + TypeScript + Vite，Tailwind CSS，对话/知识库/架构页/调试组件。
+- **存储**：MinIO（对象）、Qdrant（向量与稀疏索引）、Redis（缓存与 Celery 队列）。
+- **模型**：LLMManager 按任务路由，支持 SiliconFlow、OpenRouter、阿里云百炼、DeepSeek 等；Qwen3-Embedding、BGE-M3、CLIP、Reranker、VLM。
+- **部署**：Docker Compose 一键启动后端与依赖服务。
 
-## 📁 项目结构
+## 项目结构
 
 ```
-multi-modal-rag-agent/
-├── backend/                  # 后端主目录 (Python/FastAPI)
-│   ├── app/                  # 应用代码核心
-│   │   ├── api/              # [接口层] 路由定义
-│   │   ├── core/             # [基础设施层] 核心配置与通用组件
-│   │   ├── modules/          # [业务层] 五大核心模块实现
-│   │   └── workers/          # [异步任务] Celery任务定义
-│   ├── requirements.txt       # Python依赖
-│   └── Dockerfile            # 后端容器配置
-├── frontend/                 # 前端主目录 (React/TypeScript)
+MMAA-agent/
+├── backend/                    # 后端 (Python / FastAPI)
+│   ├── app/
+│   │   ├── api/                # 接口层：chat、upload、knowledge、import、debug
+│   │   ├── core/               # 配置、LLM Manager、sparse_encoder、portrait_trigger
+│   │   ├── modules/            # 业务模块
+│   │   │   ├── ingestion/      # 解析、分块、向量化、sources、MinIO/Qdrant
+│   │   │   ├── knowledge/      # 知识库 CRUD、画像生成、路由
+│   │   │   ├── retrieval/      # 意图、改写、混合检索、重排
+│   │   │   └── generation/     # 上下文构建、流式输出
+│   │   └── tasks/              # 定时/异步任务（如热点导入）
+│   ├── celery_app.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/                   # 前端 (React / TypeScript / Vite)
 │   ├── src/
-│   │   ├── components/       # React组件
-│   │   ├── services/         # API服务
-│   │   ├── store/           # 状态管理
-│   │   └── hooks/          # 自定义Hooks
-│   ├── package.json          # 前端依赖
-│   └── vite.config.ts        # Vite配置
-├── docker-compose.yml        # 容器编排
-├── start-dev.sh            # 开发环境启动脚本
-└── README.md               # 项目说明文档
+│   │   ├── components/         # chat、knowledge、architecture、settings、debug
+│   │   ├── data/               # 架构页数据等
+│   │   ├── services/           # API、SSE
+│   │   ├── store/ & hooks/
+│   │   └── pages/
+│   ├── package.json
+│   └── vite.config.ts
+├── docs/                       # 架构与设计文档
+│   ├── MMAA_ARCHITECTURE.md    # 架构设计（推荐阅读）
+│   └── ...
+├── docker-compose.yml
+├── start-dev.sh                # 开发环境启动（Docker 依赖 + 本地前后端）
+└── README.md
 ```
 
-## 🏗️ 核心模块
+## 核心模块概览
 
-### 1. 数据输入处理与存储 (Ingestion Module)
-- **文件解析器工厂**: 支持PDF、图像、文本的差异化解析
-- **多模态向量化**: VLM + CLIP双路融合策略
-- **智能存储**: MinIO持久化 + Qdrant向量存储
+### 1. Ingestion（数据输入处理与存储）
 
-### 2. 知识库管理与画像 (Knowledge Module)
-- **动态画像生成**: K-Means聚类算法分析知识内容
-- **智能路由**: 基于画像分数的加权投票路由机制
-- **实时画像更新**: 支持知识库内容的动态更新和画像重构
+- **职责**：将各类文件与多来源内容解析、分块、向量化后写入对象存储与向量库，为检索与画像提供数据基础。
+- **解析**：`ParserFactory` 按类型调度——PDF（PyMuPDF，可选 MinerU）、DOCX（python-docx）、TXT/Markdown、图片（PIL）；文档内嵌图先单独做 VLM 描述并上传 MinIO，再将 caption 插回原文占位符后统一分块。
+- **分块**：递归语义分块（段落/句子优先，max/min 长度与重叠窗口）；每个 chunk 写入时带 `context_window`（前后 chunk ID）便于调试拉取前后文。
+- **向量化**：文档——Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏编码，双向量写入 `text_chunks`；图片——VLM caption 文本向量（text_vec）+ CLIP 视觉向量（clip_vec）写入 `image_vectors`。
+- **存储**：MinIO 按知识库与类型组织路径；Qdrant 写入 text_chunks、image_vectors（画像由 Knowledge 模块写入 kb_portraits）。
+- **多来源与异步**：sources 层支持 URL、文件夹、Tavily 热点、媒体下载等，统一走 Ingestion 管道；大任务经 Celery + Redis 异步执行，前端可轮询或流式查进度。
+- **代码入口**：`modules/ingestion/service.py`、`parsers/factory.py`、`sources/`、`storage/minio_adapter.py`、`storage/vector_store.py`。
 
-### 3. 语义路由与检索 (Retrieval Module)
-- **One-Pass意图识别**: JSON结构化IntentObject输出
-- **查询改写**: SPLADE稀疏检索 + Multi-view重构
-- **混合检索**: Dense + Sparse + Visual三路融合
-- **两阶段重排**: RRF粗排 + Cross-Encoder精排
+### 2. Knowledge（知识库管理与画像）
 
-### 4. LLM上下文构建 (Generation Module)
-- **模态差异化模板**: 文档/图片Type A/B插槽设计
-- **动态引用映射**: UUID到数字ID的智能转换
-- **流式响应**: SSE实时通信，支持打字机效果
+- **职责**：知识库的 CRUD、画像的生成与更新、以及基于画像的在线路由决策（未指定知识库时自动选库）。
+- **知识库 CRUD**：创建/查询/更新/删除知识库，维护元数据与统计；支持用户指定知识库时直接使用、跳过路由。
+- **画像生成**：从该 KB 的 Text 与 Image Collection（仅 text_vec）按比例采样向量；K-Means 聚类（K = sqrt(N/2) 限制在配置上限）；每簇取近中心 5～10 个样本，以「[文档片段]/[图片描述]」前缀拼成内容，LLM 生成 topic_summary 后向量化写入 `kb_portraits`；采用 Replace 策略（先删该 KB 旧画像再插入）。
+- **路由决策**：用 refined_query 的 Dense 向量在 kb_portraits 上做**全局** TopN 检索；按 kb_id 聚合时，每个 KB 只取 TopN 中属于该 KB 的前 K 个节点，做位置衰减加权平均，再 min-max 归一化；若最高分低于阈值则全库检索，否则按与第一名的差距决定单库或取前两库。
+- **代码入口**：`modules/knowledge/service.py`、`portraits.py`、`router.py`。
 
-### 5. 模块化LLM管理器 (LLM Manager)
-- **统一协议接口**: 支持SiliconFlow、OpenAI等多厂商
-- **智能路由**: 基于任务类型和负载的模型选择
-- **熔断与重试**: 完善的错误处理和降级策略
-- **审计监控**: Token使用、响应时间等指标统计
+### 3. Retrieval（语义路由与混合检索）
 
-## 🛠️ 快速开始
+- **职责**：查询预处理（One-Pass 意图）、目标知识库确定后，执行三路混合检索与两阶段重排，输出供生成的 Top-K 结果。
+- **One-Pass 意图识别**：一次 LLM 调用输出 IntentObject——意图类型、refined_query、sparse_keywords、multi_view_queries、visual_intent/audio_intent/video_intent、sub_queries 等；解析失败时回退默认意图保证下游可执行。
+- **混合检索**：Dense：主查询 + 多视角查询向量化后检索并内部融合；Sparse：BGE-M3 对查询（或拼接关键词）生成稀疏向量，在 text_chunks 上稀疏检索；Visual（当 visual_intent 非 unnecessary）：查询的文本向量 + CLIP 文本向量，对 image_vectors 做 text_vec/clip_vec 双路 RRF；三路结果按 doc 去重后做加权 RRF 粗排。
+- **两阶段重排**：粗排结果取前若干候选，构建 (query, content) 对送 Cross-Encoder 精排；精排分与 RRF 分加权合并后排序，取 final_top_k；当 visual_intent 为 implicit_enrichment 时可做图片保护（至少保留若干图片）。
+- **代码入口**：`modules/retrieval/service.py`、`processors/intent.py`、`processors/rewriter.py`、`search_engine.py`、`reranker.py`。
 
-### 环境要求
-- Docker & Docker Compose
-- Node.js 18+ & npm
-- Python 3.9+
+### 4. Generation（上下文构建与生成）
 
-### 1. 克隆项目
-```bash
-git clone <repository-url>
-cd multi-modal-rag-agent
-```
+- **职责**：将重排后的 Top-K 转为会话级引用映射与多模态 Prompt，调用 LLM 生成回答，并通过 SSE 推送思考链、引用与正文流。
+- **上下文构建**：按重排分数排序后为每条结果分配序号 1,2,3…，生成 ReferenceMap（id、content_type、file_path、content 摘要、presigned_url、metadata 含 chunk_id 等）；按 max_context_length、max_chunks、max_images 控制长度；文档/图片/音视频按 Type A/B 插槽填入 Prompt。
+- **提示词**：系统提示词与各类模板集中在 `core/llm/prompt.py`，按意图类型选用；规定 [id] 引用、多模态描述方式及诚实回答原则。
+- **流式输出**：StreamManager 发送 `thought`（意图、路由、检索策略）、`citation`（引用元数据与 debug_info，含 chunk_id、context_window）、`message`（LLM 增量）；前端 ThinkingCapsule、CitationPopover、打字机渲染与灯箱/播放器。
+- **代码入口**：`modules/generation/service.py`、`context_builder.py`、`templates/multimodal_fmt.py`、`stream_manager.py`。
 
-### 2. 配置环境变量
-```bash
-cp .env.example .env
-# 编辑 .env 文件，设置必要的API密钥
-```
+### 5. LLM Manager（模型管理与路由）
 
-### 3. 启动开发环境
-```bash
-# 给启动脚本执行权限
-chmod +x start-dev.sh
-
-# 启动所有服务
-./start-dev.sh
-```
-
-### 4. 访问应用
-- **前端界面**: http://localhost:5173
-- **后端API**: http://localhost:8000
-- **API文档**: http://localhost:8000/docs
-- **MinIO控制台**: http://localhost:9001 (admin/admin123)
-
-## 🐳 Docker部署
-
-### 生产环境部署
-```bash
-# 构建并启动所有服务
-docker-compose up -d
-
-# 查看服务状态
-docker-compose ps
-
-# 查看日志
-docker-compose logs -f
-```
-
-### 服务组件
-- **app**: 主应用服务 (FastAPI)
-- **minio**: 对象存储服务
-- **qdrant**: 向量数据库
-- **redis**: 缓存服务
-- **nginx**: 反向代理 (生产环境)
-
-## 🔧 配置说明
-
-### 后端配置
-主要配置文件：`backend/app/core/config.py`
-- **数据库连接**: Qdrant、Redis、MinIO连接配置
-- **模型配置**: LLM模型参数和路由策略
-- **日志配置**: 审计日志和监控设置
-
-### 前端配置
-主要配置文件：`frontend/src/services/api_client.ts`
-- **API基础URL**: 后端API地址配置
-- **SSE配置**: 流式通信参数
-- **主题配置**: UI主题和语言设置
-
-### 环境变量
-```bash
-# API密钥
-SILICONFLOW_API_KEY=your_siliconflow_api_key
-
-# 数据库配置
-QDRANT_HOST=localhost
-QDRANT_PORT=6333
-REDIS_HOST=localhost
-REDIS_PORT=6379
-
-# MinIO配置
-MINIO_ENDPOINT=localhost:9000
-MINIO_ACCESS_KEY=admin
-MINIO_SECRET_KEY=admin123
-
-# 应用配置
-DEBUG=True
-LOG_LEVEL=INFO
-```
-
-## 📊 系统监控
-
-### 关键指标
-- **Token使用量**: 各模型的Token消耗统计
-- **响应时间**: API端点性能监控
-- **检索质量**: 命中率、召回率等指标
-- **系统资源**: CPU、内存、磁盘使用率
-
-### 日志管理
-- **应用日志**: 结构化日志输出
-- **审计日志**: 操作记录和追踪
-- **错误日志**: 异常信息收集
-- **性能日志**: 关键路径耗时分析
-
-## 🧪 测试
-
-### 单元测试
-```bash
-cd backend
-pytest tests/ -v
-```
-
-### 端到端测试
-```bash
-cd frontend
-npm run test:e2e
-```
-
-### 性能测试
-```bash
-# 检索性能测试
-python scripts/test_retrieval_performance.py
-
-# 负载测试
-python scripts/load_test.py
-```
-
-## 🔒 安全考虑
-
-### 数据安全
-- **敏感信息加密**: API密钥等敏感数据加密存储
-- **访问控制**: 基于角色的权限管理
-- **数据隔离**: 不同租户的数据完全隔离
-
-### API安全
-- **请求限流**: 防止API滥用
-- **输入验证**: 严格的参数验证
-- **CORS配置**: 跨域请求安全控制
-
-## 🤝 贡献指南
-
-### 开发流程
-1. Fork项目到你的GitHub账户
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 创建Pull Request
-
-### 代码规范
-- **Python**: 遵循PEP 8规范，使用Black格式化
-- **TypeScript**: 遵循ESLint规则，使用Prettier格式化
-- **文档**: 重要功能需要添加文档和示例
-
-## 📋 待办事项
-
-### 短期目标
-- [ ] 添加更多文件格式支持 (Excel、PPT等)
-- [ ] 实现增量知识库更新
-- [ ] 添加用户权限管理系统
-- [ ] 优化移动端体验
-
-### 长期目标
-- [ ] 支持多语言对话
-- [ ] 实现知识图谱可视化
-- [ ] 添加语音输入/输出
-- [ ] 集成更多AI模型提供商
-
-## 📄 许可证
-
-本项目采用MIT许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
-
-## 📞 联系我们
-
-- **项目维护者**: MiniMax Agent
-- **问题反馈**: [GitHub Issues](https://github.com/your-org/multi-modal-rag-agent/issues)
-- **技术讨论**: [GitHub Discussions](https://github.com/your-org/multi-modal-rag-agent/discussions)
+- **职责**：按任务类型将 chat/embed/rerank 等请求路由到对应模型与 Provider，统一多厂商 API，集中管理提示词与可观测性。
+- **任务路由**：intent_recognition、image_captioning、final_generation、reranking、kb_portrait_generation 等映射到具体模型与 Provider；业务层只传 task_type 与参数，不关心具体厂商或实例。
+- **统一接口**：chat（多轮消息、temperature）、embed（文本列表）、rerank（query + documents）；底层各 Provider 实现 OpenAI 兼容协议。
+- **多厂商**：SiliconFlow、OpenRouter、阿里云百炼、DeepSeek 等；Manager 负责拼装请求、解析响应与可选故障转移。
+- **提示词**：`prompt.py` 定义所有模板字符串，`prompt_engine` 提供 `render_template(template_name, **kwargs)`，业务层只传变量。
+- **其它 Core 组件**：`sparse_encoder.py`（BGE-M3 编码，供 Ingestion 与 Retrieval）、`portrait_trigger.py`（画像更新触发）、`keyword_extract.py`。
+- **代码入口**：`core/llm/manager.py`、`core/llm/__init__.py`（LLMRegistry）、`prompt.py`、`prompt_engine.py`、`providers/`。
 
 ---
 
-**⚡ 快速体验**: 
-1. 启动开发环境: `./start-dev.sh`
-2. 打开 http://localhost:5173
-3. 上传你的第一个文档开始体验！
+更细的设计与实现说明见 **[docs/MMAA_ARCHITECTURE.md](docs/MMAA_ARCHITECTURE.md)**。
 
-**🎯 核心价值**: 
-让AI的思考过程透明化，让知识检索更智能，让多模态处理更简单！
+## 快速开始
+
+### 环境要求
+- Docker & Docker Compose
+- Node.js 18+、npm 或 pnpm
+- Python 3.9+（本地跑后端时）
+
+### 1. 克隆与配置
+```bash
+git clone <repository-url>
+cd MMAA-agent
+
+cp .env.example .env
+# 编辑 .env：至少配置 SILICONFLOW_API_KEY（或其它 LLM Provider 的 Key）
+```
+
+### 2. 启动开发环境
+```bash
+chmod +x start-dev.sh
+./start-dev.sh
+```
+脚本会启动 MinIO、Qdrant、Redis，再在本地启动后端与前端。
+
+### 3. 访问
+- **前端**：http://localhost:5173  
+- **后端 API**：http://localhost:8000  
+- **API 文档**：http://localhost:8000/docs  
+- **MinIO 控制台**：http://localhost:9001（默认账号/密码见 docker-compose 或 .env）
+
+## Docker 部署
+
+```bash
+docker-compose up -d
+docker-compose ps
+docker-compose logs -f
+```
+
+主要服务：`backend`、`minio`、`qdrant`、`redis`、`celery_worker`，可选 `flower`（Celery 监控）。前端需单独构建或挂载开发服务器。
+
+## 配置要点
+
+- **后端**：`backend/app/core/config.py`，环境变量覆盖 Qdrant/Redis/MinIO 等；模型与任务路由见 Core LLM 层。
+- **前端**：API 基地址与 SSE 等见 `frontend/src/services/`。
+- **环境变量示例**：`SILICONFLOW_API_KEY`、`QDRANT_HOST`、`QDRANT_PORT`、`REDIS_URL`、`MINIO_ENDPOINT`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY` 等，参考 `.env.example` 与 `docker-compose.yml`。
+
+## 测试与调试
+
+- **后端单元测试**：`cd backend && pytest tests/ -v`（若有 tests 目录）。
+- **检索与 RAG 行为**：前端对话页 + 架构页「RAG 请求链路」；调试信息通过引用与 Inspector 等组件查看。
+
+## 文档索引
+
+| 文档 | 说明 |
+|------|------|
+| [MMAA_ARCHITECTURE.md](docs/MMAA_ARCHITECTURE.md) | 架构设计与实现要点 |
+| [ARCHITECTURE_COMPLIANCE_ANALYSIS.md](docs/ARCHITECTURE_COMPLIANCE_ANALYSIS.md) | 实现与设计符合度分析 |
+| [SPARSE_RETRIEVAL_IMPLEMENTATION.md](docs/SPARSE_RETRIEVAL_IMPLEMENTATION.md) | BGE-M3 稀疏检索 |
+| [MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 多模态（图/音/视）技术方案 |
+
+## 许可证与联系
+
+- **许可证**：MIT，详见 [LICENSE](LICENSE)。
+- **问题与讨论**：欢迎通过 GitHub Issues / Discussions 反馈。
+
+---
+
+**快速体验**：`./start-dev.sh` → 打开 http://localhost:5173 → 创建知识库并上传文档/图片，开始对话与引用溯源。
+
+**核心价值**：多模态统一检索、知识库智能路由、思考过程可解释、引用可追溯。
