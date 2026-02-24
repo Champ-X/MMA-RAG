@@ -1,10 +1,15 @@
 """
 知识库画像增量触发
-基于 Redis 累计每个 KB 的新增/修改 Chunk 数，达到阈值时异步触发 Celery 画像构建任务。
+基于 Redis 累计每个 KB 的新增/修改 Chunk 数，达到阈值时触发画像构建。
+若配置 PORTRAIT_SYNC_API_URL则通过 HTTP 调用该 API 的同步画像接口（保证含视频关键帧等最新逻辑）；
+否则使用 Celery 异步任务（需 Worker 与 API 代码一致）。
 """
 
 from typing import Optional
 import redis
+import urllib.request
+import urllib.error
+import ssl
 from app.core.config import settings
 from app.core.logger import get_logger
 
@@ -15,6 +20,36 @@ KEY_PREFIX = "portrait:delta:"
 
 def _redis_client() -> redis.Redis:
     return redis.Redis.from_url(settings.redis_url, decode_responses=True)  # type: ignore[return-value]
+
+
+def _trigger_portrait_via_sync_api(kb_id: str) -> bool:
+    """通过 HTTP 调用 API 的同步画像接口，由 API 进程执行（使用当前部署代码，含视频关键帧）。"""
+    base = (getattr(settings, "portrait_sync_api_url", None) or "").strip().rstrip("/")
+    if not base:
+        # 未配置时默认请求本机 API（ingestion 与 API 同机时），由 API 进程执行画像（含视频关键帧）
+        base = f"http://127.0.0.1:{getattr(settings, 'port', 8000)}"
+    if not base:
+        return False
+    url = f"{base}/api/knowledge/{kb_id}/portrait/regenerate?sync=true"
+    try:
+        req = urllib.request.Request(url, method="POST")
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(req, timeout=120, context=ctx) as resp:
+            if 200 <= resp.status < 300:
+                logger.info(f"画像已通过同步 API 触发完成 kb_id={kb_id} url={url}")
+                return True
+            logger.warning(f"画像同步 API 返回非 2xx kb_id={kb_id} status={resp.status}")
+            return False
+    except urllib.error.HTTPError as e:
+        # 400 可能为数据不足，仍算“已触发”
+        if e.code == 400:
+            logger.info(f"画像同步 API 返回 400（可能数据不足）kb_id={kb_id}")
+            return True
+        logger.warning(f"画像同步 API 请求失败 kb_id={kb_id} code={e.code}: {e}")
+        return False
+    except Exception as e:
+        logger.warning(f"画像同步 API 请求异常 kb_id={kb_id}: {e}")
+        return False
 
 
 def increment_portrait_delta(kb_id: str, delta: int) -> int:
@@ -53,7 +88,9 @@ def reset_portrait_delta(kb_id: str) -> None:
 
 def increment_and_maybe_trigger(kb_id: str, delta: int) -> bool:
     """
-    增加增量并检查是否达到阈值；若达到则触发 Celery 画像构建任务并清零计数。
+    增加增量并检查是否达到阈值；若达到则触发画像构建并清零计数。
+    - 若配置了 portrait_sync_api_url：通过 HTTP 调用该 API 的同步画像接口（由 API 进程执行，保证含视频关键帧）。
+    - 否则：使用 Celery 异步任务（需 Worker 与 API 代码一致，否则可能不统计视频）。
     阈值使用 settings.portrait_update_threshold（默认 50）。
     返回是否触发了任务。
     """
@@ -63,6 +100,9 @@ def increment_and_maybe_trigger(kb_id: str, delta: int) -> bool:
         if n < threshold:
             return False
         reset_portrait_delta(kb_id)
+        # 优先走同步 API，保证使用当前部署代码（含视频关键帧）
+        if _trigger_portrait_via_sync_api(kb_id):
+            return True
         try:
             from app.modules.knowledge.portraits import build_kb_portrait_task
             build_kb_portrait_task.delay(kb_id, False)

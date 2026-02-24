@@ -200,6 +200,8 @@ class Settings(BaseSettings):
     # 知识库配置（知识库列表与元数据仅从 MinIO 获取，不再使用本地 JSON）
     max_kb_portrait_size: int = Field(default=20, validation_alias="MAX_KB_PORTRAIT_SIZE")
     portrait_update_threshold: int = Field(default=50, validation_alias="PORTRAIT_UPDATE_THRESHOLD")
+    # 画像自动触发：若设置则通过 HTTP 调用该 API 的同步画像接口（保证使用最新逻辑含视频关键帧），否则走 Celery
+    portrait_sync_api_url: Optional[str] = Field(default=None, validation_alias="PORTRAIT_SYNC_API_URL")
 
     # Celery 配置（可选，如果不需要可以忽略）
     celery_broker_url: Optional[str] = Field(default=None, validation_alias="CELERY_BROKER_URL")
