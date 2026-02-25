@@ -52,6 +52,23 @@ function getReferenceIcon(type: 'doc' | 'image' | 'audio' | 'video') {
   return FileText
 }
 
+/** 按类型返回按钮与图标的颜色 class（图片统一蓝色，文档/音频/视频各一色） */
+function getCitationColorClass(refType: 'doc' | 'image' | 'audio' | 'video'): { button: string; icon: string } {
+  if (refType === 'image') {
+    return { button: 'text-blue-600 dark:text-blue-400', icon: 'text-blue-600 dark:text-blue-400' }
+  }
+  if (refType === 'doc') {
+    return { button: 'text-amber-700 dark:text-amber-400', icon: 'text-amber-700 dark:text-amber-400' }
+  }
+  if (refType === 'audio') {
+    return { button: 'text-emerald-600 dark:text-emerald-400', icon: 'text-emerald-600 dark:text-emerald-400' }
+  }
+  if (refType === 'video') {
+    return { button: 'text-violet-600 dark:text-violet-400', icon: 'text-violet-600 dark:text-violet-400' }
+  }
+  return { button: '', icon: '' }
+}
+
 // 图片 Lightbox 内容组件，带错误处理
 function ImageLightboxContent({ imgUrl, fileName }: { imgUrl: string; fileName?: string }) {
   const [imageError, setImageError] = useState(false)
@@ -312,11 +329,11 @@ export function InlineCitation({
       {variant === 'inline' && refs.length > 0 && (
         <div className={cn('flex flex-wrap gap-1', className)}>
           {refs.map((ref) => {
-            // 确保 type 字段存在，默认为 'doc'
             const refType = (ref.type === 'doc' || ref.type === 'image' || ref.type === 'audio' || ref.type === 'video') ? ref.type : 'doc'
             const Icon = getReferenceIcon(refType)
             const id = ref.id
             const displayNum = displayIndexByRefId?.get(id) ?? id
+            const { button: buttonColor, icon: iconColor } = getCitationColorClass(refType)
             return (
               <Button
                 key={id}
@@ -324,7 +341,7 @@ export function InlineCitation({
                 size="sm"
                 className={cn(
                   'h-6 px-2 text-xs font-mono hover:bg-primary/10',
-                  refType === 'image' && 'text-blue-600'
+                  buttonColor
                 )}
                 onClick={(e) => {
                   if (useInternalPreview) setSelected(ref)
@@ -335,7 +352,7 @@ export function InlineCitation({
                   }
                 }}
               >
-                <Icon className="mr-1 h-3 w-3" />
+                <Icon className={cn('mr-1 h-3 w-3', iconColor)} />
                 [{displayNum}]
               </Button>
             )
@@ -376,14 +393,14 @@ export function InlineCitation({
       {variant === 'tooltip' && (
         <div className={cn('inline-flex flex-wrap gap-1', className)}>
           {refs.map((ref) => {
-            // 确保 type 字段存在，默认为 'doc'
             const refType = (ref.type === 'doc' || ref.type === 'image' || ref.type === 'audio' || ref.type === 'video') ? ref.type : 'doc'
             const Icon = getReferenceIcon(refType)
+            const { icon: iconColor } = getCitationColorClass(refType)
             return (
               <button
                 key={ref.id}
                 type="button"
-                className="inline-flex items-center gap-1 text-xs underline decoration-dotted cursor-help hover:text-primary"
+                className={cn('inline-flex items-center gap-1 text-xs underline decoration-dotted cursor-help hover:text-primary', iconColor)}
                 onClick={(e) => {
                   if (useInternalPreview) setSelected(ref)
                   if (onCiteClick) {
@@ -393,7 +410,7 @@ export function InlineCitation({
                   }
                 }}
               >
-                <Icon className="h-3 w-3" />
+                <Icon className={cn('h-3 w-3', iconColor)} />
                 [{ref.id}]
               </button>
             )
@@ -467,13 +484,14 @@ function ReferenceDetailCard({
   const refType = (reference.type === 'doc' || reference.type === 'image' || reference.type === 'audio' || reference.type === 'video') ? reference.type : 'doc'
   const Icon = getReferenceIcon(refType)
   const typeLabel = reference.type === 'doc' ? '文档' : reference.type === 'image' ? '图片' : reference.type === 'audio' ? '音频' : '视频'
+  const { icon: iconColor } = getCitationColorClass(refType)
 
   return (
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm flex items-center gap-2">
-            <Icon className="h-4 w-4" />
+            <Icon className={cn('h-4 w-4', iconColor)} />
             <span>【材料 {reference.id}】</span>
             <Badge variant="outline" className="text-xs">
               {typeLabel}
