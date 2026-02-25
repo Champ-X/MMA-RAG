@@ -81,6 +81,26 @@ export function ThinkingCapsule({
   const stageLabel = (status: StageStatus) =>
     status === 'processing' ? '进行中…' : status === 'completed' ? '已完成' : status === 'failed' ? '失败' : ''
 
+  // 折叠时展示的阶段摘要：意图解析 ✓ · 智能路由 ✓ · 检索中…
+  const summaryParts: string[] = []
+  if (intentActive) {
+    summaryParts.push(stages?.intent === 'completed' ? '意图解析 ✓' : stages?.intent === 'processing' ? '意图解析…' : '意图解析 ✓')
+  }
+  if (routingActive) {
+    summaryParts.push(stages?.routing === 'completed' ? '智能路由 ✓' : stages?.routing === 'processing' ? '智能路由…' : '智能路由 ✓')
+  }
+  if (retrievalActive) {
+    summaryParts.push(stages?.retrieval === 'completed' ? '检索 ✓' : stages?.retrieval === 'processing' ? '检索中…' : '检索 ✓')
+  }
+  if (generationActive) {
+    summaryParts.push(stages?.generation === 'completed' ? '生成 ✓' : stages?.generation === 'processing' ? '生成中…' : '生成 ✓')
+  }
+  // 当前阶段高亮样式：统一圆角与内边距，极细边框，过渡动画
+  const stageBlockBase = 'space-y-2 animate-fade-in rounded-lg p-3 transition-colors duration-200'
+  const stageBlockCurrent = 'bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm border border-indigo-200/60 dark:border-indigo-800/40'
+  const stageBlockIdle = 'border border-transparent'
+  const summaryLine = summaryParts.length > 0 ? summaryParts.join(' · ') : null
+
   return (
     <div className="mb-2 w-full rounded-xl border border-slate-200/60 bg-gradient-to-br from-slate-50/90 to-slate-100/50 dark:from-slate-900/40 dark:to-slate-800/30 shadow-sm dark:border-slate-800/60">
       <button
@@ -97,7 +117,12 @@ export function ThinkingCapsule({
           <Brain size={14} />
         </span>
         <span className="font-semibold">思考过程</span>
-        {open ? <ChevronDown size={14} className="ml-auto" /> : <ChevronRight size={14} className="ml-auto" />}
+        {!open && summaryLine && (
+          <span className="flex-1 min-w-0 truncate text-slate-500 dark:text-slate-400 font-normal">
+            {summaryLine}
+          </span>
+        )}
+        {open ? <ChevronDown size={14} className="ml-auto flex-shrink-0" /> : <ChevronRight size={14} className="ml-auto flex-shrink-0" />}
       </button>
       {open && (
         <div className="bg-white/40 px-5 pb-4 pt-3 dark:bg-slate-950/40 rounded-b-xl">
@@ -105,10 +130,8 @@ export function ThinkingCapsule({
           {/* 阶段一：意图解析 — 仅在该阶段开始后展示，流式更新 */}
           {intentActive && (
           <div className={cn(
-            'space-y-2 animate-fade-in rounded-lg transition-all',
-            currentStage === 'intent' 
-              ? 'bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm p-3' 
-              : ''
+            stageBlockBase,
+            currentStage === 'intent' ? stageBlockCurrent : stageBlockIdle
           )}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <Brain size={12} className="text-indigo-600" />
@@ -214,10 +237,8 @@ export function ThinkingCapsule({
           {/* 阶段二：智能路由 — 路由阶段开始后展示 */}
           {routingActive && (
           <div className={cn(
-            'space-y-2 animate-fade-in rounded-lg transition-all',
-            currentStage === 'routing' 
-              ? 'bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm p-3' 
-              : ''
+            stageBlockBase,
+            currentStage === 'routing' ? stageBlockCurrent : stageBlockIdle
           )}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <Network size={12} className="text-indigo-600" />
@@ -277,10 +298,8 @@ export function ThinkingCapsule({
           {/* 阶段三：检索策略 — 检索阶段开始后展示 */}
           {retrievalActive && (
           <div className={cn(
-            'space-y-2 animate-fade-in rounded-lg transition-all',
-            currentStage === 'retrieval' 
-              ? 'bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm p-3' 
-              : ''
+            stageBlockBase,
+            currentStage === 'retrieval' ? stageBlockCurrent : stageBlockIdle
           )}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <Search size={12} className="text-indigo-600" />
@@ -339,10 +358,8 @@ export function ThinkingCapsule({
           {/* 阶段四：生成回答 — 只有在明确收到 generation 事件后才显示 */}
           {generationActive && (
           <div className={cn(
-            'space-y-2 animate-fade-in rounded-lg transition-all',
-            currentStage === 'generation' 
-              ? 'bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent shadow-sm p-3' 
-              : ''
+            stageBlockBase,
+            currentStage === 'generation' ? stageBlockCurrent : stageBlockIdle
           )}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <Sparkles size={12} className="text-indigo-600" />
