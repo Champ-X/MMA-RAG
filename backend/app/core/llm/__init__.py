@@ -378,10 +378,11 @@ class LLMRegistry:
                 ],
             },
             "query_rewriting": {
-                "model": "deepseek-ai/DeepSeek-V3.2",
+                "model": "Pro/deepseek-ai/DeepSeek-V3.2",
                 "fallbacks": [
-                    "Pro/deepseek-ai/DeepSeek-R1",
                     "Qwen/Qwen3-235B-A22B-Instruct-2507",
+                    "deepseek-ai/DeepSeek-V3.2",
+                    "Pro/deepseek-ai/DeepSeek-R1",
                     "Pro/moonshotai/Kimi-K2.5",
                     "Pro/zai-org/GLM-5",
                     "moonshotai/Kimi-K2-Thinking",

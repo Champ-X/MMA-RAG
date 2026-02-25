@@ -126,32 +126,37 @@ export function KnowledgeBaseConfigPanel({ open, onOpenChange }: KnowledgeBaseCo
                 </button>
               </div>
               {kbMode === 'manual' && (
-                <ScrollArea className="mt-4 max-h-[min(50vh,320px)] h-auto rounded-xl border border-slate-200/50 bg-white/40 backdrop-blur-sm dark:border-slate-700/50 dark:bg-slate-800/50 p-2.5 shadow-inner">
-                  {knowledgeBases.length === 0 ? (
-                    <p className="py-4 text-center text-sm text-slate-500 dark:text-slate-400">暂无知识库，请先创建</p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {knowledgeBases.map(kb => (
-                        <label
-                          key={kb.id}
-                          className={cn(
-                            'flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition-all duration-200',
-                            'hover:bg-white/50 hover:shadow-sm dark:hover:bg-slate-700/50'
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedKbIds.has(kb.id)}
-                            onChange={() => toggleKb(kb.id)}
-                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-600"
-                          />
-                          <span className="flex-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">{kb.name}</span>
-                          <span className="text-xs text-slate-400 dark:text-slate-500">{kb.stats?.documents ?? 0} 文档</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
+                <div className="mt-4 flex flex-col min-h-0">
+                  <div
+                    className="rounded-xl border border-slate-200/50 bg-white/40 backdrop-blur-sm dark:border-slate-700/50 dark:bg-slate-800/50 p-2.5 shadow-inner min-h-[120px] max-h-[320px] overflow-x-hidden overflow-y-auto"
+                    style={{ maxHeight: 'min(50vh, 320px)' }}
+                  >
+                    {knowledgeBases.length === 0 ? (
+                      <p className="py-4 text-center text-sm text-slate-500 dark:text-slate-400">暂无知识库，请先创建</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {knowledgeBases.map(kb => (
+                          <label
+                            key={kb.id}
+                            className={cn(
+                              'flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition-all duration-200',
+                              'hover:bg-white/50 hover:shadow-sm dark:hover:bg-slate-700/50'
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedKbIds.has(kb.id)}
+                              onChange={() => toggleKb(kb.id)}
+                              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-600"
+                            />
+                            <span className="flex-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">{kb.name}</span>
+                            <span className="text-xs text-slate-400 dark:text-slate-500">{kb.stats?.documents ?? 0} 文档</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
               <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">
                 {kbMode === 'auto' && '不传知识库，由后端智能路由选择'}
