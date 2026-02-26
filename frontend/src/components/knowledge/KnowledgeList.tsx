@@ -1544,21 +1544,31 @@ const KnowledgeList: React.FC = () => {
     return (
       <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative">
         {/* Header */}
-        <div className="relative px-8 py-7 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-indigo-50/70 via-white to-fuchsia-50/70 dark:from-indigo-950/30 dark:via-slate-950 dark:to-fuchsia-950/30" />
-          <div className="absolute -top-14 -left-10 h-40 w-40 rounded-full bg-indigo-200/40 blur-3xl dark:bg-indigo-500/20" />
-          <div className="absolute -bottom-16 right-6 h-44 w-44 rounded-full bg-fuchsia-200/40 blur-3xl dark:bg-fuchsia-500/20" />
-          <div className="relative z-10 flex flex-wrap items-start justify-between gap-5">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">知识库</h1>
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">管理数据集、上传文件并查看索引状态。</p>
+        <div className="relative px-8 py-8 sm:py-9 border-b border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-indigo-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-indigo-950/40" />
+          <div className="absolute top-0 right-0 w-[480px] h-[280px] bg-gradient-to-bl from-indigo-100/50 to-transparent dark:from-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
+          <div className="absolute bottom-0 left-0 w-[320px] h-[200px] bg-gradient-to-tr from-fuchsia-100/40 to-transparent dark:from-fuchsia-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/4" />
+          <div className="relative z-10 flex flex-wrap items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-lg shadow-indigo-500/25 dark:shadow-indigo-500/20">
+                <Database size={24} strokeWidth={2} />
+              </div>
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
+                  知识库
+                </h1>
+                <p className="mt-2 text-base text-slate-600 dark:text-slate-400 whitespace-nowrap overflow-x-auto scrollbar-hide tracking-wide">
+                  创建多模态知识库，上传文档、图片、音视频，查看索引与主题画像，为 RAG 检索提供数据基础。
+                </p>
+              </div>
             </div>
-            <div className="pt-1">
+            <div className="shrink-0">
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="group inline-flex items-center gap-2 bg-gradient-to-tr from-indigo-600 to-fuchsia-600 text-white px-4 py-2.5 rounded-xl hover:from-indigo-500 hover:to-fuchsia-500 transition-all shadow-md shadow-fuchsia-600/20 font-medium text-sm hover:-translate-y-0.5"
+                className="group inline-flex items-center gap-2.5 bg-gradient-to-r from-indigo-600 to-fuchsia-600 hover:from-indigo-500 hover:to-fuchsia-500 text-white px-6 py-3 rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-fuchsia-500/25 font-medium text-[15px] leading-snug hover:-translate-y-0.5 active:translate-y-0 min-h-[44px]"
               >
-                <Plus size={18} className="transition-transform group-hover:rotate-90" /> 新建知识库
+                <Plus size={20} className="transition-transform duration-200 group-hover:rotate-90 shrink-0" />
+                新建知识库
               </button>
             </div>
           </div>
@@ -1576,13 +1586,16 @@ const KnowledgeList: React.FC = () => {
               ))}
             </div>
           ) : knowledgeBases.length === 0 ? (
-            <div className="col-span-full text-center py-20 text-slate-400">
-              <Database size={48} className="mx-auto mb-4 opacity-20" />
-              <p>暂无知识库，先新建一个开始。</p>
+            <div className="col-span-full text-center py-20 text-slate-500 dark:text-slate-400">
+              <Database size={48} className="mx-auto mb-4 opacity-30" />
+              <p className="text-base">暂无知识库</p>
+              <p className="mt-1 text-sm">点击上方「新建知识库」创建第一个知识库，开始上传与管理多模态数据。</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {knowledgeBases.map((kb) => (
+              {knowledgeBases.map((kb) => {
+                const kbCardTitleClass = 'text-lg font-bold mb-1 leading-snug'
+                return (
                 <div
                   key={kb.id}
                   onClick={() => {
@@ -1609,7 +1622,7 @@ const KnowledgeList: React.FC = () => {
                         {/* 顶部弹性空间，把标题/描述与统计条整体压到底部 */}
                         <div className="min-h-0 flex-1" />
                         <div className="flex-shrink-0 pt-4 pb-1">
-                          <h3 className="font-bold text-white mb-1 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_8px_rgba(0,0,0,0.7)]">
+                          <h3 className={cn(kbCardTitleClass, 'text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_8px_rgba(0,0,0,0.7)]')}>
                             {kb.name}
                           </h3>
                           <p className="text-white text-sm h-9 overflow-hidden text-ellipsis leading-relaxed line-clamp-2 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_6px_rgba(0,0,0,0.6)]">
@@ -1686,7 +1699,7 @@ const KnowledgeList: React.FC = () => {
                             <Database size={24} />
                           </div>
                         </div>
-                        <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1">{kb.name}</h3>
+                        <h3 className={cn(kbCardTitleClass, 'text-slate-800 dark:text-slate-100')}>{kb.name}</h3>
                         <p className="text-slate-500 dark:text-slate-400 text-sm h-10 overflow-hidden text-ellipsis leading-relaxed line-clamp-2 flex-1 min-h-0">
                           {kb.description || '暂无描述'}
                         </p>
@@ -1754,7 +1767,8 @@ const KnowledgeList: React.FC = () => {
                     </>
                   )}
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>

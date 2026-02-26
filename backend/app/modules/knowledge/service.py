@@ -1282,25 +1282,37 @@ class KnowledgeBaseService:
             return None
 
     async def get_random_cover_url(self, kb_id: str) -> Optional[str]:
-        """从知识库中随机取一张图片的预览 URL 作为封面；无图片时返回 None。"""
+        """从知识库中随机取一张图片或视频关键帧的预览 URL 作为封面。
+        优先使用 images/ 下的图片；若无图片但有视频关键帧（videos/.../keyframes/*.jpg 等），则随机取一张关键帧作为封面。"""
         try:
             bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
             raw_files = await self.minio_adapter.list_files(bucket=bucket_name, prefix="", max_keys=500)
             image_objects: List[str] = []
+            keyframe_objects: List[str] = []
             for f in raw_files:
                 op = f.get("object_path", "")
                 parts = op.split("/")
                 if len(parts) < 2:
                     continue
+                # 1) images/ 下的图片：parts[1] 为文件名
                 rest = parts[1]
                 under = rest.find("_")
                 name = rest[under + 1:] if under >= 0 else rest
                 ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
                 if self._is_image_type(ext):
                     image_objects.append(op)
-            if not image_objects:
+                    continue
+                # 2) 视频关键帧：videos/{uuid}/keyframes/xxx.jpg
+                if op.startswith("videos/") and "/keyframes/" in op:
+                    last_seg = parts[-1]
+                    kf_ext = last_seg.rsplit(".", 1)[-1].lower() if "." in last_seg else ""
+                    if self._is_image_type(kf_ext):
+                        keyframe_objects.append(op)
+            # 优先用图片，没有图片则用视频关键帧
+            candidates = image_objects if image_objects else keyframe_objects
+            if not candidates:
                 return None
-            chosen = random.choice(image_objects)
+            chosen = random.choice(candidates)
             return await self.minio_adapter.get_presigned_url(
                 bucket_name, chosen, expires_hours=24
             )

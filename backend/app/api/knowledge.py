@@ -50,7 +50,7 @@ def _stats_for_frontend(statistics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 @router.get("/")
 async def list_knowledge_bases(user_id: Optional[str] = None):
-    """获取知识库列表；若知识库内有图片则随机取一张作为 cover_url。"""
+    """获取知识库列表；若有图片则随机取一张作为 cover_url，若无图片但有视频关键帧则随机取一张关键帧作为封面。"""
     try:
         kbs = await kb_service.list_knowledge_bases(user_id=user_id)
         # 并行获取每个知识库的随机封面图
