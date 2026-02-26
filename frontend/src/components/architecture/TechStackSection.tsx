@@ -40,7 +40,7 @@ export function TechStackSection() {
       </div>
 
       <p className="max-w-4xl break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-        项目采用分层清晰、易于扩展的技术栈：后端 FastAPI + DDD，前端 React + Tailwind，存储 MinIO/Qdrant/Redis；模型由 LLMManager 按任务路由，支持 SiliconFlow、OpenRouter、阿里云百炼、DeepSeek 等多厂商 API，以及 Qwen3-Embedding、BGE-M3、CLIP、Reranker 等，支持 Docker 容器化部署。
+        项目采用分层清晰、易于扩展的技术栈：后端 FastAPI + DDD，前端 React + Tailwind，存储 MinIO/Qdrant/Redis（文档/图片/音频/视频分目录）；模型由 LLMManager 按任务路由，支持 SiliconFlow、OpenRouter、阿里云百炼、DeepSeek 等多厂商 API，以及 Qwen3-Embedding、BGE-M3、CLIP（图/视频）、CLAP（音频）、Reranker 等全模态能力，支持 Docker 容器化部署。
       </p>
 
       <div className="grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-3">

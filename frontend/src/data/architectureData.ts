@@ -71,7 +71,7 @@ export const architectureSections: ArchitectureSection[] = [
   {
     id: 'data-flow',
     title: '数据流与存储',
-    subtitle: '多来源接入 → MinIO → Dense+BGE-M3+CLIP 向量化 → Qdrant → 检索 → 引用映射 → 前端 Citation',
+    subtitle: '多来源接入 → MinIO → 全模态向量化（Dense+BGE-M3+CLIP+CLAP）→ Qdrant → 多路检索 → 引用映射 → 前端 Citation',
   },
   {
     id: 'tech-stack',
@@ -104,9 +104,9 @@ export const innovationPoints: InnovationPoint[] = [
   },
   {
     id: 'hybrid-search',
-    title: '三路融合混合检索',
-    description: 'Dense（语义向量）+ Sparse（BGE-M3 稀疏向量）+ Visual（CLIP + VLM 描述）三路并行检索，经 RRF 粗排与 Cross-Encoder 精排',
-    impact: '在复杂查询场景下能更稳定地召回真正相关的片段',
+    title: '多路融合混合检索',
+    description: 'Dense（语义向量）+ Sparse（BGE-M3）+ Visual（图片：CLIP + VLM）+ Audio（音频：CLAP + ASR/描述）+ Video（视频：关键帧 CLIP + VLM + 整体描述）多路并行检索，经 RRF 粗排与 Cross-Encoder 精排',
+    impact: '在复杂查询与多模态知识库场景下更稳定地召回文档/图片/音频/视频相关片段',
     icon: '🔍',
   },
   {
@@ -125,9 +125,9 @@ export const innovationPoints: InnovationPoint[] = [
   },
   {
     id: 'multimodal-vector',
-    title: '多模态向量化融合',
-    description: '采用 VLM + CLIP 双路融合策略，实现文档和图像的统一向量表示，支持跨模态检索',
-    impact: '跨模态检索能力',
+    title: '全模态向量化融合',
+    description: '文档 Dense + BGE-M3 稀疏；图片 VLM + CLIP 双路；音频 ASR/描述 + CLAP 双路（+ 可选稀疏）；视频关键帧 VLM + 整体描述 + 关键帧 CLIP。文本侧统一 Embedding，支持文档/图片/音频/视频跨模态检索与路由',
+    impact: '文档、图片、音频、视频统一表征与跨模态检索',
     icon: '🖼️',
   },
   {
@@ -155,7 +155,7 @@ export const performanceMetrics: PerformanceMetric[] = [
     value: '更高',
     unit: '准确率',
     improvement: '相较传统单一检索策略更稳定地命中高质量片段',
-    description: '通过三路融合混合检索策略实现，在多知识库、多模态混合场景下表现更优',
+    description: '通过多路融合混合检索（Dense/Sparse/Visual/Audio/Video）实现，在多知识库、全模态混合场景下表现更优',
   },
   {
     id: 'intent-latency',
@@ -178,8 +178,8 @@ export const performanceMetrics: PerformanceMetric[] = [
     label: '多模态支持',
     value: '完整',
     unit: '覆盖',
-    improvement: '在文档与图像混合知识库中保持一致的检索体验',
-    description: 'VLM + CLIP 双路融合实现统一向量表示，支持文本与图像的自然混用',
+    improvement: '文档、图片、音频、视频混合知识库中一致的检索与引用体验',
+    description: '图片 VLM+CLIP、音频 ASR+CLAP、视频关键帧+整体描述+CLIP，与文档 Dense/Sparse 统一检索与引用展示',
   },
 ]
 
@@ -188,6 +188,7 @@ export const overviewTags = [
   '智能路由',
   'BGE-M3 稀疏检索',
   '混合检索',
+  '音频/视频检索',
   '流式思考链',
   '可视化调试',
 ] as const
@@ -225,13 +226,13 @@ export const requestFlowSteps: RequestFlowStep[] = [
   },
   {
     id: 'hybrid-search',
-    title: '三路混合检索',
-    short: 'Dense + Sparse (BGE-M3) + Visual',
+    title: '多路混合检索',
+    short: 'Dense + Sparse + Visual + Audio + Video',
     description:
-      'HybridSearchEngine 同时发起语义向量检索、BGE-M3 稀疏向量检索和视觉特征（CLIP + VLM 描述）检索，经加权 RRF 融合后与 Cross-Encoder 精排配合，在多样化查询场景下有更好的召回质量。',
+      'HybridSearchEngine 同时发起 Dense 语义检索、BGE-M3 稀疏检索、图片 Visual（CLIP + VLM）、音频 Audio（CLAP + 文本/稀疏）、视频 Video（text_vec + clip_vec）检索，按 visual_intent/audio_intent/video_intent 决定各路人选与权重，经加权 RRF 融合后与 Cross-Encoder 精排配合，在多样化与多模态查询场景下有更好的召回质量。',
     backendEntry: 'backend/app/modules/retrieval/search_engine.py::HybridSearchEngine',
     estimatedTime: '300-800ms',
-    keyTechnologies: ['Dense Vector', 'BGE-M3 Sparse', 'CLIP Visual', 'RRF Fusion'],
+    keyTechnologies: ['Dense', 'BGE-M3 Sparse', 'CLIP Visual', 'CLAP Audio', 'Video', 'RRF Fusion'],
   },
   {
     id: 'rerank',
@@ -269,15 +270,17 @@ export const coreModules: ModuleInfo[] = [
   {
     id: 'ingestion',
     name: 'Ingestion - 数据输入处理与存储',
-    role: '负责文件解析、切分、多模态向量化（Dense + BGE-M3 稀疏 + VLM/CLIP），以及写入 MinIO 与 Qdrant。',
+    role: '负责文件解析、切分与全模态向量化（文档 Dense+BGE-M3；图片 VLM+CLIP；音频 ASR+CLAP；视频关键帧+整体描述+CLIP），以及写入 MinIO 与 Qdrant。',
     color: 'green',
     highlights: [
       '统一入口：IngestionService 完成解析 → MinIO → 向量化 → Qdrant 全流程；支持本地上传、URL、文件夹、热点订阅等多来源接入',
-      '解析器工厂：PDF（PyMuPDF，可选 MinerU）、DOCX（python-docx）、TXT/Markdown、图片（PIL）；文档内嵌图先 VLM 描述再插回原文后分块',
-      '分块策略：递归语义分块（段落/句子 + max/min 长度）、重叠窗口；chunk 携带 context_window 供调试拉取前后文',
-      '文档向量化：Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏编码，双向量写入 text_chunks',
-      '图片向量化：VLM 生成 caption + 同模型文本向量（text_vec）+ CLIP 视觉向量（clip_vec），Named Vector 写入 image_vectors',
-      '存储：MinIOAdapter 按知识库与类型组织；VectorStore 写入 text_chunks / image_vectors / kb_portraits',
+      '解析器工厂：文档（PDF/DOCX/TXT/Markdown）、图片（PIL）、音频（soundfile/librosa）、视频（OpenCV）；文档内嵌图先 VLM 描述再插回原文后分块；音频/视频按条不切块',
+      '分块策略：文档递归语义分块 + 重叠窗口，chunk 携带 context_window；图片/音频/视频以单条为单位（caption、transcript+description、视频描述）',
+      '文档向量化：Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏，写入 text_chunks',
+      '图片向量化：VLM caption + text_vec + CLIP clip_vec（768 维），写入 image_vectors',
+      '音频向量化：ASR 转写 + LLM 描述 + text_vec + CLAP clap_vec（512 维，可选 sparse），写入 audio_vectors',
+      '视频向量化：关键帧 VLM + 整体描述（+ 可选音轨 ASR）+ text_vec + 关键帧 CLIP clip_vec，写入 video_vectors',
+      '存储：MinIO 按知识库与类型分目录（documents/images/audios/videos）；VectorStore 写入 text_chunks / image_vectors / audio_vectors / video_vectors / kb_portraits',
       '异步管道：Celery + Redis 处理长耗时导入，前端可轮询或流式查看进度',
     ],
     codeRefs: [
@@ -291,12 +294,12 @@ export const coreModules: ModuleInfo[] = [
   {
     id: 'knowledge',
     name: 'Knowledge - 知识库管理与画像',
-    role: '知识库 CRUD 与画像生成（K-Means + LLM 主题摘要），以及基于画像的 TopN 检索 + 加权路由决策。',
+    role: '知识库 CRUD 与画像生成（K-Means + LLM 主题摘要），以及基于画像的 TopN 检索 + 加权路由决策；画像可覆盖文档/图片/音频/视频全模态。',
     color: 'blue',
     highlights: [
       '知识库 CRUD：创建、查询、更新、删除知识库，维护元数据与统计；支持用户指定知识库时跳过路由',
-      '画像生成：从 Text/Image Collection 按比例采样向量（懒加载正文），K = sqrt(N/2) 限制内 K-Means 聚类',
-      '主题摘要：每簇取近中心 5～10 样本，以 [文档片段]/[图片描述] 前缀拼成 content_pieces，LLM 生成 topic_summary 后向量化写入 kb_portraits',
+      '画像生成：从 Text、Image、Audio、Video 各 Collection 的 text_vec 按比例采样（懒加载正文），K = sqrt(N/2) 限制内 K-Means 聚类',
+      '主题摘要：每簇取近中心 5～10 样本，以 [文档片段]/[图片描述]/[音频转写描述]/[视频描述] 前缀拼成 content_pieces，LLM 生成 topic_summary 后向量化写入 kb_portraits',
       '画像更新：增量/全量触发；Replace 策略（先删该 KB 旧画像再插入新画像）',
       '路由决策：refined_query 向量在 kb_portraits 全局 TopN 检索；每 KB 取前 K 节点位置衰减加权平均，归一化后按阈值决定单库/多库/全库',
       '路由策略：全部得分偏低时全库检索；第一名与第二名差距 ≥ 阈值则单库，否则取前两库',
@@ -310,14 +313,14 @@ export const coreModules: ModuleInfo[] = [
   {
     id: 'retrieval',
     name: 'Retrieval - 语义路由与混合检索',
-    role: 'One-Pass 意图识别（含 visual/audio/video 意图）、三路混合检索与两阶段重排，构成检索主通路。',
+    role: 'One-Pass 意图识别（含 visual/audio/video 意图）、多路混合检索（Dense/Sparse/Visual/Audio/Video）与两阶段重排，构成检索主通路。',
     color: 'blue',
     highlights: [
       'One-Pass 意图识别：意图分类、查询改写、关键词/多视角生成、visual_intent/audio_intent/video_intent 统一一次 LLM 调用，输出 IntentObject',
       '查询策略：refined_query 用于 Dense 与路由；sparse_keywords 与 dense_query 拼接送 BGE-M3 稀疏检索；multi_view_queries 用于 Dense 多视角',
-      '三路混合检索：Dense（主查询 + 多视角融合）、Sparse（BGE-M3 稀疏向量）、Visual（text_vec + clip_vec 双路 RRF），按 visual_intent 决定是否走图/权重',
-      '两阶段重排：加权 RRF 粗排（dense/sparse/visual 可配权重）→ Cross-Encoder 精排，精排分与 RRF 分合并取 final_top_k；implicit 时图片保护',
-      'RetrievalContext：封装 target_kb_ids、search_strategies、visual_intent 等，贯穿检索与重排',
+      '多路混合检索：Dense（主查询 + 多视角）、Sparse（BGE-M3）、Visual（图片 text_vec + clip_vec 双路 RRF）、Audio（text + CLAP 双路，可选 sparse）、Video（text_vec + clip_vec 双路），按各 intent 决定是否执行及权重',
+      '两阶段重排：加权 RRF 粗排（dense/sparse/visual/audio/video 可配）→ Cross-Encoder 精排，精排分与 RRF 分合并取 final_top_k；implicit 时对图片/音频/视频做配额保护',
+      'RetrievalContext：封装 target_kb_ids、search_strategies、visual_intent、audio_intent、video_intent 等，贯穿检索与重排',
       '检索结果含各阶段耗时与命中详情，支持前端 ThinkingCapsule 与调试展示',
     ],
     codeRefs: [
@@ -331,15 +334,15 @@ export const coreModules: ModuleInfo[] = [
   {
     id: 'generation',
     name: 'Generation - 上下文构建与生成',
-    role: '将重排结果转为引用映射与多模态 Prompt，驱动 LLM 生成，并通过 SSE 推送 thought/citation/message。',
+    role: '将重排结果转为引用映射与全模态 Prompt（文档/图片/音频/视频），驱动 LLM 生成，并通过 SSE 推送 thought/citation/message。',
     color: 'purple',
     highlights: [
-      '上下文构建：ContextBuilder 按分数排序分配序号 1,2,3…，生成 ReferenceMap（doc/image/audio/video、presigned_url、chunk_id 等）',
-      '长度控制：max_context_length、max_chunks、max_images（implicit 时略多），按相关性填入 Type A/B 模板',
-      '系统提示词：按意图类型选用模板，规定 [id] 引用、多模态描述与诚实回答原则；prompt 模板集中在 core/llm/prompt.py',
-      '多模态格式化：文档【材料 n】类型:文档|来源；图片【材料 n】类型:图片|视觉描述，支持音频/视频及关键帧引用',
-      '流式输出：StreamManager 发送 thought（意图/路由/检索策略）、citation（引用元数据与 debug_info）、message（LLM delta）',
-      '前端：ThinkingCapsule 消费 thought；CitationPopover 悬停 [n] 展示引用；支持 context_window 与灯箱/播放器',
+      '上下文构建：ContextBuilder 按分数排序分配序号 1,2,3…，生成 ReferenceMap（content_type: doc/image/audio/video、presigned_url/audio_url/video_url、chunk_id、关键帧等）',
+      '长度控制：max_context_length、max_chunks、max_images、max_audios、max_videos（implicit 时略多），按相关性填入各模态模板',
+      '系统提示词：按意图类型选用模板，规定 [id] 引用、文档/图片/音频/视频多模态描述与诚实回答原则；prompt 模板集中在 core/llm/prompt.py',
+      '全模态格式化：文档【材料 n】类型:文档|来源；图片【材料 n】类型:图片|视觉描述；音频【材料 n】类型:音频|转写/描述；视频【材料 n】类型:视频|描述/关键帧',
+      '流式输出：StreamManager 发送 thought（意图/路由/检索策略含 visual/audio/video）、citation（引用元数据与 debug_info）、message（LLM delta）',
+      '前端：ThinkingCapsule 展示 visual/audio/video intent；CitationPopover 按类型展示文档片段/图片灯箱/音频视频播放器与关键帧',
     ],
     codeRefs: [
       { label: 'GenerationService', path: 'backend/app/modules/generation/service.py' },
@@ -351,13 +354,13 @@ export const coreModules: ModuleInfo[] = [
   {
     id: 'llm-manager',
     name: 'LLM Manager - 模型管理与路由',
-    role: '按 task_type 路由到对应模型与 Provider，统一 chat/embed/rerank 接口，支持多厂商 API 与提示词集中管理。',
+    role: '按 task_type 路由到对应模型与 Provider，统一 chat/embed/rerank 及多模态任务（图注、ASR、音频/视频描述）接口，支持多厂商 API 与提示词集中管理。',
     color: 'purple',
     highlights: [
-      '任务路由：intent_recognition、image_captioning、final_generation、reranking、kb_portrait_generation 等映射到具体模型与 Provider',
-      '统一接口：chat（多轮消息、temperature）、embed（文本列表）、rerank（query + documents）；底层 Provider 实现 OpenAI 兼容协议',
+      '任务路由：intent_recognition、image_captioning、audio_transcription、final_generation、reranking、kb_portrait_generation 等映射到具体模型与 Provider',
+      '统一接口：chat（多轮消息、temperature、多模态输入如图/音）、embed（文本列表）、rerank（query + documents）；多模态任务由支持图/音的 API 承接',
       '多厂商 Provider：SiliconFlow、OpenRouter、阿里云百炼、DeepSeek 等，Manager 负责拼装请求与解析响应',
-      '提示词：prompt.py 集中所有模板字符串，prompt_engine 提供 render_template，业务层只传变量',
+      '提示词：prompt.py 集中所有模板（含 image_captioning、audio_transcription 等），prompt_engine 提供 render_template，业务层只传变量',
       '可观测与弹性：记录 task_type、模型、耗时、Token、成功/失败；支持超时重试与可选故障转移',
       '核心设施：sparse_encoder（BGE-M3）、portrait_trigger、keyword_extract 等由 Core 层提供',
     ],
@@ -379,17 +382,17 @@ export const dataFlowStages: DataFlowStage[] = [
   {
     id: 'minio',
     title: '对象存储 MinIO',
-    description: 'MinIOAdapter 按知识库与类型（文档/图片等）组织路径，写入 MinIO；对象路径与 file_id 与向量库 Payload 一致，便于 Presigned URL 与删除联动。',
+    description: 'MinIOAdapter 按知识库与类型组织路径（documents/images/audios/videos），写入 MinIO；对象路径与 file_id 与向量库 Payload 一致，便于 Presigned URL 与删除联动，音视频可提供播放 URL。',
   },
   {
     id: 'vectorize',
-    title: '多模态向量化',
-    description: '文本走 Dense（Qwen3-Embedding-8B）+ BGE-M3 稀疏编码；图片走 VLM 描述 + 文本向量化与 CLIP 视觉向量，写入 Qdrant。',
+    title: '全模态向量化',
+    description: '文档：Dense（Qwen3-Embedding-8B）+ BGE-M3 稀疏；图片：VLM 描述 + text_vec + CLIP；音频：ASR + 描述 + text_vec + CLAP（可选 sparse）；视频：关键帧 VLM + 整体描述 + text_vec + 关键帧 CLIP。统一写入 Qdrant 对应集合。',
   },
   {
     id: 'qdrant',
     title: '向量与稀疏索引',
-    description: 'Qdrant 存储 text_chunks（dense + sparse）、image_vectors（clip_vec + text_vec）、kb_portraits，支撑混合检索与路由。',
+    description: 'Qdrant 存储 text_chunks（dense + sparse）、image_vectors（clip_vec + text_vec）、audio_vectors（text_vec + clap_vec，可选 sparse）、video_vectors（text_vec + clip_vec）、kb_portraits，支撑多路混合检索与路由。',
   },
   {
     id: 'redis-celery',
@@ -404,7 +407,7 @@ export const dataFlowStages: DataFlowStage[] = [
   {
     id: 'citation',
     title: '引用映射与前端展示',
-    description: 'ReferenceMap 提供序号、类型、file_name、content 摘要、presigned_url（图/音视频）；SSE citation 事件带 debug_info（chunk_id、context_window）。前端 CitationPopover 悬停 [n] 展示，支持灯箱与播放器。',
+    description: 'ReferenceMap 提供序号、content_type（doc/image/audio/video）、file_name、content 摘要、img_url/audio_url/video_url；SSE citation 带 debug_info（chunk_id、context_window）。前端 CitationPopover 按类型展示：文档片段、图片灯箱、音频/视频播放器与关键帧。',
   },
 ]
 
@@ -440,7 +443,7 @@ export const techStackItems: TechStackItem[] = [
     id: 'minio',
     name: 'MinIO',
     category: 'storage',
-    description: '兼容 S3 的对象存储，用于存放原始文件与图片，按知识库分 bucket 管理。',
+    description: '兼容 S3 的对象存储，用于存放原始文件（文档、图片、音频、视频），按知识库与类型分目录（documents/images/audios/videos）管理。',
   },
   {
     id: 'qdrant',
@@ -465,25 +468,31 @@ export const techStackItems: TechStackItem[] = [
     id: 'deepseek',
     name: 'DeepSeek / Qwen 系列',
     category: 'model',
-    description: '意图识别、最终生成、画像摘要等对话类任务；VLM 用于图片描述（如 Qwen3-VL）。',
+    description: '意图识别、最终生成、画像摘要等对话类任务；VLM 用于图片/关键帧描述（如 Qwen3-VL）；多模态 API 用于 ASR 音频转写与音频/视频描述。',
   },
   {
     id: 'embedding',
     name: 'Qwen3-Embedding-8B',
     category: 'model',
-    description: '文本 Dense 向量（4096 维），用于 text_chunks、image text_vec 与 kb_portraits。',
+    description: '文本 Dense 向量（4096 维），用于 text_chunks、image/audio/video 的 text_vec 与 kb_portraits。',
   },
   {
     id: 'bge',
     name: 'BGE-M3 / BGE-Reranker',
     category: 'model',
-    description: 'BGE-M3 稀疏编码与稀疏检索；BGE-Reranker 或 Qwen3-Reranker 用于 Cross-Encoder 精排。',
+    description: 'BGE-M3 稀疏编码与稀疏检索（文档与可选音频）；BGE-Reranker 或 Qwen3-Reranker 用于 Cross-Encoder 精排。',
   },
   {
     id: 'clip',
     name: 'CLIP (clip-vit-large-patch14)',
     category: 'model',
-    description: '图片视觉向量（768 维），与 text_vec 双路写入 image_vectors，检索时 Prefetch + Fusion RRF。',
+    description: '图片/视频视觉向量（768 维），与 text_vec 双路写入 image_vectors、video_vectors，检索时 Prefetch + Fusion RRF。',
+  },
+  {
+    id: 'clap',
+    name: 'CLAP (laion/clap-htsat-fused)',
+    category: 'model',
+    description: '音频声学向量（512 维），与 text_vec 双路写入 audio_vectors，检索时与文本/稀疏一起参与 RRF。',
   },
   // infra - 只保留核心
   {

@@ -286,6 +286,13 @@ class LLMRegistry:
                     "description": "Qwen3.5 397B A17B（阿里云百炼）",
                     "raw_model": "qwen3.5-397b-a17b",
                 },
+                "aliyun_bailian:qwen3.5-flash": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,video",
+                    "context_length": 991000,  # 252K
+                    "description": "Qwen3 Max（阿里云百炼）",
+                    "raw_model": "qwen3.5-flash",
+                },
                 "aliyun_bailian:qwen3-max": {
                     "provider": "aliyun_bailian",
                     "type": "chat",
@@ -364,12 +371,13 @@ class LLMRegistry:
         # 结构: task_type -> {"model": 主模型, "fallbacks": [备用模型列表]}
         self._task_config: Dict[str, Dict[str, Any]] = {
             "intent_recognition": {
-                "model": "Pro/deepseek-ai/DeepSeek-V3.2",
+                "model": "aliyun_bailian:qwen3-max",
                 "fallbacks": [
                     "deepseek-ai/DeepSeek-V3.2",
                     "Pro/deepseek-ai/DeepSeek-R1",
                     "Qwen/Qwen3-235B-A22B-Instruct-2507",
                     "Pro/moonshotai/Kimi-K2.5",
+                    "Pro/deepseek-ai/DeepSeek-V3.2",
                     "Pro/zai-org/GLM-5",
                     "moonshotai/Kimi-K2-Thinking",
                     "Pro/MiniMaxAI/MiniMax-M2.5",
@@ -378,11 +386,12 @@ class LLMRegistry:
                 ],
             },
             "query_rewriting": {
-                "model": "Pro/deepseek-ai/DeepSeek-V3.2",
+                "model": "aliyun_bailian:qwen3.5-flash",
                 "fallbacks": [
                     "Qwen/Qwen3-235B-A22B-Instruct-2507",
                     "deepseek-ai/DeepSeek-V3.2",
                     "Pro/deepseek-ai/DeepSeek-R1",
+                    "Pro/deepseek-ai/DeepSeek-V3.2",
                     "Pro/moonshotai/Kimi-K2.5",
                     "Pro/zai-org/GLM-5",
                     "moonshotai/Kimi-K2-Thinking",

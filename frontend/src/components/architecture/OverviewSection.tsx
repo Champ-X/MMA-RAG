@@ -17,16 +17,16 @@ export function OverviewSection() {
         </h1>
         <div className="space-y-3 max-w-4xl">
           <p className="break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-            本项目是一个面向多知识库、多模态场景的 RAG（Retrieval-Augmented Generation）Agent 系统，旨在解决企业级知识管理中的核心挑战：如何在多个异构知识库中，高效、准确地检索并生成包含文档与图像的统一回答。支持多种内容来源（本地上传、URL、文件夹、热点订阅等），并可扩展音频/视频模态。
+            本项目是一个面向多知识库、全模态场景的 RAG（Retrieval-Augmented Generation）Agent 系统，旨在解决企业级知识管理中的核心挑战：如何在多个异构知识库中，高效、准确地检索并生成包含文档、图像、音频与视频的统一回答。支持多种内容来源（本地上传、URL、文件夹、热点订阅等），并完整支持音频（ASR+CLAP）与视频（关键帧+整体描述+CLIP）模态。
           </p>
           <div className="space-y-2">
             <p className="break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
               <span className="font-semibold text-slate-700 dark:text-slate-200">核心设计理念：</span>
-              采用领域驱动设计（DDD）架构，将系统划分为 Ingestion、Knowledge、Retrieval、Generation 与 LLM Manager 五个核心业务模块，每个模块职责清晰、可独立演进，通过统一接口协作完成端到端 RAG 流程；LLM 调用由 Core 层统一管理，支持多厂商 API 与任务路由。
+              采用领域驱动设计（DDD）架构，将系统划分为 Ingestion、Knowledge、Retrieval、Generation 与 LLM Manager 五个核心业务模块，每个模块职责清晰、可独立演进，通过统一接口协作完成端到端 RAG 流程；LLM 调用由 Core 层统一管理，支持多厂商 API 与多模态任务（图注、ASR、生成、重排等）路由。
             </p>
             <p className="break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
               <span className="font-semibold text-slate-700 dark:text-slate-200">关键技术特性：</span>
-              文档与图像统一检索；基于 K-Means + LLM 主题摘要的知识库画像与加权路由；三路混合检索（Dense 语义向量、BGE-M3 稀疏向量、CLIP + VLM 视觉特征）与两阶段重排（RRF 粗排 + Cross-Encoder 精排）；One-Pass 意图识别与视觉/音频/视频意图分支；完整思考链可视化与引用展示。
+              文档、图片、音频、视频全模态统一检索与引用；基于 K-Means + LLM 主题摘要的知识库画像（可覆盖全模态）与加权路由；多路混合检索（Dense、BGE-M3 稀疏、Visual 图片、Audio 音频、Video 视频）与两阶段重排（RRF 粗排 + Cross-Encoder 精排）；One-Pass 意图识别与 visual/audio/video 意图分支；完整思考链可视化与多模态引用展示（灯箱、播放器、关键帧）。
             </p>
             <p className="break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
               <span className="font-semibold text-slate-700 dark:text-slate-200">本页说明：</span>
@@ -84,7 +84,7 @@ export function OverviewSection() {
               {overviewStats.coreApis}+{overviewStats.modelTasks}
             </div>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              MinIO / Qdrant / Redis + 多任务 LLM（意图、VLM、生成、重排、画像等）
+              MinIO / Qdrant / Redis + 多任务 LLM（意图、VLM、ASR、生成、重排、画像等）
             </p>
           </CardContent>
         </Card>
