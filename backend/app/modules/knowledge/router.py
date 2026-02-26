@@ -22,7 +22,7 @@ ROUTING_TOP_N = 30
 ROUTING_TOP_K_PER_KB = 5  # 每个 KB 只取前 K 个最相关节点求加权平均，缓解画像多的 KB 累加分数过高
 ROUTING_DECAY_ALPHA = 0.9  # 位置衰减：w_i = α^(i-1)，越靠前的节点权重越大
 ROUTING_ALL_LOW_THRESHOLD = 0.08
-ROUTING_GAP_DOMINANT = 0.25
+ROUTING_GAP_DOMINANT = 0.3
 
 @dataclass
 class RoutingResult:
@@ -272,10 +272,10 @@ class KnowledgeRouter:
                 routing_method = "dual_kb" if len(top2) == 2 else "single_kb"
             
             logger.info(
-                "知识库路由-决策: 第一名={}({:.4f}) 第二名={}({:.4f}) gap={:.4f} 阈值=0.25 -> {} 目标KB={}",
+                "知识库路由-决策: 第一名={}({:.4f}) 第二名={}({:.4f}) gap={:.4f} 阈值={} -> {} 目标KB={}",
                 first_id, first_score,
                 second_id or "-", second_score,
-                gap, routing_method, target_kb_ids,
+                gap, ROUTING_GAP_DOMINANT, routing_method, target_kb_ids,
             )
             confidence_scores = {k: normed[k] for k in target_kb_ids}
             

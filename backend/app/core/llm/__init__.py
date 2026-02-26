@@ -363,6 +363,13 @@ class LLMRegistry:
                     "description": "Qwen Omni Turbo（阿里云百炼）",
                     "raw_model": "qwen-omni-turbo",
                 },
+                "aliyun_bailian:kimi/kimi-k2.5": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,video",
+                    "context_length": 30000,  # 30K
+                    "description": "Kimi K2.5（阿里云百炼）",
+                    "raw_model": "kimi/kimi-k2.5",
+                },
             }
             self._models.update(aliyun_bailian_models)
 
@@ -411,8 +418,9 @@ class LLMRegistry:
                 ],
             },
             "final_generation": {
-                "model": "Pro/moonshotai/Kimi-K2.5",
+                "model": "aliyun_bailian:kimi/kimi-k2.5",
                 "fallbacks": [
+                    "Pro/moonshotai/Kimi-K2.5",
                     "deepseek-ai/DeepSeek-V3.2", 
                     "deepseek-ai/DeepSeek-R1",
                     "Pro/deepseek-ai/DeepSeek-R1",
@@ -474,6 +482,7 @@ class LLMRegistry:
                 "model": "aliyun_bailian:qwen3.5-plus-2026-02-15",
                 "fallbacks": [
                     "aliyun_bailian:qwen3.5-plus",
+                    "aliyun_bailian:kimi/kimi-k2.5",
                     "openrouter:google/gemini-3-pro-preview",
                     "openrouter:google/gemini-3-flash-preview",
                     "openrouter:google/gemini-2.5-flash",
