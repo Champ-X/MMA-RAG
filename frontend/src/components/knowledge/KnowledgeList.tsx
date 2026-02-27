@@ -280,7 +280,7 @@ function FilePreviewModal({
                     {details?.description && <p>{details.description}</p>}
                     {details?.transcript && (
                       <p className={details?.description ? 'border-t border-slate-200 dark:border-slate-700 pt-2 mt-2' : ''}>
-                        <span className="text-slate-500 dark:text-slate-400 text-xs font-medium">转写内容：</span>
+                        <span className="text-slate-500 dark:text-slate-400 text-xs font-medium">转写内容</span>
                         <br />
                         {details.transcript}
                       </p>

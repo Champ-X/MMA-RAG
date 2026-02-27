@@ -5,6 +5,8 @@
 
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
 import asyncio
+import json
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -712,24 +714,25 @@ class IngestionService:
                 "message": "音频转文本(ASR)...",
             })
             
-            # 1. 音频转文本(ASR)
+            # 1. 音频转文本(ASR)；一步 MLLM 可同时返回 transcript + description
             audio_format = parse_result.get("format", "mp3")
             transcript_result = await self._transcribe_audio(file_content, audio_format, processing_id)
             transcript = transcript_result.get("transcript", "")
+            description = transcript_result.get("description")
             
-            self._update_processing_status(processing_id, {
-                "stage": "describing",
-                "progress": 50,
-                "message": "生成音频描述...",
-            })
-            
-            # 2. 音频描述生成（可选）
-            description = await self._generate_audio_description(
-                file_content, 
-                transcript, 
-                audio_format,
-                processing_id
-            )
+            # 2. 若一步 MLLM 未返回 description，则回退到基于 transcript 的文本 LLM 生成描述
+            if not description or not description.strip():
+                self._update_processing_status(processing_id, {
+                    "stage": "describing",
+                    "progress": 50,
+                    "message": "生成音频描述...",
+                })
+                description = await self._generate_audio_description(
+                    file_content,
+                    transcript,
+                    audio_format,
+                    processing_id
+                )
             
             # 3. 文本向量化（transcript + description）
             self._update_processing_status(processing_id, {
@@ -2102,22 +2105,46 @@ class IngestionService:
                 "error": str(e)
             }
     
+    def _parse_audio_mllm_json(self, content: str) -> Optional[Dict[str, Any]]:
+        """从 MLLM 返回的文本中解析出 transcript + description 的 JSON，失败返回 None。"""
+        if not content or not content.strip():
+            return None
+        raw = content.strip()
+        # 尝试去掉 ```json ... ``` 包裹
+        json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw)
+        if json_match:
+            raw = json_match.group(1).strip()
+        try:
+            obj = json.loads(raw)
+            if isinstance(obj, dict) and "transcript" in obj:
+                transcript = obj.get("transcript")
+                description = obj.get("description")
+                if transcript is None:
+                    transcript = ""
+                if not isinstance(transcript, str):
+                    transcript = str(transcript) if transcript else ""
+                if description is not None and not isinstance(description, str):
+                    description = str(description) if description else ""
+                return {"transcript": transcript, "description": description if isinstance(obj.get("description"), str) else None}
+            return None
+        except (json.JSONDecodeError, TypeError):
+            return None
+
     async def _transcribe_audio(
         self,
         audio_bytes: bytes,
         audio_format: str,
         processing_id: str
     ) -> Dict[str, Any]:
-        """音频转文本(ASR)"""
+        """音频转文本(ASR)；若 MLLM 支持一步输出，则同时返回 description，否则 description 为 None 由调用方回退到文本 LLM 生成。"""
         try:
             # 将音频转换为 base64（OpenRouter 要求 base64，不支持直接 URL）
             audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
             
-            # 使用专门的音频转文本 prompt
-            prompt_text = prompt_engine.render_template("audio_transcription")
+            # 使用「转写 + 描述」一步输出的 prompt（能处理音频的 MLLM 一次产出 transcript + description）
+            prompt_text = prompt_engine.render_template("audio_transcription_with_description")
             
             # 构建多模态消息：OpenRouter 使用 input_audio 类型（见 https://openrouter.ai/docs/features/multimodal/audio）
-            # 必须使用 type: "input_audio" 与 input_audio: { data, format }，否则模型收不到音频
             format_for_api = (audio_format or "mp3").lower()
             if format_for_api == "mpeg":
                 format_for_api = "mp3"
@@ -2125,22 +2152,15 @@ class IngestionService:
                 {
                     "role": "user",
                     "content": [
-                        {
-                            "type": "text",
-                            "text": prompt_text
-                        },
+                        {"type": "text", "text": prompt_text},
                         {
                             "type": "input_audio",
-                            "input_audio": {
-                                "data": audio_base64,
-                                "format": format_for_api
-                            }
+                            "input_audio": {"data": audio_base64, "format": format_for_api}
                         }
                     ]
                 }
             ]
             
-            # 调用支持音频的多模态LLM（audio_transcription 任务路由到 qwen3-omni-flash / gemini 等）
             result = await self.llm_manager.chat(
                 messages=messages,
                 task_type="audio_transcription",
@@ -2149,19 +2169,29 @@ class IngestionService:
             
             if not result.success:
                 logger.warning(f"音频转文本失败，使用占位符: {result.error}")
-                return {"transcript": "音频转文本失败，请查看原始文件。"}
+                return {"transcript": "音频转文本失败，请查看原始文件。", "description": None}
             
-            # 提取transcript（result.data 可能为 None）
             data = result.data
-            transcript = (data.get("choices", [{}])[0].get("message", {}).get("content", "") or "") if data else ""
-            if not transcript:
-                transcript = "音频转文本结果为空"
+            content = (data.get("choices", [{}])[0].get("message", {}).get("content", "") or "") if data else ""
+            if not content:
+                return {"transcript": "音频转文本结果为空", "description": None}
             
-            return {"transcript": transcript}
+            # 尝试解析为 JSON（transcript + description 一步输出）
+            parsed = self._parse_audio_mllm_json(content)
+            if parsed is not None:
+                transcript = (parsed.get("transcript") or "").strip() or "音频转文本结果为空"
+                description = (parsed.get("description") or "").strip() or None
+                if description:
+                    logger.debug("音频一步 MLLM 同时返回 transcript 与 description")
+                return {"transcript": transcript, "description": description}
+            
+            # 回退：模型未返回合法 JSON，整段视为 transcript
+            logger.debug("音频 MLLM 未返回 JSON，整段作为 transcript，description 将回退到文本 LLM 生成")
+            return {"transcript": content.strip() or "音频转文本结果为空", "description": None}
             
         except Exception as e:
             logger.error(f"音频转文本失败: {str(e)}")
-            return {"transcript": f"音频转文本处理失败: {str(e)}"}
+            return {"transcript": f"音频转文本处理失败: {str(e)}", "description": None}
     
     async def _generate_audio_description(
         self,

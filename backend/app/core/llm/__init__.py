@@ -471,10 +471,10 @@ class LLMRegistry:
             "audio_transcription": {
                 "model": "aliyun_bailian:qwen3-omni-flash",
                 "fallbacks": [
+                    "aliyun_bailian:qwen-omni-turbo",
                     "openrouter:google/gemini-3-flash-preview",
                     "openrouter:google/gemini-2.5-flash",
                     "openrouter:google/gemini-3-pro-preview",
-                    "aliyun_bailian:qwen-omni-turbo",
                 ],
             },
             # 视频解析：长视频场景划分+关键帧、短视频整体描述，需支持多图/视觉
