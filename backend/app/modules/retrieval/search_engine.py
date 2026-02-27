@@ -470,7 +470,7 @@ class HybridSearchEngine:
                         "from_video_keyframe": True,
                     })
                 if video_keyframe_results:
-                    logger.info("Visual检索补充: 从 video_vectors 关键帧召回 %s 条，合并为图片结果", len([r for r in search_results if r.get("from_video_keyframe")]))
+                    logger.info("Visual检索补充: 从 video_vectors 关键帧召回 {} 条，合并为图片结果", len([r for r in search_results if r.get("from_video_keyframe")]))
                 
                 logger.info(
                     f"Visual检索完成（双路RRF）: {len(search_results)} 个图片结果, "
@@ -551,7 +551,7 @@ class HybridSearchEngine:
                         "from_video_keyframe": True,
                     })
                 if video_keyframe_results:
-                    logger.info("Visual检索补充: 从 video_vectors 关键帧召回 %s 条，合并为图片结果", len([r for r in search_results if r.get("from_video_keyframe")]))
+                    logger.info("Visual检索补充: 从 video_vectors 关键帧召回 {} 条，合并为图片结果", len([r for r in search_results if r.get("from_video_keyframe")]))
                 
                 logger.info(
                     f"Visual检索完成（单路文本语义）: {len(search_results)} 个图片结果, "
