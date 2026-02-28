@@ -43,11 +43,13 @@ export interface Message {
     id: number | string;
     type?: 'doc' | 'image' | 'audio' | 'video';
     file_name?: string;
+    file_path?: string;
     content?: string;
     img_url?: string;
     audio_url?: string | null;
+    video_url?: string | null;
     scores?: { dense?: number; sparse?: number; visual?: number; rerank?: number };
-    debug_info?: { chunk_id?: string; context_window?: { prev: string; next: string } };
+    debug_info?: { chunk_id?: string; kb_id?: string; context_window?: { prev: string; next: string } };
     url?: string;
     title?: string;
     snippet?: string;

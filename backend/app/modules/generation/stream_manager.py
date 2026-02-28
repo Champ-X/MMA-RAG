@@ -60,6 +60,9 @@ def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
         elif ref_type in ("audio", "video"):
             # 音频/视频引用带 kb_id，便于前端按需请求播放地址
             item["debug_info"] = {"kb_id": meta.get("kb_id")}
+        elif ref_type == "image":
+            # 图片引用带 kb_id，便于前端在 URL 过期后按需刷新预览地址
+            item["debug_info"] = {"kb_id": meta.get("kb_id")}
         refs.append(item)
     return refs
 

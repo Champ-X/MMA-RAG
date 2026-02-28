@@ -313,7 +313,7 @@ function createCiteClickHandler(
   }
 }
 
-// 段落下方居中显示的图片组件（仅展示 type===image 且有 img_url 的引用，避免音频被当图片展示）
+// 段落下方居中显示的图片组件（展示 type===image 且有 img_url 或可刷新 file_path+kb_id 的引用）
 function ParagraphImageDisplay({
   citations,
   onCiteClick,
@@ -323,12 +323,20 @@ function ParagraphImageDisplay({
   onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void
   messageId?: string
 }) {
+  // 有 img_url 或具备 file_path + kb_id（可按需刷新）的图片引用均展示
   const imageOnlyCitations = React.useMemo(
-    () => citations.filter((c): c is CitationReference => c?.type === 'image' && !!c?.img_url),
+    () =>
+      citations.filter(
+        (c): c is CitationReference =>
+          c?.type === 'image' &&
+          (!!c?.img_url || (!!c?.file_path && !!c?.debug_info?.kb_id))
+      ),
     [citations]
   )
   const [failedImages, setFailedImages] = React.useState<Set<number | string>>(new Set())
   const [loadedImages, setLoadedImages] = React.useState<Set<number | string>>(new Set())
+  /** 按需刷新后的图片 URL（用于历史消息中 presigned URL 过期后重新拉取） */
+  const [refreshedImgUrls, setRefreshedImgUrls] = React.useState<Record<string, string>>({})
   const imageRefs = React.useRef<Map<number | string, HTMLImageElement>>(new Map())
   const failedImagesRef = React.useRef<Set<number | string>>(new Set())
   const loadedImagesRef = React.useRef<Set<number | string>>(new Set())
@@ -341,6 +349,24 @@ function ParagraphImageDisplay({
   React.useEffect(() => {
     loadedImagesRef.current = loadedImages
   }, [loadedImages])
+
+  // 无有效 URL 但有 file_path + kb_id 时按需拉取图片预览（如从历史加载的引用）
+  React.useEffect(() => {
+    let cancelled = false
+    imageOnlyCitations.forEach((citation) => {
+      const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
+      if (citation.img_url || refreshedImgUrls[key] || !citation.file_path || !citation.debug_info?.kb_id) return
+      chatApi
+        .getReferenceImageUrl({ kb_id: citation.debug_info.kb_id, file_path: citation.file_path })
+        .then((res) => {
+          if (!cancelled && res?.img_url) setRefreshedImgUrls((prev) => ({ ...prev, [key]: res.img_url }))
+        })
+        .catch(() => {})
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [imageOnlyCitations, messageId])
 
   if (imageOnlyCitations.length === 0) return null
 
@@ -378,29 +404,49 @@ function ParagraphImageDisplay({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [citationIds])
 
-  const handleImageError = (citationId: number | string, e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setFailedImages((prev) => new Set(prev).add(citationId))
-    setLoadedImages((prev) => {
-      const next = new Set(prev)
-      next.delete(citationId)
-      return next
-    })
-    // 立即隐藏图片元素和父容器，防止显示破损图标
-    const img = e.currentTarget
-    img.setAttribute('data-error', 'true')
-    img.style.display = 'none'
-    img.style.visibility = 'hidden'
-    img.style.opacity = '0'
-    img.style.width = '0'
-    img.style.height = '0'
-    // 隐藏父容器（button）
-    const button = img.closest('button')
-    if (button) {
-      button.style.display = 'none'
-    }
-  }
+  const handleImageError = React.useCallback(
+    async (citationId: number | string, citation: CitationReference, e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const kbId = citation.debug_info?.kb_id
+      const filePath = citation.file_path
+      if (filePath && kbId) {
+        try {
+          const res = await chatApi.getReferenceImageUrl({ kb_id: kbId, file_path: filePath })
+          if (res?.img_url) {
+            const key = messageId ? `${messageId}-${citationId}` : String(citationId)
+            setRefreshedImgUrls((prev) => ({ ...prev, [key]: res.img_url }))
+            setFailedImages((prev) => {
+              const next = new Set(prev)
+              next.delete(citationId)
+              return next
+            })
+            return
+          }
+        } catch {
+          // 刷新失败，下面会标记为失败
+        }
+      }
+      setFailedImages((prev) => new Set(prev).add(citationId))
+      setLoadedImages((prev) => {
+        const next = new Set(prev)
+        next.delete(citationId)
+        return next
+      })
+      const img = e.currentTarget
+      img.setAttribute('data-error', 'true')
+      img.style.display = 'none'
+      img.style.visibility = 'hidden'
+      img.style.opacity = '0'
+      img.style.width = '0'
+      img.style.height = '0'
+      const button = img.closest('button')
+      if (button) {
+        button.style.display = 'none'
+      }
+    },
+    [messageId]
+  )
 
   const handleImageLoad = (citationId: number | string) => {
     setLoadedImages((prev) => new Set(prev).add(citationId))
@@ -465,7 +511,7 @@ function ParagraphImageDisplay({
                   imageRefs.current.delete(citation.id)
                 }
               }}
-              src={citation.img_url}
+              src={citation.img_url || refreshedImgUrls[messageId ? `${messageId}-${citation.id}` : String(citation.id)] || ''}
               alt={citation.file_name || ''}
               className="max-h-64 max-w-full object-contain block m-0 p-0"
               style={{ 
@@ -476,14 +522,14 @@ function ParagraphImageDisplay({
               onError={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                handleImageError(citation.id, e)
+                handleImageError(citation.id, citation, e)
               }}
               onLoad={() => handleImageLoad(citation.id)}
               // 防止显示 broken image 图标
               onAbort={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                handleImageError(citation.id, e as any)
+                handleImageError(citation.id, citation, e as React.SyntheticEvent<HTMLImageElement, Event>)
               }}
               // 添加额外的错误处理
               onLoadStart={() => {
@@ -590,6 +636,18 @@ function ParagraphAudioDisplay({
                     className="w-full h-8 rounded-lg [&::-webkit-media-controls-panel]:bg-slate-50/80 dark:[&::-webkit-media-controls-panel]:bg-slate-800/80"
                     preload="metadata"
                     onClick={(e) => e.stopPropagation()}
+                    onError={async () => {
+                      if (!citation.file_path || !citation.debug_info?.kb_id) return
+                      try {
+                        const res = await chatApi.getReferenceAudioUrl({
+                          kb_id: citation.debug_info.kb_id,
+                          file_path: citation.file_path,
+                        })
+                        if (res?.audio_url) setFetchedAudioUrls((prev) => ({ ...prev, [key]: res.audio_url }))
+                      } catch {
+                        // 刷新失败，用户可点击弹层查看
+                      }
+                    }}
                   />
                 </div>
               ) : (
@@ -636,12 +694,14 @@ function VideoPlayerWithSeek({
   endSec,
   className,
   onClick,
+  onError,
 }: {
   src: string
   startSec?: number | null
   endSec?: number | null
   className?: string
   onClick?: (e: React.MouseEvent<HTMLVideoElement>) => void
+  onError?: (e: React.SyntheticEvent<HTMLVideoElement, Event>) => void
 }) {
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const hasSeeked = React.useRef(false)
@@ -683,6 +743,7 @@ function VideoPlayerWithSeek({
       preload="metadata"
       className={className}
       onClick={onClick}
+      onError={onError}
     />
   )
 }
@@ -823,6 +884,18 @@ function ParagraphVideoDisplay({
                     endSec={endSec}
                     className="w-full h-auto aspect-video rounded-lg object-contain bg-black shadow-sm"
                     onClick={(e) => e.stopPropagation()}
+                    onError={async () => {
+                      if (!citation.file_path || !citation.debug_info?.kb_id) return
+                      try {
+                        const res = await chatApi.getReferenceVideoUrl({
+                          kb_id: citation.debug_info.kb_id,
+                          file_path: citation.file_path,
+                        })
+                        if (res?.video_url) setFetchedVideoUrls((prev) => ({ ...prev, [key]: res.video_url }))
+                      } catch {
+                        // 刷新失败，用户可点击弹层查看
+                      }
+                    }}
                   />
                 </div>
               ) : (

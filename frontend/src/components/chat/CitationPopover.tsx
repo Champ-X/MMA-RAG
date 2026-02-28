@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useState, useRef, useEffect } from 'react'
 import React from 'react'
 import type { CitationReference } from '@/types/sse'
+import { chatApi } from '@/services/api_client'
 
 function formatTimeLabel(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '0:00'
@@ -23,7 +24,17 @@ function shortenFileName(fileName: string, maxLen = 24): string {
   return base.slice(0, Math.max(0, maxLen - ext.length - 1)) + '…' + ext
 }
 
-function VideoWithSeek({ src, startSec, endSec }: { src: string; startSec?: number | null; endSec?: number | null }) {
+function VideoWithSeek({
+  src,
+  startSec,
+  endSec,
+  onError,
+}: {
+  src: string
+  startSec?: number | null
+  endSec?: number | null
+  onError?: (e: React.SyntheticEvent<HTMLVideoElement, Event>) => void
+}) {
   const ref = useRef<HTMLVideoElement>(null)
   const hasSeeked = useRef(false)
   useEffect(() => {
@@ -59,6 +70,7 @@ function VideoWithSeek({ src, startSec, endSec }: { src: string; startSec?: numb
       controls
       preload="metadata"
       className="w-full h-auto min-h-[200px] aspect-video rounded-lg object-contain bg-black"
+      onError={onError}
     />
   )
 }
@@ -71,16 +83,31 @@ interface CitationPopoverProps {
   onOpenInspector: () => void
 }
 
-// 图片显示组件，带错误处理
-function ImageDisplayWithErrorHandler({ imgUrl, fileName }: { imgUrl: string; fileName?: string }) {
+// 图片显示组件，带错误处理与失败时刷新（onErrorRetry 返回新 URL 时重试）
+function ImageDisplayWithErrorHandler({
+  imgUrl,
+  fileName,
+  onErrorRetry,
+}: {
+  imgUrl: string
+  fileName?: string
+  onErrorRetry?: () => Promise<string | null>
+}) {
   const [imageError, setImageError] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
+  const [retryUrl, setRetryUrl] = useState<string | null>(null)
   const imgRef = React.useRef<HTMLImageElement>(null)
+  const effectiveSrc = imgUrl || retryUrl || ''
 
-  // 检查图片是否已经加载完成（从缓存中）
+  useEffect(() => {
+    setImageError(false)
+    setImageLoaded(false)
+    setRetryUrl(null)
+  }, [imgUrl])
+
   React.useEffect(() => {
     const img = imgRef.current
-    if (img) {
+    if (img && effectiveSrc) {
       if (img.complete && img.naturalHeight !== 0) {
         setImageLoaded(true)
         img.style.visibility = 'visible'
@@ -88,23 +115,37 @@ function ImageDisplayWithErrorHandler({ imgUrl, fileName }: { imgUrl: string; fi
         img.style.visibility = 'hidden'
       }
     }
-  }, [])
-  
-  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setImageError(true)
-    setImageLoaded(false)
-    // 立即隐藏图片元素，防止显示破损图标
-    const img = e.currentTarget
-    img.setAttribute('data-error', 'true')
-    img.style.display = 'none'
-    img.style.visibility = 'hidden'
-    img.style.opacity = '0'
-    img.style.width = '0'
-    img.style.height = '0'
-  }
-  
+  }, [effectiveSrc])
+
+  const handleImageError = React.useCallback(
+    async (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (onErrorRetry) {
+        try {
+          const newUrl = await onErrorRetry()
+          if (newUrl) {
+            setRetryUrl(newUrl)
+            setImageLoaded(false)
+            return
+          }
+        } catch {
+          // 刷新失败，下面标记为错误
+        }
+      }
+      setImageError(true)
+      setImageLoaded(false)
+      const img = e.currentTarget
+      img.setAttribute('data-error', 'true')
+      img.style.display = 'none'
+      img.style.visibility = 'hidden'
+      img.style.opacity = '0'
+      img.style.width = '0'
+      img.style.height = '0'
+    },
+    [onErrorRetry]
+  )
+
   const handleImageLoad = () => {
     setImageLoaded(true)
     const img = imgRef.current
@@ -112,7 +153,9 @@ function ImageDisplayWithErrorHandler({ imgUrl, fileName }: { imgUrl: string; fi
       img.style.visibility = 'visible'
     }
   }
-  
+
+  if (!effectiveSrc) return null
+
   return (
     <div className="mb-3">
       <div
@@ -136,18 +179,17 @@ function ImageDisplayWithErrorHandler({ imgUrl, fileName }: { imgUrl: string; fi
             )}
             <img
               ref={imgRef}
-              src={imgUrl}
+              src={effectiveSrc}
               alt={fileName}
               className="max-w-full max-h-full w-auto h-auto object-contain"
-              style={{ 
-                opacity: imageLoaded ? 1 : 0, 
+              style={{
+                opacity: imageLoaded ? 1 : 0,
                 transition: imageLoaded ? 'opacity 0.2s' : 'none',
                 visibility: imageLoaded ? 'visible' : 'hidden'
               }}
               onLoadStart={() => {
                 const img = imgRef.current
                 if (img && !imageLoaded) {
-                  // 加载开始时隐藏，防止显示破损图标
                   img.style.visibility = 'hidden'
                   img.style.opacity = '0'
                 }
@@ -170,6 +212,61 @@ export function CitationPopover({
   onClose,
   onOpenInspector,
 }: CitationPopoverProps) {
+  const [refreshedImgUrl, setRefreshedImgUrl] = useState<string | null>(null)
+  const [refreshedAudioUrl, setRefreshedAudioUrl] = useState<string | null>(null)
+  const [refreshedVideoUrl, setRefreshedVideoUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open || !item) return
+    setRefreshedImgUrl(null)
+    setRefreshedAudioUrl(null)
+    setRefreshedVideoUrl(null)
+  }, [open, item?.id])
+
+  // 无 URL 但有 file_path + kb_id 时，打开弹层后自动拉取一次媒体地址
+  useEffect(() => {
+    if (!open || !item) return
+    const kbId = item.debug_info?.kb_id
+    const filePath = item.file_path
+    if (!filePath || !kbId) return
+    if (item.type === 'image' && !item.img_url && !refreshedImgUrl) {
+      let cancelled = false
+      chatApi
+        .getReferenceImageUrl({ kb_id: kbId, file_path: filePath })
+        .then((res) => {
+          if (!cancelled && res?.img_url) setRefreshedImgUrl(res.img_url)
+        })
+        .catch(() => {})
+      return () => {
+        cancelled = true
+      }
+    }
+    if (item.type === 'audio' && !item.audio_url && !refreshedAudioUrl) {
+      let cancelled = false
+      chatApi
+        .getReferenceAudioUrl({ kb_id: kbId, file_path: filePath })
+        .then((res) => {
+          if (!cancelled && res?.audio_url) setRefreshedAudioUrl(res.audio_url)
+        })
+        .catch(() => {})
+      return () => {
+        cancelled = true
+      }
+    }
+    if (item.type === 'video' && !item.video_url && !refreshedVideoUrl) {
+      let cancelled = false
+      chatApi
+        .getReferenceVideoUrl({ kb_id: kbId, file_path: filePath })
+        .then((res) => {
+          if (!cancelled && res?.video_url) setRefreshedVideoUrl(res.video_url)
+        })
+        .catch(() => {})
+      return () => {
+        cancelled = true
+      }
+    }
+  }, [open, item?.id, item?.type, item?.img_url, item?.audio_url, item?.video_url, item?.file_path, item?.debug_info?.kb_id, refreshedImgUrl, refreshedAudioUrl, refreshedVideoUrl])
+
   if (!open || !item || !rect) return null
 
   // 增大弹窗尺寸：音频/视频有更多展示空间
@@ -282,18 +379,60 @@ export function CitationPopover({
 
           {/* 内容区域可滚动：图片与文字一起滚动 */}
           <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0 scrollbar-hide">
-            {item.type === 'image' && item.img_url && (
-              <ImageDisplayWithErrorHandler imgUrl={item.img_url} fileName={item.file_name} />
+            {item.type === 'image' && (item.img_url || refreshedImgUrl || (item.file_path && item.debug_info?.kb_id)) && (
+              <ImageDisplayWithErrorHandler
+                imgUrl={item.img_url || refreshedImgUrl || ''}
+                fileName={item.file_name}
+                onErrorRetry={
+                  item.file_path && item.debug_info?.kb_id
+                    ? async () => {
+                        try {
+                          const res = await chatApi.getReferenceImageUrl({
+                            kb_id: item.debug_info!.kb_id!,
+                            file_path: item.file_path!,
+                          })
+                          if (res?.img_url) {
+                            setRefreshedImgUrl(res.img_url)
+                            return res.img_url
+                          }
+                        } catch {
+                          //
+                        }
+                        return null
+                      }
+                    : undefined
+                }
+              />
             )}
 
             {item.type === 'audio' && (
               <>
-                {item.audio_url && (
+                {(item.audio_url || refreshedAudioUrl) && (
                   <div className="mb-4 rounded-xl border border-amber-200/70 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-950/40 p-4 shadow-sm">
-                    <audio src={item.audio_url} controls className="w-full h-12 rounded-lg" preload="metadata" />
+                    <audio
+                      src={item.audio_url || refreshedAudioUrl || ''}
+                      controls
+                      className="w-full h-12 rounded-lg"
+                      preload="metadata"
+                      onError={
+                        item.file_path && item.debug_info?.kb_id
+                          ? async () => {
+                              try {
+                                const res = await chatApi.getReferenceAudioUrl({
+                                  kb_id: item.debug_info!.kb_id!,
+                                  file_path: item.file_path!,
+                                })
+                                if (res?.audio_url) setRefreshedAudioUrl(res.audio_url)
+                              } catch {
+                                //
+                              }
+                            }
+                          : undefined
+                      }
+                    />
                   </div>
                 )}
-                {(item.content || !item.audio_url) && (
+                {(item.content || !(item.audio_url || refreshedAudioUrl)) && (
                   <div className="rounded-xl bg-amber-50/50 dark:bg-amber-900/20 p-4 text-sm text-slate-700 dark:text-slate-200 border border-amber-100/80 dark:border-amber-800/40 leading-relaxed">
                     <div className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap max-h-[200px] overflow-y-auto">
                       {item.content || '无内容'}
@@ -305,7 +444,7 @@ export function CitationPopover({
 
             {item.type === 'video' && (
               <>
-                {item.video_url && (
+                {(item.video_url || refreshedVideoUrl) && (
                   <div className="mb-4 rounded-xl overflow-hidden border border-sky-200/70 dark:border-sky-800/50 bg-slate-100/80 dark:bg-slate-800/80 p-3 ring-1 ring-slate-200/50 dark:ring-slate-600/30 shadow-sm">
                     {(item.start_sec != null || item.end_sec != null) && (
                       <div className="mb-2 flex items-center">
@@ -318,10 +457,29 @@ export function CitationPopover({
                         </span>
                       </div>
                     )}
-                    <VideoWithSeek src={item.video_url} startSec={item.start_sec} endSec={item.end_sec} />
+                    <VideoWithSeek
+                      src={item.video_url || refreshedVideoUrl || ''}
+                      startSec={item.start_sec}
+                      endSec={item.end_sec}
+                      onError={
+                        item.file_path && item.debug_info?.kb_id
+                          ? async () => {
+                              try {
+                                const res = await chatApi.getReferenceVideoUrl({
+                                  kb_id: item.debug_info!.kb_id!,
+                                  file_path: item.file_path!,
+                                })
+                                if (res?.video_url) setRefreshedVideoUrl(res.video_url)
+                              } catch {
+                                //
+                              }
+                            }
+                          : undefined
+                      }
+                    />
                   </div>
                 )}
-                {(item.content || !item.video_url) && (
+                {(item.content || !(item.video_url || refreshedVideoUrl)) && (
                   <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50">
                     <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap max-h-[180px] overflow-y-auto">
                       {item.content || '无内容'}

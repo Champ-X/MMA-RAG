@@ -232,6 +232,7 @@ async def stream_chat(
             yield f"data: {_thought_event('generation', {'message': '正在准备生成回答...', 'status': 'preparing'})}\n\n"
 
             answer_chunks = []
+            last_citations = []  # 用于保存引用，以便会话历史中能恢复图片/音视频
             async for event in generation_service.stream_generate_response(
                 query=message,
                 retrieval_result=retrieval_result,
@@ -258,13 +259,14 @@ async def stream_chat(
                     yield f"data: {_thought_event(stage, payload)}\n\n"
                 elif event_type == "citation":
                     refs = event.data.get("references", event.data.get("citations", []))
+                    last_citations = refs
                     yield f"data: {json.dumps({'type': 'citation', 'data': {'references': refs}}, ensure_ascii=False)}\n\n"
                 elif event_type == "error":
                     yield f"data: {json.dumps({'type': 'error', 'message': event.data.get('error', '未知错误')})}\n\n"
                 elif event_type == "done":
                     break
 
-            # 保存消息到会话
+            # 保存消息到会话（含 citations，便于历史记录中保留 file_path/debug_info 以便按需刷新 URL）
             full_answer = "".join(answer_chunks)
             session["messages"].append({
                 "role": "user",
@@ -274,6 +276,7 @@ async def stream_chat(
             session["messages"].append({
                 "role": "assistant",
                 "content": full_answer,
+                "citations": last_citations,
                 "timestamp": datetime.utcnow().isoformat()
             })
             session["updated_at"] = datetime.utcnow().isoformat()
@@ -344,6 +347,35 @@ async def get_reference_video_url(request: Request):
     except Exception as e:
         logger.debug("生成引用视频预签名 URL 失败: %s", e)
         raise HTTPException(status_code=500, detail="无法生成播放地址")
+
+
+@router.post("/reference-image-url")
+async def get_reference_image_url(request: Request):
+    """根据 kb_id 与 file_path 返回图片预签名 URL，供前端在 URL 过期后按需刷新预览。"""
+    try:
+        body = await request.json()
+        kb_id = (body.get("kb_id") or "").strip()
+        file_path = (body.get("file_path") or "").strip()
+        if not file_path:
+            raise HTTPException(status_code=400, detail="file_path 不能为空")
+        if not kb_id:
+            raise HTTPException(
+                status_code=400,
+                detail="缺少知识库 ID，无法生成预览地址；请从引用详情或检查器中查看",
+            )
+        minio_adapter = MinIOAdapter()
+        bucket = minio_adapter.get_bucket_for_kb(kb_id)
+        img_url = await minio_adapter.get_presigned_url(
+            bucket=bucket,
+            object_path=file_path,
+            expires_hours=24,
+        )
+        return {"img_url": img_url}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.debug("生成引用图片预签名 URL 失败: %s", e)
+        raise HTTPException(status_code=500, detail="无法生成预览地址")
 
 
 @router.get("/history")
