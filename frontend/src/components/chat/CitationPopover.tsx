@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import React from 'react'
 import type { CitationReference } from '@/types/sse'
 import { chatApi } from '@/services/api_client'
+import { useChatStore } from '@/store/useChatStore'
 
 function formatTimeLabel(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '0:00'
@@ -212,6 +213,8 @@ export function CitationPopover({
   onClose,
   onOpenInspector,
 }: CitationPopoverProps) {
+  const activeSession = useChatStore((s) => s.getActiveSession())
+  const fallbackKbId = activeSession?.knowledgeBaseIds?.[0]
   const [refreshedImgUrl, setRefreshedImgUrl] = useState<string | null>(null)
   const [refreshedAudioUrl, setRefreshedAudioUrl] = useState<string | null>(null)
   const [refreshedVideoUrl, setRefreshedVideoUrl] = useState<string | null>(null)
@@ -226,8 +229,8 @@ export function CitationPopover({
   // 无 URL 但有 file_path + kb_id 时，打开弹层后自动拉取一次媒体地址
   useEffect(() => {
     if (!open || !item) return
-    const kbId = item.debug_info?.kb_id
-    const filePath = item.file_path
+    const kbId = item.debug_info?.kb_id || fallbackKbId
+    const filePath = item.file_path || item.file_name
     if (!filePath || !kbId) return
     if (item.type === 'image' && !item.img_url && !refreshedImgUrl) {
       let cancelled = false
@@ -265,7 +268,7 @@ export function CitationPopover({
         cancelled = true
       }
     }
-  }, [open, item?.id, item?.type, item?.img_url, item?.audio_url, item?.video_url, item?.file_path, item?.debug_info?.kb_id, refreshedImgUrl, refreshedAudioUrl, refreshedVideoUrl])
+  }, [open, item?.id, item?.type, item?.img_url, item?.audio_url, item?.video_url, item?.file_path, item?.file_name, item?.debug_info?.kb_id, fallbackKbId, refreshedImgUrl, refreshedAudioUrl, refreshedVideoUrl])
 
   if (!open || !item || !rect) return null
 
@@ -379,17 +382,17 @@ export function CitationPopover({
 
           {/* 内容区域可滚动：图片与文字一起滚动 */}
           <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0 scrollbar-hide">
-            {item.type === 'image' && (item.img_url || refreshedImgUrl || (item.file_path && item.debug_info?.kb_id)) && (
+            {item.type === 'image' && (item.img_url || refreshedImgUrl || ((item.file_path || item.file_name) && (item.debug_info?.kb_id || fallbackKbId))) && (
               <ImageDisplayWithErrorHandler
-                imgUrl={item.img_url || refreshedImgUrl || ''}
+                imgUrl={refreshedImgUrl || item.img_url || ''}
                 fileName={item.file_name}
                 onErrorRetry={
-                  item.file_path && item.debug_info?.kb_id
+                  (item.file_path || item.file_name) && (item.debug_info?.kb_id || fallbackKbId)
                     ? async () => {
                         try {
                           const res = await chatApi.getReferenceImageUrl({
-                            kb_id: item.debug_info!.kb_id!,
-                            file_path: item.file_path!,
+                            kb_id: item.debug_info?.kb_id || fallbackKbId!,
+                            file_path: item.file_path || item.file_name || '',
                           })
                           if (res?.img_url) {
                             setRefreshedImgUrl(res.img_url)
@@ -410,17 +413,17 @@ export function CitationPopover({
                 {(item.audio_url || refreshedAudioUrl) && (
                   <div className="mb-4 rounded-xl border border-amber-200/70 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-950/40 p-4 shadow-sm">
                     <audio
-                      src={item.audio_url || refreshedAudioUrl || ''}
+                      src={refreshedAudioUrl || item.audio_url || ''}
                       controls
                       className="w-full h-12 rounded-lg"
                       preload="metadata"
                       onError={
-                        item.file_path && item.debug_info?.kb_id
+                        (item.file_path || item.file_name) && (item.debug_info?.kb_id || fallbackKbId)
                           ? async () => {
                               try {
                                 const res = await chatApi.getReferenceAudioUrl({
-                                  kb_id: item.debug_info!.kb_id!,
-                                  file_path: item.file_path!,
+                                  kb_id: item.debug_info?.kb_id || fallbackKbId!,
+                                  file_path: item.file_path || item.file_name || '',
                                 })
                                 if (res?.audio_url) setRefreshedAudioUrl(res.audio_url)
                               } catch {
@@ -458,16 +461,16 @@ export function CitationPopover({
                       </div>
                     )}
                     <VideoWithSeek
-                      src={item.video_url || refreshedVideoUrl || ''}
+                      src={refreshedVideoUrl || item.video_url || ''}
                       startSec={item.start_sec}
                       endSec={item.end_sec}
                       onError={
-                        item.file_path && item.debug_info?.kb_id
+                        (item.file_path || item.file_name) && (item.debug_info?.kb_id || fallbackKbId)
                           ? async () => {
                               try {
                                 const res = await chatApi.getReferenceVideoUrl({
-                                  kb_id: item.debug_info!.kb_id!,
-                                  file_path: item.file_path!,
+                                  kb_id: item.debug_info?.kb_id || fallbackKbId!,
+                                  file_path: item.file_path || item.file_name || '',
                                 })
                                 if (res?.video_url) setRefreshedVideoUrl(res.video_url)
                               } catch {

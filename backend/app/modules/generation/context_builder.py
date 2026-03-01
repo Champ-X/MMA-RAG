@@ -310,7 +310,7 @@ class ContextBuilder:
                 try:
                     kb_id = image["metadata"].get("kb_id")
                     bucket = (
-                        self.minio_adapter.bucket_name_for_kb(kb_id)
+                        self.minio_adapter.get_bucket_for_kb(kb_id)
                         if kb_id
                         else "images"
                     )
@@ -393,7 +393,7 @@ class ContextBuilder:
                 async def _presigned_audio(ref_id: str, ref: ReferenceMap, aud: Dict[str, Any]) -> None:
                     try:
                         kb_id = aud["metadata"].get("kb_id")
-                        bucket = self.minio_adapter.bucket_name_for_kb(kb_id) if kb_id else None
+                        bucket = self.minio_adapter.get_bucket_for_kb(kb_id) if kb_id else None
                         if bucket and aud.get("file_path"):
                             url = await self.minio_adapter.get_presigned_url(
                                 bucket=bucket,
@@ -444,7 +444,7 @@ class ContextBuilder:
             try:
                 kb_id = (reference.metadata or {}).get("kb_id")
                 bucket = (
-                    self.minio_adapter.bucket_name_for_kb(kb_id)
+                    self.minio_adapter.get_bucket_for_kb(kb_id)
                     if kb_id
                     else None
                 )
@@ -470,7 +470,7 @@ class ContextBuilder:
                 continue
             kb_id = (reference.metadata or {}).get("kb_id")
             bucket = (
-                self.minio_adapter.bucket_name_for_kb(kb_id)
+                self.minio_adapter.get_bucket_for_kb(kb_id)
                 if kb_id
                 else None
             )
@@ -730,7 +730,7 @@ class ContextBuilder:
                 try:
                     kb_id = (reference.metadata or {}).get("kb_id")
                     bucket = (
-                        self.minio_adapter.bucket_name_for_kb(kb_id)
+                        self.minio_adapter.get_bucket_for_kb(kb_id)
                         if kb_id
                         else "images"  # 兼容旧数据：无 kb_id 时按类型回退
                     )
@@ -750,7 +750,7 @@ class ContextBuilder:
                 try:
                     kb_id = (reference.metadata or {}).get("kb_id")
                     bucket = (
-                        self.minio_adapter.bucket_name_for_kb(kb_id)
+                        self.minio_adapter.get_bucket_for_kb(kb_id)
                         if kb_id
                         else "documents"  # 兼容旧数据
                     )
@@ -770,7 +770,7 @@ class ContextBuilder:
                 try:
                     kb_id = (reference.metadata or {}).get("kb_id")
                     bucket = (
-                        self.minio_adapter.bucket_name_for_kb(kb_id)
+                        self.minio_adapter.get_bucket_for_kb(kb_id)
                         if kb_id
                         else None
                     )

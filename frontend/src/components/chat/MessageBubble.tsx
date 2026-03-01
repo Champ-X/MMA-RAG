@@ -11,7 +11,7 @@ import rehypeHighlight from 'rehype-highlight'
 import { cn } from '@/lib/utils'
 import { chatApi } from '@/services/api_client'
 import type { CitationReference } from '@/types/sse'
-import type { ThoughtData, ThinkingState } from '@/store/useChatStore'
+import { useChatStore, type ThoughtData, type ThinkingState } from '@/store/useChatStore'
 
 /** 流式时从 ChatInterface 传入的实时思考数据，保证思考框在气泡顶部展示 */
 export interface LiveThinkingProps {
@@ -318,10 +318,12 @@ function ParagraphImageDisplay({
   citations,
   onCiteClick,
   messageId,
+  fallbackKbId,
 }: {
   citations: CitationReference[]
   onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void
   messageId?: string
+  fallbackKbId?: string
 }) {
   // 有 img_url 或具备 file_path + kb_id（可按需刷新）的图片引用均展示
   const imageOnlyCitations = React.useMemo(
@@ -329,14 +331,16 @@ function ParagraphImageDisplay({
       citations.filter(
         (c): c is CitationReference =>
           c?.type === 'image' &&
-          (!!c?.img_url || (!!c?.file_path && !!c?.debug_info?.kb_id))
+          (!!c?.img_url || (!!(c?.file_path || c?.file_name) && !!(c?.debug_info?.kb_id || fallbackKbId)))
       ),
-    [citations]
+    [citations, fallbackKbId]
   )
   const [failedImages, setFailedImages] = React.useState<Set<number | string>>(new Set())
   const [loadedImages, setLoadedImages] = React.useState<Set<number | string>>(new Set())
   /** 按需刷新后的图片 URL（用于历史消息中 presigned URL 过期后重新拉取） */
   const [refreshedImgUrls, setRefreshedImgUrls] = React.useState<Record<string, string>>({})
+  const refreshAttemptedRef = React.useRef<Set<string>>(new Set())
+  const loadTimeoutsRef = React.useRef<Map<string, number>>(new Map())
   const imageRefs = React.useRef<Map<number | string, HTMLImageElement>>(new Map())
   const failedImagesRef = React.useRef<Set<number | string>>(new Set())
   const loadedImagesRef = React.useRef<Set<number | string>>(new Set())
@@ -349,15 +353,29 @@ function ParagraphImageDisplay({
   React.useEffect(() => {
     loadedImagesRef.current = loadedImages
   }, [loadedImages])
+  
+  React.useEffect(() => {
+    return () => {
+      loadTimeoutsRef.current.forEach((timer) => window.clearTimeout(timer))
+      loadTimeoutsRef.current.clear()
+    }
+  }, [])
+
+  const buildImageKey = React.useCallback(
+    (citationId: number | string) => (messageId ? `${messageId}-${citationId}` : String(citationId)),
+    [messageId]
+  )
 
   // 无有效 URL 但有 file_path + kb_id 时按需拉取图片预览（如从历史加载的引用）
   React.useEffect(() => {
     let cancelled = false
     imageOnlyCitations.forEach((citation) => {
-      const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
-      if (citation.img_url || refreshedImgUrls[key] || !citation.file_path || !citation.debug_info?.kb_id) return
+      const key = buildImageKey(citation.id)
+      const kbId = citation.debug_info?.kb_id || fallbackKbId
+      const filePath = citation.file_path || citation.file_name
+      if (citation.img_url || refreshedImgUrls[key] || !filePath || !kbId) return
       chatApi
-        .getReferenceImageUrl({ kb_id: citation.debug_info.kb_id, file_path: citation.file_path })
+        .getReferenceImageUrl({ kb_id: kbId, file_path: filePath })
         .then((res) => {
           if (!cancelled && res?.img_url) setRefreshedImgUrls((prev) => ({ ...prev, [key]: res.img_url }))
         })
@@ -366,7 +384,7 @@ function ParagraphImageDisplay({
     return () => {
       cancelled = true
     }
-  }, [imageOnlyCitations, messageId])
+  }, [buildImageKey, fallbackKbId, imageOnlyCitations, messageId])
 
   if (imageOnlyCitations.length === 0) return null
 
@@ -408,14 +426,20 @@ function ParagraphImageDisplay({
     async (citationId: number | string, citation: CitationReference, e: React.SyntheticEvent<HTMLImageElement, Event>) => {
       e.preventDefault()
       e.stopPropagation()
-      const kbId = citation.debug_info?.kb_id
-      const filePath = citation.file_path
+      const key = buildImageKey(citationId)
+      const oldTimer = loadTimeoutsRef.current.get(key)
+      if (oldTimer) {
+        window.clearTimeout(oldTimer)
+        loadTimeoutsRef.current.delete(key)
+      }
+      const kbId = citation.debug_info?.kb_id || fallbackKbId
+      const filePath = citation.file_path || citation.file_name
       if (filePath && kbId) {
         try {
           const res = await chatApi.getReferenceImageUrl({ kb_id: kbId, file_path: filePath })
           if (res?.img_url) {
-            const key = messageId ? `${messageId}-${citationId}` : String(citationId)
             setRefreshedImgUrls((prev) => ({ ...prev, [key]: res.img_url }))
+            refreshAttemptedRef.current.add(key)
             setFailedImages((prev) => {
               const next = new Set(prev)
               next.delete(citationId)
@@ -445,7 +469,7 @@ function ParagraphImageDisplay({
         button.style.display = 'none'
       }
     },
-    [messageId]
+    [buildImageKey, fallbackKbId]
   )
 
   const handleImageLoad = (citationId: number | string) => {
@@ -470,6 +494,7 @@ function ParagraphImageDisplay({
       {validCitations.map((citation) => {
         const isFailed = failedImages.has(citation.id)
         const isLoaded = loadedImages.has(citation.id)
+        const imageKey = buildImageKey(citation.id)
         
         if (isFailed) return null
         
@@ -511,7 +536,7 @@ function ParagraphImageDisplay({
                   imageRefs.current.delete(citation.id)
                 }
               }}
-              src={citation.img_url || refreshedImgUrls[messageId ? `${messageId}-${citation.id}` : String(citation.id)] || ''}
+              src={refreshedImgUrls[imageKey] || citation.img_url || ''}
               alt={citation.file_name || ''}
               className="max-h-64 max-w-full object-contain block m-0 p-0"
               style={{ 
@@ -538,6 +563,25 @@ function ParagraphImageDisplay({
                 if (img) {
                   img.style.visibility = 'hidden'
                 }
+                const oldTimer = loadTimeoutsRef.current.get(imageKey)
+                if (oldTimer) window.clearTimeout(oldTimer)
+                const timer = window.setTimeout(async () => {
+                  if (loadedImagesRef.current.has(citation.id) || failedImagesRef.current.has(citation.id)) return
+                  if (refreshAttemptedRef.current.has(imageKey)) return
+                  const kbId = citation.debug_info?.kb_id || fallbackKbId
+                  const filePath = citation.file_path || citation.file_name
+                  if (!kbId || !filePath) return
+                  try {
+                    const res = await chatApi.getReferenceImageUrl({ kb_id: kbId, file_path: filePath })
+                    if (res?.img_url) {
+                      refreshAttemptedRef.current.add(imageKey)
+                      setRefreshedImgUrls((prev) => ({ ...prev, [imageKey]: res.img_url }))
+                    }
+                  } catch {
+                    // ignore
+                  }
+                }, 8000)
+                loadTimeoutsRef.current.set(imageKey, timer)
               }}
             />
           </button>
@@ -553,11 +597,13 @@ function ParagraphAudioDisplay({
   onCiteClick,
   messageId,
   displayIndexByRefId,
+  fallbackKbId,
 }: {
   citations: CitationReference[]
   onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void
   messageId?: string
   displayIndexByRefId?: Map<number | string, number>
+  fallbackKbId?: string
 }) {
   const [fetchedAudioUrls, setFetchedAudioUrls] = React.useState<Record<string, string>>({})
   const [loadingRefId, setLoadingRefId] = React.useState<string | number | null>(null)
@@ -569,7 +615,7 @@ function ParagraphAudioDisplay({
       {citations.map((citation) => {
         const displayNum = displayIndexByRefId?.get(citation.id) ?? citation.id
         const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
-        const resolvedUrl = citation.type === 'audio' && (citation.audio_url || fetchedAudioUrls[key])
+        const resolvedUrl = citation.type === 'audio' && (fetchedAudioUrls[key] || citation.audio_url)
         const hasAudioUrl = !!resolvedUrl
 
         const handleOpenPopover = (e: React.MouseEvent) => {
@@ -581,15 +627,17 @@ function ParagraphAudioDisplay({
 
         const handleClickPlay = async () => {
           if (hasAudioUrl) return
-          if (!citation.file_path && onCiteClick) {
+          const filePath = citation.file_path || citation.file_name
+          const kbId = citation.debug_info?.kb_id || fallbackKbId
+          if (!filePath && onCiteClick) {
             onCiteClick(citation.id, new DOMRect(0, 0, 0, 0), messageId)
             return
           }
           setLoadingRefId(citation.id)
           try {
             const res = await chatApi.getReferenceAudioUrl({
-              kb_id: citation.debug_info?.kb_id ?? undefined,
-              file_path: citation.file_path!,
+              kb_id: kbId ?? undefined,
+              file_path: filePath!,
             })
             if (res?.audio_url) setFetchedAudioUrls((prev) => ({ ...prev, [key]: res.audio_url }))
           } catch {
@@ -637,11 +685,13 @@ function ParagraphAudioDisplay({
                     preload="metadata"
                     onClick={(e) => e.stopPropagation()}
                     onError={async () => {
-                      if (!citation.file_path || !citation.debug_info?.kb_id) return
+                      const filePath = citation.file_path || citation.file_name
+                      const kbId = citation.debug_info?.kb_id || fallbackKbId
+                      if (!filePath || !kbId) return
                       try {
                         const res = await chatApi.getReferenceAudioUrl({
-                          kb_id: citation.debug_info.kb_id,
-                          file_path: citation.file_path,
+                          kb_id: kbId,
+                          file_path: filePath,
                         })
                         if (res?.audio_url) setFetchedAudioUrls((prev) => ({ ...prev, [key]: res.audio_url }))
                       } catch {
@@ -775,11 +825,13 @@ function ParagraphVideoDisplay({
   onCiteClick,
   messageId,
   displayIndexByRefId,
+  fallbackKbId,
 }: {
   citations: CitationReference[]
   onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void
   messageId?: string
   displayIndexByRefId?: Map<number | string, number>
+  fallbackKbId?: string
 }) {
   const [fetchedVideoUrls, setFetchedVideoUrls] = React.useState<Record<string, string>>({})
   const [loadingRefId, setLoadingRefId] = React.useState<string | number | null>(null)
@@ -801,7 +853,7 @@ function ParagraphVideoDisplay({
       {citations.map((citation) => {
         const displayNum = displayIndexByRefId?.get(citation.id) ?? citation.id
         const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
-        const resolvedUrl = citation.type === 'video' && (citation.video_url || fetchedVideoUrls[key])
+        const resolvedUrl = citation.type === 'video' && (fetchedVideoUrls[key] || citation.video_url)
         const hasVideoUrl = !!resolvedUrl
         const startSec = citation.start_sec != null ? Number(citation.start_sec) : null
         const endSec = citation.end_sec != null ? Number(citation.end_sec) : null
@@ -826,15 +878,17 @@ function ParagraphVideoDisplay({
 
         const handleClickPlay = async () => {
           if (hasVideoUrl) return
-          if (!citation.file_path && onCiteClick) {
+          const filePath = citation.file_path || citation.file_name
+          const kbId = citation.debug_info?.kb_id || fallbackKbId
+          if (!filePath && onCiteClick) {
             onCiteClick(citation.id, new DOMRect(0, 0, 0, 0), messageId)
             return
           }
           setLoadingRefId(citation.id)
           try {
             const res = await chatApi.getReferenceVideoUrl({
-              kb_id: citation.debug_info?.kb_id ?? undefined,
-              file_path: citation.file_path!,
+              kb_id: kbId ?? undefined,
+              file_path: filePath!,
             })
             if (res?.video_url) setFetchedVideoUrls((prev) => ({ ...prev, [key]: res.video_url }))
           } catch {
@@ -885,11 +939,13 @@ function ParagraphVideoDisplay({
                     className="w-full h-auto aspect-video rounded-lg object-contain bg-black shadow-sm"
                     onClick={(e) => e.stopPropagation()}
                     onError={async () => {
-                      if (!citation.file_path || !citation.debug_info?.kb_id) return
+                      const filePath = citation.file_path || citation.file_name
+                      const kbId = citation.debug_info?.kb_id || fallbackKbId
+                      if (!filePath || !kbId) return
                       try {
                         const res = await chatApi.getReferenceVideoUrl({
-                          kb_id: citation.debug_info.kb_id,
-                          file_path: citation.file_path,
+                          kb_id: kbId,
+                          file_path: filePath,
                         })
                         if (res?.video_url) setFetchedVideoUrls((prev) => ({ ...prev, [key]: res.video_url }))
                       } catch {
@@ -994,6 +1050,8 @@ export function MessageBubble({
   citationMap,
   onCiteClick,
 }: MessageBubbleProps) {
+  const activeSession = useChatStore((s) => s.getActiveSession())
+  const fallbackKbId = activeSession?.knowledgeBaseIds?.[0]
   const isUser = message.type === 'user'
   const showThinking = !isUser && (message.thinking || (isStreaming && liveThinking))
   const isStoppedHint = !isUser && message.error === 'stopped_hint' // 终止提示消息
@@ -1154,6 +1212,7 @@ export function MessageBubble({
                 citations={newImageRefs}
                 onCiteClick={handleCiteClick}
                 messageId={message.id}
+                fallbackKbId={fallbackKbId}
               />
             )}
             {newAudioRefs.length > 0 && (
@@ -1162,6 +1221,7 @@ export function MessageBubble({
                 onCiteClick={handleCiteClick}
                 messageId={message.id}
                 displayIndexByRefId={originalIdToDisplayIndex}
+                fallbackKbId={fallbackKbId}
               />
             )}
             {newVideoRefs.length > 0 && (
@@ -1170,6 +1230,7 @@ export function MessageBubble({
                 onCiteClick={handleCiteClick}
                 messageId={message.id}
                 displayIndexByRefId={originalIdToDisplayIndex}
+                fallbackKbId={fallbackKbId}
               />
             )}
           </>

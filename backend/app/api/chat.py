@@ -5,11 +5,13 @@
 
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import StreamingResponse
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 import json
 import asyncio
 import uuid
 from datetime import datetime
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from app.core.logger import get_logger
 from app.core.llm.manager import llm_manager
@@ -26,6 +28,91 @@ generation_service = GenerationService()
 
 # 简单的会话存储（生产环境应使用Redis或数据库）
 sessions: Dict[str, Dict[str, Any]] = {}
+
+
+def _normalize_media_file_path(file_path: str) -> str:
+    """归一化引用中的 file_path（兼容 URL/绝对路径/编码路径）。"""
+    raw = unquote((file_path or "").strip())
+    if raw.startswith("http://") or raw.startswith("https://"):
+        parsed = urlparse(raw)
+        raw = unquote(parsed.path or "")
+    raw = raw.split("?", 1)[0].split("#", 1)[0].strip()
+    return raw.lstrip("/")
+
+
+def _build_object_path_candidates(file_path: str, media_prefix: str) -> List[str]:
+    """构建 object_path 候选，兼容历史数据路径格式差异。"""
+    raw = _normalize_media_file_path(file_path)
+    if not raw:
+        return []
+    candidates: List[str] = []
+
+    def _add(p: str) -> None:
+        p = (p or "").strip().lstrip("/")
+        if p and p not in candidates:
+            candidates.append(p)
+
+    _add(raw)
+    if "/" in raw:
+        # 兼容 file_path 中误带 bucket 前缀：kb-xxx/images/a.jpg -> images/a.jpg
+        _add(raw.split("/", 1)[1])
+    base_name = Path(raw).name
+    if base_name:
+        _add(f"{media_prefix}/{base_name}")
+    return candidates
+
+
+def _build_bucket_candidates(minio_adapter: MinIOAdapter, kb_id: str) -> List[str]:
+    """构建 bucket 候选（兼容 kb_id 可能已是 bucket 名的历史数据）。"""
+    candidates: List[str] = []
+    for b in [minio_adapter.get_bucket_for_kb(kb_id), minio_adapter.bucket_name_for_kb(kb_id), kb_id]:
+        if not b or b in candidates:
+            continue
+        try:
+            if minio_adapter.bucket_exists(b):
+                candidates.append(b)
+        except Exception:
+            continue
+    # 至少保留一个主候选，避免 bucket_exists 网络抖动导致空列表
+    if not candidates:
+        candidates.append(minio_adapter.get_bucket_for_kb(kb_id))
+    return candidates
+
+
+async def _resolve_media_presigned_url(
+    *,
+    minio_adapter: MinIOAdapter,
+    kb_id: str,
+    file_path: str,
+    media_prefix: str,
+    expires_hours: int = 24,
+) -> Tuple[str, str, str]:
+    """
+    解析并校验真实存在的 bucket/object_path 后再生成 presigned URL。
+    返回: (url, bucket, object_path)
+    """
+    bucket_candidates = _build_bucket_candidates(minio_adapter, kb_id)
+    object_candidates = _build_object_path_candidates(file_path, media_prefix)
+    if not object_candidates:
+        raise HTTPException(status_code=400, detail="file_path 非法")
+
+    for bucket in bucket_candidates:
+        for object_path in object_candidates:
+            try:
+                minio_adapter.client.stat_object(bucket, object_path)
+                url = await minio_adapter.get_presigned_url(
+                    bucket=bucket,
+                    object_path=object_path,
+                    expires_hours=expires_hours,
+                )
+                return url, bucket, object_path
+            except Exception:
+                continue
+
+    raise HTTPException(
+        status_code=404,
+        detail=f"引用资源不存在：{Path(file_path).name or file_path}",
+    )
 
 @router.post("/message")
 async def chat_message(request: Request):
@@ -306,12 +393,14 @@ async def get_reference_audio_url(request: Request):
                 detail="缺少知识库 ID，无法生成播放地址；请从引用详情或检查器中查看",
             )
         minio_adapter = MinIOAdapter()
-        bucket = minio_adapter.get_bucket_for_kb(kb_id)
-        audio_url = await minio_adapter.get_presigned_url(
-            bucket=bucket,
-            object_path=file_path,
+        audio_url, bucket, object_path = await _resolve_media_presigned_url(
+            minio_adapter=minio_adapter,
+            kb_id=kb_id,
+            file_path=file_path,
+            media_prefix="audios",
             expires_hours=24,
         )
+        logger.debug("audio 引用URL已刷新: kb_id=%s bucket=%s object_path=%s", kb_id, bucket, object_path)
         return {"audio_url": audio_url}
     except HTTPException:
         raise
@@ -335,12 +424,14 @@ async def get_reference_video_url(request: Request):
                 detail="缺少知识库 ID，无法生成播放地址；请从引用详情或检查器中查看",
             )
         minio_adapter = MinIOAdapter()
-        bucket = minio_adapter.get_bucket_for_kb(kb_id)
-        video_url = await minio_adapter.get_presigned_url(
-            bucket=bucket,
-            object_path=file_path,
+        video_url, bucket, object_path = await _resolve_media_presigned_url(
+            minio_adapter=minio_adapter,
+            kb_id=kb_id,
+            file_path=file_path,
+            media_prefix="videos",
             expires_hours=24,
         )
+        logger.debug("video 引用URL已刷新: kb_id=%s bucket=%s object_path=%s", kb_id, bucket, object_path)
         return {"video_url": video_url}
     except HTTPException:
         raise
@@ -364,12 +455,14 @@ async def get_reference_image_url(request: Request):
                 detail="缺少知识库 ID，无法生成预览地址；请从引用详情或检查器中查看",
             )
         minio_adapter = MinIOAdapter()
-        bucket = minio_adapter.get_bucket_for_kb(kb_id)
-        img_url = await minio_adapter.get_presigned_url(
-            bucket=bucket,
-            object_path=file_path,
+        img_url, bucket, object_path = await _resolve_media_presigned_url(
+            minio_adapter=minio_adapter,
+            kb_id=kb_id,
+            file_path=file_path,
+            media_prefix="images",
             expires_hours=24,
         )
+        logger.debug("image 引用URL已刷新: kb_id=%s bucket=%s object_path=%s", kb_id, bucket, object_path)
         return {"img_url": img_url}
     except HTTPException:
         raise
