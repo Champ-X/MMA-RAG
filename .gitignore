@@ -76,3 +76,4 @@ tests/video/*.mp4
 *.bak
 *.backup
 .vscode/
+.minimax/
