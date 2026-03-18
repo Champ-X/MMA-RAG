@@ -52,8 +52,6 @@ minio server ./minio_data --console-address ":9001"
 
 macOS 无 Homebrew 公式，需用官方二进制或 Qdrant Cloud。
 
-/Users/xiangqingping.1/qdrant --config-path ./qdrant_config.yaml
-
 **方式 A：本机二进制（推荐）**
 
 1. 打开 [Qdrant Releases](https://github.com/qdrant/qdrant/releases/latest)
@@ -83,8 +81,13 @@ macOS 无 Homebrew 公式，需用官方二进制或 Qdrant Cloud。
 ## 二、环境与配置
 
 1. **Python 3.9+** 与 **Node.js 18+** 已安装。
-2. 项目根目录已有 `.env`（可从 `.env.example` 复制并填好 API Key）。
-3. 无 Docker 时，`.env` 中应使用本机地址（通常已默认）：
+2. **LibreOffice（建议安装）**：用于 `pptx/docx` 页内预览（后端会将 Office 文件转换为 PDF）。
+   - Linux（含 WSL）：`sudo apt-get update && sudo apt-get install -y libreoffice`
+3. **FFmpeg（建议安装）**：用于视频切段与音频提取（视频模态处理依赖）。
+   - macOS：`brew install ffmpeg`
+   - Linux（含 WSL）：`sudo apt-get update && sudo apt-get install -y ffmpeg`
+4. 项目根目录已有 `.env`（请直接编辑并填好 API Key）。
+5. 无 Docker 时，`.env` 中应使用本机地址（通常已默认）：
 
 ```env
 MINIO_ENDPOINT=localhost:9000
@@ -146,7 +149,7 @@ celery -A celery_app worker -Q knowledge,ingestion,retrieval,celery --loglevel=i
 
 | 服务         | 地址                                                                 |
 | ---------- | ------------------------------------------------------------------ |
-| 前端         | [http://localhost:5173](http://localhost:5173)                     |
+| 前端         | [http://localhost:3000](http://localhost:3000)                     |
 | 后端 API     | [http://localhost:8000](http://localhost:8000)                     |
 | API 文档     | [http://localhost:8000/docs](http://localhost:8000/docs)           |
 | MinIO 控制台  | [http://localhost:9001](http://localhost:9001)                     |
@@ -165,3 +168,9 @@ A: 使用 [Qdrant Cloud](https://qdrant.cloud/) 创建实例，在 `.env` 中填
 
 **Q: Celery 不启动会怎样？**  
 A: 聊天、检索、上传等核心功能可正常使用；依赖 Celery 的异步任务（如知识库画像更新）会不可用或延迟，按需再开 Worker。
+
+**Q: PPTX/DOCX 在预览弹窗中无法按页显示？**  
+A: 这是 Office 转 PDF 依赖缺失导致。请安装 LibreOffice 后重启后端服务。Linux/WSL 可执行：`sudo apt-get update && sudo apt-get install -y libreoffice`。在依赖缺失时，系统会回退到文本/分块预览。
+
+**Q: 视频解析报错 `ffmpeg 未找到` 怎么办？**  
+A: 先安装 FFmpeg（macOS: `brew install ffmpeg`；Linux/WSL: `sudo apt-get update && sudo apt-get install -y ffmpeg`）。若仍失败，请在 `.env` 中设置 `FFMPEG_PATH=/path/to/ffmpeg` 后重启后端。

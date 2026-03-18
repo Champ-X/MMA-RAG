@@ -37,8 +37,22 @@ function FilePreviewModal({
   const [audioLoading, setAudioLoading] = React.useState(false)
   const [videoObjectUrl, setVideoObjectUrl] = React.useState<string | null>(null)
   const [videoLoading, setVideoLoading] = React.useState(false)
+  const [officePreviewError, setOfficePreviewError] = React.useState<string | null>(null)
 
-  const fileTypeLower = String(file?.type || '').toLowerCase()
+  const rawFileType = String(file?.type || '').toLowerCase().split(';')[0].trim()
+  const fileNameLower = String(file?.name || '').toLowerCase()
+  const fileExtFromName = fileNameLower.includes('.') ? (fileNameLower.split('.').pop() || '') : ''
+  const mimeTypeMap: Record<string, string> = {
+    'application/pdf': 'pdf',
+    'application/msword': 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/vnd.ms-powerpoint': 'ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+    'text/plain': 'txt',
+    'text/markdown': 'md',
+  }
+  // 统一文件类型：优先扩展名（name），其次 MIME；避免 docx/pptx 被误判导致“暂无预览”
+  const fileTypeLower = (fileExtFromName || mimeTypeMap[rawFileType] || rawFileType).toLowerCase()
   const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'tif'].includes(fileTypeLower)
   /** PDF、PPTX、DOCX 均可通过 stream 接口以 PDF 形式在页内预览（后端对 PPTX/DOCX 会先转为 PDF） */
   const isPdfOrOfficeViewable = ['pdf', 'pptx', 'docx'].includes(fileTypeLower)
@@ -48,6 +62,7 @@ function FilePreviewModal({
   const isMd = fileTypeLower === 'md'
   const isTxt = fileTypeLower === 'txt'
   const isTextFile = isMd || isTxt
+  const isOfficeDocument = ['pptx', 'docx'].includes(fileTypeLower)
   const isDoc = ['pdf', 'docx', 'doc', 'pptx', 'txt', 'md'].includes(fileTypeLower)
   const hasChunks = (details?.chunks?.length ?? 0) > 0
 
@@ -56,14 +71,16 @@ function FilePreviewModal({
     setLoadingDetails(true)
     setDetails(null)
     setRawContent(null)
-    Promise.all([
-      knowledgeApi.getFilePreviewDetails(kbId, file.id),
-      isTextFile ? knowledgeApi.getFileTextContent(kbId, file.id).then((r) => r?.content ?? null).catch(() => null) : Promise.resolve(null),
-    ]).then(([d, content]) => {
-      setDetails(d ?? null)
-      setRawContent(content ?? null)
-    }).catch(() => setDetails(null)).finally(() => setLoadingDetails(false))
-  }, [file?.id, kbId, isTextFile])
+    Promise.allSettled([
+      knowledgeApi.getFilePreviewDetails(kbId, file.id, { timeoutMs: isDoc ? 120000 : 30000 }),
+      isTextFile ? knowledgeApi.getFileTextContent(kbId, file.id).then((r) => r?.content ?? null) : Promise.resolve(null),
+    ])
+      .then(([previewRes, contentRes]) => {
+        setDetails(previewRes.status === 'fulfilled' ? (previewRes.value ?? null) : null)
+        setRawContent(contentRes.status === 'fulfilled' ? (contentRes.value ?? null) : null)
+      })
+      .finally(() => setLoadingDetails(false))
+  }, [file?.id, kbId, isDoc, isTextFile])
 
   // PDF / PPTX / DOCX 使用 stream 接口获取 Blob（PPTX/DOCX 后端会转为 PDF）并生成 object URL，在 iframe 内展示
   const pdfObjectUrlRef = React.useRef<string | null>(null)
@@ -71,18 +88,26 @@ function FilePreviewModal({
     if (!isPdfOrOfficeViewable || !kbId || !file?.id) {
       pdfObjectUrlRef.current = null
       setPdfObjectUrl(null)
+      setOfficePreviewError(null)
       return
     }
     setPdfLoading(true)
     setPdfObjectUrl(null)
+    setOfficePreviewError(null)
     pdfObjectUrlRef.current = null
-    knowledgeApi.getFileStream(kbId, file.id)
+    // Office 预览需服务端先转 PDF，耗时可能超过默认 30s，单独放宽超时避免误报“不可用”
+    knowledgeApi.getFileStream(kbId, file.id, { timeoutMs: isOfficeDocument ? 180000 : 30000 })
       .then((blob) => {
         const url = URL.createObjectURL(blob)
         pdfObjectUrlRef.current = url
         setPdfObjectUrl(url)
       })
-      .catch(() => setPdfObjectUrl(null))
+      .catch((err: any) => {
+        setPdfObjectUrl(null)
+        if (isOfficeDocument) {
+          setOfficePreviewError(err?.message || 'Office 文件页面内预览暂不可用')
+        }
+      })
       .finally(() => setPdfLoading(false))
     return () => {
       const url = pdfObjectUrlRef.current
@@ -91,8 +116,9 @@ function FilePreviewModal({
         pdfObjectUrlRef.current = null
       }
       setPdfObjectUrl(null)
+      setOfficePreviewError(null)
     }
-  }, [isPdfOrOfficeViewable, kbId, file?.id])
+  }, [isPdfOrOfficeViewable, isOfficeDocument, kbId, file?.id])
 
   // 音频预览：通过 stream 获取 Blob 并生成 object URL，供 <audio> 使用
   const audioObjectUrlRef = React.useRef<string | null>(null)
@@ -155,6 +181,38 @@ function FilePreviewModal({
   // Markdown 预览仅使用原始文件内容（MinIO 中的原文），避免显示插入了图注后的分块文本导致重复/错乱
   const textPreview = isMd ? (rawContent ?? '') : (file?.textPreview ?? details?.text_preview ?? rawContent ?? '')
 
+  const renderTextPreviewCard = (extraHint?: React.ReactNode) => (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
+      <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
+        {isMd ? 'Markdown 预览' : '文本预览'}
+      </div>
+      {extraHint}
+      {isMd ? (
+        <div className="max-h-[60vh] overflow-y-auto prose prose-slate dark:prose-invert prose-sm max-w-none">
+          <ReactMarkdown
+            components={{
+              img: ({ src, alt, ...rest }) => {
+                const isLocalPath = typeof src === 'string' && (src.startsWith('/') || src.toLowerCase().startsWith('file://'))
+                const imgSrc = isLocalPath && kbId && file?.id
+                  ? knowledgeApi.getFilePreviewAssetUrl(kbId, file.id, src)
+                  : src
+                return <img src={imgSrc} alt={alt ?? ''} {...rest} className="max-w-full h-auto rounded border border-slate-200 dark:border-slate-700" />
+              },
+            }}
+          >
+            {textPreview}
+          </ReactMarkdown>
+        </div>
+      ) : (
+        <div className="max-h-[60vh] overflow-y-auto">
+          <pre className="text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-200 leading-relaxed font-sans">
+            {textPreview}
+          </pre>
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white dark:bg-slate-950 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800">
@@ -194,7 +252,7 @@ function FilePreviewModal({
               >
                 预览
               </button>
-              {hasChunks && (
+              {isDoc && (
                 <button
                   onClick={() => setTab('chunks')}
                   className={cn(
@@ -205,7 +263,7 @@ function FilePreviewModal({
                   )}
                   type="button"
                 >
-                  分块（{details?.chunks?.length ?? 0}）
+                  分块（{details?.chunks?.length ?? 0}{loadingDetails ? '…' : ''}）
                 </button>
               )}
             </div>
@@ -213,22 +271,30 @@ function FilePreviewModal({
         )}
 
         <div className="flex-1 overflow-y-auto p-6 min-h-0">
-          {tab === 'chunks' && hasChunks ? (
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-sm font-medium text-slate-800 dark:text-slate-100">
-                文档分块
-              </div>
-              <div className="max-h-[60vh] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-                {details!.chunks!.map((c) => (
-                  <div key={c.index} className="p-4">
-                    <div className="text-xs font-mono text-slate-500 dark:text-slate-400 mb-2">chunk #{c.index}</div>
-                    <div className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
-                      {c.text}
+          {tab === 'chunks' && isDoc ? (
+            hasChunks ? (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden">
+                <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-sm font-medium text-slate-800 dark:text-slate-100">
+                  文档分块
+                </div>
+                <div className="max-h-[60vh] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+                  {details!.chunks!.map((c) => (
+                    <div key={c.index} className="p-4">
+                      <div className="text-xs font-mono text-slate-500 dark:text-slate-400 mb-2">chunk #{c.index}</div>
+                      <div className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
+                        {c.text}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4 text-sm text-slate-600 dark:text-slate-300">
+                {loadingDetails
+                  ? '正在加载分块内容…'
+                  : '暂未获取到分块内容。可先查看「预览」文本；若文件刚上传，稍后重试即可。'}
+              </div>
+            )
           ) : isImg && file.previewUrl ? (
             <div className="space-y-4">
               <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
@@ -253,10 +319,26 @@ function FilePreviewModal({
                 className="w-full h-[60vh] min-h-[400px] max-h-[600px]"
               />
             </div>
+          ) : isOfficeDocument && pdfLoading && !!textPreview ? (
+            renderTextPreviewCard(
+              <div className="mb-3 rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/30 px-3 py-2 text-xs text-sky-700 dark:text-sky-300">
+                正在生成页内预览（Office 转 PDF 可能耗时几秒），你可先查看文本预览或切到「分块」。
+              </div>
+            )
           ) : isPdfOrOfficeViewable && pdfLoading ? (
             <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
               <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-transparent" />
               <div className="mt-3 text-sm">文档加载中…</div>
+            </div>
+          ) : isOfficeDocument && officePreviewError ? (
+            <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-4">
+              <div className="text-sm font-medium text-amber-800 dark:text-amber-200">Office 页内预览暂不可用</div>
+              <div className="mt-2 text-sm text-amber-700 dark:text-amber-300 leading-relaxed whitespace-pre-wrap">
+                {officePreviewError}
+              </div>
+              <div className="mt-2 text-xs text-amber-700/90 dark:text-amber-300/90">
+                若该文件已成功解析，可切换到「分块」查看内容；服务端安装 LibreOffice 后可恢复页内预览。
+              </div>
             </div>
           ) : isAudio && audioObjectUrl ? (
             <div className="space-y-4">
@@ -327,32 +409,13 @@ function FilePreviewModal({
               <div className="mt-3 text-sm">视频加载中…</div>
             </div>
           ) : textPreview ? (
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
-              <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
-                {isMd ? 'Markdown 预览' : '文本预览'}
-              </div>
-              <div className="max-h-[60vh] overflow-y-auto prose prose-slate dark:prose-invert prose-sm max-w-none">
-                {isMd ? (
-                  <ReactMarkdown
-                    components={{
-                      img: ({ src, alt, ...rest }) => {
-                        const isLocalPath = typeof src === 'string' && (src.startsWith('/') || src.toLowerCase().startsWith('file://'))
-                        const imgSrc = isLocalPath && kbId && file?.id
-                          ? knowledgeApi.getFilePreviewAssetUrl(kbId, file.id, src)
-                          : src
-                        return <img src={imgSrc} alt={alt ?? ''} {...rest} className="max-w-full h-auto rounded border border-slate-200 dark:border-slate-700" />
-                      },
-                    }}
-                  >
-                    {textPreview}
-                  </ReactMarkdown>
-                ) : (
-                  <pre className="text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-200 leading-relaxed font-sans">
-                    {textPreview}
-                  </pre>
-                )}
-              </div>
-            </div>
+            renderTextPreviewCard(
+              officePreviewError && isOfficeDocument ? (
+                <div className="mb-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                  {officePreviewError} 已自动切换为解析文本预览；如需页内幻灯片预览，请在服务端安装 LibreOffice。
+                </div>
+              ) : null
+            )
           ) : loadingDetails && (isTextFile || isImg || isDoc) ? (
             <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
               <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent" />

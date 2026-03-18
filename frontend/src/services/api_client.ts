@@ -66,8 +66,30 @@ class ApiClient {
 
   // GET 请求返回 Blob（用于 PDF 等流式预览）
   async getBlob(url: string, config?: AxiosRequestConfig): Promise<Blob> {
-    const response = await this.instance.get(url, { ...config, responseType: 'blob' });
-    return response.data as Blob;
+    try {
+      const response = await this.instance.get(url, { ...config, responseType: 'blob' });
+      return response.data as Blob;
+    } catch (error: any) {
+      const data = error?.response?.data;
+      if (data instanceof Blob) {
+        try {
+          const text = await data.text();
+          let detail = text;
+          try {
+            const json = JSON.parse(text);
+            if (json?.detail) {
+              detail = typeof json.detail === 'string' ? json.detail : JSON.stringify(json.detail);
+            }
+          } catch {
+            // ignore non-json body
+          }
+          throw new Error(detail || error?.message || '文件预览失败');
+        } catch {
+          throw new Error(error?.message || '文件预览失败');
+        }
+      }
+      throw error;
+    }
   }
 
   // POST请求
@@ -307,18 +329,24 @@ export const knowledgeApi = {
     apiClient.get<{ content: string }>(`/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/content`),
 
   // 获取文件预览详情（caption、chunks、text_preview；音频含 transcript、description）
-  getFilePreviewDetails: (kbId: string, fileId: string) =>
+  getFilePreviewDetails: (kbId: string, fileId: string, options?: { timeoutMs?: number }) =>
     apiClient.get<{
       caption?: string
       chunks?: Array<{ index: number; text: string }>
       text_preview?: string
       transcript?: string
       description?: string
-    }>(`/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/preview`),
+    }>(
+      `/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/preview`,
+      options?.timeoutMs ? { timeout: options.timeoutMs } : undefined
+    ),
 
-  // 获取文件流（用于页面内 PDF 预览，返回 Blob）
-  getFileStream: (kbId: string, fileId: string) =>
-    apiClient.getBlob(`/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/stream`),
+  // 获取文件流（用于页面内 PDF/Office 预览，返回 Blob）
+  getFileStream: (kbId: string, fileId: string, options?: { timeoutMs?: number }) =>
+    apiClient.getBlob(
+      `/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/stream`,
+      options?.timeoutMs ? { timeout: options.timeoutMs } : undefined
+    ),
 
   /** Markdown 预览中本地路径图片的 API URL（path 为 md 中的 src，如 /Users/.../image.png） */
   getFilePreviewAssetUrl: (kbId: string, fileId: string, path: string) =>

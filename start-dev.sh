@@ -74,6 +74,12 @@ fi
 echo "⚛️  启动前端服务..."
 cd ../frontend
 if command -v npm &> /dev/null; then
+    # 典型报错：sh: 1: vite: not found
+    # 原因通常是前端依赖未安装（node_modules 不存在或未包含 vite）
+    if [ ! -d node_modules ] || [ ! -x node_modules/.bin/vite ]; then
+        echo "📦 检测到前端依赖未安装，正在执行 npm install ..."
+        npm install
+    fi
     npm run dev &
 else
     echo "❌ npm 未安装"
@@ -83,10 +89,10 @@ fi
 echo "🎉 开发环境启动完成!"
 echo ""
 echo "📋 服务地址:"
-echo "  - 前端界面: http://localhost:5173"
+echo "  - 前端界面: http://localhost:3000"
 echo "  - 后端API:  http://localhost:8000"
 echo "  - API文档:  http://localhost:8000/docs"
-echo "  - MinIO控制台: http://localhost:9001 (admin/admin123)"
+echo "  - MinIO控制台: http://localhost:9001 (minioadmin/minioadmin)"
 echo "  - Qdrant控制台: http://localhost:6333/dashboard"
 echo ""
 echo "💡 提示:"

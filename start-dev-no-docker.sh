@@ -54,7 +54,7 @@ check_qdrant() {
         return 0
     fi
     echo "  ⚠️  Qdrant 未在 localhost:6333 运行（若使用 Qdrant Cloud 可忽略）"
-    echo "     请先手动启动：/Users/xiangqingping.1/qdrant --config-path ./qdrant_config.yaml"
+    echo "     请先手动启动：qdrant --config-path \"$PROJECT_ROOT/qdrant_config.yaml\""
     return 0
 }
 
@@ -161,7 +161,7 @@ echo ""
 echo "🎉 开发环境已启动（无 Docker）"
 echo ""
 echo "📋 服务地址:"
-echo "  - 前端:     http://localhost:5173"
+echo "  - 前端:     http://localhost:3000"
 echo "  - 后端 API: http://localhost:8000"
 echo "  - API 文档: http://localhost:8000/docs"
 echo ""

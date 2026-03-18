@@ -108,13 +108,14 @@ MMAA-agent/
 - Docker & Docker Compose
 - Node.js 18+、npm 或 pnpm
 - Python 3.9+（本地跑后端时）
+- LibreOffice（可选；若需要在页面内预览 PPTX/DOCX，后端会依赖其将 Office 文档转 PDF）
+- FFmpeg（可选；若启用视频解析/切段，后端会依赖 ffmpeg 可执行程序）
 
 ### 1. 克隆与配置
 ```bash
 git clone <repository-url>
 cd MMAA-agent
-
-cp .env.example .env
+# 项目默认使用根目录 .env（脚本会在需要时同步到 backend/.env）
 # 编辑 .env：至少配置 SILICONFLOW_API_KEY（或其它 LLM Provider 的 Key）
 ```
 
@@ -126,7 +127,7 @@ chmod +x start-dev.sh
 脚本会启动 MinIO、Qdrant、Redis，再在本地启动后端与前端。
 
 ### 3. 访问
-- **前端**：http://localhost:5173  
+- **前端**：http://localhost:3000  
 - **后端 API**：http://localhost:8000  
 - **API 文档**：http://localhost:8000/docs  
 - **MinIO 控制台**：http://localhost:9001（默认账号/密码见 docker-compose 或 .env）
@@ -145,12 +146,34 @@ docker-compose logs -f
 
 - **后端**：`backend/app/core/config.py`，环境变量覆盖 Qdrant/Redis/MinIO 等；模型与任务路由见 Core LLM 层。
 - **前端**：API 基地址与 SSE 等见 `frontend/src/services/`。
-- **环境变量示例**：`SILICONFLOW_API_KEY`、`QDRANT_HOST`、`QDRANT_PORT`、`REDIS_URL`、`MINIO_ENDPOINT`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY` 等，参考 `.env.example` 与 `docker-compose.yml`。
+- **环境变量示例**：`SILICONFLOW_API_KEY`、`QDRANT_HOST`、`QDRANT_PORT`、`REDIS_URL`、`MINIO_ENDPOINT`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY` 等，参考根目录 `.env`、`backend/.env` 与 `docker-compose.yml`。
 
 ## 测试与调试
 
 - **后端单元测试**：`cd backend && pytest tests/ -v`（若有 tests 目录）。
 - **检索与 RAG 行为**：前端对话页 + 架构页「RAG 请求链路」；调试信息通过引用与 Inspector 等组件查看。
+
+## 预览相关说明（PPTX/DOCX）
+
+- 页面内预览 `pptx/docx` 时，后端会先将文件转为 PDF 再返回给前端 iframe。
+- 若服务器未安装 LibreOffice，转换会失败，前端将自动回退到“文本预览/分块预览”，并提示安装依赖。
+- 在 Linux/WSL 新环境建议提前安装：
+
+```bash
+sudo apt-get update && sudo apt-get install -y libreoffice
+```
+
+## 视频解析相关说明（FFmpeg）
+
+- 视频模态的切段与音频提取依赖系统 `ffmpeg`（用于长视频分段与部分视频音频处理流程）。
+- 若未安装 `ffmpeg`，相关流程会降级或失败（日志会提示 `ffmpeg 未找到`）。
+- 在 Linux/WSL 新环境建议提前安装：
+
+```bash
+sudo apt-get update && sudo apt-get install -y ffmpeg
+```
+
+- 若 `ffmpeg` 不在 PATH，可在 `.env` 中设置：`FFMPEG_PATH=/your/path/to/ffmpeg`。
 
 ## 文档索引
 
@@ -168,6 +191,6 @@ docker-compose logs -f
 
 ---
 
-**快速体验**：`./start-dev.sh` → 打开 http://localhost:5173 → 创建知识库并上传文档/图片，开始对话与引用溯源。
+**快速体验**：`./start-dev.sh` → 打开 http://localhost:3000 → 创建知识库并上传文档/图片，开始对话与引用溯源。
 
 **核心价值**：多模态统一检索、知识库智能路由、思考过程可解释、引用可追溯。

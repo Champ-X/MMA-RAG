@@ -41,6 +41,8 @@
 - Node.js 18+
 - Python 3.9+
 - Git
+- LibreOffice（可选：`pptx/docx` 页内预览会用到 Office -> PDF 转换）
+- FFmpeg（可选：视频切段与音频提取流程依赖）
 
 ### 快速启动
 
@@ -72,12 +74,16 @@ QDRANT_PORT=6333
 REDIS_HOST=localhost
 REDIS_PORT=6379
 MINIO_ENDPOINT=localhost:9000
-MINIO_ACCESS_KEY=admin
-MINIO_SECRET_KEY=admin123
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
 
 # 安全配置
 SECRET_KEY=your_secret_key_here
 ALLOWED_HOSTS=localhost,127.0.0.1
+
+# 可选：二进制依赖路径（若命令不在 PATH，可显式配置）
+LIBREOFFICE_PATH=/usr/bin/libreoffice
+FFMPEG_PATH=/usr/bin/ffmpeg
 ```
 
 3. **启动服务**
@@ -94,7 +100,7 @@ docker-compose up -d
 ```bash
 # 检查服务状态
 curl http://localhost:8000/health
-curl http://localhost:5173
+curl http://localhost:3000
 
 # 查看API文档
 open http://localhost:8000/docs
@@ -240,7 +246,7 @@ http {
     }
 
     upstream frontend {
-        server frontend:5173;
+        server frontend:3000;
     }
 
     server {
