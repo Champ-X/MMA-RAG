@@ -4,6 +4,8 @@
 """
 
 import asyncio
+import hashlib
+import time
 from pathlib import Path
 from urllib.parse import quote, unquote
 import os
@@ -21,6 +23,22 @@ logger = get_logger(__name__)
 # 服务实例
 kb_service = KnowledgeBaseService()
 portrait_generator = PortraitGenerator()
+_office_preview_locks: Dict[str, asyncio.Lock] = {}
+
+
+def _build_inline_content_disposition(filename: str) -> str:
+    try:
+        filename.encode("ascii")
+        return f'inline; filename="{filename}"'
+    except UnicodeEncodeError:
+        return f"inline; filename*=UTF-8''{quote(filename, safe='')}"
+
+
+def _build_office_preview_object_path(object_path: str, filename: str) -> str:
+    stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+    # 使用 object_path 指纹作为缓存键，避免重名文件冲突
+    digest = hashlib.sha1(object_path.encode("utf-8")).hexdigest()[:16]
+    return f"previews/office_pdf/{digest}_{stem}.pdf"
 
 
 def _stats_for_frontend(statistics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -247,32 +265,75 @@ async def stream_file_for_preview(kb_id: str, file_id: str):
         if not info:
             raise HTTPException(status_code=404, detail="文件不存在")
         bucket_name, object_path, filename = info
-        content = await kb_service.minio_adapter.get_file_content(bucket_name, object_path)
         ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
         # PPTX/DOCX：转为 PDF 后返回，前端用 PDF 预览组件即可直接阅读
         if ext in ("pptx", "docx"):
+            started_at = time.perf_counter()
+            preview_filename = filename.rsplit(".", 1)[0] + ".pdf"
+            content_disp = _build_inline_content_disposition(preview_filename)
+            preview_object_path = _build_office_preview_object_path(object_path, filename)
+            cache_key = f"{bucket_name}/{object_path}"
+
+            # 1) 优先读取已缓存的 PDF 预览，避免每次都执行 Office 转换
             try:
-                from app.modules.ingestion.parsers.mineru_client import office_to_pdf_bytes
-                pdf_bytes = office_to_pdf_bytes(content, ext)
-            except Exception as e:
-                logger.debug("Office 转 PDF 失败: {}", e)
-                pdf_bytes = None
-            if pdf_bytes:
-                preview_filename = filename.rsplit(".", 1)[0] + ".pdf"
-                try:
-                    preview_filename.encode("ascii")
-                    content_disp = f'inline; filename="{preview_filename}"'
-                except UnicodeEncodeError:
-                    content_disp = f"inline; filename*=UTF-8''{quote(preview_filename, safe='')}"
+                cached_pdf = await kb_service.minio_adapter.get_file_content(bucket_name, preview_object_path)
+                logger.info("Office 预览缓存命中: {} -> {} ({} ms)", object_path, preview_object_path, int((time.perf_counter() - started_at) * 1000))
                 return Response(
-                    content=pdf_bytes,
+                    content=cached_pdf,
                     media_type="application/pdf",
                     headers={"Content-Disposition": content_disp},
                 )
+            except Exception:
+                pass
+
+            # 2) 缓存未命中：同一文件并发请求下仅允许一次转换
+            lock = _office_preview_locks.setdefault(cache_key, asyncio.Lock())
+            async with lock:
+                # 双重检查：等待锁期间可能已有请求完成转换并写入缓存
+                try:
+                    cached_pdf = await kb_service.minio_adapter.get_file_content(bucket_name, preview_object_path)
+                    logger.info("Office 预览缓存命中(锁内): {} -> {} ({} ms)", object_path, preview_object_path, int((time.perf_counter() - started_at) * 1000))
+                    return Response(
+                        content=cached_pdf,
+                        media_type="application/pdf",
+                        headers={"Content-Disposition": content_disp},
+                    )
+                except Exception:
+                    pass
+
+                content = await kb_service.minio_adapter.get_file_content(bucket_name, object_path)
+                try:
+                    from app.modules.ingestion.parsers.mineru_client import office_to_pdf_bytes
+                    pdf_bytes = office_to_pdf_bytes(content, ext)
+                except Exception as e:
+                    logger.debug("Office 转 PDF 失败: {}", e)
+                    pdf_bytes = None
+
+                if pdf_bytes:
+                    # 写回 MinIO 作为预览缓存（失败不影响本次返回）
+                    try:
+                        await kb_service.minio_adapter.upload_file(
+                            file_content=pdf_bytes,
+                            file_path=preview_filename,
+                            kb_id=bucket_name,  # get_bucket_for_kb 对已存在 bucket 名会直接返回该 bucket
+                            file_type="documents",
+                            custom_object_path=preview_object_path,
+                            file_id_override=file_id,
+                        )
+                    except Exception as cache_err:
+                        logger.debug("写入 Office 预览缓存失败 {}: {}", preview_object_path, cache_err)
+
+                    logger.info("Office 预览转换完成: {} -> {} ({} ms)", object_path, preview_object_path, int((time.perf_counter() - started_at) * 1000))
+                    return Response(
+                        content=pdf_bytes,
+                        media_type="application/pdf",
+                        headers={"Content-Disposition": content_disp},
+                    )
             raise HTTPException(
                 status_code=503,
                 detail="PPTX/DOCX 页面内预览需要服务器安装 LibreOffice，当前不可用；请使用下方「分块」查看解析文本。",
             )
+        content = await kb_service.minio_adapter.get_file_content(bucket_name, object_path)
         if ext == "pdf":
             media_type = "application/pdf"
         else:
@@ -290,11 +351,7 @@ async def stream_file_for_preview(kb_id: str, file_id: str):
                 "webm": "video/webm",
                 "ogv": "video/ogg",
             }.get(ext, "application/octet-stream")
-        try:
-            filename.encode("ascii")
-            content_disp = f'inline; filename="{filename}"'
-        except UnicodeEncodeError:
-            content_disp = f"inline; filename*=UTF-8''{quote(filename, safe='')}"
+        content_disp = _build_inline_content_disposition(filename)
         return Response(
             content=content,
             media_type=media_type,

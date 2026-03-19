@@ -2,6 +2,15 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 
 class ApiClient {
   private instance: AxiosInstance;
+  private inFlightGetRequests = new Map<string, Promise<any>>();
+  private inFlightBlobRequests = new Map<string, Promise<Blob>>();
+
+  private buildRequestKey(url: string, config?: AxiosRequestConfig): string {
+    const base = this.getBaseURL();
+    const params = config?.params ? JSON.stringify(config.params) : '';
+    const timeout = config?.timeout ?? '';
+    return `${base}|${url}|params:${params}|timeout:${timeout}`;
+  }
 
   getBaseURL(): string {
     return this.instance.defaults.baseURL || 'http://localhost:8000/api';
@@ -60,12 +69,27 @@ class ApiClient {
 
   // GET请求
   async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
-    const response: AxiosResponse<T> = await this.instance.get(url, config);
-    return response.data;
+    const key = this.buildRequestKey(url, config);
+    const inFlight = this.inFlightGetRequests.get(key) as Promise<T> | undefined;
+    if (inFlight) return inFlight;
+
+    const request = this.instance.get<T>(url, config)
+      .then((response: AxiosResponse<T>) => response.data)
+      .finally(() => {
+        this.inFlightGetRequests.delete(key);
+      });
+
+    this.inFlightGetRequests.set(key, request);
+    return request;
   }
 
   // GET 请求返回 Blob（用于 PDF 等流式预览）
   async getBlob(url: string, config?: AxiosRequestConfig): Promise<Blob> {
+    const key = this.buildRequestKey(url, config);
+    const inFlight = this.inFlightBlobRequests.get(key);
+    if (inFlight) return inFlight;
+
+    const request = (async () => {
     try {
       const response = await this.instance.get(url, { ...config, responseType: 'blob' });
       return response.data as Blob;
@@ -90,6 +114,12 @@ class ApiClient {
       }
       throw error;
     }
+    })().finally(() => {
+      this.inFlightBlobRequests.delete(key);
+    });
+
+    this.inFlightBlobRequests.set(key, request);
+    return request;
   }
 
   // POST请求
