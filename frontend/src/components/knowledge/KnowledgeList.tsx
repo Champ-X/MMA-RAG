@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
@@ -8,6 +8,69 @@ import { knowledgeApi, importApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import { StatusBadge, FileThumb, FileHero, CreateKbModal, EditKbModal, isAudioType, isVideoType } from './KnowledgeListHelpers'
+
+/** 预览区 / 分块区加载占位：居中、旋转指示与骨架，避免大片空白只有一行字 */
+function PreviewPaneLoading({
+  title,
+  hint,
+  variant,
+}: {
+  title: string
+  hint?: string
+  variant: 'document' | 'chunks'
+}) {
+  return (
+    <div
+      className={cn(
+        'rounded-xl border border-slate-200/80 dark:border-slate-800',
+        'bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950',
+        'flex flex-col items-center justify-center px-6 py-10',
+        'min-h-[min(60vh,22rem)]'
+      )}
+    >
+      <div className="relative mb-5 flex h-14 w-14 items-center justify-center">
+        <span
+          className="absolute inset-0 rounded-full bg-indigo-500/[0.12] dark:bg-indigo-400/10 animate-ping"
+          style={{ animationDuration: '2s' }}
+        />
+        <span className="absolute inset-1 rounded-full border border-indigo-200/60 dark:border-indigo-500/25" />
+        <Loader2 className="relative h-7 w-7 text-indigo-600 dark:text-indigo-400 animate-spin" aria-hidden />
+      </div>
+      <p className="text-sm font-medium text-slate-700 dark:text-slate-200 text-center">{title}</p>
+      {hint ? (
+        <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400 text-center max-w-xs leading-relaxed">{hint}</p>
+      ) : null}
+
+      {variant === 'document' ? (
+        <div className="mt-8 w-full max-w-sm space-y-3 opacity-90">
+          <div className="relative h-36 rounded-lg bg-slate-200/70 dark:bg-slate-800/80 overflow-hidden">
+            <div
+              className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-transparent via-white/45 dark:via-white/10 to-transparent animate-shimmer"
+              aria-hidden
+            />
+          </div>
+          <div className="space-y-2 px-1">
+            <div className="h-2 rounded-full bg-slate-200/80 dark:bg-slate-700/80 animate-pulse w-[88%] mx-auto" />
+            <div className="h-2 rounded-full bg-slate-200/80 dark:bg-slate-700/80 animate-pulse w-[72%] mx-auto" />
+            <div className="h-2 rounded-full bg-slate-200/60 dark:bg-slate-700/60 animate-pulse w-[56%] mx-auto" />
+          </div>
+        </div>
+      ) : (
+        <div className="mt-8 w-full max-w-md space-y-3">
+          {[92, 100, 78, 88, 64].map((pct, i) => (
+            <div key={i} className="flex gap-3 items-start">
+              <div className="mt-0.5 h-6 w-8 shrink-0 rounded-md bg-slate-200/90 dark:bg-slate-700/90 animate-pulse" />
+              <div
+                className="h-2.5 rounded-full bg-slate-200/80 dark:bg-slate-700/80 animate-pulse"
+                style={{ width: `${pct}%`, animationDelay: `${i * 120}ms` }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // 文件预览模态框（支持图片描述、文档分块、MD 预览）
 function FilePreviewModal({
@@ -238,32 +301,54 @@ function FilePreviewModal({
         </div>
 
         {(hasChunks || isDoc) && (
-          <div className="px-6 pt-4 pb-1 flex-shrink-0 bg-slate-50 dark:bg-slate-900/80">
-            <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+          <div className="px-6 pt-3.5 pb-3 flex-shrink-0 bg-slate-50/95 dark:bg-slate-900/85 border-b border-slate-100 dark:border-slate-800/90">
+            <div
+              className="inline-flex items-center gap-0.5 rounded-xl bg-slate-200/55 dark:bg-slate-800/90 p-1 ring-1 ring-inset ring-slate-300/35 dark:ring-slate-700/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+              role="tablist"
+              aria-label="预览方式"
+            >
               <button
                 onClick={() => setTab('preview')}
+                role="tab"
+                aria-selected={tab === 'preview'}
                 className={cn(
-                  'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+                  'relative flex items-center gap-1.5 rounded-[0.65rem] px-3 py-2 text-xs font-semibold transition-all duration-200 ease-out',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-slate-900',
                   tab === 'preview'
-                    ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                    ? 'bg-white dark:bg-slate-950 text-indigo-700 dark:text-indigo-300 shadow-md shadow-slate-300/25 dark:shadow-black/40 ring-1 ring-slate-200/90 dark:ring-slate-600/80'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/75 dark:hover:bg-slate-700/45 active:scale-[0.98]'
                 )}
                 type="button"
               >
+                <Eye className="h-3.5 w-3.5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
                 预览
               </button>
               {isDoc && (
                 <button
                   onClick={() => setTab('chunks')}
+                  role="tab"
+                  aria-selected={tab === 'chunks'}
                   className={cn(
-                    'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+                    'relative flex items-center gap-1.5 rounded-[0.65rem] pl-3 pr-2 py-2 text-xs font-semibold transition-all duration-200 ease-out',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-slate-900',
                     tab === 'chunks'
-                      ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm'
-                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                      ? 'bg-white dark:bg-slate-950 text-indigo-700 dark:text-indigo-300 shadow-md shadow-slate-300/25 dark:shadow-black/40 ring-1 ring-slate-200/90 dark:ring-slate-600/80'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/75 dark:hover:bg-slate-700/45 active:scale-[0.98]'
                   )}
                   type="button"
                 >
-                  分块（{details?.chunks?.length ?? 0}{loadingDetails ? '…' : ''}）
+                  <Layers className="h-3.5 w-3.5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
+                  <span className="whitespace-nowrap">分块</span>
+                  <span
+                    className={cn(
+                      'min-w-[1.35rem] rounded-md px-1.5 py-0.5 text-[10px] font-bold tabular-nums leading-none tracking-tight transition-colors',
+                      tab === 'chunks'
+                        ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/90 dark:text-indigo-200 ring-1 ring-indigo-200/60 dark:ring-indigo-500/25'
+                        : 'bg-slate-300/55 text-slate-700 dark:bg-slate-600/80 dark:text-slate-200 ring-1 ring-slate-400/25 dark:ring-slate-500/20'
+                    )}
+                  >
+                    {loadingDetails ? '…' : details?.chunks?.length ?? 0}
+                  </span>
                 </button>
               )}
             </div>
@@ -288,11 +373,18 @@ function FilePreviewModal({
                   ))}
                 </div>
               </div>
+            ) : loadingDetails ? (
+              <PreviewPaneLoading
+                title="正在加载分块内容…"
+                hint="正在从知识库获取解析后的文本块，请稍候"
+                variant="chunks"
+              />
             ) : (
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4 text-sm text-slate-600 dark:text-slate-300">
-                {loadingDetails
-                  ? '正在加载分块内容…'
-                  : '暂未获取到分块内容。可先查看「预览」文本；若文件刚上传，稍后重试即可。'}
+              <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/50 px-5 py-8 text-center">
+                <Layers className="mx-auto h-9 w-9 text-slate-300 dark:text-slate-600 mb-3" aria-hidden />
+                <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-sm mx-auto">
+                  暂未获取到分块内容。可先查看「预览」文本；若文件刚上传，稍后重试即可。
+                </p>
               </div>
             )
           ) : isImg && file.previewUrl ? (
@@ -326,10 +418,15 @@ function FilePreviewModal({
               </div>
             )
           ) : isPdfOrOfficeViewable && pdfLoading ? (
-            <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
-              <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-transparent" />
-              <div className="mt-3 text-sm">文档加载中…</div>
-            </div>
+            <PreviewPaneLoading
+              title="文档加载中…"
+              hint={
+                isOfficeDocument
+                  ? 'Office 文档需先转换为 PDF，可能需要数秒至一分钟'
+                  : '正在拉取文件流以生成预览'
+              }
+              variant="document"
+            />
           ) : isOfficeDocument && officePreviewError ? (
             <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-4">
               <div className="text-sm font-medium text-amber-800 dark:text-amber-200">Office 页内预览暂不可用</div>
@@ -417,10 +514,11 @@ function FilePreviewModal({
               ) : null
             )
           ) : loadingDetails && (isTextFile || isImg || isDoc) ? (
-            <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
-              <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent" />
-              <div className="mt-3 text-sm">加载预览中…</div>
-            </div>
+            <PreviewPaneLoading
+              title="加载预览中…"
+              hint="正在获取文件详情与文本内容"
+              variant="document"
+            />
           ) : (
             <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
               <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
