@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import io
 import json
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from app.core.logger import get_logger
 
@@ -32,6 +32,12 @@ def _post_md_content(*, markdown: str, title: str = "") -> str:
             "content": [[{"tag": "md", "text": markdown}]],
         }
     }
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _post_content_json(*, paragraphs: List[List[dict[str, Any]]], title: str = "") -> str:
+    """post.content：多段落；每段为节点列表（如 md、img 各占一段）。"""
+    payload = {"zh_cn": {"title": title or "", "content": paragraphs}}
     return json.dumps(payload, ensure_ascii=False)
 
 
@@ -197,6 +203,26 @@ async def feishu_reply_post_md(
         message_id=message_id,
         msg_type="post",
         content_json=_post_md_content(markdown=markdown, title=title),
+        reply_in_thread=reply_in_thread,
+    )
+
+
+async def feishu_reply_post_paragraphs(
+    client: "Client",
+    *,
+    message_id: str,
+    paragraphs: List[List[dict[str, Any]]],
+    title: str = "",
+    reply_in_thread: bool = False,
+) -> bool:
+    """单条 post 内多段落（md 与 img 交替等）。"""
+    if not paragraphs:
+        return False
+    return await feishu_reply_message(
+        client,
+        message_id=message_id,
+        msg_type="post",
+        content_json=_post_content_json(paragraphs=paragraphs, title=title),
         reply_in_thread=reply_in_thread,
     )
 

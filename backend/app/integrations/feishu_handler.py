@@ -17,10 +17,15 @@ from app.integrations.feishu_client import (
     feishu_fetch_bot_open_id,
     feishu_reply_image,
     feishu_reply_post_md,
+    feishu_reply_post_paragraphs,
     feishu_reply_text,
     feishu_upload_image,
 )
-from app.integrations.feishu_md_post import feishu_normalize_markdown_for_post
+from app.integrations.feishu_md_post import (
+    DEFAULT_FEISHU_MD_CHUNK,
+    feishu_normalize_markdown_for_post,
+    split_feishu_md_chunks,
+)
 from app.integrations.feishu_media import read_image_bytes
 from app.integrations.feishu_parser import extract_text
 from app.integrations.feishu_presenter import FeishuOutboundMessage, build_outbound_messages
@@ -32,6 +37,116 @@ logger = get_logger(__name__)
 
 retrieval_service = RetrievalService()
 generation_service = GenerationService()
+
+
+async def _send_feishu_post_mixed(
+    client: Any,
+    message_id: str,
+    segments: List[Any],
+    *,
+    reply_in_thread: bool,
+    max_img: int,
+) -> bool:
+    """单条 post：md 段与 img 段交替（图片须独占段落）。"""
+    paragraphs: List[List[Dict[str, Any]]] = []
+    used = 0
+    for seg in segments:
+        if not seg:
+            continue
+        if seg[0] == "md":
+            body = feishu_normalize_markdown_for_post(str(seg[1]))
+            for chunk in split_feishu_md_chunks(body, DEFAULT_FEISHU_MD_CHUNK):
+                if chunk.strip():
+                    paragraphs.append([{"tag": "md", "text": chunk}])
+        elif seg[0] == "img" and len(seg) >= 4:
+            if used >= max_img:
+                continue
+            kb_id, fp, name = str(seg[1]), str(seg[2]), str(seg[3])
+            data = await read_image_bytes(kb_id, fp)
+            if not data:
+                paragraphs.append(
+                    [{"tag": "md", "text": f"（引用图片未能从存储读取：{fp}）"}]
+                )
+                continue
+            b, _nm = data
+            key = await feishu_upload_image(client, b, name or "img.png")
+            if key:
+                paragraphs.append([{"tag": "img", "image_key": key}])
+                used += 1
+            else:
+                paragraphs.append(
+                    [{"tag": "md", "text": f"（图片未能上传到飞书：{name}）"}]
+                )
+    if not paragraphs:
+        return False
+    return await feishu_reply_post_paragraphs(
+        client,
+        message_id=message_id,
+        paragraphs=paragraphs,
+        reply_in_thread=reply_in_thread,
+    )
+
+
+async def _fallback_post_mixed_as_separate_messages(
+    client: Any,
+    message_id: str,
+    segments: List[Any],
+    *,
+    reply_in_thread: bool,
+    max_img: int,
+) -> None:
+    used = 0
+    for seg in segments:
+        if not seg:
+            continue
+        if seg[0] == "md":
+            body = feishu_normalize_markdown_for_post(str(seg[1]))
+            for chunk in split_feishu_md_chunks(body, DEFAULT_FEISHU_MD_CHUNK):
+                if not chunk.strip():
+                    continue
+                ok = await feishu_reply_post_md(
+                    client,
+                    message_id=message_id,
+                    markdown=chunk,
+                    reply_in_thread=reply_in_thread,
+                )
+                if not ok:
+                    await feishu_reply_text(
+                        client,
+                        message_id=message_id,
+                        text=chunk,
+                        reply_in_thread=reply_in_thread,
+                    )
+        elif seg[0] == "img" and len(seg) >= 4:
+            if used >= max_img:
+                continue
+            kb_id, fp, name = str(seg[1]), str(seg[2]), str(seg[3])
+            data = await read_image_bytes(kb_id, fp)
+            if not data:
+                await feishu_reply_text(
+                    client,
+                    message_id=message_id,
+                    text=f"（引用图片未能从存储读取：{fp}）",
+                    reply_in_thread=reply_in_thread,
+                )
+                continue
+            b, _nm = data
+            key = await feishu_upload_image(client, b, name or "img.png")
+            if key:
+                await feishu_reply_image(
+                    client,
+                    message_id=message_id,
+                    image_key=key,
+                    reply_in_thread=reply_in_thread,
+                )
+                used += 1
+            else:
+                await feishu_reply_text(
+                    client,
+                    message_id=message_id,
+                    text=f"（图片未能上传到飞书：{name}）",
+                    reply_in_thread=reply_in_thread,
+                )
 
 _r_lock = threading.Lock()
 _bot_refresh_started = False
@@ -277,9 +392,12 @@ async def _process_user_message(*, message_id: str, chat_id: str, query: str) ->
     answer = (generation_result.get("answer") or "").strip()
     outbound = build_outbound_messages(generation_result=generation_result, settings=settings)
 
-    # 解析 presenter 中的图片：读 MinIO → 上传飞书
+    # 解析 presenter 中的图片：读 MinIO → 上传飞书（post_mixed 在发送时再读图）
     resolved: List[FeishuOutboundMessage] = []
     for m in outbound:
+        if m.kind == "post_mixed":
+            resolved.append(m)
+            continue
         if m.kind == "image" and m.kb_id and m.file_path:
             data = await read_image_bytes(m.kb_id, m.file_path)
             if data:
@@ -295,9 +413,29 @@ async def _process_user_message(*, message_id: str, chat_id: str, query: str) ->
         logger.error("飞书 message_id 为空，无法回复")
         return
 
+    max_img_cap = max(0, min(int(getattr(settings, "feishu_max_reply_images", 4)), 10))
+    rt = bool(settings.feishu_reply_in_thread)
+
     for item in resolved:
+        if item.kind == "post_mixed" and item.post_segments:
+            ok = await _send_feishu_post_mixed(
+                client,
+                message_id,
+                item.post_segments,
+                reply_in_thread=rt,
+                max_img=max_img_cap,
+            )
+            if not ok:
+                logger.warning("飞书 post 混排发送失败，拆分为多条消息重试")
+                await _fallback_post_mixed_as_separate_messages(
+                    client,
+                    message_id,
+                    item.post_segments,
+                    reply_in_thread=rt,
+                    max_img=max_img_cap,
+                )
+            continue
         if item.kind == "text" and item.text:
-            rt = bool(settings.feishu_reply_in_thread)
             if settings.feishu_reply_post_md:
                 md_body = feishu_normalize_markdown_for_post(item.text)
                 ok = await feishu_reply_post_md(
@@ -329,14 +467,14 @@ async def _process_user_message(*, message_id: str, chat_id: str, query: str) ->
                     client,
                     message_id=message_id,
                     image_key=key,
-                    reply_in_thread=bool(settings.feishu_reply_in_thread),
+                    reply_in_thread=rt,
                 )
             else:
                 await feishu_reply_text(
                     client,
                     message_id=message_id,
                     text=f"（图片未能上传到飞书：{item.image_name or item.file_path}）",
-                    reply_in_thread=bool(settings.feishu_reply_in_thread),
+                    reply_in_thread=rt,
                 )
 
     append_turn(session_key, query, answer)

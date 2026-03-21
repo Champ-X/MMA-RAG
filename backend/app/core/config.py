@@ -223,6 +223,8 @@ class Settings(BaseSettings):
     feishu_reply_in_thread: bool = Field(default=False, validation_alias="FEISHU_REPLY_IN_THREAD")
     # True：RAG 回复用 post+md，渲染 ** / 列表 / 引用 / 代码块等；False：沿用纯 text（多为原文）
     feishu_reply_post_md: bool = Field(default=True, validation_alias="FEISHU_REPLY_POST_MD")
+    # True：同一 post 气泡内交替 md 与 img（飞书要求图片独占段落）；False：图文分多条消息
+    feishu_inline_images_in_post: bool = Field(default=True, validation_alias="FEISHU_INLINE_IMAGES_IN_POST")
     feishu_bot_open_id: Optional[str] = Field(default=None, validation_alias="FEISHU_BOT_OPEN_ID")
     feishu_group_trigger_prefix: str = Field(default="", validation_alias="FEISHU_GROUP_TRIGGER_PREFIX")
     feishu_typing_hint: bool = Field(default=True, validation_alias="FEISHU_TYPING_HINT")
