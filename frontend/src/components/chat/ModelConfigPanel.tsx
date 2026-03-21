@@ -7,6 +7,7 @@ import { systemApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
 import { groupChatModelsByVendor, getModelVendor, VENDOR_DISPLAY_NAMES, VENDOR_LOGOS } from '@/lib/modelVendors'
 import { VendorModelSelect } from './VendorModelSelect'
+import { OpenRouterModelSearch } from './OpenRouterModelSearch'
 
 interface ModelConfigPanelProps {
   open: boolean
@@ -20,37 +21,54 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
   const [modelsLoading, setModelsLoading] = useState(false)
   const [_userSelectedModel, setUserSelectedModel] = useState<string | null>(null)
 
+  // 仅打开弹窗时拉取列表；勿依赖 config.models，否则选模型会 updateModelConfig → 全屏「加载中」替换列表，滚动条被顶回顶部
   useEffect(() => {
     if (!open) {
       setUserSelectedModel(null)
       return
     }
-    
-    // 对话框打开时，先从本地配置读取用户之前保存的模型选择
+
     const savedChatModel = config.models.find(m => m.id === 'chat')?.model
     if (savedChatModel) {
       setCurrentChatModel(savedChatModel)
       setUserSelectedModel(savedChatModel)
     }
-    
+
+    let cancelled = false
     setModelsLoading(true)
     systemApi
       .getModelConfig()
       .then((data: { chat_models?: string[]; current_config?: { final_generation?: { model: string } } }) => {
+        if (cancelled) return
         setChatModels(Array.isArray(data.chat_models) ? data.chat_models : [])
-        // 如果本地没有保存的模型选择，才使用后端配置
         if (!savedChatModel) {
           const model = data.current_config?.final_generation?.model
           setCurrentChatModel(model || config.models.find(m => m.id === 'chat')?.model || '')
         }
       })
       .catch(() => {
+        if (cancelled) return
         setChatModels([])
         if (!savedChatModel) {
           setCurrentChatModel(config.models.find(m => m.id === 'chat')?.model || '')
         }
       })
-      .finally(() => setModelsLoading(false))
+      .finally(() => {
+        if (!cancelled) setModelsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅 open 时拉取；config 同步见下一 effect
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const savedChatModel = config.models.find(m => m.id === 'chat')?.model
+    if (savedChatModel) {
+      setCurrentChatModel(savedChatModel)
+      setUserSelectedModel(savedChatModel)
+    }
   }, [open, config.models])
 
   const applyModel = (modelName: string) => {
@@ -72,10 +90,13 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-md flex flex-col gap-0 rounded-3xl border border-slate-200/60 bg-white/95 shadow-2xl shadow-slate-900/15 backdrop-blur-xl dark:border-slate-700/50 dark:bg-slate-950/95"
+        className={cn(
+          'max-w-lg max-h-[min(90dvh,820px)] flex flex-col gap-0 overflow-hidden rounded-3xl border border-slate-200/60 bg-white/95 p-5 shadow-2xl shadow-slate-900/15 backdrop-blur-xl sm:p-6',
+          'dark:border-slate-700/50 dark:bg-slate-950/95'
+        )}
         onClick={e => e.stopPropagation()}
       >
-        <DialogHeader className="flex-shrink-0 pb-4">
+        <DialogHeader className="flex-shrink-0 pb-3">
           <DialogTitle className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/15 to-purple-500/15 ring-1 ring-indigo-500/20 dark:ring-indigo-400/30">
               <Zap className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
@@ -84,8 +105,15 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4 pb-1">
-          <div className="space-y-4">
+        <div
+          className={cn(
+            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1',
+            '[scrollbar-width:thin] [scrollbar-color:rgba(148,163,184,0.6)_transparent]',
+            '[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full',
+            '[&::-webkit-scrollbar-thumb]:bg-slate-300/80 dark:[&::-webkit-scrollbar-thumb]:bg-slate-600'
+          )}
+        >
+          <div className="space-y-4 pb-2">
             {modelsLoading ? (
               <div className={cn(selectBaseClass, 'flex items-center text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600')}>
                 加载中…
@@ -128,13 +156,19 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
                 )
               })
             )}
+            <OpenRouterModelSearch
+              enabled={open}
+              currentChatModel={currentChatModel}
+              onSelect={applyModel}
+              className="mt-1"
+            />
             <p className="text-xs text-slate-500 dark:text-slate-400">
               当前使用后端 final_generation 配置，选择后将写入本地配置
             </p>
           </div>
         </div>
 
-        <div className="flex flex-shrink-0 justify-end gap-3 border-t border-slate-200/50 pt-4 mt-2 dark:border-slate-800/50">
+        <div className="mt-3 flex flex-shrink-0 justify-end gap-3 border-t border-slate-200/50 pt-4 dark:border-slate-800/50">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}

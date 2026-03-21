@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import json
 import asyncio
 import uuid
+import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -28,6 +29,35 @@ generation_service = GenerationService()
 
 # 简单的会话存储（生产环境应使用Redis或数据库）
 sessions: Dict[str, Dict[str, Any]] = {}
+
+# OpenRouter 公开模型列表（代理 + 短缓存，供前端搜索）
+OPENROUTER_PUBLIC_MODELS_URL = "https://openrouter.ai/api/v1/models"
+_OPENROUTER_CACHE_TTL_SEC = 600.0
+_openrouter_catalog_cache: Dict[str, Any] = {"ts": 0.0, "models": None}
+_openrouter_catalog_lock = asyncio.Lock()
+
+
+def _openrouter_model_chat_capable(raw: Dict[str, Any]) -> bool:
+    """仅保留输出含 text 的模型，供对话 final_generation 选用（排除纯向量等）。"""
+    arch = raw.get("architecture") or {}
+    outs = arch.get("output_modalities")
+    if not isinstance(outs, list) or not outs:
+        return True
+    return "text" in outs
+
+
+def _slim_openrouter_model(raw: Dict[str, Any]) -> Dict[str, Any]:
+    arch = raw.get("architecture") or {}
+    mid = (raw.get("id") or "").strip()
+    return {
+        "id": mid,
+        "registry_id": f"openrouter:{mid}" if mid else "",
+        "name": raw.get("name"),
+        "context_length": raw.get("context_length"),
+        "modality": arch.get("modality"),
+        "input_modalities": arch.get("input_modalities"),
+        "output_modalities": arch.get("output_modalities"),
+    }
 
 
 def _normalize_media_file_path(file_path: str) -> str:
@@ -541,6 +571,67 @@ async def create_session(request: Request):
     except Exception as e:
         logger.error(f"创建会话失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/openrouter-models")
+async def list_openrouter_models_catalog():
+    """代理 OpenRouter 公开模型列表，供前端搜索任意对话模型（带短 TTL 缓存）。"""
+    import httpx
+
+    registry = llm_manager.registry
+    openrouter_configured = "openrouter" in registry.list_providers()
+
+    async with _openrouter_catalog_lock:
+        now = time.monotonic()
+        cached = _openrouter_catalog_cache.get("models")
+        ts = float(_openrouter_catalog_cache.get("ts") or 0.0)
+        if cached is not None and (now - ts) < _OPENROUTER_CACHE_TTL_SEC:
+            models = cached
+        else:
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(
+                        OPENROUTER_PUBLIC_MODELS_URL,
+                        timeout=90.0,
+                        headers={"Accept": "application/json", "User-Agent": "MMAA-RAG/chat-api"},
+                    )
+                    resp.raise_for_status()
+                    payload = resp.json()
+            except Exception as e:
+                logger.warning(f"拉取 OpenRouter 模型列表失败: {e}")
+                return {
+                    "openrouter_configured": openrouter_configured,
+                    "error": str(e),
+                    "models": [],
+                    "source": OPENROUTER_PUBLIC_MODELS_URL,
+                }
+
+            raw_list = payload.get("data") if isinstance(payload, dict) else None
+            if not isinstance(raw_list, list):
+                return {
+                    "openrouter_configured": openrouter_configured,
+                    "error": "OpenRouter 响应格式异常",
+                    "models": [],
+                    "source": OPENROUTER_PUBLIC_MODELS_URL,
+                }
+
+            models = []
+            for item in raw_list:
+                if not isinstance(item, dict):
+                    continue
+                if not _openrouter_model_chat_capable(item):
+                    continue
+                models.append(_slim_openrouter_model(item))
+            models.sort(key=lambda x: (x.get("id") or "").lower())
+            _openrouter_catalog_cache["ts"] = now
+            _openrouter_catalog_cache["models"] = models
+
+    return {
+        "openrouter_configured": openrouter_configured,
+        "model_count": len(models),
+        "models": models,
+        "source": OPENROUTER_PUBLIC_MODELS_URL,
+    }
+
 
 @router.get("/models")
 async def list_models():

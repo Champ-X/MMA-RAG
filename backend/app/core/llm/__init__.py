@@ -73,6 +73,12 @@ class LLMRegistry:
                 "context_length": 256000, # 256K tokens
                 "description": "Qwen3 235B 指令遵循大语言模型"
             },
+            "Qwen/Qwen3.5-397B-A17B": {
+                "provider": "siliconflow",
+                "type": "chat,vision,video",
+                "context_length": 262144,  # 256K tokens，与 OpenRouter 同系模型一致
+                "description": "Qwen3.5 397B MoE 指令模型（SiliconFlow）"
+            },
             "Pro/deepseek-ai/DeepSeek-V3.2": {
                 "provider": "siliconflow",
                 "type": "chat",
@@ -529,6 +535,16 @@ class LLMRegistry:
                 config = self._models.get(full_name)
                 if config:
                     return config
+                # OpenRouter：允许前端选择任意 openrouter:vendor/model，未在 _models 登记也可调用
+                if provider == "openrouter" and "openrouter" in self._providers:
+                    rest = (model or "").strip()
+                    if rest:
+                        return {
+                            "provider": "openrouter",
+                            "type": "chat,vision,audio,video",
+                            "description": "OpenRouter（动态模型）",
+                            "raw_model": rest,
+                        }
                 # 如果没找到，尝试直接查找（向后兼容）
                 return self._models.get(model_name, {})
         return self._models.get(model_name, {})

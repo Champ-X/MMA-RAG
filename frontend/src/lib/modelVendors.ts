@@ -1,7 +1,10 @@
 /**
  * 对话模型按厂商分组展示
  * 厂商顺序：Qwen、DeepSeek、MiniMax、Moonshot、ZAI、Gemini、OpenAI、其他
- * 注意：OpenRouter 和 AliyunBailian 是提供商，不是厂商，它们提供的模型按实际厂商分类
+ *
+ * `openrouter:*` 一律归入「其他」：避免在 Gemini/ChatGPT 等直连卡上显示「当前使用」，
+ * 实际选用状态只在 OpenRouter 区块展示（与聚合路由语义一致）。
+ * AliyunBailian 仍按去前缀后的名称归厂商。
  */
 
 export const VENDOR_ORDER = ['Qwen', 'DeepSeek', 'MiniMax', 'Moonshot', 'ZAI', 'Gemini', 'OpenAI', '其他'] as const
@@ -30,28 +33,30 @@ export const VENDOR_LOGOS: Partial<Record<VendorKey, string>> = {
   OpenAI: '/vendor-logos/chatgpt.png',
 }
 
-/** 根据模型 ID 解析所属厂商
- * OpenRouter 和 AliyunBailian 是提供商，需要提取实际模型名来判断厂商
- */
+/** 根据模型 ID 解析所属厂商（用于直连厂商卡片分组与高亮） */
 export function getModelVendor(modelId: string): VendorKey {
-  let id = modelId.trim()
-  
-  // 提取实际模型名（移除提供商前缀）
-  if (id.startsWith('openrouter:')) {
-    // openrouter:google/gemini-3-flash-preview -> google/gemini-3-flash-preview
-    id = id.substring('openrouter:'.length)
-  } else if (id.startsWith('aliyun_bailian:')) {
-    // aliyun_bailian:qwen3.5-plus -> qwen3.5-plus
+  const raw = modelId.trim()
+  if (raw.startsWith('openrouter:')) {
+    return '其他'
+  }
+
+  let id = raw
+  if (id.startsWith('aliyun_bailian:')) {
     id = id.substring('aliyun_bailian:'.length)
   }
-  
+
   // Gemini 模型（Google）
   if (id.includes('google/gemini') || id.includes('gemini-') || id.includes('gemini')) {
     return 'Gemini'
   }
-  
-  // OpenAI/ChatGPT 模型
-  if (id.startsWith('openai/') || id.includes('gpt-') || id.includes('chatgpt') || id.includes('claude')) {
+
+  // Anthropic Claude：勿归入 ChatGPT（OpenRouter 下已整体进「其他」，此处兜底直连 id）
+  if (id.startsWith('anthropic/') || id.includes('claude')) {
+    return '其他'
+  }
+
+  // OpenAI/ChatGPT
+  if (id.startsWith('openai/') || id.includes('gpt-') || id.includes('chatgpt')) {
     return 'OpenAI'
   }
   

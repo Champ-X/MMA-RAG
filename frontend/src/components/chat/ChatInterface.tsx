@@ -8,6 +8,7 @@ import { ConversationTabs } from './ConversationTabs'
 import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
 import { KnowledgeBaseConfigPanel } from './KnowledgeBaseConfigPanel'
 import { ModelConfigPanel } from './ModelConfigPanel'
+import { OpenRouterModelBrandIcon } from './OpenRouterModelBrandIcon'
 import { useChatStore } from '@/store/useChatStore'
 import { useConfigStore } from '@/store/useConfigStore'
 import { useThinkingChain } from '@/hooks/useThinkingChain'
@@ -57,22 +58,31 @@ export function ChatInterface() {
   const isLoading = isStreaming
 
   // 获取当前选中的模型名称，简化显示
+  const chatFullModelId = useMemo(
+    () => config.models.find(m => m.id === 'chat')?.model || '',
+    [config.models]
+  )
+
   const currentModel = useMemo(() => {
-    const chatModel = config.models.find(m => m.id === 'chat')?.model || ''
+    const chatModel = chatFullModelId
     // 如果模型名称包含斜杠，只显示最后一部分；否则显示完整名称
     if (chatModel.includes('/')) {
       return chatModel.split('/').pop() || chatModel
     }
     return chatModel || '模型'
-  }, [config.models])
+  }, [chatFullModelId])
 
-  // 获取当前模型的厂商logo
+  /** 非 OpenRouter：本地 vendor 图；OpenRouter 在按钮内单独用 Lobe 图标 */
   const currentModelLogo = useMemo(() => {
-    const chatModel = config.models.find(m => m.id === 'chat')?.model || ''
-    if (!chatModel) return null
-    const vendor = getModelVendor(chatModel)
+    if (!chatFullModelId || chatFullModelId.startsWith('openrouter:')) return null
+    const vendor = getModelVendor(chatFullModelId)
     return VENDOR_LOGOS[vendor] || null
-  }, [config.models])
+  }, [chatFullModelId])
+
+  const openRouterModelRaw = useMemo(() => {
+    if (!chatFullModelId.startsWith('openrouter:')) return ''
+    return chatFullModelId.slice('openrouter:'.length).trim()
+  }, [chatFullModelId])
 
 
   const scrollToBottom = useCallback(() => {
@@ -444,7 +454,13 @@ export function ChatInterface() {
                   title="对话模型选择"
                   className="group flex items-center gap-1.5 rounded-full border border-purple-200/60 bg-gradient-to-r from-purple-50/80 to-pink-50/80 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-purple-700 shadow-sm shadow-purple-500/10 ring-1 ring-purple-200/30 transition-all duration-200 hover:border-purple-300/80 hover:from-purple-100/90 hover:to-pink-100/90 hover:shadow-md hover:shadow-purple-500/20 hover:ring-purple-300/50 active:scale-95 dark:border-purple-500/40 dark:from-purple-900/30 dark:to-pink-900/30 dark:text-purple-200 dark:ring-purple-500/20 dark:hover:border-purple-400/60 dark:hover:from-purple-800/40 dark:hover:to-pink-800/40"
                 >
-                  {currentModelLogo ? (
+                  {openRouterModelRaw ? (
+                    <OpenRouterModelBrandIcon
+                      modelId={openRouterModelRaw}
+                      size={14}
+                      className="h-3.5 w-3.5 flex-shrink-0 p-0 ring-0 transition-transform duration-200 group-hover:scale-110 dark:bg-transparent"
+                    />
+                  ) : currentModelLogo ? (
                     <img
                       src={currentModelLogo}
                       alt=""
