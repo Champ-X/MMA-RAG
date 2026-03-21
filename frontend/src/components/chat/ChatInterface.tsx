@@ -15,6 +15,21 @@ import { useThinkingChain } from '@/hooks/useThinkingChain'
 import { cn } from '@/lib/utils'
 import { getModelVendor, VENDOR_LOGOS } from '@/lib/modelVendors'
 import type { CitationReference } from '@/types/sse'
+import type { Message } from '@/store/useChatStore'
+
+/** 每条助手消息内的引用 id → 对象；禁止跨消息合并，否则多轮对话共用 [1][2] 时会互相覆盖 */
+function buildCitationMapForMessage(
+  citations: Message['citations'] | undefined
+): Map<number | string, CitationReference> {
+  const map = new Map<number | string, CitationReference>()
+  if (!citations) return map
+  for (const cite of citations) {
+    if (typeof cite === 'object' && cite != null && 'id' in cite) {
+      map.set(cite.id, cite as CitationReference)
+    }
+  }
+  return map
+}
 
 export function ChatInterface() {
   const [input, setInput] = useState('')
@@ -272,22 +287,14 @@ export function ChatInterface() {
     }
   }, [citePopover.open, closeCitePopover])
 
-  // 构建引用映射
-  const citationMap = useMemo(() => {
-    const map = new Map<number | string, CitationReference>()
-    if (activeSession) {
-      for (const msg of activeSession.messages) {
-        if (msg.citations) {
-          for (const cite of msg.citations) {
-            if (typeof cite === 'object' && 'id' in cite) {
-              map.set(cite.id, cite as CitationReference)
-            }
-          }
-        }
-      }
+  // 按消息维度构建引用映射（同一 id 在不同轮次指向不同材料，不可混在一个 Map 里）
+  const citationMapsByMessageId = useMemo(() => {
+    const byId = new Map<string, Map<number | string, CitationReference>>()
+    for (const msg of messages) {
+      byId.set(msg.id, buildCitationMapForMessage(msg.citations))
     }
-    return map
-  }, [activeSession, messages])
+    return byId
+  }, [messages])
 
   const handleNewConversation = useCallback(() => {
     createSessionFromApi().catch(() => createSession())
@@ -338,6 +345,8 @@ export function ChatInterface() {
               const isLastMessage = m.role === 'assistant' && i === messages.length - 1
               const isThisTabStreaming = isStreaming && activeSessionId === streamingSessionId
               const isLastAndStreaming = isLastMessage && isThisTabStreaming
+              const messageCitationMap =
+                citationMapsByMessageId.get(m.id) ?? buildCitationMapForMessage(m.citations)
               return (
                 <MessageBubble
                   key={m.id ?? i}
@@ -361,7 +370,7 @@ export function ChatInterface() {
                         }
                       : undefined
                   }
-                  citationMap={citationMap}
+                  citationMap={messageCitationMap}
                   onCiteClick={handleCitationClick}
                 />
               )

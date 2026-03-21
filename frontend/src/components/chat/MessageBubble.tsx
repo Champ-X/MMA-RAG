@@ -189,34 +189,34 @@ function extractTextFromNode(node: React.ReactNode): string {
   return ''
 }
 
-// 从 citationMap 或 refs 中查找 citation 的辅助函数
+// 从 refs / citationMap 中查找 citation：优先当前消息 refs，避免跨轮次共用 id 时误用其它消息的 map
 function findCitationById(
   refId: number | string,
   citationMap?: Map<number | string, CitationReference>,
   refs?: Array<CitationReference | { id: number | string }>
 ): CitationReference | null {
-  // 优先从 citationMap 获取完整对象
-  let citation = citationMap?.get(refId)
-  
-  // 如果 citationMap 中没有，从 refs 中查找
-  if (!citation) {
-    const refItem = refs?.find((r) => {
-      if (typeof r !== 'object' || r == null || !('id' in r)) return false
-      const rId = String((r as any).id)
-      const matchId = String(refId)
-      return rId === matchId
-    })
-    
-    // 如果 refs 中的项有完整信息，直接使用；否则尝试从 citationMap 获取
-    if (refItem && 'type' in refItem && 'img_url' in refItem) {
-      citation = refItem as CitationReference
-    } else if (refItem && 'id' in refItem) {
-      // 如果只有 id，尝试从 citationMap 获取完整对象
-      citation = citationMap?.get((refItem as any).id)
-    }
+  const refItem = refs?.find((r) => {
+    if (typeof r !== 'object' || r == null || !('id' in r)) return false
+    const rId = String((r as any).id)
+    const matchId = String(refId)
+    return rId === matchId
+  })
+
+  if (refItem && 'type' in refItem && 'img_url' in refItem) {
+    return refItem as CitationReference
   }
-  
-  return citation || null
+  if (refItem && 'type' in refItem) {
+    return refItem as CitationReference
+  }
+
+  const fromMap = citationMap?.get(refId)
+  if (fromMap) return fromMap
+
+  if (refItem && 'id' in refItem) {
+    return (citationMap?.get((refItem as any).id) ?? refItem) as CitationReference
+  }
+
+  return null
 }
 
 // 从文本中提取图片引用ID列表（仅 type===image，避免音频被当图片展示）
