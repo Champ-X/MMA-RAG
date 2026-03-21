@@ -207,6 +207,35 @@ class Settings(BaseSettings):
     celery_broker_url: Optional[str] = Field(default=None, validation_alias="CELERY_BROKER_URL")
     celery_result_backend: Optional[str] = Field(default=None, validation_alias="CELERY_RESULT_BACKEND")
 
+    # 飞书机器人（可选；与 Web 共用进程时需 FEISHU_WS_ENABLED 与凭证）
+    feishu_app_id: Optional[str] = Field(default=None, validation_alias="FEISHU_APP_ID")
+    feishu_app_secret: Optional[str] = Field(default=None, validation_alias="FEISHU_APP_SECRET")
+    feishu_ws_enabled: bool = Field(default=False, validation_alias="FEISHU_WS_ENABLED")
+    feishu_encrypt_key: str = Field(default="", validation_alias="FEISHU_ENCRYPT_KEY")
+    feishu_verification_token: str = Field(default="", validation_alias="FEISHU_VERIFICATION_TOKEN")
+    feishu_default_kb_ids: str = Field(default="", validation_alias="FEISHU_DEFAULT_KB_IDS")
+    feishu_dedup_ttl_sec: int = Field(default=600, validation_alias="FEISHU_DEDUP_TTL_SEC")
+    feishu_session_backend: str = Field(default="memory", validation_alias="FEISHU_SESSION_BACKEND")
+    feishu_ignore_bot_messages: bool = Field(default=True, validation_alias="FEISHU_IGNORE_BOT_MESSAGES")
+    feishu_max_reply_images: int = Field(default=4, validation_alias="FEISHU_MAX_REPLY_IMAGES")
+    feishu_image_send_enabled: bool = Field(default=True, validation_alias="FEISHU_IMAGE_SEND_ENABLED")
+    feishu_web_base_url: Optional[str] = Field(default=None, validation_alias="FEISHU_WEB_BASE_URL")
+    feishu_reply_in_thread: bool = Field(default=False, validation_alias="FEISHU_REPLY_IN_THREAD")
+    # True：RAG 回复用 post+md，渲染 ** / 列表 / 引用 / 代码块等；False：沿用纯 text（多为原文）
+    feishu_reply_post_md: bool = Field(default=True, validation_alias="FEISHU_REPLY_POST_MD")
+    feishu_bot_open_id: Optional[str] = Field(default=None, validation_alias="FEISHU_BOT_OPEN_ID")
+    feishu_group_trigger_prefix: str = Field(default="", validation_alias="FEISHU_GROUP_TRIGGER_PREFIX")
+    feishu_typing_hint: bool = Field(default=True, validation_alias="FEISHU_TYPING_HINT")
+    feishu_typing_hint_text: str = Field(
+        default="正在检索与生成，请稍候…",
+        validation_alias="FEISHU_TYPING_HINT_TEXT",
+    )
+    # websockets 默认 open_timeout=10s；asyncio 对 wss 默认 ssl_handshake_timeout=60s。
+    # 跨境/代理/WSL 下两者均可能超时，本值会同时注入 connect(open_timeout=...) 与 ssl_handshake_timeout=...
+    feishu_ws_open_timeout: float = Field(default=300.0, validation_alias="FEISHU_WS_OPEN_TIMEOUT")
+    # WSL2 等环境 IPv6 访问飞书 WSS 可能极慢或卡住，解析域名后优先走 IPv4 + SNI（与 Node/OpenClaw 常见网络路径更一致）
+    feishu_ws_prefer_ipv4: bool = Field(default=True, validation_alias="FEISHU_WS_PREFER_IPV4")
+
     # Tavily 联网搜索（热点/新闻导入知识库）
     tavily_api_key: Optional[str] = Field(default=None, validation_alias="TAVILY_API_KEY")
     tavily_search_depth: str = Field(default="basic", validation_alias="TAVILY_SEARCH_DEPTH")

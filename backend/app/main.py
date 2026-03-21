@@ -3,7 +3,9 @@ Multi-Modal RAG Agent 主应用入口
 FastAPI 应用配置文件
 """
 
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +31,17 @@ class _SuppressProgressPollAccessLog(logging.Filter):
             return False
         return True
 
+
+@asynccontextmanager
+async def _app_lifespan(app: FastAPI):
+    from app.integrations import feishu_state
+    from app.integrations.feishu_ws import start_feishu_ws_thread
+
+    feishu_state.main_loop = asyncio.get_running_loop()
+    start_feishu_ws_thread()
+    yield
+
+
 # 创建 FastAPI 应用实例
 app = FastAPI(
     title="Multi-Modal RAG Agent API",
@@ -36,6 +49,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=_app_lifespan,
 )
 
 # 配置 CORS 中间件
@@ -48,7 +62,7 @@ app.add_middleware(
 )
 
 # 导入路由模块
-from app.api import chat, knowledge, upload, debug, import_api
+from app.api import chat, knowledge, upload, debug, import_api, feishu
 from app.core.logger import setup_logger
 
 # 设置日志
@@ -63,6 +77,7 @@ app.include_router(knowledge.router, prefix="/api/knowledge", tags=["knowledge"]
 app.include_router(upload.router, prefix="/api/upload", tags=["upload"])
 app.include_router(debug.router, prefix="/api/debug", tags=["debug"])
 app.include_router(import_api.router, prefix="/api/import", tags=["import"])
+app.include_router(feishu.router, prefix="/api/feishu", tags=["feishu"])
 
 # 全局异常处理
 @app.exception_handler(Exception)
