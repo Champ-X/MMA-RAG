@@ -4,7 +4,6 @@
 """
 
 import asyncio
-import hashlib
 import time
 from pathlib import Path
 from urllib.parse import quote, unquote
@@ -14,7 +13,7 @@ from fastapi.responses import Response
 from typing import List, Dict, Any, Optional
 from app.core.logger import get_logger
 from app.core.keyword_extract import extract_keywords_for_portrait
-from app.modules.knowledge.service import KnowledgeBaseService
+from app.modules.knowledge.service import KnowledgeBaseService, office_preview_cache_object_path
 from app.modules.knowledge.portraits import PortraitGenerator
 
 router = APIRouter()
@@ -32,13 +31,6 @@ def _build_inline_content_disposition(filename: str) -> str:
         return f'inline; filename="{filename}"'
     except UnicodeEncodeError:
         return f"inline; filename*=UTF-8''{quote(filename, safe='')}"
-
-
-def _build_office_preview_object_path(object_path: str, filename: str) -> str:
-    stem = filename.rsplit(".", 1)[0] if "." in filename else filename
-    # 使用 object_path 指纹作为缓存键，避免重名文件冲突
-    digest = hashlib.sha1(object_path.encode("utf-8")).hexdigest()[:16]
-    return f"previews/office_pdf/{digest}_{stem}.pdf"
 
 
 def _stats_for_frontend(statistics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -271,7 +263,7 @@ async def stream_file_for_preview(kb_id: str, file_id: str):
             started_at = time.perf_counter()
             preview_filename = filename.rsplit(".", 1)[0] + ".pdf"
             content_disp = _build_inline_content_disposition(preview_filename)
-            preview_object_path = _build_office_preview_object_path(object_path, filename)
+            preview_object_path = office_preview_cache_object_path(object_path, filename)
             cache_key = f"{bucket_name}/{object_path}"
 
             # 1) 优先读取已缓存的 PDF 预览，避免每次都执行 Office 转换

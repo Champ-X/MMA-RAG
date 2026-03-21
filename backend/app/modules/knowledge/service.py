@@ -7,6 +7,7 @@
 
 from typing import Dict, List, Any, Optional
 import asyncio
+import hashlib
 import random
 import re
 import uuid
@@ -19,6 +20,16 @@ from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
 from qdrant_client.http import models
 
 logger = get_logger(__name__)
+
+# 列文件时忽略的对象路径前缀（MinIO 内系统预览/缓存，非用户上传的素材）
+_KB_LIST_IGNORE_OBJECT_PREFIXES = ("previews/",)
+
+
+def office_preview_cache_object_path(object_path: str, filename: str) -> str:
+    """DOCX/PPTX 内联预览写入 MinIO 的路径，与 `stream_file_for_preview` 一致。"""
+    stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+    digest = hashlib.sha1(object_path.encode("utf-8")).hexdigest()[:16]
+    return f"previews/office_pdf/{digest}_{stem}.pdf"
 
 # MinIO 桶标签键名，用于存储知识库元数据
 _TAG_NAME = "name"
@@ -1206,6 +1217,8 @@ class KnowledgeBaseService:
             files = []
             for f in raw_files:
                 op = f.get("object_path", "")
+                if any(op.startswith(p) for p in _KB_LIST_IGNORE_OBJECT_PREFIXES):
+                    continue
                 parts = op.split("/")
                 if len(parts) < 2:
                     continue
@@ -1400,6 +1413,20 @@ class KnowledgeBaseService:
                 logger.error(f"删除文件向量全部失败，不删除 MinIO 对象 kb_id={kb_id} file_id={file_id}")
                 return False
 
+            minio_delete_targets = list(object_paths)
+            for op in object_paths:
+                if not op.startswith("documents/"):
+                    continue
+                rest = op.split("/", 1)[1] if "/" in op else ""
+                if not rest.startswith(file_id + "_"):
+                    continue
+                display_name = rest[len(file_id) + 1 :] if len(rest) > len(file_id) + 1 else rest
+                ext = display_name.rsplit(".", 1)[-1].lower() if "." in display_name else ""
+                if ext in ("docx", "pptx"):
+                    p = office_preview_cache_object_path(op, display_name)
+                    if p not in minio_delete_targets:
+                        minio_delete_targets.append(p)
+
             # 删除 chunk 后、删 MinIO 前：若可能变空，先拿到用于画像的 discovered kb_id（桶内还有文件时才能反查）
             portrait_candidate_ids: List[str] = []
             if deleted_chunk_count > 0:
@@ -1411,8 +1438,8 @@ class KnowledgeBaseService:
                 except Exception as e:
                     logger.debug(f"删除文件时反查 kb_id 失败(可忽略): {e}")
 
-            # 向量删除成功后，再删除 MinIO 中该文件的所有对象
-            for object_path in object_paths:
+            # 向量删除成功后，再删除 MinIO 中该文件的所有对象（含 Office 预览 PDF 缓存）
+            for object_path in minio_delete_targets:
                 await self.minio_adapter.delete_file(bucket_name, object_path)
 
             # 删除 chunk 计入增量，达到阈值后触发画像重建（与上传逻辑一致）
