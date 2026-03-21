@@ -23,7 +23,8 @@ export function StatusBadge({ status }: { status: string }) {
 
 // 文件类型图标配置：不同文档类型使用不同图标与配色，便于一眼区分
 const FILE_ICON_SIZE_DEFAULT = 16
-function FileIcon({ type, size = FILE_ICON_SIZE_DEFAULT }: { type: string; size?: number }) {
+/** 与文件列表 FileThumb / FileHero 一致的类型图标（扩展名或 MIME 映射后的短类型） */
+export function FileIcon({ type, size = FILE_ICON_SIZE_DEFAULT }: { type: string; size?: number }) {
   const lowerType = String(type || '').toLowerCase()
   const s = size
 

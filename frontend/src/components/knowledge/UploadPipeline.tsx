@@ -164,10 +164,12 @@ export function UploadPipeline({
   return (
     <div className={cn('bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm', className)}>
       <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800">
-        <h3 className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-          <div className="p-1.5 bg-gradient-to-tr from-indigo-50 to-fuchsia-50 dark:from-indigo-600/25 dark:to-fuchsia-600/15 text-indigo-600 dark:text-indigo-200 rounded-lg">
-            <Upload className="h-4 w-4" />
-          </div>
+        <h3 className="flex items-center gap-3 font-semibold tracking-tight text-slate-800 dark:text-slate-100">
+          <Upload
+            className="h-5 w-5 shrink-0 text-indigo-600 opacity-90 drop-shadow-[0_1px_2px_rgba(99,102,241,0.15)] dark:text-indigo-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
+            strokeWidth={2.25}
+            aria-hidden
+          />
           上传文件
         </h3>
       </div>
@@ -190,9 +192,11 @@ export function UploadPipeline({
           }}
           onClick={() => fileInputRef.current?.click()}
         >
-          <div className="w-12 h-12 bg-gradient-to-tr from-indigo-50 to-fuchsia-50 dark:from-indigo-600/25 dark:to-fuchsia-600/15 text-indigo-600 dark:text-indigo-200 rounded-full flex items-center justify-center mx-auto mb-3 border border-indigo-100/80 dark:border-slate-700">
-            <Upload size={24} />
-          </div>
+          <Upload
+            className="mx-auto mb-3 block h-10 w-10 text-indigo-600 opacity-90 drop-shadow-[0_1px_3px_rgba(99,102,241,0.2)] dark:text-indigo-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]"
+            strokeWidth={2}
+            aria-hidden
+          />
           <p className="mb-2 font-medium text-slate-700 dark:text-slate-200">拖拽文件到此处或点击上传</p>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             支持 PDF / DOCX / PPTX / MD / 图片 / 音频（MP3/WAV/M4A 等）/ 视频（MP4/AVI/MOV 等）（≤ 50MB）

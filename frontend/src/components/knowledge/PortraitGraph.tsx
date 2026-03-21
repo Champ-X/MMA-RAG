@@ -11,27 +11,7 @@ import { Button } from '@/components/ui/button'
 import { ScatterChart, FileText, Image, Music, Video, RefreshCw, LayoutList } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { knowledgeApi } from '@/services/api_client'
-
-/** 柔和同系色阶：indigo → violet → fuchsia 降饱和、提明度，过渡平滑不跳色 */
-const MESH_PALETTES = {
-  c0: { fill: '#a5b4fc', centerLight: '#e0e7ff', mid: '#818cf8', edge: '#6366f1', glowBorder: 'rgba(99,102,241,0.52)' },
-  c1: { fill: '#b8a9f8', centerLight: '#e8e4ff', mid: '#a78bfa', edge: '#7c3aed', glowBorder: 'rgba(124,58,237,0.5)' },
-  c2: { fill: '#c4b5fd', centerLight: '#ede9fe', mid: '#a78bfa', edge: '#8b5cf6', glowBorder: 'rgba(139,92,246,0.5)' },
-  c3: { fill: '#d4b8fc', centerLight: '#f3e8ff', mid: '#c084fc', edge: '#a855f7', glowBorder: 'rgba(168,85,247,0.5)' },
-  c4: { fill: '#e9b8fc', centerLight: '#fae8ff', mid: '#e879f9', edge: '#d946ef', glowBorder: 'rgba(217,70,239,0.5)' },
-  c5: { fill: '#f0c6fc', centerLight: '#fdf4ff', mid: '#f0abfc', edge: '#e879f9', glowBorder: 'rgba(232,121,249,0.5)' },
-  c6: { fill: '#f5d0fe', centerLight: '#fdf4ff', mid: '#f5d0fe', edge: '#e879f9', glowBorder: 'rgba(232,121,249,0.48)' },
-} as const
-
-const MESH_TIER_IDS = ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6'] as const
-
-function getBubbleTierId(_heat: number, index: number): (typeof MESH_TIER_IDS)[number] {
-  return MESH_TIER_IDS[index % MESH_TIER_IDS.length]
-}
-
-function getBubblePaletteByHeat(heat: number, index: number): (typeof MESH_PALETTES)[keyof typeof MESH_PALETTES] {
-  return MESH_PALETTES[getBubbleTierId(heat, index)]
-}
+import { BUBBLE_THEME_TIER_COUNT, pickRandomBubbleTheme } from './portraitBubbleThemes'
 
 /** 词云字体：现代无衬线，兼顾中文与科技感 */
 const WORD_CLOUD_FONT = '"PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", "Open Sans", Roboto, sans-serif'
@@ -98,6 +78,22 @@ export function PortraitGraph({
   /** 悬停气泡：其他变淡、目标放大、显示关系连线 */
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const summaryPopoverRef = useRef<HTMLDivElement>(null)
+
+  /** 每次进入知识库或重新生成画像完成后随机换一套气泡配色 */
+  const [bubbleTheme, setBubbleTheme] = useState(() => pickRandomBubbleTheme())
+  const wasGeneratingRef = useRef(false)
+
+  useEffect(() => {
+    wasGeneratingRef.current = false
+    setBubbleTheme(pickRandomBubbleTheme())
+  }, [knowledgeBaseId])
+
+  useEffect(() => {
+    if (wasGeneratingRef.current && !generating && clusters.length > 0) {
+      setBubbleTheme(pickRandomBubbleTheme())
+    }
+    wasGeneratingRef.current = generating
+  }, [generating, clusters.length])
 
   const fetchPortrait = useCallback(async () => {
     setLoading(true)
@@ -364,22 +360,26 @@ export function PortraitGraph({
   const audioPct = total ? (audioCount / total) * 100 : 25
   const videoPct = total ? (videoCount / total) * 100 : 25
 
-  /** 热度 0~1：按 cluster_size 归一化，用于逻辑色与视觉层级 */
-  const heatByNode = useCallback(
-    (size: number) => (maxSize <= minSize ? 1 : (size - minSize) / (maxSize - minSize)),
-    [maxSize, minSize]
-  )
-
   return (
     <div className={cn('space-y-4', className)}>
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2.5 text-base">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500/15 to-fuchsia-500/15 dark:from-indigo-400/20 dark:to-fuchsia-400/20 border border-indigo-200/50 dark:border-indigo-500/30">
-                <ScatterChart className="h-4 w-4 text-indigo-600 dark:text-indigo-400" strokeWidth={2.5} />
+      <Card className="overflow-hidden border-slate-200/70 shadow-sm dark:border-slate-700/70">
+        <CardHeader className="space-y-0 border-b border-slate-100/90 bg-gradient-to-r from-slate-50/60 via-white to-indigo-50/35 pb-3 pt-4 dark:border-slate-800/90 dark:from-slate-900/50 dark:via-slate-950 dark:to-indigo-950/25">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="flex flex-wrap items-center gap-x-3 gap-y-1 text-base font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+              <ScatterChart
+                className="h-6 w-6 shrink-0 text-indigo-600 drop-shadow-[0_1px_2px_rgba(99,102,241,0.2)] transition-colors duration-200 dark:text-indigo-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]"
+                strokeWidth={2.25}
+                aria-hidden
+              />
+              <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span>知识库主题气泡图</span>
+                <span
+                  className="text-xs font-medium text-slate-400 dark:text-slate-500"
+                  title={`当前配色：${bubbleTheme.name}`}
+                >
+                  · {bubbleTheme.name}
+                </span>
               </span>
-              <span>知识库主题气泡图</span>
             </CardTitle>
             {clusters.length > 0 && (
               <Button
@@ -387,25 +387,20 @@ export function PortraitGraph({
                 size="sm"
                 onClick={handleRegenerate}
                 disabled={generating}
-                className="group gap-2 rounded-xl border-indigo-200/50 bg-gradient-to-r from-indigo-50/50 to-fuchsia-50/50 text-indigo-700 shadow-sm transition-all duration-200 hover:border-indigo-300/70 hover:from-indigo-100/70 hover:to-fuchsia-100/70 hover:shadow-md hover:shadow-indigo-500/10 dark:border-indigo-500/25 dark:from-indigo-950/40 dark:to-fuchsia-950/40 dark:text-indigo-300 dark:hover:border-indigo-400/40 dark:hover:from-indigo-900/50 dark:hover:to-fuchsia-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="group h-9 shrink-0 gap-2 rounded-xl border-indigo-200/80 bg-white/90 px-3.5 text-sm font-semibold text-indigo-700 shadow-sm transition-all duration-200 hover:border-fuchsia-300/80 hover:bg-indigo-50/60 hover:text-indigo-900 hover:shadow-md dark:border-indigo-500/35 dark:bg-slate-900/70 dark:text-indigo-200 dark:hover:border-fuchsia-500/40 dark:hover:bg-indigo-950/50 dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {generating ? (
                   <>
-                    <div className="relative">
-                      <div className="absolute inset-0 rounded-full bg-indigo-200/40 dark:bg-indigo-800/20 blur-sm animate-pulse" />
-                      <RefreshCw className="relative h-3.5 w-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
-                    </div>
-                    <span className="font-medium">生成中…</span>
+                    <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-indigo-600 dark:text-indigo-400" aria-hidden />
+                    <span>生成中…</span>
                   </>
                 ) : (
                   <>
-                    <div className="relative">
-                      {/* 悬停时的光晕效果 */}
-                      <div className="absolute inset-0 -m-0.5 rounded-full bg-gradient-to-br from-indigo-200/0 to-fuchsia-200/0 group-hover:from-indigo-200/50 group-hover:to-fuchsia-200/50 dark:group-hover:from-indigo-800/30 dark:group-hover:to-fuchsia-800/30 blur-md transition-all duration-300" />
-                      {/* 图标 */}
-                      <RefreshCw className="relative h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 transition-all duration-300 group-hover:rotate-180 group-hover:text-fuchsia-600 dark:group-hover:text-fuchsia-400" />
-                    </div>
-                    <span className="font-medium">重新生成</span>
+                    <RefreshCw
+                      className="h-3.5 w-3.5 shrink-0 text-indigo-600 transition-transform duration-300 group-hover:rotate-180 group-hover:text-fuchsia-600 dark:text-indigo-400 dark:group-hover:text-fuchsia-400"
+                      aria-hidden
+                    />
+                    <span>重新生成</span>
                   </>
                 )}
               </Button>
@@ -444,9 +439,11 @@ export function PortraitGraph({
                 </>
               ) : (
                 <>
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100/80 dark:bg-indigo-900/40 text-indigo-500 dark:text-indigo-400">
-                    <ScatterChart className="h-6 w-6" strokeWidth={2} />
-                  </span>
+                  <ScatterChart
+                    className="h-10 w-10 text-indigo-600 drop-shadow-[0_1px_2px_rgba(99,102,241,0.2)] dark:text-indigo-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
+                    strokeWidth={2}
+                    aria-hidden
+                  />
                   <p className="text-base font-medium text-slate-700 dark:text-slate-200 mt-2">暂无主题画像</p>
                   <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm text-center px-4">
                     知识库需有足够数据（约 10 条以上文本/图片/音频/视频关键帧）才能生成主题聚类画像。
@@ -480,7 +477,10 @@ export function PortraitGraph({
               )}
             </div>
           ) : (
-            <div ref={containerRef} className="relative min-h-[520px] w-full overflow-hidden rounded-xl border border-slate-200/40 dark:border-slate-700/50 portrait-chart-container">
+            <div
+              ref={containerRef}
+              className="relative min-h-[520px] w-full overflow-hidden rounded-xl border border-slate-200/55 bg-slate-50/20 shadow-inner ring-1 ring-slate-100/80 dark:border-slate-700/55 dark:bg-slate-950/20 dark:ring-slate-800/60 portrait-chart-container"
+            >
               {/* 生成中的遮罩层 */}
               {generating && (
                 <motion.div
@@ -515,14 +515,16 @@ export function PortraitGraph({
               <div
                 className="absolute inset-0 z-0 rounded-[inherit] opacity-100 dark:opacity-0"
                 style={{
-                  background: 'radial-gradient(ellipse 90% 80% at 50% 50%, rgba(255,255,255,0.99) 0%, rgba(250,251,253,0.97) 45%, rgba(248,250,252,0.95) 100%), radial-gradient(ellipse 75% 65% at 50% 50%, rgba(224,231,255,0.25) 0%, rgba(129,140,248,0.08) 35%, rgba(217,70,239,0.05) 60%, transparent 100%)',
+                  background:
+                    'radial-gradient(ellipse 92% 82% at 48% 44%, rgba(255,255,255,0.995) 0%, rgba(248,250,252,0.97) 48%, rgba(241,245,249,0.94) 100%), radial-gradient(ellipse 72% 62% at 52% 52%, rgba(199,210,254,0.22) 0%, rgba(167,139,250,0.1) 40%, rgba(244,114,182,0.07) 68%, transparent 100%)',
                 }}
                 aria-hidden
               />
               <div
                 className="absolute inset-0 z-0 hidden rounded-[inherit] dark:block"
                 style={{
-                  background: 'radial-gradient(ellipse 85% 75% at 50% 50%, rgba(15,23,42,0.97) 0%, #0f172a 60%, #0c1222 100%), radial-gradient(ellipse 50% 50% at 50% 50%, rgba(99,102,241,0.04) 0%, transparent 70%)',
+                  background:
+                    'radial-gradient(ellipse 88% 76% at 50% 48%, rgba(17,24,39,0.98) 0%, #0f172a 52%, #0a0f1a 100%), radial-gradient(ellipse 58% 52% at 50% 46%, rgba(129,140,248,0.14) 0%, rgba(168,85,247,0.07) 45%, rgba(59,130,246,0.04) 70%, transparent 100%)',
                 }}
                 aria-hidden
               />
@@ -535,18 +537,22 @@ export function PortraitGraph({
               >
                 <defs>
                   {/* 柔和弥散渐变：中心更亮、边缘过渡更顺，整体偏 pastel */}
-                  {MESH_TIER_IDS.map((tierId) => {
-                    const { fill, centerLight, mid, edge } = MESH_PALETTES[tierId]
-                    return (
-                      <radialGradient key={tierId} id={`bubble-grad-${tierId}`} cx="30%" cy="30%" r="75%">
-                        <stop offset="0%" stopColor={centerLight} stopOpacity={0.92} />
-                        <stop offset="25%" stopColor={centerLight} stopOpacity={0.88} />
-                        <stop offset="50%" stopColor={fill} stopOpacity={0.82} />
-                        <stop offset="78%" stopColor={mid} stopOpacity={0.76} />
-                        <stop offset="100%" stopColor={edge} stopOpacity={0.68} />
-                      </radialGradient>
-                    )
-                  })}
+                  {bubbleTheme.tiers.map((pal, ti) => (
+                    <radialGradient
+                      key={`${bubbleTheme.id}-t${ti}`}
+                      id={`bubble-grad-${bubbleTheme.id}-t${ti}`}
+                      cx="32%"
+                      cy="28%"
+                      r="78%"
+                    >
+                      <stop offset="0%" stopColor={pal.centerLight} stopOpacity={0.98} />
+                      <stop offset="22%" stopColor={pal.centerLight} stopOpacity={0.9} />
+                      <stop offset="45%" stopColor={pal.fill} stopOpacity={0.88} />
+                      <stop offset="68%" stopColor={pal.mid} stopOpacity={0.82} />
+                      <stop offset="88%" stopColor={pal.edge} stopOpacity={0.78} />
+                      <stop offset="100%" stopColor={pal.edge} stopOpacity={0.72} />
+                    </radialGradient>
+                  ))}
                   {/* 内阴影：轻微玻璃感，不抢色 */}
                   <filter id="bubble-inner-shadow" x="-30%" y="-30%" width="160%" height="160%">
                     <feOffset in="SourceAlpha" dx="1.5" dy="1.5" result="offset" />
@@ -582,8 +588,8 @@ export function PortraitGraph({
                             y1={hovered.y}
                             x2={other.x}
                             y2={other.y}
-                            stroke="#6366f1"
-                            strokeOpacity={0.42}
+                            stroke={bubbleTheme.tiers[0].mid}
+                            strokeOpacity={0.38}
                             strokeWidth={1.2}
                             strokeDasharray="5 4"
                           />
@@ -593,9 +599,9 @@ export function PortraitGraph({
                 })()}
                 {layoutReady &&
                   bubbleNodes.map((node) => {
-                    const heat = heatByNode(node.cluster.cluster_size)
-                    const tierId = getBubbleTierId(heat, node.index)
-                    const palette = getBubblePaletteByHeat(heat, node.index)
+                    const tierIndex = node.index % BUBBLE_THEME_TIER_COUNT
+                    const palette = bubbleTheme.tiers[tierIndex]
+                    const gradId = `bubble-grad-${bubbleTheme.id}-t${tierIndex}`
                     const isSelected = node.cluster.cluster_id === selectedId
                     const isHovered = node.cluster.cluster_id === hoveredNodeId
                     const allKeywords = (node.cluster.keywords && node.cluster.keywords.length > 0)
@@ -649,7 +655,7 @@ export function PortraitGraph({
                         >
                           <motion.circle
                             r={node.r}
-                            fill={`url(#bubble-grad-${tierId})`}
+                            fill={`url(#${gradId})`}
                             filter="url(#bubble-inner-shadow)"
                             initial={{ scale: 0, opacity: 0 }}
                             animate={{
@@ -685,23 +691,30 @@ export function PortraitGraph({
                           y={-node.r + 4}
                           width={Math.max(0, node.r * 2 - 8)}
                           height={Math.max(0, node.r * 2 - 8)}
-                          className="pointer-events-none"
+                          className="pointer-events-none overflow-visible"
                         >
+                          {/* 用圆形裁剪替代方形 overflow-hidden，避免大字重 text-shadow 在直角处被裁成灰块 */}
                           <div
-                            className="relative h-full w-full overflow-hidden"
-                            style={{ fontFamily: WORD_CLOUD_FONT }}
+                            className="relative h-full w-full overflow-hidden rounded-full bg-transparent"
+                            style={{
+                              fontFamily: WORD_CLOUD_FONT,
+                              backgroundColor: 'transparent',
+                            }}
                           >
                             {hasKeywords ? (
                               <>
                                 {/* 核心词：保持水平、纯白加粗，字号略小以留出视觉空间 */}
                                 <span
-                                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap font-bold text-white"
+                                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap font-bold text-white [background:none]"
                                   style={{
                                     fontSize: Math.min(node.r * 0.28, baseFont * 1.85),
                                     maxWidth: `${Math.min(node.r * 1.6, 96)}px`,
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    textShadow: '0 0 1px rgba(0,0,0,0.8), 0 1px 2px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.3), 0 0 1px rgba(255,255,255,0.4)',
+                                    backgroundColor: 'transparent',
+                                    boxShadow: 'none',
+                                    // 避免多层「0 0 大模糊」阴影叠成字背后的灰黑矩形；用细描边 + 轻微下沉阴影保证可读
+                                    WebkitTextStroke: '0.45px rgba(15, 23, 42, 0.28)',
+                                    paintOrder: 'stroke fill',
+                                    textShadow: '0 1px 2px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.22)',
                                   }}
                                   title={keywords[0]}
                                 >
@@ -720,16 +733,18 @@ export function PortraitGraph({
                                   return (
                                     <span
                                       key={`${word}-${wi}`}
-                                      className="absolute whitespace-nowrap font-medium text-white/85"
+                                      className="absolute whitespace-nowrap font-semibold text-white [background:none]"
                                       style={{
                                         left: `${left}px`,
                                         top: `${top}px`,
                                         transform: 'translate(-50%, -50%)',
                                         fontSize: wordFontSize,
                                         maxWidth: `${Math.min(node.r * 1.1, 64)}px`,
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        textShadow: '0 0 1px rgba(0,0,0,0.6), 0 1px 2px rgba(0,0,0,0.35)',
+                                        backgroundColor: 'transparent',
+                                        boxShadow: 'none',
+                                        WebkitTextStroke: '0.4px rgba(15, 23, 42, 0.24)',
+                                        paintOrder: 'stroke fill',
+                                        textShadow: '0 1px 2px rgba(0,0,0,0.45), 0 1px 4px rgba(0,0,0,0.2)',
                                       }}
                                       title={word}
                                     >
@@ -811,19 +826,23 @@ export function PortraitGraph({
           })()}
 
           {clusters.length > 0 && (
-            <div className="rounded-lg border border-slate-200/60 dark:border-slate-700/60 bg-gradient-to-br from-slate-50/50 to-indigo-50/30 dark:from-slate-800/30 dark:to-indigo-950/20 px-3 py-2">
-              <div className="flex items-center gap-2.5">
-                <div className="flex-shrink-0">
-                  <div className="rounded-md bg-indigo-100/80 dark:bg-indigo-900/40 p-1.5">
-                    <ScatterChart className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" strokeWidth={2} />
-                  </div>
-                </div>
-                <p className="flex-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  <span className="font-semibold text-indigo-700 dark:text-indigo-300">气泡内为主题关键词</span>
-                  <span className="text-slate-300 dark:text-slate-600 mx-2.5">•</span>
+            <div className="rounded-xl border border-slate-200/70 dark:border-slate-700/70 bg-gradient-to-r from-slate-50/95 via-white to-indigo-50/40 px-4 py-3 shadow-sm dark:from-slate-900/80 dark:via-slate-950 dark:to-indigo-950/35">
+              <div className="flex flex-wrap items-start gap-x-3 gap-y-2 sm:items-center">
+                <ScatterChart
+                  className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400 sm:mt-0"
+                  strokeWidth={2.25}
+                  aria-hidden
+                />
+                <p className="min-w-0 flex-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                  <span className="font-semibold text-indigo-800 dark:text-indigo-200">气泡内为主题关键词</span>
+                  <span className="mx-2 text-slate-300 dark:text-slate-600" aria-hidden>
+                    ·
+                  </span>
                   <span className="font-medium text-slate-700 dark:text-slate-200">点击气泡查看主题摘要并筛选文档</span>
-                  <span className="text-slate-300 dark:text-slate-600 mx-2.5">•</span>
-                  <span className="font-medium text-fuchsia-700 dark:text-fuchsia-300">气泡大小表示文档数量</span>
+                  <span className="mx-2 text-slate-300 dark:text-slate-600" aria-hidden>
+                    ·
+                  </span>
+                  <span className="font-semibold text-fuchsia-700 dark:text-fuchsia-300">气泡大小表示文档数量</span>
                 </p>
               </div>
             </div>
