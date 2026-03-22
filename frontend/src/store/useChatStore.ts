@@ -2,6 +2,15 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { chatApi } from '@/services/api_client';
 
+/** 用户消息携带的附件展示信息；previewUrl 为内存中的 Object URL，不应写入持久化 */
+export interface ChatMessageAttachment {
+  id: string
+  kind: 'image' | 'audio'
+  name: string
+  size: number
+  previewUrl?: string
+}
+
 export interface ThoughtData {
   intent_type?: string;
   original_query?: string;
@@ -39,6 +48,8 @@ export interface Message {
     data?: any;
     duration?: number;
   }[];
+  /** 用户上传的附件（用于气泡上方预览；回答过程中仍显示） */
+  attachments?: ChatMessageAttachment[]
   citations?: Array<{
     id: number | string;
     type?: 'doc' | 'image' | 'audio' | 'video';
@@ -57,6 +68,15 @@ export interface Message {
     metadata?: Record<string, unknown>;
   }>;
   error?: string;
+}
+
+function revokeAttachmentsInMessages(messages: Message[] | undefined) {
+  if (!messages?.length) return
+  for (const m of messages) {
+    for (const a of m.attachments ?? []) {
+      if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
+    }
+  }
 }
 
 export type KbMode = 'auto' | 'all' | 'manual'
@@ -239,6 +259,9 @@ export const useChatStore = create<ChatStore>()(
       // 删除会话（若删光则自动新建一个，保证始终有会话）
       deleteSession: (sessionId) => {
         set((state) => {
+          const doomed = state.sessions.find((s) => s.id === sessionId)
+          revokeAttachmentsInMessages(doomed?.messages)
+
           const updatedSessions = state.sessions.filter(s => s.id !== sessionId);
           let newActiveId = state.activeSessionId;
           let sessions = updatedSessions;
@@ -305,11 +328,15 @@ export const useChatStore = create<ChatStore>()(
               timestamp: m.timestamp ? new Date(m.timestamp).getTime() : Date.now(),
               citations: m.citations as Message['citations'],
             }));
-            set((state) => ({
-              sessions: state.sessions.map(s =>
-                s.id === sessionId ? { ...s, messages, updatedAt: Date.now() } : s
-              ),
-            }));
+            set((state) => {
+              const prev = state.sessions.find((s) => s.id === sessionId)
+              revokeAttachmentsInMessages(prev?.messages)
+              return {
+                sessions: state.sessions.map(s =>
+                  s.id === sessionId ? { ...s, messages, updatedAt: Date.now() } : s
+                ),
+              }
+            });
           }
         } catch {
           // 忽略加载失败（如会话不存在）
@@ -407,7 +434,13 @@ export const useChatStore = create<ChatStore>()(
     {
       name: 'chat-store',
       partialize: (state) => ({
-        sessions: state.sessions,
+        sessions: state.sessions.map((s) => ({
+          ...s,
+          messages: s.messages.map((m) => ({
+            ...m,
+            attachments: m.attachments?.map(({ previewUrl: _p, ...rest }) => rest),
+          })),
+        })),
         activeSessionId: state.activeSessionId,
       }),
     }

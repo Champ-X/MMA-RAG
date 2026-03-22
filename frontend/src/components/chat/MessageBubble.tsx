@@ -11,7 +11,13 @@ import rehypeHighlight from 'rehype-highlight'
 import { cn } from '@/lib/utils'
 import { chatApi } from '@/services/api_client'
 import type { CitationReference } from '@/types/sse'
-import { useChatStore, type ThoughtData, type ThinkingState } from '@/store/useChatStore'
+import {
+  useChatStore,
+  type ChatMessageAttachment,
+  type ThoughtData,
+  type ThinkingState,
+} from '@/store/useChatStore'
+import { UserMessageAttachmentStrip } from './ChatAttachmentPreview'
 
 /** 流式时从 ChatInterface 传入的实时思考数据，保证思考框在气泡顶部展示 */
 export interface LiveThinkingProps {
@@ -39,6 +45,7 @@ export interface MessageBubbleMessage {
     retrieval?: any
   } | ThoughtData | null
   error?: string
+  attachments?: ChatMessageAttachment[]
 }
 
 interface MessageBubbleProps {
@@ -1397,12 +1404,18 @@ export function MessageBubble({
   return (
     <div className="flex items-start gap-2">
       {isUser ? (
-        <>
-          <div className="flex-1 flex justify-end min-w-0">
+        <div className="flex min-w-0 flex-1 flex-col items-end gap-2">
+          {(message.attachments?.length ?? 0) > 0 && (
+            <UserMessageAttachmentStrip
+              attachments={message.attachments!}
+              className="w-full"
+            />
+          )}
+          <div className="flex items-start justify-end gap-2">
             {bubbleEl}
+            {avatarEl}
           </div>
-          {avatarEl}
-        </>
+        </div>
       ) : isStoppedHint ? (
         // 终止提示不显示头像，居中显示
         <div className="flex-1 flex justify-center min-w-0">

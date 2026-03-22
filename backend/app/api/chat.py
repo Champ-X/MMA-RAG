@@ -3,9 +3,9 @@
 处理对话和问答请求
 """
 
-from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi import APIRouter, HTTPException, Request, Query, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, AsyncGenerator
 import json
 import asyncio
 import uuid
@@ -19,6 +19,7 @@ from app.core.llm.manager import llm_manager
 from app.modules.retrieval.service import RetrievalService
 from app.modules.generation.service import GenerationService
 from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
+from app.modules.chat.attachment_summarizer import MAX_ATTACHMENTS, summarize_chat_attachments
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -199,14 +200,14 @@ async def chat_message(request: Request):
         retrieval_result = await retrieval_service.search(
             query=message,
             kb_context=kb_context,
-            session_context=session_context
+            session_context=session_context,
         )
         
         # 2. 生成回答
         generation_result = await generation_service.generate_response(
             query=message,
             retrieval_result=retrieval_result,
-            kb_context=kb_context
+            kb_context=kb_context,
         )
         
         if not generation_result.get("success"):
@@ -271,140 +272,229 @@ async def chat_message(request: Request):
         logger.error(f"聊天消息处理失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"处理聊天消息时发生错误: {str(e)}")
 
+def _thought_event_payload(stage: str, payload: dict) -> str:
+    """前端期望: type=thought, data={ type: <phase>, data: { ... } }"""
+    return json.dumps(
+        {
+            "type": "thought",
+            "data": {"type": stage, "data": payload},
+            "timestamp": datetime.utcnow().timestamp(),
+        },
+        ensure_ascii=False,
+    )
+
+
+async def _iter_chat_sse(
+    *,
+    message: str,
+    knowledge_base_ids_csv: Optional[str],
+    session_id_opt: Optional[str],
+    model: Optional[str],
+    attachment_context: Optional[str],
+    include_connected: bool = True,
+) -> AsyncGenerator[str, None]:
+    """流式聊天 SSE 行迭代器（GET/POST 共用）。"""
+    kb_ids: List[str] = []
+    if knowledge_base_ids_csv:
+        kb_ids = [kb_id.strip() for kb_id in knowledge_base_ids_csv.split(",") if kb_id.strip()]
+
+    if not session_id_opt:
+        current_session_id = str(uuid.uuid4())
+    else:
+        current_session_id = session_id_opt
+
+    session = sessions.get(current_session_id, {})
+    if not session:
+        session = {
+            "id": current_session_id,
+            "messages": [],
+            "knowledge_base_ids": kb_ids,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        sessions[current_session_id] = session
+
+    session_context = []
+    for msg in session.get("messages", [])[-10:]:
+        if msg.get("role") in ["user", "assistant"]:
+            session_context.append({"role": msg["role"], "content": msg.get("content", "")})
+
+    kb_context = None
+    if kb_ids:
+        kb_context = {"kb_ids": kb_ids, "kb_names": []}
+
+    if include_connected:
+        yield f"data: {json.dumps({'type': 'connected', 'sessionId': current_session_id})}\n\n"
+
+    retrieval_result = None
+    async for stage, payload in retrieval_service.search_stream(
+        query=message,
+        kb_context=kb_context,
+        session_context=session_context,
+        attachment_context=attachment_context,
+    ):
+        if stage == "_result":
+            retrieval_result = payload
+            break
+        yield f"data: {_thought_event_payload(stage, payload)}\n\n"
+
+    if retrieval_result is None:
+        raise RuntimeError("检索流未返回结果")
+
+    yield f"data: {_thought_event_payload('generation', {'message': '正在准备生成回答...', 'status': 'preparing'})}\n\n"
+
+    answer_chunks: List[str] = []
+    last_citations: List[Any] = []
+    async for event in generation_service.stream_generate_response(
+        query=message,
+        retrieval_result=retrieval_result,
+        session_id=current_session_id,
+        kb_context=kb_context,
+        model=model,
+        attachment_context=attachment_context,
+    ):
+        event_type = event.type.value if hasattr(event.type, "value") else str(event.type)
+
+        if event_type == "message":
+            chunk = event.data.get("content", "")
+            answer_chunks.append(chunk)
+            yield f"data: {json.dumps({'type': 'message', 'data': {'delta': chunk}})}\n\n"
+        elif event_type == "thought":
+            stage = event.data.get("stage", "generation")
+            if isinstance(event.data.get("message"), dict):
+                pl = event.data.get("message", {})
+            else:
+                pl = {"message": event.data.get("message", "")}
+            if "status" in event.data:
+                pl["status"] = event.data["status"]
+            yield f"data: {_thought_event_payload(stage, pl)}\n\n"
+        elif event_type == "citation":
+            refs = event.data.get("references", event.data.get("citations", []))
+            last_citations = refs
+            yield f"data: {json.dumps({'type': 'citation', 'data': {'references': refs}}, ensure_ascii=False)}\n\n"
+        elif event_type == "error":
+            yield f"data: {json.dumps({'type': 'error', 'message': event.data.get('error', '未知错误')})}\n\n"
+        elif event_type == "done":
+            break
+
+    full_answer = "".join(answer_chunks)
+    session["messages"].append(
+        {"role": "user", "content": message, "timestamp": datetime.utcnow().isoformat()}
+    )
+    session["messages"].append(
+        {
+            "role": "assistant",
+            "content": full_answer,
+            "citations": last_citations,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    )
+    session["updated_at"] = datetime.utcnow().isoformat()
+
+    yield f"data: {json.dumps({'type': 'complete', 'sessionId': current_session_id})}\n\n"
+
+
 @router.get("/stream")
 async def stream_chat(
     message: str = Query(...),
     knowledgeBaseIds: Optional[str] = Query(None),
     sessionId: Optional[str] = Query(None),
-    model: Optional[str] = Query(None)
+    model: Optional[str] = Query(None),
 ):
-    """流式聊天接口 (SSE)"""
+    """流式聊天接口 (SSE)，无附件时使用 GET。"""
+
     async def generate():
         try:
-            # 解析知识库ID
-            kb_ids = []
-            if knowledgeBaseIds:
-                kb_ids = [kb_id.strip() for kb_id in knowledgeBaseIds.split(",") if kb_id.strip()]
-            
-            # 获取或创建会话
-            if not sessionId:
-                current_session_id = str(uuid.uuid4())
-            else:
-                current_session_id = sessionId
-            
-            session = sessions.get(current_session_id, {})
-            if not session:
-                session = {
-                    "id": current_session_id,
-                    "messages": [],
-                    "knowledge_base_ids": kb_ids,
-                    "created_at": datetime.utcnow().isoformat()
-                }
-                sessions[current_session_id] = session
-            
-            # 构建会话上下文
-            session_context = []
-            for msg in session.get("messages", [])[-10:]:
-                if msg.get("role") in ["user", "assistant"]:
-                    session_context.append({
-                        "role": msg["role"],
-                        "content": msg.get("content", "")
-                    })
-            
-            # 构建知识库上下文
-            kb_context = None
-            if kb_ids:
-                kb_context = {
-                    "kb_ids": kb_ids,
-                    "kb_names": []
-                }
-            
-            # 发送连接事件
-            yield f"data: {json.dumps({'type': 'connected', 'sessionId': current_session_id})}\n\n"
-
-            def _thought_event(stage: str, payload: dict) -> str:
-                """前端期望: type=thought, data={ type: <phase>, data: { ... } }"""
-                return json.dumps({
-                    "type": "thought",
-                    "data": {"type": stage, "data": payload},
-                    "timestamp": datetime.utcnow().timestamp()
-                }, ensure_ascii=False)
-
-            # 1. 流式检索：每完成一个阶段立即推送 thought 事件，前端可逐步展示
-            retrieval_result = None
-            async for stage, payload in retrieval_service.search_stream(
-                query=message,
-                kb_context=kb_context,
-                session_context=session_context
+            async for line in _iter_chat_sse(
+                message=message,
+                knowledge_base_ids_csv=knowledgeBaseIds,
+                session_id_opt=sessionId,
+                model=model,
+                attachment_context=None,
             ):
-                if stage == "_result":
-                    retrieval_result = payload
-                    break
-                yield f"data: {_thought_event(stage, payload)}\n\n"
-
-            if retrieval_result is None:
-                raise RuntimeError("检索流未返回结果")
-
-            # 2. 生成阶段：立即发送准备生成事件，让前端知道正在准备
-            yield f"data: {_thought_event('generation', {'message': '正在准备生成回答...', 'status': 'preparing'})}\n\n"
-
-            answer_chunks = []
-            last_citations = []  # 用于保存引用，以便会话历史中能恢复图片/音视频
-            async for event in generation_service.stream_generate_response(
-                query=message,
-                retrieval_result=retrieval_result,
-                session_id=current_session_id,
-                kb_context=kb_context,
-                model=model
-            ):
-                event_type = event.type.value if hasattr(event.type, "value") else str(event.type)
-
-                if event_type == "message":
-                    chunk = event.data.get("content", "")
-                    answer_chunks.append(chunk)
-                    yield f"data: {json.dumps({'type': 'message', 'data': {'delta': chunk}})}\n\n"
-                elif event_type == "thought":
-                    stage = event.data.get("stage", "generation")
-                    # 支持传递完整的数据对象，而不仅仅是消息字符串
-                    if isinstance(event.data.get("message"), dict):
-                        payload = event.data.get("message", {})
-                    else:
-                        payload = {"message": event.data.get("message", "")}
-                    # 合并其他字段（如 status）
-                    if "status" in event.data:
-                        payload["status"] = event.data["status"]
-                    yield f"data: {_thought_event(stage, payload)}\n\n"
-                elif event_type == "citation":
-                    refs = event.data.get("references", event.data.get("citations", []))
-                    last_citations = refs
-                    yield f"data: {json.dumps({'type': 'citation', 'data': {'references': refs}}, ensure_ascii=False)}\n\n"
-                elif event_type == "error":
-                    yield f"data: {json.dumps({'type': 'error', 'message': event.data.get('error', '未知错误')})}\n\n"
-                elif event_type == "done":
-                    break
-
-            # 保存消息到会话（含 citations，便于历史记录中保留 file_path/debug_info 以便按需刷新 URL）
-            full_answer = "".join(answer_chunks)
-            session["messages"].append({
-                "role": "user",
-                "content": message,
-                "timestamp": datetime.utcnow().isoformat()
-            })
-            session["messages"].append({
-                "role": "assistant",
-                "content": full_answer,
-                "citations": last_citations,
-                "timestamp": datetime.utcnow().isoformat()
-            })
-            session["updated_at"] = datetime.utcnow().isoformat()
-
-            # 发送完成事件（前端期望 type=complete）
-            yield f"data: {json.dumps({'type': 'complete', 'sessionId': current_session_id})}\n\n"
-            
+                yield line
         except Exception as e:
             logger.error(f"流式聊天失败: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-    
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/stream")
+async def stream_chat_multipart(
+    message: str = Form(""),
+    knowledgeBaseIds: Optional[str] = Form(None),
+    sessionId: Optional[str] = Form(None),
+    model: Optional[str] = Form(None),
+    files: List[UploadFile] = File(default=[]),
+):
+    """流式聊天 (SSE)，支持 multipart 上传图片/音频附件（服务端生成摘要，不入库）。"""
+
+    named_uploads = [uf for uf in files if uf.filename]
+    if len(named_uploads) > MAX_ATTACHMENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"附件最多 {MAX_ATTACHMENTS} 个",
+        )
+
+    msg_stripped = (message or "").strip()
+
+    async def generate():
+        try:
+            raw_files: List[Tuple[str, str, bytes]] = []
+            for uf in named_uploads:
+                body = await uf.read()
+                raw_files.append((uf.filename, uf.content_type or "", body))
+
+            if not msg_stripped and not raw_files:
+                yield f"data: {json.dumps({'type': 'error', 'message': '请输入消息或上传附件'})}\n\n"
+                return
+
+            kb_ids_pre: List[str] = []
+            if knowledgeBaseIds:
+                kb_ids_pre = [
+                    x.strip() for x in knowledgeBaseIds.split(",") if x.strip()
+                ]
+            current_sid = (sessionId or "").strip() or str(uuid.uuid4())
+            if current_sid not in sessions:
+                sessions[current_sid] = {
+                    "id": current_sid,
+                    "messages": [],
+                    "knowledge_base_ids": kb_ids_pre,
+                    "created_at": datetime.utcnow().isoformat(),
+                }
+
+            yield f"data: {json.dumps({'type': 'connected', 'sessionId': current_sid})}\n\n"
+
+            attachment_context: Optional[str] = None
+            if raw_files:
+                yield f"data: {_thought_event_payload('attachment', {'message': '正在分析附件…', 'status': 'processing', 'count': len(raw_files)})}\n\n"
+                try:
+                    block, _meta = await summarize_chat_attachments(
+                        user_message=msg_stripped, files=raw_files
+                    )
+                    attachment_context = block.strip() or None
+                except ValueError as e:
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+                    return
+                yield f"data: {_thought_event_payload('attachment', {'message': '附件摘要已完成', 'status': 'completed', 'count': len(raw_files)})}\n\n"
+
+            effective_message = (
+                msg_stripped if msg_stripped else "请结合我上传的图片/音频内容回答。"
+            )
+
+            async for line in _iter_chat_sse(
+                message=effective_message,
+                knowledge_base_ids_csv=knowledgeBaseIds,
+                session_id_opt=current_sid,
+                model=model,
+                attachment_context=attachment_context,
+                include_connected=False,
+            ):
+                yield line
+        except Exception as e:
+            logger.error(f"流式聊天(附件)失败: {str(e)}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 

@@ -172,6 +172,11 @@ ONE_PASS_INTENT_TEMPLATE = """
    - 若强相关且视频能带来明显信息增益（时序、过程、沉浸感），判断为implicit_enrichment
 3. **第三步**：如果以上都不满足，则判断为unnecessary
 
+## 用户本轮附带的图片/音频摘要（由多模态模型预先压缩生成，非用户原文）
+{attachment_context_block}
+
+**说明**：若下方为「无附件」，则用户本轮未上传媒体。若包含摘要，用户问题中的「这张图」「这段音频」等指代应结合摘要理解；`dense_query` 与 `sparse_keywords` 应融合摘要中的实体、数字与主题，便于知识库检索。`visual_intent`/`audio_intent` 仍只表示「是否要从知识库检索图/音材料」，与用户是否已上传附件相互独立，不要因为用户已上传图片就一律判为 explicit_demand。
+
 ## 输入数据
 对话历史: {chat_history}
 最新输入: {raw_query}
@@ -585,6 +590,38 @@ RERANKING_TEMPLATE = """
 - 所有文档都必须包含在输出数组中
 """
 
+# 对话附件：图片短摘要（不入库，仅供当轮查询理解与生成）
+CHAT_ATTACHMENT_IMAGE_SUMMARY_TEMPLATE = """
+你是助手。用户在本轮对话中上传了一张图片，并可能同时提出了文字问题（仅供参考，勿复述用户原话）。
+
+## 用户文字（可能为空）
+{user_message}
+
+## 任务
+用**不超过 300 个汉字**输出一段客观、紧凑的中文摘要，便于后续结合知识库回答问题。需覆盖：
+- 画面主体、场景、关键物体与文字（如有图表/界面请概括数据或结论要点）
+- 与用户问题相关的可检索实体、数字、产品名等
+
+## 约束
+- 使用一段连贯中文，不要用列表或 Markdown
+- 禁止以「根据图片」「可以看到」「画面上」等套话开头
+- 不要评价画质、色调、美观
+"""
+
+# 对话附件：音频短摘要（不要完整逐字稿）
+CHAT_ATTACHMENT_AUDIO_SUMMARY_TEMPLATE = """
+你是助手。用户上传了一段音频。用户文字问题如下（仅供参考）：
+
+{user_message}
+
+## 任务
+聆听音频后，用**不超过 300 个汉字**输出一段客观中文摘要，包含：主题、说话场景（若能判断）、关键事实、专有名词与数字。**不要输出完整逐字稿**。
+
+## 约束
+- 一段连贯中文，无 Markdown
+- 若听不清可简要说明不确定之处
+"""
+
 # 模板字典，用于快速访问
 TEMPLATES = {
     "one_pass_intent": ONE_PASS_INTENT_TEMPLATE,
@@ -596,4 +633,6 @@ TEMPLATES = {
     "audio_transcription": AUDIO_TRANSCRIPTION_TEMPLATE,
     "audio_transcription_with_description": AUDIO_TRANSCRIPTION_AND_DESCRIPTION_TEMPLATE,
     "video_scene_parsing": VIDEO_SCENE_PARSING_TEMPLATE,
+    "chat_attachment_image_summary": CHAT_ATTACHMENT_IMAGE_SUMMARY_TEMPLATE,
+    "chat_attachment_audio_summary": CHAT_ATTACHMENT_AUDIO_SUMMARY_TEMPLATE,
 }

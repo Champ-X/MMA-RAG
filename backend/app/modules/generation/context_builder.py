@@ -52,7 +52,8 @@ class ContextBuilder:
         self,
         retrieval_result: Any,
         query: str,
-        kb_context: Optional[Dict[str, Any]] = None
+        kb_context: Optional[Dict[str, Any]] = None,
+        attachment_context: Optional[str] = None,
     ) -> ContextBuildResult:
         """
         构建LLM上下文
@@ -88,9 +89,9 @@ class ContextBuilder:
             # 2d. 将关键帧作为独立「图片」引用加入 reference_map，加入 prompt 后可被模型单独引用 [n]
             self._add_keyframe_image_references(reference_map)
             
-            # 3. 构建上下文字符串
+            # 3. 构建上下文字符串（含本轮用户上传媒体的摘要，非知识库引用）
             context_string = await self._build_context_string(
-                processed_results, reference_map, query
+                processed_results, reference_map, query, attachment_context=attachment_context
             )
             
             # 4. 优化上下文长度
@@ -537,11 +538,21 @@ class ContextBuilder:
         self,
         processed_results: List[Dict[str, Any]],
         reference_map: Dict[str, ReferenceMap],
-        query: str
+        query: str,
+        attachment_context: Optional[str] = None,
     ) -> str:
         """构建上下文字符串"""
         try:
             context_parts = []
+
+            ac = (attachment_context or "").strip()
+            if ac:
+                context_parts.append(
+                    "【本轮用户上传的媒体摘要（非知识库检索结果，请勿使用下方参考材料的编号引用；"
+                    "回答中请用自然语言指代用户上传的图片/音频）】\n"
+                )
+                context_parts.append(ac)
+                context_parts.append("")
             
             # 添加标题
             context_parts.append("参考材料列表：\n")

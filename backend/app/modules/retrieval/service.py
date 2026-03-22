@@ -70,7 +70,8 @@ class RetrievalService:
         query: str,
         kb_context: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
-        session_context: Optional[List[Dict[str, str]]] = None
+        session_context: Optional[List[Dict[str, str]]] = None,
+        attachment_context: Optional[str] = None,
     ) -> RetrievalResult:
         """
         执行完整检索流程
@@ -92,7 +93,8 @@ class RetrievalService:
             # 1. 查询预处理 - One-Pass 意图识别
             preprocessing_result = await self._preprocess_query(
                 query=query,
-                session_context=session_context or []
+                session_context=session_context or [],
+                attachment_context=attachment_context,
             )
             
             # 2. 知识库路由
@@ -186,6 +188,7 @@ class RetrievalService:
         kb_context: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
         session_context: Optional[List[Dict[str, str]]] = None,
+        attachment_context: Optional[str] = None,
     ) -> AsyncGenerator[Tuple[str, Any], None]:
         """
         流式检索：每完成一个阶段就 yield (stage, payload)，最后 yield ("_result", retrieval_result)。
@@ -198,7 +201,8 @@ class RetrievalService:
             # 1. 查询预处理 - One-Pass 意图识别
             preprocessing_result = await self._preprocess_query(
                 query=query,
-                session_context=session_context or []
+                session_context=session_context or [],
+                attachment_context=attachment_context,
             )
             intent_payload = {
                 "message": "意图解析完成",
@@ -323,14 +327,16 @@ class RetrievalService:
     async def _preprocess_query(
         self,
         query: str,
-        session_context: List[Dict[str, str]]
+        session_context: List[Dict[str, str]],
+        attachment_context: Optional[str] = None,
     ) -> Dict[str, Any]:
         """查询预处理"""
         try:
             # One-Pass 意图识别
             intent_result = await self.intent_processor.process(
                 query=query,
-                chat_history=session_context
+                chat_history=session_context,
+                attachment_context_block=attachment_context,
             )
             
             # 获取 refined_query，如果不存在则从 search_strategies 或使用 original_query

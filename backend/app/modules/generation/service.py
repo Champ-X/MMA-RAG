@@ -39,7 +39,8 @@ class GenerationService:
         query: str,
         retrieval_result: Any,
         session_id: Optional[str] = None,
-        kb_context: Optional[Dict[str, Any]] = None
+        kb_context: Optional[Dict[str, Any]] = None,
+        attachment_context: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         生成回答
@@ -60,7 +61,8 @@ class GenerationService:
             context_result = await self.context_builder.build_context(
                 retrieval_result=retrieval_result,
                 query=query,
-                kb_context=kb_context
+                kb_context=kb_context,
+                attachment_context=attachment_context,
             )
             
             # 2. 构建系统提示词
@@ -148,7 +150,8 @@ class GenerationService:
         retrieval_result: Any,
         session_id: str,
         kb_context: Optional[Dict[str, Any]] = None,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        attachment_context: Optional[str] = None,
     ) -> AsyncGenerator[StreamEvent, None]:
         """
         流式生成回答
@@ -183,7 +186,8 @@ class GenerationService:
             context_result = await self.context_builder.build_context(
                 retrieval_result=retrieval_result,
                 query=query,
-                kb_context=kb_context
+                kb_context=kb_context,
+                attachment_context=attachment_context,
             )
             
             # 发送"准备提示词"事件

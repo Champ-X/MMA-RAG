@@ -53,12 +53,27 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
   const sendMessage = async (
     content: string,
     knowledgeBaseIds?: string[],
-    sessionId?: string
+    sessionId?: string,
+    files?: File[]
   ) => {
     const session = getActiveSession()
     if (!session) throw new Error('没有活跃的会话')
 
-    addMessage(session.id, { role: 'user', content })
+    const displayContent =
+      content.trim() ||
+      (files?.length ? `（已上传 ${files.length} 个附件）` : '')
+
+    const baseId = Date.now()
+    const attachments =
+      files?.map((f, i) => ({
+        id: `att_${baseId}_${i}_${Math.random().toString(36).slice(2, 9)}`,
+        kind: (f.type.startsWith('image/') ? 'image' : 'audio') as 'image' | 'audio',
+        name: f.name,
+        size: f.size,
+        ...(f.type.startsWith('image/') ? { previewUrl: URL.createObjectURL(f) } : {}),
+      })) ?? undefined
+
+    addMessage(session.id, { role: 'user', content: displayContent, attachments })
     addMessage(session.id, {
       role: 'assistant',
       content: '',
@@ -69,7 +84,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     const last = after?.messages[after.messages.length - 1]
     currentMessageIdRef.current = last?.id ?? null
     streamingSessionIdRef.current = session.id
-    currentUserQueryRef.current = content // 保存用户原始查询
+    currentUserQueryRef.current = content.trim() || displayContent
 
     contentBufferRef.current = ''
     setIsStreaming(true)
@@ -91,7 +106,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
 
     try {
       streamRef.current = createChatStream(
-        content,
+        content.trim(),
         {
           onThought: (e) => {
             const ev = e as { type?: string; data?: Record<string, unknown> & { data?: Record<string, unknown> } }
@@ -114,6 +129,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
               : phase === 'routing' ? 'retrieval' 
               : phase === 'retrieval' ? 'retrieval' // 检索阶段完成后，仍然保持在 retrieval，直到收到 generation 事件
               : phase === 'generation' ? 'generation' 
+              : phase === 'attachment' ? 'intent'
               : 'retrieval'
             
             // 根据阶段设置状态
@@ -132,7 +148,14 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
               currentStage: nextPhase,
               thoughtData: merged,
               stages: {
-                intent: phase === 'intent' ? 'completed' : ['routing', 'retrieval', 'generation'].includes(phase) ? 'completed' : 'idle',
+                intent:
+                  phase === 'intent'
+                    ? 'completed'
+                    : ['routing', 'retrieval', 'generation'].includes(phase)
+                      ? 'completed'
+                      : phase === 'attachment'
+                        ? 'processing'
+                        : 'idle',
                 routing: phase === 'routing' ? 'completed' : phase === 'retrieval' || phase === 'generation' ? 'completed' : phase === 'intent' ? 'processing' : 'idle',
                 retrieval: phase === 'retrieval' ? 'completed' : phase === 'generation' ? 'completed' : phase === 'routing' ? 'processing' : 'idle',
                 generation: generationStage !== 'idle' ? generationStage : (phase === 'generation' ? 'processing' : 'idle'),
@@ -224,7 +247,8 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
         { 
           knowledgeBaseIds, 
           sessionId: sessionId ?? session.id,
-          model: config.models.find(m => m.id === 'chat')?.model
+          model: config.models.find(m => m.id === 'chat')?.model,
+          files: files?.length ? files : undefined,
         }
       )
     } catch (err) {

@@ -23,7 +23,8 @@ class IntentProcessor:
     async def process(
         self,
         query: str,
-        chat_history: Optional[List[Dict[str, str]]] = None
+        chat_history: Optional[List[Dict[str, str]]] = None,
+        attachment_context_block: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         One-Pass意图识别处理
@@ -39,11 +40,16 @@ class IntentProcessor:
             # 构建对话历史文本
             chat_history_text = self._format_chat_history(chat_history or [])
             
+            block = (attachment_context_block or "").strip()
+            if not block:
+                block = "（本轮无用户上传的图片/音频摘要）"
+
             # 构建提示词
             prompt = self.prompt_engine.render_template(
                 "one_pass_intent",
                 chat_history=chat_history_text,
-                raw_query=query
+                raw_query=query,
+                attachment_context_block=block,
             )
             
             # 调用LLM进行意图识别

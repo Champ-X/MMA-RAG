@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { Send, Zap, Paperclip, Database, X, Square } from 'lucide-react'
+import { Send, Zap, Paperclip, Database, Square } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageBubble } from './MessageBubble'
@@ -15,7 +15,16 @@ import { useThinkingChain } from '@/hooks/useThinkingChain'
 import { cn } from '@/lib/utils'
 import { getModelVendor, VENDOR_LOGOS } from '@/lib/modelVendors'
 import type { CitationReference } from '@/types/sse'
-import type { Message } from '@/store/useChatStore'
+import type { ChatMessageAttachment, Message } from '@/store/useChatStore'
+import { ComposerAttachmentTile } from './ChatAttachmentPreview'
+
+const MAX_CHAT_ATTACHMENTS = 3
+const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024
+const MAX_CHAT_AUDIO_BYTES = 10 * 1024 * 1024
+
+function maxBytesForChatFile(f: File): number {
+  return f.type.startsWith('image/') ? MAX_CHAT_IMAGE_BYTES : MAX_CHAT_AUDIO_BYTES
+}
 
 /** 每条助手消息内的引用 id → 对象；禁止跨消息合并，否则多轮对话共用 [1][2] 时会互相覆盖 */
 function buildCitationMapForMessage(
@@ -33,7 +42,11 @@ function buildCitationMapForMessage(
 
 export function ChatInterface() {
   const [input, setInput] = useState('')
-  const [attachments, setAttachments] = useState<Array<{ id: string; name: string; size: number }>>([])
+  const [attachments, setAttachments] = useState<
+    Array<{ id: string; file: File; previewUrl?: string }>
+  >([])
+  const attachmentsRef = useRef(attachments)
+  attachmentsRef.current = attachments
   const [citePopover, setCitePopover] = useState<{
     open: boolean
     rect: DOMRect | null
@@ -148,9 +161,21 @@ export function ChatInterface() {
     el.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden'
   }, [input])
 
+  useEffect(() => {
+    return () => {
+      attachmentsRef.current.forEach((a) => {
+        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
+      })
+    }
+  }, [])
+
   const handleSend = async () => {
-    if (!input.trim() || isLoading || !activeSessionId) return
     const text = input.trim()
+    if ((!text && attachments.length === 0) || isLoading || !activeSessionId) return
+    const files = attachments.map((a) => a.file)
+    attachments.forEach((a) => {
+      if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
+    })
     setInput('')
     setAttachments([])
     setLoading(true)
@@ -159,7 +184,7 @@ export function ChatInterface() {
       const kbMode = activeSession?.kbMode ?? 'auto'
       const kbIds = activeSession?.knowledgeBaseIds ?? []
       const toSend = kbMode === 'auto' ? undefined : kbIds.length > 0 ? kbIds : undefined
-      await sendMessage(text, toSend)
+      await sendMessage(text, toSend, activeSessionId, files.length ? files : undefined)
     } catch (e) {
       console.error('发送失败', e)
     } finally {
@@ -200,14 +225,29 @@ export function ChatInterface() {
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
-    if (files.length === 0) return
-    const newAttachments = files.slice(0, 5).map(f => ({
-      id: `a-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      name: f.name,
-      size: f.size
-    }))
-    setAttachments(prev => [...newAttachments, ...prev].slice(0, 5))
+    const picked = Array.from(e.target.files || [])
+    if (picked.length === 0) return
+    const next: Array<{ id: string; file: File; previewUrl?: string }> = []
+    for (const f of picked) {
+      const isImage = f.type.startsWith('image/')
+      const isAudio = f.type.startsWith('audio/')
+      if (!isImage && !isAudio) {
+        console.warn('仅支持图片与音频：', f.name)
+        continue
+      }
+      const limit = maxBytesForChatFile(f)
+      if (f.size > limit) {
+        const mb = Math.round(limit / (1024 * 1024))
+        console.warn(`文件过大（图片/音频均≤${mb}MB）：${f.name}`)
+        continue
+      }
+      next.push({
+        id: `a-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        file: f,
+        ...(isImage ? { previewUrl: URL.createObjectURL(f) } : {}),
+      })
+    }
+    setAttachments((prev) => [...prev, ...next].slice(0, MAX_CHAT_ATTACHMENTS))
     if (e.target) e.target.value = ''
   }
 
@@ -355,6 +395,7 @@ export function ChatInterface() {
                     type: m.role === 'user' ? 'user' : 'assistant',
                     content: m.content,
                     timestamp: new Date(m.timestamp).toISOString(),
+                    attachments: m.attachments as ChatMessageAttachment[] | undefined,
                     citations: m.citations,
                     metadata: (m as any).metadata,
                     thinking: (m as any).thinking,
@@ -391,30 +432,33 @@ export function ChatInterface() {
 
       {/* 输入区 - Gemini 风格悬浮框 */}
       <div className="relative px-3 pb-3">
-        {attachments.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-2">
-            {attachments.map(a => (
-              <span
-                key={a.id}
-                className="inline-flex items-center gap-2 rounded-full bg-white border border-slate-200/60 px-3 py-1.5 text-xs text-slate-700 shadow-sm dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
-              >
-                <span className="truncate">{a.name}</span>
-                <button
-                  type="button"
-                  onClick={() => setAttachments(prev => prev.filter(x => x.id !== a.id))}
-                  className="rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-colors"
-                  aria-label="移除附件"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-
         <div className="mx-auto max-w-4xl relative">
           {/* 一体化输入框：flex 布局，textarea 与按钮区分离；focus 时极细 indigo/fuchsia 环与品牌一致 */}
           <div className="flex flex-col overflow-hidden rounded-3xl bg-white border border-slate-200/60 shadow-lg shadow-slate-900/10 transition-[box-shadow] duration-200 focus-within:ring-2 focus-within:ring-indigo-400/40 focus-within:shadow-[0_0_0_1px_rgba(217,70,239,0.22)] dark:bg-slate-800 dark:border-slate-700/60 dark:shadow-slate-900/30 dark:focus-within:ring-indigo-400/35 dark:focus-within:shadow-[0_0_0_1px_rgba(217,70,239,0.28)]">
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 border-b border-slate-100/90 bg-gradient-to-b from-slate-50/90 via-indigo-50/20 to-transparent px-4 py-3 dark:border-slate-700/60 dark:from-slate-900/40 dark:via-indigo-950/25 dark:to-transparent">
+                {attachments.map((a) => {
+                  const isImage = a.file.type.startsWith('image/')
+                  const item: ChatMessageAttachment = {
+                    id: a.id,
+                    kind: isImage ? 'image' : 'audio',
+                    name: a.file.name,
+                    size: a.file.size,
+                    previewUrl: a.previewUrl,
+                  }
+                  return (
+                    <ComposerAttachmentTile
+                      key={a.id}
+                      item={item}
+                      onRemove={() => {
+                        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
+                        setAttachments((prev) => prev.filter((x) => x.id !== a.id))
+                      }}
+                    />
+                  )
+                })}
+              </div>
+            )}
             <textarea
               ref={inputRef}
               value={input}
@@ -527,6 +571,7 @@ export function ChatInterface() {
           ref={fileInputRef}
           type="file"
           multiple
+          accept="image/jpeg,image/png,image/webp,image/gif,audio/*"
           className="hidden"
           onChange={handleFileSelect}
         />

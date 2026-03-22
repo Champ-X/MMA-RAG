@@ -4,7 +4,7 @@
  */
 
 // ---------- 1. 思考阶段事件 (用于更新 ThinkingCapsule) ----------
-export type ThoughtPhase = 'intent' | 'routing' | 'retrieval' | 'generation';
+export type ThoughtPhase = 'intent' | 'routing' | 'retrieval' | 'generation' | 'attachment';
 
 export interface ThoughtEvent {
   type: ThoughtPhase;
