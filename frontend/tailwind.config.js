@@ -53,6 +53,10 @@ export default {
         'pulse-soft': 'pulseSoft 2s infinite',
         'progress-bar': 'progressBar 2s ease-in-out infinite',
         'shimmer': 'shimmer 2s linear infinite',
+        'thinking-spin': 'thinkingSpin 0.72s linear infinite',
+        'thinking-slide': 'thinkingSlide 2.35s ease-in-out infinite',
+        'thinking-dot': 'thinkingDot 1.08s ease-in-out infinite',
+        'thinking-wand': 'thinkingWand 1.35s ease-in-out infinite',
       },
       keyframes: {
         fadeIn: {
@@ -75,6 +79,23 @@ export default {
         shimmer: {
           '0%': { transform: 'translateX(-100%)' },
           '100%': { transform: 'translateX(100%)' },
+        },
+        thinkingSpin: {
+          from: { transform: 'rotate(0deg)' },
+          to: { transform: 'rotate(360deg)' },
+        },
+        thinkingSlide: {
+          '0%': { left: '-42%', opacity: '0.72' },
+          '40%': { opacity: '1' },
+          '100%': { left: '102%', opacity: '0.72' },
+        },
+        thinkingDot: {
+          '0%, 100%': { opacity: '0.22', transform: 'scaleY(0.75)' },
+          '50%': { opacity: '1', transform: 'scaleY(1)' },
+        },
+        thinkingWand: {
+          '0%, 100%': { transform: 'rotate(-11deg)' },
+          '50%': { transform: 'rotate(11deg)' },
         },
       },
       fontFamily: {
