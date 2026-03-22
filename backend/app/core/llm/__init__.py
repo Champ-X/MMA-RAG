@@ -424,7 +424,7 @@ class LLMRegistry:
                 ],
             },
             "final_generation": {
-                "model": "aliyun_bailian:qwen3.5-397b-a17b",
+                "model": "aliyun_bailian:qwen3.5-plus",
                 "fallbacks": [
                     "Pro/moonshotai/Kimi-K2.5",
                     "deepseek-ai/DeepSeek-V3.2", 

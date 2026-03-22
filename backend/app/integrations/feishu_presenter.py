@@ -43,7 +43,7 @@ class FeishuOutboundMessage:
 def _format_references(refs: List[Dict[str, Any]], max_items: int = 15) -> str:
     if not refs:
         return ""
-    lines: List[str] = ["—— 参考文献 ——"]
+    lines: List[str] = ["—— 参考知识库资料 ——"]
     for i, r in enumerate(refs[:max_items], start=1):
         fn = r.get("file_name") or ""
         snippet = (r.get("content") or "").replace("\n", " ").strip()
