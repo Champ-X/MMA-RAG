@@ -50,6 +50,11 @@ ALLOWED_AUDIO_CT = frozenset(
 )
 
 
+def sniff_media_bytes_kind(data: bytes) -> Optional[str]:
+    """供飞书等非上传入口复用：返回 image | audio | None。"""
+    return _sniff_kind(data)
+
+
 def _sniff_kind(data: bytes) -> Optional[str]:
     """返回 image | audio | None"""
     if len(data) < 12:

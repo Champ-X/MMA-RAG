@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import io
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from app.core.logger import get_logger
@@ -22,6 +23,41 @@ def _text_content(text: str) -> str:
 
 def _image_content(image_key: str) -> str:
     return json.dumps({"image_key": image_key}, ensure_ascii=False)
+
+
+def _file_key_message_content(file_key: str) -> str:
+    return json.dumps({"file_key": file_key}, ensure_ascii=False)
+
+
+def _feishu_im_upload_file_type(filename: str) -> str:
+    """im/v1/files 的 file_type 枚举仅含 opus/mp4/pdf/doc/xls/ppt/stream（见开放平台文档），无 mp3 等。"""
+    suf = Path(filename or "").suffix.lower()
+    if suf == ".opus":
+        return "opus"
+    if suf == ".mp4":
+        return "mp4"
+    if suf == ".pdf":
+        return "pdf"
+    if suf in (".doc",):
+        return "doc"
+    if suf in (".xls",):
+        return "xls"
+    if suf in (".ppt",):
+        return "ppt"
+    # MP3/WAV/M4A 等须用 stream；opus 以外的音频官方要求转 opus，此处以 stream 直传常见格式
+    return "stream"
+
+
+def _feishu_im_default_filename(file_type: str) -> str:
+    ext_map = {
+        "opus": ".opus",
+        "mp4": ".mp4",
+        "pdf": ".pdf",
+        "doc": ".doc",
+        "xls": ".xls",
+        "ppt": ".ppt",
+    }
+    return f"file{ext_map.get(file_type, '.bin')}"
 
 
 def _post_md_content(*, markdown: str, title: str = "") -> str:
@@ -102,6 +138,53 @@ async def feishu_fetch_bot_open_id(*, app_id: str, app_secret: str) -> Optional[
         None,
         lambda: feishu_fetch_bot_open_id_sync(app_id=app_id, app_secret=app_secret),
     )
+
+
+# 飞书上传文件单条上限约 30MB（以开放平台为准）
+_FEISHU_MAX_UPLOAD_BYTES = 30 * 1024 * 1024
+_FEISHU_IM_FILE_TYPES = frozenset({"opus", "mp4", "pdf", "doc", "xls", "ppt", "stream"})
+
+
+async def feishu_upload_im_file(
+    client: "Client",
+    *,
+    file_bytes: bytes,
+    filename: str,
+    file_type: Optional[str] = None,
+) -> Optional[str]:
+    """上传任意 IM 文件（音频/通用文件），返回 file_key。"""
+    from lark_oapi.api.im.v1.model.create_file_request import CreateFileRequest
+    from lark_oapi.api.im.v1.model.create_file_request_body import CreateFileRequestBody
+
+    if not file_bytes:
+        return None
+    if len(file_bytes) > _FEISHU_MAX_UPLOAD_BYTES:
+        logger.warning(
+            f"飞书上传文件过大 ({len(file_bytes)} bytes)，上限约 {_FEISHU_MAX_UPLOAD_BYTES}"
+        )
+        return None
+    ft = file_type or _feishu_im_upload_file_type(filename)
+    if ft not in _FEISHU_IM_FILE_TYPES:
+        ft = "stream"
+    default_fn = _feishu_im_default_filename(ft)
+    fn = (filename or default_fn).strip() or default_fn
+    body = (
+        CreateFileRequestBody.builder()
+        .file_type(ft)
+        .file_name(fn)
+        .file(io.BytesIO(file_bytes))
+        .build()
+    )
+    req = CreateFileRequest.builder().request_body(body).build()
+    resp = await client.im.v1.file.acreate(req)
+    if resp.code != 0:
+        logger.warning(
+            f"飞书上传文件失败: code={resp.code} msg={getattr(resp, 'msg', '')} file_type={ft!r}"
+        )
+        return None
+    if resp.data and getattr(resp.data, "file_key", None):
+        return str(resp.data.file_key)
+    return None
 
 
 async def feishu_upload_image(client: "Client", image_bytes: bytes, filename: str = "image.png") -> Optional[str]:
@@ -290,5 +373,39 @@ async def feishu_reply_image(
         message_id=message_id,
         msg_type="image",
         content_json=_image_content(image_key),
+        reply_in_thread=reply_in_thread,
+    )
+
+
+async def feishu_reply_file(
+    client: "Client",
+    *,
+    message_id: str,
+    file_key: str,
+    reply_in_thread: bool = False,
+) -> bool:
+    """发送「文件」气泡（与用户上传 mp3 展示一致）；content 仅含 file_key。"""
+    return await feishu_reply_message(
+        client,
+        message_id=message_id,
+        msg_type="file",
+        content_json=_file_key_message_content(file_key),
+        reply_in_thread=reply_in_thread,
+    )
+
+
+async def feishu_reply_audio(
+    client: "Client",
+    *,
+    message_id: str,
+    file_key: str,
+    reply_in_thread: bool = False,
+) -> bool:
+    """发送「语音」类消息（短语音条样式）；同为 file_key，与 file 二选一。"""
+    return await feishu_reply_message(
+        client,
+        message_id=message_id,
+        msg_type="audio",
+        content_json=_file_key_message_content(file_key),
         reply_in_thread=reply_in_thread,
     )

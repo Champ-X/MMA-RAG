@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from app.core.config import Settings
 from app.core.logger import get_logger
 from app.integrations.feishu_md_post import DEFAULT_FEISHU_MD_CHUNK, split_feishu_md_chunks
-from app.integrations.feishu_media import looks_like_image_path
+from app.integrations.feishu_media import looks_like_audio_path, looks_like_image_path
 
 logger = get_logger(__name__)
 
@@ -31,13 +31,54 @@ PostSegment = Tuple[Union[str, Any], ...]
 
 @dataclass
 class FeishuOutboundMessage:
-    kind: str  # "text" | "image" | "post_mixed"
+    kind: str  # "text" | "image" | "audio" | "post_mixed"
     text: Optional[str] = None
     image_bytes: Optional[bytes] = None
     image_name: Optional[str] = None
+    audio_bytes: Optional[bytes] = None
+    audio_name: Optional[str] = None
     kb_id: Optional[str] = None
     file_path: Optional[str] = None
     post_segments: Optional[List[PostSegment]] = field(default=None)
+
+
+def _append_trailing_audio_messages(
+    out: List[FeishuOutboundMessage],
+    refs: List[Dict[str, Any]],
+    settings: Settings,
+) -> None:
+    """在正文/图片之后追加知识库引用音频（由 handler 读 MinIO 并上传飞书）。"""
+    if not getattr(settings, "feishu_audio_send_enabled", True):
+        return
+    max_a = max(0, min(int(getattr(settings, "feishu_max_reply_audios", 4)), 10))
+    if max_a == 0:
+        return
+    seen: set = set()
+    for r in refs:
+        if len([m for m in out if m.kind == "audio"]) >= max_a:
+            break
+        if (r.get("type") or "").lower() != "audio":
+            continue
+        fp = r.get("file_path")
+        if not fp or not looks_like_audio_path(str(fp)):
+            continue
+        md = r.get("metadata") or {}
+        kb_id = md.get("kb_id") or ""
+        if not kb_id:
+            continue
+        key = (kb_id, str(fp))
+        if key in seen:
+            continue
+        seen.add(key)
+        name = Path(str(fp).split("?", 1)[0]).name or "audio.mp3"
+        out.append(
+            FeishuOutboundMessage(
+                kind="audio",
+                kb_id=kb_id,
+                file_path=str(fp),
+                audio_name=name,
+            )
+        )
 
 
 def _format_references(refs: List[Dict[str, Any]], max_items: int = 15) -> str:
@@ -174,39 +215,37 @@ def _build_legacy_outbound_messages(
         for part in split_feishu_md_chunks(ref_block, max_chunk):
             out.append(FeishuOutboundMessage(kind="text", text=part))
 
-    if not getattr(settings, "feishu_image_send_enabled", True):
-        return out
+    if getattr(settings, "feishu_image_send_enabled", True):
+        max_img = max(0, min(int(getattr(settings, "feishu_max_reply_images", 4)), 10))
+        if max_img > 0:
+            seen: set = set()
+            for r in refs:
+                if len([m for m in out if m.kind == "image"]) >= max_img:
+                    break
+                if (r.get("type") or "").lower() != "image":
+                    continue
+                fp = r.get("file_path")
+                if not fp or not looks_like_image_path(str(fp)):
+                    continue
+                md = r.get("metadata") or {}
+                kb_id = md.get("kb_id") or ""
+                if not kb_id:
+                    continue
+                key = (kb_id, str(fp))
+                if key in seen:
+                    continue
+                seen.add(key)
+                name = Path(str(fp).split("?", 1)[0]).name or "image.png"
+                out.append(
+                    FeishuOutboundMessage(
+                        kind="image",
+                        kb_id=kb_id,
+                        file_path=str(fp),
+                        image_name=name,
+                    )
+                )
 
-    max_img = max(0, min(int(getattr(settings, "feishu_max_reply_images", 4)), 10))
-    if max_img == 0:
-        return out
-
-    seen: set = set()
-    for r in refs:
-        if len([m for m in out if m.kind == "image"]) >= max_img:
-            break
-        if (r.get("type") or "").lower() != "image":
-            continue
-        fp = r.get("file_path")
-        if not fp or not looks_like_image_path(str(fp)):
-            continue
-        md = r.get("metadata") or {}
-        kb_id = md.get("kb_id") or ""
-        if not kb_id:
-            continue
-        key = (kb_id, str(fp))
-        if key in seen:
-            continue
-        seen.add(key)
-        name = Path(str(fp).split("?", 1)[0]).name or "image.png"
-        out.append(
-            FeishuOutboundMessage(
-                kind="image",
-                kb_id=kb_id,
-                file_path=str(fp),
-                image_name=name,
-            )
-        )
+    _append_trailing_audio_messages(out, refs, settings)
 
     return out
 
@@ -225,7 +264,11 @@ def build_outbound_messages(
     video_note = ""
     for r in refs:
         t = (r.get("type") or "").lower()
-        if t == "audio" and not audio_note:
+        if (
+            t == "audio"
+            and not audio_note
+            and not getattr(settings, "feishu_audio_send_enabled", True)
+        ):
             audio_note = "（回答引用中含音频素材，请在 Web 端对话中播放。）"
         if t == "video" and not video_note:
             video_note = "（回答引用中含视频素材，请在 Web 端对话中查看。）"
@@ -277,7 +320,11 @@ def build_outbound_messages(
 
         est = _estimate_post_json_bytes(segs) if segs else 0
         if segs and est <= _MAX_POST_JSON_BYTES:
-            return [FeishuOutboundMessage(kind="post_mixed", post_segments=segs)]
+            mixed: List[FeishuOutboundMessage] = [
+                FeishuOutboundMessage(kind="post_mixed", post_segments=segs)
+            ]
+            _append_trailing_audio_messages(mixed, refs, settings)
+            return mixed
 
         if segs:
             logger.info(f"飞书 post 混排体积超限，回退为多消息发送 (estimate={est} bytes)")

@@ -16,11 +16,13 @@ from app.integrations import feishu_state
 from app.integrations.feishu_client import (
     feishu_download_message_resource,
     feishu_fetch_bot_open_id,
+    feishu_reply_file,
     feishu_reply_image,
     feishu_reply_post_md,
     feishu_reply_post_paragraphs,
     feishu_reply_text,
     feishu_upload_image,
+    feishu_upload_im_file,
 )
 from app.integrations.feishu_pending import pending_add_file, pending_restore, pending_take_all
 from app.integrations.feishu_md_post import (
@@ -28,15 +30,39 @@ from app.integrations.feishu_md_post import (
     feishu_normalize_markdown_for_post,
     split_feishu_md_chunks,
 )
-from app.integrations.feishu_media import read_image_bytes
+from app.integrations.feishu_media import read_audio_bytes, read_image_bytes
 from app.integrations.feishu_parser import extract_message_resource_spec, extract_text
-from app.modules.chat.attachment_summarizer import summarize_chat_attachments
+from app.modules.chat.attachment_summarizer import (
+    sniff_media_bytes_kind,
+    summarize_chat_attachments,
+)
 from app.integrations.feishu_presenter import FeishuOutboundMessage, build_outbound_messages
 from app.integrations.feishu_sessions import append_turn, build_session_context, load_session
 from app.modules.generation.service import GenerationService
 from app.modules.retrieval.service import RetrievalService
 
 logger = get_logger(__name__)
+
+
+def _feishu_attach_kind_emoji(kind: str) -> str:
+    if kind == "image":
+        return "🖼️"
+    if kind == "audio":
+        return "🎵"
+    return "📄"
+
+
+def _format_feishu_attach_received_hint(*, filename: str, kind: str) -> str:
+    name = (filename or "").strip() or "附件"
+    emoji = _feishu_attach_kind_emoji(kind)
+    template = (settings.feishu_attach_received_hint or "").strip()
+    if not template:
+        return (
+            f"已收到附件：{name}{emoji}\n"
+            "下一条消息发送相关查询文本，我会结合附件与文字一起检索。"
+        )
+    return template.replace("{name}", name).replace("{emoji}", emoji)
+
 
 retrieval_service = RetrievalService()
 generation_service = GenerationService()
@@ -179,8 +205,11 @@ async def _handle_feishu_attachment_message(
     chat_id: str,
     res_spec: tuple,
 ) -> None:
-    """图片/语音消息：下载资源写入 pending，提示用户发文字以合并检索。"""
-    rtype, rkey, sfx = res_spec[0], res_spec[1], res_spec[2]
+    """图片 / 语音消息 / 聊天内音频文件：下载资源写入 pending，提示用户发文字以合并检索。"""
+    rtype = str(res_spec[0])
+    rkey = str(res_spec[1])
+    sfx = str(res_spec[2]) if len(res_spec) > 2 else ""
+    name_hint = str(res_spec[3]).strip() if len(res_spec) > 3 and res_spec[3] else ""
     await ensure_bot_open_id()
     client = _lark_client()
     dl = await feishu_download_message_resource(
@@ -198,9 +227,39 @@ async def _handle_feishu_attachment_message(
         )
         return
     raw, fn, ct = dl
-    fn = (fn or "feishu_media").strip()
-    if sfx and not any(fn.lower().endswith(x) for x in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm")):
+    fn = (name_hint or fn or "feishu_media").strip()
+    if sfx and not any(
+        fn.lower().endswith(x)
+        for x in (
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp",
+            ".gif",
+            ".mp3",
+            ".wav",
+            ".m4a",
+            ".ogg",
+            ".flac",
+            ".webm",
+            ".aac",
+            ".amr",
+        )
+    ):
         fn = fn + sfx
+
+    kind = sniff_media_bytes_kind(raw)
+    if kind not in ("image", "audio"):
+        await feishu_reply_text(
+            client,
+            message_id=message_id,
+            text=(
+                "当前仅支持图片，或 mp3/wav 等音频。"
+                "音频可发送「文件」或使用手机录制的「语音消息」。"
+            ),
+            reply_in_thread=bool(settings.feishu_reply_in_thread),
+        )
+        return
     session_key = f"feishu:{chat_id}" if chat_id else f"feishu:nochat:{message_id}"
     ok = await pending_add_file(session_key, (fn, ct or "application/octet-stream", raw))
     if not ok:
@@ -214,8 +273,7 @@ async def _handle_feishu_attachment_message(
     await feishu_reply_text(
         client,
         message_id=message_id,
-        text=(settings.feishu_attach_received_hint or "").strip()
-        or "已收到附件，请下一条消息发送文字说明。",
+        text=_format_feishu_attach_received_hint(filename=fn, kind=kind),
         reply_in_thread=bool(settings.feishu_reply_in_thread),
     )
 
@@ -366,7 +424,7 @@ def on_im_message_sync(data: Any) -> None:
             fut = asyncio.run_coroutine_threadsafe(
                 _reply_plain(
                     message_id,
-                    "请发送文字、图片或语音消息（其它类型暂不支持）。",
+                    "请发送文字、图片、语音消息，或 mp3/wav 等音频文件（其它类型暂不支持）。",
                 ),
                 loop,
             )
@@ -510,6 +568,15 @@ async def _process_user_message(*, message_id: str, chat_id: str, query: str) ->
             else:
                 m.kind = "text"
                 m.text = f"（引用图片未能从存储读取：{m.file_path}）"
+        elif m.kind == "audio" and m.kb_id and m.file_path:
+            data = await read_audio_bytes(m.kb_id, m.file_path)
+            if data:
+                b, name = data
+                m.audio_bytes = b
+                m.audio_name = name
+            else:
+                m.kind = "text"
+                m.text = f"（引用音频未能从存储读取：{m.file_path}）"
         resolved.append(m)
 
     if not message_id:
@@ -577,6 +644,33 @@ async def _process_user_message(*, message_id: str, chat_id: str, query: str) ->
                     client,
                     message_id=message_id,
                     text=f"（图片未能上传到飞书：{item.image_name or item.file_path}）",
+                    reply_in_thread=rt,
+                )
+        elif item.kind == "audio" and item.audio_bytes:
+            fk = await feishu_upload_im_file(
+                client,
+                file_bytes=item.audio_bytes,
+                filename=item.audio_name or "audio.mp3",
+            )
+            if fk:
+                ok_file = await feishu_reply_file(
+                    client,
+                    message_id=message_id,
+                    file_key=fk,
+                    reply_in_thread=rt,
+                )
+                if not ok_file:
+                    await feishu_reply_text(
+                        client,
+                        message_id=message_id,
+                        text=f"（音频文件消息发送失败：{item.audio_name or item.file_path}）",
+                        reply_in_thread=rt,
+                    )
+            else:
+                await feishu_reply_text(
+                    client,
+                    message_id=message_id,
+                    text=f"（音频未能上传到飞书或超过大小限制：{item.audio_name or item.file_path}）",
                     reply_in_thread=rt,
                 )
 

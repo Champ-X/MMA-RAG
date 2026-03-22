@@ -61,6 +61,26 @@ def _build_bucket_candidates(minio_adapter: MinIOAdapter, kb_id: str) -> List[st
 
 _IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
 
+_AUDIO_EXT = {
+    ".mp3",
+    ".wav",
+    ".m4a",
+    ".aac",
+    ".flac",
+    ".ogg",
+    ".webm",
+    ".amr",
+    ".opus",
+    ".wma",
+}
+
+
+def looks_like_audio_path(file_path: Optional[str]) -> bool:
+    if not file_path:
+        return False
+    suf = Path(_normalize_media_file_path(file_path)).suffix.lower()
+    return suf in _AUDIO_EXT
+
 
 def looks_like_image_path(file_path: Optional[str]) -> bool:
     if not file_path:
@@ -91,4 +111,27 @@ async def read_image_bytes(kb_id: str, file_path: str) -> Optional[Tuple[bytes, 
             except Exception:
                 continue
     logger.debug(f"飞书发图：MinIO 未找到 kb_id={kb_id} path={file_path}")
+    return None
+
+
+async def read_audio_bytes(kb_id: str, file_path: str) -> Optional[Tuple[bytes, str]]:
+    """从 MinIO 读取知识库引用音频，供上传飞书 file/audio 消息。"""
+    if not kb_id or not file_path:
+        return None
+    adapter = MinIOAdapter()
+    bucket_candidates = _build_bucket_candidates(adapter, kb_id)
+    object_candidates = _build_object_path_candidates(file_path, "audios")
+    if not object_candidates:
+        return None
+    name = Path(object_candidates[0]).name or "audio.bin"
+    for bucket in bucket_candidates:
+        for object_path in object_candidates:
+            try:
+                adapter.client.stat_object(bucket, object_path)
+                data = await adapter.get_file_content(bucket, object_path)
+                if data:
+                    return data, name
+            except Exception:
+                continue
+    logger.debug(f"飞书发音频：MinIO 未找到 kb_id={kb_id} path={file_path}")
     return None

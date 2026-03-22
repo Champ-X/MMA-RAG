@@ -14,7 +14,7 @@ from dataclasses import dataclass
 logger = get_logger(__name__)
 
 # 模型调用重试：最大重试次数、退避秒数（第 1、2 次重试前等待）
-_CALL_MAX_RETRIES = 2
+_CALL_MAX_RETRIES = 0
 _CALL_RETRY_BACKOFF = (1.0, 2.0)
 _EVENT_LOOP_CLOSED_MSG = "Event loop is closed"
 

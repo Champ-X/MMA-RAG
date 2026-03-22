@@ -219,6 +219,8 @@ class Settings(BaseSettings):
     feishu_ignore_bot_messages: bool = Field(default=True, validation_alias="FEISHU_IGNORE_BOT_MESSAGES")
     feishu_max_reply_images: int = Field(default=4, validation_alias="FEISHU_MAX_REPLY_IMAGES")
     feishu_image_send_enabled: bool = Field(default=True, validation_alias="FEISHU_IMAGE_SEND_ENABLED")
+    feishu_max_reply_audios: int = Field(default=4, validation_alias="FEISHU_MAX_REPLY_AUDIOS")
+    feishu_audio_send_enabled: bool = Field(default=True, validation_alias="FEISHU_AUDIO_SEND_ENABLED")
     feishu_web_base_url: Optional[str] = Field(default=None, validation_alias="FEISHU_WEB_BASE_URL")
     feishu_reply_in_thread: bool = Field(default=False, validation_alias="FEISHU_REPLY_IN_THREAD")
     # True：RAG 回复用 post+md，渲染 ** / 列表 / 引用 / 代码块等；False：沿用纯 text（多为原文）
@@ -227,8 +229,9 @@ class Settings(BaseSettings):
     feishu_inline_images_in_post: bool = Field(default=True, validation_alias="FEISHU_INLINE_IMAGES_IN_POST")
     # 用户先发文字再发图/音时，文字侧等待的秒数，便于与 pending 附件合并为一次检索（0 关闭）
     feishu_merge_attach_wait_sec: float = Field(default=2.0, validation_alias="FEISHU_MERGE_ATTACH_WAIT_SEC")
+    # 占位符：{name} 为附件文件名，{emoji} 由程序按类型填入（图片🖼️ / 音频🎵 / 其它📄）
     feishu_attach_received_hint: str = Field(
-        default="已收到附件📄。\n请下一条消息发送相关查询文本，我会结合附件与文字一起检索。",
+        default="已收到附件：{name}{emoji}\n下一条消息发送相关查询文本，我会结合附件与文字一起检索。",
         validation_alias="FEISHU_ATTACH_RECEIVED_HINT",
     )
     feishu_bot_open_id: Optional[str] = Field(default=None, validation_alias="FEISHU_BOT_OPEN_ID")

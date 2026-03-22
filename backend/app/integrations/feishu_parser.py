@@ -6,11 +6,28 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+# 用户以「文件」形式发送的音频（与原生「语音」消息 msg_type=audio 不同）
+_FEISHU_FILE_AUDIO_SUFFIXES = frozenset(
+    {
+        ".mp3",
+        ".wav",
+        ".m4a",
+        ".aac",
+        ".amr",
+        ".ogg",
+        ".flac",
+        ".webm",
+        ".opus",
+        ".wma",
+    }
+)
 
 # 飞书 text 消息里常见的 at 占位
 _AT_USER_PLACEHOLDER_RE = re.compile(r"@_user_\d+")
@@ -71,10 +88,13 @@ def extract_text(*, message_type: Optional[str], content: Optional[str]) -> Opti
 
 def extract_message_resource_spec(
     message_type: Optional[str], content: Optional[str]
-) -> Optional[Tuple[str, str, str]]:
+) -> Optional[Tuple[str, str, str, Optional[str]]]:
     """
-    可调用「下载消息中的资源」接口时返回 (resource_type, resource_key, default_suffix)。
-    resource_type 对应 GET .../resources/:file_key 的 type 查询参数；key 填入路径中的 file_key。
+    可调用「下载消息中的资源」接口时返回
+    (resource_type, resource_key, default_suffix, file_name_hint)。
+
+    - resource_type：GET .../resources/:file_key 的 type 查询参数（image / file）
+    - file_name_hint：文件消息时来自 content 的文件名，供保存与摘要；其它为 None
     """
     if not content or not str(content).strip():
         return None
@@ -86,9 +106,26 @@ def extract_message_resource_spec(
     if mt == "image":
         key = data.get("image_key")
         if key and str(key).strip():
-            return ("image", str(key).strip(), ".jpg")
+            return ("image", str(key).strip(), ".jpg", None)
     if mt == "audio":
         key = data.get("file_key")
         if key and str(key).strip():
-            return ("file", str(key).strip(), ".mp3")
+            return ("file", str(key).strip(), ".mp3", None)
+    # 聊天内「发送文件」常为 msg_type=file，与「语音」消息（audio）不是同一种
+    if mt == "file":
+        key = data.get("file_key")
+        if not key or not str(key).strip():
+            return None
+        fname = (
+            data.get("file_name")
+            or data.get("filename")
+            or data.get("name")
+            or ""
+        )
+        fname = str(fname).strip()
+        suf = Path(fname).suffix.lower() if fname else ""
+        if suf and suf not in _FEISHU_FILE_AUDIO_SUFFIXES:
+            return None
+        # 无后缀时仍返回，由下游下载后按魔数嗅探是否为音频
+        return ("file", str(key).strip(), suf, fname or None)
     return None
