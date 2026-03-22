@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import io
 import json
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from app.core.logger import get_logger
 
@@ -205,6 +205,57 @@ async def feishu_reply_post_md(
         content_json=_post_md_content(markdown=markdown, title=title),
         reply_in_thread=reply_in_thread,
     )
+
+
+async def feishu_download_message_resource(
+    client: "Client",
+    *,
+    message_id: str,
+    file_key: str,
+    resource_type: str,
+) -> Optional[Tuple[bytes, str, str]]:
+    """
+    下载单条消息内资源（图片 image_key / 语音 file_key 等）。
+    需在开放平台为应用申请读取消息资源相关权限（如 im:resource 等，以控制台为准）。
+    返回 (bytes, filename, content_type)；失败返回 None。
+    """
+    from lark_oapi.api.im.v1.model.get_message_resource_request import GetMessageResourceRequest
+
+    try:
+        req = (
+            GetMessageResourceRequest.builder()
+            .message_id(message_id)
+            .file_key(file_key)
+            .type(resource_type)
+            .build()
+        )
+        resp = await client.im.v1.message_resource.aget(req)
+    except Exception as e:
+        logger.warning(f"飞书下载消息资源异常: {e}", exc_info=True)
+        return None
+
+    if not getattr(resp, "file", None):
+        code = getattr(resp, "code", None)
+        msg = getattr(resp, "msg", "")
+        logger.warning(
+            f"飞书下载消息资源失败: message_id={message_id[:16]}… type={resource_type!r} "
+            f"code={code} msg={msg!r}"
+        )
+        return None
+
+    try:
+        raw = resp.file.read()
+    except Exception as e:
+        logger.warning(f"飞书资源读取流失败: {e}")
+        return None
+
+    fn = (getattr(resp, "file_name", None) or "").strip() or f"feishu_{file_key[-16:]}"
+    ct = "application/octet-stream"
+    raw_http = getattr(resp, "raw", None)
+    if raw_http is not None:
+        headers = getattr(raw_http, "headers", None) or {}
+        ct = headers.get("Content-Type") or headers.get("content-type") or ct
+    return raw, fn, ct.split(";", 1)[0].strip()
 
 
 async def feishu_reply_post_paragraphs(

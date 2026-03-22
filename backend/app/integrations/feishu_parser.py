@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.logger import get_logger
 
@@ -66,4 +66,29 @@ def extract_text(*, message_type: Optional[str], content: Optional[str]) -> Opti
         return " ".join(t.split()).strip() or None
 
     # 其它类型首版不解析正文
+    return None
+
+
+def extract_message_resource_spec(
+    message_type: Optional[str], content: Optional[str]
+) -> Optional[Tuple[str, str, str]]:
+    """
+    可调用「下载消息中的资源」接口时返回 (resource_type, resource_key, default_suffix)。
+    resource_type 对应 GET .../resources/:file_key 的 type 查询参数；key 填入路径中的 file_key。
+    """
+    if not content or not str(content).strip():
+        return None
+    mt = (message_type or "").lower()
+    try:
+        data: Dict[str, Any] = json.loads(str(content).strip())
+    except json.JSONDecodeError:
+        return None
+    if mt == "image":
+        key = data.get("image_key")
+        if key and str(key).strip():
+            return ("image", str(key).strip(), ".jpg")
+    if mt == "audio":
+        key = data.get("file_key")
+        if key and str(key).strip():
+            return ("file", str(key).strip(), ".mp3")
     return None

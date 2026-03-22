@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.integrations import feishu_state
 from app.integrations.feishu_client import (
+    feishu_download_message_resource,
     feishu_fetch_bot_open_id,
     feishu_reply_image,
     feishu_reply_post_md,
@@ -21,13 +22,15 @@ from app.integrations.feishu_client import (
     feishu_reply_text,
     feishu_upload_image,
 )
+from app.integrations.feishu_pending import pending_add_file, pending_restore, pending_take_all
 from app.integrations.feishu_md_post import (
     DEFAULT_FEISHU_MD_CHUNK,
     feishu_normalize_markdown_for_post,
     split_feishu_md_chunks,
 )
 from app.integrations.feishu_media import read_image_bytes
-from app.integrations.feishu_parser import extract_text
+from app.integrations.feishu_parser import extract_message_resource_spec, extract_text
+from app.modules.chat.attachment_summarizer import summarize_chat_attachments
 from app.integrations.feishu_presenter import FeishuOutboundMessage, build_outbound_messages
 from app.integrations.feishu_sessions import append_turn, build_session_context, load_session
 from app.modules.generation.service import GenerationService
@@ -170,6 +173,53 @@ def _lark_client():
     return feishu_state.lark_client
 
 
+async def _handle_feishu_attachment_message(
+    *,
+    message_id: str,
+    chat_id: str,
+    res_spec: tuple,
+) -> None:
+    """图片/语音消息：下载资源写入 pending，提示用户发文字以合并检索。"""
+    rtype, rkey, sfx = res_spec[0], res_spec[1], res_spec[2]
+    await ensure_bot_open_id()
+    client = _lark_client()
+    dl = await feishu_download_message_resource(
+        client,
+        message_id=message_id,
+        file_key=rkey,
+        resource_type=rtype,
+    )
+    if not dl:
+        await feishu_reply_text(
+            client,
+            message_id=message_id,
+            text="附件下载失败。请为应用开通「读取消息中资源」类权限，或稍后重试。",
+            reply_in_thread=bool(settings.feishu_reply_in_thread),
+        )
+        return
+    raw, fn, ct = dl
+    fn = (fn or "feishu_media").strip()
+    if sfx and not any(fn.lower().endswith(x) for x in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm")):
+        fn = fn + sfx
+    session_key = f"feishu:{chat_id}" if chat_id else f"feishu:nochat:{message_id}"
+    ok = await pending_add_file(session_key, (fn, ct or "application/octet-stream", raw))
+    if not ok:
+        await feishu_reply_text(
+            client,
+            message_id=message_id,
+            text="附件数量已达上限，请先发送一条文字完成当前提问，再传新附件。",
+            reply_in_thread=bool(settings.feishu_reply_in_thread),
+        )
+        return
+    await feishu_reply_text(
+        client,
+        message_id=message_id,
+        text=(settings.feishu_attach_received_hint or "").strip()
+        or "已收到附件，请下一条消息发送文字说明。",
+        reply_in_thread=bool(settings.feishu_reply_in_thread),
+    )
+
+
 async def ensure_bot_open_id() -> None:
     """首次异步调用时拉取并缓存机器人 open_id（群聊 @ 校验用）。"""
     global _bot_refresh_started
@@ -289,16 +339,40 @@ def on_im_message_sync(data: Any) -> None:
         mt = getattr(msg, "message_type", None)
         raw_content = getattr(msg, "content", None)
         text = extract_text(message_type=mt, content=raw_content)
+        res_spec = extract_message_resource_spec(mt, raw_content)
+
+        chat_type = getattr(msg, "chat_type", None) or ""
+        mentions = getattr(msg, "mentions", None)
+
+        if res_spec:
+            if not _should_handle_group_message(
+                chat_type=chat_type, text=text or "", mentions=mentions
+            ):
+                return
+            fut = asyncio.run_coroutine_threadsafe(
+                _handle_feishu_attachment_message(
+                    message_id=message_id,
+                    chat_id=chat_id,
+                    res_spec=res_spec,
+                ),
+                loop,
+            )
+            fut.add_done_callback(
+                lambda f: f.exception() and logger.error(f"飞书附件处理失败: {f.exception()}")
+            )
+            return
+
         if not text:
             fut = asyncio.run_coroutine_threadsafe(
-                _reply_plain(message_id, "请发送文字消息（暂不支持当前消息类型）。"),
+                _reply_plain(
+                    message_id,
+                    "请发送文字、图片或语音消息（其它类型暂不支持）。",
+                ),
                 loop,
             )
             fut.add_done_callback(lambda f: f.exception() and logger.error(f"飞书回复失败: {f.exception()}"))
             return
 
-        chat_type = getattr(msg, "chat_type", None) or ""
-        mentions = getattr(msg, "mentions", None)
         if not _should_handle_group_message(chat_type=chat_type, text=text, mentions=mentions):
             return
 
@@ -332,8 +406,20 @@ async def _reply_plain(message_id: str, text: str) -> None:
 
 async def _process_user_message(*, message_id: str, chat_id: str, query: str) -> None:
     await ensure_bot_open_id()
+    session_key = f"feishu:{chat_id}" if chat_id else f"feishu:nochat:{message_id}"
+
+    wait_sec = float(getattr(settings, "feishu_merge_attach_wait_sec", 0.0) or 0.0)
+    if wait_sec > 0:
+        await asyncio.sleep(wait_sec)
+
+    pending_files = await pending_take_all(session_key)
+
     log_chat = chat_id[:16] if chat_id else ""
-    logger.info(f"飞书 RAG 开始: message_id={message_id} chat_id={log_chat}... query={query[:80]!r}")
+    n_att = len(pending_files)
+    logger.info(
+        f"飞书 RAG 开始: message_id={message_id} chat_id={log_chat}… "
+        f"query={query[:80]!r} pending_attachments={n_att}"
+    )
 
     client = _lark_client()
     if message_id and settings.feishu_typing_hint:
@@ -344,7 +430,6 @@ async def _process_user_message(*, message_id: str, chat_id: str, query: str) ->
             reply_in_thread=bool(settings.feishu_reply_in_thread),
         )
 
-    session_key = f"feishu:{chat_id}" if chat_id else f"feishu:nochat:{message_id}"
     sess = load_session(session_key)
     session_context = build_session_context(sess)
 
@@ -355,17 +440,35 @@ async def _process_user_message(*, message_id: str, chat_id: str, query: str) ->
         if kb_ids:
             kb_context = {"kb_ids": kb_ids, "kb_names": []}
 
+    attachment_context: Optional[str] = None
+    if pending_files:
+        try:
+            block, att_items = await summarize_chat_attachments(
+                user_message=(query or "").strip() or "（用户未输入文字，仅会话内附件）",
+                files=pending_files,
+            )
+            attachment_context = (block or "").strip() or None
+            logger.info(
+                f"飞书附件摘要完成: n={len(att_items)} len={len(attachment_context or '')}"
+            )
+        except Exception as e:
+            logger.warning(f"飞书附件摘要失败，附件已放回待合并队列: {e}", exc_info=True)
+            await pending_restore(session_key, pending_files)
+            pending_files = []
+
     try:
         retrieval_result = await retrieval_service.search(
             query=query,
             kb_context=kb_context,
             session_context=session_context,
+            attachment_context=attachment_context,
         )
         generation_result = await generation_service.generate_response(
             query=query,
             retrieval_result=retrieval_result,
             session_id=session_key,
             kb_context=kb_context,
+            attachment_context=attachment_context,
         )
     except Exception as e:
         logger.error(f"飞书 RAG 失败: {e}", exc_info=True)
@@ -477,5 +580,8 @@ async def _process_user_message(*, message_id: str, chat_id: str, query: str) ->
                     reply_in_thread=rt,
                 )
 
-    append_turn(session_key, query, answer)
+    user_turn = query
+    if attachment_context and pending_files:
+        user_turn = f"{query}\n[飞书附件×{len(pending_files)}]"
+    append_turn(session_key, user_turn, answer)
     logger.info(f"飞书 RAG 完成: message_id={message_id} answer_len={len(answer)}")

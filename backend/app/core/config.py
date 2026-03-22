@@ -225,6 +225,12 @@ class Settings(BaseSettings):
     feishu_reply_post_md: bool = Field(default=True, validation_alias="FEISHU_REPLY_POST_MD")
     # True：同一 post 气泡内交替 md 与 img（飞书要求图片独占段落）；False：图文分多条消息
     feishu_inline_images_in_post: bool = Field(default=True, validation_alias="FEISHU_INLINE_IMAGES_IN_POST")
+    # 用户先发文字再发图/音时，文字侧等待的秒数，便于与 pending 附件合并为一次检索（0 关闭）
+    feishu_merge_attach_wait_sec: float = Field(default=2.0, validation_alias="FEISHU_MERGE_ATTACH_WAIT_SEC")
+    feishu_attach_received_hint: str = Field(
+        default="已收到附件📄。\n请下一条消息发送相关查询文本，我会结合附件与文字一起检索。",
+        validation_alias="FEISHU_ATTACH_RECEIVED_HINT",
+    )
     feishu_bot_open_id: Optional[str] = Field(default=None, validation_alias="FEISHU_BOT_OPEN_ID")
     feishu_group_trigger_prefix: str = Field(default="", validation_alias="FEISHU_GROUP_TRIGGER_PREFIX")
     feishu_typing_hint: bool = Field(default=True, validation_alias="FEISHU_TYPING_HINT")
