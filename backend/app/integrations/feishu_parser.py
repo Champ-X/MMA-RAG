@@ -13,22 +13,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-# 用户以「文件」形式发送的音频（与原生「语音」消息 msg_type=audio 不同）
-_FEISHU_FILE_AUDIO_SUFFIXES = frozenset(
-    {
-        ".mp3",
-        ".wav",
-        ".m4a",
-        ".aac",
-        ".amr",
-        ".ogg",
-        ".flac",
-        ".webm",
-        ".opus",
-        ".wma",
-    }
-)
-
 # 飞书 text 消息里常见的 at 占位
 _AT_USER_PLACEHOLDER_RE = re.compile(r"@_user_\d+")
 
@@ -124,8 +108,6 @@ def extract_message_resource_spec(
         )
         fname = str(fname).strip()
         suf = Path(fname).suffix.lower() if fname else ""
-        if suf and suf not in _FEISHU_FILE_AUDIO_SUFFIXES:
-            return None
-        # 无后缀时仍返回，由下游下载后按魔数嗅探是否为音频
+        # 任意文件均可下载；下游区分：入库（pdf/doc/…）或 RAG 多模态（图/音）
         return ("file", str(key).strip(), suf, fname or None)
     return None

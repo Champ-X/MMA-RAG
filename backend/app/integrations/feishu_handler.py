@@ -37,7 +37,20 @@ from app.modules.chat.attachment_summarizer import (
     summarize_chat_attachments,
 )
 from app.integrations.feishu_presenter import FeishuOutboundMessage, build_outbound_messages
-from app.integrations.feishu_sessions import append_turn, build_session_context, load_session
+from app.integrations.feishu_kb_commands import (
+    feishu_file_looks_ingestible,
+    handle_feishu_line,
+    merge_feishu_kb_context,
+    resolve_per_message_kb_ids,
+    schedule_feishu_ingest_task,
+    strip_per_message_kb_scope,
+)
+from app.integrations.feishu_sessions import (
+    append_turn,
+    build_session_context,
+    get_feishu_upload_kb_id,
+    load_session,
+)
 from app.modules.generation.service import GenerationService
 from app.modules.retrieval.service import RetrievalService
 
@@ -248,19 +261,39 @@ async def _handle_feishu_attachment_message(
     ):
         fn = fn + sfx
 
+    session_key = f"feishu:{chat_id}" if chat_id else f"feishu:nochat:{message_id}"
+    upload_kb = get_feishu_upload_kb_id(session_key)
+    if upload_kb and feishu_file_looks_ingestible(fn, raw):
+        schedule_feishu_ingest_task(
+            client,
+            chat_id=chat_id,
+            kb_id=upload_kb,
+            filename=fn,
+            raw=raw,
+        )
+        await feishu_reply_text(
+            client,
+            message_id=message_id,
+            text=(
+                f"已受理入库：**{fn}** → 知识库 `{upload_kb}`。\n"
+                "处理完成后将再发一条结果通知（大文件可能需稍候）。"
+            ),
+            reply_in_thread=bool(settings.feishu_reply_in_thread),
+        )
+        return
+
     kind = sniff_media_bytes_kind(raw)
     if kind not in ("image", "audio"):
         await feishu_reply_text(
             client,
             message_id=message_id,
             text=(
-                "当前仅支持图片，或 mp3/wav 等音频。"
-                "音频可发送「文件」或使用手机录制的「语音消息」。"
+                "当前支持：图片或 mp3/wav 等音频（与下一条文字合并做对话检索）。"
+                "若要将 **文档/pdf 等入库**，请先发送 `/入库 知识库名`，再发文件。"
             ),
             reply_in_thread=bool(settings.feishu_reply_in_thread),
         )
         return
-    session_key = f"feishu:{chat_id}" if chat_id else f"feishu:nochat:{message_id}"
     ok = await pending_add_file(session_key, (fn, ct or "application/octet-stream", raw))
     if not ok:
         await feishu_reply_text(
@@ -465,12 +498,43 @@ async def _reply_plain(message_id: str, text: str) -> None:
 async def _process_user_message(*, message_id: str, chat_id: str, query: str) -> None:
     await ensure_bot_open_id()
     session_key = f"feishu:{chat_id}" if chat_id else f"feishu:nochat:{message_id}"
+    client = _lark_client()
+    if await handle_feishu_line(
+        client,
+        message_id=message_id,
+        chat_id=chat_id,
+        session_key=session_key,
+        text=query,
+    ):
+        return
+
+    pm_token, query = strip_per_message_kb_scope(query)
+    per_msg_kb_ids: Optional[List[str]] = None
+    if pm_token:
+        per_msg_kb_ids, pm_err = await resolve_per_message_kb_ids(pm_token)
+        if not per_msg_kb_ids:
+            await feishu_reply_text(
+                client,
+                message_id=message_id,
+                text=f"无法解析单条知识库范围：{pm_err}",
+                reply_in_thread=bool(settings.feishu_reply_in_thread),
+            )
+            return
 
     wait_sec = float(getattr(settings, "feishu_merge_attach_wait_sec", 0.0) or 0.0)
     if wait_sec > 0:
         await asyncio.sleep(wait_sec)
 
     pending_files = await pending_take_all(session_key)
+
+    if not (query or "").strip() and not pending_files:
+        await feishu_reply_text(
+            client,
+            message_id=message_id,
+            text="请输入要检索的问题，或先发图片/语音再发文字。若仅指定了 `(kb:…)` 前缀，请在后面写上问题。",
+            reply_in_thread=bool(settings.feishu_reply_in_thread),
+        )
+        return
 
     log_chat = chat_id[:16] if chat_id else ""
     n_att = len(pending_files)
@@ -479,7 +543,6 @@ async def _process_user_message(*, message_id: str, chat_id: str, query: str) ->
         f"query={query[:80]!r} pending_attachments={n_att}"
     )
 
-    client = _lark_client()
     if message_id and settings.feishu_typing_hint:
         await feishu_reply_text(
             client,
@@ -491,12 +554,10 @@ async def _process_user_message(*, message_id: str, chat_id: str, query: str) ->
     sess = load_session(session_key)
     session_context = build_session_context(sess)
 
-    kb_context = None
-    raw_ids = (settings.feishu_default_kb_ids or "").strip()
-    if raw_ids:
-        kb_ids = [x.strip() for x in raw_ids.split(",") if x.strip()]
-        if kb_ids:
-            kb_context = {"kb_ids": kb_ids, "kb_names": []}
+    kb_context = merge_feishu_kb_context(
+        per_message_kb_ids=per_msg_kb_ids,
+        session_key=session_key,
+    )
 
     attachment_context: Optional[str] = None
     if pending_files:

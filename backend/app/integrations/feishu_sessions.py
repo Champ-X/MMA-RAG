@@ -79,3 +79,62 @@ def append_turn(session_key: str, user_text: str, assistant_text: str) -> None:
     sess["messages"].append({"role": "user", "content": user_text, "timestamp": ts})
     sess["messages"].append({"role": "assistant", "content": assistant_text, "timestamp": ts})
     save_session(session_key, sess)
+
+
+def get_feishu_default_kb_ids(session_key: str) -> Optional[List[str]]:
+    sess = load_session(session_key)
+    raw = sess.get("feishu_default_kb_ids")
+    if not isinstance(raw, list) or not raw:
+        return None
+    out = [str(x).strip() for x in raw if str(x).strip()]
+    return out or None
+
+
+def set_feishu_default_kb_ids(session_key: str, kb_ids: List[str]) -> None:
+    sess = load_session(session_key)
+    ids = [str(x).strip() for x in kb_ids if str(x).strip()]
+    if ids:
+        sess["feishu_default_kb_ids"] = ids
+    else:
+        sess.pop("feishu_default_kb_ids", None)
+    save_session(session_key, sess)
+
+
+def clear_feishu_default_kb_ids(session_key: str) -> None:
+    sess = load_session(session_key)
+    sess.pop("feishu_default_kb_ids", None)
+    save_session(session_key, sess)
+
+
+def get_feishu_upload_kb_id(session_key: str) -> Optional[str]:
+    sess = load_session(session_key)
+    v = sess.get("feishu_upload_kb_id")
+    return str(v).strip() if isinstance(v, str) and v.strip() else None
+
+
+def set_feishu_upload_kb_id(session_key: str, kb_id: Optional[str]) -> None:
+    sess = load_session(session_key)
+    kid = (kb_id or "").strip()
+    if kid:
+        sess["feishu_upload_kb_id"] = kid
+    else:
+        sess.pop("feishu_upload_kb_id", None)
+    save_session(session_key, sess)
+
+
+def get_feishu_pending_kb_delete(session_key: str) -> Optional[Dict[str, Any]]:
+    sess = load_session(session_key)
+    p = sess.get("feishu_pending_kb_delete")
+    return p if isinstance(p, dict) else None
+
+
+def set_feishu_pending_kb_delete(session_key: str, payload: Dict[str, Any]) -> None:
+    sess = load_session(session_key)
+    sess["feishu_pending_kb_delete"] = payload
+    save_session(session_key, sess)
+
+
+def clear_feishu_pending_kb_delete(session_key: str) -> None:
+    sess = load_session(session_key)
+    sess.pop("feishu_pending_kb_delete", None)
+    save_session(session_key, sess)

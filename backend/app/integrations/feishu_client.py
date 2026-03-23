@@ -232,6 +232,32 @@ async def feishu_reply_message(
     return True
 
 
+async def feishu_send_interactive_to_chat(
+    client: "Client",
+    *,
+    chat_id: str,
+    card: dict,
+) -> bool:
+    from lark_oapi.api.im.v1.model.create_message_request import CreateMessageRequest
+    from lark_oapi.api.im.v1.model.create_message_request_body import CreateMessageRequestBody
+
+    body = (
+        CreateMessageRequestBody.builder()
+        .receive_id(chat_id)
+        .msg_type("interactive")
+        .content(json.dumps(card, ensure_ascii=False))
+        .build()
+    )
+    req = CreateMessageRequest.builder().receive_id_type("chat_id").request_body(body).build()
+    resp = await client.im.v1.message.acreate(req)
+    if resp.code != 0:
+        logger.warning(
+            f"飞书发交互卡片失败 chat_id={chat_id} code={resp.code} msg={getattr(resp, 'msg', '')}"
+        )
+        return False
+    return True
+
+
 async def feishu_send_text_to_chat(
     client: "Client",
     *,
@@ -373,6 +399,23 @@ async def feishu_reply_image(
         message_id=message_id,
         msg_type="image",
         content_json=_image_content(image_key),
+        reply_in_thread=reply_in_thread,
+    )
+
+
+async def feishu_reply_interactive(
+    client: "Client",
+    *,
+    message_id: str,
+    card: dict,
+    reply_in_thread: bool = False,
+) -> bool:
+    """发送交互卡片（静态展示；无回调按钮事件处理）。"""
+    return await feishu_reply_message(
+        client,
+        message_id=message_id,
+        msg_type="interactive",
+        content_json=json.dumps(card, ensure_ascii=False),
         reply_in_thread=reply_in_thread,
     )
 
