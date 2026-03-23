@@ -17,17 +17,29 @@ from app.core.config import settings
 from app.integrations.feishu_sessions import (
     clear_feishu_default_kb_ids,
     clear_feishu_pending_kb_delete,
+    clear_feishu_wizard,
     get_feishu_default_kb_ids,
     get_feishu_pending_kb_delete,
     get_feishu_upload_kb_id,
+    get_feishu_wizard,
     set_feishu_default_kb_ids,
     set_feishu_pending_kb_delete,
     set_feishu_upload_kb_id,
 )
+from app.integrations.feishu_cards import (
+    build_feishu_main_menu_card,
+    build_kb_create_form_card,
+    build_kb_delete_select_card,
+    build_kb_set_default_select_card,
+    build_kb_update_form_card,
+    build_kb_upload_target_select_card,
+)
 from app.integrations.feishu_client import (
+    feishu_reply_interactive,
     feishu_reply_post_md,
     feishu_reply_text,
     feishu_send_interactive_to_chat,
+    feishu_send_post_md_to_chat,
     feishu_send_text_to_chat,
 )
 from app.integrations.feishu_md_post import feishu_normalize_markdown_for_post
@@ -137,6 +149,20 @@ async def _list_kb_dicts() -> List[Dict[str, Any]]:
     return await _kb_svc().list_knowledge_bases(user_id=None)
 
 
+async def _kb_line_name_before_id(kb_id: str) -> str:
+    """纯文本展示：名称 · `ID`（名称在 ID 之前；查不到则仅 `ID`）。"""
+    kb = await _kb_svc().get_knowledge_base(kb_id)
+    if kb:
+        nm = (kb.get("name") or "").strip() or "（未命名）"
+        return f"{nm} · `{kb_id}`"
+    return f"`{kb_id}`"
+
+
+async def _bullet_lines_kb_ids(ids: List[str]) -> str:
+    rows = await asyncio.gather(*[_kb_line_name_before_id(i) for i in ids])
+    return "\n".join(f"• {r}" for r in rows)
+
+
 async def resolve_kb_identifier(token: str) -> Tuple[Optional[str], str]:
     t = (token or "").strip()
     if not t:
@@ -210,13 +236,17 @@ def _help_md() -> str:
 1. `/kb delete 名称或ID`
 2. 按提示回复：`确认删除 XXXXXX`（6 位验证码）
 
-**改元数据**：`/kb update 名称或ID name=新名 desc=新描述 tags=a,b`
+**改元数据**：面板「修改元数据」子卡片，或 `/kb update 名称或ID name=新名 desc=新描述 tags=a,b`
 
 **文件入库**：`/入库 名称或ID` 后，再发 **文件**（pdf/Office/图片/音视频等）；`/入库 clear` 取消目标库。受理后会再发一条处理结果。
 
 **主题画像再生**：`/kb portrait 名称或ID`（大库可能较久，优先走异步任务）
 
 **帮助**：`/help` / `帮助`
+
+**操作面板（交互卡片）**：发送 `菜单`、`/菜单`、`/面板` 等，点按钮快捷执行（需在开放平台订阅 **卡片回传交互 / card.action.trigger**）。
+
+面板内 **创建/删除/改元数据/设置默认/入库目标** 均使用 **子卡片**（输入框或下拉）。发 `取消` 或 `/` 指令会清除历史「一步指引」状态（若存在）。
 """
 
 
@@ -278,7 +308,7 @@ async def _try_reply_kb_list(
         await feishu_reply_text(
             client,
             message_id=message_id,
-            text="当前还没有知识库，可用 `/kb create 名称` 创建。",
+            text="当前还没有知识库。可点面板「创建知识库」或发送 `/kb create 名称`。",
             reply_in_thread=reply_in_thread,
         )
         return
@@ -289,6 +319,372 @@ async def _try_reply_kb_list(
         md=md,
         reply_in_thread=reply_in_thread,
     )
+
+
+def _markdown_to_plain_fallback(s: str) -> str:
+    return (s or "").replace("**", "").replace("`", "").strip()
+
+
+def _form_get_str(fv: Dict[str, Any], key: str) -> str:
+    v = fv.get(key)
+    if v is None:
+        return ""
+    if isinstance(v, (list, tuple)):
+        if not v:
+            return ""
+        v = v[0]
+    return str(v).strip()
+
+
+async def feishu_handle_card_action(
+    client: "Client",
+    *,
+    chat_id: str,
+    cmd: str,
+    form_value: Optional[Dict[str, Any]] = None,
+    option: Optional[str] = None,
+) -> None:
+    """卡片按钮回调：向会话发新消息（无 message_id 上下文）。"""
+    cmd_key = (cmd or "").strip().lower()
+    fv: Dict[str, Any] = dict(form_value or {})
+    opt_part = (option or "").strip()
+    if not chat_id or not cmd_key:
+        return
+    try:
+        if cmd_key == "help":
+            md = feishu_normalize_markdown_for_post(_help_md())
+            if settings.feishu_reply_post_md:
+                if not await feishu_send_post_md_to_chat(client, chat_id=chat_id, markdown=md):
+                    await feishu_send_text_to_chat(
+                        client,
+                        chat_id=chat_id,
+                        text=_markdown_to_plain_fallback(md)[:4000],
+                    )
+            else:
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text=_markdown_to_plain_fallback(md)[:4000],
+                )
+        elif cmd_key == "kb_list":
+            kbs = await _list_kb_dicts()
+            if not kbs:
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text="当前还没有知识库。可点面板「创建知识库」或发送 `/kb create 名称`。",
+                )
+                return
+            md = feishu_normalize_markdown_for_post(_kb_list_post_md(kbs))
+            if settings.feishu_reply_post_md:
+                if not await feishu_send_post_md_to_chat(client, chat_id=chat_id, markdown=md):
+                    await feishu_send_text_to_chat(
+                        client,
+                        chat_id=chat_id,
+                        text=_markdown_to_plain_fallback(md)[:4000],
+                    )
+            else:
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text=_markdown_to_plain_fallback(md)[:4000],
+                )
+        elif cmd_key == "kb_clear":
+            clear_feishu_default_kb_ids(f"feishu:{chat_id}")
+            await feishu_send_text_to_chat(
+                client,
+                chat_id=chat_id,
+                text=(
+                    "已清除本会话默认知识库。之后将使用环境变量 FEISHU_DEFAULT_KB_IDS（若已配置），"
+                    "否则由系统未指定范围时的逻辑处理。"
+                ),
+            )
+        elif cmd_key == "session_kb":
+            sk = f"feishu:{chat_id}"
+            ids = get_feishu_default_kb_ids(sk)
+            env = (settings.feishu_default_kb_ids or "").strip()
+            if ids:
+                body = "本会话默认检索知识库：\n" + await _bullet_lines_kb_ids(ids)
+            elif env:
+                body = f"本会话未单独设置。环境默认 FEISHU_DEFAULT_KB_IDS：\n{env}"
+            else:
+                body = "本会话与环境均未设置默认知识库。"
+            await feishu_send_text_to_chat(client, chat_id=chat_id, text=body)
+        elif cmd_key == "open_kb_create_card":
+            await feishu_send_interactive_to_chat(
+                client,
+                chat_id=chat_id,
+                card=build_kb_create_form_card(),
+            )
+        elif cmd_key == "kb_create_submit":
+            name = _form_get_str(fv, "kb_name")
+            desc = _form_get_str(fv, "kb_desc")
+            if not name:
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text="名称为空。请重新打开「创建知识库」在卡片内填写名称后提交。",
+                )
+            else:
+                created = await _kb_svc().create_knowledge_base(
+                    name=name,
+                    description=desc or "",
+                    metadata=None,
+                )
+                kid = created["id"]
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text=f"已创建知识库：{name}，ID：{kid}",
+                )
+        elif cmd_key == "open_kb_delete_card":
+            kbs = await _list_kb_dicts()
+            if not kbs:
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text="当前没有可删除的知识库。",
+                )
+            else:
+                try:
+                    card = build_kb_delete_select_card(kbs)
+                except ValueError:
+                    await feishu_send_text_to_chat(
+                        client,
+                        chat_id=chat_id,
+                        text="知识库列表异常，请稍后再试或使用 `/kb delete`。",
+                    )
+                else:
+                    await feishu_send_interactive_to_chat(
+                        client, chat_id=chat_id, card=card
+                    )
+        elif cmd_key == "kb_delete_submit":
+            sk = f"feishu:{chat_id}"
+            kid = _form_get_str(fv, "kb_id") or opt_part
+            if not kid:
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text="请先在卡片下拉框中选择知识库，再点按钮。",
+                )
+            else:
+                kb = await _kb_svc().get_knowledge_base(kid)
+                if not kb:
+                    await feishu_send_text_to_chat(
+                        client,
+                        chat_id=chat_id,
+                        text="知识库不存在或已删除，请刷新面板后重试。",
+                    )
+                else:
+                    name = (kb.get("name") or kid)
+                    token = secrets.token_hex(3).upper()
+                    set_feishu_pending_kb_delete(
+                        sk,
+                        {
+                            "token": token,
+                            "kb_id": kid,
+                            "name": name,
+                            "expires_at": time.time() + 600,
+                        },
+                    )
+                    await feishu_send_text_to_chat(
+                        client,
+                        chat_id=chat_id,
+                        text=(
+                            f"即将删除：{name}（{kid}）。请在 10 分钟内回复：确认删除 {token}"
+                        ),
+                    )
+        elif cmd_key == "open_kb_set_default_card":
+            kbs = await _list_kb_dicts()
+            if not kbs:
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text="当前没有知识库。可先创建或使用 `/kb set 名称或ID`。",
+                )
+            else:
+                try:
+                    card = build_kb_set_default_select_card(kbs)
+                except ValueError:
+                    await feishu_send_text_to_chat(
+                        client,
+                        chat_id=chat_id,
+                        text="知识库列表异常，请稍后再试。",
+                    )
+                else:
+                    await feishu_send_interactive_to_chat(
+                        client, chat_id=chat_id, card=card
+                    )
+        elif cmd_key == "kb_set_default_submit":
+            sk = f"feishu:{chat_id}"
+            kid = _form_get_str(fv, "kb_id") or opt_part
+            if not kid:
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text="请先在下拉框中选择知识库。",
+                )
+            else:
+                kb = await _kb_svc().get_knowledge_base(kid)
+                if not kb:
+                    await feishu_send_text_to_chat(
+                        client,
+                        chat_id=chat_id,
+                        text="知识库不存在或已删除。",
+                    )
+                else:
+                    nm = (kb.get("name") or "").strip() or "（未命名）"
+                    set_feishu_default_kb_ids(sk, [kid])
+                    await feishu_send_text_to_chat(
+                        client,
+                        chat_id=chat_id,
+                        text=f"已设置本会话默认检索：{nm} · `{kid}`",
+                    )
+        elif cmd_key == "open_kb_upload_card":
+            kbs = await _list_kb_dicts()
+            if not kbs:
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text="当前没有知识库。可先创建或使用 `/入库 名称或ID`。",
+                )
+            else:
+                try:
+                    card = build_kb_upload_target_select_card(kbs)
+                except ValueError:
+                    await feishu_send_text_to_chat(
+                        client,
+                        chat_id=chat_id,
+                        text="知识库列表异常，请稍后再试。",
+                    )
+                else:
+                    await feishu_send_interactive_to_chat(
+                        client, chat_id=chat_id, card=card
+                    )
+        elif cmd_key == "kb_upload_bind_submit":
+            sk = f"feishu:{chat_id}"
+            kid = _form_get_str(fv, "kb_id") or opt_part
+            if not kid:
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text="请先在下拉框中选择知识库。",
+                )
+            else:
+                kb = await _kb_svc().get_knowledge_base(kid)
+                if not kb:
+                    await feishu_send_text_to_chat(
+                        client,
+                        chat_id=chat_id,
+                        text="知识库不存在或已删除。",
+                    )
+                else:
+                    nm = (kb.get("name") or "").strip() or "（未命名）"
+                    set_feishu_upload_kb_id(sk, kid)
+                    await feishu_send_text_to_chat(
+                        client,
+                        chat_id=chat_id,
+                        text=(
+                            f"已指定入库知识库：{nm} · `{kid}`。\n请接着在会话中发送 **文件消息** "
+                            "（pdf/Office/图片/音视频等），处理完成后会再发一条结果通知。"
+                        ),
+                    )
+        elif cmd_key == "open_kb_update_card":
+            kbs = await _list_kb_dicts()
+            if not kbs:
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text="当前没有知识库。可先创建或使用 `/kb update 名称或ID name=…`。",
+                )
+            else:
+                try:
+                    card = build_kb_update_form_card(kbs)
+                except ValueError:
+                    await feishu_send_text_to_chat(
+                        client,
+                        chat_id=chat_id,
+                        text="知识库列表异常，请稍后再试。",
+                    )
+                else:
+                    await feishu_send_interactive_to_chat(
+                        client, chat_id=chat_id, card=card
+                    )
+        elif cmd_key == "kb_update_submit":
+            kid = _form_get_str(fv, "kb_id") or opt_part
+            if not kid:
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text="请先在卡片中选择知识库。",
+                )
+            elif not await _kb_svc().get_knowledge_base(kid):
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text="知识库不存在或已删除。",
+                )
+            else:
+                new_name = _form_get_str(fv, "kb_new_name")
+                new_desc = _form_get_str(fv, "kb_new_desc")
+                tags_raw = _form_get_str(fv, "kb_tags")
+                tags_list: Optional[List[str]] = None
+                if tags_raw:
+                    tags_list = [
+                        x.strip() for x in tags_raw.split(",") if x.strip()
+                    ]
+                    if not tags_list:
+                        tags_list = None
+                _, msg = await _feishu_apply_kb_metadata_update(
+                    kid,
+                    name=new_name or None,
+                    description=new_desc or None,
+                    tags=tags_list,
+                )
+                await feishu_send_text_to_chat(client, chat_id=chat_id, text=msg)
+        elif cmd_key == "upload_tip":
+            tip_md = feishu_normalize_markdown_for_post(
+                "**文件入库**\n\n"
+                "1. 点面板 **选择入库目标**（子卡片下拉），或发送 `/入库 知识库名称或ID`\n"
+                "2. 再发一条 **文件**（pdf / Office / 图片 / 音视频等）\n"
+                "3. 提示「已受理」后等待结果通知\n\n"
+                "取消目标库：`/入库 clear`"
+            )
+            if settings.feishu_reply_post_md:
+                if not await feishu_send_post_md_to_chat(client, chat_id=chat_id, markdown=tip_md):
+                    await feishu_send_text_to_chat(
+                        client,
+                        chat_id=chat_id,
+                        text=_markdown_to_plain_fallback(tip_md),
+                    )
+            else:
+                await feishu_send_text_to_chat(
+                    client,
+                    chat_id=chat_id,
+                    text=_markdown_to_plain_fallback(tip_md),
+                )
+        elif cmd_key == "menu_refresh":
+            await feishu_send_interactive_to_chat(
+                client,
+                chat_id=chat_id,
+                card=build_feishu_main_menu_card(),
+            )
+        else:
+            await feishu_send_text_to_chat(
+                client,
+                chat_id=chat_id,
+                text=f"未知面板操作：{cmd_key}",
+            )
+    except Exception as e:
+        logger.error(f"飞书卡片动作处理失败 cmd={cmd_key}: {e}", exc_info=True)
+        try:
+            await feishu_send_text_to_chat(
+                client,
+                chat_id=chat_id,
+                text=f"处理失败：{str(e)[:200]}",
+            )
+        except Exception:
+            pass
 
 
 async def _handle_confirm_delete(
@@ -308,7 +704,7 @@ async def _handle_confirm_delete(
         await feishu_reply_text(
             client,
             message_id=message_id,
-            text="没有待确认删除的知识库，请先使用 `/kb delete 名称或ID`。",
+            text="没有待确认删除的知识库。请先在面板「删除知识库」中选库获取验证码，或使用 `/kb delete 名称或ID`。",
             reply_in_thread=reply_in_thread,
         )
         return True
@@ -318,7 +714,7 @@ async def _handle_confirm_delete(
         await feishu_reply_text(
             client,
             message_id=message_id,
-            text="确认已过期，请重新执行 `/kb delete`。",
+            text="确认已过期。请重新在面板「删除知识库」中选库，或再次执行 `/kb delete`。",
             reply_in_thread=reply_in_thread,
         )
         return True
@@ -350,6 +746,37 @@ async def _handle_confirm_delete(
     return True
 
 
+async def _feishu_apply_kb_metadata_update(
+    kb_id: str,
+    *,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+) -> Tuple[bool, str]:
+    """写入名称/描述/标签（至少一项）；tags 非 None 时覆盖 metadata.tags。"""
+    n = (name or "").strip() or None
+    d = (description or "").strip() or None
+    kb_row = await _kb_svc().get_knowledge_base(kb_id)
+    if not kb_row:
+        return False, "更新失败：知识库不存在。"
+    meta_arg = None
+    if tags is not None:
+        meta = dict((kb_row or {}).get("metadata") or {})
+        meta["tags"] = list(tags)
+        meta_arg = meta
+    if n is None and d is None and meta_arg is None:
+        return False, "请至少填写新名称、新描述或标签中的一项。"
+    result = await _kb_svc().update_knowledge_base(
+        kb_id=kb_id,
+        name=n,
+        description=d,
+        metadata=meta_arg,
+    )
+    if not result:
+        return False, "更新失败：知识库不存在。"
+    return True, f"已更新知识库 `{kb_id}`。"
+
+
 def _parse_update_kv(rest: str) -> Dict[str, Any]:
     """解析 name=xx desc=yy tags=a,b（空格分隔，值可含空格至下一 key=）"""
     out: Dict[str, Any] = {}
@@ -379,6 +806,46 @@ def _parse_update_kv(rest: str) -> Dict[str, Any]:
     return out
 
 
+async def _feishu_run_kb_update(
+    client: "Client",
+    *,
+    message_id: str,
+    reply_in_thread: bool,
+    target: str,
+    kv_rest: str,
+) -> None:
+    kid, err = await resolve_kb_identifier((target or "").strip())
+    if not kid:
+        await feishu_reply_text(
+            client,
+            message_id=message_id,
+            text=f"无法更新：{err}",
+            reply_in_thread=reply_in_thread,
+        )
+        return
+    kv = _parse_update_kv(kv_rest)
+    if not kv:
+        await feishu_reply_text(
+            client,
+            message_id=message_id,
+            text="用法：至少提供 `name=` / `desc=` / `tags=` 中一项。",
+            reply_in_thread=reply_in_thread,
+        )
+        return
+    tags = kv["tags"] if "tags" in kv else None
+    n = (kv.get("name") or "").strip() or None
+    d = (kv.get("desc") or "").strip() or None
+    _, msg = await _feishu_apply_kb_metadata_update(
+        kid, name=n, description=d, tags=tags
+    )
+    await feishu_reply_text(
+        client,
+        message_id=message_id,
+        text=msg,
+        reply_in_thread=reply_in_thread,
+    )
+
+
 async def handle_feishu_line(
     client: "Client",
     *,
@@ -395,9 +862,25 @@ async def handle_feishu_line(
     if not raw:
         return False
 
+    w0 = get_feishu_wizard(session_key)
+    exp_ok = bool(w0) and time.time() <= float(w0.get("expires_at", 0))
+    if exp_ok:
+        if raw.lower() in ("/取消", "/cancel") or raw == "取消":
+            clear_feishu_wizard(session_key)
+            await feishu_reply_text(
+                client,
+                message_id=message_id,
+                text="已取消当前一步操作。可直接提问检索。",
+                reply_in_thread=rt,
+            )
+            return True
+    if raw.startswith("/"):
+        clear_feishu_wizard(session_key)
+
     if await _handle_confirm_delete(
         client, message_id=message_id, session_key=session_key, text=raw, reply_in_thread=rt
     ):
+        clear_feishu_wizard(session_key)
         return True
 
     for rx in _NL_SET_KB_RES:
@@ -414,15 +897,39 @@ async def handle_feishu_line(
                 )
                 return True
             set_feishu_default_kb_ids(session_key, ids)
+            detail = await _bullet_lines_kb_ids(ids)
             await feishu_reply_text(
                 client,
                 message_id=message_id,
-                text=f"已设置本会话默认检索知识库（{len(ids)} 个）：`{', '.join(ids)}`",
+                text=(
+                    f"已设置本会话默认检索知识库（{len(ids)} 个）：\n{detail}"
+                ),
                 reply_in_thread=rt,
             )
             return True
 
     low = raw.lower()
+    low_s = raw.strip().lower()
+    if low_s in {"/menu", "/菜单", "/面板", "/panel"} or raw.strip() in {
+        "菜单",
+        "操作面板",
+        "功能面板",
+    }:
+        ok = await feishu_reply_interactive(
+            client,
+            message_id=message_id,
+            card=build_feishu_main_menu_card(),
+            reply_in_thread=rt,
+        )
+        if not ok:
+            await feishu_reply_text(
+                client,
+                message_id=message_id,
+                text="操作面板发送失败，请仍可使用 /help 查看说明。",
+                reply_in_thread=rt,
+            )
+        return True
+
     if low in ("/help", "/帮助", "帮助", "help", "/?"):
         await _reply_md_or_text(
             client, message_id=message_id, md=_help_md(), reply_in_thread=rt
@@ -452,10 +959,11 @@ async def handle_feishu_line(
                 )
                 return True
             set_feishu_default_kb_ids(session_key, ids)
+            detail = await _bullet_lines_kb_ids(ids)
             await feishu_reply_text(
                 client,
                 message_id=message_id,
-                text=f"已设置本会话默认检索：`{', '.join(ids)}`",
+                text=f"已设置本会话默认检索：\n{detail}",
                 reply_in_thread=rt,
             )
             return True
@@ -536,52 +1044,12 @@ async def handle_feishu_line(
             bits = rest.strip().split(None, 1)
             target = bits[0]
             kv_rest = bits[1] if len(bits) > 1 else ""
-            kid, err = await resolve_kb_identifier(target)
-            if not kid:
-                await feishu_reply_text(
-                    client,
-                    message_id=message_id,
-                    text=f"无法更新：{err}",
-                    reply_in_thread=rt,
-                )
-                return True
-            kv = _parse_update_kv(kv_rest)
-            if not kv:
-                await feishu_reply_text(
-                    client,
-                    message_id=message_id,
-                    text="用法：`/kb update 名称或ID name=新名 desc=描述 tags=a,b`",
-                    reply_in_thread=rt,
-                )
-                return True
-            kb_row = await _kb_svc().get_knowledge_base(kid)
-            upd_name = kv.get("name")
-            upd_desc = kv.get("desc")
-            tags_upd = kv.get("tags")
-            meta_arg = None
-            if tags_upd is not None:
-                meta = dict((kb_row or {}).get("metadata") or {})
-                meta["tags"] = tags_upd
-                meta_arg = meta
-            result = await _kb_svc().update_knowledge_base(
-                kb_id=kid,
-                name=upd_name,
-                description=upd_desc,
-                metadata=meta_arg,
-            )
-            if not result:
-                await feishu_reply_text(
-                    client,
-                    message_id=message_id,
-                    text="更新失败：知识库不存在。",
-                    reply_in_thread=rt,
-                )
-                return True
-            await feishu_reply_text(
+            await _feishu_run_kb_update(
                 client,
                 message_id=message_id,
-                text=f"已更新知识库 `{kid}`。",
                 reply_in_thread=rt,
+                target=target,
+                kv_rest=kv_rest,
             )
             return True
 

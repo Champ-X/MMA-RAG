@@ -258,6 +258,34 @@ async def feishu_send_interactive_to_chat(
     return True
 
 
+async def feishu_send_post_md_to_chat(
+    client: "Client",
+    *,
+    chat_id: str,
+    markdown: str,
+    title: str = "",
+) -> bool:
+    """向会话发送一条 post（md 节点），与 reply_post_md 一致但无需 message_id。"""
+    from lark_oapi.api.im.v1.model.create_message_request import CreateMessageRequest
+    from lark_oapi.api.im.v1.model.create_message_request_body import CreateMessageRequestBody
+
+    body = (
+        CreateMessageRequestBody.builder()
+        .receive_id(chat_id)
+        .msg_type("post")
+        .content(_post_md_content(markdown=markdown, title=title))
+        .build()
+    )
+    req = CreateMessageRequest.builder().receive_id_type("chat_id").request_body(body).build()
+    resp = await client.im.v1.message.acreate(req)
+    if resp.code != 0:
+        logger.warning(
+            f"飞书发 post 失败 chat_id={chat_id} code={resp.code} msg={getattr(resp, 'msg', '')}"
+        )
+        return False
+    return True
+
+
 async def feishu_send_text_to_chat(
     client: "Client",
     *,
@@ -410,7 +438,7 @@ async def feishu_reply_interactive(
     card: dict,
     reply_in_thread: bool = False,
 ) -> bool:
-    """发送交互卡片（静态展示；无回调按钮事件处理）。"""
+    """发送交互卡片；带 value 的按钮需在长连接注册 card.action.trigger 才会回调。"""
     return await feishu_reply_message(
         client,
         message_id=message_id,

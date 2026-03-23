@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -137,4 +138,26 @@ def set_feishu_pending_kb_delete(session_key: str, payload: Dict[str, Any]) -> N
 def clear_feishu_pending_kb_delete(session_key: str) -> None:
     sess = load_session(session_key)
     sess.pop("feishu_pending_kb_delete", None)
+    save_session(session_key, sess)
+
+
+def get_feishu_wizard(session_key: str) -> Optional[Dict[str, Any]]:
+    """面板「一步指引」：用户点按钮后，下一条非指令文本按 kind 解释。"""
+    sess = load_session(session_key)
+    w = sess.get("feishu_wizard")
+    return w if isinstance(w, dict) else None
+
+
+def set_feishu_wizard(session_key: str, kind: str, ttl_sec: float = 600.0) -> None:
+    sess = load_session(session_key)
+    sess["feishu_wizard"] = {
+        "kind": kind,
+        "expires_at": time.time() + max(60.0, float(ttl_sec)),
+    }
+    save_session(session_key, sess)
+
+
+def clear_feishu_wizard(session_key: str) -> None:
+    sess = load_session(session_key)
+    sess.pop("feishu_wizard", None)
     save_session(session_key, sess)

@@ -15,7 +15,11 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.integrations import feishu_state
 from app.integrations.feishu_client import feishu_fetch_bot_open_id_sync
-from app.integrations.feishu_handler import on_im_message_read_sync, on_im_message_sync
+from app.integrations.feishu_handler import (
+    on_card_action_sync,
+    on_im_message_read_sync,
+    on_im_message_sync,
+)
 
 logger = get_logger(__name__)
 
@@ -251,7 +255,12 @@ def _feishu_ws_thread_main() -> None:
         EventDispatcherHandler.builder(enc, vtok, LogLevel.WARNING)
         .register_p2_im_message_receive_v1(on_im_message_sync)
         .register_p2_im_message_message_read_v1(on_im_message_read_sync)
+        .register_p2_card_action_trigger(on_card_action_sync)
         .build()
+    )
+    logger.info(
+        "飞书事件：已注册 im.message.receive_v1、im.message.message_read_v1、"
+        "card.action.trigger；请在开放平台为应用订阅「卡片回传交互」以启用面板按钮。"
     )
 
     _log_feishu_ws_endpoint_probe(app_id, app_secret)

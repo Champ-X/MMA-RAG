@@ -39,6 +39,7 @@ from app.modules.chat.attachment_summarizer import (
 from app.integrations.feishu_presenter import FeishuOutboundMessage, build_outbound_messages
 from app.integrations.feishu_kb_commands import (
     feishu_file_looks_ingestible,
+    feishu_handle_card_action,
     handle_feishu_line,
     merge_feishu_kb_context,
     resolve_per_message_kb_ids,
@@ -378,6 +379,77 @@ def _strip_trigger_prefix(text: str) -> str:
     if prefix and text.strip().startswith(prefix):
         return text.strip()[len(prefix) :].strip()
     return text.strip()
+
+
+def on_card_action_sync(data: Any) -> Any:
+    """
+    卡片按钮 card.action.trigger（须在开放平台订阅「卡片回传交互」并走长连接）。
+    同步入口：尽快返回 P2CardActionTriggerResponse；业务在 asyncio 主循环异步执行。
+    """
+    from lark_oapi.event.callback.model.p2_card_action_trigger import (
+        CallBackToast,
+        P2CardActionTriggerResponse,
+    )
+
+    loop = feishu_state.main_loop
+    if loop is None or loop.is_closed():
+        logger.error("飞书卡片回调到达但主事件循环未就绪")
+        r = P2CardActionTriggerResponse()
+        t = CallBackToast()
+        t.type = "error"
+        t.content = "服务未就绪"
+        r.toast = t
+        return r
+
+    try:
+        ev = getattr(data, "event", None)
+        ctx = getattr(ev, "context", None) if ev else None
+        act = getattr(ev, "action", None) if ev else None
+        chat_id = (getattr(ctx, "open_chat_id", None) or "").strip() if ctx else ""
+        val = getattr(act, "value", None) if act else None
+        cmd = ""
+        if isinstance(val, dict):
+            v = val.get("cmd") if val.get("cmd") is not None else val.get("action")
+            cmd = str(v).strip() if v is not None else ""
+
+        fv_raw = getattr(act, "form_value", None) if act else None
+        fv: Dict[str, Any] = {}
+        if isinstance(fv_raw, dict):
+            fv = dict(fv_raw)
+        opt_raw = getattr(act, "option", None) if act else None
+        opt_s = str(opt_raw).strip() if opt_raw is not None else ""
+
+        if chat_id and cmd:
+            client = _lark_client()
+            fut = asyncio.run_coroutine_threadsafe(
+                feishu_handle_card_action(
+                    client,
+                    chat_id=chat_id,
+                    cmd=cmd,
+                    form_value=fv,
+                    option=opt_s or None,
+                ),
+                loop,
+            )
+            fut.add_done_callback(
+                lambda f: f.exception()
+                and logger.error(f"飞书卡片动作异步失败: {f.exception()}")
+            )
+        else:
+            logger.warning(
+                "飞书卡片回调缺少 open_chat_id 或 cmd：context=%s value=%s",
+                getattr(ctx, "__dict__", ctx),
+                val,
+            )
+    except Exception as e:
+        logger.error(f"飞书卡片回调处理异常: {e}", exc_info=True)
+
+    r = P2CardActionTriggerResponse()
+    toast = CallBackToast()
+    toast.type = "info"
+    toast.content = "已发送"
+    r.toast = toast
+    return r
 
 
 def on_im_message_read_sync(_data: Any) -> None:
