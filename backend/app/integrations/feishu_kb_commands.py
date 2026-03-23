@@ -35,6 +35,8 @@ from app.integrations.feishu_cards import (
     build_kb_upload_target_select_card,
 )
 from app.integrations.feishu_client import (
+    feishu_download_message_resource,
+    feishu_get_im_message,
     feishu_reply_interactive,
     feishu_reply_post_md,
     feishu_reply_text,
@@ -43,6 +45,7 @@ from app.integrations.feishu_client import (
     feishu_send_text_to_chat,
 )
 from app.integrations.feishu_md_post import feishu_normalize_markdown_for_post
+from app.integrations.feishu_parser import extract_message_resource_spec, extract_text
 
 if TYPE_CHECKING:
     from lark_oapi import Client
@@ -110,6 +113,32 @@ def feishu_file_looks_ingestible(filename: str, raw: bytes) -> bool:
     if len(raw) >= 2 and raw[:2] == b"PK":
         return True
     return False
+
+
+def _finalize_feishu_resource_filename(fn: str, sfx: str, name_hint: str) -> str:
+    """与 feishu_handler 附件命名规则一致。"""
+    out = (name_hint or fn or "feishu_media").strip()
+    sfx = str(sfx or "")
+    if sfx and not any(
+        out.lower().endswith(ext)
+        for ext in (
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp",
+            ".gif",
+            ".mp3",
+            ".wav",
+            ".m4a",
+            ".ogg",
+            ".flac",
+            ".webm",
+            ".aac",
+            ".amr",
+        )
+    ):
+        return out + sfx
+    return out
 
 
 def strip_per_message_kb_scope(query: str) -> Tuple[Optional[str], str]:
@@ -238,7 +267,7 @@ def _help_md() -> str:
 
 **改元数据**：面板「修改元数据」子卡片，或 `/kb update 名称或ID name=新名 desc=新描述 tags=a,b`
 
-**文件入库**：`/入库 名称或ID` 后，再发 **文件**（pdf/Office/图片/音视频等）；`/入库 clear` 取消目标库。受理后会再发一条处理结果。
+**文件入库**：`/入库 名称或ID` 后，再发 **文件**；或 **回复** 某条消息（文件或文字）后发 `/入库本条` / `/引用入库`（可选 `知识库名`）将该条入库。`/入库 clear` 取消目标库。受理后会再发一条处理结果。
 
 **主题画像再生**：`/kb portrait 名称或ID`（大库可能较久，优先走异步任务）
 
@@ -645,9 +674,10 @@ async def feishu_handle_card_action(
         elif cmd_key == "upload_tip":
             tip_md = feishu_normalize_markdown_for_post(
                 "**文件入库**\n\n"
-                "1. 点面板 **选择入库目标**（子卡片下拉），或发送 `/入库 知识库名称或ID`\n"
-                "2. 再发一条 **文件**（pdf / Office / 图片 / 音视频等）\n"
-                "3. 提示「已受理」后等待结果通知\n\n"
+                "1. **按条入库**：对目标消息点 **回复**，发送 `/入库本条`（或 `/引用入库`）；"
+                "可选 `/入库本条 知识库名`；不填库名时用当前已绑定的入库目标（仅 1 个知识库时可省略）。\n"
+                "2. **先发文件**：点面板选库或直接发可解析文件（见帮助说明）。\n"
+                "3. 提示「已受理」后等待结果通知。\n\n"
                 "取消目标库：`/入库 clear`"
             )
             if settings.feishu_reply_post_md:
@@ -846,6 +876,127 @@ async def _feishu_run_kb_update(
     )
 
 
+async def _handle_feishu_ingest_replied_message(
+    client: "Client",
+    *,
+    message_id: str,
+    chat_id: str,
+    session_key: str,
+    parent_message_id: str,
+    kb_spec: str,
+    reply_in_thread: bool,
+) -> None:
+    """
+    用户 **回复** 某条消息后发送 `/入库本条` 或 `/引用入库`（可选尾部 `知识库名或ID`），
+    将该 **被回复的消息** 写入目标知识库（文件类走下载；纯文本/post 落成 .txt）。
+    """
+    spec = (kb_spec or "").strip()
+    kid: Optional[str] = None
+    err = ""
+    if spec:
+        kid, err = await resolve_kb_identifier(spec)
+        if not kid:
+            await feishu_reply_text(
+                client,
+                message_id=message_id,
+                text=f"无法解析知识库：{err}",
+                reply_in_thread=reply_in_thread,
+            )
+            return
+    else:
+        kid = get_feishu_upload_kb_id(session_key)
+        if not kid:
+            kbs = await _list_kb_dicts()
+            if len(kbs) == 1:
+                kid = str(kbs[0]["id"])
+            else:
+                await feishu_reply_text(
+                    client,
+                    message_id=message_id,
+                    text=(
+                        "请先指定入库目标：面板 **选择入库目标**、`/入库 知识库名`，"
+                        "或发送 `/入库本条 知识库名`。"
+                    ),
+                    reply_in_thread=reply_in_thread,
+                )
+                return
+
+    got = await feishu_get_im_message(client, message_id=parent_message_id)
+    if not got:
+        await feishu_reply_text(
+            client,
+            message_id=message_id,
+            text=(
+                "无法读取被回复的那条消息（可能已删除、无权限或 message_id 无效）。"
+                "请确认应用具备读取消息能力。"
+            ),
+            reply_in_thread=reply_in_thread,
+        )
+        return
+
+    mt, content = got
+    res_spec = extract_message_resource_spec(mt, content)
+    raw: Optional[bytes] = None
+    fn = ""
+
+    if res_spec:
+        rtype, rkey, sfx, name_hint = res_spec
+        dl = await feishu_download_message_resource(
+            client,
+            message_id=parent_message_id,
+            file_key=rkey,
+            resource_type=rtype,
+        )
+        if not dl:
+            await feishu_reply_text(
+                client,
+                message_id=message_id,
+                text="该消息含附件，但资源下载失败（权限或已过期）。",
+                reply_in_thread=reply_in_thread,
+            )
+            return
+        raw, fn_dl, _ct = dl
+        fn = _finalize_feishu_resource_filename(
+            fn_dl or "file", str(sfx or ""), str(name_hint or "")
+        )
+    else:
+        ttxt = extract_text(message_type=mt, content=content)
+        if not (ttxt or "").strip():
+            await feishu_reply_text(
+                client,
+                message_id=message_id,
+                text="该消息类型暂不支持按条入库（仅支持文件类，或 text/post 正文）。",
+                reply_in_thread=reply_in_thread,
+            )
+            return
+        raw = ttxt.strip().encode("utf-8")
+        fn = f"摘录_{parent_message_id.replace(':', '_')[:20]}.txt"
+
+    if not raw or not feishu_file_looks_ingestible(fn, raw):
+        await feishu_reply_text(
+            client,
+            message_id=message_id,
+            text="该条内容无法作为可解析文档入库（例如空文本或暂不支持的格式）。",
+            reply_in_thread=reply_in_thread,
+        )
+        return
+
+    kb = await _kb_svc().get_knowledge_base(kid)
+    nm = (kb.get("name") or "").strip() or "（未命名）" if kb else kid
+    schedule_feishu_ingest_task(
+        client, chat_id=chat_id, kb_id=kid, filename=fn, raw=raw
+    )
+    await feishu_reply_text(
+        client,
+        message_id=message_id,
+        text=(
+            f"已受理将 **被回复的消息** 入库：**{fn}** → {nm} · `{kid}`\n"
+            "处理完成后将再发一条结果通知。"
+        ),
+        reply_in_thread=reply_in_thread,
+    )
+
+
 async def handle_feishu_line(
     client: "Client",
     *,
@@ -853,6 +1004,7 @@ async def handle_feishu_line(
     chat_id: str,
     session_key: str,
     text: str,
+    parent_message_id: Optional[str] = None,
 ) -> bool:
     """
     处理管理类指令。返回 True 表示已消费，主流程不应再走 RAG。
@@ -881,6 +1033,34 @@ async def handle_feishu_line(
         client, message_id=message_id, session_key=session_key, text=raw, reply_in_thread=rt
     ):
         clear_feishu_wizard(session_key)
+        return True
+
+    parts_ing = raw.split(maxsplit=1)
+    cmd_ing = parts_ing[0].lower() if parts_ing else ""
+    if cmd_ing in ("/入库本条", "/引用入库"):
+        pm = (parent_message_id or "").strip()
+        if not pm:
+            await feishu_reply_text(
+                client,
+                message_id=message_id,
+                text=(
+                    "请对 **要入库的那条消息** 使用「回复」，再发送 `/入库本条`（或 `/引用入库`）。\n"
+                    "可选：`/入库本条 知识库名称或ID`（不填则用当前会话已绑定的入库目标；"
+                    "仅 1 个知识库时可省略）。"
+                ),
+                reply_in_thread=rt,
+            )
+            return True
+        kb_arg = parts_ing[1].strip() if len(parts_ing) > 1 else ""
+        await _handle_feishu_ingest_replied_message(
+            client,
+            message_id=message_id,
+            chat_id=chat_id,
+            session_key=session_key,
+            parent_message_id=pm,
+            kb_spec=kb_arg,
+            reply_in_thread=rt,
+        )
         return True
 
     for rx in _NL_SET_KB_RES:
@@ -1146,6 +1326,7 @@ async def handle_feishu_line(
                 chat_id=chat_id,
                 session_key=session_key,
                 text=f"/kb portrait {remainder}",
+                parent_message_id=None,
             )
 
     return False

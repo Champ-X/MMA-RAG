@@ -543,11 +543,15 @@ def on_im_message_sync(data: Any) -> None:
         if not query:
             return
 
+        pid = getattr(msg, "parent_id", None)
+        parent_mid = str(pid).strip() if pid else ""
+
         asyncio.run_coroutine_threadsafe(
             _process_user_message(
                 message_id=message_id,
                 chat_id=chat_id,
                 query=query,
+                parent_message_id=parent_mid or None,
             ),
             loop,
         )
@@ -567,7 +571,13 @@ async def _reply_plain(message_id: str, text: str) -> None:
     )
 
 
-async def _process_user_message(*, message_id: str, chat_id: str, query: str) -> None:
+async def _process_user_message(
+    *,
+    message_id: str,
+    chat_id: str,
+    query: str,
+    parent_message_id: Optional[str] = None,
+) -> None:
     await ensure_bot_open_id()
     session_key = f"feishu:{chat_id}" if chat_id else f"feishu:nochat:{message_id}"
     client = _lark_client()
@@ -577,6 +587,7 @@ async def _process_user_message(*, message_id: str, chat_id: str, query: str) ->
         chat_id=chat_id,
         session_key=session_key,
         text=query,
+        parent_message_id=parent_message_id,
     ):
         return
 

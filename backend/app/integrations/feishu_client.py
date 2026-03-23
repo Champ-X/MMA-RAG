@@ -344,6 +344,61 @@ async def feishu_reply_post_md(
     )
 
 
+async def feishu_get_im_message(
+    client: "Client", *, message_id: str
+) -> Optional[Tuple[str, str]]:
+    """
+    拉取单条 IM 消息的 message_type 与 content（JSON 字符串）。
+    用于「回复某条消息后入库该条」等场景；需 im:message 等读消息权限。
+    """
+    from lark_oapi.api.im.v1.model.get_message_request import GetMessageRequest
+
+    mid = (message_id or "").strip()
+    if not mid:
+        return None
+    try:
+        req = GetMessageRequest.builder().message_id(mid).build()
+        resp = await client.im.v1.message.aget(req)
+    except Exception as e:
+        logger.warning(f"飞书 get message 异常: {e}", exc_info=True)
+        return None
+    code = getattr(resp, "code", None)
+    if code is not None and int(code) != 0:
+        logger.warning(
+            f"飞书 get message 失败 message_id={mid[:16]}… code={code} "
+            f"msg={getattr(resp, 'msg', '')!r}"
+        )
+        return None
+    data = getattr(resp, "data", None)
+    if data is None:
+        return None
+
+    msg: Any = None
+    items = getattr(data, "items", None)
+    if isinstance(items, list) and items:
+        msg = items[0]
+    if msg is None:
+        msg = getattr(data, "message", None)
+    if msg is None:
+        msg = data
+
+    mt = getattr(msg, "message_type", None) or getattr(msg, "msg_type", None)
+    raw_c = getattr(msg, "content", None)
+    if raw_c is None:
+        body = getattr(msg, "body", None)
+        if body is not None:
+            raw_c = getattr(body, "content", None)
+            if mt is None:
+                mt = getattr(body, "message_type", None) or getattr(
+                    body, "msg_type", None
+                )
+    if not mt or raw_c is None:
+        return None
+    if not isinstance(raw_c, str):
+        raw_c = json.dumps(raw_c, ensure_ascii=False)
+    return str(mt).lower(), str(raw_c)
+
+
 async def feishu_download_message_resource(
     client: "Client",
     *,
