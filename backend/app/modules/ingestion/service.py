@@ -34,7 +34,7 @@ os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 if TYPE_CHECKING:
     from transformers import CLIPModel, CLIPProcessor, ClapModel, ClapProcessor
 
-from .parsers.factory import ParserFactory, FileType
+from .parsers.factory import ParserFactory, FileType, normalize_text_newlines
 from .storage.minio_adapter import MinIOAdapter
 from .storage.vector_store import VectorStore
 from app.core.config import settings
@@ -1247,15 +1247,48 @@ class IngestionService:
             "file_type": "video",
         }
 
+    @staticmethod
+    def merge_adjacent_chunks_up_to_max(
+        chunks: List[Dict[str, Any]],
+        max_chunk_size: int,
+        separator: str = "\n\n",
+    ) -> List[Dict[str, Any]]:
+        """在不超过 max_chunk_size 的前提下贪婪合并相邻块（用于无 Markdown # 标题结构的纯文本类文档，减少过碎 chunk）。
+
+        注意：调用方可传入小于「递归切分上限」的值，避免把多条高密度短段打成一个过大的向量单元。
+        """
+        if len(chunks) <= 1:
+            return chunks
+        merged: List[Dict[str, Any]] = []
+        i = 0
+        while i < len(chunks):
+            parts = [chunks[i]["text"]]
+            meta = dict(chunks[i].get("metadata", {}))
+            j = i + 1
+            while j < len(chunks):
+                candidate = separator.join(parts + [chunks[j]["text"]])
+                if len(candidate) > max_chunk_size:
+                    break
+                parts.append(chunks[j]["text"])
+                nmeta = chunks[j].get("metadata", {})
+                if nmeta.get("has_code"):
+                    meta["has_code"] = True
+                j += 1
+            merged.append({"text": separator.join(parts).strip(), "metadata": meta})
+            i = j
+        return merged
+
     async def _split_text_into_chunks(self, parse_result: Dict[str, Any]) -> List[Dict[str, Any]]:
         """将文本分割成块"""
         chunks = []
         file_type = parse_result["file_type"]
+        # 无 ATX 标题的纯文本式文档在初切后做相邻合并；含 # 的 Markdown 保持按段粒度，不合并
+        coalesce_adjacent_chunks = False
 
         # PDF / docx / pptx / md 有 markdown 时按 markdown 分块（md 含内联 base64 图注插回后也走此分支）
         if file_type in ["pdf", "docx", "pptx", "md"] and "markdown" in parse_result and parse_result["markdown"]:
             logger.info("使用解析生成的完整 Markdown 进行分块 (file_type={})", file_type)
-            markdown_text = parse_result["markdown"]
+            markdown_text = normalize_text_newlines(parse_result["markdown"])
             from .parsers.factory import MarkdownParser
             markdown_parser = MarkdownParser()
             lines = markdown_text.split("\n")
@@ -1266,6 +1299,8 @@ class IngestionService:
                         "level": len(line) - len(line.lstrip("#")),
                         "text": line.lstrip("#").strip()
                     })
+            # 仅纯文本 / md 做相邻合并；pdf 等仍按段保留，避免无 # 时跨页大块粘连
+            coalesce_adjacent_chunks = len(headers) == 0 and file_type in ("txt", "md")
             paragraphs = markdown_parser._build_smart_paragraphs(markdown_text, headers)
             for paragraph in paragraphs:
                 if paragraph.get("text", "").strip():
@@ -1297,7 +1332,7 @@ class IngestionService:
                         }
                     })
         elif file_type in ["docx", "pptx", "txt", "md"]:
-            # 段落处理
+            # 段落处理（无上方 markdown 分支时的 docx/pptx/txt 等）
             # 检查是否有 paragraphs 字段
             if "paragraphs" in parse_result:
                 for paragraph in parse_result["paragraphs"]:
@@ -1317,10 +1352,19 @@ class IngestionService:
                             "text": paragraph["text"].strip(),
                             "metadata": chunk_metadata
                         })
+                if file_type == "txt":
+                    coalesce_adjacent_chunks = True
+                elif file_type == "md":
+                    coalesce_adjacent_chunks = not any(
+                        isinstance(p, dict) and p.get("header")
+                        for p in (parse_result.get("paragraphs") or [])
+                    )
+                else:
+                    coalesce_adjacent_chunks = True
             # 如果没有 paragraphs，尝试使用 content 字段
             elif "content" in parse_result:
-                # 按段落分割内容
-                content = parse_result["content"]
+                # 按段落分割内容（归一化换行，避免 CRLF 整篇成一段）
+                content = normalize_text_newlines(parse_result["content"])
                 paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
                 for para in paragraphs:
                     if para.strip():
@@ -1330,6 +1374,12 @@ class IngestionService:
                                 "file_type": parse_result["file_type"]
                             }
                         })
+                if file_type == "txt":
+                    coalesce_adjacent_chunks = True
+                elif file_type == "md":
+                    coalesce_adjacent_chunks = True
+                else:
+                    coalesce_adjacent_chunks = True
             else:
                 logger.warning(f"无法从解析结果中提取文本块: {parse_result.keys()}")
         
@@ -1338,8 +1388,9 @@ class IngestionService:
         # - 重叠窗口：相邻块之间有重叠，保持上下文连贯性
         
         # 配置参数
-        max_chunk_size = 1000  # 最大块大小（字符数）
-        chunk_overlap = 200    # 重叠窗口大小（字符数）
+        max_chunk_size = 900  # 递归切分等使用的最大块大小（字符数）
+        merge_pack_max_size = 500  # 仅相邻合并打包上限，宜小于 max_chunk_size，减轻检索时语义稀释
+        chunk_overlap = 150    # 重叠窗口大小（字符数）
         min_chunk_size = 100   # 最小块大小（字符数）
         
         # 对每个初始块进行智能处理
@@ -1360,6 +1411,12 @@ class IngestionService:
             else:
                 # 块大小合适，直接使用
                 processed_chunks.append(chunk)
+
+        if coalesce_adjacent_chunks and len(processed_chunks) > 1:
+            processed_chunks = self.merge_adjacent_chunks_up_to_max(
+                processed_chunks,
+                max_chunk_size=merge_pack_max_size,
+            )
         
         # 对相邻块应用重叠窗口（如果块数大于1）
         if len(processed_chunks) > 1:

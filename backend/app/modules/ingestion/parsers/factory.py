@@ -30,6 +30,13 @@ _IMAGE_MAGIC = [
 ]
 
 
+def normalize_text_newlines(text: str) -> str:
+    """统一换行为 \\n，便于按 \\n\\n 分段（修复 CRLF 下 split('\\n\\n') 失效）。"""
+    if not text:
+        return text
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def _is_image_bytes(data: bytes) -> bool:
     """根据魔术头判断是否为常见图片格式。"""
     if len(data) < 12:
@@ -662,9 +669,9 @@ class TextParser(DocumentParser):
         """解析文本文件"""
         try:
             # 检测编码
-            content = file_content.decode('utf-8', errors='ignore')
+            content = normalize_text_newlines(file_content.decode('utf-8', errors='ignore'))
             
-            # 简单分段落
+            # 简单分段落（须先归一化换行，否则 CRLF 文件无法按 \n\n 切开）
             paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
             
             return {
@@ -692,7 +699,7 @@ class MarkdownParser(DocumentParser):
     async def parse(self, file_content: bytes, file_path: str, **kwargs: Any) -> Dict[str, Any]:
         """解析 Markdown 文件；支持通过 kwargs.asset_map 传入相对路径图片字节（如文件夹导入）。"""
         try:
-            content = file_content.decode('utf-8', errors='ignore')
+            content = normalize_text_newlines(file_content.decode('utf-8', errors='ignore'))
             
             # 使用markdown库解析
             import markdown
@@ -790,6 +797,8 @@ class MarkdownParser(DocumentParser):
             段落列表，每个段落包含标题（如果有）和内容
         """
         lines = content.split('\n')
+        # 无任何 ATX 标题时，单空行即分段（公文/中文编号小节等无 # 结构）
+        has_atx_headers = any(l.startswith('#') for l in lines)
         paragraphs = []
         current_paragraph = []
         current_header = None
@@ -871,6 +880,19 @@ class MarkdownParser(DocumentParser):
             
             # 空行处理
             if not stripped_line:
+                if not has_atx_headers:
+                    if current_paragraph:
+                        paragraph_text = '\n'.join(current_paragraph).strip()
+                        if paragraph_text:
+                            paragraphs.append({
+                                "text": paragraph_text,
+                                "header": current_header,
+                                "has_code": False
+                            })
+                        current_paragraph = []
+                        current_header = None
+                    i += 1
+                    continue
                 # 检查下一行是否是标题
                 if i + 1 < len(lines):
                     next_line = lines[i + 1]
