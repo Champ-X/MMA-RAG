@@ -1970,34 +1970,34 @@ const KnowledgeList: React.FC = () => {
                           <p className="text-white text-sm h-9 overflow-hidden text-ellipsis leading-relaxed line-clamp-2 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_6px_rgba(0,0,0,0.6)]">
                             {kb.description || '暂无描述'}
                           </p>
-                          <div className="mt-2 pt-2.5 border-t border-white/30 flex items-center justify-between gap-2 text-xs text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
-                            <div className="flex items-center gap-2 min-h-[1rem] min-w-0 flex-1 flex-wrap">
+                          <div className="mt-2 pt-2.5 border-t border-white/30 flex items-center justify-between gap-2 text-[11px] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
+                            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden whitespace-nowrap">
                               <span className="inline-flex items-center gap-1 shrink-0">
                                 <span className="text-[13px] leading-none" aria-hidden>
                                   📄
                                 </span>
-                                {kb.stats?.documents ?? 0} 个文件
+                                {kb.stats?.documents ?? 0} 文件
                               </span>
                               <span className="opacity-80 shrink-0">·</span>
                               <span className="inline-flex items-center gap-1 shrink-0">
                                 <span className="text-[13px] leading-none" aria-hidden>
                                   🖼️
                                 </span>
-                                {kb.stats?.images ?? 0} 张图片
+                                {kb.stats?.images ?? 0} 图片
                               </span>
                               <span className="opacity-80 shrink-0">·</span>
                               <span className="inline-flex items-center gap-1 shrink-0">
                                 <span className="text-[13px] leading-none" aria-hidden>
                                   🎵
                                 </span>
-                                {kb.stats?.audio ?? 0} 条音频
+                                {kb.stats?.audio ?? 0} 音频
                               </span>
                               <span className="opacity-80 shrink-0">·</span>
                               <span className="inline-flex items-center gap-1 shrink-0">
                                 <span className="text-[13px] leading-none" aria-hidden>
                                   🎥
                                 </span>
-                                {kb.stats?.video ?? 0} 个视频
+                                {kb.stats?.video ?? 0} 视频
                               </span>
                             </div>
                             <span className="shrink-0">{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
@@ -2057,34 +2057,34 @@ const KnowledgeList: React.FC = () => {
                           {kb.description || '暂无描述'}
                         </p>
                       </div>
-                      <div className="flex-shrink-0 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-xs text-slate-400">
-                        <div className="flex items-center gap-2 min-h-[1rem] min-w-0 flex-1 flex-wrap">
+                      <div className="flex-shrink-0 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden whitespace-nowrap">
                           <span className="inline-flex items-center gap-1">
                             <span className="text-[13px] leading-none" aria-hidden>
                               📄
                             </span>
-                            {kb.stats?.documents ?? 0} 个文件
+                            {kb.stats?.documents ?? 0} 文件
                           </span>
                           <span className="opacity-70">·</span>
                           <span className="inline-flex items-center gap-1">
                             <span className="text-[13px] leading-none" aria-hidden>
                               🖼️
                             </span>
-                            {kb.stats?.images ?? 0} 张图片
+                            {kb.stats?.images ?? 0} 图片
                           </span>
                           <span className="opacity-70">·</span>
                           <span className="inline-flex items-center gap-1">
                             <span className="text-[13px] leading-none" aria-hidden>
                               🎵
                             </span>
-                            {kb.stats?.audio ?? 0} 条音频
+                            {kb.stats?.audio ?? 0} 音频
                           </span>
                           <span className="opacity-70">·</span>
                           <span className="inline-flex items-center gap-1">
                             <span className="text-[13px] leading-none" aria-hidden>
                               🎥
                             </span>
-                            {kb.stats?.video ?? 0} 个视频
+                            {kb.stats?.video ?? 0} 视频
                           </span>
                         </div>
                         <span className="shrink-0">{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
