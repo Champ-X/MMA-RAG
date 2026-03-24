@@ -37,6 +37,7 @@ from app.modules.chat.attachment_summarizer import (
     summarize_chat_attachments,
 )
 from app.integrations.feishu_presenter import FeishuOutboundMessage, build_outbound_messages
+from app.integrations.feishu_rag_card_v2 import try_send_feishu_rag_card_v2
 from app.integrations.feishu_kb_commands import (
     feishu_file_looks_ingestible,
     feishu_handle_card_action,
@@ -737,6 +738,22 @@ async def _process_user_message(
 
     max_img_cap = max(0, min(int(getattr(settings, "feishu_max_reply_images", 4)), 10))
     rt = bool(settings.feishu_reply_in_thread)
+
+    if await try_send_feishu_rag_card_v2(
+        client,
+        message_id=message_id,
+        resolved=resolved,
+        settings=settings,
+        reply_in_thread=rt,
+        user_query=query,
+        generation_result=generation_result,
+    ):
+        user_turn = query
+        if attachment_context and pending_files:
+            user_turn = f"{query}\n[飞书附件×{len(pending_files)}]"
+        append_turn(session_key, user_turn, answer)
+        logger.info(f"飞书 RAG 完成(card_v2): message_id={message_id} answer_len={len(answer)}")
+        return
 
     for item in resolved:
         if item.kind == "post_mixed" and item.post_segments:

@@ -261,6 +261,18 @@ class Settings(BaseSettings):
     feishu_ws_open_timeout: float = Field(default=300.0, validation_alias="FEISHU_WS_OPEN_TIMEOUT")
     # WSL2 等环境 IPv6 访问飞书 WSS 可能极慢或卡住，解析域名后优先走 IPv4 + SNI（与 Node/OpenClaw 常见网络路径更一致）
     feishu_ws_prefer_ipv4: bool = Field(default=True, validation_alias="FEISHU_WS_PREFER_IPV4")
+    # RAG 回复形态：post（默认，富文本 post 或多条消息）| card_v2（卡片 JSON 2.0，多图与 OPUS 音频同卡）
+    feishu_rag_reply_format: str = Field(default="post", validation_alias="FEISHU_RAG_REPLY_FORMAT")
+    # True：通过 CardKit 创建卡片实体并对正文做流式 PUT（需应用权限 cardkit:card:write）
+    feishu_rag_card_streaming: bool = Field(default=False, validation_alias="FEISHU_RAG_CARD_STREAMING")
+    feishu_rag_card_stream_chunk_chars: int = Field(
+        default=120, ge=20, le=2000, validation_alias="FEISHU_RAG_CARD_STREAM_CHUNK_CHARS"
+    )
+    feishu_rag_card_stream_pause_sec: float = Field(
+        default=0.08, ge=0.0, le=2.0, validation_alias="FEISHU_RAG_CARD_STREAM_PAUSE_SEC"
+    )
+    # True：尽量转 OPUS 并嵌入卡片 audio 组件（需 ffmpeg/libopus；失败则回退为文件消息）
+    feishu_rag_card_opus_audio: bool = Field(default=True, validation_alias="FEISHU_RAG_CARD_OPUS_AUDIO")
 
     # Tavily 联网搜索（热点/新闻导入知识库）
     tavily_api_key: Optional[str] = Field(default=None, validation_alias="TAVILY_API_KEY")
