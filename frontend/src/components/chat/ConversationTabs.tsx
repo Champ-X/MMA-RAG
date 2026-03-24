@@ -40,7 +40,7 @@ export function ConversationTabs({
 
       <div
         ref={scrollRef}
-        className="flex min-h-0 items-center gap-2 overflow-x-auto px-3 py-1 scrollbar-hide"
+        className="flex min-h-0 items-center gap-2 overflow-x-auto px-3 py-1.5 scrollbar-hide"
       >
         {conversations.map((conv) => {
           const isActive = conv.id === activeConversationId
@@ -54,7 +54,7 @@ export function ConversationTabs({
               key={conv.id}
               data-conv-id={conv.id}
               className={cn(
-                'group relative flex min-w-0 max-w-[min(260px,72vw)] shrink-0 items-center gap-0.5 overflow-hidden rounded-full py-1 pl-2.5 pr-0.5 transition-all duration-200 ease-out',
+                'group relative flex min-w-0 max-w-[min(260px,72vw)] shrink-0 items-center gap-0.5 overflow-hidden rounded-full py-1.5 pl-2.5 pr-0.5 transition-all duration-200 ease-out',
                 isActive
                   ? 'bg-gradient-to-r from-indigo-400 to-violet-500 text-white shadow-sm shadow-indigo-500/15 ring-2 ring-white/35 dark:from-indigo-400/95 dark:to-violet-500/95 dark:shadow-indigo-950/40 dark:ring-white/22'
                   : 'bg-violet-50/95 text-indigo-950 ring-2 ring-indigo-400/55 shadow-sm shadow-indigo-500/10 hover:bg-indigo-50 hover:text-indigo-950 hover:ring-indigo-500/65 hover:shadow-md hover:shadow-indigo-500/15 dark:bg-violet-950/55 dark:text-violet-50 dark:ring-violet-400/50 dark:shadow-md dark:shadow-violet-950/30 dark:hover:bg-violet-900/65 dark:hover:text-white dark:hover:ring-violet-300/45'
@@ -103,15 +103,27 @@ export function ConversationTabs({
           title="新建对话"
           aria-label="新建对话"
           className={cn(
-            'grid h-8 w-8 shrink-0 place-items-center rounded-full transition-all duration-200',
-            'bg-teal-100 text-teal-700 ring-2 ring-teal-500/70 shadow-md shadow-teal-600/20',
-            'hover:bg-teal-500 hover:text-white hover:ring-teal-600 hover:shadow-lg hover:shadow-teal-500/35 active:scale-[0.96]',
-            'dark:bg-teal-950/80 dark:text-teal-200 dark:ring-2 dark:ring-teal-400/55 dark:shadow-md dark:shadow-teal-950/50',
-            'dark:hover:bg-teal-500 dark:hover:text-white dark:hover:ring-teal-300 dark:hover:shadow-teal-500/30'
+            'group relative isolate grid h-8 w-8 shrink-0 place-items-center rounded-full transition-all duration-200 ease-out',
+            'bg-white/90 text-indigo-600',
+            'shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_2px_8px_-3px_rgba(99,102,241,0.2)]',
+            'ring-2 ring-indigo-300/65',
+            'hover:bg-gradient-to-br hover:from-indigo-500 hover:to-violet-600 hover:text-white hover:ring-white/40',
+            'hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_8px_22px_-4px_rgba(91,33,182,0.35)]',
+            'active:scale-[0.96]',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/65 focus-visible:ring-offset-2 focus-visible:ring-offset-violet-100/90',
+            'dark:bg-violet-950/70 dark:text-violet-100 dark:ring-violet-400/45',
+            'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_12px_-2px_rgba(0,0,0,0.45)]',
+            'dark:hover:from-indigo-500 dark:hover:to-violet-600 dark:hover:text-white dark:hover:ring-violet-200/35',
+            'dark:hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_8px_24px_-4px_rgba(99,102,241,0.32)]',
+            'dark:focus-visible:ring-offset-indigo-950'
           )}
           onClick={onCreate}
         >
-          <Plus size={16} strokeWidth={2.5} className="shrink-0" />
+          <Plus
+            size={15}
+            strokeWidth={2.75}
+            className="relative z-[1] shrink-0 transition-transform duration-200 ease-out group-hover:rotate-90"
+          />
         </button>
       </div>
     </div>

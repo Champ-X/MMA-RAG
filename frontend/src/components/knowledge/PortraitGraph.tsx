@@ -371,15 +371,7 @@ export function PortraitGraph({
                 strokeWidth={2.25}
                 aria-hidden
               />
-              <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span>知识库主题气泡图</span>
-                <span
-                  className="text-xs font-medium text-slate-400 dark:text-slate-500"
-                  title={`当前配色：${bubbleTheme.name}`}
-                >
-                  · {bubbleTheme.name}
-                </span>
-              </span>
+              <span>知识库主题气泡图</span>
             </CardTitle>
             {clusters.length > 0 && (
               <Button
