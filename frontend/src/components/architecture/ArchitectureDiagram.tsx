@@ -1,4 +1,4 @@
-import { Globe2, Server, Layers, Database, Cloud, Workflow, ArrowDown, Zap } from 'lucide-react'
+import { Globe2, Server, Layers, Database, Cloud, Workflow, ArrowDown, Zap, MessageSquare } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export function ArchitectureDiagram() {
@@ -10,9 +10,9 @@ export function ArchitectureDiagram() {
       </div>
 
       <div className="space-y-1.5">
-        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-50">Browser ↓ Backend ↓ Storage & Models</h2>
+        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-50">Web / 飞书 ↓ Backend ↓ Storage & Models</h2>
         <p className="max-w-3xl break-words text-xs leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-          从浏览器到后端 FastAPI，再到 DDD 业务模块与底层存储/模型服务，下面这张纵向示意图展示了一次 RAG 请求经过的主要"车站"。
+          浏览器 SSE 与飞书长连接（WSS）均可将用户问题送达同一 FastAPI 后端；经 DDD 业务模块与存储/模型服务完成检索与生成，再分别通过流式事件或飞书消息 API 返回。
         </p>
       </div>
 
@@ -31,22 +31,41 @@ export function ArchitectureDiagram() {
         
         <CardContent className="relative space-y-4">
           <div className="flex flex-col items-center gap-3">
-            {/* 顶部：Browser */}
-            <div className="group/browser relative w-full max-w-2xl flex flex-col items-center justify-center rounded-xl border-2 border-indigo-200/60 bg-gradient-to-br from-indigo-50/90 via-white to-purple-50/50 p-4 text-center shadow-lg backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] hover:border-indigo-300/80 hover:shadow-xl dark:border-indigo-800/60 dark:from-indigo-950/50 dark:via-slate-950 dark:to-purple-950/30">
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-indigo-500/0 to-purple-500/0 transition-all duration-300 group-hover/browser:from-indigo-500/10 group-hover/browser:to-purple-500/10" />
-              <div className="relative mb-2 flex items-center gap-2">
-                <div className="rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 p-1.5 shadow-md">
-                  <Globe2 className="h-4 w-4 text-white" />
+            {/* 顶部：双入口 Web + 飞书 */}
+            <div className="grid w-full max-w-3xl grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="group/browser relative flex flex-col items-center justify-center rounded-xl border-2 border-indigo-200/60 bg-gradient-to-br from-indigo-50/90 via-white to-purple-50/50 p-4 text-center shadow-lg backdrop-blur-sm transition-all duration-300 hover:border-indigo-300/80 hover:shadow-xl dark:border-indigo-800/60 dark:from-indigo-950/50 dark:via-slate-950 dark:to-purple-950/30 sm:hover:scale-[1.01]">
+                <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-indigo-500/0 to-purple-500/0 transition-all duration-300 group-hover/browser:from-indigo-500/10 group-hover/browser:to-purple-500/10" />
+                <div className="relative mb-2 flex items-center gap-2">
+                  <div className="rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 p-1.5 shadow-md">
+                    <Globe2 className="h-4 w-4 text-white" />
+                  </div>
+                  <span className="text-sm font-bold text-slate-800 dark:text-slate-100">Web 前端</span>
                 </div>
-                <span className="text-sm font-bold text-slate-800 dark:text-slate-100">Browser / Frontend</span>
+                <div className="relative space-y-0.5">
+                  <p className="break-words text-[11px] font-medium leading-tight text-slate-600 dark:text-slate-300">
+                    React + TypeScript + Vite
+                  </p>
+                  <p className="break-words text-[11px] leading-tight text-slate-500 dark:text-slate-400">
+                    SSE · Chat / 知识库 / 思考链 / 引用弹层
+                  </p>
+                </div>
               </div>
-              <div className="relative space-y-0.5">
-                <p className="text-[11px] font-medium leading-tight text-slate-600 dark:text-slate-300 break-words">
-                  React + TypeScript + Vite
-                </p>
-                <p className="text-[11px] leading-tight text-slate-500 dark:text-slate-400 break-words">
-                  Chat Interface / Knowledge List / Thinking Capsule
-                </p>
+              <div className="group/feishu relative flex flex-col items-center justify-center rounded-xl border-2 border-sky-200/60 bg-gradient-to-br from-sky-50/90 via-white to-cyan-50/50 p-4 text-center shadow-lg backdrop-blur-sm transition-all duration-300 hover:border-sky-300/80 hover:shadow-xl dark:border-sky-800/60 dark:from-sky-950/50 dark:via-slate-950 dark:to-cyan-950/30 sm:hover:scale-[1.01]">
+                <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-sky-500/0 to-cyan-500/0 transition-all duration-300 group-hover/feishu:from-sky-500/10 group-hover/feishu:to-cyan-500/10" />
+                <div className="relative mb-2 flex items-center gap-2">
+                  <div className="rounded-full bg-gradient-to-br from-sky-500 to-cyan-500 p-1.5 shadow-md">
+                    <MessageSquare className="h-4 w-4 text-white" />
+                  </div>
+                  <span className="text-sm font-bold text-slate-800 dark:text-slate-100">飞书 Lark IM</span>
+                </div>
+                <div className="relative space-y-0.5">
+                  <p className="break-words text-[11px] font-medium leading-tight text-slate-600 dark:text-slate-300">
+                    WSS 长连接 · lark-oapi
+                  </p>
+                  <p className="break-words text-[11px] leading-tight text-slate-500 dark:text-slate-400">
+                    卡片 2.0 / Post · 图片与 OPUS 音频
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -98,7 +117,7 @@ export function ArchitectureDiagram() {
                     </div>
                     <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-200">Retrieval</span>
                   </div>
-                  <p className="relative text-[10px] leading-tight break-words text-emerald-900/80 dark:text-emerald-100/90">One-Pass 意图、三路混合检索（Dense+Sparse+Visual）与两阶段重排</p>
+                  <p className="relative text-[10px] leading-tight break-words text-emerald-900/80 dark:text-emerald-100/90">One-Pass 意图、多路混合检索（Dense+Sparse+Visual+Audio+Video）与两阶段重排</p>
                 </div>
                 <div className="group/module relative overflow-hidden rounded-lg border border-purple-200/50 bg-gradient-to-br from-purple-50/80 to-purple-100/40 p-3 transition-all duration-300 hover:scale-105 hover:border-purple-300/70 hover:bg-purple-100/90 hover:shadow-lg dark:border-purple-800/50 dark:from-purple-950/40 dark:to-purple-900/30 dark:hover:border-purple-700/70 dark:hover:bg-purple-900/50">
                   <div className="absolute inset-0 bg-gradient-to-br from-purple-500/0 to-pink-500/0 transition-all duration-300 group-hover/module:from-purple-500/10 group-hover/module:to-pink-500/10" />
@@ -159,7 +178,10 @@ export function ArchitectureDiagram() {
                     <p className="break-words font-medium">SiliconFlow / OpenRouter / 阿里云百炼 / DeepSeek / Qwen</p>
                   </div>
                   <div className="rounded-lg bg-violet-100/50 px-2.5 py-1.5 text-[10px] leading-tight text-violet-900/90 dark:bg-violet-900/30 dark:text-violet-100/90">
-                    <p className="break-words font-medium">Qwen3-Embedding / BGE-M3 / Reranker / VLM / CLIP</p>
+                    <p className="break-words font-medium">Qwen3-Embedding / BGE-M3 / Reranker / VLM / CLIP / CLAP</p>
+                  </div>
+                  <div className="rounded-lg bg-sky-100/50 px-2.5 py-1.5 text-[10px] leading-tight text-sky-900/90 dark:bg-sky-900/30 dark:text-sky-100/90">
+                    <p className="break-words font-medium">飞书开放平台（租户 Token、消息、卡片、IM 文件上传）</p>
                   </div>
                 </div>
               </div>
@@ -169,8 +191,8 @@ export function ArchitectureDiagram() {
           <div className="mt-3 rounded-lg border border-slate-200/60 bg-gradient-to-r from-slate-50/80 to-indigo-50/40 p-3 dark:border-slate-800/60 dark:from-slate-950/80 dark:to-indigo-950/40">
             <p className="break-words text-[11px] leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break">
               <span className="font-semibold text-slate-700 dark:text-slate-200">一句话概括：</span>
-              浏览器发起问题 → FastAPI 聚合 DDD 模块完成"意图 → 路由 → 检索 → 生成"整条链路 →
-              依托 MinIO/Qdrant/Redis 等基础设施与外部大模型服务，返回带引用且可解释的回答。
+              Web 或飞书发起问题 → 同一 FastAPI 聚合 DDD 模块完成「意图 → 路由 → 检索 → 生成」→
+              依托 MinIO/Qdrant/Redis 与外部大模型 / 飞书 API，返回带多模态引用且可解释的回答。
             </p>
           </div>
         </CardContent>

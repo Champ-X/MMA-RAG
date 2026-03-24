@@ -6,7 +6,7 @@ import { overviewStats, overviewTags } from '@/data/architectureData'
 export function OverviewSection() {
   return (
     <section id="overview" className="scroll-mt-24 space-y-6">
-      <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 shadow-sm dark:bg-indigo-950/40 dark:text-indigo-200">
+      <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100/90 bg-indigo-50/95 px-3 py-1 text-xs font-medium text-indigo-800 shadow-sm dark:border-indigo-900/50 dark:bg-indigo-950/45 dark:text-indigo-200">
         <Layers className="h-3.5 w-3.5" />
         <span>项目总览</span>
       </div>
@@ -17,7 +17,7 @@ export function OverviewSection() {
         </h1>
         <div className="space-y-3 max-w-4xl">
           <p className="break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-            本项目是一个面向多知识库、全模态场景的 RAG（Retrieval-Augmented Generation）Agent 系统，旨在解决企业级知识管理中的核心挑战：如何在多个异构知识库中，高效、准确地检索并生成包含文档、图像、音频与视频的统一回答。支持多种内容来源（本地上传、URL、文件夹、热点订阅等），并完整支持音频（ASR+CLAP）与视频（关键帧+整体描述+CLIP）模态。
+            本项目是一个面向多知识库、全模态场景的 RAG（Retrieval-Augmented Generation）Agent 系统，旨在解决企业级知识管理中的核心挑战：如何在多个异构知识库中，高效、准确地检索并生成包含文档、图像、音频与视频的统一回答。支持多种内容来源（本地上传、URL、文件夹、热点订阅等），并完整支持音频（ASR+CLAP）与视频（关键帧+整体描述+CLIP）模态。除 Web 端外，可通过<strong className="font-medium text-slate-800 dark:text-slate-100"> 飞书长连接与开放平台 API </strong>在 IM 内使用同一套检索与生成能力，并以卡片 2.0、Post 等形式呈现多模态引用。
           </p>
           <div className="space-y-2">
             <p className="break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">

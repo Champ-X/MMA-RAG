@@ -11,7 +11,7 @@ export function InnovationSection() {
       </div>
 
       <p className="max-w-3xl break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-        项目在知识库智能路由、全模态检索融合（文档/图片/音频/视频）、RAG 可解释性等关键技术领域实现了显著创新，下面展示了 6 个核心创新点及其带来的性能提升。
+        项目在知识库智能路由、全模态检索融合（文档/图片/音频/视频）、RAG 可解释性与飞书送达等关键技术领域实现了显著创新，下面展示了核心创新点及其带来的性能提升。
       </p>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

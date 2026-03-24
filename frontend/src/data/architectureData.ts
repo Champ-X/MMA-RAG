@@ -1,6 +1,9 @@
 export type ArchitectureSectionId =
   | 'overview'
+  | 'innovations'
+  | 'performance'
   | 'system-architecture'
+  | 'external-integrations'
   | 'request-flow'
   | 'modules'
   | 'data-flow'
@@ -43,7 +46,7 @@ export interface DataFlowStage {
 export interface TechStackItem {
   id: string
   name: string
-  category: 'backend' | 'frontend' | 'storage' | 'model' | 'infra'
+  category: 'backend' | 'frontend' | 'storage' | 'model' | 'infra' | 'integration'
   description?: string
 }
 
@@ -54,9 +57,24 @@ export const architectureSections: ArchitectureSection[] = [
     subtitle: 'Multi-Modal 智能路由可扩展知识库 RAG Agent',
   },
   {
+    id: 'innovations',
+    title: '核心创新点',
+    subtitle: '路由、全模态检索、One-Pass、可解释性等',
+  },
+  {
+    id: 'performance',
+    title: '性能指标',
+    subtitle: '检索、延迟、重排与多模态覆盖',
+  },
+  {
     id: 'system-architecture',
     title: '整体架构图',
-    subtitle: 'Browser → FastAPI → DDD 模块 → 存储层 → 外部服务',
+    subtitle: 'Browser / 飞书 → FastAPI → DDD → 存储与模型',
+  },
+  {
+    id: 'external-integrations',
+    title: '飞书与外部集成',
+    subtitle: '长连接 IM、卡片 2.0、与主 RAG 管道复用',
   },
   {
     id: 'request-flow',
@@ -71,7 +89,7 @@ export const architectureSections: ArchitectureSection[] = [
   {
     id: 'data-flow',
     title: '数据流与存储',
-    subtitle: '多来源接入 → MinIO → 全模态向量化（Dense+BGE-M3+CLIP+CLAP）→ Qdrant → 多路检索 → 引用映射 → 前端 Citation',
+    subtitle: '接入 → MinIO → 向量化 → Qdrant → 检索生成 → Web / 飞书送达',
   },
   {
     id: 'tech-stack',
@@ -137,6 +155,14 @@ export const innovationPoints: InnovationPoint[] = [
     impact: '可解释性和可调试性大幅提升',
     icon: '🧠',
   },
+  {
+    id: 'feishu-delivery',
+    title: '飞书 IM 原生送达',
+    description:
+      '通过飞书长连接接收 IM 事件，与 Web 共用同一套 DDD 检索与生成管道；支持卡片 2.0（Markdown / 图片 / OPUS 音频混排）、Post 与多消息回退，可选 CardKit 流式更新正文',
+    impact: '企业 IM 内一致的多模态 RAG 体验与运维探活接口',
+    icon: '💬',
+  },
 ]
 
 export interface PerformanceMetric {
@@ -191,6 +217,7 @@ export const overviewTags = [
   '音频/视频检索',
   '流式思考链',
   '可视化调试',
+  '飞书 IM / 卡片 2.0',
 ] as const
 
 export const requestFlowSteps: RequestFlowStep[] = [
@@ -343,6 +370,7 @@ export const coreModules: ModuleInfo[] = [
       '全模态格式化：文档【材料 n】类型:文档|来源；图片【材料 n】类型:图片|视觉描述；音频【材料 n】类型:音频|转写/描述；视频【材料 n】类型:视频|描述/关键帧',
       '流式输出：StreamManager 发送 thought（意图/路由/检索策略含 visual/audio/video）、citation（引用元数据与 debug_info）、message（LLM delta）',
       '前端：ThinkingCapsule 展示 visual/audio/video intent；CitationPopover 按类型展示文档片段/图片灯箱/音频视频播放器与关键帧',
+      '飞书侧：同一生成结果可经 feishu_rag_card_v2 等模块格式化为卡片 / Post / 文件回复；与 Web 共用 ReferenceMap 与多模态引用语义',
     ],
     codeRefs: [
       { label: 'GenerationService', path: 'backend/app/modules/generation/service.py' },
@@ -408,6 +436,12 @@ export const dataFlowStages: DataFlowStage[] = [
     id: 'citation',
     title: '引用映射与前端展示',
     description: 'ReferenceMap 提供序号、content_type（doc/image/audio/video）、file_name、content 摘要、img_url/audio_url/video_url；SSE citation 带 debug_info（chunk_id、context_window）。前端 CitationPopover 按类型展示：文档片段、图片灯箱、音频/视频播放器与关键帧。',
+  },
+  {
+    id: 'channels',
+    title: '多端输出（Web / 飞书）',
+    description:
+      'Web 通过 SSE 流式推送；飞书通过 WSS 事件驱动，复用检索与生成逻辑，经开放平台 API 发送交互卡片、富文本 Post 或分条消息，大图/音频可上传后引用 file_key。',
   },
 ]
 
@@ -500,6 +534,13 @@ export const techStackItems: TechStackItem[] = [
     name: 'Docker & Docker Compose',
     category: 'infra',
     description: '容器化部署与本地一键启动，支持开发与生产环境一致性。',
+  },
+  {
+    id: 'feishu-lark',
+    name: '飞书开放平台（Lark / lark-oapi）',
+    category: 'integration',
+    description:
+      '长连接接收 im.message.receive_v1 等事件；租户 token、消息/卡片/文件上传 API；可选 CardKit 创建卡片与流式 patch；探活见 backend/app/api/feishu.py::/ws-status。',
   },
 ]
 

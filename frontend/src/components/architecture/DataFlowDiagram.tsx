@@ -14,6 +14,8 @@ export function DataFlowDiagram() {
     { id: 'citation', icon: <ArrowRight className="h-4 w-4 text-purple-600" />, title: 'Citation', label: '引用展示' },
   ]
 
+  const channelStage = dataFlowStages.find((s) => s.id === 'channels')
+
   return (
     <section id="data-flow" className="scroll-mt-24 space-y-4">
       <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 shadow-sm dark:bg-amber-950/40 dark:text-amber-200">
@@ -21,8 +23,10 @@ export function DataFlowDiagram() {
         <span>数据流与存储</span>
       </div>
 
-      <p className="max-w-4xl break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-        下面的流程图从「多来源接入」（本地上传或 URL/文件夹/热点导入）开始，沿 Ingestion → MinIO（文档/图片/音频/视频分目录）→ 全模态向量化（Dense、BGE-M3、CLIP、CLAP）与 Qdrant → 多路检索与生成 → 引用展示，描述数据在系统中的完整旅程。
+      <p className="max-w-4xl text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
+        从「多来源接入」到 MinIO、全模态向量化与 Qdrant，再经检索与生成得到引用映射；最终通过{' '}
+        <strong className="font-medium text-slate-700 dark:text-slate-200">Web SSE</strong> 或{' '}
+        <strong className="font-medium text-slate-700 dark:text-slate-200">飞书消息 / 卡片</strong> 送达用户。
       </p>
 
       <div className="space-y-6 rounded-2xl border border-amber-100/80 bg-gradient-to-br from-amber-50/60 via-slate-50/80 to-slate-50/80 p-6 shadow-lg dark:border-amber-900/80 dark:from-amber-950/30 dark:via-slate-950 dark:to-slate-950">
@@ -103,6 +107,27 @@ export function DataFlowDiagram() {
                 </div>
               )
             })}
+          </div>
+        </div>
+
+        {/* 输出渠道 */}
+        <div className="space-y-3 rounded-xl border border-cyan-200/50 bg-gradient-to-r from-cyan-50/40 via-white/60 to-indigo-50/40 p-4 dark:border-cyan-900/40 dark:from-cyan-950/20 dark:via-slate-950/40 dark:to-indigo-950/20">
+          <div className="flex items-center gap-2">
+            <div className="rounded-full bg-gradient-to-br from-cyan-500 to-indigo-500 p-1.5 shadow-md">
+              <GitBranch className="h-3 w-3 text-white" />
+            </div>
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">输出与触达</h3>
+          </div>
+          <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break">
+            {channelStage?.description}
+          </p>
+          <div className="flex flex-wrap justify-center gap-3 text-center">
+            <div className="rounded-lg border border-indigo-200/70 bg-white/90 px-4 py-2 text-[11px] font-medium text-indigo-800 shadow-sm dark:border-indigo-800/60 dark:bg-slate-900/70 dark:text-indigo-200">
+              浏览器 · SSE 流式
+            </div>
+            <div className="rounded-lg border border-sky-200/70 bg-white/90 px-4 py-2 text-[11px] font-medium text-sky-800 shadow-sm dark:border-sky-800/60 dark:bg-slate-900/70 dark:text-sky-200">
+              飞书 · 卡片 / Post / 文件
+            </div>
           </div>
         </div>
       </div>

@@ -9,32 +9,39 @@ interface ArchitectureNavProps {
 
 export function ArchitectureNav({ sections, activeId, onNavigate }: ArchitectureNavProps) {
   return (
-    <nav className="sticky top-4 space-y-3 rounded-xl border border-slate-200/70 bg-white/70 p-3 text-xs shadow-sm backdrop-blur dark:border-slate-800/70 dark:bg-slate-900/60">
-      <div className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-        架构导航
+    <nav className="sticky top-4 space-y-3 rounded-2xl border border-slate-200/80 bg-white/85 p-3 text-xs shadow-lg shadow-indigo-950/5 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-950/75 dark:shadow-black/40">
+      <div className="px-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+        本页导航
       </div>
-      <ul className="space-y-1.5">
-        {sections.map(section => (
+      <ul className="max-h-[calc(100vh-8rem)] space-y-0.5 overflow-y-auto pr-0.5">
+        {sections.map((section) => (
           <li key={section.id}>
             <button
               type="button"
               onClick={() => onNavigate(section.id)}
               className={cn(
-                'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors',
+                'flex w-full flex-col gap-0.5 rounded-xl px-2.5 py-2 text-left transition-all duration-200',
                 activeId === section.id
-                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-200'
-                  : 'text-slate-500 hover:bg-slate-100/70 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-100'
+                  ? 'bg-gradient-to-r from-indigo-50 to-violet-50 text-indigo-900 shadow-sm ring-1 ring-indigo-200/60 dark:from-indigo-950/50 dark:to-violet-950/30 dark:text-indigo-100 dark:ring-indigo-800/50'
+                  : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100'
               )}
             >
-              <span
-                className={cn(
-                  'h-1.5 w-1.5 rounded-full',
-                  activeId === section.id
-                    ? 'bg-indigo-500 shadow-[0_0_0_4px_rgba(129,140,248,0.35)]'
-                    : 'bg-slate-300 dark:bg-slate-600'
-                )}
-              />
-              <span className="truncate">{section.title}</span>
+              <span className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    'h-1.5 w-1.5 shrink-0 rounded-full transition-transform',
+                    activeId === section.id
+                      ? 'scale-125 bg-indigo-500 shadow-[0_0_0_3px_rgba(99,102,241,0.35)]'
+                      : 'bg-slate-300 dark:bg-slate-600'
+                  )}
+                />
+                <span className="line-clamp-2 font-medium leading-snug">{section.title}</span>
+              </span>
+              {section.subtitle && activeId === section.id && (
+                <span className="line-clamp-2 pl-3.5 text-[10px] font-normal leading-snug text-indigo-600/85 dark:text-indigo-300/80">
+                  {section.subtitle}
+                </span>
+              )}
             </button>
           </li>
         ))}
