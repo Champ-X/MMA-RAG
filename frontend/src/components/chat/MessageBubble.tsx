@@ -598,6 +598,46 @@ function ParagraphImageDisplay({
   )
 }
 
+/** 音频卡片内描述：默认两行，偏长时可展开，避免整块卡片过高 */
+function AudioCardDescription({ content }: { content: string }) {
+  const [expanded, setExpanded] = React.useState(false)
+  const likelyOverflow =
+    content.length > 96 || (content.match(/\n/g)?.length ?? 0) >= 1
+
+  return (
+    <div
+      className={cn(
+        'mt-1.5',
+        likelyOverflow &&
+          'border-t border-violet-200/50 pt-1.5 dark:border-violet-800/40',
+      )}
+    >
+      <div className="flex flex-col gap-0">
+        <p
+          className={cn(
+            'text-[11px] text-slate-600/95 dark:text-slate-400 leading-tight mb-0 antialiased',
+            !expanded && 'line-clamp-2 [overflow-wrap:anywhere]',
+          )}
+        >
+          {content}
+        </p>
+        {likelyOverflow && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              setExpanded((v) => !v)
+            }}
+            className="self-end mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium leading-none text-violet-700 transition-colors hover:bg-violet-100/90 dark:text-violet-300 dark:hover:bg-violet-900/50"
+          >
+            {expanded ? '收起' : '展开'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // 段落下方展示的音频引用卡片（图标 + 标签 + 可点击播放，不打开弹层）
 function ParagraphAudioDisplay({
   citations,
@@ -618,7 +658,7 @@ function ParagraphAudioDisplay({
   if (citations.length === 0) return null
 
   return (
-    <div className="flex flex-wrap justify-center gap-3 mt-3 mb-0">
+    <div className="flex flex-wrap justify-center gap-2 mt-2 mb-0 w-full min-w-0">
       {citations.map((citation) => {
         const displayNum = displayIndexByRefId?.get(citation.id) ?? citation.id
         const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
@@ -663,32 +703,48 @@ function ParagraphAudioDisplay({
           <div
             key={citation.id}
             data-audio-key={key}
-            className="paragraph-audio-card relative overflow-hidden rounded-2xl border border-slate-200/90 dark:border-slate-600/70 bg-gradient-to-br from-slate-50 via-violet-50/30 to-slate-100/90 dark:from-slate-900/80 dark:via-violet-950/20 dark:to-slate-900/80 w-full min-w-[374px] max-w-[500px] p-0 shadow-lg shadow-slate-500/5 dark:shadow-slate-500/10 hover:shadow-xl hover:shadow-violet-500/5 dark:hover:shadow-violet-500/10 hover:border-violet-200/80 dark:hover:border-violet-700/50 transition-all duration-300"
+            className={cn(
+              'paragraph-audio-card relative w-full min-w-0 max-w-lg mx-auto overflow-hidden rounded-2xl',
+              'border border-violet-200/45 bg-gradient-to-br from-white via-violet-50/35 to-indigo-50/25',
+              'shadow-md shadow-violet-500/[0.07] ring-1 ring-black/[0.03] dark:from-slate-950 dark:via-violet-950/25 dark:to-slate-950',
+              'dark:border-violet-500/15 dark:shadow-lg dark:shadow-black/25 dark:ring-white/[0.06]',
+              'transition-all duration-300 hover:border-violet-300/55 hover:shadow-lg hover:shadow-violet-500/10',
+              'dark:hover:border-violet-400/25',
+              "before:pointer-events-none before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-br before:from-white/50 before:to-transparent before:content-[''] dark:before:from-white/[0.03] dark:before:to-transparent",
+            )}
           >
-            {/* 左侧装饰条 */}
-            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-violet-400 via-indigo-400 to-violet-500 dark:from-violet-500 dark:via-indigo-500 dark:to-violet-600 rounded-l-2xl" />
-            <div className="pl-4 pr-4 pt-2.5 pb-2.5">
-              {/* 标题行 */}
+            <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-violet-400 via-fuchsia-500 to-indigo-600 dark:from-violet-400 dark:via-fuchsia-500 dark:to-indigo-500 rounded-l-2xl" />
+            <div className="relative z-[1] pl-3.5 pr-3 py-2.5">
               <button
                 type="button"
                 onClick={handleOpenPopover}
-                className="flex items-center gap-2.5 w-full text-left mb-2 group rounded-lg -mx-1 px-1 py-0.5 hover:bg-violet-100/40 dark:hover:bg-violet-900/20 transition-colors"
+                className="flex items-center gap-2.5 w-full min-w-0 text-left rounded-xl -mx-0.5 px-1 py-0.5 transition-colors hover:bg-violet-500/[0.07] dark:hover:bg-violet-400/[0.09]"
               >
-                <span className="flex items-center justify-center shrink-0 w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-violet-600 dark:text-violet-400 group-hover:bg-violet-100 dark:group-hover:bg-violet-900/40 border border-slate-200/80 dark:border-slate-600/60 shadow-sm transition-all">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-100 to-indigo-100 text-violet-700 shadow-sm shadow-violet-500/10 ring-1 ring-violet-200/60 dark:from-violet-900/55 dark:to-indigo-950/50 dark:text-violet-300 dark:ring-violet-600/35">
                   <Music className="h-4 w-4" strokeWidth={2} />
                 </span>
-                <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate flex items-baseline gap-1.5">
-                  <span className="font-mono text-violet-600 dark:text-violet-400 font-bold tabular-nums">[{displayNum}]</span>
-                  <span className="text-slate-600 dark:text-slate-300">音频引用</span>
+                <span className="min-w-0 flex-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0 text-xs leading-tight">
+                  <span className="shrink-0 font-mono text-sm font-semibold tracking-tight text-violet-600 tabular-nums dark:text-violet-400">
+                    [{displayNum}]
+                  </span>
+                  <span className="shrink-0 font-medium text-slate-800 dark:text-slate-100">音频引用</span>
+                  {citation.file_name ? (
+                    <span
+                      className="min-w-0 max-w-full truncate font-mono text-[11px] text-slate-500 dark:text-slate-400"
+                      title={citation.file_name}
+                    >
+                      · {shortenFileName(citation.file_name)}
+                    </span>
+                  ) : null}
                 </span>
               </button>
-              {/* 播放器区域 */}
+
               {hasAudioUrl ? (
-                <div className="rounded-xl bg-white/95 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-600/80 p-2 mb-2 shadow-inner ring-1 ring-black/5 dark:ring-white/5">
+                <div className="mt-2 rounded-xl border border-violet-100/90 bg-white/75 px-2 py-1 shadow-inner shadow-violet-500/[0.04] backdrop-blur-[2px] dark:border-slate-700/55 dark:bg-slate-950/45 dark:shadow-black/20">
                   <audio
                     src={resolvedUrl!}
                     controls
-                    className="w-full h-8 rounded-lg [&::-webkit-media-controls-panel]:bg-slate-50/80 dark:[&::-webkit-media-controls-panel]:bg-slate-800/80"
+                    className="h-8 w-full rounded-lg bg-transparent [&::-webkit-media-controls-panel]:min-h-8 [&::-webkit-media-controls-panel]:rounded-lg [&::-webkit-media-controls-panel]:bg-violet-50/90 dark:[&::-webkit-media-controls-panel]:bg-slate-900/95"
                     preload="metadata"
                     onClick={(e) => e.stopPropagation()}
                     onError={async () => {
@@ -712,30 +768,20 @@ function ParagraphAudioDisplay({
                   type="button"
                   onClick={handleClickPlay}
                   disabled={loadingRefId === citation.id}
-                  className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl bg-white/80 dark:bg-slate-800/70 text-violet-700 dark:text-violet-300 hover:bg-violet-50/80 dark:hover:bg-slate-800/90 border border-slate-200/80 dark:border-slate-600/60 transition-all mb-2 disabled:opacity-60 shadow-sm text-sm font-medium ring-1 ring-violet-500/10 dark:ring-violet-500/20"
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200/70 bg-white/90 py-2 px-3 text-xs font-medium text-violet-800 shadow-sm shadow-violet-500/5 transition-all hover:border-violet-300 hover:bg-violet-50/80 hover:shadow-md disabled:opacity-60 dark:border-violet-800/40 dark:bg-slate-950/50 dark:text-violet-200 dark:hover:border-violet-700/50 dark:hover:bg-violet-950/40"
                 >
                   {loadingRefId === citation.id ? (
-                    <span className="font-medium">加载中…</span>
+                    <span>加载中…</span>
                   ) : (
                     <>
-                      <Play className="h-4 w-4 flex-shrink-0" fill="currentColor" />
-                      <span className="font-medium">点击播放</span>
+                      <Play className="h-3.5 w-3.5 flex-shrink-0" fill="currentColor" />
+                      <span>点击播放</span>
                     </>
                   )}
                 </button>
               )}
-              {/* 文件名：与视频引用一致，去掉 ID 前缀只显示实际文件名 */}
-              {citation.file_name && (
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mb-1.5 font-mono pl-0.5" title={citation.file_name}>
-                  {shortenFileName(citation.file_name)}
-                </p>
-              )}
-              {/* 转写/描述内容（不区分歌词或语音，不显示标签） */}
-              {citation.content && (
-                <div className="rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-600/60 px-3 py-1.5 ring-1 ring-black/5 dark:ring-white/5">
-                  <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">{citation.content}</p>
-                </div>
-              )}
+
+              {citation.content ? <AudioCardDescription content={citation.content} /> : null}
             </div>
           </div>
         )
