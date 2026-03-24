@@ -62,6 +62,12 @@ fi
 
 # 启动后端服务
 echo "🐍 启动后端服务..."
+if command -v ss &> /dev/null && ss -tln 2>/dev/null | grep -qE ':8000\s'; then
+    echo "❌ 端口 8000 已被占用（常见原因：上次 uvicorn 未退出）。请先结束占用进程后再运行本脚本。"
+    echo "   排查: ss -tlnp | grep 8000"
+    echo "   结束: pkill -f 'uvicorn app.main:app' 或 kill <PID>"
+    exit 1
+fi
 cd backend
 if command -v python3 &> /dev/null; then
     python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload &
