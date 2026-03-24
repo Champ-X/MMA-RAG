@@ -84,7 +84,7 @@ export function AppLayout() {
             title="首页"
             aria-label="返回首页"
             className={cn(
-              'flex shrink-0 items-center justify-center rounded-full p-0 transition-all duration-200',
+              'flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full p-0 transition-all duration-200',
               'bg-transparent hover:opacity-90 active:scale-[0.97]',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1e293b]'
             )}
@@ -92,9 +92,9 @@ export function AppLayout() {
             <img
               src="/logo.png"
               alt=""
-              className="h-11 w-11 rounded-full object-contain object-center select-none"
-              width={49}
-              height={49}
+              className="h-full w-full origin-center scale-[1.14] object-contain object-center select-none"
+              width={54}
+              height={54}
               decoding="async"
               draggable={false}
             />

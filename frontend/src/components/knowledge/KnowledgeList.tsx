@@ -1848,28 +1848,27 @@ const KnowledgeList: React.FC = () => {
     return (
       <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative">
         {/* Header */}
-        <div className="relative -mt-2 overflow-hidden border-b border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-950 md:-mt-3">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300/60 to-transparent dark:via-indigo-500/30" />
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-50/95 via-white to-indigo-50/55 dark:from-slate-950 dark:via-slate-950 dark:to-indigo-950/35" />
-          <div className="absolute right-0 top-0 h-[320px] w-[min(560px,72vw)] translate-x-1/4 -translate-y-1/2 rounded-full bg-gradient-to-bl from-indigo-200/45 via-indigo-100/18 to-transparent blur-3xl dark:from-indigo-500/12 dark:via-indigo-400/6" />
-          <div className="absolute bottom-0 left-0 h-[220px] w-[min(380px,55vw)] -translate-x-1/4 translate-y-1/2 rounded-full bg-gradient-to-tr from-fuchsia-200/35 via-fuchsia-100/12 to-transparent blur-3xl dark:from-fuchsia-500/10 dark:via-fuchsia-400/5" />
-
-          <div className="relative z-10 px-5 pb-4 pt-3 sm:px-8 sm:pb-5 sm:pt-4">
-            <div className="rounded-[22px] border border-white/75 bg-white/78 p-4 shadow-[0_18px_50px_-24px_rgba(79,70,229,0.35)] backdrop-blur-xl dark:border-white/8 dark:bg-slate-950/55 dark:shadow-[0_18px_50px_-24px_rgba(0,0,0,0.55)] sm:px-5 sm:py-4">
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                <div className="min-w-0 flex flex-1 flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">
+        <div className="relative -mt-0 overflow-visible border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 md:-mt-1">
+          <div className="relative z-10 px-5 pb-3.5 pt-2.5 sm:px-8 sm:pb-4 sm:pt-3">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <div className="min-w-0 flex flex-1 flex-col gap-3 xl:flex-row xl:items-center xl:gap-5">
                   <div className="shrink-0">
-                    <div className="flex items-center gap-3">
-                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-600 to-fuchsia-600 text-white shadow-[0_10px_24px_-10px_rgba(99,102,241,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] ring-1 ring-inset ring-white/25 dark:shadow-[0_12px_26px_-12px_rgba(0,0,0,0.55)]">
-                        <Layers size={18} strokeWidth={2.1} />
+                    <div className="flex items-center gap-4 sm:gap-5">
+                      {/* 高度占位保持顶栏不高；宽度与图标一致，避免绝对定位大图压到标题 */}
+                      <div className="relative flex h-10 w-[4.5rem] shrink-0 items-center justify-center sm:h-11 sm:w-[5.25rem]">
+                        <img
+                          src="/MMKB.png"
+                          alt=""
+                          className="pointer-events-none absolute left-1/2 top-1/2 h-[4.5rem] w-[4.5rem] max-w-none -translate-x-1/2 -translate-y-1/2 object-contain object-center sm:h-[5.25rem] sm:w-[5.25rem]"
+                        />
                       </div>
-                      <h1 className="text-[2.05rem] font-bold tracking-tight text-slate-950 dark:text-slate-50 sm:text-[2.2rem]">
+                      <h1 className="relative z-10 min-w-0 text-[2.05rem] font-bold leading-none tracking-tight text-slate-950 dark:text-slate-50 sm:text-[2.2rem]">
                         知识库
                       </h1>
                     </div>
                   </div>
 
-                  <div className="min-w-0 flex-1 pt-0.5">
+                  <div className="min-w-0 flex-1">
                     <p className="max-w-4xl text-sm leading-6 text-slate-600 dark:text-slate-400 sm:text-[15px]">
                       集中管理文档、图片与音视频内容，自动完成索引、解析与主题画像，支撑 RAG 检索和多轮对话。
                     </p>
@@ -1914,7 +1913,6 @@ const KnowledgeList: React.FC = () => {
                   </button>
                 </div>
               </div>
-            </div>
           </div>
         </div>
 
