@@ -48,22 +48,22 @@ const MODELS: Record<string, string[]> = {
 const DEFAULT_MATRIX: TaskModelEntry[] = [
   {
     taskId: 'intent',
-    label: 'Intent Recognition',
-    description: '意图识别与查询改写',
+    label: '意图识别',
+    description: '查询理解、改写与检索策略决策',
     provider: 'siliconflow',
     model: 'Qwen-Turbo',
   },
   {
     taskId: 'caption',
-    label: 'Image Captioning',
+    label: '图像理解',
     description: '图像描述与多模态理解',
     provider: 'siliconflow',
     model: 'Qwen-VL-Max',
   },
   {
     taskId: 'generation',
-    label: 'Final Generation',
-    description: '最终回答生成',
+    label: '回答生成',
+    description: '最终回答生成与流式输出',
     provider: 'siliconflow',
     model: 'DeepSeek-V3',
   },
@@ -205,50 +205,46 @@ export function ModelConfig({
   }
 
   const selectBase =
-    'relative flex h-10 rounded-xl border-2 bg-white dark:bg-slate-800/50 pl-4 pr-10 py-2 text-sm font-medium text-slate-800 dark:text-slate-100 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500/50 dark:focus:ring-fuchsia-500/50 cursor-pointer border-slate-200 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-fuchsia-500/50 focus:border-indigo-400 dark:focus:border-fuchsia-500 appearance-none shadow-sm hover:shadow-md'
+    'relative flex h-10 w-full min-w-0 rounded-xl border bg-white dark:bg-slate-800/50 pl-4 pr-10 py-2 text-sm font-medium text-slate-800 dark:text-slate-100 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500/50 dark:focus:ring-fuchsia-500/50 cursor-pointer border-slate-200 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-fuchsia-500/50 focus:border-indigo-400 dark:focus:border-fuchsia-500 appearance-none shadow-sm hover:shadow-md'
 
   return (
     <div className={cn('space-y-6 animate-in fade-in duration-300', className)}>
-      <div className="relative overflow-hidden rounded-3xl border border-slate-200/60 dark:border-slate-700/60 bg-white dark:bg-slate-950 shadow-xl shadow-slate-200/40 dark:shadow-slate-900/60 backdrop-blur-sm">
-        {/* 顶部装饰条 - 更精致的渐变 */}
-        <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 via-fuchsia-500 to-indigo-500 opacity-90 animate-pulse-soft" />
-
-        <header className="relative px-8 py-6 border-b border-slate-100/80 dark:border-slate-800/60 bg-gradient-to-br from-slate-50/80 via-white to-indigo-50/40 dark:from-slate-900/90 dark:via-slate-950 dark:to-indigo-950/30">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-fuchsia-500 text-white shadow-lg shadow-indigo-500/30 transition-all duration-300 hover:scale-110 hover:shadow-xl hover:shadow-indigo-500/40 group">
-                <Settings className="h-6 w-6 transition-transform duration-300 group-hover:rotate-90" />
-                <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      <div className="overflow-hidden rounded-3xl border border-slate-200/70 bg-white/90 shadow-lg shadow-slate-200/30 backdrop-blur-sm dark:border-slate-800/80 dark:bg-slate-950/80 dark:shadow-black/20">
+        <header className="border-b border-slate-100/80 bg-gradient-to-r from-slate-50/80 via-white to-indigo-50/30 px-6 py-5 dark:border-slate-800/60 dark:from-slate-900/90 dark:via-slate-950 dark:to-indigo-950/20 sm:px-8">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-fuchsia-500 text-white shadow-md shadow-indigo-500/25">
+                <Settings className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50 bg-gradient-to-r from-slate-900 to-slate-700 dark:from-slate-50 dark:to-slate-300 bg-clip-text text-transparent">
+                <h2 className="bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-xl font-bold tracking-tight text-transparent dark:from-slate-50 dark:to-slate-300">
                   模块化模型配置
                 </h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5 font-medium">
-                  为各任务与 Reranker 指定 Provider 与模型
+                <p className="mt-1.5 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
+                  为意图识别、图像理解、回答生成与 Reranker 分别指定 Provider 与模型
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2.5 xl:justify-end">
               {hasChanges && (
-                <span className="inline-flex items-center gap-2 rounded-full bg-amber-100/90 dark:bg-amber-900/50 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 shadow-sm animate-pulse-soft border border-amber-200/50 dark:border-amber-800/50">
-                  <AlertCircle className="h-3.5 w-3.5 animate-pulse" />
+                <span className="inline-flex items-center gap-2 rounded-full border border-amber-200/60 bg-amber-100/90 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-sm dark:border-amber-800/50 dark:bg-amber-900/50 dark:text-amber-300">
+                  <AlertCircle className="h-3.5 w-3.5" />
                   未保存
                 </span>
               )}
               <Button
                 variant="outline"
                 size="sm"
-                className="rounded-xl border-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 transition-all duration-200 font-medium shadow-sm hover:shadow-md disabled:opacity-40"
+                className="rounded-xl border border-slate-300 text-slate-700 shadow-sm transition-all duration-200 hover:border-slate-400 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:bg-slate-800 disabled:opacity-40"
                 disabled={!hasChanges || saving}
                 onClick={handleReset}
               >
-                <RotateCcw className="mr-2 h-4 w-4 transition-transform duration-200 group-hover:rotate-180" />
+                <RotateCcw className="mr-2 h-4 w-4" />
                 重置
               </Button>
               <Button
                 size="sm"
-                className="rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 hover:from-indigo-500 hover:via-purple-500 hover:to-fuchsia-500 text-white shadow-lg shadow-indigo-500/40 border-0 transition-all duration-300 hover:shadow-xl hover:shadow-indigo-500/50 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 font-semibold"
+                className="rounded-xl border-0 bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 font-semibold text-white shadow-md shadow-indigo-500/25 transition-all duration-200 hover:from-indigo-500 hover:via-purple-500 hover:to-fuchsia-500 hover:shadow-lg hover:shadow-indigo-500/35 disabled:opacity-50"
                 disabled={!hasChanges || saving}
                 onClick={handleSave}
               >
@@ -273,121 +269,118 @@ export function ModelConfig({
           </div>
         </header>
 
-        <div className="p-8 space-y-10">
+        <div className="space-y-8 p-6 sm:p-8">
+          <div className="rounded-2xl border border-sky-200/70 bg-gradient-to-r from-sky-50/90 to-indigo-50/60 px-4 py-3 text-sm leading-relaxed text-sky-900 shadow-sm dark:border-sky-900/50 dark:from-sky-950/30 dark:to-indigo-950/20 dark:text-sky-100">
+            当前“保存”主要用于维护本浏览器侧配置与未保存状态；模型列表来自后端目录，方便按任务类型分别挑选可用模型。
+          </div>
+
           {/* 任务 – 模型映射 */}
           <section className="animate-in slide-up duration-500">
-            <div className="mb-5 flex items-center gap-3">
+            <div className="mb-4 flex items-center gap-3">
               <span className="inline-flex h-10 w-1.5 rounded-full bg-gradient-to-b from-indigo-500 via-purple-500 to-fuchsia-500 shadow-sm" />
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight">
                 任务 – 模型映射
               </h3>
             </div>
-            <div className="overflow-hidden rounded-2xl border-2 border-slate-200/60 dark:border-slate-700/60 bg-gradient-to-br from-slate-50/80 to-white dark:from-slate-900/50 dark:to-slate-950/80 shadow-inner backdrop-blur-sm">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b-2 border-slate-200/80 dark:border-slate-700/80 bg-gradient-to-r from-slate-100/90 to-slate-50/90 dark:from-slate-800/80 dark:to-slate-900/80">
-                    <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300">
-                      任务
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300">
-                      Provider
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300">
-                      模型
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matrix.map((t, i) => {
-                    const meta = t.taskId === 'rerank' ? null : TASK_META[t.taskId]
-                    const Icon = meta?.icon
-                    return (
-                      <tr
-                        key={t.taskId}
-                        className={cn(
-                          'border-b border-slate-100/60 dark:border-slate-800/60 last:border-0 transition-all duration-200 border-l-4 group',
-                          meta?.barClass,
-                          meta?.isPrimary
-                            ? 'bg-gradient-to-r from-indigo-50/80 to-indigo-50/40 dark:from-indigo-950/40 dark:to-indigo-950/20 shadow-sm'
-                            : i % 2 === 0
-                            ? 'bg-white/60 dark:bg-slate-950/40'
-                            : 'bg-slate-50/40 dark:bg-slate-900/20',
-                          meta?.isPrimary
-                            ? 'hover:bg-gradient-to-r hover:from-indigo-50 hover:to-indigo-50/60 dark:hover:from-indigo-950/50 dark:hover:to-indigo-950/30'
-                            : 'hover:bg-indigo-50/50 dark:hover:bg-indigo-950/15'
-                        )}
-                      >
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-4">
-                            {Icon && (
-                              <span className="flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 dark:from-slate-800 dark:to-slate-900 text-slate-600 dark:text-slate-400 shadow-sm group-hover:shadow-md transition-all duration-200 group-hover:scale-110">
-                                <Icon className="h-5 w-5" />
-                              </span>
-                            )}
-                            <div className="flex-1 min-w-0 pr-2">
-                              <div className="flex items-center gap-2.5 font-semibold text-slate-800 dark:text-slate-100">
-                                <span className="truncate">{t.label}</span>
-                                {meta?.isPrimary && (
-                                  <span className="flex-shrink-0 rounded-lg bg-gradient-to-r from-indigo-100 to-purple-100 dark:from-indigo-900/60 dark:to-purple-900/60 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 shadow-sm border border-indigo-200/50 dark:border-indigo-800/50">
-                                    主模型
-                                  </span>
-                                )}
-                              </div>
-                              <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400 truncate font-medium">
-                                {t.description}
-                              </div>
+            <div className="space-y-3 rounded-2xl border border-slate-200/70 bg-gradient-to-br from-slate-50/80 to-white p-3 shadow-sm dark:border-slate-700/70 dark:from-slate-900/50 dark:to-slate-950/80 sm:p-4">
+              <div className="hidden grid-cols-[minmax(0,1.15fr)_minmax(0,0.75fr)_minmax(0,1fr)] gap-4 rounded-xl border border-slate-200/80 bg-slate-100/80 px-5 py-3 text-xs font-bold uppercase tracking-widest text-slate-600 dark:border-slate-700/70 dark:bg-slate-800/70 dark:text-slate-300 lg:grid">
+                <div>任务</div>
+                <div>Provider</div>
+                <div>模型</div>
+              </div>
+
+              {matrix.map((t, i) => {
+                const meta = t.taskId === 'rerank' ? null : TASK_META[t.taskId]
+                const Icon = meta?.icon
+                const models = t.taskId === 'caption' ? modelList(t.provider, 'vision', t.model) : modelList(t.provider, 'chat', t.model)
+
+                return (
+                  <div
+                    key={t.taskId}
+                    className={cn(
+                      'group rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm transition-all duration-200 dark:border-slate-700/70 dark:bg-slate-950/50',
+                      meta?.isPrimary
+                        ? 'border-indigo-200/80 bg-gradient-to-r from-indigo-50/90 to-violet-50/60 dark:border-indigo-800/60 dark:from-indigo-950/40 dark:to-violet-950/20'
+                        : i % 2 === 0
+                          ? 'hover:border-indigo-200/70 hover:bg-slate-50/95 dark:hover:border-indigo-800/40 dark:hover:bg-slate-900/60'
+                          : 'bg-slate-50/60 hover:border-indigo-200/70 hover:bg-slate-50/95 dark:bg-slate-900/25 dark:hover:border-indigo-800/40 dark:hover:bg-slate-900/60'
+                    )}
+                  >
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.75fr)_minmax(0,1fr)] lg:items-center">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-4">
+                          {Icon && (
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 text-slate-600 shadow-sm transition-all duration-200 group-hover:shadow-md dark:from-slate-800 dark:to-slate-900 dark:text-slate-400">
+                              <Icon className="h-5 w-5" />
+                            </span>
+                          )}
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2.5 font-semibold text-slate-800 dark:text-slate-100">
+                              <span>{t.label}</span>
+                              {meta?.isPrimary && (
+                                <span className="rounded-lg border border-indigo-200/50 bg-gradient-to-r from-indigo-100 to-purple-100 px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-sm dark:border-indigo-800/50 dark:from-indigo-900/60 dark:to-purple-900/60 dark:text-indigo-300">
+                                  主模型
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                              {t.description}
                             </div>
                           </div>
-                        </td>
-                        <td className="px-6 py-5">
-                          <div className="relative">
-                            <select
-                              value={t.provider}
-                              onChange={(e) =>
-                                updateTask(t.taskId, 'provider', e.target.value)
-                              }
-                              className={cn(selectBase, 'min-w-[11rem] w-[11rem]')}
-                              title={PROVIDER_DISPLAY_NAMES[t.provider] ?? t.provider}
-                            >
-                              {providerOptions.map((p) => (
-                                <option key={p} value={p}>
-                                  {PROVIDER_DISPLAY_NAMES[p] ?? p}
-                                </option>
-                              ))}
-                            </select>
-                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-slate-400 pointer-events-none transition-transform duration-200 group-hover:translate-y-[-2px]" />
-                          </div>
-                        </td>
-                        <td className="px-6 py-5">
-                          <div className="relative">
-                            <select
-                              value={t.model}
-                              onChange={(e) =>
-                                updateTask(t.taskId, 'model', e.target.value)
-                              }
-                              className={cn(selectBase, 'min-w-[320px] w-full max-w-[400px]')}
-                              title={t.model}
-                            >
-                            {(t.taskId === 'caption' ? modelList(t.provider, 'vision', t.model) : modelList(t.provider, 'chat', t.model)).map((m) => (
+                        </div>
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 lg:hidden">
+                          Provider
+                        </div>
+                        <div className="relative">
+                          <select
+                            value={t.provider}
+                            onChange={(e) => updateTask(t.taskId, 'provider', e.target.value)}
+                            className={selectBase}
+                            title={PROVIDER_DISPLAY_NAMES[t.provider] ?? t.provider}
+                          >
+                            {providerOptions.map((p) => (
+                              <option key={p} value={p}>
+                                {PROVIDER_DISPLAY_NAMES[p] ?? p}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
+                        </div>
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 lg:hidden">
+                          模型
+                        </div>
+                        <div className="relative">
+                          <select
+                            value={t.model}
+                            onChange={(e) => updateTask(t.taskId, 'model', e.target.value)}
+                            className={selectBase}
+                            title={t.model}
+                          >
+                            {models.map((m) => (
                               <option key={m} value={m} title={m}>
                                 {m}
                               </option>
                             ))}
                           </select>
-                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-slate-400 pointer-events-none transition-transform duration-200 group-hover:translate-y-[-2px]" />
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </section>
 
           {/* Reranker 模型 */}
           <section className="animate-in slide-up duration-500 delay-100">
-            <div className="mb-5 flex items-center gap-3">
+            <div className="mb-4 flex items-center gap-3">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/40 dark:to-teal-900/40 text-emerald-600 dark:text-emerald-400 shadow-sm border border-emerald-200/50 dark:border-emerald-800/50">
                   <ArrowDownUp className="h-5 w-5" />
@@ -404,9 +397,9 @@ export function ModelConfig({
                 </div>
               </div>
             </div>
-            <div className="overflow-hidden rounded-2xl border-2 border-emerald-200/40 dark:border-emerald-800/40 bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/30 dark:from-emerald-950/30 dark:via-slate-950/80 dark:to-teal-950/20 p-6 shadow-inner backdrop-blur-sm ring-1 ring-emerald-100/50 dark:ring-emerald-900/30">
-              <div className="flex flex-wrap items-end gap-6">
-                <div className="space-y-2.5 flex-1 min-w-[11rem]">
+            <div className="overflow-hidden rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/30 p-6 shadow-sm dark:border-emerald-800/40 dark:from-emerald-950/30 dark:via-slate-950/80 dark:to-teal-950/20">
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="min-w-0 space-y-2.5">
                   <Label className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">
                     Provider
                   </Label>
@@ -414,7 +407,7 @@ export function ModelConfig({
                     <select
                       value={reranker.provider}
                       onChange={(e) => updateReranker('provider', e.target.value)}
-                      className={cn(selectBase, 'min-w-[11rem] w-full border-emerald-200/60 dark:border-emerald-800/60 hover:border-emerald-300 dark:hover:border-emerald-700/60 focus:border-emerald-400 dark:focus:border-emerald-600 focus:ring-emerald-500/50 dark:focus:ring-emerald-500/50')}
+                      className={cn(selectBase, 'border-emerald-200/60 dark:border-emerald-800/60 hover:border-emerald-300 dark:hover:border-emerald-700/60 focus:border-emerald-400 dark:focus:border-emerald-600 focus:ring-emerald-500/50 dark:focus:ring-emerald-500/50')}
                       title={PROVIDER_DISPLAY_NAMES[reranker.provider] ?? reranker.provider}
                     >
                       {providerOptions.map((p) => (
@@ -426,7 +419,7 @@ export function ModelConfig({
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-slate-400 pointer-events-none" />
                   </div>
                 </div>
-                <div className="space-y-2.5 flex-1 min-w-[320px]">
+                <div className="min-w-0 space-y-2.5">
                   <Label className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">
                     模型
                   </Label>
@@ -434,7 +427,7 @@ export function ModelConfig({
                     <select
                       value={reranker.model}
                       onChange={(e) => updateReranker('model', e.target.value)}
-                      className={cn(selectBase, 'min-w-[320px] w-full max-w-[400px] border-emerald-200/60 dark:border-emerald-800/60 hover:border-emerald-300 dark:hover:border-emerald-700/60 focus:border-emerald-400 dark:focus:border-emerald-600 focus:ring-emerald-500/50 dark:focus:ring-emerald-500/50')}
+                      className={cn(selectBase, 'border-emerald-200/60 dark:border-emerald-800/60 hover:border-emerald-300 dark:hover:border-emerald-700/60 focus:border-emerald-400 dark:focus:border-emerald-600 focus:ring-emerald-500/50 dark:focus:ring-emerald-500/50')}
                       title={reranker.model}
                     >
                       {modelList(reranker.provider, 'reranker', reranker.model).map((m) => (

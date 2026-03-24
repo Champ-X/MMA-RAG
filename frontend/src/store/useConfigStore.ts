@@ -23,6 +23,16 @@ export interface SystemConfig {
   language: 'zh-CN' | 'en-US';
 }
 
+function mergeWithDefaultModels(models: ModelConfig[]): ModelConfig[] {
+  const base = defaultConfig.models.map((defaultModel) => {
+    const current = models.find((m) => m.id === defaultModel.id)
+    return current ? { ...defaultModel, ...current } : { ...defaultModel }
+  })
+  const knownIds = new Set(base.map((m) => m.id))
+  const extras = models.filter((m) => !knownIds.has(m.id))
+  return [...base, ...extras]
+}
+
 export interface ModelsByProvider {
   chat: string[];
   vision: string[];
@@ -80,6 +90,16 @@ interface ConfigStore {
 
 const defaultConfig: SystemConfig = {
   models: [
+    {
+      id: 'intent',
+      name: '意图识别模型',
+      provider: 'siliconflow',
+      model: 'Qwen-Turbo',
+      maxTokens: 1024,
+      temperature: 0.1,
+      topP: 0.9,
+      enabled: true,
+    },
     {
       id: 'chat',
       name: '对话模型',
@@ -141,15 +161,38 @@ export const useConfigStore = create<ConfigStore>()(
 
       // 更新模型配置
       updateModelConfig: (modelId, updates) => {
-        set((state) => ({
-          config: {
-            ...state.config,
-            models: state.config.models.map(model =>
-              model.id === modelId ? { ...model, ...updates } : model
-            ),
-          },
-          hasUnsavedChanges: true,
-        }));
+        set((state) => {
+          const existing = state.config.models.find((model) => model.id === modelId)
+          const fallback = defaultConfig.models.find((model) => model.id === modelId)
+          const nextModels = existing
+            ? state.config.models.map((model) =>
+                model.id === modelId ? { ...model, ...updates } : model
+              )
+            : [
+                ...state.config.models,
+                {
+                  ...(fallback ?? {
+                    id: modelId,
+                    name: modelId,
+                    provider: 'siliconflow',
+                    model: '',
+                    maxTokens: 1024,
+                    temperature: 0.3,
+                    topP: 0.9,
+                    enabled: true,
+                  }),
+                  ...updates,
+                },
+              ]
+
+          return {
+            config: {
+              ...state.config,
+              models: mergeWithDefaultModels(nextModels),
+            },
+            hasUnsavedChanges: true,
+          }
+        });
       },
 
       // 更新系统配置
@@ -192,7 +235,11 @@ export const useConfigStore = create<ConfigStore>()(
           await systemApi.updateModelConfig(get().config);
           set({ hasUnsavedChanges: false, isLoading: false });
         } catch (error) {
-          set({ hasUnsavedChanges: false, isLoading: false });
+          set({
+            hasUnsavedChanges: true,
+            isLoading: false,
+            error: error instanceof Error ? error.message : '保存配置失败',
+          });
           throw error;
         }
       },
@@ -219,7 +266,10 @@ export const useConfigStore = create<ConfigStore>()(
           };
           const cc = data.current_config ?? {};
           set((state) => {
-            const models = state.config.models.map((m) => {
+            const models = mergeWithDefaultModels(state.config.models).map((m) => {
+              if (m.id === 'intent' && cc.intent_recognition) {
+                return { ...m, model: cc.intent_recognition.model, provider: cc.intent_recognition.provider };
+              }
               if (m.id === 'chat' && cc.final_generation) {
                 return { ...m, model: cc.final_generation.model, provider: cc.final_generation.provider };
               }
@@ -234,7 +284,9 @@ export const useConfigStore = create<ConfigStore>()(
             return {
               config: { ...state.config, models },
               availableModels,
+              error: null,
               isLoading: false,
+              hasUnsavedChanges: false,
             };
           });
         } catch (error) {

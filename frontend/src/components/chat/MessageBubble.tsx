@@ -17,6 +17,7 @@ import {
   type ThoughtData,
   type ThinkingState,
 } from '@/store/useChatStore'
+import { useConfigStore } from '@/store/useConfigStore'
 import { UserMessageAttachmentStrip } from './ChatAttachmentPreview'
 
 /** 流式时从 ChatInterface 传入的实时思考数据，保证思考框在气泡顶部展示 */
@@ -1104,9 +1105,11 @@ export function MessageBubble({
   onCiteClick,
 }: MessageBubbleProps) {
   const activeSession = useChatStore((s) => s.getActiveSession())
+  const uiConfig = useConfigStore((s) => s.config)
   const fallbackKbId = activeSession?.knowledgeBaseIds?.[0]
   const isUser = message.type === 'user'
-  const showThinking = !isUser && (message.thinking || (isStreaming && liveThinking))
+  const showThinking = uiConfig.enableThinking && !isUser && (message.thinking || (isStreaming && liveThinking))
+  const showCitations = uiConfig.enableCitations
   const isStoppedHint = !isUser && message.error === 'stopped_hint' // 终止提示消息
   const thoughtData = isStreaming && liveThinking
     ? liveThinking.thoughtData
@@ -1220,7 +1223,7 @@ export function MessageBubble({
     }
     return out
   }, [refs, citationMap, isUser])
-  const hasRefs = uniqueRefs.length > 0 || allImageRefsForThumbnails.length > 0
+  const hasRefs = showCitations && (uniqueRefs.length > 0 || allImageRefsForThumbnails.length > 0)
 
   // 创建 markdown 组件的工厂函数
   const markdownComponents = React.useMemo(() => {
@@ -1230,6 +1233,11 @@ export function MessageBubble({
       return (props: { children?: React.ReactNode }) => {
         const { children } = props
         if (!children) return null
+        const Tag = tag
+
+        if (!showCitations) {
+          return <Tag className={className}>{children}</Tag>
+        }
         
         const textContent = extractTextFromNode(children)
         const allImageRefs = extractImageRefIdsFromText(textContent, citationMap, refs)
@@ -1252,8 +1260,6 @@ export function MessageBubble({
         })
         // 视频引用：段落内出现的每个引用编号都展示一张卡片（[1][2][3][4] 可能对应不同片段），不做按 file_name 去重
         const newVideoRefs = allVideoRefs
-        
-        const Tag = tag
         
         return (
           <>
@@ -1367,7 +1373,7 @@ export function MessageBubble({
       li: createComponent('li', 'mb-0'),
       img: ImageComponent,
     }
-  }, [imageFirstRefIdMap, citationMap, refs, originalIdToDisplayIndex, message.id, onCiteClick])
+  }, [imageFirstRefIdMap, citationMap, refs, originalIdToDisplayIndex, message.id, onCiteClick, showCitations])
 
   const AvatarIcon = isUser ? User : Bot
   const avatarBg = isUser

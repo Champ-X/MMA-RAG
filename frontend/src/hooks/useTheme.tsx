@@ -27,15 +27,27 @@ export function ThemeProvider({
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem(storageKey, theme)
       const root = document.documentElement
-      root.setAttribute('data-theme', theme)
-      // 同时设置 class 以支持 Tailwind dark mode
-      if (theme === 'dark') {
-        root.classList.add('dark')
-      } else {
-        root.classList.remove('dark')
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+
+      const applyTheme = (nextTheme: string) => {
+        const resolvedTheme =
+          nextTheme === 'system'
+            ? (mediaQuery.matches ? 'dark' : 'light')
+            : nextTheme
+
+        root.setAttribute('data-theme', nextTheme)
+        root.classList.toggle('dark', resolvedTheme === 'dark')
       }
+
+      localStorage.setItem(storageKey, theme)
+      applyTheme(theme)
+
+      if (theme !== 'system') return
+
+      const handleSystemThemeChange = () => applyTheme('system')
+      mediaQuery.addEventListener?.('change', handleSystemThemeChange)
+      return () => mediaQuery.removeEventListener?.('change', handleSystemThemeChange)
     }
   }, [theme, storageKey])
 
