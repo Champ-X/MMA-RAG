@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import type { ArchitectureSection, ArchitectureSectionId } from '@/data/architectureData'
 
@@ -8,6 +9,15 @@ interface ArchitectureNavProps {
 }
 
 export function ArchitectureNav({ sections, activeId, onNavigate }: ArchitectureNavProps) {
+  const itemRefs = useRef<Partial<Record<ArchitectureSectionId, HTMLButtonElement | null>>>({})
+
+  useEffect(() => {
+    itemRefs.current[activeId]?.scrollIntoView({
+      block: 'nearest',
+      inline: 'nearest',
+    })
+  }, [activeId])
+
   return (
     <nav className="sticky top-4 space-y-3 rounded-2xl border border-slate-200/80 bg-white/85 p-3 text-xs shadow-lg shadow-indigo-950/5 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-950/75 dark:shadow-black/40">
       <div className="px-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
@@ -18,6 +28,9 @@ export function ArchitectureNav({ sections, activeId, onNavigate }: Architecture
           <li key={section.id}>
             <button
               type="button"
+              ref={(node) => {
+                itemRefs.current[section.id] = node
+              }}
               onClick={() => onNavigate(section.id)}
               className={cn(
                 'flex w-full flex-col gap-0.5 rounded-xl px-2.5 py-2 text-left transition-all duration-200',

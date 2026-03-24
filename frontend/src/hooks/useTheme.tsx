@@ -1,15 +1,19 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 
+type ThemeMode = 'light' | 'dark' | 'system'
+type ResolvedTheme = 'light' | 'dark'
+
 interface ThemeContextType {
-  theme: string
-  setTheme: (theme: string) => void
+  theme: ThemeMode
+  resolvedTheme: ResolvedTheme
+  setTheme: (theme: ThemeMode) => void
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 interface ThemeProviderProps {
   children: ReactNode
-  defaultTheme?: string
+  defaultTheme?: ThemeMode
   storageKey?: string
 }
 
@@ -18,26 +22,32 @@ export function ThemeProvider({
   defaultTheme = 'light', 
   storageKey = 'theme' 
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<string>(() => {
+  const [theme, setTheme] = useState<ThemeMode>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem(storageKey) || defaultTheme
+      const storedTheme = localStorage.getItem(storageKey)
+      if (storedTheme === 'light' || storedTheme === 'dark' || storedTheme === 'system') {
+        return storedTheme
+      }
+      return defaultTheme
     }
     return defaultTheme
   })
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>('light')
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const root = document.documentElement
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
 
-      const applyTheme = (nextTheme: string) => {
-        const resolvedTheme =
+      const applyTheme = (nextTheme: ThemeMode) => {
+        const nextResolvedTheme: ResolvedTheme =
           nextTheme === 'system'
             ? (mediaQuery.matches ? 'dark' : 'light')
             : nextTheme
 
         root.setAttribute('data-theme', nextTheme)
-        root.classList.toggle('dark', resolvedTheme === 'dark')
+        root.classList.toggle('dark', nextResolvedTheme === 'dark')
+        setResolvedTheme(nextResolvedTheme)
       }
 
       localStorage.setItem(storageKey, theme)
@@ -52,7 +62,7 @@ export function ThemeProvider({
   }, [theme, storageKey])
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme }}>
+    <ThemeContext.Provider value={{ theme, resolvedTheme, setTheme }}>
       {children}
     </ThemeContext.Provider>
   )

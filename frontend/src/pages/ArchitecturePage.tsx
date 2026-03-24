@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { architectureSections, coreModules, type ArchitectureSectionId } from '@/data/architectureData'
 import { ArchitectureNav } from '@/components/architecture/ArchitectureNav'
@@ -14,40 +14,83 @@ import { IntegrationsSection } from '@/components/architecture/IntegrationsSecti
 
 export function ArchitecturePage() {
   const [activeSection, setActiveSection] = useState<ArchitectureSectionId>('overview')
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null)
+
+  const getScrollContainer = useCallback(() => {
+    const viewport = scrollAreaRef.current?.firstElementChild
+    return viewport instanceof HTMLDivElement ? viewport : null
+  }, [])
 
   const handleNavigate = useCallback((id: ArchitectureSectionId) => {
     setActiveSection(id)
     const el = document.getElementById(id)
-    if (el) {
+    const scrollContainer = getScrollContainer()
+
+    if (el && scrollContainer) {
+      const containerRect = scrollContainer.getBoundingClientRect()
+      const elementRect = el.getBoundingClientRect()
+      const nextTop = scrollContainer.scrollTop + (elementRect.top - containerRect.top) - 24
+
+      scrollContainer.scrollTo({
+        top: Math.max(nextTop, 0),
+        behavior: 'smooth',
+      })
+    } else if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
-  }, [])
+  }, [getScrollContainer])
 
-  // 简单的 scroll-spy：监听滚动并更新当前 section
+  // 监听正文滚动容器，保持侧边导航与阅读位置同步
   useEffect(() => {
-    const handler = () => {
+    const scrollContainer = getScrollContainer()
+
+    if (!scrollContainer) {
+      return
+    }
+
+    let frameId = 0
+
+    const updateActiveSection = () => {
+      const containerRect = scrollContainer.getBoundingClientRect()
+      const anchorTop = containerRect.top + 120
       const offsets: { id: ArchitectureSectionId; top: number }[] = []
+
       architectureSections.forEach(section => {
         const el = document.getElementById(section.id)
         if (el) {
           const rect = el.getBoundingClientRect()
-          offsets.push({ id: section.id, top: Math.abs(rect.top - 96) })
+          offsets.push({ id: section.id, top: Math.abs(rect.top - anchorTop) })
         }
       })
+
       if (offsets.length) {
         offsets.sort((a, b) => a.top - b.top)
-        if (offsets[0].id !== activeSection) {
-          setActiveSection(offsets[0].id)
-        }
+        setActiveSection(prev => (prev === offsets[0].id ? prev : offsets[0].id))
       }
     }
-    window.addEventListener('scroll', handler, { passive: true })
-    return () => window.removeEventListener('scroll', handler)
-  }, [activeSection])
+
+    const handler = () => {
+      cancelAnimationFrame(frameId)
+      frameId = requestAnimationFrame(updateActiveSection)
+    }
+
+    scrollContainer.addEventListener('scroll', handler, { passive: true })
+    window.addEventListener('resize', handler)
+    handler()
+
+    return () => {
+      cancelAnimationFrame(frameId)
+      scrollContainer.removeEventListener('scroll', handler)
+      window.removeEventListener('resize', handler)
+    }
+  }, [getScrollContainer])
 
   return (
     <div className="flex h-full min-h-0 gap-4 lg:gap-6">
-      <ScrollArea className="flex-1 min-w-0 rounded-2xl border border-white/70 bg-gradient-to-b from-white/95 via-white/90 to-indigo-50/30 shadow-[0_8px_30px_-12px_rgba(79,70,229,0.25)] backdrop-blur-sm dark:border-slate-800/80 dark:from-slate-950/95 dark:via-slate-950/90 dark:to-indigo-950/20 dark:shadow-[0_8px_40px_-16px_rgba(0,0,0,0.65)]">
+      <ScrollArea
+        ref={scrollAreaRef}
+        className="flex-1 min-w-0 rounded-2xl border border-white/70 bg-gradient-to-b from-white/95 via-white/90 to-indigo-50/30 shadow-[0_8px_30px_-12px_rgba(79,70,229,0.25)] backdrop-blur-sm dark:border-slate-800/80 dark:from-slate-950/95 dark:via-slate-950/90 dark:to-indigo-950/20 dark:shadow-[0_8px_40px_-16px_rgba(0,0,0,0.65)]"
+      >
         <div className="mx-auto flex max-w-5xl flex-col gap-12 px-4 py-8 sm:px-8 sm:py-10 lg:px-10 lg:py-12">
           <header className="relative overflow-hidden rounded-2xl border border-indigo-100/80 bg-gradient-to-br from-indigo-500/[0.07] via-violet-500/[0.05] to-transparent px-5 py-6 dark:border-indigo-900/40 dark:from-indigo-500/10 dark:via-violet-600/5">
             <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gradient-to-br from-indigo-400/20 to-fuchsia-400/10 blur-3xl dark:from-indigo-500/15 dark:to-fuchsia-500/10" />

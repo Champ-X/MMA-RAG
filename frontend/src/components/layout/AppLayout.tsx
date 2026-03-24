@@ -4,6 +4,7 @@ import { Database, Settings, MessageSquare, User, Moon, Sun, Network } from 'luc
 import { Avatar } from '@/components/ui/avatar'
 import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
 import { useChatStore } from '@/store/useChatStore'
+import { useConfigStore } from '@/store/useConfigStore'
 import { useTheme } from '@/hooks/useTheme'
 import { cn } from '@/lib/utils'
 import ChatInterface from '@/components/chat/ChatInterface'
@@ -51,7 +52,8 @@ export function AppLayout() {
   const location = useLocation()
   const { getActiveSession } = useChatStore()
   const [inspectorOpen, setInspectorOpen] = useState(false)
-  const { theme, setTheme } = useTheme()
+  const { resolvedTheme, setTheme } = useTheme()
+  const { updateSystemConfig, markAsSaved } = useConfigStore()
 
   const session = getActiveSession()
   const lastAssistant = session?.messages
@@ -60,7 +62,10 @@ export function AppLayout() {
   const citations = lastAssistant?.citations ?? []
 
   const toggleTheme = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark')
+    const nextTheme = resolvedTheme === 'dark' ? 'light' : 'dark'
+    setTheme(nextTheme)
+    updateSystemConfig({ theme: nextTheme })
+    markAsSaved()
   }
 
   const getActiveView = () => {
@@ -140,7 +145,7 @@ export function AppLayout() {
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1e293b]'
             )}
           >
-            {theme === 'dark' ? <Sun className="h-5 w-5" strokeWidth={2.25} /> : <Moon className="h-5 w-5" strokeWidth={2.25} />}
+            {resolvedTheme === 'dark' ? <Sun className="h-5 w-5" strokeWidth={2.25} /> : <Moon className="h-5 w-5" strokeWidth={2.25} />}
           </button>
 
           <span title="用户" className="block">
