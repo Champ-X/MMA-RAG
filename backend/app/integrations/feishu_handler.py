@@ -460,6 +460,14 @@ def on_im_message_read_sync(_data: Any) -> None:
     return
 
 
+def on_bot_p2p_chat_entered_sync(_data: Any) -> None:
+    """
+    用户进入与机器人的单聊（im.chat.access_event.bot_p2p_chat_entered_v1）。
+    业务无需处理，但必须注册，否则 Lark 会报 processor not found。
+    """
+    return
+
+
 def on_im_message_sync(data: Any) -> None:
     """在飞书 WS 线程中调用：尽快返回。"""
     feishu_state.touch_im_receive()
