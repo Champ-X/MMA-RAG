@@ -403,19 +403,6 @@ def _refs_collapsible_element(ref_markdown: str) -> Dict[str, Any]:
     }
 
 
-def _split_slots_audio(
-    slots: List[Tuple[str, Any]],
-) -> Tuple[List[Tuple[str, Any]], List[FeishuOutboundMessage]]:
-    rest: List[Tuple[str, Any]] = []
-    audios: List[FeishuOutboundMessage] = []
-    for k, p in slots:
-        if k == "audio" and isinstance(p, FeishuOutboundMessage):
-            audios.append(p)
-        else:
-            rest.append((k, p))
-    return rest, audios
-
-
 def _stream_md_element_id(index: int) -> str:
     """须字母开头、≤20 字符，与同卡其它 element_id 不重复。"""
     return f"m{index:03d}"
@@ -439,6 +426,24 @@ def _img_slot_ref_index(payload: Any, refs: List[Dict[str, Any]]) -> Optional[in
     return None
 
 
+def _audio_slot_ref_index(payload: Any, refs: List[Dict[str, Any]]) -> Optional[int]:
+    if not isinstance(payload, FeishuOutboundMessage):
+        return None
+    kb_id = str(payload.kb_id or "")
+    fp = str(payload.file_path or "")
+    if not fp:
+        return None
+    for idx, r in enumerate(refs, start=1):
+        if (r.get("type") or "").lower() != "audio":
+            continue
+        md = r.get("metadata") or {}
+        if kb_id and str(md.get("kb_id") or "") != kb_id:
+            continue
+        if str(r.get("file_path") or "") == fp:
+            return idx
+    return None
+
+
 def _ordered_unique_ints(vals: List[int]) -> List[int]:
     out: List[int] = []
     seen: set[int] = set()
@@ -450,39 +455,103 @@ def _ordered_unique_ints(vals: List[int]) -> List[int]:
     return out
 
 
-def _reflow_trailing_images_by_citations(
+def _is_md_list_item_start(line: str) -> bool:
+    return bool(re.match(r"^\s*(?:[-*+]\s+|\d+\.\s+)", line or ""))
+
+
+def _split_md_for_media_reflow(text: str) -> List[str]:
+    """
+    为媒体回插做更细粒度拆分：
+    - 先按空段拆大块
+    - 再把列表项单独拆开，避免多个引用条目共用一个插入点
+    """
+    units: List[str] = []
+    for chunk in re.split(r"\n{2,}", str(text or "")):
+        block = chunk.strip()
+        if not block:
+            continue
+        lines = block.splitlines()
+        if len(lines) <= 1:
+            units.append(block)
+            continue
+
+        local_units: List[str] = []
+        buf: List[str] = []
+        list_buf: List[str] = []
+
+        def flush_buf() -> None:
+            if buf:
+                local_units.append("\n".join(buf).strip())
+                buf.clear()
+
+        def flush_list() -> None:
+            if list_buf:
+                local_units.append("\n".join(list_buf).strip())
+                list_buf.clear()
+
+        for line in lines:
+            if _is_md_list_item_start(line):
+                flush_buf()
+                flush_list()
+                list_buf.append(line)
+            else:
+                if list_buf:
+                    list_buf.append(line)
+                else:
+                    buf.append(line)
+
+        flush_buf()
+        flush_list()
+        units.extend(u for u in local_units if u.strip())
+    return units
+
+
+def _slot_ref_index(
+    media_kind: str,
+    payload: Any,
+    refs: List[Dict[str, Any]],
+) -> Optional[int]:
+    if media_kind == "img":
+        return _img_slot_ref_index(payload, refs)
+    if media_kind == "audio":
+        return _audio_slot_ref_index(payload, refs)
+    return None
+
+
+def _reflow_trailing_media_by_citations(
     slots: List[Tuple[str, Any]],
     refs: List[Dict[str, Any]],
+    media_kind: str,
 ) -> List[Tuple[str, Any]]:
     """
-    presenter 会把未内联图片统一追加到末尾。这里将尾部图片按正文中的 [n] 引用号
-    回插到命中段落后；已在正文中间的图片保持原位不动。
+    presenter 会把未内联媒体统一追加到末尾。这里将尾部媒体按正文中的 [n] 引用号
+    回插到命中段落后；已在正文中间的媒体保持原位不动。
     """
     if not slots:
         return []
 
-    last_non_img = -1
+    last_non_media = -1
     for i, (kind, _) in enumerate(slots):
-        if kind != "img":
-            last_non_img = i
-    if last_non_img < 0 or last_non_img == len(slots) - 1:
+        if kind != media_kind:
+            last_non_media = i
+    if last_non_media < 0 or last_non_media == len(slots) - 1:
         return list(slots)
 
-    lead = list(slots[: last_non_img + 1])
-    tail = list(slots[last_non_img + 1 :])
-    if not tail or any(kind != "img" for kind, _ in tail):
+    lead = list(slots[: last_non_media + 1])
+    tail = list(slots[last_non_media + 1 :])
+    if not tail or any(kind != media_kind for kind, _ in tail):
         return list(slots)
 
-    img_by_ref: Dict[int, List[Tuple[str, Any]]] = {}
+    media_by_ref: Dict[int, List[Tuple[str, Any]]] = {}
     tail_unmapped: List[Tuple[str, Any]] = []
     for slot in tail:
-        ref_idx = _img_slot_ref_index(slot[1], refs)
+        ref_idx = _slot_ref_index(media_kind, slot[1], refs)
         if ref_idx is None:
             tail_unmapped.append(slot)
         else:
-            img_by_ref.setdefault(ref_idx, []).append(slot)
+            media_by_ref.setdefault(ref_idx, []).append(slot)
 
-    if not img_by_ref:
+    if not media_by_ref:
         return list(slots)
 
     out: List[Tuple[str, Any]] = []
@@ -491,7 +560,7 @@ def _reflow_trailing_images_by_citations(
         if kind != "md":
             out.append((kind, payload))
             continue
-        parts = [p.strip() for p in re.split(r"\n{2,}", str(payload)) if p.strip()]
+        parts = _split_md_for_media_reflow(str(payload))
         if not parts:
             continue
         for part in parts:
@@ -502,17 +571,74 @@ def _reflow_trailing_images_by_citations(
             for ref_idx in cited:
                 if ref_idx in used_refs:
                     continue
-                imgs = img_by_ref.get(ref_idx) or []
-                if imgs:
-                    out.extend(imgs)
+                media = media_by_ref.get(ref_idx) or []
+                if media:
+                    out.extend(media)
                     used_refs.add(ref_idx)
 
-    for ref_idx in sorted(img_by_ref.keys()):
+    for ref_idx in sorted(media_by_ref.keys()):
         if ref_idx in used_refs:
             continue
-        out.extend(img_by_ref[ref_idx])
+        out.extend(media_by_ref[ref_idx])
     out.extend(tail_unmapped)
     return out
+
+
+async def _inline_audio_slots(
+    *,
+    slots: List[Tuple[str, Any]],
+    settings: Settings,
+    token: Optional[str],
+) -> Tuple[List[Tuple[str, Any]], List[FeishuOutboundMessage]]:
+    """
+    将 audio 槽位尽量转为卡片内联 audio 组件；失败的音频保留为外发回退消息。
+    """
+    out: List[Tuple[str, Any]] = []
+    fallback: List[FeishuOutboundMessage] = []
+    next_audio_id = 1
+    use_opus = bool(getattr(settings, "feishu_rag_card_opus_audio", True))
+
+    for kind, payload in slots:
+        if kind != "audio":
+            out.append((kind, payload))
+            continue
+        item = payload if isinstance(payload, FeishuOutboundMessage) else None
+        if item is None or not item.audio_bytes:
+            continue
+        if not use_opus or not token:
+            fallback.append(item)
+            continue
+
+        name = item.audio_name or "audio.bin"
+        suf = Path(name).suffix.lower()
+        raw = item.audio_bytes
+        dur_ms = _probe_duration_ms(raw, settings)
+        opus_bytes: Optional[bytes] = raw if suf == ".opus" else _bytes_to_opus(raw, suf, settings)
+        if not opus_bytes:
+            fallback.append(item)
+            continue
+        fk = feishu_upload_im_file_with_duration_sync(
+            token=token,
+            file_bytes=opus_bytes,
+            filename=re.sub(r"\.[^.]+$", "", name) + ".opus" if "." in name else name + ".opus",
+            file_type="opus",
+            duration_ms=dur_ms,
+        )
+        if not fk:
+            fallback.append(item)
+            continue
+        out.append(
+            (
+                "audio",
+                {
+                    "file_key": fk,
+                    "audio_id": str(next_audio_id),
+                },
+            )
+        )
+        next_audio_id += 1
+
+    return out, fallback
 
 
 def _slots_to_elements(
@@ -563,6 +689,15 @@ def _slots_to_elements(
                             str(payload.get("name") or "配图"),
                         )
                     )
+            elif kind == "audio":
+                flush_md_stream()
+                if isinstance(payload, dict) and str(payload.get("file_key") or "").strip():
+                    elems.append(
+                        _audio_element(
+                            file_key=str(payload.get("file_key") or ""),
+                            audio_id=str(payload.get("audio_id") or "1"),
+                        )
+                    )
         flush_md_stream()
         return elems, stream_specs, md_idx
 
@@ -591,18 +726,17 @@ def _slots_to_elements(
                         str(payload.get("name") or "配图"),
                     )
                 )
+        elif kind == "audio":
+            flush_md_ns()
+            if isinstance(payload, dict) and str(payload.get("file_key") or "").strip():
+                elems_ns.append(
+                    _audio_element(
+                        file_key=str(payload.get("file_key") or ""),
+                        audio_id=str(payload.get("audio_id") or "1"),
+                    )
+                )
     flush_md_ns()
     return elems_ns, [], md_index_base
-
-
-def _inject_audio_elements(
-    card: Dict[str, Any],
-    audio_entries: List[Tuple[str, str]],
-) -> None:
-    body = card.setdefault("body", {})
-    el = body.setdefault("elements", [])
-    for fk, aid in audio_entries:
-        el.append(_audio_element(file_key=fk, audio_id=str(aid)))
 
 
 async def try_send_feishu_rag_card_v2(
@@ -628,18 +762,34 @@ async def try_send_feishu_rag_card_v2(
         logger.warning("飞书卡片 v2：未配置 FEISHU_APP_ID / FEISHU_APP_SECRET")
         return False
 
-    slots = await _flatten_outbound_to_slots(client, resolved)
-    slots_na, audio_msgs = _split_slots_audio(slots)
-
     refs_list: List[Dict[str, Any]] = list(
         (generation_result or {}).get("references_used") or []
     )
-    slots_na = _reflow_trailing_images_by_citations(slots_na, refs_list)
-    slots_before, slots_after, ref_collapsed_md = _split_slots_for_reference_collapsible(
-        slots_na, refs_list
-    )
+    slots = await _flatten_outbound_to_slots(client, resolved)
+    slots = _reflow_trailing_media_by_citations(slots, refs_list, "img")
+    slots = _reflow_trailing_media_by_citations(slots, refs_list, "audio")
 
     streaming = bool(getattr(settings, "feishu_rag_card_streaming", False))
+    token: Optional[str] = None
+    need_audio_token = any(kind == "audio" for kind, _ in slots) and bool(
+        getattr(settings, "feishu_rag_card_opus_audio", True)
+    )
+    if streaming or need_audio_token:
+        token = feishu_tenant_access_token_sync(app_id=app_id, app_secret=app_secret)
+    if streaming and not token:
+        return False
+
+    slots, audio_fallback = await _inline_audio_slots(
+        slots=slots,
+        settings=settings,
+        token=token,
+    )
+    has_audio = any(kind == "audio" for kind, _ in slots)
+
+    slots_before, slots_after, ref_collapsed_md = _split_slots_for_reference_collapsible(
+        slots, refs_list
+    )
+
     stream_ph = " "
 
     elems_a, specs_a, md_next = _slots_to_elements(
@@ -660,47 +810,6 @@ async def try_send_feishu_rag_card_v2(
     elems = elems_a + ([collapse_el] if collapse_el else []) + elems_b
     stream_md_specs = specs_a + specs_b
 
-    # 处理音频 → OPUS + file_key（失败则记录待会外发）
-    use_opus = bool(getattr(settings, "feishu_rag_card_opus_audio", True))
-    audio_card: List[Tuple[str, str]] = []
-    audio_fallback: List[FeishuOutboundMessage] = []
-    token: Optional[str] = None
-
-    if use_opus and audio_msgs:
-        token = feishu_tenant_access_token_sync(app_id=app_id, app_secret=app_secret)
-
-    for i, item in enumerate(audio_msgs, start=1):
-        if not item.audio_bytes:
-            continue
-        if not use_opus or not token:
-            audio_fallback.append(item)
-            continue
-        name = item.audio_name or "audio.bin"
-        suf = Path(name).suffix.lower()
-        raw = item.audio_bytes
-        dur_ms = _probe_duration_ms(raw, settings)
-        opus_bytes: Optional[bytes] = None
-        if suf == ".opus":
-            opus_bytes = raw
-        else:
-            opus_bytes = _bytes_to_opus(raw, suf, settings)
-        if not opus_bytes:
-            audio_fallback.append(item)
-            continue
-        fk = feishu_upload_im_file_with_duration_sync(
-            token=token,
-            file_bytes=opus_bytes,
-            filename=re.sub(r"\.[^.]+$", "", name) + ".opus" if "." in name else name + ".opus",
-            file_type="opus",
-            duration_ms=dur_ms,
-        )
-        if not fk:
-            audio_fallback.append(item)
-            continue
-        audio_card.append((fk, str(i)))
-
-    has_audio = len(audio_card) > 0
-
     card: Dict[str, Any] = {
         "schema": "2.0",
         "config": _card_config(
@@ -720,10 +829,7 @@ async def try_send_feishu_rag_card_v2(
         },
     }
 
-    if audio_card:
-        _inject_audio_elements(card, audio_card)
-
-    if not elems and not audio_card:
+    if not elems and not audio_fallback:
         return False
 
     if _estimate_card_bytes(card) > _MAX_CARD_JSON_BYTES:
@@ -748,11 +854,6 @@ async def try_send_feishu_rag_card_v2(
         return True
 
     # —— 流式：创建实体 → 回复 card_id → PUT 正文 → 关闭 streaming ——
-    if token is None:
-        token = feishu_tenant_access_token_sync(app_id=app_id, app_secret=app_secret)
-    if not token:
-        return False
-
     card_id = await asyncio.to_thread(feishu_cardkit_create_card_sync, token=token, card=card)
     if not card_id:
         return False
