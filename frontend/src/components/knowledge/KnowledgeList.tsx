@@ -1848,32 +1848,72 @@ const KnowledgeList: React.FC = () => {
     return (
       <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative">
         {/* Header */}
-        <div className="relative px-8 py-8 sm:py-9 border-b border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-indigo-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-indigo-950/40" />
-          <div className="absolute top-0 right-0 w-[480px] h-[280px] bg-gradient-to-bl from-indigo-100/50 to-transparent dark:from-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
-          <div className="absolute bottom-0 left-0 w-[320px] h-[200px] bg-gradient-to-tr from-fuchsia-100/40 to-transparent dark:from-fuchsia-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/4" />
-          <div className="relative z-10 flex flex-wrap items-center justify-between gap-6">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-lg shadow-indigo-500/25 dark:shadow-indigo-500/20">
-                <Database size={24} strokeWidth={2} />
+        <div className="relative -mt-2 overflow-hidden border-b border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-950 md:-mt-3">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300/60 to-transparent dark:via-indigo-500/30" />
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-50/95 via-white to-indigo-50/55 dark:from-slate-950 dark:via-slate-950 dark:to-indigo-950/35" />
+          <div className="absolute right-0 top-0 h-[320px] w-[min(560px,72vw)] translate-x-1/4 -translate-y-1/2 rounded-full bg-gradient-to-bl from-indigo-200/45 via-indigo-100/18 to-transparent blur-3xl dark:from-indigo-500/12 dark:via-indigo-400/6" />
+          <div className="absolute bottom-0 left-0 h-[220px] w-[min(380px,55vw)] -translate-x-1/4 translate-y-1/2 rounded-full bg-gradient-to-tr from-fuchsia-200/35 via-fuchsia-100/12 to-transparent blur-3xl dark:from-fuchsia-500/10 dark:via-fuchsia-400/5" />
+
+          <div className="relative z-10 px-5 pb-4 pt-3 sm:px-8 sm:pb-5 sm:pt-4">
+            <div className="rounded-[22px] border border-white/75 bg-white/78 p-4 shadow-[0_18px_50px_-24px_rgba(79,70,229,0.35)] backdrop-blur-xl dark:border-white/8 dark:bg-slate-950/55 dark:shadow-[0_18px_50px_-24px_rgba(0,0,0,0.55)] sm:px-5 sm:py-4">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <div className="min-w-0 flex flex-1 flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">
+                  <div className="shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-600 to-fuchsia-600 text-white shadow-[0_10px_24px_-10px_rgba(99,102,241,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] ring-1 ring-inset ring-white/25 dark:shadow-[0_12px_26px_-12px_rgba(0,0,0,0.55)]">
+                        <Layers size={18} strokeWidth={2.1} />
+                      </div>
+                      <h1 className="text-[2.05rem] font-bold tracking-tight text-slate-950 dark:text-slate-50 sm:text-[2.2rem]">
+                        知识库
+                      </h1>
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    <p className="max-w-4xl text-sm leading-6 text-slate-600 dark:text-slate-400 sm:text-[15px]">
+                      集中管理文档、图片与音视频内容，自动完成索引、解析与主题画像，支撑 RAG 检索和多轮对话。
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white/90 px-3 py-1.5 text-slate-600 shadow-sm dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-300">
+                        <span aria-hidden>📄</span>
+                        文档
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-200/80 bg-fuchsia-50/90 px-3 py-1.5 text-fuchsia-700 shadow-sm dark:border-fuchsia-500/25 dark:bg-fuchsia-500/10 dark:text-fuchsia-200">
+                        <span aria-hidden>🖼️</span>
+                        图片
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/80 bg-violet-50/90 px-3 py-1.5 text-violet-700 shadow-sm dark:border-violet-500/25 dark:bg-violet-500/10 dark:text-violet-200">
+                        <span aria-hidden>🎵</span>
+                        音频
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50/90 px-3 py-1.5 text-emerald-700 shadow-sm dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200">
+                        <span aria-hidden>🎥</span>
+                        视频
+                      </span>
+                      <span className="inline-flex items-center rounded-full border border-indigo-200/80 bg-indigo-50/90 px-3 py-1.5 text-indigo-700 shadow-sm dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-200">
+                        自动索引
+                      </span>
+                      <span className="inline-flex items-center rounded-full border border-indigo-200/80 bg-indigo-50/90 px-3 py-1.5 text-indigo-700 shadow-sm dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-200">
+                        主题画像
+                      </span>
+                      <span className="inline-flex items-center rounded-full border border-indigo-200/80 bg-indigo-50/90 px-3 py-1.5 text-indigo-700 shadow-sm dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-200">
+                        检索增强
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="shrink-0 xl:pl-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateModal(true)}
+                    className="group inline-flex min-h-[44px] w-full items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_-10px_rgba(99,102,241,0.5),inset_0_1px_0_rgba(255,255,255,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:from-indigo-500 hover:via-violet-500 hover:to-fuchsia-500 hover:shadow-[0_18px_34px_-10px_rgba(168,85,247,0.42),inset_0_1px_0_rgba(255,255,255,0.22)] active:translate-y-0 sm:w-auto sm:min-w-[9.5rem]"
+                  >
+                    <Plus size={18} strokeWidth={2.8} className="shrink-0 transition-transform duration-200 group-hover:rotate-90" />
+                    新建知识库
+                  </button>
+                </div>
               </div>
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
-                  知识库
-                </h1>
-                <p className="mt-2 text-base text-slate-600 dark:text-slate-400 whitespace-nowrap overflow-x-auto scrollbar-hide tracking-wide">
-                  创建多模态知识库，上传文档、图片、音视频，查看索引与主题画像，为 RAG 检索提供数据基础。
-                </p>
-              </div>
-            </div>
-            <div className="shrink-0">
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="group inline-flex items-center gap-2.5 bg-gradient-to-r from-indigo-600 to-fuchsia-600 hover:from-indigo-500 hover:to-fuchsia-500 text-white px-6 py-3 rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-fuchsia-500/25 font-medium text-[15px] leading-snug hover:-translate-y-0.5 active:translate-y-0 min-h-[44px]"
-              >
-                <Plus size={20} className="transition-transform duration-200 group-hover:rotate-90 shrink-0" />
-                新建知识库
-              </button>
             </div>
           </div>
         </div>
@@ -1934,23 +1974,31 @@ const KnowledgeList: React.FC = () => {
                           </p>
                           <div className="mt-2 pt-2.5 border-t border-white/30 flex items-center justify-between gap-2 text-xs text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
                             <div className="flex items-center gap-2 min-h-[1rem] min-w-0 flex-1 flex-wrap">
-                              <span className="inline-flex items-center gap-1.5 shrink-0">
-                                <FileText size={12} className="shrink-0" />
+                              <span className="inline-flex items-center gap-1 shrink-0">
+                                <span className="text-[13px] leading-none" aria-hidden>
+                                  📄
+                                </span>
                                 {kb.stats?.documents ?? 0} 个文件
                               </span>
                               <span className="opacity-80 shrink-0">·</span>
-                              <span className="inline-flex items-center gap-1.5 shrink-0">
-                                <ImageIcon size={12} className="shrink-0" />
+                              <span className="inline-flex items-center gap-1 shrink-0">
+                                <span className="text-[13px] leading-none" aria-hidden>
+                                  🖼️
+                                </span>
                                 {kb.stats?.images ?? 0} 张图片
                               </span>
                               <span className="opacity-80 shrink-0">·</span>
-                              <span className="inline-flex items-center gap-1.5 shrink-0">
-                                <Music size={12} className="shrink-0" />
+                              <span className="inline-flex items-center gap-1 shrink-0">
+                                <span className="text-[13px] leading-none" aria-hidden>
+                                  🎵
+                                </span>
                                 {kb.stats?.audio ?? 0} 条音频
                               </span>
                               <span className="opacity-80 shrink-0">·</span>
-                              <span className="inline-flex items-center gap-1.5 shrink-0">
-                                <Video size={12} className="shrink-0" />
+                              <span className="inline-flex items-center gap-1 shrink-0">
+                                <span className="text-[13px] leading-none" aria-hidden>
+                                  🎥
+                                </span>
                                 {kb.stats?.video ?? 0} 个视频
                               </span>
                             </div>
@@ -2013,23 +2061,31 @@ const KnowledgeList: React.FC = () => {
                       </div>
                       <div className="flex-shrink-0 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-xs text-slate-400">
                         <div className="flex items-center gap-2 min-h-[1rem] min-w-0 flex-1 flex-wrap">
-                          <span className="inline-flex items-center gap-1.5">
-                            <FileText size={12} className="shrink-0" />
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-[13px] leading-none" aria-hidden>
+                              📄
+                            </span>
                             {kb.stats?.documents ?? 0} 个文件
                           </span>
                           <span className="opacity-70">·</span>
-                          <span className="inline-flex items-center gap-1.5">
-                            <ImageIcon size={12} className="shrink-0" />
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-[13px] leading-none" aria-hidden>
+                              🖼️
+                            </span>
                             {kb.stats?.images ?? 0} 张图片
                           </span>
                           <span className="opacity-70">·</span>
-                          <span className="inline-flex items-center gap-1.5">
-                            <Music size={12} className="shrink-0" />
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-[13px] leading-none" aria-hidden>
+                              🎵
+                            </span>
                             {kb.stats?.audio ?? 0} 条音频
                           </span>
                           <span className="opacity-70">·</span>
-                          <span className="inline-flex items-center gap-1.5">
-                            <Video size={12} className="shrink-0" />
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-[13px] leading-none" aria-hidden>
+                              🎥
+                            </span>
                             {kb.stats?.video ?? 0} 个视频
                           </span>
                         </div>
