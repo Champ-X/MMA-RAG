@@ -104,6 +104,7 @@ echo ""
 echo "💡 提示:"
 echo "  - 使用 Ctrl+C 停止所有服务"
 echo "  - 日志输出在前台，按 Ctrl+C 可查看实时日志"
+echo "  - 首次部署预载 BGE-M3/CLIP/CLAP：在 backend/.env 设置 PRELOAD_LOCAL_MODELS_ON_STARTUP=true"
 echo ""
 echo "按 Ctrl+C 停止服务..."
 

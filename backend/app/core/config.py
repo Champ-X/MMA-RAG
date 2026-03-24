@@ -6,6 +6,7 @@
 from typing import Optional, List, Dict, Any, Union
 from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from loguru import logger
 import os
 import re
 from pathlib import Path
@@ -174,6 +175,20 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="DEFAULT_EMBEDDING_MODEL"
     )
+
+    # BGE-M3 稀疏编码：模型 ID 或本机目录；无法直连 huggingface.co 时在 .env 设置 HF_ENDPOINT（如 https://hf-mirror.com）
+    bge_m3_model_id: str = Field(default="BAAI/bge-m3", validation_alias="BGE_M3_MODEL_ID")
+    bge_m3_use_fp16: bool = Field(default=False, validation_alias="BGE_M3_USE_FP16")
+    hf_endpoint: Optional[str] = Field(default=None, validation_alias="HF_ENDPOINT")
+    hf_hub_download_timeout: Optional[int] = Field(
+        default=None,
+        validation_alias="HF_HUB_DOWNLOAD_TIMEOUT",
+    )
+    # 为 True 时在服务接受流量前预载 BGE-M3/CLIP/CLAP（启动变慢、占用显存/内存；首次部署可改善首请求体验）
+    preload_local_models_on_startup: bool = Field(
+        default=False,
+        validation_alias="PRELOAD_LOCAL_MODELS_ON_STARTUP",
+    )
     default_chat_model: Optional[str] = Field(
         default=None,
         validation_alias="DEFAULT_CHAT_MODEL"
@@ -298,6 +313,18 @@ class Settings(BaseSettings):
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
 
+
+def apply_huggingface_env_from_settings(s: Settings) -> None:
+    """将 .env 中的 HF 相关配置写入 os.environ，供 huggingface_hub / transformers 全库使用（BGE-M3、CLIP、CLAP、MinerU 等）。"""
+    if s.hf_endpoint:
+        v = s.hf_endpoint.strip().rstrip("/")
+        os.environ["HF_ENDPOINT"] = v
+        logger.info("Hugging Face 端点已应用（HF_ENDPOINT）: {}", v)
+    if s.hf_hub_download_timeout is not None:
+        os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = str(int(s.hf_hub_download_timeout))
+
+
 # 全局设置实例
 settings = Settings()  # type: ignore[call-arg]
+apply_huggingface_env_from_settings(settings)
 settings.ensure_directories()

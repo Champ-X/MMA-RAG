@@ -34,8 +34,14 @@ class _SuppressProgressPollAccessLog(logging.Filter):
 
 @asynccontextmanager
 async def _app_lifespan(app: FastAPI):
+    from app.core.config import settings
+    from app.core.model_preload import preload_local_inference_models_sync
     from app.integrations import feishu_state
     from app.integrations.feishu_ws import start_feishu_ws_thread
+
+    if settings.preload_local_models_on_startup:
+        # 模型加载为同步阻塞 + 可能长时间下载，放到线程池避免卡住事件循环
+        await asyncio.to_thread(preload_local_inference_models_sync)
 
     feishu_state.main_loop = asyncio.get_running_loop()
     start_feishu_ws_thread()

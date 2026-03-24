@@ -44,7 +44,14 @@ class BGEM3SparseEncoder:
                 self._initialized = True
                 logger.info("✓ BGE-M3 模型加载完成！")
             except Exception as e:
-                logger.error(f"BGE-M3 模型加载失败: {str(e)}")
+                err = str(e)
+                if "huggingface.co" in err or "ConnectTimeout" in err or "timed out" in err.lower():
+                    logger.error(
+                        "无法访问 Hugging Face：可在 backend/.env 设置 HF_ENDPOINT=https://hf-mirror.com "
+                        "（或本机代理），或将模型下载到目录后设置 BGE_M3_MODEL_ID 指向该路径；"
+                        "亦可先运行: HF_ENDPOINT=https://hf-mirror.com python tests/preload_bge_m3.py"
+                    )
+                logger.error(f"BGE-M3 模型加载失败: {err}")
                 raise
     
     def encode_query(self, text: str) -> Dict[str, Any]:
@@ -184,5 +191,8 @@ def get_sparse_encoder() -> BGEM3SparseEncoder:
     """获取全局 BGE-M3 稀疏向量编码器实例"""
     global _sparse_encoder
     if _sparse_encoder is None:
-        _sparse_encoder = BGEM3SparseEncoder()
+        _sparse_encoder = BGEM3SparseEncoder(
+            model_id=settings.bge_m3_model_id,
+            use_fp16=settings.bge_m3_use_fp16,
+        )
     return _sparse_encoder
