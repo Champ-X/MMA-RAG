@@ -32,7 +32,7 @@ export function ConversationTabs({
   }, [activeConversationId])
 
   return (
-    <div className="relative flex-shrink-0 px-3 pt-3">
+    <div className="relative flex-shrink-0 px-3 pt-1">
       <div className="relative overflow-hidden rounded-[22px] border-[1.5px] border-slate-300/95 bg-white/84 ring-1 ring-slate-200/80 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.16),0_16px_36px_-28px_rgba(76,29,149,0.3)] backdrop-blur-xl dark:border-slate-600/90 dark:bg-slate-950/68 dark:ring-white/[0.08] dark:shadow-[0_16px_34px_-24px_rgba(0,0,0,0.6),0_18px_36px_-30px_rgba(76,29,149,0.28)]">
         <div
           className="pointer-events-none absolute inset-[1.5px] rounded-[20px] border border-white/75 dark:border-white/[0.06]"
@@ -122,31 +122,33 @@ export function ConversationTabs({
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center border-l border-slate-200/90 bg-white/75 py-2 pl-2 pr-3 backdrop-blur-sm dark:border-slate-600/80 dark:bg-slate-950/75">
+          <div className="flex shrink-0 items-center border-l border-slate-200/90 bg-gradient-to-b from-white/90 to-indigo-50/40 py-2 pl-2.5 pr-3 backdrop-blur-sm dark:border-slate-600/80 dark:from-slate-950/90 dark:to-indigo-950/35">
             <button
               type="button"
               title="新建对话"
               aria-label="新建对话"
               className={cn(
-                'group relative isolate grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-dashed transition-all duration-200 ease-out',
-                'border-indigo-200/90 bg-white/58 text-indigo-500',
-                'shadow-[0_10px_20px_-16px_rgba(99,102,241,0.7)]',
-                'hover:border-indigo-300/90 hover:bg-white/85 hover:text-indigo-700',
-                'hover:shadow-[0_14px_24px_-18px_rgba(91,33,182,0.75)]',
-                'active:scale-[0.96]',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/65 focus-visible:ring-offset-2 focus-visible:ring-offset-violet-100/90',
-                'dark:border-violet-400/25 dark:bg-slate-900/58 dark:text-violet-100',
-                'dark:shadow-[0_12px_22px_-18px_rgba(76,29,149,0.9)]',
-                'dark:hover:border-violet-300/35 dark:hover:bg-slate-900/85 dark:hover:text-white',
-                'dark:hover:shadow-[0_16px_28px_-20px_rgba(99,102,241,0.75)]',
-                'dark:focus-visible:ring-offset-indigo-950'
+                'group relative isolate grid h-11 w-11 shrink-0 place-items-center rounded-2xl transition-all duration-200 ease-out',
+                'bg-gradient-to-br from-indigo-500 via-indigo-500 to-violet-600 text-white',
+                'shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_8px_22px_-4px_rgba(99,102,241,0.55)]',
+                'ring-[1.5px] ring-indigo-400/50 ring-offset-2 ring-offset-white/90',
+                'hover:from-indigo-600 hover:via-indigo-600 hover:to-violet-700',
+                'hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_12px_28px_-4px_rgba(91,33,182,0.55)]',
+                'active:scale-[0.95]',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/90 focus-visible:ring-offset-2 focus-visible:ring-offset-white',
+                'dark:from-indigo-500 dark:via-violet-600 dark:to-violet-700',
+                'dark:ring-indigo-300/40 dark:ring-offset-slate-950',
+                'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_8px_24px_-4px_rgba(76,29,149,0.65)]',
+                'dark:hover:from-indigo-400 dark:hover:via-violet-500 dark:hover:to-violet-600',
+                'dark:hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_14px_32px_-4px_rgba(99,102,241,0.45)]',
+                'dark:focus-visible:ring-offset-slate-950'
               )}
               onClick={onCreate}
             >
               <Plus
-                size={15}
+                size={18}
                 strokeWidth={2.75}
-                className="relative z-[1] shrink-0 transition-transform duration-200 ease-out group-hover:rotate-90 group-hover:scale-110"
+                className="relative z-[1] shrink-0 drop-shadow-sm transition-transform duration-200 ease-out group-hover:rotate-90 group-hover:scale-110"
               />
             </button>
           </div>
