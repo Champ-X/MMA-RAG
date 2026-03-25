@@ -1917,11 +1917,11 @@ const KnowledgeList: React.FC = () => {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-8">
+        <div className="min-h-0 flex-1 overflow-y-auto p-8">
           {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid auto-rows-[11rem] grid-cols-1 items-stretch md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 animate-pulse">
+                <div key={i} className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 animate-pulse">
                   <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded mb-2"></div>
                   <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-3/4"></div>
                 </div>
@@ -1934,9 +1934,10 @@ const KnowledgeList: React.FC = () => {
               <p className="mt-1 text-sm">点击上方「新建知识库」创建第一个知识库，开始上传与管理多模态数据。</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid auto-rows-[11rem] grid-cols-1 items-stretch md:grid-cols-2 lg:grid-cols-3 gap-6">
               {knowledgeBases.map((kb) => {
-                const kbCardTitleClass = 'text-lg font-bold mb-1 leading-snug'
+                const kbCardTitleClass =
+                  'line-clamp-2 min-h-0 text-base font-bold leading-snug sm:text-lg mb-0.5 break-words'
                 return (
                 <div
                   key={kb.id}
@@ -1945,8 +1946,8 @@ const KnowledgeList: React.FC = () => {
                     setViewState('detail')
                   }}
                   className={cn(
-                    'relative rounded-xl border border-slate-200 dark:border-slate-800 ring-1 ring-transparent hover:-translate-y-1.5 hover:shadow-[0_24px_44px_-22px_rgba(168,85,247,0.24)] hover:border-fuchsia-400 hover:ring-fuchsia-200/90 dark:hover:border-fuchsia-400 dark:hover:ring-fuchsia-500/35 transition-all duration-300 cursor-pointer group overflow-hidden min-h-[180px] h-full flex flex-col',
-                    kb.cover_url ? 'p-0' : 'bg-white dark:bg-slate-900 pt-5 px-5 pb-3.5'
+                    'relative flex h-full min-h-0 flex-col rounded-xl border border-slate-200 dark:border-slate-800 ring-1 ring-transparent hover:-translate-y-1.5 hover:shadow-[0_24px_44px_-22px_rgba(168,85,247,0.24)] hover:border-fuchsia-400 hover:ring-fuchsia-200/90 dark:hover:border-fuchsia-400 dark:hover:ring-fuchsia-500/35 transition-all duration-300 cursor-pointer group overflow-hidden',
+                    kb.cover_url ? 'p-0' : 'bg-white dark:bg-slate-900 px-4 pb-2.5 pt-4'
                   )}
                 >
                   {/* 有封面时：图片铺满整卡作为背景 */}
@@ -1960,17 +1961,17 @@ const KnowledgeList: React.FC = () => {
                         />
                       </div>
                       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent rounded-xl transition-all duration-300 group-hover:from-black/85 group-hover:via-black/28" />
-                      <div className="relative z-10 flex flex-col h-full min-h-0 p-3.5 transition-transform duration-300 ease-out group-hover:-translate-y-1">
+                      <div className="relative z-10 flex min-h-0 h-full flex-col p-3 transition-transform duration-300 ease-out group-hover:-translate-y-1">
                         {/* 顶部弹性空间，把标题/描述与统计条整体压到底部 */}
                         <div className="min-h-0 flex-1" />
-                        <div className="flex-shrink-0 pt-4 pb-1">
+                        <div className="flex-shrink-0 pb-0.5 pt-2.5">
                           <h3 className={cn(kbCardTitleClass, 'text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_8px_rgba(0,0,0,0.7)]')}>
                             {kb.name}
                           </h3>
-                          <p className="text-white text-sm h-9 overflow-hidden text-ellipsis leading-relaxed line-clamp-2 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_6px_rgba(0,0,0,0.6)]">
+                          <p className="line-clamp-2 h-8 overflow-hidden text-ellipsis text-sm leading-snug text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_6px_rgba(0,0,0,0.6)]">
                             {kb.description || '暂无描述'}
                           </p>
-                          <div className="mt-2 pt-2.5 border-t border-white/30 flex items-center justify-between gap-2 text-[11px] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
+                          <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-white/30 pt-2 text-[11px] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
                             <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden whitespace-nowrap">
                               <span className="inline-flex items-center gap-1 shrink-0">
                                 <span className="text-[13px] leading-none" aria-hidden>
@@ -2045,11 +2046,11 @@ const KnowledgeList: React.FC = () => {
                     <>
                       <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-indigo-100/80 blur-2xl transition-all duration-500 group-hover:scale-125 group-hover:bg-fuchsia-100/80 dark:bg-indigo-500/10 dark:group-hover:bg-fuchsia-500/12" />
                       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300/60 to-transparent opacity-70 transition-opacity duration-300 group-hover:opacity-100 dark:via-indigo-500/35" />
-                      <div className="relative min-h-0 flex-1 flex flex-col transition-transform duration-300 ease-out group-hover:-translate-y-1">
-                        <div className="mb-3 flex items-center">
-                          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-50 to-fuchsia-50 ring-1 ring-indigo-100/80 shadow-sm transition-all duration-300 group-hover:scale-[1.04] group-hover:ring-fuchsia-200/90 group-hover:shadow-md dark:from-indigo-950/60 dark:to-fuchsia-950/30 dark:ring-indigo-800/70 dark:group-hover:ring-fuchsia-800/70">
+                      <div className="relative flex min-h-0 flex-1 flex-col transition-transform duration-300 ease-out group-hover:-translate-y-1">
+                        <div className="mb-2 flex items-center">
+                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-fuchsia-50 ring-1 ring-indigo-100/80 shadow-sm transition-all duration-300 group-hover:scale-[1.04] group-hover:ring-fuchsia-200/90 group-hover:shadow-md dark:from-indigo-950/60 dark:to-fuchsia-950/30 dark:ring-indigo-800/70 dark:group-hover:ring-fuchsia-800/70">
                             <Database
-                              size={24}
+                              size={20}
                               strokeWidth={2}
                               className="shrink-0 text-indigo-600 transition-all duration-300 ease-out group-hover:text-fuchsia-600 dark:text-indigo-400 dark:group-hover:text-fuchsia-400 drop-shadow-[0_1px_1px_rgba(99,102,241,0.12)] dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
                               aria-hidden
@@ -2057,11 +2058,11 @@ const KnowledgeList: React.FC = () => {
                           </span>
                         </div>
                         <h3 className={cn(kbCardTitleClass, 'text-slate-800 transition-colors duration-300 group-hover:text-fuchsia-700 dark:text-slate-100 dark:group-hover:text-fuchsia-300')}>{kb.name}</h3>
-                        <p className="text-slate-500 dark:text-slate-400 text-sm h-10 overflow-hidden text-ellipsis leading-relaxed line-clamp-2 flex-1 min-h-0 transition-colors duration-300 group-hover:text-slate-600 dark:group-hover:text-slate-300">
+                        <p className="line-clamp-2 h-8 min-h-0 flex-1 overflow-hidden text-ellipsis text-sm leading-snug text-slate-500 transition-colors duration-300 group-hover:text-slate-600 dark:text-slate-400 dark:group-hover:text-slate-300">
                           {kb.description || '暂无描述'}
                         </p>
                       </div>
-                      <div className="flex-shrink-0 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px] text-slate-400 transition-colors duration-300 group-hover:border-fuchsia-100 dark:group-hover:border-fuchsia-900/35">
+                      <div className="mt-3 flex flex-shrink-0 items-center justify-between gap-2 border-t border-slate-100 pt-3 text-[11px] text-slate-400 transition-colors duration-300 group-hover:border-fuchsia-100 dark:border-slate-800 dark:group-hover:border-fuchsia-900/35">
                         <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden whitespace-nowrap">
                           <span className="inline-flex items-center gap-1">
                             <span className="text-[13px] leading-none" aria-hidden>
