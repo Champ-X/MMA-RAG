@@ -32,16 +32,39 @@ export function ConversationTabs({
   }, [activeConversationId])
 
   return (
-    <div className="relative flex-shrink-0 border-b border-violet-300/60 bg-gradient-to-br from-violet-200/95 via-indigo-100 to-violet-100/90 shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] backdrop-blur-md dark:border-indigo-800/50 dark:from-indigo-950 dark:via-violet-950/80 dark:to-indigo-950 dark:shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]">
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-400/40 to-transparent dark:via-indigo-400/35"
-        aria-hidden
-      />
+    <div className="relative flex-shrink-0 px-3 pt-3">
+      <div className="relative overflow-hidden rounded-[22px] border-[1.5px] border-slate-300/95 bg-white/84 ring-1 ring-slate-200/80 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.16),0_16px_36px_-28px_rgba(76,29,149,0.3)] backdrop-blur-xl dark:border-slate-600/90 dark:bg-slate-950/68 dark:ring-white/[0.08] dark:shadow-[0_16px_34px_-24px_rgba(0,0,0,0.6),0_18px_36px_-30px_rgba(76,29,149,0.28)]">
+        <div
+          className="pointer-events-none absolute inset-[1.5px] rounded-[20px] border border-white/75 dark:border-white/[0.06]"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300/70 to-transparent dark:via-violet-400/35"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute -left-8 top-0 h-20 w-28 rounded-full bg-indigo-200/45 blur-3xl dark:bg-indigo-500/12"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute right-0 top-1 h-16 w-24 rounded-full bg-fuchsia-200/40 blur-3xl dark:bg-fuchsia-500/10"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-8 bg-gradient-to-r from-white/90 to-transparent dark:from-slate-950/80"
+          aria-hidden
+        />
 
-      <div
-        ref={scrollRef}
-        className="flex min-h-0 items-center gap-2 overflow-x-auto px-3 py-1.5 scrollbar-hide"
-      >
+        <div className="relative flex min-h-0 items-stretch">
+          <div className="relative min-w-0 flex-1">
+            <div
+              className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-10 bg-gradient-to-l from-white/95 to-transparent dark:from-slate-950/90"
+              aria-hidden
+            />
+            <div
+              ref={scrollRef}
+              className="relative flex min-h-0 items-center gap-2 overflow-x-auto px-3 py-2 pr-2 scrollbar-hide"
+            >
         {conversations.map((conv) => {
           const isActive = conv.id === activeConversationId
           const firstUserMsg = conv.messages.find((m) => m.role === 'user')
@@ -54,23 +77,22 @@ export function ConversationTabs({
               key={conv.id}
               data-conv-id={conv.id}
               className={cn(
-                'group relative flex min-w-0 max-w-[min(260px,72vw)] shrink-0 items-center gap-0.5 overflow-hidden rounded-full py-1.5 pl-2.5 pr-0.5 transition-all duration-200 ease-out',
+                'group relative flex min-w-0 max-w-[min(260px,72vw)] shrink-0 items-center gap-2 overflow-hidden rounded-2xl border-[1.5px] px-3 py-2 transition-all duration-200 ease-out',
                 isActive
-                  ? 'bg-gradient-to-r from-indigo-400 to-violet-500 text-white shadow-sm shadow-indigo-500/15 ring-2 ring-white/35 dark:from-indigo-400/95 dark:to-violet-500/95 dark:shadow-indigo-950/40 dark:ring-white/22'
-                  : 'bg-violet-50/95 text-indigo-950 ring-2 ring-indigo-400/55 shadow-sm shadow-indigo-500/10 hover:bg-indigo-50 hover:text-indigo-950 hover:ring-indigo-500/65 hover:shadow-md hover:shadow-indigo-500/15 dark:bg-violet-950/55 dark:text-violet-50 dark:ring-violet-400/50 dark:shadow-md dark:shadow-violet-950/30 dark:hover:bg-violet-900/65 dark:hover:text-white dark:hover:ring-violet-300/45'
+                  ? 'border-indigo-400/95 bg-gradient-to-br from-indigo-50/95 via-white to-violet-50/80 text-slate-950 ring-1 ring-indigo-300/75 shadow-[0_12px_24px_-20px_rgba(99,102,241,0.85)] dark:border-violet-400/50 dark:bg-gradient-to-br dark:from-violet-950/90 dark:via-slate-900 dark:to-indigo-950/80 dark:text-slate-50 dark:ring-violet-400/30 dark:shadow-[0_14px_28px_-22px_rgba(76,29,149,0.9)]'
+                  : 'border-slate-300/90 bg-white/68 text-slate-600 ring-1 ring-inset ring-white/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_8px_18px_-20px_rgba(15,23,42,0.35)] hover:-translate-y-[1px] hover:border-indigo-300/85 hover:bg-white/82 hover:text-slate-900 hover:ring-indigo-100/80 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_12px_22px_-18px_rgba(99,102,241,0.45)] dark:border-slate-600/85 dark:bg-slate-900/55 dark:text-slate-300 dark:ring-white/[0.05] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:hover:border-violet-400/30 dark:hover:bg-slate-900/82 dark:hover:text-slate-50 dark:hover:ring-violet-300/10'
               )}
             >
               {isActive && (
                 <span
-                  className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 to-transparent"
+                  className="h-2.5 w-2.5 shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 shadow-[0_0_0_4px_rgba(129,140,248,0.14)] transition-all duration-200 dark:shadow-[0_0_0_4px_rgba(99,102,241,0.18)]"
                   aria-hidden
                 />
               )}
               <button
                 type="button"
                 className={cn(
-                  'relative z-[1] min-w-0 flex-1 truncate text-left text-[14px] font-medium leading-snug tracking-tight',
-                  isActive && 'text-white/95'
+                  'min-w-0 flex-1 truncate text-left text-[14px] font-medium leading-snug tracking-tight'
                 )}
                 onClick={() => onSelect(conv.id)}
               >
@@ -81,10 +103,10 @@ export function ConversationTabs({
                   type="button"
                   title="删除对话"
                   className={cn(
-                    'relative z-[1] shrink-0 rounded-full p-[3px] transition-all duration-200',
+                    'shrink-0 rounded-xl p-1 transition-all duration-200',
                     isActive
-                      ? 'text-white/70 hover:bg-white/18 hover:text-white'
-                      : 'text-indigo-400 opacity-0 hover:bg-indigo-200/70 hover:text-indigo-800 group-hover:opacity-100 dark:text-violet-400 dark:hover:bg-violet-900/50 dark:hover:text-violet-50'
+                      ? 'text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-100'
+                      : 'text-slate-400 opacity-0 hover:bg-slate-100 hover:text-slate-700 group-hover:opacity-100 dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-slate-100'
                   )}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -97,34 +119,38 @@ export function ConversationTabs({
             </div>
           )
         })}
+            </div>
+          </div>
 
-        <button
-          type="button"
-          title="新建对话"
-          aria-label="新建对话"
-          className={cn(
-            'group relative isolate grid h-8 w-8 shrink-0 place-items-center rounded-full transition-all duration-200 ease-out',
-            'bg-white/90 text-indigo-600',
-            'shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_2px_8px_-3px_rgba(99,102,241,0.2)]',
-            'ring-2 ring-indigo-300/65',
-            'hover:bg-gradient-to-br hover:from-indigo-500 hover:to-violet-600 hover:text-white hover:ring-white/40',
-            'hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_8px_22px_-4px_rgba(91,33,182,0.35)]',
-            'active:scale-[0.96]',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/65 focus-visible:ring-offset-2 focus-visible:ring-offset-violet-100/90',
-            'dark:bg-violet-950/70 dark:text-violet-100 dark:ring-violet-400/45',
-            'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_12px_-2px_rgba(0,0,0,0.45)]',
-            'dark:hover:from-indigo-500 dark:hover:to-violet-600 dark:hover:text-white dark:hover:ring-violet-200/35',
-            'dark:hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_8px_24px_-4px_rgba(99,102,241,0.32)]',
-            'dark:focus-visible:ring-offset-indigo-950'
-          )}
-          onClick={onCreate}
-        >
-          <Plus
-            size={15}
-            strokeWidth={2.75}
-            className="relative z-[1] shrink-0 transition-transform duration-200 ease-out group-hover:rotate-90"
-          />
-        </button>
+          <div className="flex shrink-0 items-center border-l border-slate-200/90 bg-white/75 py-2 pl-2 pr-3 backdrop-blur-sm dark:border-slate-600/80 dark:bg-slate-950/75">
+            <button
+              type="button"
+              title="新建对话"
+              aria-label="新建对话"
+              className={cn(
+                'group relative isolate grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-dashed transition-all duration-200 ease-out',
+                'border-indigo-200/90 bg-white/58 text-indigo-500',
+                'shadow-[0_10px_20px_-16px_rgba(99,102,241,0.7)]',
+                'hover:border-indigo-300/90 hover:bg-white/85 hover:text-indigo-700',
+                'hover:shadow-[0_14px_24px_-18px_rgba(91,33,182,0.75)]',
+                'active:scale-[0.96]',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/65 focus-visible:ring-offset-2 focus-visible:ring-offset-violet-100/90',
+                'dark:border-violet-400/25 dark:bg-slate-900/58 dark:text-violet-100',
+                'dark:shadow-[0_12px_22px_-18px_rgba(76,29,149,0.9)]',
+                'dark:hover:border-violet-300/35 dark:hover:bg-slate-900/85 dark:hover:text-white',
+                'dark:hover:shadow-[0_16px_28px_-20px_rgba(99,102,241,0.75)]',
+                'dark:focus-visible:ring-offset-indigo-950'
+              )}
+              onClick={onCreate}
+            >
+              <Plus
+                size={15}
+                strokeWidth={2.75}
+                className="relative z-[1] shrink-0 transition-transform duration-200 ease-out group-hover:rotate-90 group-hover:scale-110"
+              />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
