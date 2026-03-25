@@ -1945,7 +1945,7 @@ const KnowledgeList: React.FC = () => {
                     setViewState('detail')
                   }}
                   className={cn(
-                    'relative rounded-xl border border-slate-200 dark:border-slate-800 hover:shadow-md hover:border-fuchsia-300 dark:hover:border-fuchsia-500 transition-all cursor-pointer group overflow-hidden min-h-[180px] h-full flex flex-col',
+                    'relative rounded-xl border border-slate-200 dark:border-slate-800 ring-1 ring-transparent hover:-translate-y-1.5 hover:shadow-[0_24px_44px_-22px_rgba(168,85,247,0.24)] hover:border-fuchsia-400 hover:ring-fuchsia-200/90 dark:hover:border-fuchsia-400 dark:hover:ring-fuchsia-500/35 transition-all duration-300 cursor-pointer group overflow-hidden min-h-[180px] h-full flex flex-col',
                     kb.cover_url ? 'p-0' : 'bg-white dark:bg-slate-900 pt-5 px-5 pb-3.5'
                   )}
                 >
@@ -1956,11 +1956,11 @@ const KnowledgeList: React.FC = () => {
                         <img
                           src={kb.cover_url}
                           alt=""
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          className="w-full h-full object-cover group-hover:-translate-y-1 group-hover:scale-[1.08] transition-transform duration-500 ease-out"
                         />
                       </div>
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent rounded-xl" />
-                      <div className="relative z-10 flex flex-col h-full min-h-0 p-3.5">
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent rounded-xl transition-all duration-300 group-hover:from-black/85 group-hover:via-black/28" />
+                      <div className="relative z-10 flex flex-col h-full min-h-0 p-3.5 transition-transform duration-300 ease-out group-hover:-translate-y-1">
                         {/* 顶部弹性空间，把标题/描述与统计条整体压到底部 */}
                         <div className="min-h-0 flex-1" />
                         <div className="flex-shrink-0 pt-4 pb-1">
@@ -2043,21 +2043,25 @@ const KnowledgeList: React.FC = () => {
                     </>
                   ) : (
                     <>
-                      <div className="min-h-0 flex-1 flex flex-col">
+                      <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-indigo-100/80 blur-2xl transition-all duration-500 group-hover:scale-125 group-hover:bg-fuchsia-100/80 dark:bg-indigo-500/10 dark:group-hover:bg-fuchsia-500/12" />
+                      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300/60 to-transparent opacity-70 transition-opacity duration-300 group-hover:opacity-100 dark:via-indigo-500/35" />
+                      <div className="relative min-h-0 flex-1 flex flex-col transition-transform duration-300 ease-out group-hover:-translate-y-1">
                         <div className="mb-3 flex items-center">
-                          <Database
-                            size={28}
-                            strokeWidth={2}
-                            className="shrink-0 text-indigo-600 transition-all duration-200 ease-out group-hover:text-fuchsia-600 group-hover:scale-[1.06] dark:text-indigo-400 dark:group-hover:text-fuchsia-400 drop-shadow-[0_1px_1px_rgba(99,102,241,0.12)] dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
-                            aria-hidden
-                          />
+                          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-50 to-fuchsia-50 ring-1 ring-indigo-100/80 shadow-sm transition-all duration-300 group-hover:scale-[1.04] group-hover:ring-fuchsia-200/90 group-hover:shadow-md dark:from-indigo-950/60 dark:to-fuchsia-950/30 dark:ring-indigo-800/70 dark:group-hover:ring-fuchsia-800/70">
+                            <Database
+                              size={24}
+                              strokeWidth={2}
+                              className="shrink-0 text-indigo-600 transition-all duration-300 ease-out group-hover:text-fuchsia-600 dark:text-indigo-400 dark:group-hover:text-fuchsia-400 drop-shadow-[0_1px_1px_rgba(99,102,241,0.12)] dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
+                              aria-hidden
+                            />
+                          </span>
                         </div>
-                        <h3 className={cn(kbCardTitleClass, 'text-slate-800 dark:text-slate-100')}>{kb.name}</h3>
-                        <p className="text-slate-500 dark:text-slate-400 text-sm h-10 overflow-hidden text-ellipsis leading-relaxed line-clamp-2 flex-1 min-h-0">
+                        <h3 className={cn(kbCardTitleClass, 'text-slate-800 transition-colors duration-300 group-hover:text-fuchsia-700 dark:text-slate-100 dark:group-hover:text-fuchsia-300')}>{kb.name}</h3>
+                        <p className="text-slate-500 dark:text-slate-400 text-sm h-10 overflow-hidden text-ellipsis leading-relaxed line-clamp-2 flex-1 min-h-0 transition-colors duration-300 group-hover:text-slate-600 dark:group-hover:text-slate-300">
                           {kb.description || '暂无描述'}
                         </p>
                       </div>
-                      <div className="flex-shrink-0 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                      <div className="flex-shrink-0 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px] text-slate-400 transition-colors duration-300 group-hover:border-fuchsia-100 dark:group-hover:border-fuchsia-900/35">
                         <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden whitespace-nowrap">
                           <span className="inline-flex items-center gap-1">
                             <span className="text-[13px] leading-none" aria-hidden>
