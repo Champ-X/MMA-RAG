@@ -8,6 +8,9 @@ import {
   type MessageEvent,
 } from '@/services/sse_stream'
 import type { ThoughtPhase } from '@/types/sse'
+import { imageFileToPersistedThumb } from '@/lib/chatAttachmentThumb'
+import { putAttachmentBlob } from '@/lib/chatAttachmentBlobStore'
+import type { ChatMessageAttachment } from '@/store/useChatStore'
 
 interface UseThinkingChainOptions {
   onThought?: (e: ThoughtEvent) => void
@@ -64,14 +67,26 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
       (files?.length ? `（已上传 ${files.length} 个附件）` : '')
 
     const baseId = Date.now()
-    const attachments =
-      files?.map((f, i) => ({
-        id: `att_${baseId}_${i}_${Math.random().toString(36).slice(2, 9)}`,
-        kind: (f.type.startsWith('image/') ? 'image' : 'audio') as 'image' | 'audio',
-        name: f.name,
-        size: f.size,
-        ...(f.type.startsWith('image/') ? { previewUrl: URL.createObjectURL(f) } : {}),
-      })) ?? undefined
+    let attachments: ChatMessageAttachment[] | undefined
+    if (files?.length) {
+      attachments = await Promise.all(
+        files.map(async (f, i) => {
+          const id = `att_${baseId}_${i}_${Math.random().toString(36).slice(2, 9)}`
+          await putAttachmentBlob(id, f)
+          const kind = (f.type.startsWith('image/') ? 'image' : 'audio') as 'image' | 'audio'
+          const base: ChatMessageAttachment = { id, kind, name: f.name, size: f.size }
+          if (kind === 'image') {
+            const thumbDataUrl = await imageFileToPersistedThumb(f)
+            return {
+              ...base,
+              previewUrl: URL.createObjectURL(f),
+              ...(thumbDataUrl ? { thumbDataUrl } : {}),
+            }
+          }
+          return base
+        })
+      )
+    }
 
     addMessage(session.id, { role: 'user', content: displayContent, attachments })
     addMessage(session.id, {

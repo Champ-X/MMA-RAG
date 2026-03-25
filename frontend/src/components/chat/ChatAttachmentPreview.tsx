@@ -1,6 +1,8 @@
+import * as React from 'react'
 import { X, Music2, Image as ImageIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ChatMessageAttachment } from '@/store/useChatStore'
+import { getAttachmentBlob } from '@/lib/chatAttachmentBlobStore'
 
 export function formatAttachmentSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -16,10 +18,11 @@ export function ComposerAttachmentTile({
   item: ChatMessageAttachment
   onRemove: () => void
 }) {
-  if (item.kind === 'image' && item.previewUrl) {
+  const imgSrc = item.kind === 'image' ? item.previewUrl || item.thumbDataUrl : undefined
+  if (item.kind === 'image' && imgSrc) {
     return (
       <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-slate-200/80 bg-slate-100 shadow-sm dark:border-slate-600 dark:bg-slate-900/80">
-        <img src={item.previewUrl} alt="" className="h-full w-full object-cover" />
+        <img src={imgSrc} alt="" className="h-full w-full object-cover" />
         <button
           type="button"
           onClick={onRemove}
@@ -84,13 +87,43 @@ export function ComposerAttachmentTile({
   )
 }
 
-/** 用户消息上方：图片仅缩略图（与输入区一致）；音频为与输入区一致的紫粉渐变横向卡 */
+/** 用户消息上方：从 IndexedDB 恢复二进制后可用原图/播放器；无库内数据时图片用 thumbDataUrl，音频仅展示元信息 */
 export function UserMessageAttachmentTile({ item }: { item: ChatMessageAttachment }) {
+  const [blobUrl, setBlobUrl] = React.useState<string | null>(null)
+  const urlRef = React.useRef<string | null>(null)
+
+  React.useEffect(() => {
+    let cancelled = false
+    urlRef.current = null
+    setBlobUrl(null)
+    ;(async () => {
+      const b = await getAttachmentBlob(item.id)
+      if (cancelled || !b) return
+      const u = URL.createObjectURL(b)
+      if (cancelled) {
+        URL.revokeObjectURL(u)
+        return
+      }
+      urlRef.current = u
+      setBlobUrl(u)
+    })()
+    return () => {
+      cancelled = true
+      const u = urlRef.current
+      if (u) {
+        URL.revokeObjectURL(u)
+        urlRef.current = null
+      }
+      setBlobUrl(null)
+    }
+  }, [item.id])
+
   if (item.kind === 'image') {
+    const src = blobUrl || item.previewUrl || item.thumbDataUrl
     return (
       <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-slate-200/80 bg-slate-100 shadow-sm dark:border-slate-600 dark:bg-slate-900/80">
-        {item.previewUrl ? (
-          <img src={item.previewUrl} alt="" className="h-full w-full object-cover" />
+        {src ? (
+          <img src={src} alt="" className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <ImageIcon className="h-6 w-6 text-slate-400" />
@@ -103,25 +136,35 @@ export function UserMessageAttachmentTile({ item }: { item: ChatMessageAttachmen
   return (
     <div
       className={cn(
-        'flex h-14 max-h-14 min-h-14 min-w-0 max-w-[min(100%,16rem)] shrink-0 items-center gap-1.5 rounded-xl border pl-1 pr-1.5 shadow-sm',
+        'flex min-w-0 max-w-[min(100%,20rem)] shrink-0 flex-col gap-1 rounded-xl border px-1.5 py-1.5 shadow-sm',
         'border-purple-200/55 bg-white/90 ring-1 ring-purple-100/35 backdrop-blur-sm dark:border-purple-500/25',
         'dark:bg-slate-800/95 dark:ring-purple-500/10'
       )}
     >
-      <div
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white shadow-sm shadow-fuchsia-500/20"
-        aria-hidden
-      >
-        <Music2 className="h-5 w-5 opacity-95" strokeWidth={2} />
+      <div className="flex min-h-11 items-center gap-1.5">
+        <div
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white shadow-sm shadow-fuchsia-500/20"
+          aria-hidden
+        >
+          <Music2 className="h-5 w-5 opacity-95" strokeWidth={2} />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col justify-center leading-tight">
+          <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100" title={item.name}>
+            {item.name}
+          </p>
+          <p className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400">
+            音频 · {formatAttachmentSize(item.size)}
+          </p>
+        </div>
       </div>
-      <div className="flex min-w-0 flex-1 flex-col justify-center leading-tight">
-        <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100" title={item.name}>
-          {item.name}
-        </p>
-        <p className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400">
-          音频 · {formatAttachmentSize(item.size)}
-        </p>
-      </div>
+      {blobUrl ? (
+        <audio
+          src={blobUrl}
+          controls
+          className="h-8 w-full min-w-[200px] max-w-full"
+          preload="metadata"
+        />
+      ) : null}
     </div>
   )
 }

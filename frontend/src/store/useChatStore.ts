@@ -1,14 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { chatApi } from '@/services/api_client';
+import { collectUserAttachmentIds, deleteAttachmentBlobs } from '@/lib/chatAttachmentBlobStore';
 
-/** 用户消息携带的附件展示信息；previewUrl 为内存中的 Object URL，不应写入持久化 */
+/** 用户消息携带的附件展示信息；previewUrl 为内存 Object URL，仅当前页有效；thumbDataUrl 为小图 JPEG data URL，可随会话持久化 */
 export interface ChatMessageAttachment {
   id: string
   kind: 'image' | 'audio'
   name: string
   size: number
   previewUrl?: string
+  /** 持久化缩略图（data:image/jpeg;base64,...），用于刷新/重启后仍显示用户上传图 */
+  thumbDataUrl?: string
 }
 
 export interface ThoughtData {
@@ -70,13 +73,16 @@ export interface Message {
   error?: string;
 }
 
-function revokeAttachmentsInMessages(messages: Message[] | undefined) {
+/** 释放 blob: 预览 URL，并删除 IndexedDB 中的附件二进制（删会话 / 覆盖历史时用） */
+function cleanupMessageAttachments(messages: Message[] | undefined) {
   if (!messages?.length) return
   for (const m of messages) {
     for (const a of m.attachments ?? []) {
       if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
     }
   }
+  const ids = collectUserAttachmentIds(messages)
+  if (ids.length) void deleteAttachmentBlobs(ids)
 }
 
 export type KbMode = 'auto' | 'all' | 'manual'
@@ -260,7 +266,7 @@ export const useChatStore = create<ChatStore>()(
       deleteSession: (sessionId) => {
         set((state) => {
           const doomed = state.sessions.find((s) => s.id === sessionId)
-          revokeAttachmentsInMessages(doomed?.messages)
+          cleanupMessageAttachments(doomed?.messages)
 
           const updatedSessions = state.sessions.filter(s => s.id !== sessionId);
           let newActiveId = state.activeSessionId;
@@ -330,7 +336,7 @@ export const useChatStore = create<ChatStore>()(
             }));
             set((state) => {
               const prev = state.sessions.find((s) => s.id === sessionId)
-              revokeAttachmentsInMessages(prev?.messages)
+              cleanupMessageAttachments(prev?.messages)
               return {
                 sessions: state.sessions.map(s =>
                   s.id === sessionId ? { ...s, messages, updatedAt: Date.now() } : s

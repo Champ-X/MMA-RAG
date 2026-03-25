@@ -311,7 +311,7 @@ class IntentProcessor:
                 )
                 validated["visual_intent"] = "explicit_demand"
                 validated["visual_reasoning"] = (
-                    "检测到明确的视觉请求关键词（如'看看'、'给我看'等），优先判断为显式需求"
+                    "检测到明确的视觉请求关键词，优先判断为显式需求"
                 )
             elif has_implicit_visual_topic and validated["visual_intent"] == "unnecessary":
                 # 与音频一致：查询具有隐性视觉主题但 LLM 判为 unnecessary 时，用关键词补正为 implicit_enrichment
@@ -364,7 +364,7 @@ class IntentProcessor:
                 )
                 validated["audio_intent"] = "explicit_demand"
                 validated["audio_reasoning"] = (
-                    "检测到明确的音频请求关键词（如'找歌'、'播放'、'有录音吗'等），优先判断为显式需求"
+                    "检测到明确的音频请求关键词，优先判断为显式需求"
                 )
             # 视频意图（与视觉/音频对齐：显式请求词优先，无效时按显式/隐性关键词推断）
             valid_video_intents = ["explicit_demand", "implicit_enrichment", "unnecessary"]
