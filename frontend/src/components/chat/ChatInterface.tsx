@@ -361,20 +361,23 @@ export function ChatInterface() {
                 <div className="pointer-events-none absolute left-1/2 top-20 h-36 w-72 -translate-x-1/2 rounded-full bg-sky-300/20 blur-3xl dark:bg-indigo-500/15" />
                 <div className="relative z-10">
                   <div
-                    className="mb-6 inline-flex h-36 w-36 items-center justify-center rounded-full overflow-hidden ring-4 ring-indigo-300/70 dark:ring-indigo-400/50 ring-offset-1 ring-offset-slate-50 dark:ring-offset-slate-950 shadow-[0_0_28px_rgba(99,102,241,0.35),0_0_56px_rgba(217,70,239,0.18)] dark:shadow-[0_0_32px_rgba(99,102,241,0.4),0_0_64px_rgba(217,70,239,0.22)]"
+                    className="mb-7 inline-flex h-36 w-36 items-center justify-center rounded-full overflow-hidden ring-4 ring-indigo-300/70 dark:ring-indigo-400/50 ring-offset-1 ring-offset-slate-50 dark:ring-offset-slate-950 shadow-[0_0_28px_rgba(99,102,241,0.35),0_0_56px_rgba(217,70,239,0.18)] dark:shadow-[0_0_32px_rgba(99,102,241,0.4),0_0_64px_rgba(217,70,239,0.22)]"
                   >
                     <img
                       src="/logo.png"
                       alt=""
-                      className="h-full w-full object-contain select-none"
+                      className="h-full w-full origin-center scale-[1.22] object-contain object-center select-none"
                       style={{ background: 'transparent' }}
                       aria-hidden
                     />
                   </div>
-                  <h3 className="mb-3 text-2xl font-semibold tracking-tight text-slate-800 dark:text-slate-100">
-                    你好，我是 Nexus
+                  <h3 className="mb-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl sm:leading-snug">
+                    <span className="bg-gradient-to-r from-slate-900 via-indigo-800 to-violet-700 bg-clip-text text-transparent dark:from-slate-100 dark:via-indigo-200 dark:to-violet-300">
+                      你好，我是{' '}
+                      <span className="font-semibold">Nexus</span>
+                    </span>
                   </h3>
-                  <p className="mx-auto max-w-md text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">
+                  <p className="mx-auto max-w-lg text-pretty text-[15px] leading-[1.65] tracking-wide text-slate-600/95 dark:text-slate-400/95">
                     在输入框设置对话模型与知识库范围后，输入问题即可对话。
                   </p>
                 </div>
