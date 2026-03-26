@@ -415,14 +415,17 @@ def _img_slot_ref_index(payload: Any, refs: List[Dict[str, Any]]) -> Optional[in
     fp = str(payload.get("file_path") or "")
     if not fp:
         return None
-    for idx, r in enumerate(refs, start=1):
+    for r in refs:
         if (r.get("type") or "").lower() != "image":
             continue
         md = r.get("metadata") or {}
         if kb_id and str(md.get("kb_id") or "") != kb_id:
             continue
         if str(r.get("file_path") or "") == fp:
-            return idx
+            try:
+                return int(r.get("id"))
+            except (TypeError, ValueError):
+                return None
     return None
 
 
@@ -433,14 +436,17 @@ def _audio_slot_ref_index(payload: Any, refs: List[Dict[str, Any]]) -> Optional[
     fp = str(payload.file_path or "")
     if not fp:
         return None
-    for idx, r in enumerate(refs, start=1):
+    for r in refs:
         if (r.get("type") or "").lower() != "audio":
             continue
         md = r.get("metadata") or {}
         if kb_id and str(md.get("kb_id") or "") != kb_id:
             continue
         if str(r.get("file_path") or "") == fp:
-            return idx
+            try:
+                return int(r.get("id"))
+            except (TypeError, ValueError):
+                return None
     return None
 
 

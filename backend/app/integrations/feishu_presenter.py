@@ -81,16 +81,31 @@ def _append_trailing_audio_messages(
         )
 
 
+def _citation_display_num(r: Dict[str, Any]) -> Optional[int]:
+    """与正文 [n] 及 reference_map 编号一致；缺失或非法时返回 None。"""
+    rid = r.get("id")
+    try:
+        return int(rid)
+    except (TypeError, ValueError):
+        return None
+
+
 def _format_references(refs: List[Dict[str, Any]], max_items: int = 15) -> str:
     if not refs:
         return ""
+    # references_used 顺序为「正文中 [n] 首次出现顺序」，与 1..k 列表序号不一定一致
+    slice_refs = list(refs[:max_items])
+    slice_refs.sort(key=lambda r: (_citation_display_num(r) is None, _citation_display_num(r) or 0))
     lines: List[str] = ["—— 参考知识库资料 ——"]
-    for i, r in enumerate(refs[:max_items], start=1):
+    for r in slice_refs:
+        n = _citation_display_num(r)
+        if n is None:
+            continue
         fn = r.get("file_name") or ""
         snippet = (r.get("content") or "").replace("\n", " ").strip()
         if len(snippet) > 120:
             snippet = snippet[:117] + "..."
-        lines.append(f"{i}. {fn}: {snippet}")
+        lines.append(f"{n}. {fn}: {snippet}")
     if len(refs) > max_items:
         lines.append(f"... 共 {len(refs)} 条，此处仅展示前 {max_items} 条")
     return "\n".join(lines)
