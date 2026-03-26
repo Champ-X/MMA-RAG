@@ -40,6 +40,122 @@ function buildCitationMapForMessage(
   return map
 }
 
+const EMPTY_STATE_GREETING_PREFIX = '你好，我是 '
+const EMPTY_STATE_GREETING_FULL = `${EMPTY_STATE_GREETING_PREFIX}Nexus`
+
+/** 新对话空状态标题：逐字打字；切换会话时重播；尊重减少动效偏好 */
+function EmptyStateGreetingTitle({ sessionKey }: { sessionKey: string }) {
+  const [visibleLen, setVisibleLen] = useState(0)
+  const [reducedMotion, setReducedMotion] = useState(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    setReducedMotion(mq.matches)
+    const onChange = () => setReducedMotion(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+
+  useEffect(() => {
+    if (reducedMotion) {
+      setVisibleLen(EMPTY_STATE_GREETING_FULL.length)
+      return
+    }
+
+    const fullLen = EMPTY_STATE_GREETING_FULL.length
+    const stepMs = 150
+    const pauseBeforeReplayMs = 5200
+
+    let cancelled = false
+    let intervalId: ReturnType<typeof setInterval> | null = null
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+    const clearTimers = () => {
+      if (intervalId != null) {
+        clearInterval(intervalId)
+        intervalId = null
+      }
+      if (timeoutId != null) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+    }
+
+    const scheduleReplay = () => {
+      if (cancelled) return
+      timeoutId = window.setTimeout(() => {
+        timeoutId = null
+        if (cancelled) return
+        startCycle()
+      }, pauseBeforeReplayMs)
+    }
+
+    const startCycle = () => {
+      if (cancelled) return
+      setVisibleLen(0)
+      let i = 0
+      intervalId = window.setInterval(() => {
+        if (cancelled) {
+          clearTimers()
+          return
+        }
+        i += 1
+        setVisibleLen(i)
+        if (i >= fullLen) {
+          if (intervalId != null) clearInterval(intervalId)
+          intervalId = null
+          scheduleReplay()
+        }
+      }, stepMs)
+    }
+
+    startCycle()
+
+    return () => {
+      cancelled = true
+      clearTimers()
+    }
+  }, [sessionKey, reducedMotion])
+
+  const visible = EMPTY_STATE_GREETING_FULL.slice(0, visibleLen)
+  const prefixLen = EMPTY_STATE_GREETING_PREFIX.length
+  const prefixPart =
+    visible.length <= prefixLen ? visible : EMPTY_STATE_GREETING_PREFIX
+  const namePart =
+    visible.length > prefixLen ? visible.slice(prefixLen) : ''
+  const done = visibleLen >= EMPTY_STATE_GREETING_FULL.length
+
+  return (
+    <h3
+      className="mb-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl sm:leading-snug"
+      aria-label={EMPTY_STATE_GREETING_FULL}
+    >
+      <span className="bg-gradient-to-r from-slate-900 via-indigo-800 to-violet-700 bg-clip-text text-transparent dark:from-slate-100 dark:via-indigo-200 dark:to-violet-300">
+        {prefixPart}
+        {namePart ? (
+          <span className="font-semibold">{namePart}</span>
+        ) : null}
+      </span>
+      {!done && (
+        <span
+          className="ml-0.5 inline-block min-w-[0.35em] translate-y-px text-indigo-600/90 animate-pulse dark:text-indigo-300/90"
+          aria-hidden
+        >
+          ▍
+        </span>
+      )}
+    </h3>
+  )
+}
+
+function EmptyStateHint() {
+  return (
+    <p className="mx-auto mt-2 max-w-md text-pretty text-center text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">
+      在底部输入区选择对话模型与知识库范围，输入问题即可开始。
+    </p>
+  )
+}
+
 export function ChatInterface() {
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<
@@ -371,15 +487,8 @@ export function ChatInterface() {
                       aria-hidden
                     />
                   </div>
-                  <h3 className="mb-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl sm:leading-snug">
-                    <span className="bg-gradient-to-r from-slate-900 via-indigo-800 to-violet-700 bg-clip-text text-transparent dark:from-slate-100 dark:via-indigo-200 dark:to-violet-300">
-                      你好，我是{' '}
-                      <span className="font-semibold">Nexus</span>
-                    </span>
-                  </h3>
-                  <p className="mx-auto max-w-lg text-pretty text-[15px] leading-[1.65] tracking-wide text-slate-600/95 dark:text-slate-400/95">
-                    在输入框设置对话模型与知识库范围后，输入问题即可对话。
-                  </p>
+                  <EmptyStateGreetingTitle sessionKey={activeSessionId ?? ''} />
+                  <EmptyStateHint />
                 </div>
               </div>
             )}
