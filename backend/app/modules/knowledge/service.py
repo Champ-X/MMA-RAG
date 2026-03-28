@@ -1368,10 +1368,19 @@ class KnowledgeBaseService:
             if not object_paths:
                 return False
 
+            # 与 delete_knowledge_base / 统计一致：合并桶内反查的 kb_id，避免 Qdrant payload 与候选列表不一致时 delete 命中 0 点仍计为成功、进而只删 MinIO
+            vector_kb_candidates: List[str] = list(dict.fromkeys(self._kb_id_candidates(kb_id)))
+            try:
+                discovered_pre = await self._discover_kb_id_from_bucket_async(kb_id)
+                if discovered_pre and discovered_pre not in vector_kb_candidates:
+                    vector_kb_candidates.append(discovered_pre)
+            except Exception as e:
+                logger.debug(f"删除文件前反查 kb_id 失败(可忽略): {e}")
+
             # 先删除向量库中该文件对应的向量（按 filter 删除）；若全部失败则不删 MinIO
             from qdrant_client.http.models import Filter, FieldCondition, MatchValue, FilterSelector
             deleted_chunk_count = 0
-            for candidate in self._kb_id_candidates(kb_id):
+            for candidate in vector_kb_candidates:
                 filt_text = Filter(must=[
                     FieldCondition(key="kb_id", match=MatchValue(value=candidate)),
                     FieldCondition(key="file_id", match=MatchValue(value=file_id)),
@@ -1409,6 +1418,51 @@ class KnowledgeBaseService:
                     logger.warning(f"删除文件音频向量失败 candidate={candidate}: {del_e}")
                 if self.vector_store.delete_video_points_by_file_id(candidate, file_id):
                     deleted_chunk_count += 1
+
+            # 兜底：不限定 kb_id（与预览详情中按 file_id 全局 scroll 一致），清除候选 kb_id 均未覆盖时的残留点
+            filt_by_file_id = Filter(
+                must=[FieldCondition(key="file_id", match=MatchValue(value=file_id))]
+            )
+            try:
+                self.vector_store.client.delete(
+                    collection_name="text_chunks",
+                    points_selector=FilterSelector(filter=filt_by_file_id),
+                )
+                deleted_chunk_count += 1
+            except Exception as del_e:
+                logger.warning(f"删除文件文本向量(按 file_id 全局)失败 file_id={file_id}: {del_e}")
+            try:
+                self.vector_store.client.delete(
+                    collection_name="image_vectors",
+                    points_selector=FilterSelector(filter=filt_by_file_id),
+                )
+                deleted_chunk_count += 1
+            except Exception as del_e:
+                logger.warning(f"删除文件图片向量(按 file_id 全局)失败 file_id={file_id}: {del_e}")
+            try:
+                filt_by_src = Filter(
+                    must=[FieldCondition(key="source_file_id", match=MatchValue(value=file_id))]
+                )
+                self.vector_store.client.delete(
+                    collection_name="image_vectors",
+                    points_selector=FilterSelector(filter=filt_by_src),
+                )
+                deleted_chunk_count += 1
+            except Exception as del_e:
+                logger.warning(
+                    f"删除文件图片向量(按 source_file_id 全局)失败 file_id={file_id}: {del_e}"
+                )
+            try:
+                self.vector_store.client.delete(
+                    collection_name="audio_vectors",
+                    points_selector=FilterSelector(filter=filt_by_file_id),
+                )
+                deleted_chunk_count += 1
+            except Exception as del_e:
+                logger.warning(f"删除文件音频向量(按 file_id 全局)失败 file_id={file_id}: {del_e}")
+            if self.vector_store.delete_video_points_by_file_id(None, file_id):
+                deleted_chunk_count += 1
+
             if deleted_chunk_count == 0:
                 logger.error(f"删除文件向量全部失败，不删除 MinIO 对象 kb_id={kb_id} file_id={file_id}")
                 return False
@@ -1427,16 +1481,10 @@ class KnowledgeBaseService:
                     if p not in minio_delete_targets:
                         minio_delete_targets.append(p)
 
-            # 删除 chunk 后、删 MinIO 前：若可能变空，先拿到用于画像的 discovered kb_id（桶内还有文件时才能反查）
-            portrait_candidate_ids: List[str] = []
-            if deleted_chunk_count > 0:
-                portrait_candidate_ids = list(self._kb_id_candidates(kb_id))
-                try:
-                    discovered = await self._discover_kb_id_from_bucket_async(kb_id)
-                    if discovered and discovered not in portrait_candidate_ids:
-                        portrait_candidate_ids.append(discovered)
-                except Exception as e:
-                    logger.debug(f"删除文件时反查 kb_id 失败(可忽略): {e}")
+            # 删除 chunk 后、删 MinIO 前：画像清理使用与向量删除相同的 kb_id 候选（已含桶内反查）
+            portrait_candidate_ids: List[str] = list(dict.fromkeys(vector_kb_candidates))
+            if deleted_chunk_count > 0 and not portrait_candidate_ids:
+                portrait_candidate_ids = list(dict.fromkeys(self._kb_id_candidates(kb_id)))
 
             # 向量删除成功后，再删除 MinIO 中该文件的所有对象（含 Office 预览 PDF 缓存）
             for object_path in minio_delete_targets:
