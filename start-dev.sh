@@ -5,7 +5,26 @@
 
 set -e
 
-# 检测 ffmpeg（视频切段、音频抽取等）与 LibreOffice（docx/pptx 转 PDF）；缺失时尝试自动安装
+# 在 apt 系系统上：若已安装 LibreOffice，则确保 fonts-noto-cjk（headless 转 PDF 中文不为方框）。
+_ensure_apt_fonts_noto_cjk_if_libreoffice() {
+    command -v apt-get &>/dev/null || return 0
+    if ! command -v libreoffice &>/dev/null && ! command -v soffice &>/dev/null; then
+        return 0
+    fi
+    if dpkg -s fonts-noto-cjk 2>/dev/null | grep -q '^Status: install ok installed'; then
+        return 0
+    fi
+    export DEBIAN_FRONTEND=noninteractive
+    if sudo -n true 2>/dev/null || sudo -v; then
+        if sudo apt-get update -qq && sudo apt-get install -y fonts-noto-cjk; then
+            echo "✅ 已安装 fonts-noto-cjk（LibreOffice 转 PDF 中文）"
+        fi
+    fi
+    return 0
+}
+
+# 检测 ffmpeg（视频切段、音频抽取等）与 LibreOffice（docx/pptx 转 PDF）；缺失时尝试自动安装。
+# Debian/Ubuntu/WSL：安装 LibreOffice 时同时装 fonts-noto-cjk；若本机已有 LO 也会单独补装字体。
 ensure_ffmpeg_and_libreoffice() {
     local need_ffmpeg=1 need_lo=1
     command -v ffmpeg &>/dev/null && need_ffmpeg=0
@@ -13,65 +32,73 @@ ensure_ffmpeg_and_libreoffice() {
         need_lo=0
     fi
 
+    set +e
+
     if (( need_ffmpeg == 0 && need_lo == 0 )); then
         echo "✅ 已检测到 ffmpeg 与 LibreOffice（libreoffice/soffice）"
-        return 0
-    fi
+    else
+        echo "📦 缺少本地依赖："
+        (( need_ffmpeg )) && echo "   - ffmpeg（视频/音频处理）"
+        (( need_lo )) && echo "   - LibreOffice（docx/pptx 转 PDF 等）"
+        echo "   尝试自动安装…"
 
-    echo "📦 缺少本地依赖："
-    (( need_ffmpeg )) && echo "   - ffmpeg（视频/音频处理）"
-    (( need_lo )) && echo "   - LibreOffice（docx/pptx 转 PDF 等）"
-    echo "   尝试自动安装…"
+        local pkgs=()
+        (( need_ffmpeg )) && pkgs+=(ffmpeg)
+        (( need_lo )) && pkgs+=(libreoffice)
 
-    local pkgs=()
-    (( need_ffmpeg )) && pkgs+=(ffmpeg)
-    (( need_lo )) && pkgs+=(libreoffice)
+        # Debian / Ubuntu / WSL
+        if command -v apt-get &>/dev/null && ((${#pkgs[@]})); then
+            export DEBIAN_FRONTEND=noninteractive
+            local apt_install_pkgs=("${pkgs[@]}")
+            (( need_lo )) && apt_install_pkgs+=(fonts-noto-cjk)
+            if sudo -n true 2>/dev/null || sudo -v; then
+                if sudo apt-get update -qq && sudo apt-get install -y "${apt_install_pkgs[@]}"; then
+                    echo "✅ 已通过 apt 安装: ${apt_install_pkgs[*]}"
+                fi
+            fi
+        fi
 
-    set +e
-    # Debian / Ubuntu / WSL
-    if command -v apt-get &>/dev/null && ((${#pkgs[@]})); then
-        export DEBIAN_FRONTEND=noninteractive
-        if sudo -n true 2>/dev/null || sudo -v; then
-            if sudo apt-get update -qq && sudo apt-get install -y "${pkgs[@]}"; then
-                echo "✅ 已通过 apt 安装: ${pkgs[*]}"
-                set -e
-                return 0
+        # macOS Homebrew
+        if command -v brew &>/dev/null; then
+            if (( need_ffmpeg )) && ! command -v ffmpeg &>/dev/null; then
+                brew install ffmpeg
+            fi
+            if (( need_lo )) && ! command -v libreoffice &>/dev/null && ! command -v soffice &>/dev/null; then
+                brew install --cask libreoffice
+            fi
+            if command -v ffmpeg &>/dev/null && ( command -v libreoffice &>/dev/null || command -v soffice &>/dev/null ); then
+                echo "✅ 已通过 Homebrew 安装所需组件"
+            fi
+        fi
+
+        # Fedora / RHEL 系
+        if command -v dnf &>/dev/null && ((${#pkgs[@]})); then
+            if sudo -n true 2>/dev/null || sudo -v; then
+                if sudo dnf install -y "${pkgs[@]}"; then
+                    echo "✅ 已通过 dnf 安装: ${pkgs[*]}"
+                fi
             fi
         fi
     fi
 
-    # macOS Homebrew
-    if command -v brew &>/dev/null; then
-        if (( need_ffmpeg )) && ! command -v ffmpeg &>/dev/null; then
-            brew install ffmpeg
-        fi
-        if (( need_lo )) && ! command -v libreoffice &>/dev/null && ! command -v soffice &>/dev/null; then
-            brew install --cask libreoffice
-        fi
-        if command -v ffmpeg &>/dev/null && ( command -v libreoffice &>/dev/null || command -v soffice &>/dev/null ); then
-            echo "✅ 已通过 Homebrew 安装所需组件"
-            set -e
-            return 0
-        fi
-    fi
-
-    # Fedora / RHEL 系
-    if command -v dnf &>/dev/null && ((${#pkgs[@]})); then
-        if sudo -n true 2>/dev/null || sudo -v; then
-            if sudo dnf install -y "${pkgs[@]}"; then
-                echo "✅ 已通过 dnf 安装: ${pkgs[*]}"
-                set -e
-                return 0
-            fi
-        fi
-    fi
+    _ensure_apt_fonts_noto_cjk_if_libreoffice
 
     set -e
-    echo "⚠️  未能自动安装（无匹配包管理器、sudo 不可用或网络失败）。请手动安装："
-    echo "   Ubuntu/Debian/WSL: sudo apt-get update && sudo apt-get install -y ffmpeg libreoffice"
-    echo "   macOS: brew install ffmpeg && brew install --cask libreoffice"
-    echo "   Fedora: sudo dnf install -y ffmpeg libreoffice"
-    echo "   Arch:   sudo pacman -S --needed ffmpeg libreoffice-fresh"
+
+    need_ffmpeg=1
+    need_lo=1
+    command -v ffmpeg &>/dev/null && need_ffmpeg=0
+    if command -v libreoffice &>/dev/null || command -v soffice &>/dev/null; then
+        need_lo=0
+    fi
+
+    if (( need_ffmpeg != 0 || need_lo != 0 )); then
+        echo "⚠️  未能自动安装（无匹配包管理器、sudo 不可用或网络失败）。请手动安装："
+        echo "   Ubuntu/Debian/WSL: sudo apt-get update && sudo apt-get install -y ffmpeg libreoffice fonts-noto-cjk"
+        echo "   macOS: brew install ffmpeg && brew install --cask libreoffice"
+        echo "   Fedora: sudo dnf install -y ffmpeg libreoffice"
+        echo "   Arch:   sudo pacman -S --needed ffmpeg libreoffice-fresh"
+    fi
     return 0
 }
 

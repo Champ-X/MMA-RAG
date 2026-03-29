@@ -20,6 +20,13 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+def _s3_is_no_such_key(e: S3Error) -> bool:
+    """对象不存在（缓存未命中、可选对象等），非故障。"""
+    code = getattr(e, "code", None)
+    return code == "NoSuchKey" or "NoSuchKey" in str(e)
+
+
 # S3/MinIO TagValue 仅接受 ASCII 字母数字、空格及 _ . : / = + - @
 _TAG_VALUE_SAFE_RE = re.compile(r"[^a-zA-Z0-9\s_.:/=+\-@]")
 
@@ -180,7 +187,10 @@ class MinIOAdapter:
             return content
             
         except S3Error as e:
-            logger.error(f"获取文件失败 {bucket}/{object_path}: {str(e)}")
+            if _s3_is_no_such_key(e):
+                logger.debug("对象不存在 {} {}: {}", bucket, object_path, e)
+            else:
+                logger.error(f"获取文件失败 {bucket}/{object_path}: {str(e)}")
             raise
     
     async def get_presigned_url(
