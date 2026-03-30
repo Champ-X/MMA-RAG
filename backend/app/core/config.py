@@ -104,6 +104,11 @@ class Settings(BaseSettings):
         default="",
         validation_alias="MARKDOWN_LOCAL_IMAGE_ALLOWED_BASE_PATHS",
     )
+    # false 时不校验路径是否在白名单内，只要文件存在且为图片即读取（上传方可引用任意本机路径；仅建议在可信/内网环境使用）
+    markdown_local_image_require_whitelist: bool = Field(
+        default=True,
+        validation_alias="MARKDOWN_LOCAL_IMAGE_REQUIRE_WHITELIST",
+    )
 
     # 视频模态：长短视频分流与长视频滑动窗口（参见 docs/视频模态技术方案.md）
     video_long_threshold_seconds: float = Field(default=480.0, validation_alias="VIDEO_LONG_THRESHOLD_SECONDS")  # 超过此时长走长视频滑动窗口（与方案 480s 一致；≤ 此时长按短视频单 chunk）

@@ -79,38 +79,44 @@ def _resolve_relative_path(file_path: str, ref_path: str) -> str:
     return resolved
 
 
-def _read_local_image_if_allowed(
-    path: str,
-    allowed_base_paths: List[str],
-    max_size: int,
-) -> Optional[bytes]:
+def _strip_quotes(s: str) -> str:
+    s = s.strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
+        return s[1:-1].strip()
+    return s
+
+
+def _is_windows_drive_absolute_path(path: str) -> bool:
     """
-    当 path 为本地绝对路径（/path 或 file:///path）且位于 allowed_base_paths 之下时，读取文件并返回字节。
+    识别 Windows 盘符绝对路径（常见于在 Windows 上编辑的 Markdown）。
+    支持反斜杠与正斜杠，如 C:\\Users\\x.png、C:/Users/x.png。
     """
-    if not allowed_base_paths:
-        return None
-    path = path.strip()
-    if path.lower().startswith("file://"):
-        path = unquote(path[7:].lstrip("/"))
-        if path and not path.startswith("/"):
-            path = os.path.abspath("/" + path) if os.name != "nt" else path
-    if not path or (not path.startswith("/") and len(path) < 2):
-        return None
-    if os.name == "nt" and path.startswith("/") and not path.startswith("//"):
-        path = path.lstrip("/")
+    p = _strip_quotes(path).replace("\\", "/")
+    return len(p) >= 3 and p[0].isalpha() and p[1] == ":" and p[2] == "/"
+
+
+def _is_unc_path(path: str) -> bool:
+    p = _strip_quotes(path)
+    return len(p) >= 3 and p.startswith("\\\\") and not p.startswith("\\\\?\\")
+
+
+def _local_absolute_path_candidates(path: str) -> List[str]:
+    """
+    Windows 盘符路径在 Linux/WSL 上尝试 /mnt/<盘符>/... 与原始形式（仅当判定为盘符绝对路径时调用）。
+    """
+    raw = _strip_quotes(path)
+    norm = raw.replace("\\", "/")
+    letter = norm[0].lower()
+    tail = norm[3:]
+    if os.name == "nt":
+        return [norm]
+    return [f"/mnt/{letter}/{tail}", norm]
+
+
+def _read_verified_local_image_file(p: Path, max_size: int) -> Optional[bytes]:
+    """已解析的 Path：存在、为常规图片魔术头、不超过 max_size 则返回字节。"""
     try:
-        p = Path(path).resolve()
         if not p.is_file():
-            return None
-        real_str = str(p)
-        allowed = False
-        for base in allowed_base_paths:
-            base_p = Path(base).resolve()
-            base_str = str(base_p)
-            if real_str == base_str or real_str.startswith(base_str + os.sep):
-                allowed = True
-                break
-        if not allowed:
             return None
         data = p.read_bytes()
         if len(data) > max_size:
@@ -119,8 +125,159 @@ def _read_local_image_if_allowed(
             return None
         return data
     except Exception as e:
-        logger.debug("读取本地图片失败 {}: {}", path[:80], e)
+        logger.debug("读取本地图片失败 {}: {}", str(p)[:80], e)
         return None
+
+
+def _read_local_image_if_allowed(
+    path: str,
+    allowed_base_paths: List[str],
+    max_size: int,
+    *,
+    require_whitelist: bool = True,
+) -> Optional[bytes]:
+    """
+    当 path 为本地绝对路径（/path、file:///path、Windows C:\\...、UNC \\\\server\\share\\...）时读取图片。
+    require_whitelist 为 True 时，须落在 allowed_base_paths 之一之下；为 False 时不校验白名单（仍校验存在/类型/大小）。
+    """
+    if require_whitelist and not allowed_base_paths:
+        return None
+    path = path.strip()
+    if path.lower().startswith("file://"):
+        path = unquote(path[7:].lstrip("/"))
+        if path and not path.startswith("/") and not _is_windows_drive_absolute_path(path):
+            path = os.path.abspath("/" + path) if os.name != "nt" else path
+    path = _strip_quotes(path)
+    if not path:
+        return None
+    is_unix_abs = path.startswith("/")
+    is_win = _is_windows_drive_absolute_path(path)
+    is_unc = _is_unc_path(path)
+    if not (is_unix_abs or is_win or is_unc):
+        return None
+    if os.name == "nt" and path.startswith("/") and not path.startswith("//") and not is_win:
+        path = path.lstrip("/")
+    candidates = _local_absolute_path_candidates(path) if is_win else [path]
+    for try_path in candidates:
+        try:
+            p = Path(try_path).resolve()
+            if not p.is_file():
+                continue
+            real_str = str(p)
+            if require_whitelist:
+                allowed = False
+                for base in allowed_base_paths:
+                    base_p = Path(base).resolve()
+                    base_str = str(base_p)
+                    if real_str == base_str or real_str.startswith(base_str + os.sep):
+                        allowed = True
+                        break
+                if not allowed:
+                    continue
+            data = _read_verified_local_image_file(p, max_size)
+            if data is not None:
+                return data
+        except Exception as e:
+            logger.debug("读取本地图片失败 {}: {}", try_path[:80], e)
+            continue
+    return None
+
+
+def _read_relative_image_under_whitelist_bases(
+    ref: str,
+    allowed_base_paths: List[str],
+    max_size: int,
+    *,
+    require_whitelist: bool = True,
+) -> Optional[bytes]:
+    """
+    将 Markdown 中的相对图片路径 ref 解析为「白名单根目录 / ref」并读取。
+    require_whitelist 为 False 时仍可使用 allowed_base_paths 中的根目录尝试拼接（列表可为空，此时由调用方另作 cwd 等回退）。
+    拒绝含 .. 的路径分量以防目录穿越。
+    """
+    ref = ref.strip().lstrip("./")
+    if not ref:
+        return None
+    try:
+        if ".." in Path(ref).parts:
+            return None
+    except Exception:
+        return None
+    if require_whitelist and not allowed_base_paths:
+        return None
+    for base in allowed_base_paths or []:
+        b = (base or "").strip()
+        if not b:
+            continue
+        try:
+            cand = (Path(b).resolve() / ref).resolve()
+            data = _read_local_image_if_allowed(
+                str(cand), allowed_base_paths, max_size, require_whitelist=require_whitelist
+            )
+            if data is not None:
+                return data
+        except Exception as e:
+            logger.debug("白名单根下解析相对图片失败 base={} ref={}: {}", b, ref[:80], e)
+    return None
+
+
+def _search_relative_image_recursively(
+    ref: str,
+    roots: List[Path],
+    max_size: int,
+) -> Tuple[Optional[bytes], Optional[str]]:
+    """
+    在 roots 下递归搜索相对图片引用对应的文件。
+    仅用于 require_whitelist=False 的兜底场景：
+    - 若 ref 含目录，则要求候选文件的 root-relative 路径以 ref 结尾
+    - 若 ref 仅为文件名，则要求全 roots 范围内唯一命中该文件名
+    """
+    ref_norm = ref.strip().lstrip("./")
+    if not ref_norm:
+        return None, None
+    try:
+        ref_parts = Path(ref_norm).parts
+        if ".." in ref_parts:
+            return None, None
+    except Exception:
+        return None, None
+
+    target_name = Path(ref_norm).name
+    need_suffix_match = "/" in ref_norm.replace("\\", "/")
+    seen: set[str] = set()
+    matches: List[Path] = []
+
+    for root in roots:
+        try:
+            root_resolved = root.resolve()
+            if not root_resolved.exists() or not root_resolved.is_dir():
+                continue
+            for candidate in root_resolved.rglob(target_name):
+                if not candidate.is_file():
+                    continue
+                try:
+                    rel_to_root = candidate.relative_to(root_resolved).as_posix()
+                except Exception:
+                    rel_to_root = candidate.as_posix()
+                if need_suffix_match and not rel_to_root.endswith(ref_norm.replace("\\", "/")):
+                    continue
+                real = str(candidate.resolve())
+                if real not in seen:
+                    seen.add(real)
+                    matches.append(candidate.resolve())
+        except Exception as e:
+            logger.debug("递归搜索 Markdown 相对图片失败 root={} ref={}: {}", str(root)[:80], ref_norm[:80], e)
+
+    if len(matches) == 1:
+        chosen = matches[0]
+        return _read_verified_local_image_file(chosen, max_size), str(chosen)
+    if len(matches) > 1:
+        logger.debug(
+            "Markdown 相对图片递归搜索命中多个候选，已放弃自动选择: ref={}, count={}",
+            ref_norm[:120],
+            len(matches),
+        )
+    return None, None
 
 
 async def _extract_all_images_from_markdown(
@@ -131,18 +288,27 @@ async def _extract_all_images_from_markdown(
     timeout: int = 10,
     max_size: int = 5 * 1024 * 1024,
     allowed_local_base_paths: Optional[List[str]] = None,
+    require_local_path_whitelist: bool = True,
 ) -> List[Dict[str, Any]]:
     """
-    从 Markdown 中按出现顺序提取所有图片：data: base64、http(s) 链接、相对路径（需提供 asset_map）。
-    返回与 PDF/DOCX/PPTX 兼容的 extracted_images 项列表。
+    从 Markdown 中按出现顺序提取所有图片：data: base64、http(s) 链接、
+    相对路径（asset_map、Markdown 父目录、白名单根/ref、可选进程 cwd）。
+    require_local_path_whitelist 为 False 时不限制路径须在 MARKDOWN_LOCAL_IMAGE_ALLOWED_BASE_PATHS 下（仍须为真实图片文件）。
     """
     refs_ordered = _extract_image_refs_from_markdown_text(content)
-    if refs_ordered and allowed_local_base_paths:
-        logger.info(
-            "Markdown 发现 {} 处图片引用，本地路径白名单已配置（{} 项），将尝试读取本地图片",
-            len(refs_ordered),
-            len(allowed_local_base_paths),
-        )
+    bases = allowed_local_base_paths or []
+    if refs_ordered:
+        if require_local_path_whitelist and bases:
+            logger.info(
+                "Markdown 发现 {} 处图片引用，本地路径白名单已配置（{} 项），将尝试读取本地图片",
+                len(refs_ordered),
+                len(bases),
+            )
+        elif not require_local_path_whitelist:
+            logger.info(
+                "Markdown 发现 {} 处图片引用，已关闭本地路径白名单（MARKDOWN_LOCAL_IMAGE_REQUIRE_WHITELIST=false），将按路径读取",
+                len(refs_ordered),
+            )
     extracted: List[Dict[str, Any]] = []
     for idx, (ref_string, path) in enumerate(refs_ordered):
         path = path.strip()
@@ -163,26 +329,127 @@ async def _extract_all_images_from_markdown(
                 source = "markdown-url"
             else:
                 continue
-        elif path.startswith("/") or path.lower().startswith("file://"):
-            # 本地绝对路径：仅在配置白名单内时读取
-            if allowed_local_base_paths:
-                image_bytes = _read_local_image_if_allowed(path, allowed_local_base_paths, max_size)
+        elif (
+            path.startswith("/")
+            or path.lower().startswith("file://")
+            or _is_windows_drive_absolute_path(path)
+            or _is_unc_path(path)
+        ):
+            # 本地绝对路径（含 Windows C:\...、UNC）
+            if bases or not require_local_path_whitelist:
+                image_bytes = _read_local_image_if_allowed(
+                    path, bases, max_size, require_whitelist=require_local_path_whitelist
+                )
                 if image_bytes is not None:
                     source = "markdown-local-path"
                     logger.info("Markdown 已从本地路径读取图片: {}", path[:80] + ("..." if len(path) > 80 else ""))
+                elif require_local_path_whitelist:
+                    logger.warning(
+                        "Markdown 本地图片未读取（路径不在白名单下或文件不存在）: {}",
+                        path[:80] + ("..." if len(path) > 80 else ""),
+                    )
                 else:
-                    logger.warning("Markdown 本地图片未读取（路径不在白名单下或文件不存在）: {}", path[:80] + ("..." if len(path) > 80 else ""))
+                    logger.debug(
+                        "Markdown 本地图片未读取（文件不存在或非图片）: {}",
+                        path[:80] + ("..." if len(path) > 80 else ""),
+                    )
         else:
-            # 相对路径：仅当提供 asset_map 时解析
+            # 相对路径：asset_map；file_path 含目录时相对其父目录 + 白名单；否则各白名单根下 ref
+            rel = path.strip()
             if asset_map:
                 key = _resolve_relative_path(file_path, path)
                 image_bytes = asset_map.get(key)
                 if image_bytes is None:
-                    # 尝试无前导 ./ 的 key
-                    key_alt = (Path(file_path).parent / path.strip().lstrip("./")).as_posix()
+                    key_alt = (Path(file_path).parent / rel.lstrip("./")).as_posix()
                     image_bytes = asset_map.get(key_alt)
                 if image_bytes is not None:
                     source = "markdown-relative"
+            if image_bytes is None and (bases or not require_local_path_whitelist):
+                md_parent = Path(file_path).parent
+                if md_parent != Path("."):
+                    try:
+                        resolved_img = (Path(file_path).resolve().parent / rel.lstrip("./")).resolve()
+                        image_bytes = _read_local_image_if_allowed(
+                            str(resolved_img),
+                            bases,
+                            max_size,
+                            require_whitelist=require_local_path_whitelist,
+                        )
+                        if image_bytes is not None:
+                            source = "markdown-relative-under-md-dir"
+                            logger.info(
+                                "Markdown 相对路径图片已从 Markdown 父目录读取: {}（file_path={}）",
+                                rel[:120],
+                                file_path[:160] + ("..." if len(file_path) > 160 else ""),
+                            )
+                    except Exception as e:
+                        logger.debug("Markdown 相对路径按父目录解析失败: {} ({})", rel[:80], e)
+                if image_bytes is None:
+                    image_bytes = _read_relative_image_under_whitelist_bases(
+                        rel,
+                        bases,
+                        max_size,
+                        require_whitelist=require_local_path_whitelist,
+                    )
+                    if image_bytes is not None:
+                        source = "markdown-whitelist-relative"
+                        logger.info(
+                            "Markdown 相对路径图片已从白名单目录读取: {}（file_path={}）",
+                            rel[:120],
+                            (file_path[:160] + ("..." if len(file_path) > 160 else "")) if file_path else "(空)",
+                        )
+                if image_bytes is None and not require_local_path_whitelist:
+                    try:
+                        if ".." not in Path(rel).parts:
+                            cw_img = (Path.cwd() / rel.lstrip("./")).resolve()
+                            image_bytes = _read_local_image_if_allowed(
+                                str(cw_img),
+                                bases,
+                                max_size,
+                                require_whitelist=False,
+                            )
+                            if image_bytes is not None:
+                                source = "markdown-relative-cwd"
+                                logger.info(
+                                    "Markdown 相对路径图片已从进程工作目录读取: {}（cwd）",
+                                    rel[:120],
+                                )
+                    except Exception as e:
+                        logger.debug("Markdown 相对路径按 cwd 解析失败: {} ({})", rel[:80], e)
+                if image_bytes is None and not require_local_path_whitelist:
+                    search_roots: List[Path] = [Path.cwd()]
+                    # 开发环境常从仓库根执行脚本后 `cd backend` 再起服务；
+                    # 仅搜索 cwd 会漏掉与 backend 同级的 tests/assets 目录。
+                    cwd_parent = Path.cwd().parent
+                    if cwd_parent != Path.cwd():
+                        search_roots.append(cwd_parent)
+                    for base in bases:
+                        if base:
+                            search_roots.append(Path(base))
+                    image_bytes, matched_path = _search_relative_image_recursively(
+                        rel,
+                        search_roots,
+                        max_size,
+                    )
+                    if image_bytes is not None and matched_path:
+                        source = "markdown-relative-recursive"
+                        logger.info(
+                            "Markdown 相对路径图片已递归定位: {} -> {}",
+                            rel[:120],
+                            matched_path[:160] + ("..." if len(matched_path) > 160 else ""),
+                        )
+            if image_bytes is None and require_local_path_whitelist and (asset_map or bases):
+                logger.warning(
+                    "Markdown 相对路径图片未读取: {}（file_path={}；文件夹导入请附带图片到 asset_map，或配置 MARKDOWN_LOCAL_IMAGE_ALLOWED_BASE_PATHS 且服务端磁盘上存在 白名单目录/相对路径）",
+                    rel[:200],
+                    file_path or "(空)",
+                )
+            elif image_bytes is None and not require_local_path_whitelist:
+                logger.debug(
+                    "Markdown 相对路径图片未读取: {}（file_path={}）",
+                    rel[:200],
+                    file_path or "(空)",
+                )
         if image_bytes and len(image_bytes) > 0:
             extracted.append({
                 "page": 1,
@@ -744,6 +1011,7 @@ class MarkdownParser(DocumentParser):
             max_size = getattr(settings, "markdown_image_url_max_size", 5 * 1024 * 1024)
             asset_map = (kwargs.get("asset_map") or None) if kwargs else None
             allowed_local = getattr(settings, "markdown_local_image_allowed_base_paths", None) or []
+            require_wl = getattr(settings, "markdown_local_image_require_whitelist", True)
             extracted_images = await _extract_all_images_from_markdown(
                 content,
                 file_path=file_path,
@@ -752,6 +1020,7 @@ class MarkdownParser(DocumentParser):
                 timeout=timeout,
                 max_size=max_size,
                 allowed_local_base_paths=allowed_local if allowed_local else None,
+                require_local_path_whitelist=require_wl,
             )
             if extracted_images:
                 logger.info("从 Markdown 中提取 {} 张图片（含链接/内联）", len(extracted_images))
