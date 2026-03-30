@@ -296,7 +296,13 @@ async def stream_file_for_preview(kb_id: str, file_id: str):
                 content = await kb_service.minio_adapter.get_file_content(bucket_name, object_path)
                 try:
                     from app.modules.ingestion.parsers.mineru_client import office_to_pdf_bytes
-                    pdf_bytes = office_to_pdf_bytes(content, ext)
+
+                    # LibreOffice 子进程为同步阻塞；若在 async 路由里直接调用会卡住整个事件循环，
+                    # 导致并发的 /preview（分块）等请求排队到转换结束后才响应。
+                    pdf_bytes = await asyncio.get_running_loop().run_in_executor(
+                        None,
+                        lambda: office_to_pdf_bytes(content, ext),
+                    )
                 except Exception as e:
                     logger.debug("Office 转 PDF 失败: {}", e)
                     pdf_bytes = None

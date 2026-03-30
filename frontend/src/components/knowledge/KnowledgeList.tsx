@@ -135,7 +135,10 @@ function FilePreviewModal({
     description?: string
   } | null>(null)
   const [rawContent, setRawContent] = React.useState<string | null>(null)
-  const [loadingDetails, setLoadingDetails] = React.useState(false)
+  /** /preview 接口（分块、图注、text_preview 等）；与文件流 /stream、/content 独立，避免分块被慢请求拖住 */
+  const [loadingPreviewDetails, setLoadingPreviewDetails] = React.useState(false)
+  /** md/txt 全文拉取；仅影响原文预览，不影响分块展示 */
+  const [loadingRawText, setLoadingRawText] = React.useState(false)
   const [pdfObjectUrl, setPdfObjectUrl] = React.useState<string | null>(null)
   const [pdfLoading, setPdfLoading] = React.useState(false)
   const [audioObjectUrl, setAudioObjectUrl] = React.useState<string | null>(null)
@@ -173,18 +176,24 @@ function FilePreviewModal({
 
   React.useEffect(() => {
     if (!file?.id || !kbId) return
-    setLoadingDetails(true)
+    setLoadingPreviewDetails(true)
     setDetails(null)
     setRawContent(null)
-    Promise.allSettled([
-      knowledgeApi.getFilePreviewDetails(kbId, file.id, { timeoutMs: isDoc ? 120000 : 30000 }),
-      isTextFile ? knowledgeApi.getFileTextContent(kbId, file.id).then((r) => r?.content ?? null) : Promise.resolve(null),
-    ])
-      .then(([previewRes, contentRes]) => {
-        setDetails(previewRes.status === 'fulfilled' ? (previewRes.value ?? null) : null)
-        setRawContent(contentRes.status === 'fulfilled' ? (contentRes.value ?? null) : null)
-      })
-      .finally(() => setLoadingDetails(false))
+    if (isTextFile) {
+      setLoadingRawText(true)
+      knowledgeApi
+        .getFileTextContent(kbId, file.id)
+        .then((r) => setRawContent(r?.content ?? null))
+        .catch(() => setRawContent(null))
+        .finally(() => setLoadingRawText(false))
+    } else {
+      setLoadingRawText(false)
+    }
+    knowledgeApi
+      .getFilePreviewDetails(kbId, file.id, { timeoutMs: isDoc ? 120000 : 30000 })
+      .then((d) => setDetails(d ?? null))
+      .catch(() => setDetails(null))
+      .finally(() => setLoadingPreviewDetails(false))
   }, [file?.id, kbId, isDoc, isTextFile])
 
   // PDF / PPTX / DOCX 使用 stream 接口获取 Blob（PPTX/DOCX 后端会转为 PDF）并生成 object URL，在 iframe 内展示
@@ -429,10 +438,10 @@ function FilePreviewModal({
                         : 'bg-slate-200/65 text-slate-600 border border-slate-300/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:bg-slate-700/65 dark:text-slate-300 dark:border-slate-500/25 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
                     )}
                     aria-label={
-                      loadingDetails ? '分块数量加载中' : `共 ${details?.chunks?.length ?? 0} 个分块`
+                      loadingPreviewDetails ? '分块数量加载中' : `共 ${details?.chunks?.length ?? 0} 个分块`
                     }
                   >
-                    {loadingDetails ? (
+                    {loadingPreviewDetails ? (
                       <Loader2
                         className={cn(
                           'h-3 w-3 animate-spin opacity-90',
@@ -470,7 +479,7 @@ function FilePreviewModal({
                   ))}
                 </div>
               </div>
-            ) : loadingDetails ? (
+            ) : loadingPreviewDetails ? (
               <PreviewPaneLoading
                 title="正在加载分块内容…"
                 hint="正在从知识库获取解析后的文本块，请稍候"
@@ -492,7 +501,7 @@ function FilePreviewModal({
               <MediaDescriptionPanel
                 title="图片描述"
                 icon={ImageIcon}
-                loading={loadingDetails}
+                loading={loadingPreviewDetails}
                 hasContent={!!(details?.caption ?? details?.description)}
                 empty={
                   <p className="text-sm text-slate-400 italic leading-relaxed dark:text-slate-500">
@@ -555,7 +564,7 @@ function FilePreviewModal({
               <MediaDescriptionPanel
                 title="音频描述"
                 icon={Music}
-                loading={loadingDetails}
+                loading={loadingPreviewDetails}
                 hasContent={!!(details?.caption ?? details?.transcript ?? details?.description)}
                 empty={
                   <p className="text-sm text-slate-400 italic leading-relaxed dark:text-slate-500">
@@ -613,7 +622,7 @@ function FilePreviewModal({
               <MediaDescriptionPanel
                 title="视频描述"
                 icon={Video}
-                loading={loadingDetails}
+                loading={loadingPreviewDetails}
                 hasContent={!!(details?.caption ?? details?.description)}
                 empty={
                   <p className="text-sm text-slate-400 italic leading-relaxed dark:text-slate-500">
@@ -639,7 +648,7 @@ function FilePreviewModal({
                 </div>
               ) : null
             )
-          ) : loadingDetails && (isTextFile || isImg || isDoc) ? (
+          ) : (loadingPreviewDetails || loadingRawText) && (isTextFile || isImg || isDoc) ? (
             <PreviewPaneLoading
               title="加载预览中…"
               hint="正在获取文件详情与文本内容"
