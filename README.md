@@ -2,7 +2,7 @@
   <img src="frontend/public/logo.png" alt="MMA · Multi-Modal Agentic RAG" height="120" />
 </p>
 
-# 🧠 Multi-Modal Agentic RAG: 多模态智能路由可扩展知识库
+# Multi-Modal Agentic RAG: 多模态智能路由可扩展知识库
 
 面向多知识库、多模态场景的 RAG（Retrieval-Augmented Generation）系统：在文档与图像统一检索与生成之上，可按配置扩展音频与视频流水线；基于知识库画像做智能路由；以 **Dense + BGE-M3 稀疏 + Visual** 为主干做三路混合检索，辅以 **RRF 粗排与 Cross-Encoder 精排**；通过 SSE 推送可解释思考链与带 `context_window` 的引用。
 
@@ -46,7 +46,7 @@
 
 ## 💬 对话与检索示例
 
-以下为 **Web 对话**与**飞书 IM（可选部署）**中的多模态检索与回答示意（知识库内容与模型回答以实际部署为准）。
+以下为 **Web 对话** 与 **飞书 IM（可选部署）** 中的多模态检索与回答示意（知识库内容与模型回答以实际部署为准）。
 
 ### 📄 文档检索
 Query: `介绍DeepSeek OCR2在训练过程的各个阶段的设计方案。`
@@ -207,7 +207,8 @@ chmod +x start-dev.sh
 | Web 前端 | http://localhost:3000 |
 | 后端 API | http://localhost:8000 |
 | API 文档 | http://localhost:8000/docs |
-| MinIO 控制台 | http://localhost:9001（账号密码与 `backend/.env` 或 `docker-compose.yml` 一致，本地多为 `minioadmin`） |
+| MinIO 控制台 | http://localhost:9001 （账号密码与 `backend/.env` 或 `docker-compose.yml` 一致，本地多为 `minioadmin`） |
+| Qdrant Dashboard | http://localhost:6333/dashboard（向量库 Web 控制台；端口与 `QDRANT_PORT` / `docker-compose.yml` 中映射一致，默认 `6333`） |
 
 
 ## 🔧 可选系统依赖
@@ -236,9 +237,9 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 
 | 文档 | 说明 |
 |------|------|
-| [docs/MMA_ARCHITECTURE.md](docs/MMA_ARCHITECTURE.md) | 架构设计与实现要点 |
-| [docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 图 / 音 / 视多模态技术说明 |
-| [docs/FEISHU_BOT_SETUP.md](docs/FEISHU_BOT_SETUP.md) | 飞书机器人：开放平台与 `FEISHU_*` 环境变量配置 |
+| [MA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md) | 架构设计与实现要点 |
+| [MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 图 / 音 / 视多模态技术说明 |
+| [FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md) | 飞书机器人：开放平台与 `FEISHU_*` 环境变量配置 |
 | [SECURITY.md](SECURITY.md) | 密钥与敏感信息 |
 
 ---
