@@ -22,7 +22,7 @@
 - **多模态混合检索**：**Dense**（如 Qwen3-Embedding）+ **Sparse**（BGE-M3）+ **Visual**（CLIP + VLM 描述写入索引）；在 `audio_intent` / `video_intent` 与数据就绪时并入音频、视频向量检索。**加权 RRF 粗排** + **Cross-Encoder 精排**。
 - **One-Pass 意图识别**：意图分类、查询改写、关键词 / 多视角生成与 `visual` / `audio` / `video` 意图在一次 LLM 调用中输出结构化 `IntentObject`。
 - **推理链路可视以及回答引用溯源**：SSE 推送思考链（意图、路由、检索策略）；回答中引用悬浮溯源与 `context_window` 前后文透视。
-- **飞书平台集成**：飞书 IM（长连接、卡片、开放平台 API）为可选部署能力，详见 `backend/app/integrations/` 与 `backend/.env.example` 中相关变量。
+- **飞书平台集成**：飞书 IM（长连接、卡片、开放平台 API）为可选部署能力；配置步骤见 **[FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md)**，变量见 `backend/.env.example` 中 `FEISHU_*`，代码见 `backend/app/integrations/`。
 
 ### 技术架构
 
@@ -36,13 +36,13 @@
 
 ### 系统架构概览
 
-下图概括整体分层与主要组件关系；更细的模块说明见 **[docs/MMA_ARCHITECTURE.md](docs/MMA_ARCHITECTURE.md)** 或项目启动之后http://localhost:3000/architecture。
+下图概括整体分层与主要组件关系；更细的模块说明见 **[MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)** 或项目启动之后http://localhost:3000/architecture。
 
 ![MMA RAG 系统架构图](docs/images/architecture.jpg)
 
 ## 对话与检索示例
 
-以下为 Web 对话界面中的多模态检索与回答示意（知识库内容与模型回答以实际部署为准）。
+以下为 **Web 对话**与**飞书 IM（可选部署）**中的多模态检索与回答示意（知识库内容与模型回答以实际部署为准）。
 
 ### 文档检索
 Query: `介绍DeepSeek OCR2在训练过程的各个阶段的设计方案。`
@@ -55,7 +55,7 @@ Query: `帮我分别找一张符合以下描述词的风景：粗犷、婉约、
 ![对话示例：图片相关检索](docs/images/chat-image.jpg)
 
 ### 音频检索
-Query: `查找和该音频使用相同乐器的曲子。PS:带音频附件`（一个古筝曲子：紫竹调）的检索。
+Query: `查找和该音频使用相同乐器的曲子。`PS:带音频附件（一个古筝曲子：紫竹调）的检索。
 
 ![对话示例：音频相关检索](docs/images/chat-audio.jpg)
 
@@ -68,6 +68,12 @@ Query: `让子弹飞中汤师爷的人物性格是怎么样的？`
 Query: `为《浴血黑帮》这部电影挑选合适的海报封面和主题曲。`
 
 ![对话示例：多路混合检索与回答](docs/images/chat-mix.jpg)
+
+### 飞书端对话（可选部署）
+
+参考**[FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md)**配置飞书渠道的对话功能。启用飞书机器人与长连接后，可在群聊/单聊中使用与 Web 同一套检索与生成管道；展示形态可为卡片、Post 等（配置见 `backend/.env.example` 中 `FEISHU_*`）。
+
+![对话示例：飞书 IM 中的检索与回答](docs/images/chat-feishu.jpg)
 
 ## 核心模块概览
 
@@ -118,7 +124,7 @@ Query: `为《浴血黑帮》这部电影挑选合适的海报封面和主题曲
 - **其它 Core**：`sparse_encoder.py`、`portrait_trigger.py`、`keyword_extract.py` 等。
 - **代码入口**：`core/llm/manager.py`、`core/llm/__init__.py`（LLMRegistry）、`prompt.py`、`prompt_engine.py`、`providers/`。
 
-更细的设计与边界说明见 **[docs/MMA_ARCHITECTURE.md](docs/MMA_ARCHITECTURE.md)**。
+更细的设计与边界说明见 **[MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)**。
 
 ## 快速开始
 
@@ -145,7 +151,7 @@ cp backend/.env.example backend/.env
 
 #### 必填环境变量
 
-以下密钥与连接信息用于默认模型路由、多 Provider 与 MinerU 解析链路；本地 Docker 依赖（Redis / Qdrant / MinIO）若与示例一致，可直接沿用 `backend/.env.example` 中的值。**为了体验全部功能，建议配置所有API_KEY**
+以下密钥与连接信息用于默认模型路由、多 Provider 与 MinerU 解析链路；本地 Docker 依赖（Redis / Qdrant / MinIO）若与示例一致，可直接沿用 `backend/.env.example` 中的值。**为了体验全部功能，建议配置所有API_KEY。**
 
 | 变量 | 说明 |
 |------|------|
@@ -228,6 +234,7 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 |------|------|
 | [docs/MMA_ARCHITECTURE.md](docs/MMA_ARCHITECTURE.md) | 架构设计与实现要点 |
 | [docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 图 / 音 / 视多模态技术说明 |
+| [docs/FEISHU_BOT_SETUP.md](docs/FEISHU_BOT_SETUP.md) | 飞书机器人：开放平台与 `FEISHU_*` 环境变量配置 |
 | [SECURITY.md](SECURITY.md) | 密钥与敏感信息 |
 
 ---
