@@ -70,8 +70,7 @@ celerybeat.pid
 *.tar.gz
 *.rar
 
-# —— 测试用大媒体（不提交到仓库）——
-tests/video/*.mp4
+# —— 测试用 ——
 tests/
 
 # —— 密钥与环境（勿提交 backend/.env）——
