@@ -46,22 +46,27 @@
 
 ### 文档检索
 Query: `介绍DeepSeek OCR2在训练过程的各个阶段的设计方案。`
+
 ![对话示例：文档类检索](docs/images/chat-document.jpg)
 
 ### 图片检索
 Query: `帮我分别找一张符合以下描述词的风景：粗犷、婉约、惬意。` 
+
 ![对话示例：图片相关检索](docs/images/chat-image.jpg)
 
 ### 音频检索
 Query: `查找和该音频使用相同乐器的曲子。PS:带音频附件`（一个古筝曲子：紫竹调）的检索。
+
 ![对话示例：音频相关检索](docs/images/chat-audio.jpg)
 
 ### 视频检索
 Query: `让子弹飞中汤师爷的人物性格是怎么样的？`
+
 ![对话示例：视频相关检索](docs/images/chat-video.jpg)
 
 ### 多模态混合（跨多个模态多个知识库的混合检索）
 Query: `为《浴血黑帮》这部电影挑选合适的海报封面和主题曲。`
+
 ![对话示例：多路混合检索与回答](docs/images/chat-mix.jpg)
 
 ## 核心模块概览
