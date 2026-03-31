@@ -1,40 +1,34 @@
-# MMA · Multi-Modal 智能路由可扩展知识库 RAG Agent
+# MMA · Multi-Modal Agentic RAG: 智能路由可扩展知识库
 
 面向多知识库、多模态场景的 RAG（Retrieval-Augmented Generation）系统：在文档与图像统一检索与生成之上，可按配置扩展音频与视频流水线；基于知识库画像做智能路由；以 **Dense + BGE-M3 稀疏 + Visual** 为主干做三路混合检索，辅以 **RRF 粗排与 Cross-Encoder 精排**；通过 SSE 推送可解释思考链与带 `context_window` 的引用。
 
-**适用场景**：希望在本地或 Docker 中自建多模态知识库与对话式检索的开发者。配置入口为 [`backend/.env`](backend/.env)（由 [`backend/.env.example`](backend/.env.example) 复制），设计细节见 **[docs/MMA_ARCHITECTURE.md](docs/MMA_ARCHITECTURE.md)**，密钥管理见 **[SECURITY.md](SECURITY.md)**。
+**适用场景**：希望在本地或 Docker 中自建多模态知识库与对话式检索的开发者。配置入口为 [`backend/.env`](backend/.env)（由 [`backend/.env.example`](backend/.env.example) 复制），设计细节见 **[ARCHITECTURE](docs/MMA_ARCHITECTURE.md)**，密钥管理见 **[SECURITY](SECURITY.md)**。
 
 ## 目录
 
 - [项目特色](#项目特色)
-- [系统架构概览](#系统架构概览)
-- [项目结构](#项目结构)
+- [对话与检索示例](#对话与检索示例)
 - [核心模块概览](#核心模块概览)
 - [快速开始](#快速开始)
-- [Docker 部署](#docker-部署)
-- [配置要点](#配置要点)
-- [故障排除](#故障排除)
-- [测试与调试](#测试与调试)
 - [可选系统依赖](#可选系统依赖)
 - [文档索引](#文档索引)
-- [许可证与联系](#许可证与联系)
 
 ## 项目特色
 
 ### 核心能力
 
-- **多模态数据处理**：PDF、Word、TXT、Markdown、图片等解析；文档内嵌图经 VLM 描述后插回原文再分块；支持本地上传、URL、文件夹、热点订阅等多来源接入。音频、视频解析与向量化见 **[docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**。
-- **智能知识库路由**：基于 K-Means + LLM 主题摘要的画像生成，TopN 检索 + 按知识库加权聚合，自动决策单库 / 多库 / 全库。
-- **混合检索与两阶段重排**：**Dense**（如 Qwen3-Embedding）+ **Sparse**（BGE-M3）+ **Visual**（CLIP + VLM 描述写入索引）；在 `audio_intent` / `video_intent` 与数据就绪时并入音频、视频向量检索。**加权 RRF 粗排** + **Cross-Encoder 精排**。
+- **多模态数据处理**：文档（PDF、PPTX、Word、Markdown等）、图片、音频、视频的解析；文档内嵌图经 VLM 描述后插回原文再分块；支持本地上传、URL、本地文件夹解析导入、热点联网订阅等多来源接入。图片、音频、视频解析与向量化见 **[多模态数据解析处理细节](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**。
+- **智能知识库路由**：基于LLM的知识库主题摘要+知识库子主题聚类的画像生成，按知识库加权聚合，根据用户查询自动决策检索哪些知识库。
+- **多模态混合检索**：**Dense**（如 Qwen3-Embedding）+ **Sparse**（BGE-M3）+ **Visual**（CLIP + VLM 描述写入索引）；在 `audio_intent` / `video_intent` 与数据就绪时并入音频、视频向量检索。**加权 RRF 粗排** + **Cross-Encoder 精排**。
 - **One-Pass 意图识别**：意图分类、查询改写、关键词 / 多视角生成与 `visual` / `audio` / `video` 意图在一次 LLM 调用中输出结构化 `IntentObject`。
-- **可解释与调试**：SSE 推送思考链（意图、路由、检索策略）；引用悬浮与 `context_window` 前后文透视。
-- **可选集成**：飞书 IM（长连接、卡片、开放平台 API）为可选部署能力，详见 `backend/app/integrations/` 与 `backend/.env.example` 中相关变量。
+- **推理链路可视以及回答引用溯源**：SSE 推送思考链（意图、路由、检索策略）；回答中引用悬浮溯源与 `context_window` 前后文透视。
+- **飞书平台集成**：飞书 IM（长连接、卡片、开放平台 API）为可选部署能力，详见 `backend/app/integrations/` 与 `backend/.env.example` 中相关变量。
 
 ### 技术架构
 
 | 层级 | 说明 |
 |------|------|
-| **后端** | FastAPI + Python 3.9+；DDD 模块化（Ingestion / Knowledge / Retrieval / Generation）；Core 层 LLM Manager、BGE-M3 稀疏编码等。 |
+| **后端** | FastAPI + Python 3.12；DDD 模块化（Ingestion / Knowledge / Retrieval / Generation）；Core 层 LLM Manager、BGE-M3 稀疏编码等。 |
 | **前端** | React + TypeScript + Vite，Tailwind CSS；对话、知识库、架构说明、调试等页面。 |
 | **数据平面** | MinIO（对象）、Qdrant（向量与稀疏索引）、Redis（缓存与 Celery 队列）。 |
 | **模型** | LLMManager 按任务路由；支持 SiliconFlow、OpenRouter、阿里云百炼、DeepSeek 等；Embedding / Rerank / VLM / CLIP / CLAP 等按配置启用。 |
@@ -42,84 +36,47 @@
 
 ### 系统架构概览
 
-```mermaid
-flowchart LR
-  subgraph client [Client]
-    Web[React_Vite]
-  end
-  subgraph api [Backend_FastAPI]
-    FastAPI[FastAPI]
-    LLM[LLM_Manager]
-    Ingest[Ingestion]
-    Know[Knowledge]
-    Retr[Retrieval]
-    Gen[Generation]
-  end
-  subgraph data [Data_plane]
-    MinIO[MinIO]
-    Qdrant[Qdrant]
-    Redis[Redis_Celery]
-  end
-  Web --> FastAPI
-  FastAPI --> Ingest
-  FastAPI --> Know
-  FastAPI --> Retr
-  FastAPI --> Gen
-  Ingest --> MinIO
-  Ingest --> Qdrant
-  Know --> Qdrant
-  Retr --> Qdrant
-  Retr --> LLM
-  Gen --> LLM
-  FastAPI --> Redis
-```
+下图概括整体分层与主要组件关系；更细的模块说明见 **[docs/MMA_ARCHITECTURE.md](docs/MMA_ARCHITECTURE.md)** 或项目启动之后http://localhost:3000/architecture。
 
-## 项目结构
+![MMA RAG 系统架构图](docs/images/architecture.jpg)
 
-```
-MMA-RAG/
-├── backend/                    # 后端 (Python / FastAPI)
-│   ├── app/
-│   │   ├── api/                # 接口层：chat、upload、knowledge、import、debug 等
-│   │   ├── core/               # 配置、LLM Manager、sparse_encoder、portrait_trigger
-│   │   ├── modules/            # 业务模块
-│   │   │   ├── ingestion/      # 解析、分块、向量化、sources、MinIO/Qdrant
-│   │   │   ├── knowledge/      # 知识库 CRUD、画像生成、路由
-│   │   │   ├── retrieval/      # 意图、改写、混合检索、重排
-│   │   │   └── generation/     # 上下文构建、流式输出
-│   │   ├── integrations/       # 可选：飞书等外部通道
-│   │   └── tasks/              # 定时/异步任务（如热点导入）
-│   ├── celery_app.py
-│   ├── requirements.txt
-│   ├── Dockerfile
-│   └── .env.example            # 复制为 .env 并填写密钥（勿提交 .env）
-├── frontend/                   # 前端 (React / TypeScript / Vite)
-│   ├── src/
-│   │   ├── components/         # chat、knowledge、architecture、settings、debug
-│   │   ├── data/               # 架构页数据等
-│   │   ├── services/           # API、SSE
-│   │   ├── store/
-│   │   ├── hooks/
-│   │   └── pages/
-│   ├── package.json
-│   └── vite.config.ts
-├── docs/                       # 架构与设计文档
-│   ├── MMA_ARCHITECTURE.md
-│   └── MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md
-├── docker-compose.yml
-├── start-dev.sh                # 开发环境启动（Docker 依赖 + 本地前后端）
-└── README.md
-```
+## 对话与检索示例
+
+以下为 Web 对话界面中的多模态检索与回答示意（知识库内容与模型回答以实际部署为准）。
+
+### 文档检索
+Query: `介绍DeepSeek OCR2在训练过程的各个阶段的设计方案。`
+![对话示例：文档类检索](docs/images/chat-document.jpg)
+
+### 图片检索
+Query: `帮我分别找一张符合以下描述词的风景：粗犷、婉约、惬意。` 
+![对话示例：图片相关检索](docs/images/chat-image.jpg)
+
+### 音频检索
+Query: `查找和该音频使用相同乐器的曲子。PS:带音频附件`（一个古筝曲子：紫竹调）的检索。
+![对话示例：音频相关检索](docs/images/chat-audio.jpg)
+
+### 视频检索
+Query: `让子弹飞中汤师爷的人物性格是怎么样的？`
+![对话示例：视频相关检索](docs/images/chat-video.jpg)
+
+### 多模态混合（跨多个模态多个知识库的混合检索）
+Query: `为《浴血黑帮》这部电影挑选合适的海报封面和主题曲。`
+![对话示例：多路混合检索与回答](docs/images/chat-mix.jpg)
 
 ## 核心模块概览
 
 ### 1. Ingestion（数据输入处理与存储）
 
-- **职责**：将各类文件与多来源内容解析、分块、向量化后写入对象存储与向量库，为检索与画像提供数据基础。
-- **解析**：`ParserFactory` 按类型调度——**PDF**：MinerU API → 本地 MinerU 2.5 → PaddleOCR-VL-1.5 → PyMuPDF 兜底；**DOCX / PPTX**：MinerU API → 本地 MinerU → python-docx / python-pptx（部分路径依赖 LibreOffice）；TXT/Markdown、图片（PIL）。文档内嵌图先 VLM 描述并上传 MinIO，再将 caption 插回原文占位符后统一分块。
-- **分块**：递归语义分块（段落/句子优先，max/min 长度与重叠窗口）；每个 chunk 带 `context_window`（前后 chunk ID）便于调试。
-- **向量化**：文档——Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏，写入 `text_chunks`；图片——VLM caption 的 `text_vec` + CLIP `clip_vec`，写入 `image_vectors`；音频 / 视频见多模态文档与 `vector_store` 中对应集合。
-- **存储**：MinIO 按知识库与类型组织路径；Qdrant 存 `text_chunks`、`image_vectors` 等；画像由 Knowledge 写入 `kb_portraits`。
+- **职责**：将各类文件与多来源内容解析、分块（文档）、向量化后写入对象存储与向量库，为检索与画像提供数据基础。
+- **解析**：`ParserFactory` 按类型调度——**PDF / DOCX / PPTX**：MinerU解析，文档中的图片会VLM之后反嵌入文本再做分块；**TXT / Markdown**、**图片**（PIL / `ImageParser`）；**音频**（`AudioParser`：`mp3`/`wav`/`m4a`/`flac` 等，元数据优先 `soundfile`/`librosa`）；**视频**（`VideoParser`：`mp4`/`avi`/`mov`/`mkv` 等，OpenCV 读元数据；长视频切段、音轨抽取依赖 **FFmpeg**，见 [可选系统依赖](#可选系统依赖)）。文档内嵌图先 VLM 描述并上传 MinIO，再将 caption 插回原文占位符后统一分块。
+- **分块**：**文档**为递归语义分块（段落/句子优先，max/min 长度与重叠窗口），每个 chunk 带 `context_window`（前后 chunk ID）便于调试。**图片 / 音频 / 视频**不以传统 chunk 切分，而以**单条记录**为单位入库（图片单张；音频整段；视频按场景/关键帧生成多条向量点，见下）。
+- **向量化**：
+  - **文档**：Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏 → `text_chunks`。
+  - **图片**：VLM caption → `text_vec`（4096）+ CLIP → `clip_vec`（768）→ `image_vectors`。
+  - **音频**：ASR 转写 + LLM 内容描述 → 拼接文本做 Dense（及可选 BGE-M3 稀疏）+ **CLAP**（`clap_vec`，512 维）→ `audio_vectors`。
+  - **视频**：MLLM 场景与关键帧规划 → 每关键帧写入 `video_vectors`（`scene_vec` / `frame_vec` 与场景、帧描述对应；帧图经 CLIP 得 `clip_vec`）；长视频分段处理；可选从音轨抽音频文件至 `audios/` 再走 ASR。细节见 **[docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**。
+- **存储**：MinIO 按知识库分桶，路径前缀含 `documents/`、`images/`、`audios/`、`videos/`（含 `videos/{file_id}/keyframes/` 关键帧图）。Qdrant 集合包括 `text_chunks`、`image_vectors`、`audio_vectors`、`video_vectors`（画像由 Knowledge 写入 `kb_portraits`）。
 - **多来源与异步**：sources 层支持 URL、文件夹、Tavily 热点、媒体下载等；大任务经 Celery + Redis，前端可轮询或流式查进度。
 - **代码入口**：`modules/ingestion/service.py`、`parsers/factory.py`、`sources/`、`storage/minio_adapter.py`、`storage/vector_store.py`。
 
@@ -152,7 +109,7 @@ MMA-RAG/
 - **职责**：按任务类型将 chat/embed/rerank 等请求路由到对应模型与 Provider；统一多厂商 API 与提示词。
 - **任务路由**：如 `intent_recognition`、`image_captioning`、`final_generation`、`reranking`、`kb_portrait_generation` 等映射到具体模型；业务层传 `task_type` 与参数即可。
 - **统一接口**：chat、embed、rerank；Provider 侧多为 OpenAI 兼容协议。
-- **多厂商**：SiliconFlow、OpenRouter、阿里云百炼、DeepSeek 等；可配置超时与故障转移。
+- **多 Provider**：SiliconFlow、OpenRouter、阿里云百炼、DeepSeek 等；可配置超时与故障转移。
 - **其它 Core**：`sparse_encoder.py`、`portrait_trigger.py`、`keyword_extract.py` 等。
 - **代码入口**：`core/llm/manager.py`、`core/llm/__init__.py`（LLMRegistry）、`prompt.py`、`prompt_engine.py`、`providers/`。
 
@@ -160,86 +117,83 @@ MMA-RAG/
 
 ## 快速开始
 
+**适用环境**：Linux、WSL、MacOS。
+
 ### 环境要求
 
 | 依赖 | 说明 |
 |------|------|
 | Docker & Docker Compose | 启动 MinIO、Qdrant、Redis 等 |
-| Node.js 18+ | 前端（npm 或 pnpm） |
-| Python 3.9+ | 本地运行后端时 |
-| LibreOffice | 可选：Office 预览转 PDF，见 [可选系统依赖](#可选系统依赖) |
-| FFmpeg | 可选：视频解析/切段，见 [可选系统依赖](#可选系统依赖) |
+| Node.js 20.20.1 | 前端（npm 或 pnpm） |
+| Python 3.12 | 本地运行后端时 |
+| LibreOffice | Office 预览转 PDF，见 [可选系统依赖](#可选系统依赖) |
+| FFmpeg | 视频解析/切段，见 [可选系统依赖](#可选系统依赖) |
 
 ### 1. 克隆与配置
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Champ-X/MMA-RAG.git
 cd MMA-RAG
 cp backend/.env.example backend/.env
-# 编辑 backend/.env：至少填写 SILICONFLOW_API_KEY（必填）
+# 编辑 backend/.env：至少填写下表「必填」项（与 `backend/.env.example` 对照）
 ```
 
-**必填与常用环境变量（完整列表见 `backend/.env.example`）**
+#### 必填环境变量
+
+以下密钥与连接信息用于默认模型路由、多 Provider 与 MinerU 解析链路；本地 Docker 依赖（Redis / Qdrant / MinIO）若与示例一致，可直接沿用 `backend/.env.example` 中的值。**为了体验全部功能，建议配置所有API_KEY**
 
 | 变量 | 说明 |
 |------|------|
-| `SILICONFLOW_API_KEY` | 必填。默认 LLM/Embedding 等多走 SiliconFlow；也可改用其他 Provider 并填对应 Key。 |
-| `REDIS_URL` | 本地开发常为 `redis://localhost:6379/0`（与 Docker 内 Redis 一致）。 |
-| `QDRANT_HOST` / `QDRANT_PORT` | 本地一般为 `localhost` / `6333`。 |
-| `MINIO_*` | 本地 Docker 默认 `minioadmin` / `minioadmin`；生产务必修改。 |
+| `SILICONFLOW_API_KEY` | **SiliconFlow**：默认 LLM、Embedding、Rerank 等多数任务走 SiliconFlow OpenAI 兼容接口。在 [SiliconFlow 控制台](https://cloud.siliconflow.cn/) 注册后于「API 密钥」页创建。 |
+| `OPENROUTER_API_KEY` | **OpenRouter**：在 `LLMManager` 中将任务路由到 OpenRouter 上聚合的模型时使用（与 `core/llm/providers/openrouter.py` 等配置配合）。在 [openrouter.ai/keys](https://openrouter.ai/keys) 创建 API Key。 |
+| `ALIYUN_BAILIAN_API_KEY` | **阿里云百炼（DashScope）**：选用通义等百炼模型、或 Provider 指向阿里云时使用。在 [百炼控制台](https://bailian.console.aliyun.com/) 开通模型服务，密钥说明见 [获取 API Key](https://help.aliyun.com/zh/model-studio/get-api-key)。 |
+| `MINERU_TOKEN` | **MinerU 云端解析**：PDF / Word 等走 MinerU API 优先链路时用于鉴权（见 `ParserFactory` 中 MinerU API 分支）。在 [MinerU 开放服务](https://mineru.net/)（或 OpenDataLab MinerU 文档指引）申请 Token。 |
 
-可选：`DEEPSEEK_API_KEY`、`OPENROUTER_API_KEY`、`ALIYUN_BAILIAN_API_KEY`、`TAVILY_API_KEY`、飞书相关变量等。
+#### 选填环境变量
 
-前端默认请求 `http://localhost:8000/api`；构建时可通过环境变量 `VITE_API_BASE_URL` 覆盖（见 [`frontend/src/services/api_client.ts`](frontend/src/services/api_client.ts)）。
+未配置时多数功能使用代码内默认或降级路径；需要对应能力时再填写。完整键名与默认值见 [`backend/.env.example`](backend/.env.example)。
 
-### 2. 启动开发环境
+| 变量 | 说明 |
+|------|------|
+| `DEEPSEEK_API_KEY` | **DeepSeek**：任务路由到 DeepSeek API 时使用。在 [DeepSeek 开放平台](https://platform.deepseek.com/) → API keys 创建。 |
+| `PADDLEOCR_API_URL` / `PADDLEOCR_TOKEN` | **PaddleOCR 版面解析**：PDF 链路中 PaddleOCR-VL 等调用（与 `paddleocr_client` 配置一致）。服务与 Token 通常来自 [飞桨 AI Studio](https://aistudio.baidu.com/) 或自建推理地址，见 [PaddleOCR 文档](https://www.paddleocr.ai/)。 |
+| `TAVILY_API_KEY` | **Tavily**：联网搜索、热点导入等需要 Tavily 时启用。在 [tavily.com](https://tavily.com/) 注册后在控制台获取 API Key。 |
+| `SERPAPI_KEY` | **SerpAPI**：例如「按关键词搜索图片导入」等需要 Google 等搜索结果时。在 [serpapi.com](https://serpapi.com/manage-api-key) 管理 API Key。 |
+| `PIXABAY_API_KEY` | **Pixabay**：Pixabay 图片搜索导入。在 [Pixabay API](https://pixabay.com/api/docs/) 申请。 |
+| `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 及其它 `FEISHU_*` | **飞书开放平台**：机器人长连接、卡片回复等；需将 `FEISHU_WS_ENABLED` 等与文档对齐。在 [飞书开放平台](https://open.feishu.cn/app) 创建企业自建应用并获取凭证。 |
+
+### 2. Python 虚拟环境与后端依赖
+
+在仓库根目录执行（将后端依赖安装到独立虚拟环境，避免与系统 Python 混用）：
 
 ```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate          # Linux / WSL / macOS
+pip install -U pip
+pip install -r requirements.txt
+cd ..
+```
+
+### 3. 启动开发环境
+
+```bash
+source backend/.venv/bin/activate   # 若上一步创建了 venv，务必先激活
 chmod +x start-dev.sh
 ./start-dev.sh
 ```
 
-脚本会检查 `backend/.env` 是否存在，用 `docker compose --env-file backend/.env` 启动依赖，再在本地启动后端与前端。
+脚本会检查 `backend/.env` 是否存在，用 Docker Compose 启动 MinIO、Qdrant、Redis，再在本地启动后端与前端。首次运行可能下载或预载 LibreOffice/FFmpeg（若脚本尝试安装）以及 CLIP、CLAP、BGE-M3 等模型（视 `PRELOAD_LOCAL_MODELS_ON_STARTUP` 等配置），耗时可能较长。
 
-### 3. 访问
+### 4. 访问
 
 | 服务 | 地址 |
 |------|------|
-| 前端 | http://localhost:3000 |
+| Web 前端 | http://localhost:3000 |
 | 后端 API | http://localhost:8000 |
-| Swagger 文档 | http://localhost:8000/docs |
+| API 文档 | http://localhost:8000/docs |
 | MinIO 控制台 | http://localhost:9001（账号密码与 `backend/.env` 或 `docker-compose.yml` 一致，本地多为 `minioadmin`） |
 
-## Docker 部署
-
-必须使用 `backend/.env` 注入 `SILICONFLOW_API_KEY` 等变量：
-
-```bash
-docker compose --env-file backend/.env up -d
-docker compose --env-file backend/.env ps
-docker compose --env-file backend/.env logs -f
-```
-
-主要服务：`backend`、`minio`、`qdrant`、`redis`、`celery_worker`；可选 `celery_flower`（Celery 监控）。**前端**需单独 `npm run dev` / `npm run build` 或使用自己的静态托管。
-
-## 配置要点
-
-- **后端**：[`backend/app/core/config.py`](backend/app/core/config.py) 从 **`backend/.env`** 加载（无文件时可依赖进程环境变量）；模型与任务路由见 Core LLM 层。
-- **前端**：API 基地址见 [`frontend/src/services/api_client.ts`](frontend/src/services/api_client.ts)（`VITE_API_BASE_URL`）。
-- **勿将真实 `backend/.env` 提交到 Git**；以 [`backend/.env.example`](backend/.env.example) 为模板。
-
-## 故障排除
-
-| 现象 | 处理 |
-|------|------|
-| 启动报错缺少 `SILICONFLOW_API_KEY` | 已创建并填写 `backend/.env` 后重启后端。 |
-| 未找到 `backend/.env` | 执行 `cp backend/.env.example backend/.env` 后再启动。 |
-| Compose 容器内无 API Key | 必须使用 `docker compose --env-file backend/.env`，勿仅依赖项目根目录 `.env`。 |
-
-## 测试与调试
-
-- **后端测试**：`cd backend && pytest tests/ -v`（若存在 `tests/`）。
-- **端到端**：前端对话页 + 内置架构页中的「RAG 请求链路」；引用与 Inspector 查看调试字段。
 
 ## 可选系统依赖
 
@@ -270,11 +224,6 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 | [docs/MMA_ARCHITECTURE.md](docs/MMA_ARCHITECTURE.md) | 架构设计与实现要点 |
 | [docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 图 / 音 / 视多模态技术说明 |
 | [SECURITY.md](SECURITY.md) | 密钥与敏感信息 |
-
-## 许可证与联系
-
-- **许可证**：若对外开源，建议在仓库根目录添加 `LICENSE` 文件（例如 MIT）并在此 README 中更新说明。
-- **反馈**：欢迎通过 Issues / Discussions 反馈问题与建议。
 
 ---
 

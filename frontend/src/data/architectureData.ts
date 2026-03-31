@@ -451,7 +451,7 @@ export const techStackItems: TechStackItem[] = [
   },
   {
     id: 'python',
-    name: 'Python 3.9+',
+    name: 'Python 3.12',
     category: 'backend',
     description: '后端主语言，配合 DDD 领域驱动设计实现模块化开发。',
   },

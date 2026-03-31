@@ -1,8 +1,8 @@
-# MMAA 多模态 RAG 知识库 — 架构设计文档
+# MMA 多模态 RAG 知识库 — 架构设计文档
 
 ## 文档说明
 
-本文档描述 **MMAA-RAG**（本仓库）的模块划分与数据流，以**当前代码实现**为准；与 **[MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](./MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)** 互为补充（后者专述图/音/视的解析、向量形态与检索细节）。
+本文档描述 **MMA-RAG**（本仓库）的模块划分与数据流，以**当前代码实现**为准；与 **[MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](./MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)** 互为补充（后者专述图/音/视的解析、向量形态与检索细节）。
 
 **项目特点（阅读主线）**：
 
@@ -267,7 +267,7 @@
 ### 7.1 项目根目录
 
 ```text
-MMAA-RAG/
+MMA-RAG/
 ├── backend/                    # 后端 (Python / FastAPI)
 │   ├── app/
 │   │   ├── api/                 # 接口层
@@ -377,4 +377,4 @@ frontend/src/
 | [README.md](../README.md) | 项目概览、快速开始与模块入口 |
 | [MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](./MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 图片 / 音频 / 视频：解析、存储、向量形态与检索细节 |
 
-以上为当前 MMAA-RAG 架构设计及实现概要，后续迭代以代码为准。
+以上为当前 MMA-RAG 架构设计及实现概要，后续迭代以代码为准。
