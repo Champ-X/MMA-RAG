@@ -123,7 +123,7 @@ export const innovationPoints: InnovationPoint[] = [
     id: 'hybrid-search',
     title: '多路融合混合检索',
     description:
-      '主干为 Dense + BGE-M3 稀疏 + Visual（图片 text_vec + clip_vec，VLM 写入索引）；audio_intent / video_intent 开启时并入 Audio（CLAP + ASR/描述）与 Video（关键帧 + 整体描述）检索，经加权 RRF 粗排与 Cross-Encoder 精排',
+      '主干为 Dense + BGE-M3 稀疏 + Visual（图片 text_vec + clip_vec；Visual 检索可并入 video 关键帧）；audio_intent 非 unnecessary 时 Audio（CLAP + ASR/描述）；Video 为 scene_vec + frame_vec + clip_vec 多路检索；经加权 RRF 粗排与 Cross-Encoder 精排',
     impact: '在复杂查询与多模态知识库场景下更稳定地召回文档/图片/音频/视频相关片段',
   },
   {
@@ -141,7 +141,7 @@ export const innovationPoints: InnovationPoint[] = [
   {
     id: 'multimodal-vector',
     title: '全模态向量化融合',
-    description: '文档 Dense + BGE-M3 稀疏；图片 VLM + CLIP 双路；音频 ASR/描述 + CLAP 双路（+ 可选稀疏）；视频关键帧 VLM + 整体描述 + 关键帧 CLIP。文本侧统一 Embedding，支持文档/图片/音频/视频跨模态检索与路由',
+    description: '文档 Dense + BGE-M3 稀疏；图片 VLM + CLIP 双路；音频 ASR/描述 + CLAP 双路（+ 可选稀疏）；视频每关键帧 scene_vec + frame_vec + clip_vec（MLLM 场景/帧规划）。文本侧统一 Embedding，支持文档/图片/音频/视频跨模态检索与路由',
     impact: '文档、图片、音频、视频统一表征与跨模态检索',
   },
   {
@@ -252,7 +252,7 @@ export const requestFlowSteps: RequestFlowStep[] = [
     title: '多路混合检索',
     short: 'Dense + Sparse + Visual（+ Audio / Video）',
     description:
-      'HybridSearchEngine：以 Dense 语义检索与 BGE-M3 稀疏检索为文档主轴；图片为 text_vec + clip_vec 双路（VLM 描述写入索引）；在 visual_intent 下可补充 video_vectors 关键帧以丰富图片来源。audio_intent / video_intent 非 unnecessary 时检索 audio_vectors、video_vectors。多路结果加权 RRF 粗排后再进入 Cross-Encoder 精排。',
+      'HybridSearchEngine：Dense + Sparse 为文档主轴；图片为 text_vec + clip_vec 双路；visual_intent 下 Visual 检索可并入 video 关键帧；audio_intent 非 unnecessary 时检索 audio_vectors；video_vectors 为 scene/frame/clip 三路（video 路权重受 video_intent 调节）。多路加权 RRF 粗排后再 Cross-Encoder 精排。',
     backendEntry: 'backend/app/modules/retrieval/search_engine.py::HybridSearchEngine',
     estimatedTime: '300-800ms',
     keyTechnologies: ['Dense', 'BGE-M3 Sparse', 'CLIP Visual', 'CLAP Audio', 'Video', 'RRF Fusion'],
@@ -293,16 +293,16 @@ export const coreModules: ModuleInfo[] = [
   {
     id: 'ingestion',
     name: 'Ingestion - 数据输入处理与存储',
-    role: '负责文件解析、切分与全模态向量化（文档 Dense+BGE-M3；图片 VLM+CLIP；音频 ASR+CLAP；视频关键帧+整体描述+CLIP），以及写入 MinIO 与 Qdrant。',
+    role: '负责文件解析、切分与全模态向量化（文档 Dense+BGE-M3；图片 VLM+CLIP；音频 ASR+CLAP；视频每关键帧 scene_vec+frame_vec+clip_vec），以及写入 MinIO 与 Qdrant。',
     color: 'green',
     highlights: [
       '统一入口：IngestionService 完成解析 → MinIO → 向量化 → Qdrant 全流程；支持本地上传、URL、文件夹、热点订阅等多来源接入',
-      '解析器工厂：文档（PDF/DOCX/TXT/Markdown）、图片（PIL）、音频（soundfile/librosa）、视频（OpenCV）；文档内嵌图先 VLM 描述再插回原文后分块；音频/视频按条不切块',
-      '分块策略：文档递归语义分块 + 重叠窗口，chunk 携带 context_window；图片/音频/视频以单条为单位（caption、transcript+description、视频描述）',
+      '解析器工厂：PDF 优先 MinerU（API/本地 2.5）→ PaddleOCR-VL-1.5 → PyMuPDF 兜底；DOCX/PPTX 优先 MinerU 再 python-docx / python-pptx；TXT/Markdown；图片（PIL）；音频（soundfile/librosa）；视频（OpenCV）。文档内嵌图先 VLM 再插回原文后分块；音频以文件为条，视频以关键帧为条',
+      '分块策略：文档递归语义分块 + 重叠窗口，chunk 携带 context_window；图片/音频各一点；视频每关键帧一点（含场景/帧描述与 CLIP）',
       '文档向量化：Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏，写入 text_chunks',
       '图片向量化：VLM caption + text_vec + CLIP clip_vec（768 维），写入 image_vectors',
       '音频向量化：ASR 转写 + LLM 描述 + text_vec + CLAP clap_vec（512 维，可选 sparse），写入 audio_vectors',
-      '视频向量化：关键帧 VLM + 整体描述（+ 可选音轨 ASR）+ text_vec + 关键帧 CLIP clip_vec，写入 video_vectors',
+      '视频向量化：MLLM 场景/关键帧规划 → 每帧 scene_vec + frame_vec + clip_vec，写入 video_vectors（一关键帧一点）',
       '存储：MinIO 按知识库与类型分目录（documents/images/audios/videos）；VectorStore 写入 text_chunks / image_vectors / audio_vectors / video_vectors / kb_portraits',
       '异步管道：Celery + Redis 处理长耗时导入，前端可轮询或流式查看进度',
     ],
@@ -321,8 +321,8 @@ export const coreModules: ModuleInfo[] = [
     color: 'blue',
     highlights: [
       '知识库 CRUD：创建、查询、更新、删除知识库，维护元数据与统计；支持用户指定知识库时跳过路由',
-      '画像生成：从 Text、Image、Audio、Video 各 Collection 的 text_vec 按比例采样（懒加载正文），K = sqrt(N/2) 限制内 K-Means 聚类',
-      '主题摘要：每簇取近中心 5～10 样本，以 [文档片段]/[图片描述]/[音频转写描述]/[视频描述] 前缀拼成 content_pieces，LLM 生成 topic_summary 后向量化写入 kb_portraits',
+      '画像生成：从 Text、Image、Audio、Video 按比例采样向量（文档 dense、图/音 text_vec、视频 frame_vec；懒加载正文），K = sqrt(N/2) 限制内 K-Means 聚类',
+      '主题摘要：每簇取近中心若干样本，以 [文档片段]/[图片描述]/[音频转写描述]/[视频帧描述] 等前缀拼成 content_pieces，LLM 生成 topic_summary 后向量化写入 kb_portraits',
       '画像更新：增量/全量触发；Replace 策略（先删该 KB 旧画像再插入新画像）',
       '路由决策：refined_query 向量在 kb_portraits 全局 TopN 检索；每 KB 取前 K 节点位置衰减加权平均，归一化后按阈值决定单库/多库/全库',
       '路由策略：全部得分偏低时全库检索；第一名与第二名差距 ≥ 阈值则单库，否则取前两库',
@@ -341,7 +341,7 @@ export const coreModules: ModuleInfo[] = [
     highlights: [
       'One-Pass 意图识别：意图分类、查询改写、关键词/多视角生成、visual_intent/audio_intent/video_intent 统一一次 LLM 调用，输出 IntentObject',
       '查询策略：refined_query 用于 Dense 与路由；sparse_keywords 与 dense_query 拼接送 BGE-M3 稀疏检索；multi_view_queries 用于 Dense 多视角',
-      '多路混合检索：Dense（主查询 + 多视角）、Sparse（BGE-M3）、Visual（图片 text_vec + clip_vec 双路 RRF）、Audio（text + CLAP 双路，可选 sparse）、Video（text_vec + clip_vec 双路），按各 intent 决定是否执行及权重',
+      '多路混合检索：Dense（主查询 + 多视角）、Sparse（BGE-M3）、Visual（图片双路 RRF，可并入视频关键帧）、Audio（audio_intent 非 unnecessary 时 text + CLAP + 可选 sparse）、Video（scene_vec + frame_vec + clip_vec 三路 RRF；audio 与 video 的 intent/权重策略见架构文档）',
       '两阶段重排：加权 RRF 粗排（dense/sparse/visual/audio/video 可配）→ Cross-Encoder 精排，精排分与 RRF 分合并取 final_top_k；implicit 时对图片/音频/视频做配额保护',
       'RetrievalContext：封装 target_kb_ids、search_strategies、visual_intent、audio_intent、video_intent 等，贯穿检索与重排',
       '检索结果含各阶段耗时与命中详情，支持前端 ThinkingCapsule 与调试展示',
@@ -411,12 +411,12 @@ export const dataFlowStages: DataFlowStage[] = [
   {
     id: 'vectorize',
     title: '全模态向量化',
-    description: '文档：Dense（Qwen3-Embedding-8B）+ BGE-M3 稀疏；图片：VLM 描述 + text_vec + CLIP；音频：ASR + 描述 + text_vec + CLAP（可选 sparse）；视频：关键帧 VLM + 整体描述 + text_vec + 关键帧 CLIP。统一写入 Qdrant 对应集合。',
+    description: '文档：Dense（Qwen3-Embedding-8B）+ BGE-M3 稀疏；图片：VLM 描述 + text_vec + CLIP；音频：ASR + 描述 + text_vec + CLAP（可选 sparse）；视频：每关键帧 scene_vec + frame_vec + clip_vec（MLLM 场景/帧规划 + 截帧 CLIP）。统一写入 Qdrant 对应集合。',
   },
   {
     id: 'qdrant',
     title: '向量与稀疏索引',
-    description: 'Qdrant 存储 text_chunks（dense + sparse）、image_vectors（clip_vec + text_vec）、audio_vectors（text_vec + clap_vec，可选 sparse）、video_vectors（text_vec + clip_vec）、kb_portraits，支撑多路混合检索与路由。',
+    description: 'Qdrant 存储 text_chunks（dense + sparse）、image_vectors（clip_vec + text_vec）、audio_vectors（text_vec + clap_vec，可选 sparse）、video_vectors（scene_vec + frame_vec + clip_vec，一关键帧一点）、kb_portraits，支撑多路混合检索与路由。',
   },
   {
     id: 'redis-celery',
@@ -504,7 +504,7 @@ export const techStackItems: TechStackItem[] = [
     id: 'embedding',
     name: 'Qwen3-Embedding-8B',
     category: 'model',
-    description: '文本 Dense 向量（4096 维），用于 text_chunks、image/audio/video 的 text_vec 与 kb_portraits。',
+    description: '文本 Dense 向量（4096 维），用于 text_chunks、image/audio 的 text_vec、video 的 scene_vec/frame_vec、kb_portraits 等。',
   },
   {
     id: 'bge',
@@ -516,7 +516,7 @@ export const techStackItems: TechStackItem[] = [
     id: 'clip',
     name: 'CLIP (clip-vit-large-patch14)',
     category: 'model',
-    description: '图片/视频视觉向量（768 维），与 text_vec 双路写入 image_vectors、video_vectors，检索时 Prefetch + Fusion RRF。',
+    description: '图片与视频关键帧视觉向量（768 维）：image 与 text_vec 双路；video 与 scene_vec/frame_vec 一起做三路 Prefetch + Fusion RRF。',
   },
   {
     id: 'clap',

@@ -94,7 +94,7 @@ MMAA-RAG/
 ### 1. Ingestion（数据输入处理与存储）
 
 - **职责**：将各类文件与多来源内容解析、分块、向量化后写入对象存储与向量库，为检索与画像提供数据基础。
-- **解析**：`ParserFactory` 按类型调度——PDF（PyMuPDF，可选 MinerU）、DOCX（python-docx）、TXT/Markdown、图片（PIL）；文档内嵌图先单独做 VLM 描述并上传 MinIO，再将 caption 插回原文占位符后统一分块。
+- **解析**：`ParserFactory` 按类型调度——**PDF：MinerU API → 本地 MinerU 2.5 → PaddleOCR-VL-1.5 → PyMuPDF 兜底**；**DOCX/PPTX：MinerU API → 本地 MinerU → python-docx / python-pptx**；TXT/Markdown、图片（PIL）。文档内嵌图先单独做 VLM 描述并上传 MinIO，再将 caption 插回原文占位符后统一分块。
 - **分块**：递归语义分块（段落/句子优先，max/min 长度与重叠窗口）；每个 chunk 写入时带 `context_window`（前后 chunk ID）便于调试拉取前后文。
 - **向量化**：文档——Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏编码，双向量写入 `text_chunks`；图片——VLM caption 文本向量（text_vec）+ CLIP 视觉向量（clip_vec）写入 `image_vectors`。
 - **存储**：MinIO 按知识库与类型组织路径；Qdrant 写入 text_chunks、image_vectors（画像由 Knowledge 模块写入 kb_portraits）。
@@ -105,7 +105,7 @@ MMAA-RAG/
 
 - **职责**：知识库的 CRUD、画像的生成与更新、以及基于画像的在线路由决策（未指定知识库时自动选库）。
 - **知识库 CRUD**：创建/查询/更新/删除知识库，维护元数据与统计；支持用户指定知识库时直接使用、跳过路由。
-- **画像生成**：从该 KB 的 Text 与 Image Collection（仅 text_vec）按比例采样向量；K-Means 聚类（K = sqrt(N/2) 限制在配置上限）；每簇取近中心 5～10 个样本，以「[文档片段]/[图片描述]」前缀拼成内容，LLM 生成 topic_summary 后向量化写入 `kb_portraits`；采用 Replace 策略（先删该 KB 旧画像再插入）。
+- **画像生成**：从该 KB 的 **Text、Image、Audio、Video** 按比例采样（文档 dense、图/音 text 侧、视频关键帧 **frame_vec**）；K-Means 聚类（K = sqrt(N/2) 限制在配置上限）；每簇取近中心若干样本拼成主题文本，LLM 生成 topic_summary 后向量化写入 `kb_portraits`；采用 Replace 策略（先删该 KB 旧画像再插入）。
 - **路由决策**：用 refined_query 的 Dense 向量在 kb_portraits 上做**全局** TopN 检索；按 kb_id 聚合时，每个 KB 只取 TopN 中属于该 KB 的前 K 个节点，做位置衰减加权平均，再 min-max 归一化；若最高分低于阈值则全库检索，否则按与第一名的差距决定单库或取前两库。
 - **代码入口**：`modules/knowledge/service.py`、`portraits.py`、`router.py`。
 

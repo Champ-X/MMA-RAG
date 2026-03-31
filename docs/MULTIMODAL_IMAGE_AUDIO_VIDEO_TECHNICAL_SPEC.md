@@ -1,17 +1,23 @@
 # 多模态（图片、音频、视频）全流程技术方案
 
-本文档描述当前系统中**图片**、**音频**、**视频**三种模态从**解析处理**、**存储**到**检索**的完整技术细节。
+本文档描述当前系统中**图片**、**音频**、**视频**三种模态从**解析处理**、**存储**到**检索**的完整技术细节，与 **[MMAA_ARCHITECTURE.md](./MMAA_ARCHITECTURE.md)** 中的 Ingestion / Retrieval 设计一致。
+
+**项目侧要点（与其它「仅文本 RAG」的差异）**：
+
+- **统一文本嵌入空间**：图片描述、音频转写+描述、视频场景/帧描述与文档 chunk 共用同一 Dense 模型（如 Qwen3-Embedding），便于画像采样与跨模态路由。
+- **专用向量 + 双路/多路 RRF**：图片 `text_vec + clip_vec`；音频 `text_vec + clap_vec`（可选 sparse）；视频 **`scene_vec + frame_vec + clip_vec`**（每关键帧一点，三路 Prefetch + Fusion RRF）。
+- **意图驱动权重**：One-Pass 输出 `visual_intent` / `audio_intent` / `video_intent`；音频在 `unnecessary` 时**不检索**；视频检索**每次执行**，CLIP 侧是否参与由 **`visual_intent`** 与查询构造联动，`video_intent` 主要调节 RRF 中 video 路权重（见架构文档检索节）。
 
 ---
 
 ## 一、总体架构
 
 - **解析层**：`backend/app/modules/ingestion/parsers/factory.py` 中的 `ImageParser`、`AudioParser`、`VideoParser`，由 `ParserFactory` 按文件扩展名/内容检测后调用。
-- **处理层**：`backend/app/modules/ingestion/service.py` 的 `IngestionService`，负责 VLM/CLIP/ASR/CLAP/关键帧等流水线。
+- **处理层**：`backend/app/modules/ingestion/service.py` 的 `IngestionService`，负责 VLM/CLIP、ASR/CLAP、MLLM 视频场景解析与关键帧向量化等流水线。
 - **存储层**：
-  - **对象存储**：MinIO，按知识库分桶，目录前缀 `images/`、`audios/`、`videos/`。
+  - **对象存储**：MinIO，**每知识库独立 Bucket**（`kb-{sanitize(kb_id)}`），对象路径含 `images/`、`audios/`、`videos/`（视频关键帧图为 `videos/{file_id}/keyframes/...`）。
   - **向量存储**：Qdrant，集合 `image_vectors`、`audio_vectors`、`video_vectors`。
-- **检索层**：`backend/app/modules/retrieval/search_engine.py` 的 `HybridSearchEngine`，与 Dense/Sparse 一起做 RRF 融合。
+- **检索层**：`backend/app/modules/retrieval/search_engine.py` 的 `HybridSearchEngine`，Dense + Sparse + Visual + Audio + Video 多路并行，再 **RRF 融合**与下游重排。
 
 ---
 
@@ -72,7 +78,8 @@
 - **策略**（`HybridSearchEngine._visual_search`）：
   - 用查询文本生成 **text 嵌入**（与 text_chunks 同模型）和 **CLIP 文本向量**（768 维）。
   - 若 CLIP 可用：`vector_store.search_image_vectors_dual_rrf(text_query_vector, clip_query_vector, ...)`，即 Qdrant 的 Prefetch + Fusion RRF（text_vec 与 clip_vec 双路）。
-  - 若 CLAP 不可用：仅 `search_image_vectors(query_vector, ...)`（单路 text_vec）。
+  - 若 **CLIP** 文本向量不可用：仅 `search_image_vectors(query_vector, ...)`（单路 text_vec）。
+- **与视频的交叉**：当 CLIP 双路可用时，`_visual_search` 会用同一批 **text_query_vector + clip_text_vector** 再查 `video_vectors`，将命中的**关键帧**以「类图片」形式并入 Visual 结果（`from_video_keyframe`），避免纯图库为空时丢失视频里的画面信息。
 - **显式/隐性**：`explicit_demand` 时 limit 更大、score_threshold 更低；`implicit_enrichment` 时阈值略高，机会主义召回。
 - **融合**：Visual 检索结果与其他路（Dense、Sparse、Audio、Video）一起进入 `_fuse_results`，按 `visual_intent` 动态权重做 RRF（如 explicit 时 visual 权重 1.2，implicit 0.9，unnecessary 0）。
 
@@ -147,7 +154,7 @@
 ### 4.1 支持的格式与入口
 
 - **扩展名**：`mp4`、`avi`、`mov`、`mkv`、`webm`、`flv`、`wmv`、`m4v`。
-- **入口**：用户上传视频文件。
+- **入口**：用户上传视频文件；处理在 `IngestionService._process_video` 中按**时长阈值**分流（默认见 `settings.video_long_threshold_seconds`，与 `video_chunk_*` 等配置）。
 
 ### 4.2 解析（VideoParser）
 
@@ -161,47 +168,40 @@
 
 ### 4.3 处理流水线（_process_video）
 
-- **位置**：`backend/app/modules/ingestion/service.py`，`IngestionService._process_video`。
-- **步骤**：
-  1. **关键帧提取**  
-     - `_extract_key_frames(file_content, processing_id, interval=10.0)`。  
-     - 视频写入临时文件，OpenCV 按帧读取；每隔 `interval` 秒（默认 10 秒）取一帧，转 RGB → JPEG → base64。  
-     - 每帧保存：`timestamp`、`frame_index`、`base64_content`、`image_bytes`、`width`、`height`，`description` 先空后填。
-  2. **关键帧描述**  
-     - 对每一帧调用 `_generate_image_caption(frame["base64_content"], ..., image_format="jpg")`，与图片流水线共用 VLM，将返回的 `caption` 写入 `frame["description"]`。
-  3. **音频提取（若 has_audio）**  
-     - `_extract_video_audio(video_bytes, video_file_id, kb_id, processing_id)`：ffmpeg 抽轨为 mp3，上传到 MinIO（`audios/{video_file_id}_audio.mp3`），再对抽出的音频做 `_transcribe_audio`，得到 `audio_file_id` 与 `audio_transcript`。
-  4. **视频整体描述**  
-     - `_generate_video_description(video_bytes, key_frame_descriptions, audio_transcript, video_format, processing_id)`：将前若干关键帧描述与音频转写拼成 prompt，LLM 生成一段整体描述。
-  5. **向量化**  
-     - 视频描述（可选拼接音频转写）做 **text 嵌入**（4096 维）。  
-     - 对每个关键帧用 `_vectorize_with_clip` 得到 **clip_vec**（768 维）；当前写入 Qdrant 时仅用**第一帧的 clip_vec** 作为该视频点的 `clip_vec`（见 vector_store.upsert_video_vectors）。
-  6. **写入 Qdrant**  
-     - `vector_store.upsert_video_vectors(kb_id, videos)`。  
-     - 每个点：`text_vec`、`clip_vec`（首帧 CLIP 或零向量）；payload 中含 `key_frames` 的 JSON 序列化及可选 `audio_file_id`。
+- **位置**：`backend/app/modules/ingestion/service.py` — `_process_video` →（按时长）`_process_video_short` 或 `_process_video_long`。
+- **长短分流**：
+  - **短视频**（时长 ≤ `video_long_threshold_seconds`）：单段交给 MLLM 做场景与关键帧规划（`_parse_video_scenes_mllm`，窗口覆盖整段）。
+  - **长视频**：按 `video_chunk_window_seconds` / `video_max_chunk_duration_seconds` 等分段，每段再调用 MLLM 解析；段与段之间可做场景合并（`_merge_overlapping_scenes` 等逻辑）。
+- **音轨（可选）**：若 `has_audio`，先 `_extract_video_audio`：ffmpeg 抽轨上传 MinIO（如 `audios/{video_file_id}_...`），`audio_file_id` 写入后续关键帧点的 payload，便于预览与溯源。
+- **关键帧点构建**（`_build_keyframe_points_from_scenes`）——与旧版「整段一个点」不同，当前实现为 **一关键帧一条 Qdrant 点**：
+  1. 对每个场景的 `scene_summary` 做 Dense 嵌入 → **`scene_vec`**（4096）。
+  2. 对每个关键帧的 `description` 做 Dense 嵌入 → **`frame_vec`**（4096）；嵌入失败时回退为对应 `scene_vec`。
+  3. 按时间戳从视频中截帧（`_extract_frame_at_timestamp`），JPEG 上传 MinIO：`videos/{file_id}/keyframes/{segment_id}_{ts}.jpg` → **`frame_image_path`**。
+  4. 对帧字节调用 `_vectorize_with_clip` → **`clip_vec`**（768，失败则为零向量）。
+  5. **Payload**（节选）：`segment_id`、`scene_start_time` / `scene_end_time`、`scene_summary`、`frame_timestamp`、`frame_description`、`frame_image_path`、`duration`、`video_format`、`resolution`、`fps`、`has_audio`、`audio_file_id`（可选）。
+- **写入 Qdrant**：`vector_store.upsert_video_vectors(kb_id, keyframe_points)` 批量 upsert；大视频按 `VIDEO_VECTORS_UPSERT_BATCH_SIZE` 分批，避免单次请求超过 Qdrant 体积限制。
 
 ### 4.4 存储
 
 **MinIO**
 
-- 桶：同一知识库桶，对象前缀 `videos/`。
-- 对象名：`videos/{file_id}_{原始文件名}`。  
-- 若提取音频，另有 `audios/{video_file_id}_audio.mp3`。
+- 桶：每知识库独立 Bucket（见 `MinIOAdapter.bucket_name_for_kb`）。
+- 原始视频：`videos/{file_id}_{原始文件名}`（与上传约定一致）。
+- **关键帧图**：`videos/{file_id}/keyframes/...jpg`（见上）。
+- 若提取音频：另有 `audios/` 下对象。
 
 **Qdrant（video_vectors）**
 
-- **多向量**：`text_vec` 4096 维，`clip_vec` 768 维（首帧 CLIP 或零向量）。
-- **Payload**：`kb_id`、`file_id`、`file_path`、`description`、`duration`、`video_format`、`resolution`、`fps`、`has_audio`、`key_frames`（JSON 字符串）、`audio_file_id`（可选）、`created_at`。
+- **多向量（每关键帧一点）**：`scene_vec`（4096）、`frame_vec`（4096）、`clip_vec`（768），均为 COSINE；见 `vector_store.collections["video_vectors"]`。
+- **Payload**：以 `scene_summary`、`frame_description`、`frame_image_path`、时间戳与 `segment_id` 为主，支撑检索结果展示与前端预览。
 
 ### 4.5 检索
 
-- **策略**（`HybridSearchEngine._video_search`）：
-  - 查询文本做 **text 向量**（4096 维）。  
-  - 若存在视觉意图（即传入 `visual_query`），再生成 **CLIP 文本向量**（768 维）。
-  - `vector_store.search_video_vectors(query_vector, clip_vector, target_kb_ids, limit)`：  
-    - 若提供 `clip_vector`：Prefetch 双路（text_vec + clip_vec）+ Fusion RRF。  
-    - 否则：仅用 text_vec 查询。
-- **融合**：Video 结果参与全局 RRF，权重固定（如 1.1），与 Dense、Sparse、Visual、Audio 一起在 `_fuse_results` 中按 rank 做 RRF。
+- **`vector_store.search_video_vectors`**：对查询文本生成 **同一 Dense 向量**，在 **`scene_vec` 与 `frame_vec` 上各做 Prefetch**；若传入 `clip_vector`（CLIP 文本侧），再对 **`clip_vec` 做 Prefetch**；最后 **Fusion RRF** 融合多路（实现上为三路 prefetch + RRF，而非旧的「仅 text_vec + clip_vec」双路）。
+- **`HybridSearchEngine._video_search`**：调用上述检索后，将结果格式化为 `content_type: "video"`；再按 **`(file_id, segment_id)` 分组**，每组保留 **得分最高的一帧** 作为该场景代表，避免上下文被大量相邻关键帧刷屏。
+- **与 Visual 的衔接**：`_visual_search` 在 CLIP 双路可用时，会用 **同一 text + CLIP 查询向量** 检索 `video_vectors`，把关键帧 hits **并入 Visual 结果列表**（标记 `from_video_keyframe`），使「找图」类查询也能命中视频里的画面。
+- **`visual_intent` 与 CLIP**：`_video_search` 仅在 `visual_intent != "unnecessary"` 时传入 `visual_query` 以生成 CLIP 向量；否则只用 Dense 向量检索 `scene_vec`/`frame_vec`（不传 `clip_vector`）。
+- **融合**：Video 路在 `_fuse_results` 中与 Dense、Sparse、Visual、Audio 一起做加权 RRF；`video_intent` 调节 **video 路权重**（显式/隐性提高；与音频「`unnecessary` 时整路不检索」不同，视频检索仍会执行，见架构文档说明）。
 
 ---
 
@@ -210,12 +210,12 @@
 | 项目         | 图片           | 音频                 | 视频                     |
 |--------------|----------------|----------------------|--------------------------|
 | 解析器       | ImageParser    | AudioParser          | VideoParser              |
-| 文本/语义向量 | Qwen3-Embedding 4096 维 | 同左 + BGE-M3 稀疏   | 同左（仅 dense）         |
-| 专用向量     | CLIP 768 维    | CLAP 512 维          | CLIP 768 维（首帧）      |
-| 多模态生成   | VLM 图注       | ASR + 描述           | 关键帧 VLM + 整体描述 + 可选 ASR |
-| MinIO 前缀   | images/        | audios/              | videos/（+ audios/ 若抽音轨） |
-| Qdrant 集合  | image_vectors  | audio_vectors        | video_vectors             |
-| 检索双路     | text_vec + clip_vec RRF | text_vec + clap_vec RRF（+ sparse） | text_vec + clip_vec RRF  |
+| 文本/语义向量 | Qwen3-Embedding 4096（`text_vec`） | 同左 + BGE-M3 稀疏（可选） | 每帧：`scene_vec` + `frame_vec`（均为 4096，来自场景摘要与帧描述嵌入） |
+| 专用向量     | CLIP 768（`clip_vec`） | CLAP 512（`clap_vec`） | CLIP 768（`clip_vec`，每关键帧） |
+| 多模态生成   | VLM 图注       | ASR + 描述           | MLLM 场景/关键帧规划 + 截帧 CLIP（可选 ffmpeg 抽音轨） |
+| MinIO        | `images/`      | `audios/`            | `videos/` + `videos/{file_id}/keyframes/`（+ 抽音轨时 `audios/`） |
+| Qdrant 集合  | image_vectors  | audio_vectors        | video_vectors（**一关键帧一点**） |
+| 检索融合     | text + clip 双路 RRF | text + clap（+ sparse）RRF | **scene + frame（+ clip）** 多路 Prefetch + RRF；Visual 检索可并入关键帧 hits |
 
 ---
 
@@ -223,18 +223,18 @@
 
 - **解析器**：`backend/app/modules/ingestion/parsers/factory.py` — `ImageParser`、`AudioParser`、`VideoParser`，`ParserFactory.detect_file_type`。
 - **上传与路由**：`backend/app/modules/ingestion/service.py` — `process_file_upload`（按 file_type 分支到 `_process_image` / `_process_audio` / `_process_video`）。
-- **VLM/CLIP/ASR/CLAP**：同上文件 — `_generate_image_caption`、`_vectorize_with_clip`、`_transcribe_audio`、`_generate_audio_description`、`_extract_audio_clap_features`；视频：`_extract_key_frames`、`_extract_video_audio`、`_generate_video_description`。
-- **MinIO**：`backend/app/modules/ingestion/storage/minio_adapter.py` — `upload_file`、`get_bucket_for_kb`、对象名规则。
-- **向量存储**：`backend/app/modules/ingestion/storage/vector_store.py` — `upsert_image_vectors`、`upsert_audio_vectors`、`upsert_video_vectors`；集合配置见 `self.collections`（image_vectors、audio_vectors、video_vectors）。
-- **检索**：`backend/app/modules/retrieval/search_engine.py` — `_visual_search`、`_audio_search`、`_video_search`；`vector_store.search_image_vectors_dual_rrf`、`search_audio_vectors_dual_rrf`、`search_video_vectors`；`_fuse_results` 与 RRF 权重。
-- **意图与 Prompt**：`backend/app/core/llm/prompt.py` — 视觉/音频意图说明；`image_captioning`、`audio_transcription` 等模板。
+- **VLM/CLIP/ASR/CLAP**：同上 — `_generate_image_caption`、`_vectorize_with_clip`、`_transcribe_audio`、`_generate_audio_description`、`_extract_audio_clap_features`；视频：`_parse_video_scenes_mllm`、`_build_keyframe_points_from_scenes`、`_extract_frame_at_timestamp`、`_extract_video_audio`、`_process_video_short` / `_process_video_long`。
+- **MinIO**：`backend/app/modules/ingestion/storage/minio_adapter.py` — `upload_file`、`bucket_name_for_kb` / `get_bucket_for_kb`、关键帧 `custom_object_path`。
+- **向量存储**：`backend/app/modules/ingestion/storage/vector_store.py` — `upsert_image_vectors`、`upsert_audio_vectors`、`upsert_video_vectors`；`search_video_vectors`（scene/frame/clip 三路 RRF）；集合配置见 `self.collections`。
+- **检索**：`backend/app/modules/retrieval/search_engine.py` — `_visual_search`（含 video 关键帧并入）、`_audio_search`、`_video_search`；`search_image_vectors_dual_rrf`、`search_audio_vectors_dual_rrf`；`_fuse_results` 与动态 RRF 权重。
+- **意图与 Prompt**：`backend/app/core/llm/prompt.py`；`processors/intent.py`（`visual_intent` / `audio_intent` / `video_intent`）。
 
 ---
 
 ## 七、依赖与配置摘要
 
-- **运行依赖**：PIL、librosa、soundfile、opencv-python、torch、transformers（CLIP/CLAP）、ffmpeg（视频抽音轨）。
-- **外部服务**：MinIO（对象存储）、Qdrant（向量库）、LLM/Embedding/VLM API（如 OpenRouter、SiliconFlow 等，由 `llm_manager` 与 `task_type` 路由）。
-- **配置**：各模型与 API 的 endpoint、key、task_type 等见 `app.core.config` 与 LLM 模块配置；MinIO 桶名、Qdrant 集合名见上文及 `vector_store.collections`。
+- **运行依赖**：PIL、librosa、soundfile、opencv-python、torch、transformers（CLIP/CLAP）、ffmpeg（视频抽音轨与部分解析路径）。
+- **外部服务**：MinIO、Qdrant、LLM/Embedding/VLM/MLLM API（由 `llm_manager` 与 `task_type` 路由）。
+- **配置**：`backend/app/core/config.py`（含 `video_long_threshold_seconds`、`video_chunk_*` 等）；Qdrant 集合与向量名见 `vector_store.collections`。
 
 以上即为当前系统对图片、音频、视频三种模态的解析、处理、存储与检索的详细技术方案。

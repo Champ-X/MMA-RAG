@@ -1,8 +1,15 @@
-# MMA 多模态 RAG 知识库 架构设计文档
+# MMAA 多模态 RAG 知识库 — 架构设计文档
 
 ## 文档说明
 
-本文档在最初方案设计基础上，已随项目多次迭代更新。以下内容以**当前实现与设计**为准，并保留部分历史设计背景供参考。更细的符合度分析见 `docs/ARCHITECTURE_COMPLIANCE_ANALYSIS.md`。
+本文档描述 **MMAA-RAG**（本仓库）的模块划分与数据流，以**当前代码实现**为准；与 **[MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](./MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)** 互为补充（后者专述图/音/视的解析、向量形态与检索细节）。
+
+**项目特点（阅读主线）**：
+
+1. **统一 Embedding 空间 + 模态专用向量**：文档/图片描述/音频与视频的文本侧共用 Dense 嵌入；图片叠加 CLIP、音频叠加 CLAP、视频按关键帧叠加 **scene_vec / frame_vec / clip_vec**（详见多模态专文）。
+2. **One-Pass 意图 + 多路混合检索**：单次 LLM 调用产出意图与查询策略；检索层并行 Dense、Sparse、Visual、Audio、Video，再 **RRF 融合**与 Cross-Encoder 精排。
+3. **知识库画像路由**：未指定 KB 时，用 `kb_portraits` 做跨库语义匹配与单库/多库/全库决策。
+4. **可观测对话体验**：SSE 推送思考链与引用，前端 ThinkingCapsule / CitationPopover 等呈现检索路径与溯源。
 
 ---
 
@@ -11,8 +18,8 @@
 系统目标：构建**本地可运行、可扩展的语义路由多模态 RAG Agent**，具备：
 
 - **可扩展知识库**：支持用户自建多主题知识库、增量更新；支持多种内容来源（本地上传、URL 下载、RSS/热点、媒体下载等）。
-- **多模态数据**：支持**文档**（PDF、Word、TXT、Markdown 等）、**图片**、**音频**（mp3/wav/m4a/flac 等）、**视频**（mp4/avi/mov/mkv 等）；文档与图片已全流程打通，音频/视频在解析、ASR/CLAP/关键帧、意图与检索流水线上有完整或部分实现，详见 `docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md`。
-- **语义路由与混合检索**：根据查询自动路由至合适知识库；混合检索结合 **Dense（语义向量）、Sparse（BGE-M3 稀疏向量）、Visual（图片：CLIP + VLM 描述）、Audio（音频：CLAP + ASR/描述）、Video（视频：关键帧 CLIP + VLM + 整体描述）** 多路，并两阶段重排（RRF 粗排 + Cross-Encoder 精排）。
+- **多模态数据**：支持**文档**（PDF、Word、TXT、Markdown 等）、**图片**、**音频**、**视频**。文档与内嵌图、独立图、音、视在 Ingestion 与 Retrieval 中均已**贯通实现**（视频为 **MLLM 场景解析 + 每关键帧一点** 写入 Qdrant，见多模态专文）。
+- **语义路由与混合检索**：根据查询自动路由至合适知识库；混合检索结合 **Dense、Sparse、Visual（图 + 可选并入视频关键帧）、Audio（CLAP + ASR/描述）、Video（scene/frame/clip 多路 RRF）**，并两阶段重排（RRF 粗排 + Cross-Encoder 精排）。
 - **统一 LLM 管理层**：意图识别、**VLM 图注、ASR 音频转写、多模态描述**、Embedding、Reranker、最终生成等由模块化 LLM Manager 统一调度，支持多厂商 API（如 SiliconFlow、OpenRouter、阿里云百炼、DeepSeek 等）。
 - **模块化与 DDD**：业务按领域划分（Ingestion / Knowledge / Retrieval / Generation），与核心设施（Core）及 API 层解耦；前端支持对话、知识库管理、思考链可视化、引用展示等。
 
@@ -26,11 +33,10 @@
 
 #### 文档类
 
-- **PDF**：当前以 PyMuPDF（fitz）为主；可选接入 MinerU（`mineru_client.py`）等以增强表格/版式处理。
-- **DOCX/DOC**：使用 python-docx。
+- **PDF**（`PDFParser`，`parsers/factory.py`）：**首选 MinerU 链路**——① **MinerU 云端 API**（需 `MINERU_TOKEN` 且开启 `mineru_pdf_enabled`）；失败则 ② **本地 MinerU 2.5**（`mineru_client.parse_pdf`）；若仍不可用或失败，再 ③ **PaddleOCR-VL-1.5**（`paddleocr_client.py`，需 API 配置）；最后 ④ **PyMuPDF（fitz）** 兜底。与旧「以 PyMuPDF 为主」的表述相反：**MinerU / Paddle 为版式与表格优先，PyMuPDF 仅作末级回退**。
+- **DOCX / PPTX**：同样 **MinerU API → 本地 MinerU 2.5**（本地路径依赖 **LibreOffice** 将 Office 转为 PDF 再逐页解析）；仍失败则回退 **python-docx** / **python-pptx**（以文本为主）。
 - **TXT / Markdown**：纯文本直接读取；Markdown 使用 markdown 库并支持结构化切分。
-- **表格**：解析出的表格可转为 Markdown Table；LLM 摘要与向量化策略在设计中，部分逻辑待完善。
-- **可选增强**：PaddleOCR（`paddleocr_client.py`）用于 OCR；MinerU 用于高质量 PDF 解析，见 `docs/MinerU_API文档.md`。
+- **表格**：MinerU / Paddle 解析结果中的表格多为 Markdown Table；可按需再经 LLM 摘要或下游处理。
 
 #### 图片类
 
@@ -39,20 +45,20 @@
 
 #### 多模态扩展（音频/视频）
 
-- 意图层已在 One-Pass 中输出 `audio_intent`、`video_intent`（explicit_demand / implicit_enrichment / unnecessary）。
-- 解析与存储的完整方案见 `docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md`、`docs/视频模态技术方案.md` 等。
+- 意图层在 One-Pass 中输出 `audio_intent`、`video_intent`（explicit_demand / implicit_enrichment / unnecessary），与 `visual_intent` 一起参与检索权重与策略。
+- 图/音/视的解析、向量字段与 Qdrant 形态见 **[MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](./MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**。
 
 **实现方案要点：**
 
 - **解析入口**：根据文件扩展名或内容检测由 ParserFactory 选择对应 Parser。**文档**（PDF/DOCX/TXT/Markdown 等）返回统一结构的 parse_result（如 markdown 文本、提取的图片列表、元数据）；**图片**解析输出 base64 与尺寸等供 VLM/CLIP 使用；**音频**（mp3/wav/m4a/flac 等）由 AudioParser 输出时长、采样率、格式等，供 ASR/CLAP 流水线使用；**视频**（mp4/avi/mov/mkv 等）由 VideoParser 输出时长、分辨率、帧率等，供关键帧提取与 VLM/CLIP 使用。
 - **文档内图片**：PDF 或 Markdown 解析时若发现内嵌图，先提取图片字节与在原文中的占位符（markdown_ref）；每张图单独走 VLM 描述 + 上传 MinIO + CLIP 向量化 + 写入 image_vectors，同时将生成的 caption 记下，在后续分块前插回原文占位符，再对整份文档做分块与向量化，保证图文一致。
-- **音频/视频**：音频走 ASR 转写 + 描述生成 + 文本向量 + CLAP 声学向量，写入 audio_vectors；视频走关键帧提取 → 关键帧 VLM 描述 → 整体描述（可选拼接音轨转写）→ 文本向量 + 关键帧 CLIP 向量，写入 video_vectors；若视频含音轨可抽轨为音频再走音频流水线。
+- **音频/视频**：音频走 ASR 转写 + 描述生成 + `text_vec` + `clap_vec`（+ 可选 sparse），写入 `audio_vectors`。视频走 MLLM 场景/关键帧规划 → 按时间戳截帧 → 每帧写入 **`scene_vec` + `frame_vec` + `clip_vec`** 至 `video_vectors`（**一关键帧一点**）；若含音轨可 ffmpeg 抽轨并记录 `audio_file_id`。详见多模态专文。
 - **多来源接入**：sources 层（URL、文件夹、Tavily 热点、媒体下载等）产出统一格式的「待处理文件」或 URL，由 Ingestion 统一执行下载（若需要）、解析、分块/多模态处理、向量化、写入；大任务通过 Celery 异步执行，进度写入 Redis 供前端轮询或 SSE 推送。
 
 ### 2.2 分块策略
 
 - **文档**：递归语义分块（按段落/句子与长度限制）、重叠窗口（如 max_chunk_size=1000，chunk_overlap=200）；配置参数集中管理。
-- **图片/音频/视频**：不做传统「分块」，而以**单条记录**为单位：图片为单张 caption + 双路向量；音频为整段转写+描述 + text_vec/clap_vec（+ 可选 sparse）；视频为整体描述 + 关键帧信息 + text_vec/关键帧 clip_vec。检索时按条返回，精排与上下文构建时按条引用。
+- **图片/音频/视频**：不做传统「分块」，而以**向量点**为单位：图片一点；音频一点（整段）；视频**每关键帧一点**（含场景摘要、帧描述、CLIP 与帧图路径）。检索时按点返回，视频检索侧再按 `segment_id` 聚合去重，精排与上下文构建时按条引用。
 
 **实现方案要点：**
 
@@ -65,7 +71,7 @@
 
 - **文档 Chunk**：
   - **Dense**：统一文本嵌入模型（如 Qwen3-Embedding-8B）生成 4096 维向量。
-  - **Sparse**：BGE-M3 稀疏编码（`core/sparse_encoder.py`），写入 Qdrant 的 `sparse` 命名向量，用于稀疏检索。详见 `docs/SPARSE_RETRIEVAL_IMPLEMENTATION.md`。
+  - **Sparse**：BGE-M3 稀疏编码（`core/sparse_encoder.py`），写入 Qdrant 的 `sparse` 命名向量，用于稀疏检索。
 - **图片**：
   - **VLM 描述**：调用 VLM（如 Qwen3-VL-30B-A3B-Instruct）生成 caption，再对 caption 做文本向量化（与文档同模型）。
   - **CLIP**：`openai/clip-vit-large-patch14`，768 维视觉向量。
@@ -75,24 +81,23 @@
   - **CLAP**：`laion/clap-htsat-fused` 提取 512 维声学向量；可选 BGE-M3 稀疏与文档一致。
   - 同一 Point：`text_vec`（4096）+ `clap_vec`（512），可选 `sparse`；检索时 text + clap 双路 RRF，可与 sparse 融合。
 - **视频**：
-  - **关键帧 VLM + 整体描述**：按间隔提取关键帧，每帧 VLM 生成描述；可选抽音轨做 ASR；LLM 根据关键帧描述（+ 音频转写）生成视频整体描述。
-  - **文本向量**：对整体描述（可选拼接转写）做 Dense 嵌入（4096 维）。
-  - **CLIP**：对每个关键帧用 CLIP 编码得到 768 维 `clip_vec`（一关键帧一点）。
-  - 同一 Point：`text_vec` + `clip_vec`；检索时双路 RRF 与 Dense/Sparse/Visual/Audio 一起融合。
+  - **MLLM 场景与关键帧**：由 `_parse_video_scenes_mllm` 等产出 `scene_summary` 与关键帧 `description`/`timestamp`；按时间戳截帧上传 MinIO。
+  - **三向量（每关键帧一点）**：`scene_vec`、`frame_vec` 为 4096 维 Dense（分别对应场景摘要与帧描述嵌入）；`clip_vec` 为 768 维 CLIP。检索时在 `scene_vec` / `frame_vec` / `clip_vec` 上 Prefetch + Fusion RRF。
+  - **与 Visual 检索的衔接**：显式/隐性视觉意图下，Visual 检索会用同一查询向量集检索 `video_vectors` 中的关键帧，并入图片结果，避免图库为空时漏掉视频画面。
 
 **实现方案要点：**
 
 - **文档**：每个 chunk 的文本先经 Dense 模型得到 4096 维向量，再经 BGE-M3 的 `encode_corpus` 得到稀疏表示（indices + values）；写入 Qdrant 时该 Point 同时带 `dense` 与 `sparse` 两个命名向量，检索阶段 Dense 路与 Sparse 路可独立查询再融合。BGE-M3 采用懒加载、Float16 以控制显存。
 - **图片**：先调用 VLM（Prompt 中可注入文档内图时的标题、周围上下文）得到 caption；再用与文档相同的 Dense 模型对 caption 向量化得到 `text_vec`；同时用 CLIP 对原图编码得到 768 维 `clip_vec`。若 VLM 失败则用占位描述仍写入 `text_vec`，保证 Point 完整。
 - **音频**：ASR 得到 transcript，LLM 生成 description，拼接后做 Dense（4096）+ 可选 BGE-M3 sparse；CLAP 对音频解码并重采样后提取 512 维 clap_vec；写入 audio_vectors 时 Point 含 text_vec、clap_vec 及可选 sparse。
-- **视频**：关键帧描述 + 整体描述（+ 可选 audio_transcript）做 Dense 得到 text_vec；每个关键帧经 CLIP 得到 clip_vec（一关键帧一点）；key_frames 等元数据写入 Payload，便于上下文构建时展示关键帧与时间戳。
-- **多模态统一**：Text、Image、Audio、Video 的文本侧共用同一 Embedding 模型，便于知识库画像采样时把「文档 chunk」「图片描述」「音频转写+描述」「视频描述」放在同一空间做聚类与路由。
+- **视频**：每个关键帧一条 Point：`scene_vec`、`frame_vec`、`clip_vec` 与帧图路径、时间戳、`segment_id` 等 payload；长短视频分流与分段解析由 `settings` 中视频阈值与窗口参数控制。
+- **多模态统一**：Text、Image、Audio、Video 的文本侧共用同一 Embedding 模型；画像对视频集合使用 **`frame_vec`**（关键帧描述嵌入）与其它模态一并聚类，使路由能反映全模态主题分布。
 
 ### 2.4 存储架构
 
 #### 对象存储（MinIO）
 
-- 按知识库与类型组织；路径形式如 `kb_id/...`，**文档、图片、音频、视频**分目录存放（如 `documents/`、`images/`、`audios/`、`videos/`）。
+- **每知识库一个 Bucket**（`kb-{sanitize(kb_id)}`）；桶内以 `documents/`、`images/`、`audios/`、`videos/` 等前缀区分对象类型（视频关键帧图在 `videos/{file_id}/keyframes/`）。
 - 上传、解析后写入 MinIO；对外提供 Presigned URL 供前端预览与播放（文档/图片预览，音频/视频播放）。
 
 #### 向量与 Chunk（Qdrant）
@@ -100,8 +105,8 @@
 - **text_chunks**：文档 Chunk；向量含 `dense`（4096 维）与 `sparse`（BGE-M3）；Payload 含 text_content、kb_id、file_id、file_path、file_type、context_window、metadata 等。
 - **image_vectors**：图片；Named Vector：clip_vec（768 维）、text_vec（4096 维）；Payload 含 kb_id、file_id、file_path、caption、image_source_type、img_format 等。
 - **audio_vectors**：音频；Named Vector：text_vec（4096 维）、clap_vec（512 维），可选 sparse；Payload 含 kb_id、file_id、file_path、transcript、description、duration、audio_format、sample_rate 等。
-- **video_vectors**：视频；每关键帧一点，Named Vector：text_vec（4096 维）、clip_vec（768 维，关键帧）；Payload 含 kb_id、file_id、file_path、description、duration、key_frames（JSON）、audio_file_id（若抽音轨）等。
-- **kb_portraits**：知识库画像；向量为 4096 维；Payload 含 kb_id、topic_summary、cluster_size，用于路由阶段相似度检索与加权打分；画像采样可覆盖 Text、Image、Audio、Video 的 text_vec。
+- **video_vectors**：视频；**每关键帧一点**；Named Vector：`scene_vec`（4096）、`frame_vec`（4096）、`clip_vec`（768）；Payload 含 `scene_summary`、`frame_description`、`frame_image_path`、`segment_id`、时间戳、`audio_file_id`（若抽音轨）等。
+- **kb_portraits**：知识库画像；向量为 4096 维；Payload 含 kb_id、topic_summary、cluster_size，用于路由阶段相似度检索与加权打分；采样时文档/图/音用各自 **dense/text_vec**，视频关键帧用 **`frame_vec`**（与其它模态同维、同嵌入空间）。
 
 #### 异步与缓存
 
@@ -111,7 +116,7 @@
 
 - **MinIO**：按知识库划分存储空间（如按 kb_id 的 bucket 或前缀），文档、图片、音频、视频分子目录（documents/images/audios/videos）；对象路径与 `file_id`、`file_path` 在向量库 Payload 中一致保存，便于生成 Presigned URL 与删除时联动；音频/视频可提供播放用 URL。
 - **Qdrant**：所有检索均先按 `kb_id` 做 Pre-filter，再执行向量/稀疏检索，保证只命中目标知识库。`text_chunks` 的 Payload 中 `context_window` 存前后 chunk 的 ID，便于调试接口按 chunk_id 拉取前后文。image_vectors、audio_vectors、video_vectors 各自独立集合，检索时按意图分别查询再融合。
-- **画像更新触发**：在内容增量或定时策略下触发画像重建；画像可从 Text、Image、Audio、Video 各集合的 text_vec 按比例采样，保证全模态在路由中有表征；生成完成后采用 Replace 策略：先删除该 kb_id 下全部旧画像点，再插入新生成的 portrait 点，避免历史画像残留。
+- **画像更新触发**：在内容增量或定时策略下触发画像重建；从 Text / Image / Audio / Video 四路按比例采样（视频以**关键帧点**计量，向量为 **frame_vec**），保证全模态在路由中有表征；生成完成后采用 Replace 策略：先删除该 kb_id 下全部旧画像点，再插入新生成的 portrait 点，避免历史画像残留。
 
 ---
 
@@ -123,27 +128,27 @@
 
 - **主要字段**：reasoning、intent_type（factual/comparison/analysis/coding/creative）、is_complex、**visual_intent / audio_intent / video_intent**、search_strategies（dense_query、sparse_keywords、multi_view_queries）、sub_queries。
 - **visual_intent**：explicit_demand / implicit_enrichment / unnecessary，用于决定是否执行**图片**检索及权重。
-- **audio_intent** / **video_intent**：与 visual 同三档，分别控制**音频**、**视频**检索是否执行及在 RRF 中的权重（explicit 提高权重、implicit 机会主义、unnecessary 不查）。
+- **audio_intent** / **video_intent**：与 visual 同三档。**音频**：`unnecessary` 时 **`_audio_search` 直接返回空**，不参与音频向量检索。**视频**：检索任务**每次执行**；`video_intent` 主要调节 **RRF 中 video 路权重**（显式/隐性提高）；`visual_intent` 还用于控制是否为视频检索生成 **CLIP 查询向量**（`unnecessary` 时仅用 Dense 匹配 `scene_vec`/`frame_vec`）。详见 `HybridSearchEngine.search` / `_video_search`。
 - 查询改写与多视角在 `processors/rewriter.py` 中配合使用；稀疏侧关键词可用于 BGE-M3 查询构建。
 
 **实现方案要点：**
 
 - **输入**：除用户当前 query 外，将最近若干轮对话历史（如最近 5 轮、每条截断长度）格式化为文本一并放入 Prompt，便于指代消解与多轮语境下的意图判断。
 - **输出与校验**：LLM 返回的 JSON 需包含上述字段；若解析失败或缺少关键字段，则使用默认意图（如 factual、refined_query 为原 query、visual_intent 为 unnecessary），保证下游检索仍可执行。
-- **字段用途**：`refined_query`（或 dense_query）作为语义检索的主查询与路由查询向量来源；`sparse_keywords` 与 dense_query 可拼接后送 BGE-M3 生成稀疏查询向量；`multi_view_queries` 用于 Dense 多视角检索；`visual_intent` 为 explicit_demand 时强制走 Visual 检索并提高权重，为 implicit_enrichment 时按「机会主义」策略检索（阈值略高、limit 可调），为 unnecessary 时不查图片；`audio_intent` / `video_intent` 同理控制音频、视频检索是否执行及权重。
+- **字段用途**：`refined_query`（或 dense_query）作为语义检索的主查询与路由查询向量来源；`sparse_keywords` 与 dense_query 可拼接后送 BGE-M3 生成稀疏查询向量；`multi_view_queries` 用于 Dense 多视角检索；`visual_intent` 控制是否执行 **Visual** 及 **视频检索中的 CLIP 分支**；`audio_intent` 控制是否执行 **Audio** 检索（`unnecessary` 时为空）；`video_intent` 主要调节 **Video 路** 在 RRF 中的权重（检索仍执行）。
 
 ### 3.2 知识库画像与路由
 
 - **画像生成**（`knowledge/portraits.py`）：
-  - 从 **Text、Image、Audio、Video** 各 Collection 的 text_vec 按比例采样向量，K-Means 聚类（K 由轮廓系数/肘部法则等确定），使路由能反映全模态主题分布。
+  - 从 **Text、Image、Audio、Video** 各 Collection 采样向量（文档 dense、图/音的 text 侧、视频的 **frame_vec**），K-Means 聚类（K 由轮廓系数/肘部法则等确定），使路由能反映全模态主题分布。
   - 对每个簇取近中心若干 Chunk/条目，经 LLM 生成 topic_summary，再向量化写入 `kb_portraits`；采用 Replace 策略更新该 KB 的画像。
 - **在线路由**（`knowledge/router.py`）：
   - 使用 processed_query（refined_query）的向量在 `kb_portraits` 中检索 TopN 相似节点。
-  - 按 KB 聚合：Score(KB_x) = Σ (Similarity × log(ClusterSize+1))，归一化后按阈值决定单库/多库/全库。策略细节与优化方向见 `docs/ROUTING_STRATEGY_ANALYSIS.md`、`docs/KB_PORTRAIT_ROUTING_OPTIMIZATION.md`。
+  - 按 KB 聚合：位置衰减加权平均、min-max 归一化后按阈值决定单库/多库/全库（实现细节见 `router.py`）。
 
 **实现方案要点：**
 
-- **画像生成**：从该 KB 的 **Text、Image、Audio、Video** 各 Collection（仅用 text_vec）中按比例采样向量（如文档/图片/音频/视频按配置比例）；若总条目数小于阈值（如 5000）则全量取，否则蓄水池采样并设上下限（如 50～1000）。采样时只带 id、vector、source_type（doc/image/audio/video），不加载正文以节省内存；确定聚类中心后，再按 id 回查各 Collection 取正文。K-Means 的 K 取 `sqrt(N/2)` 并限制在配置的 `max_kb_portrait_size` 内。每个簇取距离中心最近的 5～10 个样本，将其文本以「[文档片段]」「[图片描述]」「[音频转写/描述]」「[视频描述]」等前缀拼成 content_pieces，调用 LLM 生成一条 topic_summary，再对该摘要做 Dense 向量化；将该向量与 kb_id、topic_summary、cluster_size 写入 `kb_portraits`。存储前先删除该 kb_id 下全部旧画像（Replace 策略）。
+- **画像生成**：从该 KB 的 **Text、Image、Audio、Video** 各 Collection 按比例采样（视频为关键帧点，使用 **frame_vec**）；若总条目数小于阈值（如 5000）则全量取，否则蓄水池采样并设上下限（如 50～1000）。采样时只带 id、vector、source_type（doc/image/audio/video），不加载正文以节省内存；确定聚类中心后，再按 id 回查各 Collection 取正文。K-Means 的 K 取 `sqrt(N/2)` 并限制在配置的 `max_kb_portrait_size` 内。每个簇取距离中心最近的若干样本，将其文本以「[文档片段]」「[图片描述]」「[音频转写/描述]」「[视频帧描述]」等前缀拼成 content_pieces，调用 LLM 生成 topic_summary，再 Dense 向量化写入 `kb_portraits`。存储前先删除该 kb_id 下全部旧画像（Replace 策略）。
 - **路由决策**：若用户已指定知识库则直接使用，不查画像。否则用 refined_query 的 Dense 向量在 `kb_portraits` 上做**全局**向量检索（不按 kb_id 过滤），取 TopN（如 30）个最相似节点。按 kb_id 聚合时，每个 KB 只取这 TopN 中属于该 KB 的、得分最高的前 K 个节点（如 5 个），对这些节点做**位置衰减加权平均**（如 w_i = α^(i-1)），得到该 KB 的得分；再对所有 KB 得分做 min-max 归一化到 [0,1]。若最高分低于阈值（如 0.08）则判定「全部偏小」，路由失败，改为全库检索；否则取第一名，若第一名与第二名的差距 ≥ 某阈值（如 0.25）则只选第一名（单库），否则取前两名（多库）。最终输出 target_kb_ids 及置信度，供检索阶段 Pre-filter 使用。
 
 ### 3.3 混合检索（HybridSearchEngine）
@@ -153,20 +158,20 @@
   - **Dense**：主查询 dense_query + 多视角 multi_view_queries 向量化后检索 text_chunks，内部加权融合。
   - **Sparse**：BGE-M3 对查询（或拼接关键词）生成稀疏向量，调用 `vector_store.search_text_chunks_sparse()`，与 Dense 结果一起参与融合。
 - **图片流**（当 visual_intent 非 unnecessary）：
-  - 查询的文本向量匹配 text_vec；CLIP 文本向量匹配 clip_vec；Qdrant Prefetch + Fusion RRF 双路融合（image_vectors）。
+  - 查询的文本向量匹配 `text_vec`；CLIP 文本向量匹配 `clip_vec`；`image_vectors` 上 Prefetch + Fusion RRF。若 CLIP 可用，还会**额外检索 `video_vectors`**，将命中关键帧并入 Visual 结果（与多模态专文一致）。
 - **音频流**（当 audio_intent 非 unnecessary）：
-  - 查询的 text 向量 + 可选 CLAP 文本向量、BGE-M3 sparse，对 audio_vectors 双路/多路 RRF；explicit/implicit 控制 limit 与阈值。
-- **视频流**（当 video_intent 非 unnecessary）：
-  - 查询的 text 向量 + 可选 CLIP 文本向量，对 video_vectors 做 text_vec + clip_vec 双路 RRF。
-- **融合**：**Dense、Sparse、Visual、Audio、Video** 多路结果经加权 RRF 粗排（权重按各 intent 可配置），再经 Cross-Encoder 精排取 Top-K，供上下文构建使用。
+  - 查询的 text 向量 + 可选 CLAP 文本向量、BGE-M3 sparse，对 `audio_vectors` 双路/多路 RRF；`unnecessary` 时整路为空。
+- **视频流**（每次执行）：
+  - 查询文本做 Dense 向量，在 `scene_vec` + `frame_vec` 上检索；若 `visual_intent` 非 `unnecessary`，再生成 CLIP 文本向量参与 **clip_vec** 路；三路 Prefetch + RRF 后，`_video_search` 内按 **segment** 聚合去重。
+- **融合**：**Dense、Sparse、Visual、Audio、Video** 多路结果经加权 RRF 粗排（`visual_intent` / `audio_intent` / `video_intent` 动态权重），再经 Cross-Encoder 精排取 Top-K，供上下文构建使用。
 
 **实现方案要点：**
 
 - **Dense**：对 dense_query 向量化得到主查询向量，对 multi_view_queries 分别向量化后与主查询一起对 Text Collection 检索，多路结果在引擎内部按权重融合（同一文档被多路命中时分数叠加），再参与全局 RRF。
 - **Sparse**：用 BGE-M3 对「dense_query 与 sparse_keywords 拼接」或仅 dense_query 生成查询稀疏向量，调用 Qdrant 的 sparse 向量检索接口，在 text_chunks 上按 kb_id Pre-filter 后检索，返回列表参与 RRF。
-- **Visual**：仅当 visual_intent 为 explicit_demand 或 implicit_enrichment 时执行。查询侧生成两种向量：与 text_chunks 同模型的文本向量（匹配 image 的 text_vec）、CLIP 文本向量（匹配 clip_vec）。Qdrant 使用 Prefetch + Fusion 对 text_vec 与 clip_vec 双路检索并做 RRF，得到图片候选。explicit_demand 时 limit 更大、score_threshold 更低以尽量召回；implicit_enrichment 时阈值略高、机会主义召回，若无命中则返回空列表不阻塞主流程。
-- **Audio**：仅当 audio_intent 非 unnecessary 时执行；查询做 text 向量 + 可选 CLAP 文本向量与 BGE-M3 sparse，对 audio_vectors 做双路/多路 RRF；explicit 时提高 audio 路权重与 limit，implicit 时机会主义。
-- **Video**：仅当 video_intent 非 unnecessary 时执行；查询做 text 向量 + 可选 CLIP 文本向量，对 video_vectors 做 text_vec + clip_vec 双路 RRF，结果参与全局融合。
+- **Visual**：仅当 visual_intent 为 explicit_demand 或 implicit_enrichment 时执行。查询侧生成文本向量 + CLIP 文本向量（失败则回退单路），对 `image_vectors` 双路 RRF；成功时**额外**检索 `video_vectors` 关键帧并合并。explicit/implicit 控制 limit 与 score_threshold。
+- **Audio**：仅当 audio_intent 非 unnecessary 时执行；查询做 text + 可选 CLAP + sparse，对 `audio_vectors` 检索；`unnecessary` 时返回空列表。
+- **Video**：**每次**调用 `_video_search`；CLIP 侧是否启用取决于 `visual_intent`（见 `search` 中传入的 `visual_query`）。`video_intent` 调节 **video 路 RRF 权重**，而非跳过检索。
 - **RRF**：**Dense、Sparse、Visual、Audio、Video** 多路结果按 doc/point id 去重合并后，对每条结果的「多路排名」应用加权 RRF 公式（如 score = Σ weight_t / (k + rank_t)），权重可配（如 dense=1.0、sparse=0.8、visual=1.2、audio=1.1、video=1.1），k 通常取 60。RRF 后得到粗排列表，进入精排阶段。
 
 ### 3.4 两阶段重排
@@ -223,10 +228,10 @@
   - **providers**：silicon_flow、openrouter、aliyun_bailian、deepseek 等，实现统一协议（如 OpenAI 兼容），**多模态任务**（图注、ASR、视频描述）由支持多模态的模型承接。
 - **其他核心组件**：
   - **sparse_encoder.py**：BGE-M3 稀疏编码，供 Ingestion 写入与 Retrieval 查询使用（文档与可选音频 sparse）。
-  - **portrait_trigger.py**：知识库画像更新触发逻辑（可覆盖全模态 text_vec 采样）。
+  - **portrait_trigger.py**：知识库画像更新触发逻辑（全模态向量采样）。
   - **keyword_extract.py**：关键词提取等，供检索与改写使用。
 
-模型与 API 参考：SiliconFlow 等（见文档内表格与 `docs/OpenRouter&AliyunBailian LLM API.md`）；任务与模型对应关系可在 registry 中配置或扩展。
+模型与 API 由各 Provider 与 `llm_manager` 配置；任务与模型对应关系在 `registry` 中配置或扩展。
 
 **实现方案要点：**
 
@@ -262,7 +267,7 @@
 ### 7.1 项目根目录
 
 ```text
-MMAA-agent/
+MMAA-RAG/
 ├── backend/                    # 后端 (Python / FastAPI)
 │   ├── app/
 │   │   ├── api/                 # 接口层
@@ -369,12 +374,7 @@ frontend/src/
 
 | 文档 | 说明 |
 |------|------|
-| ARCHITECTURE_COMPLIANCE_ANALYSIS.md | 架构实现符合度分析 |
-| SPARSE_RETRIEVAL_IMPLEMENTATION.md | BGE-M3 稀疏检索实现 |
-| ROUTING_STRATEGY_ANALYSIS.md | 路由策略与实现差距 |
-| KB_PORTRAIT_ROUTING_OPTIMIZATION.md | 知识库画像与路由优化 |
-| MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md | 多模态（图/音/视）技术方案 |
-| MinerU_API文档.md | MinerU 解析接口 |
-| 视频模态技术方案.md | 视频模态扩展方案 |
+| [README.md](../README.md) | 项目概览、快速开始与模块入口 |
+| [MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](./MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 图片 / 音频 / 视频：解析、存储、向量形态与检索细节 |
 
-以上为当前 MMAA 架构设计及实现概要，后续迭代以代码与上述文档为准。
+以上为当前 MMAA-RAG 架构设计及实现概要，后续迭代以代码为准。
