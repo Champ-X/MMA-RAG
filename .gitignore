@@ -1,6 +1,7 @@
 # —— 操作系统 ——
 .DS_Store
 Thumbs.db
+.cursor
 
 # —— Python ——
 __pycache__/
@@ -71,6 +72,15 @@ celerybeat.pid
 
 # —— 测试用大媒体（不提交到仓库）——
 tests/video/*.mp4
+tests/
+
+# —— 密钥与环境（勿提交 backend/.env）——
+.env
+backend/.env
+!.env.example
+!backend/.env.example
+.env.local
+.env.*.local
 
 # —— 其它 ——
 *.bak

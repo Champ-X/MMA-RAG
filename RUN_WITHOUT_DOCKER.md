@@ -37,14 +37,14 @@ brew install minio/stable/minio
 # 若已有 minio_data（例如之前用 Docker 起过），可跳过下面这行；没有则执行一次
 mkdir -p ./minio_data
 
-# 启动（在项目根目录执行；账号需与 .env 一致，若沿用 Docker 的 admin/admin123456 则原有桶可直接访问）
-export MINIO_ROOT_USER=admin
-export MINIO_ROOT_PASSWORD=admin123456
+# 启动（在项目根目录执行；账号需与 backend/.env 中 MINIO_* 一致，若沿用 Docker 的 minioadmin/minioadmin 则原有桶可直接访问）
+export MINIO_ROOT_USER=minioadmin
+export MINIO_ROOT_PASSWORD=minioadmin
 minio server ./minio_data --console-address ":9001"
 ```
 
 - API：[http://localhost:9000](http://localhost:9000)
-- 控制台：[http://localhost:9001](http://localhost:9001)（admin / admin123456）
+- 控制台：[http://localhost:9001](http://localhost:9001)（minioadmin / minioadmin，需与 `backend/.env` 一致）
 
 保持该终端不关，或改用 `nohup`/launchd 后台运行。
 
@@ -68,7 +68,7 @@ macOS 无 Homebrew 公式，需用官方二进制或 Qdrant Cloud。
 
 **方式 B：Qdrant Cloud**
 
-若使用云端实例，在项目根目录 `.env` 中修改：
+若使用云端实例，在 `backend/.env` 中修改：
 
 - `QDRANT_HOST`：云实例 host（不含 `http://`）
 - `QDRANT_PORT`：一般为 `6333`
@@ -86,13 +86,13 @@ macOS 无 Homebrew 公式，需用官方二进制或 Qdrant Cloud。
 3. **FFmpeg（建议安装）**：用于视频切段与音频提取（视频模态处理依赖）。
    - macOS：`brew install ffmpeg`
    - Linux（含 WSL）：`sudo apt-get update && sudo apt-get install -y ffmpeg`
-4. 项目根目录已有 `.env`（请直接编辑并填好 API Key）。
-5. 无 Docker 时，`.env` 中应使用本机地址（通常已默认）：
+4. 配置 `backend/.env`：`cp backend/.env.example backend/.env` 后编辑并填好 API Key。
+5. 无 Docker 时，`backend/.env` 中应使用本机地址（通常已默认）：
 
 ```env
 MINIO_ENDPOINT=localhost:9000
-MINIO_ACCESS_KEY=admin
-MINIO_SECRET_KEY=admin123456
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
 REDIS_URL=redis://localhost:6379/0
@@ -161,10 +161,10 @@ celery -A celery_app worker -Q knowledge,ingestion,retrieval,celery --loglevel=i
 ## 五、常见问题
 
 **Q: 后端报错连不上 MinIO / Qdrant / Redis？**  
-A: 先确认三个服务已启动，且 `.env` 里为 `localhost` 与正确端口；用 `curl` 或浏览器访问对应端口看是否可连通。
+A: 先确认三个服务已启动，且 `backend/.env` 里为 `localhost` 与正确端口；用 `curl` 或浏览器访问对应端口看是否可连通。
 
 **Q: 不想本机装 Qdrant？**  
-A: 使用 [Qdrant Cloud](https://qdrant.cloud/) 创建实例，在 `.env` 中填 `QDRANT_HOST`、`QDRANT_PORT`、`QDRANT_API_KEY`，无需本地 Qdrant 进程。
+A: 使用 [Qdrant Cloud](https://qdrant.cloud/) 创建实例，在 `backend/.env` 中填 `QDRANT_HOST`、`QDRANT_PORT`、`QDRANT_API_KEY`，无需本地 Qdrant 进程。
 
 **Q: Celery 不启动会怎样？**  
 A: 聊天、检索、上传等核心功能可正常使用；依赖 Celery 的异步任务（如知识库画像更新）会不可用或延迟，按需再开 Worker。
@@ -173,4 +173,4 @@ A: 聊天、检索、上传等核心功能可正常使用；依赖 Celery 的异
 A: 这是 Office 转 PDF 依赖缺失导致。请安装 LibreOffice 后重启后端服务。Linux/WSL 可执行：`sudo apt-get update && sudo apt-get install -y libreoffice`。在依赖缺失时，系统会回退到文本/分块预览。
 
 **Q: 视频解析报错 `ffmpeg 未找到` 怎么办？**  
-A: 先安装 FFmpeg（macOS: `brew install ffmpeg`；Linux/WSL: `sudo apt-get update && sudo apt-get install -y ffmpeg`）。若仍失败，请在 `.env` 中设置 `FFMPEG_PATH=/path/to/ffmpeg` 后重启后端。
+A: 先安装 FFmpeg（macOS: `brew install ffmpeg`；Linux/WSL: `sudo apt-get update && sudo apt-get install -y ffmpeg`）。若仍失败，请在 `backend/.env` 中设置 `FFMPEG_PATH=/path/to/ffmpeg` 后重启后端。

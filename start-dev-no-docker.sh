@@ -10,10 +10,10 @@ cd "$PROJECT_ROOT"
 
 echo "🚀 启动 Multi-Modal RAG Agent（无 Docker）..."
 
-# 确保 backend 能读到 .env（从项目根复制一份到 backend 若不存在）
-if [ -f .env ] && [ ! -f backend/.env ]; then
-    cp .env backend/.env
-    echo "📋 已从项目根复制 .env 到 backend/"
+if [ ! -f backend/.env ]; then
+    echo "❌ 未找到 backend/.env"
+    echo "   请执行: cp backend/.env.example backend/.env 并至少填入 SILICONFLOW_API_KEY"
+    exit 1
 fi
 
 # 从 .env 读取 MinIO 账号（与后端一致），默认 minioadmin

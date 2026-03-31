@@ -277,7 +277,7 @@ MMAA-agent/
 ├── minio_data/                  # MinIO 持久化（本地映射）
 ├── qdrant_storage/              # Qdrant 持久化（本地映射）
 ├── docker-compose.yml
-└── .env
+└── backend/.env                 # 本地配置（勿提交；模板见 backend/.env.example）
 ```
 
 ### 7.2 后端 app 结构

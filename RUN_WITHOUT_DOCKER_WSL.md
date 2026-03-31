@@ -74,20 +74,20 @@ cd /home/champ/MMAA-RAG
 mkdir -p ./minio_data
 ```
 
-#### 启动 MinIO（账号需与 `.env` 一致）
+#### 启动 MinIO（账号需与 `backend/.env` 中 MINIO_* 一致）
 
 ```bash
 cd /home/champ/MMAA-RAG
 
-export MINIO_ROOT_USER=admin
-export MINIO_ROOT_PASSWORD=admin123456
+export MINIO_ROOT_USER=minioadmin
+export MINIO_ROOT_PASSWORD=minioadmin
 
 # 在当前终端前台运行
 minio server ./minio_data --console-address ":9001"
 ```
 
 - API：`http://localhost:9000`
-- 控制台：`http://localhost:9001`（默认 `admin / admin123456`）
+- 控制台：`http://localhost:9001`（默认 `minioadmin / minioadmin`，需与 `backend/.env` 一致）
 
 > **提示**：  
 > - 在 WSL 终端保持此进程不关，或用 `tmux` / `screen` / `nohup` 等方式后台运行。  
@@ -145,7 +145,7 @@ qdrant --config-path ./qdrant_config.yaml
 
 若不想在 WSL 本机安装 Qdrant，可使用云端实例：
 
-在项目根 `.env` 中修改：
+在 `backend/.env` 中修改：
 
 - `QDRANT_HOST`：云实例 host（不含 `http://`）
 - `QDRANT_PORT`：一般为 `6333`
@@ -173,19 +173,19 @@ sudo apt-get update
 sudo apt-get install -y ffmpeg
 ```
 
-4. 项目根目录已有 `.env`（请直接编辑并填好 API Key）：
+4. 配置 `backend/.env`（请直接编辑并填好 API Key）：
 
 ```bash
-cd /home/champ/MMAA-RAG
-# 若缺失可手动创建 .env，并保证关键配置与 backend/.env 一致
+cd /path/to/MMAA-RAG
+cp backend/.env.example backend/.env
 ```
 
-5. 无 Docker 且服务运行在 WSL 本机时，`.env` 中应使用本机地址（通常已默认）：
+5. 无 Docker 且服务运行在 WSL 本机时，`backend/.env` 中应使用本机地址（通常已默认）：
 
 ```env
 MINIO_ENDPOINT=localhost:9000
-MINIO_ACCESS_KEY=admin
-MINIO_SECRET_KEY=admin123456
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
 REDIS_URL=redis://localhost:6379/0
@@ -275,7 +275,7 @@ celery -A celery_app worker -Q knowledge,ingestion,retrieval,celery --loglevel=i
 
 - **Q: 在 Windows 浏览器访问不了 WSL 里的服务？**  
   **A:**  
-  - 确认服务在 WSL 内监听的是 `0.0.0.0` 或 `localhost`，且端口和 `.env` 一致。  
+  - 确认服务在 WSL 内监听的是 `0.0.0.0` 或 `localhost`，且端口和 `backend/.env` 一致。  
   - 默认 WSL 与 Windows 之间 `localhost:端口` 是互通的，如仍无法访问，可检查防火墙或端口冲突。
 
 - **Q: 后端报错连不上 MinIO / Qdrant / Redis？**  
@@ -284,10 +284,10 @@ celery -A celery_app worker -Q knowledge,ingestion,retrieval,celery --loglevel=i
     - `curl http://localhost:9000`  
     - `curl http://localhost:6333`  
     - `redis-cli ping`  
-  - 确认 `.env` 中为 `localhost` 与正确端口，且服务进程正在 WSL 内运行。
+  - 确认 `backend/.env` 中为 `localhost` 与正确端口，且服务进程正在 WSL 内运行。
 
 - **Q: 不想在 WSL 内安装 Qdrant？**  
-  **A:** 使用 Qdrant Cloud，在 `.env` 中填 `QDRANT_HOST`、`QDRANT_PORT`、`QDRANT_API_KEY`，本机不再需要 Qdrant 进程。
+  **A:** 使用 Qdrant Cloud，在 `backend/.env` 中填 `QDRANT_HOST`、`QDRANT_PORT`、`QDRANT_API_KEY`，本机不再需要 Qdrant 进程。
 
 - **Q: Celery 不启动会怎样？**  
   **A:** 聊天、检索、上传等核心功能可正常使用；依赖 Celery 的异步任务（如知识库画像更新）会不可用或延迟，按需再开 Worker。
@@ -300,6 +300,6 @@ celery -A celery_app worker -Q knowledge,ingestion,retrieval,celery --loglevel=i
 - **Q: 视频上传后解析失败，日志提示 `ffmpeg 未找到`？**  
   **A:** 请在 WSL 安装 FFmpeg：  
   `sudo apt-get update && sudo apt-get install -y ffmpeg`  
-  若已安装但仍报错，在 `.env` 或 `backend/.env` 中显式设置：  
+  若已安装但仍报错，在 `backend/.env` 中显式设置：  
   `FFMPEG_PATH=/usr/bin/ffmpeg`（以实际路径为准），然后重启后端。
 

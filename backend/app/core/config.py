@@ -15,15 +15,19 @@ from pathlib import Path
 _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 _ENV_FILE = _BACKEND_DIR / ".env"
 
+# 仅使用 backend/.env（不使用项目根 .env）；文件不存在时依赖进程环境变量
+_settings_config_dict: dict = {
+    "env_file_encoding": "utf-8",
+    "extra": "ignore",
+}
+if _ENV_FILE.exists():
+    _settings_config_dict["env_file"] = str(_ENV_FILE)
+
 
 class Settings(BaseSettings):
     """应用设置类"""
     
-    model_config = SettingsConfigDict(  # type: ignore[assignment]
-        env_file=str(_ENV_FILE) if _ENV_FILE.exists() else ".env",
-        env_file_encoding="utf-8",
-        extra="ignore"  # 忽略 .env 文件中未定义的字段
-    )
+    model_config = SettingsConfigDict(**_settings_config_dict)  # type: ignore[assignment]
     
     # 应用基本信息
     app_name: str = Field(default="Multi-Modal RAG Agent", validation_alias="APP_NAME")

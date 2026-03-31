@@ -104,6 +104,15 @@ ensure_ffmpeg_and_libreoffice() {
 
 echo "🚀 启动 Multi-Modal RAG Agent 开发环境..."
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+if [ ! -f backend/.env ]; then
+    echo "❌ 未找到 backend/.env"
+    echo "   请执行: cp backend/.env.example backend/.env 并至少填入 SILICONFLOW_API_KEY"
+    exit 1
+fi
+
 ensure_ffmpeg_and_libreoffice
 
 # 检查Docker是否运行
@@ -126,9 +135,9 @@ fi
 # 启动数据库和存储服务
 echo "📦 启动基础服务 (MinIO, Qdrant, Redis)..."
 if command -v docker-compose &> /dev/null; then
-    docker-compose up -d minio qdrant redis
+    docker-compose --env-file backend/.env up -d minio qdrant redis
 else
-    docker compose up -d minio qdrant redis
+    docker compose --env-file backend/.env up -d minio qdrant redis
 fi
 
 # 等待服务启动

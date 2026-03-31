@@ -18,10 +18,46 @@
 - **模型**：LLMManager 按任务路由，支持 SiliconFlow、OpenRouter、阿里云百炼、DeepSeek 等；Qwen3-Embedding、BGE-M3、CLIP、Reranker、VLM。
 - **部署**：Docker Compose 一键启动后端与依赖服务。
 
+面向希望**本地或 Docker 自建**多模态 RAG 的开发者：配置集中在 [`backend/.env`](backend/.env)（由 [`backend/.env.example`](backend/.env.example) 复制），详细设计见 **[docs/MMAA_ARCHITECTURE.md](docs/MMAA_ARCHITECTURE.md)**。密钥与提交规范见 **[SECURITY.md](SECURITY.md)**。
+
+### 系统架构（概览）
+
+```mermaid
+flowchart LR
+  subgraph client [Client]
+    Web[React_Vite]
+  end
+  subgraph api [Backend_FastAPI]
+    FastAPI[FastAPI]
+    LLM[LLM_Manager]
+    Ingest[Ingestion]
+    Know[Knowledge]
+    Retr[Retrieval]
+    Gen[Generation]
+  end
+  subgraph data [Data_plane]
+    MinIO[MinIO]
+    Qdrant[Qdrant]
+    Redis[Redis_Celery]
+  end
+  Web --> FastAPI
+  FastAPI --> Ingest
+  FastAPI --> Know
+  FastAPI --> Retr
+  FastAPI --> Gen
+  Ingest --> MinIO
+  Ingest --> Qdrant
+  Know --> Qdrant
+  Retr --> Qdrant
+  Retr --> LLM
+  Gen --> LLM
+  FastAPI --> Redis
+```
+
 ## 项目结构
 
 ```
-MMAA-agent/
+MMAA-RAG/
 ├── backend/                    # 后端 (Python / FastAPI)
 │   ├── app/
 │   │   ├── api/                # 接口层：chat、upload、knowledge、import、debug
@@ -34,7 +70,8 @@ MMAA-agent/
 │   │   └── tasks/              # 定时/异步任务（如热点导入）
 │   ├── celery_app.py
 │   ├── requirements.txt
-│   └── Dockerfile
+│   ├── Dockerfile
+│   └── .env.example            # 复制为 .env 并填写密钥（勿提交 .env）
 ├── frontend/                   # 前端 (React / TypeScript / Vite)
 │   ├── src/
 │   │   ├── components/         # chat、knowledge、architecture、settings、debug
@@ -112,41 +149,65 @@ MMAA-agent/
 - FFmpeg（可选；若启用视频解析/切段，后端会依赖 ffmpeg 可执行程序）
 
 ### 1. 克隆与配置
+
 ```bash
 git clone <repository-url>
-cd MMAA-agent
-# 项目默认使用根目录 .env（脚本会在需要时同步到 backend/.env）
-# 编辑 .env：至少配置 SILICONFLOW_API_KEY（或其它 LLM Provider 的 Key）
+cd MMAA-RAG
+cp backend/.env.example backend/.env
+# 编辑 backend/.env：至少填写 SILICONFLOW_API_KEY（必填）
 ```
 
+**必填与常用环境变量（详见 `backend/.env.example`）**
+
+| 变量 | 说明 |
+|------|------|
+| `SILICONFLOW_API_KEY` | 必填。默认 LLM/Embedding 等走 SiliconFlow；也可在配置中改用其他 Provider 并填对应 Key。 |
+| `REDIS_URL` | 本地开发通常为 `redis://localhost:6379/0`（与 Docker 内 Redis 一致）。 |
+| `QDRANT_HOST` / `QDRANT_PORT` | 本地一般为 `localhost` / `6333`。 |
+| `MINIO_*` | 本地 Docker MinIO 默认 `minioadmin` / `minioadmin`；生产环境请修改。 |
+
+可选：`DEEPSEEK_API_KEY`、`OPENROUTER_API_KEY`、`ALIYUN_BAILIAN_API_KEY`、`TAVILY_API_KEY`、飞书相关变量等。
+
+前端默认请求 `http://localhost:8000/api`；若需修改，可在前端构建时使用环境变量 `VITE_API_BASE_URL`。
+
 ### 2. 启动开发环境
+
 ```bash
 chmod +x start-dev.sh
 ./start-dev.sh
 ```
-脚本会启动 MinIO、Qdrant、Redis，再在本地启动后端与前端。
+
+脚本会检查已存在 `backend/.env`，启动 MinIO、Qdrant、Redis（`docker compose --env-file backend/.env`），再在本地启动后端与前端。
 
 ### 3. 访问
 - **前端**：http://localhost:3000  
 - **后端 API**：http://localhost:8000  
 - **API 文档**：http://localhost:8000/docs  
-- **MinIO 控制台**：http://localhost:9001（默认账号/密码见 docker-compose 或 .env）
+- **MinIO 控制台**：http://localhost:9001（默认账号/密码与 `backend/.env` 或 `docker-compose.yml` 一致，本地多为 `minioadmin`）
 
 ## Docker 部署
 
+Compose 需从 `backend/.env` 读取 `SILICONFLOW_API_KEY` 等变量，请使用：
+
 ```bash
-docker-compose up -d
-docker-compose ps
-docker-compose logs -f
+docker compose --env-file backend/.env up -d
+docker compose --env-file backend/.env ps
+docker compose --env-file backend/.env logs -f
 ```
 
-主要服务：`backend`、`minio`、`qdrant`、`redis`、`celery_worker`，可选 `flower`（Celery 监控）。前端需单独构建或挂载开发服务器。
+主要服务：`backend`、`minio`、`qdrant`、`redis`、`celery_worker`，可选 `celery_flower`（Celery 监控）。前端需单独构建或运行开发服务器。
 
 ## 配置要点
 
-- **后端**：`backend/app/core/config.py`，环境变量覆盖 Qdrant/Redis/MinIO 等；模型与任务路由见 Core LLM 层。
-- **前端**：API 基地址与 SSE 等见 `frontend/src/services/`。
-- **环境变量示例**：`SILICONFLOW_API_KEY`、`QDRANT_HOST`、`QDRANT_PORT`、`REDIS_URL`、`MINIO_ENDPOINT`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY` 等，参考根目录 `.env`、`backend/.env` 与 `docker-compose.yml`。
+- **后端**：[`backend/app/core/config.py`](backend/app/core/config.py)，仅从 **`backend/.env`** 加载（文件不存在时依赖进程环境变量）；模型与任务路由见 Core LLM 层。
+- **前端**：API 基地址见 [`frontend/src/services/api_client.ts`](frontend/src/services/api_client.ts)（`VITE_API_BASE_URL`）。
+- **模板**：[`backend/.env.example`](backend/.env.example)；**勿**将真实 `backend/.env` 提交到 Git。
+
+## 故障排除
+
+- **启动报错缺少 `SILICONFLOW_API_KEY`**：确认已创建 `backend/.env` 并已填写该变量，修改后需重启后端进程。
+- **未找到 `backend/.env`**：执行 `cp backend/.env.example backend/.env` 后再启动。
+- **`docker compose` 启动后容器内无 API Key**：必须使用 `docker compose --env-file backend/.env`，勿依赖项目根目录的 `.env`。
 
 ## 测试与调试
 
@@ -173,7 +234,7 @@ sudo apt-get update && sudo apt-get install -y libreoffice
 sudo apt-get update && sudo apt-get install -y ffmpeg
 ```
 
-- 若 `ffmpeg` 不在 PATH，可在 `.env` 中设置：`FFMPEG_PATH=/your/path/to/ffmpeg`。
+- 若 `ffmpeg` 不在 PATH，可在 `backend/.env` 中设置：`FFMPEG_PATH=/your/path/to/ffmpeg`。
 
 ## 文档索引
 
@@ -183,6 +244,8 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 | [ARCHITECTURE_COMPLIANCE_ANALYSIS.md](docs/ARCHITECTURE_COMPLIANCE_ANALYSIS.md) | 实现与设计符合度分析 |
 | [SPARSE_RETRIEVAL_IMPLEMENTATION.md](docs/SPARSE_RETRIEVAL_IMPLEMENTATION.md) | BGE-M3 稀疏检索 |
 | [MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 多模态（图/音/视）技术方案 |
+| [SECURITY.md](SECURITY.md) | 密钥与敏感信息管理说明 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献说明（勿提交密钥文件） |
 
 ## 许可证与联系
 

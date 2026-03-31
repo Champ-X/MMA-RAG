@@ -54,32 +54,30 @@ cd multi-modal-rag-agent
 
 2. **配置环境变量**
 ```bash
-# 复制环境变量模板
-cp .env.example .env
+# 复制环境变量模板（仅使用 backend/.env，不使用项目根目录 .env）
+cp backend/.env.example backend/.env
 
 # 编辑配置文件
-vim .env
+vim backend/.env
 ```
 
 关键配置项：
 ```bash
 # 必需配置
 SILICONFLOW_API_KEY=your_api_key_here
-DEBUG=True
-LOG_LEVEL=DEBUG
+API_DEBUG=false
+LOG_LEVEL=INFO
 
-# 数据库配置
+# 数据库与缓存
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
-REDIS_HOST=localhost
-REDIS_PORT=6379
+REDIS_URL=redis://localhost:6379/0
 MINIO_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 
 # 安全配置
 SECRET_KEY=your_secret_key_here
-ALLOWED_HOSTS=localhost,127.0.0.1
 
 # 可选：二进制依赖路径（若命令不在 PATH，可显式配置）
 LIBREOFFICE_PATH=/usr/bin/libreoffice
@@ -92,8 +90,8 @@ FFMPEG_PATH=/usr/bin/ffmpeg
 chmod +x start-dev.sh
 ./start-dev.sh
 
-# 或手动启动
-docker-compose up -d
+# 或手动启动依赖与后端（Compose 需指定 env 文件）
+docker compose --env-file backend/.env up -d
 ```
 
 4. **验证部署**
@@ -149,14 +147,14 @@ docker build -t multimodal-rag-frontend ./frontend
 
 2. **启动服务**
 ```bash
-# 后台运行
-docker-compose up -d
+# 后台运行（从 backend/.env 注入 Compose 变量）
+docker compose --env-file backend/.env up -d
 
 # 查看日志
-docker-compose logs -f app
+docker compose --env-file backend/.env logs -f backend
 
 # 查看状态
-docker-compose ps
+docker compose --env-file backend/.env ps
 ```
 
 3. **服务访问**
