@@ -135,7 +135,7 @@ export function ArchitecturePage() {
 
           <footer className="rounded-xl border border-slate-200/70 bg-slate-50/50 px-4 py-5 text-center text-[11px] leading-relaxed text-slate-500 dark:border-slate-800/80 dark:bg-slate-900/40 dark:text-slate-400">
             本页为架构导读；细节与迭代说明以{' '}
-            <span className="font-mono text-slate-600 dark:text-slate-300">docs/MMAA_ARCHITECTURE.md</span>、
+            <span className="font-mono text-slate-600 dark:text-slate-300">docs/MMA_ARCHITECTURE.md</span>、
             <span className="font-mono text-slate-600 dark:text-slate-300"> backend/.env.example</span> 与源码为准。
           </footer>
         </div>

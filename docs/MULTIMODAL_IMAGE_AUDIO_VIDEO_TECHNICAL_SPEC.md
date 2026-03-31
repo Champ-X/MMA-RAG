@@ -1,6 +1,6 @@
 # 多模态（图片、音频、视频）全流程技术方案
 
-本文档描述当前系统中**图片**、**音频**、**视频**三种模态从**解析处理**、**存储**到**检索**的完整技术细节，与 **[MMAA_ARCHITECTURE.md](./MMAA_ARCHITECTURE.md)** 中的 Ingestion / Retrieval 设计一致。
+本文档描述当前系统中**图片**、**音频**、**视频**三种模态从**解析处理**、**存储**到**检索**的完整技术细节，与 **[MMA_ARCHITECTURE.md](./MMA_ARCHITECTURE.md)** 中的 Ingestion / Retrieval 设计一致。
 
 **项目侧要点（与其它「仅文本 RAG」的差异）**：
 
