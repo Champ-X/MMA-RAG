@@ -17,7 +17,7 @@
 - [🔧 可选系统依赖](#可选系统依赖)
 - [📘 文档索引](#文档索引)
 
-## ✨ 项目特色
+<h2 id="项目特色">✨ 项目特色</h2>
 
 ### 🎯 核心能力
 
@@ -44,7 +44,7 @@
 
 ![MMA RAG 系统架构图](docs/images/architecture.jpg)
 
-## 💬 对话与检索示例
+<h2 id="对话与检索示例">💬 对话与检索示例</h2>
 
 以下为 **Web 对话** 与 **飞书 IM（可选部署）** 中的多模态检索与回答示意（知识库内容与模型回答以实际部署为准）。
 
@@ -79,7 +79,7 @@ Query: `为《浴血黑帮》这部电影挑选合适的海报封面和主题曲
 
 ![对话示例：飞书 IM 中的检索与回答](docs/images/chat-feishu.jpg)
 
-## 🧩 核心模块概览
+<h2 id="核心模块概览">🧩 核心模块概览</h2>
 
 ### 1. 📥 Ingestion（数据输入处理与存储）
 
@@ -130,7 +130,7 @@ Query: `为《浴血黑帮》这部电影挑选合适的海报封面和主题曲
 
 更细的设计与边界说明见 **[MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)**。
 
-## 🚀 快速开始
+<h2 id="快速开始">🚀 快速开始</h2>
 
 **适用环境**：Linux、WSL、MacOS。
 
@@ -211,7 +211,7 @@ chmod +x start-dev.sh
 | Qdrant Dashboard | http://localhost:6333/dashboard（向量库 Web 控制台；端口与 `QDRANT_PORT` / `docker-compose.yml` 中映射一致，默认 `6333`） |
 
 
-## 🔧 可选系统依赖
+<h2 id="可选系统依赖">🔧 可选系统依赖</h2>
 
 ### 📄 Office 预览（PPTX / DOCX）
 
@@ -233,7 +233,7 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 
 - 若不在 `PATH` 中，可在 `backend/.env` 设置 `FFMPEG_PATH=/your/path/to/ffmpeg`。
 
-## 📘 文档索引
+<h2 id="文档索引">📘 文档索引</h2>
 
 | 文档 | 说明 |
 |------|------|
