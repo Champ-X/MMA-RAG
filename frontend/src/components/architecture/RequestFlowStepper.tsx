@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, MessageCircle, Brain, Network, Search, Sparkles } from 'lucide-react'
+import { ArrowRight, MessageCircle, Brain, Network, Search, Sparkles, Layers, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { requestFlowSteps } from '@/data/architectureData'
 
@@ -8,8 +8,8 @@ const stepIconMap: Record<string, JSX.Element> = {
   intent: <Brain className="h-4 w-4" />,
   routing: <Network className="h-4 w-4" />,
   'hybrid-search': <Search className="h-4 w-4" />,
-  rerank: <Sparkles className="h-4 w-4" />,
-  prompt: <Sparkles className="h-4 w-4" />,
+  rerank: <Layers className="h-4 w-4" />,
+  prompt: <FileText className="h-4 w-4" />,
   generation: <Sparkles className="h-4 w-4" />,
 }
 
@@ -26,7 +26,8 @@ export function RequestFlowStepper() {
       </div>
 
       <p className="max-w-3xl break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-        从"用户在前端输入一个问题"到"浏览器收到带引用的流式回答"，整个链路被拆分为 7 个阶段。上方 Stepper 展示主干流程，下方详情区域给出每一步的职责与对应代码位置。
+        从用户发起对话到 SSE 推送引用与正文，链路拆分为 {requestFlowSteps.length} 个阶段。下方为各步职责与代码入口（流式对话入口为{' '}
+        <span className="font-mono text-[12px] text-indigo-700 dark:text-indigo-300">/api/chat/stream</span>）。
       </p>
 
       <div className="rounded-2xl border border-emerald-100/80 bg-gradient-to-br from-emerald-50/60 via-slate-50/80 to-slate-50/80 p-4 shadow-sm dark:border-emerald-900/80 dark:from-emerald-950/30 dark:via-slate-950 dark:to-slate-950">
@@ -99,7 +100,7 @@ export function RequestFlowStepper() {
                 <div className="rounded-lg border border-sky-100/60 bg-sky-50/50 p-2 dark:border-sky-900/60 dark:bg-sky-950/30">
                   <div className="text-[10px] font-medium text-sky-700 dark:text-sky-300">关键技术</div>
                   <div className="mt-1 flex flex-wrap gap-1">
-                    {activeStep.keyTechnologies.slice(0, 3).map(tech => (
+                    {activeStep.keyTechnologies.map(tech => (
                       <span
                         key={tech}
                         className="rounded px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-300 bg-sky-100/80 dark:bg-sky-900/50"

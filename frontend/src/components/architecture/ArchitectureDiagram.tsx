@@ -10,9 +10,11 @@ export function ArchitectureDiagram() {
       </div>
 
       <div className="space-y-1.5">
-        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-50">Web / 飞书 ↓ Backend ↓ Storage & Models</h2>
+        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-50">
+          Web / 飞书 ↓ RAG 领域服务 ↓ 存储与模型
+        </h2>
         <p className="max-w-3xl break-words text-xs leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-          浏览器 SSE 与飞书长连接（WSS）均可将用户问题送达同一 FastAPI 后端；经 DDD 业务模块与存储/模型服务完成检索与生成，再分别通过流式事件或飞书消息 API 返回。
+          默认路径为浏览器访问前端并通过 SSE 调用后端；若启用飞书集成，则经 WSS 将 IM 事件汇入同一 FastAPI。二者共享 Ingestion / Knowledge / Retrieval / Generation 与 Core LLM 层，数据落在 MinIO、Qdrant、Redis。
         </p>
       </div>
 
@@ -21,14 +23,14 @@ export function ArchitectureDiagram() {
         <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/0 via-purple-500/0 to-pink-500/0 transition-all duration-700 group-hover:from-indigo-500/5 group-hover:via-purple-500/5 group-hover:to-pink-500/5" />
         <div className="absolute -right-20 -top-20 h-40 w-40 rounded-full bg-gradient-to-br from-indigo-200/20 to-purple-200/20 blur-3xl dark:from-indigo-800/10 dark:to-purple-800/10" />
         <div className="absolute -bottom-20 -left-20 h-40 w-40 rounded-full bg-gradient-to-br from-emerald-200/20 to-teal-200/20 blur-3xl dark:from-emerald-800/10 dark:to-teal-800/10" />
-        
+
         <CardHeader className="relative pb-2">
           <CardTitle className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
             <Zap className="h-3.5 w-3.5 text-indigo-500" />
             <span>系统架构示意</span>
           </CardTitle>
         </CardHeader>
-        
+
         <CardContent className="relative space-y-4">
           <div className="flex flex-col items-center gap-3">
             {/* 顶部：双入口 Web + 飞书 */}
@@ -62,9 +64,7 @@ export function ArchitectureDiagram() {
                   <p className="break-words text-[11px] font-medium leading-tight text-slate-600 dark:text-slate-300">
                     WSS 长连接 · lark-oapi
                   </p>
-                  <p className="break-words text-[11px] leading-tight text-slate-500 dark:text-slate-400">
-                    卡片 2.0 / Post · 图片与 OPUS 音频
-                  </p>
+                  <p className="break-words text-[11px] leading-tight text-slate-500 dark:text-slate-400">卡片 2.0 / Post · 多模态引用（可选部署）</p>
                 </div>
               </div>
             </div>
@@ -74,19 +74,21 @@ export function ArchitectureDiagram() {
               <div className="absolute flex h-8 w-px items-center justify-center bg-gradient-to-b from-indigo-400/60 via-purple-400/60 to-emerald-400/60 dark:from-indigo-500 dark:via-purple-500 dark:to-emerald-500">
                 <div className="absolute h-full w-full bg-gradient-to-b from-transparent via-white/50 to-transparent dark:via-slate-900/50" />
               </div>
-              <div className="relative z-10 rounded-full bg-gradient-to-br from-indigo-500 to-emerald-500 p-1.5 shadow-lg">
-                <ArrowDown className="h-4 w-4 animate-bounce text-white" />
+              <div className="relative z-10 rounded-full bg-gradient-to-br from-indigo-500 to-emerald-500 p-1.5 shadow-lg ring-2 ring-white/30 dark:ring-slate-900/40">
+                <ArrowDown className="h-4 w-4 text-white" />
               </div>
             </div>
 
-            {/* 中间：Backend DDD */}
+            {/* 中间：RAG 领域服务（FastAPI · DDD） */}
             <div className="group/backend relative w-full max-w-5xl rounded-xl border-2 border-emerald-200/60 bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/50 p-4 shadow-lg backdrop-blur-sm transition-all duration-300 hover:border-emerald-300/80 hover:shadow-xl dark:border-emerald-800/60 dark:from-emerald-950/50 dark:via-slate-950 dark:to-teal-950/30">
               <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-emerald-500/0 to-teal-500/0 transition-all duration-300 group-hover/backend:from-emerald-500/10 group-hover/backend:to-teal-500/10" />
               <div className="relative mb-3 flex items-center justify-center gap-2">
                 <div className="rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 p-1.5 shadow-md">
                   <Server className="h-4 w-4 text-white" />
                 </div>
-                <span className="text-sm font-bold text-slate-800 dark:text-slate-100">FastAPI Backend (DDD)</span>
+                <span className="text-center text-sm font-bold leading-snug text-slate-800 dark:text-slate-100">
+                  Multi-Modal RAG Core Engine
+                </span>
               </div>
               <div className="relative grid gap-2.5 text-xs text-slate-600 dark:text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="group/module relative overflow-hidden rounded-lg border border-indigo-200/50 bg-gradient-to-br from-indigo-50/80 to-indigo-100/40 p-3 transition-all duration-300 hover:scale-105 hover:border-indigo-300/70 hover:bg-indigo-100/90 hover:shadow-lg dark:border-indigo-800/50 dark:from-indigo-950/40 dark:to-indigo-900/30 dark:hover:border-indigo-700/70 dark:hover:bg-indigo-900/50">
@@ -97,7 +99,9 @@ export function ArchitectureDiagram() {
                     </div>
                     <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-200">Ingestion</span>
                   </div>
-                  <p className="relative text-[10px] leading-tight break-words text-indigo-900/80 dark:text-indigo-100/90">文件解析、Dense+BGE-M3+CLIP 向量化，多来源接入，写入 MinIO 与 Qdrant</p>
+                  <p className="relative text-[10px] leading-tight break-words text-indigo-900/80 dark:text-indigo-100/90">
+                    解析与分块、全模态向量化（文档 Dense+Sparse；图/音/视见数据流章节），写入 MinIO 与 Qdrant
+                  </p>
                 </div>
                 <div className="group/module relative overflow-hidden rounded-lg border border-sky-200/50 bg-gradient-to-br from-sky-50/80 to-sky-100/40 p-3 transition-all duration-300 hover:scale-105 hover:border-sky-300/70 hover:bg-sky-100/90 hover:shadow-lg dark:border-sky-800/50 dark:from-sky-950/40 dark:to-sky-900/30 dark:hover:border-sky-700/70 dark:hover:bg-sky-900/50">
                   <div className="absolute inset-0 bg-gradient-to-br from-sky-500/0 to-cyan-500/0 transition-all duration-300 group-hover/module:from-sky-500/10 group-hover/module:to-cyan-500/10" />
@@ -117,7 +121,9 @@ export function ArchitectureDiagram() {
                     </div>
                     <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-200">Retrieval</span>
                   </div>
-                  <p className="relative text-[10px] leading-tight break-words text-emerald-900/80 dark:text-emerald-100/90">One-Pass 意图、多路混合检索（Dense+Sparse+Visual+Audio+Video）与两阶段重排</p>
+                  <p className="relative text-[10px] leading-tight break-words text-emerald-900/80 dark:text-emerald-100/90">
+                    One-Pass 意图、Dense+Sparse+Visual（+ 按意图 Audio/Video）与两阶段重排
+                  </p>
                 </div>
                 <div className="group/module relative overflow-hidden rounded-lg border border-purple-200/50 bg-gradient-to-br from-purple-50/80 to-purple-100/40 p-3 transition-all duration-300 hover:scale-105 hover:border-purple-300/70 hover:bg-purple-100/90 hover:shadow-lg dark:border-purple-800/50 dark:from-purple-950/40 dark:to-purple-900/30 dark:hover:border-purple-700/70 dark:hover:bg-purple-900/50">
                   <div className="absolute inset-0 bg-gradient-to-br from-purple-500/0 to-pink-500/0 transition-all duration-300 group-hover/module:from-purple-500/10 group-hover/module:to-pink-500/10" />
@@ -137,8 +143,8 @@ export function ArchitectureDiagram() {
               <div className="absolute flex h-8 w-px items-center justify-center bg-gradient-to-b from-emerald-400/60 via-amber-400/60 to-violet-400/60 dark:from-emerald-500 dark:via-amber-500 dark:to-violet-500">
                 <div className="absolute h-full w-full bg-gradient-to-b from-transparent via-white/50 to-transparent dark:via-slate-900/50" />
               </div>
-              <div className="relative z-10 rounded-full bg-gradient-to-br from-emerald-500 to-violet-500 p-1.5 shadow-lg">
-                <ArrowDown className="h-4 w-4 animate-bounce text-white" />
+              <div className="relative z-10 rounded-full bg-gradient-to-br from-emerald-500 to-violet-500 p-1.5 shadow-lg ring-2 ring-white/30 dark:ring-slate-900/40">
+                <ArrowDown className="h-4 w-4 text-white" />
               </div>
             </div>
 
@@ -191,8 +197,8 @@ export function ArchitectureDiagram() {
           <div className="mt-3 rounded-lg border border-slate-200/60 bg-gradient-to-r from-slate-50/80 to-indigo-50/40 p-3 dark:border-slate-800/60 dark:from-slate-950/80 dark:to-indigo-950/40">
             <p className="break-words text-[11px] leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break">
               <span className="font-semibold text-slate-700 dark:text-slate-200">一句话概括：</span>
-              Web 或飞书发起问题 → 同一 FastAPI 聚合 DDD 模块完成「意图 → 路由 → 检索 → 生成」→
-              依托 MinIO/Qdrant/Redis 与外部大模型 / 飞书 API，返回带多模态引用且可解释的回答。
+              客户端（Web 为主，飞书可选）→ FastAPI「意图 → 路由 → 检索 → 生成」→ MinIO / Qdrant / Redis + LLM
+              Provider；SSE 推送思考链与引用，飞书启用时再走消息/卡片 API。
             </p>
           </div>
         </CardContent>

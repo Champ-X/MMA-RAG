@@ -49,8 +49,9 @@ export function IntegrationsSection() {
           企业 IM 与开放平台
         </h2>
         <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-          除浏览器 SSE 外，系统接入<strong className="font-medium text-slate-800 dark:text-slate-200"> 飞书（Lark）开放平台</strong>
-          ：通过长连接接收会话消息，将问答流量汇入同一套 DDD 模块与向量检索能力，再将结构化引用与多模态内容以卡片、Post 或文件形式送达群聊或单聊。
+          <strong className="font-medium text-slate-800 dark:text-slate-200">可选能力：</strong>
+          配置飞书应用后，通过长连接接收 IM 事件，将问答流量汇入与 <span className="font-mono text-[12px] text-slate-700 dark:text-slate-200">/api/chat/stream</span>{' '}
+          相同的领域服务；下游再格式化为卡片 2.0、Post 或分条消息。未启用飞书时，架构页其余章节仍完整描述默认 Web + API 路径。
         </p>
       </div>
 

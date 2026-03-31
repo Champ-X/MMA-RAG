@@ -63,18 +63,18 @@ export const architectureSections: ArchitectureSection[] = [
   },
   {
     id: 'performance',
-    title: '性能指标',
-    subtitle: '检索、延迟、重排与多模态覆盖',
+    title: '设计目标与能力',
+    subtitle: '检索、延迟、重排与多模态覆盖（架构取向，非压测数值）',
   },
   {
     id: 'system-architecture',
     title: '整体架构图',
-    subtitle: 'Browser / 飞书 → FastAPI → DDD → 存储与模型',
+    subtitle: 'Web SSE / 可选飞书 → FastAPI → DDD → 存储与模型',
   },
   {
     id: 'external-integrations',
     title: '飞书与外部集成',
-    subtitle: '长连接 IM、卡片 2.0、与主 RAG 管道复用',
+    subtitle: '可选部署：长连接、卡片与主 RAG 管道复用',
   },
   {
     id: 'request-flow',
@@ -89,7 +89,7 @@ export const architectureSections: ArchitectureSection[] = [
   {
     id: 'data-flow',
     title: '数据流与存储',
-    subtitle: '接入 → MinIO → 向量化 → Qdrant → 检索生成 → Web / 飞书送达',
+    subtitle: '接入 → MinIO → 向量化 → Qdrant → 检索生成 → Web（可选飞书）',
   },
   {
     id: 'tech-stack',
@@ -99,9 +99,10 @@ export const architectureSections: ArchitectureSection[] = [
 ]
 
 export const overviewStats = {
+  /** DDD 业务域 + LLM Manager（Core） */
   modules: 5,
-  coreApis: 5,
-  modelTasks: 5,
+  /** MinIO / Qdrant / Redis */
+  storageLayers: 3,
 }
 
 export interface InnovationPoint {
@@ -109,7 +110,6 @@ export interface InnovationPoint {
   title: string
   description: string
   impact: string
-  icon: string
 }
 
 export const innovationPoints: InnovationPoint[] = [
@@ -118,50 +118,44 @@ export const innovationPoints: InnovationPoint[] = [
     title: '知识库画像动态生成',
     description: 'K-Means 聚类 + LLM 主题摘要的混合方法，自动分析知识库内容特征并生成结构化画像',
     impact: '显著提升知识库选取的准确性与稳定性',
-    icon: '🎯',
   },
   {
     id: 'hybrid-search',
     title: '多路融合混合检索',
-    description: 'Dense（语义向量）+ Sparse（BGE-M3）+ Visual（图片：CLIP + VLM）+ Audio（音频：CLAP + ASR/描述）+ Video（视频：关键帧 CLIP + VLM + 整体描述）多路并行检索，经 RRF 粗排与 Cross-Encoder 精排',
+    description:
+      '主干为 Dense + BGE-M3 稀疏 + Visual（图片 text_vec + clip_vec，VLM 写入索引）；audio_intent / video_intent 开启时并入 Audio（CLAP + ASR/描述）与 Video（关键帧 + 整体描述）检索，经加权 RRF 粗排与 Cross-Encoder 精排',
     impact: '在复杂查询与多模态知识库场景下更稳定地召回文档/图片/音频/视频相关片段',
-    icon: '🔍',
   },
   {
     id: 'two-stage-rerank',
     title: '两阶段重排优化',
     description: 'RRF 粗排 + Cross-Encoder 精排的两阶段重排机制，在保证检索效率的同时显著提升 Top-K 准确率',
     impact: 'Top-K 准确率显著提升',
-    icon: '⚡',
   },
   {
     id: 'one-pass-intent',
     title: 'One-Pass 意图识别',
     description: '将意图分类、查询改写、关键词/多视角生成与 visual/audio/video 意图统一为一次 LLM 调用，输出结构化 IntentObject',
     impact: '在保证分析质量的前提下显著降低请求整体延迟，并统一控制多模态检索分支',
-    icon: '🚀',
   },
   {
     id: 'multimodal-vector',
     title: '全模态向量化融合',
     description: '文档 Dense + BGE-M3 稀疏；图片 VLM + CLIP 双路；音频 ASR/描述 + CLAP 双路（+ 可选稀疏）；视频关键帧 VLM + 整体描述 + 关键帧 CLIP。文本侧统一 Embedding，支持文档/图片/音频/视频跨模态检索与路由',
     impact: '文档、图片、音频、视频统一表征与跨模态检索',
-    icon: '🖼️',
   },
   {
     id: 'visual-thinking',
     title: '可视化思考过程',
     description: '实现 AI 推理链路的实时可视化展示，包括意图识别、知识库路由、检索策略等思考步骤',
     impact: '可解释性和可调试性大幅提升',
-    icon: '🧠',
   },
   {
     id: 'feishu-delivery',
-    title: '飞书 IM 原生送达',
+    title: '飞书 IM 原生送达（可选）',
     description:
-      '通过飞书长连接接收 IM 事件，与 Web 共用同一套 DDD 检索与生成管道；支持卡片 2.0（Markdown / 图片 / OPUS 音频混排）、Post 与多消息回退，可选 CardKit 流式更新正文',
-    impact: '企业 IM 内一致的多模态 RAG 体验与运维探活接口',
-    icon: '💬',
+      '启用飞书集成时：长连接接收 IM 事件，与 Web 共用同一套 DDD 检索与生成管道；支持卡片 2.0（Markdown / 图片 / OPUS 音频混排）、Post 与多消息回退，可选 CardKit 流式更新正文',
+    impact: '企业 IM 与 Web 端共用同一套多模态 RAG 与探活接口',
   },
 ]
 
@@ -177,47 +171,49 @@ export interface PerformanceMetric {
 export const performanceMetrics: PerformanceMetric[] = [
   {
     id: 'retrieval-accuracy',
-    label: '检索准确率',
-    value: '更高',
-    unit: '准确率',
-    improvement: '相较传统单一检索策略更稳定地命中高质量片段',
-    description: '通过多路融合混合检索（Dense/Sparse/Visual/Audio/Video）实现，在多知识库、全模态混合场景下表现更优',
+    label: '混合检索',
+    value: '多路',
+    unit: '融合',
+    improvement: 'Dense + BGE-M3 稀疏为主干；Visual 为 CLIP + VLM；Audio/Video 按意图分支参与',
+    description:
+      '三路（Dense / Sparse / Visual）为检索主轴；音频、视频在意图与数据就绪时并入 RRF 与精排。',
   },
   {
     id: 'intent-latency',
-    label: '意图识别延迟',
-    value: '更低',
-    unit: '延迟',
-    improvement: '相较多轮串行调用显著缩短意图分析阶段耗时',
-    description: 'One-Pass 统一处理意图分类与查询改写，减少多次往返调用',
+    label: '意图阶段',
+    value: '单次',
+    unit: 'LLM 调用',
+    improvement: '输出结构化 IntentObject，减少串行往返',
+    description: '意图分类、查询改写、关键词与 multi_view_queries、visual/audio/video 意图在同一次调用中结构化输出，失败时回退默认意图。',
   },
   {
     id: 'rerank-accuracy',
-    label: '重排 Top-K 准确率',
-    value: '显著',
-    unit: '提升',
-    improvement: 'vs 单一重排',
-    description: 'RRF 粗排 + Cross-Encoder 精排两阶段优化',
+    label: '两阶段重排',
+    value: 'RRF',
+    unit: '+ CE',
+    improvement: '粗排融合多路候选，Cross-Encoder 精排与加权合并',
+    description: '先加权 RRF 合并 Dense/Sparse/Visual 等候选，再对 (query, content) 进行 Cross-Encoder 精排。',
   },
   {
     id: 'multimodal-support',
-    label: '多模态支持',
-    value: '完整',
-    unit: '覆盖',
-    improvement: '文档、图片、音频、视频混合知识库中一致的检索与引用体验',
-    description: '图片 VLM+CLIP、音频 ASR+CLAP、视频关键帧+整体描述+CLIP，与文档 Dense/Sparse 统一检索与引用展示',
+    label: '多模态链路',
+    value: '端到端',
+    unit: '可追溯',
+    improvement: '接入、向量库、检索、引用与 SSE 思考链同一套管道',
+    description:
+      '文档分块 + 图片/音视频条目不切块；引用含 chunk_id、context_window；前端 ThinkingCapsule / CitationPopover 展示 SSE 推送的 thought、citation 载荷。',
   },
 ]
 
 export const overviewTags = [
   '多模态 RAG',
-  '智能路由',
+  '知识库画像路由',
   'BGE-M3 稀疏检索',
-  '混合检索',
-  '音频/视频检索',
-  '流式思考链',
-  '可视化调试',
-  '飞书 IM / 卡片 2.0',
+  'Dense + Sparse + Visual',
+  'RRF + Cross-Encoder',
+  'SSE 思考链',
+  '引用与调试',
+  '可选飞书集成',
 ] as const
 
 export const requestFlowSteps: RequestFlowStep[] = [
@@ -254,9 +250,9 @@ export const requestFlowSteps: RequestFlowStep[] = [
   {
     id: 'hybrid-search',
     title: '多路混合检索',
-    short: 'Dense + Sparse + Visual + Audio + Video',
+    short: 'Dense + Sparse + Visual（+ Audio / Video）',
     description:
-      'HybridSearchEngine 同时发起 Dense 语义检索、BGE-M3 稀疏检索、图片 Visual（CLIP + VLM）、音频 Audio（CLAP + 文本/稀疏）、视频 Video（text_vec + clip_vec）检索，按 visual_intent/audio_intent/video_intent 决定各路人选与权重，经加权 RRF 融合后与 Cross-Encoder 精排配合，在多样化与多模态查询场景下有更好的召回质量。',
+      'HybridSearchEngine：以 Dense 语义检索与 BGE-M3 稀疏检索为文档主轴；图片为 text_vec + clip_vec 双路（VLM 描述写入索引）；在 visual_intent 下可补充 video_vectors 关键帧以丰富图片来源。audio_intent / video_intent 非 unnecessary 时检索 audio_vectors、video_vectors。多路结果加权 RRF 粗排后再进入 Cross-Encoder 精排。',
     backendEntry: 'backend/app/modules/retrieval/search_engine.py::HybridSearchEngine',
     estimatedTime: '300-800ms',
     keyTechnologies: ['Dense', 'BGE-M3 Sparse', 'CLIP Visual', 'CLAP Audio', 'Video', 'RRF Fusion'],
@@ -439,9 +435,9 @@ export const dataFlowStages: DataFlowStage[] = [
   },
   {
     id: 'channels',
-    title: '多端输出（Web / 飞书）',
+    title: '多端输出（Web / 可选飞书）',
     description:
-      'Web 通过 SSE 流式推送；飞书通过 WSS 事件驱动，复用检索与生成逻辑，经开放平台 API 发送交互卡片、富文本 Post 或分条消息，大图/音频可上传后引用 file_key。',
+      'Web 通过 SSE 流式推送思考链、引用与正文。若启用飞书集成，则经 WSS 事件驱动同一套检索与生成，再经开放平台 API 发送卡片、Post 或分条消息（大图/音频可上传后引用 file_key）。',
   },
 ]
 

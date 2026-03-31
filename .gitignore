@@ -86,3 +86,4 @@ backend/.env
 *.backup
 .vscode/
 .minimax/
+personal/

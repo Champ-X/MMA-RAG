@@ -89,19 +89,22 @@ export function ArchitecturePage() {
     <div className="flex h-full min-h-0 gap-4 lg:gap-6">
       <ScrollArea
         ref={scrollAreaRef}
-        className="flex-1 min-w-0 rounded-2xl border border-white/70 bg-gradient-to-b from-white/95 via-white/90 to-indigo-50/30 shadow-[0_8px_30px_-12px_rgba(79,70,229,0.25)] backdrop-blur-sm dark:border-slate-800/80 dark:from-slate-950/95 dark:via-slate-950/90 dark:to-indigo-950/20 dark:shadow-[0_8px_40px_-16px_rgba(0,0,0,0.65)]"
+        className="flex-1 min-w-0 rounded-2xl border border-white/70 bg-gradient-to-b from-white/96 via-indigo-50/25 to-teal-50/20 shadow-[0_8px_32px_-14px_rgba(79,70,229,0.22)] backdrop-blur-sm dark:border-slate-800/80 dark:from-slate-950/96 dark:via-slate-950/92 dark:to-indigo-950/25 dark:shadow-[0_8px_40px_-16px_rgba(0,0,0,0.65)]"
       >
         <div className="mx-auto flex max-w-5xl flex-col gap-12 px-4 py-8 sm:px-8 sm:py-10 lg:px-10 lg:py-12">
-          <header className="relative overflow-hidden rounded-2xl border border-indigo-100/80 bg-gradient-to-br from-indigo-500/[0.07] via-violet-500/[0.05] to-transparent px-5 py-6 dark:border-indigo-900/40 dark:from-indigo-500/10 dark:via-violet-600/5">
-            <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gradient-to-br from-indigo-400/20 to-fuchsia-400/10 blur-3xl dark:from-indigo-500/15 dark:to-fuchsia-500/10" />
-            <p className="relative text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-600/80 dark:text-indigo-300/90">
+          <header className="relative overflow-hidden rounded-2xl border border-indigo-100/80 bg-gradient-to-br from-indigo-500/[0.08] via-violet-500/[0.04] to-teal-500/[0.03] px-5 py-7 shadow-sm dark:border-indigo-900/45 dark:from-indigo-500/12 dark:via-violet-600/6 dark:to-teal-900/10">
+            <div className="pointer-events-none absolute -left-20 bottom-0 h-48 w-48 rounded-full bg-gradient-to-tr from-teal-400/10 to-transparent blur-3xl dark:from-teal-500/8" />
+            <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-gradient-to-br from-indigo-400/20 to-fuchsia-400/10 blur-3xl dark:from-indigo-500/15 dark:to-fuchsia-500/10" />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(99,102,241,0.06),transparent_55%)] dark:bg-[radial-gradient(ellipse_at_50%_0%,rgba(99,102,241,0.12),transparent_50%)]" />
+            <p className="relative text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-600/85 dark:text-indigo-300/90">
               Architecture
             </p>
-            <h1 className="relative mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50 sm:text-2xl">
+            <h1 className="relative mt-1.5 text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50 sm:text-2xl">
               系统架构与设计说明
             </h1>
             <p className="relative mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break">
-              全模态 RAG、DDD 模块边界、数据生命周期，以及飞书 IM 等外部通道如何接入同一套检索与生成能力。
+              FastAPI DDD 模块、MinIO / Qdrant / Redis 数据平面、三路混合检索与两阶段重排；配置与行为以源码及{' '}
+              <span className="font-mono text-[12px] text-indigo-700 dark:text-indigo-300">backend/.env</span> 为准。
             </p>
           </header>
 
@@ -130,8 +133,10 @@ export function ArchitecturePage() {
           <DataFlowDiagram />
           <TechStackSection />
 
-          <footer className="border-t border-slate-200/80 pt-8 text-center text-[11px] text-slate-500 dark:border-slate-800 dark:text-slate-400">
-            内容随仓库演进更新；实现细节以代码与配置为准。
+          <footer className="rounded-xl border border-slate-200/70 bg-slate-50/50 px-4 py-5 text-center text-[11px] leading-relaxed text-slate-500 dark:border-slate-800/80 dark:bg-slate-900/40 dark:text-slate-400">
+            本页为架构导读；细节与迭代说明以{' '}
+            <span className="font-mono text-slate-600 dark:text-slate-300">docs/MMAA_ARCHITECTURE.md</span>、
+            <span className="font-mono text-slate-600 dark:text-slate-300"> backend/.env.example</span> 与源码为准。
           </footer>
         </div>
       </ScrollArea>

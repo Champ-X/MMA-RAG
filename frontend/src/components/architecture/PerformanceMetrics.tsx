@@ -21,11 +21,11 @@ export function PerformanceMetrics() {
     <section id="performance" className="scroll-mt-24 space-y-4">
       <div className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-1 text-xs font-medium text-emerald-700 shadow-sm dark:from-emerald-950/40 dark:to-teal-950/40 dark:text-emerald-200">
         <TrendingUp className="h-3.5 w-3.5" />
-        <span>性能指标</span>
+        <span>设计目标与能力</span>
       </div>
 
       <p className="max-w-3xl break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break">
-        通过创新的架构设计和算法优化，系统在检索准确率、响应延迟、多模态支持等关键指标上实现了显著提升。
+        下列为架构层面的设计取向与能力说明，并非线上压测数值；具体行为以配置、模型与数据为准。
       </p>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -42,8 +42,10 @@ export function PerformanceMetrics() {
               </div>
             </CardHeader>
             <CardContent className="relative">
-              <div className="mb-1 flex items-baseline gap-2">
-                <span className={`text-3xl font-bold bg-gradient-to-r ${colorMap[metric.id]?.gradient || 'from-slate-500 to-slate-600'} bg-clip-text text-transparent`}>
+              <div className="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-0">
+                <span
+                  className={`max-w-full break-words text-2xl font-bold leading-tight sm:text-3xl bg-gradient-to-r ${colorMap[metric.id]?.gradient || 'from-slate-500 to-slate-600'} bg-clip-text text-transparent`}
+                >
                   {metric.value}
                 </span>
                 <span className="text-sm text-slate-500 dark:text-slate-400">{metric.unit}</span>
