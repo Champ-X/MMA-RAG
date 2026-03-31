@@ -11,7 +11,7 @@ import os
 import re
 from pathlib import Path
 
-# 优先从 backend 目录加载 .env，避免从项目根启动时漏读 backend/.env 中的配置
+# 仅从 backend 目录加载 .env（不使用项目根 .env）
 _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 _ENV_FILE = _BACKEND_DIR / ".env"
 
