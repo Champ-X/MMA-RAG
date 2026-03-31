@@ -2,7 +2,7 @@
   <img src="frontend/public/logo.png" alt="MMA · Multi-Modal Agentic RAG" height="120" />
 </p>
 
-# Multi-Modal Agentic RAG: 多模态智能路由可扩展知识库
+# Nexus - Multi-Modal Agentic RAG: 多模态智能路由可扩展知识库
 
 面向多知识库、多模态场景的 RAG（Retrieval-Augmented Generation）系统：在文档与图像统一检索与生成之上，可按配置扩展音频与视频流水线；基于知识库画像做智能路由；以 **Dense + BGE-M3 稀疏 + Visual** 为主干做三路混合检索，辅以 **RRF 粗排与 Cross-Encoder 精排**；通过 SSE 推送可解释思考链与带 `context_window` 的引用。
 
@@ -182,12 +182,10 @@ cp backend/.env.example backend/.env
 在仓库根目录执行（将后端依赖安装到独立虚拟环境，避免与系统 Python 混用）：
 
 ```bash
-cd backend
 python3 -m venv .venv
 source .venv/bin/activate          # Linux / WSL / macOS
 pip install -U pip
-pip install -r requirements.txt
-cd ..
+pip install -r backend/requirements.txt
 ```
 
 ### ▶️ 3. 启动开发环境
