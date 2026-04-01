@@ -208,9 +208,9 @@ flowchart LR
 
 #### 文档类
 
-**小节设计思路**：PDF/Office 的信息密度来自 **版式、表格与阅读顺序**；若优先走轻量文本抽取，复杂版式会退化为乱序纯文本，后续检索与引用质量上限被锁死。故采用 **强解析优先、轻量兜底** 的阶梯，在成本与可用性之间可配置（云 MinerU / 本地 MinerU / 云端 OCR）。
+**设计思路**：PDF/Office 的信息密度来自 **版式、表格与阅读顺序**；若优先走轻量文本抽取，复杂版式会退化为乱序纯文本，后续检索与引用质量上限被锁死。故采用 **强解析优先、轻量兜底** 的阶梯，在成本与可用性之间可配置（云 MinerU / 本地 MinerU / 云端 OCR）。
 
-**小节方案特点**：同一入口（`ParserFactory`）屏蔽 MIME 差异；失败自动降级，避免单点配置阻断整条导入流水线。
+**方案特点**：同一入口（`ParserFactory`）屏蔽 MIME 差异；失败自动降级，避免单点配置阻断整条导入流水线。
 
 - **PDF**（`PDFParser`，`modules/ingestion/parsers/factory.py`）：**首选 MinerU 链路**——① **MinerU 云端 API**（需 `MINERU_TOKEN` 且开启 `mineru_pdf_enabled`）；失败则 ② **本地 MinerU 2.5**（`mineru_client.parse_pdf`）；若仍不可用或失败，再 ③ **PaddleOCR-VL-1.5**（`modules/ingestion/parsers/paddleocr_client.py`，需 API 配置）；最后 ④ **PyMuPDF（fitz）** 兜底。与旧「以 PyMuPDF 为主」的表述相反：**MinerU / Paddle 为版式与表格优先，PyMuPDF 仅作末级回退**。
 - **DOCX / PPTX**：同样 **MinerU API → 本地 MinerU 2.5**（本地路径依赖 **LibreOffice** 将 Office 转为 PDF 再逐页解析）；仍失败则回退 **python-docx** / **python-pptx**（以文本为主）。
@@ -219,27 +219,39 @@ flowchart LR
 
 #### 图片类
 
-**小节设计思路**：图片在流水线中同时服务 **VLM 语义描述** 与 **CLIP 视觉向量**；解析阶段只需稳定解码与元数据，避免在 Parser 层重复实现推理逻辑。
+**设计思路**：图片在流水线中同时服务 **VLM 语义描述** 与 **CLIP 视觉向量**；解析阶段只需稳定解码与元数据，避免在 Parser 层重复实现推理逻辑。
 
-**小节方案特点**：轻量依赖、格式覆盖广；输出 **base64 + 几何信息** 作为下游 VLM/CLIP 的统一输入契约。
+**方案特点**：轻量依赖、格式覆盖广；输出 **base64 + 几何信息** 作为下游 VLM/CLIP 的统一输入契约。
 
 - 使用 PIL/Pillow 解析，支持 JPG、JPEG、PNG、GIF、BMP、TIFF 等。
 - 元数据：width、height、format、mode、aspect_ratio；输出含 base64 供 VLM 使用。
 
-#### 多模态扩展（音频/视频）
+#### 音频
 
-**小节设计思路**：音/视的 **解析与写入** 在 Ingestion 完成；**是否值得为当前问句走音/视检索** 属于在线意图问题，放在第三章用三档意图统一调度，避免 Ingestion 与 Retrieval 职责交叉。
+**设计思路**：音频的 **解析与持久化写入** 在 Ingestion 完成：由 AudioParser 产出 **时长、采样率、编码格式** 等契约字段，再经 **ASR 转写** 与 **LLM 辅助描述**，生成与文档 **同空间的 Dense 文本向量**（`text_vec`），并叠加 **CLAP 声学向量**（`clap_vec`），可选 BGE-M3 **sparse**，统一落入 `audio_vectors`。**当前问句是否要检索音频** 不在解析阶段决定，而由在线 One-Pass 的 **`audio_intent` 三档**（explicit_demand / implicit_enrichment / unnecessary）调度；`unnecessary` 时检索层 **整路短路**，避免纯文本问答仍付出 CLAP 与音频索引成本。
 
-**小节方案特点**：导入侧保证「每条媒体有可检索向量」；在线侧用 `audio_intent` / `video_intent` 等控制 **路权与成本**，而非在解析阶段猜测用户查询。
+**方案特点**：**整段音频对应 Qdrant 中单一 Point**（不做按秒切块）；导入侧保证「有转写/描述 + 有可检索向量」；文本侧与画像、路由、Dense 路检索 **同一嵌入模型**，便于跨模态融合。
 
-- 意图层在 One-Pass 中输出 `audio_intent`、`video_intent`（explicit_demand / implicit_enrichment / unnecessary），与 `visual_intent` 一起参与检索权重与策略。
-- 图/音/视的解析、向量字段与 Qdrant 形态见 **[MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](./MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**。
+- 常见扩展名如 mp3、wav、m4a、flac 等由 ParserFactory 路由至 AudioParser；原件写入 MinIO `audios/` 前缀，与 payload 中 `file_path` / `file_id` 对齐。
+- `audio_intent` 与 `visual_intent`、`video_intent` 一并写入 IntentObject，参与第三章 **各路 RRF 权重与是否执行 Audio 检索**（见 `modules/retrieval/search_engine.py`）。
+
+#### 视频
+
+**设计思路**：视频的 **解析与写入** 在 Ingestion 完成 **容器级元数据**（时长、分辨率、帧率等）与 **MLLM 场景理解**：规划场景摘要、关键帧时间与画面描述，再 **按时间戳截帧**、帧图上传 MinIO，对每个关键帧写入 **`scene_vec`、`frame_vec`、`clip_vec`** 至 `video_vectors`（**一关键帧一点**）。若存在音轨，可 **ffmpeg 抽轨** 生成独立音频对象并记录 **`audio_file_id`**，便于与音频索引联动。**视频路是否加重权重、是否在视频检索中启用 CLIP 查询向量** 由在线层 **`video_intent` / `visual_intent`** 等与第三章 `HybridSearchEngine` 统一调度，解析层只负责「可检、可播、可追溯」。
+
+**方案特点**：**同一视频文件对应多个 Point**，通过 **`segment_id`** 在检索后与展示层聚合为「一条视频」；关键帧图位于 `videos/{file_id}/keyframes/`，与 Visual 检索并入逻辑衔接（图库为空时仍可被视频帧命中）。
+
+- 常见容器如 mp4、avi、mov、mkv 等由 VideoParser 处理；长短视频分流、分段与窗口参数可由 `settings` 约束（见代码与多模态专文）。
+- `video_intent` 三档主要调节 **Video 路在 RRF 中的权重**；视频检索任务本身 **通常仍会执行**，与 `audio_intent` 在「是否短路整路」上的语义略有不同（详见第三章）。
+
+图 / 音 / 视的 **字段级说明、Qdrant 命名向量与 payload** 见 **[MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](./MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**。
 
 **实现方案要点：**
 
-- **解析入口**：根据文件扩展名或内容检测由 ParserFactory 选择对应 Parser。**文档**（PDF/DOCX/TXT/Markdown 等）返回统一结构的 parse_result（如 markdown 文本、提取的图片列表、元数据）；**图片**解析输出 base64 与尺寸等供 VLM/CLIP 使用；**音频**（mp3/wav/m4a/flac 等）由 AudioParser 输出时长、采样率、格式等，供 ASR/CLAP 流水线使用；**视频**（mp4/avi/mov/mkv 等）由 VideoParser 输出时长、分辨率、帧率等，供关键帧提取与 VLM/CLIP 使用。
+- **解析入口**：根据扩展名或内容检测由 ParserFactory 调度。**文档**（PDF/DOCX/TXT/Markdown 等）返回统一 parse_result；**图片**输出 base64 与几何元数据；**音频**由 AudioParser 返回时长、采样率、格式等，供下游 ASR / CLAP；**视频**由 VideoParser 返回时长、分辨率、帧率等，供 MLLM 场景解析、截帧与 CLIP。
 - **文档内图片**：PDF 或 Markdown 解析时若发现内嵌图，先提取图片字节与在原文中的占位符（markdown_ref）；每张图单独走 VLM 描述 + 上传 MinIO + CLIP 向量化 + 写入 image_vectors，同时将生成的 caption 记下，在后续分块前插回原文占位符，再对整份文档做分块与向量化，保证图文一致。
-- **音频/视频**：音频走 ASR 转写 + 描述生成 + `text_vec` + `clap_vec`（+ 可选 sparse），写入 `audio_vectors`。视频走 MLLM 场景/关键帧规划 → 按时间戳截帧 → 每帧写入 **`scene_vec` + `frame_vec` + `clip_vec`** 至 `video_vectors`（**一关键帧一点**）；若含音轨可 ffmpeg 抽轨并记录 `audio_file_id`。详见多模态专文。
+- **音频写入**：ASR 得到 transcript，LLM 生成 description，拼接后经与文档相同的 Dense 模型得到 `text_vec`；CLAP 对解码重采样后的波形提取 `clap_vec`；可选 sparse 写入同一 Point；集合 **`audio_vectors`**，详见 2.3 与多模态专文。
+- **视频写入**：MLLM 产出场景与关键帧描述后逐帧编码：`scene_vec` / `frame_vec`（文本侧 Dense）与 `clip_vec`（帧图 CLIP）；Payload 含时间戳、`segment_id`、`frame_image_path` 等；有音轨时写入 **`audio_file_id`** 关联。**集合 `video_vectors`**，详见多模态专文。
 - **多来源接入**：sources 层（URL、文件夹、Tavily 热点、媒体下载等）产出统一格式的「待处理文件」或 URL，由 Ingestion 统一执行下载（若需要）、解析、分块/多模态处理、向量化、写入；大任务通过 Celery 异步执行，进度写入 Redis 供前端轮询或 SSE 推送。
 
 ### 2.2 分块策略
