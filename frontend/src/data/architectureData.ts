@@ -110,6 +110,8 @@ export interface InnovationPoint {
   title: string
   description: string
   impact: string
+  /** 可选能力（如飞书），用于展示「可选」徽标 */
+  optional?: boolean
 }
 
 export const innovationPoints: InnovationPoint[] = [
@@ -123,8 +125,8 @@ export const innovationPoints: InnovationPoint[] = [
     id: 'hybrid-search',
     title: '多路融合混合检索',
     description:
-      '主干为 Dense + BGE-M3 稀疏 + Visual（图片 text_vec + clip_vec；Visual 检索可并入 video 关键帧）；audio_intent 非 unnecessary 时 Audio（CLAP + ASR/描述）；Video 为 scene_vec + frame_vec + clip_vec 多路检索；经加权 RRF 粗排与 Cross-Encoder 精排',
-    impact: '在复杂查询与多模态知识库场景下更稳定地召回文档/图片/音频/视频相关片段',
+      '文档 Dense + BGE-M3 稀疏；图 text_vec + clip_vec（Visual 可并视频关键帧）；音频按意图 CLAP + ASR/描述；视频 scene/frame/clip 三路；加权 RRF 粗排后 Cross-Encoder 精排。',
+    impact: '复杂多模态查询下更稳定召回相关片段',
   },
   {
     id: 'two-stage-rerank',
@@ -141,8 +143,9 @@ export const innovationPoints: InnovationPoint[] = [
   {
     id: 'multimodal-vector',
     title: '全模态向量化融合',
-    description: '文档 Dense + BGE-M3 稀疏；图片 VLM + CLIP 双路；音频 ASR/描述 + CLAP 双路（+ 可选稀疏）；视频每关键帧 scene_vec + frame_vec + clip_vec（MLLM 场景/帧规划）。文本侧统一 Embedding，支持文档/图片/音频/视频跨模态检索与路由',
-    impact: '文档、图片、音频、视频统一表征与跨模态检索',
+    description:
+      '文档 Dense + BGE-M3 稀疏；图 VLM + CLIP；音 ASR/描述 + CLAP（可选稀疏）；视频每关键帧 scene_vec + frame_vec + clip_vec。文本统一 Embedding，支撑跨模态检索与路由。',
+    impact: '统一表征与跨模态检索',
   },
   {
     id: 'visual-thinking',
@@ -152,10 +155,11 @@ export const innovationPoints: InnovationPoint[] = [
   },
   {
     id: 'feishu-delivery',
-    title: '飞书 IM 原生送达（可选）',
+    title: '飞书 IM 原生送达',
+    optional: true,
     description:
-      '启用飞书集成时：长连接接收 IM 事件，与 Web 共用同一套 DDD 检索与生成管道；支持卡片 2.0（Markdown / 图片 / OPUS 音频混排）、Post 与多消息回退，可选 CardKit 流式更新正文',
-    impact: '企业 IM 与 Web 端共用同一套多模态 RAG 与探活接口',
+      '长连接收 IM 事件，与 Web 共用 DDD 检索与生成；卡片 2.0（Markdown/图/音频）、Post、多消息回退，可选 CardKit 流式更新。',
+    impact: 'IM 与 Web 共用多模态 RAG 与探活',
   },
 ]
 
