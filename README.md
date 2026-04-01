@@ -4,6 +4,17 @@
 
 # Nexus - Multi-Modal Agentic RAG: 多模态智能路由可扩展知识库
 
+**Nexus** 是可私有化部署的 **多模态 Agentic RAG** 知识库方案：把文档、图像与可扩展的音频、视频流水线放进同一套「导入解析 → 画像路由 → 混合检索 → 流式生成」链路，而不是在纯文本 RAG 上零散外挂多模态能力。设计目标可以概括为三件事：**跨库时选对知识库**、**跨模态时准确召回相关证据**、**回答时过程可解释且引用可追溯**。
+
+**Nexus 的差异化与优势概览**
+
+- **多知识库优先**：基于 LLM 主题摘要与子主题聚类生成知识库画像，在线按查询语义做加权聚合与阈值策略，自动决定单库、多库或全库检索，减少无效扫描。
+- **多路混合检索 + 两阶段排序**：以 **Dense + BGE-M3 稀疏 + Visual** 为主干，在意图与数据就绪时并入音/视频向量检索；**加权 RRF 粗排**与 **Cross-Encoder 精排**分工，缓解不同通道分数不可比的问题。
+- **One-Pass 意图**：单次结构化 LLM 调用同时产出意图分类、查询改写、关键词/多视角查询与 `visual` / `audio` / `video` 意图，降低链式调用的延迟与成本。
+- **白盒化对话体验**：通过 SSE 推送思考链（意图、路由、检索策略），回答侧支持引用悬浮溯源与 `context_window` 前后文透视，便于调试与用户信任。
+- **模块化与可替换**：后端按 DDD 划分 Ingestion / Knowledge / Retrieval / Generation；`LLMManager` 统一路由多厂商模型与任务类型；数据面 MinIO、Qdrant、Redis 与 Docker Compose 编排，便于本地与团队环境落地。
+- **可选企业渠道**：同一套管道可接 Web 前端，也可按需启用飞书 IM（长连接、卡片等），见文档索引中的飞书配置说明。
+
 面向多知识库、多模态场景的 RAG（Retrieval-Augmented Generation）系统：在文档与图像统一检索与生成之上，可按配置扩展音频与视频流水线；基于知识库画像做智能路由；以 **Dense + BGE-M3 稀疏 + Visual** 为主干做三路混合检索，辅以 **RRF 粗排与 Cross-Encoder 精排**；通过 SSE 推送可解释思考链与带 `context_window` 的引用。
 
 **适用场景**：希望在本地或 Docker 中自建多模态知识库与对话式检索的开发者。配置入口为 [`backend/.env`](backend/.env)（由 [`backend/.env.example`](backend/.env.example) 复制），设计细节见 **[ARCHITECTURE](docs/MMA_ARCHITECTURE.md)**，密钥管理见 **[SECURITY](SECURITY.md)**。
@@ -40,7 +51,7 @@
 
 ### 📐 系统架构概览
 
-下图概括整体分层与主要组件关系；更细的模块说明见 **[MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)** 或项目启动之后http://localhost:3000/architecture。
+下图概括整体分层与主要组件关系；更细的模块说明见 **[MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)** 或项目启动之后 http://localhost:3000/architecture。
 
 ![MMA RAG 系统架构图](docs/images/architecture.jpg)
 
@@ -59,7 +70,7 @@ Query: `帮我分别找一张符合以下描述词的风景：粗犷、婉约、
 ![对话示例：图片相关检索](docs/images/chat-image.jpg)
 
 ### 🎵 音频检索
-Query: `查找和该音频使用相同乐器的曲子。`PS:带音频附件（一个古筝曲子：紫竹调）的检索。
+Query: `查找和该音频使用相同乐器的曲子。`（示例带音频附件：古筝曲《紫竹调》。）
 
 ![对话示例：音频相关检索](docs/images/chat-audio.jpg)
 
@@ -235,7 +246,7 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 
 | 文档 | 说明 |
 |------|------|
-| [MA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md) | 架构设计与实现要点 |
+| [MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md) | 架构设计与实现要点 |
 | [MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 图 / 音 / 视多模态技术说明 |
 | [FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md) | 飞书机器人：开放平台与 `FEISHU_*` 环境变量配置 |
 | [SECURITY.md](SECURITY.md) | 密钥与敏感信息 |
