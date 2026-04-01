@@ -202,7 +202,7 @@ pip install -r backend/requirements.txt
 ### ▶️ 3. 启动开发环境
 
 ```bash
-source backend/.venv/bin/activate   # 若上一步创建了 venv，务必先激活
+source .venv/bin/activate           # 与上一步在仓库根创建的 venv 一致
 chmod +x start-dev.sh
 ./start-dev.sh
 ```
