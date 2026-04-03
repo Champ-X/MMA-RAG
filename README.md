@@ -4,6 +4,8 @@
 
 # Nexus - Multi-Modal Agentic RAG: 多模态智能路由可扩展知识库
 
+简体中文 | [English](README-en.md)
+
 **Nexus** 是可私有化部署的 **多模态 Agentic RAG** 知识库方案：把文档、图像与可扩展的音频、视频流水线放进同一套「导入解析 → 画像路由 → 混合检索 → 流式生成」链路，而不是在纯文本 RAG 上零散外挂多模态能力。设计目标可以概括为三件事：**跨库时选对知识库**、**跨模态时准确召回相关证据**、**回答时过程可解释且引用可追溯**。
 
 **Nexus 的差异化与优势概览**
@@ -62,33 +64,33 @@
 ### 📄 文档检索
 Query: `介绍DeepSeek OCR2在训练过程的各个阶段的设计方案。`
 
-![对话示例：文档类检索](docs/images/chat-document.jpg)
+![对话示例：文档类检索](docs/images/chat-document.png)
 
 ### 🖼️ 图片检索
 Query: `帮我分别找一张符合以下描述词的风景：粗犷、婉约、惬意。` 
 
-![对话示例：图片相关检索](docs/images/chat-image.jpg)
+![对话示例：图片相关检索](docs/images/chat-image.png)
 
 ### 🎵 音频检索
 Query: `查找和该音频使用相同乐器的曲子。`（示例带音频附件：古筝曲《紫竹调》。）
 
-![对话示例：音频相关检索](docs/images/chat-audio.jpg)
+![对话示例：音频相关检索](docs/images/chat-audio.png)
 
 ### 🎬 视频检索
 Query: `让子弹飞中汤师爷的人物性格是怎么样的？`
 
-![对话示例：视频相关检索](docs/images/chat-video.jpg)
+![对话示例：视频相关检索](docs/images/chat-video.png)
 
 ### 🔀 多模态混合（跨多个模态多个知识库的混合检索）
 Query: `为《浴血黑帮》这部电影挑选合适的海报封面和主题曲。`
 
-![对话示例：多路混合检索与回答](docs/images/chat-mix.jpg)
+![对话示例：多路混合检索与回答](docs/images/chat-mix.png)
 
 ### 📱 飞书端对话（可选部署）
 
 参考 **[FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md)** 配置飞书渠道的对话功能。启用飞书机器人与长连接后，可在群聊/单聊中使用与 Web 同一套检索与生成管道；展示形态可为卡片、Post 等（配置见 `backend/.env.example` 中 `FEISHU_*`）。
 
-![对话示例：飞书 IM 中的检索与回答](docs/images/chat-feishu.jpg)
+![对话示例：飞书 IM 中的检索与回答](docs/images/chat-feishu.png)
 
 <h2 id="核心模块概览">🧩 核心模块概览</h2>
 
