@@ -4,7 +4,7 @@
 
 # Nexus - Multi-Modal Agentic RAG: 多模态智能路由可扩展知识库
 
-简体中文 | [English](README-en.md)
+<p align="center"><strong>简体中文 | <a href="README-en.md">English</a></strong></p>
 
 **Nexus** 是可私有化部署的 **多模态 Agentic RAG** 知识库方案：把文档、图像与可扩展的音频、视频流水线放进同一套「导入解析 → 画像路由 → 混合检索 → 流式生成」链路，而不是在纯文本 RAG 上零散外挂多模态能力。设计目标可以概括为三件事：**跨库时选对知识库**、**跨模态时准确召回相关证据**、**回答时过程可解释且引用可追溯**。
 

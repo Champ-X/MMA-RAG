@@ -4,7 +4,7 @@
 
 # Nexus — Multi-Modal Agentic RAG: Intelligent routing & extensible multimodal knowledge base
 
-English | [简体中文](README.md)
+<p align="center"><strong>English | <a href="README.md">简体中文</a></strong></p>
 
 **Nexus** is a **multimodal Agentic RAG** knowledge-base stack you can self-host: documents, images, and optional audio/video pipelines share one **ingest → portrait routing → hybrid retrieval → streaming generation** path—rather than bolting modalities onto a text-only RAG after the fact. Design goals in three words: **pick the right knowledge bases**, **retrieve evidence across modalities**, **answer with explainable, traceable citations**.
 
