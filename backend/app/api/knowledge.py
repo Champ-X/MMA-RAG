@@ -63,10 +63,16 @@ async def list_knowledge_bases(user_id: Optional[str] = None):
     """获取知识库列表；若有图片则随机取一张作为 cover_url，若无图片但有视频关键帧则随机取一张关键帧作为封面。"""
     try:
         kbs = await kb_service.list_knowledge_bases(user_id=user_id)
-        # 并行获取每个知识库的随机封面图
-        cover_urls = await asyncio.gather(
-            *[kb_service.get_random_cover_url(kb["id"]) for kb in kbs]
-        )
+        # 并行获取每个知识库的随机封面图（单库超时避免 MinIO 卡顿拖死整表，前端 30s 内能收到列表）
+        async def _cover_safe(kb_id: str) -> Optional[str]:
+            try:
+                return await asyncio.wait_for(
+                    kb_service.get_random_cover_url(kb_id), timeout=12.0
+                )
+            except (asyncio.TimeoutError, Exception):
+                return None
+
+        cover_urls = await asyncio.gather(*[_cover_safe(kb["id"]) for kb in kbs])
         return {
             "knowledge_bases": [
                 {

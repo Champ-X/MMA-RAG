@@ -51,9 +51,16 @@ export const useKnowledgeStore = create<KnowledgeStore>((set, get) => ({
       const data = await knowledgeApi.getKnowledgeBases()
       set({ knowledgeBases: data.knowledge_bases || [], loading: false })
     } catch (error: any) {
-      set({ 
-        error: error.message || '获取知识库列表失败', 
-        loading: false 
+      const detail =
+        error?.response?.data?.detail ??
+        (typeof error?.response?.data === 'string' ? error.response.data : null)
+      const msg =
+        (Array.isArray(detail) ? detail.map((d: { msg?: string }) => d?.msg).filter(Boolean).join('; ') : detail) ||
+        error?.message ||
+        '获取知识库列表失败'
+      set({
+        error: String(msg),
+        loading: false,
       })
     }
   },

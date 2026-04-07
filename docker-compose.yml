@@ -7,6 +7,8 @@ services:
       - "8000:8000"
     environment:
       - MINIO_ENDPOINT=minio:9000
+      # 预签名 URL 供浏览器加载；须与宿主机访问 MinIO 的 host:port 一致（见 minio ports 映射）
+      - MINIO_PUBLIC_ENDPOINT=localhost:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - QDRANT_HOST=qdrant
@@ -69,6 +71,7 @@ services:
     command: celery -A celery_app worker -Q knowledge,ingestion,retrieval,celery --loglevel=info
     environment:
       - MINIO_ENDPOINT=minio:9000
+      - MINIO_PUBLIC_ENDPOINT=localhost:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - QDRANT_HOST=qdrant

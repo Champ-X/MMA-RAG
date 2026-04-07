@@ -1,5 +1,14 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 
+/** 未设置 VITE_API_BASE_URL 时默认 /api：开发时由 Vite 代理到后端，避免浏览器直连 localhost:8000（WSL/端口转发下易失败或超时）；生产需同源反代或显式配置环境变量。 */
+function resolveDefaultApiBaseURL(): string {
+  const fromEnv = import.meta.env?.VITE_API_BASE_URL;
+  if (fromEnv != null && String(fromEnv).trim() !== '') {
+    return String(fromEnv).replace(/\/$/, '');
+  }
+  return '/api';
+}
+
 class ApiClient {
   private instance: AxiosInstance;
   private inFlightGetRequests = new Map<string, Promise<any>>();
@@ -13,12 +22,12 @@ class ApiClient {
   }
 
   getBaseURL(): string {
-    return this.instance.defaults.baseURL || 'http://localhost:8000/api';
+    return this.instance.defaults.baseURL || resolveDefaultApiBaseURL();
   }
 
   constructor() {
     this.instance = axios.create({
-      baseURL: import.meta.env?.VITE_API_BASE_URL || 'http://localhost:8000/api',
+      baseURL: resolveDefaultApiBaseURL(),
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
@@ -299,8 +308,8 @@ export const apiClient = new ApiClient();
 
 // 知识库相关API
 export const knowledgeApi = {
-  // 获取知识库列表
-  getKnowledgeBases: () => apiClient.get('/knowledge/'),
+  // 获取知识库列表（多库+封面可能较慢，单独放宽超时）
+  getKnowledgeBases: () => apiClient.get('/knowledge/', { timeout: 120000 }),
   
   // 创建知识库
   createKnowledgeBase: (data: {

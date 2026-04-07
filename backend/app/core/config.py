@@ -51,7 +51,26 @@ class Settings(BaseSettings):
     minio_access_key: str = Field(default="minioadmin", validation_alias="MINIO_ACCESS_KEY")
     minio_secret_key: str = Field(default="minioadmin", validation_alias="MINIO_SECRET_KEY")
     minio_secure: bool = Field(default=False, validation_alias="MINIO_SECURE")
+    # 浏览器可访问的 MinIO 地址（host:port，无协议）。Docker 内 MINIO_ENDPOINT 常为 minio:9000，预签名 URL 必须指向宿主机映射端口（如 localhost:9000）前端才能加载图片/音视频。
+    minio_public_endpoint: Optional[str] = Field(default=None, validation_alias="MINIO_PUBLIC_ENDPOINT")
+    minio_public_secure: Optional[bool] = Field(default=None, validation_alias="MINIO_PUBLIC_SECURE")
     
+    @field_validator("minio_public_endpoint", mode="before")
+    @classmethod
+    def normalize_minio_public_endpoint(cls, v: Union[str, None]) -> Optional[str]:
+        if v is None:
+            return None
+        s = str(v).strip()
+        if not s:
+            return None
+        low = s.lower()
+        for p in ("https://", "http://"):
+            if low.startswith(p):
+                s = s[len(p) :]
+                low = s.lower()
+        s = s.split("/")[0].strip()
+        return s or None
+
     # Qdrant 配置
     qdrant_host: str = Field(default="localhost", validation_alias="QDRANT_HOST")
     qdrant_port: int = Field(default=6333, validation_alias="QDRANT_PORT")
@@ -300,11 +319,19 @@ class Settings(BaseSettings):
     
     def get_minio_config(self) -> Dict[str, Any]:
         """获取 MinIO 配置字典"""
+        pub = self.minio_public_endpoint or self.minio_endpoint
+        pub_sec = (
+            self.minio_public_secure
+            if self.minio_public_secure is not None
+            else self.minio_secure
+        )
         return {
             "endpoint": self.minio_endpoint,
             "access_key": self.minio_access_key,
             "secret_key": self.minio_secret_key,
             "secure": self.minio_secure,
+            "public_endpoint": pub,
+            "public_secure": pub_sec,
         }
     
     def get_qdrant_config(self) -> Dict[str, Any]:

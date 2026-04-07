@@ -5,7 +5,7 @@
 注意：同一知识库在 MinIO 的 bucket id（桶名去掉 kb- 前缀）与 Qdrant 向量库 payload 中的 kb_id 可能不一致，检索/删除时通过 _kb_id_candidates 与 _discover_kb_id_from_bucket 兼容。
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 import asyncio
 import hashlib
 import random
@@ -23,6 +23,22 @@ logger = get_logger(__name__)
 
 # 列文件时忽略的对象路径前缀（MinIO 内系统预览/缓存，非用户上传的素材）
 _KB_LIST_IGNORE_OBJECT_PREFIXES = ("previews/",)
+
+
+def _default_kb_list_statistics() -> Dict[str, Any]:
+    """列表页统计超时或失败时的占位，避免串行统计拖垮 GET /knowledge/。"""
+    return {
+        "total_documents": 0,
+        "total_chunks": 0,
+        "total_images": 0,
+        "total_audio": 0,
+        "total_video": 0,
+        "total_size_mb": 0,
+        "last_updated": datetime.utcnow().isoformat(),
+        "text_vector_dim": 4096,
+        "image_vector_dim": 768,
+        "audio_vector_dim": 512,
+    }
 
 
 def office_preview_cache_object_path(object_path: str, filename: str) -> str:
@@ -255,30 +271,40 @@ class KnowledgeBaseService:
             # 仅首次或未加载时从 MinIO 拉取；后续列表用内存，保证本进程内编辑后刷新不丢
             if not self._kb_storage:
                 self._load_from_minio()
-            kbs = []
+            pairs: List[Tuple[str, KnowledgeBase]] = []
             for kb_id, kb in self._kb_storage.items():
-                # 如果指定了用户ID，过滤用户的知识库
                 if user_id and kb.user_id != user_id:
                     continue
-                
-                # 获取统计信息
-                stats = await self._get_kb_statistics(kb_id)
-                
-                kb_info = {
-                    "id": kb.id,
-                    "name": kb.name,
-                    "description": kb.description,
-                    "created_at": kb.created_at,
-                    "updated_at": kb.updated_at,
-                    "statistics": stats
-                }
-                kbs.append(kb_info)
-            
-            # 分页处理
-            kbs = kbs[offset:offset + limit]
-            
+                pairs.append((kb_id, kb))
+
+            async def _stats_for_list(kid: str) -> Dict[str, Any]:
+                try:
+                    return await asyncio.wait_for(
+                        self._get_kb_statistics(kid), timeout=5.0
+                    )
+                except (asyncio.TimeoutError, Exception) as e:
+                    logger.debug(f"列表页知识库统计超时或失败 kb_id={kid}: {e}")
+                    return _default_kb_list_statistics()
+
+            stat_results = await asyncio.gather(
+                *[_stats_for_list(kb_id) for kb_id, _ in pairs]
+            )
+            kbs: List[Dict[str, Any]] = []
+            for (kb_id, kb), stats in zip(pairs, stat_results):
+                kbs.append(
+                    {
+                        "id": kb.id,
+                        "name": kb.name,
+                        "description": kb.description,
+                        "created_at": kb.created_at,
+                        "updated_at": kb.updated_at,
+                        "statistics": stats,
+                    }
+                )
+
+            kbs = kbs[offset : offset + limit]
             return kbs
-            
+
         except Exception as e:
             logger.error(f"列出知识库失败: {str(e)}")
             return []

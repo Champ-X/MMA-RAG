@@ -1488,6 +1488,7 @@ const KnowledgeList: React.FC = () => {
   const {
     knowledgeBases,
     loading,
+    error: listFetchError,
     fetchKnowledgeBases,
     createKnowledgeBase,
     updateKnowledgeBase,
@@ -1939,8 +1940,27 @@ const KnowledgeList: React.FC = () => {
           ) : knowledgeBases.length === 0 ? (
             <div className="col-span-full text-center py-20 text-slate-500 dark:text-slate-400">
               <Database size={48} className="mx-auto mb-4 opacity-30" />
-              <p className="text-base">暂无知识库</p>
-              <p className="mt-1 text-sm">点击上方「新建知识库」创建第一个知识库，开始上传与管理多模态数据。</p>
+              {listFetchError ? (
+                <>
+                  <p className="text-base text-slate-700 dark:text-slate-200">知识库列表加载失败</p>
+                  <p className="mx-auto mt-2 max-w-lg text-sm text-red-600 dark:text-red-400">{listFetchError}</p>
+                  <p className="mt-3 text-xs text-slate-500 dark:text-slate-500">
+                    开发环境请确认已通过 Vite 代理访问后端（默认请求同源的 /api）；若 API 在其它地址，请在 .env 中设置 VITE_API_BASE_URL。
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => fetchKnowledgeBases()}
+                    className="mt-6 inline-flex min-h-[40px] items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                  >
+                    重试
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-base">暂无知识库</p>
+                  <p className="mt-1 text-sm">点击上方「新建知识库」创建第一个知识库，开始上传与管理多模态数据。</p>
+                </>
+              )}
             </div>
           ) : (
             <div className="grid auto-rows-[11rem] grid-cols-1 items-stretch md:grid-cols-2 lg:grid-cols-3 gap-6">

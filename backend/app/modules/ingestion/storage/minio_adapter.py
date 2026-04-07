@@ -84,6 +84,21 @@ class MinIOAdapter:
             secret_key=settings.minio_secret_key,
             secure=settings.minio_secure
         )
+        _pub_ep = settings.minio_public_endpoint or settings.minio_endpoint
+        _pub_sec = (
+            settings.minio_public_secure
+            if settings.minio_public_secure is not None
+            else settings.minio_secure
+        )
+        if _pub_ep == settings.minio_endpoint and _pub_sec == settings.minio_secure:
+            self._presign_client = self.client
+        else:
+            self._presign_client = minio.Minio(
+                _pub_ep,
+                access_key=settings.minio_access_key,
+                secret_key=settings.minio_secret_key,
+                secure=_pub_sec,
+            )
         # 延迟初始化：不再预建全局 documents/images 桶，改为按知识库建桶
         try:
             self._ensure_buckets()
@@ -157,7 +172,7 @@ class MinIOAdapter:
                 content_type="application/octet-stream"
             )
 
-            presigned_url = self.client.presigned_get_object(
+            presigned_url = self._presign_client.presigned_get_object(
                 bucket_name=bucket_name,
                 object_name=object_name,
                 expires=timedelta(days=7)
@@ -199,9 +214,9 @@ class MinIOAdapter:
         object_path: str, 
         expires_hours: int = 24
     ) -> str:
-        """获取预签名URL"""
+        """获取预签名URL（使用 public 端点，便于浏览器加载；读写仍走内网 endpoint）"""
         try:
-            return self.client.presigned_get_object(
+            return self._presign_client.presigned_get_object(
                 bucket_name=bucket,
                 object_name=object_path,
                 expires=timedelta(hours=expires_hours)
