@@ -219,7 +219,7 @@ chmod +x start-dev.sh
 | 后端 API | http://localhost:8000 |
 | API 文档 | http://localhost:8000/docs |
 | MinIO 控制台 | http://localhost:9001 （账号密码与 `backend/.env` 或 `docker-compose.yml` 一致，本地多为 `minioadmin`） |
-| Qdrant Dashboard | http://localhost:6333/dashboard（向量库 Web 控制台；端口与 `QDRANT_PORT` / `docker-compose.yml` 中映射一致，默认 `6333`） |
+| Qdrant Dashboard | http://localhost:6333/dashboard （向量库 Web 控制台；端口与 `QDRANT_PORT` / `docker-compose.yml` 中映射一致，默认 `6333`） |
 
 
 <h2 id="可选系统依赖">🔧 可选系统依赖</h2>
