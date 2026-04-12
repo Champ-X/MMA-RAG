@@ -153,6 +153,60 @@ function findAllCitationMatches(text: string): CitationMatch[] {
   return merged
 }
 
+function getCitationIdentityKey(citation: CitationReference): string {
+  const baseKey =
+    citation.file_path ||
+    citation.file_name ||
+    citation.debug_info?.chunk_id ||
+    String(citation.id)
+  return `${citation.type}:${baseKey}`
+}
+
+function buildFirstMediaOccurrenceMap(
+  matches: CitationMatch[],
+  mediaType: CitationReference['type'],
+  citationMap?: Map<number | string, CitationReference>,
+  refs?: Array<CitationReference | { id: number | string }>
+): Map<string, number> {
+  const firstOccurrenceByKey = new Map<string, number>()
+
+  for (const match of matches) {
+    const citation = findCitationById(match.n, citationMap, refs)
+    if (!citation || citation.type !== mediaType) continue
+    const key = getCitationIdentityKey(citation)
+    if (!firstOccurrenceByKey.has(key)) {
+      firstOccurrenceByKey.set(key, match.start)
+    }
+  }
+
+  return firstOccurrenceByKey
+}
+
+function collectFirstMediaRefsForBlock(
+  blockMatches: CitationMatch[],
+  mediaType: 'image' | 'audio',
+  firstOccurrenceByKey: Map<string, number>,
+  citationMap?: Map<number | string, CitationReference>,
+  refs?: Array<CitationReference | { id: number | string }>
+): CitationReference[] {
+  const mediaRefs: CitationReference[] = []
+  const seenInBlock = new Set<string>()
+
+  for (const match of blockMatches) {
+    const citation = findCitationById(match.n, citationMap, refs)
+    if (!citation || citation.type !== mediaType) continue
+
+    const key = getCitationIdentityKey(citation)
+    if (seenInBlock.has(key)) continue
+    if (firstOccurrenceByKey.get(key) !== match.start) continue
+
+    seenInBlock.add(key)
+    mediaRefs.push(citation)
+  }
+
+  return mediaRefs
+}
+
 function splitTextWithCitations(
   text: string,
   onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void,
@@ -225,51 +279,6 @@ function findCitationById(
   }
 
   return null
-}
-
-// 从文本中提取图片引用ID列表（仅 type===image，避免音频被当图片展示）
-function extractImageRefIdsFromText(
-  text: string,
-  citationMap?: Map<number | string, CitationReference>,
-  refs?: Array<CitationReference | { id: number | string }>
-): CitationReference[] {
-  const matches = findAllCitationMatches(text)
-  const imageRefs: CitationReference[] = []
-  const seen = new Set<number | string>()
-  
-  for (const match of matches) {
-    if (seen.has(match.n)) continue
-    
-    const citation = findCitationById(match.n, citationMap, refs)
-    
-    // 确保是图片类型且有 img_url
-    if (citation && 'type' in citation && citation.type === 'image' && 'img_url' in citation && citation.img_url) {
-      seen.add(match.n)
-      imageRefs.push(citation)
-    }
-  }
-  
-  return imageRefs
-}
-
-// 从文本中提取音频引用ID列表（用于段落下方展示音频卡片）
-function extractAudioRefIdsFromText(
-  text: string,
-  citationMap?: Map<number | string, CitationReference>,
-  refs?: Array<CitationReference | { id: number | string }>
-): CitationReference[] {
-  const matches = findAllCitationMatches(text)
-  const audioRefs: CitationReference[] = []
-  const seen = new Set<number | string>()
-  for (const match of matches) {
-    if (seen.has(match.n)) continue
-    const citation = findCitationById(match.n, citationMap, refs)
-    if (citation && 'type' in citation && citation.type === 'audio') {
-      seen.add(match.n)
-      audioRefs.push(citation)
-    }
-  }
-  return audioRefs
 }
 
 // 从文本中提取视频引用ID列表（用于段落下方展示视频卡片）
@@ -1129,51 +1138,21 @@ export function MessageBubble({
       .filter((r): r is CitationReference | { id: number | string } => r != null && typeof r === 'object' && 'id' in r)
   }, [orderedRefIds.join(','), citationMap, refs])
   
-  // 预先扫描整个内容，找出每个图片第一次出现的引用ID
-  // 使用 useMemo 确保只在内容变化时重新计算
-  const imageFirstRefIdMap = React.useMemo(() => {
-    if (isUser) return new Map<string, number | string>()
-    
-    const map = new Map<string, number | string>()
-    const seenImages = new Set<string>()
-    
-    // 按照文本顺序扫描所有引用
-    const matches = findAllCitationMatches(message.content)
-    
-    for (const match of matches) {
-      const citation = findCitationById(match.n, citationMap, refs)
-      
-      // 如果是图片类型，记录第一次出现的引用ID
-      if (citation && 'type' in citation && citation.type === 'image' && 'img_url' in citation && citation.img_url) {
-        const imageKey = citation.img_url || citation.file_name || String(citation.id)
-        if (!seenImages.has(imageKey)) {
-          seenImages.add(imageKey)
-          map.set(imageKey, match.n)
-        }
-      }
-    }
-    
-    return map
-  }, [message.content, citationMap, refs, isUser])
+  const allCitationMatches = React.useMemo(
+    () => (isUser ? [] : findAllCitationMatches(message.content)),
+    [message.content, isUser]
+  )
 
-  // 每个音频引用第一次出现的引用ID（用于段落内只展示首次出现的音频）
-  const audioFirstRefIdMap = React.useMemo(() => {
-    if (isUser) return new Map<string, number | string>()
-    const map = new Map<string, number | string>()
-    const seen = new Set<string>()
-    const matches = findAllCitationMatches(message.content)
-    for (const match of matches) {
-      const citation = findCitationById(match.n, citationMap, refs)
-      if (citation && 'type' in citation && citation.type === 'audio') {
-        const key = citation.file_name || String(citation.id)
-        if (!seen.has(key)) {
-          seen.add(key)
-          map.set(key, match.n)
-        }
-      }
-    }
-    return map
-  }, [message.content, citationMap, refs, isUser])
+  // 记录每个媒体素材在整条消息里第一次被引用的位置，避免后续段落重复渲染同一素材
+  const imageFirstOccurrenceByKey = React.useMemo(
+    () => buildFirstMediaOccurrenceMap(allCitationMatches, 'image', citationMap, refs),
+    [allCitationMatches, citationMap, refs]
+  )
+
+  const audioFirstOccurrenceByKey = React.useMemo(
+    () => buildFirstMediaOccurrenceMap(allCitationMatches, 'audio', citationMap, refs),
+    [allCitationMatches, citationMap, refs]
+  )
 
   // 去重函数：用于过滤重复的引用
   const deduplicateRefs = React.useCallback((refsToDedup: Array<CitationReference | { id: number | string }>) => {
@@ -1230,8 +1209,8 @@ export function MessageBubble({
     const handleCiteClick = createCiteClickHandler(onCiteClick, message.id)
     
     const createComponent = (tag: 'p' | 'li', className: string) => {
-      return (props: { children?: React.ReactNode }) => {
-        const { children } = props
+      return (props: { children?: React.ReactNode; node?: any }) => {
+        const { children, node } = props
         if (!children) return null
         const Tag = tag
 
@@ -1240,24 +1219,28 @@ export function MessageBubble({
         }
         
         const textContent = extractTextFromNode(children)
-        const allImageRefs = extractImageRefIdsFromText(textContent, citationMap, refs)
-        const allAudioRefs = extractAudioRefIdsFromText(textContent, citationMap, refs)
+        const blockStart = node?.position?.start?.offset
+        const blockEnd = node?.position?.end?.offset
+        const blockMatches =
+          typeof blockStart === 'number' && typeof blockEnd === 'number'
+            ? allCitationMatches.filter((match) => match.start >= blockStart && match.end <= blockEnd)
+            : findAllCitationMatches(textContent)
+
+        const newImageRefs = collectFirstMediaRefsForBlock(
+          blockMatches,
+          'image',
+          imageFirstOccurrenceByKey,
+          citationMap,
+          refs
+        )
+        const newAudioRefs = collectFirstMediaRefsForBlock(
+          blockMatches,
+          'audio',
+          audioFirstOccurrenceByKey,
+          citationMap,
+          refs
+        )
         const allVideoRefs = extractVideoRefIdsFromText(textContent, citationMap, refs)
-        
-        const newImageRefs = allImageRefs.filter((citation) => {
-          const imageKey = citation.img_url || citation.file_name || String(citation.id)
-          const firstRefId = imageFirstRefIdMap.get(imageKey)
-          if (firstRefId === undefined) return false
-          const matches = findAllCitationMatches(textContent)
-          return matches.some(m => String(m.n) === String(firstRefId))
-        })
-        const newAudioRefs = allAudioRefs.filter((citation) => {
-          const audioKey = citation.file_name || String(citation.id)
-          const firstRefId = audioFirstRefIdMap.get(audioKey)
-          if (firstRefId === undefined) return false
-          const matches = findAllCitationMatches(textContent)
-          return matches.some(m => String(m.n) === String(firstRefId))
-        })
         // 视频引用：段落内出现的每个引用编号都展示一张卡片（[1][2][3][4] 可能对应不同片段），不做按 file_name 去重
         const newVideoRefs = allVideoRefs
         
@@ -1373,7 +1356,18 @@ export function MessageBubble({
       li: createComponent('li', 'mb-0'),
       img: ImageComponent,
     }
-  }, [imageFirstRefIdMap, citationMap, refs, originalIdToDisplayIndex, message.id, onCiteClick, showCitations])
+  }, [
+    allCitationMatches,
+    imageFirstOccurrenceByKey,
+    audioFirstOccurrenceByKey,
+    citationMap,
+    refs,
+    originalIdToDisplayIndex,
+    message.id,
+    onCiteClick,
+    showCitations,
+    fallbackKbId,
+  ])
 
   const AvatarIcon = isUser ? User : Bot
   const avatarBg = isUser
