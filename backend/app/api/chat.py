@@ -6,6 +6,7 @@
 from fastapi import APIRouter, HTTPException, Request, Query, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, List, Optional, Tuple, AsyncGenerator
+from pydantic import BaseModel, Field
 import json
 import asyncio
 import uuid
@@ -16,6 +17,7 @@ from urllib.parse import unquote, urlparse
 
 from app.core.logger import get_logger
 from app.core.llm.manager import llm_manager
+from app.core.llm import TASK_MODEL_TYPES
 from app.modules.retrieval.service import RetrievalService
 from app.modules.generation.service import GenerationService
 from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
@@ -36,6 +38,25 @@ OPENROUTER_PUBLIC_MODELS_URL = "https://openrouter.ai/api/v1/models"
 _OPENROUTER_CACHE_TTL_SEC = 600.0
 _openrouter_catalog_cache: Dict[str, Any] = {"ts": 0.0, "models": None}
 _openrouter_catalog_lock = asyncio.Lock()
+TASK_SETTINGS_KEYS = (
+    "intent_recognition",
+    "query_rewriting",
+    "image_captioning",
+    "reranking",
+    "audio_transcription",
+    "video_parsing",
+    "kb_portrait_generation",
+    "final_generation",
+)
+
+
+class TaskModelSelection(BaseModel):
+    model: str = Field(..., min_length=1)
+    provider: Optional[str] = None
+
+
+class UpdateTaskModelsRequest(BaseModel):
+    tasks: Dict[str, TaskModelSelection] = Field(default_factory=dict)
 
 
 def _openrouter_model_chat_capable(raw: Dict[str, Any]) -> bool:
@@ -59,6 +80,31 @@ def _slim_openrouter_model(raw: Dict[str, Any]) -> Dict[str, Any]:
         "input_modalities": arch.get("input_modalities"),
         "output_modalities": arch.get("output_modalities"),
     }
+
+
+def _serialize_current_task_config() -> Dict[str, Dict[str, str]]:
+    registry = llm_manager.registry
+    available_providers = set(registry.list_providers())
+    current_config: Dict[str, Dict[str, str]] = {}
+
+    for task in TASK_SETTINGS_KEYS:
+        model_name = registry.get_task_model(task)
+        if not model_name:
+            continue
+        model_config = registry.get_model_config(model_name)
+        if not model_config:
+            continue
+        provider = model_config.get("provider") or "siliconflow"
+        if provider not in available_providers:
+            continue
+        raw_type = model_config.get("type") or ""
+        model_types = [s.strip() for s in str(raw_type).split(",") if s.strip()]
+        required_type = TASK_MODEL_TYPES.get(task)
+        if required_type and required_type not in model_types:
+            continue
+        current_config[task] = {"model": model_name, "provider": provider}
+
+    return current_config
 
 
 def _normalize_media_file_path(file_path: str) -> str:
@@ -727,15 +773,6 @@ async def list_openrouter_models_catalog():
 async def list_models():
     """获取可用模型列表与当前任务模型配置（从 LLMRegistry 动态读取）"""
     r = llm_manager.registry
-    task_keys = ["intent_recognition", "image_captioning", "final_generation", "reranking"]
-    current_config = {}
-    for task in task_keys:
-        model_name = r.get_task_model(task)
-        if model_name:
-            mc = r.get_model_config(model_name)
-            provider = mc.get("provider") or "siliconflow"
-            current_config[task] = {"model": model_name, "provider": provider}
-
     return {
         "providers": r.list_providers(),
         "models_by_provider": r.list_models_by_provider(),
@@ -743,5 +780,43 @@ async def list_models():
         "embedding_models": r.list_models("embedding"),
         "vision_models": r.list_models("vision"),
         "reranker_models": r.list_models("reranker"),
-        "current_config": current_config,
+        "audio_models": r.list_models("audio"),
+        "video_models": r.list_models("video"),
+        "current_config": _serialize_current_task_config(),
+        "task_types": {task: TASK_MODEL_TYPES.get(task) for task in TASK_SETTINGS_KEYS},
+    }
+
+
+@router.put("/models")
+async def update_models(request: UpdateTaskModelsRequest):
+    """运行时更新任务模型配置，并持久化到本地文件。"""
+    if not request.tasks:
+        raise HTTPException(status_code=400, detail="未提供任务模型配置")
+
+    registry = llm_manager.registry
+    task_models: Dict[str, str] = {}
+    for task_type, selection in request.tasks.items():
+        if task_type not in TASK_SETTINGS_KEYS:
+            raise HTTPException(status_code=400, detail=f"不支持的任务类型: {task_type}")
+        model_name = (selection.model or "").strip()
+        if not model_name:
+            raise HTTPException(status_code=400, detail=f"任务 {task_type} 缺少模型")
+        if selection.provider:
+            model_config = registry.get_model_config(model_name)
+            provider = model_config.get("provider") if model_config else None
+            if provider and provider != selection.provider:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"任务 {task_type} 的 provider 与模型不匹配: {selection.provider} != {provider}",
+                )
+        task_models[task_type] = model_name
+
+    try:
+        registry.update_task_models(task_models, persist=True)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return {
+        "success": True,
+        "current_config": _serialize_current_task_config(),
     }

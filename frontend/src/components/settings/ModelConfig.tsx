@@ -1,83 +1,133 @@
-import { useState, useEffect } from 'react'
-import { Save, RotateCcw, Settings, AlertCircle, Brain, Image, MessageSquare, ArrowDownUp, Check, ChevronDown } from 'lucide-react'
+import { useState, useEffect, type ComponentType } from 'react'
+import { Save, RotateCcw, Settings, AlertCircle, Brain, Image, MessageSquare, ArrowDownUp, Check, ChevronDown, Route, Mic, Film, BookText } from 'lucide-react'
 import { useToastStore } from '@/store/useToastStore'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import type { AvailableModels } from '@/store/useConfigStore'
+import type { AvailableModels, AvailableModelType } from '@/store/useConfigStore'
 
 export type TaskId =
   | 'intent'
+  | 'rewrite'
   | 'caption'
+  | 'audio'
+  | 'video'
+  | 'portrait'
   | 'generation'
-  | 'rerank'
 
 export interface TaskModelEntry {
   taskId: TaskId
   label: string
   description: string
+  category: AvailableModelType
   provider: string
   model: string
 }
 
-/** Provider 下拉显示名称（补全/友好名称） */
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   siliconflow: 'SiliconFlow',
   deepseek: 'DeepSeek',
+  openrouter: 'OpenRouter',
+  aliyun_bailian: '阿里云百炼',
 }
 
-const MODELS: Record<string, string[]> = {
-  siliconflow: [
-    'DeepSeek-V3',
-    'Qwen-Turbo',
-    'Qwen-QwQ-32B',
-    'Qwen-VL-Max',
-    'Qwen2.5-72B-Instruct',
-    'deepseek-chat',
-    'gpt-4o-mini',
-    'gpt-4o',
-    'BAAI/bge-large-zh-v1.5',
-    'BAAI/bge-reranker-large',
-  ],
-  deepseek: [
-    'deepseek-chat',
-    'deepseek-reasoner',
-  ],
+const FALLBACK_MODELS: Record<string, Partial<Record<AvailableModelType, string[]>>> = {
+  siliconflow: {
+    chat: ['Qwen/Qwen3-235B-A22B-Instruct-2507', 'Pro/moonshotai/Kimi-K2.5'],
+    embedding: ['Qwen/Qwen3-Embedding-8B'],
+    vision: ['Qwen/Qwen3-VL-30B-A3B-Instruct'],
+    reranker: ['Qwen/Qwen3-Reranker-8B'],
+    video: ['Qwen/Qwen3.5-397B-A17B'],
+  },
+  deepseek: {
+    chat: ['deepseek-chat', 'deepseek-reasoner'],
+  },
+  openrouter: {
+    chat: ['openrouter:google/gemini-2.5-flash'],
+    vision: ['openrouter:google/gemini-2.5-flash'],
+    audio: ['openrouter:google/gemini-2.5-flash'],
+    video: ['openrouter:google/gemini-2.5-flash'],
+  },
+  aliyun_bailian: {
+    chat: ['aliyun_bailian:qwen3-max'],
+    vision: ['aliyun_bailian:qwen3-vl-plus'],
+    reranker: ['aliyun_bailian:qwen3-rerank'],
+    audio: ['aliyun_bailian:qwen3-omni-flash'],
+    video: ['aliyun_bailian:qwen3.5-plus-2026-02-15'],
+  },
 }
 
 const DEFAULT_MATRIX: TaskModelEntry[] = [
   {
     taskId: 'intent',
     label: '意图识别',
-    description: '查询理解、改写与检索策略决策',
-    provider: 'siliconflow',
-    model: 'Qwen-Turbo',
+    description: '查询理解与检索策略决策',
+    category: 'chat',
+    provider: 'aliyun_bailian',
+    model: 'aliyun_bailian:qwen3-max',
+  },
+  {
+    taskId: 'rewrite',
+    label: '查询改写',
+    description: '补全检索表达、扩展召回线索',
+    category: 'chat',
+    provider: 'aliyun_bailian',
+    model: 'aliyun_bailian:qwen3.5-flash',
   },
   {
     taskId: 'caption',
-    label: '图像理解',
-    description: '图像描述与多模态理解',
+    label: '图像描述',
+    description: '图像内容理解与描述生成',
+    category: 'vision',
     provider: 'siliconflow',
-    model: 'Qwen-VL-Max',
+    model: 'Qwen/Qwen3-VL-30B-A3B-Instruct',
+  },
+  {
+    taskId: 'audio',
+    label: '音频转写',
+    description: '语音/音频理解与转写',
+    category: 'audio',
+    provider: 'aliyun_bailian',
+    model: 'aliyun_bailian:qwen3-omni-flash',
+  },
+  {
+    taskId: 'video',
+    label: '视频解析',
+    description: '视频场景切分与多模态摘要',
+    category: 'video',
+    provider: 'aliyun_bailian',
+    model: 'aliyun_bailian:qwen3.5-plus-2026-02-15',
+  },
+  {
+    taskId: 'portrait',
+    label: '知识库画像',
+    description: '主题画像与摘要生成',
+    category: 'chat',
+    provider: 'siliconflow',
+    model: 'Qwen/Qwen3-235B-A22B-Instruct-2507',
   },
   {
     taskId: 'generation',
     label: '回答生成',
     description: '最终回答生成与流式输出',
+    category: 'chat',
     provider: 'siliconflow',
-    model: 'DeepSeek-V3',
+    model: 'Pro/moonshotai/Kimi-K2.5',
   },
 ]
 
 const DEFAULT_RERANK = {
   provider: 'siliconflow',
-  model: 'BAAI/bge-reranker-large',
+  model: 'Qwen/Qwen3-Reranker-8B',
 }
 
-/** 任务类型图标与色条（意图 / 图像 / 生成） */
-const TASK_META: Record<Exclude<TaskId, 'rerank'>, { icon: React.ComponentType<{ className?: string }>; barClass: string; isPrimary?: boolean }> = {
-  intent: { icon: Brain, barClass: 'bg-blue-400/80 dark:bg-blue-500/80', isPrimary: false },
-  caption: { icon: Image, barClass: 'bg-violet-400/80 dark:bg-violet-500/80', isPrimary: false },
+const TASK_META: Record<TaskId, { icon: ComponentType<{ className?: string }>; barClass: string; isPrimary?: boolean }> = {
+  intent: { icon: Brain, barClass: 'bg-blue-400/80 dark:bg-blue-500/80' },
+  rewrite: { icon: Route, barClass: 'bg-cyan-400/80 dark:bg-cyan-500/80' },
+  caption: { icon: Image, barClass: 'bg-violet-400/80 dark:bg-violet-500/80' },
+  audio: { icon: Mic, barClass: 'bg-amber-400/80 dark:bg-amber-500/80' },
+  video: { icon: Film, barClass: 'bg-rose-400/80 dark:bg-rose-500/80' },
+  portrait: { icon: BookText, barClass: 'bg-emerald-400/80 dark:bg-emerald-500/80' },
   generation: { icon: MessageSquare, barClass: 'bg-indigo-500 dark:bg-indigo-400', isPrimary: true },
 }
 
@@ -102,16 +152,44 @@ export function ModelConfig({
   onHasChangesChange,
   className,
 }: ModelConfigProps) {
-  const [matrix, setMatrix] = useState<TaskModelEntry[]>(
-    initialConfig?.taskMatrix ?? DEFAULT_MATRIX
-  )
-  const [reranker, setReranker] = useState(
-    initialConfig?.reranker ?? DEFAULT_RERANK
-  )
+  const [matrix, setMatrix] = useState<TaskModelEntry[]>(initialConfig?.taskMatrix ?? DEFAULT_MATRIX)
+  const [reranker, setReranker] = useState(initialConfig?.reranker ?? DEFAULT_RERANK)
   const [hasChanges, setHasChanges] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedBrief, setSavedBrief] = useState(false)
   const { showSuccess, showError } = useToastStore()
+
+  const providerList = (category: AvailableModelType) => {
+    if (availableModels?.models_by_provider && Object.keys(availableModels.models_by_provider).length > 0) {
+      return Object.entries(availableModels.models_by_provider)
+        .filter(([, models]) => (models?.[category] ?? []).length > 0)
+        .map(([provider]) => provider)
+    }
+    return Object.entries(FALLBACK_MODELS)
+      .filter(([, categories]) => (categories?.[category] ?? []).length > 0)
+      .map(([provider]) => provider)
+  }
+
+  const modelList = (provider: string, category: AvailableModelType) => {
+    if (availableModels?.models_by_provider && Object.keys(availableModels.models_by_provider).length > 0) {
+      return [...(availableModels.models_by_provider[provider]?.[category] ?? [])]
+    }
+    return [...(FALLBACK_MODELS[provider]?.[category] ?? [])]
+  }
+
+  const normalizeSelection = <T extends { provider: string; model: string }>(entry: T, category: AvailableModelType): T => {
+    const providers = providerList(category)
+    if (providers.length === 0) {
+      return { ...entry, provider: '', model: '' } as T
+    }
+    const nextProvider = providers.includes(entry.provider) ? entry.provider : providers[0]
+    const models = modelList(nextProvider, category)
+    return {
+      ...entry,
+      provider: nextProvider,
+      model: models.includes(entry.model) ? entry.model : (models[0] ?? ''),
+    } as T
+  }
 
   useEffect(() => {
     if (initialConfig?.taskMatrix) setMatrix(initialConfig.taskMatrix)
@@ -122,19 +200,28 @@ export function ModelConfig({
     onHasChangesChange?.(hasChanges)
   }, [hasChanges, onHasChangesChange])
 
+  useEffect(() => {
+    setMatrix((prev) => {
+      const next = prev.map((entry) => normalizeSelection(entry, entry.category))
+      const changed = next.some((entry, index) => entry.provider !== prev[index]?.provider || entry.model !== prev[index]?.model)
+      return changed ? next : prev
+    })
+    setReranker((prev) => {
+      const next = normalizeSelection(prev, 'reranker')
+      return next.provider !== prev.provider || next.model !== prev.model ? next : prev
+    })
+  }, [availableModels])
+
   const updateTask = (taskId: TaskId, field: 'provider' | 'model', value: string) => {
     setMatrix((prev) =>
-      prev.map((t) => {
-        if (t.taskId !== taskId) return t
+      prev.map((task) => {
+        if (task.taskId !== taskId) return task
         if (field === 'provider') {
-          const typeKey = t.taskId === 'caption' ? 'vision' : 'chat'
-          // 切换 provider 时，不传入当前模型，直接获取新 provider 的模型列表
-          const list = modelList(value, typeKey)
-          // 如果当前模型在新列表中，保留；否则选择新列表的第一个
-          const validModel = list.includes(t.model) ? t.model : (list[0] || t.model)
-          return { ...t, provider: value, model: validModel }
+          const nextModels = modelList(value, task.category)
+          const nextModel = nextModels.includes(task.model) ? task.model : (nextModels[0] ?? '')
+          return { ...task, provider: value, model: nextModel }
         }
-        return { ...t, [field]: value }
+        return { ...task, [field]: value }
       })
     )
     setHasChanges(true)
@@ -143,11 +230,9 @@ export function ModelConfig({
   const updateReranker = (field: 'provider' | 'model', value: string) => {
     setReranker((prev) => {
       if (field === 'provider') {
-        // 切换 provider 时，不传入当前模型，直接获取新 provider 的模型列表
-        const list = modelList(value, 'reranker')
-        // 如果当前模型在新列表中，保留；否则选择新列表的第一个
-        const validModel = list.includes(prev.model) ? prev.model : (list[0] || prev.model)
-        return { ...prev, provider: value, model: validModel }
+        const nextModels = modelList(value, 'reranker')
+        const nextModel = nextModels.includes(prev.model) ? prev.model : (nextModels[0] ?? '')
+        return { ...prev, provider: value, model: nextModel }
       }
       return { ...prev, [field]: value }
     })
@@ -178,31 +263,8 @@ export function ModelConfig({
     setHasChanges(false)
   }
 
-  const apiProviders = availableModels?.providers
-  const baseProviders: string[] =
-    apiProviders && apiProviders.length > 0 ? apiProviders : ['siliconflow', 'deepseek']
-  const allProviderValues = new Set(baseProviders)
-  matrix.forEach((t) => allProviderValues.add(t.provider))
-  allProviderValues.add(reranker.provider)
-  const providerOptions = Array.from(allProviderValues)
-  const modelList = (p: string, taskType?: 'chat' | 'vision' | 'reranker', currentModel?: string) => {
-    const typeKey = taskType === 'vision' ? 'vision' : taskType === 'reranker' ? 'reranker' : 'chat'
-    const byProvider = availableModels?.models_by_provider?.[p]?.[typeKey]
-    if (byProvider && byProvider.length > 0) {
-      const list = [...byProvider]
-      if (currentModel && !list.includes(currentModel)) list.unshift(currentModel)
-      return list
-    }
-    if (availableModels && (availableModels.chat_models?.length || availableModels.vision_models?.length || availableModels.reranker_models?.length)) {
-      let list: string[]
-      if (taskType === 'vision') list = availableModels.vision_models
-      else if (taskType === 'reranker') list = availableModels.reranker_models
-      else list = availableModels.chat_models
-      if (currentModel && !list.includes(currentModel)) return [currentModel, ...list]
-      return list
-    }
-    return MODELS[p] ?? []
-  }
+  const rerankerProviders = providerList('reranker')
+  const rerankerModels = reranker.provider ? modelList(reranker.provider, 'reranker') : []
 
   const selectBase =
     'relative flex h-10 w-full min-w-0 rounded-xl border bg-white dark:bg-slate-800/50 pl-4 pr-10 py-2 text-sm font-medium text-slate-800 dark:text-slate-100 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500/50 dark:focus:ring-fuchsia-500/50 cursor-pointer border-slate-200 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-fuchsia-500/50 focus:border-indigo-400 dark:focus:border-fuchsia-500 appearance-none shadow-sm hover:shadow-md'
@@ -221,7 +283,7 @@ export function ModelConfig({
                   模块化模型配置
                 </h2>
                 <p className="mt-1.5 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
-                  为意图识别、图像理解、回答生成与 Reranker 分别指定 Provider 与模型
+                  为各个链路步骤分别指定 Provider 与模型，保存后新的后端请求会立即使用最新配置
                 </p>
               </div>
             </div>
@@ -271,15 +333,14 @@ export function ModelConfig({
 
         <div className="space-y-8 p-6 sm:p-8">
           <div className="rounded-2xl border border-sky-200/70 bg-gradient-to-r from-sky-50/90 to-indigo-50/60 px-4 py-3 text-sm leading-relaxed text-sky-900 shadow-sm dark:border-sky-900/50 dark:from-sky-950/30 dark:to-indigo-950/20 dark:text-sky-100">
-            当前“保存”主要用于维护本浏览器侧配置与未保存状态；模型列表来自后端目录，方便按任务类型分别挑选可用模型。
+            模型列表完全来自后端当前已注册的 Provider；未配置 API Key 的模型不会出现在这里，保存后会直接更新运行中的任务路由。
           </div>
 
-          {/* 任务 – 模型映射 */}
           <section className="animate-in slide-up duration-500">
             <div className="mb-4 flex items-center gap-3">
               <span className="inline-flex h-10 w-1.5 rounded-full bg-gradient-to-b from-indigo-500 via-purple-500 to-fuchsia-500 shadow-sm" />
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight">
-                任务 – 模型映射
+                任务 - 模型映射
               </h3>
             </div>
             <div className="space-y-3 rounded-2xl border border-slate-200/70 bg-gradient-to-br from-slate-50/80 to-white p-3 shadow-sm dark:border-slate-700/70 dark:from-slate-900/50 dark:to-slate-950/80 sm:p-4">
@@ -289,19 +350,20 @@ export function ModelConfig({
                 <div>模型</div>
               </div>
 
-              {matrix.map((t, i) => {
-                const meta = t.taskId === 'rerank' ? null : TASK_META[t.taskId]
-                const Icon = meta?.icon
-                const models = t.taskId === 'caption' ? modelList(t.provider, 'vision', t.model) : modelList(t.provider, 'chat', t.model)
+              {matrix.map((task, index) => {
+                const meta = TASK_META[task.taskId]
+                const Icon = meta.icon
+                const providers = providerList(task.category)
+                const models = task.provider ? modelList(task.provider, task.category) : []
 
                 return (
                   <div
-                    key={t.taskId}
+                    key={task.taskId}
                     className={cn(
                       'group rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm transition-all duration-200 dark:border-slate-700/70 dark:bg-slate-950/50',
-                      meta?.isPrimary
+                      meta.isPrimary
                         ? 'border-indigo-200/80 bg-gradient-to-r from-indigo-50/90 to-violet-50/60 dark:border-indigo-800/60 dark:from-indigo-950/40 dark:to-violet-950/20'
-                        : i % 2 === 0
+                        : index % 2 === 0
                           ? 'hover:border-indigo-200/70 hover:bg-slate-50/95 dark:hover:border-indigo-800/40 dark:hover:bg-slate-900/60'
                           : 'bg-slate-50/60 hover:border-indigo-200/70 hover:bg-slate-50/95 dark:bg-slate-900/25 dark:hover:border-indigo-800/40 dark:hover:bg-slate-900/60'
                     )}
@@ -309,22 +371,20 @@ export function ModelConfig({
                     <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.75fr)_minmax(0,1fr)] lg:items-center">
                       <div className="min-w-0">
                         <div className="flex items-center gap-4">
-                          {Icon && (
-                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 text-slate-600 shadow-sm transition-all duration-200 group-hover:shadow-md dark:from-slate-800 dark:to-slate-900 dark:text-slate-400">
-                              <Icon className="h-5 w-5" />
-                            </span>
-                          )}
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 text-slate-600 shadow-sm transition-all duration-200 group-hover:shadow-md dark:from-slate-800 dark:to-slate-900 dark:text-slate-400">
+                            <Icon className="h-5 w-5" />
+                          </span>
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2.5 font-semibold text-slate-800 dark:text-slate-100">
-                              <span>{t.label}</span>
-                              {meta?.isPrimary && (
+                              <span>{task.label}</span>
+                              {meta.isPrimary && (
                                 <span className="rounded-lg border border-indigo-200/50 bg-gradient-to-r from-indigo-100 to-purple-100 px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-sm dark:border-indigo-800/50 dark:from-indigo-900/60 dark:to-purple-900/60 dark:text-indigo-300">
                                   主模型
                                 </span>
                               )}
                             </div>
                             <div className="mt-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-                              {t.description}
+                              {task.description}
                             </div>
                           </div>
                         </div>
@@ -336,14 +396,16 @@ export function ModelConfig({
                         </div>
                         <div className="relative">
                           <select
-                            value={t.provider}
-                            onChange={(e) => updateTask(t.taskId, 'provider', e.target.value)}
+                            value={task.provider}
+                            onChange={(e) => updateTask(task.taskId, 'provider', e.target.value)}
                             className={selectBase}
-                            title={PROVIDER_DISPLAY_NAMES[t.provider] ?? t.provider}
+                            title={task.provider || '当前无可用 Provider'}
+                            disabled={providers.length === 0}
                           >
-                            {providerOptions.map((p) => (
-                              <option key={p} value={p}>
-                                {PROVIDER_DISPLAY_NAMES[p] ?? p}
+                            {providers.length === 0 && <option value="">当前无可用 Provider</option>}
+                            {providers.map((provider) => (
+                              <option key={provider} value={provider}>
+                                {PROVIDER_DISPLAY_NAMES[provider] ?? provider}
                               </option>
                             ))}
                           </select>
@@ -357,14 +419,16 @@ export function ModelConfig({
                         </div>
                         <div className="relative">
                           <select
-                            value={t.model}
-                            onChange={(e) => updateTask(t.taskId, 'model', e.target.value)}
+                            value={task.model}
+                            onChange={(e) => updateTask(task.taskId, 'model', e.target.value)}
                             className={selectBase}
-                            title={t.model}
+                            title={task.model || '当前无可用模型'}
+                            disabled={models.length === 0}
                           >
-                            {models.map((m) => (
-                              <option key={m} value={m} title={m}>
-                                {m}
+                            {models.length === 0 && <option value="">当前无可用模型</option>}
+                            {models.map((model) => (
+                              <option key={model} value={model} title={model}>
+                                {model}
                               </option>
                             ))}
                           </select>
@@ -378,19 +442,18 @@ export function ModelConfig({
             </div>
           </section>
 
-          {/* Reranker 模型 */}
           <section className="animate-in slide-up duration-500 delay-100">
             <div className="mb-4 flex items-center gap-3">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/40 dark:to-teal-900/40 text-emerald-600 dark:text-emerald-400 shadow-sm border border-emerald-200/50 dark:border-emerald-800/50">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-600 shadow-sm border border-emerald-200/50 dark:from-emerald-900/40 dark:to-teal-900/40 dark:text-emerald-400 dark:border-emerald-800/50">
                   <ArrowDownUp className="h-5 w-5" />
                 </div>
-                <span className="inline-flex h-10 w-1.5 rounded-full bg-gradient-to-b from-emerald-400 via-teal-400 to-emerald-500 dark:from-emerald-500 dark:via-teal-500 dark:to-emerald-600 shadow-sm" />
+                <span className="inline-flex h-10 w-1.5 rounded-full bg-gradient-to-b from-emerald-400 via-teal-400 to-emerald-500 shadow-sm dark:from-emerald-500 dark:via-teal-500 dark:to-emerald-600" />
                 <div className="flex items-center gap-3">
                   <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight">
                     Reranker 模型
                   </h3>
-                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60 shadow-sm">
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 border border-emerald-200/60 shadow-sm dark:from-emerald-950/40 dark:to-teal-950/40 dark:text-emerald-300 dark:border-emerald-800/60">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
                     检索结果排序用
                   </span>
@@ -408,11 +471,13 @@ export function ModelConfig({
                       value={reranker.provider}
                       onChange={(e) => updateReranker('provider', e.target.value)}
                       className={cn(selectBase, 'border-emerald-200/60 dark:border-emerald-800/60 hover:border-emerald-300 dark:hover:border-emerald-700/60 focus:border-emerald-400 dark:focus:border-emerald-600 focus:ring-emerald-500/50 dark:focus:ring-emerald-500/50')}
-                      title={PROVIDER_DISPLAY_NAMES[reranker.provider] ?? reranker.provider}
+                      title={reranker.provider || '当前无可用 Provider'}
+                      disabled={rerankerProviders.length === 0}
                     >
-                      {providerOptions.map((p) => (
-                        <option key={p} value={p}>
-                          {PROVIDER_DISPLAY_NAMES[p] ?? p}
+                      {rerankerProviders.length === 0 && <option value="">当前无可用 Provider</option>}
+                      {rerankerProviders.map((provider) => (
+                        <option key={provider} value={provider}>
+                          {PROVIDER_DISPLAY_NAMES[provider] ?? provider}
                         </option>
                       ))}
                     </select>
@@ -428,11 +493,13 @@ export function ModelConfig({
                       value={reranker.model}
                       onChange={(e) => updateReranker('model', e.target.value)}
                       className={cn(selectBase, 'border-emerald-200/60 dark:border-emerald-800/60 hover:border-emerald-300 dark:hover:border-emerald-700/60 focus:border-emerald-400 dark:focus:border-emerald-600 focus:ring-emerald-500/50 dark:focus:ring-emerald-500/50')}
-                      title={reranker.model}
+                      title={reranker.model || '当前无可用模型'}
+                      disabled={rerankerModels.length === 0}
                     >
-                      {modelList(reranker.provider, 'reranker', reranker.model).map((m) => (
-                        <option key={m} value={m}>
-                          {m}
+                      {rerankerModels.length === 0 && <option value="">当前无可用模型</option>}
+                      {rerankerModels.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
                         </option>
                       ))}
                     </select>

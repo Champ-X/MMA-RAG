@@ -3,11 +3,10 @@
 统一管理所有LLM模型调用，支持多种模型提供商
 """
 
-from typing import Dict, List, Any, Optional, Union
-import asyncio
+from typing import Dict, List, Any, Optional
+from pathlib import Path
 from app.core.config import settings
-from app.core.logger import get_logger, log_llm_call
-import time
+from app.core.logger import get_logger
 import json
 
 from app.core.llm.providers.base import BaseLLMProvider
@@ -15,6 +14,21 @@ from app.core.llm.providers.base import BaseLLMProvider
 from app.core.llm.providers.silicon_flow import SiliconFlowProvider
 
 logger = get_logger(__name__)
+
+MODEL_TYPE_KEYS = ("chat", "embedding", "vision", "reranker", "audio", "video")
+
+TASK_MODEL_TYPES: Dict[str, str] = {
+    "intent_recognition": "chat",
+    "query_rewriting": "chat",
+    "image_captioning": "vision",
+    "final_generation": "chat",
+    "kb_portrait_generation": "chat",
+    "health_check": "chat",
+    "reranking": "reranker",
+    "embedding": "embedding",
+    "audio_transcription": "audio",
+    "video_parsing": "video",
+}
 
 
 class LLMRegistry:
@@ -24,6 +38,7 @@ class LLMRegistry:
         self._providers: Dict[str, BaseLLMProvider] = {}
         self._models: Dict[str, Dict[str, Any]] = {}
         self._task_routing: Dict[str, str] = {}
+        self._task_overrides_path = Path(__file__).resolve().parents[3] / "data" / "llm_task_overrides.json"
         self._load_config()
     
     def _load_config(self):
@@ -509,7 +524,135 @@ class LLMRegistry:
         _apply(getattr(settings, "default_vision_model", None), "image_captioning")
         _apply(getattr(settings, "default_reranker_model", None), "reranking")
         _apply(getattr(settings, "default_video_parsing_model", None), "video_parsing")
+        self._apply_saved_task_overrides()
+        self._normalize_task_models()
         self._task_routing = {k: v["model"] for k, v in self._task_config.items()}
+
+    def _extract_model_types(self, config: Dict[str, Any]) -> List[str]:
+        raw_type = config.get("type")
+        if not raw_type:
+            return []
+        return [s.strip() for s in str(raw_type).split(",") if s.strip()]
+
+    def _is_model_compatible_with_task(self, task_type: str, model_name: str) -> bool:
+        model_config = self.get_model_config(model_name)
+        if not model_config:
+            return False
+        provider_name = model_config.get("provider") or "siliconflow"
+        if provider_name not in self._providers:
+            return False
+        required_type = TASK_MODEL_TYPES.get(task_type)
+        if not required_type:
+            return True
+        return required_type in self._extract_model_types(model_config)
+
+    def _read_task_overrides(self) -> Dict[str, str]:
+        try:
+            if not self._task_overrides_path.exists():
+                return {}
+            raw = json.loads(self._task_overrides_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning("读取任务模型覆盖配置失败: {}", e)
+            return {}
+
+        if not isinstance(raw, dict):
+            return {}
+
+        normalized: Dict[str, str] = {}
+        for task_type, value in raw.items():
+            if not isinstance(task_type, str):
+                continue
+            model_name = ""
+            if isinstance(value, dict):
+                model_name = str(value.get("model") or "").strip()
+            elif value is not None:
+                model_name = str(value).strip()
+            if model_name:
+                normalized[task_type] = model_name
+        return normalized
+
+    def _write_task_overrides(self, overrides: Dict[str, str]) -> None:
+        payload = {task: model for task, model in sorted(overrides.items()) if model}
+        self._task_overrides_path.parent.mkdir(parents=True, exist_ok=True)
+        self._task_overrides_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def _apply_saved_task_overrides(self) -> None:
+        saved = self._read_task_overrides()
+        if not saved:
+            return
+        for task_type, model_name in saved.items():
+            if task_type not in self._task_config:
+                continue
+            if not self._is_model_compatible_with_task(task_type, model_name):
+                logger.warning("忽略不可用的任务模型覆盖: task={}, model={}", task_type, model_name)
+                continue
+            self._task_config[task_type] = dict(self._task_config[task_type])
+            self._task_config[task_type]["model"] = model_name
+
+    def _normalize_task_models(self) -> None:
+        for task_type, config in self._task_config.items():
+            candidates = [config.get("model"), *(config.get("fallbacks") or [])]
+            selected_model = None
+            seen = set()
+            for candidate in candidates:
+                if not candidate or candidate in seen:
+                    continue
+                seen.add(candidate)
+                if self._is_model_compatible_with_task(task_type, candidate):
+                    selected_model = candidate
+                    break
+            if selected_model and selected_model != config.get("model"):
+                logger.info(
+                    "任务主模型不可用，自动切换到首个可用候选: task={}, from={}, to={}",
+                    task_type,
+                    config.get("model"),
+                    selected_model,
+                )
+                self._task_config[task_type] = dict(config)
+                self._task_config[task_type]["model"] = selected_model
+
+    def update_task_model(self, task_type: str, model_name: str, *, persist: bool = True) -> None:
+        """运行时更新某任务的主模型。"""
+        if task_type not in self._task_config:
+            raise ValueError(f"未知任务类型: {task_type}")
+        if not self._is_model_compatible_with_task(task_type, model_name):
+            raise ValueError(f"模型不可用于任务 {task_type}: {model_name}")
+
+        self._task_config[task_type] = dict(self._task_config[task_type])
+        self._task_config[task_type]["model"] = model_name
+        self._task_routing[task_type] = model_name
+
+        if persist:
+            overrides = self._read_task_overrides()
+            overrides[task_type] = model_name
+            self._write_task_overrides(overrides)
+
+    def update_task_models(self, task_models: Dict[str, str], *, persist: bool = True) -> None:
+        """批量更新任务主模型，全部校验通过后再写入。"""
+        normalized: Dict[str, str] = {}
+        for task_type, model_name in task_models.items():
+            task_name = str(task_type or "").strip()
+            chosen_model = str(model_name or "").strip()
+            if not task_name or not chosen_model:
+                continue
+            if task_name not in self._task_config:
+                raise ValueError(f"未知任务类型: {task_name}")
+            if not self._is_model_compatible_with_task(task_name, chosen_model):
+                raise ValueError(f"模型不可用于任务 {task_name}: {chosen_model}")
+            normalized[task_name] = chosen_model
+
+        for task_type, model_name in normalized.items():
+            self._task_config[task_type] = dict(self._task_config[task_type])
+            self._task_config[task_type]["model"] = model_name
+            self._task_routing[task_type] = model_name
+
+        if persist:
+            overrides = self._read_task_overrides()
+            overrides.update(normalized)
+            self._write_task_overrides(overrides)
     
     def get_provider(self, provider_name: str) -> Optional[BaseLLMProvider]:
         """获取提供商"""
@@ -590,14 +733,13 @@ class LLMRegistry:
         result: Dict[str, Dict[str, List[str]]] = {}
         for name, config in self._models.items():
             provider = config.get("provider") or "siliconflow"
-            raw_type = config.get("type")
-            if not raw_type:
+            types = self._extract_model_types(config)
+            if not types:
                 continue
-            types = [s.strip() for s in str(raw_type).split(",") if s.strip()]
             if provider not in result:
-                result[provider] = {"chat": [], "vision": [], "reranker": []}
+                result[provider] = {model_type: [] for model_type in MODEL_TYPE_KEYS}
             for t in types:
-                if t in ("chat", "vision", "reranker"):
+                if t in MODEL_TYPE_KEYS:
                     result[provider][t].append(name)
         return result
 

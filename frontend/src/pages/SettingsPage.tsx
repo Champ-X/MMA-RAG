@@ -19,38 +19,75 @@ import {
   Sun,
 } from 'lucide-react'
 
+const TASK_MATRIX_META = [
+  {
+    taskId: 'intent' as const,
+    modelId: 'intent',
+    label: '意图识别',
+    description: '查询理解与检索策略决策',
+    category: 'chat' as const,
+  },
+  {
+    taskId: 'rewrite' as const,
+    modelId: 'rewrite',
+    label: '查询改写',
+    description: '补全检索表达、扩展召回线索',
+    category: 'chat' as const,
+  },
+  {
+    taskId: 'caption' as const,
+    modelId: 'caption',
+    label: '图像描述',
+    description: '图片内容理解与描述生成',
+    category: 'vision' as const,
+  },
+  {
+    taskId: 'audio' as const,
+    modelId: 'audio',
+    label: '音频转写',
+    description: '语音/音频理解与转写',
+    category: 'audio' as const,
+  },
+  {
+    taskId: 'video' as const,
+    modelId: 'video',
+    label: '视频解析',
+    description: '视频场景切分与多模态摘要',
+    category: 'video' as const,
+  },
+  {
+    taskId: 'portrait' as const,
+    modelId: 'portrait',
+    label: '知识库画像',
+    description: '主题画像与摘要生成',
+    category: 'chat' as const,
+  },
+  {
+    taskId: 'generation' as const,
+    modelId: 'chat',
+    label: '回答生成',
+    description: '最终回答生成与流式输出',
+    category: 'chat' as const,
+  },
+]
+
 function configToTaskMatrix(config: { models: Array<{ id: string; model?: string; provider?: string; name?: string }> }) {
-  const intent = config.models.find(m => m.id === 'intent')
-  const chat = config.models.find(m => m.id === 'chat')
-  const caption = config.models.find(m => m.id === 'caption')
   const rerank = config.models.find(m => m.id === 'rerank')
   return {
-    taskMatrix: [
-      {
-        taskId: 'intent' as const,
-        label: '意图识别',
-        description: '查询理解、改写与检索策略决策',
-        provider: intent?.provider || chat?.provider || 'siliconflow',
-        model: intent?.model || 'Qwen-Turbo',
-      },
-      {
-        taskId: 'caption' as const,
-        label: '图像理解',
-        description: '图像描述与多模态理解',
-        provider: caption?.provider || 'siliconflow',
-        model: caption?.model || 'Qwen-VL-Max',
-      },
-      {
-        taskId: 'generation' as const,
-        label: '回答生成',
-        description: '最终回答生成与流式输出',
-        provider: chat?.provider || 'siliconflow',
-        model: chat?.model || 'DeepSeek-V3',
-      },
-    ] as TaskModelEntry[],
+    taskMatrix: TASK_MATRIX_META.map((task) => {
+      const current = config.models.find((m) => m.id === task.modelId)
+      return {
+        taskId: task.taskId,
+        label: task.label,
+        description: task.description,
+        category: task.category,
+        provider: current?.provider || '',
+        model: current?.model || '',
+      }
+    }) as TaskModelEntry[],
     reranker: {
-      provider: rerank?.provider || 'siliconflow',
-      model: rerank?.model || 'BAAI/bge-reranker-large',
+      provider: rerank?.provider || '',
+      model: rerank?.model || '',
     },
   }
 }
@@ -213,6 +250,8 @@ export function SettingsPage() {
       ...availableModels.chat_models,
       ...availableModels.vision_models,
       ...availableModels.reranker_models,
+      ...availableModels.audio_models,
+      ...availableModels.video_models,
     ]
     return new Set(all).size
   }, [availableModels])
@@ -230,12 +269,11 @@ export function SettingsPage() {
     taskMatrix: TaskModelEntry[]
     reranker: { provider: string; model: string }
   }) => {
-    const intent = data.taskMatrix.find(t => t.taskId === 'intent')
-    const gen = data.taskMatrix.find(t => t.taskId === 'generation')
-    const cap = data.taskMatrix.find(t => t.taskId === 'caption')
-    if (intent) updateModelConfig('intent', { model: intent.model, provider: intent.provider, name: intent.label })
-    if (gen) updateModelConfig('chat', { model: gen.model, provider: gen.provider, name: gen.label })
-    if (cap) updateModelConfig('caption', { model: cap.model, provider: cap.provider, name: cap.label })
+    data.taskMatrix.forEach((task) => {
+      const meta = TASK_MATRIX_META.find((item) => item.taskId === task.taskId)
+      if (!meta) return
+      updateModelConfig(meta.modelId, { model: task.model, provider: task.provider, name: task.label })
+    })
     updateModelConfig('rerank', { model: data.reranker.model, provider: data.reranker.provider, name: 'Reranker' })
     await saveConfig()
   }
@@ -297,7 +335,7 @@ export function SettingsPage() {
               模型与界面设置
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-              统一管理任务模型、页面主题，以及回答中的思考链与引用显示方式。主题与显示偏好会立即生效；保存会同步到当前浏览器配置。
+              统一管理任务模型、页面主题，以及回答中的思考链与引用显示方式。主题与显示偏好会立即生效；模型保存后会直接更新后端任务路由。
             </p>
           </div>
 
@@ -312,21 +350,20 @@ export function SettingsPage() {
               icon={Sparkles}
               label="Provider"
               value={String(availableProviderCount)}
-              hint="来自后端目录或当前本地配置"
+              hint="仅统计当前已配置 API Key 的 Provider"
             />
             <SummaryCard
               icon={CheckCircle2}
               label="模型候选"
-              value={availableModelCount > 0 ? String(availableModelCount) : '本地回退'}
-              hint="按任务类型筛选聊天、视觉和重排模型"
+              value={availableModelCount > 0 ? String(availableModelCount) : '暂无可选'}
+              hint="仅显示当前已配置 API Key 的任务模型"
             />
           </div>
 
           <div className="mt-5 rounded-2xl border border-sky-200/70 bg-gradient-to-r from-sky-50/90 to-indigo-50/60 px-5 py-4 shadow-sm dark:border-sky-900/50 dark:from-sky-950/30 dark:to-indigo-950/20">
             <p className="text-sm leading-relaxed text-sky-900 dark:text-sky-100">
-              模型目录来自后端 <code className="rounded bg-white/70 px-1.5 py-0.5 text-[12px] dark:bg-slate-900/70">chat/models</code>，当前页面的“保存配置”以
-              <span className="font-semibold"> 浏览器本地持久化 </span>
-              为主，用于统一维护当前浏览器侧设置。
+              模型目录来自后端 <code className="rounded bg-white/70 px-1.5 py-0.5 text-[12px] dark:bg-slate-900/70">chat/models</code>，
+              只展示当前已配置 Key 的 Provider；点击“保存”后会直接更新后端任务路由，新的请求无需重启即可生效。
             </p>
           </div>
         </div>

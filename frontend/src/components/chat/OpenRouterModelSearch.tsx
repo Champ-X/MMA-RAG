@@ -104,6 +104,7 @@ export function OpenRouterModelSearch({
 
   const matchCount = filtered.length
   const isCurrentOpenRouter = currentChatModel.startsWith('openrouter:')
+  const selectionDisabled = !configured
 
   return (
     <div className={cn('space-y-1.5', className)}>
@@ -128,7 +129,7 @@ export function OpenRouterModelSearch({
         {!configured && (
           <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200/60 bg-amber-50/90 px-3 py-2 text-[11px] text-amber-900 dark:border-amber-500/25 dark:bg-amber-950/40 dark:text-amber-100">
             <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
-            <span>未配置 OPENROUTER_API_KEY 时无法调用，可先选好模型 ID。</span>
+            <span>未配置 OPENROUTER_API_KEY，已禁用 OpenRouter 模型选择。</span>
           </div>
         )}
 
@@ -148,7 +149,7 @@ export function OpenRouterModelSearch({
             'group relative mb-3 rounded-xl border-2 border-slate-200/90 bg-white shadow-sm transition-all duration-200',
             'focus-within:border-indigo-400/80 focus-within:shadow-md focus-within:ring-2 focus-within:ring-indigo-500/15',
             'dark:border-slate-600 dark:bg-slate-800/95 dark:focus-within:border-indigo-500/55 dark:focus-within:ring-indigo-500/20',
-            loading && catalog.length === 0 && 'opacity-70'
+            (loading && catalog.length === 0) || selectionDisabled ? 'opacity-70' : undefined
           )}
         >
           <Search
@@ -161,8 +162,14 @@ export function OpenRouterModelSearch({
           <Input
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder={loading && catalog.length === 0 ? '加载目录中…' : '输入模型 id 或展示名称…'}
-            disabled={loading && catalog.length === 0}
+            placeholder={
+              selectionDisabled
+                ? '配置 OPENROUTER_API_KEY 后可搜索并选择模型'
+                : loading && catalog.length === 0
+                  ? '加载目录中…'
+                  : '输入模型 id 或展示名称…'
+            }
+            disabled={selectionDisabled || (loading && catalog.length === 0)}
             className={cn(
               'h-11 border-0 bg-transparent pl-10 pr-3 text-sm shadow-none',
               'placeholder:text-slate-400 dark:placeholder:text-slate-500',
@@ -172,7 +179,7 @@ export function OpenRouterModelSearch({
           />
         </div>
 
-        {!loading && catalog.length > 0 && (
+        {!selectionDisabled && !loading && catalog.length > 0 && (
           <>
             <p className="mb-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
               匹配结果（{matchCount} / 最多 {LIST_LIMIT} 条）
@@ -198,12 +205,16 @@ export function OpenRouterModelSearch({
                           type="button"
                           role="option"
                           aria-selected={active}
-                          onClick={() => onSelect(reg)}
+                          onClick={() => {
+                            if (!selectionDisabled) onSelect(reg)
+                          }}
+                          disabled={selectionDisabled}
                           className={cn(
                             'flex w-full items-start gap-2.5 px-2.5 py-2 text-left transition-colors',
                             active
                               ? 'bg-indigo-50/90 dark:bg-indigo-950/50'
-                              : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-700/50',
+                            selectionDisabled && 'cursor-not-allowed opacity-60'
                           )}
                         >
                           <OpenRouterModelBrandIcon modelId={m.id} size={26} className="mt-0.5" />
@@ -238,6 +249,12 @@ export function OpenRouterModelSearch({
               </ul>
             </div>
           </>
+        )}
+
+        {selectionDisabled && (
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            当前仅展示 OpenRouter 入口说明；配置完成后才会开放搜索与点选。
+          </p>
         )}
       </div>
     </div>

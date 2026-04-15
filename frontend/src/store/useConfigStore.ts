@@ -2,6 +2,17 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { systemApi } from '@/services/api_client';
 
+export type AvailableModelType = 'chat' | 'embedding' | 'vision' | 'reranker' | 'audio' | 'video';
+export type TaskBoundModelId =
+  | 'intent'
+  | 'rewrite'
+  | 'caption'
+  | 'chat'
+  | 'rerank'
+  | 'audio'
+  | 'video'
+  | 'portrait';
+
 export interface ModelConfig {
   id: string;
   name: string;
@@ -12,6 +23,23 @@ export interface ModelConfig {
   topP: number;
   enabled: boolean;
 }
+
+export interface TaskModelBinding {
+  taskKey: string;
+  category: AvailableModelType;
+  name: string;
+}
+
+export const TASK_MODEL_BINDINGS: Record<TaskBoundModelId, TaskModelBinding> = {
+  intent: { taskKey: 'intent_recognition', category: 'chat', name: '意图识别模型' },
+  rewrite: { taskKey: 'query_rewriting', category: 'chat', name: '查询改写模型' },
+  caption: { taskKey: 'image_captioning', category: 'vision', name: '图像描述模型' },
+  chat: { taskKey: 'final_generation', category: 'chat', name: '对话模型' },
+  rerank: { taskKey: 'reranking', category: 'reranker', name: '重排模型' },
+  audio: { taskKey: 'audio_transcription', category: 'audio', name: '音频转写模型' },
+  video: { taskKey: 'video_parsing', category: 'video', name: '视频解析模型' },
+  portrait: { taskKey: 'kb_portrait_generation', category: 'chat', name: '知识库画像模型' },
+};
 
 export interface SystemConfig {
   models: ModelConfig[];
@@ -35,16 +63,60 @@ function mergeWithDefaultModels(models: ModelConfig[]): ModelConfig[] {
 
 export interface ModelsByProvider {
   chat: string[];
+  embedding: string[];
   vision: string[];
   reranker: string[];
+  audio: string[];
+  video: string[];
 }
 
 export interface AvailableModels {
   providers: string[];
   models_by_provider?: Record<string, ModelsByProvider>;
   chat_models: string[];
+  embedding_models: string[];
   vision_models: string[];
   reranker_models: string[];
+  audio_models: string[];
+  video_models: string[];
+}
+
+function getProviderModels(
+  availableModels: AvailableModels,
+  provider: string,
+  category: AvailableModelType
+): string[] {
+  return availableModels.models_by_provider?.[provider]?.[category] ?? [];
+}
+
+function getProvidersForCategory(
+  availableModels: AvailableModels,
+  category: AvailableModelType
+): string[] {
+  if (!availableModels.models_by_provider) return [];
+  return Object.entries(availableModels.models_by_provider)
+    .filter(([, models]) => (models?.[category] ?? []).length > 0)
+    .map(([provider]) => provider);
+}
+
+function normalizeTaskBoundModel(model: ModelConfig, availableModels: AvailableModels): ModelConfig {
+  const binding = TASK_MODEL_BINDINGS[model.id as TaskBoundModelId];
+  if (!binding) return model;
+
+  const providers = getProvidersForCategory(availableModels, binding.category);
+  if (providers.length === 0) {
+    return { ...model, provider: '', model: '' };
+  }
+
+  const provider = providers.includes(model.provider) ? model.provider : providers[0];
+  const candidates = getProviderModels(availableModels, provider, binding.category);
+  const selectedModel = candidates.includes(model.model) ? model.model : (candidates[0] ?? '');
+
+  return {
+    ...model,
+    provider,
+    model: selectedModel,
+  };
 }
 
 interface ConfigStore {
@@ -93,8 +165,18 @@ const defaultConfig: SystemConfig = {
     {
       id: 'intent',
       name: '意图识别模型',
-      provider: 'siliconflow',
-      model: 'Qwen-Turbo',
+      provider: 'aliyun_bailian',
+      model: 'aliyun_bailian:qwen3-max',
+      maxTokens: 1024,
+      temperature: 0.1,
+      topP: 0.9,
+      enabled: true,
+    },
+    {
+      id: 'rewrite',
+      name: '查询改写模型',
+      provider: 'aliyun_bailian',
+      model: 'aliyun_bailian:qwen3.5-flash',
       maxTokens: 1024,
       temperature: 0.1,
       topP: 0.9,
@@ -114,7 +196,7 @@ const defaultConfig: SystemConfig = {
       id: 'embedding',
       name: '嵌入模型',
       provider: 'siliconflow',
-      model: 'BAAI/bge-large-zh-v1.5',
+      model: 'Qwen/Qwen3-Embedding-8B',
       maxTokens: 512,
       temperature: 0.1,
       topP: 0.8,
@@ -124,7 +206,7 @@ const defaultConfig: SystemConfig = {
       id: 'rerank',
       name: '重排模型',
       provider: 'siliconflow',
-      model: 'BAAI/bge-reranker-large',
+      model: 'Qwen/Qwen3-Reranker-8B',
       maxTokens: 256,
       temperature: 0.1,
       topP: 0.8,
@@ -134,7 +216,37 @@ const defaultConfig: SystemConfig = {
       id: 'caption',
       name: '图像描述模型',
       provider: 'siliconflow',
-      model: 'gpt-4o-mini',
+      model: 'Qwen/Qwen3-VL-30B-A3B-Instruct',
+      maxTokens: 1024,
+      temperature: 0.3,
+      topP: 0.9,
+      enabled: true,
+    },
+    {
+      id: 'audio',
+      name: '音频转写模型',
+      provider: 'aliyun_bailian',
+      model: 'aliyun_bailian:qwen3-omni-flash',
+      maxTokens: 1024,
+      temperature: 0.2,
+      topP: 0.9,
+      enabled: true,
+    },
+    {
+      id: 'video',
+      name: '视频解析模型',
+      provider: 'aliyun_bailian',
+      model: 'aliyun_bailian:qwen3.5-plus-2026-02-15',
+      maxTokens: 2048,
+      temperature: 0.2,
+      topP: 0.9,
+      enabled: true,
+    },
+    {
+      id: 'portrait',
+      name: '知识库画像模型',
+      provider: 'siliconflow',
+      model: 'Qwen/Qwen3-235B-A22B-Instruct-2507',
       maxTokens: 1024,
       temperature: 0.3,
       topP: 0.9,
@@ -154,7 +266,16 @@ export const useConfigStore = create<ConfigStore>()(
     (set, get) => ({
       // 初始状态
       config: defaultConfig,
-      availableModels: { providers: [], models_by_provider: {}, chat_models: [], vision_models: [], reranker_models: [] },
+      availableModels: {
+        providers: [],
+        models_by_provider: {},
+        chat_models: [],
+        embedding_models: [],
+        vision_models: [],
+        reranker_models: [],
+        audio_models: [],
+        video_models: [],
+      },
       isLoading: false,
       error: null,
       hasUnsavedChanges: false,
@@ -227,12 +348,24 @@ export const useConfigStore = create<ConfigStore>()(
         }));
       },
 
-      // 保存配置（后端暂无写入接口，仅本地持久化）
+      // 保存配置（后端运行时更新并持久化）
       saveConfig: async () => {
         set({ isLoading: true, error: null });
 
         try {
-          await systemApi.updateModelConfig(get().config);
+          const taskSelections = Object.entries(TASK_MODEL_BINDINGS).reduce<Record<string, { model: string; provider?: string }>>(
+            (acc, [modelId, binding]) => {
+              const model = get().config.models.find((item) => item.id === modelId);
+              if (!model?.model) return acc;
+              acc[binding.taskKey] = {
+                model: model.model,
+                provider: model.provider || undefined,
+              };
+              return acc;
+            },
+            {}
+          );
+          await systemApi.updateModelConfig({ tasks: taskSelections });
           set({ hasUnsavedChanges: false, isLoading: false });
         } catch (error) {
           set({
@@ -251,35 +384,35 @@ export const useConfigStore = create<ConfigStore>()(
         try {
           const data = await systemApi.getModelConfig() as {
             providers?: string[];
-            models_by_provider?: Record<string, { chat: string[]; vision: string[]; reranker: string[] }>;
+            models_by_provider?: Record<string, ModelsByProvider>;
             chat_models?: string[];
+            embedding_models?: string[];
             vision_models?: string[];
             reranker_models?: string[];
+            audio_models?: string[];
+            video_models?: string[];
             current_config?: Record<string, { model: string; provider: string }>;
           };
           const availableModels = {
             providers: data.providers ?? [],
             models_by_provider: data.models_by_provider ?? {},
             chat_models: data.chat_models ?? [],
+            embedding_models: data.embedding_models ?? [],
             vision_models: data.vision_models ?? [],
             reranker_models: data.reranker_models ?? [],
+            audio_models: data.audio_models ?? [],
+            video_models: data.video_models ?? [],
           };
           const cc = data.current_config ?? {};
           set((state) => {
             const models = mergeWithDefaultModels(state.config.models).map((m) => {
-              if (m.id === 'intent' && cc.intent_recognition) {
-                return { ...m, model: cc.intent_recognition.model, provider: cc.intent_recognition.provider };
-              }
-              if (m.id === 'chat' && cc.final_generation) {
-                return { ...m, model: cc.final_generation.model, provider: cc.final_generation.provider };
-              }
-              if (m.id === 'caption' && cc.image_captioning) {
-                return { ...m, model: cc.image_captioning.model, provider: cc.image_captioning.provider };
-              }
-              if (m.id === 'rerank' && cc.reranking) {
-                return { ...m, model: cc.reranking.model, provider: cc.reranking.provider };
-              }
-              return m;
+              const binding = TASK_MODEL_BINDINGS[m.id as TaskBoundModelId];
+              if (!binding) return m;
+              const current = cc[binding.taskKey];
+              const nextModel = current
+                ? { ...m, model: current.model, provider: current.provider }
+                : m;
+              return normalizeTaskBoundModel(nextModel, availableModels);
             });
             return {
               config: { ...state.config, models },
