@@ -8,6 +8,7 @@ import { knowledgeApi, importApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import { StatusBadge, FileThumb, FileHero, FileIcon, CreateKbModal, EditKbModal, isAudioType, isVideoType } from './KnowledgeListHelpers'
+import { ExcelPreview } from './ExcelPreview'
 
 /** 预览区 / 分块区加载占位：居中、旋转指示与骨架，避免大片空白只有一行字 */
 function PreviewPaneLoading({
@@ -146,6 +147,10 @@ function FilePreviewModal({
   const [videoObjectUrl, setVideoObjectUrl] = React.useState<string | null>(null)
   const [videoLoading, setVideoLoading] = React.useState(false)
   const [officePreviewError, setOfficePreviewError] = React.useState<string | null>(null)
+  /** Excel/CSV 预览：通过 stream 获取 Blob 后交给 SheetJS 在前端渲染（不像 PDF 那样需要 object URL） */
+  const [excelBlob, setExcelBlob] = React.useState<Blob | null>(null)
+  const [excelLoading, setExcelLoading] = React.useState(false)
+  const [excelError, setExcelError] = React.useState<string | null>(null)
 
   const rawFileType = String(file?.type || '').toLowerCase().split(';')[0].trim()
   const fileNameLower = String(file?.name || '').toLowerCase()
@@ -156,6 +161,9 @@ function FilePreviewModal({
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
     'application/vnd.ms-powerpoint': 'ppt',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+    'application/vnd.ms-excel': 'xls',
+    'text/csv': 'csv',
     'text/plain': 'txt',
     'text/markdown': 'md',
   }
@@ -171,7 +179,9 @@ function FilePreviewModal({
   const isTxt = fileTypeLower === 'txt'
   const isTextFile = isMd || isTxt
   const isOfficeDocument = ['pptx', 'docx'].includes(fileTypeLower)
-  const isDoc = ['pdf', 'docx', 'doc', 'pptx', 'txt', 'md'].includes(fileTypeLower)
+  /** Excel/CSV：通过 stream 拉取 Blob 后由 SheetJS 在前端渲染 */
+  const isExcel = ['xlsx', 'xls', 'csv'].includes(fileTypeLower)
+  const isDoc = ['pdf', 'docx', 'doc', 'pptx', 'txt', 'md', 'xlsx', 'xls', 'csv'].includes(fileTypeLower)
   const hasChunks = (details?.chunks?.length ?? 0) > 0
 
   React.useEffect(() => {
@@ -233,6 +243,33 @@ function FilePreviewModal({
       setOfficePreviewError(null)
     }
   }, [isPdfOrOfficeViewable, isOfficeDocument, kbId, file?.id])
+
+  // Excel/CSV 预览：通过 stream 获取 Blob，交给 SheetJS 在浏览器内渲染
+  React.useEffect(() => {
+    if (!isExcel || !kbId || !file?.id) {
+      setExcelBlob(null)
+      setExcelError(null)
+      return
+    }
+    let cancelled = false
+    setExcelLoading(true)
+    setExcelBlob(null)
+    setExcelError(null)
+    knowledgeApi
+      .getFileStream(kbId, file.id)
+      .then((blob) => {
+        if (!cancelled) setExcelBlob(blob)
+      })
+      .catch((err: any) => {
+        if (!cancelled) setExcelError(err?.message || '加载表格文件失败')
+      })
+      .finally(() => {
+        if (!cancelled) setExcelLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isExcel, kbId, file?.id])
 
   // 音频预览：通过 stream 获取 Blob 并生成 object URL，供 <audio> 使用
   const audioObjectUrlRef = React.useRef<string | null>(null)
@@ -521,6 +558,28 @@ function FilePreviewModal({
                 src={pdfObjectUrl}
                 className="w-full h-[60vh] min-h-[400px] max-h-[600px]"
               />
+            </div>
+          ) : isExcel && excelBlob ? (
+            <ExcelPreview
+              blob={excelBlob}
+              fileType={fileTypeLower as 'xlsx' | 'xls' | 'csv'}
+              filename={file.name}
+            />
+          ) : isExcel && excelLoading ? (
+            <PreviewPaneLoading
+              title="表格加载中…"
+              hint="正在拉取文件流并由浏览器解析"
+              variant="document"
+            />
+          ) : isExcel && excelError ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+              <div className="text-sm font-medium text-amber-800 dark:text-amber-200">表格预览暂不可用</div>
+              <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-amber-700 dark:text-amber-300">
+                {excelError}
+              </div>
+              <div className="mt-2 text-xs text-amber-700/90 dark:text-amber-300/90">
+                可切换到「分块」查看后端解析后的表头摘要、行块与列画像。
+              </div>
             </div>
           ) : isOfficeDocument && pdfLoading && !!textPreview ? (
             renderTextPreviewCard(

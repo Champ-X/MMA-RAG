@@ -341,7 +341,7 @@ async def stream_file_for_preview(kb_id: str, file_id: str):
         if ext == "pdf":
             media_type = "application/pdf"
         else:
-            # 常见音视频格式，便于前端 <audio>/<video> 正确解析
+            # 常见音视频与表格格式，便于前端 <audio>/<video>/SheetJS 正确解析
             media_type = {
                 "mp3": "audio/mpeg",
                 "wav": "audio/wav",
@@ -354,6 +354,9 @@ async def stream_file_for_preview(kb_id: str, file_id: str):
                 "mp4": "video/mp4",
                 "webm": "video/webm",
                 "ogv": "video/ogg",
+                "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "xls": "application/vnd.ms-excel",
+                "csv": "text/csv; charset=utf-8",
             }.get(ext, "application/octet-stream")
         content_disp = _build_inline_content_disposition(filename)
         return Response(

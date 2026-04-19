@@ -484,6 +484,7 @@ class FileType(Enum):
     PPTX = "pptx"
     TXT = "txt"
     MD = "md"
+    EXCEL = "excel"      # xlsx, xls, csv
     IMAGE = "image"
     AUDIO = "audio"      # mp3, wav, m4a, flac, aac, ogg等
     VIDEO = "video"      # mp4, avi, mov, mkv, webm等
@@ -1448,6 +1449,231 @@ class VideoParser(DocumentParser):
                 }
             }
 
+class ExcelParser(DocumentParser):
+    """Excel/CSV 解析器（xlsx/xls/csv）
+
+    采用 pandas 统一接入，多 sheet 全部读取；为每个 sheet 输出：
+    - headers / rows / n_rows / n_cols：原始行列结构（用于行块 chunk）
+    - column_profiles：每列的 dtype / 非空数 / 唯一值数 / 示例 / 数值统计（用于列画像 chunk）
+    - markdown：每个 sheet 的 Markdown 表（小表全量、大表前 N 行 + 截断说明），仅作为人读预览，
+      实际分块走 IngestionService 的 excel 专用分支，避免被 markdown 分支抢走。
+    """
+
+    # 限制：单 sheet markdown 渲染的最大行数；过长时截断
+    _MD_PREVIEW_MAX_ROWS = 200
+    # 列画像示例值数量
+    _COLUMN_EXAMPLE_LIMIT = 5
+
+    def supports_file_type(self) -> FileType:
+        return FileType.EXCEL
+
+    async def parse(self, file_content: bytes, file_path: str, **kwargs: Any) -> Dict[str, Any]:
+        try:
+            import pandas as pd
+
+            ext = Path(file_path).suffix.lower().lstrip(".")
+            if ext == "csv":
+                sheets_dict = self._read_csv(file_content, pd)
+            elif ext == "xls":
+                sheets_dict = self._read_excel(file_content, pd, engine="xlrd")
+            else:
+                # xlsx 与未知扩展名（已被 detect_file_type 兜底为 EXCEL）走 openpyxl
+                sheets_dict = self._read_excel(file_content, pd, engine="openpyxl")
+
+            sheets: List[Dict[str, Any]] = []
+            markdown_parts: List[str] = []
+
+            for sheet_name, df in sheets_dict.items():
+                sheet_struct = self._build_sheet_struct(sheet_name, df, pd)
+                sheets.append(sheet_struct)
+                md = self._render_sheet_markdown(sheet_struct)
+                if md.strip():
+                    if markdown_parts:
+                        markdown_parts.append(f"\n\n---\n\n## Sheet: {sheet_name}\n\n")
+                    else:
+                        markdown_parts.append(f"## Sheet: {sheet_name}\n\n")
+                    markdown_parts.append(md)
+
+            full_markdown = "".join(markdown_parts)
+
+            return {
+                "file_type": "excel",
+                "source_format": ext,
+                "sheets": sheets,
+                "total_sheets": len(sheets),
+                # markdown 仅用于人读预览（前端走 SheetJS 直接渲染原文件）；分块逻辑见 IngestionService
+                "markdown": full_markdown,
+                "metadata": {
+                    "parser": "pandas",
+                    "extracted_at": datetime.utcnow().isoformat() + "Z",
+                },
+            }
+        except Exception as e:
+            logger.error("Excel/CSV 解析失败 {}: {}", file_path, e)
+            raise
+
+    def _read_csv(self, file_content: bytes, pd: Any) -> Dict[str, Any]:
+        """按 utf-8 → utf-8-sig → gbk → gb18030 → latin-1 顺序嗅探编码。"""
+        from io import BytesIO
+
+        last_err: Optional[Exception] = None
+        for encoding in ("utf-8", "utf-8-sig", "gbk", "gb18030", "latin-1"):
+            try:
+                df = pd.read_csv(BytesIO(file_content), encoding=encoding, dtype=str, keep_default_na=False)
+                logger.info("CSV 解析成功 (encoding={})", encoding)
+                return {"Sheet1": df}
+            except UnicodeDecodeError as e:
+                last_err = e
+                continue
+            except Exception as e:
+                last_err = e
+                continue
+        raise ValueError(f"CSV 编码无法识别，最后错误: {last_err}")
+
+    def _read_excel(self, file_content: bytes, pd: Any, engine: str) -> Dict[str, Any]:
+        from io import BytesIO
+
+        # sheet_name=None 返回 {sheet_name: DataFrame} 字典；dtype=str 让所有单元格按字符串读，避免数值精度损失影响检索
+        sheets = pd.read_excel(
+            BytesIO(file_content),
+            sheet_name=None,
+            engine=engine,
+            dtype=str,
+            keep_default_na=False,
+        )
+        return sheets
+
+    def _build_sheet_struct(self, sheet_name: str, df: Any, pd: Any) -> Dict[str, Any]:
+        """从 DataFrame 构造 sheet 结构与列画像。"""
+        # 合并单元格：pandas 默认会读到 NaN，dtype=str 后为空串；不主动 forward-fill，避免误改语义
+        # 表头：如果 df 列全为 Unnamed: N（如 csv 无 header），保留原索引名
+        headers: List[str] = [str(c) if c is not None else "" for c in df.columns.tolist()]
+        n_rows = int(df.shape[0])
+        n_cols = int(df.shape[1])
+
+        # 行数据：全部转字符串；空值与 NaN 统一为空串
+        rows: List[List[str]] = []
+        for _, row in df.iterrows():
+            cells: List[str] = []
+            for v in row.tolist():
+                if v is None:
+                    cells.append("")
+                else:
+                    s = str(v).strip()
+                    if s.lower() == "nan":
+                        s = ""
+                    cells.append(s)
+            rows.append(cells)
+
+        # 列画像：每列推断 dtype（数值/类目/文本）、非空、唯一、示例值
+        column_profiles: List[Dict[str, Any]] = []
+        for col_idx, col_name in enumerate(headers):
+            try:
+                series = df.iloc[:, col_idx]
+            except Exception:
+                series = None
+
+            if series is None:
+                column_profiles.append({
+                    "name": col_name,
+                    "dtype": "unknown",
+                    "n_null": 0,
+                    "n_unique": 0,
+                    "examples": [],
+                    "numeric_stats": None,
+                })
+                continue
+
+            # 转字符串处理
+            str_values = [str(v).strip() if v is not None else "" for v in series.tolist()]
+            str_values = ["" if v.lower() == "nan" else v for v in str_values]
+            non_empty = [v for v in str_values if v != ""]
+            n_null = len(str_values) - len(non_empty)
+            n_unique = len(set(non_empty))
+
+            # 尝试转数值判断 dtype
+            numeric_stats: Optional[Dict[str, Any]] = None
+            try:
+                num_series = pd.to_numeric(pd.Series(non_empty), errors="coerce")
+                num_clean = num_series.dropna()
+                if len(non_empty) > 0 and len(num_clean) / max(1, len(non_empty)) >= 0.8:
+                    dtype_label = "numeric"
+                    numeric_stats = {
+                        "min": self._fmt_num(float(num_clean.min())),
+                        "max": self._fmt_num(float(num_clean.max())),
+                        "mean": self._fmt_num(float(num_clean.mean())),
+                        "count": int(len(num_clean)),
+                    }
+                elif n_unique > 0 and n_unique <= max(20, int(len(non_empty) * 0.1)):
+                    dtype_label = "categorical"
+                else:
+                    dtype_label = "text"
+            except Exception:
+                dtype_label = "text"
+
+            # 示例值：去重后取前 N 个
+            seen: set = set()
+            examples: List[str] = []
+            for v in non_empty:
+                if v not in seen:
+                    seen.add(v)
+                    examples.append(v if len(v) <= 60 else v[:57] + "...")
+                    if len(examples) >= self._COLUMN_EXAMPLE_LIMIT:
+                        break
+
+            column_profiles.append({
+                "name": col_name,
+                "dtype": dtype_label,
+                "n_null": n_null,
+                "n_unique": n_unique,
+                "examples": examples,
+                "numeric_stats": numeric_stats,
+            })
+
+        return {
+            "name": sheet_name,
+            "headers": headers,
+            "rows": rows,
+            "n_rows": n_rows,
+            "n_cols": n_cols,
+            "column_profiles": column_profiles,
+        }
+
+    def _fmt_num(self, v: float) -> str:
+        if v != v:  # NaN
+            return ""
+        if abs(v - int(v)) < 1e-9:
+            return str(int(v))
+        return f"{v:.4g}"
+
+    def _render_sheet_markdown(self, sheet: Dict[str, Any]) -> str:
+        """渲染单 sheet 为 Markdown 表（小表全量、大表前 N 行 + 截断说明）。仅用于人读预览。"""
+        headers: List[str] = sheet.get("headers") or []
+        rows: List[List[str]] = sheet.get("rows") or []
+        if not headers and not rows:
+            return ""
+
+        max_rows = self._MD_PREVIEW_MAX_ROWS
+        truncated = len(rows) > max_rows
+        display_rows = rows[:max_rows] if truncated else rows
+
+        def _esc(cell: str) -> str:
+            return (cell or "").replace("|", "\\|").replace("\n", " ")
+
+        lines: List[str] = []
+        if headers:
+            lines.append("| " + " | ".join(_esc(h) for h in headers) + " |")
+            lines.append("|" + "|".join(["---"] * len(headers)) + "|")
+        for row in display_rows:
+            padded = list(row) + [""] * max(0, len(headers) - len(row))
+            lines.append("| " + " | ".join(_esc(c) for c in padded[: max(len(headers), len(row))]) + " |")
+
+        if truncated:
+            lines.append("")
+            lines.append(f"_（仅展示前 {max_rows} 行，原始共 {len(rows)} 行）_")
+        return "\n".join(lines)
+
+
 class ParserFactory:
     """解析器工厂"""
     
@@ -1457,6 +1683,7 @@ class ParserFactory:
         FileType.PPTX: PptxParser(),
         FileType.TXT: TextParser(),
         FileType.MD: MarkdownParser(),
+        FileType.EXCEL: ExcelParser(),
         FileType.IMAGE: ImageParser(),
         FileType.AUDIO: AudioParser(),
         FileType.VIDEO: VideoParser()
@@ -1480,6 +1707,8 @@ class ParserFactory:
             return FileType.TXT
         elif file_ext in ["md", "markdown"]:
             return FileType.MD
+        elif file_ext in ["xlsx", "xls", "csv"]:
+            return FileType.EXCEL
         elif file_ext in ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif"]:
             return FileType.IMAGE
         elif file_ext in ["mp3", "wav", "m4a", "flac", "aac", "ogg", "wma", "opus"]:
@@ -1499,6 +1728,9 @@ class ParserFactory:
                 return FileType.IMAGE
             if len(file_content) >= 4 and file_content[:2] in (b'II', b'MM') and file_content[2:4] in (b'\x2a\x00', b'\x00\x2a'):
                 return FileType.IMAGE
+            # xls：OLE Compound Document 头（与 doc/ppt 共享，结合扩展名优先策略不会误伤）
+            if file_content.startswith(b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1') and file_ext in ("xls",):
+                return FileType.EXCEL
         except Exception:
             pass
         

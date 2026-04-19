@@ -199,13 +199,13 @@ export function UploadPipeline({
           />
           <p className="mb-2 font-medium text-slate-700 dark:text-slate-200">拖拽文件到此处或点击上传</p>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            支持 PDF / DOCX / PPTX / MD / 图片 / 音频（MP3/WAV/M4A 等）/ 视频（MP4/AVI/MOV 等）（≤ 50MB）
+            支持 PDF / DOCX / PPTX / MD / Excel / CSV / 图片 / 音频（MP3/WAV/M4A 等）/ 视频（MP4/AVI/MOV 等）（≤ 50MB）
           </p>
           <input
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".pdf,.docx,.doc,.pptx,.txt,.md,.png,.jpg,.jpeg,.gif,.webp,.tiff,.tif,.mp3,.wav,.m4a,.flac,.aac,.ogg,.wma,.opus,.mp4,.avi,.mov,.mkv,.webm,.flv,.wmv,.m4v"
+            accept=".pdf,.docx,.doc,.pptx,.txt,.md,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.gif,.webp,.tiff,.tif,.mp3,.wav,.m4a,.flac,.aac,.ogg,.wma,.opus,.mp4,.avi,.mov,.mkv,.webm,.flv,.wmv,.m4v"
             onChange={(e) => handleFileSelect(e.target.files)}
             className="hidden"
           />

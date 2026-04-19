@@ -293,7 +293,7 @@ class IngestionService:
                 upload_file_path = f"{file_path.rstrip('.')}.{file_type}"
             
             # 确定文件类型对应的存储目录
-            if file_type in ["pdf", "docx", "pptx", "txt", "md"]:
+            if file_type in ["pdf", "docx", "pptx", "txt", "md", "excel"]:
                 storage_file_type = "documents"
             elif file_type == "image":
                 storage_file_type = "images"
@@ -326,7 +326,7 @@ class IngestionService:
             })
             
             # 3. 根据文件类型处理（使用反查得到的实际 kb_id）
-            if file_type in ["pdf", "docx", "pptx", "txt", "md"]:
+            if file_type in ["pdf", "docx", "pptx", "txt", "md", "excel"]:
                 result = await self._process_document(
                     parse_result=parse_result,
                     storage_result=storage_result,
@@ -1285,6 +1285,12 @@ class IngestionService:
         # 无 ATX 标题的纯文本式文档在初切后做相邻合并；含 # 的 Markdown 保持按段粒度，不合并
         coalesce_adjacent_chunks = False
 
+        # Excel/CSV：自定义三类 chunk（sheet 摘要 / 行块 / 列画像），不走通用 markdown 分支也不应用 overlap
+        # 行块 chunk 中表头随每个 chunk 复制，避免 Dense 召回时丢失列上下文；
+        # sheet 摘要由 LLM 1～2 句生成（失败降级），列画像写入 dtype/统计/示例供「字段含义类」查询命中
+        if file_type == "excel" and parse_result.get("sheets"):
+            return await self._build_excel_chunks(parse_result)
+
         # PDF / docx / pptx / md 有 markdown 时按 markdown 分块（md 含内联 base64 图注插回后也走此分支）
         if file_type in ["pdf", "docx", "pptx", "md"] and "markdown" in parse_result and parse_result["markdown"]:
             logger.info("使用解析生成的完整 Markdown 进行分块 (file_type={})", file_type)
@@ -1426,7 +1432,266 @@ class IngestionService:
             )
         
         return processed_chunks
-    
+
+    async def _build_excel_chunks(self, parse_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """为 Excel/CSV 构造三类 chunk：sheet 摘要 / 行块 / 列画像。
+
+        - 行块按字符预算切分（默认 ≤ EXCEL_ROW_CHUNK_MAX_CHARS）；表头随每个 chunk 复制
+        - 不应用相邻重叠（表头会被反复拼接成错位表格）
+        - sheet 摘要由 LLM 生成（失败降级为「（未生成）」），不阻塞主流程
+        """
+        sheets: List[Dict[str, Any]] = parse_result.get("sheets") or []
+        if not sheets:
+            return []
+
+        try:
+            row_block_max_chars = int(getattr(settings, "excel_row_chunk_max_chars", 900))
+        except Exception:
+            row_block_max_chars = 900
+        if row_block_max_chars < 200:
+            row_block_max_chars = 200
+
+        try:
+            llm_summary_enabled = bool(getattr(settings, "excel_sheet_llm_summary_enabled", True))
+        except Exception:
+            llm_summary_enabled = True
+
+        all_chunks: List[Dict[str, Any]] = []
+
+        for sheet in sheets:
+            sheet_name: str = str(sheet.get("name") or "Sheet")
+            headers: List[str] = [str(h) for h in (sheet.get("headers") or [])]
+            rows: List[List[str]] = sheet.get("rows") or []
+            n_rows: int = int(sheet.get("n_rows") or len(rows))
+            n_cols: int = int(sheet.get("n_cols") or len(headers))
+            column_profiles: List[Dict[str, Any]] = sheet.get("column_profiles") or []
+
+            # 1) Sheet 摘要 chunk：含表头 / 规模 / LLM 摘要 / 列名清单
+            llm_summary = ""
+            if llm_summary_enabled and headers and rows:
+                try:
+                    llm_summary = await self._generate_excel_sheet_summary(
+                        sheet_name=sheet_name,
+                        headers=headers,
+                        sample_rows=rows[:5],
+                        n_rows=n_rows,
+                        n_cols=n_cols,
+                    )
+                except Exception as e:
+                    logger.warning("Excel sheet 摘要生成失败 sheet={} : {}", sheet_name, e)
+                    llm_summary = ""
+
+            summary_text_lines = [
+                f"# {sheet_name}",
+                f"规模：{n_rows} 行 × {n_cols} 列",
+                f"列名：{' | '.join(headers) if headers else '（无）'}",
+                f"摘要：{llm_summary or '（未生成）'}",
+            ]
+            all_chunks.append({
+                "text": "\n".join(summary_text_lines).strip(),
+                "metadata": {
+                    "file_type": "excel",
+                    "excel_chunk_type": "sheet_summary",
+                    "sheet_name": sheet_name,
+                    "n_rows": n_rows,
+                    "n_cols": n_cols,
+                    "headers": headers,
+                    "no_overlap": True,
+                },
+            })
+
+            # 2) 行块 chunk：每 chunk 复制表头，按字符预算分批；空 sheet 跳过
+            if headers and rows:
+                row_chunks = self._build_excel_row_blocks(
+                    sheet_name=sheet_name,
+                    headers=headers,
+                    rows=rows,
+                    max_chars=row_block_max_chars,
+                )
+                all_chunks.extend(row_chunks)
+
+            # 3) 列画像 chunk：每列 1 条；空列也保留以便「有哪些字段」类查询命中
+            for col in column_profiles:
+                col_name = str(col.get("name") or "")
+                if not col_name:
+                    continue
+                dtype = col.get("dtype") or "text"
+                n_null = int(col.get("n_null") or 0)
+                n_unique = int(col.get("n_unique") or 0)
+                examples = [str(e) for e in (col.get("examples") or [])]
+                numeric_stats = col.get("numeric_stats")
+
+                lines = [
+                    f"# {sheet_name}.{col_name}",
+                    f"类型：{dtype}；非空：{max(0, n_rows - n_null)}/{n_rows}；唯一值：{n_unique}",
+                ]
+                if examples:
+                    lines.append(f"示例：{' | '.join(examples)}")
+                if isinstance(numeric_stats, dict) and numeric_stats:
+                    lines.append(
+                        f"统计：min={numeric_stats.get('min', '')} "
+                        f"max={numeric_stats.get('max', '')} "
+                        f"mean={numeric_stats.get('mean', '')}"
+                    )
+
+                all_chunks.append({
+                    "text": "\n".join(lines).strip(),
+                    "metadata": {
+                        "file_type": "excel",
+                        "excel_chunk_type": "column_portrait",
+                        "sheet_name": sheet_name,
+                        "column_name": col_name,
+                        "dtype": dtype,
+                        "no_overlap": True,
+                    },
+                })
+
+        logger.info(
+            "Excel 分块完成：sheets={} chunks={}（含摘要/行块/列画像三类）",
+            len(sheets),
+            len(all_chunks),
+        )
+        return all_chunks
+
+    def _build_excel_row_blocks(
+        self,
+        sheet_name: str,
+        headers: List[str],
+        rows: List[List[str]],
+        max_chars: int,
+    ) -> List[Dict[str, Any]]:
+        """按字符预算把 rows 切分成「带表头的 Markdown 行块 chunk」，1-based 行号写入 metadata。"""
+        if not headers or not rows:
+            return []
+
+        def _esc(cell: str) -> str:
+            return (cell or "").replace("|", "\\|").replace("\n", " ")
+
+        header_line = "| " + " | ".join(_esc(h) for h in headers) + " |"
+        sep_line = "|" + "|".join(["---"] * len(headers)) + "|"
+        header_overhead = len(header_line) + len(sep_line) + 2  # 两个换行
+        # 最少要给行体留 200 字符；如果表头本身占满，使用一行一 chunk 兜底
+        body_budget = max(200, max_chars - header_overhead)
+
+        chunks: List[Dict[str, Any]] = []
+        buffer_lines: List[str] = []
+        buffer_chars = 0
+        block_start = 0  # 0-based
+
+        for idx, row in enumerate(rows):
+            padded = list(row) + [""] * max(0, len(headers) - len(row))
+            row_md = "| " + " | ".join(_esc(c) for c in padded[: len(headers)]) + " |"
+            row_size = len(row_md) + 1
+            if buffer_lines and buffer_chars + row_size > body_budget:
+                chunks.append(self._compose_excel_row_block(
+                    sheet_name=sheet_name,
+                    header_line=header_line,
+                    sep_line=sep_line,
+                    body_lines=buffer_lines,
+                    row_start=block_start,
+                    row_end=idx,
+                ))
+                buffer_lines = []
+                buffer_chars = 0
+                block_start = idx
+
+            buffer_lines.append(row_md)
+            buffer_chars += row_size
+
+        if buffer_lines:
+            chunks.append(self._compose_excel_row_block(
+                sheet_name=sheet_name,
+                header_line=header_line,
+                sep_line=sep_line,
+                body_lines=buffer_lines,
+                row_start=block_start,
+                row_end=len(rows),
+            ))
+        return chunks
+
+    def _compose_excel_row_block(
+        self,
+        sheet_name: str,
+        header_line: str,
+        sep_line: str,
+        body_lines: List[str],
+        row_start: int,
+        row_end: int,
+    ) -> Dict[str, Any]:
+        title = f"# {sheet_name}（第 {row_start + 1}–{row_end} 行）"
+        text = "\n".join([title, header_line, sep_line, *body_lines])
+        return {
+            "text": text,
+            "metadata": {
+                "file_type": "excel",
+                "excel_chunk_type": "row_block",
+                "sheet_name": sheet_name,
+                "row_start": row_start + 1,
+                "row_end": row_end,
+                "no_overlap": True,
+            },
+        }
+
+    async def _generate_excel_sheet_summary(
+        self,
+        sheet_name: str,
+        headers: List[str],
+        sample_rows: List[List[str]],
+        n_rows: int,
+        n_cols: int,
+    ) -> str:
+        """调用 LLM 为单个 sheet 生成 1-2 句摘要。失败时返回空串由调用方降级。
+
+        提示词刻意控制在 < 500 字符，仅传 5 行采样，避免大表把上下文撑爆。
+        """
+        try:
+            def _truncate(s: str, n: int = 30) -> str:
+                s = (s or "").strip()
+                return s if len(s) <= n else s[: n - 1] + "…"
+
+            header_str = " | ".join(_truncate(h, 24) for h in headers[:20])
+            sample_md_lines: List[str] = []
+            for row in sample_rows[:5]:
+                cells = [_truncate(str(c), 24) for c in (row[:20] if row else [])]
+                if cells:
+                    sample_md_lines.append("| " + " | ".join(cells) + " |")
+
+            sample_md = "\n".join(sample_md_lines) if sample_md_lines else "（无数据）"
+
+            user_prompt = (
+                f"下面是表格 `{sheet_name}`（{n_rows} 行 × {n_cols} 列）的列名与前 5 行采样数据。\n"
+                f"请用 1-2 句中文概括该表的主题、记录的实体类型与主要字段，不要逐行复述、不要超过 80 字。\n\n"
+                f"列名：{header_str}\n\n"
+                f"采样：\n{sample_md}"
+            )
+
+            messages = [
+                {"role": "system", "content": "你是表格内容摘要助手，输出极简的中文摘要，不带前后缀。"},
+                {"role": "user", "content": user_prompt},
+            ]
+
+            result = await self.llm_manager.chat(
+                messages=messages,
+                task_type="kb_portrait_generation",
+                fallback=True,
+                temperature=0.2,
+            )
+
+            if not result or not result.success:
+                return ""
+
+            data = result.data or {}
+            if isinstance(data, dict):
+                choices = data.get("choices") or []
+                if choices:
+                    msg = choices[0].get("message") or {}
+                    content = (msg.get("content") or "").strip()
+                    return content[:200] if content else ""
+            return ""
+        except Exception as e:
+            logger.warning("Excel sheet 摘要 LLM 调用异常 sheet={} : {}", sheet_name, e)
+            return ""
+
     def _recursive_split_chunk(
         self,
         text: str,
@@ -1586,27 +1851,39 @@ class IngestionService:
         chunks: List[Dict[str, Any]],
         overlap_size: int
     ) -> List[Dict[str, Any]]:
-        """对相邻块应用重叠窗口"""
+        """对相邻块应用重叠窗口
+
+        若 chunk metadata 中 `no_overlap=True`（如 Excel 三类 chunk），则该 chunk 自身不接受
+        前后重叠，避免把表头/列画像粘连成错乱表格；前后相邻 chunk 仍按各自策略处理。
+        """
         if len(chunks) <= 1:
             return chunks
         
         overlapped_chunks = []
         for i, chunk in enumerate(chunks):
             text = chunk["text"]
-            
-            # 如果不是第一个块，添加前一个块的末尾作为重叠
-            if i > 0:
-                prev_text = chunks[i - 1]["text"]
-                if len(prev_text) > overlap_size:
-                    overlap_text = prev_text[-overlap_size:]
-                    text = overlap_text + "\n\n" + text
-            
-            # 如果不是最后一个块，添加后一个块的开头作为重叠
-            if i < len(chunks) - 1:
-                next_text = chunks[i + 1]["text"]
-                if len(next_text) > overlap_size:
-                    overlap_text = next_text[:overlap_size]
-                    text = text + "\n\n" + overlap_text
+            chunk_no_overlap = bool((chunk.get("metadata") or {}).get("no_overlap"))
+
+            if not chunk_no_overlap:
+                # 如果不是第一个块，添加前一个块的末尾作为重叠
+                if i > 0:
+                    prev_chunk = chunks[i - 1]
+                    prev_no_overlap = bool((prev_chunk.get("metadata") or {}).get("no_overlap"))
+                    if not prev_no_overlap:
+                        prev_text = prev_chunk["text"]
+                        if len(prev_text) > overlap_size:
+                            overlap_text = prev_text[-overlap_size:]
+                            text = overlap_text + "\n\n" + text
+
+                # 如果不是最后一个块，添加后一个块的开头作为重叠
+                if i < len(chunks) - 1:
+                    next_chunk = chunks[i + 1]
+                    next_no_overlap = bool((next_chunk.get("metadata") or {}).get("no_overlap"))
+                    if not next_no_overlap:
+                        next_text = next_chunk["text"]
+                        if len(next_text) > overlap_size:
+                            overlap_text = next_text[:overlap_size]
+                            text = text + "\n\n" + overlap_text
             
             overlapped_chunks.append({
                 "text": text,

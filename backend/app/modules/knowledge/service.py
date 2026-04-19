@@ -855,8 +855,12 @@ class KnowledgeBaseService:
         return candidates
 
     def _is_previewable_type(self, ext: str) -> bool:
-        """判断文件类型是否支持预览（图片、PDF、MD、TXT）"""
-        return ext.lower() in ("jpg", "jpeg", "png", "gif", "webp", "tiff", "tif", "pdf", "md", "txt")
+        """判断文件类型是否支持预览（图片、PDF、MD、TXT、Excel/CSV）"""
+        return ext.lower() in (
+            "jpg", "jpeg", "png", "gif", "webp", "tiff", "tif",
+            "pdf", "md", "txt",
+            "xlsx", "xls", "csv",
+        )
 
     def _is_image_type(self, ext: str) -> bool:
         """判断是否为图片类型（用于封面展示）"""

@@ -29,6 +29,8 @@ python-pptx>=0.6.21
 markdown==3.5.2
 pymupdf4llm==0.0.9
 unstructured>=0.18.0
+openpyxl>=3.1.0           # Excel .xlsx 解析
+xlrd>=2.0.1               # Excel .xls 解析（旧版二进制格式）
 
 # API 客户端
 openai==1.6.1

@@ -108,9 +108,15 @@ class Settings(BaseSettings):
     # 文件上传配置
     max_file_size: int = Field(default=100 * 1024 * 1024, validation_alias="MAX_FILE_SIZE")  # 100MB
     allowed_extensions_str: str = Field(
-        default="pdf,docx,doc,pptx,txt,md,jpg,jpeg,png,gif,webp,tiff,tif",
+        default="pdf,docx,doc,pptx,txt,md,xlsx,xls,csv,jpg,jpeg,png,gif,webp,tiff,tif",
         validation_alias="ALLOWED_EXTENSIONS"
     )
+
+    # Excel/CSV 分块配置
+    # 行块 chunk 的最大字符数：用于「带表头 Markdown 行块」按字符预算切分；与文档分块的 max_chunk_size 对齐
+    excel_row_chunk_max_chars: int = Field(default=900, validation_alias="EXCEL_ROW_CHUNK_MAX_CHARS")
+    # 是否为每个 sheet 调用 LLM 生成 1-2 句摘要；关闭可节省 token，sheet_summary chunk 仍会写入但摘要为空
+    excel_sheet_llm_summary_enabled: bool = Field(default=True, validation_alias="EXCEL_SHEET_LLM_SUMMARY_ENABLED")
 
     # 文件夹导入：允许的根路径白名单（逗号分隔），未配置则禁用文件夹导入
     import_folder_allowed_base_paths: List[str] = Field(

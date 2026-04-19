@@ -31,6 +31,8 @@ async def upload_file(
         allowed_types = [
             # 文档类型
             "pdf", "docx", "doc", "pptx", "txt", "md",
+            # 表格类型
+            "xlsx", "xls", "csv",
             # 图片类型
             "jpg", "jpeg", "png", "gif", "webp", "tiff", "tif",
             # 音频类型
@@ -109,6 +111,8 @@ async def upload_file_stream(
         allowed_types = [
             # 文档类型
             "pdf", "docx", "doc", "pptx", "txt", "md",
+            # 表格类型
+            "xlsx", "xls", "csv",
             # 图片类型
             "jpg", "jpeg", "png", "gif", "webp", "tiff", "tif",
             # 音频类型
