@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, HardDrive, Calendar, Activity, MoreHorizontal } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, HardDrive, Calendar, Activity, MoreHorizontal, ChevronDown } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
@@ -763,6 +763,7 @@ function FilePreviewModal({
 }
 
 // 从 URL 导入弹窗（提交后先下载，再在后台处理；立即关闭弹窗并在上传流水线中展示进度）
+// 现支持任意网页：自动按 Content-Type 识别，HTML 走「网页正文抽取 → Markdown」管道入库；非网页保持原文件下载行为
 function ImportUrlModal({
   kbId,
   onClose,
@@ -779,6 +780,27 @@ function ImportUrlModal({
   const [filename, setFilename] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  // 默认按网页解析（最常见诉求）；用户可显式切换到「自动」或「文件下载」
+  const [mode, setMode] = useState<'auto' | 'webpage' | 'file'>('webpage')
+  const [includeLinks, setIncludeLinks] = useState(true)
+  const [includeImages, setIncludeImages] = useState(true)
+  // 是否下载页面内图片到 KB（走多模态 VLM/CLIP 流水线，可被检索）；仅在保留图片时有效
+  const [downloadImages, setDownloadImages] = useState(true)
+
+  /** 始终携带 mode（前端默认与后端默认 auto 不同）；其余字段仅在偏离默认时附带，保持与旧后端兼容 */
+  const buildExtraBody = () => {
+    const extra: {
+      mode: 'auto' | 'webpage' | 'file'
+      include_links?: boolean
+      include_images?: boolean
+      download_images?: boolean
+    } = { mode }
+    if (!includeLinks) extra.include_links = false
+    if (!includeImages) extra.include_images = false
+    if (!downloadImages) extra.download_images = false
+    return extra
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -789,23 +811,20 @@ function ImportUrlModal({
     setError(null)
     setLoading(true)
     try {
-      const res = await importApi.importFromUrlStart({
+      const baseBody = {
         url: url.trim(),
         kb_id: kbId,
         ...(filename.trim() ? { filename: filename.trim() } : {}),
-      })
+        ...buildExtraBody(),
+      }
+      const res = await importApi.importFromUrlStart(baseBody)
       const data = res as { processing_id?: string; filename?: string }
       if (data?.processing_id && data?.filename && onStartImport) {
         onStartImport({ processing_id: data.processing_id, filename: data.filename })
         onClose()
         return
       }
-      // 若未返回 processing_id（如旧后端）， fallback 为同步等待
-      await importApi.importFromUrl({
-        url: url.trim(),
-        kb_id: kbId,
-        ...(filename.trim() ? { filename: filename.trim() } : {}),
-      })
+      await importApi.importFromUrl(baseBody)
       onSuccess()
       onClose()
     } catch (err: any) {
@@ -814,6 +833,10 @@ function ImportUrlModal({
       setLoading(false)
     }
   }
+
+  const radioBase = 'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer'
+  const radioActive = 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-600'
+  const radioInactive = 'bg-slate-50/60 dark:bg-slate-800/40 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
@@ -830,13 +853,16 @@ function ImportUrlModal({
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          <p className="text-xs text-slate-500 dark:text-slate-400 -mt-1">
+            支持文件直链（PDF/DOCX/图片/音视频…）与任意网页（自动抽取正文为 Markdown 入库）。
+          </p>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">URL <span className="text-red-500">*</span></label>
             <input
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.com/file.pdf"
+              placeholder="https://example.com/article 或 https://example.com/file.pdf"
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400 dark:focus:ring-blue-400/20 dark:focus:border-blue-500 transition-shadow"
             />
           </div>
@@ -846,9 +872,80 @@ function ImportUrlModal({
               type="text"
               value={filename}
               onChange={(e) => setFilename(e.target.value)}
-              placeholder="留空则使用 URL 中的文件名"
+              placeholder="留空：网页用标题、文件用 URL 末段"
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400 dark:focus:ring-blue-400/20 dark:focus:border-blue-500 transition-shadow"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">解析模式</label>
+            <div className="flex gap-2">
+              {([
+                { v: 'webpage', label: '网页解析' },
+                { v: 'auto', label: '自动' },
+                { v: 'file', label: '文件下载' },
+              ] as const).map((opt) => (
+                <label key={opt.v} className={cn(radioBase, mode === opt.v ? radioActive : radioInactive)}>
+                  <input
+                    type="radio"
+                    name="url-import-mode"
+                    value={opt.v}
+                    checked={mode === opt.v}
+                    onChange={() => setMode(opt.v)}
+                    className="sr-only"
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+              {mode === 'webpage' && '强制按网页抽取正文为 Markdown 入库（trafilatura → readability → Tavily 兜底）。'}
+              {mode === 'auto' && '按 Content-Type 自动判别：HTML 走网页解析，其余走文件下载。'}
+              {mode === 'file' && '按文件直链下载原始字节，按扩展名走原有解析（PDF/DOCX/图片/音视频…）。'}
+            </p>
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((v) => !v)}
+              className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+            >
+              <ChevronDown size={14} className={cn('transition-transform', showAdvanced ? 'rotate-0' : '-rotate-90')} />
+              高级选项
+            </button>
+            {showAdvanced && (
+              <div className="mt-3 space-y-2 rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-slate-50/40 dark:bg-slate-800/30 p-4">
+                <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeLinks}
+                    onChange={(e) => setIncludeLinks(e.target.checked)}
+                    disabled={mode === 'file'}
+                    className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 disabled:opacity-40"
+                  />
+                  保留正文中的链接
+                </label>
+                <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeImages}
+                    onChange={(e) => setIncludeImages(e.target.checked)}
+                    disabled={mode === 'file'}
+                    className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 disabled:opacity-40"
+                  />
+                  保留正文中的图片引用
+                </label>
+                <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={downloadImages && includeImages}
+                    onChange={(e) => setDownloadImages(e.target.checked)}
+                    disabled={mode === 'file' || !includeImages}
+                    className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 disabled:opacity-40"
+                  />
+                  下载图片到知识库（带 Referer/UA，走多模态 VLM/CLIP，可被检索）
+                </label>
+              </div>
+            )}
           </div>
           {error && <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl">{error}</p>}
           <div className="flex justify-end gap-3 pt-1">

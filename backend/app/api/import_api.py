@@ -9,7 +9,7 @@ import threading
 import uuid
 from pathlib import Path
 from queue import Empty, Queue
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -33,6 +33,23 @@ class ImportUrlBody(BaseModel):
     url: HttpUrl
     kb_id: str = Field(..., min_length=1)
     filename: Optional[str] = None
+    mode: Literal["auto", "webpage", "file"] = Field(
+        "auto",
+        description="auto=按 Content-Type 自动识别；webpage=强制按网页抽取正文为 Markdown；file=按文件直链下载原始字节",
+    )
+    include_links: bool = Field(True, description="网页解析时是否保留正文中的链接")
+    include_images: bool = Field(True, description="网页解析时是否保留正文中的图片引用")
+    download_images: bool = Field(
+        True,
+        description="网页解析时是否带 Referer/UA 下载页面内图片到知识库（走多模态 VLM/CLIP 流水线）；仅在 include_images=True 时生效",
+    )
+    image_max_count: int = Field(30, ge=1, le=100, description="单个网页最多下载的图片数量")
+    image_max_bytes: int = Field(
+        10 * 1024 * 1024,
+        ge=64 * 1024,
+        le=50 * 1024 * 1024,
+        description="单张图片最大字节数；超过则跳过",
+    )
 
 
 class ImportSearchBody(BaseModel):
@@ -168,16 +185,33 @@ async def import_hot_topics_start(body: ImportHotTopicsBody):
 
 @router.post("/url/start")
 async def import_from_url_start(body: ImportUrlBody):
-    """从 URL 下载文件并异步导入知识库。先下载，再在后台执行解析/向量化，立即返回 processing_id 供前端轮询进度。"""
-    import uuid
+    """从 URL 拉取并异步导入知识库。
+
+    - `mode=auto`（默认）：按 Content-Type 自动判别为文件或网页；HTML 走网页抽取后落 Markdown 文件入库。
+    - `mode=webpage`：强制按网页解析，URL 必须能返回 HTML。
+    - `mode=file`：强制按文件直链下载，按扩展名走原有解析。
+    立即返回 processing_id 供前端轮询进度。
+    """
     try:
         url_source = UrlSource()
-        result = await url_source.fetch_async(str(body.url))
+        result = await url_source.fetch_async(
+            str(body.url),
+            mode=body.mode,
+            include_links=body.include_links,
+            include_images=body.include_images,
+            download_images=body.download_images,
+            image_max_count=body.image_max_count,
+            image_max_bytes=body.image_max_bytes,
+        )
         filename = body.filename or result.suggested_filename
         content = result.content
         kb_id = str(body.kb_id)
         processing_id = str(uuid.uuid4())
         ingestion_service.register_processing_initial(processing_id, filename, kb_id)
+
+        # asset_map 从 meta 弹出，避免被序列化到 JSON 响应；其余字段透传给前端
+        meta = dict(result.meta or {})
+        asset_map = meta.pop("asset_map", None)
 
         async def run_ingest():
             try:
@@ -187,6 +221,7 @@ async def import_from_url_start(body: ImportUrlBody):
                     kb_id=kb_id,
                     user_id=None,
                     processing_id=processing_id,
+                    asset_map=asset_map,
                 )
             except Exception as e:
                 logger.exception("import_from_url background ingest failed: %s", e)
@@ -198,6 +233,11 @@ async def import_from_url_start(body: ImportUrlBody):
                 "processing_id": processing_id,
                 "kb_id": kb_id,
                 "filename": filename,
+                "extractor": meta.get("extractor"),
+                "title": meta.get("title"),
+                "source_url": meta.get("source_url"),
+                "kind": meta.get("kind", "file"),
+                "image_count": meta.get("image_count", 0),
                 "message": "已开始处理，请轮询 /api/upload/progress/{processing_id} 获取进度",
             },
         )
@@ -210,16 +250,30 @@ async def import_from_url_start(body: ImportUrlBody):
 
 @router.post("/url")
 async def import_from_url(body: ImportUrlBody):
-    """从单个 URL 下载文件并同步导入知识库（保留以兼容旧调用，推荐使用 /url/start + 轮询进度）。"""
+    """从单个 URL 拉取并同步导入知识库（保留以兼容旧调用，推荐使用 /url/start + 轮询进度）。
+
+    支持与 /url/start 相同的 mode / include_links / include_images 参数。
+    """
     try:
         url_source = UrlSource()
-        result = await url_source.fetch_async(str(body.url))
+        result = await url_source.fetch_async(
+            str(body.url),
+            mode=body.mode,
+            include_links=body.include_links,
+            include_images=body.include_images,
+            download_images=body.download_images,
+            image_max_count=body.image_max_count,
+            image_max_bytes=body.image_max_bytes,
+        )
         filename = body.filename or result.suggested_filename
+        meta = dict(result.meta or {})
+        asset_map = meta.pop("asset_map", None)
         ingest_result = await ingestion_service.process_file_upload(
             file_content=result.content,
             file_path=filename,
             kb_id=body.kb_id,
             user_id=None,
+            asset_map=asset_map,
         )
         return {
             "file_id": ingest_result.get("file_id"),
@@ -232,6 +286,14 @@ async def import_from_url(body: ImportUrlBody):
                 "chunks_processed": ingest_result.get("chunks_processed"),
                 "vectors_stored": ingest_result.get("vectors_stored"),
                 "caption": ingest_result.get("caption"),
+                "extractor": meta.get("extractor"),
+                "title": meta.get("title"),
+                "site": meta.get("site"),
+                "author": meta.get("author"),
+                "published": meta.get("published"),
+                "source_url": meta.get("source_url"),
+                "kind": meta.get("kind", "file"),
+                "image_count": meta.get("image_count", 0),
             },
         }
     except ValueError as e:

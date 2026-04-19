@@ -82,6 +82,13 @@ internetarchive>=3.0.0        # Internet Archive 搜索与下载
 tavily-python                 # Tavily 热点/新闻导入知识库（Search + 可选 Extract）
 # yt_dlp  # 若需 YouTube 等视频导入，可取消注释
 
+# 知识库导入：任意网页正文抽取（用于「从 URL 导入」识别为网页时）
+trafilatura>=1.12.0           # 主抽取器，直接产出 Markdown
+readability-lxml>=0.8.1       # 兜底抽取器：基于可读性算法
+markdownify>=0.13.1           # readability 兜底时把 HTML 片段转 Markdown
+beautifulsoup4>=4.12.0        # 抽取标题/元数据等
+lxml-html-clean>=0.2.0        # lxml 5.x 下 readability/trafilatura 需要
+
 # 开发和测试
 pytest==7.4.3
 pytest-asyncio==0.21.1

@@ -445,17 +445,52 @@ export const knowledgeApi = {
 
 // 知识库导入 API（从 URL 或按关键词搜索图片导入）
 export const importApi = {
-  /** 从 URL 开始导入：先下载，再后台处理，立即返回 202 + processing_id，前端可轮询进度并在上传流水线中展示 */
-  importFromUrlStart: (body: { url: string; kb_id: string; filename?: string }) =>
+  /**
+   * 从 URL 开始导入：先下载（HTML 页面会抽取正文为 Markdown），再后台处理，立即返回 202 + processing_id。
+   * - mode=auto（默认）按 Content-Type 自动识别；webpage 强制网页解析；file 强制按文件下载。
+   * - include_links / include_images 仅对网页解析生效，控制是否保留正文中的超链接与图片引用。
+   * - download_images 为 true（默认）时，会带 Referer/UA 并发下载页面内图片到 KB，走多模态 VLM/CLIP 流水线。
+   */
+  importFromUrlStart: (body: {
+    url: string
+    kb_id: string
+    filename?: string
+    mode?: 'auto' | 'webpage' | 'file'
+    include_links?: boolean
+    include_images?: boolean
+    download_images?: boolean
+    image_max_count?: number
+    image_max_bytes?: number
+  }) =>
     apiClient.post<{
       processing_id: string
       kb_id: string
       filename: string
       message: string
+      /** 网页解析时返回，标识使用的抽取器（trafilatura/readability/tavily/raw_html）；文件下载时为 null */
+      extractor?: string | null
+      /** 网页解析得到的标题；文件下载时为 null */
+      title?: string | null
+      /** 实际拉取的 URL（302 后可能不同于入参） */
+      source_url?: string | null
+      /** 'webpage' | 'file'，方便前端展示来源类型 */
+      kind?: 'webpage' | 'file'
+      /** 网页解析成功下载的图片数量；未启用图片下载时为 0 */
+      image_count?: number
     }>(`/import/url/start`, body, { timeout: 60000, validateStatus: (s) => s === 202 || (s >= 200 && s < 300) }),
 
   /** 从单个 URL 下载并同步导入知识库（保留兼容，推荐用 importFromUrlStart + 轮询进度） */
-  importFromUrl: (body: { url: string; kb_id: string; filename?: string }) =>
+  importFromUrl: (body: {
+    url: string
+    kb_id: string
+    filename?: string
+    mode?: 'auto' | 'webpage' | 'file'
+    include_links?: boolean
+    include_images?: boolean
+    download_images?: boolean
+    image_max_count?: number
+    image_max_bytes?: number
+  }) =>
     apiClient.post<{
       file_id: string
       kb_id: string
@@ -463,7 +498,19 @@ export const importApi = {
       status: string
       processing_id?: string
       message: string
-      details?: { chunks_processed?: number; vectors_stored?: number; caption?: string }
+      details?: {
+        chunks_processed?: number
+        vectors_stored?: number
+        caption?: string
+        extractor?: string | null
+        title?: string | null
+        site?: string | null
+        author?: string | null
+        published?: string | null
+        source_url?: string | null
+        kind?: 'webpage' | 'file'
+        image_count?: number
+      }
     }>(`/import/url`, body, { timeout: 180000 }),
 
   /** 热点/新闻导入（异步）：立即返回 202 + processing_id，后台拉取→整理→入库，前端轮询进度 */
