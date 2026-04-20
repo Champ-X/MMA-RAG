@@ -50,6 +50,70 @@ TASK_SETTINGS_KEYS = (
 )
 
 
+class SelectedFileScope(BaseModel):
+    kb_id: str = Field(..., min_length=1)
+    file_id: str = Field(..., min_length=1)
+    name: Optional[str] = None
+    type: Optional[str] = None
+    kb_name: Optional[str] = None
+
+
+def _clean_optional_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _normalize_selected_files(raw: Any) -> List[Dict[str, str]]:
+    """将前端传入的 selectedFiles 归一化为 [{kb_id, file_id, ...}]。"""
+    if raw is None:
+        return []
+    payload = raw
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return []
+        try:
+            payload = json.loads(text)
+        except Exception:
+            logger.warning("selectedFiles JSON 解析失败")
+            return []
+    if not isinstance(payload, list):
+        return []
+
+    normalized: List[Dict[str, str]] = []
+    seen: set[Tuple[str, str]] = set()
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        normalized_item = {
+            "kb_id": _clean_optional_str(item.get("kb_id") or item.get("kbId")),
+            "file_id": _clean_optional_str(item.get("file_id") or item.get("fileId")),
+            "name": _clean_optional_str(item.get("name")),
+            "type": _clean_optional_str(item.get("type")),
+            "kb_name": _clean_optional_str(item.get("kb_name") or item.get("kbName")),
+        }
+        try:
+            scope = SelectedFileScope(**normalized_item)
+        except Exception:
+            continue
+        key = (scope.kb_id.strip(), scope.file_id.strip())
+        if not key[0] or not key[1] or key in seen:
+            continue
+        seen.add(key)
+        normalized.append(
+            {
+                "kb_id": key[0],
+                "file_id": key[1],
+                **({"name": scope.name.strip()} if isinstance(scope.name, str) and scope.name.strip() else {}),
+                **({"type": scope.type.strip()} if isinstance(scope.type, str) and scope.type.strip() else {}),
+                **({"kb_name": scope.kb_name.strip()} if isinstance(scope.kb_name, str) and scope.kb_name.strip() else {}),
+            }
+        )
+    return normalized
+
+
 class TaskModelSelection(BaseModel):
     model: str = Field(..., min_length=1)
     provider: Optional[str] = None
@@ -198,12 +262,17 @@ async def chat_message(request: Request):
         data = await request.json()
         message = data.get("message", "").strip()
         knowledge_base_ids = data.get("knowledgeBaseIds", [])
+        selected_files = _normalize_selected_files(data.get("selectedFiles"))
         session_id = data.get("sessionId")
         
         if not message:
             raise HTTPException(status_code=400, detail="消息内容不能为空")
         
-        logger.info(f"收到聊天消息: {message[:50]}..., session_id={session_id}, kb_ids={knowledge_base_ids}")
+        logger.info(
+            f"收到聊天消息: {message[:50]}..., session_id={session_id}, "
+            f"kb_ids={knowledge_base_ids}, selected_files={len(selected_files)}, "
+            f"selected_file_ids={[item.get('file_id') for item in selected_files[:10]]}"
+        )
         
         # 获取或创建会话
         if not session_id:
@@ -236,11 +305,21 @@ async def chat_message(request: Request):
         
         # 构建知识库上下文
         kb_context = None
-        if knowledge_base_ids:
+        effective_kb_ids = knowledge_base_ids or []
+        if selected_files:
+            effective_kb_ids = list(dict.fromkeys([item["kb_id"] for item in selected_files if item.get("kb_id")]))
+        if effective_kb_ids or selected_files:
             kb_context = {
-                "kb_ids": knowledge_base_ids,
-                "kb_names": []  # 可以从知识库服务获取名称
+                "kb_ids": effective_kb_ids,
+                "kb_names": [],  # 可以从知识库服务获取名称
+                "selected_files": selected_files,
             }
+            if selected_files:
+                logger.info(
+                    "聊天请求启用文件级检索: kb_ids=%s, file_ids=%s",
+                    effective_kb_ids,
+                    [item.get("file_id") for item in selected_files],
+                )
         
         # 1. 执行检索
         retrieval_result = await retrieval_service.search(
@@ -284,6 +363,7 @@ async def chat_message(request: Request):
         session["messages"].append({
             "role": "user",
             "content": message,
+            "selected_files": selected_files,
             "timestamp": datetime.utcnow().isoformat()
         })
         session["messages"].append({
@@ -334,6 +414,7 @@ async def _iter_chat_sse(
     *,
     message: str,
     knowledge_base_ids_csv: Optional[str],
+    selected_files_raw: Optional[str],
     session_id_opt: Optional[str],
     model: Optional[str],
     attachment_context: Optional[str],
@@ -343,6 +424,14 @@ async def _iter_chat_sse(
     kb_ids: List[str] = []
     if knowledge_base_ids_csv:
         kb_ids = [kb_id.strip() for kb_id in knowledge_base_ids_csv.split(",") if kb_id.strip()]
+    selected_files = _normalize_selected_files(selected_files_raw)
+    if selected_files:
+        kb_ids = list(dict.fromkeys([item["kb_id"] for item in selected_files if item.get("kb_id")]))
+        logger.info(
+            "流式聊天启用文件级检索: kb_ids=%s, file_ids=%s",
+            kb_ids,
+            [item.get("file_id") for item in selected_files],
+        )
 
     if not session_id_opt:
         current_session_id = str(uuid.uuid4())
@@ -365,8 +454,8 @@ async def _iter_chat_sse(
             session_context.append({"role": msg["role"], "content": msg.get("content", "")})
 
     kb_context = None
-    if kb_ids:
-        kb_context = {"kb_ids": kb_ids, "kb_names": []}
+    if kb_ids or selected_files:
+        kb_context = {"kb_ids": kb_ids, "kb_names": [], "selected_files": selected_files}
 
     if include_connected:
         yield f"data: {json.dumps({'type': 'connected', 'sessionId': current_session_id})}\n\n"
@@ -424,7 +513,12 @@ async def _iter_chat_sse(
 
     full_answer = "".join(answer_chunks)
     session["messages"].append(
-        {"role": "user", "content": message, "timestamp": datetime.utcnow().isoformat()}
+        {
+            "role": "user",
+            "content": message,
+            "selected_files": selected_files,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
     )
     session["messages"].append(
         {
@@ -443,6 +537,7 @@ async def _iter_chat_sse(
 async def stream_chat(
     message: str = Query(...),
     knowledgeBaseIds: Optional[str] = Query(None),
+    selectedFiles: Optional[str] = Query(None),
     sessionId: Optional[str] = Query(None),
     model: Optional[str] = Query(None),
 ):
@@ -453,6 +548,7 @@ async def stream_chat(
             async for line in _iter_chat_sse(
                 message=message,
                 knowledge_base_ids_csv=knowledgeBaseIds,
+                selected_files_raw=selectedFiles,
                 session_id_opt=sessionId,
                 model=model,
                 attachment_context=None,
@@ -469,6 +565,7 @@ async def stream_chat(
 async def stream_chat_multipart(
     message: str = Form(""),
     knowledgeBaseIds: Optional[str] = Form(None),
+    selectedFiles: Optional[str] = Form(None),
     sessionId: Optional[str] = Form(None),
     model: Optional[str] = Form(None),
     files: List[UploadFile] = File(default=[]),
@@ -531,6 +628,7 @@ async def stream_chat_multipart(
             async for line in _iter_chat_sse(
                 message=effective_message,
                 knowledge_base_ids_csv=knowledgeBaseIds,
+                selected_files_raw=selectedFiles,
                 session_id_opt=current_sid,
                 model=model,
                 attachment_context=attachment_context,

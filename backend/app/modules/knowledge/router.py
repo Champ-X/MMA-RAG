@@ -106,7 +106,15 @@ class KnowledgeRouter:
             # 如果提供了 kb_context 且包含 kb_ids，直接使用指定的知识库
             if kb_context and kb_context.get("kb_ids"):
                 kb_ids = kb_context["kb_ids"]
-                logger.info(f"使用指定的知识库: {kb_ids}")
+                selected_files = kb_context.get("selected_files") or []
+                if selected_files:
+                    logger.info(
+                        "使用指定的文件范围: kb_ids=%s, file_ids=%s",
+                        kb_ids,
+                        [item.get("file_id") for item in selected_files],
+                    )
+                else:
+                    logger.info(f"使用指定的知识库: {kb_ids}")
                 processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
                 target_kbs = await self._enrich_target_kbs(
                     kb_ids, {kb_id: 1.0 for kb_id in kb_ids}

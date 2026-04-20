@@ -14,6 +14,15 @@ export interface ChatMessageAttachment {
   thumbDataUrl?: string
 }
 
+/** 本轮消息临时指定的检索文件范围 */
+export interface ChatScopeFile {
+  kbId: string
+  fileId: string
+  name: string
+  kbName?: string
+  type?: string
+}
+
 export interface ThoughtData {
   intent_type?: string;
   original_query?: string;
@@ -43,6 +52,8 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  /** 用户本轮指定的检索文件范围 */
+  scopeFiles?: ChatScopeFile[]
   /** 思考过程数据（流式结束后写入，供 ThinkingCapsule 展示） */
   thinking?: ThoughtData | {
     stage: 'intent' | 'routing' | 'retrieval' | 'generation';
@@ -324,7 +335,13 @@ export const useChatStore = create<ChatStore>()(
         try {
           const res = await chatApi.getChatHistory(sessionId) as {
             success?: boolean;
-            messages?: Array<{ role: string; content: string; timestamp?: string; citations?: unknown[] }>;
+            messages?: Array<{
+              role: string;
+              content: string;
+              timestamp?: string;
+              citations?: unknown[];
+              selected_files?: Array<{ kb_id?: string; file_id?: string; name?: string; type?: string; kb_name?: string }>;
+            }>;
           };
           if (res?.success && Array.isArray(res.messages)) {
             const messages: Message[] = res.messages.map((m, i) => ({
@@ -333,6 +350,17 @@ export const useChatStore = create<ChatStore>()(
               content: m.content || '',
               timestamp: m.timestamp ? new Date(m.timestamp).getTime() : Date.now(),
               citations: m.citations as Message['citations'],
+              scopeFiles: Array.isArray(m.selected_files)
+                ? m.selected_files
+                    .map((file) => ({
+                      kbId: String(file?.kb_id ?? '').trim(),
+                      fileId: String(file?.file_id ?? '').trim(),
+                      name: String(file?.name ?? '').trim(),
+                      ...(file?.kb_name ? { kbName: String(file.kb_name).trim() } : {}),
+                      ...(file?.type ? { type: String(file.type).trim() } : {}),
+                    }))
+                    .filter((file) => file.kbId && file.fileId && file.name)
+                : undefined,
             }));
             set((state) => {
               const prev = state.sessions.find((s) => s.id === sessionId)

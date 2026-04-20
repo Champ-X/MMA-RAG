@@ -7,6 +7,7 @@ import type {
   SSEEventType,
   ThoughtPhase,
 } from '@/types/sse';
+import type { ChatScopeFile } from '@/store/useChatStore'
 
 export type { ThoughtEvent, CitationEvent, MessageEvent };
 
@@ -30,6 +31,17 @@ export interface StreamChatOptions {
   sessionId?: string;
   model?: string;
   files?: File[];
+  selectedFiles?: ChatScopeFile[];
+}
+
+function serializeSelectedFiles(selectedFiles: ChatScopeFile[]) {
+  return selectedFiles.map((file) => ({
+    kb_id: file.kbId,
+    file_id: file.fileId,
+    name: file.name,
+    ...(file.type ? { type: file.type } : {}),
+    ...(file.kbName ? { kb_name: file.kbName } : {}),
+  }))
 }
 
 function dispatchSseJsonPayload(raw: Record<string, unknown>, callbacks: StreamChatCallbacks): void {
@@ -99,7 +111,7 @@ class SSEStreamManager {
   ): { close: () => void; get isClosed(): boolean } {
     this.close();
 
-    if (options.files && options.files.length > 0) {
+    if ((options.files && options.files.length > 0) || (options.selectedFiles && options.selectedFiles.length > 0)) {
       return this._streamChatMultipart(options, callbacks);
     }
 
@@ -111,6 +123,9 @@ class SSEStreamManager {
       ...(options.sessionId && { sessionId: options.sessionId }),
       ...(options.model && { model: options.model }),
     });
+    if (options.selectedFiles?.length) {
+      params.set('selectedFiles', JSON.stringify(serializeSelectedFiles(options.selectedFiles)))
+    }
 
     const url = `${getBaseURL()}/chat/stream?${params}`;
     this.eventSource = new EventSource(url);
@@ -171,6 +186,9 @@ class SSEStreamManager {
     }
     if (options.model) {
       form.append('model', options.model);
+    }
+    if (options.selectedFiles?.length) {
+      form.append('selectedFiles', JSON.stringify(serializeSelectedFiles(options.selectedFiles)));
     }
     for (const f of options.files ?? []) {
       form.append('files', f);
@@ -266,7 +284,7 @@ export const sseStreamManager = new SSEStreamManager();
 export function createChatStream(
   message: string,
   callbacks: StreamChatCallbacks,
-  opts?: { knowledgeBaseIds?: string[]; sessionId?: string; model?: string; files?: File[] }
+  opts?: { knowledgeBaseIds?: string[]; sessionId?: string; model?: string; files?: File[]; selectedFiles?: ChatScopeFile[] }
 ) {
   return sseStreamManager.streamChat(
     {
@@ -275,6 +293,7 @@ export function createChatStream(
       sessionId: opts?.sessionId,
       model: opts?.model,
       files: opts?.files,
+      selectedFiles: opts?.selectedFiles,
     },
     callbacks
   );

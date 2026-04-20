@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { Send, Zap, Paperclip, Database, Square } from 'lucide-react'
+import { Send, Zap, Paperclip, Database, Square, AtSign, X } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageBubble } from './MessageBubble'
@@ -9,14 +9,16 @@ import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
 import { KnowledgeBaseConfigPanel } from './KnowledgeBaseConfigPanel'
 import { ModelConfigPanel } from './ModelConfigPanel'
 import { OpenRouterModelBrandIcon } from './OpenRouterModelBrandIcon'
+import { FileScopePicker } from './FileScopePicker'
 import { useChatStore } from '@/store/useChatStore'
 import { useConfigStore } from '@/store/useConfigStore'
 import { useThinkingChain } from '@/hooks/useThinkingChain'
 import { cn } from '@/lib/utils'
 import { getModelVendor, VENDOR_LOGOS } from '@/lib/modelVendors'
 import type { CitationReference } from '@/types/sse'
-import type { ChatMessageAttachment, Message } from '@/store/useChatStore'
+import type { ChatMessageAttachment, ChatScopeFile, Message } from '@/store/useChatStore'
 import { ComposerAttachmentTile } from './ChatAttachmentPreview'
+import { fileScopeKey, formatScopedFileSize, useFileScopeOptions } from './useFileScopeOptions'
 
 const MAX_CHAT_ATTACHMENTS = 3
 const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024
@@ -42,6 +44,26 @@ function buildCitationMapForMessage(
 
 const EMPTY_STATE_GREETING_PREFIX = '你好，我是 '
 const EMPTY_STATE_GREETING_FULL = `${EMPTY_STATE_GREETING_PREFIX}Nexus`
+
+interface FileMentionState {
+  query: string
+  start: number
+  end: number
+}
+
+function getFileMentionState(value: string, caret: number | null | undefined): FileMentionState | null {
+  const safeCaret = typeof caret === 'number' ? caret : value.length
+  const beforeCaret = value.slice(0, safeCaret)
+  const match = beforeCaret.match(/(^|\s)@([^\s@]*)$/)
+  if (!match) return null
+  const triggerStart = safeCaret - match[2].length - 1
+  if (triggerStart < 0) return null
+  return {
+    query: match[2],
+    start: triggerStart,
+    end: safeCaret,
+  }
+}
 
 /** 新对话空状态标题：逐字打字；切换会话时重播；尊重减少动效偏好 */
 function EmptyStateGreetingTitle({ sessionKey }: { sessionKey: string }) {
@@ -171,13 +193,20 @@ export function ChatInterface() {
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [inspectingItem, setInspectingItem] = useState<CitationReference | null>(null)
   const [kbConfigPanelOpen, setKbConfigPanelOpen] = useState(false)
+  const [fileScopePickerOpen, setFileScopePickerOpen] = useState(false)
   const [modelConfigPanelOpen, setModelConfigPanelOpen] = useState(false)
+  const [selectedScopeFiles, setSelectedScopeFiles] = useState<ChatScopeFile[]>([])
+  const [mentionState, setMentionState] = useState<FileMentionState | null>(null)
+  const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const citePopoverRef = useRef<HTMLDivElement>(null)
   const prevIsStreamingRef = useRef(false)
+  const mentionStateRef = useRef<FileMentionState | null>(null)
+  mentionStateRef.current = mentionState
+  const mentionOptionRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   const {
     sessions,
@@ -196,6 +225,13 @@ export function ChatInterface() {
 
   const { sendMessage, stopStreaming, isStreaming, error } = useThinkingChain()
   const { config } = useConfigStore()
+  const {
+    knowledgeBases: scopeKnowledgeBases,
+    filesByKb: scopeFilesByKb,
+    loadingKbIds: scopeLoadingKbIds,
+    ensureAllKbFiles,
+    hasLoadedFilesForKb,
+  } = useFileScopeOptions(Boolean(mentionState))
 
   const activeSession = getActiveSession()
   const messages = activeSession?.messages ?? []
@@ -285,6 +321,125 @@ export function ChatInterface() {
     }
   }, [])
 
+  useEffect(() => {
+    setSelectedScopeFiles([])
+    setMentionState(null)
+  }, [activeSessionId])
+
+  useEffect(() => {
+    if (!mentionState) return
+    void ensureAllKbFiles()
+  }, [mentionState, ensureAllKbFiles])
+
+  const selectedScopeKeySet = useMemo(
+    () => new Set(selectedScopeFiles.map(file => fileScopeKey(file.kbId, file.fileId))),
+    [selectedScopeFiles]
+  )
+
+  const mentionGroups = useMemo(() => {
+    if (!mentionState) return []
+    const keyword = mentionState.query.trim().toLowerCase()
+    let renderedItems = 0
+    const maxItems = keyword ? 24 : 18
+
+    return scopeKnowledgeBases
+      .map(kb => {
+        const rawFiles = (scopeFilesByKb[kb.id] ?? []).filter(
+          file => !selectedScopeKeySet.has(fileScopeKey(kb.id, file.id))
+        )
+        const filteredFiles = !keyword
+          ? rawFiles
+          : rawFiles.filter(file => `${file.name} ${file.type}`.toLowerCase().includes(keyword))
+        const remaining = Math.max(maxItems - renderedItems, 0)
+        const limitedFiles = remaining > 0 ? filteredFiles.slice(0, Math.min(remaining, keyword ? 8 : 6)) : []
+        renderedItems += limitedFiles.length
+        return {
+          kbId: kb.id,
+          kbName: kb.name,
+          files: limitedFiles,
+          totalMatches: filteredFiles.length,
+          isLoading: scopeLoadingKbIds.includes(kb.id),
+          hasLoaded: hasLoadedFilesForKb(kb.id),
+        }
+      })
+      .filter(group => group.files.length > 0 || group.isLoading || !group.hasLoaded)
+      .slice(0, keyword ? 8 : 5)
+  }, [mentionState, scopeKnowledgeBases, scopeFilesByKb, scopeLoadingKbIds, selectedScopeKeySet, hasLoadedFilesForKb])
+
+  const mentionOptions = useMemo(
+    () =>
+      mentionGroups.flatMap(group =>
+        group.files.map(file => ({
+          kbId: group.kbId,
+          kbName: group.kbName,
+          file,
+        }))
+      ),
+    [mentionGroups]
+  )
+
+  const mentionOptionIndexByKey = useMemo(() => {
+    const map = new Map<string, number>()
+    mentionOptions.forEach((option, index) => {
+      map.set(fileScopeKey(option.kbId, option.file.id), index)
+    })
+    return map
+  }, [mentionOptions])
+
+  useEffect(() => {
+    setMentionHighlightIndex(0)
+  }, [mentionState?.query])
+
+  useEffect(() => {
+    if (!mentionOptions.length) return
+    if (mentionHighlightIndex < mentionOptions.length) return
+    setMentionHighlightIndex(Math.max(mentionOptions.length - 1, 0))
+  }, [mentionHighlightIndex, mentionOptions.length])
+
+  useEffect(() => {
+    const target = mentionOptionRefs.current[mentionHighlightIndex]
+    target?.scrollIntoView({ block: 'nearest' })
+  }, [mentionHighlightIndex])
+
+  const syncMentionState = useCallback((nextValue: string, caret: number | null | undefined) => {
+    const nextState = getFileMentionState(nextValue, caret)
+    setMentionState(nextState)
+  }, [])
+
+  const insertMentionSelection = useCallback((selection: { kbId: string; kbName: string; file: { id: string; name: string; type: string } }) => {
+    const currentMention = mentionStateRef.current
+    setSelectedScopeFiles(prev => {
+      const key = fileScopeKey(selection.kbId, selection.file.id)
+      if (prev.some(item => fileScopeKey(item.kbId, item.fileId) === key)) return prev
+      return [
+        ...prev,
+        {
+          kbId: selection.kbId,
+          kbName: selection.kbName,
+          fileId: selection.file.id,
+          name: selection.file.name,
+          type: selection.file.type,
+        },
+      ]
+    })
+
+    if (!currentMention) return
+    const before = input.slice(0, currentMention.start)
+    const after = input.slice(currentMention.end)
+    let nextInput = `${before}${after}`
+    if (before && !/\s$/.test(before) && after && !/^\s/.test(after)) {
+      nextInput = `${before} ${after}`
+    }
+    nextInput = nextInput.replace(/[ \t]{2,}/g, ' ')
+    setInput(nextInput)
+    setMentionState(null)
+    requestAnimationFrame(() => {
+      const caretPos = Math.min(before.length, nextInput.length)
+      inputRef.current?.focus()
+      inputRef.current?.setSelectionRange(caretPos, caretPos)
+    })
+  }, [input])
+
   const handleSend = async () => {
     const text = input.trim()
     if ((!text && attachments.length === 0) || isLoading || !activeSessionId) return
@@ -294,13 +449,28 @@ export function ChatInterface() {
     })
     setInput('')
     setAttachments([])
+    setMentionState(null)
     setLoading(true)
 
     try {
+      const scopedKbIds = Array.from(new Set(selectedScopeFiles.map(file => file.kbId))).filter(Boolean)
       const kbMode = activeSession?.kbMode ?? 'auto'
       const kbIds = activeSession?.knowledgeBaseIds ?? []
-      const toSend = kbMode === 'auto' ? undefined : kbIds.length > 0 ? kbIds : undefined
-      await sendMessage(text, toSend, activeSessionId, files.length ? files : undefined)
+      const toSend = scopedKbIds.length > 0
+        ? scopedKbIds
+        : kbMode === 'auto'
+          ? undefined
+          : kbIds.length > 0
+            ? kbIds
+            : undefined
+      await sendMessage(
+        text,
+        toSend,
+        activeSessionId,
+        files.length ? files : undefined,
+        selectedScopeFiles.length ? selectedScopeFiles : undefined
+      )
+      setSelectedScopeFiles([])
     } catch (e) {
       console.error('发送失败', e)
     } finally {
@@ -508,6 +678,7 @@ export function ChatInterface() {
                     content: m.content,
                     timestamp: new Date(m.timestamp).toISOString(),
                     attachments: m.attachments as ChatMessageAttachment[] | undefined,
+                    scopeFiles: m.scopeFiles,
                     citations: m.citations,
                     metadata: (m as any).metadata,
                     thinking: (m as any).thinking,
@@ -547,35 +718,96 @@ export function ChatInterface() {
         <div className="mx-auto max-w-4xl relative">
           {/* 一体化输入框：flex 布局，textarea 与按钮区分离；focus 时极细 indigo/fuchsia 环与品牌一致 */}
           <div className="flex flex-col overflow-hidden rounded-3xl bg-white border border-slate-200/60 shadow-lg shadow-slate-900/10 transition-[box-shadow] duration-200 focus-within:ring-2 focus-within:ring-indigo-400/40 focus-within:shadow-[0_0_0_1px_rgba(217,70,239,0.22)] dark:bg-slate-800 dark:border-slate-700/60 dark:shadow-slate-900/30 dark:focus-within:ring-indigo-400/35 dark:focus-within:shadow-[0_0_0_1px_rgba(217,70,239,0.28)]">
-            {attachments.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 border-b border-slate-100/90 bg-gradient-to-b from-slate-50/90 via-indigo-50/20 to-transparent px-4 py-3 dark:border-slate-700/60 dark:from-slate-900/40 dark:via-indigo-950/25 dark:to-transparent">
-                {attachments.map((a) => {
-                  const isImage = a.file.type.startsWith('image/')
-                  const item: ChatMessageAttachment = {
-                    id: a.id,
-                    kind: isImage ? 'image' : 'audio',
-                    name: a.file.name,
-                    size: a.file.size,
-                    previewUrl: a.previewUrl,
-                  }
-                  return (
-                    <ComposerAttachmentTile
-                      key={a.id}
-                      item={item}
-                      onRemove={() => {
-                        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
-                        setAttachments((prev) => prev.filter((x) => x.id !== a.id))
-                      }}
-                    />
-                  )
-                })}
+            {(selectedScopeFiles.length > 0 || attachments.length > 0) && (
+              <div className="flex flex-col gap-3 border-b border-slate-100/90 bg-gradient-to-b from-slate-50/90 via-indigo-50/20 to-transparent px-4 py-3 dark:border-slate-700/60 dark:from-slate-900/40 dark:via-indigo-950/25 dark:to-transparent">
+                {selectedScopeFiles.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selectedScopeFiles.map((file) => (
+                      <button
+                        key={`${file.kbId}::${file.fileId}`}
+                        type="button"
+                        onClick={() => {
+                          setSelectedScopeFiles(prev =>
+                            prev.filter(item => !(item.kbId === file.kbId && item.fileId === file.fileId))
+                          )
+                        }}
+                        className="inline-flex max-w-full items-center gap-2 rounded-full border border-emerald-200/70 bg-white/90 px-3 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-50 dark:border-emerald-500/30 dark:bg-slate-950/70 dark:text-emerald-200"
+                      >
+                        <AtSign className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span className="truncate">{file.kbName ? `${file.kbName} / ${file.name}` : file.name}</span>
+                        <X className="h-3.5 w-3.5 flex-shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {attachments.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {attachments.map((a) => {
+                      const isImage = a.file.type.startsWith('image/')
+                      const item: ChatMessageAttachment = {
+                        id: a.id,
+                        kind: isImage ? 'image' : 'audio',
+                        name: a.file.name,
+                        size: a.file.size,
+                        previewUrl: a.previewUrl,
+                      }
+                      return (
+                        <ComposerAttachmentTile
+                          key={a.id}
+                          item={item}
+                          onRemove={() => {
+                            if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
+                            setAttachments((prev) => prev.filter((x) => x.id !== a.id))
+                          }}
+                        />
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )}
             <textarea
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                const nextValue = e.target.value
+                setInput(nextValue)
+                syncMentionState(nextValue, e.target.selectionStart)
+              }}
+              onSelect={(e) => {
+                syncMentionState(e.currentTarget.value, e.currentTarget.selectionStart)
+              }}
+              onBlur={() => {
+                requestAnimationFrame(() => {
+                  if (document.activeElement !== inputRef.current) {
+                    setMentionState(null)
+                  }
+                })
+              }}
               onKeyDown={(e) => {
+                if (mentionState) {
+                  if (e.key === 'ArrowDown' && mentionOptions.length > 0) {
+                    e.preventDefault()
+                    setMentionHighlightIndex(prev => (prev + 1) % mentionOptions.length)
+                    return
+                  }
+                  if (e.key === 'ArrowUp' && mentionOptions.length > 0) {
+                    e.preventDefault()
+                    setMentionHighlightIndex(prev => (prev - 1 + mentionOptions.length) % mentionOptions.length)
+                    return
+                  }
+                  if ((e.key === 'Enter' || e.key === 'Tab') && mentionOptions.length > 0) {
+                    e.preventDefault()
+                    const target = mentionOptions[Math.min(mentionHighlightIndex, mentionOptions.length - 1)]
+                    if (target) insertMentionSelection(target)
+                    return
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setMentionState(null)
+                    return
+                  }
+                }
                 // Enter 发送，Shift + Enter 换行
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
@@ -593,6 +825,65 @@ export function ChatInterface() {
               style={{ minHeight: '56px', maxHeight: '192px' }}
               disabled={isLoading || !activeSessionId}
             />
+
+            {mentionState && (
+              <div className="border-t border-slate-100/90 px-4 pb-2 dark:border-slate-700/60">
+                <div className="max-h-72 overflow-y-auto rounded-2xl border border-slate-200/70 bg-white/95 p-2 shadow-lg shadow-slate-900/10 dark:border-slate-700/70 dark:bg-slate-900/95">
+                  {mentionOptions.length > 0 ? (
+                    <div className="space-y-3">
+                      {mentionGroups.map(group => (
+                        <div key={group.kbId} className="space-y-1">
+                          <div className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            {group.kbName}
+                            <span className="ml-2 normal-case tracking-normal text-slate-400 dark:text-slate-500">
+                              {group.totalMatches} 个匹配
+                            </span>
+                          </div>
+                          <div className="space-y-1">
+                            {group.files.map(file => {
+                              const optionIndex = mentionOptionIndexByKey.get(fileScopeKey(group.kbId, file.id)) ?? 0
+                              const isActive = optionIndex === mentionHighlightIndex
+                              return (
+                                <button
+                                  key={`${group.kbId}::${file.id}`}
+                                  ref={node => {
+                                    mentionOptionRefs.current[optionIndex] = node
+                                  }}
+                                  type="button"
+                                  onMouseDown={e => {
+                                    e.preventDefault()
+                                    insertMentionSelection({ kbId: group.kbId, kbName: group.kbName, file })
+                                  }}
+                                  className={cn(
+                                    'flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors',
+                                    isActive
+                                      ? 'bg-emerald-500/10 text-emerald-900 ring-1 ring-emerald-500/20 dark:text-emerald-100'
+                                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/70'
+                                  )}
+                                >
+                                  <AtSign className={cn('h-4 w-4 flex-shrink-0', isActive ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-400')} />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="truncate text-sm font-medium">{file.name}</div>
+                                    <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                                      <span>{String(file.type || 'file').toUpperCase()}</span>
+                                      <span>{formatScopedFileSize(file.size)}</span>
+                                    </div>
+                                  </div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-3 py-4 text-sm text-slate-500 dark:text-slate-400">
+                      {scopeLoadingKbIds.length > 0 ? '正在加载文件列表...' : '没有匹配的文件。'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* 底部功能栏 - 独立区域，与文字区物理分离 */}
             <div className="flex flex-shrink-0 items-center justify-between px-4 py-2">
@@ -641,6 +932,21 @@ export function ChatInterface() {
               </div>
 
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFileScopePickerOpen(true)}
+                  title="指定检索文件"
+                  className={cn(
+                    'group inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm ring-1 transition-all duration-200 active:scale-95',
+                    selectedScopeFiles.length > 0
+                      ? 'border-emerald-300/80 bg-gradient-to-r from-emerald-50/90 to-teal-50/80 text-emerald-700 shadow-emerald-500/10 ring-emerald-200/50 hover:border-emerald-400/80 hover:from-emerald-100/90 hover:to-teal-100/90 dark:border-emerald-500/40 dark:from-emerald-900/30 dark:to-teal-900/20 dark:text-emerald-200'
+                      : 'border-slate-200/70 bg-white/70 text-slate-600 ring-slate-200/50 hover:border-slate-300/80 hover:bg-white/90 dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-300'
+                  )}
+                >
+                  <AtSign className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110" />
+                  <span>{selectedScopeFiles.length > 0 ? `文件 ${selectedScopeFiles.length}` : '文件'}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -702,6 +1008,12 @@ export function ChatInterface() {
 
       {/* 配置面板 */}
       <KnowledgeBaseConfigPanel open={kbConfigPanelOpen} onOpenChange={setKbConfigPanelOpen} />
+      <FileScopePicker
+        open={fileScopePickerOpen}
+        onOpenChange={setFileScopePickerOpen}
+        value={selectedScopeFiles}
+        onChange={setSelectedScopeFiles}
+      />
       <ModelConfigPanel open={modelConfigPanelOpen} onOpenChange={setModelConfigPanelOpen} />
 
       {/* 检查器侧边栏 */}

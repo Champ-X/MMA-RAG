@@ -12,6 +12,7 @@ from app.core.sparse_encoder import get_sparse_encoder
 from app.core.logger import get_logger, audit_log
 from app.modules.ingestion.storage.vector_store import VectorStore
 from app.modules.ingestion.service import IngestionService
+from app.modules.knowledge.service import KnowledgeBaseService
 
 logger = get_logger(__name__)
 
@@ -23,6 +24,7 @@ class HybridSearchEngine:
         self.llm_manager = llm_manager
         self.sparse_encoder = get_sparse_encoder()  # BGE-M3 稀疏向量编码器
         self.ingestion_service = IngestionService()  # 用于CLIP文本向量化
+        self.knowledge_service = KnowledgeBaseService()
         
         # RRF融合权重
         self.rrf_weights = {
@@ -30,7 +32,8 @@ class HybridSearchEngine:
             "sparse": 0.8,
             "visual": 1.2,  # 视觉检索权重稍高
             "audio": 1.0,   # 音频检索权重
-            "video": 1.1    # 视频检索权重（稍高于音频，因为包含视觉信息）
+            "video": 1.1,   # 视频检索权重（稍高于音频，因为包含视觉信息）
+            "selected_file": 2.4,  # 用户显式指定文件时，给予更高优先级
         }
         
         # RRF参数
@@ -40,6 +43,8 @@ class HybridSearchEngine:
         self,
         query_strategies: Dict[str, Any],
         target_kb_ids: List[str],
+        target_file_ids: Optional[List[str]] = None,
+        selected_files: Optional[List[Dict[str, Any]]] = None,
         visual_intent: str = "unnecessary",
         audio_intent: str = "unnecessary",
         video_intent: str = "unnecessary",
@@ -61,7 +66,12 @@ class HybridSearchEngine:
         start_time = datetime.utcnow()
         
         try:
-            logger.info(f"开始混合检索: KB={len(target_kb_ids)}, Visual={visual_intent}, Audio={audio_intent}")
+            logger.info(
+                f"开始混合检索: KB={len(target_kb_ids)}, Files={len(target_file_ids or [])}, "
+                f"Visual={visual_intent}, Audio={audio_intent}, "
+                f"target_kb_ids={target_kb_ids}, target_file_ids={target_file_ids or []}, "
+                f"selected_files={len(selected_files or [])}"
+            )
             
             # 构建检索任务
             search_tasks = []
@@ -71,6 +81,7 @@ class HybridSearchEngine:
                 query_strategies.get("dense_query", ""),
                 query_strategies.get("multi_view_queries", []),
                 target_kb_ids,
+                target_file_ids,
                 intent_type
             )
             search_tasks.append(("dense", dense_task))
@@ -80,6 +91,7 @@ class HybridSearchEngine:
                 dense_query=query_strategies.get("dense_query", ""),
                 keywords=query_strategies.get("sparse_keywords", []),
                 target_kb_ids=target_kb_ids,
+                target_file_ids=target_file_ids,
                 intent_type=intent_type,
                 fallback_query=query_strategies.get("original_query", "")
             )
@@ -91,6 +103,7 @@ class HybridSearchEngine:
                     query_strategies.get("dense_query", ""),
                     query_strategies.get("multi_view_queries", []),
                     target_kb_ids,
+                    target_file_ids=target_file_ids,
                     visual_intent=visual_intent
                 )
                 search_tasks.append(("visual", visual_task))
@@ -99,6 +112,7 @@ class HybridSearchEngine:
             audio_task = self._audio_search(
                 query_strategies.get("dense_query", ""),
                 target_kb_ids,
+                target_file_ids=target_file_ids,
                 audio_intent=audio_intent,
                 limit=10
             )
@@ -108,6 +122,7 @@ class HybridSearchEngine:
             video_task = self._video_search(
                 query_strategies.get("dense_query", ""),
                 target_kb_ids,
+                target_file_ids=target_file_ids,
                 visual_query=query_strategies.get("dense_query", "") if visual_intent != "unnecessary" else None,
                 limit=10
             )
@@ -124,10 +139,23 @@ class HybridSearchEngine:
                     logger.error(f"{task_type}检索失败: {str(e)}")
                     results[task_type] = []
 
+            if selected_files:
+                try:
+                    selected_file_results = await self._selected_file_bootstrap_search(
+                        selected_files=selected_files,
+                        target_kb_ids=target_kb_ids,
+                    )
+                    results["selected_file"] = selected_file_results
+                    logger.info("指定文件直取候选完成: %s 个结果", len(selected_file_results))
+                except Exception as e:
+                    logger.error("指定文件直取候选失败: %s", e)
+                    results["selected_file"] = []
+
             # 当 Dense 与 Sparse 均无结果时，记录各目标 KB 的文本/图/音频数量，便于排查“未建索引”问题
             dense_count = len(results.get("dense", []))
             sparse_count = len(results.get("sparse", []))
-            if dense_count == 0 and sparse_count == 0 and target_kb_ids:
+            selected_file_count = len(results.get("selected_file", []))
+            if dense_count == 0 and sparse_count == 0 and selected_file_count == 0 and target_kb_ids:
                 try:
                     for kb_id in target_kb_ids:
                         n_text, n_img = await self.vector_store.count_kb_chunks(kb_id)
@@ -187,12 +215,237 @@ class HybridSearchEngine:
                 "strategy": "error",
                 "processing_time": (datetime.utcnow() - start_time).total_seconds()
             }
+
+    def _infer_selected_file_modality(self, selected_file: Dict[str, Any]) -> str:
+        ext = str(selected_file.get("type") or "").strip().lower()
+        if not ext:
+            name = str(selected_file.get("name") or "").strip().lower()
+            ext = name.rsplit(".", 1)[-1] if "." in name else ""
+        if ext in {"jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "tiff", "tif", "ico", "heic", "heif"}:
+            return "image"
+        if ext in {"mp3", "wav", "m4a", "aac", "flac", "ogg", "opus", "wma"}:
+            return "audio"
+        if ext in {"mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "mpeg", "mpg"}:
+            return "video"
+        return "doc"
+
+    def _build_selected_file_score(self, file_index: int, item_index: int = 0) -> float:
+        return max(0.82, 1.0 - file_index * 0.03 - item_index * 0.01)
+
+    def _scroll_audio_points_for_selected_file(self, file_id: str, target_kb_ids: List[str]) -> List[Any]:
+        for kb_id in target_kb_ids:
+            points = self.vector_store.scroll_audio_points_by_file_id(kb_id, file_id, limit=1)
+            if points:
+                return points
+        return self.vector_store.scroll_audio_points_by_file_id(None, file_id, limit=1)
+
+    def _scroll_video_points_for_selected_file(self, file_id: str, target_kb_ids: List[str]) -> List[Any]:
+        for kb_id in target_kb_ids:
+            points = self.vector_store.scroll_video_points_by_file_id(file_id, kb_id=kb_id, limit=3)
+            if points:
+                return points
+        return self.vector_store.scroll_video_points_by_file_id(file_id, kb_id=None, limit=3)
+
+    async def _selected_file_bootstrap_search(
+        self,
+        selected_files: List[Dict[str, Any]],
+        target_kb_ids: List[str],
+    ) -> List[Dict[str, Any]]:
+        """将用户显式指定文件的代表内容直接纳入候选，避免短问句完全依赖语义命中。"""
+        if not selected_files:
+            return []
+
+        loop = asyncio.get_running_loop()
+        results: List[Dict[str, Any]] = []
+        seen_ids = set()
+        limited_selected_files = selected_files[:8]
+
+        for file_index, selected_file in enumerate(limited_selected_files):
+            file_id = str(selected_file.get("file_id") or "").strip()
+            if not file_id:
+                continue
+
+            modality = self._infer_selected_file_modality(selected_file)
+            kb_id_hint = str(selected_file.get("kb_id") or "").strip()
+            base_score = self._build_selected_file_score(file_index)
+
+            try:
+                if modality == "image":
+                    image_points = await loop.run_in_executor(
+                        None,
+                        lambda fid=file_id: self.vector_store.scroll_image_points_by_file_id(fid, kb_ids=target_kb_ids, limit=1),
+                    )
+                    if image_points:
+                        point = image_points[0]
+                        point_id = str(getattr(point, "id", "") or "")
+                        if point_id and point_id not in seen_ids:
+                            seen_ids.add(point_id)
+                            payload = getattr(point, "payload", None) or {}
+                            results.append({
+                                "id": point_id,
+                                "score": base_score,
+                                "payload": payload,
+                                "content_type": "image",
+                                "search_type": "selected_file",
+                                "selected_file_boost": True,
+                            })
+                        continue
+
+                elif modality == "audio":
+                    audio_points = await loop.run_in_executor(
+                        None,
+                        lambda fid=file_id: self._scroll_audio_points_for_selected_file(fid, target_kb_ids),
+                    )
+                    if audio_points:
+                        point = audio_points[0]
+                        point_id = str(getattr(point, "id", "") or "")
+                        if point_id and point_id not in seen_ids:
+                            seen_ids.add(point_id)
+                            payload = getattr(point, "payload", None) or {}
+                            results.append({
+                                "id": point_id,
+                                "score": base_score,
+                                "payload": payload,
+                                "content_type": "audio",
+                                "search_type": "selected_file",
+                                "selected_file_boost": True,
+                            })
+                        continue
+
+                elif modality == "video":
+                    video_points = await loop.run_in_executor(
+                        None,
+                        lambda fid=file_id: self._scroll_video_points_for_selected_file(fid, target_kb_ids),
+                    )
+                    if video_points:
+                        point = video_points[0]
+                        point_id = str(getattr(point, "id", "") or "")
+                        if point_id and point_id not in seen_ids:
+                            seen_ids.add(point_id)
+                            payload = getattr(point, "payload", None) or {}
+                            results.append({
+                                "id": point_id,
+                                "score": base_score,
+                                "payload": payload,
+                                "content_type": "video",
+                                "search_type": "selected_file",
+                                "selected_file_boost": True,
+                            })
+                        continue
+
+                else:
+                    text_points = await loop.run_in_executor(
+                        None,
+                        lambda fid=file_id: self.vector_store.scroll_text_points_by_file_id(fid, kb_ids=target_kb_ids, limit=3),
+                    )
+                    if text_points:
+                        ordered_points = sorted(
+                            text_points,
+                            key=lambda point: (
+                                (getattr(point, "payload", None) or {}).get("chunk_index", 0),
+                                str(getattr(point, "id", "")),
+                            ),
+                        )
+                        for item_index, point in enumerate(ordered_points[:2]):
+                            point_id = str(getattr(point, "id", "") or "")
+                            if not point_id or point_id in seen_ids:
+                                continue
+                            seen_ids.add(point_id)
+                            payload = getattr(point, "payload", None) or {}
+                            results.append({
+                                "id": point_id,
+                                "score": self._build_selected_file_score(file_index, item_index),
+                                "payload": payload,
+                                "content_type": "doc",
+                                "search_type": "selected_file",
+                                "selected_file_boost": True,
+                            })
+                        continue
+
+                preview = await self.knowledge_service.get_file_preview_details(kb_id_hint, file_id)
+                synthetic_id = f"selected-file::{kb_id_hint or 'kb'}::{file_id}"
+                if synthetic_id in seen_ids:
+                    continue
+
+                if modality == "image" and preview.get("caption"):
+                    seen_ids.add(synthetic_id)
+                    results.append({
+                        "id": synthetic_id,
+                        "score": base_score,
+                        "payload": {
+                            "kb_id": kb_id_hint or None,
+                            "file_id": file_id,
+                            "file_path": selected_file.get("name") or file_id,
+                            "caption": preview.get("caption"),
+                        },
+                        "content_type": "image",
+                        "search_type": "selected_file",
+                        "selected_file_boost": True,
+                    })
+                elif modality == "audio" and (preview.get("transcript") or preview.get("description")):
+                    seen_ids.add(synthetic_id)
+                    results.append({
+                        "id": synthetic_id,
+                        "score": base_score,
+                        "payload": {
+                            "kb_id": kb_id_hint or None,
+                            "file_id": file_id,
+                            "file_path": selected_file.get("name") or file_id,
+                            "transcript": preview.get("transcript") or "",
+                            "description": preview.get("description") or "",
+                        },
+                        "content_type": "audio",
+                        "search_type": "selected_file",
+                        "selected_file_boost": True,
+                    })
+                elif modality == "video" and (preview.get("description") or preview.get("caption")):
+                    seen_ids.add(synthetic_id)
+                    results.append({
+                        "id": synthetic_id,
+                        "score": base_score,
+                        "payload": {
+                            "kb_id": kb_id_hint or None,
+                            "file_id": file_id,
+                            "file_path": selected_file.get("name") or file_id,
+                            "description": preview.get("description") or preview.get("caption") or "",
+                            "scene_summary": preview.get("caption") or preview.get("description") or "",
+                        },
+                        "content_type": "video",
+                        "search_type": "selected_file",
+                        "selected_file_boost": True,
+                    })
+                elif preview.get("chunks") or preview.get("text_preview"):
+                    text_preview = preview.get("text_preview") or "\n\n".join(
+                        chunk.get("text", "") for chunk in (preview.get("chunks") or []) if chunk.get("text")
+                    )
+                    if text_preview:
+                        seen_ids.add(synthetic_id)
+                        results.append({
+                            "id": synthetic_id,
+                            "score": base_score,
+                            "payload": {
+                                "kb_id": kb_id_hint or None,
+                                "file_id": file_id,
+                                "file_path": selected_file.get("name") or file_id,
+                                "text_content": text_preview,
+                                "file_type": selected_file.get("type") or "",
+                                "chunk_index": 0,
+                            },
+                            "content_type": "doc",
+                            "search_type": "selected_file",
+                            "selected_file_boost": True,
+                        })
+            except Exception as e:
+                logger.warning("指定文件兜底候选生成失败: file_id=%s modality=%s e=%s", file_id, modality, e)
+
+        return results
     
     async def _dense_search(
         self,
         dense_query: str,
         multi_view_queries: List[str],
         target_kb_ids: List[str],
+        target_file_ids: Optional[List[str]],
         intent_type: str
     ) -> List[Dict[str, Any]]:
         """Dense向量检索（支持多角度查询）"""
@@ -230,6 +483,7 @@ class HybridSearchEngine:
                     search_results = await self.vector_store.search_text_chunks(
                         query_vector=query_vector,
                         kb_ids=target_kb_ids,
+                        file_ids=target_file_ids,
                         limit=20,
                         score_threshold=0.0
                     )
@@ -284,6 +538,7 @@ class HybridSearchEngine:
         dense_query: str,
         keywords: List[str],
         target_kb_ids: List[str],
+        target_file_ids: Optional[List[str]],
         intent_type: str,
         fallback_query: str = ""
     ) -> List[Dict[str, Any]]:
@@ -331,6 +586,7 @@ class HybridSearchEngine:
             search_results = await self.vector_store.search_text_chunks_sparse(
                 query_sparse=query_sparse,
                 kb_ids=target_kb_ids,
+                file_ids=target_file_ids,
                 limit=15,  # Sparse检索结果数量稍少
                 score_threshold=0.0
             )
@@ -355,6 +611,7 @@ class HybridSearchEngine:
         query: str,
         multi_view_queries: List[str],
         target_kb_ids: List[str],
+        target_file_ids: Optional[List[str]] = None,
         visual_intent: str = "explicit_demand"
     ) -> List[Dict[str, Any]]:
         """
@@ -415,6 +672,7 @@ class HybridSearchEngine:
                     text_query_vector=text_query_vector,
                     clip_query_vector=clip_text_vector,
                     kb_ids=target_kb_ids,
+                    file_ids=target_file_ids,
                     limit=limit,
                     score_threshold=score_threshold
                 )
@@ -443,6 +701,7 @@ class HybridSearchEngine:
                     query_vector=text_query_vector,
                     clip_vector=clip_text_vector,
                     target_kb_ids=target_kb_ids,
+                    target_file_ids=target_file_ids,
                     limit=limit,
                     score_threshold=score_threshold,
                 )
@@ -499,6 +758,7 @@ class HybridSearchEngine:
                 search_results = await self.vector_store.search_image_vectors(
                     query_vector=text_query_vector,
                     kb_ids=target_kb_ids,
+                    file_ids=target_file_ids,
                     limit=limit,
                     score_threshold=score_threshold
                 )
@@ -526,6 +786,7 @@ class HybridSearchEngine:
                     query_vector=text_query_vector,
                     clip_vector=None,
                     target_kb_ids=target_kb_ids,
+                    target_file_ids=target_file_ids,
                     limit=limit,
                     score_threshold=score_threshold,
                 )
@@ -857,6 +1118,7 @@ class HybridSearchEngine:
         self,
         query: str,
         target_kb_ids: List[str],
+        target_file_ids: Optional[List[str]] = None,
         audio_intent: str = "unnecessary",
         limit: int = 10
     ) -> List[Dict[str, Any]]:
@@ -885,6 +1147,7 @@ class HybridSearchEngine:
                         clap_query_vector=clap_vector,
                         sparse_vector=sparse_vector,
                         target_kb_ids=target_kb_ids,
+                        file_ids=target_file_ids,
                         limit=limit * 2 if audio_intent == "implicit_enrichment" else limit,
                         score_threshold=0.0 if audio_intent == "explicit_demand" else 0.2
                     )
@@ -893,6 +1156,7 @@ class HybridSearchEngine:
                         query_vector=query_vector,
                         sparse_vector=sparse_vector,
                         target_kb_ids=target_kb_ids,
+                        file_ids=target_file_ids,
                         limit=limit
                     )
             else:
@@ -900,6 +1164,7 @@ class HybridSearchEngine:
                     query_vector=query_vector,
                     sparse_vector=sparse_vector,
                     target_kb_ids=target_kb_ids,
+                    file_ids=target_file_ids,
                     limit=limit
                 )
             # 3. 格式化结果（保留完整 payload 供下游 context_builder 取 kb_id 等）
@@ -930,6 +1195,7 @@ class HybridSearchEngine:
         self,
         query: str,
         target_kb_ids: List[str],
+        target_file_ids: Optional[List[str]] = None,
         visual_query: Optional[str] = None,
         limit: int = 10
     ) -> List[Dict[str, Any]]:
@@ -956,6 +1222,7 @@ class HybridSearchEngine:
                 query_vector=query_vector,
                 clip_vector=clip_vector,
                 target_kb_ids=target_kb_ids,
+                target_file_ids=target_file_ids,
                 limit=limit
             )
             

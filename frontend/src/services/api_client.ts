@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import type { ChatScopeFile } from '@/store/useChatStore'
 
 /** 未设置 VITE_API_BASE_URL 时默认 /api：开发时由 Vite 代理到后端，避免浏览器直连 localhost:8000（WSL/端口转发下易失败或超时）；生产需同源反代或显式配置环境变量。 */
 function resolveDefaultApiBaseURL(): string {
@@ -758,13 +759,28 @@ export const importApi = {
 };
 
 // 对话相关API
+function serializeSelectedFiles(selectedFiles?: ChatScopeFile[]) {
+  if (!selectedFiles?.length) return undefined
+  return selectedFiles.map((file) => ({
+    kb_id: file.kbId,
+    file_id: file.fileId,
+    name: file.name,
+    ...(file.type ? { type: file.type } : {}),
+    ...(file.kbName ? { kb_name: file.kbName } : {}),
+  }))
+}
+
 export const chatApi = {
   // 发送消息
   sendMessage: (data: {
     message: string;
     knowledgeBaseIds?: string[];
+    selectedFiles?: ChatScopeFile[];
     stream?: boolean;
-  }) => apiClient.post('/chat/message', data),
+  }) => apiClient.post('/chat/message', {
+    ...data,
+    ...(data.selectedFiles ? { selectedFiles: serializeSelectedFiles(data.selectedFiles) } : {}),
+  }),
   
   // 流式对话
   sendMessageStream: (

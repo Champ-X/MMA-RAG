@@ -10,7 +10,7 @@ import {
 import type { ThoughtPhase } from '@/types/sse'
 import { imageFileToPersistedThumb } from '@/lib/chatAttachmentThumb'
 import { putAttachmentBlob } from '@/lib/chatAttachmentBlobStore'
-import type { ChatMessageAttachment } from '@/store/useChatStore'
+import type { ChatMessageAttachment, ChatScopeFile } from '@/store/useChatStore'
 
 interface UseThinkingChainOptions {
   onThought?: (e: ThoughtEvent) => void
@@ -57,7 +57,8 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     content: string,
     knowledgeBaseIds?: string[],
     sessionId?: string,
-    files?: File[]
+    files?: File[],
+    selectedFiles?: ChatScopeFile[]
   ) => {
     const session = getActiveSession()
     if (!session) throw new Error('没有活跃的会话')
@@ -88,7 +89,12 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
       )
     }
 
-    addMessage(session.id, { role: 'user', content: displayContent, attachments })
+    addMessage(session.id, {
+      role: 'user',
+      content: displayContent,
+      attachments,
+      scopeFiles: selectedFiles?.length ? selectedFiles : undefined,
+    })
     addMessage(session.id, {
       role: 'assistant',
       content: '',
@@ -264,6 +270,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
           sessionId: sessionId ?? session.id,
           model: config.models.find(m => m.id === 'chat')?.model,
           files: files?.length ? files : undefined,
+          selectedFiles: selectedFiles?.length ? selectedFiles : undefined,
         }
       )
     } catch (err) {

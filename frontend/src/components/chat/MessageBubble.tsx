@@ -1,5 +1,5 @@
 import React from 'react'
-import { User, Bot, Music, Play, Video } from 'lucide-react'
+import { User, Bot, Music, Play, Video, FileText } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { ThinkingCapsule } from './ThinkingCapsule'
 import { InlineCitation } from './InlineCitation'
@@ -14,6 +14,7 @@ import type { CitationReference } from '@/types/sse'
 import {
   useChatStore,
   type ChatMessageAttachment,
+  type ChatScopeFile,
   type ThoughtData,
   type ThinkingState,
 } from '@/store/useChatStore'
@@ -47,6 +48,7 @@ export interface MessageBubbleMessage {
   } | ThoughtData | null
   error?: string
   attachments?: ChatMessageAttachment[]
+  scopeFiles?: ChatScopeFile[]
 }
 
 interface MessageBubbleProps {
@@ -882,6 +884,27 @@ function shortenFileName(fileName: string, maxLen = 24): string {
   return base.slice(0, Math.max(0, maxLen - ext.length - 1)) + '…' + ext
 }
 
+function UserScopedFileStrip({ files, className }: { files: ChatScopeFile[]; className?: string }) {
+  if (!files.length) return null
+
+  return (
+    <div className={cn('flex flex-wrap justify-end gap-2', className)}>
+      {files.map((file) => (
+        <div
+          key={`${file.kbId}::${file.fileId}`}
+          className="inline-flex max-w-full items-center gap-2 rounded-full border border-emerald-200/70 bg-emerald-50/90 px-3 py-1 text-xs text-emerald-800 shadow-sm dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200"
+          title={file.kbName ? `${file.kbName} / ${file.name}` : file.name}
+        >
+          <FileText className="h-3.5 w-3.5 flex-shrink-0" />
+          <span className="truncate max-w-[22rem]">
+            {file.kbName ? `${file.kbName} / ${file.name}` : file.name}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // 段落下方展示的视频引用卡片（图标 + 标签 + 可点击播放，不打开弹层）
 function ParagraphVideoDisplay({
   citations,
@@ -1456,6 +1479,9 @@ export function MessageBubble({
               attachments={message.attachments!}
               className="w-full"
             />
+          )}
+          {(message.scopeFiles?.length ?? 0) > 0 && (
+            <UserScopedFileStrip files={message.scopeFiles!} className="w-full" />
           )}
           <div className="flex items-start justify-end gap-2">
             {bubbleEl}

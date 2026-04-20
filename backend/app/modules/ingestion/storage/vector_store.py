@@ -79,6 +79,7 @@ class VectorStore:
                 "payload_schema": {
                     "kb_id": PayloadSchemaType.KEYWORD,
                     "file_id": PayloadSchemaType.KEYWORD,
+                    "source_file_id": PayloadSchemaType.KEYWORD,
                     "file_path": PayloadSchemaType.TEXT,
                     "caption": PayloadSchemaType.TEXT,
                     "image_source_type": PayloadSchemaType.KEYWORD,
@@ -943,25 +944,62 @@ class VectorStore:
         except Exception as e:
             logger.error(f"删除知识库向量失败: {str(e)}")
             return False
+
+    def _build_query_filter(
+        self,
+        *,
+        kb_ids: Optional[List[str]] = None,
+        file_ids: Optional[List[str]] = None,
+        file_fields: Optional[List[str]] = None,
+    ) -> Optional[Filter]:
+        """组合 kb_id / file_id 过滤条件，支持 (kb in [...]) AND (file_id/source_file_id in [...])。"""
+        must_filters: List[Filter] = []
+
+        normalized_kb_ids = list(dict.fromkeys([str(k).strip() for k in (kb_ids or []) if str(k).strip()]))
+        if normalized_kb_ids:
+            must_filters.append(
+                Filter(
+                    should=[
+                        FieldCondition(key="kb_id", match=MatchValue(value=kb_id))
+                        for kb_id in normalized_kb_ids
+                    ]
+                )
+            )
+
+        normalized_file_ids = list(dict.fromkeys([str(f).strip() for f in (file_ids or []) if str(f).strip()]))
+        normalized_fields = list(dict.fromkeys([str(field).strip() for field in (file_fields or []) if str(field).strip()]))
+        if normalized_file_ids and normalized_fields:
+            must_filters.append(
+                Filter(
+                    should=[
+                        FieldCondition(key=field, match=MatchValue(value=file_id))
+                        for field in normalized_fields
+                        for file_id in normalized_file_ids
+                    ]
+                )
+            )
+
+        if not must_filters:
+            return None
+        if len(must_filters) == 1:
+            return must_filters[0]
+        return Filter(must=must_filters)
     
     async def search_text_chunks(
         self,
         query_vector: List[float],
         kb_ids: Optional[List[str]] = None,
+        file_ids: Optional[List[str]] = None,
         limit: int = 20,
         score_threshold: float = 0.0
     ) -> List[Dict[str, Any]]:
         """搜索文本块"""
         try:
-            # 构建过滤条件
-            search_filter = None
-            if kb_ids:
-                search_filter = Filter(
-                    should=[FieldCondition(
-                        key="kb_id", 
-                        match=MatchValue(value=kb_id)
-                    ) for kb_id in kb_ids]
-                )
+            search_filter = self._build_query_filter(
+                kb_ids=kb_ids,
+                file_ids=file_ids,
+                file_fields=["file_id"],
+            )
             
             # 使用 query_points API (新版本 qdrant-client)
             # 检查集合是否是 Named Vector 格式，如果是则指定 using="dense"
@@ -1036,6 +1074,7 @@ class VectorStore:
         self,
         query_sparse: Dict[int, float],
         kb_ids: Optional[List[str]] = None,
+        file_ids: Optional[List[str]] = None,
         limit: int = 20,
         score_threshold: float = 0.0
     ) -> List[Dict[str, Any]]:
@@ -1052,15 +1091,11 @@ class VectorStore:
             检索结果列表
         """
         try:
-            # 构建过滤条件
-            search_filter = None
-            if kb_ids:
-                search_filter = Filter(
-                    should=[FieldCondition(
-                        key="kb_id", 
-                        match=MatchValue(value=kb_id)
-                    ) for kb_id in kb_ids]
-                )
+            search_filter = self._build_query_filter(
+                kb_ids=kb_ids,
+                file_ids=file_ids,
+                file_fields=["file_id"],
+            )
             
             # 转换为 Qdrant 的 SparseVector 格式
             sparse_vector = models.SparseVector(
@@ -1118,20 +1153,17 @@ class VectorStore:
         self,
         query_vector: List[float],
         kb_ids: Optional[List[str]] = None,
+        file_ids: Optional[List[str]] = None,
         limit: int = 20,
         score_threshold: float = 0.0
     ) -> List[Dict[str, Any]]:
         """搜索图片向量（单路：仅使用文本语义向量）"""
         try:
-            # 构建过滤条件
-            search_filter = None
-            if kb_ids:
-                search_filter = Filter(
-                    should=[FieldCondition(
-                        key="kb_id", 
-                        match=MatchValue(value=kb_id)
-                    ) for kb_id in kb_ids]
-                )
+            search_filter = self._build_query_filter(
+                kb_ids=kb_ids,
+                file_ids=file_ids,
+                file_fields=["file_id", "source_file_id"],
+            )
             
             # 使用 query_points API (新版本 qdrant-client)
             # 对于多向量集合，使用 using 参数指定命名向量
@@ -1190,6 +1222,7 @@ class VectorStore:
         text_query_vector: List[float],
         clip_query_vector: List[float],
         kb_ids: Optional[List[str]] = None,
+        file_ids: Optional[List[str]] = None,
         limit: int = 20,
         score_threshold: float = 0.0
     ) -> List[Dict[str, Any]]:
@@ -1210,15 +1243,11 @@ class VectorStore:
             融合后的检索结果列表
         """
         try:
-            # 构建过滤条件
-            search_filter = None
-            if kb_ids:
-                search_filter = Filter(
-                    should=[FieldCondition(
-                        key="kb_id", 
-                        match=MatchValue(value=kb_id)
-                    ) for kb_id in kb_ids]
-                )
+            search_filter = self._build_query_filter(
+                kb_ids=kb_ids,
+                file_ids=file_ids,
+                file_fields=["file_id", "source_file_id"],
+            )
             
             logger.info(
                 f"执行双路RRF查询: text_vec维度={len(text_query_vector)}, "
@@ -1271,10 +1300,10 @@ class VectorStore:
             
             # 同时执行两个单独查询以获取详细分数信息（用于日志）
             text_results = await self._query_single_vector(
-                text_query_vector, "text_vec", kb_ids, limit * 2, score_threshold
+                text_query_vector, "text_vec", kb_ids, file_ids, limit * 2, score_threshold
             )
             clip_results = await self._query_single_vector(
-                clip_query_vector, "clip_vec", kb_ids, limit * 2, score_threshold
+                clip_query_vector, "clip_vec", kb_ids, file_ids, limit * 2, score_threshold
             )
             
             # 构建结果ID到分数的映射
@@ -1336,19 +1365,17 @@ class VectorStore:
         query_vector: List[float],
         vector_name: str,
         kb_ids: Optional[List[str]] = None,
+        file_ids: Optional[List[str]] = None,
         limit: int = 20,
         score_threshold: float = 0.0
     ) -> List[Dict[str, Any]]:
         """执行单个命名向量的查询（用于获取详细分数）"""
         try:
-            search_filter = None
-            if kb_ids:
-                search_filter = Filter(
-                    should=[FieldCondition(
-                        key="kb_id", 
-                        match=MatchValue(value=kb_id)
-                    ) for kb_id in kb_ids]
-                )
+            search_filter = self._build_query_filter(
+                kb_ids=kb_ids,
+                file_ids=file_ids,
+                file_fields=["file_id", "source_file_id"],
+            )
             
             query_result = self.client.query_points(
                 collection_name="image_vectors",
@@ -1829,6 +1856,60 @@ class VectorStore:
             logger.debug(f"get_point_id_by_file_id_and_chunk_index 失败: file_id={file_id}, e={e}")
             return None
 
+    def scroll_text_points_by_file_id(
+        self,
+        file_id: str,
+        kb_ids: Optional[List[str]] = None,
+        limit: int = 200,
+    ) -> List[Any]:
+        """按 file_id（及可选 kb_ids）滚动拉取 text_chunks 点，供指定文件直取/兜底使用。"""
+        try:
+            scroll_filter = self._build_query_filter(
+                kb_ids=kb_ids,
+                file_ids=[file_id],
+                file_fields=["file_id"],
+            )
+            if scroll_filter is None:
+                return []
+            scroll_results = self.client.scroll(
+                collection_name="text_chunks",
+                scroll_filter=scroll_filter,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+            return scroll_results[0] if scroll_results else []
+        except Exception as e:
+            logger.debug("scroll_text_points_by_file_id 失败: file_id=%s kb_ids=%s e=%s", file_id, kb_ids, e)
+            return []
+
+    def scroll_image_points_by_file_id(
+        self,
+        file_id: str,
+        kb_ids: Optional[List[str]] = None,
+        limit: int = 1,
+    ) -> List[Any]:
+        """按 file_id/source_file_id（及可选 kb_ids）滚动拉取 image_vectors 点。"""
+        try:
+            scroll_filter = self._build_query_filter(
+                kb_ids=kb_ids,
+                file_ids=[file_id],
+                file_fields=["file_id", "source_file_id"],
+            )
+            if scroll_filter is None:
+                return []
+            scroll_results = self.client.scroll(
+                collection_name="image_vectors",
+                scroll_filter=scroll_filter,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+            return scroll_results[0] if scroll_results else []
+        except Exception as e:
+            logger.debug("scroll_image_points_by_file_id 失败: file_id=%s kb_ids=%s e=%s", file_id, kb_ids, e)
+            return []
+
     def get_chunk_context_window_texts(self, chunk_id: str) -> Optional[Dict[str, str]]:
         """
         根据 text_chunks 中某 chunk 的 context_window（prev_chunk_id, next_chunk_id）
@@ -1916,20 +1997,17 @@ class VectorStore:
         query_vector: List[float],
         sparse_vector: Optional[Dict[int, float]] = None,
         target_kb_ids: Optional[List[str]] = None,
+        file_ids: Optional[List[str]] = None,
         limit: int = 10,
         score_threshold: float = 0.0
     ) -> List[Dict[str, Any]]:
         """搜索音频向量"""
         try:
-            # 构建过滤条件
-            search_filter = None
-            if target_kb_ids:
-                search_filter = Filter(
-                    should=[FieldCondition(
-                        key="kb_id",
-                        match=MatchValue(value=kb_id)
-                    ) for kb_id in target_kb_ids]
-                )
+            search_filter = self._build_query_filter(
+                kb_ids=target_kb_ids,
+                file_ids=file_ids,
+                file_fields=["file_id", "source_file_id"],
+            )
             
             # 如果有稀疏向量，使用混合检索
             if sparse_vector:
@@ -1996,17 +2074,18 @@ class VectorStore:
         clap_query_vector: List[float],
         sparse_vector: Optional[Dict[int, float]] = None,
         target_kb_ids: Optional[List[str]] = None,
+        file_ids: Optional[List[str]] = None,
         limit: int = 20,
         score_threshold: float = 0.0
     ) -> List[Dict[str, Any]]:
         """搜索音频向量（双路或三路 RRF：text_vec + clap_vec [+ sparse]）
         参考图片的 text_vec + clip_vec 双路检索，音频使用 text_vec（描述语义）+ clap_vec（声学特征）。"""
         try:
-            search_filter = None
-            if target_kb_ids:
-                search_filter = Filter(
-                    should=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id)) for kb_id in target_kb_ids]
-                )
+            search_filter = self._build_query_filter(
+                kb_ids=target_kb_ids,
+                file_ids=file_ids,
+                file_fields=["file_id", "source_file_id"],
+            )
             prefetch_queries = [
                 Prefetch(query=text_query_vector, using="text_vec", limit=limit * 2),
                 Prefetch(query=clap_query_vector, using="clap_vec", limit=limit * 2),
@@ -2096,6 +2175,7 @@ class VectorStore:
         query_vector: List[float],
         clip_vector: Optional[List[float]] = None,
         target_kb_ids: Optional[List[str]] = None,
+        target_file_ids: Optional[List[str]] = None,
         limit: int = 10,
         score_threshold: float = 0.0,
     ) -> List[Dict[str, Any]]:
@@ -2104,14 +2184,11 @@ class VectorStore:
         query_vector 用于 scene_vec 与 frame_vec（同一文本嵌入），clip_vector 用于 clip_vec。
         """
         try:
-            search_filter = None
-            if target_kb_ids:
-                search_filter = Filter(
-                    should=[
-                        FieldCondition(key="kb_id", match=MatchValue(value=kid))
-                        for kid in target_kb_ids
-                    ]
-                )
+            search_filter = self._build_query_filter(
+                kb_ids=target_kb_ids,
+                file_ids=target_file_ids,
+                file_fields=["file_id"],
+            )
 
             prefetch_queries = [
                 Prefetch(query=query_vector, using="scene_vec", limit=limit * 2),

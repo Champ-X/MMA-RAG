@@ -6,6 +6,7 @@
 from typing import Dict, List, Any, Optional, AsyncGenerator, Tuple
 from datetime import datetime
 from dataclasses import dataclass
+import re
 
 from .processors.intent import IntentProcessor
 from .processors.rewriter import QueryRewriter
@@ -15,6 +16,92 @@ from app.core.logger import get_logger, audit_log
 from app.modules.knowledge.router import KnowledgeRouter
 
 logger = get_logger(__name__)
+
+IMAGE_FILE_TYPES = {
+    "jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "tiff", "tif", "ico", "heic", "heif"
+}
+AUDIO_FILE_TYPES = {
+    "mp3", "wav", "m4a", "aac", "flac", "ogg", "opus", "wma"
+}
+VIDEO_FILE_TYPES = {
+    "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "mpeg", "mpg"
+}
+DEICTIC_REFERENCE_PATTERNS = (
+    "这是", "这是什么", "这是啥", "图里", "图中", "图片里", "这张图", "这个图", "这幅图",
+    "什么意思", "讲了什么", "说了什么", "介绍一下这个",
+    "whatisthis", "whatsthis", "what is this", "what's this", "what is shown",
+)
+
+
+def _infer_selected_file_modality(file_info: Dict[str, Any]) -> str:
+    raw_type = str(file_info.get("type") or "").strip().lower()
+    raw_name = str(file_info.get("name") or "").strip().lower()
+    ext = raw_type or (raw_name.rsplit(".", 1)[-1] if "." in raw_name else "")
+    if ext in IMAGE_FILE_TYPES:
+        return "image"
+    if ext in AUDIO_FILE_TYPES:
+        return "audio"
+    if ext in VIDEO_FILE_TYPES:
+        return "video"
+    return "doc"
+
+
+def _collect_selected_file_modalities(selected_files: List[Dict[str, Any]]) -> List[str]:
+    seen = set()
+    modalities: List[str] = []
+    for item in selected_files:
+        modality = _infer_selected_file_modality(item)
+        if modality not in seen:
+            seen.add(modality)
+            modalities.append(modality)
+    return modalities
+
+
+def _is_deictic_reference_query(query: str) -> bool:
+    normalized = re.sub(r"\s+", "", (query or "").strip().lower())
+    if not normalized:
+        return False
+    if any(pattern in normalized for pattern in DEICTIC_REFERENCE_PATTERNS):
+        return True
+    if len(normalized) <= 6 and any(token in normalized for token in ("这", "它", "此")) and any(token in normalized for token in ("是", "啥", "谁", "什么")):
+        return True
+    return False
+
+
+def _override_intents_for_selected_files(
+    query: str,
+    preprocessing_result: Dict[str, Any],
+    selected_files: List[Dict[str, Any]],
+) -> Tuple[Dict[str, Any], List[str]]:
+    if not selected_files:
+        return preprocessing_result, []
+
+    updated = dict(preprocessing_result)
+    selected_modalities = _collect_selected_file_modalities(selected_files)
+    is_deictic_query = _is_deictic_reference_query(query)
+
+    if "image" in selected_modalities:
+        current = updated.get("visual_intent", "unnecessary")
+        target = "explicit_demand" if is_deictic_query else "implicit_enrichment"
+        if current == "unnecessary" or (is_deictic_query and current != "explicit_demand"):
+            updated["visual_intent"] = target
+            updated["visual_reasoning"] = "用户已指定图片文件，本轮需优先结合所选图片检索和理解"
+
+    if "audio" in selected_modalities:
+        current = updated.get("audio_intent", "unnecessary")
+        target = "explicit_demand" if is_deictic_query else "implicit_enrichment"
+        if current == "unnecessary" or (is_deictic_query and current != "explicit_demand"):
+            updated["audio_intent"] = target
+            updated["audio_reasoning"] = "用户已指定音频文件，本轮需优先结合所选音频检索和理解"
+
+    if "video" in selected_modalities:
+        current = updated.get("video_intent", "unnecessary")
+        target = "explicit_demand" if is_deictic_query else "implicit_enrichment"
+        if current == "unnecessary" or (is_deictic_query and current != "explicit_demand"):
+            updated["video_intent"] = target
+            updated["video_reasoning"] = "用户已指定视频文件，本轮需优先结合所选视频检索和理解"
+
+    return updated, selected_modalities
 
 @dataclass
 class RetrievalContext:
@@ -31,6 +118,9 @@ class RetrievalContext:
     video_reasoning: str  # 视频意图推理说明
     search_strategies: Dict[str, Any]
     target_kb_ids: List[str]
+    target_file_ids: List[str]
+    selected_files: List[Dict[str, Any]]
+    selected_file_modalities: List[str]
     confidence_scores: Dict[str, float]
     processing_time: float = 0.0
 
@@ -96,6 +186,12 @@ class RetrievalService:
                 session_context=session_context or [],
                 attachment_context=attachment_context,
             )
+            selected_files = list((kb_context or {}).get("selected_files", []) or [])
+            preprocessing_result, selected_file_modalities = _override_intents_for_selected_files(
+                query,
+                preprocessing_result,
+                selected_files,
+            )
             
             # 2. 知识库路由
             routing_result = await self._route_to_knowledge_bases(
@@ -117,8 +213,25 @@ class RetrievalService:
                 video_reasoning=preprocessing_result.get("video_reasoning", "未检测到视频需求"),
                 search_strategies=preprocessing_result["search_strategies"],
                 target_kb_ids=routing_result.target_kb_ids,
+                target_file_ids=[item.get("file_id", "") for item in selected_files if item.get("file_id")],
+                selected_files=selected_files,
+                selected_file_modalities=selected_file_modalities,
                 confidence_scores=routing_result.confidence_scores
             )
+            if retrieval_context.target_file_ids:
+                logger.info(
+                    "检索上下文已附加文件级过滤: kb_ids=%s, file_ids=%s",
+                    retrieval_context.target_kb_ids,
+                    retrieval_context.target_file_ids,
+                )
+            if retrieval_context.selected_file_modalities:
+                logger.info(
+                    "所选文件触发模态增强: modalities=%s, visual=%s, audio=%s, video=%s",
+                    retrieval_context.selected_file_modalities,
+                    retrieval_context.visual_intent,
+                    retrieval_context.audio_intent,
+                    retrieval_context.video_intent,
+                )
             
             # 4. 混合检索
             search_results = await self._perform_hybrid_search(retrieval_context)
@@ -204,6 +317,12 @@ class RetrievalService:
                 session_context=session_context or [],
                 attachment_context=attachment_context,
             )
+            selected_files = list((kb_context or {}).get("selected_files", []) or [])
+            preprocessing_result, selected_file_modalities = _override_intents_for_selected_files(
+                query,
+                preprocessing_result,
+                selected_files,
+            )
             intent_payload = {
                 "message": "意图解析完成",
                 "intent_type": preprocessing_result.get("intent_type", "factual"),
@@ -254,8 +373,25 @@ class RetrievalService:
                 video_reasoning=preprocessing_result.get("video_reasoning", "未检测到视频需求"),
                 search_strategies=preprocessing_result["search_strategies"],
                 target_kb_ids=target_kb_ids,
+                target_file_ids=[item.get("file_id", "") for item in selected_files if item.get("file_id")],
+                selected_files=selected_files,
+                selected_file_modalities=selected_file_modalities,
                 confidence_scores=confidence_scores,
             )
+            if retrieval_context.target_file_ids:
+                logger.info(
+                    "流式检索上下文已附加文件级过滤: kb_ids=%s, file_ids=%s",
+                    retrieval_context.target_kb_ids,
+                    retrieval_context.target_file_ids,
+                )
+            if retrieval_context.selected_file_modalities:
+                logger.info(
+                    "流式所选文件触发模态增强: modalities=%s, visual=%s, audio=%s, video=%s",
+                    retrieval_context.selected_file_modalities,
+                    retrieval_context.visual_intent,
+                    retrieval_context.audio_intent,
+                    retrieval_context.video_intent,
+                )
 
             # 4. 混合检索
             search_results = await self._perform_hybrid_search(retrieval_context)
@@ -427,6 +563,8 @@ class RetrievalService:
             return await self.search_engine.search(
                 query_strategies=context.search_strategies,
                 target_kb_ids=qdrant_kb_ids,
+                target_file_ids=context.target_file_ids,
+                selected_files=context.selected_files,
                 visual_intent=context.visual_intent,
                 audio_intent=context.audio_intent,
                 video_intent=context.video_intent,
