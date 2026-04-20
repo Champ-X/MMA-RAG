@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, HardDrive, Calendar, Activity, MoreHorizontal, ChevronDown } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
@@ -787,6 +787,80 @@ function ImportUrlModal({
   const [includeImages, setIncludeImages] = useState(true)
   // 是否下载页面内图片到 KB（走多模态 VLM/CLIP 流水线，可被检索）；仅在保留图片时有效
   const [downloadImages, setDownloadImages] = useState(true)
+  const [inspecting, setInspecting] = useState(false)
+  const [inspectError, setInspectError] = useState<string | null>(null)
+  const [inspectResult, setInspectResult] = useState<{
+    original_url: string
+    final_url: string
+    kind: 'webpage' | 'file'
+    detected_kind: 'webpage' | 'file'
+    recommended_mode: 'auto' | 'webpage' | 'file'
+    suggested_filename: string
+    content_type?: string | null
+    content_length?: number | null
+    title?: string | null
+    site?: string | null
+    warning?: string | null
+  } | null>(null)
+  const filenameRef = useRef('')
+  const lastSuggestedFilenameRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    filenameRef.current = filename
+  }, [filename])
+
+  useEffect(() => {
+    const trimmedUrl = url.trim()
+    if (!trimmedUrl) {
+      setInspecting(false)
+      setInspectError(null)
+      setInspectResult(null)
+      lastSuggestedFilenameRef.current = null
+      return
+    }
+    try {
+      new URL(trimmedUrl)
+    } catch {
+      setInspecting(false)
+      setInspectError(null)
+      setInspectResult(null)
+      return
+    }
+
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      setInspecting(true)
+      setInspectError(null)
+      try {
+        const result = await importApi.inspectUrl({ url: trimmedUrl, mode })
+        if (cancelled) return
+        setInspectResult(result)
+        const currentFilename = filenameRef.current.trim()
+        if (!currentFilename || (lastSuggestedFilenameRef.current && currentFilename === lastSuggestedFilenameRef.current)) {
+          setFilename(result.suggested_filename)
+        }
+        lastSuggestedFilenameRef.current = result.suggested_filename
+      } catch (err: any) {
+        if (cancelled) return
+        setInspectResult(null)
+        setInspectError(err?.response?.data?.detail ?? err?.message ?? 'URL 识别失败')
+      } finally {
+        if (!cancelled) setInspecting(false)
+      }
+    }, 450)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [url, mode])
+
+  const formatContentLength = (value?: number | null) => {
+    if (value == null || Number.isNaN(value)) return null
+    if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`
+    if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`
+    return `${value} B`
+  }
 
   /** 始终携带 mode（前端默认与后端默认 auto 不同）；其余字段仅在偏离默认时附带，保持与旧后端兼容 */
   const buildExtraBody = () => {
@@ -837,6 +911,13 @@ function ImportUrlModal({
   const radioBase = 'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer'
   const radioActive = 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-600'
   const radioInactive = 'bg-slate-50/60 dark:bg-slate-800/40 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+  const trimmedUrl = url.trim()
+  const suggestedMode =
+    inspectResult?.recommended_mode === 'auto'
+      ? inspectResult.detected_kind === 'webpage'
+        ? 'webpage'
+        : 'file'
+      : inspectResult?.recommended_mode
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
@@ -865,6 +946,71 @@ function ImportUrlModal({
               placeholder="https://example.com/article 或 https://example.com/file.pdf"
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400 dark:focus:ring-blue-400/20 dark:focus:border-blue-500 transition-shadow"
             />
+            {(inspecting || inspectResult || inspectError) && (
+              <div className="mt-3 rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-800/35 px-4 py-3">
+                {inspecting ? (
+                  <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                    <Loader2 size={14} className="animate-spin text-blue-500" />
+                    正在识别链接类型、标题和建议文件名…
+                  </div>
+                ) : inspectResult ? (
+                  <div className="space-y-2.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex flex-wrap gap-2">
+                        <span className={cn(
+                          'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium',
+                          inspectResult.detected_kind === 'webpage'
+                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                            : 'bg-slate-200/80 text-slate-700 dark:bg-slate-700/70 dark:text-slate-200'
+                        )}>
+                          {inspectResult.detected_kind === 'webpage' ? '已识别为网页' : '已识别为文件'}
+                        </span>
+                        {inspectResult.content_type ? (
+                          <span className="inline-flex items-center rounded-full bg-white/80 dark:bg-slate-900/70 px-2 py-0.5 text-[11px] text-slate-500 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700/80">
+                            {inspectResult.content_type}
+                          </span>
+                        ) : null}
+                        {formatContentLength(inspectResult.content_length) ? (
+                          <span className="inline-flex items-center rounded-full bg-white/80 dark:bg-slate-900/70 px-2 py-0.5 text-[11px] text-slate-500 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700/80">
+                            {formatContentLength(inspectResult.content_length)}
+                          </span>
+                        ) : null}
+                      </div>
+                      {suggestedMode && suggestedMode !== mode ? (
+                        <button
+                          type="button"
+                          onClick={() => setMode(suggestedMode)}
+                          className="shrink-0 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 transition-colors"
+                        >
+                          切换为建议模式
+                        </button>
+                      ) : null}
+                    </div>
+                    {inspectResult.title ? (
+                      <div className="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">
+                        {inspectResult.title}
+                      </div>
+                    ) : null}
+                    <div className="space-y-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                      {inspectResult.site ? <div>站点：{inspectResult.site}</div> : null}
+                      <div>建议文件名：{inspectResult.suggested_filename}</div>
+                      {inspectResult.final_url && inspectResult.final_url !== trimmedUrl ? (
+                        <div className="break-all">跳转后 URL：{inspectResult.final_url}</div>
+                      ) : null}
+                    </div>
+                    {inspectResult.warning ? (
+                      <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
+                        {inspectResult.warning}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : inspectError ? (
+                  <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
+                    {inspectError}
+                  </p>
+                ) : null}
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">文件名 <span className="text-slate-400 font-normal">(可选)</span></label>

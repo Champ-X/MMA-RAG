@@ -52,6 +52,14 @@ class ImportUrlBody(BaseModel):
     )
 
 
+class InspectUrlBody(BaseModel):
+    url: HttpUrl
+    mode: Literal["auto", "webpage", "file"] = Field(
+        "auto",
+        description="用于模拟导入行为：auto=自动识别；webpage=强制网页解析；file=强制文件下载",
+    )
+
+
 class ImportSearchBody(BaseModel):
     kb_id: str = Field(..., min_length=1)
     query: str = Field(..., min_length=1)
@@ -245,6 +253,32 @@ async def import_from_url_start(body: ImportUrlBody):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception("import_from_url_start failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/url/inspect")
+async def inspect_url(body: InspectUrlBody):
+    """轻量探测 URL 类型与页面元信息，供前端在真正导入前做预览与模式建议。"""
+    try:
+        url_source = UrlSource()
+        result = await url_source.inspect_async(str(body.url), mode=body.mode)
+        return {
+            "original_url": result.original_url,
+            "final_url": result.final_url,
+            "kind": result.kind,
+            "detected_kind": result.detected_kind,
+            "recommended_mode": result.recommended_mode,
+            "suggested_filename": result.suggested_filename,
+            "content_type": result.content_type,
+            "content_length": result.content_length,
+            "title": result.title,
+            "site": result.site,
+            "warning": result.warning,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("inspect_url failed")
         raise HTTPException(status_code=500, detail=str(e))
 
 

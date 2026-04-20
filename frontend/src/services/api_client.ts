@@ -445,6 +445,25 @@ export const knowledgeApi = {
 
 // 知识库导入 API（从 URL 或按关键词搜索图片导入）
 export const importApi = {
+  /** 轻量识别 URL：判断更像网页还是文件，并返回标题/站点/建议文件名等预览信息。 */
+  inspectUrl: (body: {
+    url: string
+    mode?: 'auto' | 'webpage' | 'file'
+  }) =>
+    apiClient.post<{
+      original_url: string
+      final_url: string
+      kind: 'webpage' | 'file'
+      detected_kind: 'webpage' | 'file'
+      recommended_mode: 'auto' | 'webpage' | 'file'
+      suggested_filename: string
+      content_type?: string | null
+      content_length?: number | null
+      title?: string | null
+      site?: string | null
+      warning?: string | null
+    }>(`/import/url/inspect`, body, { timeout: 15000 }),
+
   /**
    * 从 URL 开始导入：先下载（HTML 页面会抽取正文为 Markdown），再后台处理，立即返回 202 + processing_id。
    * - mode=auto（默认）按 Content-Type 自动识别；webpage 强制网页解析；file 强制按文件下载。

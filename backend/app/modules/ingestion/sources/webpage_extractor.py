@@ -1,10 +1,11 @@
 """
 任意网页正文抽取：将 HTML 抽成 Markdown 供知识库入库。
 
-三级管道（按 prefer 控制顺序，默认 auto = local→tavily 兜底）：
-1. trafilatura（主抽取器，直接输出 Markdown，支持解析相对链接）
-2. readability-lxml + markdownify（本地兜底）
-3. Tavily Extract（需 TAVILY_API_KEY，远程兜底，对 JS/反爬页面更稳）
+四级管道（按 prefer 控制顺序，默认 auto = local→tavily 兜底）：
+1. structured payload（优先消费 JSON-LD / SSR payload，如 __NEXT_DATA__）
+2. trafilatura（主抽取器，直接输出 Markdown，支持解析相对链接）
+3. readability-lxml + markdownify（本地兜底）
+4. Tavily Extract（需 TAVILY_API_KEY，远程兜底，对 JS/反爬页面更稳）
 
 调用方拿到 Markdown bytes 与 `WebpageExtractionResult` 元数据后，
 按 .md 文件走现有的 ingestion 管道即可。
@@ -23,10 +24,11 @@ from urllib.parse import unquote, urljoin, urlparse
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from .webpage_structured_payloads import extract_structured_payload
 
 logger = get_logger(__name__)
 
-ExtractorName = Literal["trafilatura", "readability", "tavily", "raw_html", "github_raw"]
+ExtractorName = Literal["trafilatura", "readability", "tavily", "raw_html", "github_raw", "structured_payload"]
 PreferMode = Literal["auto", "local", "tavily"]
 
 # 生成的 Markdown 上限，避免极端长页拖垮后续向量化
@@ -803,10 +805,10 @@ async def extract_webpage(
 ) -> WebpageExtractionResult:
     """异步抽取网页正文，按 prefer 决定本地/远程优先级。
 
-    - auto / local：trafilatura → readability → tavily
-    - tavily：tavily → trafilatura → readability
+    - auto / local：structured payload → trafilatura → readability → tavily
+    - tavily：tavily → structured payload → trafilatura → readability
 
-    若三级全部失败，最后退化为整段 raw HTML 文本（防止入库链路彻底中断）。
+    若各级都失败，最后退化为整段 raw HTML 文本（防止入库链路彻底中断）。
 
     当 ``include_images`` 与 ``download_images`` 同时为 True 时，会带上 Referer/UA
     并发下载页面内的图片，把 Markdown 引用改写为 ``_assets/<sha1>.<ext>`` 形式，
@@ -819,6 +821,25 @@ async def extract_webpage(
     normalized_html = _normalize_lazy_images(html_bytes) if include_images else html_bytes
 
     def _run_local() -> Optional[WebpageExtractionResult]:
+        structured_result = extract_structured_payload(
+            normalized_html,
+            url,
+            include_images=include_images,
+        )
+        structured_extraction: Optional[WebpageExtractionResult] = None
+        if structured_result is not None:
+            structured_extraction = WebpageExtractionResult(
+                markdown=structured_result.markdown,
+                title=structured_result.title,
+                site=structured_result.site,
+                author=structured_result.author,
+                published=structured_result.published,
+                extractor="structured_payload",
+                source_url=structured_result.source_url or url,
+                extras=structured_result.extras or {},
+            )
+            if len(structured_extraction.markdown) >= min_chars:
+                return structured_extraction
         result = _extract_with_trafilatura(
             normalized_html,
             url,
@@ -835,7 +856,7 @@ async def extract_webpage(
         )
         if fallback and len(fallback.markdown) >= min_chars:
             return fallback
-        return result or fallback  # 即便短，也好过 None
+        return structured_extraction or result or fallback  # 即便短，也好过 None
 
     def _run_tavily() -> Optional[WebpageExtractionResult]:
         return _extract_with_tavily(url)
