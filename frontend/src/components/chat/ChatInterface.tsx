@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageBubble } from './MessageBubble'
 import { CitationPopover } from './CitationPopover'
 import { ConversationTabs } from './ConversationTabs'
+import { SuggestedQuestions } from './SuggestedQuestions'
 import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
 import { KnowledgeBaseConfigPanel } from './KnowledgeBaseConfigPanel'
 import { ModelConfigPanel } from './ModelConfigPanel'
@@ -173,7 +174,7 @@ function EmptyStateGreetingTitle({ sessionKey }: { sessionKey: string }) {
 function EmptyStateHint() {
   return (
     <p className="mx-auto mt-2 max-w-md text-pretty text-center text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">
-      在底部输入区选择对话模型与知识库范围，输入问题即可开始。
+      在底部输入区选择对话模型与知识库范围，或直接点击下方推荐问题开始检索。
     </p>
   )
 }
@@ -440,8 +441,8 @@ export function ChatInterface() {
     })
   }, [input])
 
-  const handleSend = async () => {
-    const text = input.trim()
+  const submitMessage = useCallback(async (nextInput?: string) => {
+    const text = (nextInput ?? input).trim()
     if ((!text && attachments.length === 0) || isLoading || !activeSessionId) return
     const files = attachments.map((a) => a.file)
     attachments.forEach((a) => {
@@ -476,7 +477,11 @@ export function ChatInterface() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [input, attachments, isLoading, activeSessionId, setLoading, selectedScopeFiles, activeSession, sendMessage])
+
+  const handleSend = useCallback(() => {
+    void submitMessage()
+  }, [submitMessage])
 
   const handleStop = () => {
     if (!activeSessionId || !isStreaming) return
@@ -659,6 +664,14 @@ export function ChatInterface() {
                   </div>
                   <EmptyStateGreetingTitle sessionKey={activeSessionId ?? ''} />
                   <EmptyStateHint />
+                  <SuggestedQuestions
+                    session={activeSession}
+                    selectedScopeFiles={selectedScopeFiles}
+                    disabled={isLoading || !activeSessionId}
+                    onSelect={(question) => {
+                      void submitMessage(question)
+                    }}
+                  />
                 </div>
               </div>
             )}

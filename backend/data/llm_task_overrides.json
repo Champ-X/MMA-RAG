@@ -4,7 +4,7 @@
   "image_captioning": "aliyun_bailian:qwen3-vl-plus",
   "intent_recognition": "aliyun_bailian:qwen3-max",
   "kb_portrait_generation": "Qwen/Qwen3-235B-A22B-Instruct-2507",
-  "query_rewriting": "aliyun_bailian:qwen3.5-397b-a17b",
+  "query_rewriting": "Qwen/Qwen3-235B-A22B-Instruct-2507",
   "reranking": "Qwen/Qwen3-Reranker-8B",
   "video_parsing": "aliyun_bailian:qwen3.5-plus-2026-02-15"
 }

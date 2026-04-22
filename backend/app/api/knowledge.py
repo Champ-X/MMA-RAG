@@ -11,10 +11,15 @@ import os
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, Field
 from app.core.logger import get_logger
 from app.core.keyword_extract import extract_keywords_for_portrait
 from app.modules.knowledge.service import KnowledgeBaseService, office_preview_cache_object_path
 from app.modules.knowledge.portraits import PortraitGenerator
+from app.modules.knowledge.suggested_questions import (
+    build_context_and_questions_payload,
+    get_precomputed_questions_fast,
+)
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -455,6 +460,65 @@ async def regenerate_knowledge_base_portrait(
         raise
     except Exception as e:
         logger.error(f"生成知识库画像失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class SuggestedQuestionFileIn(BaseModel):
+    kb_id: str = Field(..., min_length=1)
+    file_id: str = Field(..., min_length=1)
+    name: Optional[str] = None
+
+
+class SuggestedQuestionsRequest(BaseModel):
+    """推荐检索问题：默认仅从已落盘问题池随机选取，不做现场生成。"""
+    kb_mode: str = "auto"
+    knowledge_base_ids: List[str] = Field(default_factory=list)
+    selected_files: List[SuggestedQuestionFileIn] = Field(default_factory=list)
+    max_questions: int = 3
+    use_llm: bool = True
+    refresh: bool = False
+    prefer_precomputed: bool = True
+
+
+@router.post("/suggested-questions")
+async def post_suggested_questions(body: SuggestedQuestionsRequest):
+    """优先从问题池返回推荐问题；仅 refresh=true 时才触发现场重算。"""
+    try:
+        files_payload = [f.model_dump() for f in body.selected_files]
+        fast = await get_precomputed_questions_fast(
+            kb_service,
+            kb_mode=body.kb_mode,
+            knowledge_base_ids=body.knowledge_base_ids,
+            selected_files=files_payload,
+            max_questions=body.max_questions,
+        )
+        if fast and not body.refresh:
+            return {
+                "questions": fast,
+                "source": "question_bank",
+                "cached": True,
+            }
+        if not body.refresh:
+            return {
+                "questions": [],
+                "source": "question_bank",
+                "cached": True,
+                "note": "question_bank_empty",
+            }
+
+        # 仅手动 refresh 时允许重算
+        result = await build_context_and_questions_payload(
+            kb_service,
+            kb_mode=body.kb_mode,
+            knowledge_base_ids=body.knowledge_base_ids,
+            selected_files=files_payload,
+            max_questions=body.max_questions,
+            use_llm=body.use_llm,
+            refresh=True,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"生成推荐问题失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

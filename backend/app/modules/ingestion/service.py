@@ -378,6 +378,24 @@ class IngestionService:
                 "completed_at": datetime.utcnow().isoformat(),
                 "result": result,
             })
+
+            # 5. 推荐问题入池：文件入库后基于该文件生成一批问题并写入知识库问题池
+            try:
+                from app.modules.knowledge.suggested_questions import generate_questions_for_file_and_store
+                generated_file_id = str(result.get("file_id") or "")
+                generated_file_name = str(file_path or "")
+                if generated_file_id:
+                    asyncio.create_task(
+                        generate_questions_for_file_and_store(
+                            kb_id,
+                            generated_file_id,
+                            file_name=generated_file_name,
+                            max_questions=20,
+                            use_llm=True,
+                        )
+                    )
+            except Exception as e:
+                logger.warning("推荐问题入池触发失败 kb_id=%s: %s", actual_kb_id, e)
             
             return result
                 

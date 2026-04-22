@@ -396,6 +396,11 @@ class KnowledgeBaseService:
                 # 即使清理失败，也继续删除知识库记录
             
             del self._kb_storage[kb_id]
+            try:
+                from app.modules.knowledge.suggested_questions import remove_kb_question_bank
+                remove_kb_question_bank(kb_id)
+            except Exception as e:
+                logger.warning(f"清理知识库问题池失败 kb_id={kb_id}: {e}")
             audit_log(
                 f"知识库删除成功: {kb_id}",
                 kb_id=kb_id,
@@ -1519,6 +1524,15 @@ class KnowledgeBaseService:
             # 向量删除成功后，再删除 MinIO 中该文件的所有对象（含 Office 预览 PDF 缓存）
             for object_path in minio_delete_targets:
                 await self.minio_adapter.delete_file(bucket_name, object_path)
+
+            # 清理该文件在知识库问题池中的问题
+            try:
+                from app.modules.knowledge.suggested_questions import remove_questions_by_file
+                removed_q = remove_questions_by_file(kb_id, file_id)
+                if removed_q > 0:
+                    logger.info(f"已清理文件问题条目 kb_id={kb_id} file_id={file_id} removed={removed_q}")
+            except Exception as e:
+                logger.warning(f"清理文件问题条目失败 kb_id={kb_id} file_id={file_id}: {e}")
 
             # 删除 chunk 计入增量，达到阈值后触发画像重建（与上传逻辑一致）
             if deleted_chunk_count > 0:
