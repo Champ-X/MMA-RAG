@@ -150,7 +150,7 @@ function EmptyStateGreetingTitle({ sessionKey }: { sessionKey: string }) {
 
   return (
     <h3
-      className="mb-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl sm:leading-snug"
+      className="mb-3 text-balance text-4xl font-semibold tracking-tight [font-family:'Ma_Shan_Zheng','Caveat','STKaiti','KaiTi',cursive] sm:text-5xl sm:leading-snug"
       aria-label={EMPTY_STATE_GREETING_FULL}
     >
       <span className="bg-gradient-to-r from-slate-900 via-indigo-800 to-violet-700 bg-clip-text text-transparent dark:from-slate-100 dark:via-indigo-200 dark:to-violet-300">
@@ -173,9 +173,11 @@ function EmptyStateGreetingTitle({ sessionKey }: { sessionKey: string }) {
 
 function EmptyStateHint() {
   return (
-    <p className="mx-auto mt-2 max-w-md text-pretty text-center text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">
-      在底部输入区选择对话模型与知识库范围，或直接点击下方推荐问题开始检索。
-    </p>
+    <div className="mx-auto mt-2.5 max-w-lg px-4">
+      <p className="text-balance text-center text-3xl leading-tight tracking-[0.03em] text-transparent [font-family:'Caveat','Segoe_Print','Bradley_Hand',cursive] bg-gradient-to-r from-slate-500 via-indigo-500 to-violet-500 bg-clip-text drop-shadow-[0_3px_12px_rgba(99,102,241,0.2)] dark:from-slate-300 dark:via-indigo-300 dark:to-violet-300 dark:drop-shadow-[0_4px_14px_rgba(129,140,248,0.26)] sm:text-4xl">
+        Ask me something...
+      </p>
+    </div>
   )
 }
 
@@ -664,14 +666,16 @@ export function ChatInterface() {
                   </div>
                   <EmptyStateGreetingTitle sessionKey={activeSessionId ?? ''} />
                   <EmptyStateHint />
-                  <SuggestedQuestions
-                    session={activeSession}
-                    selectedScopeFiles={selectedScopeFiles}
-                    disabled={isLoading || !activeSessionId}
-                    onSelect={(question) => {
-                      void submitMessage(question)
-                    }}
-                  />
+                  <div className="mt-4 sm:mt-5">
+                    <SuggestedQuestions
+                      session={activeSession}
+                      selectedScopeFiles={selectedScopeFiles}
+                      disabled={isLoading || !activeSessionId}
+                      onSelect={(question) => {
+                        void submitMessage(question)
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             )}

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2 } from 'lucide-react'
 import { knowledgeApi } from '@/services/api_client'
 import { useKnowledgeStore, type KnowledgeBase } from '@/store/useKnowledgeStore'
 import type { ChatSession, ChatScopeFile } from '@/store/useChatStore'
@@ -379,7 +378,7 @@ export function SuggestedQuestions({
   const wallPlacements = useMemo(() => {
     // 桌面端：保持同一高度基线，仅做轻微扰动；横向分栏并控制间距，降低重叠概率
     const anchorXs = [16, 50, 84]
-    const baseTop = 18
+    const baseTop = 26
     return questions.map((item, idx) => {
       const seed = Array.from(item.id).reduce((acc, ch) => acc + ch.charCodeAt(0), 0) + idx * 97
       const rand = (min: number, max: number, salt: number) => {
@@ -463,11 +462,30 @@ export function SuggestedQuestions({
   if (!loading && questions.length === 0 && !status) return null
 
   return (
-    <div className="mx-auto mt-5 w-full max-w-lg px-1 md:max-w-none md:px-0">
+    <div className="mx-auto mt-2 w-full max-w-lg px-1 md:max-w-none md:px-0">
       {loading ? (
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-indigo-100/80 bg-gradient-to-r from-indigo-50/70 via-white to-violet-50/60 px-3 py-2 text-[11px] text-slate-500 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-400">
-          <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" aria-hidden />
-          <span>推荐问题生成中…</span>
+        <div className="flex items-center justify-center py-1">
+          <div className="relative h-12 w-12">
+            <span
+              className="absolute inset-0 animate-[spin_3.8s_linear_infinite] rounded-[42%_58%_63%_37%/44%_39%_61%_56%] border-2 border-violet-300/85 border-t-indigo-400 border-r-fuchsia-300/80 dark:border-violet-400/70 dark:border-t-indigo-300 dark:border-r-fuchsia-300/70"
+              aria-hidden
+            />
+            <span
+              className="absolute inset-[2px] animate-[spin_2.6s_linear_infinite_reverse] rounded-[61%_39%_46%_54%/58%_44%_56%_42%] border border-dashed border-indigo-300/70 dark:border-indigo-300/55"
+              aria-hidden
+            />
+            <span
+              className="absolute left-[8px] top-[6px] h-1.5 w-1.5 rounded-full bg-pink-300 shadow-sm shadow-pink-300/70 dark:bg-pink-300/90"
+              aria-hidden
+            />
+            <span
+              className="absolute right-[8px] bottom-[7px] h-1.5 w-1.5 rounded-full bg-sky-300 shadow-sm shadow-sky-300/70 dark:bg-sky-300/90"
+              aria-hidden
+            />
+            <span className="absolute left-1/2 top-1/2 inline-flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-br from-violet-100 to-indigo-100 text-[17px] font-semibold leading-none text-indigo-600 shadow-[0_4px_14px_rgba(99,102,241,0.25)] dark:from-violet-900/60 dark:to-indigo-900/65 dark:text-indigo-200 dark:shadow-[0_4px_16px_rgba(99,102,241,0.35)]">
+              ?
+            </span>
+          </div>
         </div>
       ) : (
         <>
@@ -504,7 +522,7 @@ export function SuggestedQuestions({
           </ul>
 
           <div
-            className="relative hidden md:left-1/2 md:block md:h-0 md:w-[min(88vw,760px)] md:-translate-x-1/2"
+            className="relative hidden md:left-1/2 md:block md:h-[80px] md:w-[min(88vw,760px)] md:-translate-x-1/2 md:translate-y-5"
             aria-label="推荐问题便签墙"
           >
             {questions.map((item, idx) => {
@@ -521,22 +539,59 @@ export function SuggestedQuestions({
                     transform: `translateX(-50%) rotate(${place.rotate}deg)`,
                   }}
                   className={cn(
-                    'group absolute z-10 w-[31%] min-w-[172px] max-w-[220px] rounded-md border border-amber-100/80 bg-amber-50/70 px-3 pb-3 pt-3 text-left shadow-[0_6px_14px_-10px_rgba(15,23,42,0.35)] transition-all duration-200',
-                    'hover:-translate-y-0.5 hover:shadow-[0_10px_18px_-10px_rgba(15,23,42,0.4)]',
-                    'dark:border-slate-600/70 dark:bg-slate-800/95',
+                    'group absolute z-10 w-[31%] min-w-[172px] max-w-[220px] px-3 pb-3 pt-3 text-left transition-all duration-200',
+                    'bg-gradient-to-br from-amber-50/95 via-amber-50/88 to-yellow-50/86',
+                    'shadow-[0_10px_18px_-12px_rgba(15,23,42,0.42)]',
+                    'hover:-translate-y-0.5 hover:shadow-[0_14px_24px_-11px_rgba(15,23,42,0.36)]',
+                    idx === 0 && 'rounded-[8px_6px_9px_7px] border-[1.5px] border-amber-200/85',
+                    idx === 1 && 'rounded-[7px_9px_6px_8px] border-[1.5px] border-orange-200/85',
+                    idx === 2 && 'rounded-[9px_7px_8px_6px] border-[1.5px] border-amber-200/90',
+                    'dark:from-slate-800/95 dark:via-slate-800/95 dark:to-slate-800/92',
+                    idx === 0 && 'dark:border-indigo-300/45',
+                    idx === 1 && 'dark:border-violet-300/40',
+                    idx === 2 && 'dark:border-sky-300/40',
                     disabled && 'cursor-not-allowed opacity-60 hover:scale-100 hover:translate-y-0'
                   )}
                 >
                   <span
+                    className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(115deg,rgba(255,255,255,0.28)_0%,transparent_30%,transparent_70%,rgba(251,191,36,0.12)_100%)]"
+                    aria-hidden
+                  />
+                  <span
+                    className="pointer-events-none absolute right-[9px] top-[8px] h-0 w-0 border-l-[7px] border-l-transparent border-b-[7px] border-b-amber-200/85 dark:border-b-slate-500/80"
+                    aria-hidden
+                  />
+                  <span
+                    className="pointer-events-none absolute right-[9px] top-[8px] h-0 w-0 border-l-[6px] border-l-transparent border-b-[6px] border-b-amber-50/95 dark:border-b-slate-700/95"
+                    aria-hidden
+                  />
+                  <span
                     className={cn(
-                      'absolute -top-2 left-1/2 -translate-x-1/2 text-[14px] opacity-90 transition-transform duration-200 group-hover:scale-105',
+                      'absolute -top-2 left-1/2 -translate-x-1/2 text-[14px] opacity-95 drop-shadow-[0_2px_2px_rgba(0,0,0,0.12)] transition-transform duration-200 group-hover:scale-105',
                       idx === 1 ? 'rotate-[6deg]' : idx === 2 ? '-rotate-[4deg]' : 'rotate-[2deg]'
                     )}
                     aria-hidden
                   >
                     📌
                   </span>
-                  <span className="relative z-10 block line-clamp-2 text-[14px] font-medium leading-snug text-slate-800 dark:text-slate-100">
+                  <span
+                    className="pointer-events-none absolute left-1/2 top-[1px] h-[2px] w-8 -translate-x-1/2 rounded-full bg-amber-200/70 dark:bg-slate-500/60"
+                    aria-hidden
+                  />
+                  <span
+                    className={cn(
+                      'pointer-events-none absolute bottom-1.5 right-2 text-[10px] opacity-35',
+                      idx === 1 ? 'rotate-6' : '-rotate-3'
+                    )}
+                    aria-hidden
+                  >
+                    ·
+                  </span>
+                  <span
+                    className="pointer-events-none absolute bottom-[5px] left-[10px] right-[10px] h-px bg-amber-200/70 dark:bg-slate-600/70"
+                    aria-hidden
+                  />
+                  <span className="relative z-10 block line-clamp-2 text-[14px] font-medium leading-snug text-slate-800/95 dark:text-slate-100">
                     {item.text}
                   </span>
                 </button>
