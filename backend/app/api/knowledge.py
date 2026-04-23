@@ -482,8 +482,9 @@ class SuggestedQuestionsRequest(BaseModel):
 
 @router.post("/suggested-questions")
 async def post_suggested_questions(body: SuggestedQuestionsRequest):
-    """优先从问题池返回推荐问题；仅 refresh=true 时才触发现场重算。"""
+    """优先从问题池/预计算/scope缓存读取；未命中时再现场生成。"""
     try:
+        started = time.perf_counter()
         files_payload = [f.model_dump() for f in body.selected_files]
         fast = await get_precomputed_questions_fast(
             kb_service,
@@ -493,20 +494,18 @@ async def post_suggested_questions(body: SuggestedQuestionsRequest):
             max_questions=body.max_questions,
         )
         if fast and not body.refresh:
+            logger.info(
+                "推荐问题命中 source=question_bank count=%s elapsed_ms=%s",
+                len(fast),
+                int((time.perf_counter() - started) * 1000),
+            )
             return {
                 "questions": fast,
                 "source": "question_bank",
                 "cached": True,
             }
-        if not body.refresh:
-            return {
-                "questions": [],
-                "source": "question_bank",
-                "cached": True,
-                "note": "question_bank_empty",
-            }
 
-        # 仅手动 refresh 时允许重算
+        # 未命中问题池时，继续走预计算/scope缓存/生成逻辑
         result = await build_context_and_questions_payload(
             kb_service,
             kb_mode=body.kb_mode,
@@ -514,8 +513,18 @@ async def post_suggested_questions(body: SuggestedQuestionsRequest):
             selected_files=files_payload,
             max_questions=body.max_questions,
             use_llm=body.use_llm,
-            refresh=True,
+            refresh=body.refresh,
+            prefer_precomputed=body.prefer_precomputed,
         )
+        logger.info(
+            "推荐问题返回 source=%s cached=%s count=%s elapsed_ms=%s",
+            result.get("source"),
+            bool(result.get("cached")),
+            len(result.get("questions") or []),
+            int((time.perf_counter() - started) * 1000),
+        )
+        if not body.refresh and not result.get("questions"):
+            result["note"] = "no_suggestions"
         return result
     except Exception as e:
         logger.error(f"生成推荐问题失败: {str(e)}", exc_info=True)

@@ -10,6 +10,7 @@ import hashlib
 import json
 import random
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -33,6 +34,9 @@ MAX_CAPTION_CHARS = 600
 MAX_KB_SAMPLE_GLOBAL = 8
 MAX_FILES_PER_KB = 5
 PREVIEW_TIMEOUT_SEC = 18.0
+MAX_QUESTION_TEXT_CHARS = 96
+_CACHE_CLEANUP_INTERVAL_SEC = 600
+_last_cache_cleanup_ts = 0.0
 
 
 def _sha256_text(s: str) -> str:
@@ -89,6 +93,55 @@ def _safe_json_loads_array(raw: str) -> List[str]:
                         if t:
                             out.append(t)
                 break
+    return out
+
+
+def _normalize_question_text(text: str) -> str:
+    t = str(text or "").strip()
+    if not t:
+        return ""
+    t = re.sub(r"^[\-\*\d\.\)\s]+", "", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    t = t.strip("，,。;；:：")
+    if not t:
+        return ""
+    if len(t) > MAX_QUESTION_TEXT_CHARS:
+        t = t[: MAX_QUESTION_TEXT_CHARS - 1].strip() + "…"
+    if t[-1] not in ("?", "？"):
+        t = f"{t}？"
+    return t
+
+
+def _canonical_question_key(text: str) -> str:
+    t = _normalize_question_text(text).lower()
+    t = re.sub(r"[?？!！。,.，;；:：]+$", "", t).strip()
+    return t
+
+
+def _normalize_question_items(
+    questions: Sequence[Any],
+    *,
+    kb_name: str,
+    max_q: int,
+) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    seen = set()
+    for q in questions:
+        if isinstance(q, dict):
+            text = _normalize_question_text(str(q.get("text") or ""))
+            q_kb_name = str(q.get("kb_name") or kb_name)
+        else:
+            text = _normalize_question_text(str(q))
+            q_kb_name = kb_name
+        if not text:
+            continue
+        key = _canonical_question_key(text)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append({"text": text, "kb_name": q_kb_name})
+        if len(out) >= max_q:
+            break
     return out
 
 
@@ -210,6 +263,12 @@ def _read_cache(cache_key: str, ttl_sec: int) -> Optional[Dict[str, Any]]:
             return None
         raw = json.loads(path.read_text(encoding="utf-8"))
         if raw.get("cache_key") != cache_key:
+            logger.info(
+                "推荐问题缓存键冲突(文件名截断导致) path=%s expect=%s got=%s",
+                path.name,
+                cache_key[:16],
+                str(raw.get("cache_key") or "")[:16],
+            )
             return None
         return raw
     except Exception as e:
@@ -227,6 +286,32 @@ def _write_cache(cache_key: str, payload: Dict[str, Any]) -> None:
         tmp.replace(path)
     except Exception as e:
         logger.warning("写入推荐问题缓存失败: %s", e)
+
+
+def _cleanup_expired_cache_files(ttl_sec: int = CACHE_TTL_SECONDS_DEFAULT) -> None:
+    global _last_cache_cleanup_ts
+    now = time.time()
+    if now - _last_cache_cleanup_ts < _CACHE_CLEANUP_INTERVAL_SEC:
+        return
+    _last_cache_cleanup_ts = now
+    if not CACHE_DIR.exists():
+        return
+    removed = 0
+    scanned = 0
+    now_ts = datetime.now(timezone.utc).timestamp()
+    for path in CACHE_DIR.glob("*.json"):
+        scanned += 1
+        if path.parent in (PRECOMPUTED_DIR, BANK_DIR):
+            continue
+        try:
+            age = now_ts - path.stat().st_mtime
+            if age > ttl_sec:
+                path.unlink(missing_ok=True)
+                removed += 1
+        except Exception:
+            continue
+    if removed > 0:
+        logger.info("推荐问题缓存清理完成 removed=%s scanned=%s", removed, scanned)
 
 
 def _precomputed_path(kb_id: str) -> Path:
@@ -283,14 +368,15 @@ def add_questions_to_bank(
         return 0
     bank = _read_question_bank(kb_id)
     existing = bank.get("questions", []) or []
-    seen = {str((q or {}).get("text") or "").strip() for q in existing}
+    seen = {_canonical_question_key(str((q or {}).get("text") or "")) for q in existing}
     added = 0
     now = datetime.now(timezone.utc).isoformat()
     for q in questions:
-        text = str((q or {}).get("text") or "").strip()
-        if not text or text in seen:
+        text = _normalize_question_text(str((q or {}).get("text") or ""))
+        key = _canonical_question_key(text)
+        if not text or not key or key in seen:
             continue
-        seen.add(text)
+        seen.add(key)
         existing.append(
             {
                 "id": _sha256_text(f"{kb_id}|{file_id or ''}|{text}")[:16],
@@ -379,6 +465,7 @@ async def get_precomputed_questions_fast(
     - auto/all: 从全库随机挑若干库拼接
     """
     max_q = max(1, min(int(max_questions or 3), 10))
+    _cleanup_expired_cache_files(ttl_sec)
     all_kbs = await kb_service.list_knowledge_bases()
     if not all_kbs:
         return []
@@ -407,7 +494,7 @@ async def get_precomputed_questions_fast(
             seen.add(text)
             pool.append({"text": text, "kb_name": str((q or {}).get("kb_name") or kb_id)})
     random.shuffle(pool)
-    return pool[:max_q]
+    return _normalize_question_items(pool, kb_name="知识库", max_q=max_q)
 
 
 async def _pick_candidate_kbs(
@@ -443,12 +530,15 @@ async def build_context_and_questions_payload(
     max_questions: int,
     use_llm: bool,
     refresh: bool,
+    prefer_precomputed: bool = True,
     cache_ttl_sec: int = CACHE_TTL_SECONDS_DEFAULT,
 ) -> Dict[str, Any]:
     """
     生成推荐问题。返回 questions、source、cached、cache_key 等。
     """
+    t0 = time.perf_counter()
     max_q = max(1, min(int(max_questions or 3), 10))
+    _cleanup_expired_cache_files(cache_ttl_sec)
 
     candidate_kbs = await _pick_candidate_kbs(
         kb_service, kb_mode, knowledge_base_ids, selected_files
@@ -462,6 +552,35 @@ async def build_context_and_questions_payload(
         }
 
     kb_by_id = {k["id"]: k for k in candidate_kbs}
+    # refresh=false 且单库、无文件范围时优先读取预生成快照
+    if (
+        not refresh
+        and prefer_precomputed
+        and len(candidate_kbs) == 1
+        and not selected_files
+    ):
+        kb0 = candidate_kbs[0]
+        pre = _read_precomputed_for_kb(kb0["id"], ttl_sec=cache_ttl_sec)
+        if pre and isinstance(pre.get("questions"), list):
+            questions = _normalize_question_items(
+                pre.get("questions") or [],
+                kb_name=str(kb0.get("name") or kb0["id"]),
+                max_q=max_q,
+            )
+            if questions:
+                logger.info(
+                    "推荐问题预生成缓存命中 kb_id=%s elapsed_ms=%s",
+                    kb0["id"],
+                    int((time.perf_counter() - t0) * 1000),
+                )
+                return {
+                    "questions": questions,
+                    "source": "precomputed",
+                    "cached": True,
+                    "cache_key": pre.get("cache_key"),
+                    "revision": pre.get("revision"),
+                }
+
     portrait_lines_all: List[str] = []
     file_blocks_all: List[str] = []
 
@@ -567,10 +686,15 @@ async def build_context_and_questions_payload(
     if not refresh:
         cached = _read_cache(cache_key, cache_ttl_sec)
         if cached and isinstance(cached.get("questions"), list):
+            questions = _normalize_question_items(
+                cached.get("questions") or [],
+                kb_name="知识库",
+                max_q=max_q,
+            )
             logger.info("推荐问题缓存命中 cache_key=%s...", cache_key[:16])
             return {
-                "questions": cached["questions"][:max_q],
-                "source": cached.get("source", "llm"),
+                "questions": questions,
+                "source": "scope_cache",
                 "cached": True,
                 "cache_key": cache_key,
                 "revision": revision,
@@ -580,7 +704,11 @@ async def build_context_and_questions_payload(
     kb_label = display_kb_names[0] if len(display_kb_names) == 1 else "多个知识库"
 
     if not context.strip():
-        fb = _fallback_questions_from_context(display_kb_names, [], [], max_q)
+        fb = _normalize_question_items(
+            _fallback_questions_from_context(display_kb_names, [], [], max_q),
+            kb_name=kb_label,
+            max_q=max_q,
+        )
         return {
             "questions": fb,
             "source": "fallback",
@@ -625,6 +753,7 @@ async def build_context_and_questions_payload(
                     .get("content", "")
                 )
                 parsed = _safe_json_loads_array(str(raw_content))
+                parsed = [_normalize_question_text(p) for p in parsed if p]
                 parsed = [p for p in parsed if p][:max_q]
                 if len(parsed) >= 1:
                     if len(parsed) < max_q:
@@ -641,7 +770,7 @@ async def build_context_and_questions_payload(
                                 seen.add(item["text"])
                             if len(parsed) >= max_q:
                                 break
-                    questions_out = [{"text": t, "kb_name": kb_label} for t in parsed[:max_q]]
+                    questions_out = _normalize_question_items(parsed[:max_q], kb_name=kb_label, max_q=max_q)
                     source = "llm"
                 else:
                     logger.warning("LLM 未解析到有效问题: %s", raw_content[:200])
@@ -655,8 +784,10 @@ async def build_context_and_questions_payload(
         for block in portrait_lines_all:
             pl_flat.extend(block.split("\n"))
         fb = _fallback_questions_from_context(display_kb_names, pl_flat, file_blocks_all, max_q)
-        questions_out = fb
+        questions_out = _normalize_question_items(fb, kb_name=kb_label, max_q=max_q)
         source = "fallback"
+
+    questions_out = _normalize_question_items(questions_out, kb_name=kb_label, max_q=max_q)
 
     payload = {
         "questions": questions_out,

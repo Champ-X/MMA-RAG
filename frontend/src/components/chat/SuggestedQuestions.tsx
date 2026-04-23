@@ -29,6 +29,8 @@ interface SuggestedQuestionItem {
   kbName: string
 }
 
+type SuggestionStatus = 'degraded' | 'failed' | null
+
 interface KnowledgeFileItem {
   id: string
   name: string
@@ -208,6 +210,40 @@ function takeRandomFromPool(
   return pool.slice(0, max)
 }
 
+function normalizeQuestionText(text: string): string {
+  const normalized = String(text ?? '')
+    .replace(/^[\-\*\d\.\)\s]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!normalized) return ''
+  return normalized.length > 96 ? `${normalized.slice(0, 95)}…` : normalized
+}
+
+function normalizeQuestionKey(text: string): string {
+  return normalizeQuestionText(text).toLowerCase().replace(/[?？!！。,.，;；:：]+$/, '').trim()
+}
+
+function normalizeSuggestedItems(
+  list: Array<{ text?: string; kb_name?: string }>,
+  revision?: string
+): SuggestedQuestionItem[] {
+  const out: SuggestedQuestionItem[] = []
+  const seen = new Set<string>()
+  for (const item of list) {
+    const text = normalizeQuestionText(item?.text ?? '')
+    const key = normalizeQuestionKey(text)
+    if (!text || !key || seen.has(key)) continue
+    seen.add(key)
+    out.push({
+      id: `api-${revision ?? 'x'}-${out.length}`,
+      text,
+      kbName: item?.kb_name || '知识库',
+    })
+    if (out.length >= MAX_QUESTIONS) break
+  }
+  return out
+}
+
 function normalizeFilesList(raw: unknown, allowedIds: Set<string> | null): KnowledgeFileItem[] {
   if (!Array.isArray(raw)) return []
   const list = raw
@@ -291,6 +327,7 @@ export function SuggestedQuestions({
   const { knowledgeBases, fetchKnowledgeBases } = useKnowledgeStore()
   const [loading, setLoading] = useState(false)
   const [questions, setQuestions] = useState<SuggestedQuestionItem[]>([])
+  const [status, setStatus] = useState<SuggestionStatus>(null)
 
   useEffect(() => {
     void fetchKnowledgeBases()
@@ -340,17 +377,19 @@ export function SuggestedQuestions({
   }, [knowledgeBases, scope])
 
   const wallPlacements = useMemo(() => {
-    // 桌面端：便签落在中间红框区域，保持轻微随机与手扎感
+    // 桌面端：保持同一高度基线，仅做轻微扰动；横向分栏并控制间距，降低重叠概率
+    const anchorXs = [16, 50, 84]
+    const baseTop = 18
     return questions.map((item, idx) => {
       const seed = Array.from(item.id).reduce((acc, ch) => acc + ch.charCodeAt(0), 0) + idx * 97
       const rand = (min: number, max: number, salt: number) => {
         const t = Math.abs(Math.sin((seed + salt) * 12.9898) * 43758.5453) % 1
         return min + (max - min) * t
       }
-      const anchorX = [20, 50, 80][idx % 3]
-      const top = rand(-28, 78, 1)
-      const rotate = rand(2, 7, 2) * (idx % 2 === 0 ? -1 : 1)
-      const x = Math.min(84, Math.max(16, anchorX + rand(-6, 6, 3)))
+      const anchorX = anchorXs[idx % anchorXs.length]
+      const top = baseTop + rand(-4, 4, 1)
+      const rotate = rand(2.5, 6.5, 2) * (idx % 2 === 0 ? -1 : 1)
+      const x = Math.min(85, Math.max(15, anchorX + rand(-1.5, 1.5, 3)))
       return { top, rotate, x }
     })
   }, [questions])
@@ -366,6 +405,7 @@ export function SuggestedQuestions({
       }
 
       setLoading(true)
+      setStatus(null)
       try {
         const res = await knowledgeApi.postSuggestedQuestions({
           kb_mode: session?.kbMode ?? 'auto',
@@ -385,13 +425,8 @@ export function SuggestedQuestions({
 
         const list = res?.questions ?? []
         if (list.length > 0) {
-          setQuestions(
-            list.slice(0, MAX_QUESTIONS).map((q, i) => ({
-              id: `api-${res.revision ?? 'x'}-${i}`,
-              text: q.text,
-              kbName: q.kb_name || '知识库',
-            }))
-          )
+          const normalized = normalizeSuggestedItems(list, res.revision)
+          setQuestions(normalized)
           return
         }
       } catch (e) {
@@ -401,7 +436,19 @@ export function SuggestedQuestions({
       if (cancelled) return
 
       const local = await loadLocalSuggestedQuestions(scope, candidateKnowledgeBases, selectedScopeFiles)
-      if (!cancelled) setQuestions(local)
+      if (!cancelled) {
+        if (local.length > 0) {
+          const deduped = normalizeSuggestedItems(
+            local.map((q) => ({ text: q.text, kb_name: q.kbName })),
+            'local'
+          )
+          setQuestions(deduped)
+          setStatus('degraded')
+        } else {
+          setQuestions([])
+          setStatus('failed')
+        }
+      }
     }
 
     void load().finally(() => {
@@ -413,7 +460,7 @@ export function SuggestedQuestions({
     }
   }, [knowledgeBases.length, session?.kbMode, session?.knowledgeBaseIds, selectedScopeFiles, scope, candidateKnowledgeBases])
 
-  if (!loading && questions.length === 0) return null
+  if (!loading && questions.length === 0 && !status) return null
 
   return (
     <div className="mx-auto mt-5 w-full max-w-lg px-1 md:max-w-none md:px-0">
@@ -424,6 +471,16 @@ export function SuggestedQuestions({
         </div>
       ) : (
         <>
+          {status === 'degraded' && (
+            <div className="mb-2 rounded-lg border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-[11px] text-amber-700 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-300">
+              已切换推荐策略
+            </div>
+          )}
+          {status === 'failed' && (
+            <div className="mb-2 rounded-lg border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300">
+              暂时无法生成推荐问题
+            </div>
+          )}
           <ul className="flex flex-col gap-2 md:hidden" aria-label="推荐问题">
             {questions.map((item) => (
               <li key={`mobile-${item.id}`}>
@@ -432,8 +489,8 @@ export function SuggestedQuestions({
                   disabled={disabled}
                   onClick={() => onSelect(item.text)}
                   className={cn(
-                    'group w-full rounded-xl border border-slate-200/80 bg-gradient-to-r from-white via-white to-indigo-50/35 px-3 py-2 text-left shadow-sm transition-all duration-200',
-                    'hover:border-indigo-300/70 hover:from-white hover:to-violet-50/40 hover:shadow-md',
+                    'group w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 text-left shadow-sm transition-all duration-200',
+                    'hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md',
                     'dark:border-slate-700/65 dark:bg-slate-900/55 dark:hover:border-indigo-500/40 dark:hover:bg-slate-900/75',
                     disabled && 'cursor-not-allowed opacity-55 hover:shadow-sm'
                   )}
@@ -464,22 +521,22 @@ export function SuggestedQuestions({
                     transform: `translateX(-50%) rotate(${place.rotate}deg)`,
                   }}
                   className={cn(
-                    'group absolute z-10 w-[30%] min-w-[155px] max-w-[210px] rounded-lg border border-amber-200/70 bg-gradient-to-br from-amber-50/95 via-yellow-50/95 to-orange-50/95 px-2.5 pb-2.5 pt-3 text-left shadow-[0_8px_18px_-10px_rgba(15,23,42,0.4)] transition-all duration-200',
-                    'hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-[0_14px_24px_-10px_rgba(79,70,229,0.35)]',
-                    'dark:border-slate-600/70 dark:bg-gradient-to-br dark:from-slate-800 dark:via-slate-800 dark:to-slate-700',
+                    'group absolute z-10 w-[31%] min-w-[172px] max-w-[220px] rounded-md border border-amber-100/80 bg-amber-50/70 px-3 pb-3 pt-3 text-left shadow-[0_6px_14px_-10px_rgba(15,23,42,0.35)] transition-all duration-200',
+                    'hover:-translate-y-0.5 hover:shadow-[0_10px_18px_-10px_rgba(15,23,42,0.4)]',
+                    'dark:border-slate-600/70 dark:bg-slate-800/95',
                     disabled && 'cursor-not-allowed opacity-60 hover:scale-100 hover:translate-y-0'
                   )}
                 >
                   <span
                     className={cn(
-                      'absolute -top-2.5 left-1/2 -translate-x-1/2 text-base drop-shadow-sm transition-transform duration-200 group-hover:scale-110',
-                      idx === 1 ? 'rotate-[8deg]' : idx === 2 ? '-rotate-[6deg]' : 'rotate-[3deg]'
+                      'absolute -top-2 left-1/2 -translate-x-1/2 text-[14px] opacity-90 transition-transform duration-200 group-hover:scale-105',
+                      idx === 1 ? 'rotate-[6deg]' : idx === 2 ? '-rotate-[4deg]' : 'rotate-[2deg]'
                     )}
                     aria-hidden
                   >
                     📌
                   </span>
-                  <span className="block line-clamp-2 text-[12px] font-medium leading-snug text-slate-800 dark:text-slate-100">
+                  <span className="relative z-10 block line-clamp-2 text-[14px] font-medium leading-snug text-slate-800 dark:text-slate-100">
                     {item.text}
                   </span>
                 </button>
