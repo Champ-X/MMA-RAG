@@ -7,7 +7,7 @@ import asyncio
 import json
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse
-from typing import List
+from typing import List, Optional
 import uuid
 from app.core.logger import get_logger
 from app.modules.ingestion.service import get_ingestion_service
@@ -19,11 +19,24 @@ logger = get_logger(__name__)
 def _ingestion():
     return get_ingestion_service()
 
+
+def _validate_source_type(source_type: Optional[str]) -> Optional[str]:
+    if source_type is None:
+        return None
+    normalized = source_type.strip()
+    if not normalized:
+        return None
+    allowed_source_types = {"manual_input"}
+    if normalized not in allowed_source_types:
+        raise HTTPException(status_code=400, detail=f"不支持的 source_type: {normalized}")
+    return normalized
+
 @router.post("/file")
 async def upload_file(
     kb_id: str = Form(...),
     file: UploadFile = File(...),
-    file_type: str = Form(...)
+    file_type: str = Form(...),
+    source_type: Optional[str] = Form(None),
 ):
     """上传单个文件"""
     try:
@@ -42,6 +55,7 @@ async def upload_file(
         ]
         if file_type not in allowed_types:
             raise HTTPException(status_code=400, detail=f"不支持的文件类型: {file_type}")
+        source_type = _validate_source_type(source_type)
         
         # 读取文件内容
         file_content = await file.read()
@@ -65,7 +79,8 @@ async def upload_file(
             file_content=file_content,
             file_path=filename,
             kb_id=kb_id,
-            user_id=None  # 如果需要用户ID，可以从请求中获取
+            user_id=None,  # 如果需要用户ID，可以从请求中获取
+            source_type=source_type,
         )
         
         logger.info(f"文件处理完成: {filename}, file_id: {result.get('file_id')}, status: {result.get('status')}")
@@ -105,6 +120,7 @@ async def upload_file_stream(
     kb_id: str = Form(...),
     file: UploadFile = File(...),
     file_type: str = Form(...),
+    source_type: Optional[str] = Form(None),
 ):
     """上传单个文件，响应为流式：先返回 processing_id，再持续推送 stage/progress/message，最后返回 result。"""
     try:
@@ -122,6 +138,7 @@ async def upload_file_stream(
         ]
         if file_type not in allowed_types:
             raise HTTPException(status_code=400, detail=f"不支持的文件类型: {file_type}")
+        source_type = _validate_source_type(source_type)
         file_content = await file.read()
         if len(file_content) == 0:
             raise HTTPException(status_code=400, detail="文件内容为空")
@@ -137,6 +154,7 @@ async def upload_file_stream(
                     kb_id=kb_id,
                     user_id=None,
                     processing_id=processing_id,
+                    source_type=source_type,
                 )
             )
             yield json.dumps({"processing_id": processing_id}) + "\n"

@@ -220,6 +220,7 @@ class IngestionService:
         user_id: Optional[str] = None,
         processing_id: Optional[str] = None,
         asset_map: Optional[Dict[str, bytes]] = None,
+        source_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         处理文件上传完整流程
@@ -231,6 +232,7 @@ class IngestionService:
             user_id: 用户ID
             processing_id: 可选，由流式上传接口传入以便前端轮询/流式读取进度
             asset_map: 可选，路径 -> 字节 映射，供 Markdown 解析相对路径图片（如文件夹导入时传入）
+            source_type: 上传来源标记（如 manual_input），用于前端可编辑判定
             
         Returns:
             处理结果
@@ -271,6 +273,9 @@ class IngestionService:
             # 1. 解析文件（asset_map 供 Markdown 相对路径图片解析，如文件夹导入时传入）
             parse_kwargs = dict(asset_map=asset_map) if asset_map else {}
             parse_result = await self.parser_factory.parse_file(file_content, file_path, **parse_kwargs)
+            if source_type:
+                metadata = parse_result.get("metadata") or {}
+                parse_result["metadata"] = {**metadata, "source_type": source_type}
             file_type = parse_result["file_type"]
             
             audit_log(
@@ -1300,6 +1305,7 @@ class IngestionService:
         """将文本分割成块"""
         chunks = []
         file_type = parse_result["file_type"]
+        source_type = (parse_result.get("metadata") or {}).get("source_type")
         # 无 ATX 标题的纯文本式文档在初切后做相邻合并；含 # 的 Markdown 保持按段粒度，不合并
         coalesce_adjacent_chunks = False
 
@@ -1332,6 +1338,8 @@ class IngestionService:
                         "file_type": file_type,
                         "parser": parse_result.get("metadata", {}).get("parser", "pymupdf"),
                     }
+                    if source_type:
+                        chunk_metadata["source_type"] = source_type
                     if paragraph.get("header"):
                         header = paragraph["header"]
                         chunk_metadata["header_level"] = header.get("level")
@@ -1352,7 +1360,8 @@ class IngestionService:
                         "metadata": {
                             "page": page["page"],
                             "file_type": "pdf",
-                            "parser": parse_result.get("metadata", {}).get("parser", "pymupdf")
+                            "parser": parse_result.get("metadata", {}).get("parser", "pymupdf"),
+                            **({"source_type": source_type} if source_type else {}),
                         }
                     })
         elif file_type in ["docx", "pptx", "txt", "md"]:
@@ -1365,6 +1374,8 @@ class IngestionService:
                         chunk_metadata = {
                             "file_type": parse_result["file_type"]
                         }
+                        if source_type:
+                            chunk_metadata["source_type"] = source_type
                         
                         # 如果是markdown且有标题信息，添加到元数据
                         if parse_result["file_type"] == "md" and paragraph.get("header"):
@@ -1395,7 +1406,8 @@ class IngestionService:
                         chunks.append({
                             "text": para.strip(),
                             "metadata": {
-                                "file_type": parse_result["file_type"]
+                                "file_type": parse_result["file_type"],
+                                **({"source_type": source_type} if source_type else {}),
                             }
                         })
                 if file_type == "txt":

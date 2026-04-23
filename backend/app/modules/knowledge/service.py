@@ -8,6 +8,7 @@
 from typing import Dict, List, Any, Optional, Tuple
 import asyncio
 import hashlib
+import json
 import random
 import re
 import uuid
@@ -919,6 +920,30 @@ class KnowledgeBaseService:
                     continue
         return content
 
+    @staticmethod
+    def _normalize_chunk_metadata(metadata_raw: Any) -> Dict[str, Any]:
+        if isinstance(metadata_raw, dict):
+            return metadata_raw
+        if isinstance(metadata_raw, str):
+            try:
+                parsed = json.loads(metadata_raw)
+                return parsed if isinstance(parsed, dict) else {}
+            except Exception:
+                return {}
+        return {}
+
+    def _extract_text_source_info(self, text_points: List[Any]) -> Dict[str, Any]:
+        for point in text_points or []:
+            payload = getattr(point, "payload", None) or {}
+            metadata = self._normalize_chunk_metadata(payload.get("metadata"))
+            source_type = str(metadata.get("source_type") or "").strip() or None
+            if source_type:
+                return {
+                    "source_type": source_type,
+                    "editable": source_type == "manual_input",
+                }
+        return {"source_type": None, "editable": False}
+
     def _scroll_image_points_by_file_id(self, file_id: str):
         """按 file_id 全局查询 image_vectors（不限制 kb_id），用于兜底。"""
         from qdrant_client.http.models import Filter, FieldCondition, MatchValue
@@ -1009,7 +1034,15 @@ class KnowledgeBaseService:
         不依赖 _kb_storage，直接按候选查询向量库，以支持已有知识库中的文件。
         图片描述：先按 (kb_id, file_id) 查；若所有候选都无结果，则直接按 file_id 全局查。
         """
-        result: Dict[str, Any] = {"caption": None, "chunks": [], "text_preview": None, "transcript": None, "description": None}
+        result: Dict[str, Any] = {
+            "caption": None,
+            "chunks": [],
+            "text_preview": None,
+            "transcript": None,
+            "description": None,
+            "editable": False,
+            "source_type": None,
+        }
         from qdrant_client.http.models import Filter, FieldCondition, MatchValue
 
         def _payload(p) -> Dict[str, Any]:
@@ -1122,6 +1155,10 @@ class KnowledgeBaseService:
                     None,
                     lambda c=candidate: self._scroll_text_points(c, file_id),
                 )
+                source_info = self._extract_text_source_info(text_points)
+                if source_info["source_type"] and not result.get("source_type"):
+                    result["source_type"] = source_info["source_type"]
+                    result["editable"] = source_info["editable"]
                 chunks_raw = []
                 for r in text_points:
                     p = _payload(getattr(r, "payload", None))
@@ -1163,6 +1200,10 @@ class KnowledgeBaseService:
                     None,
                     lambda: self._scroll_text_points_by_file_id(file_id),
                 )
+                source_info = self._extract_text_source_info(text_points)
+                if source_info["source_type"] and not result.get("source_type"):
+                    result["source_type"] = source_info["source_type"]
+                    result["editable"] = source_info["editable"]
                 chunks_raw = []
                 for r in text_points:
                     p = _payload(getattr(r, "payload", None))
@@ -1213,6 +1254,66 @@ class KnowledgeBaseService:
                 logger.debug(f"file_id 全局查询音频预览失败 {file_id}: {e}")
 
         return result
+
+    async def replace_manual_file_content(
+        self, kb_id: str, file_id: str, filename: str, content: str
+    ) -> Dict[str, Any]:
+        """替换手动输入的 Markdown 文档：新内容入库成功后再删除旧文件；若删除失败则回滚新文件。"""
+        normalized_name = filename.replace("\\", "/").split("/")[-1].strip()
+        if not normalized_name:
+            raise ValueError("文件名不能为空")
+        if not content.strip():
+            raise ValueError("内容不能为空")
+        if not normalized_name.lower().endswith(".md"):
+            stem = normalized_name.rsplit(".", 1)[0] if "." in normalized_name else normalized_name
+            normalized_name = f"{stem}.md"
+
+        existing = await self.get_file_stream_info(kb_id, file_id)
+        if not existing:
+            raise FileNotFoundError("文件不存在")
+
+        preview = await self.get_file_preview_details(kb_id, file_id)
+        if preview.get("source_type") != "manual_input" or not preview.get("editable"):
+            raise PermissionError("仅支持编辑手动输入生成的 Markdown 文档")
+
+        from app.modules.ingestion.service import get_ingestion_service
+
+        ingestion_service = get_ingestion_service()
+        new_result = await ingestion_service.process_file_upload(
+            file_content=content.encode("utf-8"),
+            file_path=normalized_name,
+            kb_id=kb_id,
+            source_type="manual_input",
+        )
+        new_file_id = str(new_result.get("file_id") or "")
+        if not new_file_id:
+            raise RuntimeError("新文件入库成功但未返回 file_id")
+
+        try:
+            deleted_old = await self.delete_kb_file(kb_id, file_id)
+            if not deleted_old:
+                raise RuntimeError("旧文件删除失败")
+        except Exception as delete_err:
+            try:
+                await self.delete_kb_file(kb_id, new_file_id)
+            except Exception as rollback_err:
+                logger.error(
+                    "回滚新手动文档失败 kb_id={} new_file_id={}: {}",
+                    kb_id,
+                    new_file_id,
+                    rollback_err,
+                )
+            raise RuntimeError(f"新内容已回滚，旧文件删除失败: {delete_err}") from delete_err
+
+        return {
+            "file_id": new_file_id,
+            "old_file_id": file_id,
+            "kb_id": kb_id,
+            "filename": normalized_name,
+            "status": new_result.get("status", "completed"),
+            "processing_id": new_result.get("processing_id"),
+            "message": "手动输入文档已更新",
+        }
 
     async def list_kb_files(self, kb_id: str) -> List[Dict[str, Any]]:
         """列出知识库下的文件，图片和 PDF 附带 preview_url。不依赖 _kb_storage，按 kb_id 解析桶名以支持已有知识库。

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, HardDrive, Calendar, Activity, MoreHorizontal, ChevronDown } from 'lucide-react'
 import { PortraitGraph } from './PortraitGraph'
@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import { StatusBadge, FileThumb, FileHero, FileIcon, CreateKbModal, EditKbModal, isAudioType, isVideoType } from './KnowledgeListHelpers'
 import { ExcelPreview } from './ExcelPreview'
+
+const ManualInputModal = React.lazy(() => import('./ManualInputModal'))
 
 /** 预览区 / 分块区加载占位：居中、旋转指示与骨架，避免大片空白只有一行字 */
 function PreviewPaneLoading({
@@ -115,26 +117,39 @@ function MediaDescriptionPanel({
   )
 }
 
+type FilePreviewDetails = {
+  caption?: string
+  chunks?: Array<{ index: number; text: string }>
+  text_preview?: string
+  transcript?: string
+  description?: string
+  editable?: boolean
+  source_type?: string | null
+}
+
+type ManualInputDraft = {
+  mode: 'create' | 'edit'
+  fileId?: string
+  initialFilename: string
+  initialContent: string
+}
+
 // 文件预览模态框（支持图片描述、文档分块、MD 预览）
 function FilePreviewModal({
   file,
   kbId,
   onClose,
   onDelete,
+  onEdit,
 }: {
   file: any
   kbId: string | null
   onClose: () => void
   onDelete: () => void
+  onEdit?: (payload: { fileId: string; filename: string; content: string }) => void
 }) {
   const [tab, setTab] = React.useState<'preview' | 'chunks'>('preview')
-  const [details, setDetails] = React.useState<{
-    caption?: string
-    chunks?: Array<{ index: number; text: string }>
-    text_preview?: string
-    transcript?: string
-    description?: string
-  } | null>(null)
+  const [details, setDetails] = React.useState<FilePreviewDetails | null>(null)
   const [rawContent, setRawContent] = React.useState<string | null>(null)
   /** /preview 接口（分块、图注、text_preview 等）；与文件流 /stream、/content 独立，避免分块被慢请求拖住 */
   const [loadingPreviewDetails, setLoadingPreviewDetails] = React.useState(false)
@@ -331,6 +346,7 @@ function FilePreviewModal({
 
   // Markdown 预览仅使用原始文件内容（MinIO 中的原文），避免显示插入了图注后的分块文本导致重复/错乱
   const textPreview = isMd ? (rawContent ?? '') : (file?.textPreview ?? details?.text_preview ?? rawContent ?? '')
+  const canEditManualInput = Boolean(details?.editable && isMd && file?.id)
 
   const renderTextPreviewCard = (extraHint?: React.ReactNode) => (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
@@ -725,6 +741,34 @@ function FilePreviewModal({
 
         {/* 底部操作栏：与 Tab 区一致的浅底与分隔；次要 / 危险按钮分层 */}
         <div className="px-6 py-4 bg-slate-50/95 dark:bg-slate-900/85 border-t border-slate-100 dark:border-slate-800/90 flex justify-end gap-2.5 flex-shrink-0">
+          {canEditManualInput && (
+            <button
+              onClick={() => {
+                if (!file?.id || rawContent == null || !onEdit) return
+                onEdit({
+                  fileId: file.id,
+                  filename: file.name,
+                  content: rawContent,
+                })
+              }}
+              disabled={loadingRawText || !onEdit || rawContent == null}
+              className={cn(
+                'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold',
+                'border border-indigo-200/90 bg-white text-indigo-700 shadow-sm shadow-indigo-100/40',
+                'dark:border-indigo-900/55 dark:bg-slate-900 dark:text-indigo-300 dark:shadow-none',
+                'hover:bg-indigo-600 hover:border-indigo-600 hover:text-white hover:shadow-md hover:shadow-indigo-500/25',
+                'dark:hover:bg-indigo-600 dark:hover:border-indigo-500 dark:hover:text-white',
+                'disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white disabled:hover:text-indigo-700',
+                'dark:disabled:hover:bg-slate-900 dark:disabled:hover:text-indigo-300',
+                'active:scale-[0.98] transition-all duration-200 ease-out',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-slate-900'
+              )}
+              type="button"
+            >
+              <Pencil className="h-4 w-4 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
+              {loadingRawText ? '加载内容中…' : '编辑内容'}
+            </button>
+          )}
           <button
             onClick={onClose}
             className={cn(
@@ -1772,6 +1816,7 @@ const KnowledgeList: React.FC = () => {
   const [showImportSearchModal, setShowImportSearchModal] = useState(false)
   const [showImportFolderModal, setShowImportFolderModal] = useState(false)
   const [showImportHotTopicsModal, setShowImportHotTopicsModal] = useState(false)
+  const [manualInputDraft, setManualInputDraft] = useState<ManualInputDraft | null>(null)
   const [uploading, setUploading] = useState(false)
   /** URL 异步导入的 processing_id，用于轮询进度并在上传流水线中展示 */
   const [urlImportProcessingId, setUrlImportProcessingId] = useState<string | null>(null)
@@ -1830,6 +1875,15 @@ const KnowledgeList: React.FC = () => {
       setFiles([])
     }
   }, [activeKbId])
+
+  const refreshKbDetail = useCallback(async () => {
+    if (!activeKbId) return
+    await Promise.all([
+      fetchKnowledgeBases(),
+      fetchFiles(),
+      knowledgeApi.getKnowledgeBaseStats(activeKbId).then(setKbStats).catch(() => setKbStats(null)),
+    ])
+  }, [activeKbId, fetchFiles, fetchKnowledgeBases])
 
   useEffect(() => {
     if (viewState === 'detail' && activeKbId) fetchFiles()
@@ -1994,7 +2048,7 @@ const KnowledgeList: React.FC = () => {
   }
 
   // 处理文件上传（逐个上传，保证进度正确）
-  const handleFileUpload = async (fileList: File[]) => {
+  const handleFileUpload = async (fileList: File[], options?: { sourceType?: string }) => {
     if (!activeKbId || fileList.length === 0) return
     setCurrentUploadFiles(fileList)
     setUploading(true)
@@ -2034,45 +2088,51 @@ const KnowledgeList: React.FC = () => {
         await new Promise((r) => setTimeout(r, 0))
 
         try {
-          await knowledgeApi.uploadSingleFileStream(activeKbId, file, fileType, (status) => {
-            // 流式进度：后端 stage 映射到前端，且只前进不后退，与真实流程一致
-            const stage = status.stage
-            const progress = status.progress ?? 0
-            const frontStage: UploadPipelineProgress['stage'] | null =
-              stage === 'initializing' || stage === 'uploading'
-                ? 'minio'
-                : stage === 'parsing' || stage === 'processing'
-                  ? 'parsing'
-                  : stage === 'vectorizing'
-                    ? 'vectorizing'
-                    : stage === 'completed'
-                      ? 'portrait'
-                      : null
-            if (frontStage === null) return
-            const stageOrder: Record<UploadPipelineProgress['stage'], number> = {
-              idle: -1,
-              minio: 0,
-              parsing: 1,
-              vectorizing: 2,
-              portrait: 3,
-              done: 4,
-            }
-            flushSync(() => {
-              setUploadProgress((prev) => {
-                if (!prev) return prev
-                const currentIndex = stageOrder[prev.stage] ?? -1
-                const newIndex = stageOrder[frontStage]
-                if (newIndex < currentIndex) return prev
-                return {
-                  ...prev,
-                  stage: frontStage,
-                  stageProgress: progress,
-                  currentFile: file.name,
-                  currentFileIsImage: isImage,
-                }
+          await knowledgeApi.uploadSingleFileStream(
+            activeKbId,
+            file,
+            fileType,
+            (status) => {
+              // 流式进度：后端 stage 映射到前端，且只前进不后退，与真实流程一致
+              const stage = status.stage
+              const progress = status.progress ?? 0
+              const frontStage: UploadPipelineProgress['stage'] | null =
+                stage === 'initializing' || stage === 'uploading'
+                  ? 'minio'
+                  : stage === 'parsing' || stage === 'processing'
+                    ? 'parsing'
+                    : stage === 'vectorizing'
+                      ? 'vectorizing'
+                      : stage === 'completed'
+                        ? 'portrait'
+                        : null
+              if (frontStage === null) return
+              const stageOrder: Record<UploadPipelineProgress['stage'], number> = {
+                idle: -1,
+                minio: 0,
+                parsing: 1,
+                vectorizing: 2,
+                portrait: 3,
+                done: 4,
+              }
+              flushSync(() => {
+                setUploadProgress((prev) => {
+                  if (!prev) return prev
+                  const currentIndex = stageOrder[prev.stage] ?? -1
+                  const newIndex = stageOrder[frontStage]
+                  if (newIndex < currentIndex) return prev
+                  return {
+                    ...prev,
+                    stage: frontStage,
+                    stageProgress: progress,
+                    currentFile: file.name,
+                    currentFileIsImage: isImage,
+                  }
+                })
               })
-            })
-          })
+            },
+            { sourceType: options?.sourceType }
+          )
           completed += 1
           flushSync(() => {
             setUploadProgress((prev) => ({
@@ -2108,13 +2168,61 @@ const KnowledgeList: React.FC = () => {
         completed,
         failed,
       }))
-      await fetchKnowledgeBases()
-      await fetchFiles()
+      await refreshKbDetail()
     } finally {
       setUploading(false)
       setCurrentUploadFiles(null)
       setTimeout(() => setUploadProgress(undefined), 2000)
     }
+  }
+
+  const handleCreateManualInput = async ({
+    filename,
+    content,
+  }: {
+    filename: string
+    content: string
+  }) => {
+    if (!activeKbId) throw new Error('请先选择知识库')
+    const file = new File([content], filename, { type: 'text/markdown' })
+    setManualInputDraft(null)
+    await handleFileUpload([file], { sourceType: 'manual_input' })
+  }
+
+  const handleOpenManualEditor = ({
+    fileId,
+    filename,
+    content,
+  }: {
+    fileId: string
+    filename: string
+    content: string
+  }) => {
+    setManualInputDraft({
+      mode: 'edit',
+      fileId,
+      initialFilename: filename,
+      initialContent: content,
+    })
+  }
+
+  const handleReplaceManualInput = async ({
+    filename,
+    content,
+  }: {
+    filename: string
+    content: string
+  }) => {
+    if (!activeKbId || manualInputDraft?.mode !== 'edit' || !manualInputDraft.fileId) {
+      throw new Error('缺少待编辑的手动文档信息')
+    }
+    await knowledgeApi.replaceManualFileContent(activeKbId, manualInputDraft.fileId, {
+      filename,
+      content,
+    })
+    setManualInputDraft(null)
+    setPreviewFile(null)
+    await refreshKbDetail()
   }
 
   const handleDeleteKb = async (kbId: string) => {
@@ -2548,7 +2656,40 @@ const KnowledgeList: React.FC = () => {
               uploadProgress={uploadProgress}
               externalFiles={currentUploadFiles}
             >
-              <div className="mb-4 flex items-center gap-3">
+              <div className="mb-5">
+                <div className="mb-4 flex items-center gap-3">
+                  <Pencil
+                    className="h-5 w-5 shrink-0 text-indigo-600 opacity-90 drop-shadow-[0_1px_2px_rgba(99,102,241,0.22)] dark:text-indigo-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]"
+                    strokeWidth={2.25}
+                    aria-hidden
+                  />
+                  <span className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">手动输入</span>
+                </div>
+                <button
+                  type="button"
+                  disabled={uploading}
+                  onClick={() =>
+                    setManualInputDraft({
+                      mode: 'create',
+                      initialFilename: '未命名文档.md',
+                      initialContent: '',
+                    })
+                  }
+                  className="group inline-flex w-full items-center gap-3 rounded-xl border border-slate-200/80 bg-white px-4 py-3.5 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-gradient-to-br hover:from-indigo-50 hover:to-fuchsia-50 hover:shadow-md hover:shadow-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 dark:border-slate-600/80 dark:bg-slate-800/60 dark:text-slate-200 dark:hover:border-indigo-500/80 dark:hover:from-indigo-950/40 dark:hover:to-fuchsia-950/30"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/12 text-indigo-600 shadow-inner transition-colors group-hover:bg-indigo-500/20 dark:bg-indigo-400/20 dark:text-indigo-400 dark:group-hover:bg-indigo-400/30">
+                    <FileText size={20} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-left">新建 Markdown 文档</span>
+                    <span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-slate-400">
+                      输入文本后直接按上传链路分块、向量化并入库
+                    </span>
+                  </span>
+                </button>
+              </div>
+
+              <div className="mb-4 flex items-center gap-3 border-t border-slate-200 pt-4 dark:border-slate-700">
                 <Zap
                   className="h-5 w-5 shrink-0 text-amber-600 opacity-90 drop-shadow-[0_1px_2px_rgba(245,158,11,0.22)] dark:text-amber-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]"
                   strokeWidth={2.25}
@@ -2976,11 +3117,29 @@ const KnowledgeList: React.FC = () => {
             file={previewFile}
             kbId={activeKbId}
             onClose={() => setPreviewFile(null)}
+            onEdit={handleOpenManualEditor}
             onDelete={() => {
               handleDeleteFile(previewFile.id)
               setPreviewFile(null)
             }}
           />
+        )}
+
+        {manualInputDraft && (
+          <Suspense fallback={null}>
+            <ManualInputModal
+              open={!!manualInputDraft}
+              mode={manualInputDraft.mode}
+              initialFilename={manualInputDraft.initialFilename}
+              initialContent={manualInputDraft.initialContent}
+              onClose={() => setManualInputDraft(null)}
+              onSubmit={
+                manualInputDraft.mode === 'create'
+                  ? handleCreateManualInput
+                  : handleReplaceManualInput
+              }
+            />
+          </Suspense>
         )}
 
         {/* 从 URL 导入弹窗 */}

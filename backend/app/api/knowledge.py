@@ -30,6 +30,11 @@ portrait_generator = PortraitGenerator()
 _office_preview_locks: Dict[str, asyncio.Lock] = {}
 
 
+class ReplaceManualFileContentRequest(BaseModel):
+    filename: str = Field(..., min_length=1, description="新的 Markdown 文件名")
+    content: str = Field(..., description="新的 Markdown 正文内容")
+
+
 def _build_inline_content_disposition(filename: str) -> str:
     try:
         filename.encode("ascii")
@@ -238,6 +243,36 @@ async def get_file_content(kb_id: str, file_id: str):
         raise
     except Exception as e:
         logger.error(f"获取文件内容失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{kb_id}/files/{file_id:path}/content")
+async def replace_manual_file_content(
+    kb_id: str,
+    file_id: str,
+    body: ReplaceManualFileContentRequest,
+):
+    """替换手动输入文档内容：新内容入库成功后删除旧文件；失败时自动回滚。"""
+    try:
+        kb = await kb_service.get_knowledge_base(kb_id)
+        if not kb:
+            raise HTTPException(status_code=404, detail="知识库不存在")
+        return await kb_service.replace_manual_file_content(
+            kb_id=kb_id,
+            file_id=file_id,
+            filename=body.filename,
+            content=body.content,
+        )
+    except HTTPException:
+        raise
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"替换手动输入文档失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

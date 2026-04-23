@@ -398,10 +398,28 @@ export const knowledgeApi = {
       text_preview?: string
       transcript?: string
       description?: string
+      editable?: boolean
+      source_type?: string | null
     }>(
       `/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/preview`,
       options?.timeoutMs ? { timeout: options.timeoutMs } : undefined
     ),
+
+  // 替换手动输入文档内容：新内容入库成功后删除旧文件
+  replaceManualFileContent: (
+    kbId: string,
+    fileId: string,
+    body: { filename: string; content: string }
+  ) =>
+    apiClient.put<{
+      file_id?: string
+      old_file_id?: string
+      kb_id?: string
+      filename?: string
+      status?: string
+      processing_id?: string
+      message?: string
+    }>(`/knowledge/${kbId}/files/${encodeURIComponent(fileId)}/content`, body, { timeout: 180000 }),
 
   // 获取文件流（用于页面内 PDF/Office 预览，返回 Blob）
   getFileStream: (kbId: string, fileId: string, options?: { timeoutMs?: number }) =>
@@ -449,9 +467,19 @@ export const knowledgeApi = {
         message?: string
         details?: { chunks_processed?: number; vectors_stored?: number; caption?: string }
       }
-    }) => void
+    }) => void,
+    options?: { sourceType?: string }
   ) =>
-    apiClient.uploadFileStream(`/upload/file/stream`, file, { kb_id: kbId, file_type: fileType }, onStatus),
+    apiClient.uploadFileStream(
+      `/upload/file/stream`,
+      file,
+      {
+        kb_id: kbId,
+        file_type: fileType,
+        ...(options?.sourceType ? { source_type: options.sourceType } : {}),
+      },
+      onStatus
+    ),
 
   /** 获取上传/导入任务进度（用于 URL 导入轮询） */
   getUploadProgress: (taskId: string) =>
