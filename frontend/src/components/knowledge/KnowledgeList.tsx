@@ -2656,88 +2656,100 @@ const KnowledgeList: React.FC = () => {
               uploadProgress={uploadProgress}
               externalFiles={currentUploadFiles}
             >
-              <div className="mb-5">
-                <div className="mb-4 flex items-center gap-3">
-                  <Pencil
-                    className="h-5 w-5 shrink-0 text-indigo-600 opacity-90 drop-shadow-[0_1px_2px_rgba(99,102,241,0.22)] dark:text-indigo-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]"
-                    strokeWidth={2.25}
-                    aria-hidden
-                  />
-                  <span className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">手动输入</span>
-                </div>
-                <button
-                  type="button"
-                  disabled={uploading}
-                  onClick={() =>
-                    setManualInputDraft({
-                      mode: 'create',
-                      initialFilename: '未命名文档.md',
-                      initialContent: '',
-                    })
-                  }
-                  className="group inline-flex w-full items-center gap-3 rounded-xl border border-slate-200/80 bg-white px-4 py-3.5 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-gradient-to-br hover:from-indigo-50 hover:to-fuchsia-50 hover:shadow-md hover:shadow-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 dark:border-slate-600/80 dark:bg-slate-800/60 dark:text-slate-200 dark:hover:border-indigo-500/80 dark:hover:from-indigo-950/40 dark:hover:to-fuchsia-950/30"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/12 text-indigo-600 shadow-inner transition-colors group-hover:bg-indigo-500/20 dark:bg-indigo-400/20 dark:text-indigo-400 dark:group-hover:bg-indigo-400/30">
-                    <FileText size={20} />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-left">新建 Markdown 文档</span>
-                    <span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-slate-400">
-                      输入文本后直接按上传链路分块、向量化并入库
+              <div className="grid gap-3 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.7fr)]">
+                <div>
+                  <div className="mb-2.5 flex items-center gap-2.5">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/12 text-indigo-600 dark:bg-indigo-400/20 dark:text-indigo-400">
+                      <Pencil className="h-4 w-4" strokeWidth={2.25} aria-hidden />
                     </span>
-                  </span>
-                </button>
-              </div>
+                    <span className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">手动输入</span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={uploading}
+                    onClick={() =>
+                      setManualInputDraft({
+                        mode: 'create',
+                        initialFilename: '未命名文档.md',
+                        initialContent: '',
+                      })
+                    }
+                    className="group flex min-h-[5.5rem] w-full items-center gap-3 rounded-2xl border border-indigo-100/80 bg-gradient-to-br from-white to-indigo-50/55 px-3.5 py-3 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-lg hover:shadow-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 dark:border-indigo-900/50 dark:from-slate-950/80 dark:to-indigo-950/30 dark:text-slate-200 dark:hover:border-indigo-500/80"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/12 text-indigo-600 shadow-inner transition-colors group-hover:bg-indigo-500/20 dark:bg-indigo-400/20 dark:text-indigo-400">
+                      <FileText size={18} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-left font-semibold text-slate-900 dark:text-slate-50">新建 Markdown 文档</span>
+                      <span className="mt-0.5 block text-xs font-normal leading-relaxed text-slate-500 dark:text-slate-400">
+                        输入文本后直接分块、向量化并入库
+                      </span>
+                    </span>
+                  </button>
+                </div>
 
-              <div className="mb-4 flex items-center gap-3 border-t border-slate-200 pt-4 dark:border-slate-700">
-                <Zap
-                  className="h-5 w-5 shrink-0 text-amber-600 opacity-90 drop-shadow-[0_1px_2px_rgba(245,158,11,0.22)] dark:text-amber-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]"
-                  strokeWidth={2.25}
-                  aria-hidden
-                />
-                <span className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">自动导入</span>
-              </div>
-              <div className="flex flex-wrap gap-4">
-                <button
-                  type="button"
-                  onClick={() => setShowImportUrlModal(true)}
-                  className="group flex-1 min-w-[140px] inline-flex items-center gap-3 px-4 py-3.5 rounded-xl border border-slate-200/80 dark:border-slate-600/80 bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 text-sm font-medium shadow-sm transition-all duration-200 hover:border-blue-300 dark:hover:border-blue-500/80 hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 dark:hover:from-blue-950/40 dark:hover:to-indigo-950/30 hover:shadow-md hover:shadow-blue-500/10 hover:-translate-y-0.5 active:translate-y-0"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/12 dark:bg-blue-400/20 text-blue-600 dark:text-blue-400 shadow-inner group-hover:bg-blue-500/20 dark:group-hover:bg-blue-400/30 transition-colors">
-                    <Link2 size={20} />
-                  </span>
-                  <span className="text-left">从 URL 导入</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowImportSearchModal(true)}
-                  className="group flex-1 min-w-[140px] inline-flex items-center gap-3 px-4 py-3.5 rounded-xl border border-slate-200/80 dark:border-slate-600/80 bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 text-sm font-medium shadow-sm transition-all duration-200 hover:border-violet-300 dark:hover:border-violet-500/80 hover:bg-gradient-to-br hover:from-violet-50 hover:to-fuchsia-50 dark:hover:from-violet-950/40 dark:hover:to-fuchsia-950/30 hover:shadow-md hover:shadow-violet-500/10 hover:-translate-y-0.5 active:translate-y-0"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/12 dark:bg-violet-400/20 text-violet-600 dark:text-violet-400 shadow-inner group-hover:bg-violet-500/20 dark:group-hover:bg-violet-400/30 transition-colors">
-                    <ImagePlus size={20} />
-                  </span>
-                  <span className="text-left">搜索图片导入</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowImportFolderModal(true)}
-                  className="group flex-1 min-w-[140px] inline-flex items-center gap-3 px-4 py-3.5 rounded-xl border border-slate-200/80 dark:border-slate-600/80 bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 text-sm font-medium shadow-sm transition-all duration-200 hover:border-amber-300 dark:hover:border-amber-500/80 hover:bg-gradient-to-br hover:from-amber-50 hover:to-orange-50 dark:hover:from-amber-950/40 dark:hover:to-orange-950/30 hover:shadow-md hover:shadow-amber-500/10 hover:-translate-y-0.5 active:translate-y-0"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/12 dark:bg-amber-400/20 text-amber-600 dark:text-amber-400 shadow-inner group-hover:bg-amber-500/20 dark:group-hover:bg-amber-400/30 transition-colors">
-                    <FolderOpen size={20} />
-                  </span>
-                  <span className="text-left">从文件夹导入</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowImportHotTopicsModal(true)}
-                  className="group flex-1 min-w-[140px] inline-flex items-center gap-3 px-4 py-3.5 rounded-xl border border-slate-200/80 dark:border-slate-600/80 bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 text-sm font-medium shadow-sm transition-all duration-200 hover:border-emerald-300 dark:hover:border-emerald-500/80 hover:bg-gradient-to-br hover:from-emerald-50 hover:to-teal-50 dark:hover:from-emerald-950/40 dark:hover:to-teal-950/30 hover:shadow-md hover:shadow-emerald-500/10 hover:-translate-y-0.5 active:translate-y-0"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/12 dark:bg-emerald-400/20 text-emerald-600 dark:text-emerald-400 shadow-inner group-hover:bg-emerald-500/20 dark:group-hover:bg-emerald-400/30 transition-colors">
-                    <Newspaper size={20} />
-                  </span>
-                  <span className="text-left">热点资讯导入</span>
-                </button>
+                <div>
+                  <div className="mb-2.5 flex items-center gap-2.5">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/12 text-amber-600 dark:bg-amber-400/20 dark:text-amber-400">
+                      <Zap className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                    </span>
+                    <span className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">自动导入</span>
+                  </div>
+                  <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowImportUrlModal(true)}
+                      className="group inline-flex min-h-[5.5rem] items-center gap-3 rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 hover:shadow-lg hover:shadow-blue-500/10 active:translate-y-0 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:border-blue-500/80 dark:hover:from-blue-950/40 dark:hover:to-indigo-950/30"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-500/12 text-blue-600 shadow-inner transition-colors group-hover:bg-blue-500/20 dark:bg-blue-400/20 dark:text-blue-400">
+                        <Link2 size={18} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block font-semibold text-slate-900 dark:text-slate-50">URL 导入</span>
+                        <span className="mt-0.5 block text-xs font-normal leading-relaxed text-slate-500 dark:text-slate-400">网页或文件直链</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowImportSearchModal(true)}
+                      className="group inline-flex min-h-[5.5rem] items-center gap-3 rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-300 hover:bg-gradient-to-br hover:from-violet-50 hover:to-fuchsia-50 hover:shadow-lg hover:shadow-violet-500/10 active:translate-y-0 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:border-violet-500/80 dark:hover:from-violet-950/40 dark:hover:to-fuchsia-950/30"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/12 text-violet-600 shadow-inner transition-colors group-hover:bg-violet-500/20 dark:bg-violet-400/20 dark:text-violet-400">
+                        <ImagePlus size={18} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block font-semibold text-slate-900 dark:text-slate-50">图片搜索</span>
+                        <span className="mt-0.5 block text-xs font-normal leading-relaxed text-slate-500 dark:text-slate-400">按关键词批量导入</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowImportFolderModal(true)}
+                      className="group inline-flex min-h-[5.5rem] items-center gap-3 rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-300 hover:bg-gradient-to-br hover:from-amber-50 hover:to-orange-50 hover:shadow-lg hover:shadow-amber-500/10 active:translate-y-0 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:border-amber-500/80 dark:hover:from-amber-950/40 dark:hover:to-orange-950/30"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/12 text-amber-600 shadow-inner transition-colors group-hover:bg-amber-500/20 dark:bg-amber-400/20 dark:text-amber-400">
+                        <FolderOpen size={18} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block font-semibold text-slate-900 dark:text-slate-50">文件夹</span>
+                        <span className="mt-0.5 block text-xs font-normal leading-relaxed text-slate-500 dark:text-slate-400">本地或服务端路径</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowImportHotTopicsModal(true)}
+                      className="group inline-flex min-h-[5.5rem] items-center gap-3 rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-gradient-to-br hover:from-emerald-50 hover:to-teal-50 hover:shadow-lg hover:shadow-emerald-500/10 active:translate-y-0 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:border-emerald-500/80 dark:hover:from-emerald-950/40 dark:hover:to-teal-950/30"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-600 shadow-inner transition-colors group-hover:bg-emerald-500/20 dark:bg-emerald-400/20 dark:text-emerald-400">
+                        <Newspaper size={18} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block font-semibold text-slate-900 dark:text-slate-50">热点资讯</span>
+                        <span className="mt-0.5 block text-xs font-normal leading-relaxed text-slate-500 dark:text-slate-400">自动抓取新闻素材</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </UploadPipeline>
 

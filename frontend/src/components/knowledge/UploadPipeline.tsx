@@ -162,24 +162,34 @@ export function UploadPipeline({
   }, [displayFiles.length])
 
   return (
-    <div className={cn('bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm', className)}>
-      <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800">
-        <h3 className="flex items-center gap-3 font-semibold tracking-tight text-slate-800 dark:text-slate-100">
-          <Upload
-            className="h-5 w-5 shrink-0 text-indigo-600 opacity-90 drop-shadow-[0_1px_2px_rgba(99,102,241,0.15)] dark:text-indigo-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
-            strokeWidth={2.25}
-            aria-hidden
-          />
-          上传文件
-        </h3>
+    <div className={cn('overflow-hidden rounded-2xl border border-white/75 bg-white/86 shadow-lg shadow-slate-200/40 backdrop-blur-sm dark:border-slate-800/80 dark:bg-slate-950/80 dark:shadow-black/20', className)}>
+      <div className="relative overflow-hidden border-b border-slate-100/80 bg-gradient-to-r from-indigo-50/80 via-white/90 to-fuchsia-50/50 px-5 py-4 dark:border-slate-800/70 dark:from-slate-900/90 dark:via-slate-950/90 dark:to-indigo-950/25 sm:px-6">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-indigo-400/15 blur-3xl dark:bg-indigo-500/10" />
+        <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 text-white shadow-md shadow-indigo-500/25 ring-1 ring-white/30">
+              <Upload className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+            </span>
+            <div>
+              <h3 className="font-semibold tracking-tight text-slate-900 dark:text-slate-50">上传与导入</h3>
+              <p className="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                支持本地文件、Markdown 手动输入、URL 与批量导入，处理进度会在下方实时展示。
+              </p>
+            </div>
+          </div>
+          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-indigo-100 bg-white/70 px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm dark:border-indigo-900/60 dark:bg-slate-950/60 dark:text-indigo-200">
+            <span className={cn('h-2 w-2 rounded-full', isUploading ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500')} />
+            {isUploading ? '正在处理' : '可拖拽上传'}
+          </span>
+        </div>
       </div>
-      <div className="p-6 space-y-6">
+      <div className="space-y-4 p-4 sm:p-5">
         <div
           className={cn(
-            'cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors',
+            'group relative cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed px-5 py-5 text-center transition-all duration-200 sm:px-6',
             isDragging
-              ? 'border-indigo-400 dark:border-fuchsia-500 bg-indigo-50/50 dark:bg-fuchsia-500/10'
-              : 'border-slate-300 dark:border-slate-700 hover:border-fuchsia-400 dark:hover:border-fuchsia-500 hover:bg-slate-50 dark:hover:bg-slate-900/60'
+              ? 'scale-[1.01] border-indigo-400 bg-indigo-50/80 shadow-lg shadow-indigo-500/10 dark:border-fuchsia-500 dark:bg-fuchsia-500/10'
+              : 'border-indigo-200/80 bg-gradient-to-br from-slate-50/80 via-white to-indigo-50/45 shadow-sm hover:-translate-y-0.5 hover:border-indigo-400 hover:shadow-lg hover:shadow-indigo-500/10 dark:border-slate-700 dark:from-slate-900/65 dark:via-slate-950/80 dark:to-indigo-950/25 dark:hover:border-fuchsia-500'
           )}
           onDrop={handleDrop}
           onDragOver={(e) => {
@@ -192,15 +202,24 @@ export function UploadPipeline({
           }}
           onClick={() => fileInputRef.current?.click()}
         >
-          <Upload
-            className="mx-auto mb-3 block h-10 w-10 text-indigo-600 opacity-90 drop-shadow-[0_1px_3px_rgba(99,102,241,0.2)] dark:text-indigo-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]"
-            strokeWidth={2}
-            aria-hidden
-          />
-          <p className="mb-2 font-medium text-slate-700 dark:text-slate-200">拖拽文件到此处或点击上传</p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            支持 PDF / DOCX / PPTX / MD / Excel / CSV / 图片 / 音频（MP3/WAV/M4A 等）/ 视频（MP4/AVI/MOV 等）（≤ 50MB）
+          <div className="pointer-events-none absolute -left-16 -top-16 h-44 w-44 rounded-full bg-indigo-300/18 blur-3xl dark:bg-indigo-600/10" />
+          <div className="pointer-events-none absolute -bottom-16 right-0 h-44 w-44 rounded-full bg-fuchsia-300/12 blur-3xl dark:bg-fuchsia-600/10" />
+          <div className="relative mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-lg shadow-indigo-500/25 ring-4 ring-indigo-100/70 transition-transform duration-200 group-hover:scale-105 dark:ring-indigo-950/50">
+            <Upload className="h-6 w-6" strokeWidth={2.1} aria-hidden />
+          </div>
+          <p className="relative text-base font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+            拖拽文件到此处，或点击选择文件
           </p>
+          <p className="relative mx-auto mt-1.5 max-w-2xl text-xs leading-relaxed text-slate-500 dark:text-slate-400 sm:text-sm">
+            上传后自动完成对象存储、解析分块、向量化与知识库画像更新。单文件建议不超过 50MB。
+          </p>
+          <div className="relative mt-3 flex flex-wrap justify-center gap-1.5">
+            {['PDF', 'DOCX/PPTX', 'MD/TXT', 'Excel/CSV', '图片', '音频', '视频'].map((type) => (
+              <span key={type} className="rounded-full border border-white/80 bg-white/75 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 shadow-sm dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-300">
+                {type}
+              </span>
+            ))}
+          </div>
           <input
             ref={fileInputRef}
             type="file"
@@ -212,7 +231,7 @@ export function UploadPipeline({
         </div>
 
         {children != null && (
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+          <div className="rounded-2xl border border-slate-200/70 bg-gradient-to-br from-slate-50/80 to-white p-3.5 dark:border-slate-800/80 dark:from-slate-900/50 dark:to-slate-950/80 sm:p-4">
             {children}
           </div>
         )}
