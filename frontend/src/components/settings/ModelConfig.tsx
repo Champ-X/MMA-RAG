@@ -267,14 +267,15 @@ export function ModelConfig({
   const rerankerModels = reranker.provider ? modelList(reranker.provider, 'reranker') : []
 
   const selectBase =
-    'relative flex h-10 w-full min-w-0 rounded-xl border bg-white dark:bg-slate-800/50 pl-4 pr-10 py-2 text-sm font-medium text-slate-800 dark:text-slate-100 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500/50 dark:focus:ring-fuchsia-500/50 cursor-pointer border-slate-200 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-fuchsia-500/50 focus:border-indigo-400 dark:focus:border-fuchsia-500 appearance-none shadow-sm hover:shadow-md'
+    'relative flex h-10 w-full min-w-0 truncate rounded-xl border bg-white/95 dark:bg-slate-900/70 pl-4 pr-10 py-2 text-sm font-medium text-slate-800 dark:text-slate-100 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500/50 dark:focus:ring-fuchsia-500/50 cursor-pointer border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-fuchsia-500/50 focus:border-indigo-400 dark:focus:border-fuchsia-500 appearance-none shadow-sm hover:shadow-md'
 
   return (
     <div className={cn('space-y-6 animate-in fade-in duration-300', className)}>
-      <div className="overflow-hidden rounded-3xl border border-slate-200/70 bg-white/90 shadow-lg shadow-slate-200/30 backdrop-blur-sm dark:border-slate-800/80 dark:bg-slate-950/80 dark:shadow-black/20">
-        <header className="border-b border-slate-100/80 bg-gradient-to-r from-slate-50/80 via-white to-indigo-50/30 px-6 py-5 dark:border-slate-800/60 dark:from-slate-900/90 dark:via-slate-950 dark:to-indigo-950/20 sm:px-8">
+      <div className="overflow-hidden rounded-3xl border border-white/75 bg-white/84 shadow-lg shadow-slate-200/40 backdrop-blur-sm dark:border-slate-800/80 dark:bg-slate-950/80 dark:shadow-black/20">
+        <header className="relative overflow-hidden border-b border-slate-100/80 bg-gradient-to-r from-slate-50/90 via-white/90 to-indigo-50/45 px-6 py-5 dark:border-slate-800/60 dark:from-slate-900/90 dark:via-slate-950/90 dark:to-indigo-950/25 sm:px-8">
+          <div className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-indigo-400/15 blur-3xl dark:bg-indigo-500/10" />
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-            <div className="flex items-start gap-4">
+            <div className="relative flex items-start gap-4">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-fuchsia-500 text-white shadow-md shadow-indigo-500/25">
                 <Settings className="h-5 w-5" />
               </div>
@@ -287,7 +288,10 @@ export function ModelConfig({
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2.5 xl:justify-end">
+            <div className="relative flex flex-wrap items-center gap-2.5 xl:justify-end">
+              <span className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50/80 px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm dark:border-indigo-900/60 dark:bg-indigo-950/45 dark:text-indigo-200">
+                {matrix.length} 个任务链路
+              </span>
               {hasChanges && (
                 <span className="inline-flex items-center gap-2 rounded-full border border-amber-200/60 bg-amber-100/90 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-sm dark:border-amber-800/50 dark:bg-amber-900/50 dark:text-amber-300">
                   <AlertCircle className="h-3.5 w-3.5" />
@@ -331,9 +335,10 @@ export function ModelConfig({
           </div>
         </header>
 
-        <div className="space-y-8 p-6 sm:p-8">
-          <div className="rounded-2xl border border-sky-200/70 bg-gradient-to-r from-sky-50/90 to-indigo-50/60 px-4 py-3 text-sm leading-relaxed text-sky-900 shadow-sm dark:border-sky-900/50 dark:from-sky-950/30 dark:to-indigo-950/20 dark:text-sky-100">
-            模型列表完全来自后端当前已注册的 Provider；未配置 API Key 的模型不会出现在这里，保存后会直接更新运行中的任务路由。
+        <div className="space-y-8 p-5 sm:p-8">
+          <div className="flex items-start gap-3 rounded-2xl border border-sky-200/70 bg-gradient-to-r from-sky-50/90 to-indigo-50/60 px-4 py-3 text-sm leading-relaxed text-sky-900 shadow-sm dark:border-sky-900/50 dark:from-sky-950/30 dark:to-indigo-950/20 dark:text-sky-100">
+            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-500 shadow-sm shadow-sky-500/40" />
+            <span>模型列表完全来自后端当前已注册的 Provider；未配置 API Key 的模型不会出现在这里，保存后会直接更新运行中的任务路由。</span>
           </div>
 
           <section className="animate-in slide-up duration-500">
@@ -343,7 +348,7 @@ export function ModelConfig({
                 任务 - 模型映射
               </h3>
             </div>
-            <div className="space-y-3 rounded-2xl border border-slate-200/70 bg-gradient-to-br from-slate-50/80 to-white p-3 shadow-sm dark:border-slate-700/70 dark:from-slate-900/50 dark:to-slate-950/80 sm:p-4">
+            <div className="space-y-3 rounded-2xl border border-slate-200/70 bg-gradient-to-br from-slate-50/90 to-white/80 p-3 shadow-sm dark:border-slate-700/70 dark:from-slate-900/50 dark:to-slate-950/80 sm:p-4">
               <div className="hidden grid-cols-[minmax(0,1.15fr)_minmax(0,0.75fr)_minmax(0,1fr)] gap-4 rounded-xl border border-slate-200/80 bg-slate-100/80 px-5 py-3 text-xs font-bold uppercase tracking-widest text-slate-600 dark:border-slate-700/70 dark:bg-slate-800/70 dark:text-slate-300 lg:grid">
                 <div>任务</div>
                 <div>Provider</div>
@@ -360,7 +365,7 @@ export function ModelConfig({
                   <div
                     key={task.taskId}
                     className={cn(
-                      'group rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm transition-all duration-200 dark:border-slate-700/70 dark:bg-slate-950/50',
+                      'group relative overflow-hidden rounded-2xl border border-slate-200/70 bg-white/84 p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-indigo-500/10 dark:border-slate-700/70 dark:bg-slate-950/55 dark:hover:shadow-black/30',
                       meta.isPrimary
                         ? 'border-indigo-200/80 bg-gradient-to-r from-indigo-50/90 to-violet-50/60 dark:border-indigo-800/60 dark:from-indigo-950/40 dark:to-violet-950/20'
                         : index % 2 === 0
@@ -371,7 +376,8 @@ export function ModelConfig({
                     <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.75fr)_minmax(0,1fr)] lg:items-center">
                       <div className="min-w-0">
                         <div className="flex items-center gap-4">
-                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 text-slate-600 shadow-sm transition-all duration-200 group-hover:shadow-md dark:from-slate-800 dark:to-slate-900 dark:text-slate-400">
+                          <span className={cn('absolute inset-y-4 left-0 w-1 rounded-r-full', meta.barClass)} />
+                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 text-slate-600 shadow-sm ring-1 ring-white/70 transition-all duration-200 group-hover:scale-105 group-hover:shadow-md dark:from-slate-800 dark:to-slate-900 dark:text-slate-400 dark:ring-slate-700/70">
                             <Icon className="h-5 w-5" />
                           </span>
                           <div className="min-w-0">
@@ -460,9 +466,10 @@ export function ModelConfig({
                 </div>
               </div>
             </div>
-            <div className="overflow-hidden rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/30 p-6 shadow-sm dark:border-emerald-800/40 dark:from-emerald-950/30 dark:via-slate-950/80 dark:to-teal-950/20">
+            <div className="relative overflow-hidden rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-emerald-50/60 via-white/90 to-teal-50/40 p-6 shadow-sm dark:border-emerald-800/40 dark:from-emerald-950/30 dark:via-slate-950/80 dark:to-teal-950/20">
+              <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-300/15 blur-3xl dark:bg-emerald-600/10" />
               <div className="grid gap-6 lg:grid-cols-2">
-                <div className="min-w-0 space-y-2.5">
+                <div className="relative min-w-0 space-y-2.5">
                   <Label className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">
                     Provider
                   </Label>
@@ -484,7 +491,7 @@ export function ModelConfig({
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-slate-400 pointer-events-none" />
                   </div>
                 </div>
-                <div className="min-w-0 space-y-2.5">
+                <div className="relative min-w-0 space-y-2.5">
                   <Label className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">
                     模型
                   </Label>

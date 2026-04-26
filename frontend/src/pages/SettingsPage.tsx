@@ -9,13 +9,11 @@ import { cn } from '@/lib/utils'
 import {
   AlertCircle,
   Brain,
-  CheckCircle2,
   Monitor,
   Moon,
   Palette,
   Quote,
   SlidersHorizontal,
-  Sparkles,
   Sun,
 } from 'lucide-react'
 
@@ -103,33 +101,6 @@ const THEME_OPTIONS: Array<{
   { value: 'system', label: '跟随系统', description: '自动匹配系统外观设置', icon: Monitor },
 ]
 
-function SummaryCard({
-  icon: Icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: typeof Sparkles
-  label: string
-  value: string
-  hint: string
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200/70 bg-white/85 p-4 shadow-sm dark:border-slate-800/80 dark:bg-slate-950/70">
-      <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-md shadow-indigo-500/20">
-          <Icon className="h-4 w-4" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">{label}</p>
-          <p className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">{value}</p>
-          <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{hint}</p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function PreferenceToggle({
   icon: Icon,
   title,
@@ -150,10 +121,10 @@ function PreferenceToggle({
       aria-checked={enabled}
       onClick={onToggle}
       className={cn(
-        'w-full rounded-2xl border p-3.5 text-left transition-all duration-200',
+        'group w-full rounded-2xl border p-3.5 text-left transition-all duration-200 hover:-translate-y-0.5',
         enabled
-          ? 'border-indigo-200 bg-indigo-50/80 shadow-sm shadow-indigo-500/10 dark:border-indigo-800/60 dark:bg-indigo-950/30'
-          : 'border-slate-200/80 bg-white/80 hover:border-slate-300 dark:border-slate-800/80 dark:bg-slate-950/60 dark:hover:border-slate-700'
+          ? 'border-indigo-200 bg-indigo-50/85 shadow-sm shadow-indigo-500/10 dark:border-indigo-800/60 dark:bg-indigo-950/30'
+          : 'border-slate-200/80 bg-white/80 hover:border-indigo-200 hover:shadow-sm dark:border-slate-800/80 dark:bg-slate-950/60 dark:hover:border-indigo-800/50'
       )}
     >
       <div className="flex items-start gap-3">
@@ -240,21 +211,6 @@ export function SettingsPage() {
   }, [pendingChanges])
 
   const initialConfig = useMemo(() => configToTaskMatrix({ models: config.models }), [config.models])
-  const availableProviderCount = useMemo(() => {
-    return availableModels.providers.length > 0
-      ? availableModels.providers.length
-      : new Set(config.models.map((m) => m.provider)).size
-  }, [availableModels.providers, config.models])
-  const availableModelCount = useMemo(() => {
-    const all = [
-      ...availableModels.chat_models,
-      ...availableModels.vision_models,
-      ...availableModels.reranker_models,
-      ...availableModels.audio_models,
-      ...availableModels.video_models,
-    ]
-    return new Set(all).size
-  }, [availableModels])
   const themeLabel = useMemo(
     () => THEME_OPTIONS.find((item) => item.value === config.theme)?.label ?? '浅色',
     [config.theme]
@@ -323,49 +279,44 @@ export function SettingsPage() {
   }
 
   return (
-    <ScrollArea className="h-full">
-      <div className="mx-auto max-w-6xl px-4 py-6 pb-8 animate-in fade-in duration-300 sm:px-6">
-        <div className="mb-6 overflow-hidden rounded-3xl border border-slate-200/70 bg-gradient-to-br from-white via-white to-indigo-50/40 p-6 shadow-xl shadow-indigo-500/5 dark:border-slate-800/80 dark:from-slate-950 dark:via-slate-950 dark:to-indigo-950/20 dark:shadow-black/20 sm:p-7">
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50/90 px-3 py-1 text-xs font-semibold text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/50 dark:text-indigo-200">
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              设置中心
+    <ScrollArea className="h-full rounded-2xl border border-white/70 bg-gradient-to-b from-white/95 via-indigo-50/30 to-slate-50/80 shadow-[0_8px_32px_-14px_rgba(79,70,229,0.22)] backdrop-blur-sm dark:border-slate-800/80 dark:from-slate-950/95 dark:via-slate-950/90 dark:to-indigo-950/25 dark:shadow-[0_8px_40px_-16px_rgba(0,0,0,0.65)]">
+      <div className="relative mx-auto max-w-6xl px-4 py-6 pb-8 animate-in fade-in duration-300 sm:px-6 lg:py-8">
+        <div className="pointer-events-none absolute left-6 top-12 h-56 w-56 rounded-full bg-indigo-300/20 blur-3xl dark:bg-indigo-700/10" />
+        <div className="pointer-events-none absolute right-10 top-24 h-64 w-64 rounded-full bg-fuchsia-300/10 blur-3xl dark:bg-fuchsia-700/10" />
+
+        <div className="relative mb-6 overflow-hidden rounded-3xl border border-white/75 bg-gradient-to-br from-white/92 via-white/82 to-indigo-50/55 p-6 shadow-xl shadow-indigo-500/10 backdrop-blur dark:border-slate-800/80 dark:from-slate-950/92 dark:via-slate-950/82 dark:to-indigo-950/25 dark:shadow-black/20 sm:p-7">
+          <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-gradient-to-br from-indigo-400/20 to-fuchsia-400/10 blur-3xl dark:from-indigo-500/15 dark:to-fuchsia-500/10" />
+          <div className="pointer-events-none absolute -bottom-20 left-1/3 h-44 w-44 rounded-full bg-sky-300/15 blur-3xl dark:bg-sky-600/10" />
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl">
+              <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50/90 px-3 py-1 text-xs font-semibold text-indigo-700 shadow-sm dark:border-indigo-900/50 dark:bg-indigo-950/50 dark:text-indigo-200">
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                设置中心
+              </div>
+              <h1 className="mt-3 bg-gradient-to-r from-slate-950 via-slate-800 to-indigo-700 bg-clip-text text-3xl font-bold tracking-tight text-transparent dark:from-slate-50 dark:via-slate-200 dark:to-indigo-300 sm:text-4xl">
+                模型与界面设置
+              </h1>
+              <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300 sm:text-[15px]">
+                统一管理任务模型、页面主题，以及回答中的思考链与引用显示方式。主题与显示偏好会立即生效；模型保存后会直接更新后端任务路由。
+              </p>
             </div>
-            <h1 className="mt-3 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-700 bg-clip-text text-3xl font-bold tracking-tight text-transparent dark:from-slate-50 dark:via-slate-200 dark:to-indigo-300">
-              模型与界面设置
-            </h1>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-              统一管理任务模型、页面主题，以及回答中的思考链与引用显示方式。主题与显示偏好会立即生效；模型保存后会直接更新后端任务路由。
-            </p>
+
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <span className={cn(
+                'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm',
+                pendingChanges
+                  ? 'border-amber-200 bg-amber-50/90 text-amber-700 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-300'
+                  : 'border-emerald-200 bg-emerald-50/90 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/35 dark:text-emerald-300'
+              )}>
+                <span className={cn('h-2 w-2 rounded-full', pendingChanges ? 'bg-amber-500' : 'bg-emerald-500')} />
+                {pendingChanges ? '有未保存更改' : '配置已同步'}
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/75 px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-300">
+                主题：{themeLabel}
+              </span>
+            </div>
           </div>
 
-          <div className="mt-6 grid gap-3 md:grid-cols-3">
-            <SummaryCard
-              icon={Palette}
-              label="当前主题"
-              value={themeLabel}
-              hint="支持浅色、深色与跟随系统"
-            />
-            <SummaryCard
-              icon={Sparkles}
-              label="Provider"
-              value={String(availableProviderCount)}
-              hint="仅统计当前已配置 API Key 的 Provider"
-            />
-            <SummaryCard
-              icon={CheckCircle2}
-              label="模型候选"
-              value={availableModelCount > 0 ? String(availableModelCount) : '暂无可选'}
-              hint="仅显示当前已配置 API Key 的任务模型"
-            />
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-sky-200/70 bg-gradient-to-r from-sky-50/90 to-indigo-50/60 px-5 py-4 shadow-sm dark:border-sky-900/50 dark:from-sky-950/30 dark:to-indigo-950/20">
-            <p className="text-sm leading-relaxed text-sky-900 dark:text-sky-100">
-              模型目录来自后端 <code className="rounded bg-white/70 px-1.5 py-0.5 text-[12px] dark:bg-slate-900/70">chat/models</code>，
-              只展示当前已配置 Key 的 Provider；点击“保存”后会直接更新后端任务路由，新的请求无需重启即可生效。
-            </p>
-          </div>
         </div>
 
         {error && (
@@ -387,7 +338,7 @@ export function SettingsPage() {
 
         <div className="space-y-6">
           <div className="space-y-6">
-            <section className="overflow-hidden rounded-3xl border border-slate-200/70 bg-white/85 shadow-lg shadow-slate-200/30 dark:border-slate-800/80 dark:bg-slate-950/75 dark:shadow-black/20">
+            <section className="overflow-hidden rounded-3xl border border-white/75 bg-white/82 shadow-lg shadow-slate-200/40 backdrop-blur dark:border-slate-800/80 dark:bg-slate-950/75 dark:shadow-black/20">
               <div className="border-b border-slate-100/80 bg-gradient-to-r from-slate-50 to-indigo-50/40 px-6 py-4 dark:border-slate-800/70 dark:from-slate-900/80 dark:to-indigo-950/20">
                 <div className="flex items-center gap-3">
                   <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-md shadow-indigo-500/20">
@@ -400,12 +351,12 @@ export function SettingsPage() {
                 </div>
               </div>
 
-              <div className="space-y-5 p-5">
-                <div>
+              <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
+                <div className="rounded-2xl border border-slate-200/70 bg-gradient-to-br from-slate-50/80 to-white p-4 dark:border-slate-800/80 dark:from-slate-900/50 dark:to-slate-950/80">
                   <p className="mb-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                     主题模式
                   </p>
-                  <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-3">
                     {THEME_OPTIONS.map((item) => {
                       const Icon = item.icon
                       const active = config.theme === item.value
@@ -415,10 +366,10 @@ export function SettingsPage() {
                           type="button"
                           onClick={() => handleThemeChange(item.value)}
                           className={cn(
-                            'rounded-2xl border p-3 text-left transition-all duration-200',
+                            'group rounded-2xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5',
                             active
                               ? 'border-indigo-200 bg-indigo-50 shadow-sm shadow-indigo-500/10 dark:border-indigo-800/60 dark:bg-indigo-950/30'
-                              : 'border-slate-200/80 bg-slate-50/60 hover:border-slate-300 hover:bg-white dark:border-slate-800/80 dark:bg-slate-900/50 dark:hover:border-slate-700'
+                              : 'border-slate-200/80 bg-white/70 hover:border-indigo-200 hover:bg-white hover:shadow-sm dark:border-slate-800/80 dark:bg-slate-950/55 dark:hover:border-indigo-800/50'
                           )}
                         >
                           <div className="flex items-center gap-3">
@@ -450,7 +401,8 @@ export function SettingsPage() {
                   </div>
                 </div>
 
-                <div>
+                <div className="space-y-5">
+                  <div>
                   <p className="mb-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                     回答辅助信息
                   </p>
@@ -472,29 +424,37 @@ export function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 dark:border-slate-800/80 dark:bg-slate-900/50">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">当前状态</p>
-                  <ul className="mt-2.5 space-y-1.5 text-sm text-slate-600 dark:text-slate-300">
-                    <li>主题：<span className="font-medium text-slate-800 dark:text-slate-100">{themeLabel}</span></li>
-                    <li>思考链：<span className="font-medium text-slate-800 dark:text-slate-100">{config.enableThinking ? '已显示' : '已隐藏'}</span></li>
-                    <li>引用：<span className="font-medium text-slate-800 dark:text-slate-100">{config.enableCitations ? '已显示' : '已隐藏'}</span></li>
-                  </ul>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/80 p-3.5 dark:border-indigo-900/50 dark:bg-indigo-950/25">
-                  <div>
-                    <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">保存页面设置</p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-indigo-700/80 dark:text-indigo-300/80">
-                      主题和显示偏好会即时生效；点击保存用于清除未保存状态并同步当前浏览器配置。
-                    </p>
+                  <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 dark:border-slate-800/80 dark:bg-slate-900/50">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">当前状态</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-1">
+                      {[
+                        ['主题', themeLabel],
+                        ['思考链', config.enableThinking ? '已显示' : '已隐藏'],
+                        ['引用', config.enableCitations ? '已显示' : '已隐藏'],
+                      ].map(([label, value]) => (
+                        <div key={label} className="flex items-center justify-between rounded-xl border border-white/70 bg-white/70 px-3 py-2 text-sm dark:border-slate-800/80 dark:bg-slate-950/50">
+                          <span className="text-slate-500 dark:text-slate-400">{label}</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-100">{value}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <Button
-                    onClick={handleSavePreferences}
-                    disabled={!hasUnsavedChanges || isSavingPreferences || isLoading}
-                    className="rounded-xl bg-indigo-600 text-white hover:bg-indigo-500"
-                  >
-                    {isSavingPreferences ? '保存中…' : '保存页面设置'}
-                  </Button>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/80 p-3.5 dark:border-indigo-900/50 dark:bg-indigo-950/25">
+                    <div>
+                      <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">保存页面设置</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-indigo-700/80 dark:text-indigo-300/80">
+                        主题和显示偏好会即时生效；点击保存用于清除未保存状态并同步当前浏览器配置。
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleSavePreferences}
+                      disabled={!hasUnsavedChanges || isSavingPreferences || isLoading}
+                      className="rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20 hover:from-indigo-500 hover:to-violet-500"
+                    >
+                      {isSavingPreferences ? '保存中…' : '保存页面设置'}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </section>
