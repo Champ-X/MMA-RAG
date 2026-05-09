@@ -12,6 +12,22 @@ from app.core.logger import get_logger, log_llm_call
 
 logger = get_logger(__name__)
 
+
+def _parse_dashscope_error_body(body_text: str) -> Optional[str]:
+    """从兼容模式 JSON 错误体提取可读说明（例如产品未在控制台开通）。"""
+    raw = (body_text or "").strip()
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    err = data.get("error")
+    if isinstance(err, dict):
+        return (err.get("message") or err.get("code") or "").strip() or None
+    return None
+
+
 # 官方文档：qwen3-omni-flash 等 Omni 模型「stream 必须设置为 True，否则会报错」
 _OMNI_MODELS_REQUIRE_STREAM = ("qwen3-omni-flash", "qwen-omni-turbo")
 
@@ -330,16 +346,17 @@ class AliyunBailianProvider(BaseLLMProvider):
                     timeout=timeout,
                 ) as response:
                     if response.status_code != 200:
-                        error_text = ""
-                        try:
-                            async for line in response.aiter_lines():
-                                error_text += line + "\n"
-                                if len(error_text) > 1000:
-                                    break
-                        except Exception:
-                            pass
-                        logger.error(f"阿里云百炼 Omni stream [{model}]: HTTP {response.status_code} - {error_text[:500]}")
-                        response.raise_for_status()
+                        body = await response.aread()
+                        error_text = body.decode("utf-8", errors="replace")
+                        logger.error(
+                            f"阿里云百炼 Omni stream [{model}]: HTTP {response.status_code} - {error_text[:1200]}"
+                        )
+                        api_msg = _parse_dashscope_error_body(error_text)
+                        if api_msg:
+                            raise ValueError(f"阿里云百炼: {api_msg}")
+                        raise RuntimeError(
+                            f"阿里云百炼请求失败 HTTP {response.status_code}: {error_text[:500]}"
+                        )
 
                     async for line in response.aiter_lines():
                         line = line.strip()
@@ -455,18 +472,17 @@ class AliyunBailianProvider(BaseLLMProvider):
                     logger.info(f"阿里云百炼 stream_chat [{model}]: Content-Type: {response.headers.get('content-type', 'unknown')}")
                     
                     if response.status_code != 200:
-                        # 读取错误响应
-                        error_text = ""
-                        try:
-                            async for line in response.aiter_lines():
-                                error_text += line + "\n"
-                                if len(error_text) > 1000:  # 限制错误文本长度
-                                    break
-                        except:
-                            pass
-                        error_detail = error_text[:500] if error_text else ""
-                        logger.error(f"阿里云百炼 stream_chat HTTP错误 [{model}]: {response.status_code} - {error_detail}")
-                        response.raise_for_status()
+                        body = await response.aread()
+                        error_text = body.decode("utf-8", errors="replace")
+                        logger.error(
+                            f"阿里云百炼 stream_chat HTTP错误 [{model}]: {response.status_code} - {error_text[:1200]}"
+                        )
+                        api_msg = _parse_dashscope_error_body(error_text)
+                        if api_msg:
+                            raise ValueError(f"阿里云百炼: {api_msg}")
+                        raise RuntimeError(
+                            f"阿里云百炼请求失败 HTTP {response.status_code}: {error_text[:500]}"
+                        )
                     
                     # 解析 SSE 格式的流式响应
                     line_count = 0
@@ -539,10 +555,16 @@ class AliyunBailianProvider(BaseLLMProvider):
             error_detail = ""
             if e.response is not None:
                 try:
-                    error_detail = e.response.text[:500]
-                except:
+                    error_detail = e.response.text[:1200]
+                except Exception:
                     pass
-            logger.error(f"阿里云百炼 stream_chat HTTP错误 [{model}]: {e.response.status_code if e.response else 'Unknown'} - {error_detail}")
+            logger.error(
+                f"阿里云百炼 stream_chat HTTP错误 [{model}]: "
+                f"{e.response.status_code if e.response else 'Unknown'} - {error_detail}"
+            )
+            api_msg = _parse_dashscope_error_body(error_detail)
+            if api_msg:
+                raise ValueError(f"阿里云百炼: {api_msg}") from e
             raise
         except Exception as e:
             logger.error(f"阿里云百炼 stream_chat 错误 [{model}]: {type(e).__name__}: {str(e)}")

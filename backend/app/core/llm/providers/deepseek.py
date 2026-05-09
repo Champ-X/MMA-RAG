@@ -1,7 +1,7 @@
 """
 DeepSeek API 提供商
 使用与 OpenAI 兼容的 API：https://api.deepseek.com
-文档：deepseek-chat 对应 DeepSeek-V3.2 非思考模式，deepseek-reasoner 对应思考模式
+文档：模型 id 以官方 GET /v1/models 为准；可用 deepseek:<id> 形式在注册表中使用。
 """
 
 import json
@@ -165,13 +165,13 @@ class DeepSeekProvider(BaseLLMProvider):
         raise NotImplementedError("DeepSeek API 不支持 rerank，请在任务路由中使用 SiliconFlow 等提供商的重排序模型")
 
     def get_provider_info(self) -> Dict[str, Any]:
-        """提供商信息。DeepSeek 官方模型：deepseek-chat（非思考）、deepseek-reasoner（思考模式）"""
+        """提供商信息（具体 id 由运行时目录同步，参见 models_catalog）。"""
         return {
             "name": "DeepSeek",
-            "description": "DeepSeek API（OpenAI 兼容），base_url=https://api.deepseek.com",
+            "description": "DeepSeek API（OpenAI 兼容），base_url=https://api.deepseek.com；模型列表来自 /v1/models",
             "capabilities": ["chat"],
             "models": {
-                "chat": ["deepseek-chat", "deepseek-reasoner"],
+                "chat": [],
                 "embedding": [],
                 "vision": [],
                 "reranker": [],

@@ -18,6 +18,7 @@ from urllib.parse import unquote, urlparse
 from app.core.logger import get_logger
 from app.core.llm.manager import llm_manager
 from app.core.llm import TASK_MODEL_TYPES
+from app.core.llm.models_catalog import ensure_llm_catalog_fresh
 from app.modules.retrieval.service import RetrievalService
 from app.modules.generation.service import GenerationService
 from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
@@ -144,6 +145,30 @@ def _slim_openrouter_model(raw: Dict[str, Any]) -> Dict[str, Any]:
         "input_modalities": arch.get("input_modalities"),
         "output_modalities": arch.get("output_modalities"),
     }
+
+
+def _build_chat_catalog(registry: Any) -> List[Dict[str, Any]]:
+    """供前端统一搜索：仅 chat 能力模型，含 registry_id / provider / 展示字段。"""
+    ids = registry.list_models("chat")
+    seen: set[str] = set()
+    rows: List[Dict[str, Any]] = []
+    for mid in sorted(ids, key=lambda x: str(x).lower()):
+        if not mid or mid in seen:
+            continue
+        seen.add(mid)
+        cfg = registry.get_model_config(mid) or {}
+        prov = cfg.get("provider") or "siliconflow"
+        api_id = mid.split(":", 1)[-1] if ":" in str(mid) else str(mid)
+        rows.append(
+            {
+                "registry_id": mid,
+                "provider": prov,
+                "id": api_id,
+                "name": cfg.get("description"),
+                "context_length": cfg.get("context_length"),
+            }
+        )
+    return rows
 
 
 def _serialize_current_task_config() -> Dict[str, Dict[str, str]]:
@@ -868,13 +893,17 @@ async def list_openrouter_models_catalog():
 
 
 @router.get("/models")
-async def list_models():
-    """获取可用模型列表与当前任务模型配置（从 LLMRegistry 动态读取）"""
+async def list_models(refresh_catalog: bool = Query(False)):
+    """获取可用模型列表与当前任务模型配置（从 LLMRegistry 动态读取）。
+    首次请求会从已配置 Key 的厂商拉取 /v1/models 合并目录（短 TTL 缓存）；refresh_catalog=true 强制刷新。
+    """
     r = llm_manager.registry
+    await ensure_llm_catalog_fresh(r, force=refresh_catalog)
     return {
         "providers": r.list_providers(),
         "models_by_provider": r.list_models_by_provider(),
         "chat_models": r.list_models("chat"),
+        "chat_catalog": _build_chat_catalog(r),
         "embedding_models": r.list_models("embedding"),
         "vision_models": r.list_models("vision"),
         "reranker_models": r.list_models("reranker"),

@@ -912,9 +912,6 @@ export const systemApi = {
   getSystemStatus: () => apiClient.get('/debug/stats'),
   // 获取模型配置（来自 chat/models）
   getModelConfig: () => apiClient.get('/chat/models'),
-  /** OpenRouter 公开模型目录（后端代理 + 缓存，供对话模型搜索） */
-  getOpenRouterModels: () =>
-    apiClient.get('/chat/openrouter-models', { timeout: 120000 }),
   // 更新模型配置（运行时立即生效，后端会持久化任务主模型覆盖）
   updateModelConfig: (config: any) => apiClient.put('/chat/models', config),
   // 获取系统指标

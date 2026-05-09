@@ -40,7 +40,7 @@ const FALLBACK_MODELS: Record<string, Partial<Record<AvailableModelType, string[
     video: ['Qwen/Qwen3.5-397B-A17B'],
   },
   deepseek: {
-    chat: ['deepseek-chat', 'deepseek-reasoner'],
+    chat: [],
   },
   openrouter: {
     chat: ['openrouter:google/gemini-2.5-flash'],

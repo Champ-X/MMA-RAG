@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     # SiliconFlow API 配置
     siliconflow_api_key: str = Field(..., validation_alias="SILICONFLOW_API_KEY")  # type: ignore[arg-type]
     
-    # DeepSeek API 配置（可选，配置后可使用 deepseek-chat / deepseek-reasoner 等模型）
+    # DeepSeek API 配置（可选；模型 id 以官方 /v1/models 为准，注册表形式为 deepseek:<id>，兼容旧配置 deepseek-chat）
     deepseek_api_key: Optional[str] = Field(default=None, validation_alias="DEEPSEEK_API_KEY")
     
     # OpenRouter API 配置（可选，配置后可使用 OpenRouter 提供的模型）

@@ -12,6 +12,7 @@ import json
 from app.core.llm.providers.base import BaseLLMProvider
 # 使用 providers.silicon_flow 中的实现，确保 stream_chat 等流式接口可用（参见 SiliconFlow 流式文档）
 from app.core.llm.providers.silicon_flow import SiliconFlowProvider
+from app.core.llm.models_catalog import infer_bailian_model_types, infer_deepseek_model_types
 
 logger = get_logger(__name__)
 
@@ -204,20 +205,8 @@ class LLMRegistry:
                 "description": "BGE 重排序模型"
             }
         }
-        # 可选：DeepSeek 官方模型（仅当已配置 DEEPSEEK_API_KEY 时注册）
-        if "deepseek" in self._providers:
-            self._models["deepseek-chat"] = {
-                "provider": "deepseek",
-                "type": "chat",
-                "context_length": 128000,  # 128K tokens，DeepSeek-V3.2
-                "description": "DeepSeek-V3.2 非思考模式（官方 API 模型名）",
-            }
-            self._models["deepseek-reasoner"] = {
-                "provider": "deepseek",
-                "type": "chat",
-                "context_length": 128000, # 128K tokens
-                "description": "DeepSeek-V3.2 思考模式（官方 API 模型名）",
-            }
+        # DeepSeek 官方模型 id 由运行时 models_catalog 从 GET /v1/models 合并；此处不再硬编码（避免 API 已下线仍展示）。
+        # 兼容历史：无前缀的 deepseek-chat / deepseek-reasoner 仍可在 get_model_config 中解析。
 
         # OpenRouter 模型（仅当已配置 OPENROUTER_API_KEY 时注册）
         # 使用 openrouter:model_name 格式避免冲突
@@ -688,8 +677,39 @@ class LLMRegistry:
                             "description": "OpenRouter（动态模型）",
                             "raw_model": rest,
                         }
+                # DeepSeek：deepseek:<api_id>，目录外 id 亦可调用
+                if provider == "deepseek" and "deepseek" in self._providers:
+                    rest = (model or "").strip()
+                    if rest:
+                        return {
+                            "provider": "deepseek",
+                            "type": infer_deepseek_model_types(rest),
+                            "context_length": 131072,
+                            "description": "DeepSeek 官方 API（动态模型）",
+                            "raw_model": rest,
+                        }
+                # 百炼：aliyun_bailian:<api_id>
+                if provider == "aliyun_bailian" and "aliyun_bailian" in self._providers:
+                    rest = (model or "").strip()
+                    if rest:
+                        return {
+                            "provider": "aliyun_bailian",
+                            "type": infer_bailian_model_types(rest),
+                            "context_length": 131072,
+                            "description": "阿里云百炼（动态模型）",
+                            "raw_model": rest,
+                        }
                 # 如果没找到，尝试直接查找（向后兼容）
                 return self._models.get(model_name, {})
+        # 历史配置：DeepSeek 官方曾使用无前缀 id
+        if model_name in ("deepseek-chat", "deepseek-reasoner") and "deepseek" in self._providers:
+            return {
+                "provider": "deepseek",
+                "type": "chat",
+                "context_length": 131072,
+                "description": "DeepSeek 官方 API（兼容旧配置）",
+                "raw_model": model_name,
+            }
         return self._models.get(model_name, {})
     
     def get_raw_model_name(self, model_name: str) -> str:
@@ -746,3 +766,8 @@ class LLMRegistry:
     def add_model(self, name: str, config: Dict[str, Any]):
         """添加模型"""
         self._models[name] = config
+
+    def revalidate_task_routing_after_catalog(self) -> None:
+        """在从厂商合并最新模型目录后，重新校验任务主模型与路由（替换已不可用 id）。"""
+        self._normalize_task_models()
+        self._task_routing = {k: v["model"] for k, v in self._task_config.items()}

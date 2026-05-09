@@ -7,7 +7,7 @@ import { systemApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
 import { groupChatModelsByVendor, getModelVendor, VENDOR_DISPLAY_NAMES, VENDOR_LOGOS } from '@/lib/modelVendors'
 import { VendorModelSelect } from './VendorModelSelect'
-import { OpenRouterModelSearch } from './OpenRouterModelSearch'
+import { UnifiedChatModelSearch, type ChatCatalogItem } from './UnifiedChatModelSearch'
 
 interface ModelConfigPanelProps {
   open: boolean
@@ -17,6 +17,8 @@ interface ModelConfigPanelProps {
 export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) {
   const { config, updateModelConfig } = useConfigStore()
   const [chatModels, setChatModels] = useState<string[]>([])
+  const [chatCatalog, setChatCatalog] = useState<ChatCatalogItem[]>([])
+  const [catalogError, setCatalogError] = useState<string | null>(null)
   const [currentChatModel, setCurrentChatModel] = useState<string>('')
   const [modelsLoading, setModelsLoading] = useState(false)
   const [_userSelectedModel, setUserSelectedModel] = useState<string | null>(null)
@@ -38,17 +40,26 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
     setModelsLoading(true)
     systemApi
       .getModelConfig()
-      .then((data: { chat_models?: string[]; current_config?: { final_generation?: { model: string } } }) => {
+      .then(
+        (data: {
+          chat_models?: string[]
+          chat_catalog?: ChatCatalogItem[]
+          current_config?: { final_generation?: { model: string } }
+        }) => {
         if (cancelled) return
+        setCatalogError(null)
         setChatModels(Array.isArray(data.chat_models) ? data.chat_models : [])
+        setChatCatalog(Array.isArray(data.chat_catalog) ? data.chat_catalog : [])
         if (!savedChatModel) {
           const model = data.current_config?.final_generation?.model
           setCurrentChatModel(model || config.models.find(m => m.id === 'chat')?.model || '')
         }
       })
-      .catch(() => {
+      .catch((e: unknown) => {
         if (cancelled) return
         setChatModels([])
+        setChatCatalog([])
+        setCatalogError(e instanceof Error ? e.message : '加载失败')
         if (!savedChatModel) {
           setCurrentChatModel(config.models.find(m => m.id === 'chat')?.model || '')
         }
@@ -114,9 +125,16 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
           )}
         >
           <div className="space-y-4 pb-2">
+            <UnifiedChatModelSearch
+              catalog={chatCatalog}
+              loading={modelsLoading}
+              fetchError={catalogError}
+              currentChatModel={currentChatModel}
+              onSelect={applyModel}
+            />
             {modelsLoading ? (
               <div className={cn(selectBaseClass, 'flex items-center text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600')}>
-                加载中…
+                加载厂商分组…
               </div>
             ) : groupedByVendor.length === 0 ? (
               <div className={cn(selectBaseClass, 'flex items-center text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600')}>
@@ -156,12 +174,6 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
                 )
               })
             )}
-            <OpenRouterModelSearch
-              enabled={open}
-              currentChatModel={currentChatModel}
-              onSelect={applyModel}
-              className="mt-1"
-            />
             <p className="text-xs text-slate-500 dark:text-slate-400">
               当前使用后端 final_generation 配置，选择后将写入本地配置
             </p>
