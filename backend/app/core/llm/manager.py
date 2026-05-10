@@ -181,7 +181,17 @@ class LLMManager:
                 provider.stream_chat(**params),
             )
             async for chunk_data in stream:
-                delta = (chunk_data or {}).get("choices", [{}])[0].get("delta") or {}
+                # 百炼 / 部分模型会推送 choices: [] 或仅含 usage 的 chunk，避免 [0] 触发 IndexError
+                # （否则流中断 → 不发 CITATION，前端引用与图片无法点击展示）
+                raw_choices = (chunk_data or {}).get("choices")
+                if not isinstance(raw_choices, list) or len(raw_choices) == 0:
+                    continue
+                choice0 = raw_choices[0]
+                if not isinstance(choice0, dict):
+                    continue
+                delta = choice0.get("delta") or {}
+                if not isinstance(delta, dict):
+                    continue
                 content = delta.get("content") or ""
                 # 仅将最终回答 content 推送给前端；不推送 reasoning_content（思考链），
                 # 避免前端消息气泡只显示“思考过程”而没有正式回答。检索阶段的思考由前端 ThinkingCapsule 展示。

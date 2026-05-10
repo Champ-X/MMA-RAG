@@ -487,26 +487,26 @@ export function ChatInterface() {
 
   const handleStop = () => {
     if (!activeSessionId || !isStreaming) return
-    
+
     // 获取用户原始查询
     const userQuery = stopStreaming()
-    
+
     // 添加终止提示消息
     const lastMessage = activeSession?.messages[activeSession.messages.length - 1]
     if (lastMessage && lastMessage.role === 'assistant') {
       // 标记最后一条消息为已终止
-      updateMessage(activeSessionId, lastMessage.id, { 
+      updateMessage(activeSessionId, lastMessage.id, {
         error: 'stopped', // 使用 error 字段标记终止状态
       })
     }
-    
+
     // 添加终止提示系统消息
     addMessage(activeSessionId, {
       role: 'assistant',
       content: '',
       error: 'stopped_hint', // 特殊标记，用于显示终止提示
     })
-    
+
     // 将用户原始查询填充到输入框
     if (userQuery) {
       setInput(userQuery)
@@ -705,10 +705,10 @@ export function ChatInterface() {
                   liveThinking={
                     isLastAndStreaming
                       ? {
-                          thoughtData: thinking.thoughtData,
-                          stages: thinking.stages,
-                          currentStage: thinking.currentStage,
-                        }
+                        thoughtData: thinking.thoughtData,
+                        stages: thinking.stages,
+                        currentStage: thinking.currentStage,
+                      }
                       : undefined
                   }
                   citationMap={messageCitationMap}

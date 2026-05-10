@@ -156,6 +156,11 @@ function findAllCitationMatches(text: string): CitationMatch[] {
 }
 
 function getCitationIdentityKey(citation: CitationReference): string {
+  // 图片/音频：以正文中的引用编号 id 为唯一键。不同模型返回的 file_path、chunk_id 可能略有差异，
+  // 否则同一 [n] 会被当成两种素材；另配合「整消息段落插图只出一次」避免列表/position 异常时多节点重复出图。
+  if (citation.type === 'image' || citation.type === 'audio') {
+    return `${citation.type}:ref:${String(citation.id)}`
+  }
   const baseKey =
     citation.file_path ||
     citation.file_name ||
@@ -226,7 +231,7 @@ function splitTextWithCitations(
     const displayN = originalIdToDisplayIndex != null
       ? (originalIdToDisplayIndex.get(match.n) ?? match.n)
       : match.n
-    
+
     out.push(
       <CitationInlineButton
         key={`c_${messageId}_${idx}_${match.n}`}
@@ -344,16 +349,20 @@ function ParagraphImageDisplay({
   messageId?: string
   fallbackKbId?: string
 }) {
-  // 有 img_url 或具备 file_path + kb_id（可按需刷新）的图片引用均展示
-  const imageOnlyCitations = React.useMemo(
-    () =>
-      citations.filter(
-        (c): c is CitationReference =>
-          c?.type === 'image' &&
-          (!!c?.img_url || (!!(c?.file_path || c?.file_name) && !!(c?.debug_info?.kb_id || fallbackKbId)))
-      ),
-    [citations, fallbackKbId]
-  )
+  // 有 img_url 或具备 file_path + kb_id（可按需刷新）的图片引用均展示；按 id 去重防止同一段落重复传参
+  const imageOnlyCitations = React.useMemo(() => {
+    const raw = citations.filter(
+      (c): c is CitationReference =>
+        c?.type === 'image' &&
+        (!!c?.img_url || (!!(c?.file_path || c?.file_name) && !!(c?.debug_info?.kb_id || fallbackKbId)))
+    )
+    const seen = new Set<number | string>()
+    return raw.filter((c) => {
+      if (seen.has(c.id)) return false
+      seen.add(c.id)
+      return true
+    })
+  }, [citations, fallbackKbId])
   const [failedImages, setFailedImages] = React.useState<Set<number | string>>(new Set())
   const [loadedImages, setLoadedImages] = React.useState<Set<number | string>>(new Set())
   /** 按需刷新后的图片 URL（用于历史消息中 presigned URL 过期后重新拉取） */
@@ -368,11 +377,11 @@ function ParagraphImageDisplay({
   React.useEffect(() => {
     failedImagesRef.current = failedImages
   }, [failedImages])
-  
+
   React.useEffect(() => {
     loadedImagesRef.current = loadedImages
   }, [loadedImages])
-  
+
   React.useEffect(() => {
     return () => {
       loadTimeoutsRef.current.forEach((timer) => window.clearTimeout(timer))
@@ -398,7 +407,7 @@ function ParagraphImageDisplay({
         .then((res) => {
           if (!cancelled && res?.img_url) setRefreshedImgUrls((prev) => ({ ...prev, [key]: res.img_url }))
         })
-        .catch(() => {})
+        .catch(() => { })
     })
     return () => {
       cancelled = true
@@ -417,17 +426,17 @@ function ParagraphImageDisplay({
       return ''
     }
   }, [imageOnlyCitations])
-  
+
   React.useEffect(() => {
     if (!citationIds) return
-    
+
     imageOnlyCitations.forEach((citation) => {
       if (!citation?.id) return
-      
+
       // 使用 ref 检查状态，避免依赖 Set 对象
       if (failedImagesRef.current.has(citation.id)) return
       if (loadedImagesRef.current.has(citation.id)) return
-      
+
       const img = imageRefs.current.get(citation.id)
       if (img && img.complete && img.naturalHeight !== 0) {
         // 图片已经加载完成（可能是从缓存中）
@@ -500,7 +509,7 @@ function ParagraphImageDisplay({
   const failedIdsStr = React.useMemo(() => {
     return Array.from(failedImages).sort().join(',')
   }, [failedImages])
-  
+
   const validCitations = React.useMemo(
     () => imageOnlyCitations.filter((citation) => !failedImages.has(citation.id)),
     [imageOnlyCitations, failedIdsStr]
@@ -514,9 +523,9 @@ function ParagraphImageDisplay({
         const isFailed = failedImages.has(citation.id)
         const isLoaded = loadedImages.has(citation.id)
         const imageKey = buildImageKey(citation.id)
-        
+
         if (isFailed) return null
-        
+
         return (
           <button
             key={citation.id}
@@ -538,7 +547,7 @@ function ParagraphImageDisplay({
               ref={(el) => {
                 if (el) {
                   imageRefs.current.set(citation.id, el)
-                  
+
                   // 立即检查是否已加载（从缓存）
                   if (el.complete && el.naturalHeight !== 0 && !loadedImagesRef.current.has(citation.id)) {
                     // 图片已从缓存加载，立即显示
@@ -558,8 +567,8 @@ function ParagraphImageDisplay({
               src={refreshedImgUrls[imageKey] || citation.img_url || ''}
               alt={citation.file_name || ''}
               className="max-h-64 max-w-full object-contain block m-0 p-0"
-              style={{ 
-                opacity: isLoaded ? 1 : 0, 
+              style={{
+                opacity: isLoaded ? 1 : 0,
                 transition: isLoaded ? 'opacity 0.2s' : 'none',
                 visibility: isLoaded ? 'visible' : 'hidden'
               }}
@@ -621,7 +630,7 @@ function AudioCardDescription({ content }: { content: string }) {
       className={cn(
         'mt-1.5',
         likelyOverflow &&
-          'border-t border-violet-200/50 pt-1.5 dark:border-violet-800/40',
+        'border-t border-violet-200/50 pt-1.5 dark:border-violet-800/40',
       )}
     >
       <div className="flex flex-col gap-0">
@@ -1149,6 +1158,7 @@ export function MessageBubble({
       ? (message.thinking[0]?.data as ThoughtData) ?? null
       : (message.thinking as ThoughtData) ?? null
   const refs = message.citations ?? []
+
   const orderedRefIds = !isUser ? getOrderedRefIdsFromContent(message.content) : []
   const originalIdToDisplayIndex = React.useMemo(() => {
     const m = new Map<number | string, number>()
@@ -1160,7 +1170,7 @@ export function MessageBubble({
       .map((id) => citationMap?.get(id) ?? refs.find((r) => typeof r === 'object' && r != null && (r as any).id === id) ?? { id })
       .filter((r): r is CitationReference | { id: number | string } => r != null && typeof r === 'object' && 'id' in r)
   }, [orderedRefIds.join(','), citationMap, refs])
-  
+
   const allCitationMatches = React.useMemo(
     () => (isUser ? [] : findAllCitationMatches(message.content)),
     [message.content, isUser]
@@ -1196,14 +1206,14 @@ export function MessageBubble({
       }) === idx
     })
   }, [])
-  
+
   const uniqueRefs = React.useMemo(() => {
     // 如果文本中有引用标记，使用 orderedRefs；否则使用所有 refs（去重后）
     if (orderedRefs.length > 0) {
       return orderedRefs
     }
     // 当文本中没有引用标记时，仍然显示所有可用的引用
-    return deduplicateRefs(refs.filter((ref): ref is CitationReference | { id: number | string } => 
+    return deduplicateRefs(refs.filter((ref): ref is CitationReference | { id: number | string } =>
       typeof ref === 'object' && ref != null && 'id' in ref
     ))
   }, [orderedRefs, refs, deduplicateRefs])
@@ -1230,7 +1240,7 @@ export function MessageBubble({
   // 创建 markdown 组件的工厂函数
   const markdownComponents = React.useMemo(() => {
     const handleCiteClick = createCiteClickHandler(onCiteClick, message.id)
-    
+
     const createComponent = (tag: 'p' | 'li', className: string) => {
       return (props: { children?: React.ReactNode; node?: any }) => {
         const { children, node } = props
@@ -1240,7 +1250,22 @@ export function MessageBubble({
         if (!showCitations) {
           return <Tag className={className}>{children}</Tag>
         }
-        
+
+        // 列表项在 GFM 中多为 li > p：若在 li 上再挂段落级插图会与内层 p 重复；
+        //  tight list 无 paragraph 子节点时仍只在 li 上挂媒体。
+        const liDefersMediaToChildParagraph =
+          tag === 'li' &&
+          Array.isArray(node?.children) &&
+          node.children.some((c: { type?: string }) => c?.type === 'paragraph')
+
+        if (liDefersMediaToChildParagraph) {
+          return (
+            <Tag className={className}>
+              {injectCitations(children, handleCiteClick, message.id, originalIdToDisplayIndex, citationMap)}
+            </Tag>
+          )
+        }
+
         const textContent = extractTextFromNode(children)
         const blockStart = node?.position?.start?.offset
         const blockEnd = node?.position?.end?.offset
@@ -1266,7 +1291,7 @@ export function MessageBubble({
         const allVideoRefs = extractVideoRefIdsFromText(textContent, citationMap, refs)
         // 视频引用：段落内出现的每个引用编号都展示一张卡片（[1][2][3][4] 可能对应不同片段），不做按 file_name 去重
         const newVideoRefs = allVideoRefs
-        
+
         return (
           <>
             <Tag className={className}>
@@ -1302,19 +1327,19 @@ export function MessageBubble({
         )
       }
     }
-    
+
     // 自定义 img 组件，防止显示破损图片图标
     const ImageComponent = React.memo(({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
       const [imageError, setImageError] = React.useState(false)
       const [imageLoaded, setImageLoaded] = React.useState(false)
       const imgRef = React.useRef<HTMLImageElement>(null)
-      
+
       const handleError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
         e.preventDefault()
         e.stopPropagation()
         setImageError(true)
         setImageLoaded(false)
-        
+
         // 立即隐藏图片元素，防止显示破损图标
         const img = e.currentTarget
         img.setAttribute('data-error', 'true')
@@ -1322,12 +1347,12 @@ export function MessageBubble({
         img.style.visibility = 'hidden'
         img.style.opacity = '0'
       }
-      
+
       const handleLoad = () => {
         setImageLoaded(true)
         setImageError(false)
       }
-      
+
       React.useEffect(() => {
         const img = imgRef.current
         if (img) {
@@ -1341,11 +1366,11 @@ export function MessageBubble({
           }
         }
       }, [src])
-      
+
       if (imageError) {
         return null
       }
-      
+
       return (
         <img
           ref={imgRef}
@@ -1373,7 +1398,7 @@ export function MessageBubble({
       )
     })
     ImageComponent.displayName = 'MarkdownImage'
-    
+
     return {
       p: createComponent('p', 'mb-2 leading-relaxed'),
       li: createComponent('li', 'mb-0'),
