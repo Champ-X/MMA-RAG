@@ -1,37 +1,42 @@
-# 使用 Python 3.11 作为基础镜像
-FROM python:3.11-slim
+FROM postgres:16.4-bookworm AS postgres-tools
 
-# 设置工作目录
-WORKDIR /app
+FROM python:3.12-slim-bookworm AS runtime
 
-# 安装系统依赖
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    git \
-    curl \
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app/src
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       curl espeak-ng ffmpeg git libmagic1 postgresql-client tini \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制依赖文件
-COPY requirements.txt .
+WORKDIR /app
+COPY pyproject.toml ./
+COPY docker-cpu.constraints.txt ./
+RUN pip install --upgrade pip \
+    && python -c "import tomllib; p=tomllib.load(open('pyproject.toml','rb')); e=p['project']['optional-dependencies']; print('\\n'.join(p['project']['dependencies'] + sum((e[k] for k in ('media','agents','tools','models')), [])))" \
+       | xargs -d '\n' pip install \
+       --extra-index-url https://download.pytorch.org/whl/cpu \
+       --constraint docker-cpu.constraints.txt
 
-# 安装Python依赖
-RUN pip install --no-cache-dir -r requirements.txt
+# Keep backup/restore clients on the exact server major/minor image instead of
+# Debian Bookworm's default PostgreSQL 15 client.
+COPY --from=postgres-tools /usr/lib/postgresql/16/bin/pg_dump /usr/local/bin/pg_dump
+COPY --from=postgres-tools /usr/lib/postgresql/16/bin/pg_restore /usr/local/bin/pg_restore
 
-# 安装PyTorch和相关依赖（支持CUDA加速）
-RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+COPY src ./src
+COPY migrations ./migrations
+COPY alembic.ini ./
+RUN pip install --no-deps .
 
-# 复制应用代码
-COPY . .
+RUN groupadd --system nexus \
+    && useradd --system --gid nexus --home-dir /home/nexus --create-home nexus \
+    && mkdir -p /data/nexus \
+    && chown -R nexus:nexus /data/nexus /app
 
-# 创建日志目录
-RUN mkdir -p logs
-
-# 暴露端口
+USER nexus
 EXPOSE 8000
-
-# 设置环境变量
-ENV PYTHONPATH=/app
-
-# 启动命令（可以覆盖）
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["nexus", "serve"]

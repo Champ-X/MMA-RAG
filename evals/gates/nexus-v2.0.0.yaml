@@ -1,0 +1,73 @@
+schema: nexus.quality-gate.v1
+version: 2.0.0
+frozen_at: 2026-07-19
+corpus:
+  id: nexus-multimodal-compose-v1
+  fixture_builder: scripts/verify-compose-e2e.py
+  modalities: [text, table, image, audio, video]
+  deterministic_labels: true
+profile:
+  name: standard-real
+  control_plane: postgresql-16.4
+  object_store: minio
+  vector_projection: qdrant-1.18.0
+  coordination: redis-7.4.1
+  generation_gateway: configured-openai-compatible
+  dense_encoder: configured-qwen3-embedding-4096
+  sparse_encoder:
+    model: BAAI/bge-m3
+    revision: 5617a9f61b028005a4858fdac845db406aefb181
+  feature_encoders:
+    clip:
+      model: openai/clip-vit-large-patch14
+      revision: 32bd64288804d66eefd0ccbe215aa642df71cc41
+    clap:
+      model: laion/clap-htsat-fused
+      revision: 365dea6ef167def6676140ed93bbc43f84dabb28
+blocking_contracts:
+  raw_written_before_parse: true
+  raw_sha256_content_addressed: true
+  mineru_documents_have_no_semantic_fallback: true
+  immutable_evidence_revision_and_locator: true
+  explicit_retrieval_channel_status: true
+  scoped_postgresql_hydration: true
+  blue_green_release_before_alias_activation: true
+  source_update_and_tombstone_propagation: true
+  t1_t2_t3_claim_gate: true
+  durable_cursor_events: true
+  pause_resume_cancel_and_recovery: true
+  canonical_artifact_round_trip: true
+  refresh_proposal_preserves_user_blocks: true
+  restore_to_empty_root_with_hash_verification: true
+quality_thresholds:
+  golden_mrr_min: 0.90
+  per_modality_rank_at_1_required: true
+  projection_failures_max: 0
+  projection_degradations_max: 0
+  required_native_roles: [visual, acoustic, frame_visual]
+  required_search_channels_completed: 10
+  quick_verification_min: T1
+  research_verification_min: T2
+  numeric_or_version_claim_verification: T3
+fault_injection:
+  redis_outage:
+    durable_pending_work_recovered: required
+    duplicate_delivery_idempotent: required
+  qdrant_outage:
+    exact_channel_remains_available: required
+    vector_failures_explicit: required
+    full_recovery_without_data_loss: required
+  qdrant_total_loss:
+    rebuild_from_postgresql_and_blobs: required
+  backup_restore:
+    empty_target_only: required
+    restored_object_hashes_verified: required
+external_dependencies:
+  mineru:
+    transport: official_precision_api
+    successful_contract_test: required
+    live_smoke_when_credential_valid: required
+    expired_credential_behavior: raw_retained_explicit_retryable_failure
+commands:
+  repository: ./scripts/verify-nexus.sh
+  compose_e2e: .venv/bin/python scripts/verify-compose-e2e.py --mineru --timeout 1800

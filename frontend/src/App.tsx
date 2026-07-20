@@ -1,21 +1,21 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
-import { Toaster } from '@/components/ui/toaster'
-import { ThemeProvider } from '@/hooks/useTheme'
-import { AppLayout } from '@/components/layout/AppLayout'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { RouterProvider } from 'react-router-dom'
+import { router } from '@/app/router'
+import { ThemeProvider } from '@/app/ThemeProvider'
 
-function App() {
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { staleTime: 5_000, retry: 1, refetchOnWindowFocus: false },
+    mutations: { retry: 0 },
+  },
+})
+
+export default function App() {
   return (
-    <ThemeProvider defaultTheme="light" storageKey="mmrag-ui-theme">
-      <Router>
-        <div className="min-h-screen bg-background">
-          <Routes>
-            <Route path="*" element={<AppLayout />} />
-          </Routes>
-          <Toaster />
-        </div>
-      </Router>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} future={{ v7_startTransition: true }} />
+      </QueryClientProvider>
     </ThemeProvider>
   )
 }
-
-export default App

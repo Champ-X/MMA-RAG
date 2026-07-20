@@ -1,0 +1,4 @@
+# The standard/lite Docker profiles are CPU workloads.  Keep the ML runtime
+# deterministic and prevent PyPI's Linux ARM64 build from resolving CUDA 13
+# wheels (several gigabytes of unused NVIDIA libraries).
+torch==2.7.1+cpu

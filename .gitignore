@@ -22,6 +22,8 @@ build/
 node_modules/
 frontend/dist/
 frontend/node_modules/
+frontend/vite.config.js
+frontend/vite.config.d.ts
 *.tsbuildinfo
 .npm
 .yarn/
@@ -38,6 +40,8 @@ tmp/
 
 # —— 数据与存储（本地开发/持久化）——
 minio_data/
+data/
+backups/
 
 # 推荐问题 LLM 缓存（服务端）
 backend/data/suggestion_cache/
@@ -72,9 +76,6 @@ celerybeat.pid
 *.zip
 *.tar.gz
 *.rar
-
-# —— 测试用 ——
-tests/
 
 # —— 密钥与环境（勿提交 backend/.env）——
 .env

@@ -1,0 +1,54 @@
+{
+  "schema": "nexus.regression-audit.v1",
+  "version": "2.0.0",
+  "executed_at": "2026-07-20T04:00:00+08:00",
+  "result": "passed",
+  "repository_gate": {
+    "ruff": "passed",
+    "backend_tests_passed": 90,
+    "backend_tests_skipped": 0,
+    "alembic_empty_database_upgrade": "0001_to_0010_passed",
+    "openapi_contract_diff": 0,
+    "generated_typescript_client_diff": 0,
+    "frontend_eslint": "passed",
+    "frontend_typecheck": "passed",
+    "frontend_tests_passed": 20,
+    "frontend_production_build": "passed"
+  },
+  "compose_e2e": {
+    "status": "passed",
+    "source_count": 7,
+    "evidence_count": 11,
+    "modalities": ["audio", "image", "table", "text", "video"],
+    "search_channels_completed": 10,
+    "projection_failures": 0,
+    "projection_degradations": 0,
+    "golden_mrr": 1.0,
+    "golden_rank_at_1": ["text", "table", "image", "audio", "video"],
+    "quick_run": "completed_T3",
+    "research_run": "completed_T3",
+    "artifact_revision": 2,
+    "durable_sse_events": 12,
+    "mineru_live_verified": true
+  },
+  "regression_checks": {
+    "pdf_unanchored_zip_images_published": true,
+    "pdf_reprocess_visuals_idempotent": true,
+    "url_transient_retry": true,
+    "url_live_job_tracking": true,
+    "office_extracted_reader": true,
+    "spreadsheet_grid_preview": true,
+    "scheduled_news_restored": true,
+    "inline_multimodal_citations": true,
+    "multi_turn_attachments": true,
+    "space_portrait_auto_routing": true,
+    "task_specific_model_routes": true
+  },
+  "verified_live_pdf": {
+    "display_name": "2605.25480v2.pdf",
+    "published_evidence": 200,
+    "citable_visuals": 13,
+    "derived_visual_assets": 13,
+    "reprocess_duplicate_assets": 0
+  }
+}

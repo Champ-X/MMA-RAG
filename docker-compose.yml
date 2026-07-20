@@ -1,113 +1,299 @@
+name: mma-rag-nexus
+
+x-nexus-env: &nexus-env
+  NEXUS_ENVIRONMENT: production
+  NEXUS_DATABASE_URL: postgresql+psycopg://nexus:${POSTGRES_PASSWORD:-nexus-local}@postgres:5432/nexus
+  NEXUS_AUTO_CREATE_SCHEMA: "false"
+  NEXUS_BLOB_BACKEND: minio
+  NEXUS_MINIO_ENDPOINT: minio:9000
+  NEXUS_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-nexus}
+  NEXUS_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-nexus-local-secret}
+  NEXUS_MINIO_BUCKET: nexus-objects
+  NEXUS_QDRANT_URL: http://qdrant:6333
+  NEXUS_REDIS_URL: redis://redis:6379/0
+  NEXUS_CELERY_BROKER_URL: redis://redis:6379/0
+  NEXUS_CELERY_RESULT_BACKEND: redis://redis:6379/1
+  # Celery itself gives its unprefixed variables precedence during lazy config
+  # loading.  Override legacy developer .env values at the Compose boundary too.
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/1
+  NEXUS_OTEL_ENABLED: "true"
+  NEXUS_OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  NEXUS_BACKUP_ROOT: /backups
+  NEXUS_BIND_HOST: 0.0.0.0
+  NEXUS_INLINE_WORKER: "false"
+  NEXUS_WORKER_LEASE_SECONDS: ${NEXUS_WORKER_LEASE_SECONDS:-120}
+  NEXUS_PROVIDER_TIMEOUT_SECONDS: ${NEXUS_PROVIDER_TIMEOUT_SECONDS:-180}
+  NEXUS_MINERU_BASE_URL: ${NEXUS_MINERU_BASE_URL:-https://mineru.net/api/v4}
+  NEXUS_MINERU_MODEL: ${NEXUS_MINERU_MODEL:-vlm}
+  NEXUS_MINERU_LANGUAGE: ${NEXUS_MINERU_LANGUAGE:-ch}
+  NEXUS_MINERU_TIMEOUT_SECONDS: ${NEXUS_MINERU_TIMEOUT_SECONDS:-900}
+  TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+  NEXUS_SCHEDULED_NEWS_SPACE_ID: ${NEXUS_SCHEDULED_NEWS_SPACE_ID:-}
+  NEXUS_SCHEDULED_NEWS_QUERY: ${NEXUS_SCHEDULED_NEWS_QUERY:-科技热点 互联网新闻 AI动态}
+  NEXUS_SCHEDULED_NEWS_TOPIC: ${NEXUS_SCHEDULED_NEWS_TOPIC:-news}
+  NEXUS_SCHEDULED_NEWS_TIME_RANGE: ${NEXUS_SCHEDULED_NEWS_TIME_RANGE:-day}
+  NEXUS_SCHEDULED_NEWS_MAX_RESULTS: ${NEXUS_SCHEDULED_NEWS_MAX_RESULTS:-10}
+  NEXUS_SCHEDULED_NEWS_INCLUDE_FULL_CONTENT: ${NEXUS_SCHEDULED_NEWS_INCLUDE_FULL_CONTENT:-false}
+  NEXUS_SCHEDULED_NEWS_HOUR_UTC: ${NEXUS_SCHEDULED_NEWS_HOUR_UTC:-8}
+  NEXUS_SCHEDULED_NEWS_MINUTE_UTC: ${NEXUS_SCHEDULED_NEWS_MINUTE_UTC:-0}
+  NEXUS_SANDBOX_BACKEND: unix
+  NEXUS_SANDBOX_SOCKET_PATH: /run/nexus-sandbox/sql.sock
+
+x-backend: &backend
+  # Every backend role executes the exact same immutable application image.  A
+  # per-service implicit image name can otherwise leave one worker on stale code.
+  image: mma-rag-nexus-api:latest
+  build:
+    context: ./backend
+  restart: unless-stopped
+  env_file:
+    - ./backend/.env
+  environment: *nexus-env
+  depends_on:
+    data-init:
+      condition: service_completed_successfully
+    migrate:
+      condition: service_completed_successfully
+    postgres:
+      condition: service_healthy
+    qdrant:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    sandbox:
+      condition: service_healthy
+  networks: [nexus]
+  security_opt: [no-new-privileges:true]
+  read_only: true
+  tmpfs:
+    - /tmp:size=1g,mode=1777
+  volumes:
+    - nexus_models:/home/nexus/.cache/huggingface
+    - ./imports:/imports:ro
+    - nexus_backups:/backups
+    - nexus_sandbox_socket:/run/nexus-sandbox
+
 services:
-  # FastAPI 后端服务
-  backend:
-    build: ./backend
-    container_name: mmrag_backend
-    ports:
-      - "8000:8000"
-    environment:
-      - MINIO_ENDPOINT=minio:9000
-      # 预签名 URL 供浏览器加载；须与宿主机访问 MinIO 的 host:port 一致（见 minio ports 映射）
-      - MINIO_PUBLIC_ENDPOINT=localhost:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
+  data-init:
+    image: mma-rag-nexus-api:latest
+    build:
+      context: ./backend
+    user: "0:0"
+    restart: "no"
+    command:
+      ["sh", "-c", "mkdir -p /home/nexus/.cache/huggingface /backups /run/nexus-sandbox && chown -R nexus:nexus /home/nexus/.cache/huggingface /backups /run/nexus-sandbox"]
     volumes:
-      - ./minio_data:/data
-      - ./qdrant_storage:/qdrant/storage
-    depends_on:
-      - minio
-      - qdrant
-      - redis
-    networks:
-      - mmrag_network
+      - nexus_models:/home/nexus/.cache/huggingface
+      - nexus_backups:/backups
+      - nexus_sandbox_socket:/run/nexus-sandbox
+    security_opt: [no-new-privileges:true]
 
-  # MinIO 对象存储服务
-  minio:
-    image: quay.io/minio/minio:latest
-    container_name: mmrag_minio
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+  postgres:
+    image: postgres:16.4-bookworm
+    restart: unless-stopped
     environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
-    command: server /data --console-address ":9001"
+      POSTGRES_DB: nexus
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexus-local}
     volumes:
-      - ./minio_data:/data
-    networks:
-      - mmrag_network
+      - nexus_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus -d nexus"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [nexus]
 
-  # Qdrant 向量数据库
   qdrant:
-    image: qdrant/qdrant:latest
-    container_name: mmrag_qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
+    image: qdrant/qdrant:v1.18.0
+    restart: unless-stopped
     volumes:
-      - ./qdrant_storage:/qdrant/storage
-    networks:
-      - mmrag_network
+      - nexus_qdrant:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "bash", "-c", "</dev/tcp/127.0.0.1/6333"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [nexus]
 
-  # Redis 缓存服务
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: unless-stopped
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-nexus}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-nexus-local-secret}
+    volumes:
+      - nexus_minio:/data
+    ports:
+      - "127.0.0.1:9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [nexus]
+
   redis:
-    image: redis:7-alpine
-    container_name: mmrag_redis
-    ports:
-      - "6379:6379"
-    networks:
-      - mmrag_network
+    image: redis:7.4.1-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [nexus]
 
-  # Celery Worker (异步任务处理)
-  celery_worker:
-    build: ./backend
-    container_name: mmrag_celery_worker
-    command: celery -A celery_app worker -Q knowledge,ingestion,retrieval,celery --loglevel=info
+  sandbox:
+    image: mma-rag-nexus-api:latest
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ["python", "-m", "nexus.infrastructure.sandbox.server"]
     environment:
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_PUBLIC_ENDPOINT=localhost:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
+      NEXUS_SANDBOX_SOCKET_PATH: /run/nexus-sandbox/sql.sock
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
     volumes:
-      - ./minio_data:/data
-      - ./qdrant_storage:/qdrant/storage
-    depends_on:
-      - redis
-      - minio
-      - qdrant
-    networks:
-      - mmrag_network
+      - nexus_sandbox_socket:/run/nexus-sandbox
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 512m
+    cpus: 0.75
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,stat; assert stat.S_ISSOCK(os.stat('/run/nexus-sandbox/sql.sock').st_mode)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
-  # Celery Flower (任务监控界面)
-  celery_flower:
-    build: ./backend
-    container_name: mmrag_celery_flower
-    command: celery -A celery_app flower --port=5555
-    ports:
-      - "5555:5555"
-    environment:
-      - REDIS_URL=redis://redis:6379/0
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.104.0
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./ops/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    networks: [nexus]
+
+  migrate:
+    image: mma-rag-nexus-api:latest
+    build:
+      context: ./backend
+    environment: *nexus-env
+    command: ["alembic", "upgrade", "head"]
     depends_on:
-      - celery_worker
-    networks:
-      - mmrag_network
+      postgres:
+        condition: service_healthy
+    networks: [nexus]
+    security_opt: [no-new-privileges:true]
+
+  api:
+    <<: *backend
+    command: ["nexus", "serve", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  worker-lite:
+    <<: *backend
+    profiles: [lite]
+    command:
+      ["celery", "-A", "nexus.infrastructure.celery.app:celery_app", "worker", "--loglevel=INFO", "--queues=control,index", "--concurrency=1"]
+    environment:
+      <<: *nexus-env
+      NEXUS_WORKER_ROLE: control,index
+
+  standard-worker:
+    <<: *backend
+    profiles: [standard]
+    command:
+      ["celery", "-A", "nexus.infrastructure.celery.app:celery_app", "worker", "--loglevel=INFO", "--queues=control", "--concurrency=1"]
+    environment:
+      <<: *nexus-env
+      NEXUS_WORKER_ROLE: control
+
+  standard-index-worker:
+    <<: *backend
+    profiles: [standard]
+    command:
+      ["celery", "-A", "nexus.infrastructure.celery.app:celery_app", "worker", "--loglevel=INFO", "--queues=index", "--concurrency=1"]
+    environment:
+      <<: *nexus-env
+      NEXUS_WORKER_ROLE: index
+
+  scheduler:
+    <<: *backend
+    profiles: [lite, standard, full]
+    command:
+      ["celery", "-A", "nexus.infrastructure.celery.app:celery_app", "worker", "--loglevel=INFO", "--queues=scheduler", "--concurrency=1", "--beat", "--schedule=/tmp/celerybeat-schedule"]
+    environment:
+      <<: *nexus-env
+      NEXUS_WORKER_ROLE: scheduler
+
+  feishu-worker:
+    <<: *backend
+    profiles: [lite, standard, full, feishu]
+    command: ["nexus", "feishu-worker"]
+
+  agent-worker:
+    <<: *backend
+    profiles: [full]
+    command:
+      ["celery", "-A", "nexus.infrastructure.celery.app:celery_app", "worker", "--loglevel=INFO", "--queues=control", "--concurrency=2"]
+    environment:
+      <<: *nexus-env
+      NEXUS_INLINE_WORKER: "false"
+      NEXUS_WORKER_ROLE: control
+
+  index-worker:
+    <<: *backend
+    profiles: [full]
+    command:
+      ["celery", "-A", "nexus.infrastructure.celery.app:celery_app", "worker", "--loglevel=INFO", "--queues=index", "--concurrency=1"]
+    environment:
+      <<: *nexus-env
+      NEXUS_INLINE_WORKER: "false"
+      NEXUS_WORKER_ROLE: index
+
+  web:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:8080"
+    networks: [nexus]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+      - /var/cache/nginx:size=16m
+      - /var/run:size=4m
 
 networks:
-  mmrag_network:
+  nexus:
     driver: bridge
+    internal: false
 
 volumes:
-  minio_data:
-  qdrant_storage:
+  nexus_postgres:
+  nexus_qdrant:
+  nexus_minio:
+  nexus_models:
+  nexus_backups:
+  nexus_sandbox_socket:

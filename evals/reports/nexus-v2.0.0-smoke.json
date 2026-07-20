@@ -1,0 +1,88 @@
+{
+  "schema": "nexus.evaluation-report.v1",
+  "version": "2.0.0",
+  "gate": "evals/gates/nexus-v2.0.0.yaml",
+  "executed_at": "2026-07-19T13:55:54+08:00",
+  "profile": "standard-real",
+  "result": "passed_with_external_credential_notice",
+  "repository_gate": {
+    "status": "passed",
+    "backend_ruff": "passed",
+    "backend_tests": 27,
+    "alembic_empty_database_upgrade": "0001_to_0003_passed",
+    "openapi_contract_diff": 0,
+    "generated_typescript_client_diff": 0,
+    "frontend_eslint": "passed",
+    "frontend_typecheck": "passed",
+    "frontend_tests": 2,
+    "frontend_production_build": "passed"
+  },
+  "compose_e2e": {
+    "status": "passed",
+    "space_id": "019f78bf-fe28-7ec3-a096-ee37976ce75a",
+    "source_count": 6,
+    "evidence_count": 11,
+    "modalities": ["audio", "image", "table", "text", "video"],
+    "search_channels_completed": 10,
+    "projection_failures": 0,
+    "projection_degradations": 0,
+    "native_multimodal": true,
+    "projection_role_counts": {
+      "dense": 20,
+      "sparse": 20,
+      "visual": 12,
+      "caption_dense": 12,
+      "caption_sparse": 12,
+      "text_dense": 4,
+      "text_sparse": 8,
+      "acoustic": 4,
+      "scene_dense": 4,
+      "frame_visual": 4
+    },
+    "golden_mrr": 1.0,
+    "golden_rank_at_1": ["text", "table", "image", "audio", "video"],
+    "quick_run": "completed_T3",
+    "research_run": "completed_T3",
+    "read_only_tools": ["knowledge_search", "sql_read"],
+    "artifact_revision": 2,
+    "durable_sse_events": 11
+  },
+  "operations": {
+    "postgresql_minio_backup": "completed_and_verified",
+    "restore_to_empty_postgresql_and_blob_root": "passed",
+    "restored_object_count": 14,
+    "restored_authoritative_counts_match": true,
+    "qdrant_restore_strategy": "rebuild_required",
+    "redis_outage_recovery_and_duplicate_delivery": "passed",
+    "qdrant_outage_explicit_degradation_and_recovery": "passed",
+    "cold_start_concurrent_rebuild_and_search": {
+      "status": "passed",
+      "search_latency_seconds": 15.48,
+      "search_channels_completed": 10,
+      "search_degraded": false,
+      "target_rank": 1,
+      "active_generation": "g7",
+      "projected_evidence": 49,
+      "projection_failures": 0,
+      "projection_degradations": 0,
+      "alias_switch": "after_all_required_vector_roles_validated"
+    },
+    "post_restart_quick_run": {
+      "status": "completed",
+      "run_id": "019f78f1-8768-7806-91f0-effc61e65f42",
+      "model": "Pro/moonshotai/Kimi-K2.5",
+      "retrieval_degraded": false,
+      "citation_count": 1,
+      "verification": "T3_supported"
+    },
+    "opentelemetry_export": "observed"
+  },
+  "channels": {
+    "feishu": "tenant_auth_and_fresh_worker_heartbeat_ready",
+    "mineru": {
+      "adapter_contract": "passed_with_official_api_mock",
+      "live_credential": "expired",
+      "observed_behavior": "raw_retained_no_semantic_fallback"
+    }
+  }
+}

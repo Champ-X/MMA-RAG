@@ -1,7 +1,7 @@
 {
   "include": [
-    "backend",
-    "tests"
+    "backend/src",
+    "backend/tests"
   ],
   "exclude": [
     "**/__pycache__",
@@ -10,8 +10,8 @@
     "venv"
   ],
   "extraPaths": [
-    "backend"
+    "backend/src"
   ],
-  "pythonVersion": "3.9",
+  "pythonVersion": "3.11",
   "typeCheckingMode": "basic"
 }

@@ -1,0 +1,88 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mma-nexus"
+version = "2.0.0"
+description = "Local-first multimodal agentic knowledge base control plane"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.104,<1",
+  "uvicorn[standard]>=0.24,<1",
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2,<3",
+  "sqlalchemy>=2,<3",
+  "alembic>=1.13,<2",
+  "psycopg[binary]>=3.1,<4",
+  "python-multipart>=0.0.6",
+  "orjson>=3.9",
+  "httpx>=0.27,<0.28",
+  "minio>=7.2",
+  "qdrant-client>=1.18,<2",
+  "redis>=5,<6",
+  "mineru-open-sdk==0.2.5",
+  "lark-oapi==1.5.3",
+  "celery[redis]>=5.4,<6",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4,<9",
+  "pytest-asyncio>=0.21,<1",
+  "ruff>=0.6",
+  "mypy>=1.8",
+]
+media = [
+  "Pillow>=10",
+  "openpyxl>=3.1",
+  "xlrd>=2.0,<3",
+  "reportlab>=4,<5",
+]
+agents = [
+  "langgraph>=1.2,<2",
+  "opentelemetry-api>=1.25,<2",
+  "opentelemetry-sdk>=1.25,<2",
+  "opentelemetry-exporter-otlp-proto-http>=1.25,<2",
+  "opentelemetry-instrumentation-fastapi>=0.46b0,<1",
+  "opentelemetry-instrumentation-httpx>=0.46b0,<1",
+]
+tools = [
+  "duckdb>=1,<2",
+]
+models = [
+  # Docker applies docker-cpu.constraints.txt; the broad lower bound keeps the
+  # optional extra usable with native CPU/GPU wheels on developer machines.
+  "torch>=2.2,<3",
+  "transformers>=4.44,<5",
+  "FlagEmbedding>=1.2",
+  "huggingface-hub>=0.24",
+  "peft>=0.7,<1",
+  "pyarrow>=8,<21",
+  "chardet>=3,<6",
+  "numpy>=1.26,<3",
+  "librosa>=0.10,<1",
+  "soundfile>=0.12,<1",
+]
+
+[project.scripts]
+nexus = "nexus.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008"] # FastAPI dependency markers are intentionally declared as defaults.
