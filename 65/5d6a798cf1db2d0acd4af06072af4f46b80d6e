@@ -1,0 +1,21 @@
+docs/superpowers/specs/2026-07-23-evidence-rail-sidebar-refinement-design.md
+  s_43a2561e2fccd0::t_d8094f020d11d5 1-127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "655d6a798cf1db2d0acd4af06072af4f46b80d6e",
+  "prompts": {},
+  "sessions": {
+    "s_43a2561e2fccd0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8a96-303f-7c83-887c-4eca9d7a58c4",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
