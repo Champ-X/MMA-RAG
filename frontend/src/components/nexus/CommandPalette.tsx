@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
@@ -19,6 +19,20 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { nexusApi } from '@/api/nexus'
+import { buildEvidenceDetailPath } from '@/lib/evidenceRoutes'
+import {
+  focusTrapTargetElement,
+  getFocusableElements,
+  resolveFocusTrapAction,
+} from '@/lib/focusTrap'
+import {
+  buildCommandPaletteEmptyState,
+  buildCommandPaletteSearchStatus,
+  clampCommandPaletteIndex,
+  commandPaletteOptionId,
+  moveCommandPaletteIndex,
+} from './CommandPaletteViewModel'
+import './CommandPalette.css'
 
 type PaletteItem = {
   id: string
@@ -49,6 +63,9 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const navigate = useNavigate()
   const inputRef = useRef<HTMLInputElement>(null)
   const paletteRef = useRef<HTMLElement>(null)
+  const previousFocusRef = useRef<HTMLElement | null>(null)
+  const restoreFocusRef = useRef(true)
+  const listboxBaseId = useId()
   const spaces = useQuery({ queryKey: ['spaces'], queryFn: nexusApi.listSpaces, enabled: open })
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query.trim())
@@ -63,6 +80,13 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     enabled: open && deferredQuery.length >= 2,
   })
   const [activeIndex, setActiveIndex] = useState(0)
+  const listboxId = `${listboxBaseId}-listbox`
+  const emptyState = buildCommandPaletteEmptyState(query)
+  const searchStatus = buildCommandPaletteSearchStatus([
+    { enabled: open, error: spaces.error, label: 'Spaces' },
+    { enabled: open, error: conversations.error, label: 'Conversations' },
+    { enabled: open && deferredQuery.length >= 2, error: evidence.error, label: 'Evidence' },
+  ])
 
   const items = useMemo(() => {
     const dynamicSpaces: PaletteItem[] = (spaces.data?.items ?? []).map((space) => ({
@@ -90,7 +114,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         label: excerpt.slice(0, 96) || `${item.source_name} · ${item.evidence_type.replaceAll('_', ' ')}`,
         detail: `${item.source_name} · ${item.modality} · ${item.evidence_type.replaceAll('_', ' ')}`,
         section: 'Evidence',
-        to: `/runs/browser/evidence/${item.id}`,
+        to: buildEvidenceDetailPath(item.id),
         icon: FileSearch,
         keywords: `${item.source_name} ${item.searchable_text}`,
       }
@@ -105,9 +129,12 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       ...matchingEvidence,
     ].slice(0, 18)
   }, [conversations.data?.items, evidence.data?.items, query, spaces.data?.items])
+  const activeOptionId = items.length ? commandPaletteOptionId(listboxBaseId, activeIndex) : undefined
 
   useEffect(() => {
     if (!open) return
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    restoreFocusRef.current = true
     const previousOverflow = document.body.style.overflow
     setQuery('')
     setActiveIndex(0)
@@ -116,13 +143,25 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     return () => {
       window.cancelAnimationFrame(frame)
       document.body.style.overflow = previousOverflow
+      if (restoreFocusRef.current && previousFocusRef.current && document.contains(previousFocusRef.current)) {
+        previousFocusRef.current.focus({ preventScroll: true })
+      }
+      previousFocusRef.current = null
     }
   }, [open])
 
   useEffect(() => setActiveIndex(0), [query])
+  useEffect(() => {
+    setActiveIndex((current) => clampCommandPaletteIndex(current, items.length))
+  }, [items.length])
+  useEffect(() => {
+    if (!open || !activeOptionId) return
+    document.getElementById(activeOptionId)?.scrollIntoView({ block: 'nearest' })
+  }, [activeOptionId, open])
 
   if (!open) return null
   const choose = (item: PaletteItem) => {
+    restoreFocusRef.current = false
     onClose()
     navigate(item.to)
   }
@@ -140,17 +179,18 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             onClose()
             return
           }
-          if (event.key !== 'Tab') return
-          const focusable = Array.from(paletteRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [href]') ?? [])
-          const first = focusable[0]
-          const last = focusable[focusable.length - 1]
-          if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault()
-            last?.focus()
-          } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault()
-            first?.focus()
-          }
+          const focusable = getFocusableElements(paletteRef.current)
+          const action = resolveFocusTrapAction({
+            activeElement: document.activeElement,
+            activeInside: Boolean(paletteRef.current?.contains(document.activeElement)),
+            firstElement: focusable[0],
+            key: event.key,
+            lastElement: focusable[focusable.length - 1],
+            shiftKey: event.shiftKey,
+          })
+          if (!action.preventDefault) return
+          event.preventDefault()
+          focusTrapTargetElement({ action, container: paletteRef.current, focusable })?.focus()
         }}
       >
         <header>
@@ -160,26 +200,37 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'ArrowDown') { event.preventDefault(); setActiveIndex((current) => Math.min(current + 1, items.length - 1)) }
-              if (event.key === 'ArrowUp') { event.preventDefault(); setActiveIndex((current) => Math.max(current - 1, 0)) }
+              if (event.key === 'ArrowDown') { event.preventDefault(); setActiveIndex((current) => moveCommandPaletteIndex(current, items.length, 'next')) }
+              if (event.key === 'ArrowUp') { event.preventDefault(); setActiveIndex((current) => moveCommandPaletteIndex(current, items.length, 'previous')) }
+              if (event.key === 'Home' && !query) { event.preventDefault(); setActiveIndex((current) => moveCommandPaletteIndex(current, items.length, 'first')) }
+              if (event.key === 'End' && !query) { event.preventDefault(); setActiveIndex((current) => moveCommandPaletteIndex(current, items.length, 'last')) }
               if (event.key === 'Enter' && items[activeIndex]) { event.preventDefault(); choose(items[activeIndex]) }
             }}
             placeholder="Search Spaces, conversations, Evidence and actions…"
             aria-label="Search Nexus"
+            role="combobox"
+            aria-activedescendant={activeOptionId}
+            aria-autocomplete="list"
+            aria-controls={listboxId}
+            aria-expanded={open}
+            aria-haspopup="listbox"
           />
-          <button className="icon-button" onClick={onClose} aria-label="Close command palette"><X size={16} /></button>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close command palette"><X size={16} /></button>
         </header>
-        <div className="command-results" role="listbox" aria-label="Nexus destinations">
+        <div className="command-results" id={listboxId} role="listbox" aria-label="Nexus destinations">
+          {searchStatus.visible && <div className="command-search-status" role={searchStatus.role} aria-live={searchStatus.liveMode}><strong>{searchStatus.label}</strong><small>{searchStatus.detail}</small></div>}
           {items.map((item, index) => {
             const Icon = item.icon
             return (
               <button
                 type="button"
                 role="option"
+                id={commandPaletteOptionId(listboxBaseId, index)}
                 aria-selected={index === activeIndex}
                 className={index === activeIndex ? 'active' : undefined}
                 key={item.id}
-                onMouseEnter={() => setActiveIndex(index)}
+                tabIndex={-1}
+                onPointerMove={() => setActiveIndex(index)}
                 onClick={() => choose(item)}
               >
                 <span className="command-icon"><Icon size={17} /></span>
@@ -188,7 +239,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
               </button>
             )
           })}
-          {!items.length && <div className="command-empty"><strong>No matching place, conversation or Evidence</strong><small>Try a source name, quoted phrase, earlier question or action.</small></div>}
+          {!items.length && <div className="command-empty" role={emptyState.role} aria-live={emptyState.liveMode}><strong>{emptyState.label}</strong><small>{emptyState.detail}</small></div>}
         </div>
         <footer><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span></footer>
       </section>

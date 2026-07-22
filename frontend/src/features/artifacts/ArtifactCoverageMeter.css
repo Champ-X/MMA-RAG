@@ -1,0 +1,8 @@
+.artifact-coverage-meter { display: grid; grid-template-columns: minmax(100px, 1fr) auto; gap: 7px 10px; align-items: center; }
+.artifact-coverage-meter > span { height: 7px; overflow: hidden; background: #dce3e0; border-radius: 999px; }
+.artifact-coverage-meter > span > i { height: 100%; display: block; background: linear-gradient(90deg, var(--teal), var(--cobalt)); border-radius: inherit; }
+.artifact-coverage-meter > strong { color: var(--cobalt-dark); font: 700 12px ui-monospace, monospace; }
+.artifact-coverage-meter > small { grid-column: 1 / -1; color: var(--muted); font-size: 9px; }
+.artifact-coverage-meter.compact { grid-template-columns: minmax(100px, 1fr) 40px; }
+
+html[data-theme="dark"] .artifact-coverage-meter > span { background: #344246; }

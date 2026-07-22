@@ -1,11 +1,14 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
-
-type EvidenceItem = {
-  evidence_revision_id?: string
-  source?: string
-  locator?: string | Record<string, unknown>
-}
+import { buildEvidenceDetailPath } from '@/lib/evidenceRoutes'
+import {
+  buildArtifactEvidenceBindingStrip,
+  buildArtifactEvidenceRegister,
+  buildArtifactInlineCitationText,
+  type ArtifactEvidenceItemInput,
+} from './artifactDocumentViewModel'
+import './ArtifactDocument.css'
 
 type ArtifactBlock = {
   type?: string
@@ -16,14 +19,30 @@ type ArtifactBlock = {
   columns?: unknown[]
   rows?: unknown[][]
   evidence_revision_ids?: string[]
-  items?: EvidenceItem[]
+  items?: ArtifactEvidenceItemInput[]
   origin?: string
 }
 
 function EvidenceBindings({ ids, runId }: { ids?: string[]; runId?: string | null }) {
-  if (!ids?.length) return null
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const bindings = buildArtifactEvidenceBindingStrip(ids)
+  if (!bindings.items.length) return null
   return <div className="binding-line" aria-label="Evidence bindings">
-    {ids.map((id) => <Link key={id} to={`/runs/${runId ?? 'browser'}/evidence/${id}`}>Evidence {id.slice(0, 8)}</Link>)}
+    {bindings.visibleItems.map((item) => (
+      <Link key={item.id} aria-label={item.ariaLabel} to={buildEvidenceDetailPath(item.id, runId)}>
+        {item.label}
+      </Link>
+    ))}
+    {bindings.archivedItems.length ? <span className={`binding-overflow${archiveOpen ? ' open' : ''}`}>
+      <button type="button" aria-expanded={archiveOpen} onClick={() => setArchiveOpen((value) => !value)}>
+        {archiveOpen ? 'Hide' : 'Show'} {bindings.hiddenCount} more
+      </button>
+      {archiveOpen ? bindings.archivedItems.map((item) => (
+        <Link key={item.id} aria-label={item.ariaLabel} to={buildEvidenceDetailPath(item.id, runId)}>
+          {item.label}
+        </Link>
+      )) : null}
+    </span> : null}
   </div>
 }
 
@@ -34,6 +53,93 @@ function BlockHeading({ block }: { block: ArtifactBlock }) {
   return <h2>{block.text}</h2>
 }
 
+function ArtifactMarkdown({
+  evidenceRevisionIds,
+  runId,
+  text,
+}: {
+  evidenceRevisionIds?: string[]
+  runId?: string | null
+  text?: string
+}) {
+  const citationText = buildArtifactInlineCitationText(text ?? '', evidenceRevisionIds)
+  const referencesByHref = new Map(citationText.references.map((reference) => [
+    `#artifact-evidence-${reference.evidenceRevisionId}`,
+    reference,
+  ]))
+
+  return <ReactMarkdown components={{
+    a: ({ href, children }) => {
+      const reference = href ? referencesByHref.get(href) : undefined
+      if (!reference) return <a href={href}>{children}</a>
+      return <Link
+        aria-label={reference.ariaLabel}
+        className="artifact-inline-citation"
+        title={`Evidence ${reference.shortRevisionId}`}
+        to={buildEvidenceDetailPath(reference.evidenceRevisionId, runId)}
+      >
+        {children}
+      </Link>
+    },
+  }}>{citationText.markdown}</ReactMarkdown>
+}
+
+function SourceReceipt({ item, runId }: {
+  item: ReturnType<typeof buildArtifactEvidenceRegister>['items'][number]
+  runId?: string | null
+}) {
+  const content = <>
+    <span className="artifact-source-kind">{item.locatorLabel}</span>
+    <span className="artifact-source-copy">
+      <strong>{item.sourceLabel}</strong>
+      <small>{item.locatorDetail}</small>
+    </span>
+    <code>{item.shortRevisionId}</code>
+  </>
+
+  if (!item.evidenceRevisionId) {
+    return <div className="artifact-source-receipt unbound" aria-label={item.ariaLabel}>{content}</div>
+  }
+
+  return <Link
+    aria-label={item.ariaLabel}
+    className="artifact-source-receipt"
+    to={buildEvidenceDetailPath(item.evidenceRevisionId, runId)}
+  >
+    {content}
+  </Link>
+}
+
+function EvidenceRegister({ items, runId }: { items?: ArtifactEvidenceItemInput[]; runId?: string | null }) {
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const register = buildArtifactEvidenceRegister(items)
+
+  return <section className="artifact-sources" aria-label="Evidence register">
+    <header>
+      <p className="eyebrow">Evidence register</p>
+      <h2>Source receipts</h2>
+      <p>{register.summary}</p>
+    </header>
+    {register.items.length ? <div className="artifact-source-list">
+      {register.visibleItems.map((item) => <SourceReceipt key={item.key} item={item} runId={runId} />)}
+      {register.archivedItems.length ? <section className={`artifact-source-archive${archiveOpen ? ' open' : ''}`} aria-label="Archived source receipts">
+        <button
+          type="button"
+          aria-expanded={archiveOpen}
+          onClick={() => setArchiveOpen((value) => !value)}
+        >
+          <span>{archiveOpen ? 'Hide archived receipts' : 'Open archived receipts'}</span>
+          <strong>{register.hiddenCount}</strong>
+          <small>{register.archiveSummary}</small>
+        </button>
+        {archiveOpen ? <div>
+          {register.archivedItems.map((item) => <SourceReceipt key={item.key} item={item} runId={runId} />)}
+        </div> : null}
+      </section> : null}
+    </div> : <p className="artifact-source-empty">No Evidence receipts are attached to this Artifact.</p>}
+  </section>
+}
+
 export function ArtifactDocument({ document, runId }: { document: Record<string, unknown>; runId?: string | null }) {
   const blocks = (document.blocks ?? []) as ArtifactBlock[]
   return <article className="artifact-paper">
@@ -41,7 +147,7 @@ export function ArtifactDocument({ document, runId }: { document: Record<string,
       if (block.type === 'heading') return <BlockHeading key={index} block={block} />
       if (block.type === 'paragraph') return <section key={index} className={`artifact-block${block.origin === 'user' ? ' user-authored' : ''}`}>
         {block.origin === 'user' && <span className="block-origin">User-authored</span>}
-        <ReactMarkdown>{block.text ?? ''}</ReactMarkdown>
+        <ArtifactMarkdown evidenceRevisionIds={block.evidence_revision_ids} runId={runId} text={block.text} />
         <EvidenceBindings ids={block.evidence_revision_ids} runId={runId} />
       </section>
       if (block.type === 'table') return <section key={index} className="artifact-table-block">
@@ -52,13 +158,9 @@ export function ArtifactDocument({ document, runId }: { document: Record<string,
         </table></div>
         <EvidenceBindings ids={block.evidence_revision_ids} runId={runId} />
       </section>
-      if (block.type === 'evidence_list') return <section key={index} className="artifact-sources">
-        <h2>Evidence register</h2>
-        {block.items?.map((item, itemIndex) => item.evidence_revision_id ? <Link key={item.evidence_revision_id} to={`/runs/${runId ?? 'browser'}/evidence/${item.evidence_revision_id}`}>
-          <span><strong>{item.source || 'Evidence source'}</strong><small>{typeof item.locator === 'string' ? item.locator : item.locator ? JSON.stringify(item.locator) : 'Open exact locator'}</small></span>
-          <code>{item.evidence_revision_id}</code>
-        </Link> : <div key={itemIndex}><span>{item.source || 'Evidence source'}</span><span>Unbound reference</span></div>)}
-      </section>
+      if (block.type === 'evidence_list') {
+        return <EvidenceRegister key={index} items={block.items} runId={runId} />
+      }
       return null
     })}
   </article>

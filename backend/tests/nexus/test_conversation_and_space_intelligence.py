@@ -169,3 +169,66 @@ def test_intent_and_rewrite_use_their_configured_task_routes_with_fallback_guard
     assert understanding["intent_model"] == "task/query_intent"
     assert understanding["rewrite_model"] == "task/query_rewrite"
     assert understanding["understanding_mode"] == "model_with_deterministic_guardrails"
+
+
+def test_task_fallback_metadata_is_visible_in_query_understanding(
+    api: TestClient,
+    nexus: NexusContainer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    space = _create_space(api, "Task fallback visibility")
+    _upload(
+        api,
+        str(space["id"]),
+        "launch.md",
+        "# Launch\n\nProject Atlas launch window opens on 2027-04-12.",
+    )
+
+    def complete(request: object, requirement: ModelRequirement) -> ModelResponse:
+        if requirement.role == "query_intent":
+            return ModelResponse(
+                text=json.dumps({
+                    "intent": "factual",
+                    "modality_intent": "text",
+                    "is_complex": False,
+                    "keywords": ["Atlas"],
+                    "sub_queries": [],
+                    "fallback": True,
+                }),
+                actual_model="deterministic-task-local-v1",
+                metadata={
+                    "mode": "deterministic_task_fallback",
+                    "degradation_reason": "active_task_model_route_failed",
+                },
+            )
+        return ModelResponse(
+            text=json.dumps({
+                "rewritten_query": "When does Project Atlas launch?",
+                "multi_view_queries": [],
+                "keywords": ["Atlas"],
+                "fallback": True,
+            }),
+            actual_model="deterministic-task-local-v1",
+            metadata={
+                "mode": "deterministic_task_fallback",
+                "degradation_reason": "pinned_setup_task_gateway_failed",
+            },
+        )
+
+    monkeypatch.setattr(nexus.model_gateway, "complete", complete)
+    response = api.post(
+        "/api/v1/runs",
+        json={
+            "goal": "When does Project Atlas launch?",
+            "kind": "quick",
+            "scope": {"space_ids": [space["id"]]},
+        },
+    )
+
+    assert response.status_code == 202, response.text
+    understanding = response.json()["result"]["query_understanding"]
+    assert understanding["intent_model"] == "deterministic-task-local-v1"
+    assert understanding["rewrite_model"] == "deterministic-task-local-v1"
+    assert understanding["intent_degradation"] == "active_task_model_route_failed"
+    assert understanding["rewrite_degradation"] == "pinned_setup_task_gateway_failed"
+    assert understanding["understanding_mode"] == "model_degraded_with_deterministic_guardrails"

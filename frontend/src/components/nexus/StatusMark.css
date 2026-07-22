@@ -1,0 +1,36 @@
+.status-mark {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  color: var(--muted);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  line-height: 1;
+  text-transform: lowercase;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  display: inline-block;
+  background: #87918f;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgb(135 145 143 / 0.14);
+}
+
+.status-positive .status-dot {
+  background: var(--teal);
+  box-shadow: 0 0 0 3px rgb(30 122 104 / 0.14);
+}
+
+.status-warning .status-dot {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px rgb(204 122 26 / 0.14);
+}
+
+.status-negative .status-dot {
+  background: var(--red);
+  box-shadow: 0 0 0 3px rgb(180 60 57 / 0.14);
+}

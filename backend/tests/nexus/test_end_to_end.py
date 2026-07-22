@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import httpx
 from fastapi.testclient import TestClient
+
+from nexus.bootstrap import NexusContainer
 
 
 def _space(api: TestClient, name: str = "Launch Evidence") -> dict[str, object]:
@@ -186,6 +189,70 @@ def test_space_archive_closes_scope_but_preserves_global_source(api: TestClient)
     assert api.delete(f"/api/v1/spaces/{space['id']}").status_code == 202
 
 
+def test_quick_run_degrades_to_evidence_summary_when_active_model_route_times_out(
+    api: TestClient,
+    nexus: NexusContainer,
+    monkeypatch: object,
+) -> None:
+    space = _space(api, "Timeout Resilience")
+    _upload(
+        api,
+        str(space["id"]),
+        "timeout.md",
+        "# Timeout Resilience\n\nProject Atlas keeps evidence available during model outages.",
+    )
+    provider = nexus.model_catalog.create_provider(
+        name="timeout-runtime",
+        protocol_family="openai_compatible",
+        endpoint="https://timeout-runtime.invalid/v1",
+        secret_ref=None,
+    )
+    deployment = nexus.model_catalog.register_model(
+        provider.id,
+        upstream_model_id="timeout-runtime/model",
+        declared_capabilities=["text"],
+    )
+    nexus.model_catalog.repository.record_probe(
+        deployment.id,
+        results={"chat": True},
+        verified_capabilities=["text"],
+        error=None,
+    )
+    nexus.model_catalog.enable(deployment.id)
+    route = nexus.model_catalog.create_route(
+        role="quick_synthesis",
+        deployment_ids=[deployment.id],
+        required_capabilities=["text"],
+    )
+    nexus.model_catalog.activate_route(route.id)
+
+    def timeout_post(url: str, **_: object) -> httpx.Response:
+        assert url == "https://timeout-runtime.invalid/v1/chat/completions"
+        raise httpx.ReadTimeout("provider timed out")
+
+    monkeypatch.setattr(httpx, "post", timeout_post)  # type: ignore[attr-defined]
+    response = api.post(
+        "/api/v1/runs",
+        json={
+            "goal": "What remains available when the model route times out?",
+            "kind": "quick",
+            "scope": {"space_ids": [space["id"]]},
+        },
+    )
+
+    assert response.status_code == 202, response.text
+    run = response.json()
+    assert run["status"] == "completed"
+    assert run["stop_reason"] == "goal_achieved"
+    assert run["result"]["model"]["actual_model"] == "extractive-local-v1"
+    assert run["result"]["model"]["metadata"]["degradation_reason"] == (
+        "active_model_route_failed"
+    )
+    assert run["result"]["model"]["metadata"]["failed_route_id"] == route.id
+    assert "Project Atlas keeps evidence available" in run["result"]["answer"]
+    assert "执行所需能力当前不可用" not in run["result"]["answer"]
+
+
 def test_deep_research_creates_verified_artifact_and_exports(api: TestClient) -> None:
     space = _space(api, "Research Sources")
     budget_upload = _upload(
@@ -219,9 +286,10 @@ def test_deep_research_creates_verified_artifact_and_exports(api: TestClient) ->
     canonical = api.get(f"/api/v1/artifacts/{artifact_id}/render?format=json")
     assert canonical.status_code == 200
     assert canonical.json()["schema"] == "nexus.block-document.v1"
-    assert api.get(f"/api/v1/artifacts/{artifact_id}/render?format=markdown").text.startswith(
-        "# Research Project Aurora"
-    )
+    markdown = api.get(f"/api/v1/artifacts/{artifact_id}/render?format=markdown").text
+    assert markdown.startswith("> Nexus Artifact Delivery Packet")
+    assert "> Title: Research Project Aurora launch assumptions and budget" in markdown
+    assert "# Research Project Aurora" in markdown
     assert "<!doctype html>" in api.get(f"/api/v1/artifacts/{artifact_id}/render?format=html").text
     pdf = api.get(f"/api/v1/artifacts/{artifact_id}/render?format=pdf")
     assert pdf.status_code == 200

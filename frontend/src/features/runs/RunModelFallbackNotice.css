@@ -1,0 +1,23 @@
+.model-fallback-notice { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 9px; align-items: start; margin: -6px 0 16px; padding: 12px; color: #304742; background: #eff8f4; border: 1px solid #c2d8d0; border-radius: 4px 13px 13px 13px; box-shadow: inset 4px 0 #45b69d; }
+.model-fallback-notice.tone-blocked { color: #65413d; background: #fff2ef; border-color: #e7bbb4; box-shadow: inset 4px 0 var(--red); }
+.model-fallback-notice > svg { width: 24px; height: 24px; padding: 5px; color: #126959; background: #dff2ec; border-radius: 8px 8px 3px 8px; }
+.model-fallback-notice.tone-blocked > svg { color: #9c3e38; background: #ffe0dc; }
+.model-fallback-notice > span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.model-fallback-notice strong { font-size: 10px; }
+.model-fallback-notice small { color: #60716d; font-size: 8px; line-height: 1.45; }
+.model-fallback-notice.tone-blocked small { color: #80534d; }
+.model-fallback-notice em { color: #48615b; font: 800 7px/1.35 ui-monospace, monospace; text-transform: uppercase; }
+.model-fallback-notice.tone-blocked em { color: #8f3934; }
+.model-fallback-notice code { max-width: 210px; overflow: hidden; padding: 4px 7px; color: #126959; background: rgb(255 255 255 / .72); border: 1px solid rgb(18 105 89 / .15); border-radius: 999px; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.model-fallback-notice.tone-blocked code { color: #8f3934; border-color: rgb(143 57 52 / .2); }
+
+html[data-theme="dark"] .model-fallback-notice { color: #cfe5df; background: #142421; border-color: #31594f; }
+html[data-theme="dark"] .model-fallback-notice.tone-blocked { color: #ffd6d0; background: #321d1d; border-color: #6e4140; }
+html[data-theme="dark"] .model-fallback-notice > svg { color: #9be0cf; background: #183a33; }
+html[data-theme="dark"] .model-fallback-notice.tone-blocked > svg { color: #ffd6d0; background: #4a2724; }
+html[data-theme="dark"] .model-fallback-notice small { color: #aebbb8; }
+html[data-theme="dark"] .model-fallback-notice.tone-blocked small { color: #d9a9a2; }
+html[data-theme="dark"] .model-fallback-notice em { color: #9be0cf; }
+html[data-theme="dark"] .model-fallback-notice.tone-blocked em { color: #ffaaa2; }
+html[data-theme="dark"] .model-fallback-notice code { color: #9be0cf; background: rgb(255 255 255 / .06); border-color: #31594f; }
+html[data-theme="dark"] .model-fallback-notice.tone-blocked code { color: #ffaaa2; border-color: #6e4140; }

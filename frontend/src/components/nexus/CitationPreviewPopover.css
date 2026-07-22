@@ -1,0 +1,42 @@
+.citation-preview-popover { position: fixed; z-index: 95; display: flex; flex-direction: column; overflow: hidden; color: #202a2d; background: #fffdf7; border: 1px solid #8ea099; border-radius: 5px 18px 18px 18px; box-shadow: 0 26px 70px rgb(8 18 20 / .28), inset 0 1px 0 rgb(255 255 255 / .78); animation: citation-pop .14s ease-out; }
+.citation-preview-popover.place-above { border-radius: 18px 18px 18px 5px; }
+.citation-preview-popover > header { display: grid; grid-template-columns: 34px minmax(0, 1fr) 30px; gap: 10px; align-items: start; padding: 12px 13px 10px; color: #f4fbf8; background: #202a2d; }
+.citation-preview-icon { width: 32px; height: 32px; display: grid; place-items: center; color: #10221e; background: #c9efe5; border-radius: 10px 10px 4px 10px; }
+.citation-preview-icon svg { width: 16px; }
+.citation-preview-popover > header span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; }
+.citation-preview-popover > header .eyebrow { margin: 0 0 3px; color: #9fb0ff; font-size: 8px; }
+.citation-preview-popover > header strong { overflow: hidden; color: white; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.citation-preview-popover > header small { overflow: hidden; color: #b8c7c4; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.citation-preview-popover > header .icon-button { width: 30px; height: 30px; color: #d8e3e0; background: #2b383c; border-color: #45565b; }
+.citation-preview-content { min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding: 12px 13px; }
+.citation-preview-image, .citation-preview-content video { width: 100%; max-height: 165px; display: block; object-fit: contain; background: #11191d; border-radius: 10px; }
+.citation-preview-content audio { width: 100%; }
+.citation-preview-content blockquote { margin: 0; padding: 10px 11px; color: #263634; background: #f1f6f3; border: 1px solid #d2ddd8; border-radius: 10px; font-family: Iowan Old Style, Georgia, "Songti SC", serif; font-size: 12px; line-height: 1.55; }
+.citation-quality-flags { display: flex; flex-wrap: wrap; gap: 5px; }
+.citation-quality-flags span { padding: 3px 6px; color: #735117; background: #fff4dc; border: 1px solid #ead39c; border-radius: 999px; font-size: 7px; font-weight: 800; text-transform: uppercase; }
+.citation-preview-popover > footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 13px; background: #eef4f1; border-top: 1px solid #cad7d2; }
+.citation-preview-popover > footer > span { min-width: 0; display: flex; align-items: center; gap: 5px; overflow: hidden; color: #52615e; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.citation-preview-popover > footer > div { display: flex; align-items: center; gap: 6px; }
+.citation-preview-popover > footer a, .citation-preview-popover > footer button { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; min-height: 26px; padding: 5px 7px; color: var(--cobalt-dark); background: white; border: 1px solid #c8d5d0; border-radius: 999px; font-size: 9px; font-weight: 800; cursor: pointer; }
+.citation-preview-popover > footer button { color: #145747; background: #e2f4ee; border-color: #aad1c5; }
+.citation-preview-popover > footer a:hover, .citation-preview-popover > footer button:hover { color: white; background: #267d68; border-color: #267d68; }
+.citation-preview-popover > footer button svg { width: 12px; }
+.citation-preview-copy-feedback { grid-column: 1 / -1; margin-top: -2px; }
+
+html[data-theme="dark"] .citation-preview-popover { color: var(--ink); background: #182326; border-color: #46565a; box-shadow: 0 26px 70px rgb(0 0 0 / .42), inset 0 1px 0 rgb(255 255 255 / .04); }
+html[data-theme="dark"] .citation-preview-content blockquote { color: #d5e2de; background: #121b1e; border-color: #3c4b4f; }
+html[data-theme="dark"] .citation-preview-popover > footer { background: #121b1e; border-color: #334246; }
+html[data-theme="dark"] .citation-preview-popover > footer > span { color: #aebbb8; }
+html[data-theme="dark"] .citation-preview-popover > footer a { color: #becaff; background: #202a43; border-color: #445690; }
+html[data-theme="dark"] .citation-preview-popover > footer button { color: #bde7dc; background: #173a33; border-color: #31594f; }
+html[data-theme="dark"] .citation-preview-popover > footer a:hover,
+html[data-theme="dark"] .citation-preview-popover > footer button:hover { color: #10221e; background: #bde7dc; border-color: #bde7dc; }
+
+@keyframes citation-pop { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .citation-preview-popover {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

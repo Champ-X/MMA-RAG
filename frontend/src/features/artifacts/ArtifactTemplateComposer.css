@@ -1,0 +1,43 @@
+.artifact-template-composer { margin-top: 20px; overflow: hidden; background: var(--paper-strong); border: 1px solid #aebbb6; border-radius: 5px 16px 16px 16px; box-shadow: var(--shadow); }
+.artifact-template-composer > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 20px 22px; color: #eef4f1; background: #202a2d; }
+.artifact-template-composer > header > span { display: flex; gap: 13px; }
+.artifact-template-composer > header > span > svg { width: 36px; height: 36px; padding: 9px; color: #aebeff; background: #303c40; border-radius: 9px; }
+.artifact-template-composer > header h2 { margin: 0; font-size: 19px; }
+.artifact-template-composer > header p:not(.eyebrow) { max-width: 780px; margin: 5px 0 0; color: #adbbb8; font-size: 10px; line-height: 1.5; }
+.artifact-template-composer > header .icon-button { color: #eef4f1; background: #303c40; border-color: #4b5a5e; }
+.artifact-template-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 18px 20px 10px; }
+.artifact-template-grid > button { min-width: 0; display: grid; align-content: start; gap: 8px; padding: 15px; text-align: left; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.artifact-template-grid > button:hover, .artifact-template-grid > button.selected { border-color: var(--cobalt); box-shadow: 0 0 0 2px rgb(49 92 255 / .09); }
+.artifact-template-grid > button.selected { background: var(--cobalt-soft); }
+.artifact-template-grid > button > span { display: flex; align-items: center; gap: 8px; }
+.artifact-template-grid > button > span svg { color: var(--cobalt); }
+.artifact-template-grid > button p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.artifact-template-grid > button small { color: var(--cobalt-dark); font: 700 8px ui-monospace, monospace; text-transform: uppercase; }
+.artifact-template-grid > button em { display: flex; align-items: center; gap: 5px; color: var(--teal); font-size: 8px; font-style: normal; font-weight: 700; }
+.artifact-template-fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 10px 20px 18px; }
+.artifact-template-fields label { display: grid; gap: 6px; }
+.artifact-template-fields label > span { font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.artifact-template-fields select, .artifact-template-fields input { width: 100%; min-height: 40px; padding: 8px 10px; color: var(--ink); background: var(--paper); border: 1px solid var(--line-dark); border-radius: 8px; }
+.artifact-template-fields textarea { width: 100%; resize: vertical; padding: 10px; color: var(--ink); background: var(--paper); border: 1px solid var(--line-dark); border-radius: 8px; font: inherit; line-height: 1.45; }
+.artifact-template-fields input[aria-invalid="true"], .artifact-template-fields textarea[aria-invalid="true"] { border-color: var(--red); box-shadow: 0 0 0 3px rgb(180 60 57 / .12); }
+.artifact-template-review { grid-column: 1 / -1; }
+.artifact-template-fields small { color: var(--muted); font-size: 8px; }
+.artifact-template-feedback { margin: 0 20px 16px; }
+.artifact-template-composer > footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 20px; background: #eff3f1; border-top: 1px solid var(--line); }
+.artifact-template-composer > footer > span { color: var(--muted); font-size: 9px; }
+.artifact-template-composer > footer .button[aria-disabled="true"] { cursor: not-allowed; opacity: .62; transform: none; }
+.artifact-template-composer > footer .button[aria-disabled="true"]:hover { transform: none; }
+.artifact-template-empty { display: flex; align-items: center; justify-content: center; gap: 14px; min-height: 170px; padding: 24px; }
+.artifact-template-empty > svg { color: var(--amber); }
+.artifact-template-empty h3 { margin: 0; font-size: 16px; }
+.artifact-template-empty p { margin: 5px 0 12px; color: var(--muted); font-size: 10px; }
+
+html[data-theme="dark"] .artifact-template-composer > footer { background: #182326; }
+html[data-theme="dark"] .artifact-template-grid > button.selected { background: #202b49; }
+
+@media (max-width: 820px) {
+  .artifact-template-composer > header > span > svg { display: none; }
+  .artifact-template-grid, .artifact-template-fields { grid-template-columns: 1fr; }
+  .artifact-template-composer > footer { align-items: stretch; flex-direction: column; }
+  .artifact-template-composer > footer .button { width: 100%; }
+}

@@ -12,15 +12,24 @@ import {
   Microscope,
   ShieldCheck,
 } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
-import { nexusApi, type SpaceKnowledgeClaim } from '@/api/nexus'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { nexusApi } from '@/api/nexus'
 import { EmptyState } from '@/components/nexus/EmptyState'
 import { LoadingState } from '@/components/nexus/LoadingState'
 import { PageHeader } from '@/components/nexus/PageHeader'
+import { QueryErrorNotice } from '@/components/nexus/QueryErrorNotice'
+import { SegmentedControl } from '@/components/nexus/SegmentedControl'
+import { buildQueryErrorNoticeViewModel } from '@/components/nexus/queryErrorNoticeViewModel'
+import { SourceTypePill } from '@/components/nexus/SourceTypePill'
 import { StatusMark } from '@/components/nexus/StatusMark'
-import { useState } from 'react'
-
-type KnowledgeFilter = 'all' | 'supported' | 'attention'
+import { buildEvidenceDetailPath } from '@/lib/evidenceRoutes'
+import {
+  knowledgeFilterOptions,
+  parseKnowledgeFilter,
+  presentClaim,
+  summarizeVerifiedKnowledge,
+} from './verifiedKnowledgeViewModel'
+import './VerifiedKnowledgePage.css'
 
 const formatDate = (value: string) => new Intl.DateTimeFormat(undefined, {
   month: 'short',
@@ -28,17 +37,16 @@ const formatDate = (value: string) => new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
 }).format(new Date(value))
 
-const claimLabel = (claim: SpaceKnowledgeClaim) => {
-  if (claim.status === 'supported') return 'Supported'
-  if (claim.status === 'partially_supported') return 'Partially supported'
-  if (claim.status === 'conflicted') return 'Conflicting evidence'
-  if (claim.status === 'stale') return 'Stale evidence'
-  return claim.status.replaceAll('_', ' ')
-}
-
 export default function VerifiedKnowledgePage() {
   const { spaceId = '' } = useParams()
-  const [filter, setFilter] = useState<KnowledgeFilter>('all')
+  const [params, setParams] = useSearchParams()
+  const filter = parseKnowledgeFilter(params.get('status'))
+  const setFilter = (nextFilter: typeof filter) => {
+    const next = new URLSearchParams(params)
+    if (nextFilter === 'all') next.delete('status')
+    else next.set('status', nextFilter)
+    setParams(next, { replace: true })
+  }
   const space = useQuery({
     queryKey: ['space', spaceId],
     queryFn: () => nexusApi.getSpace(spaceId),
@@ -55,11 +63,19 @@ export default function VerifiedKnowledgePage() {
     getNextPageParam: (lastPage) => lastPage.page.next_cursor ?? undefined,
     enabled: Boolean(spaceId),
   })
+  const queryErrorNotice = buildQueryErrorNoticeViewModel([
+    { error: space.error, hasData: Boolean(space.data), label: 'Space', required: true },
+    { error: knowledge.error, hasData: Boolean(knowledge.data), label: 'Claim ledger', required: true },
+  ])
+  const retryVerifiedKnowledge = () => {
+    void space.refetch()
+    void knowledge.refetch()
+  }
 
   if (space.isLoading || knowledge.isLoading) return <LoadingState label="Compiling verified knowledge" />
+  if (queryErrorNotice.tone === 'blocking') return <div className="page-shell verified-knowledge-page"><PageHeader eyebrow="Claim-gated knowledge" title="Verified knowledge could not be loaded" description="Nexus could not read this Space or its claim-gated knowledge ledger." actions={<Link className="button" to={`/spaces/${spaceId}`}><ArrowLeft size={16} />Space overview</Link>} /><QueryErrorNotice model={queryErrorNotice} onRetry={retryVerifiedKnowledge} /><EmptyState title="Claim ledger is temporarily unavailable" body="Retry before treating this Space as having no verified knowledge. T2/T3 Claims depend on the authoritative Evidence and verification index." /></div>
   const claims = knowledge.data?.pages.flatMap((page) => page.items) ?? []
-  const supported = claims.filter((claim) => claim.status === 'supported').length
-  const sourceNames = new Set(claims.flatMap((claim) => claim.evidence.map((item) => item.source_name)))
+  const summary = summarizeVerifiedKnowledge(claims, Boolean(knowledge.hasNextPage))
 
   return (
     <div className="page-shell verified-knowledge-page">
@@ -69,6 +85,7 @@ export default function VerifiedKnowledgePage() {
         description="Browse conclusions that reached T2 or T3 verification, with their evidence and unresolved disagreement kept in view."
         actions={<><Link className="button" to={`/spaces/${spaceId}`}><ArrowLeft size={16} />Space overview</Link><Link className="button primary" to={`/research/new?space=${spaceId}`}><Microscope size={16} />Research here</Link></>}
       />
+      <QueryErrorNotice model={queryErrorNotice} onRetry={retryVerifiedKnowledge} />
 
       <section className="knowledge-governance" aria-label="Knowledge eligibility rules">
         <span><ShieldCheck /></span>
@@ -85,50 +102,53 @@ export default function VerifiedKnowledgePage() {
       </section>
 
       <section className="knowledge-summary" aria-label="Loaded knowledge summary">
-        <div><BookOpenCheck /><span><strong>{claims.length}{knowledge.hasNextPage ? '+' : ''}</strong><small>Claims loaded</small></span></div>
-        <div><BadgeCheck /><span><strong>{supported}</strong><small>Supported</small></span></div>
-        <div><AlertTriangle /><span><strong>{claims.length - supported}</strong><small>Need review</small></span></div>
-        <div><FileCheck2 /><span><strong>{sourceNames.size}</strong><small>Sources cited</small></span></div>
+        <div><BookOpenCheck /><span><strong>{summary.claimsLoadedLabel}</strong><small>Claims loaded</small></span></div>
+        <div><BadgeCheck /><span><strong>{summary.supported}</strong><small>Supported</small></span></div>
+        <div><AlertTriangle /><span><strong>{summary.attention}</strong><small>Need review</small></span></div>
+        <div><FileCheck2 /><span><strong>{summary.sourceCount}</strong><small>Sources cited</small></span></div>
       </section>
 
       <div className="knowledge-toolbar">
-        <div className="segmented" role="group" aria-label="Claim status filter">
-          <button className={filter === 'all' ? 'active' : undefined} onClick={() => setFilter('all')}>All claims</button>
-          <button className={filter === 'supported' ? 'active' : undefined} onClick={() => setFilter('supported')}>Supported</button>
-          <button className={filter === 'attention' ? 'active' : undefined} onClick={() => setFilter('attention')}>Needs review</button>
-        </div>
+        <SegmentedControl ariaLabel="Claim status filter" options={knowledgeFilterOptions} value={filter} onChange={setFilter} />
         <span>{knowledge.isFetching && !knowledge.isFetchingNextPage && <Loader2 className="spin" size={13} />}Newest verified Claims first</span>
       </div>
 
-      {knowledge.error && <div className="notice negative">Verified knowledge could not be loaded. {knowledge.error.message}</div>}
       {claims.length ? (
         <>
           <div className="verified-claim-list">
-            {claims.map((claim) => <article className={`verified-claim-card claim-${claim.status}`} key={claim.id}>
-              <header>
-                <div className="claim-index"><span>{claim.verification_level}</span><small>{claim.claim_type.replaceAll('_', ' ')}</small></div>
-                <div><StatusMark status={claim.status} label={claimLabel(claim)} /><time><Clock3 size={12} />{formatDate(claim.created_at)}</time></div>
-              </header>
-              <blockquote>{claim.text}</blockquote>
-              {claim.explanation && <p className="claim-explanation">{claim.explanation}</p>}
-              <section className="claim-evidence-strip">
-                <p className="eyebrow">Bound evidence · {claim.evidence.length}</p>
-                <div>{claim.evidence.map((evidence) => <Link key={`${claim.id}-${evidence.evidence_revision_id}`} to={`/runs/${claim.run_id}/evidence/${evidence.evidence_revision_id}`}>
-                  <span className={`source-type modality-${evidence.modality}`}>{evidence.modality}</span>
-                  <span><strong>{evidence.source_name}</strong><small>{evidence.evidence_type.replaceAll('_', ' ')} · {evidence.locator_type.replaceAll('_', ' ')} · {Math.round(evidence.support_score * 100)}% support</small></span>
-                  <ExternalLink size={13} />
-                </Link>)}</div>
-              </section>
-              <footer><span>Claim {claim.id.slice(0, 8)}</span><Link to={`/runs/${claim.run_id}`}>Open originating Run <ArrowRight size={13} /></Link></footer>
-            </article>)}
+            {claims.map((claim) => {
+              const presentation = presentClaim(claim)
+              return <article className={`verified-claim-card claim-${claim.status} tone-${presentation.tone}`} key={claim.id}>
+                <header>
+                  <div className="claim-index"><span>{claim.verification_level}</span><small>{claim.claim_type.replaceAll('_', ' ')}</small></div>
+                  <div><StatusMark status={claim.status} label={presentation.label} /><time><Clock3 size={12} />{formatDate(claim.created_at)}</time></div>
+                </header>
+                <div className="claim-risk-ribbon">
+                  <span>{presentation.riskLabel}</span>
+                  <strong>{presentation.highestSupport}% top support</strong>
+                  <small>{presentation.evidenceCountLabel}</small>
+                </div>
+                <blockquote className="claim-text">{claim.text}</blockquote>
+                {claim.explanation && <p className="claim-explanation">{claim.explanation}</p>}
+                <details className="claim-evidence-strip">
+                  <summary><span>Bound evidence</span><strong>{claim.evidence.length}</strong></summary>
+                  <div>{claim.evidence.map((evidence) => <Link key={`${claim.id}-${evidence.evidence_revision_id}`} to={buildEvidenceDetailPath(evidence.evidence_revision_id, claim.run_id)}>
+                    <SourceTypePill modality={evidence.modality} />
+                    <span><strong>{evidence.source_name}</strong><small>{evidence.evidence_type.replaceAll('_', ' ')} · {evidence.locator_type.replaceAll('_', ' ')} · {Math.round(evidence.support_score * 100)}% support</small></span>
+                    <ExternalLink size={13} />
+                  </Link>)}</div>
+                </details>
+                <footer><span>Claim {claim.id.slice(0, 8)}</span><Link to={`/runs/${claim.run_id}`}>Open originating Run <ArrowRight size={13} /></Link></footer>
+              </article>
+            })}
           </div>
-          {knowledge.hasNextPage && <div className="knowledge-load-more"><button className="button" onClick={() => knowledge.fetchNextPage()} disabled={knowledge.isFetchingNextPage}>{knowledge.isFetchingNextPage && <Loader2 className="spin" size={14} />}Load more Claims</button></div>}
+          {knowledge.hasNextPage && <div className="knowledge-load-more"><button type="button" className="button" aria-disabled={knowledge.isFetchingNextPage || undefined} onClick={() => { if (!knowledge.isFetchingNextPage) knowledge.fetchNextPage() }}>{knowledge.isFetchingNextPage && <Loader2 className="spin" size={14} />}Load more Claims</button></div>}
         </>
       ) : (
         <EmptyState
           title={filter === 'all' ? 'No verified knowledge yet' : 'No Claims in this view'}
           body={filter === 'all' ? 'Run research in this Space. Claims appear only after they reach T2/T3 verification and retain direct Evidence bindings.' : 'Try another status view, or run research to develop the evidence ledger.'}
-          action={filter === 'all' ? <Link className="button primary" to={`/research/new?space=${spaceId}`}>Start research</Link> : <button className="button" onClick={() => setFilter('all')}>Show all Claims</button>}
+          action={filter === 'all' ? <Link className="button primary" to={`/research/new?space=${spaceId}`}>Start research</Link> : <button type="button" className="button" onClick={() => setFilter('all')}>Show all Claims</button>}
         />
       )}
     </div>

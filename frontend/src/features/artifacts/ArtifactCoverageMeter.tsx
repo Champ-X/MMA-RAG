@@ -1,4 +1,5 @@
 import type { Artifact } from '@/api/nexus'
+import './ArtifactCoverageMeter.css'
 
 export function ArtifactCoverageMeter({ coverage, compact = false }: { coverage: Artifact['coverage']; compact?: boolean }) {
   return <div className={`artifact-coverage-meter${compact ? ' compact' : ''}`} aria-label={`${coverage.coverage_percent}% content block evidence coverage`}>

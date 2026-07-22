@@ -1,6 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { ArrowRight, Blocks, FileInput, FileSearch, FolderKanban, History, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import {
+  focusTrapTargetElement,
+  getFocusableElements,
+  resolveFocusTrapAction,
+} from '@/lib/focusTrap'
+import './ConceptGuide.css'
 
 const concepts = [
   { term: 'Space', translation: '知识空间', icon: FolderKanban, definition: '围绕一个目标组织的可检索边界；决定一次问答可以使用哪些知识。', detail: 'A goal-oriented boundary over knowledge. It organizes Sources without copying them.' },
@@ -13,38 +19,52 @@ const concepts = [
 export function ConceptGuide({ open, onClose }: { open: boolean; onClose: () => void }) {
   const guideRef = useRef<HTMLElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
+  const titleId = useId()
+  const descriptionId = useId()
   useEffect(() => {
     if (!open) return
     const previousOverflow = document.body.style.overflow
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     document.body.style.overflow = 'hidden'
-    const frame = window.requestAnimationFrame(() => closeRef.current?.focus())
+    const frame = window.requestAnimationFrame(() => {
+      closeRef.current?.focus({ preventScroll: true })
+      if (!closeRef.current) guideRef.current?.focus({ preventScroll: true })
+    })
     return () => {
       window.cancelAnimationFrame(frame)
       document.body.style.overflow = previousOverflow
-      previousFocus?.focus()
+      if (previousFocus && document.contains(previousFocus)) previousFocus.focus({ preventScroll: true })
     }
   }, [open])
   if (!open) return null
 
-  return <div className="concept-guide-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose() }}>
+  return <div className="concept-guide-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose() }}>
     <aside
       ref={guideRef}
       className="concept-guide"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="concept-guide-title"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+      tabIndex={-1}
       onKeyDown={(event) => {
         if (event.key === 'Escape') { event.preventDefault(); onClose(); return }
-        if (event.key !== 'Tab') return
-        const focusable = Array.from(guideRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [href]') ?? [])
-        const first = focusable[0]
-        const last = focusable[focusable.length - 1]
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
-        if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+        const focusable = getFocusableElements(guideRef.current)
+        const action = resolveFocusTrapAction({
+          activeElement: document.activeElement,
+          activeInside: Boolean(guideRef.current?.contains(document.activeElement)),
+          emptyTarget: 'container',
+          firstElement: focusable[0],
+          key: event.key,
+          lastElement: focusable[focusable.length - 1],
+          shiftKey: event.shiftKey,
+        })
+        if (!action.preventDefault) return
+        event.preventDefault()
+        focusTrapTargetElement({ action, container: guideRef.current, focusable })?.focus({ preventScroll: true })
       }}
     >
-      <header><div><p className="eyebrow">Product language · 产品术语</p><h2 id="concept-guide-title">How knowledge moves through Nexus</h2><p>English product terms stay stable in APIs and URLs; the Chinese layer explains what they mean in everyday work.</p></div><button ref={closeRef} className="icon-button" aria-label="Close concept guide" onClick={onClose}><X /></button></header>
+      <header><div><p className="eyebrow">Product language · 产品术语</p><h2 id={titleId}>How knowledge moves through Nexus</h2><p id={descriptionId}>English product terms stay stable in APIs and URLs; the Chinese layer explains what they mean in everyday work.</p></div><button type="button" ref={closeRef} className="icon-button" aria-label="Close concept guide" onClick={onClose}><X /></button></header>
       <div className="concept-flow" aria-label="Knowledge lifecycle"><span>Source<small>原始材料</small></span><ArrowRight /><span>Evidence<small>可引用证据</small></span><ArrowRight /><span>Claim<small>可核验结论</small></span><ArrowRight /><span>Artifact<small>可复用成果</small></span></div>
       <div className="concept-list">{concepts.map(({ term, translation, icon: Icon, definition, detail }) => <article key={term}><span><Icon /></span><div><h3>{term}<small>{translation}</small></h3><p lang="zh-CN">{definition}</p><em>{detail}</em></div></article>)}</div>
       <footer><span><strong>Run · 可恢复任务</strong> freezes the Space, Source versions and Evidence ledger used for each turn.</span><div><Link to="/?guide=1" onClick={onClose}>Open getting started</Link><Link className="button primary" to="/spaces" onClick={onClose}>Browse Spaces<ArrowRight /></Link></div></footer>

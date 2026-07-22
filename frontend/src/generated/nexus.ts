@@ -2829,6 +2829,40 @@ export interface components {
              */
             updated_at: string;
         };
+        /** SpaceRouteCandidateResponse */
+        SpaceRouteCandidateResponse: {
+            /** Space Id */
+            space_id: string;
+            /** Space Name */
+            space_name: string;
+            /** Score */
+            score: number;
+            score_components: components["schemas"]["SpaceRouteScoreComponents"];
+            score_contributions: components["schemas"]["SpaceRouteScoreComponents"];
+            /** Matched Terms */
+            matched_terms?: string[];
+            /**
+             * Selected For Search
+             * @default false
+             */
+            selected_for_search: boolean;
+            /** Profile */
+            profile: string;
+            /** Policy Label */
+            policy_label: string;
+            /** Auto Route Eligible */
+            auto_route_eligible: boolean;
+            /**
+             * Routing Note
+             * @enum {string}
+             */
+            routing_note: "eligible" | "manual_scope_only";
+        };
+        /**
+         * SpaceRouteMethod
+         * @enum {string}
+         */
+        SpaceRouteMethod: "no_spaces" | "no_auto_route_spaces" | "all_low_safe_broadening" | "dominant_cluster" | "multi_space_cluster_match";
         /** SpaceRouteRequest */
         SpaceRouteRequest: {
             /** Query */
@@ -2838,6 +2872,45 @@ export interface components {
              * @default 3
              */
             limit: number;
+        };
+        /** SpaceRouteResponse */
+        SpaceRouteResponse: {
+            /** Query */
+            query: string;
+            method: components["schemas"]["SpaceRouteMethod"];
+            /** Selection Reason */
+            selection_reason: string;
+            /** Selected Space Ids */
+            selected_space_ids: string[];
+            recommended_kind: components["schemas"]["RunKind"];
+            recommended_quality: components["schemas"]["QualityMode"];
+            /** Policy Reasons */
+            policy_reasons: string[];
+            /** Candidates */
+            candidates: components["schemas"]["SpaceRouteCandidateResponse"][];
+        };
+        /** SpaceRouteScoreComponents */
+        SpaceRouteScoreComponents: {
+            /**
+             * Cluster
+             * @default 0
+             */
+            cluster: number;
+            /**
+             * Lexical
+             * @default 0
+             */
+            lexical: number;
+            /**
+             * Metadata
+             * @default 0
+             */
+            metadata: number;
+            /**
+             * Policy
+             * @default 0
+             */
+            policy: number;
         };
         /** ToolExecuteBody */
         ToolExecuteBody: {
@@ -3277,9 +3350,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["SpaceRouteResponse"];
                 };
             };
             /** @description Validation Error */

@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
+from nexus.modules.spaces.routing import SpaceRouteMethod
 from nexus.shared.domain.enums import KnowledgeProfile, Modality, QualityMode, RunKind
 
 
@@ -71,6 +72,38 @@ class SpaceListResponse(BaseModel):
 class SpaceRouteRequest(BaseModel):
     query: str = Field(min_length=1)
     limit: int = Field(default=3, ge=1, le=10)
+
+
+class SpaceRouteScoreComponents(BaseModel):
+    cluster: float = 0.0
+    lexical: float = 0.0
+    metadata: float = 0.0
+    policy: float = 0.0
+
+
+class SpaceRouteCandidateResponse(BaseModel):
+    space_id: str
+    space_name: str
+    score: float
+    score_components: SpaceRouteScoreComponents
+    score_contributions: SpaceRouteScoreComponents
+    matched_terms: list[str] = Field(default_factory=list)
+    selected_for_search: bool = False
+    profile: str
+    policy_label: str
+    auto_route_eligible: bool
+    routing_note: Literal["eligible", "manual_scope_only"]
+
+
+class SpaceRouteResponse(BaseModel):
+    query: str
+    method: SpaceRouteMethod
+    selection_reason: str
+    selected_space_ids: list[str]
+    recommended_kind: RunKind
+    recommended_quality: QualityMode
+    policy_reasons: list[str]
+    candidates: list[SpaceRouteCandidateResponse]
 
 
 class CollectionRuleInput(BaseModel):

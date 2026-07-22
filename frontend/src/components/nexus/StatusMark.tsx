@@ -1,3 +1,5 @@
+import './StatusMark.css'
+
 type StatusMarkProps = {
   status: string
   label?: string

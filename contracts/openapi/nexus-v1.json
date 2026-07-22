@@ -386,9 +386,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Route Spaces"
+                  "$ref": "#/components/schemas/SpaceRouteResponse"
                 }
               }
             }
@@ -8013,6 +8011,84 @@
         ],
         "title": "SpaceResponse"
       },
+      "SpaceRouteCandidateResponse": {
+        "properties": {
+          "space_id": {
+            "type": "string",
+            "title": "Space Id"
+          },
+          "space_name": {
+            "type": "string",
+            "title": "Space Name"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "score_components": {
+            "$ref": "#/components/schemas/SpaceRouteScoreComponents"
+          },
+          "score_contributions": {
+            "$ref": "#/components/schemas/SpaceRouteScoreComponents"
+          },
+          "matched_terms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Matched Terms"
+          },
+          "selected_for_search": {
+            "type": "boolean",
+            "title": "Selected For Search",
+            "default": false
+          },
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "policy_label": {
+            "type": "string",
+            "title": "Policy Label"
+          },
+          "auto_route_eligible": {
+            "type": "boolean",
+            "title": "Auto Route Eligible"
+          },
+          "routing_note": {
+            "type": "string",
+            "enum": [
+              "eligible",
+              "manual_scope_only"
+            ],
+            "title": "Routing Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "space_id",
+          "space_name",
+          "score",
+          "score_components",
+          "score_contributions",
+          "profile",
+          "policy_label",
+          "auto_route_eligible",
+          "routing_note"
+        ],
+        "title": "SpaceRouteCandidateResponse"
+      },
+      "SpaceRouteMethod": {
+        "type": "string",
+        "enum": [
+          "no_spaces",
+          "no_auto_route_spaces",
+          "all_low_safe_broadening",
+          "dominant_cluster",
+          "multi_space_cluster_match"
+        ],
+        "title": "SpaceRouteMethod"
+      },
       "SpaceRouteRequest": {
         "properties": {
           "query": {
@@ -8033,6 +8109,86 @@
           "query"
         ],
         "title": "SpaceRouteRequest"
+      },
+      "SpaceRouteResponse": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "method": {
+            "$ref": "#/components/schemas/SpaceRouteMethod"
+          },
+          "selection_reason": {
+            "type": "string",
+            "title": "Selection Reason"
+          },
+          "selected_space_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Selected Space Ids"
+          },
+          "recommended_kind": {
+            "$ref": "#/components/schemas/RunKind"
+          },
+          "recommended_quality": {
+            "$ref": "#/components/schemas/QualityMode"
+          },
+          "policy_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Policy Reasons"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/SpaceRouteCandidateResponse"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "method",
+          "selection_reason",
+          "selected_space_ids",
+          "recommended_kind",
+          "recommended_quality",
+          "policy_reasons",
+          "candidates"
+        ],
+        "title": "SpaceRouteResponse"
+      },
+      "SpaceRouteScoreComponents": {
+        "properties": {
+          "cluster": {
+            "type": "number",
+            "title": "Cluster",
+            "default": 0.0
+          },
+          "lexical": {
+            "type": "number",
+            "title": "Lexical",
+            "default": 0.0
+          },
+          "metadata": {
+            "type": "number",
+            "title": "Metadata",
+            "default": 0.0
+          },
+          "policy": {
+            "type": "number",
+            "title": "Policy",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "title": "SpaceRouteScoreComponents"
       },
       "ToolExecuteBody": {
         "properties": {

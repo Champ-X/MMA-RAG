@@ -4,14 +4,19 @@ import httpx
 import pytest
 
 from nexus.bootstrap import NexusContainer
+from nexus.infrastructure.providers import ExtractiveModelGateway, GovernedModelGateway
+from nexus.infrastructure.postgres.models import ModelDeployment
 from nexus.infrastructure.secrets import EnvironmentCredentialStore
 from nexus.modules.models.application import ModelCatalogService
 from nexus.modules.models.domain import (
     ManagedModelSeed,
     ManagedProviderSpec,
     ModelRequirement,
+    ModelResponse,
     SynthesisRequest,
+    TaskRequest,
 )
+from nexus.shared.domain.errors import CapabilityUnavailableError
 
 
 def test_credential_backed_provider_and_models_are_auto_discovered_without_secret_leakage(
@@ -157,6 +162,28 @@ def test_verify_configured_models_enables_and_routes_idempotently(
     governed = nexus.model_gateway
     assert governed.health()["status"] == "ready"
     assert governed.health()["state"] == "capability_routes_verified"
+    deployment_id = next(
+        model.id
+        for model in service.repository.list_models()
+        if model.upstream_model_id == "runtime/text-v1"
+    )
+    with nexus.database.transaction() as session:
+        row = session.get(ModelDeployment, deployment_id)
+        assert row is not None
+        row.lifecycle = "verified"
+    health = governed.health()
+    assert health["status"] == "degraded"
+    assert health["state"] == "route_drift"
+    assert health["drift_count"] == 2
+    assert health["failures"] == [
+        {
+            "deployment_id": deployment_id,
+            "error_type": "RouteDrift",
+            "route_id": route.id,
+        }
+        for route in service.list_routes()
+        if route.status == "active"
+    ]
 
 
 def test_recommended_setup_completes_missing_routes_without_replacing_custom_choices(
@@ -332,6 +359,321 @@ def test_active_route_controls_runtime_generation(
     assert nexus.model_gateway.health()["route_id"] == route.id
 
 
+def test_active_route_failure_degrades_to_local_extractive_synthesis(
+    nexus: NexusContainer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    catalog = nexus.model_catalog
+    provider = catalog.create_provider(
+        name="runtime-timeout",
+        protocol_family="openai_compatible",
+        endpoint="https://timeout.invalid/v1",
+        secret_ref=None,
+    )
+    candidate = catalog.register_model(
+        provider.id,
+        upstream_model_id="timeout/model-v1",
+        declared_capabilities=["text"],
+    )
+    catalog.repository.record_probe(
+        candidate.id,
+        results={"chat": True},
+        verified_capabilities=["text"],
+        error=None,
+    )
+    catalog.enable(candidate.id)
+    route = catalog.create_route(
+        role="quick_synthesis",
+        deployment_ids=[candidate.id],
+        required_capabilities=["text"],
+    )
+    catalog.activate_route(route.id)
+
+    def timeout_post(url: str, **_: object) -> httpx.Response:
+        assert url == "https://timeout.invalid/v1/chat/completions"
+        raise httpx.ReadTimeout("provider timed out")
+
+    monkeypatch.setattr(httpx, "post", timeout_post)
+    response = nexus.model_gateway.synthesize(
+        SynthesisRequest(
+            goal="Answer despite model timeout",
+            evidence=(
+                {
+                    "evidence_revision_id": "evidence-timeout",
+                    "source_name": "timeout.md",
+                    "locator": {"locator_type": "paragraph"},
+                    "text": "# Timeout Evidence\n\nThe fallback should retain this evidence.",
+                },
+            ),
+            verification_level="T1",
+        ),
+        ModelRequirement(
+            role="quick_synthesis",
+            required_capabilities=("text",),
+            allow_degradation=True,
+        ),
+    )
+
+    assert response.actual_model == "extractive-local-v1"
+    assert "The fallback should retain this evidence." in response.text
+    assert response.metadata["degradation_reason"] == "active_model_route_failed"
+    assert response.metadata["failed_route_id"] == route.id
+    assert response.metadata["failures"] == [
+        {"deployment_id": candidate.id, "error_type": "ReadTimeout"}
+    ]
+    health = nexus.model_gateway.health()
+    assert health["route_id"] == route.id
+    assert health["fallback_model"] == "extractive-local-v1"
+
+
+def test_active_route_failure_preserves_nested_provider_error_type(
+    nexus: NexusContainer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    catalog = nexus.model_catalog
+    provider = catalog.create_provider(
+        name="runtime-capability-error",
+        protocol_family="openai_compatible",
+        endpoint="https://capability-error.invalid/v1",
+        secret_ref=None,
+    )
+    candidate = catalog.register_model(
+        provider.id,
+        upstream_model_id="capability-error/model-v1",
+        declared_capabilities=["text"],
+    )
+    catalog.repository.record_probe(
+        candidate.id,
+        results={"chat": True},
+        verified_capabilities=["text"],
+        error=None,
+    )
+    catalog.enable(candidate.id)
+    route = catalog.create_route(
+        role="quick_synthesis",
+        deployment_ids=[candidate.id],
+        required_capabilities=["text"],
+    )
+    catalog.activate_route(route.id)
+
+    def capability_error_post(_url: str, **_: object) -> httpx.Response:
+        raise CapabilityUnavailableError(
+            "Wrapped provider failure",
+            details={"error_type": "ReadTimeout"},
+        )
+
+    monkeypatch.setattr(httpx, "post", capability_error_post)
+    response = nexus.model_gateway.synthesize(
+        SynthesisRequest(
+            goal="Answer despite wrapped provider timeout",
+            evidence=(
+                {
+                    "evidence_revision_id": "wrapped-evidence",
+                    "source_name": "wrapped.md",
+                    "locator": {"locator_type": "paragraph"},
+                    "text": "Wrapped provider fallback evidence.",
+                },
+            ),
+            verification_level="T1",
+        ),
+        ModelRequirement(
+            role="quick_synthesis",
+            required_capabilities=("text",),
+            allow_degradation=True,
+        ),
+    )
+
+    assert response.metadata["degradation_reason"] == "active_model_route_failed"
+    assert response.metadata["failed_route_id"] == route.id
+    assert response.metadata["failures"] == [
+        {"deployment_id": candidate.id, "error_type": "ReadTimeout"}
+    ]
+
+
+def test_active_route_capability_mismatch_reports_missing_capabilities(
+    nexus: NexusContainer,
+) -> None:
+    catalog = nexus.model_catalog
+    provider = catalog.create_provider(
+        name="runtime-missing-capability",
+        protocol_family="openai_compatible",
+        endpoint="https://runtime-missing.invalid/v1",
+        secret_ref=None,
+    )
+    deployment = catalog.register_model(
+        provider.id,
+        upstream_model_id="runtime-missing/model-v1",
+        declared_capabilities=["text"],
+    )
+    catalog.repository.record_probe(
+        deployment.id,
+        results={"chat": True},
+        verified_capabilities=["text"],
+        error=None,
+    )
+    catalog.enable(deployment.id)
+    route = catalog.create_route(
+        role="quick_synthesis",
+        deployment_ids=[deployment.id],
+        required_capabilities=["text"],
+    )
+    catalog.activate_route(route.id)
+    with nexus.database.transaction() as session:
+        row = session.get(ModelDeployment, deployment.id)
+        assert row is not None
+        row.verified_capabilities = ["text"]
+
+    response = nexus.model_gateway.synthesize(
+        SynthesisRequest(
+            goal="Answer despite missing capability",
+            evidence=(
+                {
+                    "evidence_revision_id": "missing-capability-evidence",
+                    "source_name": "missing.md",
+                    "locator": {"locator_type": "paragraph"},
+                    "text": "Capability mismatch fallback evidence.",
+                },
+            ),
+            verification_level="T1",
+        ),
+        ModelRequirement(
+            role="quick_synthesis",
+            required_capabilities=("text", "json_schema"),
+            allow_degradation=True,
+        ),
+    )
+
+    assert response.metadata["degradation_reason"] == "active_model_route_failed"
+    assert response.metadata["failed_route_id"] == route.id
+    assert response.metadata["failures"] == [
+        {
+            "deployment_id": deployment.id,
+            "error_type": "CapabilityMismatch",
+            "missing": ["json_schema"],
+        }
+    ]
+
+
+def test_pinned_setup_gateway_failure_degrades_to_local_extractive_synthesis(
+    nexus: NexusContainer,
+) -> None:
+    class FailingPinnedGateway:
+        def synthesize(
+            self,
+            _request: SynthesisRequest,
+            _requirement: ModelRequirement,
+        ) -> ModelResponse:
+            raise CapabilityUnavailableError(
+                "Pinned setup gateway failed",
+                details={"error_type": "ReadTimeout"},
+            )
+
+        def complete(
+            self,
+            _request: TaskRequest,
+            _requirement: ModelRequirement,
+        ) -> ModelResponse:
+            raise CapabilityUnavailableError("Pinned setup gateway failed")
+
+        def snapshot(self) -> dict[str, object]:
+            return {"gateway": "failing-pinned"}
+
+        def health(self) -> dict[str, object]:
+            return {"status": "degraded"}
+
+    gateway = GovernedModelGateway(
+        repository=nexus.model_catalog.repository,
+        credentials=EnvironmentCredentialStore(),
+        pinned_gateway=FailingPinnedGateway(),
+        timeout_seconds=0.01,
+        fallback_gateway=ExtractiveModelGateway(),
+    )
+    response = gateway.synthesize(
+        SynthesisRequest(
+            goal="Answer despite pinned gateway timeout",
+            evidence=(
+                {
+                    "evidence_revision_id": "pinned-evidence",
+                    "source_name": "pinned.md",
+                    "locator": {"locator_type": "paragraph"},
+                    "text": "# Pinned Evidence\n\nThe local fallback keeps this citation.",
+                },
+            ),
+            verification_level="T1",
+        ),
+        ModelRequirement(
+            role="quick_synthesis",
+            required_capabilities=("text",),
+            allow_degradation=True,
+        ),
+    )
+
+    assert response.actual_model == "extractive-local-v1"
+    assert "The local fallback keeps this citation." in response.text
+    assert response.metadata["degradation_reason"] == "pinned_setup_gateway_failed"
+    assert response.metadata["failures"] == [
+        {"deployment_id": "pinned_setup_gateway", "error_type": "ReadTimeout"}
+    ]
+    assert gateway.health()["fallback_model"] == "extractive-local-v1"
+
+
+def test_question_override_failure_degrades_with_explicit_override_reason(
+    nexus: NexusContainer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    catalog = nexus.model_catalog
+    provider = catalog.create_provider(
+        name="question-override-timeout",
+        protocol_family="openai_compatible",
+        endpoint="https://override-timeout.invalid/v1",
+        secret_ref=None,
+    )
+    deployment = catalog.register_model(
+        provider.id,
+        upstream_model_id="override-timeout/model-v1",
+        declared_capabilities=["text"],
+    )
+    catalog.repository.record_probe(
+        deployment.id,
+        results={"chat": True},
+        verified_capabilities=["text"],
+        error=None,
+    )
+    catalog.enable(deployment.id)
+
+    def timeout_post(url: str, **_: object) -> httpx.Response:
+        assert url == "https://override-timeout.invalid/v1/chat/completions"
+        raise httpx.ReadTimeout("provider timed out")
+
+    monkeypatch.setattr(httpx, "post", timeout_post)
+    response = nexus.model_gateway.synthesize(
+        SynthesisRequest(
+            goal="Answer despite selected model timeout",
+            evidence=(
+                {
+                    "evidence_revision_id": "override-evidence",
+                    "source_name": "override.md",
+                    "locator": {"locator_type": "paragraph"},
+                    "text": "# Override Evidence\n\nThe selected model fallback keeps this evidence.",
+                },
+            ),
+            verification_level="T1",
+        ),
+        ModelRequirement(
+            role="quick_synthesis",
+            required_capabilities=("text",),
+            allow_degradation=True,
+            preferred_deployment_id=deployment.id,
+        ),
+    )
+
+    assert response.actual_model == "extractive-local-v1"
+    assert "The selected model fallback keeps this evidence." in response.text
+    assert response.metadata["degradation_reason"] == "question_override_model_failed"
+    assert response.metadata["failed_route_id"] == "question_override"
+    assert response.metadata["failures"] == [
+        {"deployment_id": deployment.id, "error_type": "ReadTimeout"}
+    ]
+    assert nexus.model_gateway.health()["route_id"] == "question_override"
+
+
 def test_question_model_override_uses_the_selected_verified_deployment(
     nexus: NexusContainer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -397,3 +739,186 @@ def test_question_model_override_uses_the_selected_verified_deployment(
     )
     assert response.actual_model == "override/model-v3"
     assert nexus.model_gateway.health()["route_id"] == "question_override"
+
+
+def test_active_task_route_failure_degrades_to_deterministic_task_payload(
+    nexus: NexusContainer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    catalog = nexus.model_catalog
+    provider = catalog.create_provider(
+        name="task-timeout",
+        protocol_family="openai_compatible",
+        endpoint="https://task-timeout.invalid/v1",
+        secret_ref=None,
+    )
+    deployment = catalog.register_model(
+        provider.id,
+        upstream_model_id="task-timeout/model-v1",
+        declared_capabilities=["text"],
+    )
+    catalog.repository.record_probe(
+        deployment.id,
+        results={"chat": True},
+        verified_capabilities=["text"],
+        error=None,
+    )
+    catalog.enable(deployment.id)
+    route = catalog.create_route(
+        role="query_rewrite",
+        deployment_ids=[deployment.id],
+        required_capabilities=["text"],
+    )
+    catalog.activate_route(route.id)
+
+    def timeout_post(url: str, **_: object) -> httpx.Response:
+        assert url == "https://task-timeout.invalid/v1/chat/completions"
+        raise httpx.ReadTimeout("provider timed out")
+
+    monkeypatch.setattr(httpx, "post", timeout_post)
+    response = nexus.model_gateway.complete(
+        TaskRequest(
+            system_prompt="Rewrite the question as JSON.",
+            user_prompt=(
+                '{"question":"它的具体日期是什么？",'
+                '"recent_conversation":[{"role":"user","content":"When does Project Comet launch?"}],'
+                '"required_output":{"rewritten_query":"string"}}'
+            ),
+            temperature=0.0,
+        ),
+        ModelRequirement(
+            role="query_rewrite",
+            required_capabilities=("text",),
+            allow_degradation=True,
+        ),
+    )
+
+    assert response.actual_model == "deterministic-task-local-v1"
+    assert response.text == (
+        '{"rewritten_query": "Previous user question: When does Project Comet launch?\\n'
+        'Current follow-up: 它的具体日期是什么？", "multi_view_queries": [], '
+        '"keywords": ["它的具体日期是什么"], "fallback": true}'
+    )
+    assert response.metadata["degradation_reason"] == "active_task_model_route_failed"
+    assert response.metadata["failed_route_id"] == route.id
+    assert response.metadata["failures"] == [
+        {"deployment_id": deployment.id, "error_type": "ReadTimeout"}
+    ]
+    health = nexus.model_gateway.health()
+    assert health["route_id"] == route.id
+    assert health["role"] == "query_rewrite"
+    assert health["fallback_model"] == "deterministic-task-local-v1"
+
+
+def test_task_route_capability_mismatch_reports_missing_capabilities(
+    nexus: NexusContainer,
+) -> None:
+    catalog = nexus.model_catalog
+    provider = catalog.create_provider(
+        name="task-missing-capability",
+        protocol_family="openai_compatible",
+        endpoint="https://task-missing.invalid/v1",
+        secret_ref=None,
+    )
+    deployment = catalog.register_model(
+        provider.id,
+        upstream_model_id="task-missing/model-v1",
+        declared_capabilities=["text"],
+    )
+    catalog.repository.record_probe(
+        deployment.id,
+        results={"chat": True},
+        verified_capabilities=["text"],
+        error=None,
+    )
+    catalog.enable(deployment.id)
+    route = catalog.create_route(
+        role="query_rewrite",
+        deployment_ids=[deployment.id],
+        required_capabilities=["text"],
+    )
+    catalog.activate_route(route.id)
+    with nexus.database.transaction() as session:
+        row = session.get(ModelDeployment, deployment.id)
+        assert row is not None
+        row.verified_capabilities = ["text"]
+
+    response = nexus.model_gateway.complete(
+        TaskRequest(
+            system_prompt="Rewrite the question as JSON.",
+            user_prompt='{"question":"Project Comet date?"}',
+        ),
+        ModelRequirement(
+            role="query_rewrite",
+            required_capabilities=("text", "json_schema"),
+            allow_degradation=True,
+        ),
+    )
+
+    assert response.metadata["failures"] == [
+        {
+            "deployment_id": deployment.id,
+            "error_type": "CapabilityMismatch",
+            "missing": ["json_schema"],
+        }
+    ]
+
+
+def test_pinned_setup_task_gateway_failure_degrades_to_deterministic_task_payload(
+    nexus: NexusContainer,
+) -> None:
+    class FailingPinnedGateway:
+        def synthesize(
+            self,
+            _request: SynthesisRequest,
+            _requirement: ModelRequirement,
+        ) -> ModelResponse:
+            raise CapabilityUnavailableError("Pinned setup gateway failed")
+
+        def complete(
+            self,
+            _request: TaskRequest,
+            _requirement: ModelRequirement,
+        ) -> ModelResponse:
+            raise CapabilityUnavailableError(
+                "Pinned setup task gateway failed",
+                details={"error_type": "ReadTimeout"},
+            )
+
+        def snapshot(self) -> dict[str, object]:
+            return {"gateway": "failing-pinned"}
+
+        def health(self) -> dict[str, object]:
+            return {"status": "degraded"}
+
+    gateway = GovernedModelGateway(
+        repository=nexus.model_catalog.repository,
+        credentials=EnvironmentCredentialStore(),
+        pinned_gateway=FailingPinnedGateway(),
+        timeout_seconds=0.01,
+        fallback_gateway=ExtractiveModelGateway(),
+    )
+    response = gateway.complete(
+        TaskRequest(
+            system_prompt="Classify the question as JSON.",
+            user_prompt='{"question":"这张图片是什么？","required_output":{"intent":"string"}}',
+        ),
+        ModelRequirement(
+            role="query_intent",
+            required_capabilities=("text",),
+            allow_degradation=True,
+        ),
+    )
+
+    assert response.actual_model == "deterministic-task-local-v1"
+    assert response.text == (
+        '{"intent": "factual", "modality_intent": "image", "is_complex": false, '
+        '"keywords": ["这张图片是什么"], "sub_queries": [], "fallback": true}'
+    )
+    assert response.metadata["degradation_reason"] == "pinned_setup_task_gateway_failed"
+    assert response.metadata["failures"] == [
+        {"deployment_id": "pinned_setup_gateway", "error_type": "ReadTimeout"}
+    ]
+    health = gateway.health()
+    assert health["route"] == "pinned_setup_gateway"
+    assert health["role"] == "query_intent"
+    assert health["fallback_model"] == "deterministic-task-local-v1"

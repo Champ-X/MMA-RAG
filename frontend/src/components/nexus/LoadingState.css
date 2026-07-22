@@ -1,0 +1,40 @@
+.loading-state {
+  min-height: 70vh;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}
+
+.loading-rule {
+  width: 90px;
+  height: 2px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.loading-rule::after {
+  content: "";
+  display: block;
+  width: 30px;
+  height: 2px;
+  background: var(--cobalt);
+  animation: loading 900ms ease-in-out infinite alternate;
+}
+
+@keyframes loading {
+  to {
+    transform: translateX(60px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-rule::after {
+    width: 100%;
+    opacity: .55;
+    transform: none;
+  }
+}

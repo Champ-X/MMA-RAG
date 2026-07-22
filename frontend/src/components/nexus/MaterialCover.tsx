@@ -1,5 +1,6 @@
 import { FileSpreadsheet, FileText, Film, Headphones, Play } from 'lucide-react'
 import type { SourceVersion } from '@/api/nexus'
+import './MaterialCover.css'
 
 const extension = (name: string) => name.includes('.') ? name.split('.').pop()?.slice(0, 6).toUpperCase() : 'FILE'
 

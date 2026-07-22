@@ -1,5 +1,6 @@
 import { ArrowRight, Check, FileUp, FolderKanban, MessageSquare, X } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
+import { readBrowserStorageItem, writeBrowserStorageItem } from '@/lib/browserStorage'
 import { getOnboardingProgress, type OnboardingStepId } from './onboarding'
 
 const dismissalKey = 'nexus-first-answer-guide-dismissed-v1'
@@ -45,7 +46,7 @@ type GettingStartedProps = {
 export function GettingStarted({ spaceCount, sourceCount, citedRunCount, firstSpaceId, forced }: GettingStartedProps) {
   const navigate = useNavigate()
   const progress = getOnboardingProgress(spaceCount, sourceCount, citedRunCount)
-  const dismissed = window.localStorage.getItem(dismissalKey) === '1'
+  const dismissed = readBrowserStorageItem('local', dismissalKey) === '1'
   if (!forced && (dismissed || progress.complete)) return null
 
   const targetByStep: Record<OnboardingStepId, string> = {
@@ -55,7 +56,7 @@ export function GettingStarted({ spaceCount, sourceCount, citedRunCount, firstSp
   }
   const current = steps.find((step) => step.id === progress.currentStep)
   const dismiss = () => {
-    window.localStorage.setItem(dismissalKey, '1')
+    writeBrowserStorageItem('local', dismissalKey, '1')
     navigate('/', { replace: true })
   }
 
@@ -63,7 +64,7 @@ export function GettingStarted({ spaceCount, sourceCount, citedRunCount, firstSp
     <header>
       <div><p className="eyebrow">First cited answer · 首次有引用回答</p><h2 id="getting-started-title">{progress.complete ? 'You have completed the evidence workflow.' : 'Start with three product concepts, not the architecture.'}</h2><p>{progress.complete ? 'Your knowledge, task and result are now recoverable. Reopen this guide or the concept guide at any time.' : 'Nexus reveals advanced controls only after the core path is clear. You can skip this guide and reopen it from the sidebar.'}</p></div>
       <div className="guide-progress"><strong>{progress.completedCount}/3</strong><span><i style={{ width: `${progress.completedCount / 3 * 100}%` }} /></span><small>{progress.complete ? 'workflow complete' : 'steps ready'}</small></div>
-      <button className="icon-button" aria-label="Dismiss getting started guide" onClick={dismiss}><X /></button>
+      <button type="button" className="icon-button" aria-label="Dismiss getting started guide" onClick={dismiss}><X /></button>
     </header>
     <div className="getting-started-steps">{steps.map((step, index) => {
       const Icon = step.icon

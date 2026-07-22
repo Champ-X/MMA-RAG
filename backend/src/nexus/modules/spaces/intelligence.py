@@ -8,6 +8,11 @@ from collections import Counter, defaultdict
 from nexus.infrastructure.postgres.repository import SqlControlPlaneRepository
 from nexus.modules.spaces.application import SpaceService
 from nexus.modules.spaces.policy import recommend_space_usage
+from nexus.modules.spaces.routing import (
+    DEFAULT_SPACE_ROUTING_POLICY,
+    SpaceRouteMethod,
+    SpaceRoutingPolicy,
+)
 
 _PORTRAIT_STOPWORDS = {
     "a",
@@ -27,6 +32,9 @@ _PORTRAIT_STOPWORDS = {
     "evidence",
     "examples",
     "elements",
+    "against",
+    "close-up",
+    "focus",
     "for",
     "from",
     "had",
@@ -44,6 +52,8 @@ _PORTRAIT_STOPWORDS = {
     "in",
     "is",
     "it",
+    "its",
+    "likely",
     "missing",
     "no",
     "non-empty",
@@ -53,6 +63,12 @@ _PORTRAIT_STOPWORDS = {
     "other",
     "page",
     "present",
+    "photograph",
+    "photo",
+    "picture",
+    "pixels",
+    "pixel",
+    "sitting",
     "profile",
     "role",
     "row",
@@ -77,6 +93,8 @@ _PORTRAIT_STOPWORDS = {
     "value",
     "values",
     "video",
+    "visual",
+    "description",
     "was",
     "were",
     "width",
@@ -95,6 +113,32 @@ _PORTRAIT_STOPWORDS = {
     "通过",
     "音频",
 }
+_SEMANTIC_TOKEN_EXPANSIONS: dict[str, tuple[str, ...]] = {
+    "可爱": ("cute", "adorable"),
+    "小白": ("white", "small"),
+    "白狗": ("white", "dog", "puppy"),
+    "小狗": ("dog", "puppy"),
+    "狗狗": ("dog", "puppy"),
+    "狗子": ("dog", "puppy"),
+    "白猫": ("white", "cat", "kitten"),
+    "小猫": ("cat", "kitten"),
+    "猫咪": ("cat", "kitten"),
+    "猫猫": ("cat", "kitten"),
+    "风景": ("landscape", "scenery"),
+    "山水": ("mountain", "lake", "landscape"),
+    "图片": ("image", "photo", "visual"),
+    "图像": ("image", "photo", "visual"),
+    "照片": ("photo", "image"),
+    "dog": ("狗", "小狗"),
+    "puppy": ("狗", "小狗", "可爱"),
+    "cat": ("猫", "小猫"),
+    "kitten": ("猫", "小猫", "可爱"),
+    "cute": ("可爱",),
+    "white": ("白色", "小白"),
+    "landscape": ("风景",),
+    "mountain": ("山",),
+    "lake": ("湖",),
+}
 _SOURCE_FILE_TOKEN = re.compile(
     r"\.(?:md|markdown|txt|pdf|docx?|pptx?|csv|xlsx?|xlsm|png|jpe?g|gif|webp|"
     r"wav|mp3|m4a|flac|mp4|mov|mkv|webm)$",
@@ -102,7 +146,7 @@ _SOURCE_FILE_TOKEN = re.compile(
 )
 
 
-def _tokens(value: str) -> list[str]:
+def _tokens(value: str, *, expand: bool = True) -> list[str]:
     lowered = value.lower()
     words = re.findall(r"[a-z0-9][a-z0-9_./+-]{1,}|[\u4e00-\u9fff]{2,}", lowered)
     output: list[str] = []
@@ -118,7 +162,13 @@ def _tokens(value: str) -> list[str]:
             )
         elif word not in _PORTRAIT_STOPWORDS:
             output.append(word)
-    return output
+    if not expand:
+        return output
+    expanded: list[str] = []
+    for token in output:
+        expanded.append(token)
+        expanded.extend(_SEMANTIC_TOKEN_EXPANSIONS.get(token, ()))
+    return expanded
 
 
 def _portrait_keyword(token: str) -> bool:
@@ -146,12 +196,34 @@ def _cosine(left: list[float], right: list[float]) -> float:
     return sum(a * b for a, b in zip(left, right, strict=True))
 
 
+def _lexical_overlap_score(query_tokens: list[str], portrait_tokens: list[str]) -> float:
+    query = {token for token in query_tokens if _portrait_keyword(token)}
+    portrait = {token for token in portrait_tokens if _portrait_keyword(token)}
+    if not query or not portrait:
+        return 0.0
+    matches = query & portrait
+    return min(1.0, len(matches) / max(1, min(len(query), 8)))
+
+
+def _lexical_matches(query_tokens: list[str], portrait_tokens: list[str]) -> list[str]:
+    query = {token for token in query_tokens if _portrait_keyword(token)}
+    portrait = {token for token in portrait_tokens if _portrait_keyword(token)}
+    return sorted(query & portrait)
+
+
 class SpaceIntelligenceService:
     """Current-evidence clustering and conservative automatic Space routing."""
 
-    def __init__(self, spaces: SpaceService, evidence: SqlControlPlaneRepository) -> None:
+    def __init__(
+        self,
+        spaces: SpaceService,
+        evidence: SqlControlPlaneRepository,
+        *,
+        routing_policy: SpaceRoutingPolicy = DEFAULT_SPACE_ROUTING_POLICY,
+    ) -> None:
         self.spaces = spaces
         self.evidence = evidence
+        self.routing_policy = routing_policy
 
     def portrait(self, space_id: str, *, limit: int = 600) -> dict[str, object]:
         space = self.spaces.get(space_id)
@@ -165,7 +237,7 @@ class SpaceIntelligenceService:
         vectors = [_vector(_tokens(item.searchable_text)) for item in items]
         all_counts: Counter[str] = Counter()
         for item in items:
-            all_counts.update(set(_tokens(item.searchable_text)[:180]))
+            all_counts.update(set(_tokens(item.searchable_text, expand=False)[:180]))
         cluster_count = min(6, max(1, round(math.sqrt(max(len(items), 1) / 3))))
         assignments, centroids = self._cluster(vectors, cluster_count)
         clusters: list[dict[str, object]] = []
@@ -177,7 +249,7 @@ class SpaceIntelligenceService:
             positions: dict[str, int] = {}
             position = 0
             for item in members:
-                tokens = _tokens(item.searchable_text)[:180]
+                tokens = _tokens(item.searchable_text, expand=False)[:180]
                 counts.update(set(tokens))
                 for token in tokens:
                     positions.setdefault(token, position)
@@ -230,14 +302,15 @@ class SpaceIntelligenceService:
             ) or space.description or space.name,
             "algorithm": (
                 "stable-hash + deterministic cosine k-means + "
-                "stopword-filtered discriminative labels v3"
+                "cross-lingual lexical routing + display-safe labels v4"
             ),
         }
 
     def route(self, query: str, *, limit: int = 3) -> dict[str, object]:
         spaces, _ = self.spaces.list(limit=200)
         eligible_spaces = [space for space in spaces if space.policy.auto_route_eligible]
-        query_vector = _vector(_tokens(query))
+        query_tokens = _tokens(query)
+        query_vector = _vector(query_tokens)
         normalized_query = query.casefold()
         media_intent = any(
             token in normalized_query
@@ -269,10 +342,26 @@ class SpaceIntelligenceService:
             )
         )
         scores: dict[str, float] = {}
+        matched_terms: dict[str, list[str]] = {}
+        score_components: dict[str, dict[str, float]] = {}
+        score_contributions: dict[str, dict[str, float]] = {}
         portraits: dict[str, dict[str, object]] = {}
         for space in spaces:
             if not space.policy.auto_route_eligible:
                 scores[space.id] = 0.0
+                matched_terms[space.id] = []
+                score_components[space.id] = {
+                    "cluster": 0.0,
+                    "lexical": 0.0,
+                    "metadata": 0.0,
+                    "policy": 0.0,
+                }
+                score_contributions[space.id] = {
+                    "cluster": 0.0,
+                    "lexical": 0.0,
+                    "metadata": 0.0,
+                    "policy": 0.0,
+                }
                 portraits[space.id] = {
                     "profile_text": space.description or space.name,
                 }
@@ -286,22 +375,45 @@ class SpaceIntelligenceService:
                 ),
                 reverse=True,
             )
-            weighted = (
-                sum(score * (0.85**index) for index, score in enumerate(cluster_scores[:5]))
-                / sum(0.85**index for index in range(min(5, len(cluster_scores))))
-                if cluster_scores
-                else 0.0
-            )
+            weighted = self.routing_policy.weighted_cluster_score(cluster_scores)
+            portrait_tokens: list[str] = []
+            for cluster in portrait["clusters"]:  # type: ignore[union-attr]
+                if not isinstance(cluster, dict):
+                    continue
+                portrait_tokens.extend(str(token) for token in cluster.get("keywords", []))
+                for sample in cluster.get("samples", []):
+                    if isinstance(sample, dict):
+                        portrait_tokens.extend(_tokens(str(sample.get("source_name", ""))))
+                        portrait_tokens.extend(_tokens(str(sample.get("excerpt", ""))))
+            lexical_score = _lexical_overlap_score(query_tokens, portrait_tokens)
+            matched_terms[space.id] = _lexical_matches(query_tokens, portrait_tokens)[:12]
             metadata_score = max(
                 0.0,
                 _cosine(query_vector, _vector(_tokens(f"{space.name} {space.description}"))),
             )
             policy_boost = 0.0
             if media_intent and space.knowledge_profile.value == "multimodal":
-                policy_boost += 0.08
+                policy_boost += self.routing_policy.policy_boost
             if research_intent and space.knowledge_profile.value == "research":
-                policy_boost += 0.08
-            scores[space.id] = min(1.0, 0.82 * weighted + 0.18 * metadata_score + policy_boost)
+                policy_boost += self.routing_policy.policy_boost
+            scores[space.id] = self.routing_policy.combined_score(
+                cluster=weighted,
+                lexical=lexical_score,
+                metadata=metadata_score,
+                policy_boost=policy_boost,
+            )
+            score_components[space.id] = {
+                "cluster": weighted,
+                "lexical": lexical_score,
+                "metadata": metadata_score,
+                "policy": policy_boost,
+            }
+            score_contributions[space.id] = self.routing_policy.score_contributions(
+                cluster=weighted,
+                lexical=lexical_score,
+                metadata=metadata_score,
+                policy_boost=policy_boost,
+            )
         ranked_eligible = sorted(
             eligible_spaces,
             key=lambda item: scores.get(item.id, 0.0),
@@ -312,30 +424,38 @@ class SpaceIntelligenceService:
         ]
         top = scores.get(ranked_eligible[0].id, 0.0) if ranked_eligible else 0.0
         second = scores.get(ranked_eligible[1].id, 0.0) if len(ranked_eligible) > 1 else 0.0
-        if not spaces:
+        decision = self.routing_policy.select_decision(
+            eligible_space_count=len(ranked_eligible),
+            requested_limit=limit,
+            second_score=second,
+            space_count=len(spaces),
+            top_score=top,
+        )
+        method = decision.method
+        selected_limit = self.routing_policy.selected_space_limit(limit)
+        if method == SpaceRouteMethod.NO_SPACES:
             selected = []
-            method = "no_spaces"
-        elif not ranked_eligible:
+        elif method == SpaceRouteMethod.NO_AUTO_ROUTE_SPACES:
             selected = []
-            method = "no_auto_route_spaces"
-        elif top < 0.06:
-            selected = ranked_eligible[: max(1, limit)]
-            method = "all_low_safe_broadening"
-        elif top - second >= 0.22:
+        elif method == SpaceRouteMethod.ALL_LOW_SAFE_BROADENING:
+            selected = ranked_eligible[:selected_limit]
+        elif method == SpaceRouteMethod.DOMINANT_CLUSTER:
             selected = ranked_eligible[:1]
-            method = "dominant_cluster"
         else:
             selected = [
                 space
-                for space in ranked_eligible[:limit]
-                if scores[space.id] >= top * 0.58
+                for space in ranked_eligible[:selected_limit]
+                if scores[space.id] >= top * self.routing_policy.multi_space_relative_floor
             ]
-            method = "multi_space_cluster_match"
         usage = recommend_space_usage(selected)
+        visible_candidates = ranked[:limit]
+        selected_space_ids = [space.id for space in selected]
+        selected_space_id_set = set(selected_space_ids)
         return {
             "query": query,
             "method": method,
-            "selected_space_ids": [space.id for space in selected],
+            "selection_reason": decision.reason,
+            "selected_space_ids": selected_space_ids,
             "recommended_kind": usage["recommended_kind"],
             "recommended_quality": usage["recommended_quality"],
             "policy_reasons": usage["reasons"],
@@ -344,6 +464,16 @@ class SpaceIntelligenceService:
                     "space_id": space.id,
                     "space_name": space.name,
                     "score": round(scores[space.id], 6),
+                    "score_components": {
+                        key: round(value, 6)
+                        for key, value in score_components[space.id].items()
+                    },
+                    "score_contributions": {
+                        key: round(value, 6)
+                        for key, value in score_contributions[space.id].items()
+                    },
+                    "matched_terms": matched_terms[space.id],
+                    "selected_for_search": space.id in selected_space_id_set,
                     "profile": portraits[space.id]["profile_text"],
                     "policy_label": space.policy.label,
                     "auto_route_eligible": space.policy.auto_route_eligible,
@@ -353,7 +483,7 @@ class SpaceIntelligenceService:
                         else "manual_scope_only"
                     ),
                 }
-                for space in ranked
+                for space in visible_candidates
             ],
         }
 

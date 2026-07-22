@@ -5,18 +5,26 @@ import {
   themeStorageKey,
   type ThemePreference,
 } from './theme'
+import { readBrowserStorageItem, writeBrowserStorageItem } from '@/lib/browserStorage'
 
 function storedPreference(): ThemePreference {
-  const stored = window.localStorage.getItem(themeStorageKey)
+  const stored = readBrowserStorageItem('local', themeStorageKey)
   return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system'
+}
+
+function prefersDarkColorScheme() {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreference] = useState<ThemePreference>(storedPreference)
-  const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
+  const [systemDark, setSystemDark] = useState(prefersDarkColorScheme)
   const resolvedTheme = resolveTheme(preference, systemDark)
 
   useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
     const media = window.matchMedia('(prefers-color-scheme: dark)')
     const update = (event: MediaQueryListEvent) => setSystemDark(event.matches)
     media.addEventListener('change', update)
@@ -24,7 +32,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    window.localStorage.setItem(themeStorageKey, preference)
+    writeBrowserStorageItem('local', themeStorageKey, preference)
     document.documentElement.dataset.theme = resolvedTheme
     document.documentElement.dataset.themePreference = preference
     document.documentElement.style.colorScheme = resolvedTheme

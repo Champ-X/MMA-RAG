@@ -1,0 +1,23 @@
+.queued-attachments { max-height: 154px; display: grid; gap: 8px; overflow-y: auto; padding: 10px; background: #f2f7f4; border: 1px solid #c9d7d1; border-radius: 14px; }
+.queued-attachments > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 2px; }
+.queued-attachments > header span { display: flex; align-items: center; gap: 7px; color: #173f37; }
+.queued-attachments > header svg { width: 15px; }
+.queued-attachments > header strong { font-size: 11px; }
+.queued-attachments > header small { max-width: 360px; color: var(--muted); text-align: right; font-size: 8px; line-height: 1.35; }
+.queued-attachments > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 7px; }
+.queued-attachment { min-width: 0; min-height: 48px; display: grid; grid-template-columns: 38px minmax(0, 1fr) 24px; gap: 8px; align-items: center; padding: 6px; background: #fffdf8; border: 1px solid #c6d2cd; border-radius: 12px; box-shadow: 0 4px 12px rgb(24 42 38 / .05); }
+.queued-attachment-visual { width: 38px !important; max-width: 38px !important; height: 38px !important; max-height: 38px !important; display: grid; place-items: center; overflow: hidden; flex: 0 0 38px; color: #315cff; background: #e8edff; border-radius: 10px; }
+.queued-attachment-visual img { width: 38px !important; max-width: 38px !important; height: 38px !important; max-height: 38px !important; display: block; object-fit: cover; }
+.queued-attachment-visual svg { width: 18px; }
+.queued-attachment-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.queued-attachment-copy strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.queued-attachment-copy small { overflow: hidden; color: var(--muted); font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+.queued-attachment > button { width: 24px; height: 24px; display: grid; place-items: center; color: #72817d; background: transparent; border: 0; border-radius: 8px; cursor: pointer; }
+.queued-attachment > button:hover { color: var(--red); background: var(--red-soft); }
+.queued-attachment > button svg { width: 13px; }
+
+@media (max-width: 520px) {
+  .queued-attachments > header { align-items: flex-start; flex-direction: column; }
+  .queued-attachments > header small { max-width: none; text-align: left; }
+  .queued-attachments > div { grid-template-columns: 1fr; }
+}

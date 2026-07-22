@@ -1,0 +1,51 @@
+/* Bilingual concept guide: product language stays accessible without crowding every screen. */
+.concept-guide-backdrop { position: fixed; inset: 0; z-index: 90; display: flex; justify-content: flex-end; background: rgb(11 20 22 / .58); backdrop-filter: blur(6px); }
+.concept-guide { width: min(610px, 94vw); height: 100vh; display: flex; flex-direction: column; overflow-y: auto; background: var(--paper); border-left: 1px solid #7c8985; box-shadow: -24px 0 80px rgb(5 14 16 / .32); animation: drawer-in 180ms ease-out; }
+.concept-guide > header { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 20px; padding: 26px 28px 21px; background: #202a2d; }
+.concept-guide > header .eyebrow { color: #9eb2ff; }
+.concept-guide > header h2 { margin: 0; color: white; font-family: Georgia, "Songti SC", serif; font-size: 28px; font-weight: 500; letter-spacing: -.035em; }
+.concept-guide > header p:last-child { margin: 8px 0 0; color: #aebcba; font-size: 10px; line-height: 1.55; }
+.concept-guide > header .icon-button { color: #b9c5c3; background: transparent; border-color: #4b5a5d; }
+.concept-flow { display: grid; grid-template-columns: 1fr 18px 1fr 18px 1fr 18px 1fr; gap: 6px; align-items: center; padding: 18px 22px; color: #697673; background: #e9efec; border-bottom: 1px solid var(--line); }
+.concept-flow > span { min-height: 48px; display: flex; flex-direction: column; justify-content: center; padding: 7px 8px; color: var(--ink); background: white; border: 1px solid #bfcac6; border-radius: 8px 8px 3px 8px; font-family: ui-monospace, monospace; font-size: 9px; font-weight: 700; }
+.concept-flow small { margin-top: 3px; color: var(--muted); font-family: "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 8px; font-weight: 500; }
+.concept-flow > svg { width: 14px; color: var(--cobalt); }
+.concept-list { padding: 5px 28px 12px; }
+.concept-list article { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 13px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.concept-list article > span { width: 40px; height: 40px; display: grid; place-items: center; color: var(--cobalt); background: #e5eaff; border-radius: 10px 10px 3px 10px; }
+.concept-list article > span svg { width: 19px; }
+.concept-list h3 { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 15px; }
+.concept-list h3 small { color: var(--cobalt-dark); font-size: 11px; font-weight: 600; }
+.concept-list p { margin: 5px 0; color: #384644; font-size: 11px; line-height: 1.55; }
+.concept-list em { color: var(--muted); font-size: 9px; font-style: normal; line-height: 1.5; }
+.concept-guide > footer { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 28px; background: #edf1ef; border-top: 1px solid var(--line); }
+.concept-guide > footer > span { max-width: 270px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.concept-guide > footer > span strong { color: var(--ink); }
+.concept-guide > footer > div { display: flex; align-items: center; gap: 12px; }
+.concept-guide > footer > div > a:first-child { color: var(--cobalt-dark); font-size: 9px; font-weight: 700; }
+
+html[data-theme="dark"] .concept-flow,
+html[data-theme="dark"] .concept-guide > footer { background: #121b1e; }
+html[data-theme="dark"] .concept-flow > span { color: var(--ink); background: #263336; border-color: #536267; box-shadow: none; }
+
+@media (max-width: 820px) {
+  .concept-guide { width: 100vw; }
+}
+
+@media (max-width: 520px) {
+  .concept-guide > header { padding: 22px 18px 18px; }
+  .concept-guide > header h2 { font-size: 24px; }
+  .concept-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 14px 16px; }
+  .concept-flow > svg { display: none; }
+  .concept-list { padding-inline: 18px; }
+  .concept-guide > footer { align-items: stretch; flex-direction: column; padding: 16px 18px; }
+  .concept-guide > footer > span { max-width: none; }
+  .concept-guide > footer > div { justify-content: space-between; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .concept-guide {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

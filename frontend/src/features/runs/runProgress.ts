@@ -10,21 +10,36 @@ export type RunProgressStage = {
 }
 
 export type RunProgress = {
-  stages: RunProgressStage[]
-  retrievalPasses: number
   completedChannels: number
-  totalChannels: number
   degraded: boolean
   degradationReasons: string[]
+  headline: string
+  retrievalPasses: number
+  stages: RunProgressStage[]
+  totalChannels: number
 }
 
 const terminal = new Set(['completed', 'failed', 'partial', 'cancelled'])
+
+function progressHeadline(status: string, stopReason: string | null | undefined, current?: RunProgressStage): string {
+  if (status === 'completed') return 'Answer delivered and evidence preserved'
+  if (status === 'failed') return 'Run stopped before delivery'
+  if (status === 'cancelled') return 'Run cancelled; completed work preserved'
+  if (status === 'paused') return 'Paused safely at a checkpoint'
+  if (status === 'partial') {
+    if (stopReason === 'capability_unavailable') return 'Capability recovery required'
+    if (stopReason === 'evidence_insufficient') return 'Evidence was insufficient'
+    return 'Partial result preserved'
+  }
+  return current?.label ?? 'Recovering progress'
+}
 
 export function buildRunProgress(
   events: DurableRunEvent[],
   kind: string,
   status: string,
   hasResult: boolean,
+  stopReason?: string | null,
 ): RunProgress {
   const understood = events.some((event) => event.event_type === 'query.understood')
   const planned = events.some((event) => event.event_type === 'research.plan.created')
@@ -59,7 +74,13 @@ export function buildRunProgress(
     const delivery = stages.find((stage) => stage.id === 'deliver')
     if (delivery) {
       delivery.state = 'attention'
-      delivery.detail = 'A partial result was preserved; more evidence may be needed.'
+      if (stopReason === 'capability_unavailable') {
+        delivery.detail = 'A required capability stopped the run; recovery guidance and any completed checkpoints were preserved.'
+      } else if (stopReason === 'evidence_insufficient') {
+        delivery.detail = 'A partial result was preserved because the frozen scope did not contain enough supporting evidence.'
+      } else {
+        delivery.detail = 'A partial result was preserved with its evidence, events and checkpoint trail.'
+      }
     }
   } else if (status === 'failed') {
     const pending = stages[firstPending]
@@ -71,13 +92,15 @@ export function buildRunProgress(
     const pending = stages[firstPending]
     if (pending) pending.detail = 'Paused safely. Resume to continue from the last checkpoint.'
   }
+  const current = stages.find((stage) => stage.state === 'active' || stage.state === 'attention')
 
   return {
-    stages,
-    retrievalPasses: retrievalEvents.length,
     completedChannels: channels.filter((channel) => channel.status === 'completed').length,
-    totalChannels: channels.length,
     degraded,
     degradationReasons,
+    headline: progressHeadline(status, stopReason, current),
+    retrievalPasses: retrievalEvents.length,
+    stages,
+    totalChannels: channels.length,
   }
 }

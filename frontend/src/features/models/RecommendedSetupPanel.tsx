@@ -15,7 +15,10 @@ import {
 import { Link } from 'react-router-dom'
 import { nexusApi, type Model, type ModelSetup } from '@/api/nexus'
 import { EmptyState } from '@/components/nexus/EmptyState'
+import { SubmitReadinessCard } from '@/components/nexus/SubmitReadinessCard'
 import { taskLabel } from './modelTasks'
+import { buildRecommendedSetupViewModel } from './recommendedSetupViewModel'
+import './RecommendedSetupPanel.css'
 
 const setupGroups: Record<string, { label: string; description: string; icon: typeof BrainCircuit }> = {
   answering: { label: 'Answering & research', description: 'Quick answers, research synthesis, planning and claim checks.', icon: BrainCircuit },
@@ -37,21 +40,40 @@ type RecommendedSetupPanelProps = {
   setup: ModelSetup
   models: Model[]
   busy: boolean
-  run: (operation: () => Promise<unknown>) => void
-  announce: (message: string) => void
+  errorMessage?: string
+  run: (
+    operation: () => Promise<unknown>,
+    context: {
+      action: 'apply-recommended' | 'verify-configured'
+      successDetail: (result: unknown) => string
+    },
+  ) => void
+}
+const recommendedSetupFeedbackId = 'recommended-setup-feedback'
+const recommendedSetupGateId = (action: 'apply' | 'verify') => `${recommendedSetupFeedbackId}-${action}-gate`
+
+function summarizeConfiguredVerification(result: Awaited<ReturnType<typeof nexusApi.verifyConfiguredModels>>) {
+  return `${result.enabled} configured model(s) verified; ${result.roles_ready.length} explicit task role(s) ready${result.failures.length ? `; ${result.failures.length} probe(s) need attention` : ''}.`
 }
 
-export function RecommendedSetupPanel({ setup, models, busy, run, announce }: RecommendedSetupPanelProps) {
+function summarizeRecommendedSetup(result: Awaited<ReturnType<typeof nexusApi.applyRecommendedModelSetup>>) {
+  return `${result.routes_activated} missing task route(s) completed; ${result.unfilled_roles.length} task(s) remain on explicit fallback.`
+}
+
+export function RecommendedSetupPanel({ setup, models, busy, errorMessage, run }: RecommendedSetupPanelProps) {
   const headline = setupHeadline[setup.status]
-  const verify = () => run(async () => {
-    const result = await nexusApi.verifyConfiguredModels()
-    announce(`${result.enabled} configured model(s) verified · ${result.roles_ready.length} explicit task roles ready${result.failures.length ? ` · ${result.failures.length} probe(s) need attention` : ''}.`)
-    return result
+  const setupView = buildRecommendedSetupViewModel({
+    ...setup,
+    busy,
+    errorMessage,
   })
-  const apply = () => run(async () => {
-    const result = await nexusApi.applyRecommendedModelSetup(false)
-    announce(`${result.routes_activated} missing task route(s) completed; ${result.unfilled_roles.length} task(s) remain on explicit fallback.`)
-    return result
+  const verify = () => run(nexusApi.verifyConfiguredModels, {
+    action: 'verify-configured',
+    successDetail: (result) => summarizeConfiguredVerification(result as Awaited<ReturnType<typeof nexusApi.verifyConfiguredModels>>),
+  })
+  const apply = () => run(() => nexusApi.applyRecommendedModelSetup(false), {
+    action: 'apply-recommended',
+    successDetail: (result) => summarizeRecommendedSetup(result as Awaited<ReturnType<typeof nexusApi.applyRecommendedModelSetup>>),
   })
   return <section className="recommended-model-setup">
     <div className={`model-setup-hero setup-${setup.status}`}>
@@ -63,8 +85,9 @@ export function RecommendedSetupPanel({ setup, models, busy, run, announce }: Re
       </div>
       <footer>
         <p><ShieldCheck />Only active capability probes can produce a recommendation. Existing routes are preserved.</p>
-        <div>{setup.provider_count === 0 && <Link className="button primary" to="/models/providers"><Cable size={14} />Connect Provider</Link>}{setup.discovered_model_count > setup.enabled_model_count && <button className="button" disabled={busy} onClick={verify}><ShieldCheck size={14} />Verify configured defaults</button>}{setup.configurable_role_count > 0 && <button className="button primary" disabled={busy} onClick={apply}><Sparkles size={14} />Complete {setup.configurable_role_count} missing routes</button>}{setup.status === 'ready' && <span className="setup-complete"><CheckCircle2 />No action required</span>}</div>
+        <div>{setupView.connectAction.visible && <Link className="button primary" aria-describedby={recommendedSetupFeedbackId} to="/models/providers"><Cable size={14} />{setupView.connectAction.label}</Link>}{setupView.verifyAction.visible && <button type="button" className="button" aria-describedby={`${recommendedSetupFeedbackId}${setupView.verifyAction.disabledDetail ? ` ${recommendedSetupGateId('verify')}` : ''}`} aria-disabled={setupView.verifyAction.ariaDisabled || undefined} onClick={() => { if (setupView.verifyAction.canSubmit) verify() }}><ShieldCheck size={14} />{setupView.verifyAction.label}</button>}{setupView.applyAction.visible && <button type="button" className="button primary" aria-describedby={`${recommendedSetupFeedbackId}${setupView.applyAction.disabledDetail ? ` ${recommendedSetupGateId('apply')}` : ''}`} aria-disabled={setupView.applyAction.ariaDisabled || undefined} onClick={() => { if (setupView.applyAction.canSubmit) apply() }}><Sparkles size={14} />{setupView.applyAction.label}</button>}{setupView.setupComplete && <span className="setup-complete" aria-describedby={recommendedSetupFeedbackId}><CheckCircle2 />No action required</span>}{setupView.verifyAction.disabledDetail && <span className="sr-only" id={recommendedSetupGateId('verify')}>{setupView.verifyAction.disabledDetail}</span>}{setupView.applyAction.disabledDetail && <span className="sr-only" id={recommendedSetupGateId('apply')}>{setupView.applyAction.disabledDetail}</span>}</div>
       </footer>
+      <SubmitReadinessCard className="recommended-setup-feedback" id={recommendedSetupFeedbackId} model={setupView} />
     </div>
 
     <div className="model-setup-groups">{setup.groups.map((group) => {

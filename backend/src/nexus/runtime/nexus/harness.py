@@ -73,11 +73,18 @@ class NexusHarness:
                 return self._quick(run, lease, trace_id)
             return self._research(run, lease, trace_id)
         except CapabilityUnavailableError as exc:
-            result = {
-                "answer": "执行所需能力当前不可用，已保留已有证据和轨迹。",
-                "error": {"code": exc.code, "message": exc.message, "details": exc.details},
-                "partial": True,
-            }
+            result = self._capability_recovery_result(run, exc)
+            self.runs.append_event(
+                run.id,
+                "run.capability_unavailable",
+                {
+                    "code": exc.code,
+                    "message": _truncate_text(exc.message, limit=240),
+                    "recovery": result["recovery"],
+                },
+                producer=self.worker_id,
+                trace_id=trace_id,
+            )
             return self.runs.transition(
                 lease,
                 status=RunStatus.PARTIAL,
@@ -512,6 +519,14 @@ class NexusHarness:
             )
             understanding["intent_model"] = intent_response.actual_model
             understanding["understanding_mode"] = "model_with_deterministic_guardrails"
+            if intent_response.metadata.get("mode") == "deterministic_task_fallback":
+                understanding["intent_degradation"] = str(
+                    intent_response.metadata.get("degradation_reason")
+                    or "deterministic_task_fallback"
+                )
+                understanding["understanding_mode"] = (
+                    "model_degraded_with_deterministic_guardrails"
+                )
         except Exception as exc:
             understanding["intent_degradation"] = type(exc).__name__
 
@@ -571,6 +586,14 @@ class NexusHarness:
                 )[:12]
             understanding["rewrite_model"] = rewrite_response.actual_model
             understanding["understanding_mode"] = "model_with_deterministic_guardrails"
+            if rewrite_response.metadata.get("mode") == "deterministic_task_fallback":
+                understanding["rewrite_degradation"] = str(
+                    rewrite_response.metadata.get("degradation_reason")
+                    or "deterministic_task_fallback"
+                )
+                understanding["understanding_mode"] = (
+                    "model_degraded_with_deterministic_guardrails"
+                )
         except Exception as exc:
             understanding["rewrite_degradation"] = type(exc).__name__
         return understanding
@@ -628,6 +651,58 @@ class NexusHarness:
             producer=self.worker_id,
             trace_id=trace_id,
         )
+
+    def _capability_recovery_result(
+        self, run: RunView, exc: CapabilityUnavailableError
+    ) -> dict[str, object]:
+        checkpoint = self.runs.load_checkpoint(run.id) or {}
+        ledger = self.runs.list_ledger_items(run.id)
+        phase = str(checkpoint.get("phase") or "before_retrieval")
+        evidence_ids = [
+            item.evidence_revision_id
+            for item in ledger[:12]
+            if item.evidence_revision_id
+        ]
+        missing = _string_list(exc.details.get("missing"), limit=8)
+        recovery_actions = _capability_recovery_actions(
+            phase=phase,
+            evidence_count=len(ledger),
+            missing=missing,
+        )
+        safe_details = _safe_capability_details(exc.details)
+        reason_parts = [exc.message]
+        if missing:
+            reason_parts.append(f"missing capabilities: {', '.join(missing[:4])}")
+        if evidence_ids:
+            answer = (
+                "执行路径中有一项外部能力暂不可用，但已保留本轮已检索到的证据、"
+                "运行轨迹和检查点。请修复对应能力后重试，或基于当前证据继续收窄问题。"
+            )
+        else:
+            answer = (
+                "执行路径中有一项外部能力暂不可用，Nexus 已保留运行轨迹和可恢复检查点。"
+                "请修复对应能力后重试，或调整范围后重新发起。"
+            )
+        return {
+            "answer": answer,
+            "citations": [],
+            "error": {
+                "code": exc.code,
+                "message": _truncate_text(exc.message, limit=500),
+                "details": safe_details,
+                "retryable": exc.retryable,
+            },
+            "partial": True,
+            "recovery": {
+                "label": "Capability recovery required",
+                "reason": " · ".join(reason_parts),
+                "phase": phase,
+                "checkpoint_available": bool(checkpoint),
+                "evidence_count": len(ledger),
+                "preserved_evidence_revision_ids": evidence_ids,
+                "actions": recovery_actions,
+            },
+        }
 
     def resume(self, run_id: str) -> RunView:
         return self.advance(run_id)
@@ -860,6 +935,58 @@ def _string_list(value: object, *, limit: int) -> list[str]:
             str(item).strip() for item in value if isinstance(item, str) and item.strip()
         )
     )[:limit]
+
+
+def _truncate_text(value: object, *, limit: int) -> str:
+    text = str(value).strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 1].rstrip()}…"
+
+
+def _safe_capability_details(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    safe: dict[str, object] = {}
+    for raw_key, raw_item in value.items():
+        key = str(raw_key)[:80]
+        if isinstance(raw_item, str):
+            safe[key] = _truncate_text(raw_item, limit=500)
+        elif isinstance(raw_item, bool) or isinstance(raw_item, int) or isinstance(raw_item, float):
+            safe[key] = raw_item
+        elif raw_item is None:
+            safe[key] = None
+        elif isinstance(raw_item, (list, tuple)):
+            safe[key] = [
+                _truncate_text(item, limit=160)
+                for item in raw_item[:12]
+                if isinstance(item, str) or isinstance(item, int) or isinstance(item, float)
+            ]
+        else:
+            safe[key] = type(raw_item).__name__
+    return safe
+
+
+def _capability_recovery_actions(
+    *, phase: str, evidence_count: int, missing: list[str]
+) -> list[str]:
+    actions = []
+    if missing:
+        actions.append(
+            "Enable or repair the missing capability before retrying this Run."
+        )
+    if phase in {"retrieved", "verified"} or evidence_count:
+        actions.append(
+            "Review the preserved Evidence ledger before rerunning; the same scope can be reused."
+        )
+    else:
+        actions.append(
+            "Retry after the connector, retrieval index, or tool dependency is available."
+        )
+    actions.append(
+        "If the outage is expected, narrow the Space scope or choose a simpler execution mode."
+    )
+    return actions
 
 
 def _bool_value(value: object) -> bool:

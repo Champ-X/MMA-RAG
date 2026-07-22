@@ -235,6 +235,137 @@
         }
       }
     },
+    "/api/v1/spaces/{space_id}/suggested-questions": {
+      "get": {
+        "summary": "Get Space Suggested Questions",
+        "operationId": "get_space_suggested_questions",
+        "parameters": [
+          {
+            "name": "space_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Space Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 12,
+              "minimum": 1,
+              "default": 6,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Space Suggested Questions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge": {
+      "get": {
+        "summary": "List Space Knowledge",
+        "operationId": "list_space_knowledge",
+        "parameters": [
+          {
+            "name": "space_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Space Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(all|supported|attention)$",
+              "default": "all",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpaceKnowledgeListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/spaces/route": {
       "post": {
         "summary": "Route Spaces",
@@ -255,9 +386,216 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Route Spaces"
+                  "$ref": "#/components/schemas/SpaceRouteResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/spaces/{space_id}/collections": {
+      "post": {
+        "summary": "Create Collection",
+        "operationId": "create_collection",
+        "parameters": [
+          {
+            "name": "space_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Space Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List Collections",
+        "operationId": "list_collections",
+        "parameters": [
+          {
+            "name": "space_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Space Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/collections/{collection_id}": {
+      "get": {
+        "summary": "Get Collection",
+        "operationId": "get_collection",
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Collection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Collection",
+        "operationId": "update_collection",
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Collection Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Archive Collection",
+        "operationId": "archive_collection",
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Collection Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionResponse"
                 }
               }
             }
@@ -352,6 +690,218 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ConnectorSyncResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/spaces/{space_id}/sources/{source_id}/sync": {
+      "post": {
+        "summary": "Refresh Connected Source",
+        "operationId": "refresh_connected_source",
+        "parameters": [
+          {
+            "name": "space_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Space Id"
+            }
+          },
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorSyncResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/spaces/{space_id}/sources/{source_id}/sync-schedule": {
+      "get": {
+        "summary": "Get Source Sync Schedule",
+        "operationId": "get_source_sync_schedule",
+        "parameters": [
+          {
+            "name": "space_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Space Id"
+            }
+          },
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSyncScheduleEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Configure Source Sync Schedule",
+        "operationId": "configure_source_sync_schedule",
+        "parameters": [
+          {
+            "name": "space_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Space Id"
+            }
+          },
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceSyncScheduleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSyncScheduleResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/spaces/{space_id}/sources/{source_id}/sync-executions": {
+      "get": {
+        "summary": "List Source Sync Executions",
+        "operationId": "list_source_sync_executions",
+        "parameters": [
+          {
+            "name": "space_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Space Id"
+            }
+          },
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSyncExecutionListResponse"
                 }
               }
             }
@@ -699,6 +1249,205 @@
         }
       }
     },
+    "/api/v1/ingestion-jobs/{job_id}/retry": {
+      "post": {
+        "summary": "Retry Ingestion Job",
+        "operationId": "retry_ingestion_job",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ingestion-jobs/{job_id}/cancel": {
+      "post": {
+        "summary": "Cancel Ingestion Job",
+        "operationId": "cancel_ingestion_job",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ingestion-jobs/{job_id}/events": {
+      "get": {
+        "summary": "Stream Ingestion Job Events",
+        "operationId": "stream_ingestion_job_events",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "name": "stream",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Stream"
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJobEventListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{source_id}/reprocess": {
+      "post": {
+        "summary": "Reprocess Source",
+        "operationId": "reprocess_source",
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ingestion-jobs": {
       "get": {
         "summary": "List Ingestion Jobs",
@@ -973,6 +1722,24 @@
                 }
               ],
               "title": "Modality"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
             }
           },
           {
@@ -1297,6 +2064,177 @@
         }
       }
     },
+    "/api/v1/conversations": {
+      "get": {
+        "summary": "List Conversations",
+        "operationId": "list_conversations",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          },
+          {
+            "name": "archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Archived"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{conversation_id}": {
+      "get": {
+        "summary": "Get Conversation",
+        "operationId": "get_conversation",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Conversation",
+        "operationId": "update_conversation",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/runs/{run_id}": {
       "get": {
         "summary": "Get Run",
@@ -1319,6 +2257,57 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runs/{run_id}/suggested-questions": {
+      "get": {
+        "summary": "Get Run Suggested Questions",
+        "operationId": "get_run_suggested_questions",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 6,
+              "minimum": 1,
+              "default": 3,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSuggestedQuestionListResponse"
                 }
               }
             }
@@ -1664,6 +2653,62 @@
         }
       }
     },
+    "/api/v1/artifact-templates": {
+      "get": {
+        "summary": "List Artifact Templates",
+        "operationId": "list_artifact_templates",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactTemplateListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/artifacts/from-template": {
+      "post": {
+        "summary": "Create Artifact From Template",
+        "operationId": "create_artifact_from_template",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArtifactFromTemplateCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/artifacts/{artifact_id}": {
       "get": {
         "summary": "Get Artifact",
@@ -1722,6 +2767,55 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ArtifactRevisionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/artifacts/{artifact_id}/status": {
+      "patch": {
+        "summary": "Set Artifact Status",
+        "operationId": "set_artifact_status",
+        "parameters": [
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Artifact Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArtifactStatusUpdate"
               }
             }
           }
@@ -2031,6 +3125,62 @@
                   "additionalProperties": true,
                   "type": "object",
                   "title": "Response Verify Configured Models"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/model-setup": {
+      "get": {
+        "summary": "Get Recommended Model Setup",
+        "operationId": "get_recommended_model_setup",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSetupResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/model-setup/apply": {
+      "post": {
+        "summary": "Apply Recommended Model Setup",
+        "operationId": "apply_recommended_model_setup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelSetupApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSetupApplyResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -2636,6 +3786,78 @@
         ],
         "title": "AgentProfileResponse"
       },
+      "ArtifactCoverageResponse": {
+        "properties": {
+          "content_block_count": {
+            "type": "integer",
+            "title": "Content Block Count"
+          },
+          "supported_block_count": {
+            "type": "integer",
+            "title": "Supported Block Count"
+          },
+          "coverage_percent": {
+            "type": "integer",
+            "title": "Coverage Percent"
+          },
+          "bound_evidence_count": {
+            "type": "integer",
+            "title": "Bound Evidence Count"
+          },
+          "user_block_count": {
+            "type": "integer",
+            "title": "User Block Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content_block_count",
+          "supported_block_count",
+          "coverage_percent",
+          "bound_evidence_count",
+          "user_block_count"
+        ],
+        "title": "ArtifactCoverageResponse"
+      },
+      "ArtifactFromTemplateCreate": {
+        "properties": {
+          "source_artifact_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Source Artifact Id"
+          },
+          "template_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Template Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "review_text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_artifact_id",
+          "template_id",
+          "title"
+        ],
+        "title": "ArtifactFromTemplateCreate"
+      },
       "ArtifactListResponse": {
         "properties": {
           "items": {
@@ -2814,6 +4036,13 @@
             "type": "array",
             "title": "Evidence Revision Ids"
           },
+          "coverage": {
+            "$ref": "#/components/schemas/ArtifactCoverageResponse"
+          },
+          "pending_refresh_count": {
+            "type": "integer",
+            "title": "Pending Refresh Count"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -2836,6 +4065,8 @@
           "revision_no",
           "canonical_document",
           "evidence_revision_ids",
+          "coverage",
+          "pending_refresh_count",
           "created_at",
           "updated_at"
         ],
@@ -2860,6 +4091,90 @@
           "canonical_document"
         ],
         "title": "ArtifactRevisionCreate"
+      },
+      "ArtifactStatusUpdate": {
+        "properties": {
+          "expected_revision_no": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Revision No"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "candidate",
+              "published"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expected_revision_no",
+          "status"
+        ],
+        "title": "ArtifactStatusUpdate"
+      },
+      "ArtifactTemplateListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactTemplateResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ArtifactTemplateListResponse"
+      },
+      "ArtifactTemplateResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "artifact_type": {
+            "type": "string",
+            "title": "Artifact Type"
+          },
+          "audience": {
+            "type": "string",
+            "title": "Audience"
+          },
+          "review_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Prompt"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "artifact_type",
+          "audience",
+          "review_prompt"
+        ],
+        "title": "ArtifactTemplateResponse"
       },
       "BackupListResponse": {
         "properties": {
@@ -3034,6 +4349,396 @@
         ],
         "title": "ChannelResponse"
       },
+      "CollectionCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "cobalt",
+              "violet",
+              "teal",
+              "amber",
+              "coral"
+            ],
+            "title": "Color",
+            "default": "cobalt"
+          },
+          "view_kind": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "dynamic"
+            ],
+            "title": "View Kind",
+            "default": "manual"
+          },
+          "rule_logic": {
+            "type": "string",
+            "enum": [
+              "all",
+              "any"
+            ],
+            "title": "Rule Logic",
+            "default": "all"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Ids"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionRuleInput"
+            },
+            "type": "array",
+            "title": "Rules"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CollectionCreate"
+      },
+      "CollectionListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "CollectionListResponse"
+      },
+      "CollectionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "space_id": {
+            "type": "string",
+            "title": "Space Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          },
+          "view_kind": {
+            "type": "string",
+            "title": "View Kind"
+          },
+          "rule_logic": {
+            "type": "string",
+            "title": "Rule Logic"
+          },
+          "archived": {
+            "type": "boolean",
+            "title": "Archived"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Ids"
+          },
+          "source_count": {
+            "type": "integer",
+            "title": "Source Count"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionRuleResponse"
+            },
+            "type": "array",
+            "title": "Rules"
+          },
+          "modality_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Modality Counts"
+          },
+          "cover_source_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Source Version Id"
+          },
+          "cover_evidence_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Evidence Id"
+          },
+          "cover_source_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Source Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "space_id",
+          "name",
+          "description",
+          "color",
+          "view_kind",
+          "rule_logic",
+          "archived",
+          "revision",
+          "source_ids",
+          "source_count",
+          "rules",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CollectionResponse"
+      },
+      "CollectionRuleInput": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "display_name",
+              "modality",
+              "mime_type",
+              "connector_kind",
+              "status"
+            ],
+            "title": "Field"
+          },
+          "operator": {
+            "type": "string",
+            "enum": [
+              "equals",
+              "contains",
+              "in"
+            ],
+            "title": "Operator"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "operator",
+          "value"
+        ],
+        "title": "CollectionRuleInput"
+      },
+      "CollectionRuleResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "operator": {
+            "type": "string",
+            "title": "Operator"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "field",
+          "operator",
+          "value",
+          "position"
+        ],
+        "title": "CollectionRuleResponse"
+      },
+      "CollectionUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "cobalt",
+                  "violet",
+                  "teal",
+                  "amber",
+                  "coral"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "rule_logic": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "any"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Logic"
+          },
+          "source_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ids"
+          },
+          "rules": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CollectionRuleInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rules"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          }
+        },
+        "type": "object",
+        "title": "CollectionUpdate"
+      },
       "CompareEvidenceBody": {
         "properties": {
           "left_source_version_id": {
@@ -3114,6 +4819,16 @@
             },
             "type": "array",
             "title": "Items"
+          },
+          "execution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceSyncExecutionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3123,6 +4838,167 @@
           "items"
         ],
         "title": "ConnectorSyncResponse"
+      },
+      "ConversationListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "ConversationListResponse"
+      },
+      "ConversationResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "pinned": {
+            "type": "boolean",
+            "title": "Pinned"
+          },
+          "archived": {
+            "type": "boolean",
+            "title": "Archived"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "run_count": {
+            "type": "integer",
+            "title": "Run Count"
+          },
+          "latest_run_id": {
+            "type": "string",
+            "title": "Latest Run Id"
+          },
+          "latest_goal": {
+            "type": "string",
+            "title": "Latest Goal"
+          },
+          "latest_status": {
+            "type": "string",
+            "title": "Latest Status"
+          },
+          "kinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kinds"
+          },
+          "space_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Space Ids"
+          },
+          "citation_count": {
+            "type": "integer",
+            "title": "Citation Count"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "last_activity_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Activity At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "pinned",
+          "archived",
+          "revision",
+          "run_count",
+          "latest_run_id",
+          "latest_goal",
+          "latest_status",
+          "kinds",
+          "space_ids",
+          "citation_count",
+          "created_at",
+          "updated_at",
+          "last_activity_at"
+        ],
+        "title": "ConversationResponse"
+      },
+      "ConversationUpdate": {
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Revision"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "pinned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned"
+          },
+          "archived": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expected_revision"
+        ],
+        "title": "ConversationUpdate"
       },
       "EvidenceListResponse": {
         "properties": {
@@ -3507,6 +5383,56 @@
         ],
         "title": "ImageSearchConnectorCreate"
       },
+      "IngestionJobEventListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionJobEventResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "IngestionJobEventListResponse"
+      },
+      "IngestionJobEventResponse": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "title": "Sequence"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sequence",
+          "event_type",
+          "payload",
+          "occurred_at"
+        ],
+        "title": "IngestionJobEventResponse"
+      },
       "IngestionJobListResponse": {
         "properties": {
           "items": {
@@ -3567,6 +5493,66 @@
             ],
             "title": "Error Message"
           },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "modality": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Modality"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          },
+          "attempt_count": {
+            "type": "integer",
+            "title": "Attempt Count",
+            "default": 0
+          },
+          "event_count": {
+            "type": "integer",
+            "title": "Event Count",
+            "default": 0
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionJobEventResponse"
+            },
+            "type": "array",
+            "title": "Events"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -3590,6 +5576,49 @@
           "updated_at"
         ],
         "title": "IngestionJobResponse"
+      },
+      "KnowledgeEvidenceReferenceResponse": {
+        "properties": {
+          "evidence_revision_id": {
+            "type": "string",
+            "title": "Evidence Revision Id"
+          },
+          "source_name": {
+            "type": "string",
+            "title": "Source Name"
+          },
+          "modality": {
+            "type": "string",
+            "title": "Modality"
+          },
+          "evidence_type": {
+            "type": "string",
+            "title": "Evidence Type"
+          },
+          "locator_type": {
+            "type": "string",
+            "title": "Locator Type"
+          },
+          "relation": {
+            "type": "string",
+            "title": "Relation"
+          },
+          "support_score": {
+            "type": "number",
+            "title": "Support Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_revision_id",
+          "source_name",
+          "modality",
+          "evidence_type",
+          "locator_type",
+          "relation",
+          "support_score"
+        ],
+        "title": "KnowledgeEvidenceReferenceResponse"
       },
       "KnowledgeProfile": {
         "type": "string",
@@ -3950,6 +5979,240 @@
         ],
         "title": "ModelRouteResponse"
       },
+      "ModelSetupApplyRequest": {
+        "properties": {
+          "replace_existing": {
+            "type": "boolean",
+            "title": "Replace Existing",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ModelSetupApplyRequest"
+      },
+      "ModelSetupApplyResponse": {
+        "properties": {
+          "routes_activated": {
+            "type": "integer",
+            "title": "Routes Activated"
+          },
+          "roles_activated": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles Activated"
+          },
+          "unfilled_roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unfilled Roles"
+          },
+          "setup": {
+            "$ref": "#/components/schemas/ModelSetupResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "routes_activated",
+          "roles_activated",
+          "unfilled_roles",
+          "setup"
+        ],
+        "title": "ModelSetupApplyResponse"
+      },
+      "ModelSetupGroupResponse": {
+        "properties": {
+          "group": {
+            "type": "string",
+            "title": "Group"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "action_available",
+              "fallback"
+            ],
+            "title": "Status"
+          },
+          "ready_count": {
+            "type": "integer",
+            "title": "Ready Count"
+          },
+          "configurable_count": {
+            "type": "integer",
+            "title": "Configurable Count"
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "group",
+          "status",
+          "ready_count",
+          "configurable_count",
+          "total_count",
+          "roles"
+        ],
+        "title": "ModelSetupGroupResponse"
+      },
+      "ModelSetupResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "action_available",
+              "verification_required",
+              "credentials_required",
+              "partial"
+            ],
+            "title": "Status"
+          },
+          "provider_count": {
+            "type": "integer",
+            "title": "Provider Count"
+          },
+          "discovered_model_count": {
+            "type": "integer",
+            "title": "Discovered Model Count"
+          },
+          "enabled_model_count": {
+            "type": "integer",
+            "title": "Enabled Model Count"
+          },
+          "active_route_count": {
+            "type": "integer",
+            "title": "Active Route Count"
+          },
+          "total_role_count": {
+            "type": "integer",
+            "title": "Total Role Count"
+          },
+          "ready_role_count": {
+            "type": "integer",
+            "title": "Ready Role Count"
+          },
+          "configurable_role_count": {
+            "type": "integer",
+            "title": "Configurable Role Count"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ModelSetupGroupResponse"
+            },
+            "type": "array",
+            "title": "Groups"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/ModelSetupRoleResponse"
+            },
+            "type": "array",
+            "title": "Roles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "provider_count",
+          "discovered_model_count",
+          "enabled_model_count",
+          "active_route_count",
+          "total_role_count",
+          "ready_role_count",
+          "configurable_role_count",
+          "groups",
+          "roles"
+        ],
+        "title": "ModelSetupResponse"
+      },
+      "ModelSetupRoleResponse": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "required_capability": {
+            "type": "string",
+            "title": "Required Capability"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "candidate",
+              "fallback"
+            ],
+            "title": "State"
+          },
+          "active_deployment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Active Deployment Ids"
+          },
+          "active_model_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Active Model Names"
+          },
+          "recommended_deployment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Deployment Id"
+          },
+          "recommended_model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Model Name"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "required_capability",
+          "state",
+          "active_deployment_ids",
+          "active_model_names",
+          "recommended_deployment_id",
+          "recommended_model_name",
+          "reason"
+        ],
+        "title": "ModelSetupRoleResponse"
+      },
       "NewsConnectorCreate": {
         "properties": {
           "space_id": {
@@ -4198,8 +6461,14 @@
             "title": "Goal"
           },
           "kind": {
-            "$ref": "#/components/schemas/RunKind",
-            "default": "quick"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "quality_mode": {
             "anyOf": [
@@ -4461,6 +6730,145 @@
         ],
         "title": "RunSnapshotResponse"
       },
+      "RunSuggestedQuestionListResponse": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "available",
+              "no_evidence_ledger"
+            ],
+            "title": "Outcome"
+          },
+          "generated_from": {
+            "type": "string",
+            "const": "frozen_evidence_ledger",
+            "title": "Generated From"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/RunSuggestionScopeResponse"
+          },
+          "ledger_evidence_count": {
+            "type": "integer",
+            "title": "Ledger Evidence Count"
+          },
+          "cited_evidence_count": {
+            "type": "integer",
+            "title": "Cited Evidence Count"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RunSuggestedQuestionResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "outcome",
+          "generated_from",
+          "scope",
+          "ledger_evidence_count",
+          "cited_evidence_count",
+          "items"
+        ],
+        "title": "RunSuggestedQuestionListResponse"
+      },
+      "RunSuggestedQuestionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "uncovered_retrieved_evidence",
+              "cross_source_comparison",
+              "native_modality_deep_dive",
+              "cited_evidence_deep_dive"
+            ],
+            "title": "Reason"
+          },
+          "evidence_revision_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Revision Ids"
+          },
+          "source_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Names"
+          },
+          "modalities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Modalities"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "question",
+          "reason",
+          "evidence_revision_ids",
+          "source_names",
+          "modalities"
+        ],
+        "title": "RunSuggestedQuestionResponse"
+      },
+      "RunSuggestionScopeResponse": {
+        "properties": {
+          "space_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Space Ids"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Ids"
+          },
+          "publish_watermark": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish Watermark"
+          }
+        },
+        "type": "object",
+        "required": [
+          "space_ids",
+          "source_ids",
+          "publish_watermark"
+        ],
+        "title": "RunSuggestionScopeResponse"
+      },
       "ScopeRequest": {
         "properties": {
           "space_ids": {
@@ -4469,6 +6877,13 @@
             },
             "type": "array",
             "title": "Space Ids"
+          },
+          "collection_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Collection Ids"
           },
           "source_ids": {
             "items": {
@@ -4532,6 +6947,57 @@
           "scope"
         ],
         "title": "SearchBody"
+      },
+      "SearchExplanationResponse": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "scope_evidence_count": {
+            "type": "integer",
+            "title": "Scope Evidence Count"
+          },
+          "candidate_count": {
+            "type": "integer",
+            "title": "Candidate Count"
+          },
+          "completed_channels": {
+            "type": "integer",
+            "title": "Completed Channels"
+          },
+          "failed_channels": {
+            "type": "integer",
+            "title": "Failed Channels"
+          },
+          "unavailable_channels": {
+            "type": "integer",
+            "title": "Unavailable Channels"
+          },
+          "suggested_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Suggested Actions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome",
+          "severity",
+          "scope_evidence_count",
+          "candidate_count",
+          "completed_channels",
+          "failed_channels",
+          "unavailable_channels",
+          "suggested_actions"
+        ],
+        "title": "SearchExplanationResponse"
       },
       "SearchHitResponse": {
         "properties": {
@@ -4611,6 +7077,9 @@
             },
             "type": "array",
             "title": "Channels"
+          },
+          "explanation": {
+            "$ref": "#/components/schemas/SearchExplanationResponse"
           }
         },
         "type": "object",
@@ -4622,9 +7091,116 @@
           "degradation_reasons",
           "coverage",
           "hits",
-          "channels"
+          "channels",
+          "explanation"
         ],
         "title": "SearchResponse"
+      },
+      "SourceHealthResponse": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "searchable": {
+            "type": "boolean",
+            "title": "Searchable"
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blockers"
+          },
+          "primary_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome",
+          "severity",
+          "summary",
+          "searchable",
+          "blockers",
+          "primary_action"
+        ],
+        "title": "SourceHealthResponse"
+      },
+      "SourceIngestionSummaryResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "attempt_count": {
+            "type": "integer",
+            "title": "Attempt Count"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "stage",
+          "error_code",
+          "error_message",
+          "attempt_count",
+          "updated_at"
+        ],
+        "title": "SourceIngestionSummaryResponse"
       },
       "SourceListResponse": {
         "properties": {
@@ -4645,6 +7221,332 @@
           "page"
         ],
         "title": "SourceListResponse"
+      },
+      "SourceProjectionResponse": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "expected_evidence_count": {
+            "type": "integer",
+            "title": "Expected Evidence Count"
+          },
+          "active_evidence_count": {
+            "type": "integer",
+            "title": "Active Evidence Count"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "expected_evidence_count",
+          "active_evidence_count",
+          "release_id"
+        ],
+        "title": "SourceProjectionResponse"
+      },
+      "SourceSyncExecutionListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourceSyncExecutionResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "SourceSyncExecutionListResponse"
+      },
+      "SourceSyncExecutionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "schedule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Id"
+          },
+          "space_id": {
+            "type": "string",
+            "title": "Space Id"
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "trigger": {
+            "type": "string",
+            "title": "Trigger"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "items_checked": {
+            "type": "integer",
+            "title": "Items Checked"
+          },
+          "new_version_count": {
+            "type": "integer",
+            "title": "New Version Count"
+          },
+          "job_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Job Ids"
+          },
+          "source_version_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Version Ids"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "schedule_id",
+          "space_id",
+          "source_id",
+          "trigger",
+          "status",
+          "items_checked",
+          "new_version_count",
+          "job_ids",
+          "source_version_ids",
+          "error_message",
+          "created_at",
+          "completed_at"
+        ],
+        "title": "SourceSyncExecutionResponse"
+      },
+      "SourceSyncResponse": {
+        "properties": {
+          "connector_kind": {
+            "type": "string",
+            "title": "Connector Kind"
+          },
+          "refreshable": {
+            "type": "boolean",
+            "title": "Refreshable"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "last_checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Checked At"
+          },
+          "schedules": {
+            "items": {
+              "$ref": "#/components/schemas/SourceSyncScheduleResponse"
+            },
+            "type": "array",
+            "title": "Schedules"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connector_kind",
+          "refreshable",
+          "scope",
+          "last_checked_at"
+        ],
+        "title": "SourceSyncResponse"
+      },
+      "SourceSyncScheduleEnvelope": {
+        "properties": {
+          "schedule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceSyncScheduleResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "schedule"
+        ],
+        "title": "SourceSyncScheduleEnvelope"
+      },
+      "SourceSyncScheduleResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "space_id": {
+            "type": "string",
+            "title": "Space Id"
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "interval_minutes": {
+            "type": "integer",
+            "title": "Interval Minutes"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "next_run_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Next Run At"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "last_status": {
+            "type": "string",
+            "title": "Last Status"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "space_id",
+          "source_id",
+          "interval_minutes",
+          "enabled",
+          "next_run_at",
+          "last_run_at",
+          "last_status",
+          "last_error",
+          "revision",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SourceSyncScheduleResponse"
+      },
+      "SourceSyncScheduleUpdate": {
+        "properties": {
+          "interval_minutes": {
+            "type": "integer",
+            "maximum": 10080.0,
+            "minimum": 15.0,
+            "title": "Interval Minutes"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "interval_minutes"
+        ],
+        "title": "SourceSyncScheduleUpdate"
       },
       "SourceVersionResponse": {
         "properties": {
@@ -4723,6 +7625,33 @@
             "type": "object",
             "title": "Capabilities"
           },
+          "capability_details": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Capability Details"
+          },
+          "latest_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceIngestionSummaryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "projection": {
+            "$ref": "#/components/schemas/SourceProjectionResponse"
+          },
+          "sync": {
+            "$ref": "#/components/schemas/SourceSyncResponse"
+          },
+          "health": {
+            "$ref": "#/components/schemas/SourceHealthResponse"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -4766,6 +7695,11 @@
           "modality",
           "status",
           "capabilities",
+          "capability_details",
+          "latest_job",
+          "projection",
+          "sync",
+          "health",
           "created_at"
         ],
         "title": "SourceVersionResponse"
@@ -4800,8 +7734,14 @@
             "default": "searchable"
           },
           "default_quality": {
-            "$ref": "#/components/schemas/QualityMode",
-            "default": "quality"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QualityMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -4809,6 +7749,83 @@
           "name"
         ],
         "title": "SpaceCreate"
+      },
+      "SpaceKnowledgeClaimResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "claim_type": {
+            "type": "string",
+            "title": "Claim Type"
+          },
+          "verification_level": {
+            "type": "string",
+            "title": "Verification Level"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeEvidenceReferenceResponse"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "run_id",
+          "text",
+          "claim_type",
+          "verification_level",
+          "status",
+          "explanation",
+          "evidence",
+          "created_at"
+        ],
+        "title": "SpaceKnowledgeClaimResponse"
+      },
+      "SpaceKnowledgeListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SpaceKnowledgeClaimResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "SpaceKnowledgeListResponse"
       },
       "SpaceListResponse": {
         "properties": {
@@ -4829,6 +7846,49 @@
           "page"
         ],
         "title": "SpaceListResponse"
+      },
+      "SpacePolicyResponse": {
+        "properties": {
+          "profile": {
+            "$ref": "#/components/schemas/KnowledgeProfile"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "default_quality": {
+            "$ref": "#/components/schemas/QualityMode"
+          },
+          "recommended_run_kind": {
+            "$ref": "#/components/schemas/RunKind"
+          },
+          "auto_route_eligible": {
+            "type": "boolean",
+            "title": "Auto Route Eligible"
+          },
+          "behaviors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Behaviors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile",
+          "label",
+          "summary",
+          "default_quality",
+          "recommended_run_kind",
+          "auto_route_eligible",
+          "behaviors"
+        ],
+        "title": "SpacePolicyResponse"
       },
       "SpaceResponse": {
         "properties": {
@@ -4853,6 +7913,9 @@
           },
           "default_quality": {
             "$ref": "#/components/schemas/QualityMode"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/SpacePolicyResponse"
           },
           "archived": {
             "type": "boolean",
@@ -4939,6 +8002,7 @@
           "description",
           "knowledge_profile",
           "default_quality",
+          "policy",
           "archived",
           "revision",
           "source_count",
@@ -4946,6 +8010,84 @@
           "updated_at"
         ],
         "title": "SpaceResponse"
+      },
+      "SpaceRouteCandidateResponse": {
+        "properties": {
+          "space_id": {
+            "type": "string",
+            "title": "Space Id"
+          },
+          "space_name": {
+            "type": "string",
+            "title": "Space Name"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "score_components": {
+            "$ref": "#/components/schemas/SpaceRouteScoreComponents"
+          },
+          "score_contributions": {
+            "$ref": "#/components/schemas/SpaceRouteScoreComponents"
+          },
+          "matched_terms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Matched Terms"
+          },
+          "selected_for_search": {
+            "type": "boolean",
+            "title": "Selected For Search",
+            "default": false
+          },
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "policy_label": {
+            "type": "string",
+            "title": "Policy Label"
+          },
+          "auto_route_eligible": {
+            "type": "boolean",
+            "title": "Auto Route Eligible"
+          },
+          "routing_note": {
+            "type": "string",
+            "enum": [
+              "eligible",
+              "manual_scope_only"
+            ],
+            "title": "Routing Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "space_id",
+          "space_name",
+          "score",
+          "score_components",
+          "score_contributions",
+          "profile",
+          "policy_label",
+          "auto_route_eligible",
+          "routing_note"
+        ],
+        "title": "SpaceRouteCandidateResponse"
+      },
+      "SpaceRouteMethod": {
+        "type": "string",
+        "enum": [
+          "no_spaces",
+          "no_auto_route_spaces",
+          "all_low_safe_broadening",
+          "dominant_cluster",
+          "multi_space_cluster_match"
+        ],
+        "title": "SpaceRouteMethod"
       },
       "SpaceRouteRequest": {
         "properties": {
@@ -4967,6 +8109,86 @@
           "query"
         ],
         "title": "SpaceRouteRequest"
+      },
+      "SpaceRouteResponse": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "method": {
+            "$ref": "#/components/schemas/SpaceRouteMethod"
+          },
+          "selection_reason": {
+            "type": "string",
+            "title": "Selection Reason"
+          },
+          "selected_space_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Selected Space Ids"
+          },
+          "recommended_kind": {
+            "$ref": "#/components/schemas/RunKind"
+          },
+          "recommended_quality": {
+            "$ref": "#/components/schemas/QualityMode"
+          },
+          "policy_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Policy Reasons"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/SpaceRouteCandidateResponse"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "method",
+          "selection_reason",
+          "selected_space_ids",
+          "recommended_kind",
+          "recommended_quality",
+          "policy_reasons",
+          "candidates"
+        ],
+        "title": "SpaceRouteResponse"
+      },
+      "SpaceRouteScoreComponents": {
+        "properties": {
+          "cluster": {
+            "type": "number",
+            "title": "Cluster",
+            "default": 0.0
+          },
+          "lexical": {
+            "type": "number",
+            "title": "Lexical",
+            "default": 0.0
+          },
+          "metadata": {
+            "type": "number",
+            "title": "Metadata",
+            "default": 0.0
+          },
+          "policy": {
+            "type": "number",
+            "title": "Policy",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "title": "SpaceRouteScoreComponents"
       },
       "ToolExecuteBody": {
         "properties": {

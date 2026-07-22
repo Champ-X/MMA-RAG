@@ -112,6 +112,37 @@ def test_artifact_without_supported_evidence_cannot_be_published(
     assert "evidence-supported" in response.json()["error"]["message"]
 
 
+def test_artifact_render_response_names_the_delivery_revision(
+    api: TestClient,
+    nexus: NexusContainer,
+) -> None:
+    artifact = nexus.runs_repository.create_artifact(
+        run_id=None,
+        title="Board Packet: Q3/Alpha?",
+        artifact_type="research_report",
+        canonical_document=_document(),
+        evidence_revision_ids=["evidence-1"],
+    )
+    pdf = api.get(f"/api/v1/artifacts/{artifact.id}/render?format=pdf")
+    assert pdf.status_code == 200
+    assert pdf.headers["content-disposition"] == (
+        "attachment; filename="
+        f"\"board-packet-q3-alpha-candidate-v1-{artifact.revision_id[:8]}.pdf\""
+    )
+    assert pdf.headers["x-nexus-artifact-id"] == artifact.id
+    assert pdf.headers["x-nexus-artifact-revision"] == artifact.revision_id
+    assert pdf.headers["x-nexus-artifact-revision-no"] == "1"
+    assert pdf.headers["x-nexus-artifact-status"] == "candidate"
+    assert pdf.headers["x-nexus-artifact-coverage"] == "100"
+    assert pdf.headers["x-nexus-artifact-evidence-count"] == "1"
+    assert pdf.headers["x-nexus-artifact-render-format"] == "pdf"
+
+    html = api.get(f"/api/v1/artifacts/{artifact.id}/render?format=html")
+    assert html.status_code == 200
+    assert html.headers["content-disposition"].startswith("inline; filename=")
+    assert html.headers["content-disposition"].endswith(f"{artifact.revision_id[:8]}.html\"")
+
+
 def test_artifact_template_derives_layout_without_rebinding_evidence(
     api: TestClient,
     nexus: NexusContainer,

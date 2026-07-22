@@ -5,8 +5,11 @@ import { nexusApi } from '@/api/nexus'
 import { EmptyState } from '@/components/nexus/EmptyState'
 import { LoadingState } from '@/components/nexus/LoadingState'
 import { PageHeader } from '@/components/nexus/PageHeader'
+import { QueryErrorNotice } from '@/components/nexus/QueryErrorNotice'
 import { StatusMark } from '@/components/nexus/StatusMark'
+import { buildQueryErrorNoticeViewModel } from '@/components/nexus/queryErrorNoticeViewModel'
 import { GettingStarted } from './GettingStarted'
+import './HomePage.css'
 
 export default function HomePage() {
   const [params] = useSearchParams()
@@ -14,6 +17,16 @@ export default function HomePage() {
   const runs = useQuery({ queryKey: ['runs'], queryFn: () => nexusApi.listRuns(), refetchInterval: 5000 })
   const health = useQuery({ queryKey: ['health'], queryFn: nexusApi.getHealth, refetchInterval: 15_000 })
   if (spaces.isLoading || runs.isLoading || health.isLoading) return <LoadingState />
+  const queryErrorNotice = buildQueryErrorNoticeViewModel([
+    { error: spaces.error, hasData: Boolean(spaces.data), label: 'Spaces' },
+    { error: runs.error, hasData: Boolean(runs.data), label: 'Runs' },
+    { error: health.error, hasData: Boolean(health.data), label: 'Health' },
+  ])
+  const retryHomeQueries = () => {
+    void spaces.refetch()
+    void runs.refetch()
+    void health.refetch()
+  }
   const activeRuns = runs.data?.items.filter((run) => !['completed', 'failed', 'cancelled', 'partial'].includes(run.status)) ?? []
   const degraded = Object.entries(health.data?.capabilities ?? {}).filter(([, value]) => value.status !== 'ready')
   const spaceItems = spaces.data?.items ?? []
@@ -27,6 +40,10 @@ export default function HomePage() {
         description="Every source, conclusion and research step stays addressable—down to a page, figure, timestamp or cell range."
         actions={spaceItems.length ? <Link className="button primary" to="/research/new"><Plus size={16} />Start research</Link> : <Link className="button primary" to="/spaces"><Plus size={16} />Create first Space</Link>}
       />
+      <QueryErrorNotice model={queryErrorNotice} onRetry={retryHomeQueries} />
+      {queryErrorNotice.tone === 'blocking' ? (
+        <EmptyState title="Control plane is temporarily unavailable" body="Nexus could not verify Spaces, Runs or capability readiness. Retry the control plane before treating this workspace as empty." />
+      ) : <>
 
       <GettingStarted
         spaceCount={spaceItems.length}
@@ -90,6 +107,7 @@ export default function HomePage() {
           ) : <EmptyState title="All capabilities ready" body="The configured ingestion, retrieval and model routes are healthy." />}
         </section>
       </div>
+      </>}
     </div>
   )
 }

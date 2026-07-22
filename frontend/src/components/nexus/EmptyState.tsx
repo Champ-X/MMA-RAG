@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import './EmptyState.css'
 
 export function EmptyState({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
   return (

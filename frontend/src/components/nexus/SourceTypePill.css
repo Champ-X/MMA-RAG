@@ -1,0 +1,30 @@
+.source-type {
+  width: fit-content;
+  padding: 4px 6px;
+  color: #41504e;
+  background: #e1e7e4;
+  border-radius: 5px;
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.source-type.modality-image {
+  color: #654294;
+  background: #ece2f7;
+}
+
+.source-type.modality-audio {
+  color: #096c5a;
+  background: #d9ede7;
+}
+
+.source-type.modality-video {
+  color: #a84d19;
+  background: #f6e2d4;
+}
+
+.source-type.modality-table {
+  color: #1a599d;
+  background: #dce9f8;
+}

@@ -1,0 +1,28 @@
+.empty-state {
+  display: grid;
+  place-items: center;
+  min-height: 210px;
+  padding: 30px;
+  text-align: center;
+  border: 1px dashed var(--line-dark);
+  border-radius: 12px;
+}
+
+.empty-state .empty-glyph {
+  color: var(--cobalt);
+  font-family: Georgia, serif;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.empty-state h3 {
+  margin: 7px 0 4px;
+  font-size: 17px;
+}
+
+.empty-state p {
+  max-width: 460px;
+  margin: 0 0 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}

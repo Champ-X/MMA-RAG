@@ -14,6 +14,7 @@ export type Evidence = components['schemas']['EvidenceResponse']
 export type EvidenceList = components['schemas']['EvidenceListResponse']
 export type SpaceKnowledgeClaim = components['schemas']['SpaceKnowledgeClaimResponse']
 export type SpaceKnowledgeList = components['schemas']['SpaceKnowledgeListResponse']
+export type SpaceRoute = components['schemas']['SpaceRouteResponse']
 export type SearchResponse = components['schemas']['SearchResponse']
 export type SearchExplanation = components['schemas']['SearchExplanationResponse']
 export type Run = components['schemas']['RunResponse']
@@ -170,23 +171,11 @@ export const nexusApi = {
       reason: string
     }>
   }>(`/api/v1/spaces/${id}/suggested-questions`),
-  routeSpaces: (queryText: string, limit = 3) => request<{
-    query: string
-    method: string
-    selected_space_ids: string[]
-    recommended_kind: 'quick' | 'research'
-    recommended_quality: 'fast' | 'quality' | 'deep'
-    policy_reasons: string[]
-    candidates: Array<{
-      space_id: string
-      space_name: string
-      score: number
-      profile: string
-      policy_label: string
-      auto_route_eligible: boolean
-      routing_note: 'eligible' | 'manual_scope_only'
-    }>
-  }>('/api/v1/spaces/route', { method: 'POST', body: JSON.stringify({ query: queryText, limit }) }),
+  routeSpaces: (queryText: string, limit = 3) =>
+    request<SpaceRoute>('/api/v1/spaces/route', {
+      method: 'POST',
+      body: JSON.stringify({ query: queryText, limit }),
+    }),
   createSpace: (body: SpaceCreate) =>
     request<Space>('/api/v1/spaces', {
       method: 'POST',

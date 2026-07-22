@@ -1,14 +1,7 @@
 import { AlertTriangle, Check, CircleDashed, Loader2, ShieldCheck } from 'lucide-react'
 import type { DurableRunEvent, Run } from '@/api/nexus'
 import { buildRunProgress, type ProgressState } from './runProgress'
-
-const statusCopy: Record<string, string> = {
-  completed: 'Answer delivered and evidence preserved',
-  partial: 'Partial result preserved for review',
-  failed: 'Run stopped before delivery',
-  cancelled: 'Run cancelled; completed work preserved',
-  paused: 'Paused safely at a checkpoint',
-}
+import './RunProgressSummary.css'
 
 function StageIcon({ state }: { state: ProgressState }) {
   if (state === 'complete') return <Check />
@@ -18,12 +11,11 @@ function StageIcon({ state }: { state: ProgressState }) {
 }
 
 export function RunProgressSummary({ run, events }: { run: Run; events: DurableRunEvent[] }) {
-  const progress = buildRunProgress(events, run.kind, run.status, Boolean(run.result))
+  const progress = buildRunProgress(events, run.kind, run.status, Boolean(run.result), run.stop_reason)
   const current = progress.stages.find((stage) => stage.state === 'active' || stage.state === 'attention')
-  const headline = statusCopy[run.status] ?? current?.label ?? 'Recovering progress'
   return (
     <section className="run-progress-summary" aria-label="Run progress">
-      <header><p className="eyebrow"><ShieldCheck />Evidence process</p><strong>{headline}</strong><small>{current?.detail ?? 'Every completed stage is durable and safe to revisit.'}</small></header>
+      <header><p className="eyebrow"><ShieldCheck />Evidence process</p><strong>{progress.headline}</strong><small>{current?.detail ?? 'Every completed stage is durable and safe to revisit.'}</small></header>
       <ol>
         {progress.stages.map((stage) => <li className={stage.state} key={stage.id}><span><StageIcon state={stage.state} /></span><p><strong>{stage.label}</strong><small>{stage.detail}</small></p></li>)}
       </ol>

@@ -88,6 +88,7 @@ from nexus.api.schemas import (
     SpaceListResponse,
     SpaceResponse,
     SpaceRouteRequest,
+    SpaceRouteResponse,
     ToolExecuteBody,
     ToolExecutionResponse,
     ToolListResponse,
@@ -102,7 +103,10 @@ from nexus.config import NexusSettings
 from nexus.infrastructure.feishu import FeishuStateStore
 from nexus.infrastructure.telemetry import configure_telemetry, current_trace_id
 from nexus.modules.artifacts.domain import ARTIFACT_TEMPLATES
-from nexus.modules.artifacts.renderers import render_artifact as render_canonical_artifact
+from nexus.modules.artifacts.renderers import (
+    ArtifactRenderMetadata,
+    render_artifact as render_canonical_artifact,
+)
 from nexus.modules.retrieval.domain import ScopeCapsule, SearchRequest
 from nexus.shared.domain.enums import TERMINAL_RUN_STATUSES, QualityMode, RunKind
 from nexus.shared.domain.errors import DomainError
@@ -324,7 +328,11 @@ def create_app(
             "page": {"next_cursor": next_cursor},
         }
 
-    @router.post("/spaces/route", operation_id="route_spaces")
+    @router.post(
+        "/spaces/route",
+        response_model=SpaceRouteResponse,
+        operation_id="route_spaces",
+    )
     async def route_spaces(body: SpaceRouteRequest, request: Request) -> dict[str, Any]:
         return await asyncio.to_thread(
             get_container(request).space_intelligence.route,
@@ -1398,19 +1406,26 @@ def create_app(
         artifact = await asyncio.to_thread(
             get_container(request).runs_repository.get_artifact, artifact_id
         )
+        metadata = ArtifactRenderMetadata(
+            artifact_id=artifact.id,
+            artifact_type=artifact.artifact_type,
+            bound_evidence_count=artifact.coverage.bound_evidence_count,
+            content_block_count=artifact.coverage.content_block_count,
+            coverage_percent=artifact.coverage.coverage_percent,
+            pending_refresh_count=artifact.pending_refresh_count,
+            revision_id=artifact.revision_id,
+            revision_no=artifact.revision_no,
+            status=artifact.status,
+            supported_block_count=artifact.coverage.supported_block_count,
+            updated_at=artifact.updated_at,
+        )
         body, media_type, extension = await asyncio.to_thread(
-            render_canonical_artifact, artifact.canonical_document, format
+            render_canonical_artifact, artifact.canonical_document, format, metadata
         )
         return Response(
             body,
             media_type=media_type,
-            headers={
-                "Content-Disposition": (
-                    f'attachment; filename="artifact-{artifact.id}.{extension}"'
-                    if format in {"pdf", "csv", "xlsx"}
-                    else f'inline; filename="artifact-{artifact.id}.{extension}"'
-                )
-            },
+            headers=_artifact_render_headers(artifact, format, extension),
         )
 
     # ----- Operations -----------------------------------------------------------------
@@ -1946,6 +1961,38 @@ def _parse_range(value: str | None, size: int) -> tuple[int, int, int]:
 
 def _safe_filename(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", value)[:180] or "asset"
+
+
+def _safe_slug(value: object, *, fallback: str, max_length: int = 72) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", str(value or "").lower()).strip("-")
+    return slug[:max_length].strip("-") or fallback
+
+
+def _artifact_delivery_filename(artifact: Any, extension: str) -> str:
+    title = _safe_slug(artifact.title, fallback="")
+    if not title:
+        title = f"artifact-{_safe_slug(artifact.id, fallback='unknown', max_length=8)}"
+    status = _safe_slug(artifact.status, fallback="candidate", max_length=24)
+    revision = _safe_slug(artifact.revision_id, fallback="revision", max_length=8)
+    filename = f"{title}-{status}-v{artifact.revision_no}-{revision}.{extension}"
+    return _safe_filename(filename)
+
+
+def _artifact_render_headers(artifact: Any, format_name: str, extension: str) -> dict[str, str]:
+    disposition = "attachment" if format_name in {"pdf", "csv", "xlsx"} else "inline"
+    filename = _artifact_delivery_filename(artifact, extension)
+    return {
+        "Content-Disposition": f'{disposition}; filename="{filename}"',
+        "Cache-Control": "private, max-age=0, must-revalidate",
+        "ETag": f'W/"{artifact.revision_id}-{artifact.status}-{format_name}"',
+        "X-Nexus-Artifact-Coverage": str(artifact.coverage.coverage_percent),
+        "X-Nexus-Artifact-Evidence-Count": str(artifact.coverage.bound_evidence_count),
+        "X-Nexus-Artifact-ID": str(artifact.id),
+        "X-Nexus-Artifact-Render-Format": format_name,
+        "X-Nexus-Artifact-Revision": str(artifact.revision_id),
+        "X-Nexus-Artifact-Revision-No": str(artifact.revision_no),
+        "X-Nexus-Artifact-Status": str(artifact.status),
+    }
 
 
 app = create_app()

@@ -1,0 +1,24 @@
+.material-cover { height: 138px; position: relative; display: block; overflow: hidden; color: white; background: linear-gradient(145deg, #dfe6e3, #f2f5f3); }
+.material-cover.compact { height: 88px; }
+.material-cover > img, .material-cover > video { width: 100%; height: 100%; display: block; object-fit: cover; }
+.material-cover-shade { position: absolute; inset: 0; background: linear-gradient(180deg, transparent 48%, rgb(11 19 21 / .62)); pointer-events: none; }
+.material-cover-type { position: absolute; z-index: 2; left: 9px; top: 9px; display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; color: white; background: rgb(16 27 29 / .68); border: 1px solid rgb(255 255 255 / .18); border-radius: 5px; backdrop-filter: blur(7px); }
+.material-cover-type svg { width: 11px; height: 11px; }
+.material-cover-type small { font-family: ui-monospace, monospace; font-size: 7px; letter-spacing: .06em; }
+.material-cover-glyph { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(19 29 32 / .25); }
+.material-cover-glyph svg { width: 30px; height: 30px; padding: 7px; background: rgb(20 31 34 / .62); border-radius: 50%; }
+.material-cover.modality-audio { background: linear-gradient(135deg, #123a3a, #1f7868 72%, #b8d6ca); }
+.audio-cover-mark { height: 100%; display: flex; align-items: center; justify-content: center; gap: 3px; padding: 25px; }
+.audio-cover-mark > svg { width: 25px; flex: 0 0 auto; margin-right: 8px; }
+.audio-cover-mark i { width: 3px; height: 18%; background: rgb(255 255 255 / .75); border-radius: 4px; }
+.audio-cover-mark i:nth-of-type(3n + 1) { height: 48%; }
+.audio-cover-mark i:nth-of-type(4n + 2) { height: 70%; }
+.audio-cover-mark i:nth-of-type(5n) { height: 33%; }
+.material-cover.modality-text { color: #273438; background: #e8ece9; }
+.material-cover.modality-table { color: #173d70; background: #dce8f4; }
+.document-cover-mark { width: 68%; height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 6px; margin: 0 auto; padding: 17px; background: rgb(255 255 255 / .76); box-shadow: 0 8px 25px rgb(30 45 41 / .1); }
+.document-cover-mark > svg { width: 19px; }
+.document-cover-mark b { font-family: ui-monospace, monospace; font-size: 14px; letter-spacing: .08em; }
+.document-cover-mark i { height: 3px; display: block; background: currentColor; opacity: .14; }
+.document-cover-mark i:nth-of-type(2) { width: 70%; }
+.material-cover.modality-text .material-cover-shade, .material-cover.modality-table .material-cover-shade { background: linear-gradient(180deg, transparent 45%, rgb(28 40 42 / .55)); }

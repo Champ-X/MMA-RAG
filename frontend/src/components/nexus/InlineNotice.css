@@ -1,0 +1,29 @@
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 14px 0;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.notice span {
+  color: var(--muted);
+}
+
+.notice.positive {
+  background: var(--teal-soft);
+  border-color: #9dcabc;
+}
+
+.notice.warning {
+  background: var(--amber-soft);
+  border-color: #e2bd83;
+}
+
+.notice.negative {
+  color: var(--red);
+  background: var(--red-soft);
+  border-color: #dfaaa6;
+}

@@ -112,6 +112,9 @@ services:
     restart: unless-stopped
     volumes:
       - nexus_qdrant:/qdrant/storage
+    ports:
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
     healthcheck:
       test: ["CMD", "bash", "-c", "</dev/tcp/127.0.0.1/6333"]
       interval: 5s

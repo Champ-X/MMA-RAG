@@ -1,0 +1,26 @@
+.confirm-backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 22px; background: rgb(9 18 20 / .48); backdrop-filter: blur(5px); }
+.confirm-dialog { width: min(460px, 100%); overflow: hidden; background: #fffdf7; border: 1px solid #9fadab; border-radius: 5px 18px 18px 18px; box-shadow: 0 30px 90px rgb(7 16 18 / .34); animation: drawer-in 160ms ease-out; }
+.confirm-dialog > header { display: grid; grid-template-columns: 42px minmax(0, 1fr) 34px; gap: 12px; align-items: start; padding: 18px 18px 14px; color: #f4fbf8; background: #202a2d; }
+.confirm-dialog > header > span { width: 40px; height: 40px; display: grid; place-items: center; color: white; background: var(--red); border-radius: 12px 12px 4px 12px; }
+.confirm-dialog.tone-neutral > header > span { background: var(--cobalt); }
+.confirm-dialog > header h2 { margin: 0; color: white; font-size: 19px; letter-spacing: -.025em; }
+.confirm-dialog > header .eyebrow { color: #aebeff; }
+.confirm-dialog > header .icon-button { color: #d8e3e0; background: #2b383c; border-color: #45565b; }
+.confirm-dialog > p { margin: 0; padding: 18px 20px; color: #40504d; font-size: 12px; line-height: 1.58; }
+.confirm-status { margin: -4px 18px 14px; }
+.confirm-dialog > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 13px 18px 17px; background: #f1f5f2; border-top: 1px solid var(--line); }
+.confirm-dialog button[aria-disabled="true"] { cursor: progress; opacity: .62; transform: none; }
+.confirm-dialog button[aria-disabled="true"]:hover { transform: none; }
+.confirm-dialog button:focus-visible { outline-color: #9fb2ff; }
+
+html[data-theme="dark"] .confirm-dialog { color: var(--ink); background: #182326; border-color: #4b5b5f; box-shadow: 0 30px 90px rgb(0 0 0 / .52); }
+html[data-theme="dark"] .confirm-dialog > header { background: #121b1e; }
+html[data-theme="dark"] .confirm-dialog > p { color: #c4d0cd; }
+html[data-theme="dark"] .confirm-dialog > footer { background: #121b1e; border-color: #334246; }
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm-dialog {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

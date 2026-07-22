@@ -1,0 +1,8 @@
+.query-error-notice { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; margin: 0 0 16px; padding: 12px 14px; color: #5e241f; background: #fff4f2; border: 1px solid #e3b8b2; border-radius: 13px; box-shadow: inset 3px 0 var(--red), 0 12px 30px rgb(82 28 20 / .08); }
+.query-error-notice > span:first-child { width: 27px; height: 27px; display: grid; place-items: center; color: white; background: var(--red); border-radius: 8px 8px 3px 8px; }
+.query-error-notice strong { display: block; font-size: 11px; }
+.query-error-notice small { display: block; margin-top: 2px; color: #7b5550; font-size: 10px; line-height: 1.45; }
+.query-error-notice.tone-blocking { margin-top: 16px; }
+
+html[data-theme="dark"] .query-error-notice { color: #ffd6d0; background: #422523; border-color: #6b3936; box-shadow: inset 3px 0 #ef8d87, 0 12px 30px rgb(0 0 0 / .18); }
+html[data-theme="dark"] .query-error-notice small { color: #e4b8b2; }

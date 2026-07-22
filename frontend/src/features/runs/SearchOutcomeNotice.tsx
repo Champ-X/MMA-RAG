@@ -2,6 +2,7 @@ import { AlertTriangle, FileSearch, ShieldCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Run, SearchExplanation } from '@/api/nexus'
 import { readSearchExplanation, searchOutcomeCopy } from './searchOutcome'
+import './SearchOutcomeNotice.css'
 
 const actionLabels: Record<string, string> = {
   add_sources: 'Add material',

@@ -314,6 +314,7 @@ def build_container(settings: NexusSettings | None = None) -> NexusContainer:
         credentials=EnvironmentCredentialStore(),
         pinned_gateway=pinned_model_gateway,
         timeout_seconds=settings.provider_timeout_seconds,
+        fallback_gateway=ExtractiveModelGateway(),
     )
     runs_repository.model_snapshot_provider = lambda: {
         "gateway": model_gateway.snapshot(),

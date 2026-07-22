@@ -1,0 +1,16 @@
+.tool-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 22px; }
+.tool-card { display: flex; flex-direction: column; min-height: 190px; padding: 17px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; }
+.tool-card header { display: grid; grid-template-columns: 30px 1fr auto; gap: 9px; align-items: center; }
+.tool-card header > span { width: 28px; height: 28px; display: grid; place-items: center; color: var(--cobalt); background: #e1e7fd; border-radius: 7px; }
+.tool-card h2 { margin: 0; font-size: 14px; }
+.tool-card p { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.tool-card footer { display: flex; justify-content: space-between; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); }
+.tool-card footer span { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 9px; }
+
+@media (max-width: 1180px) {
+  .tool-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 820px) {
+  .tool-grid { grid-template-columns: 1fr; }
+}

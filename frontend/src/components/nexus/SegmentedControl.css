@@ -1,0 +1,46 @@
+.segmented {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  background: #dde4e1;
+  border-radius: 9px;
+}
+
+.segmented > svg {
+  margin: 0 5px;
+  color: var(--muted);
+}
+
+.segmented button {
+  padding: 5px 8px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.segmented button.active {
+  color: var(--ink);
+  background: white;
+  box-shadow: 0 2px 7px rgb(30 40 38 / 0.08);
+}
+
+html[data-theme="dark"] .segmented {
+  background: #253235;
+  border: 1px solid #46565a;
+}
+
+html[data-theme="dark"] .segmented button.active {
+  color: var(--ink);
+  background: var(--paper-strong);
+}
+
+@media (max-width: 820px) {
+  .segmented {
+    overflow-x: auto;
+  }
+}
