@@ -1,0 +1,21 @@
+docs/superpowers/specs/2026-07-23-mira-index-sidebar-design.md
+  s_43a2561e2fccd0::t_01c2496d0fe69d 1-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "31a1ded9175066cc95430df00ac2ae8a47ed8a9a",
+  "prompts": {},
+  "sessions": {
+    "s_43a2561e2fccd0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8a96-303f-7c83-887c-4eca9d7a58c4",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
