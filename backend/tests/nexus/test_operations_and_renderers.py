@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import io
 from pathlib import Path
 from types import SimpleNamespace
@@ -102,6 +103,50 @@ def test_canonical_table_csv_xlsx_pdf_exports() -> None:
     assert workbook["Budget"]["B2"].value == 250000
     pdf_bytes, _, _ = render_artifact(document, "pdf")
     assert pdf_bytes.startswith(b"%PDF")
+
+
+def test_table_exports_escape_spreadsheet_formula_cells() -> None:
+    document = {
+        "schema": "nexus.block-document.v1",
+        "title": "=Untrusted delivery title",
+        "blocks": [
+            {
+                "type": "table",
+                "title": "Formula safety",
+                "columns": ["=Column", "Safe"],
+                "rows": [
+                    ["=1+1", "+2+2"],
+                    ["-3+3", "@SUM(A1:A2)"],
+                    ["  =4+4", "ordinary text"],
+                ],
+            }
+        ],
+    }
+
+    csv_bytes, _, _ = render_artifact(document, "csv")
+    csv_rows = list(csv.reader(io.StringIO(csv_bytes.decode("utf-8-sig"))))
+    assert csv_rows == [
+        ["'=Column", "Safe"],
+        ["'=1+1", "'+2+2"],
+        ["'-3+3", "'@SUM(A1:A2)"],
+        ["'  =4+4", "ordinary text"],
+    ]
+
+    xlsx_bytes, _, _ = render_artifact(document, "xlsx")
+    workbook = load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=False)
+    sheet = workbook["Formula safety"]
+    assert [cell.value for cell in sheet[1]] == ["'=Column", "Safe"]
+    assert [cell.value for cell in sheet[2]] == ["'=1+1", "'+2+2"]
+    assert [cell.value for cell in sheet[3]] == ["'-3+3", "'@SUM(A1:A2)"]
+    assert [cell.value for cell in sheet[4]] == ["'  =4+4", "ordinary text"]
+
+    packet = render_artifact(
+        document,
+        "xlsx",
+        ArtifactRenderMetadata(status="candidate"),
+    )[0]
+    packet_workbook = load_workbook(io.BytesIO(packet), read_only=True, data_only=False)
+    assert packet_workbook["Nexus Delivery"]["A2"].value == "'=Untrusted delivery title"
 
 
 def test_artifact_delivery_exports_render_auditable_citations() -> None:

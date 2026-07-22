@@ -23,6 +23,7 @@ from nexus.shared.domain.enums import (
 )
 from nexus.shared.domain.errors import CapabilityUnavailableError
 from nexus.shared.domain.ids import new_id
+from nexus.shared.domain.query_context import is_contextual_follow_up
 
 
 class NexusHarness:
@@ -425,19 +426,7 @@ class NexusHarness:
             for item in history
             if isinstance(item, dict) and item.get("role") == "user"
         ]
-        reference_tokens = (
-            "它",
-            "这个",
-            "上述",
-            "刚才",
-            "继续",
-            "that",
-            "it ",
-            "those",
-            "above",
-            "continue",
-        )
-        contextual = bool(user_turns) and any(token in lower for token in reference_tokens)
+        contextual = bool(user_turns) and is_contextual_follow_up(value)
         rewritten = (
             f"Previous user question: {user_turns[-1]}\nCurrent follow-up: {value}"
             if contextual

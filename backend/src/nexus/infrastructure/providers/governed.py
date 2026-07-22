@@ -16,6 +16,7 @@ from nexus.modules.models.domain import (
 )
 from nexus.modules.models.ports import CredentialStorePort, ModelGatewayPort
 from nexus.shared.domain.errors import CapabilityUnavailableError, ValidationError
+from nexus.shared.domain.query_context import is_contextual_follow_up
 
 
 class GovernedModelGateway:
@@ -750,23 +751,7 @@ def _fallback_rewritten_query(question: str, user_payload: dict[str, object]) ->
     ]
     if not previous_questions:
         return question
-    lower = question.casefold()
-    reference_tokens = (
-        "它",
-        "他",
-        "她",
-        "其",
-        "这个",
-        "那个",
-        "this",
-        "that",
-        "it",
-        "its",
-        "previous",
-        "above",
-        "continue",
-    )
-    if any(token in lower for token in reference_tokens):
+    if is_contextual_follow_up(question):
         return f"Previous user question: {previous_questions[-1]}\nCurrent follow-up: {question}"
     return question
 

@@ -27,6 +27,7 @@ BULLET_LIST_RE = re.compile(r"^\s*[-*]\s+(.+?)\s*$")
 DEFAULT_ID_PREFIX_LENGTH = 8
 MIN_COLLISION_TAIL_LENGTH = 4
 MAX_COLLISION_TAIL_LENGTH = 12
+SPREADSHEET_FORMULA_PREFIXES = ("=", "+", "-", "@")
 
 
 @dataclass(frozen=True)
@@ -381,8 +382,8 @@ def _artifact_csv(document: dict[str, Any]) -> bytes:
         columns, rows = _table_data(block)
         if index:
             writer.writerow([])
-        writer.writerow(columns)
-        writer.writerows(rows)
+        writer.writerow(_spreadsheet_safe_row(columns))
+        writer.writerows(_spreadsheet_safe_row(row) for row in rows)
     return ("\ufeff" + output.getvalue()).encode("utf-8")
 
 
@@ -405,9 +406,9 @@ def _artifact_xlsx(
         title = str(block.get("title") or f"Table {index}")[:31]
         sheet = workbook.create_sheet(title=title)
         columns, rows = _table_data(block)
-        sheet.append(columns)
+        sheet.append(_spreadsheet_safe_row(columns))
         for row in rows:
-            sheet.append(row)
+            sheet.append(_spreadsheet_safe_row(row))
         sheet.freeze_panes = "A2"
         sheet.auto_filter.ref = sheet.dimensions
     output = io.BytesIO()
@@ -428,12 +429,12 @@ def _append_xlsx_delivery_manifest(
     sheet.title = "Nexus Delivery"
     sheet.sheet_view.showGridLines = False
     sheet["A1"] = "Nexus Artifact Delivery Packet"
-    sheet["A2"] = _display_title(document)
+    sheet["A2"] = _spreadsheet_safe_value(_display_title(document))
     sheet["A4"] = "Field"
     sheet["B4"] = "Value"
     for row_index, (label, value) in enumerate(items, start=5):
-        sheet.cell(row=row_index, column=1, value=label)
-        sheet.cell(row=row_index, column=2, value=value)
+        sheet.cell(row=row_index, column=1, value=_spreadsheet_safe_value(label))
+        sheet.cell(row=row_index, column=2, value=_spreadsheet_safe_value(value))
     sheet.freeze_panes = "A5"
     sheet.column_dimensions["A"].width = 24
     sheet.column_dimensions["B"].width = 52
@@ -1215,3 +1216,13 @@ def _table_data(block: dict[str, Any]) -> tuple[list[Any], list[list[Any]]]:
         columns = [f"Column {index + 1}" for index in range(width)]
     normalized = [(row + [None] * len(columns))[: len(columns)] for row in rows]
     return columns, normalized
+
+
+def _spreadsheet_safe_row(values: list[Any]) -> list[Any]:
+    return [_spreadsheet_safe_value(value) for value in values]
+
+
+def _spreadsheet_safe_value(value: Any) -> Any:
+    if isinstance(value, str) and value.lstrip().startswith(SPREADSHEET_FORMULA_PREFIXES):
+        return f"'{value}"
+    return value
