@@ -33,6 +33,13 @@ const TASK_MATRIX_META = [
     category: 'chat' as const,
   },
   {
+    taskId: 'embedding' as const,
+    modelId: 'embedding',
+    label: '文本向量化',
+    description: '文档与查询的 Dense 向量生成',
+    category: 'embedding' as const,
+  },
+  {
     taskId: 'caption' as const,
     modelId: 'caption',
     label: '图像描述',
@@ -177,6 +184,7 @@ export function SettingsPage() {
   const [settingsHasChanges, setSettingsHasChanges] = useState(false)
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
   const [isSavingPreferences, setIsSavingPreferences] = useState(false)
+  const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false)
   const pendingChanges = settingsHasChanges || hasUnsavedChanges
 
   useEffect(() => {
@@ -220,6 +228,23 @@ export function SettingsPage() {
     setError(null)
     loadConfig().finally(() => setHasLoadedOnce(true))
   }, [loadConfig, setError])
+
+  const handleRefreshCatalog = useCallback(async () => {
+    setError(null)
+    setIsRefreshingCatalog(true)
+    try {
+      await loadConfig({ refreshCatalog: true })
+      setHasLoadedOnce(true)
+      const latestError = useConfigStore.getState().error
+      if (latestError) {
+        showError(`模型目录刷新失败：${latestError}`)
+      } else {
+        showSuccess('官网模型目录已刷新')
+      }
+    } finally {
+      setIsRefreshingCatalog(false)
+    }
+  }, [loadConfig, setError, showError, showSuccess])
 
   const handleSave = async (data: {
     taskMatrix: TaskModelEntry[]
@@ -465,6 +490,8 @@ export function SettingsPage() {
               initialConfig={initialConfig}
               availableModels={availableModels}
               onSave={handleSave}
+              onRefreshCatalog={handleRefreshCatalog}
+              catalogRefreshing={isRefreshingCatalog || isLoading}
               onHasChangesChange={setSettingsHasChanges}
             />
           </div>

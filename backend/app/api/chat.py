@@ -18,7 +18,7 @@ from urllib.parse import unquote, urlparse
 from app.core.logger import get_logger
 from app.core.llm.manager import llm_manager
 from app.core.llm import TASK_MODEL_TYPES
-from app.core.llm.models_catalog import ensure_llm_catalog_fresh
+from app.core.llm.models_catalog import ensure_llm_catalog_fresh, get_llm_catalog_status
 from app.modules.retrieval.service import RetrievalService
 from app.modules.generation.service import GenerationService
 from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
@@ -43,6 +43,7 @@ TASK_SETTINGS_KEYS = (
     "intent_recognition",
     "query_rewriting",
     "image_captioning",
+    "embedding",
     "reranking",
     "audio_transcription",
     "video_parsing",
@@ -166,6 +167,8 @@ def _build_chat_catalog(registry: Any) -> List[Dict[str, Any]]:
                 "id": api_id,
                 "name": cfg.get("description"),
                 "context_length": cfg.get("context_length"),
+                "capabilities": [s.strip() for s in str(cfg.get("type") or "").split(",") if s.strip()],
+                "catalog_synced": bool(cfg.get("catalog_synced")),
             }
         )
     return rows
@@ -909,6 +912,9 @@ async def list_models(refresh_catalog: bool = Query(False)):
         "reranker_models": r.list_models("reranker"),
         "audio_models": r.list_models("audio"),
         "video_models": r.list_models("video"),
+        "model_details": r.list_model_details(),
+        "task_candidates": r.list_task_candidates_by_task(list(TASK_SETTINGS_KEYS)),
+        "catalog_status": get_llm_catalog_status(),
         "current_config": _serialize_current_task_config(),
         "task_types": {task: TASK_MODEL_TYPES.get(task) for task in TASK_SETTINGS_KEYS},
     }
@@ -921,6 +927,7 @@ async def update_models(request: UpdateTaskModelsRequest):
         raise HTTPException(status_code=400, detail="未提供任务模型配置")
 
     registry = llm_manager.registry
+    await ensure_llm_catalog_fresh(registry, force=False)
     task_models: Dict[str, str] = {}
     for task_type, selection in request.tasks.items():
         if task_type not in TASK_SETTINGS_KEYS:

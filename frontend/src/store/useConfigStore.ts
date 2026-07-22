@@ -7,6 +7,7 @@ export type TaskBoundModelId =
   | 'intent'
   | 'rewrite'
   | 'caption'
+  | 'embedding'
   | 'chat'
   | 'rerank'
   | 'audio'
@@ -34,6 +35,7 @@ export const TASK_MODEL_BINDINGS: Record<TaskBoundModelId, TaskModelBinding> = {
   intent: { taskKey: 'intent_recognition', category: 'chat', name: '意图识别模型' },
   rewrite: { taskKey: 'query_rewriting', category: 'chat', name: '查询改写模型' },
   caption: { taskKey: 'image_captioning', category: 'vision', name: '图像描述模型' },
+  embedding: { taskKey: 'embedding', category: 'embedding', name: '文本向量化模型' },
   chat: { taskKey: 'final_generation', category: 'chat', name: '对话模型' },
   rerank: { taskKey: 'reranking', category: 'reranker', name: '重排模型' },
   audio: { taskKey: 'audio_transcription', category: 'audio', name: '音频转写模型' },
@@ -70,6 +72,50 @@ export interface ModelsByProvider {
   video: string[];
 }
 
+export interface ModelCatalogDetail {
+  id: string;
+  provider: string;
+  raw_model?: string;
+  type?: string;
+  capabilities?: AvailableModelType[];
+  context_length?: number;
+  max_output_tokens?: number;
+  description?: string;
+  catalog_synced?: boolean;
+  catalog_source?: string;
+  catalog_sub_types?: string[];
+  input_modalities?: string[];
+  output_modalities?: string[];
+  supported_parameters?: string[];
+}
+
+export interface TaskModelCandidate {
+  model: string;
+  provider: string;
+  capabilities?: AvailableModelType[];
+  context_length?: number;
+  catalog_synced?: boolean;
+  score?: number;
+  reasons?: string[];
+}
+
+export interface CatalogProviderStatus {
+  ok: boolean;
+  count: number;
+  error?: string | null;
+  source?: string;
+  started_at?: number;
+  finished_at?: number;
+}
+
+export interface CatalogStatus {
+  ttl_seconds?: number;
+  last_refresh_started_at?: number | null;
+  last_refresh_finished_at?: number | null;
+  last_refresh_forced?: boolean;
+  providers?: Record<string, CatalogProviderStatus>;
+}
+
 export interface AvailableModels {
   providers: string[];
   models_by_provider?: Record<string, ModelsByProvider>;
@@ -79,6 +125,9 @@ export interface AvailableModels {
   reranker_models: string[];
   audio_models: string[];
   video_models: string[];
+  model_details?: Record<string, ModelCatalogDetail>;
+  task_candidates?: Record<string, TaskModelCandidate[]>;
+  catalog_status?: CatalogStatus;
 }
 
 function getProviderModels(
@@ -138,7 +187,7 @@ interface ConfigStore {
   
   saveConfig: () => Promise<void>;
   
-  loadConfig: () => Promise<void>;
+  loadConfig: (options?: { refreshCatalog?: boolean }) => Promise<void>;
   
   setLoading: (loading: boolean) => void;
   
@@ -275,6 +324,9 @@ export const useConfigStore = create<ConfigStore>()(
         reranker_models: [],
         audio_models: [],
         video_models: [],
+        model_details: {},
+        task_candidates: {},
+        catalog_status: undefined,
       },
       isLoading: false,
       error: null,
@@ -378,11 +430,11 @@ export const useConfigStore = create<ConfigStore>()(
       },
 
       // 加载配置（从 /chat/models 获取当前配置与可用模型列表）
-      loadConfig: async () => {
+      loadConfig: async (options) => {
         set({ isLoading: true, error: null });
 
         try {
-          const data = await systemApi.getModelConfig() as {
+          const data = await systemApi.getModelConfig({ refreshCatalog: options?.refreshCatalog }) as {
             providers?: string[];
             models_by_provider?: Record<string, ModelsByProvider>;
             chat_models?: string[];
@@ -391,6 +443,9 @@ export const useConfigStore = create<ConfigStore>()(
             reranker_models?: string[];
             audio_models?: string[];
             video_models?: string[];
+            model_details?: Record<string, ModelCatalogDetail>;
+            task_candidates?: Record<string, TaskModelCandidate[]>;
+            catalog_status?: CatalogStatus;
             current_config?: Record<string, { model: string; provider: string }>;
           };
           const availableModels = {
@@ -402,6 +457,9 @@ export const useConfigStore = create<ConfigStore>()(
             reranker_models: data.reranker_models ?? [],
             audio_models: data.audio_models ?? [],
             video_models: data.video_models ?? [],
+            model_details: data.model_details ?? {},
+            task_candidates: data.task_candidates ?? {},
+            catalog_status: data.catalog_status,
           };
           const cc = data.current_config ?? {};
           set((state) => {

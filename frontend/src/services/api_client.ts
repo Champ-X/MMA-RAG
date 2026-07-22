@@ -911,9 +911,13 @@ export const systemApi = {
   // 获取系统状态（使用 debug/stats）
   getSystemStatus: () => apiClient.get('/debug/stats'),
   // 获取模型配置（来自 chat/models）
-  getModelConfig: () => apiClient.get('/chat/models'),
+  getModelConfig: (options?: { refreshCatalog?: boolean }) =>
+    apiClient.get('/chat/models', {
+      params: options?.refreshCatalog ? { refresh_catalog: true } : undefined,
+      timeout: options?.refreshCatalog ? 180000 : 120000,
+    }),
   // 更新模型配置（运行时立即生效，后端会持久化任务主模型覆盖）
-  updateModelConfig: (config: any) => apiClient.put('/chat/models', config),
+  updateModelConfig: (config: any) => apiClient.put('/chat/models', config, { timeout: 120000 }),
   // 获取系统指标
   getMetrics: () => apiClient.get('/debug/stats'),
 };

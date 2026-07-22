@@ -543,6 +543,9 @@ class LLMRegistry:
             return []
         return [s.strip() for s in str(raw_type).split(",") if s.strip()]
 
+    def _join_model_types(self, types: set[str]) -> str:
+        return ",".join(t for t in MODEL_TYPE_KEYS if t in types)
+
     def _is_model_compatible_with_task(self, task_type: str, model_name: str) -> bool:
         model_config = self.get_model_config(model_name)
         if not model_config:
@@ -781,11 +784,145 @@ class LLMRegistry:
             for t in types:
                 if t in MODEL_TYPE_KEYS:
                     result[provider][t].append(name)
+        for provider_models in result.values():
+            for model_type in MODEL_TYPE_KEYS:
+                provider_models[model_type].sort(key=lambda item: item.lower())
         return result
 
     def add_model(self, name: str, config: Dict[str, Any]):
-        """添加模型"""
-        self._models[name] = config
+        """添加或合并模型。
+
+        官网目录同步只负责“发现当前可用模型与基础元数据”；静态注册表里已有的人工标注
+        可能包含更具体的项目能力（例如图像/视频理解），因此合并时保留能力并集。
+        """
+        existing = self._models.get(name)
+        if not existing:
+            self._models[name] = dict(config)
+            return
+
+        merged = {**existing, **config}
+        type_set = set(self._extract_model_types(existing))
+        type_set.update(self._extract_model_types(config))
+        if type_set:
+            merged["type"] = self._join_model_types(type_set)
+
+        existing_desc = str(existing.get("description") or "").strip()
+        incoming_desc = str(config.get("description") or "").strip()
+        if existing_desc and (not incoming_desc or "目录同步" in incoming_desc):
+            merged["description"] = existing_desc
+
+        try:
+            existing_ctx = int(existing.get("context_length") or 0)
+            incoming_ctx = int(config.get("context_length") or 0)
+            if existing_ctx or incoming_ctx:
+                merged["context_length"] = max(existing_ctx, incoming_ctx)
+        except (TypeError, ValueError):
+            pass
+
+        self._models[name] = merged
+
+    def list_model_details(self) -> Dict[str, Dict[str, Any]]:
+        """返回前端可展示的模型元数据。"""
+        details: Dict[str, Dict[str, Any]] = {}
+        available_providers = set(self._providers.keys())
+        for name, config in sorted(self._models.items(), key=lambda item: item[0].lower()):
+            provider = config.get("provider") or "siliconflow"
+            if provider not in available_providers:
+                continue
+            types = self._extract_model_types(config)
+            details[name] = {
+                "id": name,
+                "provider": provider,
+                "raw_model": config.get("raw_model") or (name.split(":", 1)[1] if ":" in name else name),
+                "type": config.get("type") or "",
+                "capabilities": types,
+                "context_length": config.get("context_length"),
+                "max_output_tokens": config.get("max_output_tokens"),
+                "description": config.get("description"),
+                "catalog_synced": bool(config.get("catalog_synced")),
+                "catalog_source": config.get("catalog_source"),
+                "catalog_sub_types": config.get("catalog_sub_types"),
+                "input_modalities": config.get("input_modalities"),
+                "output_modalities": config.get("output_modalities"),
+                "supported_parameters": config.get("supported_parameters"),
+            }
+        return details
+
+    def _score_model_for_task(self, task_type: str, model_name: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        score = 0
+        reasons: List[str] = []
+        if model_name == self.get_task_model(task_type):
+            score += 100000
+            reasons.append("current")
+        if config.get("catalog_synced"):
+            score += 1000
+            reasons.append("official_catalog")
+        try:
+            context_length = int(config.get("context_length") or 0)
+        except (TypeError, ValueError):
+            context_length = 0
+        if context_length >= 200000:
+            score += 250
+            reasons.append("long_context")
+        elif context_length >= 100000:
+            score += 120
+
+        model_id = model_name.lower()
+        if task_type in {"intent_recognition", "query_rewriting", "kb_portrait_generation"}:
+            if any(token in model_id for token in ("qwen", "deepseek", "kimi", "glm")):
+                score += 60
+        elif task_type == "final_generation":
+            if any(token in model_id for token in ("kimi", "qwen", "deepseek", "gpt", "claude", "gemini")):
+                score += 80
+        elif task_type == "image_captioning":
+            if any(token in model_id for token in ("vl", "vision", "captioner", "omni", "gemini")):
+                score += 100
+        elif task_type == "audio_transcription":
+            if any(token in model_id for token in ("omni", "audio", "gemini", "transcrib", "speech")):
+                score += 100
+        elif task_type == "video_parsing":
+            if any(token in model_id for token in ("omni", "vl", "video", "gemini", "qwen3.5")):
+                score += 100
+        elif task_type == "embedding":
+            if "embedding" in model_id or "embed" in model_id:
+                score += 100
+        elif task_type == "reranking":
+            if "rerank" in model_id:
+                score += 100
+
+        return {"score": score, "reasons": reasons}
+
+    def list_task_candidates(self, task_type: str) -> List[Dict[str, Any]]:
+        """按任务能力返回候选模型，供设置页做排序和说明。"""
+        required_type = TASK_MODEL_TYPES.get(task_type)
+        if not required_type:
+            return []
+        rows: List[Dict[str, Any]] = []
+        available_providers = set(self._providers.keys())
+        for model_name in self.list_models(required_type):
+            config = self.get_model_config(model_name)
+            if not config:
+                continue
+            provider = config.get("provider") or "siliconflow"
+            if provider not in available_providers:
+                continue
+            scoring = self._score_model_for_task(task_type, model_name, config)
+            rows.append(
+                {
+                    "model": model_name,
+                    "provider": provider,
+                    "capabilities": self._extract_model_types(config),
+                    "context_length": config.get("context_length"),
+                    "catalog_synced": bool(config.get("catalog_synced")),
+                    "score": scoring["score"],
+                    "reasons": scoring["reasons"],
+                }
+            )
+        rows.sort(key=lambda row: (-int(row.get("score") or 0), row.get("provider") or "", str(row.get("model") or "").lower()))
+        return rows
+
+    def list_task_candidates_by_task(self, task_types: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+        return {task_type: self.list_task_candidates(task_type) for task_type in task_types}
 
     def revalidate_task_routing_after_catalog(self) -> None:
         """在从厂商合并最新模型目录后，重新校验任务主模型与路由（替换已不可用 id）。"""

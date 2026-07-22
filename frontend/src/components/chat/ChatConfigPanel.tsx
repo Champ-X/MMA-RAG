@@ -60,7 +60,7 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
     let cancelled = false
     setModelsLoading(true)
     systemApi
-      .getModelConfig()
+      .getModelConfig({ refreshCatalog: true })
       .then(
         (data: {
           chat_models?: string[]
