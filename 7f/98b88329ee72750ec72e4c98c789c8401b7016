@@ -1,0 +1,38 @@
+frontend/src/components/layout/ConversationSidebar.tsx
+  s_3d97c23fdcc696::t_746a10e3b4909d 1-310,312,315-317,320
+  s_3d97c23fdcc696::t_6652bd3f22cd4b 311
+  s_3d97c23fdcc696::t_68a98195a93083 313-314
+  s_3d97c23fdcc696::t_78717eb8d7059e 318-319
+  s_3d97c23fdcc696::t_dba7fdab80cd41 321-323
+frontend/src/components/chat/ChatInterface.tsx
+  s_43a2561e2fccd0::t_2d06e278413837 630,633
+frontend/src/components/layout/AppLayout.tsx
+  s_43a2561e2fccd0::t_a362e3224fae09 12,17-25,27,44,54-57,59-62,64-71,73-87,90,98,104,110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7f98b88329ee72750ec72e4c98c789c8401b7016",
+  "prompts": {},
+  "sessions": {
+    "s_3d97c23fdcc696": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a60dae81368c775cb795415",
+        "model": "gpt-5.5__max",
+        "display_model_name": "GPT-5.5"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    },
+    "s_43a2561e2fccd0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8a96-303f-7c83-887c-4eca9d7a58c4",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
