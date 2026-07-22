@@ -78,11 +78,13 @@ class MinIOAdapter:
         return self.bucket_name_for_kb(kb_id)
 
     def __init__(self):
+        region = settings.minio_region or None
         self.client = minio.Minio(
             settings.minio_endpoint,
             access_key=settings.minio_access_key,
             secret_key=settings.minio_secret_key,
-            secure=settings.minio_secure
+            secure=settings.minio_secure,
+            region=region,
         )
         _pub_ep = settings.minio_public_endpoint or settings.minio_endpoint
         _pub_sec = (
@@ -98,6 +100,7 @@ class MinIOAdapter:
                 access_key=settings.minio_access_key,
                 secret_key=settings.minio_secret_key,
                 secure=_pub_sec,
+                region=region,
             )
         # 延迟初始化：不再预建全局 documents/images 桶，改为按知识库建桶
         try:

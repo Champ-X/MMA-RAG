@@ -45,7 +45,7 @@ export function useFileScopeOptions(active = true) {
 
   useEffect(() => {
     if (!active) return
-    void fetchKnowledgeBases()
+    void fetchKnowledgeBases({ silent: true })
   }, [active, fetchKnowledgeBases])
 
   const loadKbFiles = useCallback(async (kbId: string) => {
@@ -106,4 +106,3 @@ export function useFileScopeOptions(active = true) {
     hasLoadedFilesForKb,
   }
 }
-

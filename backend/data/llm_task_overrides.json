@@ -1,10 +1,10 @@
 {
   "audio_transcription": "aliyun_bailian:qwen3-omni-flash",
-  "final_generation": "Pro/moonshotai/Kimi-K2.5",
-  "image_captioning": "aliyun_bailian:qwen3-vl-plus",
-  "intent_recognition": "aliyun_bailian:qwen3-max",
-  "kb_portrait_generation": "Qwen/Qwen3-235B-A22B-Instruct-2507",
-  "query_rewriting": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+  "final_generation": "Pro/moonshotai/Kimi-K2.6",
+  "image_captioning": "aliyun_bailian:qwen3-vl-plus-2025-12-19",
+  "intent_recognition": "aliyun_bailian:qwen3.5-plus",
+  "kb_portrait_generation": "Pro/moonshotai/Kimi-K2.6",
+  "query_rewriting": "Qwen/Qwen3.5-397B-A17B",
   "reranking": "Qwen/Qwen3-Reranker-8B",
-  "video_parsing": "aliyun_bailian:qwen3.5-plus-2026-02-15"
+  "video_parsing": "aliyun_bailian:qwen3.5-omni-plus-2026-03-15"
 }

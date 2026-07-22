@@ -11,15 +11,21 @@ services:
       - MINIO_PUBLIC_ENDPOINT=localhost:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
+      - MINIO_REGION=${MINIO_REGION:-us-east-1}
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
+      - BGE_M3_MODEL_ID=${BGE_M3_MODEL_ID:-BAAI/bge-m3}
+      - BGE_M3_USE_FP16=${BGE_M3_USE_FP16:-false}
+      - PRELOAD_LOCAL_MODELS_ON_STARTUP=${PRELOAD_LOCAL_MODELS_ON_STARTUP:-false}
       - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
     volumes:
       - ./minio_data:/data
       - ./qdrant_storage:/qdrant/storage
+      - ./data/huggingface_cache:/root/.cache/huggingface
     depends_on:
       - minio
       - qdrant
@@ -74,15 +80,21 @@ services:
       - MINIO_PUBLIC_ENDPOINT=localhost:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
+      - MINIO_REGION=${MINIO_REGION:-us-east-1}
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
+      - BGE_M3_MODEL_ID=${BGE_M3_MODEL_ID:-BAAI/bge-m3}
+      - BGE_M3_USE_FP16=${BGE_M3_USE_FP16:-false}
+      - PRELOAD_LOCAL_MODELS_ON_STARTUP=${PRELOAD_LOCAL_MODELS_ON_STARTUP:-false}
       - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
     volumes:
       - ./minio_data:/data
       - ./qdrant_storage:/qdrant/storage
+      - ./data/huggingface_cache:/root/.cache/huggingface
     depends_on:
       - redis
       - minio

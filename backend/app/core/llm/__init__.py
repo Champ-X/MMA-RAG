@@ -132,6 +132,12 @@ class LLMRegistry:
                 "context_length": 256000,  # 256K tokens
                 "description": "Kimi K2.5 对话、视觉、推理"
             },
+            "Pro/moonshotai/Kimi-K2.6": {
+                "provider": "siliconflow",
+                "type": "chat,vision",  # 对话、视觉、推理
+                "context_length": 256000,  # 256K tokens
+                "description": "Kimi K2.6 对话、视觉、推理"
+            },
             "moonshotai/Kimi-K2-Thinking": {
                 "provider": "siliconflow",
                 "type": "chat",
@@ -359,12 +365,26 @@ class LLMRegistry:
                     "description": "Qwen3 VL Plus（阿里云百炼）",
                     "raw_model": "qwen3-vl-plus",
                 },
+                "aliyun_bailian:qwen3-vl-plus-2025-12-19": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,video",
+                    "context_length": 30000,  # 30K
+                    "description": "Qwen3 VL Plus 2025-12-19（阿里云百炼）",
+                    "raw_model": "qwen3-vl-plus-2025-12-19",
+                },
                 "aliyun_bailian:qwen3-omni-flash": {
                     "provider": "aliyun_bailian",
                     "type": "chat,vision,audio,video",
                     "context_length": 48000,  # 48K
                     "description": "Qwen3 Omni Flash（阿里云百炼）",
                     "raw_model": "qwen3-omni-flash",
+                },
+                "aliyun_bailian:qwen3.5-omni-plus-2026-03-15": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,audio,video",
+                    "context_length": 32000,  # 32K
+                    "description": "Qwen3.5 Omni Plus 2026-03-15（阿里云百炼）",
+                    "raw_model": "qwen3.5-omni-plus-2026-03-15",
                 },
                 "aliyun_bailian:qwen-omni-turbo": {
                     "provider": "aliyun_bailian",
@@ -388,7 +408,7 @@ class LLMRegistry:
         # 结构: task_type -> {"model": 主模型, "fallbacks": [备用模型列表]}
         self._task_config: Dict[str, Dict[str, Any]] = {
             "intent_recognition": {
-                "model": "aliyun_bailian:qwen3-max",
+                "model": "aliyun_bailian:qwen3.5-plus",
                 "fallbacks": [
                     "deepseek-ai/DeepSeek-V3.2",
                     "Pro/deepseek-ai/DeepSeek-R1",
@@ -403,7 +423,7 @@ class LLMRegistry:
                 ],
             },
             "query_rewriting": {
-                "model": "aliyun_bailian:qwen3.5-flash",
+                "model": "Qwen/Qwen3.5-397B-A17B",
                 "fallbacks": [
                     "Qwen/Qwen3-235B-A22B-Instruct-2507",
                     "deepseek-ai/DeepSeek-V3.2",
@@ -418,7 +438,7 @@ class LLMRegistry:
                 ],
             },
             "image_captioning": {
-                "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+                "model": "aliyun_bailian:qwen3-vl-plus-2025-12-19",
                 "fallbacks": [
                     "Qwen/Qwen3-Omni-30B-A3B-Captioner",
                     "Pro/moonshotai/Kimi-K2.5",
@@ -428,7 +448,7 @@ class LLMRegistry:
                 ],
             },
             "final_generation": {
-                "model": "Pro/moonshotai/Kimi-K2.5",
+                "model": "Pro/moonshotai/Kimi-K2.6",
                 "fallbacks": [
                     "aliyun_bailian:qwen3.5-plus",
                     "deepseek-ai/DeepSeek-V3.2", 
@@ -444,7 +464,7 @@ class LLMRegistry:
                 ],
             },
             "kb_portrait_generation": {
-                "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+                "model": "Pro/moonshotai/Kimi-K2.6",
                 "fallbacks": [
                     "Pro/deepseek-ai/DeepSeek-R1",
                     "deepseek-ai/DeepSeek-V3.2",
@@ -489,7 +509,7 @@ class LLMRegistry:
             },
             # 视频解析：长视频场景划分+关键帧、短视频整体描述，需支持多图/视觉
             "video_parsing": {
-                "model": "aliyun_bailian:qwen3.5-plus-2026-02-15",
+                "model": "aliyun_bailian:qwen3.5-omni-plus-2026-03-15",
                 "fallbacks": [
                     "aliyun_bailian:qwen3.5-plus",
                     "aliyun_bailian:kimi/kimi-k2.5",

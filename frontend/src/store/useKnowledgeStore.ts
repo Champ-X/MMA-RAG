@@ -29,13 +29,15 @@ interface KnowledgeStore {
   selectedKB: KnowledgeBase | null
 
   // 操作
-  fetchKnowledgeBases: () => Promise<void>
+  fetchKnowledgeBases: (options?: { silent?: boolean }) => Promise<void>
   createKnowledgeBase: (data: { name: string; description: string; tags?: string[] }) => Promise<void>
   updateKnowledgeBase: (id: string, data: Partial<KnowledgeBase>) => Promise<void>
   deleteKnowledgeBase: (id: string) => Promise<void>
   selectKnowledgeBase: (kb: KnowledgeBase | null) => void
   getKnowledgeBase: (id: string) => KnowledgeBase | undefined
 }
+
+let inFlightFetchKnowledgeBases: Promise<void> | null = null
 
 export const useKnowledgeStore = create<KnowledgeStore>((set, get) => ({
   // 初始状态
@@ -45,24 +47,38 @@ export const useKnowledgeStore = create<KnowledgeStore>((set, get) => ({
   selectedKB: null,
 
   // 获取知识库列表
-  fetchKnowledgeBases: async () => {
-    set({ loading: true, error: null })
-    try {
-      const data = await knowledgeApi.getKnowledgeBases()
-      set({ knowledgeBases: data.knowledge_bases || [], loading: false })
-    } catch (error: any) {
-      const detail =
-        error?.response?.data?.detail ??
-        (typeof error?.response?.data === 'string' ? error.response.data : null)
-      const msg =
-        (Array.isArray(detail) ? detail.map((d: { msg?: string }) => d?.msg).filter(Boolean).join('; ') : detail) ||
-        error?.message ||
-        '获取知识库列表失败'
-      set({
-        error: String(msg),
-        loading: false,
-      })
+  fetchKnowledgeBases: async (options = {}) => {
+    if (inFlightFetchKnowledgeBases) return inFlightFetchKnowledgeBases
+
+    const showInitialLoading = !options.silent && get().knowledgeBases.length === 0
+    if (showInitialLoading) {
+      set({ loading: true, error: null })
+    } else {
+      set({ error: null })
     }
+
+    inFlightFetchKnowledgeBases = (async () => {
+      try {
+        const data = await knowledgeApi.getKnowledgeBases()
+        set({ knowledgeBases: data.knowledge_bases || [], loading: false })
+      } catch (error: any) {
+        const detail =
+          error?.response?.data?.detail ??
+          (typeof error?.response?.data === 'string' ? error.response.data : null)
+        const msg =
+          (Array.isArray(detail) ? detail.map((d: { msg?: string }) => d?.msg).filter(Boolean).join('; ') : detail) ||
+          error?.message ||
+          '获取知识库列表失败'
+        set({
+          error: String(msg),
+          loading: false,
+        })
+      } finally {
+        inFlightFetchKnowledgeBases = null
+      }
+    })()
+
+    return inFlightFetchKnowledgeBases
   },
 
   // 创建知识库

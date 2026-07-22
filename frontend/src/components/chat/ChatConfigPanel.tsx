@@ -34,7 +34,7 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
   const [_userSelectedModel, setUserSelectedModel] = useState<string | null>(null)
 
   useEffect(() => {
-    if (open) fetchKnowledgeBases()
+    if (open) fetchKnowledgeBases({ silent: true })
   }, [open, fetchKnowledgeBases])
 
   useEffect(() => {

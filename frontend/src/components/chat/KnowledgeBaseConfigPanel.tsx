@@ -24,7 +24,7 @@ export function KnowledgeBaseConfigPanel({ open, onOpenChange }: KnowledgeBaseCo
   const [selectedKbIds, setSelectedKbIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    if (open) fetchKnowledgeBases()
+    if (open) fetchKnowledgeBases({ silent: true })
   }, [open, fetchKnowledgeBases])
 
   useEffect(() => {

@@ -33,7 +33,7 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
 
 const FALLBACK_MODELS: Record<string, Partial<Record<AvailableModelType, string[]>>> = {
   siliconflow: {
-    chat: ['Qwen/Qwen3-235B-A22B-Instruct-2507', 'Pro/moonshotai/Kimi-K2.5'],
+    chat: ['Qwen/Qwen3.5-397B-A17B', 'Pro/moonshotai/Kimi-K2.6'],
     embedding: ['Qwen/Qwen3-Embedding-8B'],
     vision: ['Qwen/Qwen3-VL-30B-A3B-Instruct'],
     reranker: ['Qwen/Qwen3-Reranker-8B'],
@@ -49,11 +49,11 @@ const FALLBACK_MODELS: Record<string, Partial<Record<AvailableModelType, string[
     video: ['openrouter:google/gemini-2.5-flash'],
   },
   aliyun_bailian: {
-    chat: ['aliyun_bailian:qwen3-max'],
-    vision: ['aliyun_bailian:qwen3-vl-plus'],
+    chat: ['aliyun_bailian:qwen3.5-plus'],
+    vision: ['aliyun_bailian:qwen3-vl-plus-2025-12-19'],
     reranker: ['aliyun_bailian:qwen3-rerank'],
     audio: ['aliyun_bailian:qwen3-omni-flash'],
-    video: ['aliyun_bailian:qwen3.5-plus-2026-02-15'],
+    video: ['aliyun_bailian:qwen3.5-omni-plus-2026-03-15'],
   },
 }
 
@@ -64,23 +64,23 @@ const DEFAULT_MATRIX: TaskModelEntry[] = [
     description: '查询理解与检索策略决策',
     category: 'chat',
     provider: 'aliyun_bailian',
-    model: 'aliyun_bailian:qwen3-max',
+    model: 'aliyun_bailian:qwen3.5-plus',
   },
   {
     taskId: 'rewrite',
     label: '查询改写',
     description: '补全检索表达、扩展召回线索',
     category: 'chat',
-    provider: 'aliyun_bailian',
-    model: 'aliyun_bailian:qwen3.5-flash',
+    provider: 'siliconflow',
+    model: 'Qwen/Qwen3.5-397B-A17B',
   },
   {
     taskId: 'caption',
     label: '图像描述',
     description: '图像内容理解与描述生成',
     category: 'vision',
-    provider: 'siliconflow',
-    model: 'Qwen/Qwen3-VL-30B-A3B-Instruct',
+    provider: 'aliyun_bailian',
+    model: 'aliyun_bailian:qwen3-vl-plus-2025-12-19',
   },
   {
     taskId: 'audio',
@@ -96,7 +96,7 @@ const DEFAULT_MATRIX: TaskModelEntry[] = [
     description: '视频场景切分与多模态摘要',
     category: 'video',
     provider: 'aliyun_bailian',
-    model: 'aliyun_bailian:qwen3.5-plus-2026-02-15',
+    model: 'aliyun_bailian:qwen3.5-omni-plus-2026-03-15',
   },
   {
     taskId: 'portrait',
@@ -104,7 +104,7 @@ const DEFAULT_MATRIX: TaskModelEntry[] = [
     description: '主题画像与摘要生成',
     category: 'chat',
     provider: 'siliconflow',
-    model: 'Qwen/Qwen3-235B-A22B-Instruct-2507',
+    model: 'Pro/moonshotai/Kimi-K2.6',
   },
   {
     taskId: 'generation',
@@ -112,7 +112,7 @@ const DEFAULT_MATRIX: TaskModelEntry[] = [
     description: '最终回答生成与流式输出',
     category: 'chat',
     provider: 'siliconflow',
-    model: 'Pro/moonshotai/Kimi-K2.5',
+    model: 'Pro/moonshotai/Kimi-K2.6',
   },
 ]
 

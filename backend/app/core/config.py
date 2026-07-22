@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     minio_access_key: str = Field(default="minioadmin", validation_alias="MINIO_ACCESS_KEY")
     minio_secret_key: str = Field(default="minioadmin", validation_alias="MINIO_SECRET_KEY")
     minio_secure: bool = Field(default=False, validation_alias="MINIO_SECURE")
+    minio_region: str = Field(default="us-east-1", validation_alias="MINIO_REGION")
     # 浏览器可访问的 MinIO 地址（host:port，无协议）。Docker 内 MINIO_ENDPOINT 常为 minio:9000，预签名 URL 必须指向宿主机映射端口（如 localhost:9000）前端才能加载图片/音视频。
     minio_public_endpoint: Optional[str] = Field(default=None, validation_alias="MINIO_PUBLIC_ENDPOINT")
     minio_public_secure: Optional[bool] = Field(default=None, validation_alias="MINIO_PUBLIC_SECURE")

@@ -329,7 +329,7 @@ export function SuggestedQuestions({
   const [status, setStatus] = useState<SuggestionStatus>(null)
 
   useEffect(() => {
-    void fetchKnowledgeBases()
+    void fetchKnowledgeBases({ silent: true })
   }, [fetchKnowledgeBases])
 
   const scope = useMemo((): Scope => {
