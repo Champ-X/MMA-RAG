@@ -4,7 +4,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageBubble } from './MessageBubble'
 import { CitationPopover } from './CitationPopover'
-import { ConversationTabs } from './ConversationTabs'
 import { SuggestedQuestions } from './SuggestedQuestions'
 import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
 import { KnowledgeBaseConfigPanel } from './KnowledgeBaseConfigPanel'
@@ -218,8 +217,6 @@ export function ChatInterface() {
     getActiveSession,
     createSession,
     createSessionFromApi,
-    switchSession,
-    deleteSession,
     setLoading,
     thinking,
     addMessage,
@@ -629,24 +626,11 @@ export function ChatInterface() {
     return byId
   }, [messages])
 
-  const handleNewConversation = useCallback(() => {
-    createSessionFromApi().catch(() => createSession())
-  }, [createSessionFromApi, createSession])
-
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white/60 shadow-lg shadow-slate-900/5 backdrop-blur-xl dark:border-slate-800/60 dark:bg-slate-950/40">
-      {/* 对话标签栏 */}
-      <ConversationTabs
-        conversations={sessions}
-        activeConversationId={activeSessionId}
-        onSelect={switchSession}
-        onCreate={handleNewConversation}
-        onDelete={deleteSession}
-      />
-
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-transparent">
       {/* 消息区 */}
       <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
-        <div className="px-2 pt-3 pb-1">
+        <div className="px-4 pb-1 pt-5 sm:px-8 sm:pt-7">
           <div className="mx-auto max-w-4xl flex flex-col gap-6">
             {messages.length === 0 && (
               <div className="relative mx-auto w-full max-w-2xl py-10 sm:py-12 text-center">
