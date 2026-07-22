@@ -1,0 +1,31 @@
+backend/src/nexus/infrastructure/providers/governed.py
+  s_fe24029ec87ca6::t_135773d917a477 19,754
+backend/src/nexus/modules/artifacts/renderers.py
+  s_fe24029ec87ca6::t_92b45b3ab10c8b 30,385-386,409,411,432,436-437,1219-1228
+backend/src/nexus/runtime/nexus/harness.py
+  s_fe24029ec87ca6::t_33177c1e894d0a 26,429
+backend/src/nexus/shared/domain/query_context.py
+  s_fe24029ec87ca6::t_82ed30071d340b 1-30
+backend/tests/nexus/test_operations_and_renderers.py
+  s_fe24029ec87ca6::t_6db84404b12408 3,108-151
+backend/tests/nexus/test_query_context.py
+  s_fe24029ec87ca6::t_e2104cb3ba05c7 1-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bc66dea6961490ceb31cbcd1f62e7feadc8a1028",
+  "prompts": {},
+  "sessions": {
+    "s_fe24029ec87ca6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f87cb-4186-70b3-8fbe-9ec50c1f14a9",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
