@@ -1,0 +1,21 @@
+docs/superpowers/specs/2026-07-23-codex-style-chat-layout-design.md
+  s_43a2561e2fccd0::t_b007ab6317da95 1-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "49a2cdccc52b7bd096e7650212228737e2ca56d4",
+  "prompts": {},
+  "sessions": {
+    "s_43a2561e2fccd0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8a96-303f-7c83-887c-4eca9d7a58c4",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
