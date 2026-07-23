@@ -1,0 +1,119 @@
+README-en.md
+  s_01c79a8bf451f4::t_f4e02c1e000a00 2,101,106-107,123
+README.md
+  s_01c79a8bf451f4::t_c6d943fb66d7fd 2,100-101,106-107,123
+backend/.env.example
+  s_a9f7537657f847::t_5aaf60ce9f7d20 101-108
+backend/Dockerfile
+  s_a9f7537657f847::t_8c9c02b6c4548a 13,38
+backend/app/api/knowledge.py
+  s_a9f7537657f847::t_814034e4ff1d7f 47,55,65-68,457,475,491,613
+backend/app/core/config.py
+  s_a9f7537657f847::t_6cbc560558b609 143-150
+backend/app/core/llm/__init__.py
+  s_a9f7537657f847::t_33a7584d242627 510-512,517
+backend/app/core/llm/prompt.py
+  s_a9f7537657f847::t_22ed0bd7d7a2d1 552-612,615,617-618,620,623-643,646,648-652,654-655,701
+backend/app/core/llm/providers/aliyun_bailian.py
+  s_a9f7537657f847::t_c44a091059eca5 138-161,165-169,171,182-211,217-222,226-230,232-234,236-255,258-261,264,288,299-302
+backend/app/core/portrait_trigger.py
+  s_a9f7537657f847::t_47c487b2c1d405 4,26,29,92,103,126-127,131-133
+backend/app/modules/generation/context_builder.py
+  s_f8c2314e5c3830::t_bc3863180e2237 174-185,205-217,219-220,232-240,460-467,895-902,933
+backend/app/modules/generation/stream_manager.py
+  s_f8c2314e5c3830::t_aa3bc50a0dec12 42-49,433
+backend/app/modules/generation/templates/multimodal_fmt.py
+  s_f8c2314e5c3830::t_b776c32e49ca14 49,51,163-178,199,201,402
+backend/app/modules/ingestion/parsers/factory.py
+  s_a79cca5c12b691::t_e25d139418ac28 11,14-15,1357-1363,1366-1481,1484-1487,1489-1497,1500,1504-1507,1510-1529,1532,1534-1564,1570-1573,1575,1914
+backend/app/modules/ingestion/service.py
+  s_a9f7537657f847::t_b4544e806ffb4b 39-48,181,184,267,269,291-304,343-352,403-404,406-417,900,902,910-1145,1147-1476,1590-1592,1835-1836,3049-3076,3365,3372,3376,3382-3412,3416-3420,3434,3439,3441-3447,3808
+backend/app/modules/ingestion/storage/vector_store.py
+  s_a9f7537657f847::t_e654a75d8f2ae3 29-33,136-172,175-176,182-184,187-188,190-191,194-195,201-202,821,824,826,828-829,832-840,842-849,851-856,858-861,863-884,886,888-910,1002,1010-1012,1015-1017,1019,1634-1640,1643-1648,1769,1775-1779,1784,1786,1789-1790,1794-1816,1818,1857-1858,1891,1895-1906,1909,1914-1916,2237,2243,2245-2247,2250-2251,2257,2260-2263,2267-2279,2281-2284,2289,2291-2294,2296-2302,2309-2311,2313-2322,2324-2393,2401-2405,2407,2410,2416,2421-2422,2428-2431,2433-2434,2442-2455,2460-2468,2470,2488
+backend/app/modules/ingestion/video_scene_shot.py
+  s_a9f7537657f847::t_c622d3f3900e08 1-419
+backend/app/modules/knowledge/portraits.py
+  s_a79cca5c12b691::t_5a6220b53667f3 31-35,42,44-46,84-86,89,94,134,147-148,153-158,171-176,182-183,185,187-199,220-233,279-410,416,423,425-426,441-456,466-468,470-471,478-480,482-483,490-492,494-495,499-500,502-504,506-507,515-519,526,535-538,545,549,596-597,602,605-609,611-637,639-655,659,662-666,671,673,675-676,681,683,686-689,691-692,696,760,803,850-851,859,928
+backend/app/modules/knowledge/service.py
+  s_a9f7537657f847::t_e5ae983e0088f6 19,29-52,60,62-63,454,604,610-625,637-638,652-655,669,687,694-696,706-707,714-716,807,810,1088,1090-1109,1112,1114,1116-1118,1123,1125,1127-1130,1134,1137-1155,1359-1385,1421-1425,1429-1443,1559-1563,1696-1697,1700-1703,1705-1708,1931
+backend/app/modules/retrieval/reranker.py
+  s_f8c2314e5c3830::t_52cdb4f735b80d 205-211,657-660,698
+backend/app/modules/retrieval/search_engine.py
+  s_a9f7537657f847::t_fc9f9cd8af7990 126-129,248,251,703-706,714,736,788-791,802,819,1203,1207,1209,1215-1235,1242-1336,1370
+backend/requirements.txt
+  s_a9f7537657f847::t_ff7f061e8adeb5 42,44,102
+backend/scripts/backfill_suggested_questions.py
+  s_a9f7537657f847::t_e77f1d6acd9e0e 95,123-127
+backend/test_video_portrait_sampling.py
+  s_a9f7537657f847::t_f446028b802ddf 1-62
+backend/test_video_scene_shot.py
+  s_a9f7537657f847::t_e4fc9233d521ab 1-73
+backend/test_video_statistics_and_ingestion.py
+  s_a9f7537657f847::t_91f1b1d811a908 1-164
+docs/MMA_ARCHITECTURE.md
+  s_a9f7537657f847::t_76ed8bcc31f207 13,171,188-189,197,240,242,254,261,264,270,277,291-293,300-301,307,321-322,332,374,387,392,402,409,418,422,429
+docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md
+  s_a9f7537657f847::t_46f6dbbc43de64 7-8,19,82,157,165,169-184,193,195,197-198,202-205,215-220,228,230-231,238,240
+frontend/index.html
+  s_01c79a8bf451f4::t_18f716b7bf61de 5
+frontend/src/components/chat/ChatInterface.tsx
+  s_01c79a8bf451f4::t_1ac369f0437498 759
+frontend/src/components/chat/useFileScopeOptions.ts
+  s_a9f7537657f847::t_5153bf9a9c0bab 11,31-33,69
+frontend/src/components/knowledge/KnowledgeList.tsx
+  s_a79cca5c12b691::t_3c5364f4541b01 228,2156,2214,3004,3489
+frontend/src/components/knowledge/KnowledgeListHelpers.tsx
+  s_a9f7537657f847::t_2c915600cb8385 2,28-47
+frontend/src/components/knowledge/PortraitGraph.tsx
+  s_01c79a8bf451f4::t_ebae0c9c51ee73 45-46,52-53,78,82,379,383,385,498,521,929,943,956,964,973,987-988,1048,1052
+frontend/src/components/layout/ConversationSidebar.tsx
+  s_01c79a8bf451f4::t_8f730f09c27384 125
+frontend/src/data/architectureData.ts
+  s_a9f7537657f847::t_1f8dcdcb8e976e 259,300,304-305,309-310,418,423
+frontend/src/services/api_client.ts
+  s_01c79a8bf451f4::t_fbaa37e1ef64bf 335,343,384
+frontend/src/store/useKnowledgeStore.ts
+  s_01c79a8bf451f4::t_f7e5094dcaeea1 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7e8aec58124dd4ff39544d3677b10c73d60e47e6",
+  "prompts": {},
+  "sessions": {
+    "s_01c79a8bf451f4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8f86-7304-7de1-8712-421513123e71",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    },
+    "s_a79cca5c12b691": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8f89-1a47-72a3-b461-8967edaef499",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    },
+    "s_a9f7537657f847": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8ddb-3ffb-7ed1-9d79-954c5d4903b5",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    },
+    "s_f8c2314e5c3830": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8f8d-5ca3-7b92-8ef8-1642307fc7ab",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
