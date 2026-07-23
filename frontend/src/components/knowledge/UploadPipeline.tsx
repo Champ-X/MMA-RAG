@@ -148,6 +148,7 @@ export function UploadPipeline({
   const completedCount = uploadProgress?.completed ?? 0
   const failedCount = uploadProgress?.failed ?? 0
   const totalCount = uploadProgress?.total ?? 0
+  const openFilePicker = () => fileInputRef.current?.click()
 
   // 上传成功后延迟清空已选文件，便于用户看到完成摘要（仅内部选择，外部传入由父组件清空）
   useEffect(() => {
@@ -162,9 +163,9 @@ export function UploadPipeline({
   }, [displayFiles.length])
 
   return (
-    <div className={cn('overflow-hidden rounded-2xl border border-white/75 bg-white/86 shadow-lg shadow-slate-200/40 backdrop-blur-sm dark:border-slate-800/80 dark:bg-slate-950/80 dark:shadow-black/20', className)}>
+    <div className={cn('overflow-hidden rounded-2xl border border-white/75 bg-white/90 shadow-lg shadow-slate-200/40 backdrop-blur-sm dark:border-slate-800/80 dark:bg-slate-950/80 dark:shadow-black/20', className)}>
       <div className="relative overflow-hidden border-b border-slate-100/80 bg-gradient-to-r from-indigo-50/80 via-white/90 to-fuchsia-50/50 px-5 py-4 dark:border-slate-800/70 dark:from-slate-900/90 dark:via-slate-950/90 dark:to-indigo-950/25 sm:px-6">
-        <div className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-indigo-400/15 blur-3xl dark:bg-indigo-500/10" />
+        <div className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-indigo-400/[0.15] blur-3xl dark:bg-indigo-500/10" />
         <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 text-white shadow-md shadow-indigo-500/25 ring-1 ring-white/30">
@@ -189,7 +190,7 @@ export function UploadPipeline({
             'group relative cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed px-5 py-5 text-center transition-all duration-200 sm:px-6',
             isDragging
               ? 'scale-[1.01] border-indigo-400 bg-indigo-50/80 shadow-lg shadow-indigo-500/10 dark:border-fuchsia-500 dark:bg-fuchsia-500/10'
-              : 'border-indigo-200/80 bg-gradient-to-br from-slate-50/80 via-white to-indigo-50/45 shadow-sm hover:-translate-y-0.5 hover:border-indigo-400 hover:shadow-lg hover:shadow-indigo-500/10 dark:border-slate-700 dark:from-slate-900/65 dark:via-slate-950/80 dark:to-indigo-950/25 dark:hover:border-fuchsia-500'
+              : 'border-indigo-200/80 bg-gradient-to-br from-slate-50/80 via-white to-indigo-50/40 shadow-sm hover:-translate-y-0.5 hover:border-indigo-400 hover:shadow-lg hover:shadow-indigo-500/10 dark:border-slate-700 dark:from-slate-900/60 dark:via-slate-950/80 dark:to-indigo-950/25 dark:hover:border-fuchsia-500'
           )}
           onDrop={handleDrop}
           onDragOver={(e) => {
@@ -200,10 +201,18 @@ export function UploadPipeline({
             e.preventDefault()
             setIsDragging(false)
           }}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={openFilePicker}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return
+            e.preventDefault()
+            openFilePicker()
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label="选择或拖拽上传知识库文件"
         >
-          <div className="pointer-events-none absolute -left-16 -top-16 h-44 w-44 rounded-full bg-indigo-300/18 blur-3xl dark:bg-indigo-600/10" />
-          <div className="pointer-events-none absolute -bottom-16 right-0 h-44 w-44 rounded-full bg-fuchsia-300/12 blur-3xl dark:bg-fuchsia-600/10" />
+          <div className="pointer-events-none absolute -left-16 -top-16 h-44 w-44 rounded-full bg-indigo-300/[0.18] blur-3xl dark:bg-indigo-600/10" />
+          <div className="pointer-events-none absolute -bottom-16 right-0 h-44 w-44 rounded-full bg-fuchsia-300/[0.12] blur-3xl dark:bg-fuchsia-600/10" />
           <div className="relative mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-lg shadow-indigo-500/25 ring-4 ring-indigo-100/70 transition-transform duration-200 group-hover:scale-105 dark:ring-indigo-950/50">
             <Upload className="h-6 w-6" strokeWidth={2.1} aria-hidden />
           </div>
@@ -226,6 +235,7 @@ export function UploadPipeline({
             multiple
             accept=".pdf,.docx,.doc,.pptx,.txt,.md,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.gif,.webp,.tiff,.tif,.mp3,.wav,.m4a,.flac,.aac,.ogg,.wma,.opus,.mp4,.avi,.mov,.mkv,.webm,.flv,.wmv,.m4v"
             onChange={(e) => handleFileSelect(e.target.files)}
+            aria-label="选择知识库上传文件"
             className="hidden"
           />
         </div>
@@ -240,7 +250,12 @@ export function UploadPipeline({
           <>
             <div>
               {isAllDone ? (
-                <div className="mb-3 rounded-lg border border-green-200 dark:border-green-800 bg-green-50/80 dark:bg-green-900/20 px-4 py-3">
+                <div
+                  className="mb-3 rounded-lg border border-green-200 dark:border-green-800 bg-green-50/80 dark:bg-green-900/20 px-4 py-3"
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
                   <p className="text-sm font-medium text-green-800 dark:text-green-200">
                     本次上传完成：成功 {completedCount}，{failedCount > 0 ? `失败 ${failedCount}` : '无失败'}
                   </p>
@@ -259,15 +274,17 @@ export function UploadPipeline({
                       size="sm"
                       className="h-7 text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 -mr-1"
                       onClick={() => setShowAllFiles((v) => !v)}
+                      aria-expanded={isExpanded}
+                      aria-label={showAllFiles ? '收起已选文件列表' : `展开全部 ${displayFiles.length} 个已选文件`}
                     >
                       {showAllFiles ? (
                         <>
-                          <ChevronUp className="h-3.5 w-3.5 mr-0.5" />
+                          <ChevronUp className="h-3.5 w-3.5 mr-0.5" aria-hidden />
                           收起
                         </>
                       ) : (
                         <>
-                          <ChevronDown className="h-3.5 w-3.5 mr-0.5" />
+                          <ChevronDown className="h-3.5 w-3.5 mr-0.5" aria-hidden />
                           展开全部
                         </>
                       )}
@@ -282,7 +299,12 @@ export function UploadPipeline({
                 )}
               >
                 {isUploading && !isAllDone && (
-                  <div className="flex items-center gap-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 px-3 py-2 border border-slate-100 dark:border-slate-700/80">
+                  <div
+                    className="flex items-center gap-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 px-3 py-2 border border-slate-100 dark:border-slate-700/80"
+                    role="status"
+                    aria-live="polite"
+                    aria-label={uploadProgress?.currentFile ? `正在处理：${uploadProgress.currentFile}` : '正在处理已选文件'}
+                  >
                     <span className="relative flex h-2 w-2">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-75 dark:bg-fuchsia-400" />
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-indigo-500 dark:bg-fuchsia-500" />
@@ -290,121 +312,137 @@ export function UploadPipeline({
                     <span className="text-xs font-medium text-slate-600 dark:text-slate-300 tracking-wide">处理中</span>
                   </div>
                 )}
-                {visibleFiles.map((f) => {
-                  const i = displayFiles.indexOf(f)
-                  const isImage = f.type.startsWith('image/')
-                  const isAudio = f.type.startsWith('audio/')
-                  const isVideo = f.type.startsWith('video/')
-                  const Icon = isImage ? Image : isAudio ? Music : isVideo ? Video : f.type.includes('pdf') ? FileText : File
-                  const isCurrent =
-                    isUploading &&
-                    uploadProgress?.currentFile === (f as File).name
-                  const done =
-                    isUploading &&
-                    uploadProgress &&
-                    i < uploadProgress.completed + uploadProgress.failed
-                  const isPending = isUploading && !isCurrent && !done
-                  const compact = useCompactList
-                  const stageProgress = isCurrent && uploadProgress?.stage !== 'done' ? (uploadProgress?.stageProgress ?? 0) : null
+                <div
+                  className="space-y-2"
+                  role="list"
+                  aria-label={isAllDone ? '已处理文件列表' : `已选文件列表，共 ${displayFiles.length} 个文件`}
+                >
+                  {visibleFiles.map((f) => {
+                    const i = displayFiles.indexOf(f)
+                    const fileName = f.name
+                    const fileSize = formatFileSize(f.size)
+                    const isImage = f.type.startsWith('image/')
+                    const isAudio = f.type.startsWith('audio/')
+                    const isVideo = f.type.startsWith('video/')
+                    const Icon = isImage ? Image : isAudio ? Music : isVideo ? Video : f.type.includes('pdf') ? FileText : File
+                    const isCurrent =
+                      isUploading &&
+                      uploadProgress?.currentFile === fileName
+                    const done =
+                      isUploading &&
+                      uploadProgress &&
+                      i < uploadProgress.completed + uploadProgress.failed
+                    const isPending = isUploading && !isCurrent && !done
+                    const compact = useCompactList
+                    const stageProgress = isCurrent && uploadProgress?.stage !== 'done' ? (uploadProgress?.stageProgress ?? 0) : null
+                    const fileStatusLabel = isCurrent ? '处理中' : done ? '已完成' : isPending ? '待处理' : '已选'
 
-                  return (
-                    <div
-                      key={i}
-                      className={cn(
-                        'relative flex flex-col rounded-xl border gap-2 overflow-hidden transition-all duration-200 ease-out',
-                        compact ? 'px-2.5 py-1.5' : 'p-3',
-                        isCurrent && 'border-indigo-300 dark:border-fuchsia-500/80 bg-indigo-50/60 dark:bg-fuchsia-500/10 shadow-sm shadow-indigo-100/50 dark:shadow-fuchsia-900/10',
-                        done && !isCurrent && 'border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/50 dark:bg-emerald-900/10 shadow-sm shadow-emerald-100/30 dark:shadow-emerald-900/5',
-                        isPending && 'border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800/30 hover:bg-slate-50/80 dark:hover:bg-slate-800/60'
-                      )}
-                    >
-                      <div className="flex items-center justify-between gap-2 min-w-0">
-                        <div className={cn('flex items-center gap-2 min-w-0 flex-1', compact ? 'gap-2' : 'gap-3')}>
-                          <div className={cn(
-                            'flex shrink-0 items-center justify-center rounded-lg transition-colors',
-                            compact ? 'p-1' : 'p-1.5',
-                            isCurrent && 'bg-indigo-100/80 dark:bg-fuchsia-500/20',
-                            done && !isCurrent && 'bg-emerald-100/80 dark:bg-emerald-500/20',
-                            isPending && 'bg-slate-100 dark:bg-slate-700/50'
-                          )}>
-                            <Icon className={cn(
-                              compact ? 'h-3.5 w-3.5' : 'h-4 w-4',
-                              isCurrent && 'text-indigo-600 dark:text-fuchsia-400',
-                              done && !isCurrent && 'text-emerald-600 dark:text-emerald-400',
-                              isPending && 'text-slate-500 dark:text-slate-400'
-                            )} />
+                    return (
+                      <div
+                        key={i}
+                        role="listitem"
+                        aria-label={`文件 ${i + 1}/${displayFiles.length}：${fileName}，${fileSize}，${fileStatusLabel}`}
+                        className={cn(
+                          'relative flex flex-col rounded-xl border gap-2 overflow-hidden transition-all duration-200 ease-out',
+                          compact ? 'px-2.5 py-1.5' : 'p-3',
+                          isCurrent && 'border-indigo-300 dark:border-fuchsia-500/80 bg-indigo-50/60 dark:bg-fuchsia-500/10 shadow-sm shadow-indigo-100/50 dark:shadow-fuchsia-900/10',
+                          done && !isCurrent && 'border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/50 dark:bg-emerald-900/10 shadow-sm shadow-emerald-100/30 dark:shadow-emerald-900/5',
+                          isPending && 'border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800/30 hover:bg-slate-50/80 dark:hover:bg-slate-800/60'
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2 min-w-0">
+                          <div className={cn('flex items-center gap-2 min-w-0 flex-1', compact ? 'gap-2' : 'gap-3')}>
+                            <div className={cn(
+                              'flex shrink-0 items-center justify-center rounded-lg transition-colors',
+                              compact ? 'p-1' : 'p-1.5',
+                              isCurrent && 'bg-indigo-100/80 dark:bg-fuchsia-500/20',
+                              done && !isCurrent && 'bg-emerald-100/80 dark:bg-emerald-500/20',
+                              isPending && 'bg-slate-100 dark:bg-slate-700/50'
+                            )}>
+                              <Icon
+                                className={cn(
+                                  compact ? 'h-3.5 w-3.5' : 'h-4 w-4',
+                                  isCurrent && 'text-indigo-600 dark:text-fuchsia-400',
+                                  done && !isCurrent && 'text-emerald-600 dark:text-emerald-400',
+                                  isPending && 'text-slate-500 dark:text-slate-400'
+                                )}
+                                aria-hidden
+                              />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              {compact ? (
+                                <p className="text-xs font-medium text-slate-800 dark:text-slate-100 flex items-baseline gap-1.5 min-w-0" title={fileName}>
+                                  <span className="truncate min-w-0">{fileName}</span>
+                                  <span className="text-slate-400 dark:text-slate-500 font-normal shrink-0">{fileSize}</span>
+                                </p>
+                              ) : (
+                                <>
+                                  <p className={cn(
+                                    'font-medium text-slate-800 dark:text-slate-100 truncate',
+                                    isCurrent && 'text-indigo-900 dark:text-fuchsia-100',
+                                    done && !isCurrent && 'text-emerald-900 dark:text-emerald-100',
+                                    isPending && 'text-slate-800 dark:text-slate-200'
+                                  )} title={fileName}>
+                                    {fileName}
+                                  </p>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    {fileSize}
+                                  </p>
+                                </>
+                              )}
+                            </div>
                           </div>
-                          <div className="min-w-0 flex-1">
-                            {compact ? (
-                              <p className="text-xs font-medium text-slate-800 dark:text-slate-100 flex items-baseline gap-1.5 min-w-0" title={(f as File).name}>
-                                <span className="truncate min-w-0">{(f as File).name}</span>
-                                <span className="text-slate-400 dark:text-slate-500 font-normal shrink-0">{formatFileSize((f as File).size)}</span>
-                              </p>
+                          {isUploading || isAllDone ? (
+                            isCurrent ? (
+                              <div className="flex items-center gap-1.5 shrink-0 rounded-full bg-indigo-100 dark:bg-fuchsia-500/20 px-2.5 py-1 text-indigo-700 dark:text-fuchsia-300">
+                                <Loader2 className={cn('animate-spin shrink-0', compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} aria-hidden />
+                                <span className={cn('font-medium', compact ? 'text-[10px]' : 'text-xs')}>处理中</span>
+                              </div>
+                            ) : done ? (
+                              <div className="flex items-center gap-1.5 shrink-0 rounded-full bg-emerald-100 dark:bg-emerald-500/20 px-2.5 py-1 text-emerald-700 dark:text-emerald-300">
+                                <CheckCircle className={cn('shrink-0', compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} aria-hidden />
+                                <span className={cn('font-medium', compact ? 'text-[10px]' : 'text-xs')}>已完成</span>
+                              </div>
                             ) : (
-                              <>
-                                <p className={cn(
-                                  'font-medium text-slate-800 dark:text-slate-100 truncate',
-                                  isCurrent && 'text-indigo-900 dark:text-fuchsia-100',
-                                  done && !isCurrent && 'text-emerald-900 dark:text-emerald-100',
-                                  isPending && 'text-slate-800 dark:text-slate-200'
-                                )} title={(f as File).name}>
-                                  {(f as File).name}
-                                </p>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">
-                                  {formatFileSize((f as File).size)}
-                                </p>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        {isUploading || isAllDone ? (
-                          isCurrent ? (
-                            <div className="flex items-center gap-1.5 shrink-0 rounded-full bg-indigo-100 dark:bg-fuchsia-500/20 px-2.5 py-1 text-indigo-700 dark:text-fuchsia-300">
-                              <Loader2 className={cn('animate-spin shrink-0', compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
-                              <span className={cn('font-medium', compact ? 'text-[10px]' : 'text-xs')}>处理中</span>
-                            </div>
-                          ) : done ? (
-                            <div className="flex items-center gap-1.5 shrink-0 rounded-full bg-emerald-100 dark:bg-emerald-500/20 px-2.5 py-1 text-emerald-700 dark:text-emerald-300">
-                              <CheckCircle className={cn('shrink-0', compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
-                              <span className={cn('font-medium', compact ? 'text-[10px]' : 'text-xs')}>已完成</span>
-                            </div>
+                              <span className={cn('shrink-0 rounded-full bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 text-slate-500 dark:text-slate-400 font-medium', compact ? 'text-[10px]' : 'text-xs')}>待处理</span>
+                            )
                           ) : (
-                            <span className={cn('shrink-0 rounded-full bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 text-slate-500 dark:text-slate-400 font-medium', compact ? 'text-[10px]' : 'text-xs')}>待处理</span>
-                          )
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className={cn('shrink-0 text-slate-500 hover:text-red-500 hover:bg-red-50 dark:text-slate-400 dark:hover:text-red-400 dark:hover:bg-red-900/20 rounded-lg transition-colors', compact ? 'h-6 w-6 p-0' : 'h-8 w-8 p-0')}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              const next = selectedFiles.filter((_, j) => j !== i)
-                              setSelectedFiles(next)
-                              onFileSelect(next)
-                            }}
-                          >
-                            ×
-                          </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={cn('shrink-0 text-slate-500 hover:text-red-500 hover:bg-red-50 dark:text-slate-400 dark:hover:text-red-400 dark:hover:bg-red-900/20 rounded-lg transition-colors', compact ? 'h-6 w-6 p-0' : 'h-8 w-8 p-0')}
+                              aria-label={`移除文件：${fileName}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const next = selectedFiles.filter((_, j) => j !== i)
+                                setSelectedFiles(next)
+                                onFileSelect(next)
+                              }}
+                            >
+                              ×
+                            </Button>
+                          )}
+                        </div>
+                        {stageProgress != null && !compact && (
+                          <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-100 dark:bg-slate-700/80 rounded-b-xl overflow-hidden">
+                            <div
+                              className="h-full rounded-r-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 dark:from-fuchsia-500 dark:to-indigo-400 transition-all duration-500 ease-out"
+                              style={{ width: `${Math.min(100, Math.max(0, stageProgress))}%` }}
+                            />
+                          </div>
                         )}
                       </div>
-                      {stageProgress != null && !compact && (
-                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-100 dark:bg-slate-700/80 rounded-b-xl overflow-hidden">
-                          <div
-                            className="h-full rounded-r-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 dark:from-fuchsia-500 dark:to-indigo-400 transition-all duration-500 ease-out"
-                            style={{ width: `${Math.min(100, Math.max(0, stageProgress))}%` }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
                 {hasMoreHidden && (
                   <button
                     type="button"
                     className="w-full rounded-lg border border-dashed border-slate-200 dark:border-slate-700 py-2 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-50 dark:text-slate-400 dark:hover:text-slate-300 dark:hover:bg-slate-800/50 transition-colors flex items-center justify-center gap-1"
                     onClick={() => setShowAllFiles(true)}
+                    aria-label={`展开显示全部 ${displayFiles.length} 个文件`}
                   >
-                    <ChevronDown className="h-3.5 w-3.5" />
+                    <ChevronDown className="h-3.5 w-3.5" aria-hidden />
                     展开显示全部 {displayFiles.length} 个文件
                   </button>
                 )}
@@ -414,11 +452,16 @@ export function UploadPipeline({
             {/* 四阶段管道：步骤条 + 连接线 + 当前状态 */}
             {isUploading && uploadProgress && (
               <div className="space-y-5">
-                <div className="relative flex items-start justify-between px-1">
+                <div
+                  className="relative flex items-start justify-between px-1"
+                  role="list"
+                  aria-label="上传处理阶段"
+                >
                   {/* 底部连接线（背景） */}
                   <div
                     className="absolute left-4 right-4 top-5 h-0.5 -translate-y-1/2 rounded-full bg-slate-200 dark:bg-slate-700"
                     aria-hidden
+                    role="presentation"
                   />
                   {/* 已完成的连接线（渐变填充） */}
                   <div
@@ -427,13 +470,21 @@ export function UploadPipeline({
                       width: currentStageIndex <= 0 ? '0%' : `calc((100% - 2rem) * ${currentStageIndex / Math.max(STAGES.length - 1, 1)})`,
                     }}
                     aria-hidden
+                    role="presentation"
                   />
                   {STAGES.map((s, i) => {
                     const active = i === currentStageIndex
                     const past = i < currentStageIndex || uploadProgress.stage === 'done'
+                    const stageStatusLabel = past ? '已完成' : active ? '当前阶段' : '待处理'
                     const Icon = s.icon
                     return (
-                      <div key={s.id} className="relative z-10 flex flex-1 flex-col items-center">
+                      <div
+                        key={s.id}
+                        className="relative z-10 flex flex-1 flex-col items-center"
+                        role="listitem"
+                        aria-current={active && uploadProgress.stage !== 'done' ? 'step' : undefined}
+                        aria-label={`${s.label}，${stageStatusLabel}`}
+                      >
                         <div
                           className={cn(
                             'flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all duration-300',
@@ -445,7 +496,7 @@ export function UploadPipeline({
                           )}
                         >
                           {past && !active ? (
-                            <CheckCircle className="h-5 w-5 text-emerald-500 dark:text-emerald-400" />
+                            <CheckCircle className="h-5 w-5 text-emerald-500 dark:text-emerald-400" aria-hidden />
                           ) : (
                             <Icon
                               className={cn(
@@ -453,10 +504,11 @@ export function UploadPipeline({
                                 active && 'text-indigo-600 dark:text-fuchsia-400',
                                 !active && !past && 'text-slate-400 dark:text-slate-500'
                               )}
+                              aria-hidden
                             />
                           )}
                           {active && uploadProgress.stage !== 'done' && (
-                            <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
+                            <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3" aria-hidden>
                               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-75 dark:bg-fuchsia-400" />
                               <span className="relative inline-flex h-3 w-3 rounded-full bg-indigo-500 dark:bg-fuchsia-500" />
                             </span>
@@ -478,13 +530,18 @@ export function UploadPipeline({
                 </div>
 
                 {/* 当前阶段说明 + 文件名 */}
-                <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3 border border-slate-100 dark:border-slate-700/80">
+                <div
+                  className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3 border border-slate-100 dark:border-slate-700/80"
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
                   <p className="text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2 flex-wrap">
                     <span className="inline-flex items-center gap-1.5 text-indigo-600 dark:text-fuchsia-400 font-medium">
                       {uploadProgress.stage === 'done' ? (
-                        <CheckCircle className="h-4 w-4 text-emerald-500" />
+                        <CheckCircle className="h-4 w-4 text-emerald-500" aria-hidden />
                       ) : (
-                        <Loader2 className="h-4 w-4 animate-spin text-indigo-500 dark:text-fuchsia-400" />
+                        <Loader2 className="h-4 w-4 animate-spin text-indigo-500 dark:text-fuchsia-400" aria-hidden />
                       )}
                       {getStageMessage(uploadProgress)}
                     </span>
@@ -500,6 +557,16 @@ export function UploadPipeline({
                         ? 100
                         : uploadProgress.stageProgress ?? 50
                     }
+                    role="progressbar"
+                    aria-label="上传处理进度"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={
+                      uploadProgress.stage === 'done'
+                        ? 100
+                        : uploadProgress.stageProgress ?? 50
+                    }
+                    aria-valuetext={`${getStageMessage(uploadProgress)}${uploadProgress.currentFile ? `：${uploadProgress.currentFile}` : ''}`}
                     className="h-1.5 mt-2 rounded-full bg-slate-200 dark:bg-slate-700 [&>div]:rounded-full [&>div]:bg-gradient-to-r [&>div]:from-indigo-500 [&>div]:to-fuchsia-500 dark:[&>div]:from-fuchsia-500 dark:[&>div]:to-indigo-400 [&>div]:transition-all [&>div]:duration-500"
                   />
                 </div>
@@ -530,15 +597,16 @@ export function UploadPipeline({
                   onClick={() => {
                     setSelectedFiles([])
                   }}
+                  aria-label={isAllDone ? '清空已完成文件列表' : '清空已选文件列表'}
                 >
                   {isAllDone ? (
                     <>
-                      <CheckCircle className="mr-2 h-4 w-4 text-emerald-500 dark:text-emerald-400" />
+                      <CheckCircle className="mr-2 h-4 w-4 text-emerald-500 dark:text-emerald-400" aria-hidden />
                       清空列表
                     </>
                   ) : (
                     <>
-                      <Trash2 className="mr-2 h-4 w-4 opacity-80" />
+                      <Trash2 className="mr-2 h-4 w-4 opacity-80" aria-hidden />
                       清空
                     </>
                   )}

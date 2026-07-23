@@ -1,5 +1,6 @@
 import { X, Eye, Music } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useId } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { CitationReference } from '@/types/sse'
 
@@ -46,6 +47,9 @@ export function InspectorDrawer({
   const contextWindow = normalizeContextWindow(item?.debug_info?.context_window)
   const prevText = contextWindow?.prev ?? ''
   const nextText = contextWindow?.next ?? ''
+  const drawerId = useId().replace(/:/g, '')
+  const drawerTitleId = `${drawerId}-inspector-title`
+  const drawerDescriptionId = `${drawerId}-inspector-description`
 
   return (
     <AnimatePresence>
@@ -58,6 +62,7 @@ export function InspectorDrawer({
         >
           <div
             className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px]"
+            aria-hidden="true"
             onClick={onClose}
           />
 
@@ -67,13 +72,17 @@ export function InspectorDrawer({
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 30, opacity: 0 }}
             transition={{ duration: 0.18 }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={drawerTitleId}
+            aria-describedby={drawerDescriptionId}
           >
             <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3 dark:border-slate-800/70">
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+                <div id={drawerTitleId} className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
                   检查器
                 </div>
-                <div className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                <div id={drawerDescriptionId} className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
                   {item?.file_name || '未知文件'} · Score{' '}
                   {item?.scores?.rerank?.toFixed(2) || item?.scores?.dense?.toFixed(2) || '0.00'}
                 </div>
@@ -84,7 +93,7 @@ export function InspectorDrawer({
                 className="grid h-9 w-9 place-items-center rounded-xl text-slate-500 hover:bg-slate-900/5 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-100"
                 aria-label="关闭抽屉"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" aria-hidden />
               </button>
             </div>
 
@@ -106,9 +115,12 @@ export function InspectorDrawer({
                   )}
 
                   {item.type === 'audio' && (item.audio_url || item.content) && (
-                    <div className="mb-4 rounded-2xl border border-amber-200/70 dark:border-amber-800/70 bg-amber-50/50 dark:bg-amber-950/30 p-4">
+                    <section
+                      aria-label="音频引用预览"
+                      className="mb-4 rounded-2xl border border-amber-200/70 dark:border-amber-800/70 bg-amber-50/50 dark:bg-amber-950/30 p-4"
+                    >
                       <div className="flex items-center gap-2 mb-3">
-                        <Music size={18} className="text-amber-600 dark:text-amber-400" />
+                        <Music size={18} className="text-amber-600 dark:text-amber-400" aria-hidden />
                         <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                           音频
                         </div>
@@ -117,6 +129,7 @@ export function InspectorDrawer({
                         <audio
                           src={item.audio_url}
                           controls
+                          aria-label="音频引用检查器预览"
                           className="w-full h-10 rounded-lg"
                           preload="metadata"
                         />
@@ -126,10 +139,13 @@ export function InspectorDrawer({
                           {item.content}
                         </div>
                       )}
-                    </div>
+                    </section>
                   )}
 
-                  <div className="rounded-2xl border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800/70 dark:bg-slate-950/40">
+                  <section
+                    aria-label="引用元数据"
+                    className="rounded-2xl border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800/70 dark:bg-slate-950/40"
+                  >
                     <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                       元数据
                     </div>
@@ -177,14 +193,17 @@ export function InspectorDrawer({
                         }
                       />
                     </div>
-                  </div>
+                  </section>
 
                   {item.type === 'image' ? (
                     <>
                       {item.content && (
-                        <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800/70 dark:bg-slate-950/40">
+                        <section
+                          aria-label="图片语义描述"
+                          className="mt-4 rounded-2xl border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800/70 dark:bg-slate-950/40"
+                        >
                           <div className="flex items-center gap-2 mb-3">
-                            <Eye size={14} className="text-purple-600 dark:text-purple-400" />
+                            <Eye size={14} className="text-purple-600 dark:text-purple-400" aria-hidden />
                             <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                               VLM Caption
                             </div>
@@ -192,34 +211,43 @@ export function InspectorDrawer({
                           <div className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed">
                             {item.content}
                           </div>
-                        </div>
+                        </section>
                       )}
                     </>
                   ) : item.type === 'audio' ? (
                     <>
                       {item.content && (
-                        <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800/70 dark:bg-slate-950/40">
+                        <section
+                          aria-label="音频转写或描述"
+                          className="mt-4 rounded-2xl border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800/70 dark:bg-slate-950/40"
+                        >
                           <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
                             转写/描述
                           </div>
                           <pre className="whitespace-pre-wrap rounded-xl bg-slate-900/5 p-3 text-xs text-slate-800 dark:bg-white/5 dark:text-slate-100">
                             {item.content}
                           </pre>
-                        </div>
+                        </section>
                       )}
                     </>
                   ) : (
                     <>
-                      <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800/70 dark:bg-slate-950/40">
+                      <section
+                        aria-label="引用内容片段"
+                        className="mt-4 rounded-2xl border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800/70 dark:bg-slate-950/40"
+                      >
                         <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
                           内容片段
                         </div>
                         <pre className="whitespace-pre-wrap rounded-xl bg-slate-900/5 p-3 text-xs text-slate-800 dark:bg-white/5 dark:text-slate-100">
                           {item.content || '无内容'}
                         </pre>
-                      </div>
+                      </section>
                       {/* doc 类型始终展示上下文窗口（根据 context_window 展示上一 chunk / 下一 chunk） */}
-                      <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800/70 dark:bg-slate-950/40">
+                      <section
+                        aria-label="引用上下文窗口"
+                        className="mt-4 rounded-2xl border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800/70 dark:bg-slate-950/40"
+                      >
                         <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
                           上下文窗口
                         </div>
@@ -241,7 +269,7 @@ export function InspectorDrawer({
                         <pre className="whitespace-pre-wrap rounded-xl bg-slate-900/5 p-2 text-[10px] text-slate-600 dark:bg-white/5 dark:text-slate-300">
                           {nextText || '（无下一段）'}
                         </pre>
-                      </div>
+                      </section>
                     </>
                   )}
                 </>

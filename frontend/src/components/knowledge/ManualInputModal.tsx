@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { FileText, Loader2, Pencil, Sparkles } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { MdEditor, type ToolbarNames } from 'md-editor-rt'
 import 'md-editor-rt/lib/style.css'
 import './ManualInputModal.css'
@@ -22,6 +22,14 @@ function normalizeManualFilename(filename: string): string {
   return `${stem || '未命名文档'}.md`
 }
 
+function getSubmitErrorMessage(error: unknown) {
+  if (typeof error === 'object' && error != null && 'message' in error) {
+    const message = error.message
+    if (typeof message === 'string' && message) return message
+  }
+  return '提交失败，请稍后重试。'
+}
+
 export function ManualInputModal({
   open,
   mode,
@@ -35,6 +43,7 @@ export function ManualInputModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editorTheme, setEditorTheme] = useState<'light' | 'dark'>('light')
+  const modalId = useId().replace(/:/g, '')
 
   useEffect(() => {
     if (!open) return
@@ -58,6 +67,18 @@ export function ManualInputModal({
 
   const dialogTitle = mode === 'create' ? '手动输入上传' : '编辑手动文档'
   const submitLabel = mode === 'create' ? '提交入库' : '保存并重新处理'
+  const dialogTitleId = `${modalId}-manual-input-title`
+  const filenameInputId = `${modalId}-manual-input-filename`
+  const helperTextId = `${modalId}-manual-input-description`
+  const filenameHintId = `${modalId}-manual-input-filename-hint`
+  const editorRegionId = `${modalId}-manual-input-editor`
+  const errorTextId = `${modalId}-manual-input-error`
+  const statusTextId = `${modalId}-manual-input-status`
+  const normalizedFilename = normalizeManualFilename(filename)
+  const contentCharCount = content.trim().length
+  const statusText = saving
+    ? `${submitLabel}处理中，请稍候`
+    : `当前文档 ${contentCharCount} 个有效字符，提交时保存为 ${normalizedFilename}`
   const helperText = useMemo(
     () =>
       mode === 'create'
@@ -107,59 +128,88 @@ export function ManualInputModal({
     setError(null)
     try {
       await onSubmit({ filename: normalizedFilename, content })
-    } catch (err: any) {
-      setError(err?.message || '提交失败，请稍后重试。')
+    } catch (err: unknown) {
+      setError(getSubmitErrorMessage(err))
       setSaving(false)
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={(next) => !saving && !next && onClose()}>
-      <DialogContent className="max-w-6xl overflow-hidden rounded-[30px] border border-slate-200/90 bg-white p-0 shadow-[0_32px_100px_-28px_rgba(15,23,42,0.5)] dark:border-slate-800 dark:bg-slate-950">
+      <DialogContent
+        aria-labelledby={dialogTitleId}
+        aria-describedby={helperTextId}
+        className="max-w-6xl overflow-hidden rounded-[30px] border border-slate-200/90 bg-white p-0 shadow-[0_32px_100px_-28px_rgba(15,23,42,0.5)] dark:border-slate-800 dark:bg-slate-950"
+      >
         <form onSubmit={handleSubmit} className="flex max-h-[90vh] min-h-[78vh] flex-col overflow-hidden">
           <div className="rounded-t-[30px] border-b border-slate-200/80 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.16),transparent_28%),linear-gradient(135deg,rgba(248,250,252,1),rgba(255,255,255,1)_48%,rgba(238,242,255,0.85))] px-7 py-6 dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_right,rgba(129,140,248,0.18),transparent_30%),linear-gradient(135deg,rgba(15,23,42,1),rgba(2,6,23,1)_55%,rgba(49,46,129,0.2))]">
             <DialogHeader className="text-left">
               <div className="flex min-w-0 items-start gap-4">
                 <span className="mt-0.5 flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-100 bg-white text-indigo-600 shadow-sm dark:border-indigo-500/20 dark:bg-slate-900 dark:text-indigo-300">
-                  {mode === 'create' ? <FileText className="h-5 w-5" /> : <Pencil className="h-5 w-5" />}
+                  {mode === 'create' ? <FileText className="h-5 w-5" aria-hidden /> : <Pencil className="h-5 w-5" aria-hidden />}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <DialogTitle className="text-[1.35rem] font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+                    <DialogTitle id={dialogTitleId} className="text-[1.35rem] font-semibold tracking-tight text-slate-900 dark:text-slate-50">
                       {dialogTitle}
                     </DialogTitle>
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200/70 bg-indigo-50/85 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 dark:border-indigo-500/25 dark:bg-indigo-950/35 dark:text-indigo-300">
-                      <Sparkles className="h-3.5 w-3.5" />
+                      <Sparkles className="h-3.5 w-3.5" aria-hidden />
                       Markdown 编辑器
                     </span>
                   </div>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">{helperText}</p>
+                  <DialogDescription
+                    id={helperTextId}
+                    className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300"
+                  >
+                    {helperText}
+                  </DialogDescription>
                 </div>
               </div>
             </DialogHeader>
           </div>
 
           <div className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.92),rgba(255,255,255,0.86))] px-7 py-4 dark:bg-[linear-gradient(180deg,rgba(2,6,23,1),rgba(15,23,42,0.92))]">
+            <span id={statusTextId} className="sr-only" aria-live="polite">
+              {statusText}
+            </span>
             <div className="space-y-4">
               <div className="rounded-[20px] border border-slate-200/80 bg-white px-4 py-3.5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
                 <div className="mb-2.5 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
                   <div className="min-w-0 space-y-1.5">
                     <div className="flex items-center gap-2">
-                      <label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">文档名称</label>
+                      <label htmlFor={filenameInputId} className="text-[13px] font-medium text-slate-700 dark:text-slate-200">文档名称</label>
                       <span className="text-[11px] text-slate-400 dark:text-slate-500">|</span>
                       <span className="text-[13px] font-medium text-slate-800 dark:text-slate-100">Markdown 编辑器</span>
                     </div>
                     <input
+                      id={filenameInputId}
                       value={filename}
                       onChange={(e) => setFilename(e.target.value)}
                       placeholder="例如：会议纪要.md"
                       disabled={saving}
+                      aria-describedby={error ? `${filenameHintId} ${helperTextId} ${errorTextId}` : `${filenameHintId} ${helperTextId}`}
+                      aria-invalid={error ? true : undefined}
                       className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-indigo-500/50"
                     />
+                    <p id={filenameHintId} className="text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                      提交时保存为：{normalizedFilename}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-right shadow-inner dark:border-slate-700/70 dark:bg-slate-950/40">
+                    <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Content</div>
+                    <div className="mt-0.5 text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-200">
+                      {contentCharCount} 字
+                    </div>
                   </div>
                 </div>
 
-                <div className="manual-input-md-editor overflow-hidden rounded-[24px] border border-slate-200/90 bg-white shadow-[0_16px_40px_-24px_rgba(15,23,42,0.28)] dark:border-slate-700 dark:bg-slate-950">
+                <section
+                  id={editorRegionId}
+                  className="manual-input-md-editor overflow-hidden rounded-[24px] border border-slate-200/90 bg-white shadow-[0_16px_40px_-24px_rgba(15,23,42,0.28)] dark:border-slate-700 dark:bg-slate-950"
+                  aria-label="Markdown 文档内容编辑器"
+                  aria-describedby={statusTextId}
+                >
                   <MdEditor
                     id={`manual-input-${mode}`}
                     modelValue={content}
@@ -181,11 +231,15 @@ export function ManualInputModal({
                     placeholder="# 标题\n\n在这里输入要入库的 Markdown 内容..."
                     style={{ height: '58vh' }}
                   />
-                </div>
+                </section>
               </div>
 
               {error ? (
-                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+                <div
+                  id={errorTextId}
+                  role="alert"
+                  className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
+                >
                   {error}
                 </div>
               ) : null}
@@ -203,6 +257,7 @@ export function ManualInputModal({
                 type="button"
                 onClick={onClose}
                 disabled={saving}
+                aria-label="取消手动文档输入并关闭弹窗"
                 className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
               >
                 取消
@@ -210,9 +265,11 @@ export function ManualInputModal({
               <button
                 type="submit"
                 disabled={saving}
+                aria-label={saving ? `${submitLabel}处理中` : submitLabel}
+                aria-describedby={statusTextId}
                 className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 transition hover:from-indigo-500 hover:to-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
               >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
                 {saving ? '处理中…' : submitLabel}
               </button>
             </div>

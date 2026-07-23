@@ -1,5 +1,4 @@
 @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Ma+Shan+Zheng&display=swap');
-@import 'katex/dist/katex.min.css';
 
 @tailwind base;
 @tailwind components;
@@ -100,6 +99,237 @@ body {
 
 .zoom-in-95 {
   animation: zoom-in 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  .animate-in,
+  .fade-in,
+  .slide-in-from-top-2,
+  .zoom-in-95,
+  .bubble-breathe,
+  .animate-shimmer,
+  .animate-thinking-slide,
+  .animate-thinking-dot,
+  .animate-thinking-wand,
+  .animate-pulse-soft,
+  .animate-ping,
+  .animate-bounce,
+  .animate-pulse,
+  [class*="animate-in"],
+  [class*="animate-out"],
+  [class*="fade-in"],
+  [class*="fade-out"],
+  [class*="zoom-in"],
+  [class*="zoom-out"],
+  [class*="slide-in"],
+  [class*="slide-out"],
+  [class*="animate-[spin"] {
+    animation: none !important;
+  }
+
+  .animate-spin,
+  .animate-thinking-spin {
+    animation-duration: 1.6s !important;
+  }
+
+  .transition,
+  [class*="transition-"],
+  [class*="duration-"] {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.rag-markdown {
+  color: rgb(51 65 85);
+  font-size: 0.875rem;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.dark .rag-markdown {
+  color: rgb(226 232 240);
+}
+
+.rag-markdown > :first-child {
+  margin-top: 0;
+}
+
+.rag-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.rag-markdown p,
+.rag-markdown ul,
+.rag-markdown ol,
+.rag-markdown blockquote,
+.rag-markdown pre,
+.rag-markdown table,
+.rag-markdown hr {
+  margin: 0 0 0.65rem;
+}
+
+.rag-markdown h1,
+.rag-markdown h2,
+.rag-markdown h3,
+.rag-markdown h4 {
+  margin: 0.95rem 0 0.45rem;
+  color: rgb(15 23 42);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.dark .rag-markdown h1,
+.dark .rag-markdown h2,
+.dark .rag-markdown h3,
+.dark .rag-markdown h4 {
+  color: rgb(248 250 252);
+}
+
+.rag-markdown h1 {
+  font-size: 1.25rem;
+}
+
+.rag-markdown h2 {
+  font-size: 1.125rem;
+}
+
+.rag-markdown h3,
+.rag-markdown h4 {
+  font-size: 1rem;
+}
+
+.rag-markdown ul,
+.rag-markdown ol {
+  padding-left: 1.25rem;
+}
+
+.rag-markdown ul {
+  list-style: disc;
+}
+
+.rag-markdown ol {
+  list-style: decimal;
+}
+
+.rag-markdown li {
+  margin: 0.2rem 0;
+}
+
+.rag-markdown li > ul,
+.rag-markdown li > ol {
+  margin: 0.25rem 0 0.35rem;
+}
+
+.rag-markdown strong {
+  color: rgb(15 23 42);
+  font-weight: 700;
+}
+
+.dark .rag-markdown strong {
+  color: rgb(248 250 252);
+}
+
+.rag-markdown a {
+  color: rgb(79 70 229);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.dark .rag-markdown a {
+  color: rgb(165 180 252);
+}
+
+.rag-markdown blockquote {
+  border-left: 3px solid rgb(199 210 254);
+  color: rgb(71 85 105);
+  padding-left: 0.85rem;
+}
+
+.dark .rag-markdown blockquote {
+  border-left-color: rgb(55 48 163);
+  color: rgb(203 213 225);
+}
+
+.rag-markdown code:not(pre code) {
+  border-radius: 0.375rem;
+  background: rgb(241 245 249);
+  color: rgb(51 65 85);
+  font-size: 0.86em;
+  padding: 0.12rem 0.32rem;
+}
+
+.dark .rag-markdown code:not(pre code) {
+  background: rgb(30 41 59);
+  color: rgb(226 232 240);
+}
+
+.rag-markdown pre {
+  overflow-x: auto;
+  border: 1px solid rgb(226 232 240 / 0.7);
+  border-radius: 0.75rem;
+  background: rgb(15 23 42 / 0.05);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+  padding: 0.85rem 1rem;
+}
+
+.dark .rag-markdown pre {
+  border-color: rgb(30 41 59 / 0.7);
+  background: rgb(255 255 255 / 0.05);
+  box-shadow: none;
+}
+
+.rag-markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.rag-markdown hr {
+  height: 1px;
+  border: 0;
+  background: linear-gradient(90deg, transparent, rgb(203 213 225), transparent);
+}
+
+.dark .rag-markdown hr {
+  background: linear-gradient(90deg, transparent, rgb(51 65 85), transparent);
+}
+
+.rag-markdown table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.rag-markdown tbody {
+  width: 100%;
+}
+
+.rag-markdown tr:last-child td {
+  border-bottom: 0;
+}
+
+.rag-markdown th,
+.rag-markdown td {
+  border-bottom: 1px solid rgb(226 232 240);
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+}
+
+.dark .rag-markdown th,
+.dark .rag-markdown td {
+  border-bottom-color: rgb(51 65 85);
+}
+
+.rag-markdown img {
+  max-width: 100%;
+  height: auto;
 }
 
 /* 改善中文换行，避免在词语中间换行 */

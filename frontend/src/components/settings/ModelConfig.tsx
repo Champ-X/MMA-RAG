@@ -1,4 +1,5 @@
-import { useState, useEffect, useLayoutEffect, useRef, type ComponentType } from 'react'
+import { useState, useEffect, useId, useLayoutEffect, useRef, type ComponentType } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Save, RotateCcw, Settings, AlertCircle, Brain, Image, MessageSquare, ArrowDownUp, Check, ChevronDown, Route, Mic, Film, BookText, Database, RefreshCw, Type } from 'lucide-react'
 import { useToastStore } from '@/store/useToastStore'
@@ -222,7 +223,7 @@ function ModelMetaLine({ detail, className }: { detail?: ModelCatalogDetail; cla
             aria-label={CAPABILITY_LABELS[capability]}
             className={cn('inline-flex h-8 w-8 items-center justify-center rounded-xl', meta.className)}
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="h-4 w-4" aria-hidden />
           </span>
         )
       })}
@@ -245,6 +246,7 @@ function ModelLogo({ modelId, provider, className }: { modelId: string; provider
         modelId={modelId.slice('openrouter:'.length)}
         size={24}
         className={cn('rounded-md bg-transparent p-0 ring-0 dark:bg-transparent dark:ring-0', className)}
+        ariaHidden
       />
     )
   }
@@ -257,13 +259,13 @@ function ModelLogo({ modelId, provider, className }: { modelId: string; provider
 
   if (!src) {
     return (
-      <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-[10px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300', className)}>
+      <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-[10px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300', className)} aria-hidden>
         AI
       </span>
     )
   }
 
-  return <img src={src} alt="" className={cn('h-6 w-6 shrink-0 rounded-md object-contain', className)} width={24} height={24} />
+  return <img src={src} alt="" className={cn('h-6 w-6 shrink-0 rounded-md object-contain', className)} width={24} height={24} aria-hidden />
 }
 
 function LogoModelSelect({
@@ -282,11 +284,52 @@ function LogoModelSelect({
   className?: string
 }) {
   const [open, setOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const generatedId = useId().replace(/:/g, '')
   const ref = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const optionRefs = useRef<Array<HTMLLIElement | null>>([])
+  const focusOnOpenRef = useRef<number | null>(null)
   const [menuBox, setMenuBox] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null)
   const displayValue = value || list[0] || ''
+  const listboxId = `${generatedId}-settings-model-listbox`
+  const activeOptionId = open && list.length > 0 ? `${listboxId}-option-${activeIndex}` : undefined
+  const selectLabel = displayValue
+    ? `选择模型，当前模型：${displayValue}，共 ${list.length} 个候选`
+    : `选择模型，当前无可用模型，共 ${list.length} 个候选`
+
+  const getSelectedIndex = () => Math.max(0, list.findIndex((model) => model === value))
+
+  const focusOption = (idx: number) => {
+    if (list.length === 0) return
+    const boundedIdx = Math.max(0, Math.min(idx, list.length - 1))
+    setActiveIndex(boundedIdx)
+    requestAnimationFrame(() => {
+      optionRefs.current[boundedIdx]?.focus()
+      optionRefs.current[boundedIdx]?.scrollIntoView({ block: 'nearest' })
+    })
+  }
+
+  const openMenu = (options?: { focus?: boolean; index?: number }) => {
+    if (disabled || list.length === 0) return
+    const nextIndex = Math.max(0, Math.min(options?.index ?? getSelectedIndex(), list.length - 1))
+    setActiveIndex(nextIndex)
+    focusOnOpenRef.current = options?.focus ? nextIndex : null
+    setOpen(true)
+  }
+
+  const closeMenu = (restoreFocus = false) => {
+    setOpen(false)
+    if (restoreFocus) {
+      requestAnimationFrame(() => buttonRef.current?.focus())
+    }
+  }
+
+  const selectModel = (model: string, restoreFocus = false) => {
+    onChange(model)
+    closeMenu(restoreFocus)
+  }
 
   const updateMenuBox = () => {
     const button = buttonRef.current
@@ -309,10 +352,10 @@ function LogoModelSelect({
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node
       if (ref.current?.contains(target) || menuRef.current?.contains(target)) return
-      setOpen(false)
+      closeMenu()
     }
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key === 'Escape') closeMenu(true)
     }
     document.addEventListener('mousedown', handleClickOutside)
     document.addEventListener('keydown', handleKeyDown)
@@ -337,6 +380,83 @@ function LogoModelSelect({
     if (disabled) setOpen(false)
   }, [disabled])
 
+  useEffect(() => {
+    optionRefs.current = optionRefs.current.slice(0, list.length)
+  }, [list.length])
+
+  useEffect(() => {
+    if (!open || !menuBox || list.length === 0) return
+    const pendingFocusIndex = focusOnOpenRef.current
+    const nextIndex = Math.max(0, Math.min(pendingFocusIndex ?? getSelectedIndex(), list.length - 1))
+    setActiveIndex(nextIndex)
+    requestAnimationFrame(() => {
+      const option = optionRefs.current[nextIndex]
+      if (pendingFocusIndex !== null) option?.focus()
+      option?.scrollIntoView({ block: 'nearest' })
+      focusOnOpenRef.current = null
+    })
+  }, [open, menuBox, list, value])
+
+  const handleButtonClick = () => {
+    if (open) {
+      closeMenu()
+      return
+    }
+    openMenu()
+  }
+
+  const handleButtonKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (disabled || list.length === 0) return
+    if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      openMenu({ focus: true, index: getSelectedIndex() })
+      return
+    }
+    if (event.key === 'ArrowUp' || event.key === 'End') {
+      event.preventDefault()
+      openMenu({ focus: true, index: list.length - 1 })
+      return
+    }
+    if (event.key === 'Home') {
+      event.preventDefault()
+      openMenu({ focus: true, index: 0 })
+    }
+  }
+
+  const handleOptionKeyDown = (event: ReactKeyboardEvent<HTMLLIElement>, idx: number) => {
+    if (list.length === 0) return
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      focusOption((idx + 1) % list.length)
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      focusOption((idx - 1 + list.length) % list.length)
+      return
+    }
+    if (event.key === 'Home') {
+      event.preventDefault()
+      focusOption(0)
+      return
+    }
+    if (event.key === 'End') {
+      event.preventDefault()
+      focusOption(list.length - 1)
+      return
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      const model = list[idx]
+      if (model) selectModel(model, true)
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeMenu(true)
+    }
+  }
+
   const menu =
     open && menuBox && typeof document !== 'undefined'
       ? createPortal(
@@ -350,30 +470,44 @@ function LogoModelSelect({
               maxHeight: menuBox.maxHeight,
             }}
           >
-            <ul role="listbox" className="space-y-0.5">
-              {list.map((model) => {
+            <ul
+              id={listboxId}
+              role="listbox"
+              aria-label={`模型列表，共 ${list.length} 个候选`}
+              aria-activedescendant={activeOptionId}
+              className="space-y-0.5"
+            >
+              {list.map((model, idx) => {
                 const active = model === value
+                const focused = idx === activeIndex
                 return (
-                  <li key={model} role="option" aria-selected={active}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onChange(model)
-                        setOpen(false)
-                      }}
-                      className={cn(
-                        'flex w-full min-w-0 items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm transition-colors',
-                        active
-                          ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200'
-                          : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800'
-                      )}
-                    >
-                      <span className="w-5 text-center text-base leading-none">{active ? '✓' : ''}</span>
-                      <ModelLogo modelId={model} provider={provider} />
-                      <span className="min-w-0 flex-1 truncate font-medium" title={model}>
-                        {model}
-                      </span>
-                    </button>
+                  <li
+                    key={model}
+                    ref={(node) => {
+                      optionRefs.current[idx] = node
+                    }}
+                    id={`${listboxId}-option-${idx}`}
+                    role="option"
+                    aria-selected={active}
+                    tabIndex={focused ? 0 : -1}
+                    onClick={() => selectModel(model)}
+                    onMouseEnter={() => setActiveIndex(idx)}
+                    onKeyDown={(event) => handleOptionKeyDown(event, idx)}
+                    className={cn(
+                      'flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:focus:ring-fuchsia-500/40',
+                      active
+                        ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200'
+                        : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800',
+                      focused && !active
+                        ? 'bg-slate-50 ring-1 ring-inset ring-indigo-200 dark:bg-slate-800 dark:ring-fuchsia-500/30'
+                        : undefined
+                    )}
+                  >
+                    <span className="w-5 text-center text-base leading-none">{active ? '✓' : ''}</span>
+                    <ModelLogo modelId={model} provider={provider} />
+                    <span className="min-w-0 flex-1 truncate font-medium" title={model}>
+                      {model}
+                    </span>
                   </li>
                 )
               })}
@@ -390,9 +524,12 @@ function LogoModelSelect({
         type="button"
         disabled={disabled}
         title={displayValue || '当前无可用模型'}
+        aria-label={selectLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() => setOpen((next) => !next)}
+        aria-controls={listboxId}
+        onClick={handleButtonClick}
+        onKeyDown={handleButtonKeyDown}
         className={cn(
           'relative flex h-10 w-full min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white/95 py-2 pl-3 pr-10 text-left text-sm font-semibold text-slate-800 shadow-sm transition-all duration-200 hover:border-indigo-300 hover:shadow-md focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-fuchsia-500/50 dark:focus:border-fuchsia-500 dark:focus:ring-fuchsia-500/50'
         )}
@@ -426,6 +563,16 @@ export function ModelConfig({
   const syncedModelCount = Object.values(modelDetails).filter((detail) => detail.catalog_synced).length
   const totalModelCount = Object.keys(modelDetails).length
   const lastRefreshLabel = formatCatalogTime(catalogStatus?.last_refresh_finished_at)
+  const configStatusId = useId().replace(/:/g, '') + '-model-config-status'
+  const configStatusText = saving
+    ? '正在保存模型配置'
+    : catalogRefreshing
+      ? '正在刷新官方模型目录'
+      : savedBrief
+        ? '模型配置已保存'
+        : hasChanges
+          ? '模型配置有未保存更改'
+          : '模型配置没有未保存更改'
 
   const providerList = (category: AvailableModelType, taskKey?: string) => {
     const taskCandidates = taskKey ? (availableModels?.task_candidates?.[taskKey] ?? []) : []
@@ -552,6 +699,9 @@ export function ModelConfig({
 
   return (
     <div className={cn('space-y-6 animate-in fade-in duration-300', className)}>
+      <span id={configStatusId} className="sr-only" aria-live="polite">
+        {configStatusText}
+      </span>
       <div className="overflow-hidden rounded-3xl border border-white/75 bg-white/84 shadow-lg shadow-slate-200/40 backdrop-blur-sm dark:border-slate-800/80 dark:bg-slate-950/80 dark:shadow-black/20">
         <header className="relative overflow-hidden border-b border-slate-100/80 bg-gradient-to-r from-slate-50/90 via-white/90 to-indigo-50/45 px-6 py-5 dark:border-slate-800/60 dark:from-slate-900/90 dark:via-slate-950/90 dark:to-indigo-950/25 sm:px-8">
           <div className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-indigo-400/15 blur-3xl dark:bg-indigo-500/10" />
@@ -578,7 +728,7 @@ export function ModelConfig({
               </span>
               {hasChanges && (
                 <span className="inline-flex items-center gap-2 rounded-full border border-amber-200/60 bg-amber-100/90 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-sm dark:border-amber-800/50 dark:bg-amber-900/50 dark:text-amber-300">
-                  <AlertCircle className="h-3.5 w-3.5" />
+                  <AlertCircle className="h-3.5 w-3.5" aria-hidden />
                   未保存
                 </span>
               )}
@@ -588,9 +738,11 @@ export function ModelConfig({
                   size="sm"
                   className="rounded-xl border border-sky-200 text-sky-700 shadow-sm transition-all duration-200 hover:border-sky-300 hover:bg-sky-50 dark:border-sky-800 dark:text-sky-300 dark:hover:border-sky-700 dark:hover:bg-sky-950/30 disabled:opacity-40"
                   disabled={catalogRefreshing || saving}
+                  aria-label={catalogRefreshing ? '正在刷新官方模型目录' : '刷新官方模型目录'}
+                  aria-describedby={configStatusId}
                   onClick={() => void onRefreshCatalog()}
                 >
-                  <RefreshCw className={cn('mr-2 h-4 w-4', catalogRefreshing && 'animate-spin')} />
+                  <RefreshCw className={cn('mr-2 h-4 w-4', catalogRefreshing && 'animate-spin')} aria-hidden />
                   {catalogRefreshing ? '同步中…' : '刷新官网目录'}
                 </Button>
               )}
@@ -599,31 +751,35 @@ export function ModelConfig({
                 size="sm"
                 className="rounded-xl border border-slate-300 text-slate-700 shadow-sm transition-all duration-200 hover:border-slate-400 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:bg-slate-800 disabled:opacity-40"
                 disabled={!hasChanges || saving}
+                aria-label={hasChanges ? '重置模型配置为上次保存状态' : '当前没有可重置的模型配置更改'}
+                aria-describedby={configStatusId}
                 onClick={handleReset}
               >
-                <RotateCcw className="mr-2 h-4 w-4" />
+                <RotateCcw className="mr-2 h-4 w-4" aria-hidden />
                 重置
               </Button>
               <Button
                 size="sm"
                 className="rounded-xl border-0 bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 font-semibold text-white shadow-md shadow-indigo-500/25 transition-all duration-200 hover:from-indigo-500 hover:via-purple-500 hover:to-fuchsia-500 hover:shadow-lg hover:shadow-indigo-500/35 disabled:opacity-50"
                 disabled={!hasChanges || saving}
+                aria-label={saving ? '正在保存模型配置' : hasChanges ? '保存模型配置' : '当前没有可保存的模型配置更改'}
+                aria-describedby={configStatusId}
                 onClick={handleSave}
               >
                 {saving ? (
                   <>
-                    <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden />
                     保存中…
                   </>
                 ) : savedBrief ? (
                   <>
                     已保存
-                    <Check className="ml-2 h-4 w-4 text-emerald-200" />
+                    <Check className="ml-2 h-4 w-4 text-emerald-200" aria-hidden />
                   </>
                 ) : (
                   <>
                     保存
-                    <Save className="ml-2 h-4 w-4" />
+                    <Save className="ml-2 h-4 w-4" aria-hidden />
                   </>
                 )}
               </Button>

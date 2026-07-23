@@ -375,24 +375,6 @@ export function SuggestedQuestions({
     return pickRandom(knowledgeBases, RANDOM_KB_SAMPLE_SIZE)
   }, [knowledgeBases, scope])
 
-  const wallPlacements = useMemo(() => {
-    // 桌面端：保持同一高度基线，仅做轻微扰动；横向分栏并控制间距，降低重叠概率
-    const anchorXs = [16, 50, 84]
-    const baseTop = 26
-    return questions.map((item, idx) => {
-      const seed = Array.from(item.id).reduce((acc, ch) => acc + ch.charCodeAt(0), 0) + idx * 97
-      const rand = (min: number, max: number, salt: number) => {
-        const t = Math.abs(Math.sin((seed + salt) * 12.9898) * 43758.5453) % 1
-        return min + (max - min) * t
-      }
-      const anchorX = anchorXs[idx % anchorXs.length]
-      const top = baseTop + rand(-4, 4, 1)
-      const rotate = rand(2.5, 6.5, 2) * (idx % 2 === 0 ? -1 : 1)
-      const x = Math.min(85, Math.max(15, anchorX + rand(-1.5, 1.5, 3)))
-      return { top, rotate, x }
-    })
-  }, [questions])
-
   useEffect(() => {
     let cancelled = false
 
@@ -462,16 +444,16 @@ export function SuggestedQuestions({
   if (!loading && questions.length === 0 && !status) return null
 
   return (
-    <div className="mx-auto mt-2 w-full max-w-lg px-1 md:max-w-none md:px-0">
+    <div className="mx-auto mt-4 w-full max-w-lg px-1 md:max-w-2xl md:px-0">
       {loading ? (
-        <div className="flex items-center justify-center py-1">
+        <div className="flex items-center justify-center py-1" role="status" aria-label="正在生成推荐问题">
           <div className="relative h-12 w-12">
             <span
-              className="absolute inset-0 animate-[spin_3.8s_linear_infinite] rounded-[42%_58%_63%_37%/44%_39%_61%_56%] border-2 border-violet-300/85 border-t-indigo-400 border-r-fuchsia-300/80 dark:border-violet-400/70 dark:border-t-indigo-300 dark:border-r-fuchsia-300/70"
+              className="absolute inset-0 animate-[spin_3.8s_linear_infinite] rounded-[42%_58%_63%_37%/44%_39%_61%_56%] border-2 border-violet-300/80 border-t-indigo-400 border-r-fuchsia-300/80 dark:border-violet-400/70 dark:border-t-indigo-300 dark:border-r-fuchsia-300/70"
               aria-hidden
             />
             <span
-              className="absolute inset-[2px] animate-[spin_2.6s_linear_infinite_reverse] rounded-[61%_39%_46%_54%/58%_44%_56%_42%] border border-dashed border-indigo-300/70 dark:border-indigo-300/55"
+              className="absolute inset-[2px] animate-[spin_2.6s_linear_infinite_reverse] rounded-[61%_39%_46%_54%/58%_44%_56%_42%] border border-dashed border-indigo-300/70 dark:border-indigo-300/50"
               aria-hidden
             />
             <span
@@ -482,7 +464,7 @@ export function SuggestedQuestions({
               className="absolute right-[8px] bottom-[7px] h-1.5 w-1.5 rounded-full bg-sky-300 shadow-sm shadow-sky-300/70 dark:bg-sky-300/90"
               aria-hidden
             />
-            <span className="absolute left-1/2 top-1/2 inline-flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-br from-violet-100 to-indigo-100 text-[17px] font-semibold leading-none text-indigo-600 shadow-[0_4px_14px_rgba(99,102,241,0.25)] dark:from-violet-900/60 dark:to-indigo-900/65 dark:text-indigo-200 dark:shadow-[0_4px_16px_rgba(99,102,241,0.35)]">
+            <span className="absolute left-1/2 top-1/2 inline-flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-br from-violet-100 to-indigo-100 text-[17px] font-semibold leading-none text-indigo-600 shadow-[0_4px_14px_rgba(99,102,241,0.25)] dark:from-violet-900/60 dark:to-indigo-900/60 dark:text-indigo-200 dark:shadow-[0_4px_16px_rgba(99,102,241,0.35)]">
               ?
             </span>
           </div>
@@ -490,29 +472,39 @@ export function SuggestedQuestions({
       ) : (
         <>
           {status === 'degraded' && (
-            <div className="mb-2 rounded-lg border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-[11px] text-amber-700 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-300">
+            <div className="mb-3 rounded-xl border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-[11px] text-amber-700 shadow-sm dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-300" role="status">
               已切换推荐策略
             </div>
           )}
           {status === 'failed' && (
-            <div className="mb-2 rounded-lg border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300">
+            <div className="mb-3 rounded-xl border border-slate-200/80 bg-slate-50/90 px-3 py-2 text-[11px] text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300" role="alert">
               暂时无法生成推荐问题
             </div>
           )}
           <ul className="flex flex-col gap-2 md:hidden" aria-label="推荐问题">
-            {questions.map((item) => (
+            {questions.map((item, idx) => (
               <li key={`mobile-${item.id}`}>
                 <button
                   type="button"
                   disabled={disabled}
+                  aria-label={`发送推荐问题：${item.text}`}
                   onClick={() => onSelect(item.text)}
                   className={cn(
-                    'group w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 text-left shadow-sm transition-all duration-200',
-                    'hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md',
-                    'dark:border-slate-700/65 dark:bg-slate-900/55 dark:hover:border-indigo-500/40 dark:hover:bg-slate-900/75',
+                    'group relative w-full overflow-hidden rounded-2xl border bg-white/90 px-3.5 py-3 text-left shadow-sm ring-1 ring-white/70 transition-[border-color,box-shadow,background-color] duration-200',
+                    'border-slate-200/80 hover:border-slate-300/90 hover:bg-white hover:shadow-md',
+                    'dark:border-slate-700/70 dark:bg-slate-900/60 dark:ring-white/[0.04] dark:hover:border-indigo-500/40 dark:hover:bg-slate-900/80',
                     disabled && 'cursor-not-allowed opacity-55 hover:shadow-sm'
                   )}
                 >
+                  <span
+                    className={cn(
+                      'absolute inset-y-3 left-0 w-1 rounded-r-full',
+                      idx === 0 && 'bg-indigo-400/70 dark:bg-indigo-300/70',
+                      idx === 1 && 'bg-emerald-400/70 dark:bg-emerald-300/70',
+                      idx === 2 && 'bg-amber-400/80 dark:bg-amber-300/70'
+                    )}
+                    aria-hidden
+                  />
                   <span className="block line-clamp-2 text-[13px] font-medium leading-snug text-slate-800 dark:text-slate-100">
                     {item.text}
                   </span>
@@ -521,83 +513,48 @@ export function SuggestedQuestions({
             ))}
           </ul>
 
-          <div
-            className="relative hidden md:left-1/2 md:block md:h-[80px] md:w-[min(88vw,760px)] md:-translate-x-1/2 md:translate-y-5"
-            aria-label="推荐问题便签墙"
-          >
+          <ul className="hidden gap-3 md:grid md:grid-cols-3" aria-label="推荐问题">
             {questions.map((item, idx) => {
-              const place = wallPlacements[idx] ?? { top: 8, rotate: 0, x: idx % 2 === 0 ? 5 : 84 }
               return (
-                <button
-                  key={`wall-${item.id}`}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => onSelect(item.text)}
-                  style={{
-                    top: `${place.top}px`,
-                    left: `${place.x}%`,
-                    transform: `translateX(-50%) rotate(${place.rotate}deg)`,
-                  }}
-                  className={cn(
-                    'group absolute z-10 w-[31%] min-w-[172px] max-w-[220px] px-3 pb-3 pt-3 text-left transition-all duration-200',
-                    'bg-gradient-to-br from-amber-50/95 via-amber-50/88 to-yellow-50/86',
-                    'shadow-[0_10px_18px_-12px_rgba(15,23,42,0.42)]',
-                    'hover:-translate-y-0.5 hover:shadow-[0_14px_24px_-11px_rgba(15,23,42,0.36)]',
-                    idx === 0 && 'rounded-[8px_6px_9px_7px] border-[1.5px] border-amber-200/85',
-                    idx === 1 && 'rounded-[7px_9px_6px_8px] border-[1.5px] border-orange-200/85',
-                    idx === 2 && 'rounded-[9px_7px_8px_6px] border-[1.5px] border-amber-200/90',
-                    'dark:from-slate-800/95 dark:via-slate-800/95 dark:to-slate-800/92',
-                    idx === 0 && 'dark:border-indigo-300/45',
-                    idx === 1 && 'dark:border-violet-300/40',
-                    idx === 2 && 'dark:border-sky-300/40',
-                    disabled && 'cursor-not-allowed opacity-60 hover:scale-100 hover:translate-y-0'
-                  )}
-                >
-                  <span
-                    className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(115deg,rgba(255,255,255,0.28)_0%,transparent_30%,transparent_70%,rgba(251,191,36,0.12)_100%)]"
-                    aria-hidden
-                  />
-                  <span
-                    className="pointer-events-none absolute right-[9px] top-[8px] h-0 w-0 border-l-[7px] border-l-transparent border-b-[7px] border-b-amber-200/85 dark:border-b-slate-500/80"
-                    aria-hidden
-                  />
-                  <span
-                    className="pointer-events-none absolute right-[9px] top-[8px] h-0 w-0 border-l-[6px] border-l-transparent border-b-[6px] border-b-amber-50/95 dark:border-b-slate-700/95"
-                    aria-hidden
-                  />
-                  <span
+                <li key={`desktop-${item.id}`} className="min-w-0">
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    aria-label={`发送推荐问题：${item.text}`}
+                    onClick={() => onSelect(item.text)}
                     className={cn(
-                      'absolute -top-2 left-1/2 -translate-x-1/2 text-[14px] opacity-95 drop-shadow-[0_2px_2px_rgba(0,0,0,0.12)] transition-transform duration-200 group-hover:scale-105',
-                      idx === 1 ? 'rotate-[6deg]' : idx === 2 ? '-rotate-[4deg]' : 'rotate-[2deg]'
+                      'group relative flex min-h-[88px] w-full overflow-hidden rounded-2xl border bg-white/90 p-4 text-left shadow-[0_16px_30px_-26px_rgba(15,23,42,0.7)] ring-1 ring-white/70 backdrop-blur-sm transition-[border-color,box-shadow,background-color] duration-200',
+                      'border-slate-200/80 hover:border-slate-300/95 hover:bg-white hover:shadow-[0_18px_34px_-24px_rgba(15,23,42,0.72)]',
+                      'dark:border-slate-700/70 dark:bg-slate-900/60 dark:ring-white/[0.04] dark:hover:border-indigo-400/30 dark:hover:bg-slate-900/80',
+                      disabled && 'cursor-not-allowed opacity-60 hover:shadow-[0_16px_30px_-26px_rgba(15,23,42,0.7)]'
                     )}
-                    aria-hidden
                   >
-                    📌
-                  </span>
-                  <span
-                    className="pointer-events-none absolute left-1/2 top-[1px] h-[2px] w-8 -translate-x-1/2 rounded-full bg-amber-200/70 dark:bg-slate-500/60"
-                    aria-hidden
-                  />
-                  <span
-                    className={cn(
-                      'pointer-events-none absolute bottom-1.5 right-2 text-[10px] opacity-35',
-                      idx === 1 ? 'rotate-6' : '-rotate-3'
-                    )}
-                    aria-hidden
-                  >
-                    ·
-                  </span>
-                  <span
-                    className="pointer-events-none absolute bottom-[5px] left-[10px] right-[10px] h-px bg-amber-200/70 dark:bg-slate-600/70"
-                    aria-hidden
-                  />
-                  <span className="relative z-10 block line-clamp-2 text-[14px] font-medium leading-snug text-slate-800/95 dark:text-slate-100">
-                    {item.text}
-                  </span>
-                </button>
+                    <span
+                      className={cn(
+                        'absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-slate-300/80 to-transparent dark:via-white/14',
+                        idx === 0 && 'via-indigo-300/80 dark:via-indigo-300/40',
+                        idx === 1 && 'via-emerald-300/80 dark:via-emerald-300/40',
+                        idx === 2 && 'via-amber-300/90 dark:via-amber-300/40'
+                      )}
+                      aria-hidden
+                    />
+                    <span
+                      className={cn(
+                        'absolute left-0 top-4 h-10 w-1 rounded-r-full',
+                        idx === 0 && 'bg-indigo-400/70 dark:bg-indigo-300/60',
+                        idx === 1 && 'bg-emerald-400/70 dark:bg-emerald-300/60',
+                        idx === 2 && 'bg-amber-400/80 dark:bg-amber-300/70'
+                      )}
+                      aria-hidden
+                    />
+                    <span className="relative z-10 block line-clamp-3 text-[13px] font-medium leading-relaxed text-slate-800/95 dark:text-slate-100">
+                      {item.text}
+                    </span>
+                  </button>
+                </li>
               )
             })}
-          </div>
+          </ul>
         </>
       )}
     </div>

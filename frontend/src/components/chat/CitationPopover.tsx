@@ -1,7 +1,7 @@
 import { X, Eye, Image } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState, useRef, useEffect } from 'react'
-import React from 'react'
+import { useCallback, useState, useRef, useEffect, useId } from 'react'
+import type { SyntheticEvent } from 'react'
 import type { CitationReference } from '@/types/sse'
 import { chatApi } from '@/services/api_client'
 import { useChatStore } from '@/store/useChatStore'
@@ -30,11 +30,13 @@ function VideoWithSeek({
   startSec,
   endSec,
   onError,
+  ariaDescribedBy,
 }: {
   src: string
   startSec?: number | null
   endSec?: number | null
-  onError?: (e: React.SyntheticEvent<HTMLVideoElement, Event>) => void
+  onError?: (e: SyntheticEvent<HTMLVideoElement, Event>) => void
+  ariaDescribedBy?: string
 }) {
   const ref = useRef<HTMLVideoElement>(null)
   const hasSeeked = useRef(false)
@@ -69,6 +71,8 @@ function VideoWithSeek({
       ref={ref}
       src={src}
       controls
+      aria-label="视频引用预览"
+      aria-describedby={ariaDescribedBy}
       preload="metadata"
       className="w-full h-auto min-h-[200px] aspect-video rounded-lg object-contain bg-black"
       onError={onError}
@@ -97,7 +101,7 @@ function ImageDisplayWithErrorHandler({
   const [imageError, setImageError] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
   const [retryUrl, setRetryUrl] = useState<string | null>(null)
-  const imgRef = React.useRef<HTMLImageElement>(null)
+  const imgRef = useRef<HTMLImageElement>(null)
   const effectiveSrc = imgUrl || retryUrl || ''
 
   useEffect(() => {
@@ -106,7 +110,7 @@ function ImageDisplayWithErrorHandler({
     setRetryUrl(null)
   }, [imgUrl])
 
-  React.useEffect(() => {
+  useEffect(() => {
     const img = imgRef.current
     if (img && effectiveSrc) {
       if (img.complete && img.naturalHeight !== 0) {
@@ -118,8 +122,8 @@ function ImageDisplayWithErrorHandler({
     }
   }, [effectiveSrc])
 
-  const handleImageError = React.useCallback(
-    async (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+  const handleImageError = useCallback(
+    async (e: SyntheticEvent<HTMLImageElement, Event>) => {
       e.preventDefault()
       e.stopPropagation()
       if (onErrorRetry) {
@@ -164,8 +168,8 @@ function ImageDisplayWithErrorHandler({
         style={{ minHeight: '280px', overflow: 'hidden' }}
       >
         {imageError ? (
-          <div className="flex flex-col items-center justify-center gap-2 p-4">
-            <Image className="h-8 w-8 text-slate-400 dark:text-slate-500" />
+          <div className="flex flex-col items-center justify-center gap-2 p-4" role="alert">
+            <Image className="h-8 w-8 text-slate-400 dark:text-slate-500" aria-hidden />
             <p className="text-xs text-slate-500 dark:text-slate-400">图片加载失败</p>
             {fileName && (
               <p className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-full">{fileName}</p>
@@ -174,8 +178,8 @@ function ImageDisplayWithErrorHandler({
         ) : (
           <>
             {!imageLoaded && (
-              <div className="absolute inset-0 flex items-center justify-center z-10">
-                <div className="animate-spin h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full" />
+              <div className="absolute inset-0 flex items-center justify-center z-10" role="status" aria-label="图片加载中">
+                <div className="animate-spin h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full" aria-hidden />
               </div>
             )}
             <img
@@ -218,6 +222,9 @@ export function CitationPopover({
   const [refreshedImgUrl, setRefreshedImgUrl] = useState<string | null>(null)
   const [refreshedAudioUrl, setRefreshedAudioUrl] = useState<string | null>(null)
   const [refreshedVideoUrl, setRefreshedVideoUrl] = useState<string | null>(null)
+  const popoverId = useId().replace(/:/g, '')
+  const popoverTitleId = `${popoverId}-citation-title`
+  const popoverDescriptionId = `${popoverId}-citation-description`
 
   useEffect(() => {
     if (!open || !item) return
@@ -344,6 +351,22 @@ export function CitationPopover({
 
   top = Math.max(pad, Math.min(top, viewportH - maxHeight - pad))
 
+  const audioPreviewStatusId = `${popoverId}-audio-preview-status`
+  const videoPreviewStatusId = `${popoverId}-video-preview-status`
+  const videoSegmentId = `${popoverId}-video-segment`
+  const hasAudioPreview = Boolean(item.audio_url || refreshedAudioUrl)
+  const hasVideoPreview = Boolean(item.video_url || refreshedVideoUrl)
+  const videoSegmentLabel =
+    item.start_sec != null && item.end_sec != null
+      ? `片段 ${formatTimeLabel(item.start_sec)} - ${formatTimeLabel(item.end_sec)}`
+      : item.start_sec != null
+        ? `从 ${formatTimeLabel(item.start_sec)} 开始`
+        : item.end_sec != null
+          ? `至 ${formatTimeLabel(item.end_sec)} 结束`
+          : null
+  const keyFrameCount = item.key_frames?.filter((f: { img_url?: string }) => f.img_url).length ?? 0
+  const sourceLabel = item.file_name ? shortenFileName(item.file_name, 32) : '未知路径'
+
   return (
     <AnimatePresence>
       {open && (
@@ -360,13 +383,17 @@ export function CitationPopover({
             maxHeight: `${maxHeight}px`,
           }}
           className="z-40 flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.25),0_0_0_1px_rgba(255,255,255,0.05)_inset] backdrop-blur-xl dark:border-slate-700/80 dark:bg-slate-950/85 dark:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.5)]"
+          role="dialog"
+          aria-modal="false"
+          aria-labelledby={popoverTitleId}
+          aria-describedby={popoverDescriptionId}
         >
           <div className="flex-shrink-0 flex items-center justify-between border-b border-slate-200/80 dark:border-slate-700/80 px-5 py-3.5 bg-slate-50/50 dark:bg-slate-900/30">
             <div className="min-w-0 flex-1 mr-3">
-              <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100" title={item.file_name || undefined}>
+              <div id={popoverTitleId} className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100" title={item.file_name || undefined}>
                 {item.file_name || '未知文件'}
               </div>
-              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium">
+              <div id={popoverDescriptionId} className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium">
                 Score: {item.scores?.rerank?.toFixed(2) || item.scores?.dense?.toFixed(2) || '0.00'}
               </div>
             </div>
@@ -374,47 +401,60 @@ export function CitationPopover({
               type="button"
               onClick={onClose}
               className="flex-shrink-0 grid h-9 w-9 place-items-center rounded-xl text-slate-500 hover:bg-slate-200/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-100 transition-colors"
-              aria-label="关闭"
+              aria-label="关闭引用预览"
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4" aria-hidden />
             </button>
           </div>
 
           {/* 内容区域可滚动：图片与文字一起滚动 */}
           <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0 scrollbar-hide">
             {item.type === 'image' && (item.img_url || refreshedImgUrl || ((item.file_path || item.file_name) && (item.debug_info?.kb_id || fallbackKbId))) && (
-              <ImageDisplayWithErrorHandler
-                imgUrl={refreshedImgUrl || item.img_url || ''}
-                fileName={item.file_name}
-                onErrorRetry={
-                  (item.file_path || item.file_name) && (item.debug_info?.kb_id || fallbackKbId)
-                    ? async () => {
-                        try {
-                          const res = await chatApi.getReferenceImageUrl({
-                            kb_id: item.debug_info?.kb_id || fallbackKbId!,
-                            file_path: item.file_path || item.file_name || '',
-                          })
-                          if (res?.img_url) {
-                            setRefreshedImgUrl(res.img_url)
-                            return res.img_url
+              <section aria-label="图片引用预览">
+                <ImageDisplayWithErrorHandler
+                  imgUrl={refreshedImgUrl || item.img_url || ''}
+                  fileName={item.file_name}
+                  onErrorRetry={
+                    (item.file_path || item.file_name) && (item.debug_info?.kb_id || fallbackKbId)
+                      ? async () => {
+                          try {
+                            const res = await chatApi.getReferenceImageUrl({
+                              kb_id: item.debug_info?.kb_id || fallbackKbId!,
+                              file_path: item.file_path || item.file_name || '',
+                            })
+                            if (res?.img_url) {
+                              setRefreshedImgUrl(res.img_url)
+                              return res.img_url
+                            }
+                          } catch {
+                            //
                           }
-                        } catch {
-                          //
+                          return null
                         }
-                        return null
-                      }
-                    : undefined
-                }
-              />
+                      : undefined
+                  }
+                />
+              </section>
             )}
 
             {item.type === 'audio' && (
               <>
-                {(item.audio_url || refreshedAudioUrl) && (
-                  <div className="mb-4 rounded-xl border border-amber-200/70 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-950/40 p-4 shadow-sm">
+                {hasAudioPreview && (
+                  <section
+                    className="mb-4 rounded-xl border border-amber-200/70 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-950/40 p-4 shadow-sm"
+                    aria-label="音频引用预览"
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">音频预览</span>
+                      <span id={audioPreviewStatusId} className="text-[11px] text-amber-600/80 dark:text-amber-300/80">
+                        可使用播放器控件播放
+                      </span>
+                    </div>
                     <audio
                       src={refreshedAudioUrl || item.audio_url || ''}
                       controls
+                      aria-label="音频引用预览"
+                      aria-describedby={audioPreviewStatusId}
                       className="w-full h-12 rounded-lg"
                       preload="metadata"
                       onError={
@@ -433,30 +473,43 @@ export function CitationPopover({
                           : undefined
                       }
                     />
-                  </div>
+                  </section>
                 )}
-                {(item.content || !(item.audio_url || refreshedAudioUrl)) && (
-                  <div className="rounded-xl bg-amber-50/50 dark:bg-amber-900/20 p-4 text-sm text-slate-700 dark:text-slate-200 border border-amber-100/80 dark:border-amber-800/40 leading-relaxed">
+                {(item.content || !hasAudioPreview) && (
+                  <section
+                    className="rounded-xl bg-amber-50/50 dark:bg-amber-900/20 p-4 text-sm text-slate-700 dark:text-slate-200 border border-amber-100/80 dark:border-amber-800/40 leading-relaxed"
+                    aria-label="音频转写内容"
+                  >
+                    {!hasAudioPreview && (
+                      <p className="mb-2 text-xs font-medium text-amber-700 dark:text-amber-300" role="status">
+                        未返回可播放音频，已展示文本内容
+                      </p>
+                    )}
                     <div className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap max-h-[200px] overflow-y-auto">
                       {item.content || '无内容'}
                     </div>
-                  </div>
+                  </section>
                 )}
               </>
             )}
 
             {item.type === 'video' && (
               <>
-                {(item.video_url || refreshedVideoUrl) && (
-                  <div className="mb-4 rounded-xl overflow-hidden border border-sky-200/70 dark:border-sky-800/50 bg-slate-100/80 dark:bg-slate-800/80 p-3 ring-1 ring-slate-200/50 dark:ring-slate-600/30 shadow-sm">
-                    {(item.start_sec != null || item.end_sec != null) && (
+                {hasVideoPreview && (
+                  <section
+                    className="mb-4 rounded-xl overflow-hidden border border-sky-200/70 dark:border-sky-800/50 bg-slate-100/80 dark:bg-slate-800/80 p-3 ring-1 ring-slate-200/50 dark:ring-slate-600/30 shadow-sm"
+                    aria-label="视频引用预览"
+                  >
+                    <p id={videoPreviewStatusId} className="sr-only">
+                      视频播放器已加载，可使用原生控件播放
+                    </p>
+                    {videoSegmentLabel && (
                       <div className="mb-2 flex items-center">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300 border border-sky-200/70 dark:border-sky-700/50">
-                          {item.start_sec != null && item.end_sec != null
-                            ? `片段 ${formatTimeLabel(item.start_sec)} - ${formatTimeLabel(item.end_sec)}`
-                            : item.start_sec != null
-                              ? `从 ${formatTimeLabel(item.start_sec)} 开始`
-                              : `至 ${formatTimeLabel(item.end_sec!)} 结束`}
+                        <span
+                          id={videoSegmentId}
+                          className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300 border border-sky-200/70 dark:border-sky-700/50"
+                        >
+                          {videoSegmentLabel}
                         </span>
                       </div>
                     )}
@@ -464,6 +517,7 @@ export function CitationPopover({
                       src={refreshedVideoUrl || item.video_url || ''}
                       startSec={item.start_sec}
                       endSec={item.end_sec}
+                      ariaDescribedBy={videoSegmentLabel ? videoSegmentId : videoPreviewStatusId}
                       onError={
                         (item.file_path || item.file_name) && (item.debug_info?.kb_id || fallbackKbId)
                           ? async () => {
@@ -480,25 +534,34 @@ export function CitationPopover({
                           : undefined
                       }
                     />
-                  </div>
+                  </section>
                 )}
-                {(item.content || !(item.video_url || refreshedVideoUrl)) && (
-                  <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50">
+                {(item.content || !hasVideoPreview) && (
+                  <section
+                    className="rounded-xl bg-slate-50/80 dark:bg-slate-800/50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50"
+                    aria-label="视频引用文本内容"
+                  >
+                    {!hasVideoPreview && (
+                      <p className="mb-2 text-xs font-medium text-sky-700 dark:text-sky-300" role="status">
+                        未返回可播放视频，已展示文本内容
+                      </p>
+                    )}
                     <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap max-h-[180px] overflow-y-auto">
                       {item.content || '无内容'}
                     </div>
-                  </div>
+                  </section>
                 )}
                 {item.key_frames && item.key_frames.length > 0 && (
-                  <div className="mt-3">
+                  <section className="mt-3" aria-label={`关键帧，共 ${keyFrameCount} 帧`}>
                     <p className="text-xs text-sky-600 dark:text-sky-400 font-medium mb-2">关键帧</p>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2" role="list">
                       {item.key_frames
                         .filter((f: { img_url?: string }) => f.img_url)
                         .map((frame: { img_url?: string; timestamp?: number; description?: string }, idx: number) => (
-                          <div
+                          <figure
                             key={idx}
                             className="rounded-lg overflow-hidden border border-sky-200/70 dark:border-sky-800/50 bg-white/80 dark:bg-slate-800/60"
+                            role="listitem"
                           >
                             <img
                               src={frame.img_url}
@@ -506,7 +569,7 @@ export function CitationPopover({
                               className="w-28 h-[63px] object-cover block"
                             />
                             {(frame.timestamp != null || frame.description) && (
-                              <div className="px-2 py-1 bg-sky-50/50 dark:bg-sky-900/20">
+                              <figcaption className="px-2 py-1 bg-sky-50/50 dark:bg-sky-900/20">
                                 {frame.timestamp != null && (
                                   <span className="text-[10px] text-sky-600 dark:text-sky-400 font-mono mr-1">
                                     {formatTimeLabel(frame.timestamp)}
@@ -517,47 +580,61 @@ export function CitationPopover({
                                     {frame.description}
                                   </p>
                                 )}
-                              </div>
+                              </figcaption>
                             )}
-                          </div>
+                          </figure>
                         ))}
                     </div>
-                  </div>
+                  </section>
                 )}
               </>
             )}
 
             {item.type === 'image' ? (
               item.content && (
-                <div className="rounded-xl bg-purple-50/80 dark:bg-purple-900/20 p-4 text-sm text-slate-700 dark:text-slate-200 border border-purple-100/80 dark:border-purple-800/40">
+                <section
+                  className="rounded-xl bg-purple-50/80 dark:bg-purple-900/20 p-4 text-sm text-slate-700 dark:text-slate-200 border border-purple-100/80 dark:border-purple-800/40"
+                  aria-label="图片 VLM Caption"
+                >
                   <div className="flex items-center gap-2 mb-2">
-                    <Eye size={14} className="text-purple-600 dark:text-purple-400 shrink-0" />
+                    <Eye size={14} className="text-purple-600 dark:text-purple-400 shrink-0" aria-hidden />
                     <span className="font-semibold text-purple-700 dark:text-purple-300">VLM Caption</span>
                   </div>
                   <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap max-h-[160px] overflow-y-auto">
                     {item.content}
                   </div>
-                </div>
+                </section>
               )
             ) : item.type !== 'audio' && item.type !== 'video' ? (
-              <div className="rounded-xl bg-slate-100/50 dark:bg-slate-800/30 p-4 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
+              <section
+                className="rounded-xl bg-slate-100/50 dark:bg-slate-800/30 p-4 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed"
+                aria-label="文本引用内容"
+              >
                 {item.content || '无内容'}
-              </div>
+              </section>
             ) : null}
           </div>
 
-          <div className="flex-shrink-0 flex items-center justify-between gap-3 px-5 py-3.5 border-t border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-900/30">
-            <div className="text-xs text-slate-500 dark:text-slate-400 truncate flex-1 min-w-0" title={item.file_name || undefined}>
-              {item.file_name ? shortenFileName(item.file_name, 32) : '未知路径'}
+          <footer
+            className="flex-shrink-0 flex items-center justify-between gap-3 px-5 py-3.5 border-t border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-900/30"
+            aria-label="引用来源与操作"
+          >
+            <div
+              className="text-xs text-slate-500 dark:text-slate-400 truncate flex-1 min-w-0"
+              title={item.file_name || undefined}
+              aria-label={`引用来源：${sourceLabel}`}
+            >
+              {sourceLabel}
             </div>
             <button
               type="button"
               onClick={onOpenInspector}
+              aria-label={`打开引用检查器：${item.file_name || '未知文件'}`}
               className="flex-shrink-0 rounded-xl bg-gradient-to-br from-indigo-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-fuchsia-500/20 transition-all duration-200 hover:brightness-110 hover:shadow-lg hover:shadow-fuchsia-500/25 active:scale-[0.98]"
             >
               打开检查器
             </button>
-          </div>
+          </footer>
         </motion.div>
       )}
     </AnimatePresence>

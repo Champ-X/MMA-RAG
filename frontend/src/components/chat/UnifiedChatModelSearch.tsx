@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, AlertCircle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -34,14 +34,14 @@ function providerLabel(provider: string): string {
 
 function CatalogRowIcon({ item }: { item: ChatCatalogItem }) {
   if (item.provider === 'openrouter') {
-    return <OpenRouterModelBrandIcon modelId={item.id} size={26} className="mt-0.5" />
+    return <OpenRouterModelBrandIcon modelId={item.id} size={26} className="mt-0.5" ariaHidden />
   }
   const pk: ProviderKey = getModelProvider(item.registry_id)
   const src = pk ? PROVIDER_LOGOS[pk] : undefined
   if (src) {
-    return <img src={src} alt="" className="mt-0.5 h-[26px] w-[26px] rounded object-contain" width={26} height={26} />
+    return <img src={src} alt="" className="mt-0.5 h-[26px] w-[26px] rounded object-contain" width={26} height={26} aria-hidden />
   }
-  return <div className="mt-0.5 h-[26px] w-[26px] rounded bg-slate-200/80 dark:bg-slate-600/80" />
+  return <div className="mt-0.5 h-[26px] w-[26px] rounded bg-slate-200/80 dark:bg-slate-600/80" aria-hidden />
 }
 
 interface UnifiedChatModelSearchProps {
@@ -62,6 +62,8 @@ export function UnifiedChatModelSearch({
   className,
 }: UnifiedChatModelSearchProps) {
   const [query, setQuery] = useState('')
+  const [activeIndex, setActiveIndex] = useState(0)
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -79,6 +81,53 @@ export function UnifiedChatModelSearch({
 
   const matchCount = filtered.length
   const disabled = loading && catalog.length === 0
+  const listboxId = 'chat-model-search-results'
+  const activeOptionId = matchCount > 0 ? `${listboxId}-option-${activeIndex}` : undefined
+
+  useEffect(() => {
+    setActiveIndex(0)
+  }, [query, matchCount])
+
+  const focusOption = (idx: number) => {
+    if (matchCount === 0) return
+    const boundedIdx = Math.max(0, Math.min(idx, matchCount - 1))
+    setActiveIndex(boundedIdx)
+    requestAnimationFrame(() => optionRefs.current[boundedIdx]?.scrollIntoView({ block: 'nearest' }))
+  }
+
+  const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (matchCount === 0) return
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      focusOption((activeIndex + 1) % matchCount)
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      focusOption((activeIndex - 1 + matchCount) % matchCount)
+      return
+    }
+    if (event.key === 'Home') {
+      event.preventDefault()
+      focusOption(0)
+      return
+    }
+    if (event.key === 'End') {
+      event.preventDefault()
+      focusOption(matchCount - 1)
+      return
+    }
+    if (event.key === 'Enter') {
+      const target = filtered[activeIndex]
+      if (!target) return
+      event.preventDefault()
+      onSelect(target.registry_id)
+      return
+    }
+    if (event.key === 'Escape') {
+      setActiveIndex(0)
+    }
+  }
 
   return (
     <div className={cn('space-y-2', className)}>
@@ -105,6 +154,7 @@ export function UnifiedChatModelSearch({
         <Input
           value={query}
           onChange={e => setQuery(e.target.value)}
+          onKeyDown={handleSearchKeyDown}
           placeholder={
             loading && catalog.length === 0
               ? '正在从各供应商同步模型目录…'
@@ -117,23 +167,30 @@ export function UnifiedChatModelSearch({
             'focus-visible:ring-0 focus-visible:ring-offset-0'
           )}
           aria-label="搜索所有已启用供应商的对话模型"
+          aria-controls={listboxId}
+          aria-activedescendant={activeOptionId}
         />
       </div>
 
       {fetchError && (
-        <p className="flex items-start gap-2 rounded-xl border border-red-200/70 bg-red-50/80 px-3 py-2 text-[11px] text-red-700 dark:border-red-500/30 dark:bg-red-950/30 dark:text-red-200">
-          <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+        <p
+          className="flex items-start gap-2 rounded-xl border border-red-200/70 bg-red-50/80 px-3 py-2 text-[11px] text-red-700 dark:border-red-500/30 dark:bg-red-950/30 dark:text-red-200"
+          role="alert"
+        >
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden />
           <span>目录提示：{fetchError}</span>
         </p>
       )}
 
       {!loading && catalog.length === 0 && !fetchError && (
-        <p className="text-center text-[11px] text-slate-500 dark:text-slate-400">未获取到对话模型（请检查后端与 API Key）</p>
+        <p className="text-center text-[11px] text-slate-500 dark:text-slate-400" role="status">
+          未获取到对话模型（请检查后端与 API Key）
+        </p>
       )}
 
       {!disabled && catalog.length > 0 && (
         <>
-          <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+          <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-400" aria-live="polite">
             匹配结果（{matchCount} / 最多 {LIST_LIMIT} 条）
           </p>
           <div
@@ -142,26 +199,41 @@ export function UnifiedChatModelSearch({
               'max-h-[10rem] rounded-xl border-2 border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-800/80'
             )}
           >
-            <ul className="divide-y divide-slate-100 py-0.5 dark:divide-slate-700/80" role="listbox">
+            <ul
+              id={listboxId}
+              className="divide-y divide-slate-100 py-0.5 dark:divide-slate-700/80"
+              role="listbox"
+              aria-label="对话模型搜索结果"
+            >
               {matchCount === 0 ? (
-                <li className="px-4 py-6 text-center text-[11px] text-slate-500 dark:text-slate-400">
+                <li className="px-4 py-6 text-center text-[11px] text-slate-500 dark:text-slate-400" role="status">
                   无匹配结果，请调整关键词
                 </li>
               ) : (
-                filtered.map(m => {
+                filtered.map((m, idx) => {
                   const active = currentChatModel === m.registry_id
+                  const focused = idx === activeIndex
                   return (
                     <li key={m.registry_id}>
                       <button
+                        ref={(node) => {
+                          optionRefs.current[idx] = node
+                        }}
+                        id={`${listboxId}-option-${idx}`}
                         type="button"
                         role="option"
                         aria-selected={active}
+                        tabIndex={-1}
                         onClick={() => onSelect(m.registry_id)}
+                        onMouseEnter={() => setActiveIndex(idx)}
                         className={cn(
                           'flex w-full items-start gap-2.5 px-2.5 py-2 text-left transition-colors',
                           active
                             ? 'bg-indigo-50/90 dark:bg-indigo-950/50'
-                            : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-700/50',
+                          focused && !active
+                            ? 'bg-slate-50 ring-1 ring-inset ring-indigo-200 dark:bg-slate-700/50 dark:ring-indigo-500/35'
+                            : undefined
                         )}
                       >
                         <CatalogRowIcon item={m} />

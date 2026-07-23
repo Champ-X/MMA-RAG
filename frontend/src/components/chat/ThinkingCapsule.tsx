@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Brain, Network, Search, ChevronDown, ChevronRight, CheckCircle, Image as ImageIcon, Music, Video, Sparkles, FileText, Wand2, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ThoughtData, ThinkingState } from '@/store/useChatStore'
@@ -30,7 +30,7 @@ function ThinkingDonutSpinner({ className }: { className?: string }) {
 /** 阶段标题行：进行中 */
 function StageProcessingCue({ text }: { text: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+    <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400" role="status" aria-live="polite">
       <ThinkingDonutSpinner className="size-3" />
       <span className="text-[10px] font-medium animate-pulse-soft">{text}</span>
     </span>
@@ -40,7 +40,11 @@ function StageProcessingCue({ text }: { text: string }) {
 /** 不确定进度：色块往复滑动 + 高光扫过 */
 function IndeterminateThinkingBar() {
   return (
-    <div className="relative h-1.5 overflow-hidden bg-slate-200/80 shadow-inner dark:bg-slate-800/80">
+    <div
+      className="relative h-1.5 overflow-hidden bg-slate-200/80 shadow-inner dark:bg-slate-800/80"
+      role="progressbar"
+      aria-label="思考处理中"
+    >
       <div className="absolute inset-y-0 w-[40%] animate-thinking-slide bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500 shadow-[0_0_12px_-3px_rgba(124,58,237,0.5)] dark:shadow-[0_0_14px_-3px_rgba(167,139,250,0.38)]">
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-white/35 to-transparent animate-shimmer opacity-80" />
       </div>
@@ -70,6 +74,8 @@ export function ThinkingCapsule({
 }: ThinkingCapsuleProps) {
   // 流式思考时默认展开，方便一阶段一阶段看到更新
   const [open, setOpen] = useState(true)
+  const capsuleId = useId().replace(/:/g, '')
+  const contentId = `${capsuleId}-thinking-capsule-content`
 
   const intent = {
     type: thoughtData?.intent_type,
@@ -95,13 +101,13 @@ export function ThinkingCapsule({
   // 获取生成阶段的状态信息
   // 如果生成已完成，强制清除状态信息，避免显示旧的动效
   // 检查 message.thinking 中的完成标记
-  const isGenerationCompleted = stages?.generation === 'completed' || (thoughtData as any)?._generation_completed === true
+  const isGenerationCompleted = stages?.generation === 'completed' || thoughtData?._generation_completed === true
   const generationStatus = isGenerationCompleted
     ? null 
-    : ((thoughtData as any)?.generation_status || (thoughtData as any)?.status)
+    : (thoughtData?.generation_status || thoughtData?.status)
   const generationMessage = isGenerationCompleted
     ? ''
-    : ((thoughtData as any)?.generation_message || (thoughtData as any)?.message || '')
+    : (thoughtData?.generation_message || thoughtData?.message || '')
 
   // 有 stages 时按阶段流式展示；无 stages（如历史消息）时按 thoughtData 有则展示
   const intentActive =
@@ -183,6 +189,8 @@ export function ThinkingCapsule({
   const pillTag =
     'inline-flex items-center border px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm transition-[transform,box-shadow] duration-200 hover:shadow-md'
   const summaryLine = summaryParts.length > 0 ? summaryParts.join(' · ') : null
+  const visibleStageCount = [intentActive, routingActive, retrievalActive, generationActive].filter(Boolean).length
+  const thinkingStatusText = summaryLine || (hasAnyStage ? `已显示 ${visibleStageCount} 个思考阶段` : '等待思考阶段')
 
   return (
     <div
@@ -190,10 +198,18 @@ export function ThinkingCapsule({
         'group/capsule mb-2 w-full overflow-hidden border border-slate-200/70 bg-white dark:border-slate-700/70 dark:bg-slate-950',
         'shadow-sm dark:shadow-[0_1px_2px_rgba(0,0,0,0.25)]'
       )}
+      role="region"
+      aria-label="思考过程"
     >
+      <span className="sr-only" aria-live="polite">
+        {thinkingStatusText}
+      </span>
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
+        aria-expanded={open}
+        aria-controls={contentId}
+        aria-label={`${open ? '折叠' : '展开'}思考过程${summaryLine ? `：${summaryLine}` : ''}`}
         className={cn(
           'relative flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium transition-colors duration-200',
           'border-b border-slate-200/80 bg-slate-50/90 text-slate-700 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-100',
@@ -207,6 +223,7 @@ export function ThinkingCapsule({
             'shrink-0',
             open ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'
           )}
+          aria-hidden
         />
         <span className="font-semibold tracking-tight text-slate-800 dark:text-slate-100">思考过程</span>
         {!open && summaryLine && (
@@ -215,17 +232,23 @@ export function ThinkingCapsule({
           </span>
         )}
         <span className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center border border-slate-200/70 bg-white text-slate-500 transition-transform duration-200 group-hover/capsule:scale-[1.02] dark:border-slate-600/70 dark:bg-slate-900 dark:text-slate-400">
-          {open ? <ChevronDown size={14} strokeWidth={2.25} /> : <ChevronRight size={14} strokeWidth={2.25} />}
+          {open ? <ChevronDown size={14} strokeWidth={2.25} aria-hidden /> : <ChevronRight size={14} strokeWidth={2.25} aria-hidden />}
         </span>
       </button>
       {open && (
-        <div className="border-t border-slate-100/90 bg-slate-50/30 px-3 pb-2 pt-0 dark:border-slate-800/80 dark:bg-slate-950/40 sm:px-3.5">
+        <div
+          id={contentId}
+          className="border-t border-slate-100/90 bg-slate-50/30 px-3 pb-2 pt-0 dark:border-slate-800/80 dark:bg-slate-950/40 sm:px-3.5"
+          role="region"
+          aria-label="思考阶段详情"
+          aria-live="polite"
+        >
           <div className="flex flex-col">
           {/* 阶段一：意图解析 — 仅在该阶段开始后展示，流式更新 */}
           {intentActive && (
-          <div className={stageBlockClass('intent', currentStage === 'intent')}>
+          <section className={stageBlockClass('intent', currentStage === 'intent')} aria-label={`意图解析阶段，${stageLabel(stages?.intent ?? 'completed') || '已展示'}`}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
-              <Target size={14} strokeWidth={2.25} className={cn('shrink-0', stageSkin.intent.icon)} />
+              <Target size={14} strokeWidth={2.25} className={cn('shrink-0', stageSkin.intent.icon)} aria-hidden />
               <span className="tracking-tight">意图解析</span>
               {stages?.intent === 'processing' && !intent.type && !intent.originalQuery && (
                 <StageProcessingCue text={stageLabel(stages.intent)} />
@@ -274,7 +297,7 @@ export function ThinkingCapsule({
                           : 'border-blue-200/90 bg-gradient-to-br from-blue-50 to-indigo-50/70 text-blue-800 dark:border-blue-500/35 dark:from-blue-950/45 dark:to-indigo-950/35 dark:text-blue-200'
                       )}
                     >
-                      <ImageIcon size={11} strokeWidth={2.25} />
+                      <ImageIcon size={11} strokeWidth={2.25} aria-hidden />
                       {intent.visualIntent === 'explicit_demand' ? '显式需求' : '隐性增益'}
                     </span>
                     {intent.visualReasoning && (
@@ -298,7 +321,7 @@ export function ThinkingCapsule({
                           : 'border-teal-200/90 bg-gradient-to-br from-teal-50 to-emerald-50/70 text-teal-900 dark:border-teal-500/35 dark:from-teal-950/40 dark:to-emerald-950/30 dark:text-teal-200'
                       )}
                     >
-                      <Music size={11} strokeWidth={2.25} />
+                      <Music size={11} strokeWidth={2.25} aria-hidden />
                       {intent.audioIntent === 'explicit_demand' ? '显式需求' : '隐性增益'}
                     </span>
                     {intent.audioReasoning && (
@@ -322,7 +345,7 @@ export function ThinkingCapsule({
                           : 'border-sky-200/90 bg-gradient-to-br from-sky-50 to-cyan-50/70 text-sky-900 dark:border-sky-500/35 dark:from-sky-950/40 dark:to-cyan-950/30 dark:text-sky-200'
                       )}
                     >
-                      <Video size={11} strokeWidth={2.25} />
+                      <Video size={11} strokeWidth={2.25} aria-hidden />
                       {intent.videoIntent === 'explicit_demand' ? '显式需求' : '隐性增益'}
                     </span>
                     {intent.videoReasoning && (
@@ -334,14 +357,14 @@ export function ThinkingCapsule({
                 </div>
               )}
             </div>
-          </div>
+          </section>
           )}
 
           {/* 阶段二：智能路由 — 路由阶段开始后展示 */}
           {routingActive && (
-          <div className={stageBlockClass('routing', currentStage === 'routing')}>
+          <section className={stageBlockClass('routing', currentStage === 'routing')} aria-label={`智能路由阶段，${stageLabel(stages?.routing ?? 'completed') || '已展示'}`}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
-              <Network size={14} strokeWidth={2.25} className={cn('shrink-0', stageSkin.routing.icon)} />
+              <Network size={14} strokeWidth={2.25} className={cn('shrink-0', stageSkin.routing.icon)} aria-hidden />
               <span className="tracking-tight">智能路由</span>
               {stages?.routing === 'processing' && !Array.isArray(routing) && !(routing && 'strategy' in routing) && (
                 <StageProcessingCue text={stageLabel(stages.routing)} />
@@ -352,7 +375,7 @@ export function ThinkingCapsule({
             </div>
             <div className="ml-0.5 space-y-1 border-l border-slate-300/60 pl-2.5 dark:border-slate-600/50 sm:pl-3">
               {Array.isArray(routing) && routing.length > 0 ? (
-                routing.map((kb: any, idx: number) => {
+                routing.map((kb, idx) => {
                   const score = kb.score || 0
                   const percentage = Math.round(score * 100)
                   return (
@@ -389,14 +412,14 @@ export function ThinkingCapsule({
                 </div>
               )}
             </div>
-          </div>
+          </section>
           )}
 
           {/* 阶段三：检索策略 — 检索阶段开始后展示 */}
           {retrievalActive && (
-          <div className={stageBlockClass('retrieval', currentStage === 'retrieval')}>
+          <section className={stageBlockClass('retrieval', currentStage === 'retrieval')} aria-label={`检索策略阶段，${stageLabel(stages?.retrieval ?? 'completed') || '已展示'}`}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
-              <Search size={14} strokeWidth={2.25} className={cn('shrink-0', stageSkin.retrieval.icon)} />
+              <Search size={14} strokeWidth={2.25} className={cn('shrink-0', stageSkin.retrieval.icon)} aria-hidden />
               <span className="tracking-tight">检索策略</span>
               {stages?.retrieval === 'processing' && retrieval.keywords.length === 0 && !retrieval.subQueries?.length && retrieval.totalFound == null && (
                 <StageProcessingCue text={stageLabel(stages.retrieval)} />
@@ -427,7 +450,7 @@ export function ThinkingCapsule({
                   <div className="flex-1 space-y-1">
                     {retrieval.subQueries.map((sq: string, idx: number) => (
                       <div key={idx} className="flex items-center gap-1.5">
-                        <CheckCircle size={10} className="text-green-500 flex-shrink-0" />
+                        <CheckCircle size={10} className="text-green-500 flex-shrink-0" aria-hidden />
                         <span className="text-slate-600 dark:text-slate-300 text-[10px]">{sq}</span>
                       </div>
                     ))}
@@ -446,14 +469,14 @@ export function ThinkingCapsule({
                 </div>
               )}
             </div>
-          </div>
+          </section>
           )}
 
           {/* 阶段四：生成回答 — 只有在明确收到 generation 事件后才显示 */}
           {generationActive && (
-          <div className={stageBlockClass('generation', currentStage === 'generation')}>
+          <section className={stageBlockClass('generation', currentStage === 'generation')} aria-label={`生成回答阶段，${stageLabel(stages?.generation ?? 'completed') || '已展示'}`}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
-              <Sparkles size={14} strokeWidth={2.25} className={cn('shrink-0', stageSkin.generation.icon)} />
+              <Sparkles size={14} strokeWidth={2.25} className={cn('shrink-0', stageSkin.generation.icon)} aria-hidden />
               <span className="tracking-tight">生成回答</span>
               {stages?.generation === 'processing' && (
                 <StageProcessingCue text={stageLabel(stages.generation)} />
@@ -467,7 +490,7 @@ export function ThinkingCapsule({
               {isGenerationCompleted || stages?.generation === 'completed' ? (
                 <div className="relative flex items-center gap-2.5 overflow-hidden border border-emerald-200/80 bg-emerald-50/95 px-2.5 py-2 shadow-sm dark:border-emerald-700/50 dark:bg-emerald-950/35">
                   <span className="absolute bottom-0 left-0 top-0 w-0.5 bg-emerald-500 dark:bg-emerald-400" aria-hidden />
-                  <CheckCircle className="shrink-0 text-emerald-600 dark:text-emerald-400" size={18} strokeWidth={2.25} />
+                  <CheckCircle className="shrink-0 text-emerald-600 dark:text-emerald-400" size={18} strokeWidth={2.25} aria-hidden />
                   <div className="flex min-w-0 flex-col gap-0.5">
                     <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-200">回答已就绪</span>
                     <span className="text-[10px] text-emerald-700/75 dark:text-emerald-300/80">内容已生成完成</span>
@@ -484,7 +507,7 @@ export function ThinkingCapsule({
               ) : generationStatus === 'preparing_prompt' ? (
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                    <FileText size={14} className="shrink-0 text-purple-500 animate-pulse-soft dark:text-purple-400" />
+                    <FileText size={14} className="shrink-0 text-purple-500 animate-pulse-soft dark:text-purple-400" aria-hidden />
                     <span className="animate-pulse-soft">{generationMessage || '正在准备提示词...'}</span>
                   </div>
                   <IndeterminateThinkingBar />
@@ -495,6 +518,7 @@ export function ThinkingCapsule({
                     <Wand2
                       size={14}
                       className="shrink-0 origin-[30%_70%] text-fuchsia-500 animate-thinking-wand dark:text-fuchsia-400"
+                      aria-hidden
                     />
                     <span className="animate-pulse-soft">{generationMessage || '正在生成回答...'}</span>
                   </div>
@@ -516,7 +540,7 @@ export function ThinkingCapsule({
                 </div>
               )}
             </div>
-          </div>
+          </section>
           )}
 
           {!hasAnyStage && (

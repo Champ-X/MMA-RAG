@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useId, useRef } from 'react'
 import * as d3 from 'd3'
 import { motion } from 'framer-motion'
 import {
@@ -51,6 +51,23 @@ interface PortraitGraphProps {
 
 const PORTRAIT_DATA_THRESHOLD = 10
 
+function getPortraitErrorMessage(error: unknown) {
+  if (typeof error === 'object' && error != null && 'response' in error) {
+    const response = error.response
+    if (typeof response === 'object' && response != null && 'data' in response) {
+      const data = response.data
+      if (typeof data === 'object' && data != null && 'detail' in data && typeof data.detail === 'string') {
+        return data.detail
+      }
+    }
+  }
+  if (typeof error === 'object' && error != null && 'message' in error) {
+    const message = error.message
+    if (typeof message === 'string' && message) return message
+  }
+  return '生成失败'
+}
+
 export function PortraitGraph({
   knowledgeBaseId,
   documentCount = 0,
@@ -78,6 +95,10 @@ export function PortraitGraph({
   /** 悬停气泡：其他变淡、目标放大、显示关系连线 */
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const summaryPopoverRef = useRef<HTMLDivElement>(null)
+  const portraitId = useId().replace(/:/g, '')
+  const chartSummaryId = `${portraitId}-portrait-summary`
+  const chartRegionId = `${portraitId}-portrait-chart`
+  const selectedSummaryTitleId = `${portraitId}-selected-topic-title`
 
   /** 每次进入知识库或重新生成画像完成后随机换一套气泡配色 */
   const [bubbleTheme, setBubbleTheme] = useState(() => pickRandomBubbleTheme())
@@ -285,8 +306,8 @@ export function PortraitGraph({
         await fetchPortrait()
         setGenerating(false)
       }
-    } catch (e: any) {
-      setGenError(e?.response?.data?.detail ?? e?.message ?? '生成失败')
+    } catch (e: unknown) {
+      setGenError(getPortraitErrorMessage(e))
       setGenerating(false)
     }
   }
@@ -359,9 +380,43 @@ export function PortraitGraph({
   const imagePct = total ? (imageCount / total) * 100 : 25
   const audioPct = total ? (audioCount / total) * 100 : 25
   const videoPct = total ? (videoCount / total) * 100 : 25
+  const sourceRatioLabel = total
+    ? `数据源比例：文本 ${textPct.toFixed(0)}%，图片 ${imagePct.toFixed(0)}%，音频 ${audioPct.toFixed(0)}%，视频 ${videoPct.toFixed(0)}%`
+    : '暂无数据源比例'
+  const selectedCluster = summaryPopupNode?.cluster ?? clusters.find((cluster) => cluster.cluster_id === selectedId)
+  const portraitSummaryText = generating
+    ? '主题画像正在生成中'
+    : clusters.length > 0
+      ? `主题画像已生成 ${clusters.length} 个主题${selectedCluster ? `，当前选中主题包含 ${selectedCluster.cluster_size} 条内容` : ''}`
+      : loading
+        ? '主题画像正在加载'
+        : '暂无主题画像'
+
+  const toggleBubbleSelection = useCallback((
+    cluster: PortraitCluster,
+    point: { clientX: number; clientY: number },
+    isSummaryOpen: boolean
+  ) => {
+    if (isSummaryOpen) {
+      setSummaryPopupNode(null)
+      setSelectedId(null)
+      onClusterSelect?.(null)
+      return
+    }
+    setSummaryPopupNode({
+      cluster,
+      clientX: point.clientX,
+      clientY: point.clientY,
+    })
+    setSelectedId(cluster.cluster_id)
+    onClusterSelect?.(cluster.cluster_id)
+  }, [onClusterSelect])
 
   return (
-    <div className={cn('space-y-4', className)}>
+    <div className={cn('space-y-4', className)} role="region" aria-label="知识库画像概览" aria-describedby={chartSummaryId}>
+      <span id={chartSummaryId} className="sr-only" aria-live="polite">
+        {portraitSummaryText}
+      </span>
       <Card className="overflow-hidden border-slate-200/70 shadow-sm dark:border-slate-700/70">
         <CardHeader className="space-y-0 border-b border-slate-100/90 bg-gradient-to-r from-slate-50/60 via-white to-indigo-50/35 pb-3 pt-4 dark:border-slate-800/90 dark:from-slate-900/50 dark:via-slate-950 dark:to-indigo-950/25">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -379,6 +434,7 @@ export function PortraitGraph({
                 size="sm"
                 onClick={handleRegenerate}
                 disabled={generating}
+                aria-label={generating ? '主题画像生成中' : '重新生成主题画像'}
                 className="group h-9 shrink-0 gap-2 rounded-xl border-indigo-200/80 bg-white/90 px-3.5 text-sm font-semibold text-indigo-700 shadow-sm transition-all duration-200 hover:border-fuchsia-300/80 hover:bg-indigo-50/60 hover:text-indigo-900 hover:shadow-md dark:border-indigo-500/35 dark:bg-slate-900/70 dark:text-indigo-200 dark:hover:border-fuchsia-500/40 dark:hover:bg-indigo-950/50 dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {generating ? (
@@ -401,20 +457,20 @@ export function PortraitGraph({
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? (
-            <div className="flex h-80 items-center justify-center">
+            <div className="flex h-80 items-center justify-center" role="status" aria-live="polite" aria-label="正在加载知识库主题画像">
               <div className="text-center">
-                <div className="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-2 border-indigo-400 border-t-fuchsia-400 dark:border-indigo-500 dark:border-t-fuchsia-500" />
+                <div className="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-2 border-indigo-400 border-t-fuchsia-400 dark:border-indigo-500 dark:border-t-fuchsia-500" aria-hidden />
                 <p className="text-muted-foreground">正在加载画像…</p>
               </div>
             </div>
           ) : clusters.length === 0 ? (
-            <div className="flex h-80 flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-gradient-to-br from-indigo-50/40 via-transparent to-fuchsia-50/40 dark:from-indigo-950/30 dark:via-transparent dark:to-fuchsia-950/30">
+            <div className="flex h-80 flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-gradient-to-br from-indigo-50/40 via-transparent to-fuchsia-50/40 dark:from-indigo-950/30 dark:via-transparent dark:to-fuchsia-950/30" role={generating ? 'status' : 'region'} aria-label={generating ? '正在生成主题画像' : '主题画像空状态'}>
               {generating ? (
                 <>
                   <div className="relative">
-                    <div className="h-16 w-16 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600 dark:border-indigo-800 dark:border-t-indigo-400" />
+                    <div className="h-16 w-16 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600 dark:border-indigo-800 dark:border-t-indigo-400" aria-hidden />
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <ScatterChart className="h-6 w-6 text-indigo-600 dark:text-indigo-400" strokeWidth={2} />
+                      <ScatterChart className="h-6 w-6 text-indigo-600 dark:text-indigo-400" strokeWidth={2} aria-hidden />
                     </div>
                   </div>
                   <div className="text-center space-y-2">
@@ -423,9 +479,9 @@ export function PortraitGraph({
                       正在分析知识库内容并生成主题聚类，请稍候…
                     </p>
                     <div className="flex items-center justify-center gap-2 text-xs text-slate-400 dark:text-slate-500">
-                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse" />
-                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: '0.2s' }} />
-                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: '0.4s' }} />
+                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse" aria-hidden />
+                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: '0.2s' }} aria-hidden />
+                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: '0.4s' }} aria-hidden />
                     </div>
                   </div>
                 </>
@@ -445,25 +501,26 @@ export function PortraitGraph({
                     size="sm"
                     onClick={handleRegenerate}
                     disabled={generating || totalDataCount < PORTRAIT_DATA_THRESHOLD}
+                    aria-label={generating ? '主题画像生成中' : '生成主题画像'}
                     className="gap-2"
                   >
                     {generating ? (
                       <>
-                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        <RefreshCw className="h-4 w-4 animate-spin" aria-hidden />
                         生成中…
                       </>
                     ) : (
                       <>
-                        <RefreshCw className="h-4 w-4" />
+                        <RefreshCw className="h-4 w-4" aria-hidden />
                         生成画像
                       </>
                     )}
                   </Button>
                   {totalDataCount < PORTRAIT_DATA_THRESHOLD && (
-                    <p className="text-xs text-amber-600">当前数据量较少，建议先上传更多文件（需至少约 10 条）</p>
+                    <p className="text-xs text-amber-600" role="status">当前数据量较少，建议先上传更多文件（需至少约 10 条）</p>
                   )}
                   {genError && (
-                    <p className="text-xs text-destructive">{genError}</p>
+                    <p className="text-xs text-destructive" role="alert">{genError}</p>
                   )}
                 </>
               )}
@@ -471,7 +528,10 @@ export function PortraitGraph({
           ) : (
             <div
               ref={containerRef}
+              id={chartRegionId}
               className="relative min-h-[520px] w-full overflow-hidden rounded-xl border border-slate-200/55 bg-slate-50/20 shadow-inner ring-1 ring-slate-100/80 dark:border-slate-700/55 dark:bg-slate-950/20 dark:ring-slate-800/60 portrait-chart-container"
+              role="region"
+              aria-label={`主题气泡图，共 ${clusters.length} 个主题`}
             >
               {/* 生成中的遮罩层 */}
               {generating && (
@@ -481,12 +541,15 @@ export function PortraitGraph({
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2 }}
                   className="absolute inset-0 z-[100] flex items-center justify-center rounded-xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md"
+                  role="status"
+                  aria-live="polite"
+                  aria-label="正在更新主题画像"
                 >
                   <div className="text-center space-y-4">
                     <div className="relative mx-auto" style={{ width: '64px', height: '64px' }}>
-                      <div className="absolute inset-0 animate-spin rounded-full border-4 border-fuchsia-200 border-t-fuchsia-600 dark:border-fuchsia-800 dark:border-t-fuchsia-400" />
+                      <div className="absolute inset-0 animate-spin rounded-full border-4 border-fuchsia-200 border-t-fuchsia-600 dark:border-fuchsia-800 dark:border-t-fuchsia-400" aria-hidden />
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <ScatterChart className="h-6 w-6 text-fuchsia-600 dark:text-fuchsia-400" strokeWidth={2} />
+                        <ScatterChart className="h-6 w-6 text-fuchsia-600 dark:text-fuchsia-400" strokeWidth={2} aria-hidden />
                       </div>
                     </div>
                     <div className="text-center space-y-2">
@@ -495,9 +558,9 @@ export function PortraitGraph({
                         正在分析知识库内容并重新生成主题聚类，请稍候…
                       </p>
                       <div className="flex items-center justify-center gap-2 text-xs text-slate-400 dark:text-slate-500">
-                        <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 animate-pulse" />
-                        <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 animate-pulse" style={{ animationDelay: '0.2s' }} />
-                        <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 animate-pulse" style={{ animationDelay: '0.4s' }} />
+                        <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 animate-pulse" aria-hidden />
+                        <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 animate-pulse" style={{ animationDelay: '0.2s' }} aria-hidden />
+                        <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 animate-pulse" style={{ animationDelay: '0.4s' }} aria-hidden />
                       </div>
                     </div>
                   </div>
@@ -526,6 +589,7 @@ export function PortraitGraph({
                 viewBox={`0 0 ${chartWidth} ${chartHeight}`}
                 className="relative z-10 block"
                 preserveAspectRatio="xMidYMid meet"
+                aria-label={`知识库主题气泡图，共 ${clusters.length} 个主题，气泡大小表示文档数量`}
               >
                 <defs>
                   {/* 柔和弥散渐变：中心更亮、边缘过渡更顺，整体偏 pastel */}
@@ -606,31 +670,36 @@ export function PortraitGraph({
                     const isSummaryOpen = summaryPopupNode?.cluster.cluster_id === node.cluster.cluster_id
                     const bubbleOpacity = 0.78 + 0.2 * Math.min(1, (node.r - 40) / 48)
                     const opacityWhenOtherHovered = hoveredNodeId && !isHovered ? 0.35 : bubbleOpacity
+                    const bubbleLabel = `查看主题摘要：${keywords[0] ?? (node.cluster.topic_summary || `主题 ${node.index + 1}`)}，共 ${node.cluster.cluster_size} 条`
                     return (
                       <g
                         key={node.cluster.cluster_id}
                         transform={`translate(${node.x},${node.y})`}
                         style={{ cursor: 'pointer', opacity: opacityWhenOtherHovered }}
-                        tabIndex={-1}
+                        tabIndex={0}
                         role="button"
                         aria-pressed={isSelected}
+                        aria-label={bubbleLabel}
                         onMouseDown={(e) => e.preventDefault()}
+                        onFocus={() => setHoveredNodeId(node.cluster.cluster_id)}
+                        onBlur={() => setHoveredNodeId(null)}
                         onMouseEnter={() => setHoveredNodeId(node.cluster.cluster_id)}
                         onMouseLeave={() => setHoveredNodeId(null)}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter' && e.key !== ' ') return
+                          e.preventDefault()
+                          const rect = (e.currentTarget as SVGGElement).getBoundingClientRect()
+                          toggleBubbleSelection(
+                            node.cluster,
+                            {
+                              clientX: rect.left + rect.width / 2,
+                              clientY: rect.top + rect.height / 2,
+                            },
+                            isSummaryOpen
+                          )
+                        }}
                         onClick={(e) => {
-                          if (isSummaryOpen) {
-                            setSummaryPopupNode(null)
-                            setSelectedId(null)
-                            onClusterSelect?.(null)
-                          } else {
-                            setSummaryPopupNode({
-                              cluster: node.cluster,
-                              clientX: e.clientX,
-                              clientY: e.clientY,
-                            })
-                            setSelectedId(node.cluster.cluster_id)
-                            onClusterSelect?.(node.cluster.cluster_id)
-                          }
+                          toggleBubbleSelection(node.cluster, e, isSummaryOpen)
                           requestAnimationFrame(() => (document.activeElement as HTMLElement)?.blur())
                         }}
                       >
@@ -784,10 +853,13 @@ export function PortraitGraph({
                 transition={{ duration: 0.15 }}
                 className="fixed z-50 w-[400px] max-h-[280px] overflow-hidden rounded-xl border border-slate-200/90 bg-white/98 shadow-xl backdrop-blur-sm dark:border-slate-600/90 dark:bg-slate-900/98"
                 style={{ left, top }}
+                role="dialog"
+                aria-modal="false"
+                aria-labelledby={selectedSummaryTitleId}
               >
                 <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5 dark:border-slate-700">
                   <div className="flex items-center gap-2">
-                    <span className="rounded-md bg-gradient-to-r from-indigo-100 to-fuchsia-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:from-indigo-900/40 dark:to-fuchsia-900/40 dark:text-indigo-200">
+                    <span id={selectedSummaryTitleId} className="rounded-md bg-gradient-to-r from-indigo-100 to-fuchsia-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:from-indigo-900/40 dark:to-fuchsia-900/40 dark:text-indigo-200">
                       主题摘要
                     </span>
                     <span className="text-xs text-muted-foreground">
@@ -797,13 +869,13 @@ export function PortraitGraph({
                   <button
                     type="button"
                     className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
-                    aria-label="关闭"
+                    aria-label="关闭主题摘要"
                     onClick={(e) => {
                       e.stopPropagation()
                       setSummaryPopupNode(null)
                     }}
                   >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
@@ -848,7 +920,7 @@ export function PortraitGraph({
           <CardTitle className="text-base font-semibold text-slate-800 dark:text-slate-100">数据源比例</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex h-10 overflow-hidden rounded-xl bg-slate-100/90 dark:bg-slate-800/50 shadow-inner">
+          <div className="flex h-10 overflow-hidden rounded-xl bg-slate-100/90 dark:bg-slate-800/50 shadow-inner" role="img" aria-label={sourceRatioLabel}>
             {textCount > 0 && (
               <div
                 className={cn(
@@ -858,7 +930,7 @@ export function PortraitGraph({
                 )}
                 style={{ width: `${textPct}%` }}
               >
-                <FileText className="h-4 w-4 flex-shrink-0 opacity-95" />
+                <FileText className="h-4 w-4 flex-shrink-0 opacity-95" aria-hidden />
                 <span className="text-sm font-medium truncate">Text</span>
               </div>
             )}
@@ -871,7 +943,7 @@ export function PortraitGraph({
                 )}
                 style={{ width: `${imagePct}%` }}
               >
-                <Image className="h-4 w-4 flex-shrink-0 opacity-95" />
+                <Image className="h-4 w-4 flex-shrink-0 opacity-95" aria-hidden />
                 <span className="text-sm font-medium truncate">Image</span>
               </div>
             )}
@@ -884,7 +956,7 @@ export function PortraitGraph({
                 )}
                 style={{ width: `${audioPct}%` }}
               >
-                <Music className="h-4 w-4 flex-shrink-0 opacity-95" />
+                <Music className="h-4 w-4 flex-shrink-0 opacity-95" aria-hidden />
                 <span className="text-sm font-medium truncate">Audio</span>
               </div>
             )}
@@ -896,7 +968,7 @@ export function PortraitGraph({
                 )}
                 style={{ width: `${videoPct}%` }}
               >
-                <Video className="h-4 w-4 flex-shrink-0 opacity-95" />
+                <Video className="h-4 w-4 flex-shrink-0 opacity-95" aria-hidden />
                 <span className="text-sm font-medium truncate">Video</span>
               </div>
             )}
@@ -924,58 +996,58 @@ export function PortraitGraph({
           <CardTitle className="text-base font-semibold text-slate-800 dark:text-slate-100">主题统计</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            <div className="rounded-xl bg-gradient-to-br from-indigo-50/90 to-indigo-100/50 dark:from-indigo-950/40 dark:to-indigo-900/20 border border-indigo-100/80 dark:border-indigo-800/40 px-4 py-3 text-center">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" role="list" aria-label="主题画像统计">
+            <div className="rounded-xl bg-gradient-to-br from-indigo-50/90 to-indigo-100/50 dark:from-indigo-950/40 dark:to-indigo-900/20 border border-indigo-100/80 dark:border-indigo-800/40 px-4 py-3 text-center" role="listitem">
               <div className="text-2xl font-bold tabular-nums text-indigo-600 dark:text-indigo-400">
                 {clusters.length}
               </div>
               <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-indigo-700/80 dark:text-indigo-300/90">
-                <ScatterChart className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
+                <ScatterChart className="h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden />
                 <span>主题数</span>
               </div>
             </div>
-            <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 px-4 py-3 text-center">
+            <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 px-4 py-3 text-center" role="listitem">
               <div className="text-2xl font-bold tabular-nums text-slate-600 dark:text-slate-300">
                 {documentCount}
               </div>
               <div className="mt-1 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                <FileText className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
+                <FileText className="h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden />
                 <span>文档数</span>
               </div>
             </div>
-            <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 px-4 py-3 text-center">
+            <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 px-4 py-3 text-center" role="listitem">
               <div className="text-2xl font-bold tabular-nums text-slate-600 dark:text-slate-300">
                 {textCount}
               </div>
               <div className="mt-1 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                <LayoutList className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
+                <LayoutList className="h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden />
                 <span>文本块</span>
               </div>
             </div>
-            <div className="rounded-xl bg-gradient-to-br from-fuchsia-50/90 to-fuchsia-100/50 dark:from-fuchsia-950/40 dark:to-fuchsia-900/20 border border-fuchsia-100/80 dark:border-fuchsia-800/40 px-4 py-3 text-center">
+            <div className="rounded-xl bg-gradient-to-br from-fuchsia-50/90 to-fuchsia-100/50 dark:from-fuchsia-950/40 dark:to-fuchsia-900/20 border border-fuchsia-100/80 dark:border-fuchsia-800/40 px-4 py-3 text-center" role="listitem">
               <div className="text-2xl font-bold tabular-nums text-fuchsia-600 dark:text-fuchsia-400">
                 {imageCount}
               </div>
               <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-fuchsia-700/80 dark:text-fuchsia-300/90">
-                <Image className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
+                <Image className="h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden />
                 <span>图片</span>
               </div>
             </div>
-            <div className="rounded-xl bg-gradient-to-br from-amber-50/90 to-amber-100/50 dark:from-amber-950/40 dark:to-amber-900/20 border border-amber-100/80 dark:border-amber-800/40 px-4 py-3 text-center">
+            <div className="rounded-xl bg-gradient-to-br from-amber-50/90 to-amber-100/50 dark:from-amber-950/40 dark:to-amber-900/20 border border-amber-100/80 dark:border-amber-800/40 px-4 py-3 text-center" role="listitem">
               <div className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
                 {audioCount}
               </div>
               <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-amber-700/80 dark:text-amber-300/90">
-                <Music className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
+                <Music className="h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden />
                 <span>音频</span>
               </div>
             </div>
-            <div className="rounded-xl bg-gradient-to-br from-emerald-50/90 to-emerald-100/50 dark:from-emerald-950/40 dark:to-emerald-900/20 border border-emerald-100/80 dark:border-emerald-800/40 px-4 py-3 text-center">
+            <div className="rounded-xl bg-gradient-to-br from-emerald-50/90 to-emerald-100/50 dark:from-emerald-950/40 dark:to-emerald-900/20 border border-emerald-100/80 dark:border-emerald-800/40 px-4 py-3 text-center" role="listitem">
               <div className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
                 {videoCount}
               </div>
               <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-emerald-700/80 dark:text-emerald-300/90">
-                <Video className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
+                <Video className="h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden />
                 <span>视频</span>
               </div>
             </div>

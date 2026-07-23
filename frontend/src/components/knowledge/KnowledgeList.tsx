@@ -1,16 +1,32 @@
 import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, HardDrive, Calendar, Activity, MoreHorizontal, ChevronDown } from 'lucide-react'
-import { PortraitGraph } from './PortraitGraph'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, HardDrive, Calendar, Activity, MoreHorizontal, ChevronDown, AlertCircle } from 'lucide-react'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import { knowledgeApi, importApi } from '@/services/api_client'
 import { cn } from '@/lib/utils'
-import ReactMarkdown from 'react-markdown'
-import { StatusBadge, FileThumb, FileHero, FileIcon, CreateKbModal, EditKbModal, isAudioType, isVideoType } from './KnowledgeListHelpers'
-import { ExcelPreview } from './ExcelPreview'
+import {
+  StatusBadge,
+  FileThumb,
+  FileHero,
+  FileIcon,
+  CreateKbModal,
+  EditKbModal,
+  isAudioType,
+  isVideoType,
+  type KnowledgeFileView,
+} from './KnowledgeListHelpers'
 
 const ManualInputModal = React.lazy(() => import('./ManualInputModal'))
+const ExcelPreview = React.lazy(() =>
+  import('./ExcelPreview').then((module) => ({ default: module.ExcelPreview }))
+)
+const PortraitGraph = React.lazy(() =>
+  import('./PortraitGraph').then((module) => ({ default: module.PortraitGraph }))
+)
+const KnowledgeMarkdownPreview = React.lazy(() =>
+  import('./KnowledgeMarkdownPreview').then((module) => ({ default: module.KnowledgeMarkdownPreview }))
+)
 
 /** 预览区 / 分块区加载占位：居中、旋转指示与骨架，避免大片空白只有一行字 */
 function PreviewPaneLoading({
@@ -30,6 +46,9 @@ function PreviewPaneLoading({
         'flex flex-col items-center justify-center px-6 py-10',
         'min-h-[min(60vh,22rem)]'
       )}
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
     >
       <div className="relative mb-5 flex h-14 w-14 items-center justify-center">
         <span
@@ -71,6 +90,18 @@ function PreviewPaneLoading({
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function PortraitGraphLoading() {
+  return (
+    <div className="rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50 px-6 py-10 text-center shadow-sm ring-1 ring-slate-100/80 dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:ring-slate-800/60">
+      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-950/40 dark:text-indigo-300">
+        <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+      </div>
+      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">正在载入知识库画像</p>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">画像图表会在组件加载后继续使用当前知识库统计数据。</p>
     </div>
   )
 }
@@ -117,6 +148,60 @@ function MediaDescriptionPanel({
   )
 }
 
+function KnowledgeEmptyState({
+  icon: Icon,
+  title,
+  description,
+  action,
+  tone = 'slate',
+  compact = false,
+}: {
+  icon: React.ElementType
+  title: string
+  description: string
+  action?: React.ReactNode
+  tone?: 'slate' | 'indigo' | 'amber'
+  compact?: boolean
+}) {
+  const toneClass = {
+    slate: {
+      icon: 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400',
+      glow: 'bg-slate-200/60 dark:bg-slate-700/30',
+    },
+    indigo: {
+      icon: 'border-indigo-200 bg-indigo-50 text-indigo-600 dark:border-indigo-500/30 dark:bg-indigo-950/40 dark:text-indigo-300',
+      glow: 'bg-indigo-200/50 dark:bg-indigo-500/15',
+    },
+    amber: {
+      icon: 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300',
+      glow: 'bg-amber-200/50 dark:bg-amber-500/15',
+    },
+  }[tone]
+
+  return (
+    <div
+      className={cn(
+        'relative mx-auto flex max-w-lg flex-col items-center overflow-hidden rounded-[1.75rem] border border-slate-200/75 bg-white/90 text-center shadow-[0_22px_52px_-40px_rgba(15,23,42,0.72)] ring-1 ring-white/70 backdrop-blur-sm dark:border-slate-800/75 dark:bg-slate-950/60 dark:ring-white/[0.04]',
+        compact ? 'px-6 py-8' : 'px-8 py-12'
+      )}
+    >
+      <div className={cn('pointer-events-none absolute -top-16 h-36 w-36 rounded-full blur-3xl', toneClass.glow)} />
+      <div className="relative">
+        <span className={cn('flex items-center justify-center rounded-2xl border shadow-sm', compact ? 'h-12 w-12' : 'h-14 w-14', toneClass.icon)}>
+          <Icon className={compact ? 'h-5 w-5' : 'h-6 w-6'} strokeWidth={2.2} aria-hidden />
+        </span>
+      </div>
+      <h3 className="relative mt-5 text-base font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+        {title}
+      </h3>
+      <p className="relative mt-2 max-w-sm text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+        {description}
+      </p>
+      {action ? <div className="relative mt-5">{action}</div> : null}
+    </div>
+  )
+}
+
 type FilePreviewDetails = {
   caption?: string
   chunks?: Array<{ index: number; text: string }>
@@ -134,6 +219,53 @@ type ManualInputDraft = {
   initialContent: string
 }
 
+type KnowledgeFileApiItem = {
+  id: string
+  name: string
+  size: number
+  date: string
+  type: string
+  preview_url?: string
+  text_preview?: string
+}
+
+type DirectoryPickerFileHandle = FileSystemFileHandle & { kind: 'file' }
+type DirectoryPickerDirectoryHandle = FileSystemDirectoryHandle & {
+  kind: 'directory'
+  values(): AsyncIterable<DirectoryPickerEntryHandle>
+}
+type DirectoryPickerEntryHandle = DirectoryPickerFileHandle | DirectoryPickerDirectoryHandle
+type DirectoryPickerWindow = Window & {
+  showDirectoryPicker?: () => Promise<DirectoryPickerDirectoryHandle>
+}
+
+type ApiErrorDetail = string | { msg?: string } | null | undefined
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value != null
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  const detail = isRecord(error)
+    && isRecord(error.response)
+    && isRecord(error.response.data)
+    ? (error.response.data.detail as ApiErrorDetail)
+    : undefined
+  if (typeof detail === 'string') return detail
+  if (detail && typeof detail.msg === 'string') return detail.msg
+  if (isRecord(error) && typeof error.message === 'string') return error.message
+  return fallback
+}
+
+function getErrorName(error: unknown) {
+  return isRecord(error) && typeof error.name === 'string' ? error.name : undefined
+}
+
+function getDirectoryPicker() {
+  if (typeof window === 'undefined') return undefined
+  return (window as DirectoryPickerWindow).showDirectoryPicker
+}
+
 // 文件预览模态框（支持图片描述、文档分块、MD 预览）
 function FilePreviewModal({
   file,
@@ -142,13 +274,17 @@ function FilePreviewModal({
   onDelete,
   onEdit,
 }: {
-  file: any
+  file: KnowledgeFileView
   kbId: string | null
   onClose: () => void
   onDelete: () => void
   onEdit?: (payload: { fileId: string; filename: string; content: string }) => void
 }) {
   const [tab, setTab] = React.useState<'preview' | 'chunks'>('preview')
+  const previewTabRefs = React.useRef<Record<'preview' | 'chunks', HTMLButtonElement | null>>({
+    preview: null,
+    chunks: null,
+  })
   const [details, setDetails] = React.useState<FilePreviewDetails | null>(null)
   const [rawContent, setRawContent] = React.useState<string | null>(null)
   /** /preview 接口（分块、图注、text_preview 等）；与文件流 /stream、/content 独立，避免分块被慢请求拖住 */
@@ -198,6 +334,44 @@ function FilePreviewModal({
   const isExcel = ['xlsx', 'xls', 'csv'].includes(fileTypeLower)
   const isDoc = ['pdf', 'docx', 'doc', 'pptx', 'txt', 'md', 'xlsx', 'xls', 'csv'].includes(fileTypeLower)
   const hasChunks = (details?.chunks?.length ?? 0) > 0
+  const visiblePreviewTabs: Array<'preview' | 'chunks'> = isDoc ? ['preview', 'chunks'] : ['preview']
+  const modalDomId = React.useId().replace(/:/g, '')
+  const titleId = `${modalDomId}-file-preview-title`
+  const metaId = `${modalDomId}-file-preview-meta`
+  const statusId = `${modalDomId}-file-preview-status`
+  const previewTabId = `${modalDomId}-file-preview-tab`
+  const chunksTabId = `${modalDomId}-file-chunks-tab`
+  const activePanelId = `${modalDomId}-file-preview-active-panel`
+  const hasPreviewTabs = hasChunks || isDoc
+  const activeTabId = tab === 'chunks' && isDoc ? chunksTabId : previewTabId
+
+  const focusPreviewTab = (nextTab: 'preview' | 'chunks') => {
+    setTab(nextTab)
+    requestAnimationFrame(() => previewTabRefs.current[nextTab]?.focus())
+  }
+
+  const handlePreviewTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentTab: 'preview' | 'chunks') => {
+    const currentIndex = visiblePreviewTabs.indexOf(currentTab)
+    if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      focusPreviewTab(visiblePreviewTabs[(currentIndex + 1) % visiblePreviewTabs.length])
+      return
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      focusPreviewTab(visiblePreviewTabs[(currentIndex - 1 + visiblePreviewTabs.length) % visiblePreviewTabs.length])
+      return
+    }
+    if (event.key === 'Home') {
+      event.preventDefault()
+      focusPreviewTab(visiblePreviewTabs[0])
+      return
+    }
+    if (event.key === 'End') {
+      event.preventDefault()
+      focusPreviewTab(visiblePreviewTabs[visiblePreviewTabs.length - 1])
+    }
+  }
 
   React.useEffect(() => {
     if (!file?.id || !kbId) return
@@ -241,10 +415,10 @@ function FilePreviewModal({
         pdfObjectUrlRef.current = url
         setPdfObjectUrl(url)
       })
-      .catch((err: any) => {
+      .catch((err: unknown) => {
         setPdfObjectUrl(null)
         if (isOfficeDocument) {
-          setOfficePreviewError(err?.message || 'Office 文件页面内预览暂不可用')
+          setOfficePreviewError(getErrorMessage(err, 'Office 文件页面内预览暂不可用'))
         }
       })
       .finally(() => setPdfLoading(false))
@@ -275,8 +449,8 @@ function FilePreviewModal({
       .then((blob) => {
         if (!cancelled) setExcelBlob(blob)
       })
-      .catch((err: any) => {
-        if (!cancelled) setExcelError(err?.message || '加载表格文件失败')
+      .catch((err: unknown) => {
+        if (!cancelled) setExcelError(getErrorMessage(err, '加载表格文件失败'))
       })
       .finally(() => {
         if (!cancelled) setExcelLoading(false)
@@ -347,6 +521,16 @@ function FilePreviewModal({
   // Markdown 预览仅使用原始文件内容（MinIO 中的原文），避免显示插入了图注后的分块文本导致重复/错乱
   const textPreview = isMd ? (rawContent ?? '') : (file?.textPreview ?? details?.text_preview ?? rawContent ?? '')
   const canEditManualInput = Boolean(details?.editable && isMd && file?.id)
+  const previewStatusText =
+    tab === 'chunks' && isDoc
+      ? loadingPreviewDetails
+        ? `正在加载 ${file.name} 的文档分块`
+        : hasChunks
+          ? `${file.name} 共有 ${details?.chunks?.length ?? 0} 个文档分块`
+          : `${file.name} 暂未获取到分块内容`
+      : (pdfLoading || excelLoading || audioLoading || videoLoading || loadingPreviewDetails || loadingRawText)
+        ? `正在加载 ${file.name} 的预览内容`
+        : `正在显示 ${file.name} 的预览内容`
 
   const renderTextPreviewCard = (extraHint?: React.ReactNode) => (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
@@ -355,20 +539,10 @@ function FilePreviewModal({
       </div>
       {extraHint}
       {isMd ? (
-        <div className="max-h-[60vh] overflow-y-auto prose prose-slate dark:prose-invert prose-sm max-w-none">
-          <ReactMarkdown
-            components={{
-              img: ({ src, alt, ...rest }) => {
-                const isLocalPath = typeof src === 'string' && (src.startsWith('/') || src.toLowerCase().startsWith('file://'))
-                const imgSrc = isLocalPath && kbId && file?.id
-                  ? knowledgeApi.getFilePreviewAssetUrl(kbId, file.id, src)
-                  : src
-                return <img src={imgSrc} alt={alt ?? ''} {...rest} className="max-w-full h-auto rounded border border-slate-200 dark:border-slate-700" />
-              },
-            }}
-          >
-            {textPreview}
-          </ReactMarkdown>
+        <div className="rag-markdown max-h-[60vh] max-w-none overflow-y-auto">
+          <Suspense fallback={<div className="text-sm text-slate-500 dark:text-slate-400">正在载入 Markdown 预览…</div>}>
+            <KnowledgeMarkdownPreview content={textPreview} kbId={kbId ?? undefined} fileId={file?.id ?? undefined} />
+          </Suspense>
         </div>
       ) : (
         <div className="max-h-[60vh] overflow-y-auto">
@@ -382,7 +556,13 @@ function FilePreviewModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-950 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800">
+      <div
+        className="bg-white dark:bg-slate-950 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={`${metaId} ${statusId}`}
+      >
         {/* 顶栏：全类型预览共用，渐变底 + 类型图标 + 元信息标签 */}
         <div className="relative overflow-hidden flex-shrink-0 border-b border-slate-200/80 dark:border-slate-800 bg-gradient-to-br from-slate-50 via-white to-indigo-50/50 dark:from-slate-900 dark:via-slate-950 dark:to-indigo-950/25 px-6 py-4">
           <div
@@ -409,12 +589,13 @@ function FilePreviewModal({
               )}
               <div className="min-w-0 pt-0.5">
                 <h2
+                  id={titleId}
                   className="text-base font-semibold tracking-tight text-slate-900 dark:text-slate-50 truncate"
                   title={file.name}
                 >
                   {file.name}
                 </h2>
-                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
+                <div id={metaId} className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
                   <span className="inline-flex items-center rounded-full border border-indigo-200/70 bg-white/60 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-indigo-800 shadow-[0_1px_2px_rgba(99,102,241,0.06)] backdrop-blur-[2px] dark:border-indigo-500/30 dark:bg-indigo-950/35 dark:text-indigo-200 dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
                     {String(file.type || '').toUpperCase() || 'FILE'}
                   </span>
@@ -436,9 +617,9 @@ function FilePreviewModal({
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950'
               )}
               type="button"
-              aria-label="关闭"
+              aria-label={`关闭文件预览：${file.name}`}
             >
-              <X size={18} strokeWidth={2.25} />
+              <X size={18} strokeWidth={2.25} aria-hidden />
             </button>
           </div>
         </div>
@@ -446,14 +627,21 @@ function FilePreviewModal({
         {(hasChunks || isDoc) && (
           <div className="px-6 pt-3.5 pb-3 flex-shrink-0 bg-slate-50/95 dark:bg-slate-900/85 border-b border-slate-100 dark:border-slate-800/90">
             <div
-              className="inline-flex items-center gap-0.5 rounded-xl bg-slate-200/55 dark:bg-slate-800/90 p-1 ring-1 ring-inset ring-slate-300/35 dark:ring-slate-700/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+              className="inline-flex items-center gap-0.5 rounded-xl bg-slate-200/50 dark:bg-slate-800/90 p-1 ring-1 ring-inset ring-slate-300/40 dark:ring-slate-700/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
               role="tablist"
               aria-label="预览方式"
             >
               <button
+                id={previewTabId}
+                ref={(node) => {
+                  previewTabRefs.current.preview = node
+                }}
                 onClick={() => setTab('preview')}
                 role="tab"
                 aria-selected={tab === 'preview'}
+                aria-controls={tab === 'preview' ? activePanelId : undefined}
+                tabIndex={tab === 'preview' ? 0 : -1}
+                onKeyDown={(event) => handlePreviewTabKeyDown(event, 'preview')}
                 className={cn(
                   'relative flex items-center gap-1.5 rounded-[0.65rem] px-3 py-2 text-xs font-semibold transition-all duration-200 ease-out',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-slate-900',
@@ -468,9 +656,16 @@ function FilePreviewModal({
               </button>
               {isDoc && (
                 <button
+                  id={chunksTabId}
+                  ref={(node) => {
+                    previewTabRefs.current.chunks = node
+                  }}
                   onClick={() => setTab('chunks')}
                   role="tab"
                   aria-selected={tab === 'chunks'}
+                  aria-controls={tab === 'chunks' ? activePanelId : undefined}
+                  tabIndex={tab === 'chunks' ? 0 : -1}
+                  onKeyDown={(event) => handlePreviewTabKeyDown(event, 'chunks')}
                   className={cn(
                     'relative flex items-center gap-1.5 rounded-[0.65rem] pl-3 pr-2 py-2 text-xs font-semibold transition-all duration-200 ease-out',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-slate-900',
@@ -514,7 +709,16 @@ function FilePreviewModal({
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-6 min-h-0">
+        <div
+          id={activePanelId}
+          className="flex-1 overflow-y-auto p-6 min-h-0"
+          role={hasPreviewTabs ? 'tabpanel' : 'region'}
+          aria-labelledby={hasPreviewTabs ? activeTabId : titleId}
+          aria-describedby={statusId}
+        >
+          <span id={statusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+            {previewStatusText}
+          </span>
           {tab === 'chunks' && isDoc ? (
             hasChunks ? (
               <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden">
@@ -576,11 +780,13 @@ function FilePreviewModal({
               />
             </div>
           ) : isExcel && excelBlob ? (
-            <ExcelPreview
-              blob={excelBlob}
-              fileType={fileTypeLower as 'xlsx' | 'xls' | 'csv'}
-              filename={file.name}
-            />
+            <Suspense fallback={<PreviewPaneLoading title="正在载入表格预览器…" hint="表格文件已读取完成，正在准备浏览器端预览组件。" variant="document" />}>
+              <ExcelPreview
+                blob={excelBlob}
+                fileType={fileTypeLower as 'xlsx' | 'xls' | 'csv'}
+                filename={file.name}
+              />
+            </Suspense>
           ) : isExcel && excelLoading ? (
             <PreviewPaneLoading
               title="表格加载中…"
@@ -588,7 +794,7 @@ function FilePreviewModal({
               variant="document"
             />
           ) : isExcel && excelError ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30" role="alert">
               <div className="text-sm font-medium text-amber-800 dark:text-amber-200">表格预览暂不可用</div>
               <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-amber-700 dark:text-amber-300">
                 {excelError}
@@ -614,7 +820,7 @@ function FilePreviewModal({
               variant="document"
             />
           ) : isOfficeDocument && officePreviewError ? (
-            <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-4">
+            <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-4" role="alert">
               <div className="text-sm font-medium text-amber-800 dark:text-amber-200">Office 页内预览暂不可用</div>
               <div className="mt-2 text-sm text-amber-700 dark:text-amber-300 leading-relaxed whitespace-pre-wrap">
                 {officePreviewError}
@@ -677,8 +883,8 @@ function FilePreviewModal({
               </MediaDescriptionPanel>
             </div>
           ) : isAudio && audioLoading ? (
-            <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
-              <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent" />
+            <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400" role="status" aria-live="polite">
+              <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent" aria-hidden />
               <div className="mt-3 text-sm">音频加载中…</div>
             </div>
           ) : isVideo && videoObjectUrl ? (
@@ -711,8 +917,8 @@ function FilePreviewModal({
               </MediaDescriptionPanel>
             </div>
           ) : isVideo && videoLoading ? (
-            <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
-              <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent" />
+            <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400" role="status" aria-live="polite">
+              <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent" aria-hidden />
               <div className="mt-3 text-sm">视频加载中…</div>
             </div>
           ) : textPreview ? (
@@ -730,9 +936,9 @@ function FilePreviewModal({
               variant="document"
             />
           ) : (
-            <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400">
+            <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400" role="status">
               <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                <FileText size={24} />
+                <FileText size={24} aria-hidden />
               </div>
               <div className="mt-3 text-sm">该文件类型暂无预览</div>
             </div>
@@ -752,10 +958,11 @@ function FilePreviewModal({
                 })
               }}
               disabled={loadingRawText || !onEdit || rawContent == null}
+              aria-label={loadingRawText ? `正在加载 Markdown 内容：${file.name}` : `编辑 Markdown 内容：${file.name}`}
               className={cn(
                 'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold',
                 'border border-indigo-200/90 bg-white text-indigo-700 shadow-sm shadow-indigo-100/40',
-                'dark:border-indigo-900/55 dark:bg-slate-900 dark:text-indigo-300 dark:shadow-none',
+                'dark:border-indigo-900/50 dark:bg-slate-900 dark:text-indigo-300 dark:shadow-none',
                 'hover:bg-indigo-600 hover:border-indigo-600 hover:text-white hover:shadow-md hover:shadow-indigo-500/25',
                 'dark:hover:bg-indigo-600 dark:hover:border-indigo-500 dark:hover:text-white',
                 'disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white disabled:hover:text-indigo-700',
@@ -771,6 +978,7 @@ function FilePreviewModal({
           )}
           <button
             onClick={onClose}
+            aria-label={`关闭文件预览：${file.name}`}
             className={cn(
               'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold',
               'border border-slate-200/95 bg-white text-slate-700 shadow-sm shadow-slate-200/50',
@@ -786,10 +994,11 @@ function FilePreviewModal({
           </button>
           <button
             onClick={onDelete}
+            aria-label={`删除文件：${file.name}`}
             className={cn(
               'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold',
               'border border-red-200/90 bg-white text-red-600 shadow-sm shadow-red-100/40',
-              'dark:border-red-900/55 dark:bg-slate-900 dark:text-red-400 dark:shadow-none',
+              'dark:border-red-900/50 dark:bg-slate-900 dark:text-red-400 dark:shadow-none',
               'hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:shadow-red-500/25',
               'dark:hover:bg-red-600 dark:hover:border-red-500 dark:hover:text-white',
               'active:scale-[0.98] transition-all duration-200 ease-out',
@@ -848,6 +1057,11 @@ function ImportUrlModal({
   } | null>(null)
   const filenameRef = useRef('')
   const lastSuggestedFilenameRef = useRef<string | null>(null)
+  const modalDomId = React.useId().replace(/:/g, '')
+  const titleId = `${modalDomId}-url-import-title`
+  const descriptionId = `${modalDomId}-url-import-description`
+  const advancedOptionsId = `${modalDomId}-url-import-advanced-options`
+  const errorId = `${modalDomId}-url-import-error`
 
   useEffect(() => {
     filenameRef.current = filename
@@ -884,10 +1098,10 @@ function ImportUrlModal({
           setFilename(result.suggested_filename)
         }
         lastSuggestedFilenameRef.current = result.suggested_filename
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (cancelled) return
         setInspectResult(null)
-        setInspectError(err?.response?.data?.detail ?? err?.message ?? 'URL 识别失败')
+        setInspectError(getErrorMessage(err, 'URL 识别失败'))
       } finally {
         if (!cancelled) setInspecting(false)
       }
@@ -945,8 +1159,8 @@ function ImportUrlModal({
       await importApi.importFromUrl(baseBody)
       onSuccess()
       onClose()
-    } catch (err: any) {
-      setError(err?.response?.data?.detail ?? err?.message ?? '导入失败')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, '导入失败'))
     } finally {
       setLoading(false)
     }
@@ -965,20 +1179,26 @@ function ImportUrlModal({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 overflow-hidden">
+      <div
+        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+      >
         <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
+          <h3 id={titleId} className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/15 dark:bg-blue-400/20 text-blue-600 dark:text-blue-400 shadow-sm">
-              <Link2 size={20} />
+              <Link2 size={20} aria-hidden />
             </span>
             从 URL 导入
           </h3>
-          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭">
-            <X size={18} />
+          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭 URL 导入弹窗">
+            <X size={18} aria-hidden />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          <p className="text-xs text-slate-500 dark:text-slate-400 -mt-1">
+          <p id={descriptionId} className="text-xs text-slate-500 dark:text-slate-400 -mt-1">
             支持文件直链（PDF/DOCX/图片/音视频…）与任意网页（自动抽取正文为 Markdown 入库）。
           </p>
           <div>
@@ -991,10 +1211,15 @@ function ImportUrlModal({
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400 dark:focus:ring-blue-400/20 dark:focus:border-blue-500 transition-shadow"
             />
             {(inspecting || inspectResult || inspectError) && (
-              <div className="mt-3 rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-800/35 px-4 py-3">
+              <div
+                className="mt-3 rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-800/35 px-4 py-3"
+                role={inspectError ? 'alert' : 'status'}
+                aria-live="polite"
+                aria-atomic="true"
+              >
                 {inspecting ? (
                   <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                    <Loader2 size={14} className="animate-spin text-blue-500" />
+                    <Loader2 size={14} className="animate-spin text-blue-500" aria-hidden />
                     正在识别链接类型、标题和建议文件名…
                   </div>
                 ) : inspectResult ? (
@@ -1097,13 +1322,15 @@ function ImportUrlModal({
             <button
               type="button"
               onClick={() => setShowAdvanced((v) => !v)}
+              aria-expanded={showAdvanced}
+              aria-controls={advancedOptionsId}
               className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
             >
-              <ChevronDown size={14} className={cn('transition-transform', showAdvanced ? 'rotate-0' : '-rotate-90')} />
+              <ChevronDown size={14} className={cn('transition-transform', showAdvanced ? 'rotate-0' : '-rotate-90')} aria-hidden />
               高级选项
             </button>
             {showAdvanced && (
-              <div className="mt-3 space-y-2 rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-slate-50/40 dark:bg-slate-800/30 p-4">
+              <div id={advancedOptionsId} className="mt-3 space-y-2 rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-slate-50/40 dark:bg-slate-800/30 p-4">
                 <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer">
                   <input
                     type="checkbox"
@@ -1137,13 +1364,13 @@ function ImportUrlModal({
               </div>
             )}
           </div>
-          {error && <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl">{error}</p>}
+          {error && <p id={errorId} className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl" role="alert">{error}</p>}
           <div className="flex justify-end gap-3 pt-1">
-            <button type="button" onClick={onClose} className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
+            <button type="button" onClick={onClose} aria-label="取消 URL 导入" className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
               取消
             </button>
-            <button type="submit" disabled={loading} className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all">
-              {loading ? <Loader2 size={16} className="animate-spin" /> : null}
+            <button type="submit" disabled={loading} aria-describedby={error ? errorId : undefined} aria-label={loading ? '正在导入 URL' : '导入 URL'} className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all">
+              {loading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : null}
               导入
             </button>
           </div>
@@ -1172,6 +1399,10 @@ function ImportHotTopicsModal({
   const [maxResults, setMaxResults] = useState(10)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const modalDomId = React.useId().replace(/:/g, '')
+  const titleId = `${modalDomId}-hot-topics-title`
+  const descriptionId = `${modalDomId}-hot-topics-description`
+  const errorId = `${modalDomId}-hot-topics-error`
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1198,9 +1429,8 @@ function ImportHotTopicsModal({
       await importApi.importHotTopics(body)
       onSuccess()
       onClose()
-    } catch (err: any) {
-      const detail = err?.response?.data?.detail
-      setError(typeof detail === 'string' ? detail : detail?.msg ?? err?.message ?? '热点导入失败')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, '热点导入失败'))
     } finally {
       setLoading(false)
     }
@@ -1212,19 +1442,28 @@ function ImportHotTopicsModal({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 overflow-hidden">
+      <div
+        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+      >
         <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-emerald-50/80 to-teal-50/60 dark:from-emerald-950/30 dark:to-teal-950/20">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
+          <h3 id={titleId} className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 dark:bg-emerald-400/20 text-emerald-600 dark:text-emerald-400 shadow-sm">
-              <Newspaper size={20} />
+              <Newspaper size={20} aria-hidden />
             </span>
             热点资讯导入
           </h3>
-          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭">
-            <X size={18} />
+          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭热点资讯导入弹窗">
+            <X size={18} aria-hidden />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          <p id={descriptionId} className="sr-only">
+            可按关键词、主题、时间范围和条数上限抓取热点资讯并导入当前知识库。
+          </p>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">关键词 <span className="text-slate-400 font-normal">(可选)</span></label>
             <input
@@ -1266,13 +1505,13 @@ function ImportHotTopicsModal({
             />
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">1–20 条，默认 10</p>
           </div>
-          {error && <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl">{error}</p>}
+          {error && <p id={errorId} className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl" role="alert">{error}</p>}
           <div className="flex justify-end gap-3 pt-1">
-            <button type="button" onClick={onClose} className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
+            <button type="button" onClick={onClose} aria-label="取消热点资讯导入" className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
               取消
             </button>
-            <button type="submit" disabled={loading} className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-emerald-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all">
-              {loading ? <Loader2 size={16} className="animate-spin" /> : null}
+            <button type="submit" disabled={loading} aria-describedby={error ? errorId : undefined} aria-label={loading ? '正在导入热点资讯' : '导入热点资讯'} className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-emerald-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all">
+              {loading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : null}
               导入
             </button>
           </div>
@@ -1314,7 +1553,15 @@ function ImportFolderModal({
     failed_count?: number
   } | null>(null)
 
-  const supportsFolderPicker = typeof window !== 'undefined' && 'showDirectoryPicker' in window
+  const directoryPicker = getDirectoryPicker()
+  const supportsFolderPicker = Boolean(directoryPicker)
+  const modalDomId = React.useId().replace(/:/g, '')
+  const titleId = `${modalDomId}-folder-import-title`
+  const descriptionId = `${modalDomId}-folder-import-description`
+  const errorId = `${modalDomId}-folder-import-error`
+  const selectedFilesStatusId = `${modalDomId}-folder-selected-files`
+  const resultId = `${modalDomId}-folder-import-result`
+  const progressId = `${modalDomId}-folder-import-progress`
 
   const extensionsList = extensionsStr.trim()
     ? extensionsStr.split(/[\s,]+/).map((s) => s.trim().toLowerCase()).filter(Boolean)
@@ -1349,7 +1596,7 @@ function ImportFolderModal({
   }
 
   async function collectFilesFromHandle(
-    handle: FileSystemDirectoryHandle,
+    handle: DirectoryPickerDirectoryHandle,
     recursive: boolean,
     pathPrefix: string,
     extensions: string[] | null,
@@ -1358,7 +1605,7 @@ function ImportFolderModal({
     collected: File[]
   ): Promise<void> {
     if (collected.length >= maxFiles) return
-    for await (const entry of (handle as any).values()) {
+    for await (const entry of handle.values()) {
       if (collected.length >= maxFiles) break
       const name = entry.name
       const relPath = pathPrefix ? `${pathPrefix}/${name}` : name
@@ -1390,7 +1637,11 @@ function ImportFolderModal({
     setSelectedFiles(null)
     setPickingFolder(true)
     try {
-      const dirHandle = await (window as any).showDirectoryPicker()
+      const dirHandle = await directoryPicker?.()
+      if (!dirHandle) {
+        setError('当前浏览器不支持选择文件夹，请使用 Chrome/Edge 或下方输入服务端路径')
+        return
+      }
       const files: File[] = []
       await collectFilesFromHandle(
         dirHandle,
@@ -1403,8 +1654,8 @@ function ImportFolderModal({
       )
       setSelectedFiles(files)
       if (files.length === 0) setError('该文件夹下没有符合条件的文件')
-    } catch (err: any) {
-      if (err?.name !== 'AbortError') setError(err?.message ?? '选择文件夹失败')
+    } catch (err: unknown) {
+      if (getErrorName(err) !== 'AbortError') setError(getErrorMessage(err, '选择文件夹失败'))
     } finally {
       setPickingFolder(false)
     }
@@ -1447,8 +1698,8 @@ function ImportFolderModal({
             }
           }
         )
-      } catch (err: any) {
-        setError(err?.response?.data?.detail ?? err?.message ?? '导入失败')
+      } catch (err: unknown) {
+        setError(getErrorMessage(err, '导入失败'))
       } finally {
         setLoading(false)
         setFolderProgress(null)
@@ -1459,24 +1710,42 @@ function ImportFolderModal({
   }
 
   const canImport = (selectedFiles != null && selectedFiles.length > 0) || folderPath.trim().length > 0
+  const folderProgressCurrent = folderProgress?.current ?? 0
+  const folderProgressTotal = folderProgress?.total ?? 0
+  const folderProgressLabel = folderProgress
+    ? folderProgress.stage === 'scanning'
+      ? '正在扫描文件夹…'
+      : folderProgress.stage === 'importing'
+        ? `正在导入 ${folderProgressCurrent}/${folderProgressTotal}`
+        : '处理中…'
+    : ''
 
   const inputClass =
     'w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/25 focus:border-amber-400 dark:focus:ring-amber-400/20 dark:focus:border-amber-500 transition-shadow'
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 max-h-[90vh] overflow-y-auto">
+      <div
+        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 max-h-[90vh] overflow-y-auto"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+      >
         <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-amber-50/80 to-orange-50/60 dark:from-amber-950/30 dark:to-orange-950/20 sticky top-0 z-10">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
+          <h3 id={titleId} className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 dark:bg-amber-400/20 text-amber-600 dark:text-amber-400 shadow-sm">
-              <FolderOpen size={20} />
+              <FolderOpen size={20} aria-hidden />
             </span>
             从文件夹导入
           </h3>
-          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭">
-            <X size={18} />
+          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭文件夹导入弹窗">
+            <X size={18} aria-hidden />
           </button>
         </div>
         <div className="p-6 space-y-5">
+          <p id={descriptionId} className="sr-only">
+            可选择本机文件夹或输入服务端路径，并按筛选条件导入当前知识库。
+          </p>
           {/* 筛选条件 */}
           <div className="space-y-4 pb-5 border-b border-slate-200 dark:border-slate-700">
             <p className="text-sm font-medium text-slate-700 dark:text-slate-200">筛选条件 <span className="text-slate-400 font-normal">（对下方两种方式均生效）</span></p>
@@ -1511,16 +1780,17 @@ function ImportFolderModal({
               type="button"
               onClick={handleSelectLocalFolder}
               disabled={pickingFolder || loading}
+              aria-describedby={selectedFiles != null && selectedFiles.length > 0 ? selectedFilesStatusId : undefined}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/30 text-slate-700 dark:text-slate-200 hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 transition-colors disabled:opacity-50"
             >
-              {pickingFolder ? <Loader2 size={18} className="animate-spin" /> : <FolderOpen size={18} />}
+              {pickingFolder ? <Loader2 size={18} className="animate-spin" aria-hidden /> : <FolderOpen size={18} aria-hidden />}
               {pickingFolder ? '正在打开…' : '选择本地文件夹'}
             </button>
             {!supportsFolderPicker && (
-              <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">需使用 Chrome、Edge 等支持 File System Access 的浏览器</p>
+              <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400" role="note">需使用 Chrome、Edge 等支持 File System Access 的浏览器</p>
             )}
             {selectedFiles != null && selectedFiles.length > 0 && (
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/50 px-3 py-2 rounded-xl">已选择 {selectedFiles.length} 个文件，点击下方「导入」将关闭弹窗并在本页显示每文件处理进度。</p>
+              <p id={selectedFilesStatusId} className="mt-2 text-sm text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/50 px-3 py-2 rounded-xl" role="status">已选择 {selectedFiles.length} 个文件，点击下方「导入」将关闭弹窗并在本页显示每文件处理进度。</p>
             )}
           </div>
 
@@ -1532,18 +1802,31 @@ function ImportFolderModal({
 
           {/* 服务端路径导入进度 */}
           {loading && folderProgress && (
-            <div className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20 p-4 space-y-2">
+            <div
+              id={progressId}
+              className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20 p-4 space-y-2"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                  {folderProgress.stage === 'scanning' ? '正在扫描文件夹…' : folderProgress.stage === 'importing' ? `正在导入 ${folderProgress.current ?? 0}/${folderProgress.total ?? 0}` : '处理中…'}
+                  {folderProgressLabel}
                 </span>
-                {folderProgress.total != null && folderProgress.total > 0 && (
-                  <span className="text-sm tabular-nums text-slate-500 dark:text-slate-400">{folderProgress.current ?? 0} / {folderProgress.total}</span>
+                {folderProgressTotal > 0 && (
+                  <span className="text-sm tabular-nums text-slate-500 dark:text-slate-400">{folderProgressCurrent} / {folderProgressTotal}</span>
                 )}
               </div>
-              {folderProgress.total != null && folderProgress.total > 0 && (
-                <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-                  <div className="h-full bg-amber-500 dark:bg-amber-500 transition-all duration-300" style={{ width: `${Math.min(100, ((folderProgress.current ?? 0) / folderProgress.total) * 100)}%` }} />
+              {folderProgressTotal > 0 && (
+                <div
+                  className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"
+                  role="progressbar"
+                  aria-label={folderProgressLabel}
+                  aria-valuemin={0}
+                  aria-valuemax={folderProgressTotal}
+                  aria-valuenow={folderProgressCurrent}
+                >
+                  <div className="h-full bg-amber-500 dark:bg-amber-500 transition-all duration-300" style={{ width: `${Math.min(100, (folderProgressCurrent / folderProgressTotal) * 100)}%` }} />
                 </div>
               )}
               {folderProgress.message && folderProgress.stage === 'importing' && (
@@ -1554,26 +1837,28 @@ function ImportFolderModal({
 
           {/* 共用导入按钮 */}
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
-            <button type="button" onClick={onClose} className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
+            <button type="button" onClick={onClose} aria-label="取消文件夹导入" className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
               取消
             </button>
             <button
               type="button"
               onClick={handleImport}
               disabled={!canImport || loading}
+              aria-describedby={error ? errorId : loading && folderProgress ? progressId : result ? resultId : undefined}
+              aria-label={loading ? '正在导入文件夹' : '导入文件夹'}
               className="px-5 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-amber-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all"
             >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : null}
+              {loading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : null}
               导入
             </button>
           </div>
 
           {result != null && (
-            <p className="text-sm text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/50 px-3 py-2 rounded-xl">
+            <p id={resultId} className="text-sm text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/50 px-3 py-2 rounded-xl" role="status">
               成功 {result.success_count}，失败 {result.failed_count}，共 {result.total} 个文件。
             </p>
           )}
-          {error && <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl">{error}</p>}
+          {error && <p id={errorId} className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl" role="alert">{error}</p>}
         </div>
       </div>
     </div>
@@ -1621,6 +1906,12 @@ function ImportSearchModal({
     total: number
     message: string
   } | null>(null)
+  const modalDomId = React.useId().replace(/:/g, '')
+  const titleId = `${modalDomId}-search-import-title`
+  const descriptionId = `${modalDomId}-search-import-description`
+  const progressId = `${modalDomId}-search-import-progress`
+  const errorId = `${modalDomId}-search-import-error`
+  const resultId = `${modalDomId}-search-import-result`
 
   const buildParams = (): SearchImportParams => ({
     kb_id: kbId,
@@ -1672,8 +1963,8 @@ function ImportSearchModal({
           })
         }
       })
-    } catch (err: any) {
-      setError(err?.message ?? '导入失败')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, '导入失败'))
     } finally {
       setLoading(false)
     }
@@ -1703,21 +1994,32 @@ function ImportSearchModal({
   const inputClass =
     'w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/25 focus:border-violet-400 dark:focus:ring-violet-400/20 dark:focus:border-violet-500 transition-shadow'
   const selectClass = inputClass
+  const progressCurrent = progress?.current ?? 0
+  const progressTotal = progress?.total ?? 0
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 overflow-hidden">
+      <div
+        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+      >
         <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-violet-50/80 to-fuchsia-50/60 dark:from-violet-950/30 dark:to-fuchsia-950/20">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
+          <h3 id={titleId} className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/15 dark:bg-violet-400/20 text-violet-600 dark:text-violet-400 shadow-sm">
-              <ImagePlus size={20} />
+              <ImagePlus size={20} aria-hidden />
             </span>
             搜索图片导入
           </h3>
-          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭">
-            <X size={18} />
+          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭图片搜索导入弹窗">
+            <X size={18} aria-hidden />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          <p id={descriptionId} className="sr-only">
+            可按关键词、渠道、数量和随机性搜索图片并导入当前知识库。
+          </p>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">搜索关键词 <span className="text-red-500">*</span></label>
             <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="例如：猫、风景" className={inputClass} />
@@ -1769,30 +2071,43 @@ function ImportSearchModal({
             <span className="text-sm text-slate-700 dark:text-slate-200">增加随机性（同关键词多次搜索得到不同图片）</span>
           </label>
           {progress && (
-            <div className={cn('rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-2', progressStageStyle.border, progressStageStyle.bg)}>
+            <div
+              id={progressId}
+              className={cn('rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-2', progressStageStyle.border, progressStageStyle.bg)}
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
               <div className="flex items-center justify-between gap-2">
                 {progressStageStyle.tagLabel && (
                   <span className={cn('inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium', progressStageStyle.tag)}>{progressStageStyle.tagLabel}</span>
                 )}
                 <span className="text-sm text-slate-600 dark:text-slate-300 flex-1 truncate">{stageLabel}</span>
-                {progress.total > 0 && <span className="text-sm font-medium text-slate-500 dark:text-slate-400 tabular-nums">{progress.current} / {progress.total}</span>}
+                {progressTotal > 0 && <span className="text-sm font-medium text-slate-500 dark:text-slate-400 tabular-nums">{progressCurrent} / {progressTotal}</span>}
               </div>
-              {progress.total > 0 && (
-                <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-                  <div className={cn('h-full transition-all duration-300', progressStageStyle.bar)} style={{ width: `${Math.min(100, (progress.current / progress.total) * 100)}%` }} />
+              {progressTotal > 0 && (
+                <div
+                  className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"
+                  role="progressbar"
+                  aria-label={stageLabel}
+                  aria-valuemin={0}
+                  aria-valuemax={progressTotal}
+                  aria-valuenow={progressCurrent}
+                >
+                  <div className={cn('h-full transition-all duration-300', progressStageStyle.bar)} style={{ width: `${Math.min(100, (progressCurrent / progressTotal) * 100)}%` }} />
                 </div>
               )}
               {progress.message && <p className="text-xs text-slate-500 dark:text-slate-400 truncate" title={progress.message}>{progress.message}</p>}
             </div>
           )}
-          {error && <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl">{error}</p>}
-          {result && <p className="text-sm text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/50 px-3 py-2 rounded-xl">{result.message}</p>}
+          {error && <p id={errorId} className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl" role="alert">{error}</p>}
+          {result && <p id={resultId} className="text-sm text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/50 px-3 py-2 rounded-xl" role="status">{result.message}</p>}
           <div className="flex justify-end gap-3 pt-1">
-            <button type="button" onClick={onClose} className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
+            <button type="button" onClick={onClose} aria-label={result ? '关闭图片搜索导入弹窗' : '取消图片搜索导入'} className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
               {result ? '关闭' : '取消'}
             </button>
-            <button type="submit" disabled={loading} className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-violet-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all">
-              {loading ? <Loader2 size={16} className="animate-spin" /> : null}
+            <button type="submit" disabled={loading} aria-describedby={error ? errorId : progress ? progressId : result ? resultId : undefined} aria-label={loading ? '正在导入图片搜索结果' : '开始导入图片搜索结果'} className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-violet-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all">
+              {loading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : null}
               {loading ? (progress ? '处理中…' : '连接中…') : '开始导入'}
             </button>
           </div>
@@ -1808,7 +2123,17 @@ const KnowledgeList: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [fileQuery, setFileQuery] = useState('')
   const [fileView, setFileView] = useState<'grid' | 'table'>('grid')
-  const [previewFile, setPreviewFile] = useState<any>(null)
+  const fileListDomId = React.useId().replace(/:/g, '')
+  const fileSearchInputId = `${fileListDomId}-file-search`
+  const fileResultsStatusId = `${fileListDomId}-file-results-status`
+  const fileGridTabId = `${fileListDomId}-file-grid-tab`
+  const fileTableTabId = `${fileListDomId}-file-table-tab`
+  const statsHeadingId = `${fileListDomId}-stats-heading`
+  const fileViewTabRefs = useRef<Record<'grid' | 'table', HTMLButtonElement | null>>({
+    grid: null,
+    table: null,
+  })
+  const [previewFile, setPreviewFile] = useState<KnowledgeFileView | null>(null)
   const [dragOverlay, setDragOverlay] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadPipelineProgress | undefined>()
   const [currentUploadFiles, setCurrentUploadFiles] = useState<File[] | null>(null)
@@ -1820,7 +2145,7 @@ const KnowledgeList: React.FC = () => {
   const [uploading, setUploading] = useState(false)
   /** URL 异步导入的 processing_id，用于轮询进度并在上传流水线中展示 */
   const [urlImportProcessingId, setUrlImportProcessingId] = useState<string | null>(null)
-  const [files, setFiles] = useState<any[]>([])
+  const [files, setFiles] = useState<KnowledgeFileView[]>([])
   const [kbStats, setKbStats] = useState<{
     documents: number
     chunks: number
@@ -1845,9 +2170,27 @@ const KnowledgeList: React.FC = () => {
   const [menuOpenKbId, setMenuOpenKbId] = useState<string | null>(null)
   const [editKb, setEditKb] = useState<{ id: string; name: string; description: string } | null>(null)
 
-  useEffect(() => {
-    fetchKnowledgeBases()
-  }, [fetchKnowledgeBases])
+  const focusFileViewTab = (nextView: 'grid' | 'table') => {
+    setFileView(nextView)
+    requestAnimationFrame(() => fileViewTabRefs.current[nextView]?.focus())
+  }
+
+  const handleFileViewTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault()
+      focusFileViewTab(fileView === 'grid' ? 'table' : 'grid')
+      return
+    }
+    if (event.key === 'Home') {
+      event.preventDefault()
+      focusFileViewTab('grid')
+      return
+    }
+    if (event.key === 'End') {
+      event.preventDefault()
+      focusFileViewTab('table')
+    }
+  }
 
   useEffect(() => {
     if (menuOpenKbId == null) return
@@ -1860,7 +2203,7 @@ const KnowledgeList: React.FC = () => {
     if (!activeKbId) return
     try {
       const res = await knowledgeApi.getKnowledgeBaseFiles(activeKbId)
-      const list = (res?.files || []).map((f: { id: string; name: string; size: number; date: string; type: string; preview_url?: string; text_preview?: string }) => ({
+      const list: KnowledgeFileView[] = (res?.files || []).map((f: KnowledgeFileApiItem) => ({
         id: f.id,
         name: f.name,
         size: f.size >= 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} MB` : f.size >= 1024 ? `${(f.size / 1024).toFixed(1)} KB` : `${f.size} B`,
@@ -2348,28 +2691,40 @@ const KnowledgeList: React.FC = () => {
               ))}
             </div>
           ) : knowledgeBases.length === 0 ? (
-            <div className="col-span-full text-center py-20 text-slate-500 dark:text-slate-400">
-              <Database size={48} className="mx-auto mb-4 opacity-30" />
+            <div className="flex min-h-[26rem] items-center justify-center">
               {listFetchError ? (
-                <>
-                  <p className="text-base text-slate-700 dark:text-slate-200">知识库列表加载失败</p>
-                  <p className="mx-auto mt-2 max-w-lg text-sm text-red-600 dark:text-red-400">{listFetchError}</p>
-                  <p className="mt-3 text-xs text-slate-500 dark:text-slate-500">
-                    开发环境请确认已通过 Vite 代理访问后端（默认请求同源的 /api）；若 API 在其它地址，请在 .env 中设置 VITE_API_BASE_URL。
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => fetchKnowledgeBases()}
-                    className="mt-6 inline-flex min-h-[40px] items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-                  >
-                    重试
-                  </button>
-                </>
+                <KnowledgeEmptyState
+                  icon={AlertCircle}
+                  title="知识库列表加载失败"
+                  description={`当前仍停留在本地视图。${listFetchError} 请确认后端代理可用后重试。`}
+                  tone="amber"
+                  action={
+                    <button
+                      type="button"
+                      onClick={() => fetchKnowledgeBases()}
+                      className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-amber-200 bg-white px-4 text-sm font-semibold text-amber-700 shadow-sm transition-colors hover:bg-amber-50 dark:border-amber-500/30 dark:bg-slate-900 dark:text-amber-300 dark:hover:bg-amber-950/30"
+                    >
+                      重试
+                    </button>
+                  }
+                />
               ) : (
-                <>
-                  <p className="text-base">暂无知识库</p>
-                  <p className="mt-1 text-sm">点击上方「新建知识库」创建第一个知识库，开始上传与管理多模态数据。</p>
-                </>
+                <KnowledgeEmptyState
+                  icon={Database}
+                  title="创建第一个知识库"
+                  description="把文档、图片、音频和视频放进同一个可检索空间，系统会自动完成解析、向量化和主题画像。"
+                  tone="indigo"
+                  action={
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateModal(true)}
+                      className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition-colors hover:from-indigo-500 hover:to-violet-500"
+                    >
+                      <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+                      新建知识库
+                    </button>
+                  }
+                />
               )}
             </div>
           ) : (
@@ -2377,202 +2732,211 @@ const KnowledgeList: React.FC = () => {
               {knowledgeBases.map((kb) => {
                 const kbCardTitleClass =
                   'line-clamp-2 min-h-0 text-base font-bold leading-snug sm:text-lg mb-0.5 break-words'
+                const openKbDetail = () => {
+                  setActiveKbId(kb.id)
+                  setViewState('detail')
+                }
                 return (
-                <div
-                  key={kb.id}
-                  onClick={() => {
-                    setActiveKbId(kb.id)
-                    setViewState('detail')
-                  }}
-                  className={cn(
-                    'relative flex h-full min-h-0 flex-col rounded-xl border border-slate-200 dark:border-slate-800 ring-1 ring-transparent hover:-translate-y-1.5 hover:shadow-[0_24px_44px_-22px_rgba(168,85,247,0.24)] hover:border-fuchsia-400 hover:ring-fuchsia-200/90 dark:hover:border-fuchsia-400 dark:hover:ring-fuchsia-500/35 transition-all duration-300 cursor-pointer group overflow-hidden',
-                    kb.cover_url ? 'p-0' : 'bg-white dark:bg-slate-900 px-4 pb-2.5 pt-4'
-                  )}
-                >
-                  {/* 有封面时：图片铺满整卡作为背景 */}
-                  {kb.cover_url ? (
-                    <>
-                      <div className="absolute inset-0">
-                        <img
-                          src={kb.cover_url}
-                          alt=""
-                          className="w-full h-full object-cover group-hover:-translate-y-1 group-hover:scale-[1.08] transition-transform duration-500 ease-out"
-                        />
-                      </div>
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent rounded-xl transition-all duration-300 group-hover:from-black/85 group-hover:via-black/28" />
-                      <div className="relative z-10 flex min-h-0 h-full flex-col p-3 transition-transform duration-300 ease-out group-hover:-translate-y-1">
-                        {/* 顶部弹性空间，把标题/描述与统计条整体压到底部 */}
-                        <div className="min-h-0 flex-1" />
-                        <div className="flex-shrink-0 pb-0.5 pt-2.5">
-                          <h3 className={cn(kbCardTitleClass, 'text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_8px_rgba(0,0,0,0.7)]')}>
-                            {kb.name}
-                          </h3>
-                          <p className="line-clamp-2 h-8 overflow-hidden text-ellipsis text-sm leading-snug text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_6px_rgba(0,0,0,0.6)]">
-                            {kb.description || '暂无描述'}
-                          </p>
-                          <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-white/30 pt-2 text-[11px] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
-                            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden whitespace-nowrap">
-                              <span className="inline-flex items-center gap-1 shrink-0">
-                                <span className="text-[13px] leading-none" aria-hidden>
-                                  📄
+                  <div
+                    key={kb.id}
+                    className={cn(
+                      'relative flex h-full min-h-0 flex-col rounded-xl border border-slate-200 dark:border-slate-800 ring-1 ring-transparent hover:-translate-y-1.5 hover:shadow-[0_24px_44px_-22px_rgba(168,85,247,0.24)] hover:border-fuchsia-400 hover:ring-fuchsia-200/90 dark:hover:border-fuchsia-400 dark:hover:ring-fuchsia-500/35 transition-all duration-300 group overflow-hidden',
+                      kb.cover_url ? 'p-0' : 'bg-white dark:bg-slate-900 px-4 pb-2.5 pt-4'
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={openKbDetail}
+                      aria-label={`打开知识库：${kb.name}`}
+                      title={`打开知识库：${kb.name}`}
+                      className="absolute inset-0 z-20 cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-fuchsia-400/40 dark:focus-visible:ring-offset-slate-950"
+                    />
+                    {/* 有封面时：图片铺满整卡作为背景 */}
+                    {kb.cover_url ? (
+                      <>
+                        <div className="absolute inset-0">
+                          <img
+                            src={kb.cover_url}
+                            alt=""
+                            className="w-full h-full object-cover group-hover:-translate-y-1 group-hover:scale-[1.08] transition-transform duration-500 ease-out"
+                          />
+                        </div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent rounded-xl transition-all duration-300 group-hover:from-black/85 group-hover:via-black/28" />
+                        <div className="pointer-events-none relative z-30 flex min-h-0 h-full flex-col p-3 transition-transform duration-300 ease-out group-hover:-translate-y-1">
+                          {/* 顶部弹性空间，把标题/描述与统计条整体压到底部 */}
+                          <div className="min-h-0 flex-1" />
+                          <div className="flex-shrink-0 pb-0.5 pt-2.5">
+                            <h3 className={cn(kbCardTitleClass, 'text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_8px_rgba(0,0,0,0.7)]')}>
+                              {kb.name}
+                            </h3>
+                            <p className="line-clamp-2 h-8 overflow-hidden text-ellipsis text-sm leading-snug text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_6px_rgba(0,0,0,0.6)]">
+                              {kb.description || '暂无描述'}
+                            </p>
+                            <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-white/30 pt-2 text-[11px] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
+                              <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 shrink-0">
+                                  <span className="text-[13px] leading-none" aria-hidden>
+                                    📄
+                                  </span>
+                                  {kb.stats?.documents ?? 0} 文件
                                 </span>
-                                {kb.stats?.documents ?? 0} 文件
-                              </span>
-                              <span className="opacity-80 shrink-0">·</span>
-                              <span className="inline-flex items-center gap-1 shrink-0">
-                                <span className="text-[13px] leading-none" aria-hidden>
-                                  🖼️
+                                <span className="opacity-80 shrink-0">·</span>
+                                <span className="inline-flex items-center gap-1 shrink-0">
+                                  <span className="text-[13px] leading-none" aria-hidden>
+                                    🖼️
+                                  </span>
+                                  {kb.stats?.images ?? 0} 图片
                                 </span>
-                                {kb.stats?.images ?? 0} 图片
-                              </span>
-                              <span className="opacity-80 shrink-0">·</span>
-                              <span className="inline-flex items-center gap-1 shrink-0">
-                                <span className="text-[13px] leading-none" aria-hidden>
-                                  🎵
+                                <span className="opacity-80 shrink-0">·</span>
+                                <span className="inline-flex items-center gap-1 shrink-0">
+                                  <span className="text-[13px] leading-none" aria-hidden>
+                                    🎵
+                                  </span>
+                                  {kb.stats?.audio ?? 0} 音频
                                 </span>
-                                {kb.stats?.audio ?? 0} 音频
-                              </span>
-                              <span className="opacity-80 shrink-0">·</span>
-                              <span className="inline-flex items-center gap-1 shrink-0">
-                                <span className="text-[13px] leading-none" aria-hidden>
-                                  🎥
+                                <span className="opacity-80 shrink-0">·</span>
+                                <span className="inline-flex items-center gap-1 shrink-0">
+                                  <span className="text-[13px] leading-none" aria-hidden>
+                                    🎥
+                                  </span>
+                                  {kb.stats?.video ?? 0} 视频
                                 </span>
-                                {kb.stats?.video ?? 0} 视频
-                              </span>
-                            </div>
-                            <span className="shrink-0">{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
-                            <div className="relative shrink-0">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setMenuOpenKbId((id) => (id === kb.id ? null : kb.id))
-                                }}
-                                className="flex h-7 w-7 items-center justify-center rounded-full border border-white/30 bg-white/15 text-white/90 shadow-md backdrop-blur-sm transition-all hover:bg-white/25 hover:text-white hover:border-white/40 active:scale-95"
-                                title="更多操作"
-                              >
-                                <MoreVertical size={14} strokeWidth={2} />
-                              </button>
-                              {menuOpenKbId === kb.id && (
-                                <div
-                                  className="absolute right-0 bottom-full mb-1.5 py-1 min-w-[120px] rounded-xl bg-white/95 dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 shadow-xl backdrop-blur-sm z-50"
-                                  onClick={(e) => e.stopPropagation()}
+                              </div>
+                              <span className="shrink-0">{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
+                              <div className="pointer-events-auto relative z-40 shrink-0">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setMenuOpenKbId((id) => (id === kb.id ? null : kb.id))
+                                  }}
+                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-white/30 bg-white/15 text-white/90 shadow-md backdrop-blur-sm transition-all hover:bg-white/25 hover:text-white hover:border-white/40 active:scale-95"
+                                  title="更多操作"
+                                  aria-label={`更多操作：${kb.name}`}
                                 >
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setEditKb({ id: kb.id, name: kb.name, description: kb.description ?? '' })
-                                      setMenuOpenKbId(null)
-                                    }}
-                                    className="w-full px-3 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-t-xl first:pt-2.5"
+                                  <MoreVertical size={14} strokeWidth={2} />
+                                </button>
+                                {menuOpenKbId === kb.id && (
+                                  <div
+                                    className="absolute right-0 bottom-full mb-1.5 py-1 min-w-[120px] rounded-xl bg-white/95 dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 shadow-xl backdrop-blur-sm z-50"
+                                    onClick={(e) => e.stopPropagation()}
                                   >
-                                    <Pencil size={14} /> 编辑
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteKb(kb.id)}
-                                    className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-b-xl last:pb-2.5"
-                                  >
-                                    <Trash2 size={14} /> 删除
-                                  </button>
-                                </div>
-                              )}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditKb({ id: kb.id, name: kb.name, description: kb.description ?? '' })
+                                        setMenuOpenKbId(null)
+                                      }}
+                                      className="w-full px-3 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-t-xl first:pt-2.5"
+                                    >
+                                      <Pencil size={14} /> 编辑
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteKb(kb.id)}
+                                      className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-b-xl last:pb-2.5"
+                                    >
+                                      <Trash2 size={14} /> 删除
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-indigo-100/80 blur-2xl transition-all duration-500 group-hover:scale-125 group-hover:bg-fuchsia-100/80 dark:bg-indigo-500/10 dark:group-hover:bg-fuchsia-500/12" />
-                      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300/60 to-transparent opacity-70 transition-opacity duration-300 group-hover:opacity-100 dark:via-indigo-500/35" />
-                      <div className="relative flex min-h-0 flex-1 flex-col transition-transform duration-300 ease-out group-hover:-translate-y-1">
-                        <div className="mb-2 flex items-center">
-                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-fuchsia-50 ring-1 ring-indigo-100/80 shadow-sm transition-all duration-300 group-hover:scale-[1.04] group-hover:ring-fuchsia-200/90 group-hover:shadow-md dark:from-indigo-950/60 dark:to-fuchsia-950/30 dark:ring-indigo-800/70 dark:group-hover:ring-fuchsia-800/70">
-                            <Database
-                              size={20}
-                              strokeWidth={2}
-                              className="shrink-0 text-indigo-600 transition-all duration-300 ease-out group-hover:text-fuchsia-600 dark:text-indigo-400 dark:group-hover:text-fuchsia-400 drop-shadow-[0_1px_1px_rgba(99,102,241,0.12)] dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
-                              aria-hidden
-                            />
-                          </span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-indigo-100/80 blur-2xl transition-all duration-500 group-hover:scale-125 group-hover:bg-fuchsia-100/80 dark:bg-indigo-500/10 dark:group-hover:bg-fuchsia-500/[0.12]" />
+                        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300/60 to-transparent opacity-70 transition-opacity duration-300 group-hover:opacity-100 dark:via-indigo-500/35" />
+                        <div className="pointer-events-none relative z-30 flex min-h-0 flex-1 flex-col transition-transform duration-300 ease-out group-hover:-translate-y-1">
+                          <div className="mb-2 flex items-center">
+                            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-fuchsia-50 ring-1 ring-indigo-100/80 shadow-sm transition-all duration-300 group-hover:scale-[1.04] group-hover:ring-fuchsia-200/90 group-hover:shadow-md dark:from-indigo-950/60 dark:to-fuchsia-950/30 dark:ring-indigo-800/70 dark:group-hover:ring-fuchsia-800/70">
+                              <Database
+                                size={20}
+                                strokeWidth={2}
+                                className="shrink-0 text-indigo-600 transition-all duration-300 ease-out group-hover:text-fuchsia-600 dark:text-indigo-400 dark:group-hover:text-fuchsia-400 drop-shadow-[0_1px_1px_rgba(99,102,241,0.12)] dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
+                                aria-hidden
+                              />
+                            </span>
+                          </div>
+                          <h3 className={cn(kbCardTitleClass, 'text-slate-800 transition-colors duration-300 group-hover:text-fuchsia-700 dark:text-slate-100 dark:group-hover:text-fuchsia-300')}>{kb.name}</h3>
+                          <p className="line-clamp-2 h-8 min-h-0 flex-1 overflow-hidden text-ellipsis text-sm leading-snug text-slate-500 transition-colors duration-300 group-hover:text-slate-600 dark:text-slate-400 dark:group-hover:text-slate-300">
+                            {kb.description || '暂无描述'}
+                          </p>
                         </div>
-                        <h3 className={cn(kbCardTitleClass, 'text-slate-800 transition-colors duration-300 group-hover:text-fuchsia-700 dark:text-slate-100 dark:group-hover:text-fuchsia-300')}>{kb.name}</h3>
-                        <p className="line-clamp-2 h-8 min-h-0 flex-1 overflow-hidden text-ellipsis text-sm leading-snug text-slate-500 transition-colors duration-300 group-hover:text-slate-600 dark:text-slate-400 dark:group-hover:text-slate-300">
-                          {kb.description || '暂无描述'}
-                        </p>
-                      </div>
-                      <div className="mt-3 flex flex-shrink-0 items-center justify-between gap-2 border-t border-slate-100 pt-3 text-[11px] text-slate-400 transition-colors duration-300 group-hover:border-fuchsia-100 dark:border-slate-800 dark:group-hover:border-fuchsia-900/35">
-                        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1">
-                            <span className="text-[13px] leading-none" aria-hidden>
-                              📄
+                        <div className="pointer-events-none relative z-30 mt-3 flex flex-shrink-0 items-center justify-between gap-2 border-t border-slate-100 pt-3 text-[11px] text-slate-400 transition-colors duration-300 group-hover:border-fuchsia-100 dark:border-slate-800 dark:group-hover:border-fuchsia-900/35">
+                          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-[13px] leading-none" aria-hidden>
+                                📄
+                              </span>
+                              {kb.stats?.documents ?? 0} 文件
                             </span>
-                            {kb.stats?.documents ?? 0} 文件
-                          </span>
-                          <span className="opacity-70">·</span>
-                          <span className="inline-flex items-center gap-1">
-                            <span className="text-[13px] leading-none" aria-hidden>
-                              🖼️
+                            <span className="opacity-70">·</span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-[13px] leading-none" aria-hidden>
+                                🖼️
+                              </span>
+                              {kb.stats?.images ?? 0} 图片
                             </span>
-                            {kb.stats?.images ?? 0} 图片
-                          </span>
-                          <span className="opacity-70">·</span>
-                          <span className="inline-flex items-center gap-1">
-                            <span className="text-[13px] leading-none" aria-hidden>
-                              🎵
+                            <span className="opacity-70">·</span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-[13px] leading-none" aria-hidden>
+                                🎵
+                              </span>
+                              {kb.stats?.audio ?? 0} 音频
                             </span>
-                            {kb.stats?.audio ?? 0} 音频
-                          </span>
-                          <span className="opacity-70">·</span>
-                          <span className="inline-flex items-center gap-1">
-                            <span className="text-[13px] leading-none" aria-hidden>
-                              🎥
+                            <span className="opacity-70">·</span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-[13px] leading-none" aria-hidden>
+                                🎥
+                              </span>
+                              {kb.stats?.video ?? 0} 视频
                             </span>
-                            {kb.stats?.video ?? 0} 视频
-                          </span>
-                        </div>
-                        <span className="shrink-0">{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
-                        <div className="relative shrink-0">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setMenuOpenKbId((id) => (id === kb.id ? null : kb.id))
-                            }}
-                            className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 shadow-sm transition-all hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-500 active:scale-95"
-                            title="更多操作"
-                          >
-                            <MoreVertical size={14} strokeWidth={2} />
-                          </button>
-                          {menuOpenKbId === kb.id && (
-                            <div
-                              className="absolute right-0 bottom-full mb-1.5 py-1 min-w-[120px] rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl z-50"
-                              onClick={(e) => e.stopPropagation()}
+                          </div>
+                          <span className="shrink-0">{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
+                          <div className="pointer-events-auto relative z-40 shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setMenuOpenKbId((id) => (id === kb.id ? null : kb.id))
+                              }}
+                              className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 shadow-sm transition-all hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-500 active:scale-95"
+                              title="更多操作"
+                              aria-label={`更多操作：${kb.name}`}
                             >
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditKb({ id: kb.id, name: kb.name, description: kb.description ?? '' })
-                                  setMenuOpenKbId(null)
-                                }}
-                                className="w-full px-3 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-t-xl first:pt-2.5"
+                              <MoreVertical size={14} strokeWidth={2} />
+                            </button>
+                            {menuOpenKbId === kb.id && (
+                              <div
+                                className="absolute right-0 bottom-full mb-1.5 py-1 min-w-[120px] rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl z-50"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                <Pencil size={14} /> 编辑
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteKb(kb.id)}
-                                className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-b-xl last:pb-2.5"
-                              >
-                                <Trash2 size={14} /> 删除
-                              </button>
-                            </div>
-                          )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditKb({ id: kb.id, name: kb.name, description: kb.description ?? '' })
+                                    setMenuOpenKbId(null)
+                                  }}
+                                  className="w-full px-3 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-t-xl first:pt-2.5"
+                                >
+                                  <Pencil size={14} /> 编辑
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteKb(kb.id)}
+                                  className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-b-xl last:pb-2.5"
+                                >
+                                  <Trash2 size={14} /> 删除
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
+                      </>
+                    )}
+                  </div>
+                )
               })}
             </div>
           )}
@@ -2596,10 +2960,15 @@ const KnowledgeList: React.FC = () => {
         )}
 
         {dragOverlay && (
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-40">
+          <div
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-40"
+            role="status"
+            aria-live="polite"
+            aria-label="拖拽上传，进入知识库详情页后松手即可上传"
+          >
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-6 py-5 shadow-xl text-center">
               <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center mx-auto">
-                <Upload size={22} />
+                <Upload size={22} aria-hidden />
               </div>
               <div className="mt-3 font-semibold text-slate-900 dark:text-slate-100">拖拽上传</div>
               <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -2614,32 +2983,58 @@ const KnowledgeList: React.FC = () => {
 
   // --- KB 详情视图 ---
   if (viewState === 'detail' && activeKb) {
+    const trimmedFileQuery = fileQuery.trim()
+    const normalizedFileQuery = trimmedFileQuery.toLowerCase()
     const filteredFiles = files.filter((f) => {
-      if (!fileQuery.trim()) return true
-      return f.name.toLowerCase().includes(fileQuery.trim().toLowerCase())
+      if (!trimmedFileQuery) return true
+      return f.name.toLowerCase().includes(normalizedFileQuery)
     })
+    const currentFileViewLabel = fileView === 'grid' ? '画廊视图' : '列表视图'
+    const activeFilePanelId = `${fileListDomId}-file-active-panel`
+    const fileResultStatusText = trimmedFileQuery
+      ? `${currentFileViewLabel}，搜索“${trimmedFileQuery}”命中 ${filteredFiles.length} 个文件，共 ${files.length} 个文件。`
+      : `${currentFileViewLabel}，显示全部 ${files.length} 个文件。`
+    const documentCount = kbStats?.documents ?? activeKb.stats?.documents ?? 0
+    const textChunkCount = kbStats?.chunks ?? activeKb.stats?.chunks ?? 0
+    const imageCount = kbStats?.images ?? activeKb.stats?.images ?? 0
+    const audioCount = kbStats?.audio ?? (activeKb.stats as { audio?: number })?.audio ?? 0
+    const videoCount = kbStats?.video ?? (activeKb.stats as { video?: number })?.video ?? 0
+    const textVectorDim = kbStats?.text_vector_dim ?? 4096
+    const imageVectorDim = kbStats?.image_vector_dim ?? 768
+    const audioVectorDim = kbStats?.audio_vector_dim ?? 512
 
     return (
       <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative">
         {/* Header with Breadcrumb */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex items-center gap-4">
           <button
+            type="button"
             onClick={() => setViewState('list')}
+            title="返回知识库列表"
+            aria-label="返回知识库列表"
             className="p-2 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full text-slate-500 dark:text-slate-300 transition-colors"
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft size={20} aria-hidden />
           </button>
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mb-1">
-              <span className="cursor-pointer hover:text-blue-600" onClick={() => setViewState('list')}>
+              <button
+                type="button"
+                className="rounded-sm transition-colors hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                onClick={() => setViewState('list')}
+                aria-label="返回知识库列表"
+              >
                 知识库
-              </span>
-              <ChevronRight size={12} />
+              </button>
+              <ChevronRight size={12} aria-hidden />
               <span>详情</span>
             </div>
             <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-3">
               {activeKb.name}
-              <span className="text-xs font-normal px-2 py-0.5 bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-full border border-green-200 dark:border-green-800">
+              <span
+                className="text-xs font-normal px-2 py-0.5 bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-full border border-green-200 dark:border-green-800"
+                aria-label="知识库状态：可用"
+              >
                 可用
               </span>
             </h2>
@@ -2659,7 +3054,7 @@ const KnowledgeList: React.FC = () => {
               <div className="grid gap-3 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.7fr)]">
                 <div>
                   <div className="mb-2.5 flex items-center gap-2.5">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/12 text-indigo-600 dark:bg-indigo-400/20 dark:text-indigo-400">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/[0.12] text-indigo-600 dark:bg-indigo-400/20 dark:text-indigo-400">
                       <Pencil className="h-4 w-4" strokeWidth={2.25} aria-hidden />
                     </span>
                     <span className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">手动输入</span>
@@ -2674,10 +3069,11 @@ const KnowledgeList: React.FC = () => {
                         initialContent: '',
                       })
                     }
-                    className="group flex min-h-[5.5rem] w-full items-center gap-3 rounded-2xl border border-indigo-100/80 bg-gradient-to-br from-white to-indigo-50/55 px-3.5 py-3 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-lg hover:shadow-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 dark:border-indigo-900/50 dark:from-slate-950/80 dark:to-indigo-950/30 dark:text-slate-200 dark:hover:border-indigo-500/80"
+                    aria-label={uploading ? '正在上传，暂不能新建 Markdown 文档' : '新建 Markdown 文档，输入文本后直接分块、向量化并入库'}
+                    className="group flex min-h-[5.5rem] w-full items-center gap-3 rounded-2xl border border-indigo-100/80 bg-gradient-to-br from-white to-indigo-50/50 px-3.5 py-3 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-lg hover:shadow-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 dark:border-indigo-900/50 dark:from-slate-950/80 dark:to-indigo-950/30 dark:text-slate-200 dark:hover:border-indigo-500/80"
                   >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/12 text-indigo-600 shadow-inner transition-colors group-hover:bg-indigo-500/20 dark:bg-indigo-400/20 dark:text-indigo-400">
-                      <FileText size={18} />
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/[0.12] text-indigo-600 shadow-inner transition-colors group-hover:bg-indigo-500/20 dark:bg-indigo-400/20 dark:text-indigo-400">
+                      <FileText size={18} aria-hidden />
                     </span>
                     <span className="min-w-0">
                       <span className="block text-left font-semibold text-slate-900 dark:text-slate-50">新建 Markdown 文档</span>
@@ -2690,7 +3086,7 @@ const KnowledgeList: React.FC = () => {
 
                 <div>
                   <div className="mb-2.5 flex items-center gap-2.5">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/12 text-amber-600 dark:bg-amber-400/20 dark:text-amber-400">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/[0.12] text-amber-600 dark:bg-amber-400/20 dark:text-amber-400">
                       <Zap className="h-4 w-4" strokeWidth={2.25} aria-hidden />
                     </span>
                     <span className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">自动导入</span>
@@ -2699,10 +3095,11 @@ const KnowledgeList: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setShowImportUrlModal(true)}
+                      aria-label="从 URL 导入，支持网页或文件直链"
                       className="group inline-flex min-h-[5.5rem] items-center gap-3 rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 hover:shadow-lg hover:shadow-blue-500/10 active:translate-y-0 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:border-blue-500/80 dark:hover:from-blue-950/40 dark:hover:to-indigo-950/30"
                     >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-500/12 text-blue-600 shadow-inner transition-colors group-hover:bg-blue-500/20 dark:bg-blue-400/20 dark:text-blue-400">
-                        <Link2 size={18} />
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-500/[0.12] text-blue-600 shadow-inner transition-colors group-hover:bg-blue-500/20 dark:bg-blue-400/20 dark:text-blue-400">
+                        <Link2 size={18} aria-hidden />
                       </span>
                       <span className="min-w-0">
                         <span className="block font-semibold text-slate-900 dark:text-slate-50">URL 导入</span>
@@ -2712,10 +3109,11 @@ const KnowledgeList: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setShowImportSearchModal(true)}
+                      aria-label="打开图片搜索导入，按关键词批量导入"
                       className="group inline-flex min-h-[5.5rem] items-center gap-3 rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-300 hover:bg-gradient-to-br hover:from-violet-50 hover:to-fuchsia-50 hover:shadow-lg hover:shadow-violet-500/10 active:translate-y-0 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:border-violet-500/80 dark:hover:from-violet-950/40 dark:hover:to-fuchsia-950/30"
                     >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/12 text-violet-600 shadow-inner transition-colors group-hover:bg-violet-500/20 dark:bg-violet-400/20 dark:text-violet-400">
-                        <ImagePlus size={18} />
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/[0.12] text-violet-600 shadow-inner transition-colors group-hover:bg-violet-500/20 dark:bg-violet-400/20 dark:text-violet-400">
+                        <ImagePlus size={18} aria-hidden />
                       </span>
                       <span className="min-w-0">
                         <span className="block font-semibold text-slate-900 dark:text-slate-50">图片搜索</span>
@@ -2725,10 +3123,11 @@ const KnowledgeList: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setShowImportFolderModal(true)}
+                      aria-label="从文件夹导入，支持本地或服务端路径"
                       className="group inline-flex min-h-[5.5rem] items-center gap-3 rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-300 hover:bg-gradient-to-br hover:from-amber-50 hover:to-orange-50 hover:shadow-lg hover:shadow-amber-500/10 active:translate-y-0 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:border-amber-500/80 dark:hover:from-amber-950/40 dark:hover:to-orange-950/30"
                     >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/12 text-amber-600 shadow-inner transition-colors group-hover:bg-amber-500/20 dark:bg-amber-400/20 dark:text-amber-400">
-                        <FolderOpen size={18} />
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/[0.12] text-amber-600 shadow-inner transition-colors group-hover:bg-amber-500/20 dark:bg-amber-400/20 dark:text-amber-400">
+                        <FolderOpen size={18} aria-hidden />
                       </span>
                       <span className="min-w-0">
                         <span className="block font-semibold text-slate-900 dark:text-slate-50">文件夹</span>
@@ -2738,10 +3137,11 @@ const KnowledgeList: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setShowImportHotTopicsModal(true)}
+                      aria-label="导入热点资讯，自动抓取新闻素材"
                       className="group inline-flex min-h-[5.5rem] items-center gap-3 rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-gradient-to-br hover:from-emerald-50 hover:to-teal-50 hover:shadow-lg hover:shadow-emerald-500/10 active:translate-y-0 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:border-emerald-500/80 dark:hover:from-emerald-950/40 dark:hover:to-teal-950/30"
                     >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-600 shadow-inner transition-colors group-hover:bg-emerald-500/20 dark:bg-emerald-400/20 dark:text-emerald-400">
-                        <Newspaper size={18} />
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/[0.12] text-emerald-600 shadow-inner transition-colors group-hover:bg-emerald-500/20 dark:bg-emerald-400/20 dark:text-emerald-400">
+                        <Newspaper size={18} aria-hidden />
                       </span>
                       <span className="min-w-0">
                         <span className="block font-semibold text-slate-900 dark:text-slate-50">热点资讯</span>
@@ -2756,27 +3156,47 @@ const KnowledgeList: React.FC = () => {
             {/* File List */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
               <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
-                <h3 className="flex items-center gap-3 font-semibold tracking-tight text-slate-800 dark:text-slate-100 shrink-0">
-                  <Layers
-                    className="h-5 w-5 shrink-0 text-indigo-600 opacity-90 drop-shadow-[0_1px_2px_rgba(99,102,241,0.15)] dark:text-indigo-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
-                    strokeWidth={2.25}
-                    aria-hidden
-                  />
-                  <span>
-                    文件列表
-                    <span className="ml-1.5 text-sm font-normal text-slate-500 dark:text-slate-400 tabular-nums">（{files.length}）</span>
-                  </span>
-                </h3>
+                <div className="min-w-0 shrink-0">
+                  <h3 className="flex items-center gap-3 font-semibold tracking-tight text-slate-800 dark:text-slate-100">
+                    <Layers
+                      className="h-5 w-5 shrink-0 text-indigo-600 opacity-90 drop-shadow-[0_1px_2px_rgba(99,102,241,0.15)] dark:text-indigo-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
+                      strokeWidth={2.25}
+                      aria-hidden
+                    />
+                    <span>
+                      文件列表
+                      <span className="ml-1.5 text-sm font-normal text-slate-500 dark:text-slate-400 tabular-nums">（{files.length}）</span>
+                    </span>
+                  </h3>
+                  <p
+                    id={fileResultsStatusId}
+                    className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    {fileResultStatusText}
+                  </p>
+                </div>
                 <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
                   <div
-                    className="hidden sm:inline-flex items-center gap-0.5 rounded-xl bg-slate-200/55 dark:bg-slate-800/90 p-1 ring-1 ring-inset ring-slate-300/35 dark:ring-slate-700/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                    className="hidden sm:inline-flex items-center gap-0.5 rounded-xl bg-slate-200/50 dark:bg-slate-800/90 p-1 ring-1 ring-inset ring-slate-300/40 dark:ring-slate-700/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                     role="tablist"
                     aria-label="文件视图"
+                    aria-describedby={fileResultsStatusId}
                   >
                     <button
+                      id={fileGridTabId}
+                      ref={(node) => {
+                        fileViewTabRefs.current.grid = node
+                      }}
                       onClick={() => setFileView('grid')}
                       role="tab"
                       aria-selected={fileView === 'grid'}
+                      aria-controls={fileView === 'grid' ? activeFilePanelId : undefined}
+                      aria-label={`切换到画廊视图，${filteredFiles.length} 个结果`}
+                      tabIndex={fileView === 'grid' ? 0 : -1}
+                      onKeyDown={handleFileViewTabKeyDown}
                       className={cn(
                         'flex items-center gap-1.5 rounded-[0.65rem] px-3 py-2 text-xs font-semibold transition-all duration-200 ease-out',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-slate-900',
@@ -2791,9 +3211,17 @@ const KnowledgeList: React.FC = () => {
                       画廊
                     </button>
                     <button
+                      id={fileTableTabId}
+                      ref={(node) => {
+                        fileViewTabRefs.current.table = node
+                      }}
                       onClick={() => setFileView('table')}
                       role="tab"
                       aria-selected={fileView === 'table'}
+                      aria-controls={fileView === 'table' ? activeFilePanelId : undefined}
+                      aria-label={`切换到列表视图，${filteredFiles.length} 个结果`}
+                      tabIndex={fileView === 'table' ? 0 : -1}
+                      onKeyDown={handleFileViewTabKeyDown}
                       className={cn(
                         'flex items-center gap-1.5 rounded-[0.65rem] px-3 py-2 text-xs font-semibold transition-all duration-200 ease-out',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-slate-900',
@@ -2811,12 +3239,15 @@ const KnowledgeList: React.FC = () => {
                   <label className="flex min-w-0 flex-1 sm:flex-initial sm:min-w-[11rem] items-center gap-2 rounded-xl border border-slate-200/95 bg-white px-3 py-2 shadow-sm shadow-slate-200/40 ring-slate-200/80 transition-shadow dark:border-slate-600 dark:bg-slate-800/90 dark:shadow-black/20 dark:ring-slate-600/40 focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-500/35 dark:focus-within:border-indigo-500/50">
                     <Search className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" strokeWidth={2.25} aria-hidden />
                     <input
+                      id={fileSearchInputId}
                       value={fileQuery}
                       onChange={(e) => setFileQuery(e.target.value)}
                       type="search"
                       placeholder="搜索文件..."
                       autoComplete="off"
                       aria-label="搜索文件"
+                      aria-describedby={fileResultsStatusId}
+                      aria-controls={activeFilePanelId}
                       className="min-w-0 flex-1 bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
                     />
                   </label>
@@ -2824,8 +3255,15 @@ const KnowledgeList: React.FC = () => {
               </div>
 
               {fileView === 'table' ? (
-                <div className="overflow-x-auto">
+                <div
+                  className="overflow-x-auto"
+                  id={activeFilePanelId}
+                  role="tabpanel"
+                  aria-labelledby={fileTableTabId}
+                  aria-describedby={fileResultsStatusId}
+                >
                   <table className="w-full min-w-[720px] text-sm text-left border-collapse">
+                    <caption className="sr-only">{fileResultStatusText}</caption>
                     <thead>
                       <tr
                         className={cn(
@@ -2885,15 +3323,18 @@ const KnowledgeList: React.FC = () => {
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/90">
                       {filteredFiles.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="px-6 py-14 text-center">
-                            <div className="mx-auto flex max-w-sm flex-col items-center gap-3">
-                              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500">
-                                <FolderOpen className="h-6 w-6" strokeWidth={1.75} aria-hidden />
-                              </span>
-                              <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                                {files.length === 0 ? '暂无文件，先上传一个。' : '没有匹配的搜索结果。'}
-                              </p>
-                            </div>
+                          <td colSpan={5} className="px-6 py-12">
+                            <KnowledgeEmptyState
+                              compact
+                              icon={files.length === 0 ? Upload : Search}
+                              title={files.length === 0 ? '上传第一份素材' : '没有匹配的文件'}
+                              description={
+                                files.length === 0
+                                  ? '从上方拖拽上传、URL 导入、文件夹导入或手动新建 Markdown，即可开始构建检索语料。'
+                                  : '试试缩短关键词，或切回全部文件后再定位目标素材。'
+                              }
+                              tone={files.length === 0 ? 'indigo' : 'slate'}
+                            />
                           </td>
                         </tr>
                       ) : (
@@ -2912,6 +3353,7 @@ const KnowledgeList: React.FC = () => {
                                 className="group/fn flex w-full min-w-0 items-center gap-3 rounded-lg py-0.5 -mx-1 px-1 text-left transition-colors hover:bg-indigo-100/60 dark:hover:bg-indigo-950/40"
                                 type="button"
                                 title="预览"
+                                aria-label={`预览文件：${file.name}`}
                               >
                                 <FileThumb file={file} />
                                 <span className="truncate max-w-[420px] group-hover/fn:text-indigo-700 dark:group-hover/fn:text-indigo-300">
@@ -2934,8 +3376,9 @@ const KnowledgeList: React.FC = () => {
                                 className="inline-flex items-center justify-center rounded-lg p-2 text-slate-400 transition-all duration-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
                                 title="删除文件"
                                 type="button"
+                                aria-label={`删除文件：${file.name}`}
                               >
-                                <Trash2 size={16} />
+                                <Trash2 size={16} aria-hidden />
                               </button>
                             </td>
                           </tr>
@@ -2945,10 +3388,26 @@ const KnowledgeList: React.FC = () => {
                   </table>
                 </div>
               ) : (
-                <div className="p-6">
+                <div
+                  className="p-6"
+                  id={activeFilePanelId}
+                  role="tabpanel"
+                  aria-labelledby={fileGridTabId}
+                  aria-describedby={fileResultsStatusId}
+                >
                   {filteredFiles.length === 0 ? (
-                    <div className="py-10 text-center text-slate-400">
-                      {files.length === 0 ? '暂无文件，先上传一个。' : '没有匹配的搜索结果。'}
+                    <div className="py-8">
+                      <KnowledgeEmptyState
+                        compact
+                        icon={files.length === 0 ? Upload : Search}
+                        title={files.length === 0 ? '上传第一份素材' : '没有匹配的文件'}
+                        description={
+                          files.length === 0
+                            ? '上方的上传与导入入口已经准备好；添加素材后会自动进入解析、向量化与画像流程。'
+                            : '当前搜索条件没有命中文件。清空搜索词即可回到完整文件列表。'
+                        }
+                        tone={files.length === 0 ? 'indigo' : 'slate'}
+                      />
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2970,6 +3429,7 @@ const KnowledgeList: React.FC = () => {
                             )}
                             type="button"
                             title={isMedia ? '点击播放或查看详情' : '点击预览'}
+                            aria-label={`${isMedia ? '播放或查看文件详情' : '预览文件'}：${file.name}`}
                           >
                             <div className="relative">
                               <div className={cn(
@@ -2986,7 +3446,7 @@ const KnowledgeList: React.FC = () => {
                                   'absolute bottom-3 right-3 flex items-center justify-center w-9 h-9 rounded-full text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity',
                                   isVideo ? 'bg-sky-500/90 dark:bg-sky-600/90' : 'bg-violet-500/90 dark:bg-violet-600/90'
                                 )}>
-                                  <Play size={18} className="ml-0.5" fill="currentColor" />
+                                  <Play size={18} className="ml-0.5" fill="currentColor" aria-hidden />
                                 </div>
                               )}
                             </div>
@@ -3001,7 +3461,7 @@ const KnowledgeList: React.FC = () => {
                                   'text-xs inline-flex items-center gap-1 transition-colors',
                                   isAudio ? 'text-violet-500 dark:text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300' : isVideo ? 'text-sky-500 dark:text-sky-400 group-hover:text-sky-600 dark:group-hover:text-sky-300' : 'text-slate-400 group-hover:text-fuchsia-600'
                                 )}>
-                                  {isMedia && <Play size={12} className="opacity-80" />}
+                                  {isMedia && <Play size={12} className="opacity-80" aria-hidden />}
                                   点击查看详情
                                 </span>
                               </div>
@@ -3016,20 +3476,28 @@ const KnowledgeList: React.FC = () => {
             </div>
 
             {/* Portrait Graph（使用从向量库获取的统计） */}
-            <PortraitGraph
-              knowledgeBaseId={activeKb.id}
-              documentCount={kbStats?.documents ?? activeKb.stats?.documents ?? 0}
-              textCount={kbStats?.chunks ?? activeKb.stats?.chunks ?? 0}
-              imageCount={kbStats?.images ?? activeKb.stats?.images ?? 0}
-              audioCount={kbStats?.audio ?? (activeKb.stats as { audio?: number })?.audio ?? 0}
-              videoCount={kbStats?.video ?? (activeKb.stats as { video?: number })?.video ?? 0}
-              onClusterSelect={() => {}}
-            />
+            <Suspense fallback={<PortraitGraphLoading />}>
+              <PortraitGraph
+                knowledgeBaseId={activeKb.id}
+                documentCount={documentCount}
+                textCount={textChunkCount}
+                imageCount={imageCount}
+                audioCount={audioCount}
+                videoCount={videoCount}
+                onClusterSelect={() => {}}
+              />
+            </Suspense>
           </div>
 
           {/* Detail Sidebar (Stats，结合向量库数据) */}
-          <div className="w-72 border-l border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 p-6 hidden xl:block flex flex-col">
-            <div className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-100/80 dark:border-slate-800 dark:bg-slate-950 dark:ring-slate-800/60">
+          <aside
+            className="w-72 border-l border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 p-6 hidden xl:block flex flex-col"
+            aria-label="知识库统计与管理操作"
+          >
+            <section
+              className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-100/80 dark:border-slate-800 dark:bg-slate-950 dark:ring-slate-800/60"
+              aria-labelledby={statsHeadingId}
+            >
               <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50/90 via-white to-indigo-50/40 px-4 py-3 dark:border-slate-800 dark:from-slate-900/60 dark:via-slate-950 dark:to-indigo-950/25">
                 <div className="flex items-center gap-3">
                   <Database
@@ -3037,90 +3505,92 @@ const KnowledgeList: React.FC = () => {
                     strokeWidth={2.25}
                     aria-hidden
                   />
-                  <h4 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-50">知识库统计</h4>
+                  <h4 id={statsHeadingId} className="text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-50">知识库统计</h4>
                 </div>
               </div>
-              <div className="space-y-2 p-3">
+              <dl className="space-y-2 p-3" aria-label="知识库内容统计">
                 <div className="group flex items-center justify-between gap-2 rounded-xl border border-blue-100/80 bg-gradient-to-r from-blue-50/70 to-transparent px-3 py-2.5 transition-all hover:border-blue-200/90 hover:shadow-sm dark:border-blue-900/40 dark:from-blue-950/35 dark:to-transparent dark:hover:border-blue-800/50">
-                  <span className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
+                  <dt className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
                     <FileText className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" strokeWidth={2.25} aria-hidden />
                     文档数
-                  </span>
-                  <span className="text-sm font-semibold tabular-nums tracking-tight text-blue-700 dark:text-blue-300">
-                    {kbStats?.documents ?? activeKb.stats?.documents ?? 0}
-                  </span>
+                  </dt>
+                  <dd className="text-sm font-semibold tabular-nums tracking-tight text-blue-700 dark:text-blue-300">
+                    {documentCount}
+                  </dd>
                 </div>
                 <div className="group flex items-center justify-between gap-2 rounded-xl border border-indigo-100/80 bg-gradient-to-r from-indigo-50/70 to-transparent px-3 py-2.5 transition-all hover:border-indigo-200/90 hover:shadow-sm dark:border-indigo-900/40 dark:from-indigo-950/35 dark:to-transparent dark:hover:border-indigo-800/50">
-                  <span className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
+                  <dt className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
                     <Layers className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" strokeWidth={2.25} aria-hidden />
                     文本块数
-                  </span>
-                  <span className="text-sm font-semibold tabular-nums tracking-tight text-indigo-700 dark:text-indigo-300">
-                    {kbStats?.chunks ?? activeKb.stats?.chunks ?? 0}
-                  </span>
+                  </dt>
+                  <dd className="text-sm font-semibold tabular-nums tracking-tight text-indigo-700 dark:text-indigo-300">
+                    {textChunkCount}
+                  </dd>
                 </div>
                 <div className="group flex items-center justify-between gap-2 rounded-xl border border-fuchsia-100/80 bg-gradient-to-r from-fuchsia-50/70 to-transparent px-3 py-2.5 transition-all hover:border-fuchsia-200/90 hover:shadow-sm dark:border-fuchsia-900/40 dark:from-fuchsia-950/35 dark:to-transparent dark:hover:border-fuchsia-800/50">
-                  <span className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
+                  <dt className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
                     <ImageIcon className="h-4 w-4 shrink-0 text-fuchsia-600 dark:text-fuchsia-400" strokeWidth={2.25} aria-hidden />
                     图片数
-                  </span>
-                  <span className="text-sm font-semibold tabular-nums tracking-tight text-fuchsia-700 dark:text-fuchsia-300">
-                    {kbStats?.images ?? activeKb.stats?.images ?? 0}
-                  </span>
+                  </dt>
+                  <dd className="text-sm font-semibold tabular-nums tracking-tight text-fuchsia-700 dark:text-fuchsia-300">
+                    {imageCount}
+                  </dd>
                 </div>
                 <div className="group flex items-center justify-between gap-2 rounded-xl border border-violet-100/80 bg-gradient-to-r from-violet-50/70 to-transparent px-3 py-2.5 transition-all hover:border-violet-200/90 hover:shadow-sm dark:border-violet-900/40 dark:from-violet-950/35 dark:to-transparent dark:hover:border-violet-800/50">
-                  <span className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
+                  <dt className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
                     <Music className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" strokeWidth={2.25} aria-hidden />
                     音频数
-                  </span>
-                  <span className="text-sm font-semibold tabular-nums tracking-tight text-violet-700 dark:text-violet-300">
-                    {kbStats?.audio ?? (activeKb.stats as { audio?: number })?.audio ?? 0}
-                  </span>
+                  </dt>
+                  <dd className="text-sm font-semibold tabular-nums tracking-tight text-violet-700 dark:text-violet-300">
+                    {audioCount}
+                  </dd>
                 </div>
                 <div className="group flex items-center justify-between gap-2 rounded-xl border border-emerald-100/80 bg-gradient-to-r from-emerald-50/70 to-transparent px-3 py-2.5 transition-all hover:border-emerald-200/90 hover:shadow-sm dark:border-emerald-900/40 dark:from-emerald-950/35 dark:to-transparent dark:hover:border-emerald-800/50">
-                  <span className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
+                  <dt className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
                     <Video className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" strokeWidth={2.25} aria-hidden />
                     视频数
-                  </span>
-                  <span className="text-sm font-semibold tabular-nums tracking-tight text-emerald-700 dark:text-emerald-300">
-                    {kbStats?.video ?? (activeKb.stats as { video?: number })?.video ?? 0}
-                  </span>
+                  </dt>
+                  <dd className="text-sm font-semibold tabular-nums tracking-tight text-emerald-700 dark:text-emerald-300">
+                    {videoCount}
+                  </dd>
                 </div>
-                <div className="rounded-xl border border-slate-200/90 bg-gradient-to-r from-slate-50/80 to-transparent px-3 py-2.5 dark:border-slate-700/80 dark:from-slate-900/50 dark:to-transparent">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
-                      <Box className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" strokeWidth={2.25} aria-hidden />
-                      向量维度
-                    </span>
-                    <dl className="grid min-w-0 [grid-template-columns:auto_1fr] gap-x-2 gap-y-0.5 text-[11px] leading-tight tabular-nums">
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/90 bg-gradient-to-r from-slate-50/80 to-transparent px-3 py-2.5 dark:border-slate-700/80 dark:from-slate-900/50 dark:to-transparent">
+                  <dt className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
+                    <Box className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" strokeWidth={2.25} aria-hidden />
+                    向量维度
+                  </dt>
+                  <dd>
+                    <dl className="grid min-w-0 [grid-template-columns:auto_1fr] gap-x-2 gap-y-0.5 text-[11px] leading-tight tabular-nums" aria-label="向量维度详情">
                       <dt className="text-right font-medium text-slate-500 dark:text-slate-400">文本</dt>
                       <dd className="text-right font-semibold tracking-tight text-indigo-600 dark:text-indigo-400">
-                        {kbStats?.text_vector_dim ?? 4096}
+                        {textVectorDim}
                       </dd>
                       <dt className="text-right font-medium text-slate-500 dark:text-slate-400">图片</dt>
                       <dd className="text-right font-semibold tracking-tight text-fuchsia-600 dark:text-fuchsia-400">
-                        {kbStats?.image_vector_dim ?? 768}
+                        {imageVectorDim}
                       </dd>
                       <dt className="text-right font-medium text-slate-500 dark:text-slate-400">音频</dt>
                       <dd className="text-right font-semibold tracking-tight text-violet-600 dark:text-violet-400">
-                        {kbStats?.audio_vector_dim ?? 512}
+                        {audioVectorDim}
                       </dd>
                     </dl>
-                  </div>
+                  </dd>
                 </div>
-              </div>
-            </div>
+              </dl>
+            </section>
 
             <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
               <button
+                type="button"
                 onClick={() => handleDeleteKb(activeKbId!)}
+                aria-label={`删除知识库：${activeKb.name}`}
                 className="w-full py-2.5 px-4 flex items-center justify-center gap-2 rounded-xl border border-red-200 dark:border-red-800/60 text-red-600 dark:text-red-400 bg-white dark:bg-slate-950 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm font-medium transition-all hover:border-red-300 dark:hover:border-red-700 shadow-sm"
               >
-                <Trash2 size={16} />
+                <Trash2 size={16} aria-hidden />
                 删除知识库
               </button>
             </div>
-          </div>
+          </aside>
         </div>
 
         {/* 预览弹窗 */}

@@ -1,15 +1,41 @@
-import { useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
 import { useChatStore } from '@/store/useChatStore'
 import { useConfigStore } from '@/store/useConfigStore'
+import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import { useTheme } from '@/hooks/useTheme'
 import { cn } from '@/lib/utils'
 import ChatInterface from '@/components/chat/ChatInterface'
-import KnowledgeList from '@/components/knowledge/KnowledgeList'
-import { SettingsPage } from '@/pages/SettingsPage'
-import { ArchitecturePage } from '@/pages/ArchitecturePage'
 import { ConversationSidebar, type SidebarView } from './ConversationSidebar'
+
+const KnowledgeList = lazy(() => import('@/components/knowledge/KnowledgeList'))
+
+const SettingsPage = lazy(() =>
+  import('@/pages/SettingsPage').then((module) => ({ default: module.SettingsPage }))
+)
+
+const ArchitecturePage = lazy(() =>
+  import('@/pages/ArchitecturePage').then((module) => ({ default: module.ArchitecturePage }))
+)
+
+const InspectorDrawer = lazy(() =>
+  import('@/components/debug/InspectorDrawer').then((module) => ({ default: module.InspectorDrawer }))
+)
+
+function RoutePanelLoading({ label }: { label: string }) {
+  return (
+    <div
+      className="flex h-full min-h-0 items-center justify-center"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <div className="rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-sm font-medium text-slate-500 shadow-sm ring-1 ring-white/70 backdrop-blur dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-400 dark:ring-white/[0.04]">
+        {label}
+      </div>
+    </div>
+  )
+}
 
 export function AppLayout() {
   const navigate = useNavigate()
@@ -25,14 +51,25 @@ export function AppLayout() {
   } = useChatStore()
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const { resolvedTheme, setTheme } = useTheme()
-  const { updateSystemConfig, markAsSaved } = useConfigStore()
+  const [hasVisitedKnowledge, setHasVisitedKnowledge] = useState(
+    () => location.pathname === '/knowledge'
+  )
+  const [hasVisitedSettings, setHasVisitedSettings] = useState(
+    () => location.pathname === '/settings'
+  )
+  const [hasVisitedArchitecture, setHasVisitedArchitecture] = useState(
+    () => location.pathname === '/architecture'
+  )
+  const { theme, resolvedTheme, setTheme } = useTheme()
+  const { config, updateSystemConfig, markAsSaved, loadConfig } = useConfigStore()
+  const fetchKnowledgeBases = useKnowledgeStore((state) => state.fetchKnowledgeBases)
 
   const session = getActiveSession()
   const lastAssistant = session?.messages
     .filter((m) => m.role === 'assistant')
     .pop()
   const citations = lastAssistant?.citations ?? []
+  const pathname = location.pathname
 
   const toggleTheme = () => {
     const nextTheme = resolvedTheme === 'dark' ? 'light' : 'dark'
@@ -42,14 +79,50 @@ export function AppLayout() {
   }
 
   const getActiveView = (): SidebarView => {
-    if (location.pathname === '/') return 'chat'
-    if (location.pathname === '/knowledge') return 'knowledge'
-    if (location.pathname === '/settings') return 'settings'
-    if (location.pathname === '/architecture') return 'architecture'
+    if (pathname === '/') return 'chat'
+    if (pathname === '/knowledge') return 'knowledge'
+    if (pathname === '/settings') return 'settings'
+    if (pathname === '/architecture') return 'architecture'
     return 'chat'
   }
 
   const activeView = getActiveView()
+  const isChatActive = pathname === '/'
+  const isKnowledgeActive = pathname === '/knowledge'
+  const isSettingsActive = pathname === '/settings'
+  const isArchitectureActive = pathname === '/architecture'
+
+  useEffect(() => {
+    void loadConfig()
+  }, [loadConfig])
+
+  useEffect(() => {
+    if (config.theme && theme !== config.theme) {
+      setTheme(config.theme)
+    }
+  }, [config.theme, setTheme, theme])
+
+  useEffect(() => {
+    void fetchKnowledgeBases()
+  }, [fetchKnowledgeBases])
+
+  useEffect(() => {
+    if (isKnowledgeActive) {
+      setHasVisitedKnowledge(true)
+    }
+  }, [isKnowledgeActive])
+
+  useEffect(() => {
+    if (isSettingsActive) {
+      setHasVisitedSettings(true)
+    }
+  }, [isSettingsActive])
+
+  useEffect(() => {
+    if (isArchitectureActive) {
+      setHasVisitedArchitecture(true)
+    }
+  }, [isArchitectureActive])
 
   const handleNewConversation = () => {
     navigate('/')
@@ -86,39 +159,70 @@ export function AppLayout() {
         onNavigate={handleNavigate}
       />
 
-      {/* 主内容区域：三视图常驻挂载，按路径显隐，避免对话页跳转时卸载中断流式等 */}
-      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfcfe] dark:bg-slate-950">
+      {/* 主内容区域：核心视图常驻挂载；架构页首次访问后常驻，避免对话页跳转时卸载中断流式等 */}
+      <main
+        className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfcfe] dark:bg-slate-950"
+        aria-label="主内容区"
+      >
         <div
-          className={cn('flex-1 min-h-0 overflow-hidden', location.pathname !== '/' && 'hidden')}
-          aria-hidden={location.pathname !== '/'}
+          className={cn('flex-1 min-h-0 overflow-hidden', !isChatActive && 'hidden')}
+          aria-hidden={!isChatActive}
+          aria-label="对话工作区"
+          hidden={!isChatActive}
+          role="region"
         >
           <ChatInterface />
         </div>
         <div
-          className={cn('flex-1 min-h-0 overflow-hidden p-2 md:p-3', location.pathname !== '/knowledge' && 'hidden')}
-          aria-hidden={location.pathname !== '/knowledge'}
+          className={cn('flex-1 min-h-0 overflow-hidden p-2 md:p-3', !isKnowledgeActive && 'hidden')}
+          aria-hidden={!isKnowledgeActive}
+          aria-label="知识库工作台"
+          hidden={!isKnowledgeActive}
+          role="region"
         >
-          <KnowledgeList />
+          {(isKnowledgeActive || hasVisitedKnowledge) ? (
+            <Suspense fallback={<RoutePanelLoading label="正在载入知识库工作台…" />}>
+              <KnowledgeList />
+            </Suspense>
+          ) : null}
         </div>
         <div
-          className={cn('flex-1 min-h-0 overflow-hidden p-2 md:p-3', location.pathname !== '/settings' && 'hidden')}
-          aria-hidden={location.pathname !== '/settings'}
+          className={cn('flex-1 min-h-0 overflow-hidden p-2 md:p-3', !isSettingsActive && 'hidden')}
+          aria-hidden={!isSettingsActive}
+          aria-label="设置中心"
+          hidden={!isSettingsActive}
+          role="region"
         >
-          <SettingsPage />
+          {(isSettingsActive || hasVisitedSettings) ? (
+            <Suspense fallback={<RoutePanelLoading label="正在载入设置中心…" />}>
+              <SettingsPage />
+            </Suspense>
+          ) : null}
         </div>
         <div
-          className={cn('flex-1 min-h-0 overflow-hidden p-2 md:p-3', location.pathname !== '/architecture' && 'hidden')}
-          aria-hidden={location.pathname !== '/architecture'}
+          className={cn('flex-1 min-h-0 overflow-hidden p-2 md:p-3', !isArchitectureActive && 'hidden')}
+          aria-hidden={!isArchitectureActive}
+          aria-label="架构导读"
+          hidden={!isArchitectureActive}
+          role="region"
         >
-          <ArchitecturePage />
+          {(isArchitectureActive || hasVisitedArchitecture) ? (
+            <Suspense fallback={<RoutePanelLoading label="正在载入架构导读…" />}>
+              <ArchitecturePage />
+            </Suspense>
+          ) : null}
         </div>
-      </div>
+      </main>
 
-      <InspectorDrawer
-        isOpen={inspectorOpen}
-        onClose={() => setInspectorOpen(false)}
-        citations={citations as any}
-      />
+      {inspectorOpen ? (
+        <Suspense fallback={null}>
+          <InspectorDrawer
+            isOpen={inspectorOpen}
+            onClose={() => setInspectorOpen(false)}
+            citations={citations}
+          />
+        </Suspense>
+      ) : null}
     </div>
   )
 }

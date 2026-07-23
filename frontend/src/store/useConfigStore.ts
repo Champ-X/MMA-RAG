@@ -175,6 +175,7 @@ interface ConfigStore {
   isLoading: boolean;
   error: string | null;
   hasUnsavedChanges: boolean;
+  hasLoadedConfigOnce: boolean;
 
   // 操作
   updateModelConfig: (modelId: string, updates: Partial<ModelConfig>) => void;
@@ -331,6 +332,7 @@ export const useConfigStore = create<ConfigStore>()(
       isLoading: false,
       error: null,
       hasUnsavedChanges: false,
+      hasLoadedConfigOnce: false,
 
       // 更新模型配置
       updateModelConfig: (modelId, updates) => {
@@ -478,12 +480,14 @@ export const useConfigStore = create<ConfigStore>()(
               error: null,
               isLoading: false,
               hasUnsavedChanges: false,
+              hasLoadedConfigOnce: true,
             };
           });
         } catch (error) {
           set({
             error: error instanceof Error ? error.message : '加载配置失败',
             isLoading: false,
+            hasLoadedConfigOnce: true,
           });
         }
       },

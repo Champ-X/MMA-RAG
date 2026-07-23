@@ -47,6 +47,20 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      opacity: {
+        '6': '0.06',
+        '8': '0.08',
+        '12': '0.12',
+        '14': '0.14',
+        '22': '0.22',
+        '28': '0.28',
+        '38': '0.38',
+        '82': '0.82',
+        '84': '0.84',
+        '92': '0.92',
+        '96': '0.96',
+        '98': '0.98',
+      },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-in-out',
         'slide-up': 'slideUp 0.3s ease-out',
@@ -104,5 +118,5 @@ export default {
       },
     },
   },
-  plugins: [require('@tailwindcss/typography')],
+  plugins: [],
 }

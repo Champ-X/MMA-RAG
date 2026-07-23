@@ -132,6 +132,7 @@ export function FileScopePicker({ open, onOpenChange, value, onChange }: FileSco
               value={query}
               onChange={e => setQuery(e.target.value)}
               placeholder="搜索文件名或类型"
+              aria-label="搜索检索文件"
               className="rounded-2xl border-slate-200/70 bg-white/80 pl-9 pr-3 dark:border-slate-700/70 dark:bg-slate-900/70"
             />
           </div>
@@ -142,11 +143,13 @@ export function FileScopePicker({ open, onOpenChange, value, onChange }: FileSco
                 <button
                   key={fileScopeKey(file.kbId, file.fileId)}
                   type="button"
+                  title={`移除检索文件：${file.name}`}
+                  aria-label={`移除检索文件：${file.kbName ? `${file.kbName} / ${file.name}` : file.name}`}
                   onClick={() => removeDraftFile(file)}
                   className="inline-flex max-w-full items-center gap-2 rounded-full border border-emerald-200/70 bg-white/90 px-3 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-50 dark:border-emerald-500/30 dark:bg-slate-950/70 dark:text-emerald-200"
                 >
                   <span className="truncate">{file.kbName ? `${file.kbName} / ${file.name}` : file.name}</span>
-                  <X className="h-3.5 w-3.5 flex-shrink-0" />
+                  <X className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
                 </button>
               ))}
             </div>
@@ -156,11 +159,17 @@ export function FileScopePicker({ open, onOpenChange, value, onChange }: FileSco
         <div className="min-h-0 flex-1 overflow-y-auto pr-2">
           <div className="space-y-3 pb-2">
             {knowledgeBases.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-300/70 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
+              <div
+                className="rounded-2xl border border-dashed border-slate-300/70 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400"
+                role="status"
+              >
                 暂无知识库，请先创建并导入文件。
               </div>
             ) : knowledgeBaseGroups.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-300/70 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
+              <div
+                className="rounded-2xl border border-dashed border-slate-300/70 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400"
+                role="status"
+              >
                 没有匹配的文件。
               </div>
             ) : (
@@ -172,6 +181,8 @@ export function FileScopePicker({ open, onOpenChange, value, onChange }: FileSco
                   <button
                     type="button"
                     onClick={() => toggleKb(kb.id)}
+                    aria-expanded={isExpanded}
+                    aria-label={`${isExpanded ? '收起' : '展开'}知识库：${kb.name}`}
                     className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-800/60"
                   >
                     <ChevronDown
@@ -179,6 +190,7 @@ export function FileScopePicker({ open, onOpenChange, value, onChange }: FileSco
                         'h-4 w-4 flex-shrink-0 text-slate-400 transition-transform',
                         isExpanded && 'rotate-180'
                       )}
+                      aria-hidden
                     />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{kb.name}</div>
@@ -202,9 +214,11 @@ export function FileScopePicker({ open, onOpenChange, value, onChange }: FileSco
                   {isExpanded && (
                     <div className="border-t border-slate-200/60 px-3 py-2 dark:border-slate-700/60">
                       {isLoading && matches.length === 0 ? (
-                        <div className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">正在拉取文件列表...</div>
+                        <div className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400" role="status">
+                          正在拉取文件列表...
+                        </div>
                       ) : matches.length === 0 ? (
-                        <div className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">
+                        <div className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400" role="status">
                           {hasSearch ? '当前知识库下没有匹配文件。' : '暂无可选文件。'}
                         </div>
                       ) : (
@@ -215,6 +229,9 @@ export function FileScopePicker({ open, onOpenChange, value, onChange }: FileSco
                               <button
                                 key={fileScopeKey(kb.id, file.id)}
                                 type="button"
+                                role="checkbox"
+                                aria-checked={checked}
+                                aria-label={`${checked ? '取消选择' : '选择'}检索文件：${kb.name} / ${file.name}`}
                                 onClick={() => toggleFile(kb.id, kb.name, file)}
                                 className={cn(
                                   'flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-all',
@@ -229,9 +246,10 @@ export function FileScopePicker({ open, onOpenChange, value, onChange }: FileSco
                                       'h-4 w-4',
                                       checked ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-300 dark:text-slate-600'
                                     )}
+                                    aria-hidden
                                   />
                                 </div>
-                                <FileText className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                                <FileText className="h-4 w-4 flex-shrink-0 text-slate-400" aria-hidden />
                                 <div className="min-w-0 flex-1">
                                   <div className="truncate text-sm font-medium">{file.name}</div>
                                   <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -253,13 +271,20 @@ export function FileScopePicker({ open, onOpenChange, value, onChange }: FileSco
         </div>
 
         <div className="mt-3 flex flex-shrink-0 items-center justify-between gap-3 border-t border-slate-200/60 pt-4 dark:border-slate-800/60">
-          <Button
-            variant="ghost"
-            onClick={() => setDraftSelection([])}
-            className="rounded-xl text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-          >
-            清空选择
-          </Button>
+          <div className="flex min-w-0 items-center gap-3">
+            <Button
+              variant="ghost"
+              onClick={() => setDraftSelection([])}
+              disabled={draftSelection.length === 0}
+              aria-label={`清空已选检索文件，当前已选 ${draftSelection.length} 个`}
+              className="rounded-xl text-slate-500 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-200"
+            >
+              清空选择
+            </Button>
+            <span className="text-xs text-slate-500 dark:text-slate-400" aria-live="polite">
+              已选 {draftSelection.length} 个文件
+            </span>
+          </div>
           <div className="flex items-center gap-3">
             <Button
               variant="outline"

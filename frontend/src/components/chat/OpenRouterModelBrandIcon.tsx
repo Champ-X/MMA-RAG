@@ -6,13 +6,14 @@ type OpenRouterModelBrandIconProps = {
   modelId: string
   className?: string
   size?: number
+  ariaHidden?: boolean
 }
 
 /**
  * 按 org/model 使用 [Lobe Icons](https://lobehub.com/zh/icons) 静态资源：优先彩色 SVG，再 light/dark PNG，最后单色 SVG。
  * 通过 key 隔离的 Inner 保证切换模型时回退索引从 0 开始，避免沿用上一条模型的 fail 下标。
  */
-function OpenRouterModelBrandIconInner({ modelId, className, size = 28 }: OpenRouterModelBrandIconProps) {
+function OpenRouterModelBrandIconInner({ modelId, className, size = 28, ariaHidden = false }: OpenRouterModelBrandIconProps) {
   const chain = useMemo(() => getOpenRouterIconUrlCandidates(modelId), [modelId])
   const [index, setIndex] = useState(0)
 
@@ -29,6 +30,7 @@ function OpenRouterModelBrandIconInner({ modelId, className, size = 28 }: OpenRo
       height={size}
       loading="lazy"
       decoding="async"
+      aria-hidden={ariaHidden}
       className={cn(
         'shrink-0 rounded-md bg-white/90 object-contain p-0.5 ring-1 ring-slate-200/70 dark:bg-slate-800/90 dark:ring-slate-600/80',
         className

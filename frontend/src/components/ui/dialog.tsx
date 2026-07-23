@@ -14,6 +14,7 @@ const Dialog = ({ open, onOpenChange, children }: DialogProps) => {
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div 
         className="fixed inset-0 bg-black/50" 
+        aria-hidden="true"
         onClick={() => onOpenChange?.(false)}
       />
       <div className="relative flex min-h-full items-center justify-center p-4">
@@ -27,6 +28,8 @@ const DialogContent = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>
   ({ className, children, ...props }, ref) => (
     <div
       ref={ref}
+      role={props.role ?? 'dialog'}
+      aria-modal={props['aria-modal'] ?? true}
       className={cn(
         'relative z-50 w-full max-w-lg rounded-lg border bg-background p-6 shadow-lg',
         className

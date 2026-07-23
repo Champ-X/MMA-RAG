@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useId, useState, useEffect, useMemo } from 'react'
 import { Zap } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useConfigStore } from '@/store/useConfigStore'
 import { systemApi } from '@/services/api_client'
@@ -94,6 +94,9 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
   }
 
   const groupedByVendor = useMemo(() => groupChatModelsByVendor(chatModels), [chatModels])
+  const dialogId = useId().replace(/:/g, '')
+  const dialogTitleId = `${dialogId}-chat-model-config-title`
+  const dialogDescriptionId = `${dialogId}-chat-model-config-description`
 
   const selectBaseClass =
     'w-full min-h-[44px] rounded-xl border-2 flex items-center text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600'
@@ -101,6 +104,8 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        aria-labelledby={dialogTitleId}
+        aria-describedby={dialogDescriptionId}
         className={cn(
           'max-w-lg max-h-[min(90dvh,820px)] flex flex-col gap-0 overflow-hidden rounded-3xl border border-slate-200/60 bg-white/95 p-5 shadow-2xl shadow-slate-900/15 backdrop-blur-xl sm:p-6',
           'dark:border-slate-700/50 dark:bg-slate-950/95'
@@ -108,12 +113,15 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
         onClick={e => e.stopPropagation()}
       >
         <DialogHeader className="flex-shrink-0 pb-3">
-          <DialogTitle className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
+          <DialogTitle id={dialogTitleId} className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/15 to-purple-500/15 ring-1 ring-indigo-500/20 dark:ring-indigo-400/30">
-              <Zap className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              <Zap className="h-5 w-5 text-indigo-600 dark:text-indigo-400" aria-hidden />
             </div>
             对话模型
           </DialogTitle>
+          <DialogDescription id={dialogDescriptionId} className="text-sm text-slate-500 dark:text-slate-400">
+            选择当前会话使用的回答生成模型；选择后会立即写入本地模型配置。
+          </DialogDescription>
         </DialogHeader>
 
         <div
@@ -133,11 +141,17 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
               onSelect={applyModel}
             />
             {modelsLoading ? (
-              <div className={cn(selectBaseClass, 'flex items-center text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600')}>
+              <div
+                className={cn(selectBaseClass, 'flex items-center text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600')}
+                role="status"
+              >
                 加载厂商分组…
               </div>
             ) : groupedByVendor.length === 0 ? (
-              <div className={cn(selectBaseClass, 'flex items-center text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600')}>
+              <div
+                className={cn(selectBaseClass, 'flex items-center text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600')}
+                role="status"
+              >
                 {config.models.find(m => m.id === 'chat')?.name || '暂无模型'}
               </div>
             ) : (
@@ -158,7 +172,10 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
                       )}
                       <span>{VENDOR_DISPLAY_NAMES[vendor]}</span>
                       {isCurrentVendor && (
-                        <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-normal text-indigo-600 dark:text-indigo-400">
+                        <span
+                          className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-normal text-indigo-600 dark:text-indigo-400"
+                          aria-label="当前正在使用此厂商"
+                        >
                           当前使用
                         </span>
                       )}
@@ -181,6 +198,9 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
         </div>
 
         <div className="mt-3 flex flex-shrink-0 justify-end gap-3 border-t border-slate-200/50 pt-4 dark:border-slate-800/50">
+          <span className="mr-auto min-w-0 self-center truncate text-xs text-slate-500 dark:text-slate-400" aria-live="polite">
+            当前模型：{currentChatModel || '未选择'}
+          </span>
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
@@ -190,6 +210,7 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
           </Button>
           <Button
             onClick={handleApply}
+            aria-label={`应用对话模型配置，当前模型：${currentChatModel || '未选择'}`}
             className="rounded-xl bg-indigo-500 text-white shadow-md hover:bg-indigo-600 hover:shadow-lg"
           >
             应用

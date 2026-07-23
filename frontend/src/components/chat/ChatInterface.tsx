@@ -1,15 +1,7 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { lazy, Suspense, useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { Send, Zap, Paperclip, Database, Square, AtSign, X } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { MessageBubble } from './MessageBubble'
-import { CitationPopover } from './CitationPopover'
-import { SuggestedQuestions } from './SuggestedQuestions'
-import { InspectorDrawer } from '@/components/debug/InspectorDrawer'
-import { KnowledgeBaseConfigPanel } from './KnowledgeBaseConfigPanel'
-import { ModelConfigPanel } from './ModelConfigPanel'
-import { OpenRouterModelBrandIcon } from './OpenRouterModelBrandIcon'
-import { FileScopePicker } from './FileScopePicker'
 import { useChatStore } from '@/store/useChatStore'
 import { useConfigStore } from '@/store/useConfigStore'
 import { useThinkingChain } from '@/hooks/useThinkingChain'
@@ -17,12 +9,121 @@ import { cn } from '@/lib/utils'
 import { getModelVendor, VENDOR_LOGOS } from '@/lib/modelVendors'
 import type { CitationReference } from '@/types/sse'
 import type { ChatMessageAttachment, ChatScopeFile, Message } from '@/store/useChatStore'
-import { ComposerAttachmentTile } from './ChatAttachmentPreview'
 import { fileScopeKey, formatScopedFileSize, useFileScopeOptions } from './useFileScopeOptions'
 
 const MAX_CHAT_ATTACHMENTS = 3
 const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_CHAT_AUDIO_BYTES = 10 * 1024 * 1024
+
+const CitationPopover = lazy(() =>
+  import('./CitationPopover').then((module) => ({ default: module.CitationPopover }))
+)
+
+const InspectorDrawer = lazy(() =>
+  import('@/components/debug/InspectorDrawer').then((module) => ({ default: module.InspectorDrawer }))
+)
+
+const KnowledgeBaseConfigPanel = lazy(() =>
+  import('./KnowledgeBaseConfigPanel').then((module) => ({ default: module.KnowledgeBaseConfigPanel }))
+)
+
+const FileScopePicker = lazy(() =>
+  import('./FileScopePicker').then((module) => ({ default: module.FileScopePicker }))
+)
+
+const ModelConfigPanel = lazy(() =>
+  import('./ModelConfigPanel').then((module) => ({ default: module.ModelConfigPanel }))
+)
+
+const MessageBubble = lazy(() =>
+  import('./MessageBubble').then((module) => ({ default: module.MessageBubble }))
+)
+
+const SuggestedQuestions = lazy(() =>
+  import('./SuggestedQuestions').then((module) => ({ default: module.SuggestedQuestions }))
+)
+
+const OpenRouterModelBrandIcon = lazy(() =>
+  import('./OpenRouterModelBrandIcon').then((module) => ({ default: module.OpenRouterModelBrandIcon }))
+)
+
+const ComposerAttachmentTile = lazy(() =>
+  import('./ComposerAttachmentTile').then((module) => ({ default: module.ComposerAttachmentTile }))
+)
+
+function ComposerAttachmentTileFallback() {
+  return (
+    <span
+      className="inline-flex h-14 w-14 shrink-0 animate-pulse rounded-xl border border-slate-200/80 bg-slate-100 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+      aria-hidden
+    />
+  )
+}
+
+function MessageBubbleLoading({ role }: { role: Message['role'] }) {
+  const isUser = role === 'user'
+  return (
+    <div
+      className={cn('flex w-full gap-3', isUser ? 'justify-end' : 'justify-start')}
+      role="status"
+      aria-live="polite"
+      aria-label={isUser ? '正在载入用户消息' : '正在载入助手消息'}
+    >
+      {!isUser ? (
+        <div className="mt-1 h-9 w-9 shrink-0 animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" aria-hidden />
+      ) : null}
+      <div
+        className={cn(
+          'h-14 animate-pulse rounded-2xl shadow-sm',
+          isUser
+            ? 'w-56 rounded-tr-sm bg-indigo-200/70 dark:bg-indigo-500/30'
+            : 'w-[min(100%,34rem)] rounded-tl-sm border border-slate-200/60 bg-white dark:border-slate-700/60 dark:bg-slate-900'
+        )}
+        aria-hidden
+      />
+    </div>
+  )
+}
+
+function OpenRouterModelBrandIconFallback({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        'h-3.5 w-3.5 shrink-0 rounded-md bg-white/90 ring-1 ring-slate-200/70 dark:bg-slate-800/90 dark:ring-slate-600/80',
+        className
+      )}
+      aria-hidden
+    />
+  )
+}
+
+function SuggestedQuestionsLoading() {
+  return (
+    <div
+      className="mx-auto w-full max-w-3xl"
+      role="status"
+      aria-live="polite"
+      aria-label="正在载入推荐问题"
+    >
+      <div className="hidden gap-3 md:grid md:grid-cols-3" aria-hidden>
+        {[0, 1, 2].map((item) => (
+          <div
+            key={item}
+            className="min-h-[88px] animate-pulse rounded-2xl border border-slate-200/70 bg-white/70 shadow-[0_16px_30px_-26px_rgba(15,23,42,0.55)] dark:border-slate-800/70 dark:bg-slate-900/50"
+          />
+        ))}
+      </div>
+      <div className="flex flex-col gap-2 md:hidden" aria-hidden>
+        {[0, 1, 2].map((item) => (
+          <div
+            key={item}
+            className="h-16 animate-pulse rounded-2xl border border-slate-200/70 bg-white/70 dark:border-slate-800/70 dark:bg-slate-900/50"
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function maxBytesForChatFile(f: File): number {
   return f.type.startsWith('image/') ? MAX_CHAT_IMAGE_BYTES : MAX_CHAT_AUDIO_BYTES
@@ -377,6 +478,11 @@ export function ChatInterface() {
       ),
     [mentionGroups]
   )
+  const mentionListboxId = 'chat-file-mention-listbox'
+  const mentionActiveOptionId =
+    mentionState && mentionOptions.length > 0
+      ? `${mentionListboxId}-option-${Math.min(mentionHighlightIndex, mentionOptions.length - 1)}`
+      : undefined
 
   const mentionOptionIndexByKey = useMemo(() => {
     const map = new Map<string, number>()
@@ -631,34 +737,46 @@ export function ChatInterface() {
       {/* 消息区 */}
       <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
         <div className="px-4 pb-1 pt-5 sm:px-8 sm:pt-7">
-          <div className="mx-auto max-w-4xl flex flex-col gap-6">
+          <div
+            className="mx-auto max-w-4xl flex flex-col gap-6"
+            role={messages.length > 0 ? 'log' : undefined}
+            aria-label={messages.length > 0 ? '对话消息' : undefined}
+            aria-live={messages.length > 0 ? 'polite' : undefined}
+            aria-relevant={messages.length > 0 ? 'additions text' : undefined}
+          >
             {messages.length === 0 && (
-              <div className="relative mx-auto w-full max-w-2xl py-10 sm:py-12 text-center">
-                <div className="pointer-events-none absolute left-1/2 top-4 h-44 w-44 -translate-x-1/2 rounded-full bg-violet-400/20 blur-3xl dark:bg-fuchsia-500/15" />
-                <div className="pointer-events-none absolute left-1/2 top-20 h-36 w-72 -translate-x-1/2 rounded-full bg-sky-300/20 blur-3xl dark:bg-indigo-500/15" />
-                <div className="relative z-10">
-                  <div
-                    className="mb-7 inline-flex h-36 w-36 items-center justify-center rounded-full overflow-hidden ring-4 ring-indigo-300/70 dark:ring-indigo-400/50 ring-offset-1 ring-offset-slate-50 dark:ring-offset-slate-950 shadow-[0_0_28px_rgba(99,102,241,0.35),0_0_56px_rgba(217,70,239,0.18)] dark:shadow-[0_0_32px_rgba(99,102,241,0.4),0_0_64px_rgba(217,70,239,0.22)]"
-                  >
-                    <img
-                      src="/logo.png"
-                      alt=""
-                      className="h-full w-full origin-center scale-[1.22] object-contain object-center select-none"
-                      style={{ background: 'transparent' }}
-                      aria-hidden
-                    />
-                  </div>
-                  <EmptyStateGreetingTitle sessionKey={activeSessionId ?? ''} />
-                  <EmptyStateHint />
-                  <div className="mt-4 sm:mt-5">
-                    <SuggestedQuestions
-                      session={activeSession}
-                      selectedScopeFiles={selectedScopeFiles}
-                      disabled={isLoading || !activeSessionId}
-                      onSelect={(question) => {
-                        void submitMessage(question)
-                      }}
-                    />
+              <div className="relative mx-auto w-full max-w-3xl py-8 text-center sm:py-12">
+                <div className="pointer-events-none absolute left-1/2 top-2 h-48 w-48 -translate-x-1/2 rounded-full bg-indigo-200/40 blur-3xl dark:bg-indigo-500/10" />
+                <div className="pointer-events-none absolute left-1/2 top-28 h-40 w-[30rem] -translate-x-1/2 rounded-full bg-amber-100/70 blur-3xl dark:bg-violet-500/10" />
+                <div className="relative overflow-hidden rounded-[2rem] border border-slate-200/70 bg-white/[0.78] px-5 pb-7 pt-8 shadow-[0_28px_70px_-48px_rgba(15,23,42,0.7)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-800/75 dark:bg-slate-900/[0.58] dark:shadow-[0_28px_80px_-54px_rgba(0,0,0,0.9)] dark:ring-white/[0.04] sm:px-8">
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.95),transparent_34%),linear-gradient(135deg,rgba(248,250,252,0.58),transparent_42%,rgba(241,245,249,0.42))] dark:bg-[radial-gradient(circle_at_50%_0%,rgba(99,102,241,0.16),transparent_34%),linear-gradient(135deg,rgba(30,41,59,0.46),transparent_45%,rgba(15,23,42,0.55))]" />
+                  <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent dark:via-white/20" />
+                  <div className="relative z-10">
+                    <div
+                      className="mb-7 inline-flex h-32 w-32 items-center justify-center overflow-hidden rounded-[2rem] border border-white/80 bg-white/70 shadow-[0_18px_42px_-26px_rgba(79,70,229,0.7)] ring-1 ring-slate-200/80 dark:border-white/10 dark:bg-slate-950/40 dark:ring-indigo-300/20"
+                    >
+                      <img
+                        src="/logo.png"
+                        alt=""
+                        className="h-full w-full origin-center scale-[1.22] object-contain object-center select-none"
+                        style={{ background: 'transparent' }}
+                        aria-hidden
+                      />
+                    </div>
+                    <EmptyStateGreetingTitle sessionKey={activeSessionId ?? ''} />
+                    <EmptyStateHint />
+                    <div className="mt-4 sm:mt-5">
+                      <Suspense fallback={<SuggestedQuestionsLoading />}>
+                        <SuggestedQuestions
+                          session={activeSession}
+                          selectedScopeFiles={selectedScopeFiles}
+                          disabled={isLoading || !activeSessionId}
+                          onSelect={(question) => {
+                            void submitMessage(question)
+                          }}
+                        />
+                      </Suspense>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -671,38 +789,39 @@ export function ChatInterface() {
               const messageCitationMap =
                 citationMapsByMessageId.get(m.id) ?? buildCitationMapForMessage(m.citations)
               return (
-                <MessageBubble
-                  key={m.id ?? i}
-                  message={{
-                    id: m.id,
-                    type: m.role === 'user' ? 'user' : 'assistant',
-                    content: m.content,
-                    timestamp: new Date(m.timestamp).toISOString(),
-                    attachments: m.attachments as ChatMessageAttachment[] | undefined,
-                    scopeFiles: m.scopeFiles,
-                    citations: m.citations,
-                    metadata: (m as any).metadata,
-                    thinking: (m as any).thinking,
-                    error: m.error,
-                  }}
-                  isStreaming={isLastAndStreaming}
-                  liveThinking={
-                    isLastAndStreaming
-                      ? {
-                        thoughtData: thinking.thoughtData,
-                        stages: thinking.stages,
-                        currentStage: thinking.currentStage,
-                      }
-                      : undefined
-                  }
-                  citationMap={messageCitationMap}
-                  onCiteClick={handleCitationClick}
-                />
+                <Suspense key={m.id ?? i} fallback={<MessageBubbleLoading role={m.role} />}>
+                  <MessageBubble
+                    message={{
+                      id: m.id,
+                      type: m.role === 'user' ? 'user' : 'assistant',
+                      content: m.content,
+                      timestamp: new Date(m.timestamp).toISOString(),
+                      attachments: m.attachments as ChatMessageAttachment[] | undefined,
+                      scopeFiles: m.scopeFiles,
+                      citations: m.citations,
+                      metadata: m.metadata,
+                      thinking: m.thinking,
+                      error: m.error,
+                    }}
+                    isStreaming={isLastAndStreaming}
+                    liveThinking={
+                      isLastAndStreaming
+                        ? {
+                          thoughtData: thinking.thoughtData,
+                          stages: thinking.stages,
+                          currentStage: thinking.currentStage,
+                        }
+                        : undefined
+                    }
+                    citationMap={messageCitationMap}
+                    onCiteClick={handleCitationClick}
+                  />
+                </Suspense>
               )
             })}
 
             {error && (
-              <Card className="border-destructive/50 bg-destructive/5">
+              <Card className="border-destructive/50 bg-destructive/5" role="alert">
                 <CardContent className="py-3 text-sm text-destructive">
                   {error}
                 </CardContent>
@@ -715,18 +834,20 @@ export function ChatInterface() {
       </ScrollArea>
 
       {/* 输入区 - Gemini 风格悬浮框 */}
-      <div className="relative px-3 pb-3">
+      <div className="relative px-4 pb-4 sm:px-6">
         <div className="mx-auto max-w-4xl relative">
           {/* 一体化输入框：flex 布局，textarea 与按钮区分离；focus 时极细 indigo/fuchsia 环与品牌一致 */}
-          <div className="flex flex-col overflow-hidden rounded-3xl bg-white border border-slate-200/60 shadow-lg shadow-slate-900/10 transition-[box-shadow] duration-200 focus-within:ring-2 focus-within:ring-indigo-400/40 focus-within:shadow-[0_0_0_1px_rgba(217,70,239,0.22)] dark:bg-slate-800 dark:border-slate-700/60 dark:shadow-slate-900/30 dark:focus-within:ring-indigo-400/35 dark:focus-within:shadow-[0_0_0_1px_rgba(217,70,239,0.28)]">
+          <div className="flex flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/75 bg-white/90 shadow-[0_22px_52px_-36px_rgba(15,23,42,0.72),0_1px_0_rgba(255,255,255,0.9)_inset] ring-1 ring-white/70 backdrop-blur-xl transition-[box-shadow,border-color] duration-200 focus-within:border-indigo-300/80 focus-within:ring-indigo-200/80 dark:border-slate-700/70 dark:bg-slate-900/80 dark:shadow-[0_24px_62px_-42px_rgba(0,0,0,0.95)] dark:ring-white/[0.05] dark:focus-within:border-indigo-400/40 dark:focus-within:ring-indigo-400/20">
             {(selectedScopeFiles.length > 0 || attachments.length > 0) && (
-              <div className="flex flex-col gap-3 border-b border-slate-100/90 bg-gradient-to-b from-slate-50/90 via-indigo-50/20 to-transparent px-4 py-3 dark:border-slate-700/60 dark:from-slate-900/40 dark:via-indigo-950/25 dark:to-transparent">
+              <div className="flex flex-col gap-3 border-b border-slate-100/90 bg-gradient-to-b from-slate-50/95 via-stone-50/70 to-white/40 px-4 py-3 dark:border-slate-700/60 dark:from-slate-950/40 dark:via-slate-900/40 dark:to-slate-900/10">
                 {selectedScopeFiles.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2">
                     {selectedScopeFiles.map((file) => (
                       <button
                         key={`${file.kbId}::${file.fileId}`}
                         type="button"
+                        title={`移除检索文件：${file.name}`}
+                        aria-label={`移除检索文件：${file.kbName ? `${file.kbName} / ${file.name}` : file.name}`}
                         onClick={() => {
                           setSelectedScopeFiles(prev =>
                             prev.filter(item => !(item.kbId === file.kbId && item.fileId === file.fileId))
@@ -734,9 +855,9 @@ export function ChatInterface() {
                         }}
                         className="inline-flex max-w-full items-center gap-2 rounded-full border border-emerald-200/70 bg-white/90 px-3 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-50 dark:border-emerald-500/30 dark:bg-slate-950/70 dark:text-emerald-200"
                       >
-                        <AtSign className="h-3.5 w-3.5 flex-shrink-0" />
+                        <AtSign className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
                         <span className="truncate">{file.kbName ? `${file.kbName} / ${file.name}` : file.name}</span>
-                        <X className="h-3.5 w-3.5 flex-shrink-0" />
+                        <X className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
                       </button>
                     ))}
                   </div>
@@ -753,14 +874,15 @@ export function ChatInterface() {
                         previewUrl: a.previewUrl,
                       }
                       return (
-                        <ComposerAttachmentTile
-                          key={a.id}
-                          item={item}
-                          onRemove={() => {
-                            if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
-                            setAttachments((prev) => prev.filter((x) => x.id !== a.id))
-                          }}
-                        />
+                        <Suspense key={a.id} fallback={<ComposerAttachmentTileFallback />}>
+                          <ComposerAttachmentTile
+                            item={item}
+                            onRemove={() => {
+                              if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
+                              setAttachments((prev) => prev.filter((x) => x.id !== a.id))
+                            }}
+                          />
+                        </Suspense>
                       )
                     })}
                   </div>
@@ -822,6 +944,11 @@ export function ChatInterface() {
               }}
               placeholder="输入你的问题"
               rows={1}
+              aria-label="输入对话问题"
+              aria-autocomplete="list"
+              aria-controls={mentionState ? mentionListboxId : undefined}
+              aria-expanded={mentionState ? mentionOptions.length > 0 : undefined}
+              aria-activedescendant={mentionActiveOptionId}
               className="w-full resize-none border-0 bg-transparent px-6 py-4 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:ring-0 dark:text-slate-100 dark:placeholder:text-slate-500 disabled:opacity-50 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:hover:bg-slate-400 dark:[&::-webkit-scrollbar-thumb]:bg-slate-600 dark:[&::-webkit-scrollbar-thumb]:hover:bg-slate-500"
               style={{ minHeight: '56px', maxHeight: '192px' }}
               disabled={isLoading || !activeSessionId}
@@ -829,11 +956,21 @@ export function ChatInterface() {
 
             {mentionState && (
               <div className="border-t border-slate-100/90 px-4 pb-2 dark:border-slate-700/60">
-                <div className="max-h-72 overflow-y-auto rounded-2xl border border-slate-200/70 bg-white/95 p-2 shadow-lg shadow-slate-900/10 dark:border-slate-700/70 dark:bg-slate-900/95">
+                <div
+                  id={mentionListboxId}
+                  role="listbox"
+                  aria-label="可添加的检索文件"
+                  className="max-h-72 overflow-y-auto rounded-2xl border border-slate-200/70 bg-white/95 p-2 shadow-lg shadow-slate-900/10 dark:border-slate-700/70 dark:bg-slate-900/95"
+                >
                   {mentionOptions.length > 0 ? (
                     <div className="space-y-3">
                       {mentionGroups.map(group => (
-                        <div key={group.kbId} className="space-y-1">
+                        <div
+                          key={group.kbId}
+                          role="group"
+                          aria-label={`${group.kbName}，${group.totalMatches} 个匹配`}
+                          className="space-y-1"
+                        >
                           <div className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                             {group.kbName}
                             <span className="ml-2 normal-case tracking-normal text-slate-400 dark:text-slate-500">
@@ -847,10 +984,13 @@ export function ChatInterface() {
                               return (
                                 <button
                                   key={`${group.kbId}::${file.id}`}
+                                  id={`${mentionListboxId}-option-${optionIndex}`}
                                   ref={node => {
                                     mentionOptionRefs.current[optionIndex] = node
                                   }}
                                   type="button"
+                                  role="option"
+                                  aria-selected={isActive}
                                   onMouseDown={e => {
                                     e.preventDefault()
                                     insertMentionSelection({ kbId: group.kbId, kbName: group.kbName, file })
@@ -862,7 +1002,7 @@ export function ChatInterface() {
                                       : 'hover:bg-slate-50 dark:hover:bg-slate-800/70'
                                   )}
                                 >
-                                  <AtSign className={cn('h-4 w-4 flex-shrink-0', isActive ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-400')} />
+                                  <AtSign className={cn('h-4 w-4 flex-shrink-0', isActive ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-400')} aria-hidden />
                                   <div className="min-w-0 flex-1">
                                     <div className="truncate text-sm font-medium">{file.name}</div>
                                     <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -878,7 +1018,11 @@ export function ChatInterface() {
                       ))}
                     </div>
                   ) : (
-                    <div className="px-3 py-4 text-sm text-slate-500 dark:text-slate-400">
+                    <div
+                      className="px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
+                      role="status"
+                      aria-live="polite"
+                    >
                       {scopeLoadingKbIds.length > 0 ? '正在加载文件列表...' : '没有匹配的文件。'}
                     </div>
                   )}
@@ -887,15 +1031,16 @@ export function ChatInterface() {
             )}
 
             {/* 底部功能栏 - 独立区域，与文字区物理分离 */}
-            <div className="flex flex-shrink-0 items-center justify-between px-4 py-2">
+            <div className="flex flex-shrink-0 items-center justify-between border-t border-slate-100/80 bg-gradient-to-b from-transparent to-slate-50/60 px-4 py-2.5 dark:border-slate-800/70 dark:to-slate-950/25">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setKbConfigPanelOpen(true)}
                   title="知识库范围配置"
+                  aria-label="打开知识库范围配置"
                   className="group flex items-center gap-1.5 rounded-full border border-blue-200/60 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-blue-700 shadow-sm shadow-blue-500/10 ring-1 ring-blue-200/30 transition-all duration-200 hover:border-blue-300/80 hover:from-blue-100/90 hover:to-indigo-100/90 hover:shadow-md hover:shadow-blue-500/20 hover:ring-blue-300/50 active:scale-95 dark:border-blue-500/40 dark:from-blue-900/30 dark:to-indigo-900/30 dark:text-blue-200 dark:ring-blue-500/20 dark:hover:border-blue-400/60 dark:hover:from-blue-800/40 dark:hover:to-indigo-800/40"
                 >
-                  <Database className="h-3.5 w-3.5 text-blue-600 dark:text-blue-300 transition-transform duration-200 group-hover:scale-110" />
+                  <Database className="h-3.5 w-3.5 text-blue-600 dark:text-blue-300 transition-transform duration-200 group-hover:scale-110" aria-hidden />
                   <span>
                     {activeSession?.kbMode === 'all'
                       ? '全部'
@@ -909,14 +1054,21 @@ export function ChatInterface() {
                   type="button"
                   onClick={() => setModelConfigPanelOpen(true)}
                   title="对话模型选择"
+                  aria-label={`打开对话模型选择，当前模型：${currentModel}`}
                   className="group flex items-center gap-1.5 rounded-full border border-purple-200/60 bg-gradient-to-r from-purple-50/80 to-pink-50/80 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-purple-700 shadow-sm shadow-purple-500/10 ring-1 ring-purple-200/30 transition-all duration-200 hover:border-purple-300/80 hover:from-purple-100/90 hover:to-pink-100/90 hover:shadow-md hover:shadow-purple-500/20 hover:ring-purple-300/50 active:scale-95 dark:border-purple-500/40 dark:from-purple-900/30 dark:to-pink-900/30 dark:text-purple-200 dark:ring-purple-500/20 dark:hover:border-purple-400/60 dark:hover:from-purple-800/40 dark:hover:to-pink-800/40"
                 >
                   {openRouterModelRaw ? (
-                    <OpenRouterModelBrandIcon
-                      modelId={openRouterModelRaw}
-                      size={14}
-                      className="h-3.5 w-3.5 flex-shrink-0 p-0 ring-0 transition-transform duration-200 group-hover:scale-110 dark:bg-transparent"
-                    />
+                    <Suspense
+                      fallback={
+                        <OpenRouterModelBrandIconFallback className="transition-transform duration-200 group-hover:scale-110" />
+                      }
+                    >
+                      <OpenRouterModelBrandIcon
+                        modelId={openRouterModelRaw}
+                        size={14}
+                        className="h-3.5 w-3.5 flex-shrink-0 p-0 ring-0 transition-transform duration-200 group-hover:scale-110 dark:bg-transparent"
+                      />
+                    </Suspense>
                   ) : currentModelLogo ? (
                     <img
                       src={currentModelLogo}
@@ -926,7 +1078,7 @@ export function ChatInterface() {
                       height={14}
                     />
                   ) : (
-                    <Zap className="h-3.5 w-3.5 flex-shrink-0 text-purple-600 dark:text-purple-300 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-12" />
+                    <Zap className="h-3.5 w-3.5 flex-shrink-0 text-purple-600 dark:text-purple-300 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-12" aria-hidden />
                   )}
                   <span className="truncate max-w-[120px]">{currentModel}</span>
                 </button>
@@ -937,6 +1089,7 @@ export function ChatInterface() {
                   type="button"
                   onClick={() => setFileScopePickerOpen(true)}
                   title="指定检索文件"
+                  aria-label={`打开指定检索文件选择器，当前已选 ${selectedScopeFiles.length} 个文件`}
                   className={cn(
                     'group inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm ring-1 transition-all duration-200 active:scale-95',
                     selectedScopeFiles.length > 0
@@ -944,7 +1097,7 @@ export function ChatInterface() {
                       : 'border-slate-200/70 bg-white/70 text-slate-600 ring-slate-200/50 hover:border-slate-300/80 hover:bg-white/90 dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-300'
                   )}
                 >
-                  <AtSign className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110" />
+                  <AtSign className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110" aria-hidden />
                   <span>{selectedScopeFiles.length > 0 ? `文件 ${selectedScopeFiles.length}` : '文件'}</span>
                 </button>
 
@@ -952,9 +1105,10 @@ export function ChatInterface() {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   title="添加附件"
+                  aria-label="添加图片或音频附件"
                   className="flex h-8 w-8 items-center justify-center text-slate-700 transition-all duration-200 hover:text-slate-900 hover:scale-110 active:scale-95 dark:text-slate-300 dark:hover:text-slate-100"
                 >
-                  <Paperclip className="h-5 w-5" strokeWidth={2} />
+                  <Paperclip className="h-5 w-5" strokeWidth={2} aria-hidden />
                 </button>
 
                 {isStreaming ? (
@@ -962,23 +1116,25 @@ export function ChatInterface() {
                     type="button"
                     onClick={handleStop}
                     title="停止生成"
+                    aria-label="停止生成"
                     className={cn(
                       "flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 text-white shadow-md shadow-blue-500/30 transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/40 hover:scale-105 active:scale-95"
                     )}
                   >
-                    <Square className="h-3.5 w-3.5 fill-current" />
+                    <Square className="h-3.5 w-3.5 fill-current" aria-hidden />
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={handleSend}
                     title="发送"
+                    aria-label="发送消息"
                     className={cn(
                       "flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-purple-600 text-white shadow-md shadow-purple-500/30 transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/40 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
                     )}
                     disabled={(!input.trim() && attachments.length === 0) || isLoading || !activeSessionId}
                   >
-                    <Send className="h-4 w-4" />
+                    <Send className="h-4 w-4" aria-hidden />
                   </button>
                 )}
               </div>
@@ -992,40 +1148,61 @@ export function ChatInterface() {
           multiple
           accept="image/jpeg,image/png,image/webp,image/gif,audio/*"
           className="hidden"
+          aria-label="选择图片或音频附件"
           onChange={handleFileSelect}
         />
       </div>
 
       {/* 引用悬浮卡片 */}
-      <div ref={citePopoverRef}>
-        <CitationPopover
-          open={citePopover.open}
-          rect={citePopover.rect}
-          item={citePopover.item}
-          onClose={closeCitePopover}
-          onOpenInspector={openInspectorFromPopover}
-        />
-      </div>
+      {citePopover.open ? (
+        <div ref={citePopoverRef}>
+          <Suspense fallback={null}>
+            <CitationPopover
+              open={citePopover.open}
+              rect={citePopover.rect}
+              item={citePopover.item}
+              onClose={closeCitePopover}
+              onOpenInspector={openInspectorFromPopover}
+            />
+          </Suspense>
+        </div>
+      ) : null}
 
       {/* 配置面板 */}
-      <KnowledgeBaseConfigPanel open={kbConfigPanelOpen} onOpenChange={setKbConfigPanelOpen} />
-      <FileScopePicker
-        open={fileScopePickerOpen}
-        onOpenChange={setFileScopePickerOpen}
-        value={selectedScopeFiles}
-        onChange={setSelectedScopeFiles}
-      />
-      <ModelConfigPanel open={modelConfigPanelOpen} onOpenChange={setModelConfigPanelOpen} />
+      {kbConfigPanelOpen ? (
+        <Suspense fallback={null}>
+          <KnowledgeBaseConfigPanel open={kbConfigPanelOpen} onOpenChange={setKbConfigPanelOpen} />
+        </Suspense>
+      ) : null}
+      {fileScopePickerOpen ? (
+        <Suspense fallback={null}>
+          <FileScopePicker
+            open={fileScopePickerOpen}
+            onOpenChange={setFileScopePickerOpen}
+            value={selectedScopeFiles}
+            onChange={setSelectedScopeFiles}
+          />
+        </Suspense>
+      ) : null}
+      {modelConfigPanelOpen ? (
+        <Suspense fallback={null}>
+          <ModelConfigPanel open={modelConfigPanelOpen} onOpenChange={setModelConfigPanelOpen} />
+        </Suspense>
+      ) : null}
 
       {/* 检查器侧边栏 */}
-      <InspectorDrawer
-        isOpen={inspectorOpen}
-        onClose={() => {
-          setInspectorOpen(false)
-          setInspectingItem(null)
-        }}
-        citations={inspectingItem ? [inspectingItem] : []}
-      />
+      {inspectorOpen ? (
+        <Suspense fallback={null}>
+          <InspectorDrawer
+            isOpen={inspectorOpen}
+            onClose={() => {
+              setInspectorOpen(false)
+              setInspectingItem(null)
+            }}
+            citations={inspectingItem ? [inspectingItem] : []}
+          />
+        </Suspense>
+      ) : null}
     </div>
   )
 }

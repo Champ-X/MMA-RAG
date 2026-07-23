@@ -1,13 +1,8 @@
-import React from 'react'
+import React, { Suspense } from 'react'
 import { User, Bot, Music, Play, Video, FileText } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
-import { ThinkingCapsule } from './ThinkingCapsule'
 import { InlineCitation } from './InlineCitation'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import rehypeHighlight from 'rehype-highlight'
+import type { Components, ExtraProps } from 'react-markdown'
 import { cn } from '@/lib/utils'
 import { chatApi } from '@/services/api_client'
 import type { CitationReference } from '@/types/sse'
@@ -15,11 +10,33 @@ import {
   useChatStore,
   type ChatMessageAttachment,
   type ChatScopeFile,
+  type Message,
   type ThoughtData,
   type ThinkingState,
 } from '@/store/useChatStore'
 import { useConfigStore } from '@/store/useConfigStore'
 import { UserMessageAttachmentStrip } from './ChatAttachmentPreview'
+
+type CitationStub = { id: number | string }
+type CitationLike = CitationReference | CitationStub
+type ReactNodeChildrenProps = { children?: React.ReactNode }
+
+let katexCssLoadPromise: Promise<unknown> | null = null
+
+const ThinkingCapsule = React.lazy(() =>
+  import('./ThinkingCapsule').then((module) => ({ default: module.ThinkingCapsule }))
+)
+
+const MarkdownRenderer = React.lazy(() =>
+  import('./MarkdownRenderer').then((module) => ({ default: module.MarkdownRenderer }))
+)
+
+function ensureKatexCssLoaded() {
+  if (!katexCssLoadPromise) {
+    katexCssLoadPromise = import('katex/dist/katex.min.css')
+  }
+  return katexCssLoadPromise
+}
 
 /** 流式时从 ChatInterface 传入的实时思考数据，保证思考框在气泡顶部展示 */
 export interface LiveThinkingProps {
@@ -28,12 +45,28 @@ export interface LiveThinkingProps {
   currentStage?: string
 }
 
+function ThinkingCapsuleFallback() {
+  return (
+    <div className="mb-2 w-full rounded-xl border border-slate-200/70 bg-slate-50/90 px-3 py-2 text-xs font-medium text-slate-500 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-400">
+      正在载入思考过程…
+    </div>
+  )
+}
+
+function MarkdownRendererFallback({ streaming }: { streaming?: boolean }) {
+  return (
+    <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+      {streaming ? '正在准备渲染回答…' : '正在载入 Markdown 渲染器…'}
+    </div>
+  )
+}
+
 export interface MessageBubbleMessage {
   id: string
   type: 'user' | 'assistant'
   content: string
   timestamp: string
-  citations?: Array<CitationReference | { id: number | string }>
+  citations?: CitationLike[]
   metadata?: {
     chunks_count?: number
     images_count?: number
@@ -41,11 +74,7 @@ export interface MessageBubbleMessage {
     intent_type?: string
     processing_time?: number
   }
-  thinking?: {
-    intent?: any
-    routing?: any
-    retrieval?: any
-  } | ThoughtData | null
+  thinking?: Message['thinking'] | null
   error?: string
   attachments?: ChatMessageAttachment[]
   scopeFiles?: ChatScopeFile[]
@@ -95,12 +124,12 @@ function injectCitations(
       </span>
     ))
   }
-  if (!React.isValidElement(children)) return children
-  if (children.props?.children) {
+  if (!React.isValidElement<ReactNodeChildrenProps>(children)) return children
+  if (children.props.children) {
     return React.cloneElement(children, {
       ...children.props,
       children: injectCitations(children.props.children, onCiteClick, messageId, originalIdToDisplayIndex, citationMap)
-    } as any)
+    })
   }
   return children
 }
@@ -173,7 +202,7 @@ function buildFirstMediaOccurrenceMap(
   matches: CitationMatch[],
   mediaType: CitationReference['type'],
   citationMap?: Map<number | string, CitationReference>,
-  refs?: Array<CitationReference | { id: number | string }>
+  refs?: CitationLike[]
 ): Map<string, number> {
   const firstOccurrenceByKey = new Map<string, number>()
 
@@ -194,7 +223,7 @@ function collectFirstMediaRefsForBlock(
   mediaType: 'image' | 'audio',
   firstOccurrenceByKey: Map<string, number>,
   citationMap?: Map<number | string, CitationReference>,
-  refs?: Array<CitationReference | { id: number | string }>
+  refs?: CitationLike[]
 ): CitationReference[] {
   const mediaRefs: CitationReference[] = []
   const seenInBlock = new Set<string>()
@@ -258,15 +287,31 @@ function extractTextFromNode(node: React.ReactNode): string {
   return ''
 }
 
+function isCitationLike(value: unknown): value is CitationLike {
+  return typeof value === 'object' && value != null && 'id' in value
+}
+
+function getCitationRefId(ref: CitationLike) {
+  return ref.id
+}
+
+function getCitationRefType(ref: CitationLike) {
+  return 'type' in ref ? ref.type : undefined
+}
+
+function getCitationRefFileName(ref: CitationLike) {
+  return 'file_name' in ref ? ref.file_name : undefined
+}
+
 // 从 refs / citationMap 中查找 citation：优先当前消息 refs，避免跨轮次共用 id 时误用其它消息的 map
 function findCitationById(
   refId: number | string,
   citationMap?: Map<number | string, CitationReference>,
-  refs?: Array<CitationReference | { id: number | string }>
+  refs?: CitationLike[]
 ): CitationReference | null {
   const refItem = refs?.find((r) => {
-    if (typeof r !== 'object' || r == null || !('id' in r)) return false
-    const rId = String((r as any).id)
+    if (!isCitationLike(r)) return false
+    const rId = String(getCitationRefId(r))
     const matchId = String(refId)
     return rId === matchId
   })
@@ -282,7 +327,7 @@ function findCitationById(
   if (fromMap) return fromMap
 
   if (refItem && 'id' in refItem) {
-    return (citationMap?.get((refItem as any).id) ?? refItem) as CitationReference
+    return (citationMap?.get(getCitationRefId(refItem)) ?? refItem) as CitationReference
   }
 
   return null
@@ -292,7 +337,7 @@ function findCitationById(
 function extractVideoRefIdsFromText(
   text: string,
   citationMap?: Map<number | string, CitationReference>,
-  refs?: Array<CitationReference | { id: number | string }>
+  refs?: CitationLike[]
 ): CitationReference[] {
   const matches = findAllCitationMatches(text)
   const videoRefs: CitationReference[] = []
@@ -318,6 +363,7 @@ function CitationInlineButton({ n, onClick }: { n: number; onClick?: (rect: DOMR
       }}
       className="inline-flex items-center justify-center mx-0.5 text-[9px] font-semibold rounded-[5px] transition-all border align-text-top min-w-[1rem] h-4 px-1 text-indigo-700 dark:text-indigo-200 bg-gradient-to-br from-indigo-50 via-purple-50 to-fuchsia-50 dark:from-indigo-600/30 dark:via-purple-600/20 dark:to-fuchsia-600/30 hover:from-indigo-100 hover:via-purple-100 hover:to-fuchsia-100 dark:hover:from-indigo-600/40 dark:hover:via-purple-600/30 dark:hover:to-fuchsia-600/40 border-indigo-300/60 dark:border-indigo-700/60 shadow-sm hover:shadow active:scale-95"
       title={`点击查看引用 ${n}`}
+      aria-label={`查看引用 ${n}`}
     >
       {n}
     </button>
@@ -537,10 +583,11 @@ function ParagraphImageDisplay({
               }
             }}
             className="rounded-lg border-0 overflow-hidden hover:ring-2 ring-primary/40 transition-all p-0 m-0 relative"
+            aria-label={`查看图片引用：${citation.file_name || `引用 ${citation.id}`}`}
           >
             {!isLoaded && (
-              <div className="absolute inset-0 flex items-center justify-center bg-slate-100 dark:bg-slate-800 z-10">
-                <div className="animate-spin h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full" />
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-100 dark:bg-slate-800 z-10" role="status" aria-label="图片引用加载中">
+                <div className="animate-spin h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full" aria-hidden />
               </div>
             )}
             <img
@@ -726,10 +773,10 @@ function ParagraphAudioDisplay({
             data-audio-key={key}
             className={cn(
               'paragraph-audio-card relative w-full min-w-0 max-w-lg mx-auto overflow-hidden rounded-2xl',
-              'border border-violet-200/45 bg-gradient-to-br from-white via-violet-50/35 to-indigo-50/25',
+              'border border-violet-200/40 bg-gradient-to-br from-white via-violet-50/[0.35] to-indigo-50/25',
               'shadow-md shadow-violet-500/[0.07] ring-1 ring-black/[0.03] dark:from-slate-950 dark:via-violet-950/25 dark:to-slate-950',
-              'dark:border-violet-500/15 dark:shadow-lg dark:shadow-black/25 dark:ring-white/[0.06]',
-              'transition-all duration-300 hover:border-violet-300/55 hover:shadow-lg hover:shadow-violet-500/10',
+              'dark:border-violet-500/[0.15] dark:shadow-lg dark:shadow-black/25 dark:ring-white/[0.06]',
+              'transition-all duration-300 hover:border-violet-300/50 hover:shadow-lg hover:shadow-violet-500/10',
               'dark:hover:border-violet-400/25',
               "before:pointer-events-none before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-br before:from-white/50 before:to-transparent before:content-[''] dark:before:from-white/[0.03] dark:before:to-transparent",
             )}
@@ -739,10 +786,11 @@ function ParagraphAudioDisplay({
               <button
                 type="button"
                 onClick={handleOpenPopover}
+            aria-label={`打开音频引用 ${displayNum}${citation.file_name ? `：${citation.file_name}` : ''}`}
                 className="flex items-center gap-2.5 w-full min-w-0 text-left rounded-xl -mx-0.5 px-1 py-0.5 transition-colors hover:bg-violet-500/[0.07] dark:hover:bg-violet-400/[0.09]"
               >
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-100 to-indigo-100 text-violet-700 shadow-sm shadow-violet-500/10 ring-1 ring-violet-200/60 dark:from-violet-900/55 dark:to-indigo-950/50 dark:text-violet-300 dark:ring-violet-600/35">
-                  <Music className="h-4 w-4" strokeWidth={2} />
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-100 to-indigo-100 text-violet-700 shadow-sm shadow-violet-500/10 ring-1 ring-violet-200/60 dark:from-violet-900/50 dark:to-indigo-950/50 dark:text-violet-300 dark:ring-violet-600/40">
+              <Music className="h-4 w-4" strokeWidth={2} aria-hidden />
                 </span>
                 <span className="min-w-0 flex-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0 text-xs leading-tight">
                   <span className="shrink-0 font-mono text-sm font-semibold tracking-tight text-violet-600 tabular-nums dark:text-violet-400">
@@ -761,10 +809,11 @@ function ParagraphAudioDisplay({
               </button>
 
               {hasAudioUrl ? (
-                <div className="mt-2 rounded-xl border border-violet-100/90 bg-white/75 px-2 py-1 shadow-inner shadow-violet-500/[0.04] backdrop-blur-[2px] dark:border-slate-700/55 dark:bg-slate-950/45 dark:shadow-black/20">
+                <div className="mt-2 rounded-xl border border-violet-100/90 bg-white/75 px-2 py-1 shadow-inner shadow-violet-500/[0.04] backdrop-blur-[2px] dark:border-slate-700/50 dark:bg-slate-950/40 dark:shadow-black/20">
                   <audio
                     src={resolvedUrl!}
                     controls
+                    aria-label={`播放音频引用 ${displayNum}${citation.file_name ? `：${citation.file_name}` : ''}`}
                     className="h-8 w-full rounded-lg bg-transparent [&::-webkit-media-controls-panel]:min-h-8 [&::-webkit-media-controls-panel]:rounded-lg [&::-webkit-media-controls-panel]:bg-violet-50/90 dark:[&::-webkit-media-controls-panel]:bg-slate-900/95"
                     preload="metadata"
                     onClick={(e) => e.stopPropagation()}
@@ -789,13 +838,14 @@ function ParagraphAudioDisplay({
                   type="button"
                   onClick={handleClickPlay}
                   disabled={loadingRefId === citation.id}
+                  aria-label={`${loadingRefId === citation.id ? '正在加载' : '加载并播放'}音频引用 ${displayNum}`}
                   className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200/70 bg-white/90 py-2 px-3 text-xs font-medium text-violet-800 shadow-sm shadow-violet-500/5 transition-all hover:border-violet-300 hover:bg-violet-50/80 hover:shadow-md disabled:opacity-60 dark:border-violet-800/40 dark:bg-slate-950/50 dark:text-violet-200 dark:hover:border-violet-700/50 dark:hover:bg-violet-950/40"
                 >
                   {loadingRefId === citation.id ? (
                     <span>加载中…</span>
                   ) : (
                     <>
-                      <Play className="h-3.5 w-3.5 flex-shrink-0" fill="currentColor" />
+                      <Play className="h-3.5 w-3.5 flex-shrink-0" fill="currentColor" aria-hidden />
                       <span>点击播放</span>
                     </>
                   )}
@@ -864,6 +914,7 @@ function VideoPlayerWithSeek({
       ref={videoRef}
       src={src}
       controls
+      aria-label="视频引用播放器"
       preload="metadata"
       className={className}
       onClick={onClick}
@@ -1008,10 +1059,11 @@ function ParagraphVideoDisplay({
               <button
                 type="button"
                 onClick={handleOpenPopover}
+                aria-label={`打开视频引用 ${displayNum}${citation.file_name ? `：${citation.file_name}` : ''}`}
                 className="flex items-center gap-3 w-full text-left mb-1.5 group rounded-xl -mx-0.5 px-1.5 py-0.5 hover:bg-sky-50/70 dark:hover:bg-sky-900/30 transition-colors duration-150"
               >
                 <span className="flex items-center justify-center shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-sky-50 to-cyan-50/80 dark:from-sky-900/50 dark:to-cyan-900/30 text-sky-600 dark:text-sky-400 group-hover:from-sky-100 group-hover:to-cyan-100/80 dark:group-hover:from-sky-800/60 dark:group-hover:to-cyan-800/40 border border-sky-200/50 dark:border-sky-700/40 shadow-sm transition-all duration-150">
-                  <Video className="h-4.5 w-4.5" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                  <Video className="h-4.5 w-4.5" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden />
                 </span>
                 <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate flex items-baseline gap-2 tracking-tight">
                   <span className="font-mono text-sky-600 dark:text-sky-400 font-bold tabular-nums">[{displayNum}]</span>
@@ -1054,13 +1106,14 @@ function ParagraphVideoDisplay({
                   type="button"
                   onClick={handleClickPlay}
                   disabled={loadingRefId === citation.id}
+                  aria-label={`${loadingRefId === citation.id ? '正在加载' : '加载并播放'}视频引用 ${displayNum}`}
                   className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-gradient-to-b from-sky-50/90 to-cyan-50/50 dark:from-sky-950/50 dark:to-cyan-950/30 text-sky-700 dark:text-sky-300 hover:from-sky-100 hover:to-cyan-100/60 dark:hover:from-sky-900/60 dark:hover:to-cyan-900/40 border border-sky-200/60 dark:border-sky-700/50 transition-all duration-150 mb-2 disabled:opacity-60 text-sm font-medium shadow-sm"
                 >
                   {loadingRefId === citation.id ? (
                     <span>加载中…</span>
                   ) : (
                     <>
-                      <Play className="h-4 w-4 flex-shrink-0" fill="currentColor" />
+                      <Play className="h-4 w-4 flex-shrink-0" fill="currentColor" aria-hidden />
                       <span>点击播放</span>
                     </>
                   )}
@@ -1167,8 +1220,8 @@ export function MessageBubble({
   }, [orderedRefIds.join(',')])
   const orderedRefs = React.useMemo(() => {
     return orderedRefIds
-      .map((id) => citationMap?.get(id) ?? refs.find((r) => typeof r === 'object' && r != null && (r as any).id === id) ?? { id })
-      .filter((r): r is CitationReference | { id: number | string } => r != null && typeof r === 'object' && 'id' in r)
+      .map((id) => citationMap?.get(id) ?? refs.find((r) => isCitationLike(r) && getCitationRefId(r) === id) ?? { id })
+      .filter(isCitationLike)
   }, [orderedRefIds.join(','), citationMap, refs])
 
   const allCitationMatches = React.useMemo(
@@ -1188,20 +1241,18 @@ export function MessageBubble({
   )
 
   // 去重函数：用于过滤重复的引用
-  const deduplicateRefs = React.useCallback((refsToDedup: Array<CitationReference | { id: number | string }>) => {
+  const deduplicateRefs = React.useCallback((refsToDedup: CitationLike[]) => {
     return refsToDedup.filter((ref, idx, arr) => {
-      const isObj = typeof ref === 'object' && ref != null && 'id' in ref
-      if (!isObj) return false
-      const type = 'type' in ref ? (ref as any).type : undefined
-      const fileName = 'file_name' in ref ? String((ref as any).file_name || '') : ''
+      if (!isCitationLike(ref)) return false
+      const type = getCitationRefType(ref)
+      const fileName = getCitationRefFileName(ref) || ''
       // 对于图片类型，使用 file_name 去重；对于文档类型，使用 id 去重
-      const key = type === 'image' && fileName ? `image:${fileName}` : String((ref as any).id)
+      const key = type === 'image' && fileName ? `image:${fileName}` : String(getCitationRefId(ref))
       return arr.findIndex(r => {
-        const rObj = typeof r === 'object' && r != null && 'id' in r
-        if (!rObj) return false
-        const rType = 'type' in r ? (r as any).type : undefined
-        const rFileName = 'file_name' in r ? String((r as any).file_name || '') : ''
-        const rKey = rType === 'image' && rFileName ? `image:${rFileName}` : String((r as any).id)
+        if (!isCitationLike(r)) return false
+        const rType = getCitationRefType(r)
+        const rFileName = getCitationRefFileName(r) || ''
+        const rKey = rType === 'image' && rFileName ? `image:${rFileName}` : String(getCitationRefId(r))
         return rKey === key
       }) === idx
     })
@@ -1213,20 +1264,18 @@ export function MessageBubble({
       return orderedRefs
     }
     // 当文本中没有引用标记时，仍然显示所有可用的引用
-    return deduplicateRefs(refs.filter((ref): ref is CitationReference | { id: number | string } =>
-      typeof ref === 'object' && ref != null && 'id' in ref
-    ))
+    return deduplicateRefs(refs.filter(isCitationLike))
   }, [orderedRefs, refs, deduplicateRefs])
   const allImageRefsForThumbnails = React.useMemo(() => {
     if (isUser) return []
     const seen = new Set<string | number>()
-    const out: (CitationReference | { id: number | string })[] = []
+    const out: CitationLike[] = []
     for (const r of refs) {
-      const full = typeof r === 'object' && r != null && 'id' in r
-        ? (citationMap?.get((r as any).id) ?? r)
+      const full = isCitationLike(r)
+        ? (citationMap?.get(getCitationRefId(r)) ?? r)
         : null
-      if (full && (full as CitationReference).type === 'image') {
-        const key = (full as CitationReference).file_name ?? (full as any).id
+      if (full && getCitationRefType(full) === 'image') {
+        const key = getCitationRefFileName(full) ?? getCitationRefId(full)
         if (!seen.has(key)) {
           seen.add(key)
           out.push(full as CitationReference)
@@ -1237,12 +1286,17 @@ export function MessageBubble({
   }, [refs, citationMap, isUser])
   const hasRefs = showCitations && (uniqueRefs.length > 0 || allImageRefsForThumbnails.length > 0)
 
+  React.useEffect(() => {
+    if (isUser) return
+    void ensureKatexCssLoaded()
+  }, [isUser])
+
   // 创建 markdown 组件的工厂函数
-  const markdownComponents = React.useMemo(() => {
+  const markdownComponents = React.useMemo<Components>(() => {
     const handleCiteClick = createCiteClickHandler(onCiteClick, message.id)
 
     const createComponent = (tag: 'p' | 'li', className: string) => {
-      return (props: { children?: React.ReactNode; node?: any }) => {
+      return (props: { children?: React.ReactNode } & ExtraProps) => {
         const { children, node } = props
         if (!children) return null
         const Tag = tag
@@ -1451,24 +1505,22 @@ export function MessageBubble({
       ) : (
         <>
           {showThinking && (
-            <ThinkingCapsule
-              thoughtData={thoughtData}
-              stages={liveThinking?.stages}
-              currentStage={liveThinking?.currentStage}
-            />
+            <Suspense fallback={<ThinkingCapsuleFallback />}>
+              <ThinkingCapsule
+                thoughtData={thoughtData}
+                stages={liveThinking?.stages}
+                currentStage={liveThinking?.currentStage}
+              />
+            </Suspense>
           )}
 
           {isUser ? (
             <div className="break-words">{message.content}</div>
           ) : (
-            <div className="prose prose-slate max-w-none text-sm dark:prose-invert prose-pre:rounded-xl prose-pre:border prose-pre:border-slate-200/70 prose-pre:bg-slate-900/5 prose-pre:shadow-sm dark:prose-pre:border-slate-800/70 dark:prose-pre:bg-white/5 [&>p:has(+div)]:!mb-0 [&>p]:mb-2 [&>p:last-child]:mb-0 [&>li]:mb-1">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex, rehypeHighlight]}
-                components={markdownComponents as any}
-              >
-                {message.content}
-              </ReactMarkdown>
+            <div className="rag-markdown max-w-none [&>p:has(+div)]:!mb-0">
+              <Suspense fallback={<MarkdownRendererFallback streaming={isStreaming} />}>
+                <MarkdownRenderer content={message.content} components={markdownComponents} />
+              </Suspense>
 
               {isStreaming && message.content && (
                 <span className="ml-0.5 inline-block h-4 w-2 animate-pulse rounded-sm bg-slate-400 align-middle dark:bg-slate-500" />

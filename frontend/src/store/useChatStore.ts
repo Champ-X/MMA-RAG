@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { chatApi } from '@/services/api_client';
 import { collectUserAttachmentIds, deleteAttachmentBlobs } from '@/lib/chatAttachmentBlobStore';
+import type { CitationReference } from '@/types/sse';
 
 /** 用户消息携带的附件展示信息；previewUrl 为内存 Object URL，仅当前页有效；thumbDataUrl 为小图 JPEG data URL，可随会话持久化 */
 export interface ChatMessageAttachment {
@@ -45,6 +46,22 @@ export interface ThoughtData {
   total_found?: number;
   /** 重排后保留的数量（后端 reranked_count） */
   reranked_count?: number;
+  /** 生成阶段流式状态，仅用于前端 ThinkingCapsule 展示，完成后会清理 */
+  generation_status?: string;
+  generation_message?: string;
+  /** 兼容后端旧版 generation thought payload 的通用状态字段 */
+  status?: string;
+  message?: string;
+  /** 历史消息中标记生成阶段已完成，避免重新显示进行中动效 */
+  _generation_completed?: boolean;
+}
+
+export interface ThoughtStep {
+  stage: 'intent' | 'routing' | 'retrieval' | 'generation';
+  status: 'processing' | 'completed' | 'failed';
+  message: string;
+  data?: ThoughtData;
+  duration?: number;
 }
 
 export interface Message {
@@ -54,33 +71,19 @@ export interface Message {
   timestamp: number;
   /** 用户本轮指定的检索文件范围 */
   scopeFiles?: ChatScopeFile[]
+  /** 回答元数据（如候选数量、处理耗时等），用于消息展示层，不参与提交契约 */
+  metadata?: {
+    chunks_count?: number
+    images_count?: number
+    references_used?: (number | string)[]
+    intent_type?: string
+    processing_time?: number
+  }
   /** 思考过程数据（流式结束后写入，供 ThinkingCapsule 展示） */
-  thinking?: ThoughtData | {
-    stage: 'intent' | 'routing' | 'retrieval' | 'generation';
-    status: 'processing' | 'completed' | 'failed';
-    message: string;
-    data?: any;
-    duration?: number;
-  }[];
+  thinking?: ThoughtData | ThoughtStep[];
   /** 用户上传的附件（用于气泡上方预览；回答过程中仍显示） */
   attachments?: ChatMessageAttachment[]
-  citations?: Array<{
-    id: number | string;
-    type?: 'doc' | 'image' | 'audio' | 'video';
-    file_name?: string;
-    file_path?: string;
-    content?: string;
-    img_url?: string;
-    audio_url?: string | null;
-    video_url?: string | null;
-    scores?: { dense?: number; sparse?: number; visual?: number; rerank?: number };
-    debug_info?: { chunk_id?: string; kb_id?: string; context_window?: { prev: string; next: string } };
-    url?: string;
-    title?: string;
-    snippet?: string;
-    score?: number;
-    metadata?: Record<string, unknown>;
-  }>;
+  citations?: CitationReference[];
   error?: string;
 }
 

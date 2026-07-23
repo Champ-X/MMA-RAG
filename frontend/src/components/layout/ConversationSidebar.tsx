@@ -157,7 +157,11 @@ export function ConversationSidebar({
             'max-[640px]:hidden'
           )}
         >
-          {collapsed ? <ChevronRight className="h-4 w-4" strokeWidth={1.8} /> : <ChevronLeft className="h-4 w-4" strokeWidth={1.8} />}
+          {collapsed ? (
+            <ChevronRight className="h-4 w-4" strokeWidth={1.8} aria-hidden />
+          ) : (
+            <ChevronLeft className="h-4 w-4" strokeWidth={1.8} aria-hidden />
+          )}
         </button>
       </header>
 
@@ -178,7 +182,7 @@ export function ConversationSidebar({
             'max-[640px]:justify-center max-[640px]:px-0'
           )}
         >
-          <Plus className="h-[22px] w-[22px] shrink-0" strokeWidth={1.75} />
+          <Plus className="h-[22px] w-[22px] shrink-0" strokeWidth={1.75} aria-hidden />
           <span className={cn(collapsed && 'hidden', 'max-[640px]:hidden')}>新建对话</span>
         </button>
       </div>
@@ -207,7 +211,7 @@ export function ConversationSidebar({
                   'max-[640px]:justify-center max-[640px]:px-0'
                 )}
               >
-                <Icon className="h-[22px] w-[22px] shrink-0" strokeWidth={1.75} />
+                <Icon className="h-[22px] w-[22px] shrink-0" strokeWidth={1.75} aria-hidden />
                 <span className={cn(collapsed && 'hidden', 'max-[640px]:hidden')}>{item.label}</span>
               </button>
             )
@@ -216,7 +220,7 @@ export function ConversationSidebar({
       </nav>
 
       <section
-        aria-label="最近会话"
+        aria-label={`最近会话，共 ${sessions.length} 个`}
         className={cn(
           'mt-7 flex min-h-0 flex-1 flex-col',
           collapsed ? 'px-2.5' : 'px-4',
@@ -239,7 +243,10 @@ export function ConversationSidebar({
 
         <div role="list" aria-label="会话列表" className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pb-3 scrollbar-hide">
           {sessions.length === 0 ? (
-            <p className={cn('px-3 py-3 text-[15px] leading-6', theme.muted, collapsed && 'hidden', 'max-[640px]:hidden')}>
+            <p
+              className={cn('px-3 py-3 text-[15px] leading-6', theme.muted, collapsed && 'hidden', 'max-[640px]:hidden')}
+              role="status"
+            >
               还没有对话
             </p>
           ) : (
@@ -263,7 +270,7 @@ export function ConversationSidebar({
                     type="button"
                     onClick={() => onSelectConversation(session.id)}
                     title={title}
-                    aria-label={`打开会话：${title}`}
+                    aria-label={`${active ? '当前会话：' : '打开会话：'}${title}`}
                     aria-current={active ? 'true' : undefined}
                     className={cn(
                       'flex min-w-0 flex-1 items-center text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset',
@@ -314,7 +321,7 @@ export function ConversationSidebar({
                         'max-[640px]:hidden'
                       )}
                     >
-                      <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                      <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />
                     </button>
                   )}
                 </div>
@@ -341,7 +348,11 @@ export function ConversationSidebar({
             'max-[640px]:justify-center max-[640px]:px-0'
           )}
         >
-          {isDark ? <Sun className="h-5 w-5 shrink-0" strokeWidth={1.75} /> : <Moon className="h-5 w-5 shrink-0" strokeWidth={1.75} />}
+          {isDark ? (
+            <Sun className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden />
+          ) : (
+            <Moon className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden />
+          )}
           <span className={cn(collapsed && 'hidden', 'max-[640px]:hidden')}>{isDark ? '浅色主题' : '深色主题'}</span>
         </button>
 

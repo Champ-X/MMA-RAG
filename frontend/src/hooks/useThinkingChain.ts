@@ -8,7 +8,6 @@ import {
   type MessageEvent,
 } from '@/services/sse_stream'
 import type { ThoughtPhase } from '@/types/sse'
-import { imageFileToPersistedThumb } from '@/lib/chatAttachmentThumb'
 import { putAttachmentBlob } from '@/lib/chatAttachmentBlobStore'
 import type { ChatMessageAttachment, ChatScopeFile } from '@/store/useChatStore'
 
@@ -77,6 +76,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
           const kind = (f.type.startsWith('image/') ? 'image' : 'audio') as 'image' | 'audio'
           const base: ChatMessageAttachment = { id, kind, name: f.name, size: f.size }
           if (kind === 'image') {
+            const { imageFileToPersistedThumb } = await import('@/lib/chatAttachmentThumb')
             const thumbDataUrl = await imageFileToPersistedThumb(f)
             return {
               ...base,
@@ -212,8 +212,8 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             // 清除生成阶段的状态信息，避免显示旧的动效
             const cleanedThoughtData = { ...thoughtData }
             if (cleanedThoughtData) {
-              delete (cleanedThoughtData as any).generation_status
-              delete (cleanedThoughtData as any).generation_message
+              delete cleanedThoughtData.generation_status
+              delete cleanedThoughtData.generation_message
             }
             
             // 先设置完成状态，确保前端能正确显示
