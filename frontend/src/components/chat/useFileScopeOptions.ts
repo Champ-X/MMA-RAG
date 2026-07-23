@@ -8,6 +8,7 @@ export interface KnowledgeBaseFileItem {
   size: number
   date: string
   type: string
+  status?: string
 }
 
 export function fileScopeKey(kbId: string, fileId: string) {
@@ -27,7 +28,9 @@ export function formatScopedFileSize(size: number) {
 }
 
 function isSelectableFile(file: KnowledgeBaseFileItem) {
-  return !file.id.includes('/keyframes/')
+  // MinIO 中存在原始视频并不代表 Scene–Shot 已入库；未完成解析的文件不应进入
+  // 文件范围检索器，否则用户会选中一个永远召回不到内容的文件。
+  return !file.id.includes('/keyframes/') && (!file.status || file.status === 'ready')
 }
 
 function sortFiles(files: KnowledgeBaseFileItem[]) {
@@ -63,6 +66,7 @@ export function useFileScopeOptions(active = true) {
             size: Number(file.size ?? 0),
             date: String(file.date ?? ''),
             type: String(file.type ?? ''),
+            status: String(file.status ?? 'ready'),
           }))
           .filter(file => file.id && file.name)
           .filter(isSelectableFile)

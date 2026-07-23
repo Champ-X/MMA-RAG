@@ -26,6 +26,11 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+# 视频索引以 Shot 为主检索单元；关键帧索引只用于可选视觉增强。
+# 保持集合名稳定，避免把一次实现迭代（例如 v2）编码进持久化数据模型。
+VIDEO_SHOT_COLLECTION = "video_shot_vectors"
+VIDEO_KEYFRAME_COLLECTION = "video_keyframe_vectors"
+
 @dataclass
 class VectorPoint:
     """向量点数据类"""
@@ -128,33 +133,73 @@ class VectorStore:
                     "created_at": PayloadSchemaType.TEXT
                 }
             },
-            "video_vectors": {
-                # 视频向量：一关键帧一点，三向量 scene_vec(4096) + frame_vec(4096) + clip_vec(768)，参见 docs/视频模态技术方案.md
+            VIDEO_SHOT_COLLECTION: {
+                # Shot 是新的主检索单元：caption / ASR 分别保留 dense 与 sparse 向量，四路独立召回后做加权 RRF。
                 "is_multi_vector": True,
                 "vectors_config": {
-                    "scene_vec": VectorParams(size=4096, distance=Distance.COSINE),   # 场景摘要向量
-                    "frame_vec": VectorParams(size=4096, distance=Distance.COSINE),  # 关键帧描述向量
-                    "clip_vec": VectorParams(size=768, distance=Distance.COSINE)       # 关键帧 CLIP 向量
+                    "caption_dense": VectorParams(size=4096, distance=Distance.COSINE),
+                    "asr_dense": VectorParams(size=4096, distance=Distance.COSINE),
+                },
+                "sparse_vectors_config": {
+                    "caption_sparse": SparseVectorParams(index=SparseIndexParams(on_disk=False)),
+                    "asr_sparse": SparseVectorParams(index=SparseIndexParams(on_disk=False)),
                 },
                 "payload_schema": {
                     "kb_id": PayloadSchemaType.KEYWORD,
                     "file_id": PayloadSchemaType.KEYWORD,
                     "file_path": PayloadSchemaType.TEXT,
-                    "segment_id": PayloadSchemaType.KEYWORD,
+                    "schema_version": PayloadSchemaType.KEYWORD,
+                    "manifest_path": PayloadSchemaType.TEXT,
+                    "scene_id": PayloadSchemaType.KEYWORD,
                     "scene_start_time": PayloadSchemaType.FLOAT,
                     "scene_end_time": PayloadSchemaType.FLOAT,
                     "scene_summary": PayloadSchemaType.TEXT,
-                    "frame_timestamp": PayloadSchemaType.FLOAT,
-                    "frame_description": PayloadSchemaType.TEXT,
-                    "frame_image_path": PayloadSchemaType.TEXT,
+                    "shot_id": PayloadSchemaType.KEYWORD,
+                    "shot_start_time": PayloadSchemaType.FLOAT,
+                    "shot_end_time": PayloadSchemaType.FLOAT,
+                    "caption": PayloadSchemaType.TEXT,
+                    "asr_status": PayloadSchemaType.KEYWORD,
+                    "asr_text": PayloadSchemaType.TEXT,
                     "duration": PayloadSchemaType.FLOAT,
                     "video_format": PayloadSchemaType.KEYWORD,
                     "resolution": PayloadSchemaType.TEXT,
                     "fps": PayloadSchemaType.FLOAT,
                     "has_audio": PayloadSchemaType.BOOL,
-                    "audio_file_id": PayloadSchemaType.KEYWORD,
-                    "created_at": PayloadSchemaType.TEXT
-                }
+                    "created_at": PayloadSchemaType.TEXT,
+                },
+            },
+            VIDEO_KEYFRAME_COLLECTION: {
+                # 可选视觉增强索引，始终从属到 shot，不替代 Shot 的文本/ASR 主召回。
+                "is_multi_vector": True,
+                "vectors_config": {
+                    "frame_vec": VectorParams(size=4096, distance=Distance.COSINE),
+                    "clip_vec": VectorParams(size=768, distance=Distance.COSINE),
+                },
+                "payload_schema": {
+                    "kb_id": PayloadSchemaType.KEYWORD,
+                    "file_id": PayloadSchemaType.KEYWORD,
+                    "file_path": PayloadSchemaType.TEXT,
+                    "manifest_path": PayloadSchemaType.TEXT,
+                    "scene_id": PayloadSchemaType.KEYWORD,
+                    "shot_id": PayloadSchemaType.KEYWORD,
+                    "scene_start_time": PayloadSchemaType.FLOAT,
+                    "scene_end_time": PayloadSchemaType.FLOAT,
+                    "shot_start_time": PayloadSchemaType.FLOAT,
+                    "shot_end_time": PayloadSchemaType.FLOAT,
+                    "scene_summary": PayloadSchemaType.TEXT,
+                    "shot_caption": PayloadSchemaType.TEXT,
+                    "asr_text": PayloadSchemaType.TEXT,
+                    "frame_timestamp": PayloadSchemaType.FLOAT,
+                    "frame_description": PayloadSchemaType.TEXT,
+                    # 关键帧对象路径需要按完整路径精确过滤（文件预览），不能建成全文 TEXT 索引。
+                    "frame_image_path": PayloadSchemaType.KEYWORD,
+                    "duration": PayloadSchemaType.FLOAT,
+                    "video_format": PayloadSchemaType.KEYWORD,
+                    "resolution": PayloadSchemaType.TEXT,
+                    "fps": PayloadSchemaType.FLOAT,
+                    "has_audio": PayloadSchemaType.BOOL,
+                    "created_at": PayloadSchemaType.TEXT,
+                },
             }
         }
         
@@ -773,68 +818,96 @@ class VectorStore:
     # Qdrant 单次请求 JSON 限制 32MB；实测每点（3×768 维向量 + payload）序列化后约 190KB+，故一批 100 条约 19MB，安全低于限制
     VIDEO_VECTORS_UPSERT_BATCH_SIZE = 100
 
-    async def upsert_video_vectors(
+    async def upsert_video_shot_vectors(
         self,
         kb_id: str,
-        keyframe_points: List[Dict[str, Any]]
+        shot_points: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        """
-        按关键帧批量插入视频向量（一关键帧一点，三向量 scene_vec / frame_vec / clip_vec）。
-        参见 docs/视频模态技术方案.md。
-        大视频会按批 upsert，避免单次 payload 超过 Qdrant 32MB 限制。
+        """写入 Scene–Shot 主索引。
 
-        Args:
-            kb_id: 知识库ID
-            keyframe_points: 关键帧点列表，每项需含 scene_vec, frame_vec, clip_vec (List[float]) 及 payload 字段
-
-        Returns:
-            插入结果
+        每个 Shot 同时挂载 ``caption_dense/caption_sparse/asr_dense/asr_sparse``。
+        无语音 Shot 的 ASR dense 使用零向量，且不写 sparse 向量，避免把视觉内容伪装成语音匹配。
         """
         try:
-            points = []
-            for kp in keyframe_points:
-                point_id = str(uuid.uuid4())
-                vectors = {
-                    "scene_vec": kp["scene_vec"],
-                    "frame_vec": kp["frame_vec"],
-                    "clip_vec": kp["clip_vec"],
+            points: List[PointStruct] = []
+            for item in shot_points:
+                caption_dense = item.get("caption_dense") or []
+                asr_dense = item.get("asr_dense") or ([0.0] * len(caption_dense))
+                if not caption_dense:
+                    raise ValueError("video shot 缺少 caption_dense 向量")
+                vectors: Dict[str, Any] = {
+                    "caption_dense": caption_dense,
+                    "asr_dense": asr_dense,
                 }
-                payload = dict(kp.get("payload", {}))
+                for vector_name, data_key in (("caption_sparse", "caption_sparse"), ("asr_sparse", "asr_sparse")):
+                    sparse = item.get(data_key) or {}
+                    if sparse:
+                        vectors[vector_name] = models.SparseVector(
+                            indices=[int(index) for index in sparse.keys()],
+                            values=[float(value) for value in sparse.values()],
+                        )
+                payload = dict(item.get("payload") or {})
                 payload["kb_id"] = kb_id
-                if "created_at" not in payload:
-                    payload["created_at"] = datetime.now(timezone.utc).isoformat()
-                point = PointStruct(id=point_id, vector=vectors, payload=payload)
-                points.append(point)
+                payload.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+                points.append(PointStruct(
+                    id=item.get("point_id") or str(uuid.uuid4()),
+                    vector=vectors,
+                    payload=payload,
+                ))
 
-            if not points:
-                return {"operation_id": None, "points_inserted": 0, "status": "success"}
-
-            batch_size = self.VIDEO_VECTORS_UPSERT_BATCH_SIZE
-            total_inserted = 0
-            last_operation_id = None
-            for i in range(0, len(points), batch_size):
-                batch = points[i : i + batch_size]
-                operation_info = self.client.upsert(
-                    collection_name="video_vectors",
-                    points=batch,
-                )
-                total_inserted += len(batch)
-                last_operation_id = operation_info.operation_id
-                logger.debug(
-                    f"视频向量批次插入: {len(batch)} 个关键帧 (总进度 {total_inserted}/{len(points)}), 操作ID: {operation_info.operation_id}"
-                )
-
-            logger.info(
-                f"视频向量插入完成: {total_inserted} 个关键帧 (分 {((len(points) + batch_size - 1) // batch_size)} 批), 操作ID: {last_operation_id}"
-            )
-            return {
-                "operation_id": last_operation_id,
-                "points_inserted": total_inserted,
-                "status": "success",
-            }
+            return self._upsert_video_batches(VIDEO_SHOT_COLLECTION, points, "Shot")
         except Exception as e:
-            logger.error(f"视频向量插入失败: {str(e)}")
+            logger.error("Scene–Shot 主索引写入失败: {}", e, exc_info=True)
             raise
+
+    async def upsert_video_keyframe_vectors(
+        self,
+        kb_id: str,
+        keyframe_points: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """写入从属于 Shot 的关键帧视觉索引。"""
+        try:
+            points: List[PointStruct] = []
+            for item in keyframe_points:
+                frame_vec = item.get("frame_vec") or []
+                clip_vec = item.get("clip_vec") or [0.0] * 768
+                if not frame_vec:
+                    raise ValueError("video keyframe 缺少 frame_vec 向量")
+                payload = dict(item.get("payload") or {})
+                payload["kb_id"] = kb_id
+                payload.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+                points.append(PointStruct(
+                    id=item.get("point_id") or str(uuid.uuid4()),
+                    vector={"frame_vec": frame_vec, "clip_vec": clip_vec},
+                    payload=payload,
+                ))
+            return self._upsert_video_batches(VIDEO_KEYFRAME_COLLECTION, points, "关键帧")
+        except Exception as e:
+            logger.error("Scene–Shot 关键帧索引写入失败: {}", e, exc_info=True)
+            raise
+
+    def _upsert_video_batches(
+        self,
+        collection_name: str,
+        points: List[PointStruct],
+        label: str,
+    ) -> Dict[str, Any]:
+        """两个视频集合共用的批量写入实现。"""
+        if not points:
+            return {"operation_id": None, "points_inserted": 0, "status": "success"}
+        total_inserted = 0
+        last_operation_id = None
+        for offset in range(0, len(points), self.VIDEO_VECTORS_UPSERT_BATCH_SIZE):
+            batch = points[offset : offset + self.VIDEO_VECTORS_UPSERT_BATCH_SIZE]
+            operation = self.client.upsert(collection_name=collection_name, points=batch)
+            total_inserted += len(batch)
+            last_operation_id = getattr(operation, "operation_id", None)
+        logger.info("视频 {}向量插入完成: {} 个", label, total_inserted)
+        return {
+            "operation_id": last_operation_id,
+            "points_inserted": total_inserted,
+            "status": "success",
+        }
     
     async def upsert_kb_portraits(
         self,
@@ -926,7 +999,7 @@ class VectorStore:
             return False
 
     async def delete_kb_vectors(self, kb_id: str) -> bool:
-        """删除知识库在 text_chunks、image_vectors、audio_vectors、video_vectors 中该 kb_id 的所有点（按 filter 删除，可靠）。"""
+        """删除知识库在全部文本、图像、音频和视频集合中的点。"""
         try:
             filter_condition = Filter(
                 must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))]
@@ -934,13 +1007,16 @@ class VectorStore:
             ok_text = self._delete_points_by_kb_id_filter("text_chunks", filter_condition)
             ok_img = self._delete_points_by_kb_id_filter("image_vectors", filter_condition)
             ok_audio = self._delete_points_by_kb_id_filter("audio_vectors", filter_condition)
-            ok_video = self._delete_points_by_kb_id_filter("video_vectors", filter_condition)
-            if ok_text or ok_img or ok_audio or ok_video:
+            ok_video_shot = self._delete_points_by_kb_id_filter(VIDEO_SHOT_COLLECTION, filter_condition)
+            ok_video_frame = self._delete_points_by_kb_id_filter(VIDEO_KEYFRAME_COLLECTION, filter_condition)
+            if ok_text or ok_img or ok_audio or ok_video_shot or ok_video_frame:
                 logger.info(
                     f"删除知识库向量完成: {kb_id} "
-                    f"(text_chunks={ok_text}, image_vectors={ok_img}, audio_vectors={ok_audio}, video_vectors={ok_video})"
+                    f"(text_chunks={ok_text}, image_vectors={ok_img}, audio_vectors={ok_audio}, "
+                    f"{VIDEO_SHOT_COLLECTION}={ok_video_shot}, "
+                    f"{VIDEO_KEYFRAME_COLLECTION}={ok_video_frame})"
                 )
-            return ok_text and ok_img and ok_audio and ok_video
+            return ok_text and ok_img and ok_audio and ok_video_shot and ok_video_frame
         except Exception as e:
             logger.error(f"删除知识库向量失败: {str(e)}")
             return False
@@ -1555,19 +1631,21 @@ class VectorStore:
             return 0
 
     async def count_kb_video(self, kb_id: str) -> int:
-        """按 kb_id 统计 video_vectors 中的点数量。"""
-        try:
-            filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))])
-            return int(
-                self.client.count(
-                    collection_name="video_vectors",
+        """按 kb_id 统计视频主检索单元（Shot）数量。"""
+        filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))])
+
+        def _count(collection_name: str) -> int:
+            try:
+                return int(self.client.count(
+                    collection_name=collection_name,
                     count_filter=filt,
                     exact=True,
-                ).count
-            )
-        except Exception as e:
-            logger.debug("count_kb_video 失败: kb_id={}, e={}", kb_id, e)
-            return 0
+                ).count)
+            except Exception as count_error:
+                logger.debug("统计 {} 视频点失败: kb_id={} e={}", collection_name, kb_id, count_error)
+                return 0
+
+        return _count(VIDEO_SHOT_COLLECTION)
 
     async def scroll_text_chunks_for_sampling(
         self,
@@ -1688,43 +1766,56 @@ class VectorStore:
             logger.error(f"scroll_audio_vectors_for_sampling 失败: {str(e)}")
             return ([], None)
 
-    async def scroll_video_vectors_for_sampling(
+    async def scroll_video_shot_samples_for_portrait(
         self,
         kb_id: str,
         limit: int,
         offset: Optional[Any] = None,
         batch_size: int = 500,
-    ) -> Tuple[List[Tuple[str, List[float]]], Optional[Any]]:
-        """
-        按 kb_id 滚动拉取视频关键帧向量 (id, frame_vec)，用于画像采样。
-        以「一关键帧一点」为计量单位，与 text/image/audio 同一语义空间（frame_vec 为 4096 维文本嵌入）。
-        返回 ([(id, vector), ...], next_offset)。
+    ) -> Tuple[List[Dict[str, Any]], Optional[Any]]:
+        """按 kb_id 拉取画像所需的 Shot 双 dense 向量和层级元数据。
+
+        画像层会按 ``file_id + scene_id`` 将多个 Shot 聚合为一个场景语义样本；因此这里
+        必须保留 Scene、文件和时间信息，而不是只暴露 caption 向量。
         """
         try:
             filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))])
             scroll_limit = min(limit, batch_size)
+            out: List[Dict[str, Any]] = []
             kwargs: Dict[str, Any] = {
-                "collection_name": "video_vectors",
+                "collection_name": VIDEO_SHOT_COLLECTION,
                 "scroll_filter": filt,
                 "limit": scroll_limit,
-                "with_payload": False,
-                "with_vectors": ["frame_vec"],
+                "with_payload": ["file_id", "scene_id", "shot_id", "shot_start_time", "asr_status"],
+                "with_vectors": ["caption_dense", "asr_dense"],
             }
             if offset is not None:
                 kwargs["offset"] = offset
-            out: List[Tuple[str, List[float]]] = []
-            res = self.client.scroll(**kwargs)
-            records, next_offset = res[0], res[1] if len(res) > 1 else None
-            for r in records:
-                vid = str(r.id) if r.id is not None else ""
-                v = None
-                if hasattr(r, "vector") and r.vector is not None and isinstance(r.vector, dict):
-                    v = r.vector.get("frame_vec")
-                if vid and v is not None and isinstance(v, list):
-                    out.append((vid, v))
-            return (out, next_offset)
+            records, next_offset = self.client.scroll(**kwargs)
+            for record in records:
+                vector_id = str(record.id) if record.id is not None else ""
+                vectors = record.vector if hasattr(record, "vector") and isinstance(record.vector, dict) else {}
+                caption_vector = vectors.get("caption_dense") if isinstance(vectors, dict) else None
+                if not vector_id or not isinstance(caption_vector, list):
+                    continue
+                payload = record.payload if isinstance(getattr(record, "payload", None), dict) else {}
+                try:
+                    shot_start_time = float(payload.get("shot_start_time") or 0.0)
+                except (TypeError, ValueError):
+                    shot_start_time = 0.0
+                out.append({
+                    "id": vector_id,
+                    "caption_vector": caption_vector,
+                    "asr_vector": vectors.get("asr_dense") if isinstance(vectors.get("asr_dense"), list) else None,
+                    "file_id": str(payload.get("file_id") or ""),
+                    "scene_id": str(payload.get("scene_id") or ""),
+                    "shot_id": str(payload.get("shot_id") or ""),
+                    "shot_start_time": shot_start_time,
+                    "asr_status": str(payload.get("asr_status") or ""),
+                })
+            return out, next_offset
         except Exception as e:
-            logger.error(f"scroll_video_vectors_for_sampling 失败: {str(e)}")
+            logger.error(f"scroll_video_shot_samples_for_portrait 失败: {str(e)}")
             return ([], None)
 
     async def fetch_texts_by_ids(
@@ -1763,8 +1854,8 @@ class VectorStore:
                     pid = str(r.id) if r.id is not None else ""
                     payload = r.payload or {}
                     text = (payload.get("caption") or "").strip()
-                if pid:
-                    texts_img[pid] = text
+                    if pid:
+                        texts_img[pid] = text
         except Exception as e:
             logger.error(f"fetch_texts_by_ids 失败: {str(e)}")
         return (texts_doc, texts_img)
@@ -1797,32 +1888,32 @@ class VectorStore:
         return result
 
     async def fetch_video_texts_by_ids(self, ids_video: List[str]) -> Dict[str, str]:
-        """
-        按 point id 批量拉取视频关键帧文本：video_vectors 的 scene_summary 与 frame_description。
-        用于画像主题生成时拼接为 [视频关键帧] 内容。
-        返回 video_point_id -> 文本（场景摘要 + 关键帧描述）。
-        """
+        """按 point id 回读 Scene、Shot caption 与对齐 ASR，用于画像主题生成。"""
         result: Dict[str, str] = {}
         if not ids_video:
             return result
+        def _append_rows(rows: List[Any]) -> None:
+            for row in rows:
+                point_id = str(row.id) if row.id is not None else ""
+                if not point_id:
+                    continue
+                payload = row.payload or {}
+                scene = (payload.get("scene_summary") or "").strip()
+                caption = (payload.get("caption") or "").strip()
+                asr = (payload.get("asr_text") or "").strip()
+                parts = [part for part in (scene, caption, asr) if part]
+                result[point_id] = "；".join(parts) if parts else ""
+
         try:
             rows = self.client.retrieve(
-                collection_name="video_vectors",
+                collection_name=VIDEO_SHOT_COLLECTION,
                 ids=ids_video,
                 with_payload=True,
                 with_vectors=False,
             )
-            for r in rows:
-                pid = str(r.id) if r.id is not None else ""
-                if not pid:
-                    continue
-                payload = r.payload or {}
-                scene = (payload.get("scene_summary") or "").strip()
-                frame = (payload.get("frame_description") or "").strip()
-                parts = [p for p in (scene, frame) if p]
-                result[pid] = "；".join(parts) if parts else ""
-        except Exception as e:
-            logger.error(f"fetch_video_texts_by_ids 失败: {str(e)}")
+            _append_rows(rows or [])
+        except Exception as retrieve_error:
+            logger.debug("从 {} 回读视频画像文本失败: {}", VIDEO_SHOT_COLLECTION, retrieve_error)
         return result
 
     def get_point_id_by_file_id_and_chunk_index(
@@ -2143,65 +2234,163 @@ class VectorStore:
             logger.debug(f"scroll_audio_points_by_file_id 失败: kb_id={kb_id}, file_id={file_id}, e={e}")
             return []
 
-    def scroll_video_points_by_frame_image_path(
+    def scroll_video_keyframe_points_by_frame_image_path(
         self,
         frame_image_path: str,
         kb_id: Optional[str] = None,
         limit: int = 1,
     ) -> List[Any]:
-        """按 frame_image_path（关键帧 object_path）滚动拉取 video_vectors 中的点，用于预览详情（scene_summary、frame_description）。"""
+        """按关键帧对象路径读取视觉索引，用于关键帧文件预览。"""
         try:
-            must: List[Condition] = [FieldCondition(key="frame_image_path", match=MatchValue(value=frame_image_path))]
+            must: List[Condition] = [
+                FieldCondition(key="frame_image_path", match=MatchValue(value=frame_image_path)),
+            ]
             if kb_id:
                 must.append(FieldCondition(key="kb_id", match=MatchValue(value=kb_id)))
-            scroll_results = self.client.scroll(
-                collection_name="video_vectors",
+            response = self.client.scroll(
+                collection_name=VIDEO_KEYFRAME_COLLECTION,
                 scroll_filter=Filter(must=must),
                 limit=limit,
                 with_payload=True,
                 with_vectors=False,
             )
-            points = scroll_results[0] if scroll_results else []
-            return points
+            return response[0] if response else []
         except Exception as e:
             logger.debug(
-                "scroll_video_points_by_frame_image_path 失败: frame_image_path=%s kb_id=%s e=%s",
-                frame_image_path, kb_id, e,
+                "scroll_video_keyframe_points_by_frame_image_path 失败: frame_image_path={} kb_id={} e={}",
+                frame_image_path,
+                kb_id,
+                e,
             )
             return []
 
-    async def search_video_vectors(
+    @staticmethod
+    def _query_response_points(response: Any) -> List[Any]:
+        """兼容不同 qdrant-client 版本的 query_points 返回形式。"""
+        if hasattr(response, "points"):
+            return list(response.points or [])
+        if isinstance(response, (list, tuple)):
+            return list(response)
+        try:
+            return list(response) if response else []
+        except TypeError:
+            return []
+
+    async def search_video_shots(
         self,
-        query_vector: List[float],
-        clip_vector: Optional[List[float]] = None,
+        caption_query_vector: List[float],
+        asr_query_vector: List[float],
+        caption_query_sparse: Optional[Dict[int, float]] = None,
+        asr_query_sparse: Optional[Dict[int, float]] = None,
         target_kb_ids: Optional[List[str]] = None,
         target_file_ids: Optional[List[str]] = None,
         limit: int = 10,
         score_threshold: float = 0.0,
+        route_weights: Optional[Dict[str, float]] = None,
     ) -> List[Dict[str, Any]]:
+        """以 Shot 为单元做 caption/ASR 的四路加权 RRF 检索。
+
+        这里刻意不使用 Qdrant 内置 Fusion：当前 Qdrant RRF 不支持每一路不同权重，
+        而 ASR 精确命中与 caption 语义命中的召回价值需要独立调节。
         """
-        视频向量检索：scene_vec / frame_vec / clip_vec 三路 Prefetch + RRF 融合。
-        query_vector 用于 scene_vec 与 frame_vec（同一文本嵌入），clip_vector 用于 clip_vec。
-        """
+        weights = {
+            "caption_dense": 1.0,
+            "caption_sparse": 0.75,
+            "asr_dense": 1.0,
+            "asr_sparse": 0.9,
+            **(route_weights or {}),
+        }
         try:
             search_filter = self._build_query_filter(
                 kb_ids=target_kb_ids,
                 file_ids=target_file_ids,
                 file_fields=["file_id"],
             )
-
-            prefetch_queries = [
-                Prefetch(query=query_vector, using="scene_vec", limit=limit * 2),
-                Prefetch(query=query_vector, using="frame_vec", limit=limit * 2),
+            routes: List[Tuple[str, Any]] = [
+                ("caption_dense", caption_query_vector),
+                ("asr_dense", asr_query_vector),
             ]
-            if clip_vector:
-                prefetch_queries.append(
-                    Prefetch(query=clip_vector, using="clip_vec", limit=limit * 2),
-                )
+            if caption_query_sparse:
+                routes.append(("caption_sparse", models.SparseVector(
+                    indices=[int(index) for index in caption_query_sparse.keys()],
+                    values=[float(value) for value in caption_query_sparse.values()],
+                )))
+            if asr_query_sparse:
+                routes.append(("asr_sparse", models.SparseVector(
+                    indices=[int(index) for index in asr_query_sparse.keys()],
+                    values=[float(value) for value in asr_query_sparse.values()],
+                )))
 
-            search_results = self.client.query_points(
-                collection_name="video_vectors",
-                prefetch=prefetch_queries,
+            fused: Dict[str, Dict[str, Any]] = {}
+            rrf_k = 60
+            for route_name, query in routes:
+                try:
+                    # 无语音 Shot 的 asr_dense 是零向量占位；用一个极小阈值排除它们，
+                    # 防止无关的 0 分记录因 RRF 名次进入候选。
+                    route_score_threshold = (
+                        max(float(score_threshold), 1e-6)
+                        if route_name == "asr_dense"
+                        else score_threshold
+                    )
+                    response = self.client.query_points(
+                        collection_name=VIDEO_SHOT_COLLECTION,
+                        query=query,
+                        using=route_name,
+                        query_filter=search_filter,
+                        limit=max(limit * 3, limit),
+                        score_threshold=route_score_threshold,
+                        with_payload=True,
+                        with_vectors=False,
+                    )
+                    for rank, point in enumerate(self._query_response_points(response), 1):
+                        point_id = str(getattr(point, "id", ""))
+                        if not point_id:
+                            continue
+                        item = fused.setdefault(point_id, {
+                            "id": point_id,
+                            "score": 0.0,
+                            "payload": getattr(point, "payload", None) or {},
+                            "matched_routes": [],
+                            "route_ranks": {},
+                            "route_scores": {},
+                        })
+                        item["score"] += float(weights.get(route_name, 1.0)) / (rrf_k + rank)
+                        item["matched_routes"].append(route_name)
+                        item["route_ranks"][route_name] = rank
+                        item["route_scores"][route_name] = float(getattr(point, "score", 0.0))
+                except Exception as route_error:
+                    # 单路稀疏索引异常不应让 dense 主检索完全失效。
+                    logger.warning("视频 Shot {} 检索失败: {}", route_name, route_error)
+
+            results = list(fused.values())
+            results.sort(key=lambda item: item["score"], reverse=True)
+            return results[:limit]
+        except Exception as e:
+            logger.error("视频 Scene–Shot 检索失败: {}", e, exc_info=True)
+            return []
+
+    async def search_video_keyframes(
+        self,
+        text_query_vector: List[float],
+        clip_query_vector: Optional[List[float]] = None,
+        target_kb_ids: Optional[List[str]] = None,
+        target_file_ids: Optional[List[str]] = None,
+        limit: int = 10,
+        score_threshold: float = 0.0,
+    ) -> List[Dict[str, Any]]:
+        """可选关键帧增强：frame 文本向量 + 可用时 CLIP 向量 RRF。"""
+        try:
+            search_filter = self._build_query_filter(
+                kb_ids=target_kb_ids,
+                file_ids=target_file_ids,
+                file_fields=["file_id"],
+            )
+            prefetch = [Prefetch(query=text_query_vector, using="frame_vec", limit=max(limit * 2, limit))]
+            if clip_query_vector:
+                prefetch.append(Prefetch(query=clip_query_vector, using="clip_vec", limit=max(limit * 2, limit)))
+            response = self.client.query_points(
+                collection_name=VIDEO_KEYFRAME_COLLECTION,
+                prefetch=prefetch,
                 query=FusionQuery(fusion=Fusion.RRF),
                 query_filter=search_filter,
                 limit=limit,
@@ -2209,45 +2398,40 @@ class VectorStore:
                 with_payload=True,
                 with_vectors=False,
             )
-
-            results = []
-            if hasattr(search_results, "points"):
-                for point in search_results.points:
-                    results.append({
-                        "id": str(point.id),
-                        "score": float(point.score) if hasattr(point, "score") else 0.0,
-                        "payload": point.payload or {},
-                    })
-            return results
+            return [{
+                "id": str(getattr(point, "id", "")),
+                "score": float(getattr(point, "score", 0.0)),
+                "payload": getattr(point, "payload", None) or {},
+            } for point in self._query_response_points(response)]
         except Exception as e:
-            logger.error("视频向量检索失败: %s", str(e), exc_info=True)
+            logger.warning("视频关键帧检索失败: {}", e)
             return []
 
-    def scroll_video_points_by_file_id(
+    def scroll_video_shot_points_by_file_id(
         self,
         file_id: str,
         kb_id: Optional[str] = None,
         limit: int = 1,
     ) -> List[Any]:
-        """按 file_id（视频主文件 uuid）滚动拉取 video_vectors 中的点，用于视频预览详情（取首条 scene_summary 等）。"""
+        """按视频文件获取 Shot，供指定文件直取和预览使用。"""
         try:
             must: List[Condition] = [FieldCondition(key="file_id", match=MatchValue(value=file_id))]
             if kb_id:
                 must.append(FieldCondition(key="kb_id", match=MatchValue(value=kb_id)))
-            scroll_results = self.client.scroll(
-                collection_name="video_vectors",
+            response = self.client.scroll(
+                collection_name=VIDEO_SHOT_COLLECTION,
                 scroll_filter=Filter(must=must),
                 limit=limit,
                 with_payload=True,
                 with_vectors=False,
             )
-            points = scroll_results[0] if scroll_results else []
-            return points
-        except Exception as e:
-            logger.debug(
-                "scroll_video_points_by_file_id 失败: file_id=%s kb_id=%s e=%s",
-                file_id, kb_id, e,
+            points = response[0] if response else []
+            return sorted(
+                points,
+                key=lambda point: float((getattr(point, "payload", None) or {}).get("shot_start_time", 0.0)),
             )
+        except Exception as e:
+            logger.debug("scroll_video_shot_points_by_file_id 失败: file_id={} kb_id={} e={}", file_id, kb_id, e)
             return []
 
     def delete_video_points_by_file_id(
@@ -2255,18 +2439,35 @@ class VectorStore:
         kb_id: Optional[str],
         file_id: str,
     ) -> bool:
-        """按 file_id 删除 video_vectors 中该视频的所有关键帧点。"""
+        """按 file_id 删除 Shot 与其从属关键帧的全部点。"""
+        return self._delete_video_points_from_collections(
+            kb_id,
+            file_id,
+            (VIDEO_SHOT_COLLECTION, VIDEO_KEYFRAME_COLLECTION),
+        )
+
+    def _delete_video_points_from_collections(
+        self,
+        kb_id: Optional[str],
+        file_id: str,
+        collection_names: Tuple[str, ...],
+    ) -> bool:
+        """按文件从指定视频集合删除点，供删除文件和安全重建两条路径复用。"""
         try:
             must: List[Condition] = [FieldCondition(key="file_id", match=MatchValue(value=file_id))]
             if kb_id:
                 must.append(FieldCondition(key="kb_id", match=MatchValue(value=kb_id)))
-            self.client.delete(
-                collection_name="video_vectors",
-                points_selector=FilterSelector(filter=Filter(must=must)),
-            )
-            return True
+            selector = FilterSelector(filter=Filter(must=must))
+            succeeded = True
+            for collection_name in collection_names:
+                try:
+                    self.client.delete(collection_name=collection_name, points_selector=selector)
+                except Exception as delete_error:
+                    logger.debug("删除 {} 视频点失败: {}", collection_name, delete_error)
+                    succeeded = False
+            return succeeded
         except Exception as e:
-            logger.debug("delete_video_points_by_file_id 失败: kb_id=%s file_id=%s e=%s", kb_id, file_id, e)
+            logger.debug("删除视频点失败: kb_id=%s file_id=%s e=%s", kb_id, file_id, e)
             return False
 
     async def health_check(self) -> Dict[str, Any]:

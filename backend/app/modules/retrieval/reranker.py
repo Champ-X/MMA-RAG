@@ -202,6 +202,13 @@ class Reranker:
                         "id": result["id"],
                         "payload": payload,
                         "content_type": result.get("content_type"),
+                        # 保留检索阶段已经拼出的多模态文本和元数据。Scene–Shot 视频
+                        # 的完整上下文（场景、画面、ASR）在这里生成，若只留下 payload，
+                        # 下游会因 caption 字段存在而退化成仅画面描述。
+                        "content": result.get("content", ""),
+                        "metadata": result.get("metadata") or {},
+                        "file_id": result.get("file_id") or payload.get("file_id"),
+                        "file_path": result.get("file_path") or payload.get("file_path", ""),
                         "scores": scores,
                         "search_type": search_type,
                         "source_score": source_score,
@@ -647,6 +654,10 @@ class Reranker:
                     "id": candidate["id"],
                     "payload": candidate["payload"],
                     "content_type": candidate.get("content_type"),
+                    "content": candidate.get("content", ""),
+                    "metadata": candidate.get("metadata") or {},
+                    "file_id": candidate.get("file_id"),
+                    "file_path": candidate.get("file_path", ""),
                     "original_score": original_score,
                     "cross_encoder_score": cross_encoder_score,
                     "final_score": final_score,

@@ -171,7 +171,18 @@ class ContextBuilder:
                 # 确定内容类型：优先用重排结果中的 content_type，再按 payload 推断
                 content_type = result.get("content_type")
                 if not content_type:
-                    content_type = "image" if "caption" in payload else ("audio" if "transcript" in payload else ("video" if "description" in payload and payload.get("file_path") else "doc"))
+                    # Scene–Shot v2 同样有 caption，不能被误判为图片；旧视频也通过
+                    # video_format / segment_id 保持可识别。
+                    if payload.get("shot_id") or payload.get("video_format") or payload.get("segment_id"):
+                        content_type = "video"
+                    elif "caption" in payload:
+                        content_type = "image"
+                    elif "transcript" in payload:
+                        content_type = "audio"
+                    elif "description" in payload and payload.get("file_path"):
+                        content_type = "video"
+                    else:
+                        content_type = "doc"
                 
                 # 提取内容
                 if content_type == "image":
@@ -191,9 +202,22 @@ class ContextBuilder:
                         "cross_encoder_score": result.get("cross_encoder_score"),
                     }
                 elif content_type == "video":
+                    # Shot 是视频检索单元。无论结果是否经过重排，都把同一 Shot 的
+                    # 场景语义、画面 caption 与时间对齐的 ASR 一起交给生成模型；不能因
+                    # payload 中存在 caption 就吞掉 ASR。
+                    video_parts = []
+                    scene_summary = str(payload.get("scene_summary", "") or "").strip()
+                    caption = str(payload.get("caption", "") or "").strip()
+                    asr_text = str(payload.get("asr_text", "") or "").strip()
+                    if scene_summary:
+                        video_parts.append(f"场景：{scene_summary}")
+                    if caption:
+                        video_parts.append(f"画面：{caption}")
+                    if asr_text:
+                        video_parts.append(f"语音：{asr_text}")
                     content = (
-                        result.get("content", "")
-                        or payload.get("scene_summary", "")
+                        "\n".join(video_parts)
+                        or result.get("content", "")
                         or payload.get("description", "")
                     )
                     file_path = payload.get("file_path", "") or result.get("file_path", "")
@@ -205,6 +229,15 @@ class ContextBuilder:
                         "cross_encoder_score": result.get("cross_encoder_score"),
                         "scene_start_time": payload.get("scene_start_time"),
                         "scene_end_time": payload.get("scene_end_time"),
+                        "scene_id": payload.get("scene_id"),
+                        "shot_id": payload.get("shot_id"),
+                        "shot_start_time": payload.get("shot_start_time"),
+                        "shot_end_time": payload.get("shot_end_time"),
+                        "asr_status": payload.get("asr_status"),
+                        "asr_text": payload.get("asr_text", ""),
+                        "matched_routes": (result.get("metadata") or {}).get("matched_routes", []),
+                        "manifest_path": payload.get("manifest_path"),
+                        "key_frames": payload.get("keyframes", []),
                     }
                     # 合并检索返回的 metadata（含 key_frames 等），供 format_video_content 与前端展示
                     result_meta = result.get("metadata") or {}
@@ -424,6 +457,14 @@ class ContextBuilder:
                         "duration": video["metadata"].get("duration", 0.0),
                         "scene_start_time": video["metadata"].get("scene_start_time"),
                         "scene_end_time": video["metadata"].get("scene_end_time"),
+                        "scene_id": video["metadata"].get("scene_id"),
+                        "shot_id": video["metadata"].get("shot_id"),
+                        "shot_start_time": video["metadata"].get("shot_start_time"),
+                        "shot_end_time": video["metadata"].get("shot_end_time"),
+                        "asr_status": video["metadata"].get("asr_status"),
+                        "asr_text": video["metadata"].get("asr_text", ""),
+                        "matched_routes": video["metadata"].get("matched_routes", []),
+                        "manifest_path": video["metadata"].get("manifest_path"),
                         "key_frames": video["metadata"].get("key_frames", []),
                     }
                 )
@@ -851,8 +892,14 @@ class ContextBuilder:
                         "metadata": reference.metadata
                     }
                     if reference.content_type == "video":
-                        st = reference.metadata.get("scene_start_time")
-                        en = reference.metadata.get("scene_end_time")
+                        # 检索结果以 Shot 为单位；播放器应跳至命中的 Shot。兼容旧数据
+                        # （只有 scene 时间）时再回退到 Scene 边界。
+                        st = reference.metadata.get("shot_start_time")
+                        en = reference.metadata.get("shot_end_time")
+                        if st is None:
+                            st = reference.metadata.get("scene_start_time")
+                        if en is None:
+                            en = reference.metadata.get("scene_end_time")
                         if st is not None:
                             ref_dict["start_sec"] = float(st)
                         if en is not None:

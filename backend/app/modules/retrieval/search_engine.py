@@ -123,6 +123,10 @@ class HybridSearchEngine:
                 query_strategies.get("dense_query", ""),
                 target_kb_ids,
                 target_file_ids=target_file_ids,
+                sparse_query=(
+                    " ".join(str(item) for item in (query_strategies.get("sparse_keywords", []) or []) if item)
+                    or query_strategies.get("dense_query", "")
+                ),
                 visual_query=query_strategies.get("dense_query", "") if visual_intent != "unnecessary" else None,
                 limit=10
             )
@@ -241,10 +245,10 @@ class HybridSearchEngine:
 
     def _scroll_video_points_for_selected_file(self, file_id: str, target_kb_ids: List[str]) -> List[Any]:
         for kb_id in target_kb_ids:
-            points = self.vector_store.scroll_video_points_by_file_id(file_id, kb_id=kb_id, limit=3)
+            points = self.vector_store.scroll_video_shot_points_by_file_id(file_id, kb_id=kb_id, limit=3)
             if points:
                 return points
-        return self.vector_store.scroll_video_points_by_file_id(file_id, kb_id=None, limit=3)
+        return self.vector_store.scroll_video_shot_points_by_file_id(file_id, kb_id=None, limit=3)
 
     async def _selected_file_bootstrap_search(
         self,
@@ -696,10 +700,10 @@ class HybridSearchEngine:
                         f"avg={avg_score:.3f}, count={len(search_results)}"
                     )
                 
-                # 4. 用同一批向量查 video_vectors 中的关键帧（关键帧存于 video_vectors 的 clip_vec），补齐显式视觉需求下的「图片」来源
-                video_keyframe_results = await self.vector_store.search_video_vectors(
-                    query_vector=text_query_vector,
-                    clip_vector=clip_text_vector,
+                # 4. 可选关键帧视觉索引：仅作为图片候选的视觉补充。
+                video_keyframe_results = await self.vector_store.search_video_keyframes(
+                    text_query_vector=text_query_vector,
+                    clip_query_vector=clip_text_vector,
                     target_kb_ids=target_kb_ids,
                     target_file_ids=target_file_ids,
                     limit=limit,
@@ -707,7 +711,7 @@ class HybridSearchEngine:
                 )
                 for v in video_keyframe_results:
                     payload = v.get("payload") or {}
-                    caption = payload.get("frame_description") or payload.get("scene_summary") or ""
+                    caption = payload.get("frame_description") or payload.get("shot_caption") or payload.get("scene_summary") or ""
                     file_path = payload.get("frame_image_path") or ""
                     if not file_path:
                         continue
@@ -729,7 +733,7 @@ class HybridSearchEngine:
                         "from_video_keyframe": True,
                     })
                 if video_keyframe_results:
-                    logger.info("Visual检索补充: 从 video_vectors 关键帧召回 {} 条，合并为图片结果", len([r for r in search_results if r.get("from_video_keyframe")]))
+                    logger.info("Visual检索补充: 从视频关键帧召回 {} 条，合并为图片结果", len([r for r in search_results if r.get("from_video_keyframe")]))
                 
                 logger.info(
                     f"Visual检索完成（双路RRF）: {len(search_results)} 个图片结果, "
@@ -781,10 +785,10 @@ class HybridSearchEngine:
                         f"avg={avg_score:.3f}, count={len(search_results)}"
                     )
                 
-                # 用文本向量查 video_vectors 关键帧（scene_vec/frame_vec），补齐图片来源
-                video_keyframe_results = await self.vector_store.search_video_vectors(
-                    query_vector=text_query_vector,
-                    clip_vector=None,
+                # 用文本向量查询关键帧视觉索引。
+                video_keyframe_results = await self.vector_store.search_video_keyframes(
+                    text_query_vector=text_query_vector,
+                    clip_query_vector=None,
                     target_kb_ids=target_kb_ids,
                     target_file_ids=target_file_ids,
                     limit=limit,
@@ -795,7 +799,7 @@ class HybridSearchEngine:
                     file_path = payload.get("frame_image_path") or ""
                     if not file_path:
                         continue
-                    caption = payload.get("frame_description") or payload.get("scene_summary") or ""
+                    caption = payload.get("frame_description") or payload.get("shot_caption") or payload.get("scene_summary") or ""
                     search_results.append({
                         "id": v.get("id"),
                         "score": v.get("score", 0.0),
@@ -812,7 +816,7 @@ class HybridSearchEngine:
                         "from_video_keyframe": True,
                     })
                 if video_keyframe_results:
-                    logger.info("Visual检索补充: 从 video_vectors 关键帧召回 {} 条，合并为图片结果", len([r for r in search_results if r.get("from_video_keyframe")]))
+                    logger.info("Visual检索补充: 从视频关键帧召回 {} 条，合并为图片结果", len([r for r in search_results if r.get("from_video_keyframe")]))
                 
                 logger.info(
                     f"Visual检索完成（单路文本语义）: {len(search_results)} 个图片结果, "
@@ -1196,85 +1200,140 @@ class HybridSearchEngine:
         query: str,
         target_kb_ids: List[str],
         target_file_ids: Optional[List[str]] = None,
+        sparse_query: Optional[str] = None,
         visual_query: Optional[str] = None,
         limit: int = 10
     ) -> List[Dict[str, Any]]:
-        """视频检索"""
+        """以 Shot 为主检索单元的四路视频检索，关键帧只在需要视觉增强时参与。"""
         try:
-            # 1. 文本向量化查询
+            # 1. 生成 dense 查询向量；caption 与 ASR 共享语义查询，但在向量库中独立召回、独立加权。
             embed_result = await self.llm_manager.embed(texts=[query])
             if not embed_result.success or not embed_result.data:
                 logger.error("视频检索向量化失败")
                 return []
-            
             query_vector = embed_result.data[0] if isinstance(embed_result.data, list) else embed_result.data
-            
-            # 2. 如果visual_query存在，生成CLIP向量
+
+            # 2. Sparse 查询与普通文本检索保持同一 BGE-M3 语义；失败时不影响 dense 两路。
+            query_sparse: Dict[int, float] = {}
+            try:
+                sparse_result = self.sparse_encoder.encode_query((sparse_query or query or "").strip())
+                query_sparse = (sparse_result or {}).get("sparse", {}) or {}
+            except Exception as sparse_error:
+                logger.warning("视频 Shot sparse 查询向量生成失败，仅使用 dense: {}", sparse_error)
+
+            # 3. Shot 四路检索为主检索路径。
+            shot_results = await self.vector_store.search_video_shots(
+                caption_query_vector=query_vector,
+                asr_query_vector=query_vector,
+                caption_query_sparse=query_sparse,
+                asr_query_sparse=query_sparse,
+                target_kb_ids=target_kb_ids,
+                target_file_ids=target_file_ids,
+                limit=limit,
+            )
+
+            # 4. 仅在视觉意图存在时，以关键帧检索对 Shot 排序做可选增强；它不会替代 Shot。
             clip_vector = None
             if visual_query:
                 try:
                     clip_vector = await self._generate_clip_text_vector(visual_query)
                 except Exception as e:
                     logger.warning(f"视频检索CLIP向量生成失败: {str(e)}")
-            
-            # 3. 检索video_vectors集合
-            search_results = await self.vector_store.search_video_vectors(
-                query_vector=query_vector,
-                clip_vector=clip_vector,
-                target_kb_ids=target_kb_ids,
-                target_file_ids=target_file_ids,
-                limit=limit
-            )
-            
-            # 4. 格式化结果（一关键帧一点），再按方案六「场景聚合去重」：同 segment_id 合并为一块，保留得分最高的一帧为代表
-            formatted_results = []
-            for result in search_results:
-                payload = result.get("payload", {})
-                ts = payload.get("frame_timestamp", 0.0)
-                frame_desc = payload.get("frame_description", "")
-                frame_image_path = payload.get("frame_image_path", "")
-                key_frames = [{
-                    "timestamp": ts,
-                    "description": frame_desc,
-                    "frame_image_path": frame_image_path,
-                }]
-                content = payload.get("scene_summary", "") or frame_desc
-                formatted_results.append({
-                    "id": result.get("id"),
-                    "content": content,
-                    "content_type": "video",
-                    "file_id": payload.get("file_id"),
-                    "file_path": payload.get("file_path"),
-                    "score": result.get("score", 0.0),
-                    "payload": payload,
-                    "metadata": {
-                        "duration": payload.get("duration", 0.0),
-                        "video_format": payload.get("video_format", ""),
-                        "resolution": payload.get("resolution", ""),
-                        "fps": payload.get("fps", 0.0),
-                        "key_frames": key_frames,
-                        "has_audio": payload.get("has_audio", False),
-                        "audio_file_id": payload.get("audio_file_id"),
-                        "segment_id": payload.get("segment_id"),
-                        "frame_timestamp": ts,
-                        "frame_image_path": frame_image_path,
-                    },
-                })
-            # Group by (file_id, segment_id)，保留每组得分最高的作为代表，形成「一个 Context 块 per segment」
-            grouped: Dict[tuple, List[Dict]] = {}
-            for r in formatted_results:
-                fid = r.get("file_id", "")
-                sid = r.get("metadata", {}).get("segment_id", "")
-                key = (fid, sid)
-                if key not in grouped:
-                    grouped[key] = []
-                grouped[key].append(r)
-            by_segment = []
-            for key, group in grouped.items():
-                best = max(group, key=lambda x: x.get("score", 0.0))
-                by_segment.append(best)
-            by_segment.sort(key=lambda x: -x.get("score", 0.0))
-            return by_segment
+                keyframe_results = await self.vector_store.search_video_keyframes(
+                    text_query_vector=query_vector,
+                    clip_query_vector=clip_vector,
+                    target_kb_ids=target_kb_ids,
+                    target_file_ids=target_file_ids,
+                    limit=limit,
+                )
+                by_shot = {
+                    (str((item.get("payload") or {}).get("file_id") or ""), str((item.get("payload") or {}).get("shot_id") or "")): item
+                    for item in shot_results
+                }
+                for rank, frame_result in enumerate(keyframe_results, 1):
+                    frame_payload = frame_result.get("payload") or {}
+                    key = (str(frame_payload.get("file_id") or ""), str(frame_payload.get("shot_id") or ""))
+                    visual_boost = 0.45 / (60 + rank)
+                    existing = by_shot.get(key)
+                    if existing:
+                        existing["score"] = float(existing.get("score", 0.0)) + visual_boost
+                        existing.setdefault("matched_routes", []).append("keyframe_visual")
+                        existing.setdefault("keyframe_matches", []).append({
+                            "timestamp": frame_payload.get("frame_timestamp"),
+                            "description": frame_payload.get("frame_description", ""),
+                            "frame_image_path": frame_payload.get("frame_image_path", ""),
+                        })
+                        continue
+                    # 关键帧单独命中时也必须回收到所属 Shot，避免返回“孤帧”。
+                    synthetic_payload = {
+                        **frame_payload,
+                        "caption": frame_payload.get("shot_caption", ""),
+                        "asr_status": "present" if frame_payload.get("asr_text") else "no_speech",
+                        "keyframes": [{
+                            "timestamp": frame_payload.get("frame_timestamp", 0.0),
+                            "description": frame_payload.get("frame_description", ""),
+                            "frame_image_path": frame_payload.get("frame_image_path", ""),
+                        }],
+                    }
+                    synthetic = {
+                        "id": f"keyframe-shot::{frame_result.get('id')}",
+                        "score": visual_boost,
+                        "payload": synthetic_payload,
+                        "matched_routes": ["keyframe_visual"],
+                        "keyframe_matches": synthetic_payload["keyframes"],
+                    }
+                    shot_results.append(synthetic)
+                    by_shot[key] = synthetic
+
+            formatted_results: List[Dict[str, Any]] = []
+            if shot_results:
+                shot_results.sort(key=lambda item: float(item.get("score", 0.0)), reverse=True)
+                for result in shot_results[:limit]:
+                    payload = result.get("payload") or {}
+                    caption = payload.get("caption", "")
+                    asr_text = payload.get("asr_text", "")
+                    scene_summary = payload.get("scene_summary", "")
+                    content_parts = []
+                    if scene_summary:
+                        content_parts.append(f"场景：{scene_summary}")
+                    if caption:
+                        content_parts.append(f"画面：{caption}")
+                    if asr_text:
+                        content_parts.append(f"语音：{asr_text}")
+                    key_frames = payload.get("keyframes") or []
+                    if result.get("keyframe_matches"):
+                        existing_times = {frame.get("timestamp") for frame in key_frames if isinstance(frame, dict)}
+                        key_frames = [*key_frames, *[
+                            frame for frame in result["keyframe_matches"]
+                            if isinstance(frame, dict) and frame.get("timestamp") not in existing_times
+                        ]]
+                    formatted_results.append({
+                        "id": result.get("id"),
+                        "content": "\n".join(content_parts) or caption or scene_summary,
+                        "content_type": "video",
+                        "file_id": payload.get("file_id"),
+                        "file_path": payload.get("file_path"),
+                        "score": result.get("score", 0.0),
+                        "payload": payload,
+                        "metadata": {
+                            "duration": payload.get("duration", 0.0),
+                            "video_format": payload.get("video_format", ""),
+                            "resolution": payload.get("resolution", ""),
+                            "fps": payload.get("fps", 0.0),
+                            "has_audio": payload.get("has_audio", False),
+                            "scene_id": payload.get("scene_id"),
+                            "scene_start_time": payload.get("scene_start_time"),
+                            "scene_end_time": payload.get("scene_end_time"),
+                            "shot_id": payload.get("shot_id"),
+                            "shot_start_time": payload.get("shot_start_time"),
+                            "shot_end_time": payload.get("shot_end_time"),
+                            "asr_status": payload.get("asr_status", "no_speech"),
+                            "matched_routes": result.get("matched_routes", []),
+                            "key_frames": key_frames,
+                            "manifest_path": payload.get("manifest_path"),
+                        },
+                    })
+            return formatted_results
             
         except Exception as e:
             logger.error(f"视频检索失败: {str(e)}", exc_info=True)

@@ -8,8 +8,11 @@ from abc import ABC, abstractmethod
 from enum import Enum
 import asyncio
 import base64
+import json
 import re
 import os
+import shutil
+import subprocess
 from pathlib import Path
 from urllib.parse import unquote
 import uuid
@@ -1351,95 +1354,225 @@ class AudioParser(DocumentParser):
             }
 
 class VideoParser(DocumentParser):
-    """视频解析器"""
-    
+    """视频解析器。
+
+    视频元数据优先由 ffprobe 获取，避免把 OpenCV 的图形库依赖变成上传链路的
+    单点故障。OpenCV 仅作为没有 ffprobe 时的兼容兜底；关键帧提取仍在后续入库阶段
+    完成。
+    """
+
     def supports_file_type(self) -> FileType:
         return FileType.VIDEO
-    
-    async def parse(self, file_content: bytes, file_path: str, **kwargs: Any) -> Dict[str, Any]:
-        """解析视频文件，提取元数据"""
+
+    @staticmethod
+    def _ffprobe_binary() -> Optional[str]:
+        """获取与配置 ffmpeg 对应的 ffprobe，或使用 PATH 中的 ffprobe。"""
+        try:
+            from app.core.config import settings
+
+            configured_ffmpeg = (getattr(settings, "ffmpeg_path", None) or "").strip()
+            if configured_ffmpeg:
+                configured_path = Path(configured_ffmpeg).expanduser()
+                candidate = configured_path.parent / "ffprobe"
+                if candidate.is_file() and os.access(candidate, os.X_OK):
+                    return str(candidate)
+                if configured_path.name.lower().startswith("ffprobe") and configured_path.is_file():
+                    return str(configured_path)
+        except Exception:
+            pass
+        return shutil.which("ffprobe")
+
+    @staticmethod
+    def _parse_fraction(value: Any) -> float:
+        """解析 ffprobe 的 ``30000/1001`` 等帧率格式。"""
+        try:
+            text = str(value or "").strip()
+            if not text or text in {"0/0", "N/A"}:
+                return 0.0
+            if "/" in text:
+                numerator, denominator = text.split("/", 1)
+                denominator_value = float(denominator)
+                return float(numerator) / denominator_value if denominator_value else 0.0
+            return float(text)
+        except (TypeError, ValueError, ZeroDivisionError):
+            return 0.0
+
+    @staticmethod
+    def _positive_float(*values: Any) -> float:
+        for value in values:
+            try:
+                parsed = float(value)
+                if parsed > 0:
+                    return parsed
+            except (TypeError, ValueError):
+                continue
+        return 0.0
+
+    def _probe_with_ffprobe(self, video_path: str) -> Optional[Dict[str, Any]]:
+        """通过 ffprobe 读取容器、视频流和音轨元数据。"""
+        ffprobe_bin = self._ffprobe_binary()
+        if not ffprobe_bin:
+            return None
+        try:
+            result = subprocess.run(
+                [
+                    ffprobe_bin,
+                    "-v", "error",
+                    "-show_streams",
+                    "-show_format",
+                    "-of", "json",
+                    video_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            if result.returncode != 0:
+                logger.debug(
+                    "ffprobe 视频元数据失败: code={} stderr={}",
+                    result.returncode,
+                    (result.stderr or "").strip()[:500],
+                )
+                return None
+            payload = json.loads(result.stdout or "{}")
+            streams = payload.get("streams") if isinstance(payload, dict) else []
+            streams = streams if isinstance(streams, list) else []
+            video_stream = next(
+                (stream for stream in streams if isinstance(stream, dict) and stream.get("codec_type") == "video"),
+                None,
+            )
+            if not isinstance(video_stream, dict):
+                return None
+            format_data = payload.get("format") if isinstance(payload.get("format"), dict) else {}
+            duration = self._positive_float(
+                video_stream.get("duration"),
+                format_data.get("duration"),
+            )
+            if duration <= 0:
+                return None
+            fps = self._parse_fraction(video_stream.get("avg_frame_rate"))
+            if fps <= 0:
+                fps = self._parse_fraction(video_stream.get("r_frame_rate"))
+            width = int(self._positive_float(video_stream.get("width")))
+            height = int(self._positive_float(video_stream.get("height")))
+            frame_count = int(self._positive_float(video_stream.get("nb_frames")))
+            if frame_count <= 0 and fps > 0:
+                frame_count = max(1, int(round(duration * fps)))
+            has_audio = any(
+                isinstance(stream, dict) and stream.get("codec_type") == "audio"
+                for stream in streams
+            )
+            return {
+                "duration": float(duration),
+                "fps": float(fps),
+                "width": width,
+                "height": height,
+                "frame_count": frame_count,
+                "codec": str(video_stream.get("codec_name") or "unknown"),
+                "has_audio": has_audio,
+                "container_format": str(format_data.get("format_name") or ""),
+                "probe": "ffprobe",
+            }
+        except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, ValueError) as error:
+            logger.debug("ffprobe 视频元数据异常: {}", error)
+            return None
+
+    def _probe_with_opencv(self, video_path: str) -> Optional[Dict[str, Any]]:
+        """ffprobe 不可用时的兼容兜底，不负责猜测音轨。"""
         try:
             import cv2
-            import numpy as np
-            from io import BytesIO
-            
-            # 将bytes转换为numpy数组
-            video_bytes = np.frombuffer(file_content, dtype=np.uint8)
-            
-            # 使用OpenCV读取视频信息
-            # 注意：cv2.VideoCapture需要文件路径或URL，不能直接读取bytes
-            # 我们需要先保存到临时文件或使用其他方法
-            import tempfile
-            import os
-            
-            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file_path).suffix) as tmp_file:
-                tmp_file.write(file_content)
-                tmp_path = tmp_file.name
-            
+
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                return None
             try:
-                cap = cv2.VideoCapture(tmp_path)
-                
-                if not cap.isOpened():
-                    raise ValueError("无法打开视频文件")
-                
-                # 获取视频属性
-                fps = cap.get(cv2.CAP_PROP_FPS)
-                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                duration = frame_count / fps if fps > 0 else 0
-                
-                # 检查是否有音频轨道
-                has_audio = False
-                try:
-                    # 尝试读取第一帧来检测音频
-                    # OpenCV无法直接检测音频，我们假设如果视频文件较大可能包含音频
-                    file_size = len(file_content)
-                    has_audio = file_size > (width * height * frame_count * 3)  # 粗略估算
-                except:
-                    pass
-                
-                # 获取编码格式（如果可用）
-                fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
-                codec = "".join([chr((fourcc >> 8 * i) & 0xFF) for i in range(4)])
-                
-                cap.release()
-                
+                fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+                duration = frame_count / fps if fps > 0 else 0.0
+                if duration <= 0:
+                    return None
+                fourcc = int(cap.get(cv2.CAP_PROP_FOURCC) or 0)
+                codec = "".join(chr((fourcc >> (8 * index)) & 0xFF) for index in range(4)).strip()
                 return {
-                    "file_type": "video",
                     "duration": float(duration),
-                    "fps": float(fps),
-                    "resolution": f"{width}x{height}",
+                    "fps": fps,
                     "width": width,
                     "height": height,
                     "frame_count": frame_count,
-                    "format": Path(file_path).suffix.lower().lstrip('.'),
-                    "codec": codec if codec.strip() else "unknown",
-                    "has_audio": has_audio,
-                    "file_size": len(file_content),
-                    "metadata": {
-                        "extracted_at": datetime.now().isoformat()
-                    }
+                    "codec": codec or "unknown",
+                    "has_audio": False,
+                    "container_format": "",
+                    "probe": "opencv_fallback",
                 }
             finally:
-                # 清理临时文件
+                cap.release()
+        except Exception as error:
+            logger.debug("OpenCV 视频元数据兜底失败: {}", error)
+            return None
+
+    def _probe_bytes_sync(self, file_content: bytes, suffix: str) -> Dict[str, Any]:
+        """在线程中写入临时视频并执行 ffprobe/OpenCV，避免阻塞 FastAPI 事件循环。"""
+        import tempfile
+
+        tmp_path: Optional[str] = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+                tmp_file.write(file_content)
+                tmp_path = tmp_file.name
+            metadata = self._probe_with_ffprobe(tmp_path) or self._probe_with_opencv(tmp_path)
+            if not metadata:
+                raise ValueError("无法读取视频时长、帧率或视频流；请确认文件未损坏且服务端已安装 ffmpeg")
+            return metadata
+        finally:
+            if tmp_path:
                 try:
                     os.unlink(tmp_path)
-                except:
+                except OSError:
                     pass
-            
+
+    async def parse(self, file_content: bytes, file_path: str, **kwargs: Any) -> Dict[str, Any]:
+        """解析视频文件，提取供 Scene–Shot 管道使用的可靠元数据。"""
+        try:
+            if not file_content:
+                raise ValueError("视频文件为空")
+            metadata = await asyncio.to_thread(
+                self._probe_bytes_sync,
+                file_content,
+                Path(file_path).suffix,
+            )
+            width = int(metadata.get("width") or 0)
+            height = int(metadata.get("height") or 0)
+            return {
+                "file_type": "video",
+                "duration": float(metadata["duration"]),
+                "fps": float(metadata.get("fps") or 0.0),
+                "resolution": f"{width}x{height}" if width and height else "",
+                "width": width,
+                "height": height,
+                "frame_count": int(metadata.get("frame_count") or 0),
+                "format": Path(file_path).suffix.lower().lstrip("."),
+                "codec": str(metadata.get("codec") or "unknown"),
+                "has_audio": bool(metadata.get("has_audio")),
+                "file_size": len(file_content),
+                "metadata": {
+                    "extracted_at": datetime.now().isoformat(),
+                    "probe": metadata.get("probe"),
+                    "container_format": metadata.get("container_format", ""),
+                },
+            }
         except Exception as e:
             logger.error(f"视频解析失败: {str(e)}")
-            # 如果解析失败，返回基本信息
             return {
                 "file_type": "video",
                 "duration": 0.0,
-                "fps": 30.0,  # 默认值
-                "resolution": "1920x1080",  # 默认值
-                "width": 1920,
-                "height": 1080,
+                "fps": 0.0,
+                "resolution": "",
+                "width": 0,
+                "height": 0,
                 "frame_count": 0,
-                "format": Path(file_path).suffix.lower().lstrip('.'),
+                "format": Path(file_path).suffix.lower().lstrip("."),
                 "codec": "unknown",
                 "has_audio": False,
                 "file_size": len(file_content),
@@ -1448,7 +1581,6 @@ class VideoParser(DocumentParser):
                     "parse_error": str(e)
                 }
             }
-
 class ExcelParser(DocumentParser):
     """Excel/CSV 解析器（xlsx/xls/csv）
 

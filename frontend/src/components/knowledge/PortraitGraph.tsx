@@ -42,14 +42,15 @@ interface PortraitGraphProps {
   imageCount?: number
   /** 音频条数（参与画像与数据量判断） */
   audioCount?: number
-  /** 视频条数（参与数据源比例与主题统计） */
-  videoCount?: number
+  /** 视频 Shot 条数（参与画像的数据源比例与主题统计）；与用户可见的视频文件数分离。 */
+  videoShotCount?: number
   /** 选中簇时过滤下方列表 */
   onClusterSelect?: (clusterId: string | null) => void
   className?: string
 }
 
-const PORTRAIT_DATA_THRESHOLD = 10
+// 后端已支持小语料生成单主题画像；前端只在完全没有可用语义样本时禁用。
+const PORTRAIT_DATA_THRESHOLD = 1
 
 function getPortraitErrorMessage(error: unknown) {
   if (typeof error === 'object' && error != null && 'response' in error) {
@@ -74,11 +75,11 @@ export function PortraitGraph({
   textCount = 0,
   imageCount = 0,
   audioCount = 0,
-  videoCount = 0,
+  videoShotCount = 0,
   onClusterSelect,
   className,
 }: PortraitGraphProps) {
-  const totalDataCount = textCount + imageCount + audioCount + videoCount
+  const totalDataCount = textCount + imageCount + audioCount + videoShotCount
   const [clusters, setClusters] = useState<PortraitCluster[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
@@ -375,13 +376,13 @@ export function PortraitGraph({
     setLayoutReady(true)
   }, [clusters, scaleRadius])
 
-  const total = textCount + imageCount + audioCount + videoCount
+  const total = textCount + imageCount + audioCount + videoShotCount
   const textPct = total ? (textCount / total) * 100 : 25
   const imagePct = total ? (imageCount / total) * 100 : 25
   const audioPct = total ? (audioCount / total) * 100 : 25
-  const videoPct = total ? (videoCount / total) * 100 : 25
+  const videoPct = total ? (videoShotCount / total) * 100 : 25
   const sourceRatioLabel = total
-    ? `数据源比例：文本 ${textPct.toFixed(0)}%，图片 ${imagePct.toFixed(0)}%，音频 ${audioPct.toFixed(0)}%，视频 ${videoPct.toFixed(0)}%`
+    ? `画像样本比例：文本 ${textPct.toFixed(0)}%，图片 ${imagePct.toFixed(0)}%，音频 ${audioPct.toFixed(0)}%，视频 Shot ${videoPct.toFixed(0)}%`
     : '暂无数据源比例'
   const selectedCluster = summaryPopupNode?.cluster ?? clusters.find((cluster) => cluster.cluster_id === selectedId)
   const portraitSummaryText = generating
@@ -494,7 +495,7 @@ export function PortraitGraph({
                   />
                   <p className="text-base font-medium text-slate-700 dark:text-slate-200 mt-2">暂无主题画像</p>
                   <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm text-center px-4">
-                    知识库需有足够数据（约 10 条以上文本/图片/音频/视频关键帧）才能生成主题聚类画像。
+                    知识库需至少有一条已完成解析的文本、图片、音频或视频 Shot，才能生成主题聚类画像。
                   </p>
                   <Button
                     variant="default"
@@ -517,7 +518,7 @@ export function PortraitGraph({
                     )}
                   </Button>
                   {totalDataCount < PORTRAIT_DATA_THRESHOLD && (
-                    <p className="text-xs text-amber-600" role="status">当前数据量较少，建议先上传更多文件（需至少约 10 条）</p>
+                    <p className="text-xs text-amber-600" role="status">当前尚无可用于画像的解析内容</p>
                   )}
                   {genError && (
                     <p className="text-xs text-destructive" role="alert">{genError}</p>
@@ -925,7 +926,7 @@ export function PortraitGraph({
               <div
                 className={cn(
                   "flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-400 via-indigo-500 to-indigo-600 text-white shadow-sm transition-all duration-300 min-w-0",
-                  imageCount === 0 && audioCount === 0 && videoCount === 0 && "rounded-r-xl",
+                  imageCount === 0 && audioCount === 0 && videoShotCount === 0 && "rounded-r-xl",
                   "rounded-l-xl"
                 )}
                 style={{ width: `${textPct}%` }}
@@ -939,7 +940,7 @@ export function PortraitGraph({
                 className={cn(
                   "flex items-center justify-center gap-2 bg-gradient-to-r from-fuchsia-400 via-fuchsia-500 to-fuchsia-600 text-white shadow-sm transition-all duration-300 min-w-0",
                   textCount === 0 && "rounded-l-xl",
-                  audioCount === 0 && videoCount === 0 && "rounded-r-xl"
+                  audioCount === 0 && videoShotCount === 0 && "rounded-r-xl"
                 )}
                 style={{ width: `${imagePct}%` }}
               >
@@ -952,7 +953,7 @@ export function PortraitGraph({
                 className={cn(
                   "flex items-center justify-center gap-2 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 text-white shadow-sm transition-all duration-300 min-w-0",
                   textCount === 0 && imageCount === 0 && "rounded-l-xl",
-                  videoCount === 0 && "rounded-r-xl"
+                  videoShotCount === 0 && "rounded-r-xl"
                 )}
                 style={{ width: `${audioPct}%` }}
               >
@@ -960,7 +961,7 @@ export function PortraitGraph({
                 <span className="text-sm font-medium truncate">Audio</span>
               </div>
             )}
-            {videoCount > 0 && (
+            {videoShotCount > 0 && (
               <div
                 className={cn(
                   "flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600 text-white shadow-sm transition-all duration-300 min-w-0 rounded-r-xl",
@@ -969,7 +970,7 @@ export function PortraitGraph({
                 style={{ width: `${videoPct}%` }}
               >
                 <Video className="h-4 w-4 flex-shrink-0 opacity-95" aria-hidden />
-                <span className="text-sm font-medium truncate">Video</span>
+                <span className="text-sm font-medium truncate">Video Shot</span>
               </div>
             )}
           </div>
@@ -983,8 +984,8 @@ export function PortraitGraph({
             {audioCount > 0 && (
               <span className="font-medium">Audio {audioCount} <span className="text-slate-400 dark:text-slate-500">({audioPct.toFixed(0)}%)</span></span>
             )}
-            {videoCount > 0 && (
-              <span className="font-medium">Video {videoCount} <span className="text-slate-400 dark:text-slate-500">({videoPct.toFixed(0)}%)</span></span>
+            {videoShotCount > 0 && (
+              <span className="font-medium">Video Shot {videoShotCount} <span className="text-slate-400 dark:text-slate-500">({videoPct.toFixed(0)}%)</span></span>
             )}
           </div>
         </CardContent>
@@ -1044,11 +1045,11 @@ export function PortraitGraph({
             </div>
             <div className="rounded-xl bg-gradient-to-br from-emerald-50/90 to-emerald-100/50 dark:from-emerald-950/40 dark:to-emerald-900/20 border border-emerald-100/80 dark:border-emerald-800/40 px-4 py-3 text-center" role="listitem">
               <div className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                {videoCount}
+                {videoShotCount}
               </div>
               <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-emerald-700/80 dark:text-emerald-300/90">
                 <Video className="h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden />
-                <span>视频</span>
+                <span>视频 Shot</span>
               </div>
             </div>
           </div>

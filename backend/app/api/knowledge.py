@@ -44,7 +44,7 @@ def _build_inline_content_disposition(filename: str) -> str:
 
 
 def _stats_for_frontend(statistics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """将后端 statistics 格式转换为前端 stats 格式（含向量维度、音频数、视频数、CLAP 维度）"""
+    """转换为前端统计：video 是原始文件数，video_shots 是画像/检索的 Shot 数。"""
     if not statistics:
         return {
             "documents": 0,
@@ -52,6 +52,7 @@ def _stats_for_frontend(statistics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "images": 0,
             "audio": 0,
             "video": 0,
+            "video_shots": 0,
             "text_vector_dim": 4096,
             "image_vector_dim": 768,
             "audio_vector_dim": 512,
@@ -61,7 +62,10 @@ def _stats_for_frontend(statistics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "chunks": statistics.get("total_chunks", 0),
         "images": statistics.get("total_images", 0),
         "audio": statistics.get("total_audio", 0),
-        "video": statistics.get("total_video", 0),
+        # 用户可见的“视频数”按原始上传文件计，不把一个视频拆出的多个 Shot 误展示为多个视频。
+        "video": statistics.get("total_video_files", statistics.get("total_video", 0)),
+        # Shot 保留给画像的数据源比例与内部诊断，避免改变聚类的采样语义。
+        "video_shots": statistics.get("total_video_shots", statistics.get("total_video", 0)),
         "text_vector_dim": statistics.get("text_vector_dim", 4096),
         "image_vector_dim": statistics.get("image_vector_dim", 768),
         "audio_vector_dim": statistics.get("audio_vector_dim", 512),
@@ -450,7 +454,7 @@ async def get_knowledge_base_portrait(kb_id: str):
 @router.post("/{kb_id}/portrait/regenerate")
 async def regenerate_knowledge_base_portrait(
     kb_id: str,
-    sync: bool = Query(False, description="为 true 时在 API 进程内同步执行，保证使用最新代码（含视频关键帧）；否则优先走 Celery 异步"),
+    sync: bool = Query(False, description="为 true 时在 API 进程内同步执行，保证使用最新代码（含视频 Scene–Shot 统计）；否则优先走 Celery 异步"),
 ):
     """触发知识库画像生成/更新。sync=true 时在 API 内同步执行（推荐手动触发时使用）；否则若 Celery 可用则异步执行。"""
     try:
@@ -468,7 +472,7 @@ async def regenerate_knowledge_base_portrait(
         except Exception as _:
             pass
 
-        # sync=True 时强制在 API 进程内同步执行，确保使用当前代码（含视频关键帧统计）
+        # sync=True 时强制在 API 进程内同步执行，确保使用当前代码（含视频 Scene–Shot 统计）
         if not sync:
             try:
                 from app.modules.knowledge.portraits import build_kb_portrait_task
@@ -484,7 +488,7 @@ async def regenerate_knowledge_base_portrait(
         if result.get("status") == "insufficient_data":
             raise HTTPException(
                 status_code=400,
-                detail=result.get("message", "知识库数据量不足，至少需要约 10 条文本/图片/音频/视频关键帧才能生成画像"),
+                detail=result.get("message", "知识库没有可用于画像的文本、图片、音频或视频 Shot 向量"),
             )
         return {
             "status": "success",

@@ -46,7 +46,9 @@ class MultiModalFormatter:
         """视频内容模板"""
         return """【材料 {index}】 (类型: 视频 | 来源: {file_path})
 时长：{duration}
+命中片段：{shot_range}
 描述：{description}
+语音转录：{asr_text}
 关键帧：
 {key_frames}"""
     
@@ -158,6 +160,22 @@ class MultiModalFormatter:
             
             duration = metadata.get("duration", 0.0)
             duration_str = f"{int(duration // 60)}分{int(duration % 60)}秒" if duration > 0 else "未知"
+            shot_start = metadata.get("shot_start_time")
+            shot_end = metadata.get("shot_end_time")
+            if shot_start is not None and shot_end is not None:
+                try:
+                    shot_range = (
+                        f"{int(float(shot_start) // 60)}:{int(float(shot_start) % 60):02d}"
+                        f" – {int(float(shot_end) // 60)}:{int(float(shot_end) % 60):02d}"
+                    )
+                except (TypeError, ValueError):
+                    shot_range = "未标注"
+            else:
+                shot_range = "未标注"
+
+            asr_text = self._clean_content(metadata.get("asr_text", ""))
+            if not asr_text:
+                asr_text = "无语音或未识别到语音"
             
             # 格式化关键帧
             key_frames = metadata.get("key_frames", [])
@@ -178,7 +196,9 @@ class MultiModalFormatter:
                 index=index,
                 file_path=file_path,
                 duration=duration_str,
+                shot_range=shot_range,
                 description=cleaned_description,
+                asr_text=asr_text,
                 key_frames=key_frames_text
             )
             

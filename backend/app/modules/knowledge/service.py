@@ -16,7 +16,7 @@ from datetime import datetime
 from dataclasses import dataclass
 
 from app.core.logger import get_logger, audit_log
-from app.modules.ingestion.storage.vector_store import VectorStore
+from app.modules.ingestion.storage.vector_store import VectorStore, VIDEO_SHOT_COLLECTION
 from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
 from qdrant_client.http import models
 
@@ -26,6 +26,30 @@ logger = get_logger(__name__)
 _KB_LIST_IGNORE_OBJECT_PREFIXES = ("previews/",)
 
 
+def _is_raw_video_object_path(object_path: Any) -> bool:
+    """是否为用户上传的视频主对象，而非 Scene–Shot 解析产生的派生资源。"""
+    if not isinstance(object_path, str):
+        return False
+    parts = object_path.split("/")
+    if len(parts) != 2 or parts[0] != "videos":
+        return False
+    file_id, separator, filename = parts[1].partition("_")
+    return bool(file_id and separator and filename)
+
+
+def _count_raw_video_files(raw_files: List[Dict[str, Any]]) -> int:
+    """按 MinIO 中的视频主对象计数，避免把 Shot/关键帧误当成独立视频。"""
+    return len(
+        {
+            object_path
+            for file_info in raw_files
+            if _is_raw_video_object_path(
+                object_path := file_info.get("object_path", "")
+            )
+        }
+    )
+
+
 def _default_kb_list_statistics() -> Dict[str, Any]:
     """列表页统计超时或失败时的占位，避免串行统计拖垮 GET /knowledge/。"""
     return {
@@ -33,7 +57,10 @@ def _default_kb_list_statistics() -> Dict[str, Any]:
         "total_chunks": 0,
         "total_images": 0,
         "total_audio": 0,
+        # total_video 保留为检索/画像使用的 Shot 数；文件数单独统计，不能混用。
         "total_video": 0,
+        "total_video_files": 0,
+        "total_video_shots": 0,
         "total_size_mb": 0,
         "last_updated": datetime.utcnow().isoformat(),
         "text_vector_dim": 4096,
@@ -424,7 +451,7 @@ class KnowledgeBaseService:
             raise
     
     async def _delete_kb_vectors(self, kb_id: str):
-        """删除知识库在 text_chunks、image_vectors、audio_vectors、video_vectors 中该 kb_id 的所有向量（按 filter 删除，可靠）。"""
+        """删除知识库在全部检索集合中该 kb_id 的向量（按 filter 删除，可靠）。"""
         await self.vector_store.delete_kb_vectors(kb_id)
     
     async def _delete_kb_files(self, kb_id: str):
@@ -574,11 +601,28 @@ class KnowledgeBaseService:
     async def _get_kb_statistics(self, kb_id: str) -> Dict[str, Any]:
         """获取知识库统计信息（兼容多种 kb_id 格式，以第一个有数据的为准）。
         文档数 = 有 text_chunk 的 file_id 个数；文本块/图片用 count() 精确统计，避免 scroll limit 漏统。
+        视频文件数以 MinIO 原始视频对象为准；Shot 数仅供索引诊断和画像采样使用。
         优先使用从 MinIO 桶内反查得到的实际 kb_id（解决 Qdrant 中 kb_id 与列表不一致）。
         """
         loop = asyncio.get_event_loop()
         candidates = list(self._kb_id_candidates(kb_id))
         bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
+        raw_files: List[Dict[str, Any]] = []
+        total_size_bytes = 0
+        try:
+            if bucket_name and self.minio_adapter.bucket_exists(bucket_name):
+                raw_files = await self.minio_adapter.list_files(
+                    bucket=bucket_name, prefix="", max_keys=10000
+                )
+                total_size_bytes = sum(file_info.get("size") or 0 for file_info in raw_files)
+        except Exception as e:
+            logger.debug(f"统计知识库存储桶时跳过或为空: {bucket_name}, {e}")
+
+        # 真实视频数必须从用户上传的主对象计数：videos/{file_id}_{filename}。
+        # `videos/{file_id}/analysis|keyframes/...` 是一个视频派生出的内部工件，不能重复计数。
+        total_video_files = _count_raw_video_files(raw_files)
+        total_size_mb = round(total_size_bytes / (1024 * 1024), 2)
+
         if bucket_name and self.minio_adapter.bucket_exists(bucket_name):
             discovered = await self._discover_kb_id_from_bucket_async(kb_id)
             if discovered and discovered not in candidates:
@@ -590,8 +634,8 @@ class KnowledgeBaseService:
                     lambda c=candidate: self._count_kb_points_sync(c),
                 )
                 total_audio = await self.vector_store.count_kb_audio(candidate)
-                total_video = await self.vector_store.count_kb_video(candidate)
-                if total_chunks == 0 and total_images == 0 and total_audio == 0 and total_video == 0:
+                total_video_shots = await self.vector_store.count_kb_video(candidate)
+                if total_chunks == 0 and total_images == 0 and total_audio == 0 and total_video_shots == 0:
                     continue
 
                 doc_file_ids = await loop.run_in_executor(
@@ -600,25 +644,15 @@ class KnowledgeBaseService:
                 )
                 total_documents = len(doc_file_ids)
 
-                total_size_bytes = 0
-                bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
-                try:
-                    kb_files = await self.minio_adapter.list_files(
-                        bucket=bucket_name, prefix="", max_keys=10000
-                    )
-                    for file_info in kb_files:
-                        total_size_bytes += file_info.get("size", 0)
-                except Exception as e:
-                    logger.debug(f"统计知识库存储桶时跳过或为空: {bucket_name}, {e}")
-
-                total_size_mb = round(total_size_bytes / (1024 * 1024), 2)
-
                 return {
                     "total_documents": total_documents,
                     "total_chunks": total_chunks,
                     "total_images": total_images,
                     "total_audio": total_audio,
-                    "total_video": total_video,
+                    # 兼容既有内部字段：total_video 一直表示 Shot 数。
+                    "total_video": total_video_shots,
+                    "total_video_files": total_video_files,
+                    "total_video_shots": total_video_shots,
                     "total_size_mb": total_size_mb,
                     "last_updated": datetime.utcnow().isoformat(),
                     "text_vector_dim": 4096,
@@ -632,13 +666,8 @@ class KnowledgeBaseService:
 
         # 兜底：按 MinIO 桶内文件的 file_id 汇总统计（向量库 kb_id 可能为原始 UUID，与 JSON 中桶名派生的 kb_id 不一致）
         try:
-            bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
-            if self.minio_adapter.bucket_exists(bucket_name):
-                raw_files = await self.minio_adapter.list_files(
-                    bucket=bucket_name, prefix="", max_keys=10000
-                )
+            if raw_files:
                 file_ids = []
-                total_size_bytes = 0
                 for f in raw_files:
                     op = f.get("object_path", "")
                     parts = op.split("/")
@@ -647,7 +676,6 @@ class KnowledgeBaseService:
                         under = rest.find("_")
                         fid = rest[:under] if under >= 0 else rest
                         file_ids.append(fid)
-                    total_size_bytes += f.get("size") or 0
 
                 if file_ids:
                     fallback = await loop.run_in_executor(
@@ -655,16 +683,17 @@ class KnowledgeBaseService:
                         lambda: self._get_stats_by_bucket_files_sync(file_ids),
                     )
                     if fallback["total_chunks"] > 0 or fallback["total_images"] > 0:
-                        total_size_mb = round(total_size_bytes / (1024 * 1024), 2)
                         total_audio_fb = await self.vector_store.count_kb_audio(kb_id)
-                        total_video_fb = await self.vector_store.count_kb_video(kb_id)
+                        total_video_shots_fb = await self.vector_store.count_kb_video(kb_id)
                         logger.debug(f"通过 MinIO 桶文件兜底获取统计: kb_id={kb_id}")
                         return {
                             "total_documents": fallback["total_documents"],
                             "total_chunks": fallback["total_chunks"],
                             "total_images": fallback["total_images"],
                             "total_audio": total_audio_fb,
-                            "total_video": total_video_fb,
+                            "total_video": total_video_shots_fb,
+                            "total_video_files": total_video_files,
+                            "total_video_shots": total_video_shots_fb,
                             "total_size_mb": total_size_mb,
                             "last_updated": datetime.utcnow().isoformat(),
                             "text_vector_dim": 4096,
@@ -674,13 +703,17 @@ class KnowledgeBaseService:
         except Exception as e:
             logger.debug(f"统计兜底失败 kb_id={kb_id}: {e}")
 
+        # 未完成解析或解析失败的视频尚无 Qdrant Shot，但它仍是用户真实上传的文件，
+        # 列表/详情应显示为 1 个视频而不是 0。
         return {
             "total_documents": 0,
             "total_chunks": 0,
             "total_images": 0,
             "total_audio": 0,
             "total_video": 0,
-            "total_size_mb": 0,
+            "total_video_files": total_video_files,
+            "total_video_shots": 0,
+            "total_size_mb": total_size_mb,
             "last_updated": datetime.utcnow().isoformat(),
             "text_vector_dim": 4096,
             "image_vector_dim": 768,
@@ -771,10 +804,10 @@ class KnowledgeBaseService:
                 except Exception:
                     pass
                 
-                # video_vectors（纯视频库时也需反查到 Qdrant 中的 kb_id，路径 videos/uuid/keyframes/xxx 中 fid=uuid）
+                # 路径 videos/uuid/(analysis|keyframes)/... 均可从第二段取回 file_id=uuid。
                 try:
                     res = self.vector_store.client.scroll(
-                        collection_name="video_vectors",
+                        collection_name=VIDEO_SHOT_COLLECTION,
                         scroll_filter=filt,
                         limit=1,
                         with_payload=True,
@@ -1052,66 +1085,74 @@ class KnowledgeBaseService:
 
         loop = asyncio.get_event_loop()
 
-        # 关键帧：file_id 为 object_path（videos/{uuid}/keyframes/xxx.jpg），从 video_vectors 取 scene_summary + frame_description 作为图片描述
+        # 关键帧：file_id 为 object_path（videos/{uuid}/keyframes/xxx.jpg）。
         if file_id.startswith("videos/") and "/keyframes/" in file_id:
+            def _keyframe_preview(points: List[Any]) -> Optional[Tuple[str, str]]:
+                if not points:
+                    return None
+                payload = _payload(getattr(points[0], "payload", None))
+                scene_summary = (payload.get("scene_summary") or "").strip()
+                shot_caption = (payload.get("shot_caption") or "").strip()
+                frame_description = (payload.get("frame_description") or "").strip()
+                parts = [part for part in (scene_summary, shot_caption, frame_description) if part]
+                if not parts:
+                    return None
+                return "\n\n".join(parts), frame_description or shot_caption or scene_summary
+
+            def _find_keyframe_preview(candidate: Optional[str]) -> Optional[Tuple[str, str]]:
+                points = self.vector_store.scroll_video_keyframe_points_by_frame_image_path(
+                    file_id,
+                    candidate,
+                    limit=1,
+                )
+                return _keyframe_preview(points)
+
             for candidate in self._kb_id_candidates(kb_id):
                 try:
-                    video_points = await loop.run_in_executor(
+                    preview = await loop.run_in_executor(
                         None,
-                        lambda c=candidate: self.vector_store.scroll_video_points_by_frame_image_path(file_id, c, limit=1),
+                        lambda c=candidate: _find_keyframe_preview(c),
                     )
-                    if video_points:
-                        p = _payload(getattr(video_points[0], "payload", None))
-                        scene_summary = (p.get("scene_summary") or "").strip()
-                        frame_description = (p.get("frame_description") or "").strip()
-                        if scene_summary or frame_description:
-                            result["caption"] = (scene_summary + ("\n\n" if scene_summary and frame_description else "") + frame_description).strip() or None
-                            result["description"] = frame_description or None
-                            return result
+                    if preview:
+                        result["caption"], result["description"] = preview
+                        return result
                 except Exception as e:
                     logger.debug(f"获取关键帧预览详情失败 candidate={candidate} {kb_id}/{file_id}: {e}")
             if not result["caption"]:
                 try:
-                    video_points = await loop.run_in_executor(
+                    preview = await loop.run_in_executor(
                         None,
-                        lambda: self.vector_store.scroll_video_points_by_frame_image_path(file_id, None, limit=1),
+                        lambda: _find_keyframe_preview(None),
                     )
-                    if video_points:
-                        p = _payload(getattr(video_points[0], "payload", None))
-                        scene_summary = (p.get("scene_summary") or "").strip()
-                        frame_description = (p.get("frame_description") or "").strip()
-                        if scene_summary or frame_description:
-                            result["caption"] = (scene_summary + ("\n\n" if scene_summary and frame_description else "") + frame_description).strip() or None
-                            result["description"] = frame_description or None
-                            logger.debug(f"通过 frame_image_path 全局查询找到关键帧描述: {file_id}")
-                            return result
+                    if preview:
+                        result["caption"], result["description"] = preview
+                        logger.debug(f"通过 frame_image_path 全局查询找到关键帧描述: {file_id}")
+                        return result
                 except Exception as e:
                     logger.debug(f"frame_image_path 全局查询关键帧描述失败 {file_id}: {e}")
 
-        # 视频主文件：file_id 为 uuid（无斜杠），从 video_vectors 拉取所有点，按 segment 顺序拼接全部 scene_summary 作为视频描述
+        # 视频主文件：file_id 为 uuid（无斜杠），按 Shot 聚合场景描述。
         if "/" not in file_id:
             def _video_description_for(file_id: str, kb_id: Optional[str]) -> Optional[str]:
-                points = self.vector_store.scroll_video_points_by_file_id(file_id, kb_id, limit=500)
-                if not points:
-                    return None
-                # 按 segment_id、frame_timestamp 排序，同一 segment 只保留一条 scene_summary，再按序拼接
-                ordered: List[tuple] = []
-                for pt in points:
-                    p = _payload(getattr(pt, "payload", None))
-                    seg = p.get("segment_id") or ""
-                    ft = p.get("frame_timestamp")
-                    ts = float(ft) if ft is not None else 0.0
-                    summary = (p.get("scene_summary") or "").strip()
-                    if summary:
-                        ordered.append((seg, ts, summary))
-                ordered.sort(key=lambda x: (x[0], x[1]))
-                seen_seg: set = set()
-                summaries: List[str] = []
-                for seg, _ts, summary in ordered:
-                    if seg not in seen_seg:
-                        seen_seg.add(seg)
-                        summaries.append(summary)
-                return "\n\n".join(summaries).strip() or None
+                shot_points = self.vector_store.scroll_video_shot_points_by_file_id(file_id, kb_id, limit=500)
+                if shot_points:
+                    ordered_scenes: List[Tuple[float, str, str]] = []
+                    seen_scenes = set()
+                    for point in shot_points:
+                        payload = _payload(getattr(point, "payload", None))
+                        scene_id = str(payload.get("scene_id") or "")
+                        scene_start = float(payload.get("scene_start_time") or 0.0)
+                        scene_summary = (payload.get("scene_summary") or "").strip()
+                        key = scene_id or f"{scene_start:.3f}"
+                        if scene_summary and key not in seen_scenes:
+                            seen_scenes.add(key)
+                            ordered_scenes.append((scene_start, key, scene_summary))
+                    ordered_scenes.sort(key=lambda item: (item[0], item[1]))
+                    description = "\n\n".join(item[2] for item in ordered_scenes).strip()
+                    if description:
+                        return description
+
+                return None
 
             for candidate in self._kb_id_candidates(kb_id):
                 try:
@@ -1315,6 +1356,33 @@ class KnowledgeBaseService:
             "message": "手动输入文档已更新",
         }
 
+    def _get_video_file_index_status(self, kb_id: str, file_id: str) -> str:
+        """返回视频文件的真实索引状态。
+
+        MinIO 中存在原文件只表示对象上传成功，不等同于 Scene–Shot 向量已落库。先读取
+        当前进程上传任务状态（可显示处理中/失败），再以 Qdrant Shot 是否存在作为跨重启后的
+        最终事实来源。
+        """
+        try:
+            from app.modules.ingestion.service import get_ingestion_service
+
+            task_state = get_ingestion_service().get_file_processing_status(file_id)
+            if task_state:
+                task_status = str(task_state.get("status") or "")
+                if task_status in {"processing", "failed"}:
+                    return task_status
+        except Exception as e:
+            logger.debug("读取视频上传状态失败 file_id={}: {}", file_id, e)
+
+        for candidate in self._kb_id_candidates(kb_id):
+            if self.vector_store.scroll_video_shot_points_by_file_id(
+                file_id=file_id,
+                kb_id=candidate,
+                limit=1,
+            ):
+                return "ready"
+        return "unindexed"
+
     async def list_kb_files(self, kb_id: str) -> List[Dict[str, Any]]:
         """列出知识库下的文件，图片和 PDF 附带 preview_url。不依赖 _kb_storage，按 kb_id 解析桶名以支持已有知识库。
         若传入的 kb_id 对应桶不存在，则尝试候选 kb_id 的桶（兼容前端/API 传入的格式与 MinIO 实际桶名不一致）。"""
@@ -1342,14 +1410,6 @@ class KnowledgeBaseService:
                 except Exception as e:
                     logger.debug(f"候选 kb_id={candidate} 列出文件失败: {e}")
         try:
-            # 构建「视频 uuid -> 视频文件名（无扩展名）」映射，用于关键帧展示名加前缀以区分所属视频
-            video_uuid_to_basename: Dict[str, str] = {}
-            for f in raw_files:
-                op = f.get("object_path", "")
-                parts = op.split("/")
-                if parts[0] == "videos" and len(parts) == 2 and "_" in parts[1]:
-                    uid, fname = parts[1].split("_", 1)
-                    video_uuid_to_basename[uid] = fname.rsplit(".", 1)[0] if "." in fname else fname
             files = []
             for f in raw_files:
                 op = f.get("object_path", "")
@@ -1358,36 +1418,29 @@ class KnowledgeBaseService:
                 parts = op.split("/")
                 if len(parts) < 2:
                     continue
+                # `videos/{file_id}/...` 是解析过程产生的关键帧、分析清单等系统工件。
+                # 文件列表只展示 `videos/{file_id}_{filename}` 原始上传视频；派生资源仍可
+                # 被封面、引用预览等内部逻辑使用，但不能伪装成用户上传的几十个图片文件。
+                if parts[0] == "videos" and len(parts) > 2:
+                    continue
                 lm = f.get("last_modified")
                 date_str = (lm.isoformat() if lm is not None and hasattr(lm, "isoformat")
                             else str(lm) if lm is not None else "")
-                # 关键帧：videos/{file_id}/keyframes/{filename}.jpg，展示为图片；name 加视频名前缀便于区分所属视频
-                if (parts[0] == "videos" and len(parts) >= 4 and parts[2] == "keyframes"):
-                    file_id = parts[1]
-                    frame_fname = parts[-1]
-                    video_basename = video_uuid_to_basename.get(file_id)
-                    name = f"{video_basename}_{frame_fname}" if video_basename else frame_fname
-                    ext = name.rsplit(".", 1)[-1].lower() if "." in name else "file"
-                    item = {
-                        "id": op,
-                        "name": name,
-                        "size": f.get("size") or 0,
-                        "date": date_str,
-                        "type": ext,
-                    }
-                else:
-                    rest = parts[1]
-                    under = rest.find("_")
-                    file_id = rest[:under] if under >= 0 else rest
-                    name = rest[under + 1:] if under >= 0 else rest
-                    ext = name.rsplit(".", 1)[-1].lower() if "." in name else "file"
-                    item = {
-                        "id": file_id,
-                        "name": name,
-                        "size": f.get("size") or 0,
-                        "date": date_str,
-                        "type": ext,
-                    }
+                rest = parts[1]
+                under = rest.find("_")
+                file_id = rest[:under] if under >= 0 else rest
+                name = rest[under + 1:] if under >= 0 else rest
+                ext = name.rsplit(".", 1)[-1].lower() if "." in name else "file"
+                item = {
+                    "id": file_id,
+                    "name": name,
+                    "size": f.get("size") or 0,
+                    "date": date_str,
+                    "type": ext,
+                }
+                # 只对视频主文件检查 Scene–Shot 主索引；关键帧等派生物不在文件列表中。
+                if parts[0] == "videos" and len(parts) == 2:
+                    item["status"] = self._get_video_file_index_status(kb_id, file_id)
                 if self._is_previewable_type(ext) and bucket_used:
                     try:
                         item["preview_url"] = await self.minio_adapter.get_presigned_url(
@@ -1503,6 +1556,11 @@ class KnowledgeBaseService:
                         object_paths.append(op)
             if not object_paths:
                 return False
+            # 视频的主题权重高且 Scene 语义会直接影响画像路由；删除一条视频后不能等待
+            # 通用的 chunk 增量阈值才刷新画像。原始视频位于 videos/{file_id}_{filename}。
+            is_video_file = any(
+                op.startswith(f"videos/{file_id}_") for op in object_paths
+            )
 
             # 与 delete_knowledge_base / 统计一致：合并桶内反查的 kb_id，避免 Qdrant payload 与候选列表不一致时 delete 命中 0 点仍计为成功、进而只删 MinIO
             vector_kb_candidates: List[str] = list(dict.fromkeys(self._kb_id_candidates(kb_id)))
@@ -1635,12 +1693,19 @@ class KnowledgeBaseService:
             except Exception as e:
                 logger.warning(f"清理文件问题条目失败 kb_id={kb_id} file_id={file_id}: {e}")
 
-            # 删除 chunk 计入增量，达到阈值后触发画像重建（与上传逻辑一致）
+            # 文本/图片/音频删除沿用增量阈值；视频删除则立即重建，保证视频主题不会在
+            # 知识库画像中长期残留。
             if deleted_chunk_count > 0:
                 try:
-                    from app.core.portrait_trigger import increment_and_maybe_trigger
+                    from app.core.portrait_trigger import (
+                        increment_and_maybe_trigger,
+                        trigger_portrait_rebuild,
+                    )
 
-                    increment_and_maybe_trigger(kb_id, deleted_chunk_count)
+                    if is_video_file:
+                        trigger_portrait_rebuild(kb_id, reason="video_deleted")
+                    else:
+                        increment_and_maybe_trigger(kb_id, deleted_chunk_count)
                 except Exception as trigger_err:
                     logger.warning(f"删除文件后画像增量触发失败 kb_id={kb_id}: {trigger_err}")
 

@@ -225,6 +225,7 @@ type KnowledgeFileApiItem = {
   size: number
   date: string
   type: string
+  status?: string
   preview_url?: string
   text_preview?: string
 }
@@ -2152,6 +2153,7 @@ const KnowledgeList: React.FC = () => {
     images: number
     audio?: number
     video?: number
+    video_shots?: number
     text_vector_dim?: number
     image_vector_dim?: number
     audio_vector_dim?: number
@@ -2209,7 +2211,7 @@ const KnowledgeList: React.FC = () => {
         size: f.size >= 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} MB` : f.size >= 1024 ? `${(f.size / 1024).toFixed(1)} KB` : `${f.size} B`,
         date: f.date ? new Date(f.date).toLocaleDateString() : '-',
         type: f.type,
-        status: 'ready',
+        status: f.status || 'ready',
         previewUrl: f.preview_url,
         textPreview: f.text_preview,
       }))
@@ -2999,6 +3001,7 @@ const KnowledgeList: React.FC = () => {
     const imageCount = kbStats?.images ?? activeKb.stats?.images ?? 0
     const audioCount = kbStats?.audio ?? (activeKb.stats as { audio?: number })?.audio ?? 0
     const videoCount = kbStats?.video ?? (activeKb.stats as { video?: number })?.video ?? 0
+    const videoShotCount = kbStats?.video_shots ?? (activeKb.stats as { video_shots?: number })?.video_shots ?? 0
     const textVectorDim = kbStats?.text_vector_dim ?? 4096
     const imageVectorDim = kbStats?.image_vector_dim ?? 768
     const audioVectorDim = kbStats?.audio_vector_dim ?? 512
@@ -3483,7 +3486,7 @@ const KnowledgeList: React.FC = () => {
                 textCount={textChunkCount}
                 imageCount={imageCount}
                 audioCount={audioCount}
-                videoCount={videoCount}
+                videoShotCount={videoShotCount}
                 onClusterSelect={() => {}}
               />
             </Suspense>

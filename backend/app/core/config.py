@@ -140,12 +140,14 @@ class Settings(BaseSettings):
         validation_alias="MARKDOWN_LOCAL_IMAGE_REQUIRE_WHITELIST",
     )
 
-    # 视频模态：长短视频分流与长视频滑动窗口（参见 docs/视频模态技术方案.md）
-    video_long_threshold_seconds: float = Field(default=480.0, validation_alias="VIDEO_LONG_THRESHOLD_SECONDS")  # 超过此时长走长视频滑动窗口（与方案 480s 一致；≤ 此时长按短视频单 chunk）
-    video_chunk_window_seconds: float = Field(default=480.0, validation_alias="VIDEO_CHUNK_WINDOW_SECONDS")  # 长视频每段窗口时长（如 8 分钟）
-    video_max_chunk_duration_seconds: float = Field(default=480.0, validation_alias="VIDEO_MAX_CHUNK_DURATION_SECONDS")  # 单次 MLLM 能处理的最长片段（如 8 分钟），长视频按此切 chunk
-    video_segment_max_seconds: float = Field(default=120.0, validation_alias="VIDEO_SEGMENT_MAX_SECONDS")  # 短视频「整片一段」时单次送 MLLM 的时长上限，超过则拆多段以覆盖全片（避免只产出前 20～40s）
-    video_chunk_overlap_seconds: float = Field(default=10.0, validation_alias="VIDEO_CHUNK_OVERLAP_SECONDS")  # 窗口重叠时长
+    # 视频模态：Scene–Shot–ASR。窗口控制在 4 分钟以避免一次性结构化输出被截断；15 秒重叠用于保留跨窗语句。
+    video_long_threshold_seconds: float = Field(default=240.0, validation_alias="VIDEO_LONG_THRESHOLD_SECONDS")
+    video_chunk_window_seconds: float = Field(default=240.0, validation_alias="VIDEO_CHUNK_WINDOW_SECONDS")
+    video_max_chunk_duration_seconds: float = Field(default=240.0, validation_alias="VIDEO_MAX_CHUNK_DURATION_SECONDS")
+    video_segment_max_seconds: float = Field(default=120.0, validation_alias="VIDEO_SEGMENT_MAX_SECONDS")
+    video_chunk_overlap_seconds: float = Field(default=15.0, validation_alias="VIDEO_CHUNK_OVERLAP_SECONDS")
+    video_parsing_max_tokens: int = Field(default=16000, validation_alias="VIDEO_PARSING_MAX_TOKENS")
+    video_parsing_temperature: float = Field(default=0.1, validation_alias="VIDEO_PARSING_TEMPERATURE")
     # 长视频分段切段使用的 ffmpeg 可执行路径；未设置时使用 PATH 中的 ffmpeg（需系统已安装，如 macOS: brew install ffmpeg）
     ffmpeg_path: Optional[str] = Field(default=None, validation_alias="FFMPEG_PATH")
 
@@ -250,7 +252,7 @@ class Settings(BaseSettings):
     # 知识库配置（知识库列表与元数据仅从 MinIO 获取，不再使用本地 JSON）
     max_kb_portrait_size: int = Field(default=20, validation_alias="MAX_KB_PORTRAIT_SIZE")
     portrait_update_threshold: int = Field(default=50, validation_alias="PORTRAIT_UPDATE_THRESHOLD")
-    # 画像自动触发：若设置则通过 HTTP 调用该 API 的同步画像接口（保证使用最新逻辑含视频关键帧），否则走 Celery
+    # 画像自动触发：Celery 投递失败时，后台通过该 API 回退同步画像接口；不阻塞上传/删除请求。
     portrait_sync_api_url: Optional[str] = Field(default=None, validation_alias="PORTRAIT_SYNC_API_URL")
 
     # Celery 配置（可选，如果不需要可以忽略）

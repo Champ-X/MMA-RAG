@@ -256,7 +256,7 @@ export const requestFlowSteps: RequestFlowStep[] = [
     title: '多路混合检索',
     short: 'Dense + Sparse + Visual（+ Audio / Video）',
     description:
-      'HybridSearchEngine：Dense + Sparse 为文档主轴；图片为 text_vec + clip_vec 双路；visual_intent 下 Visual 检索可并入 video 关键帧；audio_intent 非 unnecessary 时检索 audio_vectors；video_vectors 为 scene/frame/clip 三路（video 路权重受 video_intent 调节）。多路加权 RRF 粗排后再 Cross-Encoder 精排。',
+      'HybridSearchEngine：Dense + Sparse 为文档主轴；图片为 text_vec + clip_vec 双路；visual_intent 下 Visual 检索可并入视频关键帧；audio_intent 非 unnecessary 时检索 audio_vectors；视频以 video_shot_vectors 的 caption/ASR 四路为主，并可由 video_keyframe_vectors 增强视觉命中（video 路权重受 video_intent 调节）。多路加权 RRF 粗排后再 Cross-Encoder 精排。',
     backendEntry: 'backend/app/modules/retrieval/search_engine.py::HybridSearchEngine',
     estimatedTime: '300-800ms',
     keyTechnologies: ['Dense', 'BGE-M3 Sparse', 'CLIP Visual', 'CLAP Audio', 'Video', 'RRF Fusion'],
@@ -297,17 +297,17 @@ export const coreModules: ModuleInfo[] = [
   {
     id: 'ingestion',
     name: 'Ingestion - 数据输入处理与存储',
-    role: '负责文件解析、切分与全模态向量化（文档 Dense+BGE-M3；图片 VLM+CLIP；音频 ASR+CLAP；视频每关键帧 scene_vec+frame_vec+clip_vec），以及写入 MinIO 与 Qdrant。',
+    role: '负责文件解析、切分与全模态向量化（文档 Dense+BGE-M3；图片 VLM+CLIP；音频 ASR+CLAP；视频 Scene–Shot–ASR 四路主索引+关键帧视觉增强），以及写入 MinIO 与 Qdrant。',
     color: 'green',
     highlights: [
       '统一入口：IngestionService 完成解析 → MinIO → 向量化 → Qdrant 全流程；支持本地上传、URL、文件夹、热点订阅等多来源接入',
-      '解析器工厂：PDF 优先 MinerU（API/本地 2.5）→ PaddleOCR-VL-1.5 → PyMuPDF 兜底；DOCX/PPTX 优先 MinerU 再 python-docx / python-pptx；TXT/Markdown；图片（PIL）；音频（soundfile/librosa）；视频（OpenCV）。文档内嵌图先 VLM 再插回原文后分块；音频以文件为条，视频以关键帧为条',
-      '分块策略：文档递归语义分块 + 重叠窗口，chunk 携带 context_window；图片/音频各一点；视频每关键帧一点（含场景/帧描述与 CLIP）',
+      '解析器工厂：PDF 优先 MinerU（API/本地 2.5）→ PaddleOCR-VL-1.5 → PyMuPDF 兜底；DOCX/PPTX 优先 MinerU 再 python-docx / python-pptx；TXT/Markdown；图片（PIL）；音频（soundfile/librosa）；视频（OpenCV + Qwen Omni）。文档内嵌图先 VLM 再插回原文后分块；音频以文件为条，视频以 Semantic Shot 为主检索条目',
+      '分块策略：文档递归语义分块 + 重叠窗口，chunk 携带 context_window；图片/音频各一点；视频按 Scene–Shot 分层，Shot 含视觉 caption 与对齐 ASR，关键帧为从属视觉增强',
       '文档向量化：Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏，写入 text_chunks',
       '图片向量化：VLM caption + text_vec + CLIP clip_vec（768 维），写入 image_vectors',
       '音频向量化：ASR 转写 + LLM 描述 + text_vec + CLAP clap_vec（512 维，可选 sparse），写入 audio_vectors',
-      '视频向量化：MLLM 场景/关键帧规划 → 每帧 scene_vec + frame_vec + clip_vec，写入 video_vectors（一关键帧一点）',
-      '存储：MinIO 按知识库与类型分目录（documents/images/audios/videos）；VectorStore 写入 text_chunks / image_vectors / audio_vectors / video_vectors / kb_portraits',
+      '视频向量化：Qwen Omni 联合解析 Scene、Shot 与 ASR → Shot 的 caption/ASR 各自 Dense+Sparse 四路写入 video_shot_vectors；关键帧 frame_vec+clip_vec 写入 video_keyframe_vectors',
+      '存储：MinIO 按知识库与类型分目录（documents/images/audios/videos）；VectorStore 写入 text_chunks / image_vectors / audio_vectors / video_shot_vectors / video_keyframe_vectors / kb_portraits',
       '异步管道：Celery + Redis 处理长耗时导入，前端可轮询或流式查看进度',
     ],
     codeRefs: [
@@ -415,12 +415,12 @@ export const dataFlowStages: DataFlowStage[] = [
   {
     id: 'vectorize',
     title: '全模态向量化',
-    description: '文档：Dense（Qwen3-Embedding-8B）+ BGE-M3 稀疏；图片：VLM 描述 + text_vec + CLIP；音频：ASR + 描述 + text_vec + CLAP（可选 sparse）；视频：每关键帧 scene_vec + frame_vec + clip_vec（MLLM 场景/帧规划 + 截帧 CLIP）。统一写入 Qdrant 对应集合。',
+    description: '文档：Dense（Qwen3-Embedding-8B）+ BGE-M3 稀疏；图片：VLM 描述 + text_vec + CLIP；音频：ASR + 描述 + text_vec + CLAP（可选 sparse）；视频：Scene–Shot–ASR 中 Shot 的 caption/ASR 四路向量，关键帧 frame_vec + clip_vec 视觉增强。统一写入 Qdrant 对应集合。',
   },
   {
     id: 'qdrant',
     title: '向量与稀疏索引',
-    description: 'Qdrant 存储 text_chunks（dense + sparse）、image_vectors（clip_vec + text_vec）、audio_vectors（text_vec + clap_vec，可选 sparse）、video_vectors（scene_vec + frame_vec + clip_vec，一关键帧一点）、kb_portraits，支撑多路混合检索与路由。',
+    description: 'Qdrant 存储 text_chunks（dense + sparse）、image_vectors（clip_vec + text_vec）、audio_vectors（text_vec + clap_vec，可选 sparse）、video_shot_vectors（caption/ASR 的 dense+sparse 四路，一 Shot 一点）、video_keyframe_vectors（frame_vec + clip_vec）、kb_portraits，支撑多路混合检索与路由。',
   },
   {
     id: 'redis-celery',
@@ -543,4 +543,3 @@ export const techStackItems: TechStackItem[] = [
       '长连接接收 im.message.receive_v1 等事件；租户 token、消息/卡片/文件上传 API；可选 CardKit 创建卡片与流式 patch；探活见 backend/app/api/feishu.py::/ws-status。',
   },
 ]
-

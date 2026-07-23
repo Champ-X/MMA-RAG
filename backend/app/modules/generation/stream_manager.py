@@ -39,8 +39,14 @@ def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
         }
         meta = v.metadata or {}
         if ref_type == "video":
-            st = meta.get("scene_start_time")
-            en = meta.get("scene_end_time")
+            # Scene–Shot 检索返回的最小有效单元是 Shot，播放器优先定位到 Shot；
+            # 旧视频记录没有 Shot 边界时仍可回退到 Scene。
+            st = meta.get("shot_start_time")
+            en = meta.get("shot_end_time")
+            if st is None:
+                st = meta.get("scene_start_time")
+            if en is None:
+                en = meta.get("scene_end_time")
             if st is not None:
                 item["start_sec"] = float(st)
             if en is not None:

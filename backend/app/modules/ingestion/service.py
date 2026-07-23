@@ -36,7 +36,16 @@ if TYPE_CHECKING:
 
 from .parsers.factory import ParserFactory, FileType, normalize_text_newlines
 from .storage.minio_adapter import MinIOAdapter
-from .storage.vector_store import VectorStore
+from .storage.vector_store import VectorStore, VIDEO_SHOT_COLLECTION
+from .video_scene_shot import (
+    SCHEMA_VERSION,
+    build_previous_context,
+    extract_json_object,
+    iter_shots,
+    merge_chunk_analyses,
+    normalize_video_analysis,
+    shift_video_analysis,
+)
 from app.core.config import settings
 from app.core.llm.manager import llm_manager
 from app.core.llm.prompt_engine import prompt_engine
@@ -169,10 +178,10 @@ class IngestionService:
                     except Exception:
                         pass
                     
-                    # video_vectors（纯视频库时桶内仅有 videos/uuid/keyframes/，需据此反查 kb_id）
+                    # 纯视频库时桶内仅有 videos/uuid/keyframes/，需据此反查 kb_id。
                     try:
                         res = self.vector_store.client.scroll(
-                            collection_name="video_vectors",
+                            collection_name=VIDEO_SHOT_COLLECTION,
                             scroll_filter=filt,
                             limit=1,
                             with_payload=True,
@@ -255,7 +264,9 @@ class IngestionService:
             "stage": "initializing",
             "message": "开始处理文件上传",
             "file_path": file_path,
+            # kb_id 是 Qdrant 中实际沿用的 ID；source_kb_id / bucket 用于定位用户原文件。
             "kb_id": actual_kb_id,
+            "source_kb_id": kb_id,
             "user_id": user_id,
             "started_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat(),
@@ -277,6 +288,20 @@ class IngestionService:
                 metadata = parse_result.get("metadata") or {}
                 parse_result["metadata"] = {**metadata, "source_type": source_type}
             file_type = parse_result["file_type"]
+
+            # 视频必须先拿到可信时长，才允许写入对象存储并进入 Scene–Shot 解析。
+            # 这样 ffprobe/OpenCV 环境异常不会制造“MinIO 有原文件、向量库无索引”的孤儿记录。
+            if file_type == "video":
+                try:
+                    video_duration = float(parse_result.get("duration") or 0.0)
+                except (TypeError, ValueError):
+                    video_duration = 0.0
+                if video_duration <= 0:
+                    parse_error = str((parse_result.get("metadata") or {}).get("parse_error") or "未能读取视频时长")
+                    raise ValueError(
+                        "视频元数据解析失败，文件未写入对象存储："
+                        f"{parse_error}。请确认视频文件完整且服务端 ffmpeg/ffprobe 可用。"
+                    )
             
             audit_log(
                 f"文件解析完成: {file_path}, 类型: {file_type}",
@@ -315,6 +340,16 @@ class IngestionService:
                 kb_id=kb_id,
                 file_type=storage_file_type
             )
+
+            # 原文件一旦落到 MinIO，就把其稳定 file_id 写入任务状态。文件列表可据此区分
+            # “正在解析 / 已失败但原文件可恢复 / 已就绪”，不再把仅存在对象存储中的视频误标为就绪。
+            self._update_processing_status(processing_id, {
+                "file_id": storage_result.get("file_id"),
+                "object_path": storage_result.get("object_path"),
+                "bucket": storage_result.get("bucket"),
+                "file_type": file_type,
+                "storage_persisted": True,
+            })
             
             audit_log(
                 f"文件上传完成: {storage_result['file_id']}",
@@ -365,12 +400,21 @@ class IngestionService:
             else:
                 raise ValueError(f"不支持的文件类型: {file_type}")
 
-            # 4. 画像增量触发：累计 Chunk 增量，达到阈值则异步触发 Celery 画像构建
+            # 4. 画像触发：视频以 Scene–Shot 为索引，短视频往往少于通用 Chunk 阈值。
+            # 因此只要成功写入 Shot 就强制异步刷新画像；其他模态保持原来的增量阈值策略。
             try:
-                from app.core.portrait_trigger import increment_and_maybe_trigger
-                delta = result.get("vectors_stored", 0) or 0
-                if isinstance(delta, (int, float)) and int(delta) > 0:
-                    increment_and_maybe_trigger(actual_kb_id, int(delta))
+                if file_type == "video":
+                    from app.core.portrait_trigger import trigger_portrait_rebuild
+
+                    shots_count = int(result.get("shots_count", 0) or 0)
+                    if shots_count > 0:
+                        trigger_portrait_rebuild(actual_kb_id, reason="video_ingested")
+                else:
+                    from app.core.portrait_trigger import increment_and_maybe_trigger
+
+                    delta = result.get("vectors_stored", 0) or 0
+                    if isinstance(delta, (int, float)) and int(delta) > 0:
+                        increment_and_maybe_trigger(actual_kb_id, int(delta))
             except Exception as e:
                 logger.warning(f"画像增量触发失败 kb_id={actual_kb_id}: {e}")
             
@@ -853,52 +897,583 @@ class IngestionService:
         processing_id: str,
         file_content: bytes
     ) -> Dict[str, Any]:
-        """
-        处理视频文件。长短分流：≤阈值走固定间隔关键帧+VLM；>阈值走滑动窗口+MLLM 语义解析。
-        统一按「一关键帧一点」写入 scene_vec / frame_vec / clip_vec。参见 docs/视频模态技术方案.md。
-        """
+        """处理视频文件：Omni 联合理解画面和音频，Shot 为主检索单元。"""
         try:
-            duration = float(parse_result.get("duration", 0.0))
-            file_id = storage_result["file_id"]
-            file_path = storage_result["object_path"]
-            video_format = parse_result.get("format", "mp4")
-            resolution = parse_result.get("resolution", "")
-            fps = float(parse_result.get("fps", 0.0))
-            has_audio = parse_result.get("has_audio", False)
-            threshold = getattr(settings, "video_long_threshold_seconds", 120.0)
-
-            if duration <= threshold:
-                return await self._process_video_short(
-                    parse_result=parse_result,
-                    storage_result=storage_result,
-                    kb_id=kb_id,
-                    processing_id=processing_id,
-                    file_content=file_content,
-                    duration=duration,
-                    file_id=file_id,
-                    file_path=file_path,
-                    video_format=video_format,
-                    resolution=resolution,
-                    fps=fps,
-                    has_audio=has_audio,
-                )
-            return await self._process_video_long(
+            return await self._process_video_scene_shot(
                 parse_result=parse_result,
                 storage_result=storage_result,
                 kb_id=kb_id,
                 processing_id=processing_id,
                 file_content=file_content,
-                duration=duration,
-                file_id=file_id,
-                file_path=file_path,
-                video_format=video_format,
-                resolution=resolution,
-                fps=fps,
-                has_audio=has_audio,
             )
         except Exception as e:
-            logger.error("视频处理失败: %s", str(e), exc_info=True)
+            logger.error("视频处理失败: {}", e, exc_info=True)
             raise
+
+    async def _process_video_scene_shot(
+        self,
+        parse_result: Dict[str, Any],
+        storage_result: Dict[str, Any],
+        kb_id: str,
+        processing_id: str,
+        file_content: bytes,
+    ) -> Dict[str, Any]:
+        """Scene–Shot–ASR 视频入库。
+
+        Qwen Omni 在同一次视频调用内理解画面和音频；不再先抽取 MP3 再单独转写，避免
+        ASR 与视觉片段的时间轴错位。长视频按窗口解析，最终只将 Shot 写入主检索集合。
+        """
+        duration = max(0.0, float(parse_result.get("duration", 0.0) or 0.0))
+        file_id = storage_result["file_id"]
+        file_path = storage_result["object_path"]
+        # Qdrant 的 kb_id 可能因历史迁移与前端/MinIO 桶名不同。派生 manifest、关键帧
+        # 必须跟原视频写入 storage_result 所在的同一个桶，否则文件列表、封面和删除会分裂。
+        storage_kb_id = str(storage_result.get("bucket") or kb_id)
+        video_format = parse_result.get("format", "mp4")
+        resolution = parse_result.get("resolution", "")
+        fps = float(parse_result.get("fps", 0.0) or 0.0)
+        has_audio = bool(parse_result.get("has_audio", False))
+        if duration <= 0:
+            raise ValueError("视频时长无效，无法执行 Scene–Shot 解析")
+
+        self._update_processing_status(processing_id, {
+            "stage": "parsing",
+            "progress": 20,
+            "message": "Qwen Omni 正在联合解析视频画面、场景、镜头与语音…",
+        })
+
+        video_bytes = file_content or b""
+        if len(video_bytes) < 1000:
+            try:
+                bucket = storage_result.get("bucket")
+                object_path = storage_result.get("object_path")
+                if bucket and object_path:
+                    video_bytes = await self.minio_adapter.get_file_content(bucket, object_path)
+            except Exception as e:
+                logger.warning("从 MinIO 回读视频用于 Scene–Shot 解析失败: {}", e)
+
+        import tempfile
+
+        full_video_path: Optional[str] = None
+        fd = -1
+        try:
+            if video_bytes:
+                fd, full_video_path = tempfile.mkstemp(suffix=f".{video_format or 'mp4'}")
+                # os.write 允许部分写入；视频文件较大时必须通过文件对象保证完整落盘。
+                with os.fdopen(fd, "wb") as temp_video:
+                    fd = -1
+                    temp_video.write(video_bytes)
+        except Exception as e:
+            logger.warning("写入视频临时文件失败，将尝试 URL 解析: {}", e)
+            if full_video_path:
+                try:
+                    os.unlink(full_video_path)
+                except OSError:
+                    pass
+            full_video_path = None
+        finally:
+            if fd >= 0:
+                try:
+                    os.close(fd)
+                except Exception:
+                    pass
+
+        video_url: Optional[str] = None
+        if not full_video_path:
+            try:
+                bucket = storage_result.get("bucket")
+                object_path = storage_result.get("object_path")
+                if bucket and object_path:
+                    video_url = await self.minio_adapter.get_presigned_url(bucket, object_path, expires_hours=2)
+            except Exception as e:
+                logger.warning("获取视频 presigned URL 失败: {}", e)
+
+        configured_window = float(getattr(settings, "video_chunk_window_seconds", 240.0) or 240.0)
+        configured_max = float(getattr(settings, "video_max_chunk_duration_seconds", 240.0) or 240.0)
+        max_chunk = max(30.0, min(configured_window, configured_max))
+        configured_threshold = float(getattr(settings, "video_long_threshold_seconds", max_chunk) or max_chunk)
+        chunk_threshold = max(30.0, min(configured_threshold, max_chunk))
+        overlap = max(0.0, min(60.0, float(getattr(settings, "video_chunk_overlap_seconds", 15.0) or 15.0)))
+        video_fps = min(2, max(1, int(fps))) if fps > 0 else 2
+        analysis: Optional[Dict[str, Any]] = None
+
+        try:
+            if duration <= chunk_threshold or not full_video_path:
+                # 本地文件优先；没有可落盘内容时，仍可让 provider 尝试可访问的 presigned URL。
+                analysis = await self._parse_video_scene_shot_mllm(
+                    duration=duration,
+                    processing_id=processing_id,
+                    video_local_path=full_video_path,
+                    video_url=video_url,
+                    video_fps=video_fps,
+                    previous_segments_summary=None,
+                )
+            else:
+                analyses: List[Dict[str, Any]] = []
+                failed_chunks: List[Tuple[float, float]] = []
+                step = max(1.0, max_chunk - overlap)
+                chunk_start = 0.0
+                chunk_index = 0
+                previous_context = "（本段为视频首段，无前文。）"
+                while chunk_start < duration:
+                    chunk_duration = min(max_chunk, duration - chunk_start)
+                    if chunk_duration <= 0:
+                        break
+                    # 精确转码切段会阻塞；放在线程中避免阻塞上传 API 的事件循环。
+                    segment_path = await asyncio.to_thread(
+                        self._extract_video_segment_to_file,
+                        full_video_path,
+                        chunk_start,
+                        chunk_duration,
+                    )
+                    if not segment_path:
+                        logger.warning("Scene–Shot 长视频切段失败: start={:.1f} duration={:.1f}", chunk_start, chunk_duration)
+                        failed_chunks.append((chunk_start, chunk_start + chunk_duration))
+                        chunk_start += step
+                        chunk_index += 1
+                        continue
+                    try:
+                        self._update_processing_status(processing_id, {
+                            "stage": "parsing",
+                            "progress": min(65, 20 + int(45 * min(1.0, (chunk_start + chunk_duration) / duration))),
+                            "message": f"Qwen Omni 正在解析第 {chunk_index + 1} 段（{chunk_start:.0f}–{chunk_start + chunk_duration:.0f} 秒）…",
+                        })
+                        local_analysis = await self._parse_video_scene_shot_mllm(
+                            duration=chunk_duration,
+                            processing_id=processing_id,
+                            video_local_path=segment_path,
+                            video_url=None,
+                            video_fps=video_fps,
+                            previous_segments_summary=previous_context,
+                        )
+                        if local_analysis:
+                            shifted = shift_video_analysis(local_analysis, chunk_start)
+                            analyses.append(shifted)
+                            previous_context = build_previous_context(shifted)
+                        else:
+                            logger.warning("Scene–Shot 长视频第 {} 段未获得有效模型结果", chunk_index + 1)
+                            failed_chunks.append((chunk_start, chunk_start + chunk_duration))
+                    finally:
+                        try:
+                            os.unlink(segment_path)
+                        except OSError:
+                            pass
+                    chunk_start += step
+                    chunk_index += 1
+                if failed_chunks:
+                    ranges = ", ".join(f"{start:.0f}–{end:.0f} 秒" for start, end in failed_chunks[:3])
+                    suffix = "…" if len(failed_chunks) > 3 else ""
+                    raise RuntimeError(
+                        "视频 Scene–Shot 解析不完整，未写入任何检索向量；"
+                        f"失败片段：{ranges}{suffix}。请稍后重试。"
+                    )
+                if analyses:
+                    analysis = merge_chunk_analyses(analyses, duration=duration, overlap_seconds=overlap)
+        finally:
+            if full_video_path and os.path.exists(full_video_path):
+                try:
+                    os.unlink(full_video_path)
+                except OSError:
+                    pass
+
+        if not analysis or not analysis.get("scenes"):
+            # 不能用通用单 Shot 伪装为已解析：那会让列表显示 ready，却没有真实视觉/ASR 证据。
+            raise RuntimeError(
+                "视频多模态解析未返回有效的 Scene–Shot 结果，原始视频已保留；请稍后重试。"
+            )
+
+        self._update_processing_status(processing_id, {
+            "stage": "vectorizing",
+            "progress": 72,
+            "message": "正在构建 Shot 的四路向量并提取关键帧…",
+        })
+        manifest_path = f"videos/{file_id}/analysis/{SCHEMA_VERSION}.json"
+        vector_data = await self._build_video_scene_shot_points(
+            video_bytes=video_bytes,
+            analysis=analysis,
+            file_id=file_id,
+            file_path=file_path,
+            manifest_path=manifest_path,
+            storage_kb_id=storage_kb_id,
+            duration=duration,
+            video_format=video_format,
+            resolution=resolution,
+            fps=fps,
+            has_audio=has_audio,
+            processing_id=processing_id,
+        )
+
+        if not vector_data["shot_points"]:
+            raise RuntimeError("视频 Scene–Shot 解析未生成可检索 Shot，未写入向量。")
+
+        manifest = {
+            "schema_version": SCHEMA_VERSION,
+            "file_id": file_id,
+            "file_path": file_path,
+            "duration": duration,
+            "analysis": analysis,
+        }
+        await self.minio_adapter.upload_file(
+            file_content=json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
+            file_path=f"{file_id}_scene_shot_asr.json",
+            kb_id=storage_kb_id,
+            file_type="videos",
+            custom_object_path=manifest_path,
+            file_id_override=file_id,
+        )
+
+        self._update_processing_status(processing_id, {
+            "stage": "storing",
+            "progress": 90,
+            "message": "正在存储 Scene–Shot 与关键帧向量…",
+        })
+        # 重试前清除同文件的 Shot 与关键帧，避免同一视频的处理结果累积。删除失败时
+        # 保留旧索引并失败退出，不能让新旧结果混杂后误报 ready。
+        if not self.vector_store.delete_video_points_by_file_id(kb_id, file_id):
+            raise RuntimeError("清理旧视频索引失败，未写入新的 Scene–Shot 向量。")
+        try:
+            shot_storage = await self.vector_store.upsert_video_shot_vectors(
+                kb_id, vector_data["shot_points"]
+            )
+            frame_storage = await self.vector_store.upsert_video_keyframe_vectors(
+                kb_id, vector_data["keyframe_points"]
+            )
+        except Exception:
+            # Qdrant 无跨 collection 事务；写入任一集合失败时补偿清理本次残留，
+            # 让状态明确为 failed，而不是留下部分 Shot/关键帧并被列表误判 ready。
+            if not self.vector_store.delete_video_points_by_file_id(kb_id, file_id):
+                logger.error("补偿清理失败: kb_id={} file_id={}", kb_id, file_id)
+            raise
+        await self._cleanup_stale_video_keyframes(
+            storage_kb_id,
+            file_id,
+            {
+                str(point.get("payload", {}).get("frame_image_path") or "")
+                for point in vector_data["keyframe_points"]
+            },
+        )
+        shots_count = len(vector_data["shot_points"])
+        frames_count = len(vector_data["keyframe_points"])
+        summary = (analysis.get("video_summary") or "")[:300]
+        return {
+            "processing_id": processing_id,
+            "status": "completed",
+            "file_id": file_id,
+            "description": summary,
+            "schema_version": SCHEMA_VERSION,
+            "scene_count": len(analysis.get("scenes") or []),
+            "shots_count": shots_count,
+            "key_frames_count": frames_count,
+            "manifest_path": manifest_path,
+            "vectors_stored": shot_storage.get("points_inserted", 0) + frame_storage.get("points_inserted", 0),
+            "file_type": "video",
+        }
+
+    async def _cleanup_stale_video_keyframes(
+        self,
+        storage_kb_id: str,
+        file_id: str,
+        active_paths: set[str],
+    ) -> None:
+        """在新索引成功后移除重试遗留的关键帧对象，避免封面取到过期帧。"""
+        try:
+            bucket = self.minio_adapter.get_bucket_for_kb(storage_kb_id)
+            prefix = f"videos/{file_id}/keyframes/"
+            objects = await self.minio_adapter.list_files(bucket=bucket, prefix=prefix, max_keys=10000)
+            for obj in objects:
+                object_path = str(obj.get("object_path") or "")
+                if object_path.startswith(prefix) and object_path not in active_paths:
+                    await self.minio_adapter.delete_file(bucket, object_path)
+        except Exception as cleanup_error:
+            # 索引已成功，清理失败不应让视频从 ready 回退；下次重试仍会再次尝试收敛。
+            logger.warning("清理视频旧关键帧失败 file_id={}: {}", file_id, cleanup_error)
+
+    async def _parse_video_scene_shot_mllm(
+        self,
+        duration: float,
+        processing_id: str,
+        *,
+        video_local_path: Optional[str] = None,
+        video_url: Optional[str] = None,
+        video_fps: int = 2,
+        previous_segments_summary: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """调用 MLLM 并将 v4 JSON 规范化为稳定的 Scene–Shot 结构。"""
+        previous_context = (previous_segments_summary or "").strip() or "（本段为视频首段，无前文。）"
+        prompt_text = prompt_engine.render_template(
+            "video_scene_shot_parsing",
+            chunk_duration_seconds=round(float(duration), 3),
+            previous_segments_summary=previous_context,
+        )
+        if video_local_path and os.path.exists(video_local_path):
+            content: List[Dict[str, Any]] = [
+                {"type": "video_local", "path": video_local_path, "fps": video_fps},
+                {"type": "text", "text": prompt_text},
+            ]
+            source = "video_local"
+        elif video_url:
+            content = [
+                {"type": "video_url", "video_url": {"url": video_url}, "fps": video_fps},
+                {"type": "text", "text": prompt_text},
+            ]
+            source = "video_url"
+        else:
+            logger.warning("Scene–Shot 解析未提供视频文件或 URL")
+            return None
+        try:
+            result = await self.llm_manager.chat(
+                messages=[{"role": "user", "content": content}],
+                task_type="video_parsing",
+                timeout=600,
+                max_tokens=getattr(settings, "video_parsing_max_tokens", 16000),
+                temperature=getattr(settings, "video_parsing_temperature", 0.1),
+            )
+        except Exception as e:
+            logger.warning("Scene–Shot MLLM 调用失败（{}）: {}", source, e)
+            return None
+        if not result.success or not result.data:
+            logger.warning("Scene–Shot MLLM 调用未成功（{}）: {}", source, result.error)
+            return None
+        raw = result.data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if isinstance(raw, list):
+            raw = "".join(
+                (part.get("text") or part.get("content") or str(part)) if isinstance(part, dict) else str(part)
+                for part in raw
+            )
+        data = extract_json_object(raw)
+        if not data or not isinstance(data.get("scenes"), list):
+            logger.warning(
+                "Scene–Shot MLLM JSON 解析失败（{}），返回前 500 字符: {}",
+                source,
+                (str(raw)[:500] + "...") if raw else "(空)",
+            )
+            return None
+        return normalize_video_analysis(data, duration)
+
+    async def _build_video_scene_shot_points(
+        self,
+        video_bytes: bytes,
+        analysis: Dict[str, Any],
+        file_id: str,
+        file_path: str,
+        manifest_path: str,
+        storage_kb_id: str,
+        duration: float,
+        video_format: str,
+        resolution: str,
+        fps: float,
+        has_audio: bool,
+        processing_id: str,
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """由规范化分析构建 Shot 四路向量和其从属关键帧向量。"""
+        shot_rows = list(iter_shots(analysis))
+        if not shot_rows:
+            return {"shot_points": [], "keyframe_points": []}
+        captions = [str(shot.get("caption") or scene.get("scene_summary") or "视频片段内容。") for scene, shot in shot_rows]
+        caption_vectors = await self._embed_video_texts(captions, label="Shot caption")
+        vector_dimension = len(caption_vectors[0]) if caption_vectors else 4096
+        if vector_dimension <= 0:
+            vector_dimension = 4096
+
+        asr_vectors: List[List[float]] = [[0.0] * vector_dimension for _ in shot_rows]
+        asr_positions = [index for index, (_, shot) in enumerate(shot_rows) if (shot.get("asr_text") or "").strip()]
+        if asr_positions:
+            try:
+                returned = await self._embed_video_texts(
+                    [str(shot_rows[index][1].get("asr_text") or "") for index in asr_positions],
+                    label="Shot ASR",
+                )
+                for position, vector in zip(asr_positions, returned):
+                    asr_vectors[position] = vector
+            except Exception as asr_embed_error:
+                logger.warning("Shot ASR 向量化失败，保留 caption 检索及无 ASR 向量: {}", asr_embed_error)
+
+        caption_sparse: List[Dict[int, float]] = [{} for _ in shot_rows]
+        asr_sparse: List[Dict[int, float]] = [{} for _ in shot_rows]
+        try:
+            caption_sparse_raw = await asyncio.to_thread(self.sparse_encoder.encode_corpus, captions)
+            for index, item in enumerate(caption_sparse_raw or []):
+                caption_sparse[index] = (item or {}).get("sparse", {}) or {}
+            if asr_positions:
+                asr_sparse_raw = await asyncio.to_thread(
+                    self.sparse_encoder.encode_corpus,
+                    [str(shot_rows[index][1].get("asr_text") or "") for index in asr_positions],
+                )
+                for position, item in zip(asr_positions, asr_sparse_raw or []):
+                    asr_sparse[position] = (item or {}).get("sparse", {}) or {}
+        except Exception as e:
+            # 稀疏编码器是召回增强而不是写入硬依赖；密集向量仍保证视频可用。
+            logger.warning("Shot 稀疏向量化失败，本次仅写入 dense 向量: {}", e)
+
+        # 所有关键帧共用同一个临时视频文件。此前每抽一帧都写一次完整视频，长视频会产生
+        # 成倍的磁盘 I/O，且容易让入库耗时随 Shot 数量线性恶化。
+        frame_source_path: Optional[str] = None
+        if video_bytes:
+            try:
+                import tempfile
+
+                with tempfile.NamedTemporaryFile(delete=False, suffix=f".{video_format or 'mp4'}") as temp_video:
+                    frame_source_path = temp_video.name
+                    temp_video.write(video_bytes)
+            except Exception as source_error:
+                logger.warning("写入关键帧提取临时视频失败: {}", source_error)
+
+        frame_rows: List[Dict[str, Any]] = []
+        try:
+            for row_index, (scene, shot) in enumerate(shot_rows):
+                for frame_index, frame in enumerate(shot.get("keyframes") or []):
+                    if not isinstance(frame, dict):
+                        continue
+                    timestamp = float(frame.get("timestamp", (shot.get("start_time", 0) + shot.get("end_time", 0)) / 2))
+                    frame_description = str(frame.get("description") or shot.get("caption") or "视频关键帧。")
+                    frame_path = ""
+                    frame_bytes = (
+                        await asyncio.to_thread(
+                            self._extract_frame_at_timestamp_from_path,
+                            frame_source_path,
+                            timestamp,
+                        )
+                        if frame_source_path
+                        else None
+                    )
+                    if frame_bytes:
+                        safe_timestamp = f"{timestamp:.3f}".replace(".", "_")
+                        frame_path = f"videos/{file_id}/keyframes/{scene.get('scene_id')}_{shot.get('shot_id')}_{frame_index}_{safe_timestamp}.jpg"
+                        try:
+                            await self.minio_adapter.upload_file(
+                                file_content=frame_bytes,
+                                file_path="frame.jpg",
+                                kb_id=storage_kb_id,
+                                file_type="videos",
+                                custom_object_path=frame_path,
+                                file_id_override=file_id,
+                            )
+                        except Exception as upload_error:
+                            logger.warning("视频关键帧上传失败: {}", upload_error)
+                            frame_path = ""
+                    # 只有帧真正提取并上传成功时，才将其作为可检索视觉证据写入。
+                    # 否则会留下空路径/零 CLIP 向量，检索命中后无法展示。
+                    if not frame_bytes or not frame_path:
+                        continue
+                    frame["timestamp"] = timestamp
+                    frame["description"] = frame_description
+                    frame["frame_image_path"] = frame_path
+                    frame_rows.append({
+                        "row_index": row_index,
+                        "scene": scene,
+                        "shot": shot,
+                        "frame": frame,
+                        "frame_bytes": frame_bytes,
+                    })
+        finally:
+            if frame_source_path:
+                try:
+                    os.unlink(frame_source_path)
+                except OSError:
+                    pass
+
+        frame_vectors: List[List[float]] = []
+        if frame_rows:
+            try:
+                frame_vectors = await self._embed_video_texts(
+                    [str(row["frame"].get("description") or "") for row in frame_rows],
+                    label="视频关键帧描述",
+                )
+            except Exception as frame_embed_error:
+                logger.warning("视频关键帧描述向量化失败，回退所属 Shot caption: {}", frame_embed_error)
+                frame_vectors = [caption_vectors[row["row_index"]] for row in frame_rows]
+
+        keyframe_points: List[Dict[str, Any]] = []
+        for frame_index, row in enumerate(frame_rows):
+            frame = row["frame"]
+            clip_vec = [0.0] * 768
+            if row.get("frame_bytes"):
+                try:
+                    clip_vec = (await self._vectorize_with_clip({"image_bytes": row["frame_bytes"]}, processing_id)).get("clip_vector") or clip_vec
+                except Exception as clip_error:
+                    logger.debug("Shot 关键帧 CLIP 向量化失败: {}", clip_error)
+            scene, shot = row["scene"], row["shot"]
+            keyframe_points.append({
+                "point_id": str(uuid.uuid4()),
+                "frame_vec": frame_vectors[frame_index] if frame_index < len(frame_vectors) else caption_vectors[row["row_index"]],
+                "clip_vec": clip_vec,
+                "payload": {
+                    "schema_version": SCHEMA_VERSION,
+                    "file_id": file_id,
+                    "file_path": file_path,
+                    "manifest_path": manifest_path,
+                    "scene_id": scene.get("scene_id"),
+                    "shot_id": shot.get("shot_id"),
+                    "scene_start_time": scene.get("start_time", 0.0),
+                    "scene_end_time": scene.get("end_time", 0.0),
+                    "shot_start_time": shot.get("start_time", 0.0),
+                    "shot_end_time": shot.get("end_time", 0.0),
+                    "scene_summary": scene.get("scene_summary", ""),
+                    "shot_caption": shot.get("caption", ""),
+                    "asr_text": shot.get("asr_text", ""),
+                    "frame_timestamp": frame.get("timestamp", 0.0),
+                    "frame_description": frame.get("description", ""),
+                    "frame_image_path": frame.get("frame_image_path", ""),
+                    "duration": duration,
+                    "video_format": video_format,
+                    "resolution": resolution,
+                    "fps": fps,
+                    "has_audio": has_audio,
+                },
+            })
+
+        shot_points: List[Dict[str, Any]] = []
+        for index, (scene, shot) in enumerate(shot_rows):
+            shot_points.append({
+                "point_id": str(uuid.uuid4()),
+                "caption_dense": caption_vectors[index] if index < len(caption_vectors) else caption_vectors[0],
+                "asr_dense": asr_vectors[index],
+                "caption_sparse": caption_sparse[index],
+                "asr_sparse": asr_sparse[index],
+                "payload": {
+                    "schema_version": SCHEMA_VERSION,
+                    "file_id": file_id,
+                    "file_path": file_path,
+                    "manifest_path": manifest_path,
+                    "video_summary": analysis.get("video_summary", ""),
+                    "scene_id": scene.get("scene_id"),
+                    "scene_start_time": scene.get("start_time", 0.0),
+                    "scene_end_time": scene.get("end_time", 0.0),
+                    "scene_summary": scene.get("scene_summary", ""),
+                    "shot_id": shot.get("shot_id"),
+                    "shot_start_time": shot.get("start_time", 0.0),
+                    "shot_end_time": shot.get("end_time", 0.0),
+                    "caption": shot.get("caption", ""),
+                    "asr_status": shot.get("asr_status", "no_speech"),
+                    "asr_text": shot.get("asr_text", ""),
+                    "speech_boundary": shot.get("speech_boundary", {}),
+                    "keyframes": [
+                        dict(frame)
+                        for frame in (shot.get("keyframes") or [])
+                        if frame.get("frame_image_path")
+                    ],
+                    "duration": duration,
+                    "video_format": video_format,
+                    "resolution": resolution,
+                    "fps": fps,
+                    "has_audio": has_audio,
+                },
+            })
+        return {"shot_points": shot_points, "keyframe_points": keyframe_points}
+
+    async def _embed_video_texts(self, texts: List[str], label: str, batch_size: int = 64) -> List[List[float]]:
+        """分批执行视频解析衍生文本的 dense embedding，避免长视频一次请求过大。"""
+        vectors: List[List[float]] = []
+        for start in range(0, len(texts), batch_size):
+            batch = texts[start : start + batch_size]
+            result = await self.llm_manager.embed(texts=batch, task_type="embedding")
+            if not result.success or not result.data:
+                raise ValueError(f"{label} 向量化失败: {result.error}")
+            values = result.data if isinstance(result.data, list) else [result.data]
+            if len(values) != len(batch):
+                raise ValueError(f"{label} 向量数量异常: 期望 {len(batch)}，实际 {len(values)}")
+            vectors.extend(values)
+        return vectors
 
     async def _process_video_short(
         self,
@@ -1012,7 +1587,9 @@ class IngestionService:
             "progress": 90,
             "message": "存储视频向量...",
         })
-        vector_storage_result = await self.vector_store.upsert_video_vectors(
+        # 旧私有入口不再写入已移除的旧版集合；若被直接调用，最多保留
+        # 关键帧兼容写入。正式入口始终走 _process_video_scene_shot。
+        vector_storage_result = await self.vector_store.upsert_video_keyframe_vectors(
             kb_id=kb_id,
             keyframe_points=keyframe_points,
         )
@@ -1255,7 +1832,8 @@ class IngestionService:
             "progress": 90,
             "message": "存储视频向量...",
         })
-        vector_storage_result = await self.vector_store.upsert_video_vectors(
+        # 同上：禁止旧分支重新创建或依赖旧版视频集合。
+        vector_storage_result = await self.vector_store.upsert_video_keyframe_vectors(
             kb_id=kb_id,
             keyframe_points=keyframe_points,
         )
@@ -2468,6 +3046,34 @@ class IngestionService:
                 "status": "error",
                 "error": str(e)
             }
+
+    def get_file_processing_status(
+        self,
+        file_id: str,
+        kb_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """按已落盘 file_id 查询进程内上传状态，供文件列表避免把未索引视频显示为“就绪”。
+
+        该状态是最佳努力的 UX 信号，不是索引完成的唯一依据：服务重启后仍会由 Qdrant
+        Shot 是否存在来判断最终就绪状态。
+        """
+        if not file_id:
+            return None
+        try:
+            candidates = list(self._processing_status.values())
+            # 新任务在字典尾部；倒序让重试任务优先覆盖旧失败记录。
+            for status in reversed(candidates):
+                if str(status.get("file_id") or "") != str(file_id):
+                    continue
+                stored_kb_id = str(status.get("kb_id") or "")
+                source_kb_id = str(status.get("source_kb_id") or "")
+                storage_bucket = str(status.get("bucket") or "")
+                if kb_id and str(kb_id) not in {stored_kb_id, source_kb_id, storage_bucket}:
+                    continue
+                return status.copy()
+        except Exception as e:
+            logger.debug("按 file_id 查询上传状态失败 file_id={}: {}", file_id, e)
+        return None
     
     def _parse_audio_mllm_json(self, content: str) -> Optional[Dict[str, Any]]:
         """从 MLLM 返回的文本中解析出 transcript + description 的 JSON，失败返回 None。"""
@@ -2756,53 +3362,62 @@ class IngestionService:
             return None
 
     def _extract_frame_at_timestamp(self, video_bytes: bytes, timestamp_sec: float) -> Optional[bytes]:
-        """从视频字节中截取指定时间戳的一帧，返回 JPEG 字节。先按 POS_MSEC 定位，失败则按帧索引 POS_FRAMES 重试（部分编码下按时间 seek 不可靠）。"""
+        """从视频字节中截取指定时间戳的一帧，返回 JPEG 字节。"""
         try:
-            import cv2
             import tempfile
-            import os
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
                 tmp.write(video_bytes)
                 tmp_path = tmp.name
             try:
-                cap = cv2.VideoCapture(tmp_path)
-                if not cap.isOpened():
-                    return None
-                fps = cap.get(cv2.CAP_PROP_FPS) or 1.0
-                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-                # 先按毫秒 seek（部分文件对 POS_FRAMES 更稳，所以失败时再按帧索引试）
-                cap.set(cv2.CAP_PROP_POS_MSEC, timestamp_sec * 1000)
-                ret, frame = cap.read()
-                if not ret or frame is None:
-                    # 按帧索引重试：避免只抽到前 20～30s 就失败导致 MLLM 只解析前段
-                    if total_frames > 0:
-                        frame_idx = min(int(timestamp_sec * fps), total_frames - 1)
-                        frame_idx = max(0, frame_idx)
-                        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-                        ret, frame = cap.read()
-                cap.release()
-                if not ret or frame is None:
-                    return None
-                from PIL import Image
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                pil_image = Image.fromarray(frame_rgb)
-                buf = BytesIO()
-                pil_image.save(buf, format="JPEG")
-                return buf.getvalue()
+                return self._extract_frame_at_timestamp_from_path(tmp_path, timestamp_sec)
             finally:
                 try:
                     os.unlink(tmp_path)
-                except Exception:
+                except OSError:
                     pass
         except Exception as e:
             logger.debug("_extract_frame_at_timestamp 失败: %s", e)
             return None
 
+    def _extract_frame_at_timestamp_from_path(self, video_path: str, timestamp_sec: float) -> Optional[bytes]:
+        """从已落盘视频取一帧，供批量关键帧抽取复用同一源文件。"""
+        try:
+            import cv2
+
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                return None
+            try:
+                fps = cap.get(cv2.CAP_PROP_FPS) or 1.0
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+                # 先按毫秒 seek；部分编码的时间 seek 不稳定时按帧索引重试。
+                cap.set(cv2.CAP_PROP_POS_MSEC, max(0.0, timestamp_sec) * 1000)
+                ret, frame = cap.read()
+                if (not ret or frame is None) and total_frames > 0:
+                    frame_index = min(int(max(0.0, timestamp_sec) * fps), total_frames - 1)
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_index))
+                    ret, frame = cap.read()
+            finally:
+                cap.release()
+            if not ret or frame is None:
+                return None
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_image = Image.fromarray(frame_rgb)
+            buffer = BytesIO()
+            pil_image.save(buffer, format="JPEG")
+            return buffer.getvalue()
+        except Exception as e:
+            logger.debug("_extract_frame_at_timestamp_from_path 失败: %s", e)
+            return None
+
     def _extract_video_segment_to_file(
         self, full_video_path: str, start_sec: float, duration_sec: float
     ) -> Optional[str]:
-        """用 ffmpeg 从完整视频中切出 [start_sec, start_sec+duration_sec] 段，写入临时文件，返回路径。
-        -ss 置于 -i 前以启用快速定位，适合 -c copy 按关键帧切段。"""
+        """精确转码切出 [start_sec, start_sec+duration_sec] 段，供模型以 0 秒为起点解析。
+
+        不能用快速 seek + ``-c copy``：GOP 非关键帧处会让生成片段实际早于
+        ``start_sec``，随后按请求时间平移会造成 Shot/ASR 时间轴整体偏移。
+        """
         import subprocess
         import tempfile
         from app.core.config import settings
@@ -2816,15 +3431,20 @@ class IngestionService:
         fd, segment_path = tempfile.mkstemp(suffix=".mp4")
         try:
             os.close(fd)
-            # -ss 在 -i 前：快速 seek，与 -c copy 配合按关键帧切段，避免先解码再截取导致失败
+            # 把 -ss 放到输入后并重编码，使片段时间 0 准确对应原视频的 start_sec。
             result = subprocess.run(
                 [
                     ffmpeg_bin, "-y",
-                    "-ss", str(start_sec),
                     "-i", full_video_path,
+                    "-ss", str(start_sec),
                     "-t", str(duration_sec),
-                    "-c", "copy",
-                    "-avoid_negative_ts", "1",
+                    "-map", "0:v:0?",
+                    "-map", "0:a?",
+                    "-c:v", "libx264",
+                    "-preset", "veryfast",
+                    "-crf", "20",
+                    "-c:a", "aac",
+                    "-movflags", "+faststart",
                     segment_path,
                 ],
                 capture_output=True,

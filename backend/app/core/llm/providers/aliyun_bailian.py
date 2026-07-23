@@ -135,12 +135,40 @@ class AliyunBailianProvider(BaseLLMProvider):
                 return (path, fps, text)
         return None
 
+    def _extract_video_url_from_messages(self, messages: List[Dict[str, Any]]) -> Optional[tuple]:
+        """若最后一条 user 消息含 type=video_url，返回 (url, fps, text)。"""
+        for msg in reversed(messages):
+            if msg.get("role") != "user":
+                continue
+            content = msg.get("content")
+            if not isinstance(content, list):
+                return None
+            url: Optional[str] = None
+            fps = 2
+            text = ""
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "video_url":
+                    source = block.get("video_url") or block.get("url")
+                    url = source.get("url") if isinstance(source, dict) else source
+                    fps = int(block.get("fps", 2)) if block.get("fps") is not None else 2
+                elif block.get("type") == "text":
+                    text = (block.get("text") or "").strip()
+            if url and text:
+                return str(url), fps, text
+        return None
+
     async def _chat_completion_video_local(
         self, path: str, fps: int, text: str, model: str, kwargs: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """本地上传视频：DashScope MultiModalConversation（file://），同步 call 在线程中执行。"""
+        """本地文件或可访问 URL 视频：DashScope MultiModalConversation，同步 call 在线程中执行。
+
+        Omni 系列对视频请求要求/偏好流式返回；这里在 provider 内聚合流，向上层保持普通
+        chat completion 形态。这样可避免长视频结构化 JSON 因非流式响应或默认输出上限被截断。
+        """
         import asyncio
-        video_path = f"file://{path}" if not path.startswith("file://") else path
+        video_path = path if path.startswith(("file://", "http://", "https://", "oss://")) else f"file://{path}"
         dashscope_messages = [
             {
                 "role": "user",
@@ -151,53 +179,89 @@ class AliyunBailianProvider(BaseLLMProvider):
             }
         ]
 
+        def _content_to_text(content: Any) -> str:
+            if content is None:
+                return ""
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                parts: List[str] = []
+                for part_item in content:
+                    if isinstance(part_item, dict):
+                        part = part_item.get("text") or part_item.get("content")
+                    else:
+                        part = getattr(part_item, "text", None) or getattr(part_item, "content", None)
+                    if part is not None:
+                        parts.append(part if isinstance(part, str) else str(part))
+                return "".join(parts)
+            return str(content)
+
+        def _response_content(response: Any) -> str:
+            output = response.get("output") if isinstance(response, dict) else getattr(response, "output", None)
+            choices = (output.get("choices") if isinstance(output, dict) else getattr(output, "choices", None)) or []
+            if not choices:
+                return ""
+            message = getattr(choices[0], "message", None)
+            if message is None and isinstance(choices[0], dict):
+                message = choices[0].get("message")
+            content = getattr(message, "content", None) if message is not None else None
+            if content is None and isinstance(message, dict):
+                content = message.get("content")
+            return _content_to_text(content)
+
         def _call() -> Dict[str, Any]:
             import dashscope
             from dashscope import MultiModalConversation
             dashscope.api_key = self.api_key
             dashscope.base_http_api_url = "https://dashscope.aliyuncs.com/api/v1"
-            resp = MultiModalConversation.call(
+            max_tokens = kwargs.get("max_tokens", 16000)
+            try:
+                max_tokens = max(1, min(65536, int(max_tokens)))
+            except (TypeError, ValueError):
+                max_tokens = 16000
+            response_stream = MultiModalConversation.call(
                 api_key=self.api_key,
                 model=model,
                 messages=dashscope_messages,
+                stream=True,
+                incremental_output=True,
+                result_format="message",
+                temperature=kwargs.get("temperature", 0.1),
+                max_tokens=max_tokens,
             )
-            if resp.status_code != 200 or not getattr(resp, "output", None):
-                raise RuntimeError(getattr(resp, "message", str(resp)) or "MultiModalConversation 调用失败")
-            choices = getattr(resp.output, "choices", None) or []
-            if not choices:
-                raise RuntimeError("MultiModalConversation 返回无 choices")
-            msg = getattr(choices[0], "message", None)
-            if not msg:
-                raise RuntimeError("MultiModalConversation 返回无 message")
-            content = getattr(msg, "content", None)
-            if content is None:
-                text_out = ""
-            elif isinstance(content, str):
-                text_out = content
-            elif isinstance(content, list):
-                # DashScope 多模态可能返回 [{"type":"text","text":"..."}]、[{"content":"..."}] 或对象列表（.text 属性）
-                parts = []
-                for p in content:
-                    part = None
-                    if isinstance(p, dict):
-                        part = p.get("text") or p.get("content")
-                    elif hasattr(p, "text") and getattr(p, "text", None):
-                        part = getattr(p, "text")
-                    elif hasattr(p, "content") and getattr(p, "content", None):
-                        part = getattr(p, "content")
-                    if part is not None:
-                        parts.append(part if isinstance(part, str) else str(part))
-                    else:
-                        parts.append(str(p))
-                text_out = "".join(parts)
+            # DashScope 流式接口会返回 iterable；个别 SDK/模型可能直接返回单个 Response，二者兼容。
+            if hasattr(response_stream, "status_code"):
+                responses = [response_stream]
             else:
-                text_out = str(content)
+                responses = response_stream
+            text_out = ""
+            last_response = None
+            for resp in responses:
+                last_response = resp
+                status_code = resp.get("status_code", 200) if isinstance(resp, dict) else getattr(resp, "status_code", 200)
+                output = resp.get("output") if isinstance(resp, dict) else getattr(resp, "output", None)
+                message = resp.get("message") if isinstance(resp, dict) else getattr(resp, "message", None)
+                if status_code != 200 or not output:
+                    raise RuntimeError(message or str(resp) or "MultiModalConversation 调用失败")
+                # incremental_output=True 时每个 chunk 是累积内容，取最后一个非空结果即可；
+                # 非增量 SDK 则拼接防止丢字。
+                current = _response_content(resp)
+                if current:
+                    if current.startswith(text_out):
+                        text_out = current
+                    else:
+                        text_out += current
+            if not text_out:
+                raise RuntimeError("MultiModalConversation 返回无文本内容")
             return {
                 "choices": [{"message": {"role": "assistant", "content": text_out}}],
-                "usage": getattr(resp, "usage", None) or {},
+                "usage": (
+                    last_response.get("usage") if isinstance(last_response, dict)
+                    else getattr(last_response, "usage", None)
+                ) or {},
             }
 
-        timeout = float(kwargs.get("timeout", 90))
+        timeout = float(kwargs.get("timeout", 600))
         loop = asyncio.get_event_loop()
         start = time.time()
         try:
@@ -221,7 +285,7 @@ class AliyunBailianProvider(BaseLLMProvider):
         self, messages: List[Dict[str, str]], model: str, **kwargs
     ) -> Dict[str, Any]:
         """聊天对话（OpenAI 兼容的 /chat/completions）。
-        若 content 含 type=video_local（本地上传），则走 DashScope MultiModalConversation（file://）。
+        若 content 含 type=video_local（本地上传）或 video_url，则走 DashScope MultiModalConversation。
         qwen3-omni-flash 等 Omni 模型要求 stream=True，本方法会在内部用流式请求并聚合成非流式返回。
         音频块 input_audio.data 若为 base64，会规范化为 DashScope 要求的 data URI。
         """
@@ -232,6 +296,10 @@ class AliyunBailianProvider(BaseLLMProvider):
         if video_local:
             path, fps, text = video_local
             return await self._chat_completion_video_local(path=path, fps=fps, text=text, model=model, kwargs=kwargs)
+        video_url = self._extract_video_url_from_messages(messages)
+        if video_url:
+            url, fps, text = video_url
+            return await self._chat_completion_video_local(path=url, fps=fps, text=text, model=model, kwargs=kwargs)
 
         # 获取 max_tokens，确保类型正确
         max_tokens = kwargs.get("max_tokens")

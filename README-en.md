@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/public/logo.png" alt="MMA · Multi-Modal Agentic RAG" height="120" />
+  <img src="frontend/public/logo-minimal-v2.png" alt="MMA · Multi-Modal Agentic RAG" height="120" />
 </p>
 
 <p align="center"><strong>English | <a href="README.md">简体中文</a></strong></p>
@@ -98,13 +98,13 @@ Follow **[FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md)**. With the bot and websoc
 
 - **Role**: Parse files and multi-source content, chunk documents, embed, write to object store and vector DB for retrieval and portraits.
 - **Parsing**: `ParserFactory` by type—**PDF / DOCX / PPTX**: MinerU; figures go through VLM then merge into text before chunking; **TXT / Markdown**, **images** (PIL / `ImageParser`); **audio** (`AudioParser`: `mp3`/`wav`/`m4a`/`flac`, metadata via `soundfile`/`librosa`); **video** (`VideoParser`: `mp4`/`avi`/`mov`/`mkv`, OpenCV metadata; segmenting and audio extraction need **FFmpeg**, see [optional dependencies](#optional-system-dependencies)). Inline images: VLM caption → MinIO → placeholder in source → unified chunking.
-- **Chunking**: **Documents**—recursive semantic chunks (paragraph/sentence first, min/max length, overlap); each chunk has `context_window` (neighbor chunk IDs). **Image / audio / video**—one **record** per asset (single image; whole audio clip; video as multiple points per scene/keyframe).
+- **Chunking**: **Documents**—recursive semantic chunks (paragraph/sentence first, min/max length, overlap); each chunk has `context_window` (neighbor chunk IDs). **Image / audio**—one **record** per asset; **video**—Scene–Shot hierarchy, with one main retrieval point per Shot and optional child keyframes.
 - **Embedding**:
   - **Documents**: Qwen3-Embedding-8B (dense 4096) + BGE-M3 sparse → `text_chunks`.
   - **Images**: VLM caption → `text_vec` (4096) + CLIP → `clip_vec` (768) → `image_vectors`.
   - **Audio**: ASR + LLM description → text for dense (optional BGE-M3 sparse) + **CLAP** (`clap_vec`, 512) → `audio_vectors`.
-  - **Video**: MLLM scene/keyframe plan → `video_vectors` per keyframe (`scene_vec` / `frame_vec` with descriptions; CLIP on frames → `clip_vec`); long-video segmentation; optional audio track extract to `audios/` + ASR. See **[MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**.
-- **Storage**: MinIO per-KB buckets; prefixes `documents/`, `images/`, `audios/`, `videos/` (including `videos/{file_id}/keyframes/`). Qdrant: `text_chunks`, `image_vectors`, `audio_vectors`, `video_vectors`; portraits in `kb_portraits` (Knowledge).
+  - **Video**: Qwen Omni jointly parses visual scenes, semantic Shots, and in-video ASR. Each Shot writes caption/ASR dense+sparse vectors to `video_shot_vectors`; optional keyframes write `frame_vec` + CLIP `clip_vec` to `video_keyframe_vectors`. See **[MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**.
+- **Storage**: MinIO per-KB buckets; prefixes `documents/`, `images/`, `audios/`, `videos/` (including `videos/{file_id}/keyframes/`). Qdrant: `text_chunks`, `image_vectors`, `audio_vectors`, `video_shot_vectors`, `video_keyframe_vectors`; portraits in `kb_portraits` (Knowledge).
 - **Sources & async**: URLs, folders, Tavily trends, media downloads, etc.; heavy jobs via Celery + Redis; frontend polls or streams progress.
 - **Entry points**: `modules/ingestion/service.py`, `parsers/factory.py`, `sources/`, `storage/minio_adapter.py`, `storage/vector_store.py`.
 
@@ -120,7 +120,7 @@ Follow **[FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md)**. With the bot and websoc
 
 - **Role**: After One-Pass intent and target KBs, hybrid retrieval and two-stage rerank → Top-K for generation.
 - **One-pass intent**: One LLM call → `IntentObject` (`refined_query`, `sparse_keywords`, `multi_view_queries`, `visual_intent` / `audio_intent` / `video_intent`, …); fallback defaults on parse failure.
-- **Hybrid search**: Dense (main + multi-view), Sparse (BGE-M3), Visual (dual text_vec/clip_vec on `image_vectors`); optional `audio_vectors` / `video_vectors`; dedupe, weighted RRF.
+- **Hybrid search**: Dense (main + multi-view), Sparse (BGE-M3), Visual (dual text_vec/clip_vec on `image_vectors`), Audio, and Shot-based Video (`video_shot_vectors`, with optional `video_keyframe_vectors` enhancement); dedupe, weighted RRF.
 - **Rerank**: Build (query, content) pairs for Cross-Encoder; merge with RRF for `final_top_k`; quota guards (e.g. images) for `implicit_enrichment`.
 - **Entry points**: `modules/retrieval/service.py`, `processors/intent.py`, `processors/rewriter.py`, `search_engine.py`, `reranker.py`.
 

@@ -1,5 +1,5 @@
 import { useId, useState, useEffect } from 'react'
-import { X, CheckCircle, Loader2, Image as ImageIcon, FileText, FileCode, Presentation, FileSpreadsheet, Database, Sparkles, Type, Pencil, Check, Music, Video } from 'lucide-react'
+import { X, CheckCircle, Loader2, AlertCircle, Image as ImageIcon, FileText, FileCode, Presentation, FileSpreadsheet, Database, Sparkles, Type, Pencil, Check, Music, Video } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // 状态徽章
@@ -22,6 +22,26 @@ export function StatusBadge({ status }: { status: string }) {
         aria-label="文件状态：处理中"
       >
         <Loader2 size={10} className="animate-spin" aria-hidden /> 处理中
+      </span>
+    )
+  }
+  if (status === 'failed') {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-700 border border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800"
+        aria-label="文件状态：解析失败"
+      >
+        <AlertCircle size={10} aria-hidden /> 解析失败
+      </span>
+    )
+  }
+  if (status === 'unindexed') {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800"
+        aria-label="文件状态：未完成解析"
+      >
+        <AlertCircle size={10} aria-hidden /> 未完成解析
       </span>
     )
   }

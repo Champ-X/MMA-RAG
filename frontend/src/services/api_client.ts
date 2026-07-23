@@ -332,7 +332,7 @@ export const knowledgeApi = {
   // 获取知识库详情
   getKnowledgeBase: (id: string) => apiClient.get(`/knowledge/${id}`),
 
-  // 获取知识库向量统计（用于数据源比例、主题统计、向量维度）
+  // 获取知识库统计：video 是原始视频文件数，video_shots 是 Scene–Shot 画像/检索样本数。
   getKnowledgeBaseStats: (id: string) =>
     apiClient.get<{
       documents: number
@@ -340,6 +340,7 @@ export const knowledgeApi = {
       images: number
       audio?: number
       video?: number
+      video_shots?: number
       text_vector_dim?: number
       image_vector_dim?: number
       audio_vector_dim?: number
@@ -380,7 +381,7 @@ export const knowledgeApi = {
 
   // 获取知识库文件列表
   getKnowledgeBaseFiles: (id: string) =>
-    apiClient.get<{ files: Array<{ id: string; name: string; size: number; date: string; type: string; preview_url?: string; text_preview?: string }> }>(`/knowledge/${id}/files`),
+    apiClient.get<{ files: Array<{ id: string; name: string; size: number; date: string; type: string; status?: string; preview_url?: string; text_preview?: string }> }>(`/knowledge/${id}/files`),
 
   // 删除知识库中的文件
   deleteKnowledgeBaseFile: (kbId: string, fileId: string) =>

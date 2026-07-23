@@ -39,9 +39,9 @@ httpx==0.25.2
 lark-oapi==1.5.3
 dashscope>=1.20.0   # 阿里百炼本地上传视频 MultiModalConversation
 
-# 图像处理
+# 图像处理（服务端不需要 GUI；headless 避免在 python:slim 中依赖 libGL.so.1）
 Pillow==10.1.0
-opencv-python==4.8.1.78
+opencv-python-headless==4.8.1.78
 
 # 音频处理
 librosa>=0.10.0          # 音频分析和处理

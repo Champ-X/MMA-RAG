@@ -507,19 +507,14 @@ class LLMRegistry:
                     "openrouter:google/gemini-3-pro-preview",
                 ],
             },
-            # 视频解析：长视频场景划分+关键帧、短视频整体描述，需支持多图/视觉
+            # 视频解析：Scene–Shot 结果含逐 Shot ASR。video_local 会被阿里云 provider
+            # 直接交给 DashScope MultiModalConversation，因此备用模型也必须能理解视频内音频，
+            # 且必须保留在同一 provider（其他 OpenAI provider 无法读取本地 video_local 块）。
             "video_parsing": {
                 "model": "aliyun_bailian:qwen3.5-omni-plus-2026-03-15",
                 "fallbacks": [
-                    "aliyun_bailian:qwen3.5-plus",
-                    "aliyun_bailian:kimi/kimi-k2.5",
-                    "openrouter:google/gemini-3-pro-preview",
-                    "openrouter:google/gemini-3-flash-preview",
-                    "openrouter:google/gemini-2.5-flash",
                     "aliyun_bailian:qwen3-omni-flash",
-                    "aliyun_bailian:qwen3-omni-turbo",
-                    "openrouter:qwen/qwen3.5-plus-02-15",
-                    "openrouter:qwen/qwen3.5-397b-a17b",
+                    "aliyun_bailian:qwen-omni-turbo",
                 ],
             },
         }

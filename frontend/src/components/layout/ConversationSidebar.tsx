@@ -122,7 +122,7 @@ export function ConversationSidebar({
         <div className={cn('flex min-w-0 items-center', collapsed ? 'justify-center' : 'gap-2.5')} title="Nexus">
           <div className={cn('grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-2xl border', theme.logo)}>
             <img
-              src="/logo.png"
+              src="/logo-minimal-v2.png"
               alt=""
               width={40}
               height={40}

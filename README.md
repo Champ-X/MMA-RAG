@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/public/logo.png" alt="MMA · Multi-Modal Agentic RAG" height="120" />
+  <img src="frontend/public/logo-minimal-v2.png" alt="MMA · Multi-Modal Agentic RAG" height="120" />
 </p>
 
 <p align="center"><strong>简体中文 | <a href="README-en.md">English</a></strong></p>
@@ -97,14 +97,14 @@ Query: `为《浴血黑帮》这部电影挑选合适的海报封面和主题曲
 ### 1. 📥 Ingestion（数据输入处理与存储）
 
 - **职责**：将各类文件与多来源内容解析、分块（文档）、向量化后写入对象存储与向量库，为检索与画像提供数据基础。
-- **解析**：`ParserFactory` 按类型调度——**PDF / DOCX / PPTX**：MinerU解析，文档中的图片会VLM之后反嵌入文本再做分块；**TXT / Markdown**、**图片**（PIL / `ImageParser`）；**音频**（`AudioParser`：`mp3`/`wav`/`m4a`/`flac` 等，元数据优先 `soundfile`/`librosa`）；**视频**（`VideoParser`：`mp4`/`avi`/`mov`/`mkv` 等，OpenCV 读元数据；长视频切段、音轨抽取依赖 **FFmpeg**，见 [可选系统依赖](#可选系统依赖)）。文档内嵌图先 VLM 描述并上传 MinIO，再将 caption 插回原文占位符后统一分块。
-- **分块**：**文档**为递归语义分块（段落/句子优先，max/min 长度与重叠窗口），每个 chunk 带 `context_window`（前后 chunk ID）便于调试。**图片 / 音频 / 视频**不以传统 chunk 切分，而以**单条记录**为单位入库（图片单张；音频整段；视频按场景/关键帧生成多条向量点，见下）。
+- **解析**：`ParserFactory` 按类型调度——**PDF / DOCX / PPTX**：MinerU解析，文档中的图片会VLM之后反嵌入文本再做分块；**TXT / Markdown**、**图片**（PIL / `ImageParser`）；**音频**（`AudioParser`：`mp3`/`wav`/`m4a`/`flac` 等，元数据优先 `soundfile`/`librosa`）；**视频**（`VideoParser`：`mp4`/`avi`/`mov`/`mkv` 等，OpenCV 读元数据；长视频切段与音轨检测依赖 **FFmpeg/ffprobe**，见 [可选系统依赖](#可选系统依赖)）。文档内嵌图先 VLM 描述并上传 MinIO，再将 caption 插回原文占位符后统一分块。
+- **分块**：**文档**为递归语义分块（段落/句子优先，max/min 长度与重叠窗口），每个 chunk 带 `context_window`（前后 chunk ID）便于调试。**图片 / 音频 / 视频**不以传统 chunk 切分，而以**语义单元**入库（图片单张；音频整段；视频为 Scene → Shot → Key Frame，Shot 是主检索单元）。
 - **向量化**：
   - **文档**：Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏 → `text_chunks`。
   - **图片**：VLM caption → `text_vec`（4096）+ CLIP → `clip_vec`（768）→ `image_vectors`。
   - **音频**：ASR 转写 + LLM 内容描述 → 拼接文本做 Dense（及可选 BGE-M3 稀疏）+ **CLAP**（`clap_vec`，512 维）→ `audio_vectors`。
-  - **视频**：MLLM 场景与关键帧规划 → 每关键帧写入 `video_vectors`（`scene_vec` / `frame_vec` 与场景、帧描述对应；帧图经 CLIP 得 `clip_vec`）；长视频分段处理；可选从音轨抽音频文件至 `audios/` 再走 ASR。细节见 **[docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**。
-- **存储**：MinIO 按知识库分桶，路径前缀含 `documents/`、`images/`、`audios/`、`videos/`（含 `videos/{file_id}/keyframes/` 关键帧图）。Qdrant 集合包括 `text_chunks`、`image_vectors`、`audio_vectors`、`video_vectors`（画像由 Knowledge 写入 `kb_portraits`）。
+  - **视频**：Qwen3.5-Omni 在一次视频调用中联合解析画面与内嵌音频，输出 Scene → Semantic Shot → Key Frame；每个 Shot 写入 `caption_dense/caption_sparse/asr_dense/asr_sparse` 四路向量，关键帧保留 `frame_vec/clip_vec` 作为可选视觉增强。长视频使用重叠窗口并合并，完整解析 manifest 可追溯。细节见 **[docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**。
+- **存储**：MinIO 按知识库分桶，路径前缀含 `documents/`、`images/`、`audios/`、`videos/`（含 `videos/{file_id}/keyframes/` 与 `analysis/scene_shot_asr_v4.json`）。Qdrant 集合包括 `text_chunks`、`image_vectors`、`audio_vectors`、`video_shot_vectors`、`video_keyframe_vectors`（画像由 Knowledge 写入 `kb_portraits`）。
 - **多来源与异步**：sources 层支持 URL、文件夹、Tavily 热点、媒体下载等；大任务经 Celery + Redis，前端可轮询或流式查进度。
 - **代码入口**：`modules/ingestion/service.py`、`parsers/factory.py`、`sources/`、`storage/minio_adapter.py`、`storage/vector_store.py`。
 
@@ -120,7 +120,7 @@ Query: `为《浴血黑帮》这部电影挑选合适的海报封面和主题曲
 
 - **职责**：One-Pass 意图、目标知识库确定后的混合检索与两阶段重排，输出供生成的 Top-K。
 - **One-Pass 意图**：一次 LLM 调用输出 `IntentObject`（含 `refined_query`、`sparse_keywords`、`multi_view_queries`、`visual_intent` / `audio_intent` / `video_intent` 等）；解析失败时回退默认意图。
-- **混合检索**：Dense（主查询 + 多视角融合）、Sparse（BGE-M3）、Visual（`image_vectors` 上 text_vec/clip_vec 双路）；在意图与数据允许时检索 `audio_vectors`、`video_vectors`；多路结果去重后加权 RRF 粗排。
+- **混合检索**：Dense（主查询 + 多视角融合）、Sparse（BGE-M3）、Visual（`image_vectors` 上 text_vec/clip_vec 双路）；视频以 Shot 的 caption/ASR 四路加权 RRF 为主，按视觉意图可增强关键帧。多路结果去重后加权 RRF 粗排。
 - **两阶段重排**：候选构建 (query, content) 对送 Cross-Encoder；与 RRF 分加权合并得 `final_top_k`；`implicit_enrichment` 等场景可做图片等配额保护。
 - **代码入口**：`modules/retrieval/service.py`、`processors/intent.py`、`processors/rewriter.py`、`search_engine.py`、`reranker.py`。
 

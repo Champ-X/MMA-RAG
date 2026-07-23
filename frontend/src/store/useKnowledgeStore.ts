@@ -15,6 +15,7 @@ export interface KnowledgeBase {
     images: number
     audio?: number
     video?: number
+    video_shots?: number
     text_vector_dim?: number
     image_vector_dim?: number
     audio_vector_dim?: number

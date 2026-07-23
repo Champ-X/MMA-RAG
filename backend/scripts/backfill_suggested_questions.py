@@ -92,7 +92,7 @@ def _sample_multimodal_texts_for_kb(
     - text_chunks.text_content
     - image_vectors.caption / description
     - audio_vectors.transcript / description
-    - video_vectors.scene_summary / frame_description
+    - video_shot_vectors.scene_summary / caption / asr_text
     """
     candidates = list(dict.fromkeys(kb_service._kb_id_candidates(kb_id)))
     out: List[Dict[str, str]] = []
@@ -120,7 +120,11 @@ def _sample_multimodal_texts_for_kb(
     collections = {
         "image_vectors": [("caption", "image_caption"), ("description", "image_desc")],
         "audio_vectors": [("transcript", "audio_transcript"), ("description", "audio_desc")],
-        "video_vectors": [("scene_summary", "video_scene"), ("frame_description", "video_frame")],
+        "video_shot_vectors": [
+            ("scene_summary", "video_scene"),
+            ("caption", "video_shot"),
+            ("asr_text", "video_asr"),
+        ],
     }
     for cid in candidates:
         filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=cid))])
@@ -260,4 +264,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

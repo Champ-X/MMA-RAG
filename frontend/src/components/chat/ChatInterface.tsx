@@ -756,7 +756,7 @@ export function ChatInterface() {
                       className="mb-7 inline-flex h-32 w-32 items-center justify-center overflow-hidden rounded-[2rem] border border-white/80 bg-white/70 shadow-[0_18px_42px_-26px_rgba(79,70,229,0.7)] ring-1 ring-slate-200/80 dark:border-white/10 dark:bg-slate-950/40 dark:ring-indigo-300/20"
                     >
                       <img
-                        src="/logo.png"
+                        src="/logo-minimal-v2.png"
                         alt=""
                         className="h-full w-full origin-center scale-[1.22] object-contain object-center select-none"
                         style={{ background: 'transparent' }}
