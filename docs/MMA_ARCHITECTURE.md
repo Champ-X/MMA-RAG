@@ -304,7 +304,7 @@ flowchart LR
 
 **设计思路**：**Blob（MinIO）存原件与可播放媒体**，**Qdrant 存向量与检索 payload**——二者用 `file_id`、路径前缀约定对齐。向量侧按 **集合（Collection）分模态**，便于独立调参、独立扩容与按意图短路；**kb_id 全程 Pre-filter**，保证多租户隔离与延迟可控。
 
-**方案特点**：每库一桶或等价隔离、Presigned URL 解耦鉴权与直传；`text_chunks` / `image_vectors` / `audio_vectors` / `video_shot_vectors` / `video_keyframe_vectors` / `kb_portraits` 职责单一；画像 **Replace 更新** 避免旧簇残留污染路由。
+**方案特点**：每库一桶或等价隔离、Presigned URL 解耦鉴权与直传；`text_chunks_agentic` / `image_vectors` / `audio_vectors` / `video_shot_vectors` / `video_keyframe_vectors` / `kb_portraits` 职责单一；画像 **Replace 更新** 避免旧簇残留污染路由。
 
 **为何按 Collection 分模态（而非单集合多类型）**：各路检索的 **命名向量维度与检索器不同**（如 sparse 仅文档、clip 仅图/视频帧）；分集合便于 **独立限流、扩容与按意图短路**，也降低单集合 payload 模式爆炸带来的索引与调试成本。
 
@@ -315,7 +315,11 @@ flowchart LR
 
 #### 向量与 Chunk（Qdrant）
 
-- **text_chunks**：文档 Chunk；向量含 `dense`（4096 维）与 `sparse`（BGE-M3）；Payload 含 text_content、kb_id、file_id、file_path、file_type、context_window、metadata 等。
+- **text_chunks_agentic**：Agentic 文档 Chunk；向量含 `dense`（4096 维）与 `sparse`（BGE-M3）；Payload 含 text_content、embedding_text、kb_id、file_id、file_path、file_type、context_window、metadata 等。
+
+  - 解析文本先拆成不可变的标题、段落、列表、表格、代码等原子单元；LLM 只返回单元 ID 的连续范围和紧凑关系，不返回或改写原文。
+  - 服务端验证每个单元恰好覆盖一次、chunk 无 overlap、估算 token 不超过 600，再从原始偏移无损物化 chunk；LLM 超时或计划非法时自动降级为确定性的结构化 planner。
+  - Dense 向量使用章节/知识单元标题加原文，Sparse 向量仅使用原文，避免标题重复放大词法召回。
 - **image_vectors**：图片；Named Vector：clip_vec（768 维）、text_vec（4096 维）；Payload 含 kb_id、file_id、file_path、caption、image_source_type、img_format 等。
 - **audio_vectors**：音频；Named Vector：text_vec（4096 维）、clap_vec（512 维），可选 sparse；Payload 含 kb_id、file_id、file_path、transcript、description、duration、audio_format、sample_rate 等。
 - **video_shot_vectors**：视频主检索；**每 Shot 一点**；Named Vector：`caption_dense`、`asr_dense`（4096）与 `caption_sparse`、`asr_sparse`；Payload 含 `scene_summary`、`caption`、`asr_text`、Scene/Shot 时间范围等。
@@ -329,7 +333,7 @@ flowchart LR
 **实现方案要点：**
 
 - **MinIO**：按知识库划分存储空间（如按 kb_id 的 bucket 或前缀），文档、图片、音频、视频分子目录（documents/images/audios/videos）；对象路径与 `file_id`、`file_path` 在向量库 Payload 中一致保存，便于生成 Presigned URL 与删除时联动；音频/视频可提供播放用 URL。
-- **Qdrant**：所有检索均先按 `kb_id` 做 Pre-filter，再执行向量/稀疏检索，保证只命中目标知识库。`text_chunks` 的 Payload 中 `context_window` 存前后 chunk 的 ID，便于调试接口按 chunk_id 拉取前后文。image_vectors、audio_vectors、video_shot_vectors、video_keyframe_vectors 各自独立集合，检索时按意图分别查询再融合。
+- **Qdrant**：所有检索均先按 `kb_id` 做 Pre-filter，再执行向量/稀疏检索，保证只命中目标知识库。`text_chunks_agentic` 的 Payload 中 `context_window` 存前后 chunk 的 ID，便于调试接口按 chunk_id 拉取前后文。image_vectors、audio_vectors、video_shot_vectors、video_keyframe_vectors 各自独立集合，检索时按意图分别查询再融合。
 - **画像更新触发**：在内容增量或定时策略下触发画像重建；从 Text / Image / Audio / Video 四路按比例采样（视频以**关键帧点**计量，向量为 **frame_vec**），保证全模态在路由中有表征；生成完成后采用 Replace 策略：先删除该 kb_id 下全部旧画像点，再插入新生成的 portrait 点，避免历史画像残留。
 
 ### 2.5 数据流与多端输出（与前端「数据流」对照）
@@ -412,7 +416,7 @@ flowchart TB
 
 - **输入**：RetrievalContext（含 refined_query、target_kb_ids、search_strategies、**visual_intent、audio_intent、video_intent** 等）。
 - **文本流**：
-  - **Dense**：主查询 dense_query + 多视角 multi_view_queries 向量化后检索 text_chunks，内部加权融合。
+  - **Dense**：主查询 dense_query + 多视角 multi_view_queries 向量化后检索 text_chunks_agentic，内部加权融合。
   - **Sparse**：BGE-M3 对查询（或拼接关键词）生成稀疏向量，调用 `vector_store.search_text_chunks_sparse()`，与 Dense 结果一起参与融合。
 - **图片流**（当 visual_intent 非 unnecessary）：
   - 查询的文本向量匹配 `text_vec`；CLIP 文本向量匹配 `clip_vec`；`image_vectors` 上 Prefetch + Fusion RRF。若 CLIP 可用，还会**额外检索 `video_keyframe_vectors`**，将命中关键帧并入 Visual 结果（与多模态专文一致）。
@@ -425,7 +429,7 @@ flowchart TB
 **实现方案要点：**
 
 - **Dense**：对 dense_query 向量化得到主查询向量，对 multi_view_queries 分别向量化后与主查询一起对 Text Collection 检索，多路结果在引擎内部按权重融合（同一文档被多路命中时分数叠加），再参与全局 RRF。
-- **Sparse**：用 BGE-M3 对「dense_query 与 sparse_keywords 拼接」或仅 dense_query 生成查询稀疏向量，调用 Qdrant 的 sparse 向量检索接口，在 text_chunks 上按 kb_id Pre-filter 后检索，返回列表参与 RRF。
+- **Sparse**：用 BGE-M3 对「dense_query 与 sparse_keywords 拼接」或仅 dense_query 生成查询稀疏向量，调用 Qdrant 的 sparse 向量检索接口，在 text_chunks_agentic 上按 kb_id Pre-filter 后检索，返回列表参与 RRF。
 - **Visual**：仅当 visual_intent 为 explicit_demand 或 implicit_enrichment 时执行。查询侧生成文本向量 + CLIP 文本向量（失败则回退单路），对 `image_vectors` 双路 RRF；成功时**额外**检索 `video_keyframe_vectors` 关键帧并合并。explicit/implicit 控制 limit 与 score_threshold。
 - **Audio**：仅当 audio_intent 非 unnecessary 时执行；查询做 text + 可选 CLAP + sparse，对 `audio_vectors` 检索；`unnecessary` 时返回空列表。
 - **Video**：**每次**调用 `_video_search`；CLIP 侧是否启用取决于 `visual_intent`（见 `search` 中传入的 `visual_query`）。`video_intent` 调节 **video 路 RRF 权重**，而非跳过检索。

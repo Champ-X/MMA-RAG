@@ -37,7 +37,12 @@ if TYPE_CHECKING:
 
 from .parsers.factory import ParserFactory, FileType, normalize_text_newlines
 from .storage.minio_adapter import MinIOAdapter
-from .storage.vector_store import VectorStore, VIDEO_SHOT_COLLECTION
+from .storage.vector_store import (
+    TEXT_CHUNK_COLLECTION,
+    VIDEO_SHOT_COLLECTION,
+    VectorStore,
+)
+from .splitters.agentic import AgenticDocumentChunker
 from .video_scene_shot import (
     SCHEMA_VERSION,
     build_previous_context,
@@ -78,6 +83,7 @@ class IngestionService:
         self.minio_adapter = MinIOAdapter()
         self.vector_store = VectorStore()
         self.llm_manager = llm_manager
+        self.agentic_document_chunker = AgenticDocumentChunker(self.llm_manager)
         self.sparse_encoder = get_sparse_encoder()  # BGE-M3 稀疏向量编码器
         self._clip_model: Optional["CLIPModel"] = None
         self._clip_processor: Optional["CLIPProcessor"] = None
@@ -478,7 +484,7 @@ class IngestionService:
                     # text_chunks
                     try:
                         res = self.vector_store.client.scroll(
-                            collection_name="text_chunks",
+                            collection_name=TEXT_CHUNK_COLLECTION,
                             scroll_filter=filt,
                             limit=1,
                             with_payload=True,
@@ -976,7 +982,14 @@ class IngestionService:
                 enriched_markdown = enriched_markdown[:pos] + replacement + enriched_markdown[pos + len(ref) :]
             parse_result_for_chunking = {**parse_result, "markdown": enriched_markdown}
             logger.info("已将 {} 条 VLM 图注插回 Markdown，使用补全后的文本进行分块", len(items))
-        chunks = await self._split_text_into_chunks(parse_result_for_chunking)
+        # Excel/CSV 保留其行块/列画像专用策略；其余文档进入 Agentic
+        # Chunker。模型只规划原子单元范围，原文由服务端无损物化。
+        if parse_result_for_chunking.get("file_type") == "excel" and parse_result_for_chunking.get("sheets"):
+            chunks = await self._build_excel_chunks(parse_result_for_chunking)
+        else:
+            chunks = await self.agentic_document_chunker.chunk_parse_result(
+                parse_result_for_chunking
+            )
         
         # 为每个chunk添加file_path和file_type信息
         object_path = minio_storage_result.get("object_path", file_path or "")
@@ -3088,10 +3101,14 @@ class IngestionService:
     ) -> Dict[str, Any]:
         """向量化文本块（密集向量 + 稀疏向量）"""
         try:
+            # Dense retrieval receives section/title context generated from the
+            # validated plan; sparse retrieval remains on raw source text to
+            # preserve exact lexical matches and avoid duplicated headings.
             texts = [chunk["text"] for chunk in chunks]
+            embedding_texts = [chunk.get("embedding_text") or chunk["text"] for chunk in chunks]
             
             # 1. 使用LLM管理器进行密集向量化（Qwen3-Embedding-8B）
-            dense_result = await self.llm_manager.embed(texts=texts)
+            dense_result = await self.llm_manager.embed(texts=embedding_texts)
             
             if not dense_result.success:
                 raise Exception(f"文本密集向量化失败: {dense_result.error}")

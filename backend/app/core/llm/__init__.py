@@ -22,6 +22,7 @@ TASK_MODEL_TYPES: Dict[str, str] = {
     "intent_recognition": "chat",
     "query_rewriting": "chat",
     "image_captioning": "vision",
+    "document_chunking": "chat",
     "final_generation": "chat",
     "kb_portrait_generation": "chat",
     "health_check": "chat",
@@ -447,6 +448,13 @@ class LLMRegistry:
                     "zai-org/GLM-4.6V",
                 ],
             },
+            # 文档分块使用独立任务路由。调用端禁用 provider fallback：LLM
+            # 不可用或返回非法计划时由本地结构化 planner 单次降级，避免把同一
+            # 文档内容转发给多个模型并放大成本。
+            "document_chunking": {
+                "model": "Pro/moonshotai/Kimi-K2.6",
+                "fallbacks": [],
+            },
             "final_generation": {
                 "model": "Pro/moonshotai/Kimi-K2.6",
                 "fallbacks": [
@@ -524,6 +532,7 @@ class LLMRegistry:
             if v and task in self._task_config:
                 self._task_config[task]["model"] = v
         _apply(getattr(settings, "default_chat_model", None), "final_generation")
+        _apply(getattr(settings, "document_chunking_model", None), "document_chunking")
         _apply(getattr(settings, "default_embedding_model", None), "embedding")
         _apply(getattr(settings, "default_vision_model", None), "image_captioning")
         _apply(getattr(settings, "default_reranker_model", None), "reranking")

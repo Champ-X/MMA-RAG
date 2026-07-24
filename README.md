@@ -98,13 +98,13 @@ Query: `为《浴血黑帮》这部电影挑选合适的海报封面和主题曲
 
 - **职责**：将各类文件与多来源内容解析、分块（文档）、向量化后写入对象存储与向量库，为检索与画像提供数据基础。
 - **解析**：`ParserFactory` 按类型调度——**PDF / DOCX / PPTX**：MinerU解析，文档中的图片会VLM之后反嵌入文本再做分块；**TXT / Markdown**、**图片**（PIL / `ImageParser`）；**音频**（`AudioParser`：`mp3`/`wav`/`m4a`/`flac` 等，元数据优先 `soundfile`/`librosa`）；**视频**（`VideoParser`：`mp4`/`avi`/`mov`/`mkv` 等，OpenCV 读元数据；长视频切段与音轨检测依赖 **FFmpeg/ffprobe**，见 [可选系统依赖](#可选系统依赖)）。文档内嵌图先 VLM 描述并上传 MinIO，再将 caption 插回原文占位符后统一分块。
-- **分块**：**文档**为递归语义分块（段落/句子优先，max/min 长度与重叠窗口），每个 chunk 带 `context_window`（前后 chunk ID）便于调试。**图片 / 音频 / 视频**不以传统 chunk 切分，而以**语义单元**入库（图片单张；音频整段；视频为 Scene → Shot → Key Frame，Shot 是主检索单元）。
+- **分块**：**文档**使用 Agentic Chunker：先将解析文本固化为标题、段落、列表、表格、代码等原子单元，再由 LLM 规划语义完整的连续范围；服务端校验全量覆盖、无 overlap 与 600-token 上限，并在模型不可用时降级为结构化分块。每个 chunk 带 `context_window`（前后 chunk ID）便于调试。**图片 / 音频 / 视频**不以传统 chunk 切分，而以**语义单元**入库（图片单张；音频整段；视频为 Scene → Shot → Key Frame，Shot 是主检索单元）。
 - **向量化**：
-  - **文档**：Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏 → `text_chunks`。
+  - **文档**：Agentic Chunker（语义边界、600-token 上限）+ Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏 → `text_chunks_agentic`。
   - **图片**：VLM caption → `text_vec`（4096）+ CLIP → `clip_vec`（768）→ `image_vectors`。
   - **音频**：ASR 转写 + LLM 内容描述 → 拼接文本做 Dense（及可选 BGE-M3 稀疏）+ **CLAP**（`clap_vec`，512 维）→ `audio_vectors`。
   - **视频**：Qwen3.5-Omni 在一次视频调用中联合解析画面与内嵌音频，输出 Scene → Semantic Shot → Key Frame；每个 Shot 写入 `caption_dense/caption_sparse/asr_dense/asr_sparse` 四路向量，关键帧保留 `frame_vec/clip_vec` 作为可选视觉增强。长视频使用重叠窗口并合并，完整解析 manifest 可追溯。细节见 **[docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**。
-- **存储**：MinIO 按知识库分桶，路径前缀含 `documents/`、`images/`、`audios/`、`videos/`（含 `videos/{file_id}/keyframes/` 与 `analysis/scene_shot_asr_v4.json`）。Qdrant 集合包括 `text_chunks`、`image_vectors`、`audio_vectors`、`video_shot_vectors`、`video_keyframe_vectors`（画像由 Knowledge 写入 `kb_portraits`）。
+- **存储**：MinIO 按知识库分桶，路径前缀含 `documents/`、`images/`、`audios/`、`videos/`（含 `videos/{file_id}/keyframes/` 与 `analysis/scene_shot_asr_v4.json`）。Qdrant 集合包括 `text_chunks_agentic`、`image_vectors`、`audio_vectors`、`video_shot_vectors`、`video_keyframe_vectors`（画像由 Knowledge 写入 `kb_portraits`）。
 - **多来源与异步**：sources 层支持 URL、文件夹、Tavily 热点、媒体下载等；大任务经 Celery + Redis，前端可轮询或流式查进度。
 - **代码入口**：`modules/ingestion/service.py`、`parsers/factory.py`、`sources/`、`storage/minio_adapter.py`、`storage/vector_store.py`。
 

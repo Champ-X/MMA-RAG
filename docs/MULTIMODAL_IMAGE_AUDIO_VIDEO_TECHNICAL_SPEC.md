@@ -76,7 +76,7 @@
 - **意图**：由 One-Pass 意图识别得到 `visual_intent`（`explicit_demand` / `implicit_enrichment` / `unnecessary`）。  
   - `unnecessary` 时不查图片；`explicit_demand` 或 `implicit_enrichment` 时执行 Visual 检索。
 - **策略**（`HybridSearchEngine._visual_search`）：
-  - 用查询文本生成 **text 嵌入**（与 text_chunks 同模型）和 **CLIP 文本向量**（768 维）。
+  - 用查询文本生成 **text 嵌入**（与 text_chunks_agentic 同模型）和 **CLIP 文本向量**（768 维）。
   - 若 CLIP 可用：`vector_store.search_image_vectors_dual_rrf(text_query_vector, clip_query_vector, ...)`，即 Qdrant 的 Prefetch + Fusion RRF（text_vec 与 clip_vec 双路）。
   - 若 **CLIP** 文本向量不可用：仅 `search_image_vectors(query_vector, ...)`（单路 text_vec）。
 - **与视频的交叉**：当 CLIP 双路可用时，`_visual_search` 会用同一批 **text_query_vector + clip_text_vector** 查询 `video_keyframe_vectors`，将命中的**关键帧**以「类图片」形式并入 Visual 结果（`from_video_keyframe`）。
@@ -115,7 +115,7 @@
      - `_generate_audio_description(file_content, transcript, audio_format, processing_id)`。  
      - 若有较长 transcript，则用纯文本 prompt 让 LLM 生成“主要内容、语气情感、场景”等描述；否则返回默认描述。
   3. **文本向量化**  
-     - 将 `transcript + description` 拼接后做 **密集向量**（Qwen3-Embedding-8B，4096 维）和 **稀疏向量**（BGE-M3，与 text_chunks 一致）。
+     - 将 `transcript + description` 拼接后做 **密集向量**（Qwen3-Embedding-8B，4096 维）和 **稀疏向量**（BGE-M3，与 text_chunks_agentic 一致）。
   4. **CLAP 声学特征**  
      - `_extract_audio_clap_features(file_content, audio_format)`：librosa/soundfile 解码，重采样到 48kHz 单声道，用 `laion/clap-htsat-fused` 提取 **512 维**向量并归一化。  
      - 懒加载：`_load_clap_model()`。

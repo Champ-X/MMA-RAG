@@ -119,6 +119,29 @@ class Settings(BaseSettings):
     # 是否为每个 sheet 调用 LLM 生成 1-2 句摘要；关闭可节省 token，sheet_summary chunk 仍会写入但摘要为空
     excel_sheet_llm_summary_enabled: bool = Field(default=True, validation_alias="EXCEL_SHEET_LLM_SUMMARY_ENABLED")
 
+    # Agentic 文档分块：模型仅规划不可变原子单元的范围，服务端负责无损物化。
+    # 600 是安全上限而非目标大小；实际切点优先服从语义与结构边界。
+    document_chunking_hard_max_tokens: int = Field(
+        default=600,
+        validation_alias="DOCUMENT_CHUNKING_HARD_MAX_TOKENS",
+    )
+    document_chunking_agent_max_input_tokens: int = Field(
+        default=24_000,
+        validation_alias="DOCUMENT_CHUNKING_AGENT_MAX_INPUT_TOKENS",
+    )
+    document_chunking_agent_max_output_tokens: int = Field(
+        default=4_000,
+        validation_alias="DOCUMENT_CHUNKING_AGENT_MAX_OUTPUT_TOKENS",
+    )
+    document_chunking_agent_timeout_seconds: int = Field(
+        default=180,
+        validation_alias="DOCUMENT_CHUNKING_AGENT_TIMEOUT_SECONDS",
+    )
+    document_chunking_model: Optional[str] = Field(
+        default=None,
+        validation_alias="DOCUMENT_CHUNKING_MODEL",
+    )
+
     # 文件夹导入：允许的根路径白名单（逗号分隔），未配置则禁用文件夹导入
     import_folder_allowed_base_paths: List[str] = Field(
         default_factory=list,

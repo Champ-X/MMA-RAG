@@ -10,7 +10,7 @@ from datetime import datetime
 from app.core.llm.manager import llm_manager
 from app.core.sparse_encoder import get_sparse_encoder
 from app.core.logger import get_logger, audit_log
-from app.modules.ingestion.storage.vector_store import VectorStore
+from app.modules.ingestion.storage.vector_store import TEXT_CHUNK_COLLECTION, VectorStore
 from app.modules.ingestion.service import IngestionService
 from app.modules.knowledge.service import KnowledgeBaseService
 
@@ -1045,7 +1045,9 @@ class HybridSearchEngine:
             stats = await self.vector_store.get_all_collections_stats()
             
             return {
-                "text_chunks": stats.get("text_chunks", {}),
+                # Keep the response field stable while reading the active
+                # Agentic document collection.
+                "text_chunks": stats.get(TEXT_CHUNK_COLLECTION, {}),
                 "image_vectors": stats.get("image_vectors", {}),
                 "kb_portraits": stats.get("kb_portraits", {}),
                 "rrf_weights": self.rrf_weights,

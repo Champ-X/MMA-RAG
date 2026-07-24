@@ -2,7 +2,7 @@
 为已有知识库批量回填推荐问题（问题池）。
 
 策略：
-- 每次从 text_chunks 抽样 10 个 chunk 作为材料
+- 每次从 text_chunks_agentic 抽样 10 个 chunk 作为材料
 - 单次 LLM 调用生成 20 个问题
 - 结果写入 backend/data/suggestion_cache/question_bank_by_kb/<kb_id>.json
 """
@@ -26,6 +26,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.core.llm.manager import llm_manager
 from app.core.logger import get_logger
+from app.modules.ingestion.storage.vector_store import TEXT_CHUNK_COLLECTION
 from app.modules.knowledge.service import KnowledgeBaseService
 from app.modules.knowledge.suggested_questions import (
     _safe_json_loads_array,
@@ -58,7 +59,7 @@ def _sample_text_chunks_for_kb(
         try:
             filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=cid))])
             pts, _ = kb_service.vector_store.client.scroll(
-                collection_name="text_chunks",
+                collection_name=TEXT_CHUNK_COLLECTION,
                 scroll_filter=filt,
                 limit=limit,
                 with_payload=True,
@@ -89,7 +90,7 @@ def _sample_multimodal_texts_for_kb(
 ) -> List[Dict[str, str]]:
     """
     从多模态集合抽取“可用于提问生成”的文本材料：
-    - text_chunks.text_content
+    - text_chunks_agentic.text_content
     - image_vectors.caption / description
     - audio_vectors.transcript / description
     - video_shot_vectors.scene_summary / caption / asr_text

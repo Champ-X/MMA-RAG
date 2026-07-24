@@ -98,13 +98,13 @@ Follow **[FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md)**. With the bot and websoc
 
 - **Role**: Parse files and multi-source content, chunk documents, embed, write to object store and vector DB for retrieval and portraits.
 - **Parsing**: `ParserFactory` by type—**PDF / DOCX / PPTX**: MinerU; figures go through VLM then merge into text before chunking; **TXT / Markdown**, **images** (PIL / `ImageParser`); **audio** (`AudioParser`: `mp3`/`wav`/`m4a`/`flac`, metadata via `soundfile`/`librosa`); **video** (`VideoParser`: `mp4`/`avi`/`mov`/`mkv`, OpenCV metadata; segmenting and audio extraction need **FFmpeg**, see [optional dependencies](#optional-system-dependencies)). Inline images: VLM caption → MinIO → placeholder in source → unified chunking.
-- **Chunking**: **Documents**—recursive semantic chunks (paragraph/sentence first, min/max length, overlap); each chunk has `context_window` (neighbor chunk IDs). **Image / audio**—one **record** per asset; **video**—Scene–Shot hierarchy, with one main retrieval point per Shot and optional child keyframes.
+- **Chunking**: **Documents** use the Agentic Chunker: parsed text is first frozen into heading, paragraph, list, table, and code units; an LLM then plans continuous semantic ranges. The server validates full coverage, no overlap, and the 600-token cap, with a deterministic structural fallback if the model is unavailable. Each chunk has `context_window` (neighbor chunk IDs). **Image / audio**—one **record** per asset; **video**—Scene–Shot hierarchy, with one main retrieval point per Shot and optional child keyframes.
 - **Embedding**:
-  - **Documents**: Qwen3-Embedding-8B (dense 4096) + BGE-M3 sparse → `text_chunks`.
+  - **Documents**: Agentic Chunker (semantic boundaries, 600-token cap) + Qwen3-Embedding-8B (dense 4096) + BGE-M3 sparse → `text_chunks_agentic`.
   - **Images**: VLM caption → `text_vec` (4096) + CLIP → `clip_vec` (768) → `image_vectors`.
   - **Audio**: ASR + LLM description → text for dense (optional BGE-M3 sparse) + **CLAP** (`clap_vec`, 512) → `audio_vectors`.
   - **Video**: Qwen Omni jointly parses visual scenes, semantic Shots, and in-video ASR. Each Shot writes caption/ASR dense+sparse vectors to `video_shot_vectors`; optional keyframes write `frame_vec` + CLIP `clip_vec` to `video_keyframe_vectors`. See **[MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**.
-- **Storage**: MinIO per-KB buckets; prefixes `documents/`, `images/`, `audios/`, `videos/` (including `videos/{file_id}/keyframes/`). Qdrant: `text_chunks`, `image_vectors`, `audio_vectors`, `video_shot_vectors`, `video_keyframe_vectors`; portraits in `kb_portraits` (Knowledge).
+- **Storage**: MinIO per-KB buckets; prefixes `documents/`, `images/`, `audios/`, `videos/` (including `videos/{file_id}/keyframes/`). Qdrant: `text_chunks_agentic`, `image_vectors`, `audio_vectors`, `video_shot_vectors`, `video_keyframe_vectors`; portraits in `kb_portraits` (Knowledge).
 - **Sources & async**: URLs, folders, Tavily trends, media downloads, etc.; heavy jobs via Celery + Redis; frontend polls or streams progress.
 - **Entry points**: `modules/ingestion/service.py`, `parsers/factory.py`, `sources/`, `storage/minio_adapter.py`, `storage/vector_store.py`.
 

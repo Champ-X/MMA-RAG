@@ -28,6 +28,7 @@ logger = get_logger(__name__)
 
 # 视频索引以 Shot 为主检索单元；关键帧索引只用于可选视觉增强。
 # 保持集合名稳定，避免把一次实现迭代（例如 v2）编码进持久化数据模型。
+TEXT_CHUNK_COLLECTION = "text_chunks_agentic"
 VIDEO_SHOT_COLLECTION = "video_shot_vectors"
 VIDEO_KEYFRAME_COLLECTION = "video_keyframe_vectors"
 
@@ -53,7 +54,7 @@ class VectorStore:
         # 集合配置
         # Qwen/Qwen3-Embedding-8B 的向量维度是 4096
         self.collections = {
-            "text_chunks": {
+            TEXT_CHUNK_COLLECTION: {
                 "vector_size": 4096,  # Qwen/Qwen3-Embedding-8B 的维度
                 "distance": Distance.COSINE,
                 "vectors_config": VectorParams(size=4096, distance=Distance.COSINE),
@@ -64,6 +65,7 @@ class VectorStore:
                 },
                 "payload_schema": {
                     "text_content": PayloadSchemaType.TEXT,
+                    "embedding_text": PayloadSchemaType.TEXT,
                     "kb_id": PayloadSchemaType.KEYWORD,
                     "file_id": PayloadSchemaType.KEYWORD,
                     "file_path": PayloadSchemaType.TEXT,
@@ -555,6 +557,7 @@ class VectorStore:
                 payload = {
                     "kb_id": kb_id,
                     "text_content": chunk["text"],
+                    "embedding_text": chunk.get("embedding_text") or chunk["text"],
                     "file_id": chunk.get("file_id"),
                     "file_path": chunk.get("file_path"),
                     "file_type": chunk.get("file_type"),
@@ -590,7 +593,7 @@ class VectorStore:
             
             # 批量插入
             operation_info = self.client.upsert(
-                collection_name="text_chunks",
+                collection_name=TEXT_CHUNK_COLLECTION,
                 points=points
             )
             
@@ -648,7 +651,7 @@ class VectorStore:
                     # 批量更新（points 传 list 即可，与 PointIdsList 等价）
                     for payload_data in payload_to_points.values():
                         self.client.set_payload(
-                            collection_name="text_chunks",
+                            collection_name=TEXT_CHUNK_COLLECTION,
                             payload=payload_data["payload"],
                             points=payload_data["point_ids"]
                         )
@@ -1004,7 +1007,7 @@ class VectorStore:
             filter_condition = Filter(
                 must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))]
             )
-            ok_text = self._delete_points_by_kb_id_filter("text_chunks", filter_condition)
+            ok_text = self._delete_points_by_kb_id_filter(TEXT_CHUNK_COLLECTION, filter_condition)
             ok_img = self._delete_points_by_kb_id_filter("image_vectors", filter_condition)
             ok_audio = self._delete_points_by_kb_id_filter("audio_vectors", filter_condition)
             ok_video_shot = self._delete_points_by_kb_id_filter(VIDEO_SHOT_COLLECTION, filter_condition)
@@ -1080,7 +1083,7 @@ class VectorStore:
             # 使用 query_points API (新版本 qdrant-client)
             # 检查集合是否是 Named Vector 格式，如果是则指定 using="dense"
             try:
-                collection_info = self.client.get_collection("text_chunks")
+                collection_info = self.client.get_collection(TEXT_CHUNK_COLLECTION)
                 is_named_vector = False
                 if hasattr(collection_info, 'config') and hasattr(collection_info.config, 'params'):
                     if hasattr(collection_info.config.params, 'vectors'):
@@ -1093,7 +1096,7 @@ class VectorStore:
                 is_named_vector = False
             
             query_kwargs = {
-                "collection_name": "text_chunks",
+                "collection_name": TEXT_CHUNK_COLLECTION,
                 "query": query_vector,
                 "query_filter": search_filter,
                 "limit": limit,
@@ -1181,7 +1184,7 @@ class VectorStore:
             
             # 使用 query_points API 进行稀疏向量检索
             query_result = self.client.query_points(
-                collection_name="text_chunks",
+                collection_name=TEXT_CHUNK_COLLECTION,
                 query=sparse_vector,
                 using="sparse",  # 指定使用稀疏向量
                 query_filter=search_filter,
@@ -1582,7 +1585,7 @@ class VectorStore:
     def _text_chunks_uses_named_vector(self) -> bool:
         """判断 text_chunks 是否使用 Named Vector（dense）"""
         try:
-            info = self.client.get_collection("text_chunks")
+            info = self.client.get_collection(TEXT_CHUNK_COLLECTION)
             if hasattr(info, "config") and hasattr(info.config, "params"):
                 v = getattr(info.config.params, "vectors", None)
                 return isinstance(v, dict)
@@ -1598,7 +1601,7 @@ class VectorStore:
         try:
             filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))])
             n_text = self.client.count(
-                collection_name="text_chunks",
+                collection_name=TEXT_CHUNK_COLLECTION,
                 count_filter=filt,
                 exact=True,
             ).count
@@ -1664,7 +1667,7 @@ class VectorStore:
             with_vec = ["dense"] if use_named else True
             scroll_limit = min(limit, batch_size)
             kwargs: Dict[str, Any] = {
-                "collection_name": "text_chunks",
+                "collection_name": TEXT_CHUNK_COLLECTION,
                 "scroll_filter": filt,
                 "limit": scroll_limit,
                 "with_payload": False,
@@ -1832,7 +1835,7 @@ class VectorStore:
         try:
             if ids_doc:
                 rows = self.client.retrieve(
-                    collection_name="text_chunks",
+                    collection_name=TEXT_CHUNK_COLLECTION,
                     ids=ids_doc,
                     with_payload=True,
                     with_vectors=False,
@@ -1934,7 +1937,7 @@ class VectorStore:
                     FieldCondition(key="chunk_index", match=MatchValue(value=int(chunk_index)))
                 )
             scroll_results = self.client.scroll(
-                collection_name="text_chunks",
+                collection_name=TEXT_CHUNK_COLLECTION,
                 scroll_filter=Filter(must=must),
                 limit=1,
                 with_payload=False,
@@ -1963,7 +1966,7 @@ class VectorStore:
             if scroll_filter is None:
                 return []
             scroll_results = self.client.scroll(
-                collection_name="text_chunks",
+                collection_name=TEXT_CHUNK_COLLECTION,
                 scroll_filter=scroll_filter,
                 limit=limit,
                 with_payload=True,
@@ -2013,7 +2016,7 @@ class VectorStore:
             if not norm_id:
                 return {"prev": "", "next": ""}
             rows = self.client.retrieve(
-                collection_name="text_chunks",
+                collection_name=TEXT_CHUNK_COLLECTION,
                 ids=[norm_id],
                 with_payload=True,
                 with_vectors=False,
@@ -2049,7 +2052,7 @@ class VectorStore:
             # 统一为字符串，避免 Qdrant 返回的 UUID 与 payload 中字符串 key 不一致
             ids_str = [str(x) for x in ids_to_fetch]
             rows2 = self.client.retrieve(
-                collection_name="text_chunks",
+                collection_name=TEXT_CHUNK_COLLECTION,
                 ids=ids_str,
                 with_payload=True,
                 with_vectors=False,

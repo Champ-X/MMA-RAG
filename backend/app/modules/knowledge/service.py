@@ -16,7 +16,11 @@ from datetime import datetime
 from dataclasses import dataclass
 
 from app.core.logger import get_logger, audit_log
-from app.modules.ingestion.storage.vector_store import VectorStore, VIDEO_SHOT_COLLECTION
+from app.modules.ingestion.storage.vector_store import (
+    TEXT_CHUNK_COLLECTION,
+    VIDEO_SHOT_COLLECTION,
+    VectorStore,
+)
 from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
 from qdrant_client.http import models
 
@@ -525,7 +529,7 @@ class KnowledgeBaseService:
         filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=candidate))])
         try:
             n_text = self.vector_store.client.count(
-                collection_name="text_chunks",
+                collection_name=TEXT_CHUNK_COLLECTION,
                 count_filter=filt,
                 exact=True,
             ).count
@@ -555,7 +559,7 @@ class KnowledgeBaseService:
         try:
             while total_scrolled < max_points:
                 res = self.vector_store.client.scroll(
-                    collection_name="text_chunks",
+                    collection_name=TEXT_CHUNK_COLLECTION,
                     scroll_filter=filt,
                     limit=5000,
                     offset=offset,
@@ -593,7 +597,7 @@ class KnowledgeBaseService:
             filt = Filter(must=[FieldCondition(key="file_id", match=MatchValue(value=fid))])
             try:
                 tc = self.vector_store.client.scroll(
-                    collection_name="text_chunks",
+                    collection_name=TEXT_CHUNK_COLLECTION,
                     scroll_filter=filt,
                     limit=5000,
                 )
@@ -777,7 +781,7 @@ class KnowledgeBaseService:
                 # text_chunks
                 try:
                     res = self.vector_store.client.scroll(
-                        collection_name="text_chunks",
+                        collection_name=TEXT_CHUNK_COLLECTION,
                         scroll_filter=filt,
                         limit=1,
                         with_payload=True,
@@ -1060,7 +1064,7 @@ class KnowledgeBaseService:
             ]
         )
         res = self.vector_store.client.scroll(
-            collection_name="text_chunks",
+            collection_name=TEXT_CHUNK_COLLECTION,
             scroll_filter=filt,
             limit=200,
             with_payload=True,
@@ -1072,7 +1076,7 @@ class KnowledgeBaseService:
         from qdrant_client.http.models import Filter, FieldCondition, MatchValue
         filt = Filter(must=[FieldCondition(key="file_id", match=MatchValue(value=file_id))])
         res = self.vector_store.client.scroll(
-            collection_name="text_chunks",
+            collection_name=TEXT_CHUNK_COLLECTION,
             scroll_filter=filt,
             limit=200,
             with_payload=True,
@@ -1725,7 +1729,7 @@ class KnowledgeBaseService:
                 )
                 try:
                     self.vector_store.client.delete(
-                        collection_name="text_chunks",
+                        collection_name=TEXT_CHUNK_COLLECTION,
                         points_selector=FilterSelector(filter=filt_text),
                     )
                     deleted_chunk_count += 1
@@ -1756,7 +1760,7 @@ class KnowledgeBaseService:
             )
             try:
                 self.vector_store.client.delete(
-                    collection_name="text_chunks",
+                    collection_name=TEXT_CHUNK_COLLECTION,
                     points_selector=FilterSelector(filter=filt_by_file_id),
                 )
                 deleted_chunk_count += 1
@@ -1958,7 +1962,7 @@ class KnowledgeBaseService:
             
             # 获取文本块样本进行分析
             text_scroll_result = self.vector_store.client.scroll(
-                collection_name="text_chunks",
+                collection_name=TEXT_CHUNK_COLLECTION,
                 scroll_filter=filter_condition,
                 limit=100  # 取前100个样本进行分析
             )

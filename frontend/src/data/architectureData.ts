@@ -303,11 +303,11 @@ export const coreModules: ModuleInfo[] = [
       '统一入口：IngestionService 完成解析 → MinIO → 向量化 → Qdrant 全流程；支持本地上传、URL、文件夹、热点订阅等多来源接入',
       '解析器工厂：PDF 优先 MinerU（API/本地 2.5）→ PaddleOCR-VL-1.5 → PyMuPDF 兜底；DOCX/PPTX 优先 MinerU 再 python-docx / python-pptx；TXT/Markdown；图片（PIL）；音频（soundfile/librosa）；视频（OpenCV + Qwen Omni）。文档内嵌图先 VLM 再插回原文后分块；音频以文件为条，视频以 Semantic Shot 为主检索条目',
       '分块策略：文档递归语义分块 + 重叠窗口，chunk 携带 context_window；图片/音频各一点；视频按 Scene–Shot 分层，Shot 含视觉 caption 与对齐 ASR，关键帧为从属视觉增强',
-      '文档向量化：Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏，写入 text_chunks',
+      '文档 Agentic Chunker（语义边界、600-token 上限）+ Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏，写入 text_chunks_agentic',
       '图片向量化：VLM caption + text_vec + CLIP clip_vec（768 维），写入 image_vectors',
       '音频向量化：ASR 转写 + LLM 描述 + text_vec + CLAP clap_vec（512 维，可选 sparse），写入 audio_vectors',
       '视频向量化：Qwen Omni 联合解析 Scene、Shot 与 ASR → Shot 的 caption/ASR 各自 Dense+Sparse 四路写入 video_shot_vectors；关键帧 frame_vec+clip_vec 写入 video_keyframe_vectors',
-      '存储：MinIO 按知识库与类型分目录（documents/images/audios/videos）；VectorStore 写入 text_chunks / image_vectors / audio_vectors / video_shot_vectors / video_keyframe_vectors / kb_portraits',
+      '存储：MinIO 按知识库与类型分目录（documents/images/audios/videos）；VectorStore 写入 text_chunks_agentic / image_vectors / audio_vectors / video_shot_vectors / video_keyframe_vectors / kb_portraits',
       '异步管道：Celery + Redis 处理长耗时导入，前端可轮询或流式查看进度',
     ],
     codeRefs: [
@@ -420,7 +420,7 @@ export const dataFlowStages: DataFlowStage[] = [
   {
     id: 'qdrant',
     title: '向量与稀疏索引',
-    description: 'Qdrant 存储 text_chunks（dense + sparse）、image_vectors（clip_vec + text_vec）、audio_vectors（text_vec + clap_vec，可选 sparse）、video_shot_vectors（caption/ASR 的 dense+sparse 四路，一 Shot 一点）、video_keyframe_vectors（frame_vec + clip_vec）、kb_portraits，支撑多路混合检索与路由。',
+    description: 'Qdrant 存储 text_chunks_agentic（dense + sparse）、image_vectors（clip_vec + text_vec）、audio_vectors（text_vec + clap_vec，可选 sparse）、video_shot_vectors（caption/ASR 的 dense+sparse 四路，一 Shot 一点）、video_keyframe_vectors（frame_vec + clip_vec）、kb_portraits，支撑多路混合检索与路由。',
   },
   {
     id: 'redis-celery',
@@ -508,7 +508,7 @@ export const techStackItems: TechStackItem[] = [
     id: 'embedding',
     name: 'Qwen3-Embedding-8B',
     category: 'model',
-    description: '文本 Dense 向量（4096 维），用于 text_chunks、image/audio 的 text_vec、video 的 scene_vec/frame_vec、kb_portraits 等。',
+    description: '文本 Dense 向量（4096 维），用于 text_chunks_agentic、image/audio 的 text_vec、video 的 scene_vec/frame_vec、kb_portraits 等。',
   },
   {
     id: 'bge',
