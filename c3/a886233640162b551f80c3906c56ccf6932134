@@ -1,0 +1,38 @@
+frontend/src/components/layout/ConversationSidebar.tsx
+  s_3d97c23fdcc696::t_746a10e3b4909d 44-45
+  s_3d97c23fdcc696::t_71516441c1cbec 46-47
+  s_72a59aa740f892::t_e7dcc684315865 296-297,301
+frontend/src/components/chat/ChatInterface.tsx
+  s_72a59aa740f892::t_80412e9db33dd8 756
+frontend/src/components/chat/SuggestedQuestions.tsx
+  s_72a59aa740f892::t_cf495dd313a593 474,498,504
+frontend/src/components/knowledge/KnowledgeList.tsx
+  s_72a59aa740f892::t_9585912f284fe9 3052,3054-3061
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c3a886233640162b551f80c3906c56ccf6932134",
+  "prompts": {},
+  "sessions": {
+    "s_3d97c23fdcc696": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a60dae81368c775cb795415",
+        "model": "gpt-5.5__max",
+        "display_model_name": "GPT-5.5"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    },
+    "s_72a59aa740f892": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f94a1-6dd6-7742-a532-da19f3ed0685",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
