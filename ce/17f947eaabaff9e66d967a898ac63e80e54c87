@@ -1,0 +1,79 @@
+backend/.env.example
+  s_a9f7537657f847::t_51479f4568d0d6 102-106,108-109,112-128
+backend/app/api/knowledge.py
+  s_016882122c6a09::t_6edea225041b17 178-182
+backend/app/api/upload.py
+  s_a9f7537657f847::t_e8225c9b63dc03 18-30,57,128,138-148,175-268,337-355
+backend/app/core/config.py
+  s_a9f7537657f847::t_1b0fb0f0993341 143-147,150-152,155-156,252-294
+backend/app/core/llm/prompt.py
+  s_a9f7537657f847::t_dd315987fa8076 504,529,566,569-571,574,582,585,588,595,601,606-607
+backend/app/modules/generation/context_builder.py
+  s_a9f7537657f847::t_f054f33343c8ab 98,238,788-794,807
+backend/app/modules/generation/stream_manager.py
+  s_a9f7537657f847::t_d2be508f2ac493 54-55
+backend/app/modules/generation/templates/multimodal_fmt.py
+  s_a9f7537657f847::t_0fb228950e3c2e 52
+backend/app/modules/generation/templates/system_prompts.py
+  s_a9f7537657f847::t_46ad44f343efd2 51,348
+backend/app/modules/ingestion/service.py
+  s_a9f7537657f847::t_2eb05c93cfa058 6,11,17,58-61,89-431,607-614,625-627,632-638,727-731,740-744,752-756,765-788,1386-1396,1470-1482,1621,1624,1628-1686,1688,1690-1691,1694-1751,1808-1830,1845-1868,1870-1932,1942-1946,1956-1967,1971-1975,3479-3577,3579-3581,3583,3586,3591,3594,3618-3631,3633,3635-3636,3638,3640-3995,4003-4007,4011,4015,4028-4031,4038-4040,4064-4076,4084-4088
+backend/app/modules/ingestion/storage/minio_adapter.py
+  s_a9f7537657f847::t_afbb649bbc2ed0 7,160,195-200,207,209-218,244-245,249-251
+backend/app/modules/ingestion/video_scene_shot.py
+  s_a9f7537657f847::t_df84c12168cd28 17-18,101-103,105-107,110-111,125,127,136-138,159-166,176-177,223-233,235-245,260-270,288-298,308-313,318-328,392-394,475-480
+backend/app/modules/knowledge/service.py
+  s_016882122c6a09::t_bbe1e8cbc3b9b4 28-48,1380-1441,1448-1450,1452-1457,1494-1508,1538-1542,1545-1552,1561-1588
+backend/app/modules/retrieval/search_engine.py
+  s_a9f7537657f847::t_5978035c1b5177 703-704,756-757
+backend/test_minio_async_io.py
+  s_a9f7537657f847::t_8201b4c4186bdb 1-99
+backend/test_upload_queue.py
+  s_a9f7537657f847::t_1d53b09d28b9b3 1-429
+backend/test_video_answer_presentation.py
+  s_a9f7537657f847::t_869508cff48608 1-80
+backend/test_video_keyframe_pipeline.py
+  s_a9f7537657f847::t_27f1ea86ec9a2a 1-150
+backend/test_video_scene_shot.py
+  s_a9f7537657f847::t_a3becb5d41c080 74-100
+docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md
+  s_a9f7537657f847::t_7c1c202af18273 157,176-177
+frontend/src/components/chat/CitationPopover.tsx
+  s_a9f7537657f847::t_64f359c6cb0535 553-554
+frontend/src/components/chat/MessageBubble.tsx
+  s_a9f7537657f847::t_1d9ec1ed35610e 201-211,223,246,416,1165-1166,1250-1258,1267-1271,1281,1528
+frontend/src/components/knowledge/KnowledgeList.tsx
+  s_a9f7537657f847::t_498d5ae9aceeab 3,229-234,251-269,286-316,333,340-341,365-366,398-401,414-426,1029-1057,2254-2258,2262-2265,2331-2336,2341-2348,2365-2372,2463-2723,2782-2784,2786,2789,2801-2814,2816-2842,2845-2851,2854-2855,2949-2995,3010,3381,3384-3389,3762-3769,3843-3850,4011
+frontend/src/components/knowledge/KnowledgeListHelpers.tsx
+  s_a9f7537657f847::t_47c69cfb0a804e 5-69,79,82,85-98,100-101,105,108,110,112-113,195-200
+frontend/src/services/api_client.ts
+  s_a9f7537657f847::t_78482aaa11a878 384-401,457-487,542-544,546-555
+frontend/src/types/sse.ts
+  s_a9f7537657f847::t_d5e4edf2d36549 48-49,68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ce17f947eaabaff9e66d967a898ac63e80e54c87",
+  "prompts": {},
+  "sessions": {
+    "s_016882122c6a09": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8fe1-7d4e-72e3-8249-b10f2414b3ea",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    },
+    "s_a9f7537657f847": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8ddb-3ffb-7ed1-9d79-954c5d4903b5",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
