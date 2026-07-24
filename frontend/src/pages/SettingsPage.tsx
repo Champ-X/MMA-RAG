@@ -1,20 +1,21 @@
-import { lazy, Suspense, useEffect, useState, useCallback, useMemo } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import type { TaskModelEntry } from '@/components/settings/ModelConfig'
-import { useConfigStore, type SystemConfig } from '@/store/useConfigStore'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useTheme } from '@/hooks/useTheme'
-import { useToastStore } from '@/store/useToastStore'
 import { cn } from '@/lib/utils'
+import { useConfigStore, type SystemConfig } from '@/store/useConfigStore'
+import { useToastStore } from '@/store/useToastStore'
 import {
   AlertCircle,
   Brain,
+  Check,
   Monitor,
   Moon,
   Palette,
   Quote,
-  SlidersHorizontal,
+  Save,
   Sun,
 } from 'lucide-react'
 
@@ -81,11 +82,13 @@ const TASK_MATRIX_META = [
   },
 ]
 
-function configToTaskMatrix(config: { models: Array<{ id: string; model?: string; provider?: string; name?: string }> }) {
-  const rerank = config.models.find(m => m.id === 'rerank')
+function configToTaskMatrix(config: {
+  models: Array<{ id: string; model?: string; provider?: string; name?: string }>
+}) {
+  const rerank = config.models.find((model) => model.id === 'rerank')
   return {
     taskMatrix: TASK_MATRIX_META.map((task) => {
-      const current = config.models.find((m) => m.id === task.modelId)
+      const current = config.models.find((model) => model.id === task.modelId)
       return {
         taskId: task.taskId,
         label: task.label,
@@ -108,9 +111,9 @@ const THEME_OPTIONS: Array<{
   description: string
   icon: typeof Sun
 }> = [
-  { value: 'light', label: '浅色', description: '适合白天与投屏演示', icon: Sun },
-  { value: 'dark', label: '深色', description: '适合长时间阅读与夜间使用', icon: Moon },
-  { value: 'system', label: '跟随系统', description: '自动匹配系统外观设置', icon: Monitor },
+  { value: 'light', label: '浅色', description: '明亮环境与投屏', icon: Sun },
+  { value: 'dark', label: '深色', description: '夜间与长时间阅读', icon: Moon },
+  { value: 'system', label: '跟随系统', description: '自动匹配设备外观', icon: Monitor },
 ]
 
 function PreferenceToggle({
@@ -133,41 +136,31 @@ function PreferenceToggle({
       aria-checked={enabled}
       aria-label={`${enabled ? '关闭' : '开启'}${title}`}
       onClick={onToggle}
-      className={cn(
-        'group w-full rounded-2xl border p-3.5 text-left transition-all duration-200 hover:-translate-y-0.5',
-        enabled
-          ? 'border-indigo-200 bg-indigo-50/85 shadow-sm shadow-indigo-500/10 dark:border-indigo-800/60 dark:bg-indigo-950/30'
-          : 'border-slate-200/80 bg-white/80 hover:border-indigo-200 hover:shadow-sm dark:border-slate-800/80 dark:bg-slate-950/60 dark:hover:border-indigo-800/50'
-      )}
+      className="group flex w-full items-center gap-4 rounded-[6px] border border-slate-200 bg-white px-4 py-3.5 text-left transition-colors hover:border-slate-300 hover:bg-slate-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 max-[480px]:gap-2.5 max-[480px]:px-3 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-700 dark:hover:bg-slate-900/70"
     >
-      <div className="flex items-start gap-3">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] bg-slate-100 text-slate-600 max-[480px]:hidden dark:bg-slate-800 dark:text-slate-300">
+        <Icon className="h-[18px] w-[18px]" aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</span>
+        <span className="mt-0.5 block text-xs leading-5 text-slate-500 dark:text-slate-400">{description}</span>
+      </span>
+      <span
+        className={cn(
+          'relative h-6 w-11 shrink-0 rounded-full border transition-colors',
+          enabled
+            ? 'border-indigo-600 bg-indigo-600'
+            : 'border-slate-300 bg-slate-200 dark:border-slate-600 dark:bg-slate-700'
+        )}
+        aria-hidden
+      >
         <span
           className={cn(
-            'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border shadow-sm',
-            enabled
-              ? 'border-indigo-200 bg-white text-indigo-600 dark:border-indigo-700 dark:bg-slate-900 dark:text-indigo-300'
-              : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'
+            'absolute top-0.5 h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform',
+            enabled ? 'translate-x-[21px]' : 'translate-x-0.5'
           )}
-        >
-          <Icon className="h-4 w-4" aria-hidden />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{title}</p>
-            <span
-              className={cn(
-                'rounded-full px-2.5 py-1 text-[11px] font-semibold',
-                enabled
-                  ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-200'
-                  : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-              )}
-            >
-              {enabled ? '开启' : '关闭'}
-            </span>
-          </div>
-          <p className="mt-0.5 text-xs leading-snug text-slate-500 dark:text-slate-400">{description}</p>
-        </div>
-      </div>
+        />
+      </span>
     </button>
   )
 }
@@ -175,27 +168,41 @@ function PreferenceToggle({
 function ModelConfigLoading() {
   return (
     <section
-      className="rounded-3xl border border-white/75 bg-white/82 p-6 shadow-lg shadow-slate-200/40 backdrop-blur dark:border-slate-800/80 dark:bg-slate-950/75 dark:shadow-black/20"
+      className="rounded-[8px] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950"
       role="status"
       aria-live="polite"
-      aria-label="正在载入模型矩阵"
+      aria-label="正在载入模型路由"
     >
-      <div className="mb-5 flex items-center gap-3">
-        <span className="h-10 w-1.5 rounded-full bg-gradient-to-b from-indigo-500 via-purple-500 to-fuchsia-500 shadow-sm" aria-hidden />
-        <div>
-          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">正在载入模型矩阵…</p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">配置数据已保留，模型选择器加载后会继续使用当前状态。</p>
+      <div className="mb-6 flex items-center gap-3">
+        <span className="h-10 w-10 animate-pulse rounded-[6px] bg-slate-100 dark:bg-slate-800" aria-hidden />
+        <div className="space-y-2">
+          <span className="block h-4 w-32 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+          <span className="block h-3 w-56 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
         </div>
       </div>
-      <div className="space-y-3">
-        {[0, 1, 2].map((item) => (
+      <div className="space-y-2">
+        {[0, 1, 2, 3].map((item) => (
           <div
             key={item}
-            className="h-16 rounded-2xl border border-slate-200/70 bg-slate-50/80 shadow-sm dark:border-slate-800 dark:bg-slate-900/50"
+            className="h-16 animate-pulse rounded-[6px] border border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/60"
           />
         ))}
       </div>
     </section>
+  )
+}
+
+function SettingsPageLoading() {
+  return (
+    <ScrollArea className="h-full bg-slate-50/70 dark:bg-slate-950">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mb-6 flex items-center justify-between">
+          <div className="h-8 w-20 animate-pulse rounded-[8px] bg-slate-200 dark:bg-slate-800" />
+          <div className="h-7 w-20 animate-pulse rounded-full bg-slate-100 dark:bg-slate-900" />
+        </div>
+        <div className="h-[32rem] animate-pulse rounded-[8px] bg-white dark:bg-slate-900" />
+      </div>
+    </ScrollArea>
   )
 }
 
@@ -216,13 +223,13 @@ export function SettingsPage() {
   } = useConfigStore()
   const { theme, setTheme } = useTheme()
   const { showSuccess, showError } = useToastStore()
-  const [settingsHasChanges, setSettingsHasChanges] = useState(false)
+  const [modelSettingsHaveChanges, setModelSettingsHaveChanges] = useState(false)
   const [isSavingPreferences, setIsSavingPreferences] = useState(false)
   const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false)
   const [hasActivatedModelMatrix, setHasActivatedModelMatrix] = useState(
     () => location.pathname === '/settings'
   )
-  const pendingChanges = settingsHasChanges || hasUnsavedChanges
+  const pendingChanges = modelSettingsHaveChanges || hasUnsavedChanges
   const isSettingsActive = location.pathname === '/settings'
 
   useEffect(() => {
@@ -240,16 +247,14 @@ export function SettingsPage() {
   useEffect(() => {
     if (!pendingChanges) return
 
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-      e.returnValue = '当前配置未保存，是否离开？'
-      return e.returnValue
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = '当前配置未保存，是否离开？'
+      return event.returnValue
     }
 
     window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-    }
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [pendingChanges])
 
   const initialConfig = useMemo(() => configToTaskMatrix({ models: config.models }), [config.models])
@@ -284,16 +289,24 @@ export function SettingsPage() {
     }
   }, [loadConfig, setError, showError, showSuccess])
 
-  const handleSave = async (data: {
+  const handleSaveModels = async (data: {
     taskMatrix: TaskModelEntry[]
     reranker: { provider: string; model: string }
   }) => {
     data.taskMatrix.forEach((task) => {
       const meta = TASK_MATRIX_META.find((item) => item.taskId === task.taskId)
       if (!meta) return
-      updateModelConfig(meta.modelId, { model: task.model, provider: task.provider, name: task.label })
+      updateModelConfig(meta.modelId, {
+        model: task.model,
+        provider: task.provider,
+        name: task.label,
+      })
     })
-    updateModelConfig('rerank', { model: data.reranker.model, provider: data.reranker.provider, name: 'Reranker' })
+    updateModelConfig('rerank', {
+      model: data.reranker.model,
+      provider: data.reranker.provider,
+      name: 'Reranker',
+    })
     await saveConfig()
   }
 
@@ -311,9 +324,9 @@ export function SettingsPage() {
     setIsSavingPreferences(true)
     try {
       await saveConfig()
-      showSuccess('页面设置已保存到当前浏览器')
-    } catch (e) {
-      const message = e instanceof Error ? e.message : '保存失败'
+      showSuccess('界面设置已保存')
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : '保存失败'
       showError(message)
     } finally {
       setIsSavingPreferences(false)
@@ -321,114 +334,92 @@ export function SettingsPage() {
   }
 
   if (!hasLoadedConfigOnce) {
-    return (
-      <ScrollArea className="h-full">
-        <div className="p-6 mx-auto max-w-5xl animate-in fade-in duration-300">
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50 tracking-tight">设置</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 font-medium">设置 &gt; 模型配置</p>
-          </div>
-          <div
-            className="rounded-3xl border-2 border-slate-200/60 dark:border-slate-700/60 bg-white dark:bg-slate-950 p-8 animate-pulse shadow-xl"
-            role="status"
-            aria-live="polite"
-            aria-label="正在加载设置"
-          >
-            <div className="h-6 bg-gradient-to-r from-slate-200 to-slate-100 dark:from-slate-700 dark:to-slate-800 rounded-lg w-1/3 mb-6" aria-hidden />
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-16 bg-gradient-to-r from-slate-100 to-slate-50 dark:from-slate-800/50 dark:to-slate-900/50 rounded-xl" aria-hidden />
-              ))}
-            </div>
-          </div>
-        </div>
-      </ScrollArea>
-    )
+    return <SettingsPageLoading />
   }
 
   return (
-    <ScrollArea className="h-full rounded-2xl border border-white/70 bg-gradient-to-b from-white/95 via-indigo-50/30 to-slate-50/80 shadow-[0_8px_32px_-14px_rgba(79,70,229,0.22)] backdrop-blur-sm dark:border-slate-800/80 dark:from-slate-950/95 dark:via-slate-950/90 dark:to-indigo-950/25 dark:shadow-[0_8px_40px_-16px_rgba(0,0,0,0.65)]">
-      <div className="relative mx-auto max-w-6xl px-4 py-6 pb-8 animate-in fade-in duration-300 sm:px-6 lg:py-8">
+    <ScrollArea className="h-full rounded-[8px] border border-slate-200/80 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-950">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <span className="sr-only" aria-live="polite">
           {preferencesStatusText}
         </span>
-        <div className="pointer-events-none absolute left-6 top-12 h-56 w-56 rounded-full bg-indigo-300/20 blur-3xl dark:bg-indigo-700/10" />
-        <div className="pointer-events-none absolute right-10 top-24 h-64 w-64 rounded-full bg-fuchsia-300/10 blur-3xl dark:bg-fuchsia-700/10" />
 
-        <div className="relative mb-6 overflow-hidden rounded-3xl border border-white/75 bg-gradient-to-br from-white/92 via-white/82 to-indigo-50/55 p-6 shadow-xl shadow-indigo-500/10 backdrop-blur dark:border-slate-800/80 dark:from-slate-950/92 dark:via-slate-950/82 dark:to-indigo-950/25 dark:shadow-black/20 sm:p-7">
-          <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-gradient-to-br from-indigo-400/20 to-fuchsia-400/10 blur-3xl dark:from-indigo-500/15 dark:to-fuchsia-500/10" />
-          <div className="pointer-events-none absolute -bottom-20 left-1/3 h-44 w-44 rounded-full bg-sky-300/15 blur-3xl dark:bg-sky-600/10" />
-          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50/90 px-3 py-1 text-xs font-semibold text-indigo-700 shadow-sm dark:border-indigo-900/50 dark:bg-indigo-950/50 dark:text-indigo-200">
-                <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
-                设置中心
-              </div>
-              <h1 className="mt-3 bg-gradient-to-r from-slate-950 via-slate-800 to-indigo-700 bg-clip-text text-3xl font-bold tracking-tight text-transparent dark:from-slate-50 dark:via-slate-200 dark:to-indigo-300 sm:text-4xl">
-                模型与界面设置
-              </h1>
-              <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300 sm:text-[15px]">
-                统一管理任务模型、页面主题，以及回答中的思考链与引用显示方式。主题与显示偏好会立即生效；模型保存后会直接更新后端任务路由。
-              </p>
-            </div>
-
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <span className={cn(
-                'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm',
-                pendingChanges
-                  ? 'border-amber-200 bg-amber-50/90 text-amber-700 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-300'
-                  : 'border-emerald-200 bg-emerald-50/90 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/35 dark:text-emerald-300'
-              )}>
-                <span className={cn('h-2 w-2 rounded-full', pendingChanges ? 'bg-amber-500' : 'bg-emerald-500')} aria-hidden />
-                {pendingChanges ? '有未保存更改' : '配置已同步'}
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/75 px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-300">
-                主题：{themeLabel}
-              </span>
-            </div>
+        <header className="mb-5 flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-semibold tracking-[-0.025em] text-slate-950 dark:text-white">设置</h1>
+          <div
+            className={cn(
+              'inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold',
+              pendingChanges
+                ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300'
+            )}
+          >
+            <span
+              className={cn('h-1.5 w-1.5 rounded-full', pendingChanges ? 'bg-amber-500' : 'bg-emerald-500')}
+              aria-hidden
+            />
+            {pendingChanges ? '未保存' : '已同步'}
           </div>
-
-        </div>
+        </header>
 
         {error && (
-          <div className="mb-6 flex items-center justify-between gap-4 rounded-2xl border-2 border-amber-200/80 dark:border-amber-800/60 bg-gradient-to-r from-amber-50/90 to-amber-50/50 dark:from-amber-950/40 dark:to-amber-950/20 px-5 py-4 shadow-lg shadow-amber-200/20 dark:shadow-amber-900/20 animate-in slide-up duration-300" role="alert">
-            <div className="flex items-center gap-3 text-amber-800 dark:text-amber-200">
-              <AlertCircle className="h-5 w-5 flex-shrink-0 animate-pulse" aria-hidden />
-              <span className="text-sm font-medium">配置加载或同步失败，当前仍显示本地/默认配置。{error}</span>
+          <div
+            className="mb-6 flex flex-col gap-3 rounded-[8px] border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 sm:flex-row sm:items-center sm:justify-between dark:border-amber-900 dark:bg-amber-950/35 dark:text-amber-100"
+            role="alert"
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+              <div>
+                <p className="text-sm font-semibold">配置同步失败</p>
+                <p className="mt-0.5 text-xs leading-5 text-amber-800 dark:text-amber-300">
+                  当前显示本地或默认配置。{error}
+                </p>
+              </div>
             </div>
             <Button
               variant="outline"
               size="sm"
-              className="rounded-xl border-2 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 font-semibold shadow-sm hover:shadow-md transition-all duration-200"
+              className="shrink-0 rounded-[6px] border-amber-300 bg-white text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-transparent dark:text-amber-200 dark:hover:bg-amber-950"
               aria-label="重试加载设置配置"
               onClick={handleRetry}
             >
-              重试
+              重试加载
             </Button>
           </div>
         )}
 
-        <div className="space-y-6">
-          <div className="space-y-6">
-            <section className="overflow-hidden rounded-3xl border border-white/75 bg-white/82 shadow-lg shadow-slate-200/40 backdrop-blur dark:border-slate-800/80 dark:bg-slate-950/75 dark:shadow-black/20">
-              <div className="border-b border-slate-100/80 bg-gradient-to-r from-slate-50 to-indigo-50/40 px-6 py-4 dark:border-slate-800/70 dark:from-slate-900/80 dark:to-indigo-950/20">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-md shadow-indigo-500/20">
-                    <Palette className="h-4 w-4" aria-hidden />
+        <div className="min-w-0 space-y-6">
+            <section
+              id="interface"
+              className="scroll-mt-6 overflow-hidden rounded-[8px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950"
+            >
+              <div className="grid h-1 grid-cols-6" aria-hidden>
+                <span className="bg-sky-400" />
+                <span className="bg-cyan-400" />
+                <span className="bg-teal-400" />
+                <span className="bg-violet-400" />
+                <span className="bg-amber-400" />
+                <span className="bg-rose-400" />
+              </div>
+              <div className="border-b border-slate-100 px-5 py-5 dark:border-slate-800 sm:px-6">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px] bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300">
+                    <Palette className="h-5 w-5" aria-hidden />
                   </span>
                   <div>
-                    <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50">界面与显示</h2>
-                    <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">控制主题外观，以及回答中哪些辅助信息对用户可见。</p>
+                    <h2 className="text-base font-semibold text-slate-950 dark:text-white">界面与显示</h2>
+                    <p className="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">
+                      设置颜色模式，以及回答中要显示的辅助信息。
+                    </p>
                   </div>
                 </div>
               </div>
 
-              <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
-                <div className="rounded-2xl border border-slate-200/70 bg-gradient-to-br from-slate-50/80 to-white p-4 dark:border-slate-800/80 dark:from-slate-900/50 dark:to-slate-950/80">
-                  <p className="mb-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                    主题模式
-                  </p>
-                  <div className="grid gap-3">
+              <div className="space-y-7 p-5 sm:p-6">
+                <fieldset>
+                  <legend className="text-sm font-semibold text-slate-900 dark:text-slate-100">颜色模式</legend>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">切换后立即预览，保存后记住选择。</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
                     {THEME_OPTIONS.map((item) => {
                       const Icon = item.icon
                       const active = config.theme === item.value
@@ -437,118 +428,108 @@ export function SettingsPage() {
                           key={item.value}
                           type="button"
                           aria-pressed={active}
-                          aria-label={`切换主题为${item.label}${active ? '，当前已选择' : ''}`}
                           onClick={() => handleThemeChange(item.value)}
                           className={cn(
-                            'group rounded-2xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5',
+                            'relative flex items-center gap-3 rounded-[6px] border px-3.5 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2',
                             active
-                              ? 'border-indigo-200 bg-indigo-50 shadow-sm shadow-indigo-500/10 dark:border-indigo-800/60 dark:bg-indigo-950/30'
-                              : 'border-slate-200/80 bg-white/70 hover:border-indigo-200 hover:bg-white hover:shadow-sm dark:border-slate-800/80 dark:bg-slate-950/55 dark:hover:border-indigo-800/50'
+                              ? 'border-indigo-500 bg-indigo-50/70 dark:border-indigo-500 dark:bg-indigo-950/40'
+                              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-700 dark:hover:bg-slate-900'
                           )}
                         >
-                          <div className="flex items-center gap-3">
-                            <span
-                              className={cn(
-                                'flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm',
-                                active
-                                  ? 'border-indigo-200 bg-white text-indigo-600 dark:border-indigo-700 dark:bg-slate-900 dark:text-indigo-300'
-                                  : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400'
-                              )}
-                            >
-                              <Icon className="h-4 w-4" aria-hidden />
+                          <span
+                            className={cn(
+                              'flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px]',
+                              active
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                            )}
+                          >
+                            <Icon className="h-[18px] w-[18px]" aria-hidden />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                              {item.label}
+                              {active && <Check className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-300" aria-hidden />}
                             </span>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-semibold text-slate-900 dark:text-slate-50">{item.label}</span>
-                                {active && (
-                                  <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-900/70 dark:text-indigo-200">
-                                    当前
-                                  </span>
-                                )}
-                              </div>
-                              <p className="mt-0.5 text-xs leading-snug text-slate-500 dark:text-slate-400">{item.description}</p>
-                            </div>
-                          </div>
+                            <span className="mt-0.5 block text-[11px] leading-4 text-slate-500 dark:text-slate-400">
+                              {item.description}
+                            </span>
+                          </span>
                         </button>
                       )
                     })}
                   </div>
-                </div>
+                </fieldset>
 
-                <div className="space-y-5">
-                  <div>
-                  <p className="mb-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                    回答辅助信息
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">回答辅助信息</h3>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    控制回答中展示多少推理与来源信息，不影响后端检索流程。
                   </p>
-                  <div className="space-y-3">
+                  <div className="mt-3 grid gap-2 xl:grid-cols-2">
                     <PreferenceToggle
                       icon={Brain}
                       title="显示思考链"
-                      description="控制回答顶部的 Thinking Capsule 是否展示，用于查看意图识别、路由与检索策略。"
+                      description="展示意图识别、路由与检索策略。"
                       enabled={config.enableThinking}
                       onToggle={() => handleToggle('enableThinking')}
                     />
                     <PreferenceToggle
                       icon={Quote}
                       title="显示引用"
-                      description="控制正文中的引用编号、段落下方的图片/音频/视频引用卡，以及消息底部的引用条是否展示。"
+                      description="展示引用编号、来源卡片与消息引用条。"
                       enabled={config.enableCitations}
                       onToggle={() => handleToggle('enableCitations')}
                     />
                   </div>
                 </div>
-
-                  <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 dark:border-slate-800/80 dark:bg-slate-900/50">
-                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">当前状态</p>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-1">
-                      {[
-                        ['主题', themeLabel],
-                        ['思考链', config.enableThinking ? '已显示' : '已隐藏'],
-                        ['引用', config.enableCitations ? '已显示' : '已隐藏'],
-                      ].map(([label, value]) => (
-                        <div key={label} className="flex items-center justify-between rounded-xl border border-white/70 bg-white/70 px-3 py-2 text-sm dark:border-slate-800/80 dark:bg-slate-950/50">
-                          <span className="text-slate-500 dark:text-slate-400">{label}</span>
-                          <span className="font-semibold text-slate-800 dark:text-slate-100">{value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/80 p-3.5 dark:border-indigo-900/50 dark:bg-indigo-950/25">
-                    <div>
-                      <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">保存页面设置</p>
-                      <p className="mt-0.5 text-xs leading-relaxed text-indigo-700/80 dark:text-indigo-300/80">
-                        主题和显示偏好会即时生效；点击保存用于清除未保存状态并同步当前浏览器配置。
-                      </p>
-                    </div>
-                    <Button
-                      onClick={handleSavePreferences}
-                      disabled={!hasUnsavedChanges || isSavingPreferences || isLoading}
-                      aria-label={isSavingPreferences ? '正在保存页面设置' : hasUnsavedChanges ? '保存页面设置' : '当前没有需要保存的页面设置'}
-                      className="rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20 hover:from-indigo-500 hover:to-violet-500"
-                    >
-                      {isSavingPreferences ? '保存中…' : '保存页面设置'}
-                    </Button>
-                  </div>
-                </div>
               </div>
-            </section>
-          </div>
 
-          <div className="min-w-0">
-            {(isSettingsActive || hasActivatedModelMatrix) ? (
-              <Suspense fallback={<ModelConfigLoading />}>
-                <ModelConfig
-                  initialConfig={initialConfig}
-                  availableModels={availableModels}
-                  onSave={handleSave}
-                  onRefreshCatalog={handleRefreshCatalog}
-                  catalogRefreshing={isRefreshingCatalog || isLoading}
-                  onHasChangesChange={setSettingsHasChanges}
-                />
-              </Suspense>
-            ) : null}
-          </div>
+              <footer className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-slate-800 dark:bg-slate-900/35">
+                <div className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  {hasUnsavedChanges ? '界面设置已修改，保存后记住当前选择。' : '界面设置已保存。'}
+                </div>
+                <Button
+                  onClick={handleSavePreferences}
+                  disabled={!hasUnsavedChanges || isSavingPreferences || isLoading}
+                  aria-label={
+                    isSavingPreferences
+                      ? '正在保存界面设置'
+                      : hasUnsavedChanges
+                        ? '保存界面设置'
+                        : '当前没有需要保存的界面设置'
+                  }
+                  className="rounded-[6px] bg-indigo-600 text-white shadow-sm hover:bg-indigo-500 focus-visible:ring-indigo-500"
+                >
+                  {isSavingPreferences ? (
+                    <>
+                      <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
+                      保存中
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" aria-hidden />
+                      保存界面设置
+                    </>
+                  )}
+                </Button>
+              </footer>
+            </section>
+
+            <section id="models" className="scroll-mt-6">
+              {(isSettingsActive || hasActivatedModelMatrix) ? (
+                <Suspense fallback={<ModelConfigLoading />}>
+                  <ModelConfig
+                    initialConfig={initialConfig}
+                    availableModels={availableModels}
+                    onSave={handleSaveModels}
+                    onRefreshCatalog={handleRefreshCatalog}
+                    catalogRefreshing={isRefreshingCatalog || isLoading}
+                    onHasChangesChange={setModelSettingsHaveChanges}
+                  />
+                </Suspense>
+              ) : null}
+            </section>
         </div>
       </div>
     </ScrollArea>

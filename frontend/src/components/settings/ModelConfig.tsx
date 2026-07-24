@@ -212,7 +212,7 @@ function ModelMetaLine({ detail, className }: { detail?: ModelCatalogDetail; cla
   const capabilities = (detail.capabilities ?? []).filter((item): item is AvailableModelType => item in CAPABILITY_ICON_META)
   const context = formatTokenCount(detail.context_length)
   return (
-    <div className={cn('flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400', className)}>
+    <div className={cn('flex max-w-full flex-wrap items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400', className)}>
       {capabilities.map((capability) => {
         const meta = CAPABILITY_ICON_META[capability]
         const Icon = meta.icon
@@ -221,16 +221,16 @@ function ModelMetaLine({ detail, className }: { detail?: ModelCatalogDetail; cla
             key={capability}
             title={CAPABILITY_LABELS[capability]}
             aria-label={CAPABILITY_LABELS[capability]}
-            className={cn('inline-flex h-8 w-8 items-center justify-center rounded-xl', meta.className)}
+            className={cn('inline-flex h-7 w-7 items-center justify-center rounded-[6px]', meta.className)}
           >
-            <Icon className="h-4 w-4" aria-hidden />
+            <Icon className="h-3.5 w-3.5" aria-hidden />
           </span>
         )
       })}
       {context && (
         <span
           title={`上下文约 ${detail.context_length?.toLocaleString()} tokens`}
-          className="inline-flex h-8 items-center rounded-xl bg-slate-100 px-2.5 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300"
+          className="inline-flex h-7 items-center rounded-[6px] bg-slate-100 px-2 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300"
         >
           {context} ctx
         </span>
@@ -245,7 +245,7 @@ function ModelLogo({ modelId, provider, className }: { modelId: string; provider
       <OpenRouterModelBrandIcon
         modelId={modelId.slice('openrouter:'.length)}
         size={24}
-        className={cn('rounded-md bg-transparent p-0 ring-0 dark:bg-transparent dark:ring-0', className)}
+        className={cn('rounded-[6px] bg-transparent p-0 ring-0 dark:bg-transparent dark:ring-0', className)}
         ariaHidden
       />
     )
@@ -259,13 +259,13 @@ function ModelLogo({ modelId, provider, className }: { modelId: string; provider
 
   if (!src) {
     return (
-      <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-[10px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300', className)} aria-hidden>
+      <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-slate-100 text-[10px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300', className)} aria-hidden>
         AI
       </span>
     )
   }
 
-  return <img src={src} alt="" className={cn('h-6 w-6 shrink-0 rounded-md object-contain', className)} width={24} height={24} aria-hidden />
+  return <img src={src} alt="" className={cn('h-6 w-6 shrink-0 rounded-[6px] object-contain', className)} width={24} height={24} aria-hidden />
 }
 
 function LogoModelSelect({
@@ -275,6 +275,7 @@ function LogoModelSelect({
   disabled,
   onChange,
   className,
+  ariaLabel,
 }: {
   value: string
   list: string[]
@@ -282,6 +283,7 @@ function LogoModelSelect({
   disabled?: boolean
   onChange: (value: string) => void
   className?: string
+  ariaLabel?: string
 }) {
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
@@ -462,7 +464,7 @@ function LogoModelSelect({
       ? createPortal(
           <div
             ref={menuRef}
-            className="fixed z-[1000] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-slate-900/15 dark:border-slate-700 dark:bg-slate-900"
+            className="fixed z-[1000] overflow-y-auto rounded-[8px] border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-900/15 dark:border-slate-700 dark:bg-slate-900"
             style={{
               top: menuBox.top,
               left: menuBox.left,
@@ -494,12 +496,12 @@ function LogoModelSelect({
                     onMouseEnter={() => setActiveIndex(idx)}
                     onKeyDown={(event) => handleOptionKeyDown(event, idx)}
                     className={cn(
-                      'flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:focus:ring-fuchsia-500/40',
+                      'flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-[6px] px-2.5 py-2 text-left text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/40',
                       active
                         ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200'
                         : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800',
                       focused && !active
-                        ? 'bg-slate-50 ring-1 ring-inset ring-indigo-200 dark:bg-slate-800 dark:ring-fuchsia-500/30'
+                        ? 'bg-slate-50 ring-1 ring-inset ring-indigo-200 dark:bg-slate-800 dark:ring-indigo-500/30'
                         : undefined
                     )}
                   >
@@ -524,14 +526,14 @@ function LogoModelSelect({
         type="button"
         disabled={disabled}
         title={displayValue || '当前无可用模型'}
-        aria-label={selectLabel}
+        aria-label={ariaLabel ?? selectLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listboxId}
         onClick={handleButtonClick}
         onKeyDown={handleButtonKeyDown}
         className={cn(
-          'relative flex h-10 w-full min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white/95 py-2 pl-3 pr-10 text-left text-sm font-semibold text-slate-800 shadow-sm transition-all duration-200 hover:border-indigo-300 hover:shadow-md focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-fuchsia-500/50 dark:focus:border-fuchsia-500 dark:focus:ring-fuchsia-500/50'
+          'relative flex h-10 w-full min-w-0 items-center gap-2 rounded-[6px] border border-slate-300 bg-white py-2 pl-3 pr-10 text-left text-sm font-medium text-slate-800 shadow-sm transition-colors hover:border-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-600 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20'
         )}
       >
         {displayValue ? <ModelLogo modelId={displayValue} provider={provider} /> : null}
@@ -557,6 +559,7 @@ export function ModelConfig({
   const [hasChanges, setHasChanges] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedBrief, setSavedBrief] = useState(false)
+  const savedBriefTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { showSuccess, showError } = useToastStore()
   const modelDetails = availableModels?.model_details ?? {}
   const catalogStatus = availableModels?.catalog_status
@@ -629,6 +632,14 @@ export function ModelConfig({
   }, [hasChanges, onHasChangesChange])
 
   useEffect(() => {
+    return () => {
+      if (savedBriefTimerRef.current) {
+        clearTimeout(savedBriefTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     setMatrix((prev) => {
       const next = prev.map((entry) => normalizeSelection(entry, entry.category, TASK_BACKEND_KEYS[entry.taskId]))
       const changed = next.some((entry, index) => entry.provider !== prev[index]?.provider || entry.model !== prev[index]?.model)
@@ -675,7 +686,10 @@ export function ModelConfig({
       setHasChanges(false)
       showSuccess('配置已保存')
       setSavedBrief(true)
-      setTimeout(() => setSavedBrief(false), 2000)
+      if (savedBriefTimerRef.current) {
+        clearTimeout(savedBriefTimerRef.current)
+      }
+      savedBriefTimerRef.current = setTimeout(() => setSavedBrief(false), 2000)
     } catch (e) {
       const msg = e instanceof Error ? e.message : '保存失败'
       showError(msg)
@@ -695,61 +709,54 @@ export function ModelConfig({
   const rerankerModels = reranker.provider ? modelList(reranker.provider, 'reranker', 'reranking') : []
 
   const selectBase =
-    'relative flex h-10 w-full min-w-0 truncate rounded-xl border bg-white/95 dark:bg-slate-900/70 pl-3 pr-9 py-2 text-sm font-medium text-slate-800 dark:text-slate-100 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500/50 dark:focus:ring-fuchsia-500/50 cursor-pointer border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-fuchsia-500/50 focus:border-indigo-400 dark:focus:border-fuchsia-500 appearance-none shadow-sm hover:shadow-md'
+    'relative flex h-10 w-full min-w-0 cursor-pointer appearance-none truncate rounded-[6px] border border-slate-300 bg-white py-2 pl-3 pr-9 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:border-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-600 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20'
 
   return (
-    <div className={cn('space-y-6 animate-in fade-in duration-300', className)}>
+    <div className={cn('animate-in fade-in duration-300', className)}>
       <span id={configStatusId} className="sr-only" aria-live="polite">
         {configStatusText}
       </span>
-      <div className="overflow-hidden rounded-3xl border border-white/75 bg-white/84 shadow-lg shadow-slate-200/40 backdrop-blur-sm dark:border-slate-800/80 dark:bg-slate-950/80 dark:shadow-black/20">
-        <header className="relative overflow-hidden border-b border-slate-100/80 bg-gradient-to-r from-slate-50/90 via-white/90 to-indigo-50/45 px-6 py-5 dark:border-slate-800/60 dark:from-slate-900/90 dark:via-slate-950/90 dark:to-indigo-950/25 sm:px-8">
-          <div className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-indigo-400/15 blur-3xl dark:bg-indigo-500/10" />
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-            <div className="relative flex items-start gap-4">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-fuchsia-500 text-white shadow-md shadow-indigo-500/25">
-                <Settings className="h-5 w-5" />
+      <div className="rounded-[8px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+        <header className="sticky top-0 z-20 rounded-t-[8px] border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/95 sm:px-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px] bg-slate-950 text-white dark:bg-white dark:text-slate-950">
+                <Settings className="h-5 w-5" aria-hidden />
               </div>
-              <div>
-                <h2 className="bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-xl font-bold tracking-tight text-transparent dark:from-slate-50 dark:to-slate-300">
-                  模块化模型配置
-                </h2>
-                <p className="mt-1.5 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
-                  为各个链路步骤分别指定 Provider 与模型，保存后新的后端请求会立即使用最新配置
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-semibold text-slate-950 dark:text-white">模型路由</h2>
+                  {hasChanges && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                      <AlertCircle className="h-3 w-3" aria-hidden />
+                      未保存
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  为每个任务步骤指定 Provider 与模型，保存后用于新的请求。
                 </p>
               </div>
             </div>
-            <div className="relative flex flex-wrap items-center gap-2.5 xl:justify-end">
-              <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/70 px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-300">
-                官网同步：{syncedModelCount}/{totalModelCount || 0} · {lastRefreshLabel}
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50/80 px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm dark:border-indigo-900/60 dark:bg-indigo-950/45 dark:text-indigo-200">
-                {matrix.length} 个任务链路
-              </span>
-              {hasChanges && (
-                <span className="inline-flex items-center gap-2 rounded-full border border-amber-200/60 bg-amber-100/90 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-sm dark:border-amber-800/50 dark:bg-amber-900/50 dark:text-amber-300">
-                  <AlertCircle className="h-3.5 w-3.5" aria-hidden />
-                  未保存
-                </span>
-              )}
+            <div className="flex flex-wrap items-center gap-2 xl:justify-end">
               {onRefreshCatalog && (
                 <Button
                   variant="outline"
                   size="sm"
-                  className="rounded-xl border border-sky-200 text-sky-700 shadow-sm transition-all duration-200 hover:border-sky-300 hover:bg-sky-50 dark:border-sky-800 dark:text-sky-300 dark:hover:border-sky-700 dark:hover:bg-sky-950/30 disabled:opacity-40"
+                  className="rounded-[6px] border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900"
                   disabled={catalogRefreshing || saving}
                   aria-label={catalogRefreshing ? '正在刷新官方模型目录' : '刷新官方模型目录'}
                   aria-describedby={configStatusId}
                   onClick={() => void onRefreshCatalog()}
                 >
                   <RefreshCw className={cn('mr-2 h-4 w-4', catalogRefreshing && 'animate-spin')} aria-hidden />
-                  {catalogRefreshing ? '同步中…' : '刷新官网目录'}
+                  {catalogRefreshing ? '同步中' : '刷新目录'}
                 </Button>
               )}
               <Button
                 variant="outline"
                 size="sm"
-                className="rounded-xl border border-slate-300 text-slate-700 shadow-sm transition-all duration-200 hover:border-slate-400 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:bg-slate-800 disabled:opacity-40"
+                className="rounded-[6px] border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900"
                 disabled={!hasChanges || saving}
                 aria-label={hasChanges ? '重置模型配置为上次保存状态' : '当前没有可重置的模型配置更改'}
                 aria-describedby={configStatusId}
@@ -760,7 +767,7 @@ export function ModelConfig({
               </Button>
               <Button
                 size="sm"
-                className="rounded-xl border-0 bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 font-semibold text-white shadow-md shadow-indigo-500/25 transition-all duration-200 hover:from-indigo-500 hover:via-purple-500 hover:to-fuchsia-500 hover:shadow-lg hover:shadow-indigo-500/35 disabled:opacity-50"
+                className="rounded-[6px] bg-indigo-600 font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:ring-indigo-500"
                 disabled={!hasChanges || saving}
                 aria-label={saving ? '正在保存模型配置' : hasChanges ? '保存模型配置' : '当前没有可保存的模型配置更改'}
                 aria-describedby={configStatusId}
@@ -778,8 +785,8 @@ export function ModelConfig({
                   </>
                 ) : (
                   <>
-                    保存
-                    <Save className="ml-2 h-4 w-4" aria-hidden />
+                    <Save className="mr-2 h-4 w-4" aria-hidden />
+                    保存模型路由
                   </>
                 )}
               </Button>
@@ -787,27 +794,39 @@ export function ModelConfig({
           </div>
         </header>
 
-        <div className="space-y-8 p-5 sm:p-8">
-          <div className="flex items-start gap-3 rounded-2xl border border-sky-200/70 bg-gradient-to-r from-sky-50/90 to-indigo-50/60 px-4 py-3 text-sm leading-relaxed text-sky-900 shadow-sm dark:border-sky-900/50 dark:from-sky-950/30 dark:to-indigo-950/20 dark:text-sky-100">
-            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-500 shadow-sm shadow-sky-500/40" />
-            <span>模型列表来自后端已配置 Provider 的官方模型目录与本地注册表合并结果；任务下拉会按模型能力自动过滤与排序，保存后直接更新运行中的任务路由。</span>
+        <div className="space-y-7 p-5 sm:p-6">
+          <div className="flex flex-col gap-3 rounded-[6px] border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900/50">
+            <p className="text-xs leading-5 text-slate-600 dark:text-slate-400">
+              候选模型会按任务能力自动过滤；目录合并官方数据与本地注册表。
+            </p>
+            <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+              <span>
+                <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{syncedModelCount}/{totalModelCount || 0}</span>
+                {' '}官网同步
+              </span>
+              <span>更新于 {lastRefreshLabel}</span>
+            </div>
           </div>
 
-          <section className="animate-in slide-up duration-500">
-            <div className="mb-4 flex items-center gap-3">
-              <span className="inline-flex h-10 w-1.5 rounded-full bg-gradient-to-b from-indigo-500 via-purple-500 to-fuchsia-500 shadow-sm" />
-              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight">
-                任务 - 模型映射
-              </h3>
+          <section>
+            <div className="mb-3 flex items-end justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-950 dark:text-white">任务模型映射</h3>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">沿着处理链路，为每一步选择最合适的模型。</p>
+              </div>
+              <span className="shrink-0 font-mono text-xs font-semibold text-slate-400 dark:text-slate-500">
+                {matrix.length} STEPS
+              </span>
             </div>
-            <div className="space-y-3 rounded-2xl border border-slate-200/70 bg-gradient-to-br from-slate-50/90 to-white/80 p-3 shadow-sm dark:border-slate-700/70 dark:from-slate-900/50 dark:to-slate-950/80 sm:p-4">
-              <div className="hidden grid-cols-[minmax(0,0.72fr)_minmax(9.5rem,0.62fr)_minmax(0,2.35fr)] gap-4 rounded-xl border border-slate-200/80 bg-slate-100/80 px-5 py-3 text-xs font-bold uppercase tracking-widest text-slate-600 dark:border-slate-700/70 dark:bg-slate-800/70 dark:text-slate-300 lg:grid">
+            <div className="overflow-hidden rounded-[8px] border border-slate-200 dark:border-slate-800">
+              <div className="hidden grid-cols-[minmax(0,0.9fr)_minmax(8.5rem,0.65fr)_minmax(0,1.7fr)] gap-4 border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400 lg:grid">
                 <div>任务</div>
                 <div>Provider</div>
                 <div>模型</div>
               </div>
 
-              {matrix.map((task, index) => {
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {matrix.map((task) => {
                 const meta = TASK_META[task.taskId]
                 const Icon = meta.icon
                 const taskKey = TASK_BACKEND_KEYS[task.taskId]
@@ -819,36 +838,37 @@ export function ModelConfig({
                   <div
                     key={task.taskId}
                     className={cn(
-                      'group relative overflow-visible rounded-2xl border border-slate-200/70 bg-white/84 p-3.5 shadow-sm transition-all duration-200 hover:shadow-lg hover:shadow-indigo-500/10 dark:border-slate-700/70 dark:bg-slate-950/55 dark:hover:shadow-black/30',
+                      'group relative bg-white px-4 py-4 transition-colors hover:bg-slate-50/80 dark:bg-slate-950 dark:hover:bg-slate-900/45',
                       meta.isPrimary
-                        ? 'border-indigo-200/80 bg-gradient-to-r from-indigo-50/90 to-violet-50/60 dark:border-indigo-800/60 dark:from-indigo-950/40 dark:to-violet-950/20'
-                        : index % 2 === 0
-                          ? 'hover:border-indigo-200/70 hover:bg-slate-50/95 dark:hover:border-indigo-800/40 dark:hover:bg-slate-900/60'
-                          : 'bg-slate-50/60 hover:border-indigo-200/70 hover:bg-slate-50/95 dark:bg-slate-900/25 dark:hover:border-indigo-800/40 dark:hover:bg-slate-900/60'
+                        ? 'bg-indigo-50/45 hover:bg-indigo-50/70 dark:bg-indigo-950/20 dark:hover:bg-indigo-950/30'
+                        : undefined
                     )}
                   >
-                    <div className="grid gap-4 lg:grid-cols-[minmax(0,0.72fr)_minmax(9.5rem,0.62fr)_minmax(0,2.35fr)] lg:items-center">
+                    <span className={cn('absolute inset-y-3 left-0 w-1 rounded-r-full', meta.barClass)} aria-hidden />
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(8.5rem,0.65fr)_minmax(0,1.7fr)] lg:items-center">
                       <div className="min-w-0">
-                        <div className="flex items-center gap-4">
-                          <span className={cn('absolute inset-y-3.5 left-0 w-1 rounded-r-full', meta.barClass)} />
-                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 text-slate-600 shadow-sm ring-1 ring-white/70 transition-all duration-200 group-hover:scale-105 group-hover:shadow-md dark:from-slate-800 dark:to-slate-900 dark:text-slate-400 dark:ring-slate-700/70">
-                            <Icon className="h-5 w-5" />
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                            <Icon className="h-[18px] w-[18px]" aria-hidden />
                           </span>
                           <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2.5 font-semibold text-slate-800 dark:text-slate-100">
+                            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
                               <span>{task.label}</span>
                               {meta.isPrimary && (
-                                <span className="rounded-lg border border-indigo-200/50 bg-gradient-to-r from-indigo-100 to-purple-100 px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-sm dark:border-indigo-800/50 dark:from-indigo-900/60 dark:to-purple-900/60 dark:text-indigo-300">
+                                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300">
                                   主模型
                                 </span>
                               )}
                             </div>
+                            <p className="mt-0.5 truncate text-[11px] leading-4 text-slate-500 dark:text-slate-400" title={task.description}>
+                              {task.description}
+                            </p>
                           </div>
                         </div>
                       </div>
 
                       <div className="min-w-0">
-                        <div className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 lg:hidden">
+                        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400 lg:hidden">
                           Provider
                         </div>
                         <div className="relative">
@@ -856,6 +876,7 @@ export function ModelConfig({
                             value={task.provider}
                             onChange={(e) => updateTask(task.taskId, 'provider', e.target.value)}
                             className={selectBase}
+                            aria-label={`${task.label} Provider`}
                             title={task.provider || '当前无可用 Provider'}
                             disabled={providers.length === 0}
                           >
@@ -871,17 +892,18 @@ export function ModelConfig({
                       </div>
 
                       <div className="min-w-0">
-                        <div className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 lg:hidden">
+                        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400 lg:hidden">
                           模型
                         </div>
-                        <div className="flex min-w-0 items-center gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
                           <LogoModelSelect
                             value={task.model}
                             list={models}
                             provider={task.provider}
                             disabled={models.length === 0}
                             onChange={(value) => updateTask(task.taskId, 'model', value)}
-                            className="min-w-0 flex-1 lg:w-[clamp(16rem,30vw,24rem)] lg:flex-none"
+                            ariaLabel={`${task.label}模型，当前模型：${task.model || '无'}`}
+                            className="w-full min-w-0 flex-none sm:min-w-[12rem] sm:flex-1"
                           />
                           <ModelMetaLine detail={selectedDetail} />
                         </div>
@@ -890,39 +912,32 @@ export function ModelConfig({
                   </div>
                 )
               })}
+              </div>
             </div>
           </section>
 
-          <section className="animate-in slide-up duration-500 delay-100">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-600 shadow-sm border border-emerald-200/50 dark:from-emerald-900/40 dark:to-teal-900/40 dark:text-emerald-400 dark:border-emerald-800/50">
-                  <ArrowDownUp className="h-5 w-5" />
-                </div>
-                <span className="inline-flex h-10 w-1.5 rounded-full bg-gradient-to-b from-emerald-400 via-teal-400 to-emerald-500 shadow-sm dark:from-emerald-500 dark:via-teal-500 dark:to-emerald-600" />
-                <div className="flex items-center gap-3">
-                  <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight">
-                    Reranker 模型
-                  </h3>
-                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 border border-emerald-200/60 shadow-sm dark:from-emerald-950/40 dark:to-teal-950/40 dark:text-emerald-300 dark:border-emerald-800/60">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
-                    检索结果排序用
-                  </span>
-                </div>
+          <section>
+            <div className="mb-3 flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-[6px] bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-300">
+                <ArrowDownUp className="h-[18px] w-[18px]" aria-hidden />
+              </span>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Reranker</h3>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">对召回结果重新排序，提高最终上下文的相关性。</p>
               </div>
             </div>
-            <div className="relative overflow-visible rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-emerald-50/60 via-white/90 to-teal-50/40 p-6 shadow-sm dark:border-emerald-800/40 dark:from-emerald-950/30 dark:via-slate-950/80 dark:to-teal-950/20">
-              <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-300/15 blur-3xl dark:bg-emerald-600/10" />
-              <div className="grid gap-6 lg:grid-cols-[minmax(9.5rem,0.42fr)_minmax(0,1.58fr)]">
-                <div className="relative min-w-0 space-y-2.5">
-                  <Label className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">
+            <div className="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-900/35">
+              <div className="grid gap-4 lg:grid-cols-[minmax(8.5rem,0.65fr)_minmax(0,1.7fr)]">
+                <div className="min-w-0 space-y-1.5">
+                  <Label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">
                     Provider
                   </Label>
                   <div className="relative">
                     <select
                       value={reranker.provider}
                       onChange={(e) => updateReranker('provider', e.target.value)}
-                      className={cn(selectBase, 'border-emerald-200/60 dark:border-emerald-800/60 hover:border-emerald-300 dark:hover:border-emerald-700/60 focus:border-emerald-400 dark:focus:border-emerald-600 focus:ring-emerald-500/50 dark:focus:ring-emerald-500/50')}
+                      className={selectBase}
+                      aria-label="Reranker Provider"
                       title={reranker.provider || '当前无可用 Provider'}
                       disabled={rerankerProviders.length === 0}
                     >
@@ -936,18 +951,19 @@ export function ModelConfig({
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-slate-400 pointer-events-none" />
                   </div>
                 </div>
-                <div className="relative min-w-0 space-y-2.5">
-                  <Label className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">
+                <div className="min-w-0 space-y-1.5">
+                  <Label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">
                     模型
                   </Label>
-                  <div className="flex min-w-0 items-center gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <LogoModelSelect
                       value={reranker.model}
                       list={rerankerModels}
                       provider={reranker.provider}
                       disabled={rerankerModels.length === 0}
                       onChange={(value) => updateReranker('model', value)}
-                      className="min-w-0 flex-1 lg:w-[clamp(16rem,30vw,24rem)] lg:flex-none"
+                      ariaLabel={`Reranker 模型，当前模型：${reranker.model || '无'}`}
+                      className="w-full min-w-0 flex-none sm:min-w-[12rem] sm:flex-1"
                     />
                     <ModelMetaLine detail={modelDetails[reranker.model]} />
                   </div>
