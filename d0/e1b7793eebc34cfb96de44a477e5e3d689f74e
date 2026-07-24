@@ -1,0 +1,21 @@
+frontend/src/components/chat/MessageBubble.tsx
+  s_69a1ef6f6436be::t_174668d140cb28 187-223,225-228,230,267,291-315,448,456,771,773,777,1032,1034,1047,1258-1262,1298-1299,1320-1322,1354-1361,1479,1551
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d0e1b7793eebc34cfb96de44a477e5e3d689f74e",
+  "prompts": {},
+  "sessions": {
+    "s_69a1ef6f6436be": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9205-ef8c-7172-88ab-36c056394dec",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
