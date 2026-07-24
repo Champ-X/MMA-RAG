@@ -753,7 +753,7 @@ export function ChatInterface() {
                 </div>
                 <EmptyStateGreetingTitle sessionKey={activeSessionId ?? ''} />
                 <EmptyStateHint />
-                <div className="mt-5 sm:mt-6">
+                <div className="mt-7 sm:mt-8">
                   <Suspense fallback={<SuggestedQuestionsLoading />}>
                     <SuggestedQuestions
                       session={activeSession}

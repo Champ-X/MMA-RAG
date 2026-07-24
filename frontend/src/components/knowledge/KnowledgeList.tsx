@@ -3049,10 +3049,16 @@ const KnowledgeList: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowCreateModal(true)}
-                className="inline-flex min-h-[42px] w-full shrink-0 items-center justify-center gap-2 rounded-[8px] bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 lg:w-auto"
+                className="group relative inline-flex min-h-[46px] w-full shrink-0 items-center justify-center gap-2.5 overflow-hidden rounded-[12px] border border-indigo-400/35 bg-gradient-to-br from-indigo-500 via-indigo-600 to-violet-600 px-5 text-sm font-semibold text-white shadow-[0_16px_32px_-20px_rgba(79,70,229,0.95)] transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 hover:border-indigo-300/60 hover:shadow-[0_20px_38px_-20px_rgba(79,70,229,0.9)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 active:translate-y-0 lg:w-auto"
               >
-                <Plus size={17} strokeWidth={2.4} aria-hidden />
-                新建知识库
+                <span
+                  className="pointer-events-none absolute inset-y-0 -left-10 w-8 rotate-12 bg-white/15 blur-md transition-transform duration-500 group-hover:translate-x-40"
+                  aria-hidden
+                />
+                <span className="relative grid h-7 w-7 place-items-center rounded-[8px] bg-white/14 ring-1 ring-inset ring-white/25">
+                  <Plus size={16} strokeWidth={2.5} aria-hidden />
+                </span>
+                <span className="relative">新建知识库</span>
               </button>
             </div>
           </div>

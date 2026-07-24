@@ -41,6 +41,10 @@ const navigationItems = [
 const railTransition =
   'transition-[background-color,color,opacity,transform] duration-150 ease-out motion-reduce:transition-none'
 
+const brandWordmarkStyle = {
+  fontFamily: '"Snell Roundhand", "Segoe Script", "Brush Script MT", cursive',
+} as const
+
 function getConversationTitle(session: ChatSession) {
   const firstUserMessage = session.messages.find((message) => message.role === 'user')
   const title = (firstUserMessage?.content || session.title || '').replace(/\s+/g, ' ').trim()
@@ -289,11 +293,12 @@ export function ConversationSidebar({
           </button>
           <span
             className={cn(
-              'truncate text-[21px] font-semibold tracking-[-0.045em]',
-              theme.primary,
+              'truncate bg-gradient-to-r from-slate-950 via-indigo-700 to-violet-600 bg-clip-text text-[26px] font-bold leading-none tracking-[0.01em] text-transparent drop-shadow-[0_1px_0_rgba(255,255,255,0.7)]',
+              'dark:from-slate-50 dark:via-indigo-300 dark:to-violet-300 dark:drop-shadow-none',
               collapsed && 'hidden',
               'max-[640px]:hidden'
             )}
+            style={brandWordmarkStyle}
           >
             Tessmora
           </span>

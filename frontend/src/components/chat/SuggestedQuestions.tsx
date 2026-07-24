@@ -471,7 +471,7 @@ export function SuggestedQuestions({
                   aria-label={`发送推荐问题：${item.text}`}
                   onClick={() => onSelect(item.text)}
                   className={cn(
-                    'w-full rounded-[8px] border border-slate-200/90 bg-white/45 px-3.5 py-3 text-left transition-colors duration-150',
+                    'flex h-[72px] w-full items-center rounded-[10px] border border-slate-200/90 bg-white/45 px-3.5 text-left transition-colors duration-150',
                     'hover:border-slate-300 hover:bg-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/70 focus-visible:ring-offset-2',
                     'dark:border-slate-800 dark:bg-slate-900/30 dark:hover:border-slate-700 dark:hover:bg-slate-900/60',
                     disabled && 'cursor-not-allowed opacity-55'
@@ -495,13 +495,13 @@ export function SuggestedQuestions({
                     aria-label={`发送推荐问题：${item.text}`}
                     onClick={() => onSelect(item.text)}
                     className={cn(
-                      'flex min-h-[68px] w-full items-center rounded-[8px] border border-slate-200/90 bg-white/45 px-4 py-3 text-left transition-colors duration-150',
+                      'flex h-[92px] w-full items-center rounded-[10px] border border-slate-200/90 bg-white/45 px-4 text-left transition-colors duration-150',
                       'hover:border-slate-300 hover:bg-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/70 focus-visible:ring-offset-2',
                       'dark:border-slate-800 dark:bg-slate-900/30 dark:hover:border-slate-700 dark:hover:bg-slate-900/60',
                       disabled && 'cursor-not-allowed opacity-55'
                     )}
                   >
-                    <span className="block line-clamp-2 text-[13px] font-medium leading-relaxed text-slate-700 dark:text-slate-200">
+                    <span className="block line-clamp-3 text-[13px] font-medium leading-relaxed text-slate-700 dark:text-slate-200">
                       {item.text}
                     </span>
                   </button>
