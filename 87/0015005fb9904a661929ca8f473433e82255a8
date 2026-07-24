@@ -1,0 +1,65 @@
+README-en.md
+  s_1adfcbfbdece96::t_677a3ca8ffb78d 101,103,107
+README.md
+  s_1adfcbfbdece96::t_f889536720b27e 101,103,107
+backend/.env.example
+  s_1adfcbfbdece96::t_60855a3d0156fa 61-68
+backend/app/core/config.py
+  s_1adfcbfbdece96::t_808ac23a4381f9 122-144
+backend/app/core/llm/__init__.py
+  s_1adfcbfbdece96::t_64495ed3011630 25,451-457,535
+backend/app/modules/ingestion/__init__.py
+  s_1adfcbfbdece96::t_75842017fd89d7 1-5,8-15,22-41
+backend/app/modules/ingestion/service.py
+  s_1adfcbfbdece96::t_8b8f0087aed834 40-45,86,487,985-992,3104-3106,3108,3111
+backend/app/modules/ingestion/splitters/agentic.py
+  s_1adfcbfbdece96::t_3beb12c537b1be 1-972
+backend/app/modules/ingestion/storage/vector_store.py
+  s_1adfcbfbdece96::t_f6532c9fe33487 31,57,68,560,596,654,1010,1086,1099,1187,1588,1604,1670,1838,1940,1969,2019,2055
+backend/app/modules/knowledge/service.py
+  s_1adfcbfbdece96::t_59170d8a7fd420 19-23,532,562,600,784,1067,1079,1732,1763,1965
+backend/app/modules/retrieval/search_engine.py
+  s_1adfcbfbdece96::t_6776d5cdeeee49 13,1048-1050
+backend/experiments/agentic_chunker/README.md
+  s_1adfcbfbdece96::t_9577adc8b64054 1-23
+backend/experiments/agentic_chunker/__init__.py
+  s_1adfcbfbdece96::t_210bc09921872d 1-36
+backend/experiments/agentic_chunker/core.py
+  s_1adfcbfbdece96::t_a60657e0cd0e88 1-901
+backend/experiments/agentic_chunker/repository_baseline.py
+  s_1adfcbfbdece96::t_f188c9f0b13460 1-120
+backend/experiments/agentic_chunker/run_demo.py
+  s_1adfcbfbdece96::t_28f443cacd890d 1-173
+backend/requirements.txt
+  s_1adfcbfbdece96::t_57d71149e15d40 60
+backend/scripts/backfill_suggested_questions.py
+  s_1adfcbfbdece96::t_4a57ce504e29b0 5,29,62,93
+backend/test_agentic_chunker_integration.py
+  s_1adfcbfbdece96::t_43dc53ce1da702 1-167
+backend/test_agentic_chunker_standalone.py
+  s_1adfcbfbdece96::t_a4df2e4320508f 1-142
+docs/MMA_ARCHITECTURE.md
+  s_1adfcbfbdece96::t_5ec1a3cb971ef5 307,318-322,336,419,432
+docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md
+  s_1adfcbfbdece96::t_619297efc5ae4d 79,118
+frontend/src/data/architectureData.ts
+  s_1adfcbfbdece96::t_40ff8fcd2307c9 306,310,423,511
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "870015005fb9904a661929ca8f473433e82255a8",
+  "prompts": {},
+  "sessions": {
+    "s_1adfcbfbdece96": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f901d-fe45-7cb3-900f-fbf7d7b04631",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
