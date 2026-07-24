@@ -1,0 +1,57 @@
+frontend/src/components/layout/ConversationSidebar.tsx
+  s_3d97c23fdcc696::t_746a10e3b4909d 274
+  s_72a59aa740f892::t_0f08010b186bf6 1,5,50-149,166,170-177,193,196-197,199-200,202,247,252,263-264,270-271,292,303,310,316,320,329,344,348,366,369-370,374,405,464,466-467,472-475,481,502-504,509,512-532,542,570,580-581,632,635,637,641,643-644,646-684,694
+frontend/src/components/architecture/ArchitectureNav.tsx
+  s_acc2923728a4a5::t_6bf1ad303e299c 12-14,16,23,25-26,34,38,41
+frontend/src/components/architecture/InnovationSection.tsx
+  s_acc2923728a4a5::t_83f3fb226d8b11 52,56,65,85-87
+frontend/src/components/architecture/OverviewSection.tsx
+  s_acc2923728a4a5::t_810484baed48ea 8-15,18-24,31-32,34,41-42,44,46,52-53,55,57,65-66,68,70
+frontend/src/components/chat/ChatInterface.tsx
+  s_72a59aa740f892::t_b74b879390f28d 67,74,76-77,105,109,117,250,253,256,273-275,745-766
+frontend/src/components/chat/MessageBubble.tsx
+  s_72a59aa740f892::t_161c3492e387cb 2,49,1491,1493,1495-1496,1506-1512,1514-1522,1528-1533,1563,1575,1581,1585-1587
+frontend/src/components/chat/SuggestedQuestions.tsx
+  s_acc2923728a4a5::t_5418ee40341791 449-451,456,461,466,474-477,489,498-501,504
+frontend/src/components/chat/ThinkingCapsule.tsx
+  s_72a59aa740f892::t_b812f4185a88c6 190,198-199,234,439,463,491
+frontend/src/components/knowledge/KnowledgeList.tsx
+  s_acc2923728a4a5::t_f27a6945193ff7 3001-3013,3016-3045,3048-3057
+frontend/src/pages/ArchitecturePage.tsx
+  s_acc2923728a4a5::t_40f10b510c5cde 89,92,94-103,105-106,108-109,111-115,118-153,156-159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2e87053164137e1d45d832dec4e80d7093bc96eb",
+  "prompts": {},
+  "sessions": {
+    "s_3d97c23fdcc696": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a60dae81368c775cb795415",
+        "model": "gpt-5.5__max",
+        "display_model_name": "GPT-5.5"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    },
+    "s_72a59aa740f892": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f94a1-6dd6-7742-a532-da19f3ed0685",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    },
+    "s_acc2923728a4a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9319-f5c7-7621-b4c0-205d43255ad1",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
