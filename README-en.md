@@ -4,11 +4,13 @@
 
 <p align="center"><strong>English | <a href="README.md">简体中文</a></strong></p>
 
-# Nexus — Multi-Modal Agentic RAG: Intelligent routing & extensible multimodal knowledge base
+# Tessmora — Multi-Modal Agentic RAG: Intelligent routing & extensible multimodal knowledge base
 
-**Nexus** is a **multimodal Agentic RAG** knowledge-base stack you can self-host: documents, images, and optional audio/video pipelines share one **ingest → portrait routing → hybrid retrieval → streaming generation** path—rather than bolting modalities onto a text-only RAG after the fact. Design goals in three words: **pick the right knowledge bases**, **retrieve evidence across modalities**, **answer with explainable, traceable citations**.
+<p align="center"><em>Every fragment finds its place.</em></p>
 
-### Nexus at a glance
+**Tessmora** is a **multimodal Agentic RAG** knowledge-base stack you can self-host: documents, images, and optional audio/video pipelines share one **ingest → portrait routing → hybrid retrieval → streaming generation** path—rather than bolting modalities onto a text-only RAG after the fact. Design goals in three words: **pick the right knowledge bases**, **retrieve evidence across modalities**, **answer with explainable, traceable citations**.
+
+### Tessmora at a glance
 
 - **Multi-KB first**: LLM topic summaries plus sub-topic clustering build per-KB portraits; online semantic weighting and thresholds choose single-KB, multi-KB, or full-corpus search and cut wasted scans.
 - **Hybrid retrieval + two-stage ranking**: **Dense + BGE-M3 sparse + Visual** at the core; when intent and data allow, audio/video vector search joins in; **weighted RRF** for coarse fusion and **Cross-Encoder** for fine ranking across incomparable scores.

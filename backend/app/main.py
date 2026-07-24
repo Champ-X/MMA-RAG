@@ -1,5 +1,5 @@
 """
-Multi-Modal RAG Agent 主应用入口
+Multi-Modal Agentic RAG 主应用入口
 FastAPI 应用配置文件
 """
 
@@ -50,7 +50,7 @@ async def _app_lifespan(app: FastAPI):
 
 # 创建 FastAPI 应用实例
 app = FastAPI(
-    title="Multi-Modal RAG Agent API",
+    title="Multi-Modal Agentic RAG API",
     description="基于多模态智能路由的可扩展知识库RAG系统",
     version="1.0.0",
     docs_url="/docs",
@@ -100,7 +100,7 @@ async def health_check():
     """健康检查端点"""
     return {
         "status": "healthy",
-        "service": "Multi-Modal RAG Agent",
+        "service": "Multi-Modal Agentic RAG",
         "version": "1.0.0"
     }
 
@@ -109,7 +109,7 @@ async def health_check():
 async def root():
     """根路径"""
     return {
-        "message": "Multi-Modal RAG Agent API",
+        "message": "Multi-Modal Agentic RAG API",
         "docs": "/docs",
         "health": "/health"
     }

@@ -54,7 +54,7 @@ export const architectureSections: ArchitectureSection[] = [
   {
     id: 'overview',
     title: '项目总览',
-    subtitle: 'Multi-Modal 智能路由可扩展知识库 RAG Agent',
+    subtitle: 'Multi-Modal Agentic RAG：智能路由与可扩展知识库',
   },
   {
     id: 'innovations',

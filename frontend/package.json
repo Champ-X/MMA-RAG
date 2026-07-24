@@ -1,7 +1,7 @@
 {
   "name": "multi-modal-rag-frontend",
   "version": "1.0.0",
-  "description": "Multi-Modal RAG Agent Frontend",
+  "description": "Multi-Modal Agentic RAG Frontend",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -13,12 +13,12 @@ export function OverviewSection() {
 
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
-          Multi-Modal 智能路由可扩展知识库 RAG Agent
+          Multi-Modal Agentic RAG：智能路由与可扩展知识库
         </h1>
         <div className="space-y-3 max-w-4xl">
           <p className="break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
             面向<strong className="font-medium text-slate-800 dark:text-slate-100"> 多知识库、多模态 </strong>
-            的 RAG Agent，统一检索与生成文档与图像，并扩展音频（ASR + CLAP）、视频（关键帧 + 整体描述 + CLIP）等模态；支持本地上传、URL、文件夹、热点订阅等多来源接入。Web 端通过 SSE 获取思考链与引用；若部署飞书集成，可在 IM 内复用同一套领域服务，以卡片 2.0、Post 等呈现多模态引用。
+            的 Agentic RAG 系统，统一检索与生成文档与图像，并扩展音频（ASR + CLAP）、视频（关键帧 + 整体描述 + CLIP）等模态；支持本地上传、URL、文件夹、热点订阅等多来源接入。Web 端通过 SSE 获取思考链与引用；若部署飞书集成，可在 IM 内复用同一套领域服务，以卡片 2.0、Post 等呈现多模态引用。
           </p>
           <div className="space-y-2">
             <p className="break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
@@ -93,4 +93,3 @@ export function OverviewSection() {
     </section>
   )
 }
-

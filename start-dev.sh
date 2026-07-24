@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Multi-Modal RAG Agent 启动脚本
+# Multi-Modal Agentic RAG 启动脚本
 # 用于本地开发环境
 
 set -e
@@ -102,7 +102,7 @@ ensure_ffmpeg_and_libreoffice() {
     return 0
 }
 
-echo "🚀 启动 Multi-Modal RAG Agent 开发环境..."
+echo "🚀 启动 Multi-Modal Agentic RAG 开发环境..."
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"

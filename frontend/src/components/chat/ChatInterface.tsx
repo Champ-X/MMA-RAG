@@ -144,7 +144,7 @@ function buildCitationMapForMessage(
 }
 
 const EMPTY_STATE_GREETING_PREFIX = '你好，我是 '
-const EMPTY_STATE_GREETING_FULL = `${EMPTY_STATE_GREETING_PREFIX}Nexus`
+const EMPTY_STATE_GREETING_FULL = `${EMPTY_STATE_GREETING_PREFIX}Tessmora`
 
 interface FileMentionState {
   query: string
@@ -275,7 +275,7 @@ function EmptyStateHint() {
   return (
     <div className="mx-auto mt-2.5 max-w-lg px-4">
       <p className="text-balance text-center text-3xl leading-tight tracking-[0.03em] text-transparent [font-family:'Caveat','Segoe_Print','Bradley_Hand',cursive] bg-gradient-to-r from-slate-500 via-indigo-500 to-violet-500 bg-clip-text drop-shadow-[0_3px_12px_rgba(99,102,241,0.2)] dark:from-slate-300 dark:via-indigo-300 dark:to-violet-300 dark:drop-shadow-[0_4px_14px_rgba(129,140,248,0.26)] sm:text-4xl">
-        Ask me something...
+        Every fragment finds its place.
       </p>
     </div>
   )

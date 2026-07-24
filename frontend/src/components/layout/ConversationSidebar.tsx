@@ -119,7 +119,7 @@ export function ConversationSidebar({
           'max-[640px]:h-[72px] max-[640px]:justify-center max-[640px]:px-3'
         )}
       >
-        <div className={cn('flex min-w-0 items-center', collapsed ? 'justify-center' : 'gap-2.5')} title="Nexus">
+        <div className={cn('flex min-w-0 items-center', collapsed ? 'justify-center' : 'gap-2.5')} title="Tessmora">
           <div className={cn('grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-2xl border', theme.logo)}>
             <img
               src="/logo-minimal-v2.png"
@@ -138,7 +138,7 @@ export function ConversationSidebar({
               'max-[640px]:hidden'
             )}
           >
-            Nexus
+            Tessmora
           </span>
         </div>
 
@@ -364,7 +364,7 @@ export function ConversationSidebar({
             fallbackClassName="bg-transparent text-inherit"
           />
           <div className={cn('min-w-0', collapsed && 'hidden', 'max-[640px]:hidden')}>
-            <div className={cn('truncate text-[16px] font-medium tracking-[-0.02em]', theme.primary)}>Nexus 用户</div>
+            <div className={cn('truncate text-[16px] font-medium tracking-[-0.02em]', theme.primary)}>Tessmora 用户</div>
             <div className={cn('mt-0.5 truncate text-[12px] font-medium', theme.muted)}>本地工作区</div>
           </div>
         </div>

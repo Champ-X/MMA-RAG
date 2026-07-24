@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(**_settings_config_dict)  # type: ignore[assignment]
     
     # 应用基本信息
-    app_name: str = Field(default="Multi-Modal RAG Agent", validation_alias="APP_NAME")
+    app_name: str = Field(default="Multi-Modal Agentic RAG", validation_alias="APP_NAME")
     app_version: str = Field(default="1.0.0", validation_alias="APP_VERSION")
     debug: bool = Field(default=False, validation_alias="API_DEBUG")
     
