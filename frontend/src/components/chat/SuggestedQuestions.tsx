@@ -446,43 +446,24 @@ export function SuggestedQuestions({
   return (
     <div className="mx-auto mt-4 w-full max-w-lg px-1 md:max-w-2xl md:px-0">
       {loading ? (
-        <div className="flex items-center justify-center py-1" role="status" aria-label="正在生成推荐问题">
-          <div className="relative h-12 w-12">
-            <span
-              className="absolute inset-0 animate-[spin_3.8s_linear_infinite] rounded-[42%_58%_63%_37%/44%_39%_61%_56%] border-2 border-violet-300/80 border-t-indigo-400 border-r-fuchsia-300/80 dark:border-violet-400/70 dark:border-t-indigo-300 dark:border-r-fuchsia-300/70"
-              aria-hidden
-            />
-            <span
-              className="absolute inset-[2px] animate-[spin_2.6s_linear_infinite_reverse] rounded-[61%_39%_46%_54%/58%_44%_56%_42%] border border-dashed border-indigo-300/70 dark:border-indigo-300/50"
-              aria-hidden
-            />
-            <span
-              className="absolute left-[8px] top-[6px] h-1.5 w-1.5 rounded-full bg-pink-300 shadow-sm shadow-pink-300/70 dark:bg-pink-300/90"
-              aria-hidden
-            />
-            <span
-              className="absolute right-[8px] bottom-[7px] h-1.5 w-1.5 rounded-full bg-sky-300 shadow-sm shadow-sky-300/70 dark:bg-sky-300/90"
-              aria-hidden
-            />
-            <span className="absolute left-1/2 top-1/2 inline-flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-br from-violet-100 to-indigo-100 text-[17px] font-semibold leading-none text-indigo-600 shadow-[0_4px_14px_rgba(99,102,241,0.25)] dark:from-violet-900/60 dark:to-indigo-900/60 dark:text-indigo-200 dark:shadow-[0_4px_16px_rgba(99,102,241,0.35)]">
-              ?
-            </span>
-          </div>
+        <div className="flex items-center justify-center gap-2 py-3 text-xs text-slate-500 dark:text-slate-400" role="status" aria-label="正在生成推荐问题">
+          <span className="h-3.5 w-3.5 animate-spin rounded-full border border-slate-300 border-t-indigo-500 dark:border-slate-700 dark:border-t-indigo-300" aria-hidden />
+          正在整理推荐问题
         </div>
       ) : (
         <>
           {status === 'degraded' && (
-            <div className="mb-3 rounded-xl border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-[11px] text-amber-700 shadow-sm dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-300" role="status">
+            <div className="mb-3 rounded-[6px] border border-amber-200/80 bg-amber-50/70 px-3 py-2 text-[11px] text-amber-700 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-300" role="status">
               已切换推荐策略
             </div>
           )}
           {status === 'failed' && (
-            <div className="mb-3 rounded-xl border border-slate-200/80 bg-slate-50/90 px-3 py-2 text-[11px] text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300" role="alert">
+            <div className="mb-3 rounded-[6px] border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300" role="alert">
               暂时无法生成推荐问题
             </div>
           )}
           <ul className="flex flex-col gap-2 md:hidden" aria-label="推荐问题">
-            {questions.map((item, idx) => (
+            {questions.map((item) => (
               <li key={`mobile-${item.id}`}>
                 <button
                   type="button"
@@ -490,21 +471,12 @@ export function SuggestedQuestions({
                   aria-label={`发送推荐问题：${item.text}`}
                   onClick={() => onSelect(item.text)}
                   className={cn(
-                    'group relative w-full overflow-hidden rounded-2xl border bg-white/90 px-3.5 py-3 text-left shadow-sm ring-1 ring-white/70 transition-[border-color,box-shadow,background-color] duration-200',
-                    'border-slate-200/80 hover:border-slate-300/90 hover:bg-white hover:shadow-md',
-                    'dark:border-slate-700/70 dark:bg-slate-900/60 dark:ring-white/[0.04] dark:hover:border-indigo-500/40 dark:hover:bg-slate-900/80',
-                    disabled && 'cursor-not-allowed opacity-55 hover:shadow-sm'
+                    'w-full rounded-[8px] border border-slate-200/90 bg-white/45 px-3.5 py-3 text-left transition-colors duration-150',
+                    'hover:border-slate-300 hover:bg-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/70 focus-visible:ring-offset-2',
+                    'dark:border-slate-800 dark:bg-slate-900/30 dark:hover:border-slate-700 dark:hover:bg-slate-900/60',
+                    disabled && 'cursor-not-allowed opacity-55'
                   )}
                 >
-                  <span
-                    className={cn(
-                      'absolute inset-y-3 left-0 w-1 rounded-r-full',
-                      idx === 0 && 'bg-indigo-400/70 dark:bg-indigo-300/70',
-                      idx === 1 && 'bg-emerald-400/70 dark:bg-emerald-300/70',
-                      idx === 2 && 'bg-amber-400/80 dark:bg-amber-300/70'
-                    )}
-                    aria-hidden
-                  />
                   <span className="block line-clamp-2 text-[13px] font-medium leading-snug text-slate-800 dark:text-slate-100">
                     {item.text}
                   </span>
@@ -514,7 +486,7 @@ export function SuggestedQuestions({
           </ul>
 
           <ul className="hidden gap-3 md:grid md:grid-cols-3" aria-label="推荐问题">
-            {questions.map((item, idx) => {
+            {questions.map((item) => {
               return (
                 <li key={`desktop-${item.id}`} className="min-w-0">
                   <button
@@ -523,31 +495,13 @@ export function SuggestedQuestions({
                     aria-label={`发送推荐问题：${item.text}`}
                     onClick={() => onSelect(item.text)}
                     className={cn(
-                      'group relative flex min-h-[88px] w-full overflow-hidden rounded-2xl border bg-white/90 p-4 text-left shadow-[0_16px_30px_-26px_rgba(15,23,42,0.7)] ring-1 ring-white/70 backdrop-blur-sm transition-[border-color,box-shadow,background-color] duration-200',
-                      'border-slate-200/80 hover:border-slate-300/95 hover:bg-white hover:shadow-[0_18px_34px_-24px_rgba(15,23,42,0.72)]',
-                      'dark:border-slate-700/70 dark:bg-slate-900/60 dark:ring-white/[0.04] dark:hover:border-indigo-400/30 dark:hover:bg-slate-900/80',
-                      disabled && 'cursor-not-allowed opacity-60 hover:shadow-[0_16px_30px_-26px_rgba(15,23,42,0.7)]'
+                      'flex min-h-[68px] w-full items-center rounded-[8px] border border-slate-200/90 bg-white/45 px-4 py-3 text-left transition-colors duration-150',
+                      'hover:border-slate-300 hover:bg-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/70 focus-visible:ring-offset-2',
+                      'dark:border-slate-800 dark:bg-slate-900/30 dark:hover:border-slate-700 dark:hover:bg-slate-900/60',
+                      disabled && 'cursor-not-allowed opacity-55'
                     )}
                   >
-                    <span
-                      className={cn(
-                        'absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-slate-300/80 to-transparent dark:via-white/14',
-                        idx === 0 && 'via-indigo-300/80 dark:via-indigo-300/40',
-                        idx === 1 && 'via-emerald-300/80 dark:via-emerald-300/40',
-                        idx === 2 && 'via-amber-300/90 dark:via-amber-300/40'
-                      )}
-                      aria-hidden
-                    />
-                    <span
-                      className={cn(
-                        'absolute left-0 top-4 h-10 w-1 rounded-r-full',
-                        idx === 0 && 'bg-indigo-400/70 dark:bg-indigo-300/60',
-                        idx === 1 && 'bg-emerald-400/70 dark:bg-emerald-300/60',
-                        idx === 2 && 'bg-amber-400/80 dark:bg-amber-300/70'
-                      )}
-                      aria-hidden
-                    />
-                    <span className="relative z-10 block line-clamp-3 text-[13px] font-medium leading-relaxed text-slate-800/95 dark:text-slate-100">
+                    <span className="block line-clamp-2 text-[13px] font-medium leading-relaxed text-slate-700 dark:text-slate-200">
                       {item.text}
                     </span>
                   </button>

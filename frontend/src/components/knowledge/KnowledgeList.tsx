@@ -2998,71 +2998,63 @@ const KnowledgeList: React.FC = () => {
     return (
       <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative">
         {/* Header */}
-        <div className="relative -mt-0 overflow-visible border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 md:-mt-1">
-          <div className="relative z-10 px-5 pb-3.5 pt-2.5 sm:px-8 sm:pb-4 sm:pt-3">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                <div className="min-w-0 flex flex-1 flex-col gap-3 xl:flex-row xl:items-center xl:gap-5">
-                  <div className="shrink-0">
-                    <div className="flex items-center gap-4 sm:gap-5">
-                      {/* 高度占位保持顶栏不高；宽度与图标一致，避免绝对定位大图压到标题 */}
-                      <div className="relative flex h-10 w-[4.5rem] shrink-0 items-center justify-center sm:h-11 sm:w-[5.25rem]">
-                        <img
-                          src="/knowledge-hub-minimal-v2.png"
-                          alt=""
-                          className="pointer-events-none absolute left-1/2 top-1/2 h-[4.5rem] w-[4.5rem] max-w-none -translate-x-1/2 -translate-y-1/2 object-contain object-center sm:h-[5.25rem] sm:w-[5.25rem]"
-                        />
-                      </div>
-                      <h1 className="relative z-10 min-w-0 text-[2.05rem] font-bold leading-none tracking-tight text-slate-950 dark:text-slate-50 sm:text-[2.2rem]">
-                        知识库
-                      </h1>
-                    </div>
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <p className="max-w-4xl text-sm leading-6 text-slate-600 dark:text-slate-400 sm:text-[15px]">
-                      集中管理文档、图片与音视频内容，自动完成索引、解析与主题画像，支撑 RAG 检索和多轮对话。
-                    </p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium">
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white/90 px-3 py-1.5 text-slate-600 shadow-sm dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-300">
-                        <span aria-hidden>📄</span>
-                        文档
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-200/80 bg-fuchsia-50/90 px-3 py-1.5 text-fuchsia-700 shadow-sm dark:border-fuchsia-500/25 dark:bg-fuchsia-500/10 dark:text-fuchsia-200">
-                        <span aria-hidden>🖼️</span>
-                        图片
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/80 bg-violet-50/90 px-3 py-1.5 text-violet-700 shadow-sm dark:border-violet-500/25 dark:bg-violet-500/10 dark:text-violet-200">
-                        <span aria-hidden>🎵</span>
-                        音频
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50/90 px-3 py-1.5 text-emerald-700 shadow-sm dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200">
-                        <span aria-hidden>🎥</span>
-                        视频
-                      </span>
-                      <span className="inline-flex items-center rounded-full border border-indigo-200/80 bg-indigo-50/90 px-3 py-1.5 text-indigo-700 shadow-sm dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-200">
-                        自动索引
-                      </span>
-                      <span className="inline-flex items-center rounded-full border border-indigo-200/80 bg-indigo-50/90 px-3 py-1.5 text-indigo-700 shadow-sm dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-200">
-                        主题画像
-                      </span>
-                      <span className="inline-flex items-center rounded-full border border-indigo-200/80 bg-indigo-50/90 px-3 py-1.5 text-indigo-700 shadow-sm dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-200">
-                        检索增强
-                      </span>
-                    </div>
-                  </div>
+        <div className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+          <div className="px-5 py-5 sm:px-8 sm:py-6">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-start gap-4 sm:items-center sm:gap-5">
+                <div className="h-[68px] w-[68px] shrink-0 overflow-hidden rounded-[12px] sm:h-[76px] sm:w-[76px]">
+                  <img
+                    src="/knowledge-library-icon.png"
+                    alt=""
+                    width={76}
+                    height={76}
+                    className="h-full w-full scale-[1.08] object-cover object-center"
+                    aria-hidden
+                  />
                 </div>
 
-                <div className="shrink-0 xl:pl-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateModal(true)}
-                    className="group inline-flex min-h-[44px] w-full items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_-10px_rgba(99,102,241,0.5),inset_0_1px_0_rgba(255,255,255,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:from-indigo-500 hover:via-violet-500 hover:to-fuchsia-500 hover:shadow-[0_18px_34px_-10px_rgba(168,85,247,0.42),inset_0_1px_0_rgba(255,255,255,0.22)] active:translate-y-0 sm:w-auto sm:min-w-[9.5rem]"
-                  >
-                    <Plus size={18} strokeWidth={2.8} className="shrink-0 transition-transform duration-200 group-hover:rotate-90" />
-                    新建知识库
-                  </button>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h1 className="text-2xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-slate-50 sm:text-[1.75rem]">
+                      知识库
+                    </h1>
+                    <span className="rounded-[6px] bg-slate-100 px-2 py-1 font-mono text-[11px] font-medium text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+                      {knowledgeBases.length} 个
+                    </span>
+                  </div>
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">
+                    管理文档、图片和音视频资料，并将它们整理为可检索的知识。
+                  </p>
+                  <div className="mt-2.5 hidden flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500 sm:flex dark:text-slate-400">
+                    <span className="inline-flex items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5 text-blue-500" aria-hidden />
+                      文档
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <ImageIcon className="h-3.5 w-3.5 text-teal-500" aria-hidden />
+                      图片
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Music className="h-3.5 w-3.5 text-violet-500" aria-hidden />
+                      音频
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Video className="h-3.5 w-3.5 text-orange-500" aria-hidden />
+                      视频
+                    </span>
+                  </div>
                 </div>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(true)}
+                className="inline-flex min-h-[42px] w-full shrink-0 items-center justify-center gap-2 rounded-[8px] bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 lg:w-auto"
+              >
+                <Plus size={17} strokeWidth={2.4} aria-hidden />
+                新建知识库
+              </button>
+            </div>
           </div>
         </div>
 

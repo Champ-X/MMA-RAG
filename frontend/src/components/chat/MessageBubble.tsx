@@ -1,6 +1,5 @@
 import React, { Suspense } from 'react'
-import { User, Bot, Music, Play, Video, FileText } from 'lucide-react'
-import { Avatar } from '@/components/ui/avatar'
+import { Music, Play, Video, FileText } from 'lucide-react'
 import { InlineCitation } from './InlineCitation'
 import type { Components, ExtraProps } from 'react-markdown'
 import { cn } from '@/lib/utils'
@@ -47,7 +46,7 @@ export interface LiveThinkingProps {
 
 function ThinkingCapsuleFallback() {
   return (
-    <div className="mb-2 w-full rounded-xl border border-slate-200/70 bg-slate-50/90 px-3 py-2 text-xs font-medium text-slate-500 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-400">
+    <div className="w-full rounded-xl border border-slate-200/70 bg-slate-50/90 px-3 py-2 text-xs font-medium text-slate-500 dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-400">
       正在载入思考过程…
     </div>
   )
@@ -1486,30 +1485,15 @@ export function MessageBubble({
     fallbackKbId,
   ])
 
-  const AvatarIcon = isUser ? User : Bot
-  const avatarBg = isUser
-    ? 'bg-gradient-to-br from-indigo-500 to-sky-500 text-white'
-    : 'bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white'
-
-  const avatarEl = (
-    <Avatar
-      size="md"
-      fallback={<AvatarIcon className="w-4 h-4" strokeWidth={2.5} />}
-      rootClassName="shadow-md ring-2 ring-white/20 dark:ring-slate-800/50"
-      fallbackClassName={avatarBg}
-    />
-  )
-
   const bubbleEl = (
     <div
       className={cn(
-        'rounded-2xl px-4 py-3.5 text-sm leading-relaxed transition-all',
+        'text-sm leading-relaxed transition-[border-color,box-shadow] duration-200',
         isUser
-          ? 'inline-block w-auto max-w-[calc(100%-2.5rem)] rounded-tr-sm bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/30'
+          ? 'inline-block w-auto max-w-[85%] rounded-[18px] border border-slate-200/75 bg-slate-100/95 px-4 py-3 text-slate-800 shadow-[0_10px_28px_-22px_rgba(15,23,42,0.42)] hover:border-slate-300/80 hover:bg-slate-100 dark:border-slate-700/70 dark:bg-slate-800/90 dark:text-slate-100 dark:hover:border-slate-600/75 dark:hover:bg-slate-800 sm:max-w-[72%]'
           : isStoppedHint
-            ? 'w-auto mx-auto border-0 bg-transparent shadow-none' // 终止提示：无边框、透明背景、居中
-            : 'w-full max-w-[calc(100%-2.5rem)] rounded-tl-sm border border-slate-200/60 bg-white text-slate-900 shadow-sm dark:border-slate-700/60 dark:bg-slate-900 dark:text-slate-100 hover:shadow-md',
-        !isUser && showThinking && !isStoppedHint && 'min-w-[min(100%,28rem)]'
+            ? 'mx-auto w-auto border-0 bg-transparent shadow-none' // 终止提示：无边框、透明背景、居中
+            : 'relative w-full overflow-hidden rounded-[6px_18px_18px_18px] border border-slate-200/80 border-l-[4px] border-l-indigo-500 bg-[linear-gradient(180deg,#fffefa_0%,#ffffff_100%)] px-4 pb-5 pt-5 text-slate-900 shadow-[0_22px_52px_-36px_rgba(30,41,59,0.48),0_1px_0_rgba(255,255,255,0.96)_inset] ring-1 ring-white/80 hover:border-slate-300/85 hover:border-l-indigo-500 hover:shadow-[0_26px_58px_-38px_rgba(30,41,59,0.56)] dark:border-slate-700/75 dark:border-l-indigo-400 dark:bg-[linear-gradient(180deg,#172033_0%,#0f172a_100%)] dark:text-slate-100 dark:ring-white/[0.04] dark:shadow-[0_24px_58px_-36px_rgba(0,0,0,0.88)] dark:hover:border-slate-600/80 dark:hover:border-l-indigo-400 sm:px-5 sm:pb-6 sm:pt-5'
       )}
     >
       {isStoppedHint ? (
@@ -1519,20 +1503,34 @@ export function MessageBubble({
         </div>
       ) : (
         <>
+          {!isUser && (
+            <span
+              className="pointer-events-none absolute left-5 right-5 top-2 h-px bg-[repeating-linear-gradient(90deg,rgba(99,102,241,0.4)_0_6px,transparent_6px_12px)] opacity-75 dark:bg-[repeating-linear-gradient(90deg,rgba(129,140,248,0.38)_0_6px,transparent_6px_12px)]"
+              aria-hidden
+            />
+          )}
+
           {showThinking && (
-            <Suspense fallback={<ThinkingCapsuleFallback />}>
-              <ThinkingCapsule
-                thoughtData={thoughtData}
-                stages={liveThinking?.stages}
-                currentStage={liveThinking?.currentStage}
-              />
-            </Suspense>
+            <div className="relative z-[1]">
+              <Suspense fallback={<ThinkingCapsuleFallback />}>
+                <ThinkingCapsule
+                  thoughtData={thoughtData}
+                  stages={liveThinking?.stages}
+                  currentStage={liveThinking?.currentStage}
+                />
+              </Suspense>
+            </div>
           )}
 
           {isUser ? (
             <div className="break-words">{message.content}</div>
           ) : (
-            <div className="rag-markdown max-w-none [&>p:has(+div)]:!mb-0">
+            <div
+              className={cn(
+                'rag-markdown relative z-[1] max-w-none [&>p:has(+div)]:!mb-0',
+                showThinking && 'mt-5 border-t border-slate-200/80 pt-5 dark:border-slate-700/70'
+              )}
+            >
               <Suspense fallback={<MarkdownRendererFallback streaming={isStreaming} />}>
                 <MarkdownRenderer content={message.content} components={markdownComponents} />
               </Suspense>
@@ -1562,7 +1560,7 @@ export function MessageBubble({
   )
 
   return (
-    <div className="flex items-start gap-2">
+    <div className="w-full">
       {isUser ? (
         <div className="flex min-w-0 flex-1 flex-col items-end gap-2">
           {(message.attachments?.length ?? 0) > 0 && (
@@ -1574,23 +1572,19 @@ export function MessageBubble({
           {(message.scopeFiles?.length ?? 0) > 0 && (
             <UserScopedFileStrip files={message.scopeFiles!} className="w-full" />
           )}
-          <div className="flex items-start justify-end gap-2">
+          <div className="flex w-full items-start justify-end">
             {bubbleEl}
-            {avatarEl}
           </div>
         </div>
       ) : isStoppedHint ? (
         // 终止提示不显示头像，居中显示
-        <div className="flex-1 flex justify-center min-w-0">
+        <div className="flex min-w-0 flex-1 justify-center">
           {bubbleEl}
         </div>
       ) : (
-        <>
-          {avatarEl}
-          <div className="flex-1 min-w-0">
-            {bubbleEl}
-          </div>
-        </>
+        <div className="min-w-0 flex-1">
+          {bubbleEl}
+        </div>
       )}
     </div>
   )

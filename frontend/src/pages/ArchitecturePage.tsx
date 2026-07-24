@@ -86,65 +86,79 @@ export function ArchitecturePage() {
   }, [getScrollContainer])
 
   return (
-    <div className="flex h-full min-h-0 gap-4 lg:gap-6">
+    <div className="h-full min-h-0">
       <ScrollArea
         ref={scrollAreaRef}
-        className="flex-1 min-w-0 rounded-2xl border border-white/70 bg-gradient-to-b from-white/96 via-indigo-50/25 to-teal-50/20 shadow-[0_8px_32px_-14px_rgba(79,70,229,0.22)] backdrop-blur-sm dark:border-slate-800/80 dark:from-slate-950/96 dark:via-slate-950/92 dark:to-indigo-950/25 dark:shadow-[0_8px_40px_-16px_rgba(0,0,0,0.65)]"
+        className="h-full rounded-[8px] border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
       >
-        <div className="mx-auto flex max-w-5xl flex-col gap-12 px-4 py-8 sm:px-8 sm:py-10 lg:px-10 lg:py-12">
-          <header className="relative overflow-hidden rounded-2xl border border-indigo-100/80 bg-gradient-to-br from-indigo-500/[0.08] via-violet-500/[0.04] to-teal-500/[0.03] px-5 py-7 shadow-sm dark:border-indigo-900/45 dark:from-indigo-500/12 dark:via-violet-600/6 dark:to-teal-900/10">
-            <div className="pointer-events-none absolute -left-20 bottom-0 h-48 w-48 rounded-full bg-gradient-to-tr from-teal-400/10 to-transparent blur-3xl dark:from-teal-500/8" />
-            <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-gradient-to-br from-indigo-400/20 to-fuchsia-400/10 blur-3xl dark:from-indigo-500/15 dark:to-fuchsia-500/10" />
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(99,102,241,0.06),transparent_55%)] dark:bg-[radial-gradient(ellipse_at_50%_0%,rgba(99,102,241,0.12),transparent_50%)]" />
-            <p className="relative text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-600/85 dark:text-indigo-300/90">
-              Architecture
+        <div className="mx-auto max-w-[1260px] px-5 py-7 sm:px-8 sm:py-9 lg:px-10">
+          <header className="border-b border-slate-200 pb-8 dark:border-slate-800">
+            <div className="mb-5 flex h-1 w-24 overflow-hidden rounded-full" aria-hidden>
+              <span className="flex-1 bg-blue-500" />
+              <span className="flex-1 bg-teal-500" />
+              <span className="flex-1 bg-violet-500" />
+              <span className="flex-1 bg-orange-400" />
+            </div>
+            <p className="font-mono text-[11px] font-semibold tracking-[0.16em] text-slate-500 dark:text-slate-400">
+              架构导读
             </p>
-            <h1 className="relative mt-1.5 text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50 sm:text-2xl">
-              系统架构与设计说明
+            <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-[-0.045em] text-slate-950 dark:text-slate-50 sm:text-[2.35rem] sm:leading-tight">
+              多模态 RAG 系统如何协同工作
             </h1>
-            <p className="relative mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break">
-              FastAPI DDD 模块、MinIO / Qdrant / Redis 数据平面、三路混合检索与两阶段重排；配置与行为以源码及{' '}
-              <span className="font-mono text-[12px] text-indigo-700 dark:text-indigo-300">backend/.env</span> 为准。
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600 dark:text-slate-300 text-chinese-break">
+              从资料接入、意图识别和混合检索，到重排、生成与引用返回，沿一条完整链路理解系统模块及数据流向。
             </p>
+            <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-500 dark:text-slate-400">
+              <span><strong className="font-mono font-semibold text-slate-800 dark:text-slate-200">{coreModules.length}</strong> 个核心模块</span>
+              <span><strong className="font-mono font-semibold text-slate-800 dark:text-slate-200">4</strong> 类内容模态</span>
+              <span><strong className="font-mono font-semibold text-slate-800 dark:text-slate-200">3–5</strong> 分钟阅读</span>
+            </div>
           </header>
 
-          <OverviewSection />
-          <InnovationSection />
-          <PerformanceMetrics />
-          <ArchitectureDiagram />
-          <IntegrationsSection />
-          <RequestFlowStepper />
+          <div className="grid items-start gap-10 py-10 xl:grid-cols-[minmax(0,1fr)_15rem] xl:gap-14">
+            <div className="flex min-w-0 flex-col gap-12">
+              <OverviewSection />
+              <InnovationSection />
+              <PerformanceMetrics />
+              <ArchitectureDiagram />
+              <IntegrationsSection />
+              <RequestFlowStepper />
 
-          <section id="modules" className="scroll-mt-24 space-y-5">
-            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100/90 bg-indigo-50/90 px-3 py-1 text-xs font-medium text-indigo-800 shadow-sm dark:border-indigo-900/60 dark:bg-indigo-950/50 dark:text-indigo-200">
-              <span className="h-2 w-2 rounded-full bg-gradient-to-r from-sky-500 via-indigo-500 to-purple-500 shadow-sm shadow-indigo-500/40" />
-              <span>核心模块拆分</span>
+              <section id="modules" className="scroll-mt-8 space-y-5">
+                <div>
+                  <p className="font-mono text-[11px] font-semibold tracking-[0.14em] text-indigo-600 dark:text-indigo-300">
+                    核心模块
+                  </p>
+                  <h2 className="mt-1 text-xl font-semibold tracking-[-0.025em] text-slate-950 dark:text-slate-50">
+                    按职责拆分，沿请求链路协作
+                  </h2>
+                </div>
+                <p className="max-w-4xl text-sm leading-7 text-slate-600 dark:text-slate-300 text-chinese-break text-description">
+                  Ingestion、Knowledge、Retrieval、Generation 与 LLM Manager 可以独立演进，并通过统一接口完成端到端 RAG 流程。
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+                  {coreModules.map((m) => (
+                    <ModuleCard key={m.id} module={m} />
+                  ))}
+                </div>
+              </section>
+
+              <DataFlowDiagram />
+              <TechStackSection />
+
+              <footer className="border-t border-slate-200 pt-5 text-[11px] leading-relaxed text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                本页为架构导读；细节与迭代说明以{' '}
+                <span className="font-mono text-slate-600 dark:text-slate-300">docs/MMA_ARCHITECTURE.md</span>、
+                <span className="font-mono text-slate-600 dark:text-slate-300"> backend/.env.example</span> 与源码为准。
+              </footer>
             </div>
-            <p className="max-w-4xl text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-              按 DDD 思路划分为五个业务模块：Ingestion、Knowledge、Retrieval、Generation 与 LLM Manager，每个模块既可以单独理解，又在请求链路中形成清晰的职责分工。
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {coreModules.map((m) => (
-                <ModuleCard key={m.id} module={m} />
-              ))}
-            </div>
-          </section>
 
-          <DataFlowDiagram />
-          <TechStackSection />
-
-          <footer className="rounded-xl border border-slate-200/70 bg-slate-50/50 px-4 py-5 text-center text-[11px] leading-relaxed text-slate-500 dark:border-slate-800/80 dark:bg-slate-900/40 dark:text-slate-400">
-            本页为架构导读；细节与迭代说明以{' '}
-            <span className="font-mono text-slate-600 dark:text-slate-300">docs/MMA_ARCHITECTURE.md</span>、
-            <span className="font-mono text-slate-600 dark:text-slate-300"> backend/.env.example</span> 与源码为准。
-          </footer>
+            <aside className="hidden xl:block">
+              <ArchitectureNav sections={architectureSections} activeId={activeSection} onNavigate={handleNavigate} />
+            </aside>
+          </div>
         </div>
       </ScrollArea>
-
-      <div className="hidden w-[15.5rem] shrink-0 lg:block">
-        <ArchitectureNav sections={architectureSections} activeId={activeSection} onNavigate={handleNavigate} />
-      </div>
     </div>
   )
 }
-

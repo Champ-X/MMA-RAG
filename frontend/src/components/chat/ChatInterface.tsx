@@ -64,20 +64,17 @@ function MessageBubbleLoading({ role }: { role: Message['role'] }) {
   const isUser = role === 'user'
   return (
     <div
-      className={cn('flex w-full gap-3', isUser ? 'justify-end' : 'justify-start')}
+      className={cn('flex w-full', isUser ? 'justify-end' : 'justify-start')}
       role="status"
       aria-live="polite"
       aria-label={isUser ? '正在载入用户消息' : '正在载入助手消息'}
     >
-      {!isUser ? (
-        <div className="mt-1 h-9 w-9 shrink-0 animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" aria-hidden />
-      ) : null}
       <div
         className={cn(
-          'h-14 animate-pulse rounded-2xl shadow-sm',
+          'animate-pulse shadow-sm',
           isUser
-            ? 'w-56 rounded-tr-sm bg-indigo-200/70 dark:bg-indigo-500/30'
-            : 'w-[min(100%,34rem)] rounded-tl-sm border border-slate-200/60 bg-white dark:border-slate-700/60 dark:bg-slate-900'
+            ? 'h-14 w-56 rounded-[18px_18px_6px_18px] bg-indigo-200/70 dark:bg-indigo-500/30'
+            : 'h-28 w-full rounded-[6px_18px_18px_18px] border border-slate-200/70 border-l-[4px] border-l-indigo-300 bg-[#fffefa] dark:border-slate-700/70 dark:border-l-indigo-500 dark:bg-slate-900'
         )}
         aria-hidden
       />
@@ -105,11 +102,11 @@ function SuggestedQuestionsLoading() {
       aria-live="polite"
       aria-label="正在载入推荐问题"
     >
-      <div className="hidden gap-3 md:grid md:grid-cols-3" aria-hidden>
+      <div className="hidden gap-2 md:grid md:grid-cols-3" aria-hidden>
         {[0, 1, 2].map((item) => (
           <div
             key={item}
-            className="min-h-[88px] animate-pulse rounded-2xl border border-slate-200/70 bg-white/70 shadow-[0_16px_30px_-26px_rgba(15,23,42,0.55)] dark:border-slate-800/70 dark:bg-slate-900/50"
+            className="h-16 animate-pulse rounded-[8px] border border-slate-200/80 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-900/60"
           />
         ))}
       </div>
@@ -117,7 +114,7 @@ function SuggestedQuestionsLoading() {
         {[0, 1, 2].map((item) => (
           <div
             key={item}
-            className="h-16 animate-pulse rounded-2xl border border-slate-200/70 bg-white/70 dark:border-slate-800/70 dark:bg-slate-900/50"
+            className="h-14 animate-pulse rounded-[8px] border border-slate-200/80 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-900/60"
           />
         ))}
       </div>
@@ -250,13 +247,13 @@ function EmptyStateGreetingTitle({ sessionKey }: { sessionKey: string }) {
 
   return (
     <h3
-      className="mb-3 text-balance text-4xl font-semibold tracking-tight [font-family:'Ma_Shan_Zheng','Caveat','STKaiti','KaiTi',cursive] sm:text-5xl sm:leading-snug"
+      className="mb-2 text-balance text-3xl font-semibold tracking-[-0.045em] text-slate-950 dark:text-slate-50 sm:text-[2.15rem] sm:leading-tight"
       aria-label={EMPTY_STATE_GREETING_FULL}
     >
-      <span className="bg-gradient-to-r from-slate-900 via-indigo-800 to-violet-700 bg-clip-text text-transparent dark:from-slate-100 dark:via-indigo-200 dark:to-violet-300">
+      <span>
         {prefixPart}
         {namePart ? (
-          <span className="font-semibold">{namePart}</span>
+          <span className="font-semibold text-indigo-600 dark:text-indigo-300">{namePart}</span>
         ) : null}
       </span>
       {!done && (
@@ -273,9 +270,9 @@ function EmptyStateGreetingTitle({ sessionKey }: { sessionKey: string }) {
 
 function EmptyStateHint() {
   return (
-    <div className="mx-auto mt-2.5 max-w-lg px-4">
-      <p className="text-balance text-center text-3xl leading-tight tracking-[0.03em] text-transparent [font-family:'Caveat','Segoe_Print','Bradley_Hand',cursive] bg-gradient-to-r from-slate-500 via-indigo-500 to-violet-500 bg-clip-text drop-shadow-[0_3px_12px_rgba(99,102,241,0.2)] dark:from-slate-300 dark:via-indigo-300 dark:to-violet-300 dark:drop-shadow-[0_4px_14px_rgba(129,140,248,0.26)] sm:text-4xl">
-        Every fragment finds its place.
+    <div className="mx-auto max-w-lg px-4">
+      <p className="text-balance text-center text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
+        从知识库中检索线索，整理成带来源的回答。
       </p>
     </div>
   )
@@ -745,39 +742,28 @@ export function ChatInterface() {
             aria-relevant={messages.length > 0 ? 'additions text' : undefined}
           >
             {messages.length === 0 && (
-              <div className="relative mx-auto w-full max-w-3xl py-8 text-center sm:py-12">
-                <div className="pointer-events-none absolute left-1/2 top-2 h-48 w-48 -translate-x-1/2 rounded-full bg-indigo-200/40 blur-3xl dark:bg-indigo-500/10" />
-                <div className="pointer-events-none absolute left-1/2 top-28 h-40 w-[30rem] -translate-x-1/2 rounded-full bg-amber-100/70 blur-3xl dark:bg-violet-500/10" />
-                <div className="relative overflow-hidden rounded-[2rem] border border-slate-200/70 bg-white/[0.78] px-5 pb-7 pt-8 shadow-[0_28px_70px_-48px_rgba(15,23,42,0.7)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-800/75 dark:bg-slate-900/[0.58] dark:shadow-[0_28px_80px_-54px_rgba(0,0,0,0.9)] dark:ring-white/[0.04] sm:px-8">
-                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.95),transparent_34%),linear-gradient(135deg,rgba(248,250,252,0.58),transparent_42%,rgba(241,245,249,0.42))] dark:bg-[radial-gradient(circle_at_50%_0%,rgba(99,102,241,0.16),transparent_34%),linear-gradient(135deg,rgba(30,41,59,0.46),transparent_45%,rgba(15,23,42,0.55))]" />
-                  <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent dark:via-white/20" />
-                  <div className="relative z-10">
-                    <div
-                      className="mb-7 inline-flex h-32 w-32 items-center justify-center overflow-hidden rounded-[2rem] border border-white/80 bg-white/70 shadow-[0_18px_42px_-26px_rgba(79,70,229,0.7)] ring-1 ring-slate-200/80 dark:border-white/10 dark:bg-slate-950/40 dark:ring-indigo-300/20"
-                    >
-                      <img
-                        src="/logo-minimal-v2.png"
-                        alt=""
-                        className="h-full w-full origin-center scale-[1.22] object-contain object-center select-none"
-                        style={{ background: 'transparent' }}
-                        aria-hidden
-                      />
-                    </div>
-                    <EmptyStateGreetingTitle sessionKey={activeSessionId ?? ''} />
-                    <EmptyStateHint />
-                    <div className="mt-4 sm:mt-5">
-                      <Suspense fallback={<SuggestedQuestionsLoading />}>
-                        <SuggestedQuestions
-                          session={activeSession}
-                          selectedScopeFiles={selectedScopeFiles}
-                          disabled={isLoading || !activeSessionId}
-                          onSelect={(question) => {
-                            void submitMessage(question)
-                          }}
-                        />
-                      </Suspense>
-                    </div>
-                  </div>
+              <div className="mx-auto w-full max-w-3xl px-3 py-8 text-center sm:py-11">
+                <div className="mx-auto mb-4 h-24 w-24 overflow-hidden rounded-[22px] sm:h-28 sm:w-28">
+                  <img
+                    src="/tessmora-logo.png"
+                    alt=""
+                    className="h-full w-full origin-center scale-[1.18] select-none object-cover object-center"
+                    aria-hidden
+                  />
+                </div>
+                <EmptyStateGreetingTitle sessionKey={activeSessionId ?? ''} />
+                <EmptyStateHint />
+                <div className="mt-5 sm:mt-6">
+                  <Suspense fallback={<SuggestedQuestionsLoading />}>
+                    <SuggestedQuestions
+                      session={activeSession}
+                      selectedScopeFiles={selectedScopeFiles}
+                      disabled={isLoading || !activeSessionId}
+                      onSelect={(question) => {
+                        void submitMessage(question)
+                      }}
+                    />
+                  </Suspense>
                 </div>
               </div>
             )}

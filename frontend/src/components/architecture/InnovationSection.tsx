@@ -49,11 +49,11 @@ export function InnovationSection() {
   return (
     <section
       id="innovations"
-      className="scroll-mt-24 rounded-2xl border border-slate-200/80 bg-gradient-to-b from-slate-50/90 via-white to-slate-50/50 px-4 py-8 shadow-sm dark:border-slate-800/80 dark:from-slate-950/80 dark:via-slate-950/60 dark:to-slate-950/40 sm:px-6 sm:py-10"
+      className="scroll-mt-8 rounded-[8px] border border-slate-200 bg-slate-50/55 px-4 py-7 dark:border-slate-800 dark:bg-slate-900/30 sm:px-6 sm:py-8"
     >
       <div className="mx-auto max-w-5xl space-y-5">
         <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-purple-50 to-violet-50 px-3.5 py-1.5 text-xs font-semibold text-purple-800 shadow-sm ring-1 ring-purple-200/60 dark:from-purple-950/50 dark:to-violet-950/40 dark:text-purple-200 dark:ring-purple-800/50">
+          <div className="inline-flex items-center gap-2 rounded-[6px] bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-200">
             <Sparkles className="h-3.5 w-3.5 text-purple-600 dark:text-purple-300" />
             <span>核心创新点</span>
           </div>
@@ -62,7 +62,7 @@ export function InnovationSection() {
           </p>
         </div>
 
-        <div className="grid items-stretch gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3">
           {innovationPoints.map((point, index) => {
             const Icon = innovationIconById[point.id] ?? Sparkles
             const iconShell = iconShellById[point.id] ?? iconShellById['kb-portrait']
@@ -82,12 +82,11 @@ export function InnovationSection() {
               >
                 <Card
                   className={cn(
-                    'group relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-t-lg rounded-b-none border-purple-100/80 bg-gradient-to-br from-purple-50/80 via-white to-pink-50/50 transition-all duration-300',
-                    'hover:-translate-y-0.5 hover:shadow-md hover:shadow-purple-500/10',
-                    'dark:border-purple-900/80 dark:from-purple-950/40 dark:via-slate-950 dark:to-pink-950/30 dark:hover:shadow-purple-950/15'
+                    'group relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-[8px] border-slate-200 bg-white shadow-none transition-colors duration-200',
+                    'hover:border-violet-300',
+                    'dark:border-slate-800 dark:bg-slate-950/70 dark:hover:border-violet-800'
                   )}
                 >
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-purple-500/0 via-pink-500/0 to-indigo-500/0 transition-all duration-300 group-hover:from-purple-500/5 group-hover:via-pink-500/5 group-hover:to-indigo-500/5" />
                   <CardContent className="relative flex min-h-0 flex-1 flex-col gap-3 p-4">
                     <div className="shrink-0 flex items-center gap-3">
                       <div
@@ -112,9 +111,6 @@ export function InnovationSection() {
                             </Badge>
                           ) : null}
                         </div>
-                      </div>
-                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
-                        #{index + 1}
                       </div>
                     </div>
 

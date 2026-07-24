@@ -187,7 +187,7 @@ export function ThinkingCapsule({
     )
 
   const pillTag =
-    'inline-flex items-center border px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm transition-[transform,box-shadow] duration-200 hover:shadow-md'
+    'inline-flex items-center rounded-[6px] border px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm transition-[transform,box-shadow] duration-200 hover:shadow-md'
   const summaryLine = summaryParts.length > 0 ? summaryParts.join(' · ') : null
   const visibleStageCount = [intentActive, routingActive, retrievalActive, generationActive].filter(Boolean).length
   const thinkingStatusText = summaryLine || (hasAnyStage ? `已显示 ${visibleStageCount} 个思考阶段` : '等待思考阶段')
@@ -195,8 +195,8 @@ export function ThinkingCapsule({
   return (
     <div
       className={cn(
-        'group/capsule mb-2 w-full overflow-hidden border border-slate-200/70 bg-white dark:border-slate-700/70 dark:bg-slate-950',
-        'shadow-sm dark:shadow-[0_1px_2px_rgba(0,0,0,0.25)]'
+        'group/capsule w-full overflow-hidden rounded-xl border border-slate-200/70 bg-white dark:border-slate-700/70 dark:bg-slate-950',
+        'shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]'
       )}
       role="region"
       aria-label="思考过程"
@@ -231,7 +231,7 @@ export function ThinkingCapsule({
             {summaryLine}
           </span>
         )}
-        <span className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center border border-slate-200/70 bg-white text-slate-500 transition-transform duration-200 group-hover/capsule:scale-[1.02] dark:border-slate-600/70 dark:bg-slate-900 dark:text-slate-400">
+        <span className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200/70 bg-white text-slate-500 transition-transform duration-200 group-hover/capsule:scale-[1.02] dark:border-slate-600/70 dark:bg-slate-900 dark:text-slate-400">
           {open ? <ChevronDown size={14} strokeWidth={2.25} aria-hidden /> : <ChevronRight size={14} strokeWidth={2.25} aria-hidden />}
         </span>
       </button>
@@ -436,7 +436,7 @@ export function ThinkingCapsule({
                     {retrieval.keywords.map((kw: string, idx: number) => (
                       <span
                         key={idx}
-                        className="cursor-default border border-sky-200/90 bg-sky-50/90 px-2 py-0.5 text-[10px] font-semibold text-sky-800 shadow-sm transition-shadow duration-200 hover:shadow dark:border-sky-500/35 dark:bg-sky-950/40 dark:text-sky-200"
+                        className="cursor-default rounded-[6px] border border-sky-200/90 bg-sky-50/90 px-2 py-0.5 text-[10px] font-semibold text-sky-800 shadow-sm transition-shadow duration-200 hover:shadow dark:border-sky-500/35 dark:bg-sky-950/40 dark:text-sky-200"
                       >
                         {kw}
                       </span>
@@ -460,7 +460,7 @@ export function ThinkingCapsule({
               {retrieval.totalFound !== undefined && retrieval.totalFound !== null && (
                 <div className="flex items-center gap-2 text-xs">
                   <span className="w-20 flex-shrink-0 text-slate-400 dark:text-slate-500">结果</span>
-                  <span className="border border-slate-200/80 bg-white/90 px-2 py-0.5 text-[11px] leading-snug text-slate-700 shadow-sm dark:border-slate-600/60 dark:bg-slate-900/60 dark:text-slate-200">
+                  <span className="rounded-md border border-slate-200/80 bg-white/90 px-2 py-0.5 text-[11px] leading-snug text-slate-700 shadow-sm dark:border-slate-600/60 dark:bg-slate-900/60 dark:text-slate-200">
                     检索到 {retrieval.totalFound} 个片段
                     {retrieval.reranked !== undefined && retrieval.reranked !== null
                       ? `，重排后保留 Top ${retrieval.reranked}`
@@ -488,7 +488,7 @@ export function ThinkingCapsule({
             <div className="ml-0.5 space-y-1 border-l border-slate-300/60 pl-2.5 dark:border-slate-600/50 sm:pl-3">
               {/* 生成完成后，隐藏动效，只显示完成状态 */}
               {isGenerationCompleted || stages?.generation === 'completed' ? (
-                <div className="relative flex items-center gap-2.5 overflow-hidden border border-emerald-200/80 bg-emerald-50/95 px-2.5 py-2 shadow-sm dark:border-emerald-700/50 dark:bg-emerald-950/35">
+                <div className="relative flex items-center gap-2.5 overflow-hidden rounded-md border border-emerald-200/80 bg-emerald-50/95 px-2.5 py-2 shadow-sm dark:border-emerald-700/50 dark:bg-emerald-950/35">
                   <span className="absolute bottom-0 left-0 top-0 w-0.5 bg-emerald-500 dark:bg-emerald-400" aria-hidden />
                   <CheckCircle className="shrink-0 text-emerald-600 dark:text-emerald-400" size={18} strokeWidth={2.25} aria-hidden />
                   <div className="flex min-w-0 flex-col gap-0.5">
