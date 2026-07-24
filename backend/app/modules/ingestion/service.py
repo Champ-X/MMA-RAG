@@ -3,17 +3,18 @@
 协调文件上传、解析、向量化、存储的完整流程
 """
 
-from typing import Dict, List, Any, Optional, TYPE_CHECKING
+from typing import Dict, List, Any, Optional, TYPE_CHECKING, Tuple
 import asyncio
 import json
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import base64
 from io import BytesIO
 import warnings
 import os
+import redis
 from PIL import Image
 
 # 在导入 transformers 之前设置警告过滤器
@@ -54,6 +55,10 @@ from app.core.logger import get_logger, audit_log
 
 logger = get_logger(__name__)
 
+PROCESSING_STATUS_KEY_PREFIX = "ingestion:processing:task:"
+PROCESSING_STATUS_KB_KEY_PREFIX = "ingestion:processing:kb:"
+PROCESSING_STATUS_FILE_KEY_PREFIX = "ingestion:processing:file:"
+
 _ingestion_service_instance: Optional["IngestionService"] = None
 
 
@@ -81,6 +86,349 @@ class IngestionService:
         
         # 处理状态存储（生产环境应使用Redis或数据库）
         self._processing_status: Dict[str, Dict[str, Any]] = {}
+        # 后台任务由服务实例持有，避免 NDJSON 客户端断开（例如刷新页面）时任务被
+        # StreamingResponse 的生命周期意外带走。
+        self._background_upload_tasks: Dict[str, asyncio.Task[Any]] = {}
+        self._video_processing_semaphore: Optional[asyncio.Semaphore] = None
+        self._processing_status_redis_client: Optional[redis.Redis] = None
+
+    def _processing_status_ttl_seconds(self) -> int:
+        return max(
+            60,
+            int(getattr(settings, "upload_processing_status_ttl_seconds", 7 * 24 * 60 * 60) or 60),
+        )
+
+    def _processing_lease_timeout_seconds(self) -> int:
+        """后台上传任务多久未心跳后可判定为已失联。"""
+        return max(
+            5,
+            int(getattr(settings, "upload_processing_lease_timeout_seconds", 300) or 300),
+        )
+
+    def _processing_lease_heartbeat_interval_seconds(self) -> float:
+        """在租约超时前多次续约，同时避免过高频 Redis 写入。"""
+        timeout = self._processing_lease_timeout_seconds()
+        return max(1.0, min(30.0, timeout / 3.0))
+
+    @staticmethod
+    def _parse_status_datetime(value: Any) -> Optional[datetime]:
+        """兼容旧状态的 naive ISO 字符串和带时区 ISO 字符串。"""
+        if not value:
+            return None
+        try:
+            raw = str(value).strip()
+            if raw.endswith("Z"):
+                raw = f"{raw[:-1]}+00:00"
+            parsed = datetime.fromisoformat(raw)
+            if parsed.tzinfo is not None:
+                return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
+        except (TypeError, ValueError):
+            return None
+
+    def _status_recency_timestamp(self, status: Dict[str, Any]) -> float:
+        """返回状态最近更新时间，供重复 file_id 的重试任务稳定排序。"""
+        for field in ("updated_at", "lease_heartbeat_at", "submitted_at", "started_at"):
+            parsed = self._parse_status_datetime(status.get(field))
+            if parsed is not None:
+                return parsed.timestamp()
+        return 0.0
+
+    @staticmethod
+    def _is_active_processing_status(status: Dict[str, Any]) -> bool:
+        return str(status.get("status") or "") in {"queued", "processing"}
+
+    def _is_processing_lease_expired(
+        self,
+        status: Dict[str, Any],
+        *,
+        now: Optional[datetime] = None,
+    ) -> bool:
+        """判断活跃任务的租约是否已超时。
+
+        lease 记录缺少专用 heartbeat 时会退化为 updated_at/submitted_at，
+        兼容早期已登记但尚未进入后台 runner 的任务状态。
+        """
+        if not self._is_active_processing_status(status):
+            return False
+        heartbeat_at = (
+            status.get("lease_heartbeat_at")
+            or status.get("heartbeat_at")
+            or status.get("updated_at")
+            or status.get("submitted_at")
+            or status.get("started_at")
+        )
+        heartbeat = self._parse_status_datetime(heartbeat_at)
+        if heartbeat is None:
+            # 没有可验证的时间戳时不贸然把可能仍在运行的任务标失败。
+            return False
+        current = now or datetime.utcnow()
+        return (current - heartbeat).total_seconds() > self._processing_lease_timeout_seconds()
+
+    def _refresh_processing_lease(self, processing_id: str, lease_id: str) -> bool:
+        """仅由租约持有者续约；返回 False 表示任务已终态或租约归属已变。"""
+        if not processing_id or not lease_id:
+            return False
+        # Redis 优先，避免当前 worker 的陈旧内存覆盖另一 worker 的更新。
+        status = self._load_persisted_processing_status(processing_id)
+        if status is None:
+            status = getattr(self, "_processing_status", {}).get(processing_id)
+        if not isinstance(status, dict):
+            return False
+        if str(status.get("lease_id") or "") != str(lease_id):
+            return False
+        if not self._is_active_processing_status(status):
+            return False
+
+        now = datetime.utcnow()
+        status["lease_heartbeat_at"] = now.isoformat()
+        status["lease_expires_at"] = (
+            now + timedelta(seconds=self._processing_lease_timeout_seconds())
+        ).isoformat()
+        status["updated_at"] = now.isoformat()
+        self._processing_status[processing_id] = status
+        self._persist_processing_status(status)
+        return True
+
+    def _acquire_processing_lease(self, processing_id: str, lease_id: str) -> bool:
+        """为即将启动的后台任务建立唯一 lease。"""
+        if not processing_id or not lease_id:
+            return False
+        status = self._load_persisted_processing_status(processing_id)
+        if status is None:
+            status = getattr(self, "_processing_status", {}).get(processing_id)
+        if not isinstance(status, dict) or not self._is_active_processing_status(status):
+            return False
+        now = datetime.utcnow()
+        status.update({
+            "lease_id": lease_id,
+            "lease_heartbeat_at": now.isoformat(),
+            "lease_expires_at": (
+                now + timedelta(seconds=self._processing_lease_timeout_seconds())
+            ).isoformat(),
+            "updated_at": now.isoformat(),
+        })
+        self._processing_status[processing_id] = status
+        self._persist_processing_status(status)
+        return True
+
+    async def _heartbeat_processing_lease(self, processing_id: str, lease_id: str) -> None:
+        """让后台任务在整个生命周期（含 semaphore 排队）持续续约。"""
+        try:
+            while True:
+                await asyncio.sleep(self._processing_lease_heartbeat_interval_seconds())
+                if not self._refresh_processing_lease(processing_id, lease_id):
+                    return
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            # 心跳异常不能中断实际上传；后续一次成功状态更新仍会延长 Redis TTL。
+            logger.debug("上传任务心跳失败 processing_id={}: {}", processing_id, e)
+
+    def _get_processing_status_redis_client(self) -> Optional[redis.Redis]:
+        """返回上传状态 Redis 客户端；不可用时降级内存，不阻塞上传主链路。"""
+        cached = getattr(self, "_processing_status_redis_client", None)
+        if cached is not None:
+            return cached
+        try:
+            client = redis.Redis.from_url(
+                settings.redis_url,
+                decode_responses=True,
+                socket_connect_timeout=0.25,
+                socket_timeout=0.25,
+            )
+            self._processing_status_redis_client = client
+            return client
+        except Exception as e:
+            logger.debug("初始化上传状态 Redis 客户端失败，降级进程内状态: {}", e)
+            return None
+
+    @staticmethod
+    def _processing_status_key(processing_id: str) -> str:
+        return f"{PROCESSING_STATUS_KEY_PREFIX}{processing_id}"
+
+    @staticmethod
+    def _processing_status_kb_key(kb_id: str) -> str:
+        return f"{PROCESSING_STATUS_KB_KEY_PREFIX}{kb_id}"
+
+    @staticmethod
+    def _processing_status_file_key(file_id: str) -> str:
+        return f"{PROCESSING_STATUS_FILE_KEY_PREFIX}{file_id}"
+
+    def _persist_processing_status(self, status: Dict[str, Any]) -> None:
+        """把可恢复的上传任务状态写到 Redis；失败时保留内存降级。"""
+        processing_id = str(status.get("processing_id") or "")
+        if not processing_id:
+            return
+        client = self._get_processing_status_redis_client()
+        if client is None:
+            return
+        ttl = self._processing_status_ttl_seconds()
+        try:
+            payload = json.dumps(status, ensure_ascii=False, default=str, separators=(",", ":"))
+            client.setex(self._processing_status_key(processing_id), ttl, payload)
+            for kb_id in {
+                str(status.get("source_kb_id") or ""),
+                str(status.get("kb_id") or ""),
+            }:
+                if not kb_id:
+                    continue
+                key = self._processing_status_kb_key(kb_id)
+                client.sadd(key, processing_id)
+                client.expire(key, ttl)
+            file_id = str(status.get("file_id") or "")
+            if file_id:
+                client.setex(self._processing_status_file_key(file_id), ttl, processing_id)
+        except Exception as e:
+            logger.debug("持久化上传状态失败 processing_id={}: {}", processing_id, e)
+
+    def _load_persisted_processing_status(self, processing_id: str) -> Optional[Dict[str, Any]]:
+        client = self._get_processing_status_redis_client()
+        if client is None or not processing_id:
+            return None
+        try:
+            raw = client.get(self._processing_status_key(processing_id))
+            if not raw:
+                return None
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else None
+        except Exception as e:
+            logger.debug("读取持久化上传状态失败 processing_id={}: {}", processing_id, e)
+            return None
+
+    def _lease_expired_failure_status(self, status: Dict[str, Any]) -> Dict[str, Any]:
+        now = datetime.utcnow().isoformat()
+        failed = status.copy()
+        failed.update({
+            "status": "failed",
+            "stage": "error",
+            "message": "后台处理租约已超时，任务可能因服务重启或异常退出而未完成。",
+            "error": "processing lease expired",
+            "failed_at": now,
+            "lease_expired_at": now,
+            "updated_at": now,
+        })
+        return failed
+
+    def _recover_expired_processing_status(
+        self,
+        status: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """读取状态时回收失联任务，避免重启后永久显示“排队中/处理中”。
+
+        只回收由后台上传链路创建、带有 lease_id 的任务。当前实例中仍运行的
+        task 永远不会被本实例回收；跨 worker 的竞态由 Redis WATCH 再读一次状态
+        处理，只有心跳仍然超时才写入 failed。
+        """
+        processing_id = str(status.get("processing_id") or "")
+        if not processing_id or not status.get("lease_id"):
+            return status
+        if not self._is_processing_lease_expired(status):
+            return status
+
+        local_task = getattr(self, "_background_upload_tasks", {}).get(processing_id)
+        if local_task is not None and not local_task.done():
+            return status
+
+        client = self._get_processing_status_redis_client()
+        if client is not None and hasattr(client, "pipeline"):
+            key = self._processing_status_key(processing_id)
+            # WATCH 避免把另一 worker 刚续约的 lease 误标为失败。
+            for _ in range(2):
+                pipeline = None
+                try:
+                    pipeline = client.pipeline()
+                    pipeline.watch(key)
+                    raw = pipeline.get(key)
+                    if not raw:
+                        try:
+                            pipeline.unwatch()
+                        except Exception:
+                            pass
+                        return status
+                    current = json.loads(raw)
+                    if not isinstance(current, dict):
+                        try:
+                            pipeline.unwatch()
+                        except Exception:
+                            pass
+                        return status
+                    if not current.get("lease_id") or not self._is_processing_lease_expired(current):
+                        try:
+                            pipeline.unwatch()
+                        except Exception:
+                            pass
+                        self._processing_status[processing_id] = current
+                        return current
+                    failed = self._lease_expired_failure_status(current)
+                    pipeline.multi()
+                    pipeline.setex(
+                        key,
+                        self._processing_status_ttl_seconds(),
+                        json.dumps(failed, ensure_ascii=False, default=str, separators=(",", ":")),
+                    )
+                    pipeline.execute()
+                    self._processing_status[processing_id] = failed
+                    return failed
+                except Exception as e:
+                    # redis-py 的 WatchError 表示另一 worker 更新了状态；重新读取即可。
+                    if type(e).__name__ == "WatchError":
+                        continue
+                    logger.debug("回收过期上传租约失败 processing_id={}: {}", processing_id, e)
+                    break
+                finally:
+                    if pipeline is not None:
+                        try:
+                            pipeline.reset()
+                        except Exception:
+                            pass
+
+        # Redis 不支持事务（例如单元测试 FakeRedis）或不可用时，退化为单进程更新。
+        # 真正跨 worker 的场景会走上面的 WATCH 分支。
+        latest = self._load_persisted_processing_status(processing_id) or status
+        if not latest.get("lease_id") or not self._is_processing_lease_expired(latest):
+            return latest
+        failed = self._lease_expired_failure_status(latest)
+        self._processing_status[processing_id] = failed
+        self._persist_processing_status(failed)
+        return failed
+
+    def list_processing_statuses_for_kb(self, kb_id: str) -> List[Dict[str, Any]]:
+        """列出某知识库尚可见的后台任务，供刷新后的文件列表补齐排队项。"""
+        if not kb_id:
+            return []
+        statuses: Dict[str, Dict[str, Any]] = {}
+        for status in list(getattr(self, "_processing_status", {}).values()):
+            processing_id = str(status.get("processing_id") or "")
+            if processing_id and str(status.get("source_kb_id") or status.get("kb_id") or "") == str(kb_id):
+                statuses[processing_id] = status.copy()
+
+        client = self._get_processing_status_redis_client()
+        if client is not None:
+            try:
+                ids = client.smembers(self._processing_status_kb_key(str(kb_id))) or set()
+                for processing_id in ids:
+                    item = self._load_persisted_processing_status(str(processing_id))
+                    if item:
+                        statuses[str(processing_id)] = item
+            except Exception as e:
+                logger.debug("读取知识库上传任务集合失败 kb_id={}: {}", kb_id, e)
+        recovered = [
+            self._recover_expired_processing_status(status)
+            for status in statuses.values()
+        ]
+        return sorted(recovered, key=self._status_recency_timestamp, reverse=True)
+
+    def _get_video_processing_semaphore(self) -> asyncio.Semaphore:
+        semaphore = getattr(self, "_video_processing_semaphore", None)
+        if semaphore is None:
+            concurrency = max(
+                1,
+                int(getattr(settings, "video_processing_concurrency", 1) or 1),
+            )
+            semaphore = asyncio.Semaphore(concurrency)
+            self._video_processing_semaphore = semaphore
+        return semaphore
         
     async def _get_actual_kb_id_for_upload(self, kb_id: str) -> str:
         """
@@ -256,8 +604,14 @@ class IngestionService:
         if actual_kb_id != kb_id:
             logger.info(f"上传文件使用反查到的 kb_id: {kb_id} -> {actual_kb_id}")
         
-        # 初始化处理状态
-        self._processing_status[processing_id] = {
+        # 初始化处理状态。批量异步入口会先登记 queued 状态；这里转换为实际执行中的
+        # processing 状态时保留其文件大小、提交时间等刷新恢复所需的信息。
+        previous_status = (
+            getattr(self, "_processing_status", {}).get(processing_id)
+            or self._load_persisted_processing_status(processing_id)
+            or {}
+        )
+        status_payload = {
             "processing_id": processing_id,
             "status": "processing",
             "progress": 0,
@@ -268,10 +622,20 @@ class IngestionService:
             "kb_id": actual_kb_id,
             "source_kb_id": kb_id,
             "user_id": user_id,
+            "source_type": source_type,
+            "file_size": previous_status.get("file_size"),
+            "submitted_at": previous_status.get("submitted_at") or datetime.utcnow().isoformat(),
             "started_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat(),
             "error": None
         }
+        # 后台 runner 在启动前已取得 lease；转换 queued -> processing 时必须保留它，
+        # 否则心跳会失去所有权，重启恢复也无法区分活跃任务。
+        for lease_field in ("lease_id", "lease_heartbeat_at", "lease_expires_at"):
+            if previous_status.get(lease_field):
+                status_payload[lease_field] = previous_status[lease_field]
+        self._processing_status[processing_id] = status_payload
+        self._persist_processing_status(status_payload)
         
         try:
             # 更新状态：解析中
@@ -358,15 +722,13 @@ class IngestionService:
                 storage_size=storage_result["size"]
             )
             
-            # 更新状态：上传完成
-            self._update_processing_status(processing_id, {
-                "progress": 40,
-                "stage": "processing",
-                "message": f"正在处理{file_type}文件..."
-            })
-            
             # 3. 根据文件类型处理（使用反查得到的实际 kb_id）
             if file_type in ["pdf", "docx", "pptx", "txt", "md", "excel"]:
+                self._update_processing_status(processing_id, {
+                    "progress": 40,
+                    "stage": "processing",
+                    "message": f"正在处理{file_type}文件..."
+                })
                 result = await self._process_document(
                     parse_result=parse_result,
                     storage_result=storage_result,
@@ -375,6 +737,11 @@ class IngestionService:
                     file_path=file_path
                 )
             elif file_type == "image":
+                self._update_processing_status(processing_id, {
+                    "progress": 40,
+                    "stage": "processing",
+                    "message": "正在处理image文件..."
+                })
                 result = await self._process_image(
                     parse_result=parse_result,
                     storage_result=storage_result,
@@ -382,6 +749,11 @@ class IngestionService:
                     processing_id=processing_id
                 )
             elif file_type == "audio":
+                self._update_processing_status(processing_id, {
+                    "progress": 40,
+                    "stage": "processing",
+                    "message": "正在处理audio文件..."
+                })
                 result = await self._process_audio(
                     parse_result=parse_result,
                     storage_result=storage_result,
@@ -390,13 +762,30 @@ class IngestionService:
                     file_content=file_content
                 )
             elif file_type == "video":
-                result = await self._process_video(
-                    parse_result=parse_result,
-                    storage_result=storage_result,
-                    kb_id=actual_kb_id,
-                    processing_id=processing_id,
-                    file_content=file_content
-                )
+                # 多视频批量提交时，原文件已经各自落入 MinIO；重型 MLLM + 关键帧
+                # 链路按受控并发消费。后续任务明确显示“排队中”，而不是在刷新后消失。
+                self._update_processing_status(processing_id, {
+                    "status": "queued",
+                    "progress": 40,
+                    "stage": "queued",
+                    "message": "视频已上传，等待 Scene–Shot 解析队列…",
+                })
+                # 原文件已安全写入 MinIO，释放请求体大字节；视频处理会从 MinIO 回读。
+                file_content = b""
+                async with self._get_video_processing_semaphore():
+                    self._update_processing_status(processing_id, {
+                        "status": "processing",
+                        "progress": 40,
+                        "stage": "processing",
+                        "message": "正在执行 Scene–Shot 多模态解析…",
+                    })
+                    result = await self._process_video(
+                        parse_result=parse_result,
+                        storage_result=storage_result,
+                        kb_id=actual_kb_id,
+                        processing_id=processing_id,
+                        file_content=file_content,
+                    )
             else:
                 raise ValueError(f"不支持的文件类型: {file_type}")
 
@@ -994,7 +1383,17 @@ class IngestionService:
         configured_threshold = float(getattr(settings, "video_long_threshold_seconds", max_chunk) or max_chunk)
         chunk_threshold = max(30.0, min(configured_threshold, max_chunk))
         overlap = max(0.0, min(60.0, float(getattr(settings, "video_chunk_overlap_seconds", 15.0) or 15.0)))
-        video_fps = min(2, max(1, int(fps))) if fps > 0 else 2
+        source_video_fps = min(2, max(1, int(fps))) if fps > 0 else 2
+        # 长视频的语义切分不需要把每秒两张画面都传给 Omni。降低到 1fps 能显著
+        # 缩短窗口请求的输入规模；Shot 内的关键帧仍由 MLLM 基于实际视觉变化决定。
+        long_video_fps = max(
+            1,
+            min(
+                source_video_fps,
+                int(getattr(settings, "video_long_parsing_fps", 1) or 1),
+            ),
+        )
+        video_fps = long_video_fps if duration > chunk_threshold else source_video_fps
         analysis: Optional[Dict[str, Any]] = None
 
         try:
@@ -1068,7 +1467,19 @@ class IngestionService:
                         f"失败片段：{ranges}{suffix}。请稍后重试。"
                     )
                 if analyses:
-                    analysis = merge_chunk_analyses(analyses, duration=duration, overlap_seconds=overlap)
+                    analysis = merge_chunk_analyses(
+                        analyses,
+                        duration=duration,
+                        overlap_seconds=overlap,
+                        max_keyframes_per_shot=max(
+                            1,
+                            int(getattr(settings, "video_max_keyframes_per_shot", 4) or 4),
+                        ),
+                        keyframe_min_gap_seconds=max(
+                            0.0,
+                            float(getattr(settings, "video_keyframe_min_gap_seconds", 1.0) or 0.0),
+                        ),
+                    )
         finally:
             if full_video_path and os.path.exists(full_video_path):
                 try:
@@ -1206,49 +1617,138 @@ class IngestionService:
             previous_segments_summary=previous_context,
         )
         if video_local_path and os.path.exists(video_local_path):
-            content: List[Dict[str, Any]] = [
-                {"type": "video_local", "path": video_local_path, "fps": video_fps},
-                {"type": "text", "text": prompt_text},
-            ]
             source = "video_local"
+            source_content: Dict[str, Any] = {"type": "video_local", "path": video_local_path, "fps": video_fps}
         elif video_url:
-            content = [
-                {"type": "video_url", "video_url": {"url": video_url}, "fps": video_fps},
-                {"type": "text", "text": prompt_text},
-            ]
             source = "video_url"
+            source_content = {"type": "video_url", "video_url": {"url": video_url}, "fps": video_fps}
         else:
             logger.warning("Scene–Shot 解析未提供视频文件或 URL")
             return None
-        try:
-            result = await self.llm_manager.chat(
-                messages=[{"role": "user", "content": content}],
-                task_type="video_parsing",
-                timeout=600,
-                max_tokens=getattr(settings, "video_parsing_max_tokens", 16000),
-                temperature=getattr(settings, "video_parsing_temperature", 0.1),
-            )
-        except Exception as e:
-            logger.warning("Scene–Shot MLLM 调用失败（{}）: {}", source, e)
-            return None
-        if not result.success or not result.data:
-            logger.warning("Scene–Shot MLLM 调用未成功（{}）: {}", source, result.error)
-            return None
-        raw = result.data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        if isinstance(raw, list):
-            raw = "".join(
-                (part.get("text") or part.get("content") or str(part)) if isinstance(part, dict) else str(part)
-                for part in raw
-            )
-        data = extract_json_object(raw)
-        if not data or not isinstance(data.get("scenes"), list):
+        retry_attempts = max(0, int(getattr(settings, "video_parsing_retry_attempts", 1) or 0))
+        for attempt in range(retry_attempts + 1):
+            retry_instruction = ""
+            if attempt:
+                retry_instruction = (
+                    "\n\n# 格式恢复重试\n"
+                    "上一次结果不是完整 JSON。请减少非必要 Scene/Shot 的拆分和描述长度，"
+                    "但保留完整语句边界与 ASR；务必在输出上限内闭合全部 JSON 括号。"
+                )
+            content: List[Dict[str, Any]] = [
+                source_content,
+                {"type": "text", "text": f"{prompt_text}{retry_instruction}"},
+            ]
+            try:
+                result = await self.llm_manager.chat(
+                    messages=[{"role": "user", "content": content}],
+                    task_type="video_parsing",
+                    timeout=600,
+                    max_tokens=getattr(settings, "video_parsing_max_tokens", 16000),
+                    temperature=getattr(settings, "video_parsing_temperature", 0.1),
+                )
+            except Exception as e:
+                logger.warning(
+                    "Scene–Shot MLLM 调用失败（{}，第 {}/{} 次）: {}",
+                    source,
+                    attempt + 1,
+                    retry_attempts + 1,
+                    e,
+                )
+                continue
+            if not result.success or not result.data:
+                logger.warning(
+                    "Scene–Shot MLLM 调用未成功（{}，第 {}/{} 次）: {}",
+                    source,
+                    attempt + 1,
+                    retry_attempts + 1,
+                    result.error,
+                )
+                continue
+            raw = result.data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if isinstance(raw, list):
+                raw = "".join(
+                    (part.get("text") or part.get("content") or str(part)) if isinstance(part, dict) else str(part)
+                    for part in raw
+                )
+            data = extract_json_object(raw)
+            if data and isinstance(data.get("scenes"), list):
+                return normalize_video_analysis(
+                    data,
+                    duration,
+                    max_keyframes_per_shot=max(
+                        1,
+                        int(getattr(settings, "video_max_keyframes_per_shot", 4) or 4),
+                    ),
+                    keyframe_min_gap_seconds=max(
+                        0.0,
+                        float(getattr(settings, "video_keyframe_min_gap_seconds", 1.0) or 0.0),
+                    ),
+                )
             logger.warning(
-                "Scene–Shot MLLM JSON 解析失败（{}），返回前 500 字符: {}",
+                "Scene–Shot MLLM JSON 解析失败（{}，第 {}/{} 次），返回前 500 字符: {}",
                 source,
+                attempt + 1,
+                retry_attempts + 1,
                 (str(raw)[:500] + "...") if raw else "(空)",
             )
-            return None
-        return normalize_video_analysis(data, duration)
+        return None
+
+    @staticmethod
+    def _select_video_keyframes_for_processing(
+        shot_rows: List[Tuple[Dict[str, Any], Dict[str, Any]]],
+        max_keyframes: int,
+    ) -> List[Tuple[int, Dict[str, Any], Dict[str, Any], int, Dict[str, Any]]]:
+        """在全视频预算内公平选择 MLLM 已选关键帧。
+
+        不是按时间直接截断（那会让后半段视频完全没有视觉证据）。先遍历每个
+        Shot 的第 1 张帧，再遍历每个 Shot 的第 2 张帧，以此类推；因此预算足够
+        时每个 Shot 都至少有一张关键帧，预算不足时也会尽量均匀覆盖整段视频。
+        """
+        limit = max(1, int(max_keyframes or 1))
+        per_shot_frames: List[List[Tuple[int, Dict[str, Any]]]] = []
+        max_frames_in_shot = 0
+        for _scene, shot in shot_rows:
+            frames = [
+                (frame_index, frame)
+                for frame_index, frame in enumerate(shot.get("keyframes") or [])
+                if isinstance(frame, dict)
+            ]
+            per_shot_frames.append(frames)
+            max_frames_in_shot = max(max_frames_in_shot, len(frames))
+
+        first_frames: List[Tuple[int, Dict[str, Any], Dict[str, Any], int, Dict[str, Any]]] = []
+        for row_index, (scene, shot) in enumerate(shot_rows):
+            if not per_shot_frames[row_index]:
+                continue
+            original_index, frame = per_shot_frames[row_index][0]
+            first_frames.append((row_index, scene, shot, original_index, frame))
+
+        # Shot 数本身超过预算时，不能简单取前 N 个，否则长视频后半段完全没有
+        # 视觉证据。沿时间轴等距保留代表 Shot，优先保证全片覆盖。
+        if len(first_frames) > limit:
+            if limit == 1:
+                return [first_frames[len(first_frames) // 2]]
+            selected_indices: List[int] = []
+            previous_index = -1
+            last_index = len(first_frames) - 1
+            for selected_index in range(limit):
+                desired = round(selected_index * last_index / (limit - 1))
+                index = max(previous_index + 1, min(last_index, desired))
+                selected_indices.append(index)
+                previous_index = index
+            return [first_frames[index] for index in selected_indices]
+
+        selected = list(first_frames)
+        for round_index in range(1, max_frames_in_shot):
+            for row_index, (scene, shot) in enumerate(shot_rows):
+                frames = per_shot_frames[row_index]
+                if round_index >= len(frames):
+                    continue
+                original_index, frame = frames[round_index]
+                selected.append((row_index, scene, shot, original_index, frame))
+                if len(selected) >= limit:
+                    return selected
+        return selected
 
     async def _build_video_scene_shot_points(
         self,
@@ -1305,6 +1805,29 @@ class IngestionService:
             # 稀疏编码器是召回增强而不是写入硬依赖；密集向量仍保证视频可用。
             logger.warning("Shot 稀疏向量化失败，本次仅写入 dense 向量: {}", e)
 
+        # MLLM 可按每个 Shot 的视觉变化选择多张帧，但长视频的 Shot 数量很大时，
+        # 不能无上限地把「Shot 数 × 每 Shot 帧数」送入 CLIP。预算选择器优先保留
+        # 所有 Shot 的首帧，再公平补充额外帧，避免只覆盖视频前半段。
+        all_mllm_keyframes = sum(
+            len([frame for frame in (shot.get("keyframes") or []) if isinstance(frame, dict)])
+            for _scene, shot in shot_rows
+        )
+        keyframe_budget = max(
+            1,
+            int(getattr(settings, "video_max_keyframes_per_video", 192) or 192),
+        )
+        selected_frame_candidates = self._select_video_keyframes_for_processing(
+            shot_rows,
+            keyframe_budget,
+        )
+        if all_mllm_keyframes > len(selected_frame_candidates):
+            logger.info(
+                "视频关键帧应用全局预算: MLLM 选择 {} 张，实际处理 {} 张（预算 {}）",
+                all_mllm_keyframes,
+                len(selected_frame_candidates),
+                keyframe_budget,
+            )
+
         # 所有关键帧共用同一个临时视频文件。此前每抽一帧都写一次完整视频，长视频会产生
         # 成倍的磁盘 I/O，且容易让入库耗时随 Shot 数量线性恶化。
         frame_source_path: Optional[str] = None
@@ -1319,52 +1842,94 @@ class IngestionService:
                 logger.warning("写入关键帧提取临时视频失败: {}", source_error)
 
         frame_rows: List[Dict[str, Any]] = []
-        try:
-            for row_index, (scene, shot) in enumerate(shot_rows):
-                for frame_index, frame in enumerate(shot.get("keyframes") or []):
-                    if not isinstance(frame, dict):
-                        continue
-                    timestamp = float(frame.get("timestamp", (shot.get("start_time", 0) + shot.get("end_time", 0)) / 2))
-                    frame_description = str(frame.get("description") or shot.get("caption") or "视频关键帧。")
-                    frame_path = ""
-                    frame_bytes = (
-                        await asyncio.to_thread(
-                            self._extract_frame_at_timestamp_from_path,
-                            frame_source_path,
-                            timestamp,
-                        )
-                        if frame_source_path
-                        else None
+        total_selected_frames = len(selected_frame_candidates)
+        if total_selected_frames:
+            self._update_processing_status(processing_id, {
+                "stage": "extracting_keyframes",
+                "progress": 72,
+                "message": f"正在抽取并保存 MLLM 选择的关键帧（0/{total_selected_frames}）…",
+            })
+
+        async def _extract_and_upload_frame(
+            candidate: Tuple[int, Dict[str, Any], Dict[str, Any], int, Dict[str, Any]],
+        ) -> Optional[Dict[str, Any]]:
+            row_index, scene, shot, frame_index, frame = candidate
+            try:
+                fallback_timestamp = (float(shot.get("start_time", 0) or 0) + float(shot.get("end_time", 0) or 0)) / 2
+                try:
+                    timestamp = float(frame.get("timestamp", fallback_timestamp))
+                except (TypeError, ValueError):
+                    timestamp = fallback_timestamp
+                frame_description = str(frame.get("description") or shot.get("caption") or "视频关键帧。")
+                frame_bytes = (
+                    await asyncio.to_thread(
+                        self._extract_frame_at_timestamp_from_path,
+                        frame_source_path,
+                        timestamp,
                     )
-                    if frame_bytes:
-                        safe_timestamp = f"{timestamp:.3f}".replace(".", "_")
-                        frame_path = f"videos/{file_id}/keyframes/{scene.get('scene_id')}_{shot.get('shot_id')}_{frame_index}_{safe_timestamp}.jpg"
-                        try:
-                            await self.minio_adapter.upload_file(
-                                file_content=frame_bytes,
-                                file_path="frame.jpg",
-                                kb_id=storage_kb_id,
-                                file_type="videos",
-                                custom_object_path=frame_path,
-                                file_id_override=file_id,
-                            )
-                        except Exception as upload_error:
-                            logger.warning("视频关键帧上传失败: {}", upload_error)
-                            frame_path = ""
-                    # 只有帧真正提取并上传成功时，才将其作为可检索视觉证据写入。
-                    # 否则会留下空路径/零 CLIP 向量，检索命中后无法展示。
-                    if not frame_bytes or not frame_path:
-                        continue
-                    frame["timestamp"] = timestamp
-                    frame["description"] = frame_description
-                    frame["frame_image_path"] = frame_path
-                    frame_rows.append({
-                        "row_index": row_index,
-                        "scene": scene,
-                        "shot": shot,
-                        "frame": frame,
-                        "frame_bytes": frame_bytes,
-                    })
+                    if frame_source_path
+                    else None
+                )
+                if not frame_bytes:
+                    return None
+
+                safe_timestamp = f"{timestamp:.3f}".replace(".", "_")
+                frame_path = (
+                    f"videos/{file_id}/keyframes/"
+                    f"{scene.get('scene_id')}_{shot.get('shot_id')}_{frame_index}_{safe_timestamp}.jpg"
+                )
+                try:
+                    await self.minio_adapter.upload_file(
+                        file_content=frame_bytes,
+                        file_path="frame.jpg",
+                        kb_id=storage_kb_id,
+                        file_type="videos",
+                        custom_object_path=frame_path,
+                        file_id_override=file_id,
+                    )
+                except Exception as upload_error:
+                    logger.warning("视频关键帧上传失败: {}", upload_error)
+                    return None
+
+                # 只有帧真正提取并上传成功时，才将其作为可检索视觉证据写入。
+                # 否则会留下空路径/零 CLIP 向量，检索命中后无法展示。
+                frame["timestamp"] = timestamp
+                frame["description"] = frame_description
+                frame["frame_image_path"] = frame_path
+                return {
+                    "row_index": row_index,
+                    "scene": scene,
+                    "shot": shot,
+                    "frame": frame,
+                    "frame_bytes": frame_bytes,
+                }
+            except Exception as frame_error:
+                logger.warning("视频关键帧抽取失败: {}", frame_error)
+                return None
+
+        try:
+            concurrency = max(
+                1,
+                int(getattr(settings, "video_keyframe_processing_concurrency", 4) or 4),
+            )
+            for batch_start in range(0, total_selected_frames, concurrency):
+                batch = selected_frame_candidates[batch_start: batch_start + concurrency]
+                results = await asyncio.gather(
+                    *(_extract_and_upload_frame(candidate) for candidate in batch),
+                    return_exceptions=False,
+                )
+                frame_rows.extend(row for row in results if row is not None)
+                completed = min(total_selected_frames, batch_start + len(batch))
+                self._update_processing_status(processing_id, {
+                    "stage": "extracting_keyframes",
+                    "progress": min(79, 72 + int(7 * completed / max(1, total_selected_frames))),
+                    "message": (
+                        f"正在抽取并保存 MLLM 选择的关键帧（{completed}/{total_selected_frames}，"
+                        f"成功 {len(frame_rows)}）…"
+                    ),
+                })
+                # 即使底层 I/O 极快，也给心跳、进度接口和其他请求一个调度机会。
+                await asyncio.sleep(0)
         finally:
             if frame_source_path:
                 try:
@@ -1374,6 +1939,11 @@ class IngestionService:
 
         frame_vectors: List[List[float]] = []
         if frame_rows:
+            self._update_processing_status(processing_id, {
+                "stage": "embedding_keyframes",
+                "progress": 80,
+                "message": f"正在生成 {len(frame_rows)} 张关键帧的文本向量…",
+            })
             try:
                 frame_vectors = await self._embed_video_texts(
                     [str(row["frame"].get("description") or "") for row in frame_rows],
@@ -1383,15 +1953,26 @@ class IngestionService:
                 logger.warning("视频关键帧描述向量化失败，回退所属 Shot caption: {}", frame_embed_error)
                 frame_vectors = [caption_vectors[row["row_index"]] for row in frame_rows]
 
+        clip_vectors: List[List[float]] = [[0.0] * 768 for _ in frame_rows]
+        if frame_rows:
+            try:
+                clip_vectors = await self._vectorize_video_keyframe_clip_batches(
+                    [bytes(row["frame_bytes"]) for row in frame_rows],
+                    processing_id=processing_id,
+                )
+            except Exception as clip_batch_error:
+                # CLIP 是视觉召回增强；单批失败时保留 frame_vec，不能让已完成的
+                # Scene–Shot/ASR 入库整体失败。
+                logger.warning("视频关键帧 CLIP 批量向量化失败，保留零 CLIP 向量: {}", clip_batch_error)
+
         keyframe_points: List[Dict[str, Any]] = []
         for frame_index, row in enumerate(frame_rows):
             frame = row["frame"]
-            clip_vec = [0.0] * 768
-            if row.get("frame_bytes"):
-                try:
-                    clip_vec = (await self._vectorize_with_clip({"image_bytes": row["frame_bytes"]}, processing_id)).get("clip_vector") or clip_vec
-                except Exception as clip_error:
-                    logger.debug("Shot 关键帧 CLIP 向量化失败: {}", clip_error)
+            clip_vec = (
+                clip_vectors[frame_index]
+                if frame_index < len(clip_vectors) and clip_vectors[frame_index]
+                else [0.0] * 768
+            )
             scene, shot = row["scene"], row["shot"]
             keyframe_points.append({
                 "point_id": str(uuid.uuid4()),
@@ -2895,78 +3476,122 @@ class IngestionService:
             logger.warning("CLAP 文本向量生成失败: {}", str(e))
             return None
     
+    @staticmethod
+    def _image_from_clip_input(image_data: Dict[str, Any]) -> Image.Image:
+        """从兼容的图片输入构造 RGB PIL 图像（在线程中调用）。"""
+        if image_data.get("image_bytes"):
+            return Image.open(BytesIO(image_data["image_bytes"])).convert("RGB")
+        if image_data.get("base64_content"):
+            base64_str = str(image_data["base64_content"])
+            if base64_str.startswith("data:image"):
+                base64_str = base64_str.split(",", 1)[1]
+            return Image.open(BytesIO(base64.b64decode(base64_str))).convert("RGB")
+        if image_data.get("image_path"):
+            return Image.open(str(image_data["image_path"])).convert("RGB")
+        raise ValueError("image_data中必须包含image_bytes、base64_content或image_path")
+
+    def _vectorize_clip_images_sync(self, images: List[Image.Image]) -> List[List[float]]:
+        """同步 CLIP 批量推理；调用方必须通过线程执行，不能占住 API 事件循环。"""
+        if not images:
+            return []
+        self._load_clip_model()
+        if self._clip_model is None or self._clip_processor is None:
+            raise RuntimeError("CLIP模型未加载")
+
+        import numpy as np
+        import torch
+
+        # transformers 的类型定义在部分版本中遗漏了 return_tensors；运行时均支持。
+        try:
+            inputs = self._clip_processor(images=images, return_tensors="pt")
+        except TypeError:
+            inputs = self._clip_processor(images=images)
+        pixel_values = inputs.get("pixel_values")
+        if pixel_values is None:
+            raise ValueError("CLIP处理器未返回pixel_values")
+        if not isinstance(pixel_values, torch.Tensor):
+            # 不要直接 torch.tensor(list_of_ndarray)：它会逐元素复制并产生严重性能警告。
+            pixel_values = torch.from_numpy(np.asarray(pixel_values))
+        if torch.cuda.is_available():
+            pixel_values = pixel_values.to(torch.device("cuda"))
+
+        with torch.inference_mode():
+            image_features = self._clip_model.get_image_features(pixel_values=pixel_values)  # type: ignore
+            if image_features is None:
+                raise ValueError("CLIP get_image_features 返回空")
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+            vectors = image_features.detach().cpu().numpy().tolist()
+
+        if len(vectors) != len(images):
+            raise ValueError(f"CLIP输出数量错误: 期望{len(images)}，实际{len(vectors)}")
+        for vector in vectors:
+            if len(vector) != 768:
+                raise ValueError(f"CLIP向量维度错误: 期望768，实际{len(vector)}")
+        return vectors
+
+    def _vectorize_clip_image_data_sync(self, image_data: Dict[str, Any]) -> List[float]:
+        return self._vectorize_clip_images_sync([self._image_from_clip_input(image_data)])[0]
+
+    def _vectorize_clip_image_bytes_batch_sync(self, image_bytes_batch: List[bytes]) -> List[List[float]]:
+        images = [Image.open(BytesIO(image_bytes)).convert("RGB") for image_bytes in image_bytes_batch]
+        return self._vectorize_clip_images_sync(images)
+
+    async def _vectorize_video_keyframe_clip_batches(
+        self,
+        image_bytes_list: List[bytes],
+        *,
+        processing_id: str,
+    ) -> List[List[float]]:
+        """以小批量在线程内执行关键帧 CLIP，持续让出事件循环并更新细粒度进度。"""
+        if not image_bytes_list:
+            return []
+        batch_size = max(1, int(getattr(settings, "video_clip_batch_size", 4) or 4))
+        total = len(image_bytes_list)
+        vectors: List[List[float]] = []
+        self._update_processing_status(processing_id, {
+            "stage": "vectorizing_keyframes",
+            "progress": 84,
+            "message": f"正在批量计算关键帧 CLIP 向量（0/{total}）…",
+        })
+        for batch_start in range(0, total, batch_size):
+            batch = image_bytes_list[batch_start: batch_start + batch_size]
+            try:
+                batch_vectors = await asyncio.to_thread(
+                    self._vectorize_clip_image_bytes_batch_sync,
+                    batch,
+                )
+                if len(batch_vectors) != len(batch):
+                    raise ValueError(f"CLIP批量结果数量错误: 期望{len(batch)}，实际{len(batch_vectors)}")
+            except Exception as clip_error:
+                logger.warning("视频关键帧 CLIP 批量失败（{}–{} / {}）: {}", batch_start + 1, batch_start + len(batch), total, clip_error)
+                batch_vectors = [[0.0] * 768 for _ in batch]
+            vectors.extend(batch_vectors)
+            completed = min(total, batch_start + len(batch))
+            self._update_processing_status(processing_id, {
+                "stage": "vectorizing_keyframes",
+                "progress": min(89, 84 + int(5 * completed / max(1, total))),
+                "message": f"正在批量计算关键帧 CLIP 向量（{completed}/{total}）…",
+            })
+            await asyncio.sleep(0)
+        return vectors
+
     async def _vectorize_with_clip(
-        self, 
-        image_data: Dict[str, Any], 
-        processing_id: str
+        self,
+        image_data: Dict[str, Any],
+        processing_id: str,
     ) -> Dict[str, Any]:
-        """使用CLIP向量化图片"""
+        """使用 CLIP 向量化单图，同时避免同步 Torch 推理阻塞 API 事件循环。"""
         try:
             logger.info("CLIP 图片向量化: 开始 (processing_id={})", processing_id)
-            # 懒加载模型
-            self._load_clip_model()
-            
-            # 处理图片输入 - 优先使用原始图片bytes
-            image = None
-            if "image_bytes" in image_data and image_data["image_bytes"]:
-                # 使用原始图片bytes（推荐方式）
-                image = Image.open(BytesIO(image_data["image_bytes"])).convert("RGB")
-            elif "base64_content" in image_data:
-                # 从base64解码（兼容旧代码）
-                base64_str = image_data["base64_content"]
-                if base64_str.startswith("data:image"):
-                    # 移除data URL前缀
-                    base64_str = base64_str.split(",")[1]
-                image_bytes = base64.b64decode(base64_str)
-                image = Image.open(BytesIO(image_bytes)).convert("RGB")
-            elif "image_path" in image_data:
-                # 从文件路径加载
-                image = Image.open(image_data["image_path"]).convert("RGB")
-            else:
-                raise ValueError("image_data中必须包含image_bytes、base64_content或image_path")
-            
-            # 使用CLIP处理图片
-            import torch
-            
-            # 确保模型和处理器已加载
-            if self._clip_model is None or self._clip_processor is None:
-                raise RuntimeError("CLIP模型未加载")
-            
-            # CLIPProcessor 类型未声明 return_tensors，先调用再手动转为 tensor
-            inputs = self._clip_processor(images=image)
-            pixel_values = inputs.get("pixel_values")
-            if pixel_values is not None and not isinstance(pixel_values, torch.Tensor):
-                inputs = {**inputs, "pixel_values": torch.tensor(pixel_values)}
-            
-            # 移动到正确的设备
-            if torch.cuda.is_available():
-                device = torch.device("cuda")
-                inputs = {k: v.to(device) if hasattr(v, "to") else v for k, v in inputs.items()}
-            
-            # 生成向量
-            with torch.no_grad():
-                # 类型检查：inputs 是字典，需要明确传递给 get_image_features
-                pixel_values = inputs.get("pixel_values")
-                if pixel_values is None:
-                    raise ValueError("CLIP处理器未返回pixel_values")
-                # 使用类型忽略注释，因为 transformers 的类型定义可能不完整
-                image_features = self._clip_model.get_image_features(pixel_values=pixel_values)  # type: ignore
-                # 归一化向量
-                image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-                # 转换为numpy数组并提取向量
-                clip_vector = image_features.cpu().numpy()[0].tolist()
-            
-            # clip-vit-large-patch14 的向量维度是 768
-            assert len(clip_vector) == 768, f"向量维度错误: 期望768，实际{len(clip_vector)}"
+            clip_vector = await asyncio.to_thread(self._vectorize_clip_image_data_sync, image_data)
             logger.info("CLIP 图片向量化: 完成, 维度=768 (processing_id={})", processing_id)
             return {
                 "clip_vector": clip_vector,
                 "model_used": "openai/clip-vit-large-patch14",
-                "vector_dim": 768
+                "vector_dim": 768,
             }
-            
         except Exception as e:
-            logger.error(f"CLIP向量化失败: {str(e)}", exc_info=True)
+            logger.error("CLIP向量化失败: {}", e, exc_info=True)
             raise
     
     async def _vectorize_text(self, texts: List[str]) -> Dict[str, Any]:
@@ -2990,17 +3615,384 @@ class IngestionService:
             logger.error(f"文本向量化失败: {str(e)}")
             raise
     
-    def register_processing_initial(self, processing_id: str, file_path: str, kb_id: str) -> None:
-        """预注册处理状态（用于 URL 异步导入等，在后台任务启动前即可被轮询到）"""
-        self._processing_status[processing_id] = {
+    def register_processing_initial(
+        self,
+        processing_id: str,
+        file_path: str,
+        kb_id: str,
+        *,
+        file_size: Optional[int] = None,
+        queued: bool = False,
+        lease_id: Optional[str] = None,
+    ) -> None:
+        """预注册处理状态，供刷新后的页面在后台任务启动前也能发现每个文件。"""
+        now_at = datetime.utcnow()
+        now = now_at.isoformat()
+        status = {
             "processing_id": processing_id,
-            "status": "processing",
+            "status": "queued" if queued else "processing",
             "progress": 0,
-            "stage": "initializing",
-            "message": "正在准备…",
+            "stage": "queued" if queued else "initializing",
+            "message": "已提交，等待处理队列…" if queued else "正在准备…",
             "file_path": file_path,
+            "file_size": file_size,
             "kb_id": kb_id,
-            "updated_at": datetime.utcnow().isoformat(),
+            "source_kb_id": kb_id,
+            "submitted_at": now,
+            "updated_at": now,
+        }
+        if lease_id:
+            status.update({
+                "lease_id": lease_id,
+                "lease_heartbeat_at": now,
+                "lease_expires_at": (
+                    now_at + timedelta(seconds=self._processing_lease_timeout_seconds())
+                ).isoformat(),
+            })
+        self._processing_status[processing_id] = status
+        self._persist_processing_status(status)
+
+    def prepare_file_upload(
+        self,
+        *,
+        file_content: bytes,
+        file_path: str,
+        kb_id: str,
+        processing_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """持久化登记一个上传任务，但不启动任何后台处理。
+
+        批量上传需要先为所有有效文件完成这一步，才能启动第一个任务。这样即使
+        第一个视频在 MinIO 或 MLLM 阶段耗时很长，后续视频也已经有可恢复的
+        processing_id，不会因浏览器刷新而从列表中消失。
+        """
+        task_id = processing_id or str(uuid.uuid4())
+        # 即使进程在“登记全部文件”和“逐个启动后台任务”之间退出，该 lease 也会
+        # 在超时后被查询方安全回收，而不会永远显示为排队中。
+        lease_id = str(uuid.uuid4())
+        self.register_processing_initial(
+            task_id,
+            file_path,
+            kb_id,
+            file_size=len(file_content),
+            queued=True,
+            lease_id=lease_id,
+        )
+        return {
+            "processing_id": task_id,
+            "status": "queued",
+            "filename": file_path,
+            "size": len(file_content),
+        }
+
+    def launch_prepared_file_upload(
+        self,
+        *,
+        file_content: bytes,
+        file_path: str,
+        kb_id: str,
+        processing_id: str,
+        user_id: Optional[str] = None,
+        asset_map: Optional[Dict[str, bytes]] = None,
+        source_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """启动一个已通过 :meth:`prepare_file_upload` 登记的后台上传任务。"""
+        existing_task = self._background_upload_tasks.get(processing_id)
+        if existing_task is not None and not existing_task.done():
+            return {
+                "processing_id": processing_id,
+                "status": "queued",
+                "filename": file_path,
+                "size": len(file_content),
+            }
+
+        lease_id = str(uuid.uuid4())
+        if not self._acquire_processing_lease(processing_id, lease_id):
+            raise ValueError(f"上传任务不可启动或已结束: {processing_id}")
+
+        async def _run_upload_with_lease() -> Dict[str, Any]:
+            # 心跳独立于具体解析阶段运行，故视频等待 semaphore 时也不会失去租约。
+            heartbeat_task = asyncio.create_task(
+                self._heartbeat_processing_lease(processing_id, lease_id),
+                name=f"ingestion-upload-heartbeat-{processing_id}",
+            )
+            try:
+                return await self.process_file_upload(
+                    file_content=file_content,
+                    file_path=file_path,
+                    kb_id=kb_id,
+                    user_id=user_id,
+                    processing_id=processing_id,
+                    asset_map=asset_map,
+                    source_type=source_type,
+                )
+            finally:
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+
+        try:
+            task = asyncio.create_task(
+                _run_upload_with_lease(),
+                name=f"ingestion-upload-{processing_id}",
+            )
+        except Exception as e:
+            self._update_processing_status(processing_id, {
+                "status": "failed",
+                "stage": "error",
+                "message": "后台上传任务启动失败。",
+                "error": str(e),
+            })
+            raise
+        self._background_upload_tasks[processing_id] = task
+
+        def _on_done(completed_task: asyncio.Task[Any]) -> None:
+            self._background_upload_tasks.pop(processing_id, None)
+            try:
+                if completed_task.cancelled():
+                    self._update_processing_status(processing_id, {
+                        "status": "failed",
+                        "stage": "error",
+                        "message": "服务重启或任务取消，处理未完成。",
+                        "error": "background task cancelled",
+                    })
+                    return
+                error = completed_task.exception()
+                if error:
+                    # process_file_upload 已把业务失败写入状态；这里消费异常，避免出现
+                    # “Task exception was never retrieved”，同时保留运维日志。
+                    logger.warning("后台上传任务结束异常 processing_id={}: {}", processing_id, error)
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.debug("读取后台上传任务结果失败 processing_id={}: {}", processing_id, e)
+
+        task.add_done_callback(_on_done)
+        return {
+            "processing_id": processing_id,
+            "status": "queued",
+            "filename": file_path,
+            "size": len(file_content),
+        }
+
+    def start_file_upload(
+        self,
+        *,
+        file_content: bytes,
+        file_path: str,
+        kb_id: str,
+        user_id: Optional[str] = None,
+        processing_id: Optional[str] = None,
+        asset_map: Optional[Dict[str, bytes]] = None,
+        source_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """提交一个由服务端托管的上传任务。
+
+        任务不再绑定 NDJSON 连接；浏览器刷新只会断开显示层，不会让已经接收的文件
+        停在前端内存。状态在创建任务前即写入 Redis，以便文件列表补出排队项。
+        """
+        prepared = self.prepare_file_upload(
+            file_content=file_content,
+            file_path=file_path,
+            kb_id=kb_id,
+            processing_id=processing_id,
+        )
+        return self.launch_prepared_file_upload(
+            file_content=file_content,
+            file_path=file_path,
+            kb_id=kb_id,
+            processing_id=prepared["processing_id"],
+            user_id=user_id,
+            asset_map=asset_map,
+            source_type=source_type,
+        )
+
+    async def _reprocess_persisted_video(
+        self,
+        *,
+        processing_id: str,
+        status: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """从 MinIO 原视频重新执行 Scene–Shot 管道，不重新上传也不生成新的 file_id。"""
+        bucket = str(status.get("bucket") or "")
+        object_path = str(status.get("object_path") or "")
+        file_id = str(status.get("file_id") or "")
+        file_path = str(status.get("file_path") or Path(object_path).name or "video.mp4")
+        source_kb_id = str(status.get("source_kb_id") or status.get("kb_id") or "")
+        actual_kb_id = str(status.get("kb_id") or source_kb_id)
+        if not bucket or not object_path or not file_id or not source_kb_id:
+            raise ValueError("原视频存储信息不完整，无法重新处理")
+
+        self._update_processing_status(processing_id, {
+            "status": "processing",
+            "stage": "reading_source",
+            "progress": 10,
+            "message": "正在从对象存储读取原视频以重新解析…",
+            "error": None,
+        })
+        file_content = await self.minio_adapter.get_file_content(bucket, object_path)
+        parse_result = await self.parser_factory.parse_file(file_content, file_path)
+        if parse_result.get("file_type") != "video":
+            raise ValueError("原任务不是可重新处理的视频文件")
+        try:
+            video_duration = float(parse_result.get("duration") or 0.0)
+        except (TypeError, ValueError):
+            video_duration = 0.0
+        if video_duration <= 0:
+            parse_error = str((parse_result.get("metadata") or {}).get("parse_error") or "未能读取视频时长")
+            raise ValueError(f"重新处理时视频元数据解析失败：{parse_error}")
+
+        storage_result = {
+            "file_id": file_id,
+            "bucket": bucket,
+            "object_path": object_path,
+            "size": int(status.get("file_size") or len(file_content)),
+        }
+        # parse_file 已消费完原始字节；下面的 Scene–Shot 管道会按需从 MinIO 读取，
+        # 避免重试期间同时持有两份大视频内存。
+        del file_content
+        self._update_processing_status(processing_id, {
+            "status": "queued",
+            "stage": "queued",
+            "progress": 40,
+            "message": "原视频已就绪，等待 Scene–Shot 重新解析队列…",
+        })
+        async with self._get_video_processing_semaphore():
+            self._update_processing_status(processing_id, {
+                "status": "processing",
+                "stage": "processing",
+                "progress": 40,
+                "message": "正在重新执行 Scene–Shot 多模态解析…",
+            })
+            result = await self._process_video(
+                parse_result=parse_result,
+                storage_result=storage_result,
+                kb_id=actual_kb_id,
+                processing_id=processing_id,
+                file_content=b"",
+            )
+
+        try:
+            from app.core.portrait_trigger import trigger_portrait_rebuild
+
+            if int(result.get("shots_count", 0) or 0) > 0:
+                trigger_portrait_rebuild(actual_kb_id, reason="video_reprocessed")
+        except Exception as portrait_error:
+            logger.warning("视频重新处理后触发画像失败 kb_id={}: {}", actual_kb_id, portrait_error)
+
+        self._update_processing_status(processing_id, {
+            "status": "completed",
+            "stage": "completed",
+            "progress": 100,
+            "message": "视频重新处理完成",
+            "completed_at": datetime.utcnow().isoformat(),
+            "result": result,
+        })
+        return result
+
+    def retry_video_processing(self, processing_id: str) -> Dict[str, Any]:
+        """重新入队一个已落盘但失败的视频任务。
+
+        原视频和稳定 ``file_id`` 均保留在 MinIO，因此不要求用户重新上传，也不会在
+        文件列表里生成重复文件。只允许失败/已失联的 video 任务重试，运行中的任务
+        不会被抢占或中断。
+        """
+        if not processing_id:
+            raise ValueError("缺少 processing_id")
+        existing_task = self._background_upload_tasks.get(processing_id)
+        if existing_task is not None and not existing_task.done():
+            raise ValueError("视频任务仍在运行，不能重复入队")
+
+        status = self._load_persisted_processing_status(processing_id) or self._processing_status.get(processing_id)
+        if not isinstance(status, dict):
+            raise LookupError("未找到上传任务或任务状态已过期")
+        if str(status.get("file_type") or "") != "video":
+            raise ValueError("仅支持重新处理已落盘的视频任务")
+        if str(status.get("status") or "") in {"queued", "processing"}:
+            raise ValueError("视频任务仍在运行，不能重复入队")
+        if not all(status.get(field) for field in ("file_id", "bucket", "object_path")):
+            raise ValueError("原视频尚未成功保存到对象存储，无法重新处理")
+
+        now = datetime.utcnow().isoformat()
+        retry_count = max(0, int(status.get("retry_count") or 0)) + 1
+        status.update({
+            "status": "queued",
+            "stage": "queued",
+            "progress": 0,
+            "message": "已从原视频重新入队，等待处理…",
+            "error": None,
+            "failed_at": None,
+            "lease_expired_at": None,
+            "retry_count": retry_count,
+            "retried_at": now,
+            "updated_at": now,
+        })
+        self._processing_status[processing_id] = status
+        self._persist_processing_status(status)
+
+        lease_id = str(uuid.uuid4())
+        if not self._acquire_processing_lease(processing_id, lease_id):
+            raise RuntimeError("无法为重新处理的视频取得执行租约")
+
+        async def _run_retry_with_lease() -> Dict[str, Any]:
+            heartbeat_task = asyncio.create_task(
+                self._heartbeat_processing_lease(processing_id, lease_id),
+                name=f"ingestion-video-retry-heartbeat-{processing_id}",
+            )
+            try:
+                return await self._reprocess_persisted_video(
+                    processing_id=processing_id,
+                    status=status,
+                )
+            except Exception as retry_error:
+                self._update_processing_status(processing_id, {
+                    "status": "failed",
+                    "stage": "error",
+                    "progress": 0,
+                    "message": f"视频重新处理失败: {retry_error}",
+                    "error": str(retry_error),
+                    "failed_at": datetime.utcnow().isoformat(),
+                })
+                raise
+            finally:
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+
+        task = asyncio.create_task(
+            _run_retry_with_lease(),
+            name=f"ingestion-video-retry-{processing_id}",
+        )
+        self._background_upload_tasks[processing_id] = task
+
+        def _on_done(completed_task: asyncio.Task[Any]) -> None:
+            self._background_upload_tasks.pop(processing_id, None)
+            if completed_task.cancelled():
+                self._update_processing_status(processing_id, {
+                    "status": "failed",
+                    "stage": "error",
+                    "message": "服务重启或任务取消，视频重新处理未完成。",
+                    "error": "background retry task cancelled",
+                })
+                return
+            try:
+                error = completed_task.exception()
+                if error:
+                    logger.warning("视频重新处理结束异常 processing_id={}: {}", processing_id, error)
+            except asyncio.CancelledError:
+                pass
+
+        task.add_done_callback(_on_done)
+        return {
+            "processing_id": processing_id,
+            "status": "queued",
+            "file_id": str(status["file_id"]),
+            "retry_count": retry_count,
+            "message": "已从对象存储重新入队视频解析。",
         }
 
     def _update_processing_status(
@@ -3008,16 +4000,19 @@ class IngestionService:
         processing_id: str, 
         updates: Dict[str, Any]
     ):
-        """更新处理状态"""
+        """更新处理状态，并同步 Redis 使刷新后的文件列表可恢复。"""
+        if processing_id not in self._processing_status:
+            persisted = self._load_persisted_processing_status(processing_id)
+            if persisted:
+                self._processing_status[processing_id] = persisted
         if processing_id in self._processing_status:
             self._processing_status[processing_id].update(updates)
             self._processing_status[processing_id]["updated_at"] = datetime.utcnow().isoformat()
+            self._persist_processing_status(self._processing_status[processing_id])
 
     def update_processing_status(self, processing_id: str, **updates: Any) -> None:
         """供外部（如热点导入编排）更新处理状态，便于前端轮询到拉取/整理等阶段。"""
-        if processing_id in self._processing_status:
-            self._processing_status[processing_id].update(updates)
-            self._processing_status[processing_id]["updated_at"] = datetime.utcnow().isoformat()
+        self._update_processing_status(processing_id, updates)
     
     async def get_processing_status(self, processing_id: str) -> Dict[str, Any]:
         """
@@ -3031,13 +4026,18 @@ class IngestionService:
         """
         try:
             if processing_id not in self._processing_status:
+                persisted = self._load_persisted_processing_status(processing_id)
+                if persisted:
+                    self._processing_status[processing_id] = persisted
+            if processing_id not in self._processing_status:
                 return {
                     "processing_id": processing_id,
                     "status": "not_found",
                     "message": "处理ID不存在"
                 }
-            
-            return self._processing_status[processing_id].copy()
+
+            status = self._recover_expired_processing_status(self._processing_status[processing_id])
+            return status.copy()
             
         except Exception as e:
             logger.error(f"获取处理状态失败: {str(e)}")
@@ -3061,8 +4061,19 @@ class IngestionService:
             return None
         try:
             candidates = list(self._processing_status.values())
-            # 新任务在字典尾部；倒序让重试任务优先覆盖旧失败记录。
-            for status in reversed(candidates):
+            if kb_id:
+                candidates.extend(self.list_processing_statuses_for_kb(kb_id))
+            else:
+                client = self._get_processing_status_redis_client()
+                if client is not None:
+                    task_id = client.get(self._processing_status_file_key(str(file_id)))
+                    if task_id:
+                        item = self._load_persisted_processing_status(str(task_id))
+                        if item:
+                            candidates.append(item)
+            matches = []
+            for status in candidates:
+                status = self._recover_expired_processing_status(status)
                 if str(status.get("file_id") or "") != str(file_id):
                     continue
                 stored_kb_id = str(status.get("kb_id") or "")
@@ -3070,7 +4081,11 @@ class IngestionService:
                 storage_bucket = str(status.get("bucket") or "")
                 if kb_id and str(kb_id) not in {stored_kb_id, source_kb_id, storage_bucket}:
                     continue
-                return status.copy()
+                matches.append(status)
+            if matches:
+                # 同一 file_id 重试时，状态可能来自内存与 Redis 两份候选；按实际
+                # 更新时间挑选，不能依赖 dict 插入顺序，否则旧 failed 会覆盖新任务。
+                return max(matches, key=self._status_recency_timestamp).copy()
         except Exception as e:
             logger.debug("按 file_id 查询上传状态失败 file_id={}: {}", file_id, e)
         return None

@@ -25,6 +25,27 @@ logger = get_logger(__name__)
 # 列文件时忽略的对象路径前缀（MinIO 内系统预览/缓存，非用户上传的素材）
 _KB_LIST_IGNORE_OBJECT_PREFIXES = ("previews/",)
 
+# 上传任务状态来自 ingestion service / Redis。文件列表是用户刷新页面后的恢复入口，
+# 因此读取状态只能是 best-effort：状态源短暂不可用时仍应立即返回 MinIO 中的真实文件。
+_PROCESSING_STATUS_LOOKUP_TIMEOUT_SECONDS = 0.35
+_VISIBLE_PROCESSING_STATUSES = frozenset({"queued", "processing", "failed"})
+_PUBLIC_UPLOAD_TASK_FIELDS = (
+    "processing_id",
+    "status",
+    "stage",
+    "progress",
+    "message",
+    "error",
+    "submitted_at",
+    "started_at",
+    "updated_at",
+    "failed_at",
+    "completed_at",
+    "lease_heartbeat_at",
+    "lease_expires_at",
+    "lease_expired_at",
+)
+
 
 def _is_raw_video_object_path(object_path: Any) -> bool:
     """是否为用户上传的视频主对象，而非 Scene–Shot 解析产生的派生资源。"""
@@ -1356,23 +1377,84 @@ class KnowledgeBaseService:
             "message": "手动输入文档已更新",
         }
 
-    def _get_video_file_index_status(self, kb_id: str, file_id: str) -> str:
+    @staticmethod
+    def _is_visible_processing_task(task: Dict[str, Any]) -> bool:
+        return str(task.get("status") or "") in _VISIBLE_PROCESSING_STATUSES
+
+    @staticmethod
+    def _task_status_recency_key(task: Dict[str, Any]) -> str:
+        """同一原文件重试时，优先展示最新一次任务的状态。"""
+        for field in (
+            "updated_at",
+            "lease_heartbeat_at",
+            "failed_at",
+            "submitted_at",
+            "started_at",
+        ):
+            value = task.get(field)
+            if value:
+                return str(value)
+        return ""
+
+    @staticmethod
+    def _public_upload_task_fields(task: Dict[str, Any]) -> Dict[str, Any]:
+        """仅把前端恢复/展示所需的任务字段附到文件条目。
+
+        ``lease_id`` 是内部 fencing token，不暴露给浏览器；租约时间仍可用于解释任务
+        是否仍有 worker 心跳和何时会被回收。
+        """
+        return {
+            field: task[field]
+            for field in _PUBLIC_UPLOAD_TASK_FIELDS
+            if field in task and task[field] is not None
+        }
+
+    async def _list_processing_statuses_for_kb_best_effort(self, kb_id: str) -> List[Dict[str, Any]]:
+        """限时读取上传任务状态，状态服务异常时不拖慢文件列表。"""
+        if not kb_id:
+            return []
+
+        def _read_statuses() -> List[Dict[str, Any]]:
+            from app.modules.ingestion.service import get_ingestion_service
+
+            statuses = get_ingestion_service().list_processing_statuses_for_kb(kb_id)
+            return [dict(item) for item in (statuses or []) if isinstance(item, dict)]
+
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(_read_statuses),
+                timeout=_PROCESSING_STATUS_LOOKUP_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.debug("读取上传任务状态超时，跳过本次状态合并 kb_id={}", kb_id)
+        except Exception as error:
+            logger.debug("读取上传任务状态失败，跳过本次状态合并 kb_id={}: {}", kb_id, error)
+        return []
+
+    def _get_video_file_index_status(
+        self,
+        kb_id: str,
+        file_id: str,
+        task_state: Optional[Dict[str, Any]] = None,
+        *,
+        skip_task_lookup: bool = False,
+    ) -> str:
         """返回视频文件的真实索引状态。
 
         MinIO 中存在原文件只表示对象上传成功，不等同于 Scene–Shot 向量已落库。先读取
         当前进程上传任务状态（可显示处理中/失败），再以 Qdrant Shot 是否存在作为跨重启后的
         最终事实来源。
         """
-        try:
-            from app.modules.ingestion.service import get_ingestion_service
+        if task_state is None and not skip_task_lookup:
+            try:
+                from app.modules.ingestion.service import get_ingestion_service
 
-            task_state = get_ingestion_service().get_file_processing_status(file_id)
-            if task_state:
-                task_status = str(task_state.get("status") or "")
-                if task_status in {"processing", "failed"}:
-                    return task_status
-        except Exception as e:
-            logger.debug("读取视频上传状态失败 file_id={}: {}", file_id, e)
+                task_state = get_ingestion_service().get_file_processing_status(file_id, kb_id)
+            except Exception as e:
+                logger.debug("读取视频上传状态失败 file_id={}: {}", file_id, e)
+
+        if task_state and self._is_visible_processing_task(task_state):
+            return str(task_state.get("status"))
 
         for candidate in self._kb_id_candidates(kb_id):
             if self.vector_store.scroll_video_shot_points_by_file_id(
@@ -1409,6 +1491,21 @@ class KnowledgeBaseService:
                             break
                 except Exception as e:
                     logger.debug(f"候选 kb_id={candidate} 列出文件失败: {e}")
+        # 只读一次任务状态并复用到真实文件和占位项，避免每个视频分别访问 Redis。
+        # 该调用带超时；即使 Redis/ingestion worker 暂不可用，文件列表仍可正常返回。
+        task_statuses = await self._list_processing_statuses_for_kb_best_effort(kb_id)
+        visible_task_statuses = [
+            task for task in task_statuses if self._is_visible_processing_task(task)
+        ]
+        task_by_file_id: Dict[str, Dict[str, Any]] = {}
+        for task in visible_task_statuses:
+            task_file_id = str(task.get("file_id") or "")
+            if not task_file_id:
+                continue
+            current = task_by_file_id.get(task_file_id)
+            if current is None or self._task_status_recency_key(task) >= self._task_status_recency_key(current):
+                task_by_file_id[task_file_id] = task
+
         try:
             files = []
             for f in raw_files:
@@ -1438,9 +1535,21 @@ class KnowledgeBaseService:
                     "date": date_str,
                     "type": ext,
                 }
+                task_state = task_by_file_id.get(file_id)
+                # 原文件已落盘后，也必须透传对应后台任务的完整状态；此前这里仅保留
+                # `status`，刷新页面无法得知它究竟卡在什么阶段、进度和失败原因。
+                if task_state:
+                    item.update(self._public_upload_task_fields(task_state))
                 # 只对视频主文件检查 Scene–Shot 主索引；关键帧等派生物不在文件列表中。
                 if parts[0] == "videos" and len(parts) == 2:
-                    item["status"] = self._get_video_file_index_status(kb_id, file_id)
+                    item["status"] = self._get_video_file_index_status(
+                        kb_id,
+                        file_id,
+                        task_state=task_state,
+                        # task_statuses 已做过一次限时查询；不要在每一行里再次同步访问
+                        # 状态服务，否则 Redis 不可用时会拖慢整个文件列表。
+                        skip_task_lookup=True,
+                    )
                 if self._is_previewable_type(ext) and bucket_used:
                     try:
                         item["preview_url"] = await self.minio_adapter.get_presigned_url(
@@ -1449,6 +1558,34 @@ class KnowledgeBaseService:
                     except Exception as e:
                         logger.debug(f"生成预览 URL 失败 {op}: {e}")
                 files.append(item)
+
+            # 批量异步上传在“原文件刚被浏览器提交、尚未写入 MinIO”这一极短窗口也要
+            # 能被刷新后的页面看见。任务状态在 Redis 中持久化，原文件一旦落盘后会以
+            # 真实 file_id 与上方条目自动去重。
+            visible_ids = {str(item.get("id") or "") for item in files}
+            for task in visible_task_statuses:
+                file_id = str(task.get("file_id") or "")
+                if file_id and file_id in visible_ids:
+                    continue
+                processing_id = str(task.get("processing_id") or "")
+                if not processing_id:
+                    continue
+                filename = str(task.get("file_path") or "正在上传的文件")
+                filename = filename.rsplit("/", 1)[-1] or "正在上传的文件"
+                ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "file"
+                placeholder_id = file_id or f"processing:{processing_id}"
+                if placeholder_id in visible_ids:
+                    continue
+                placeholder = {
+                    "id": placeholder_id,
+                    "name": filename,
+                    "size": int(task.get("file_size") or 0),
+                    "date": str(task.get("submitted_at") or task.get("updated_at") or ""),
+                    "type": ext,
+                }
+                placeholder.update(self._public_upload_task_fields(task))
+                files.append(placeholder)
+                visible_ids.add(placeholder_id)
             return files
         except Exception as e:
             logger.error(f"列出知识库文件失败: {str(e)}")

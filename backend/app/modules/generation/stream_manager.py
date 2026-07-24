@@ -51,9 +51,8 @@ def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
                 item["start_sec"] = float(st)
             if en is not None:
                 item["end_sec"] = float(en)
-            kf = meta.get("key_frames")
-            if kf:
-                item["key_frames"] = kf
+            # 关键帧只服务于视频检索与回答生成的内部证据，不作为回答引用下发。
+            # 否则前端会把每个 Shot 的多张帧图当作插图，造成回答被图片淹没。
         if ref_type == "doc":
             chunk_id = meta.get("chunk_id")
             # doc 引用始终带 debug_info；chunk_id 必须为检索返回的向量库 point id，缺则无法查上下文

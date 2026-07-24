@@ -2,9 +2,71 @@ import { useId, useState, useEffect } from 'react'
 import { X, CheckCircle, Loader2, AlertCircle, Image as ImageIcon, FileText, FileCode, Presentation, FileSpreadsheet, Database, Sparkles, Type, Pencil, Check, Music, Video } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-// 状态徽章
-export function StatusBadge({ status }: { status: string }) {
-  if (status === 'ready') {
+type StatusBadgeProps = {
+  status: string
+  stage?: string
+  progress?: number
+  message?: string
+  error?: string
+  updatedAt?: string
+}
+
+const PROCESSING_STAGE_LABELS: Record<string, string> = {
+  queued: '等待队列',
+  initializing: '初始化',
+  uploading: '上传文件',
+  fetching: '读取文件',
+  parsing: '内容解析',
+  processing: '内容解析',
+  scene_shot_parsing: '场景镜头解析',
+  video_scene_shot_parsing: '场景镜头解析',
+  asr: '音频转写',
+  vectorizing: '向量化',
+  extracting_keyframes: '抽取关键帧',
+  embedding_keyframes: '关键帧文本向量化',
+  vectorizing_keyframes: '关键帧视觉向量化',
+  storing: '写入索引',
+  completed: '已完成',
+  error: '处理异常',
+}
+
+function getStageLabel(stage?: string): string | undefined {
+  const normalized = String(stage || '').trim().toLowerCase()
+  if (!normalized) return undefined
+  return PROCESSING_STAGE_LABELS[normalized] || normalized.replace(/_/g, ' ')
+}
+
+function compactStatusText(value?: string): string | undefined {
+  const normalized = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!normalized) return undefined
+  return normalized.length > 18 ? `${normalized.slice(0, 18)}…` : normalized
+}
+
+function formatUpdatedAt(updatedAt?: string): string | undefined {
+  if (!updatedAt) return undefined
+  const date = new Date(updatedAt)
+  if (Number.isNaN(date.getTime())) return updatedAt
+  return date.toLocaleString()
+}
+
+// 状态徽章。后台任务的阶段、进度和失败原因保持紧凑展示，完整内容放在 title 中。
+export function StatusBadge({ status, stage, progress, message, error, updatedAt }: StatusBadgeProps) {
+  const normalizedStatus = String(status || '').toLowerCase()
+  const normalizedProgress = typeof progress === 'number' && Number.isFinite(progress)
+    ? Math.max(0, Math.min(100, Math.round(progress)))
+    : undefined
+  const stageLabel = getStageLabel(stage)
+  const detail = normalizedStatus === 'failed'
+    ? compactStatusText(error || message)
+    : [stageLabel && stageLabel !== '等待队列' ? stageLabel : undefined, normalizedProgress != null ? `${normalizedProgress}%` : undefined]
+      .filter(Boolean)
+      .join(' · ') || undefined
+  const updatedAtText = formatUpdatedAt(updatedAt)
+  const title = [message, error, updatedAtText ? `最后更新：${updatedAtText}` : undefined]
+    .filter(Boolean)
+    .join('\n') || undefined
+
+  if (normalizedStatus === 'ready') {
     return (
       <span
         className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800"
@@ -14,24 +76,41 @@ export function StatusBadge({ status }: { status: string }) {
       </span>
     )
   }
-  if (status === 'processing') {
+  if (normalizedStatus === 'processing') {
     return (
       <span
-        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800"
+        className="inline-flex max-w-full items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800"
         role="status"
         aria-label="文件状态：处理中"
+        title={title}
       >
-        <Loader2 size={10} className="animate-spin" aria-hidden /> 处理中
+        <Loader2 size={10} className="shrink-0 animate-spin" aria-hidden />
+        <span className="truncate">处理中{detail ? ` · ${detail}` : ''}</span>
       </span>
     )
   }
-  if (status === 'failed') {
+  if (normalizedStatus === 'queued') {
     return (
       <span
-        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-700 border border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800"
-        aria-label="文件状态：解析失败"
+        className="inline-flex max-w-full items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-700 border border-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:border-sky-800"
+        role="status"
+        aria-label="文件状态：排队中"
+        title={title}
       >
-        <AlertCircle size={10} aria-hidden /> 解析失败
+        <Loader2 size={10} className="shrink-0 animate-spin" aria-hidden />
+        <span className="truncate">排队中{detail ? ` · ${detail}` : ''}</span>
+      </span>
+    )
+  }
+  if (normalizedStatus === 'failed') {
+    return (
+      <span
+        className="inline-flex max-w-full items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-700 border border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800"
+        aria-label="文件状态：解析失败"
+        title={title}
+      >
+        <AlertCircle size={10} className="shrink-0" aria-hidden />
+        <span className="truncate">解析失败{detail ? ` · ${detail}` : ''}</span>
       </span>
     )
   }
@@ -113,6 +192,12 @@ export interface KnowledgeFileView {
   date: string
   type: string
   status: string
+  processingId?: string
+  stage?: string
+  progress?: number
+  message?: string
+  error?: string
+  updatedAt?: string
   previewUrl?: string
   textPreview?: string
 }

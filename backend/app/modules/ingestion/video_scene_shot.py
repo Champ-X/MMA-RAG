@@ -14,6 +14,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
 SCHEMA_VERSION = "scene_shot_asr_v4"
+DEFAULT_MAX_KEYFRAMES_PER_SHOT = 4
+DEFAULT_KEYFRAME_MIN_GAP_SECONDS = 1.0
 
 
 def _number(value: Any, default: float = 0.0) -> float:
@@ -96,10 +98,17 @@ def _normalize_keyframes(
     start: float,
     end: float,
     fallback_description: str,
+    *,
+    max_keyframes_per_shot: int = DEFAULT_MAX_KEYFRAMES_PER_SHOT,
+    min_gap_seconds: float = DEFAULT_KEYFRAME_MIN_GAP_SECONDS,
 ) -> List[Dict[str, Any]]:
+    """校正 MLLM 选择的关键帧，不再把有价值的多帧静默压成单帧/双帧。"""
+    max_frames = max(1, int(max_keyframes_per_shot or DEFAULT_MAX_KEYFRAMES_PER_SHOT))
+    min_gap = max(0.0, float(min_gap_seconds or 0.0))
     normalized: List[Dict[str, Any]] = []
     if isinstance(frames, list):
-        for frame in frames[:2]:
+        # 先收集有限候选再去重；不能在去重前截断，否则前几个重复帧会挤掉后续有区分度的帧。
+        for frame in frames[:max(16, max_frames * 4)]:
             if not isinstance(frame, dict):
                 continue
             timestamp = min(end, max(start, _number(frame.get("timestamp"), (start + end) / 2)))
@@ -113,9 +122,9 @@ def _normalize_keyframes(
     # 接近同一时刻的重复关键帧不会带来额外检索价值。
     deduped: List[Dict[str, Any]] = []
     for frame in sorted(normalized, key=lambda item: item["timestamp"]):
-        if not deduped or abs(frame["timestamp"] - deduped[-1]["timestamp"]) > 0.5:
+        if not deduped or abs(frame["timestamp"] - deduped[-1]["timestamp"]) >= min_gap:
             deduped.append(frame)
-    return deduped[:2]
+    return deduped[:max_frames]
 
 
 def _normalize_shot(
@@ -124,6 +133,9 @@ def _normalize_shot(
     end: float,
     scene_index: int,
     shot_index: int,
+    *,
+    max_keyframes_per_shot: int = DEFAULT_MAX_KEYFRAMES_PER_SHOT,
+    keyframe_min_gap_seconds: float = DEFAULT_KEYFRAME_MIN_GAP_SECONDS,
 ) -> Dict[str, Any]:
     caption = _text(raw.get("caption") or raw.get("shot_description"), "视频片段内容。")
     asr_text = _text(raw.get("asr_text") or raw.get("shot_asr_transcript"))
@@ -144,7 +156,14 @@ def _normalize_shot(
             "starts_mid_sentence": _boolean(boundary.get("starts_mid_sentence", False)),
             "ends_mid_sentence": _boolean(boundary.get("ends_mid_sentence", False)),
         },
-        "keyframes": _normalize_keyframes(raw.get("keyframes"), start, end, caption),
+        "keyframes": _normalize_keyframes(
+            raw.get("keyframes"),
+            start,
+            end,
+            caption,
+            max_keyframes_per_shot=max_keyframes_per_shot,
+            min_gap_seconds=keyframe_min_gap_seconds,
+        ),
     }
 
 
@@ -154,6 +173,8 @@ def normalize_video_analysis(
     *,
     chunk_start_is_mid_sentence: bool = False,
     chunk_end_is_mid_sentence: bool = False,
+    max_keyframes_per_shot: int = DEFAULT_MAX_KEYFRAMES_PER_SHOT,
+    keyframe_min_gap_seconds: float = DEFAULT_KEYFRAME_MIN_GAP_SECONDS,
 ) -> Dict[str, Any]:
     """规范化单个视频窗口的 MLLM 结果。
 
@@ -199,9 +220,29 @@ def normalize_video_analysis(
             end = min(scene_end, max(start, raw_end))
             if end <= start:
                 continue
-            shots.append(_normalize_shot(raw_shot, start, end, scene_index, shot_index))
+            shots.append(
+                _normalize_shot(
+                    raw_shot,
+                    start,
+                    end,
+                    scene_index,
+                    shot_index,
+                    max_keyframes_per_shot=max_keyframes_per_shot,
+                    keyframe_min_gap_seconds=keyframe_min_gap_seconds,
+                )
+            )
         if not shots:
-            shots.append(_normalize_shot({}, scene_start, scene_end, scene_index, 1))
+            shots.append(
+                _normalize_shot(
+                    {},
+                    scene_start,
+                    scene_end,
+                    scene_index,
+                    1,
+                    max_keyframes_per_shot=max_keyframes_per_shot,
+                    keyframe_min_gap_seconds=keyframe_min_gap_seconds,
+                )
+            )
         scenes.append({
             "scene_id": _text(raw_scene.get("scene_id"), f"scene_{scene_index:03d}"),
             "start_time": scene_start,
@@ -216,7 +257,17 @@ def normalize_video_analysis(
             "start_time": 0.0,
             "end_time": duration,
             "scene_summary": "视频内容，模型未返回结构化场景描述。",
-            "shots": [_normalize_shot({}, 0.0, duration, 1, 1)],
+            "shots": [
+                _normalize_shot(
+                    {},
+                    0.0,
+                    duration,
+                    1,
+                    1,
+                    max_keyframes_per_shot=max_keyframes_per_shot,
+                    keyframe_min_gap_seconds=keyframe_min_gap_seconds,
+                )
+            ],
         }]
 
     scenes.sort(key=lambda scene: (scene["start_time"], scene["end_time"]))
@@ -234,7 +285,17 @@ def normalize_video_analysis(
         scene["end_time"] = round(desired_end, 3)
         raw_shots = sorted(scene["shots"], key=lambda shot: (shot["start_time"], shot["end_time"]))
         if not raw_shots:
-            raw_shots = [_normalize_shot({}, scene["start_time"], scene["end_time"], scene_index, 1)]
+            raw_shots = [
+                _normalize_shot(
+                    {},
+                    scene["start_time"],
+                    scene["end_time"],
+                    scene_index,
+                    1,
+                    max_keyframes_per_shot=max_keyframes_per_shot,
+                    keyframe_min_gap_seconds=keyframe_min_gap_seconds,
+                )
+            ]
         previous_shot_end = scene["start_time"]
         for shot_index, shot in enumerate(raw_shots, 1):
             shot["shot_id"] = f"shot_{scene_index:03d}_{shot_index:02d}"
@@ -244,12 +305,27 @@ def normalize_video_analysis(
                 shot_end = scene["end_time"]
             shot["end_time"] = round(shot_end, 3)
             shot["keyframes"] = _normalize_keyframes(
-                shot.get("keyframes"), shot["start_time"], shot["end_time"], shot.get("caption", "")
+                shot.get("keyframes"),
+                shot["start_time"],
+                shot["end_time"],
+                shot.get("caption", ""),
+                max_keyframes_per_shot=max_keyframes_per_shot,
+                min_gap_seconds=keyframe_min_gap_seconds,
             )
             previous_shot_end = shot["end_time"]
         scene["shots"] = [shot for shot in raw_shots if shot["end_time"] > shot["start_time"]]
         if not scene["shots"] and scene["end_time"] > scene["start_time"]:
-            scene["shots"] = [_normalize_shot({}, scene["start_time"], scene["end_time"], scene_index, 1)]
+            scene["shots"] = [
+                _normalize_shot(
+                    {},
+                    scene["start_time"],
+                    scene["end_time"],
+                    scene_index,
+                    1,
+                    max_keyframes_per_shot=max_keyframes_per_shot,
+                    keyframe_min_gap_seconds=keyframe_min_gap_seconds,
+                )
+            ]
         previous_scene_end = scene["end_time"]
 
     if scenes and scenes[0]["shots"]:
@@ -313,6 +389,9 @@ def merge_chunk_analyses(
     analyses: Iterable[Dict[str, Any]],
     duration: float,
     overlap_seconds: float,
+    *,
+    max_keyframes_per_shot: int = DEFAULT_MAX_KEYFRAMES_PER_SHOT,
+    keyframe_min_gap_seconds: float = DEFAULT_KEYFRAME_MIN_GAP_SECONDS,
 ) -> Dict[str, Any]:
     """合并已平移到全局时间轴的长视频窗口结果。
 
@@ -393,7 +472,12 @@ def merge_chunk_analyses(
                 "shots": [shot],
             })
     raw = {"video_summary": video_summary, "scenes": raw_scenes}
-    return normalize_video_analysis(raw, duration)
+    return normalize_video_analysis(
+        raw,
+        duration,
+        max_keyframes_per_shot=max_keyframes_per_shot,
+        keyframe_min_gap_seconds=keyframe_min_gap_seconds,
+    )
 
 
 def build_previous_context(analysis: Dict[str, Any], max_chars: int = 1800) -> str:

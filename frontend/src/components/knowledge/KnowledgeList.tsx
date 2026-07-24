@@ -1,6 +1,6 @@
 import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, HardDrive, Calendar, Activity, MoreHorizontal, ChevronDown, AlertCircle } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, HardDrive, Calendar, Activity, MoreHorizontal, ChevronDown, AlertCircle, RotateCcw } from 'lucide-react'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import { knowledgeApi, importApi } from '@/services/api_client'
@@ -226,6 +226,12 @@ type KnowledgeFileApiItem = {
   date: string
   type: string
   status?: string
+  processing_id?: string
+  stage?: string
+  progress?: number
+  message?: string
+  error?: string
+  updated_at?: string
   preview_url?: string
   text_preview?: string
 }
@@ -242,6 +248,25 @@ type DirectoryPickerWindow = Window & {
 
 type ApiErrorDetail = string | { msg?: string } | null | undefined
 
+type BackgroundUploadTask = {
+  processingId: string
+  filename: string
+  isImage: boolean
+  kbId: string
+}
+
+type BackgroundUploadTaskOutcome = 'completed' | 'failed'
+type UploadProgressStatus = Awaited<ReturnType<typeof knowledgeApi.getUploadProgress>>
+type BackgroundTaskPollResult = {
+  task: BackgroundUploadTask
+  status: UploadProgressStatus | null
+  terminal?: BackgroundUploadTaskOutcome
+  error?: string
+  /** 仅代表暂时无法读取进度，不能把实际后台任务误判为失败。 */
+  transient?: boolean
+  retryDelayMs?: number
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value != null
 }
@@ -256,6 +281,37 @@ function getErrorMessage(error: unknown, fallback: string) {
   if (detail && typeof detail.msg === 'string') return detail.msg
   if (isRecord(error) && typeof error.message === 'string') return error.message
   return fallback
+}
+
+function getErrorHttpStatus(error: unknown): number | undefined {
+  if (!isRecord(error) || !isRecord(error.response)) return undefined
+  const status = error.response.status
+  return typeof status === 'number' ? status : undefined
+}
+
+function normalizeProgress(value: unknown): number | undefined {
+  const progress = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(progress)) return undefined
+  return Math.max(0, Math.min(100, progress))
+}
+
+function isPendingFileStatus(status?: string): boolean {
+  const normalized = String(status || '').toLowerCase()
+  return normalized === 'queued' || normalized === 'processing'
+}
+
+function isImageFileType(type?: string): boolean {
+  const normalized = String(type || '').toLowerCase()
+  return normalized.startsWith('image/')
+    || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'tif'].includes(normalized)
+}
+
+function toPipelineStage(stage?: string): UploadPipelineProgress['stage'] {
+  const normalized = String(stage || '').toLowerCase()
+  if (['vectorizing', 'extracting_keyframes', 'embedding_keyframes', 'vectorizing_keyframes'].includes(normalized)) return 'vectorizing'
+  if (normalized === 'storing' || normalized === 'completed') return 'portrait'
+  if (['initializing', 'uploading', 'queued', 'fetching'].includes(normalized)) return 'minio'
+  return 'parsing'
 }
 
 function getErrorName(error: unknown) {
@@ -274,12 +330,15 @@ function FilePreviewModal({
   onClose,
   onDelete,
   onEdit,
+  onRetryVideo,
 }: {
   file: KnowledgeFileView
   kbId: string | null
   onClose: () => void
   onDelete: () => void
   onEdit?: (payload: { fileId: string; filename: string; content: string }) => void
+  /** 失败视频可复用 MinIO 原文件重新入队，不要求用户再次选择本地文件。 */
+  onRetryVideo?: () => Promise<void>
 }) {
   const [tab, setTab] = React.useState<'preview' | 'chunks'>('preview')
   const previewTabRefs = React.useRef<Record<'preview' | 'chunks', HTMLButtonElement | null>>({
@@ -303,6 +362,8 @@ function FilePreviewModal({
   const [excelBlob, setExcelBlob] = React.useState<Blob | null>(null)
   const [excelLoading, setExcelLoading] = React.useState(false)
   const [excelError, setExcelError] = React.useState<string | null>(null)
+  const [retryingVideo, setRetryingVideo] = React.useState(false)
+  const [retryVideoError, setRetryVideoError] = React.useState<string | null>(null)
 
   const rawFileType = String(file?.type || '').toLowerCase().split(';')[0].trim()
   const fileNameLower = String(file?.name || '').toLowerCase()
@@ -334,6 +395,10 @@ function FilePreviewModal({
   /** Excel/CSV：通过 stream 拉取 Blob 后由 SheetJS 在前端渲染 */
   const isExcel = ['xlsx', 'xls', 'csv'].includes(fileTypeLower)
   const isDoc = ['pdf', 'docx', 'doc', 'pptx', 'txt', 'md', 'xlsx', 'xls', 'csv'].includes(fileTypeLower)
+  const canRetryVideo = isVideo
+    && String(file.status || '').toLowerCase() === 'failed'
+    && Boolean(file.processingId)
+    && Boolean(onRetryVideo)
   const hasChunks = (details?.chunks?.length ?? 0) > 0
   const visiblePreviewTabs: Array<'preview' | 'chunks'> = isDoc ? ['preview', 'chunks'] : ['preview']
   const modalDomId = React.useId().replace(/:/g, '')
@@ -345,6 +410,19 @@ function FilePreviewModal({
   const activePanelId = `${modalDomId}-file-preview-active-panel`
   const hasPreviewTabs = hasChunks || isDoc
   const activeTabId = tab === 'chunks' && isDoc ? chunksTabId : previewTabId
+
+  const handleRetryVideo = async () => {
+    if (!onRetryVideo || retryingVideo) return
+    setRetryingVideo(true)
+    setRetryVideoError(null)
+    try {
+      await onRetryVideo()
+    } catch (error) {
+      setRetryVideoError(getErrorMessage(error, '重新入队失败，请稍后再试。'))
+    } finally {
+      setRetryingVideo(false)
+    }
+  }
 
   const focusPreviewTab = (nextTab: 'preview' | 'chunks') => {
     setTab(nextTab)
@@ -948,6 +1026,35 @@ function FilePreviewModal({
 
         {/* 底部操作栏：与 Tab 区一致的浅底与分隔；次要 / 危险按钮分层 */}
         <div className="px-6 py-4 bg-slate-50/95 dark:bg-slate-900/85 border-t border-slate-100 dark:border-slate-800/90 flex justify-end gap-2.5 flex-shrink-0">
+          {canRetryVideo && (
+            <div className="mr-auto min-w-0">
+              <button
+                onClick={() => { void handleRetryVideo() }}
+                disabled={retryingVideo}
+                aria-label={retryingVideo ? `正在重新解析视频：${file.name}` : `重新解析视频：${file.name}`}
+                className={cn(
+                  'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold',
+                  'border border-sky-200/90 bg-white text-sky-700 shadow-sm shadow-sky-100/40',
+                  'dark:border-sky-900/50 dark:bg-slate-900 dark:text-sky-300 dark:shadow-none',
+                  'hover:bg-sky-600 hover:border-sky-600 hover:text-white hover:shadow-md hover:shadow-sky-500/25',
+                  'dark:hover:bg-sky-600 dark:hover:border-sky-500 dark:hover:text-white',
+                  'disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white disabled:hover:text-sky-700',
+                  'dark:disabled:hover:bg-slate-900 dark:disabled:hover:text-sky-300',
+                  'active:scale-[0.98] transition-all duration-200 ease-out',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-slate-900'
+                )}
+                type="button"
+              >
+                <RotateCcw className={cn('h-4 w-4 shrink-0 opacity-90', retryingVideo && 'animate-spin')} strokeWidth={2.25} aria-hidden />
+                {retryingVideo ? '重新入队中…' : '重新解析视频'}
+              </button>
+              {retryVideoError ? (
+                <p className="mt-1.5 max-w-xs text-xs leading-relaxed text-red-600 dark:text-red-400" role="alert">
+                  {retryVideoError}
+                </p>
+              ) : null}
+            </div>
+          )}
           {canEditManualInput && (
             <button
               onClick={() => {
@@ -2144,9 +2251,18 @@ const KnowledgeList: React.FC = () => {
   const [showImportHotTopicsModal, setShowImportHotTopicsModal] = useState(false)
   const [manualInputDraft, setManualInputDraft] = useState<ManualInputDraft | null>(null)
   const [uploading, setUploading] = useState(false)
+  /** 已提交到服务端的本地上传任务。解析不再绑在浏览器长连接上。 */
+  const [backgroundUploadTasks, setBackgroundUploadTasks] = useState<BackgroundUploadTask[]>([])
+  /** 已达到终态的任务不再继续轮询；状态仍保留到本批次完成，供聚合进度统计使用。 */
+  const [backgroundUploadTaskOutcomes, setBackgroundUploadTaskOutcomes] = useState<Record<string, BackgroundUploadTaskOutcome>>({})
+  const [batchSubmissionFailed, setBatchSubmissionFailed] = useState(0)
   /** URL 异步导入的 processing_id，用于轮询进度并在上传流水线中展示 */
   const [urlImportProcessingId, setUrlImportProcessingId] = useState<string | null>(null)
   const [files, setFiles] = useState<KnowledgeFileView[]>([])
+  /** 文件列表临时不可用时保留上一帧数据，并以指数退避重新同步。 */
+  const [fileListRetry, setFileListRetry] = useState<{ kbId: string; attempt: number } | null>(null)
+  /** 进度接口短暂失败不能直接把服务端任务判死；仅用于控制下一次轮询间隔。 */
+  const progressPollFailureCountRef = useRef<Record<string, number>>({})
   const [kbStats, setKbStats] = useState<{
     documents: number
     chunks: number
@@ -2212,12 +2328,24 @@ const KnowledgeList: React.FC = () => {
         date: f.date ? new Date(f.date).toLocaleDateString() : '-',
         type: f.type,
         status: f.status || 'ready',
+        processingId: f.processing_id,
+        stage: f.stage,
+        progress: normalizeProgress(f.progress),
+        message: f.message,
+        error: f.error,
+        updatedAt: f.updated_at,
         previewUrl: f.preview_url,
         textPreview: f.text_preview,
       }))
       setFiles(list)
-    } catch {
-      setFiles([])
+      setFileListRetry(null)
+    } catch (error) {
+      // 网络波动或后端暂时繁忙时，不能抹掉已经显示的待处理视频，否则轮询条件也会随之丢失。
+      console.warn('获取文件列表失败，将保留当前列表并重试', error)
+      setFileListRetry((previous) => ({
+        kbId: activeKbId,
+        attempt: previous?.kbId === activeKbId ? Math.min(previous.attempt + 1, 6) : 1,
+      }))
     }
   }, [activeKbId])
 
@@ -2233,6 +2361,14 @@ const KnowledgeList: React.FC = () => {
   useEffect(() => {
     if (viewState === 'detail' && activeKbId) fetchFiles()
   }, [viewState, activeKbId, fetchFiles])
+
+  // 文件列表失败后在 1/2/4/8/16/30 秒退避重试；成功时由 fetchFiles 清除 retry 状态。
+  useEffect(() => {
+    if (!fileListRetry || viewState !== 'detail' || fileListRetry.kbId !== activeKbId) return
+    const delay = Math.min(30000, 1000 * (2 ** Math.max(0, fileListRetry.attempt - 1)))
+    const timer = window.setTimeout(() => { void fetchFiles() }, delay)
+    return () => window.clearTimeout(timer)
+  }, [fileListRetry, viewState, activeKbId, fetchFiles])
 
   useEffect(() => {
     if (viewState === 'detail' && activeKbId) {
@@ -2324,6 +2460,267 @@ const KnowledgeList: React.FC = () => {
     return () => clearInterval(interval)
   }, [urlImportProcessingId])
 
+  // 本地批量上传：接口只负责“提交全部文件”，解析在服务端后台队列继续。这里必须
+  // 轮询全部任务，不能按当前打开的知识库过滤；用户切换 KB 后，原批次仍应继续收敛。
+  // 上传入口仍是全局互斥的，因此在其他 KB 中展示的是这一个全局批次的聚合进度。
+  useEffect(() => {
+    const tasks = backgroundUploadTasks
+    if (tasks.length === 0) return
+
+    const pendingTasks = tasks.filter((task) => !backgroundUploadTaskOutcomes[task.processingId])
+    const completedBeforePoll = tasks.filter(
+      (task) => backgroundUploadTaskOutcomes[task.processingId] === 'completed'
+    ).length
+    const failedBeforePoll = tasks.filter(
+      (task) => backgroundUploadTaskOutcomes[task.processingId] === 'failed'
+    ).length
+    let disposed = false
+    let timer: number | undefined
+
+    const finishBatch = (completed: number, failed: number) => {
+      setUploadProgress((prev) => prev ? {
+        ...prev,
+        stage: 'done',
+        stageProgress: 100,
+        completed,
+        failed: batchSubmissionFailed + failed,
+      } : prev)
+      setBackgroundUploadTasks([])
+      setBackgroundUploadTaskOutcomes({})
+      void refreshKbDetail()
+      window.setTimeout(() => {
+        // 清空任务会触发本 effect 的 cleanup；这里不能依赖 disposed，否则全局
+        // uploading 会停在 true，之后的上传入口也会一直被禁用。
+        setUploading(false)
+        setCurrentUploadFiles(null)
+        setBatchSubmissionFailed(0)
+        window.setTimeout(() => setUploadProgress(undefined), 500)
+      }, 2000)
+    }
+
+    if (pendingTasks.length === 0) {
+      finishBatch(completedBeforePoll, failedBeforePoll)
+      return () => {
+        disposed = true
+      }
+    }
+
+    const poll = async () => {
+      const taskStates: BackgroundTaskPollResult[] = await Promise.all(pendingTasks.map(async (task) => {
+        try {
+          const status = await knowledgeApi.getUploadProgress(task.processingId)
+          const normalizedStatus = String(status?.status || '').toLowerCase()
+          if (normalizedStatus === 'completed') {
+            delete progressPollFailureCountRef.current[task.processingId]
+            return { task, status, terminal: 'completed' as const }
+          }
+          // `not_found` / `error` 可能由后端直接返回；空响应同样无法恢复，均按失败终态
+          // 处理，以免页面永久显示“处理中”。
+          if (!normalizedStatus || normalizedStatus === 'failed' || normalizedStatus === 'not_found' || normalizedStatus === 'error') {
+            delete progressPollFailureCountRef.current[task.processingId]
+            return {
+              task,
+              status,
+              terminal: 'failed' as const,
+              error: status?.message || '上传任务状态不可用，已停止轮询',
+            }
+          }
+          delete progressPollFailureCountRef.current[task.processingId]
+          return { task, status }
+        } catch (error) {
+          const message = getErrorMessage(error, '无法获取上传任务状态')
+          const httpStatus = getErrorHttpStatus(error)
+          // 404 表示后端明确找不到任务；其余网络/超时错误可能只是服务繁忙，不能把仍在
+          // 运行的长视频误标失败。
+          if (httpStatus === 404) {
+            delete progressPollFailureCountRef.current[task.processingId]
+            return {
+              task,
+              status: {
+                processing_id: task.processingId,
+                status: 'failed',
+                stage: 'error',
+                message,
+                error: message,
+              },
+              terminal: 'failed' as const,
+              error: message,
+            }
+          }
+          const failureCount = (progressPollFailureCountRef.current[task.processingId] || 0) + 1
+          progressPollFailureCountRef.current[task.processingId] = failureCount
+          const retryDelayMs = Math.min(30000, 1500 * (2 ** Math.min(failureCount - 1, 4)))
+          return {
+            task,
+            status: {
+              processing_id: task.processingId,
+              status: 'processing',
+              stage: 'processing',
+              message: `进度服务暂不可用，${Math.ceil(retryDelayMs / 1000)} 秒后重试。`,
+            },
+            transient: true,
+            error: message,
+            retryDelayMs,
+          }
+        }
+      }))
+      if (disposed) return
+
+      // 成功读取到的服务端任务态立即合并进文件卡片。这样不必等下一轮文件列表刷新，
+      // 阶段、百分比和失败原因就能在当前页面呈现。
+      const statusesByProcessingId = new Map<string, BackgroundTaskPollResult>()
+      const statusesByFileId = new Map<string, BackgroundTaskPollResult>()
+      taskStates.forEach((item) => {
+        if (!item.status || item.transient) return
+        statusesByProcessingId.set(item.task.processingId, item)
+        const fileId = item.status.file_id || item.status.result?.file_id
+        if (fileId) statusesByFileId.set(fileId, item)
+      })
+      if (statusesByProcessingId.size > 0 || statusesByFileId.size > 0) {
+        setFiles((previous) => {
+          let changed = false
+          const next = previous.map((file) => {
+            const item = (file.processingId ? statusesByProcessingId.get(file.processingId) : undefined)
+              || statusesByFileId.get(file.id)
+            if (!item?.status) return file
+
+            const status = item.status
+            const normalizedStatus = String(status.status || '').toLowerCase()
+            const nextStatus = normalizedStatus === 'completed'
+              ? 'ready'
+              : ['failed', 'not_found', 'error'].includes(normalizedStatus)
+                ? 'failed'
+                : normalizedStatus || file.status
+            const nextProgress = normalizeProgress(status.progress) ?? file.progress
+            const nextFile: KnowledgeFileView = {
+              ...file,
+              processingId: file.processingId || status.processing_id,
+              status: nextStatus,
+              stage: status.stage ?? file.stage,
+              progress: nextProgress,
+              message: status.message ?? file.message,
+              error: status.error ?? item.error ?? file.error,
+              updatedAt: status.updated_at ?? file.updatedAt,
+            }
+            if (
+              nextFile.processingId === file.processingId
+              && nextFile.status === file.status
+              && nextFile.stage === file.stage
+              && nextFile.progress === file.progress
+              && nextFile.message === file.message
+              && nextFile.error === file.error
+              && nextFile.updatedAt === file.updatedAt
+            ) {
+              return file
+            }
+            changed = true
+            return nextFile
+          })
+          return changed ? next : previous
+        })
+      }
+
+      const terminalOutcomes: Record<string, BackgroundUploadTaskOutcome> = {}
+      taskStates.forEach((item) => {
+        if (item.terminal) terminalOutcomes[item.task.processingId] = item.terminal
+      })
+      const nextOutcomes = { ...backgroundUploadTaskOutcomes, ...terminalOutcomes }
+      const completed = tasks.filter((task) => nextOutcomes[task.processingId] === 'completed').length
+      const failed = tasks.filter((task) => nextOutcomes[task.processingId] === 'failed').length
+      const allTerminal = completed + failed === tasks.length
+      const active = taskStates.find((item) => !item.terminal && !item.transient && item.status?.status === 'processing')
+        ?? taskStates.find((item) => !item.terminal && !item.transient && item.status?.status === 'queued')
+        ?? taskStates.find((item) => !item.terminal && !item.transient && item.status)
+        ?? taskStates.find((item) => !item.terminal && item.status)
+      const stage = active?.status?.stage
+      const frontStage = toPipelineStage(stage)
+
+      if (Object.keys(terminalOutcomes).length > 0) {
+        const failedMessages = taskStates
+          .filter((item) => item.terminal === 'failed')
+          .map((item) => `${item.task.filename}: ${item.error || '处理失败'}`)
+        if (failedMessages.length > 0) console.warn('后台上传任务结束:', failedMessages.join('；'))
+        setBackgroundUploadTaskOutcomes(nextOutcomes)
+      }
+
+      setUploadProgress((prev) => prev ? {
+        ...prev,
+        stage: allTerminal ? 'done' : frontStage,
+        stageProgress: active?.status?.progress ?? (allTerminal ? 100 : prev.stageProgress),
+        currentFile: active?.task.filename ?? prev.currentFile,
+        currentFileIsImage: active?.task.isImage ?? prev.currentFileIsImage,
+        completed,
+        failed: batchSubmissionFailed + failed,
+      } : prev)
+
+      if (allTerminal) {
+        finishBatch(completed, failed)
+        return
+      }
+      const retryDelayMs = taskStates.reduce(
+        (delay, item) => Math.max(delay, item.retryDelayMs || 0),
+        1500,
+      )
+      timer = window.setTimeout(poll, retryDelayMs)
+    }
+    void poll()
+    return () => {
+      disposed = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [backgroundUploadTasks, backgroundUploadTaskOutcomes, batchSubmissionFailed, refreshKbDetail])
+
+  // 浏览器刷新后 React 内存会丢失；从文件列表回填 processing_id 后，把仍在排队/处理的
+  // 文件重新接入统一进度轮询。提交阶段和这里并发运行时，setter 内的去重保证同一任务只轮询一次。
+  useEffect(() => {
+    if (viewState !== 'detail' || !activeKbId) return
+    const recoverableTasks = files
+      .filter((file) => isPendingFileStatus(file.status) && file.processingId && !backgroundUploadTaskOutcomes[file.processingId])
+      .map((file) => ({
+        processingId: file.processingId as string,
+        filename: file.name,
+        isImage: isImageFileType(file.type),
+        kbId: activeKbId,
+        stage: file.stage,
+        progress: file.progress,
+      }))
+    if (recoverableTasks.length === 0) return
+
+    setBackgroundUploadTasks((previous) => {
+      const existingIds = new Set(previous.map((task) => task.processingId))
+      const additions = recoverableTasks
+        .filter((task) => !existingIds.has(task.processingId))
+        .map(({ stage: _stage, progress: _progress, ...task }) => task)
+      return additions.length > 0 ? [...previous, ...additions] : previous
+    })
+    setUploading(true)
+    setUploadProgress((previous) => {
+      if (previous) return previous
+      const active = recoverableTasks.find((task) => String(task.stage || '').toLowerCase() === 'processing')
+        || recoverableTasks[0]
+      return {
+        stage: toPipelineStage(active?.stage),
+        stageProgress: active?.progress ?? 0,
+        total: recoverableTasks.length,
+        completed: 0,
+        failed: 0,
+        currentFile: active?.filename,
+        currentFileIsImage: active?.isImage,
+      }
+    })
+  }, [viewState, activeKbId, files, backgroundUploadTaskOutcomes])
+
+  // 刷新后的页面没有本地 File 对象，但后端会从 Redis 任务状态补齐排队项。
+  // 持续刷新文件列表，直到所有后台文件都转为 ready / failed。
+  useEffect(() => {
+    if (viewState !== 'detail' || !activeKbId) return
+    // 列表请求失败时由上面的指数退避 effect 接管，避免 2 秒一次重复请求压垮恢复中的后端。
+    if (fileListRetry?.kbId === activeKbId) return
+    if (!files.some((file) => isPendingFileStatus(file.status))) return
+    const interval = window.setInterval(() => { void fetchFiles() }, 2000)
+    return () => window.clearInterval(interval)
+  }, [viewState, activeKbId, files, fetchFiles, fileListRetry])
+
   // 获取当前选中的 KB 对象
   const activeKb = knowledgeBases.find((k) => k.id === activeKbId)
 
@@ -2382,21 +2779,14 @@ const KnowledgeList: React.FC = () => {
     }
   }
 
-  const getFileType = (file: File) => {
-    const name = file.name.toLowerCase()
-    const ext = name.includes('.') ? name.split('.').pop() || '' : ''
-    if (ext) return ext
-    if (file.type.startsWith('image/')) return 'jpg'
-    if (file.type.startsWith('audio/')) return 'mp3'
-    if (file.type.startsWith('video/')) return 'mp4'
-    return 'txt'
-  }
-
-  // 处理文件上传（逐个上传，保证进度正确）
+  // 处理文件上传：先把本次所有文件提交给服务端，再由后台队列执行解析。
+  // 过去这里逐个 await 完整的 NDJSON 解析链路，第二个视频直到第一个完成才会发出；
+  // 刷新时它仍只存在于浏览器内存，因而会“消失”。
   const handleFileUpload = async (fileList: File[], options?: { sourceType?: string }) => {
-    if (!activeKbId || fileList.length === 0) return
+    if (!activeKbId || fileList.length === 0 || uploading) return
     setCurrentUploadFiles(fileList)
     setUploading(true)
+    setBatchSubmissionFailed(0)
     setUploadProgress({
       stage: 'minio',
       stageProgress: 0,
@@ -2407,114 +2797,62 @@ const KnowledgeList: React.FC = () => {
       currentFileIsImage: fileList[0]?.type.startsWith('image/'),
     })
 
-    let completed = 0
-    let failed = 0
-
     try {
-      for (const file of fileList) {
-        const isImage = file.type.startsWith('image/')
-        const fileType = getFileType(file)
-
-        flushSync(() => {
-          setUploadProgress((prev) => ({
-            ...(prev || {
-              total: fileList.length,
-              completed: 0,
-              failed: 0,
-              stageProgress: 0,
-              stage: 'minio',
-            }),
-            currentFile: file.name,
-            currentFileIsImage: isImage,
-            stage: 'minio',
-            stageProgress: 0,
-          }))
+      const submitted = await knowledgeApi.startBatchUpload(activeKbId, fileList, {
+        sourceType: options?.sourceType,
+      })
+      const byName = new Map(fileList.map((file) => [file.name, file]))
+      const tasks = submitted.results
+        .filter((result) => result.status === 'queued' && result.processing_id)
+        .map((result) => {
+          const original = byName.get(result.filename)
+          return {
+            processingId: result.processing_id as string,
+            filename: result.filename,
+            isImage: Boolean(original?.type.startsWith('image/')),
+            kbId: activeKbId,
+          }
         })
-        await new Promise((r) => setTimeout(r, 0))
+      const initialFailed = submitted.failed_count || 0
+      setBatchSubmissionFailed(initialFailed)
+      setUploadProgress((prev) => prev ? {
+        ...prev,
+        stage: tasks.length > 0 ? 'minio' : 'done',
+        stageProgress: tasks.length > 0 ? 5 : 100,
+        completed: 0,
+        failed: initialFailed,
+        currentFile: tasks[0]?.filename ?? prev.currentFile,
+        currentFileIsImage: tasks[0]?.isImage ?? prev.currentFileIsImage,
+      } : prev)
+      await Promise.all([fetchFiles(), fetchKnowledgeBases()])
 
-        try {
-          await knowledgeApi.uploadSingleFileStream(
-            activeKbId,
-            file,
-            fileType,
-            (status) => {
-              // 流式进度：后端 stage 映射到前端，且只前进不后退，与真实流程一致
-              const stage = status.stage
-              const progress = status.progress ?? 0
-              const frontStage: UploadPipelineProgress['stage'] | null =
-                stage === 'initializing' || stage === 'uploading'
-                  ? 'minio'
-                  : stage === 'parsing' || stage === 'processing'
-                    ? 'parsing'
-                    : stage === 'vectorizing'
-                      ? 'vectorizing'
-                      : stage === 'completed'
-                        ? 'portrait'
-                        : null
-              if (frontStage === null) return
-              const stageOrder: Record<UploadPipelineProgress['stage'], number> = {
-                idle: -1,
-                minio: 0,
-                parsing: 1,
-                vectorizing: 2,
-                portrait: 3,
-                done: 4,
-              }
-              flushSync(() => {
-                setUploadProgress((prev) => {
-                  if (!prev) return prev
-                  const currentIndex = stageOrder[prev.stage] ?? -1
-                  const newIndex = stageOrder[frontStage]
-                  if (newIndex < currentIndex) return prev
-                  return {
-                    ...prev,
-                    stage: frontStage,
-                    stageProgress: progress,
-                    currentFile: file.name,
-                    currentFileIsImage: isImage,
-                  }
-                })
-              })
-            },
-            { sourceType: options?.sourceType }
-          )
-          completed += 1
-          flushSync(() => {
-            setUploadProgress((prev) => ({
-              ...(prev || {
-                total: fileList.length,
-                completed,
-                failed,
-              }),
-              completed,
-              failed,
-              stage: 'portrait',
-              stageProgress: 100,
-            }))
-          })
-          await new Promise((r) => setTimeout(r, 0))
-        } catch (e) {
-          console.error('上传失败', e)
-          failed += 1
-          flushSync(() => {
-            setUploadProgress((prev) => (prev ? { ...prev, failed } : prev))
-          })
-        }
+      if (tasks.length > 0) {
+        // 不覆盖已有后台任务：即使用户已切到别的 KB，先前提交的任务也必须继续被轮询。
+        // fetchFiles 可能已先把本批任务 hydrate 进来，这里按 processing_id 去重。
+        setBackgroundUploadTasks((prev) => {
+          const existingIds = new Set(prev.map((task) => task.processingId))
+          const additions = tasks.filter((task) => !existingIds.has(task.processingId))
+          return additions.length > 0 ? [...prev, ...additions] : prev
+        })
+        setBackgroundUploadTaskOutcomes((prev) => {
+          const next = { ...prev }
+          tasks.forEach((task) => delete next[task.processingId])
+          return next
+        })
+        return
       }
 
-      setUploadProgress((prev) => ({
-        ...(prev || {
-          total: fileList.length,
-          completed,
-          failed,
-        }),
+      setUploading(false)
+      setCurrentUploadFiles(null)
+      window.setTimeout(() => setUploadProgress(undefined), 2000)
+    } catch (error) {
+      console.error('批量上传提交失败', error)
+      setUploadProgress((prev) => prev ? {
+        ...prev,
         stage: 'done',
         stageProgress: 100,
-        completed,
-        failed,
-      }))
-      await refreshKbDetail()
-    } finally {
+        failed: prev.total,
+      } : prev)
       setUploading(false)
       setCurrentUploadFiles(null)
       setTimeout(() => setUploadProgress(undefined), 2000)
@@ -2608,6 +2946,53 @@ const KnowledgeList: React.FC = () => {
     }
   }
 
+  const handleRetryVideo = async (file: KnowledgeFileView) => {
+    if (!activeKbId || !file.processingId) {
+      throw new Error('缺少可恢复的视频任务信息')
+    }
+    if (!isVideoType(file.type) || String(file.status || '').toLowerCase() !== 'failed') {
+      throw new Error('仅支持重新解析已失败的视频')
+    }
+
+    const response = await knowledgeApi.retryVideoUpload(file.processingId)
+    const queuedFile: KnowledgeFileView = {
+      ...file,
+      processingId: response.processing_id || file.processingId,
+      status: 'queued',
+      stage: 'queued',
+      progress: 0,
+      message: response.message || '已从原视频重新入队，等待处理…',
+      error: undefined,
+      updatedAt: new Date().toISOString(),
+    }
+    setFiles((previous) => previous.map((item) => item.id === file.id ? queuedFile : item))
+    setPreviewFile((previous) => previous?.id === file.id ? queuedFile : previous)
+    setBackgroundUploadTaskOutcomes((previous) => {
+      const next = { ...previous }
+      delete next[queuedFile.processingId!]
+      return next
+    })
+    setBackgroundUploadTasks((previous) => {
+      if (previous.some((task) => task.processingId === queuedFile.processingId)) return previous
+      return [...previous, {
+        processingId: queuedFile.processingId!,
+        filename: queuedFile.name,
+        isImage: false,
+        kbId: activeKbId,
+      }]
+    })
+    setUploading(true)
+    setUploadProgress((previous) => previous ?? {
+      stage: 'minio',
+      stageProgress: 0,
+      total: 1,
+      completed: 0,
+      failed: 0,
+      currentFile: queuedFile.name,
+      currentFileIsImage: false,
+    })
+  }
+
   // --- KB 列表视图 ---
   if (viewState === 'list') {
     return (
@@ -2622,7 +3007,7 @@ const KnowledgeList: React.FC = () => {
                       {/* 高度占位保持顶栏不高；宽度与图标一致，避免绝对定位大图压到标题 */}
                       <div className="relative flex h-10 w-[4.5rem] shrink-0 items-center justify-center sm:h-11 sm:w-[5.25rem]">
                         <img
-                          src="/MMKB.png"
+                          src="/knowledge-hub-minimal-v2.png"
                           alt=""
                           className="pointer-events-none absolute left-1/2 top-1/2 h-[4.5rem] w-[4.5rem] max-w-none -translate-x-1/2 -translate-y-1/2 object-contain object-center sm:h-[5.25rem] sm:w-[5.25rem]"
                         />
@@ -2993,9 +3378,15 @@ const KnowledgeList: React.FC = () => {
     })
     const currentFileViewLabel = fileView === 'grid' ? '画廊视图' : '列表视图'
     const activeFilePanelId = `${fileListDomId}-file-active-panel`
-    const fileResultStatusText = trimmedFileQuery
+    const fileResultBaseText = trimmedFileQuery
       ? `${currentFileViewLabel}，搜索“${trimmedFileQuery}”命中 ${filteredFiles.length} 个文件，共 ${files.length} 个文件。`
       : `${currentFileViewLabel}，显示全部 ${files.length} 个文件。`
+    const fileListRetryDelaySeconds = fileListRetry?.kbId === activeKbId
+      ? Math.ceil(Math.min(30000, 1000 * (2 ** Math.max(0, fileListRetry.attempt - 1))) / 1000)
+      : undefined
+    const fileResultStatusText = fileListRetryDelaySeconds != null
+      ? `${fileResultBaseText} 文件状态同步暂不可用，将在约 ${fileListRetryDelaySeconds} 秒后重试。`
+      : fileResultBaseText
     const documentCount = kbStats?.documents ?? activeKb.stats?.documents ?? 0
     const textChunkCount = kbStats?.chunks ?? activeKb.stats?.chunks ?? 0
     const imageCount = kbStats?.images ?? activeKb.stats?.images ?? 0
@@ -3368,7 +3759,14 @@ const KnowledgeList: React.FC = () => {
                               {file.size}
                             </td>
                             <td className="px-6 py-3.5 align-middle border-l border-slate-100 dark:border-slate-800/90">
-                              <StatusBadge status={file.status} />
+                              <StatusBadge
+                                status={file.status}
+                                stage={file.stage}
+                                progress={file.progress}
+                                message={file.message}
+                                error={file.error}
+                                updatedAt={file.updatedAt}
+                              />
                             </td>
                             <td className="px-6 py-3.5 text-slate-600 dark:text-slate-400 tabular-nums align-middle border-l border-slate-100 dark:border-slate-800/90">
                               {file.date}
@@ -3442,7 +3840,14 @@ const KnowledgeList: React.FC = () => {
                                 <FileHero file={file} />
                               </div>
                               <div className="absolute top-3 left-3">
-                                <StatusBadge status={file.status} />
+                                <StatusBadge
+                                  status={file.status}
+                                  stage={file.stage}
+                                  progress={file.progress}
+                                  message={file.message}
+                                  error={file.error}
+                                  updatedAt={file.updatedAt}
+                                />
                               </div>
                               {isMedia && (
                                 <div className={cn(
@@ -3603,6 +4008,7 @@ const KnowledgeList: React.FC = () => {
             kbId={activeKbId}
             onClose={() => setPreviewFile(null)}
             onEdit={handleOpenManualEditor}
+            onRetryVideo={() => handleRetryVideo(previewFile)}
             onDelete={() => {
               handleDeleteFile(previewFile.id)
               setPreviewFile(null)

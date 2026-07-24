@@ -140,14 +140,20 @@ class Settings(BaseSettings):
         validation_alias="MARKDOWN_LOCAL_IMAGE_REQUIRE_WHITELIST",
     )
 
-    # 视频模态：Scene–Shot–ASR。窗口控制在 4 分钟以避免一次性结构化输出被截断；15 秒重叠用于保留跨窗语句。
-    video_long_threshold_seconds: float = Field(default=240.0, validation_alias="VIDEO_LONG_THRESHOLD_SECONDS")
-    video_chunk_window_seconds: float = Field(default=240.0, validation_alias="VIDEO_CHUNK_WINDOW_SECONDS")
-    video_max_chunk_duration_seconds: float = Field(default=240.0, validation_alias="VIDEO_MAX_CHUNK_DURATION_SECONDS")
+    # 视频模态：Scene–Shot–ASR。120 秒窗口能容纳完整语义段，同时避免长视频的
+    # Scene/Shot/ASR JSON 因输出过长被模型截断；15 秒重叠用于保留跨窗语句。
+    video_long_threshold_seconds: float = Field(default=120.0, validation_alias="VIDEO_LONG_THRESHOLD_SECONDS")
+    video_chunk_window_seconds: float = Field(default=120.0, validation_alias="VIDEO_CHUNK_WINDOW_SECONDS")
+    video_max_chunk_duration_seconds: float = Field(default=120.0, validation_alias="VIDEO_MAX_CHUNK_DURATION_SECONDS")
     video_segment_max_seconds: float = Field(default=120.0, validation_alias="VIDEO_SEGMENT_MAX_SECONDS")
     video_chunk_overlap_seconds: float = Field(default=15.0, validation_alias="VIDEO_CHUNK_OVERLAP_SECONDS")
+    # 长视频每个窗口输入给 Omni 的采样帧率。1fps 足以保留语义切分与关键事件时间轴，
+    # 同时避免 20+ 分钟视频按 2fps 发送数千帧而让单个任务长时间占满解析队列。
+    video_long_parsing_fps: int = Field(default=1, validation_alias="VIDEO_LONG_PARSING_FPS")
     video_parsing_max_tokens: int = Field(default=16000, validation_alias="VIDEO_PARSING_MAX_TOKENS")
     video_parsing_temperature: float = Field(default=0.1, validation_alias="VIDEO_PARSING_TEMPERATURE")
+    # 只有模型响应不是合法 Scene–Shot JSON 时才重试，避免瞬态格式错误导致整段长视频失败。
+    video_parsing_retry_attempts: int = Field(default=1, validation_alias="VIDEO_PARSING_RETRY_ATTEMPTS")
     # 长视频分段切段使用的 ffmpeg 可执行路径；未设置时使用 PATH 中的 ffmpeg（需系统已安装，如 macOS: brew install ffmpeg）
     ffmpeg_path: Optional[str] = Field(default=None, validation_alias="FFMPEG_PATH")
 
@@ -242,6 +248,49 @@ class Settings(BaseSettings):
     default_video_parsing_model: Optional[str] = Field(
         default=None,
         validation_alias="DEFAULT_VIDEO_PARSING_MODEL"
+    )
+    # 视频后台解析：批量上传会先为每个文件入队，避免前端刷新丢掉尚未提交的文件。
+    # Qwen Omni 解析与关键帧向量化资源较重，默认串行执行视频解析。
+    video_processing_concurrency: int = Field(
+        default=1,
+        validation_alias="VIDEO_PROCESSING_CONCURRENCY",
+    )
+    # 让 MLLM 按视觉变化自行决定关键帧数；此值仅用于防御异常输出造成的资源失控。
+    video_max_keyframes_per_shot: int = Field(
+        default=4,
+        validation_alias="VIDEO_MAX_KEYFRAMES_PER_SHOT",
+    )
+    video_keyframe_min_gap_seconds: float = Field(
+        default=1.0,
+        validation_alias="VIDEO_KEYFRAME_MIN_GAP_SECONDS",
+    )
+    # 关键帧仍由 MLLM 按 Shot 自主选择；该全视频预算只防止长视频的
+    # 「Shot 数 × 每 Shot 多帧」失控。选择器先尽量保留每个 Shot 的首帧，
+    # 再按轮次公平保留额外帧，而不是简单截断前半段视频。
+    video_max_keyframes_per_video: int = Field(
+        default=192,
+        validation_alias="VIDEO_MAX_KEYFRAMES_PER_VIDEO",
+    )
+    # 抽帧/上传是 I/O 密集型，受控并发可缩短长视频尾部耗时；CLIP 本身按 batch
+    # 串行执行，避免与 CPU/GPU 推理竞争资源。
+    video_keyframe_processing_concurrency: int = Field(
+        default=4,
+        validation_alias="VIDEO_KEYFRAME_PROCESSING_CONCURRENCY",
+    )
+    video_clip_batch_size: int = Field(
+        default=4,
+        validation_alias="VIDEO_CLIP_BATCH_SIZE",
+    )
+    # 上传任务状态写入 Redis 的保留时长，供页面刷新后恢复文件状态。
+    upload_processing_status_ttl_seconds: int = Field(
+        default=7 * 24 * 60 * 60,
+        validation_alias="UPLOAD_PROCESSING_STATUS_TTL_SECONDS",
+    )
+    # 后台上传任务的 lease/heartbeat 超时。超过该时间未续约的 queued/processing
+    # 任务会在下次查询时安全标记为失败，避免服务重启后永久假处理中。
+    upload_processing_lease_timeout_seconds: int = Field(
+        default=300,
+        validation_alias="UPLOAD_PROCESSING_LEASE_TIMEOUT_SECONDS",
     )
 
     # 检索配置

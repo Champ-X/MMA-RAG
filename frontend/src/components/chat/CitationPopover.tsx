@@ -364,7 +364,6 @@ export function CitationPopover({
         : item.end_sec != null
           ? `至 ${formatTimeLabel(item.end_sec)} 结束`
           : null
-  const keyFrameCount = item.key_frames?.filter((f: { img_url?: string }) => f.img_url).length ?? 0
   const sourceLabel = item.file_name ? shortenFileName(item.file_name, 32) : '未知路径'
 
   return (
@@ -551,42 +550,8 @@ export function CitationPopover({
                     </div>
                   </section>
                 )}
-                {item.key_frames && item.key_frames.length > 0 && (
-                  <section className="mt-3" aria-label={`关键帧，共 ${keyFrameCount} 帧`}>
-                    <p className="text-xs text-sky-600 dark:text-sky-400 font-medium mb-2">关键帧</p>
-                    <div className="flex flex-wrap gap-2" role="list">
-                      {item.key_frames
-                        .filter((f: { img_url?: string }) => f.img_url)
-                        .map((frame: { img_url?: string; timestamp?: number; description?: string }, idx: number) => (
-                          <figure
-                            key={idx}
-                            className="rounded-lg overflow-hidden border border-sky-200/70 dark:border-sky-800/50 bg-white/80 dark:bg-slate-800/60"
-                            role="listitem"
-                          >
-                            <img
-                              src={frame.img_url}
-                              alt={frame.description || `关键帧 ${idx + 1}`}
-                              className="w-28 h-[63px] object-cover block"
-                            />
-                            {(frame.timestamp != null || frame.description) && (
-                              <figcaption className="px-2 py-1 bg-sky-50/50 dark:bg-sky-900/20">
-                                {frame.timestamp != null && (
-                                  <span className="text-[10px] text-sky-600 dark:text-sky-400 font-mono mr-1">
-                                    {formatTimeLabel(frame.timestamp)}
-                                  </span>
-                                )}
-                                {frame.description && (
-                                  <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-2" title={frame.description}>
-                                    {frame.description}
-                                  </p>
-                                )}
-                              </figcaption>
-                            )}
-                          </figure>
-                        ))}
-                    </div>
-                  </section>
-                )}
+                {/* 关键帧是视频 Shot 的内部视觉证据，不在聊天引用详情中渲染。
+                    这样历史会话也不会因预签名帧图而撑满回答。 */}
               </>
             )}
 

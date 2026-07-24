@@ -4,6 +4,7 @@ MinIO存储适配器
 """
 
 from typing import Dict, List, Any, Optional, BinaryIO
+import asyncio
 import io
 import json
 import re
@@ -156,7 +157,7 @@ class MinIOAdapter:
         Returns:
             上传结果信息，含 bucket、object_path（供向量 payload 与预签名 URL 使用）
         """
-        try:
+        def _upload_sync() -> Dict[str, Any]:
             bucket_name = self.get_bucket_for_kb(kb_id)
             self.ensure_bucket_for_kb(kb_id)
 
@@ -191,19 +192,30 @@ class MinIOAdapter:
                 "size": len(file_content),
                 "uploaded_at": datetime.utcnow().isoformat()
             }
+
+        try:
+            # minio-py 是同步客户端；put_object（尤其是大视频）在 async 路由中直接
+            # 调用会冻结事件循环，使同一批次后续文件无法及时获得 processing_id。
+            # 放到工作线程后，上传状态轮询和其它批量提交仍可继续推进。
+            return await asyncio.to_thread(_upload_sync)
         except S3Error as e:
             logger.error(f"文件上传失败: {str(e)}")
             raise
     
     async def get_file_content(self, bucket: str, object_path: str) -> bytes:
         """从MinIO获取文件内容"""
-        try:
+        def _get_content_sync() -> bytes:
             response = self.client.get_object(bucket, object_path)
-            content = response.read()
-            response.close()
-            response.release_conn()
-            return content
-            
+            try:
+                return response.read()
+            finally:
+                response.close()
+                response.release_conn()
+
+        try:
+            # 同 upload_file：网络读取与 response.read 都是同步调用，避免在事件循环
+            # 中直接执行。视频 Scene–Shot 流程会从 MinIO 回读原文件，影响尤为明显。
+            return await asyncio.to_thread(_get_content_sync)
         except S3Error as e:
             if _s3_is_no_such_key(e):
                 logger.debug("对象不存在 {} {}: {}", bucket, object_path, e)
@@ -229,11 +241,14 @@ class MinIOAdapter:
             raise
     
     async def delete_file(self, bucket: str, object_path: str) -> bool:
-        """删除文件"""
-        try:
+        """删除文件（MinIO 客户端为同步实现，避免在视频重试清理时阻塞事件循环）。"""
+        def _delete_sync() -> bool:
             self.client.remove_object(bucket, object_path)
             logger.info(f"文件删除成功: {bucket}/{object_path}")
             return True
+
+        try:
+            return await asyncio.to_thread(_delete_sync)
         except S3Error as e:
             logger.error(f"文件删除失败 {bucket}/{object_path}: {str(e)}")
             return False

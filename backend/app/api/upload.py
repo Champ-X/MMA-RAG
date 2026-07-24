@@ -15,6 +15,19 @@ from app.modules.ingestion.service import get_ingestion_service
 router = APIRouter()
 logger = get_logger(__name__)
 
+ALLOWED_FILE_TYPES = {
+    # 文档类型
+    "pdf", "docx", "doc", "pptx", "txt", "md",
+    # 表格类型
+    "xlsx", "xls", "csv",
+    # 图片类型
+    "jpg", "jpeg", "png", "gif", "webp", "tiff", "tif",
+    # 音频类型
+    "mp3", "wav", "m4a", "flac", "aac", "ogg", "wma", "opus",
+    # 视频类型
+    "mp4", "avi", "mov", "mkv", "webm", "flv", "wmv", "m4v",
+}
+
 
 def _ingestion():
     return get_ingestion_service()
@@ -41,19 +54,7 @@ async def upload_file(
     """上传单个文件"""
     try:
         # 验证文件类型（与 config.allowed_extensions_str 保持一致）
-        allowed_types = [
-            # 文档类型
-            "pdf", "docx", "doc", "pptx", "txt", "md",
-            # 表格类型
-            "xlsx", "xls", "csv",
-            # 图片类型
-            "jpg", "jpeg", "png", "gif", "webp", "tiff", "tif",
-            # 音频类型
-            "mp3", "wav", "m4a", "flac", "aac", "ogg", "wma", "opus",
-            # 视频类型
-            "mp4", "avi", "mov", "mkv", "webm", "flv", "wmv", "m4v"
-        ]
-        if file_type not in allowed_types:
+        if file_type not in ALLOWED_FILE_TYPES:
             raise HTTPException(status_code=400, detail=f"不支持的文件类型: {file_type}")
         source_type = _validate_source_type(source_type)
         
@@ -124,19 +125,7 @@ async def upload_file_stream(
 ):
     """上传单个文件，响应为流式：先返回 processing_id，再持续推送 stage/progress/message，最后返回 result。"""
     try:
-        allowed_types = [
-            # 文档类型
-            "pdf", "docx", "doc", "pptx", "txt", "md",
-            # 表格类型
-            "xlsx", "xls", "csv",
-            # 图片类型
-            "jpg", "jpeg", "png", "gif", "webp", "tiff", "tif",
-            # 音频类型
-            "mp3", "wav", "m4a", "flac", "aac", "ogg", "wma", "opus",
-            # 视频类型
-            "mp4", "avi", "mov", "mkv", "webm", "flv", "wmv", "m4v"
-        ]
-        if file_type not in allowed_types:
+        if file_type not in ALLOWED_FILE_TYPES:
             raise HTTPException(status_code=400, detail=f"不支持的文件类型: {file_type}")
         source_type = _validate_source_type(source_type)
         file_content = await file.read()
@@ -146,17 +135,18 @@ async def upload_file_stream(
         processing_id = str(uuid.uuid4())
         logger.info("开始流式上传处理: {}, processing_id={}", filename, processing_id)
 
+        # 任务由 IngestionService 持有，而不是绑定在 StreamingResponse 的协程上。
+        # 用户刷新页面会断开流，但已接收的文件仍继续处理，状态可通过 Redis 恢复。
+        _ingestion().start_file_upload(
+            file_content=file_content,
+            file_path=filename,
+            kb_id=kb_id,
+            user_id=None,
+            processing_id=processing_id,
+            source_type=source_type,
+        )
+
         async def stream_gen():
-            task = asyncio.create_task(
-                _ingestion().process_file_upload(
-                    file_content=file_content,
-                    file_path=filename,
-                    kb_id=kb_id,
-                    user_id=None,
-                    processing_id=processing_id,
-                    source_type=source_type,
-                )
-            )
             yield json.dumps({"processing_id": processing_id}) + "\n"
             while True:
                 await asyncio.sleep(0.25)
@@ -166,12 +156,6 @@ async def upload_file_stream(
                 yield json.dumps(status) + "\n"
                 if status.get("status") in ("completed", "failed"):
                     break
-            try:
-                await task
-            except Exception as e:
-                logger.exception("流式上传后台任务异常")
-                yield json.dumps({"status": "failed", "error": str(e)}) + "\n"
-                return
             final = await _ingestion().get_processing_status(processing_id)
             if final and final.get("result") is not None:
                 yield json.dumps({"result": final["result"]}) + "\n"
@@ -186,6 +170,100 @@ async def upload_file_stream(
     except Exception as e:
         logger.exception("upload_file_stream failed")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/batch/start", status_code=202)
+async def start_upload_batch(
+    kb_id: str = Form(...),
+    files: List[UploadFile] = File(...),
+    source_type: Optional[str] = Form(None),
+):
+    """一次接收全部文件并立即创建独立后台任务。
+
+    与旧 `/batch` 的“文件 1 完成全链路后才处理文件 2”不同，本接口在请求成功后
+    为每个文件登记持久化 processing_id。页面刷新不会丢掉尚未开始 MLLM 解析的
+    其他视频；视频实际解析由服务端受控队列消费。
+    """
+    source_type = _validate_source_type(source_type)
+    if not files:
+        raise HTTPException(status_code=400, detail="至少需要一个文件")
+
+    # 严格两阶段提交：在第一个后台任务可被调度前，先读取、校验并持久化登记
+    # 所有有效文件。不能在循环内调用 start_file_upload；下一次 `await file.read()`
+    # 会让已创建的第一个任务获得运行机会，进而可能被同步 MinIO I/O 阻塞。
+    ingestion = _ingestion()
+    results = []
+    prepared_uploads = []
+    for file in files:
+        filename = file.filename or "uploaded_file"
+        try:
+            file_content = await file.read()
+            file_size = len(file_content)
+            if file_size == 0:
+                raise ValueError("文件内容为空")
+            ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+            if ext not in ALLOWED_FILE_TYPES:
+                raise ValueError(f"不支持的文件类型: {ext or '未知'}")
+
+            prepared = ingestion.prepare_file_upload(
+                file_content=file_content,
+                file_path=filename,
+                kb_id=kb_id,
+            )
+            result_item = {
+                "filename": filename,
+                "size": file_size,
+                "file_type": ext,
+                "processing_id": prepared["processing_id"],
+                "status": "queued",
+            }
+            results.append(result_item)
+            prepared_uploads.append({
+                "file_content": file_content,
+                "file_path": filename,
+                "processing_id": prepared["processing_id"],
+                "result_item": result_item,
+            })
+        except Exception as e:
+            logger.error("批量异步上传提交失败 filename={}: {}", filename, e)
+            results.append({
+                "filename": filename,
+                "status": "failed",
+                "error": str(e),
+            })
+
+    # 此时每个有效文件均已进入可恢复的队列；下面的 create_task 调用本身不让出
+    # 事件循环，故直到全部任务都已建立，任何视频解析都不会开始。
+    for prepared_upload in prepared_uploads:
+        try:
+            ingestion.launch_prepared_file_upload(
+                file_content=prepared_upload["file_content"],
+                file_path=prepared_upload["file_path"],
+                kb_id=kb_id,
+                processing_id=prepared_upload["processing_id"],
+                user_id=None,
+                source_type=source_type,
+            )
+        except Exception as e:
+            logger.error(
+                "批量异步上传任务启动失败 filename={}: {}",
+                prepared_upload["file_path"],
+                e,
+            )
+            prepared_upload["result_item"].update({
+                "status": "failed",
+                "error": str(e),
+            })
+
+    accepted_count = sum(1 for result in results if result.get("status") == "queued")
+    return {
+        "kb_id": kb_id,
+        "total_files": len(files),
+        "accepted_count": accepted_count,
+        "failed_count": len(results) - accepted_count,
+        "results": results,
+        "message": "文件已提交到服务端处理队列，可安全刷新页面查看状态。",
+    }
 
 
 @router.post("/batch")
@@ -257,3 +335,21 @@ async def get_upload_progress(task_id: str):
     if status.get("status") == "not_found":
         raise HTTPException(status_code=404, detail="未找到该任务或任务已过期")
     return status
+
+
+@router.post("/retry/{task_id}", status_code=202)
+async def retry_upload_video(task_id: str):
+    """从 MinIO 中保存的原视频重新入队 Scene–Shot 解析。
+
+    仅适用于已经落盘、但因模型格式错误、服务重启或其他可恢复异常而失败的视频。
+    不重新接收浏览器文件，因此不会产生新的 file_id 或重复原视频对象。
+    """
+    try:
+        return _ingestion().retry_video_processing(task_id)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except Exception as error:
+        logger.exception("重新入队视频失败 task_id={}", task_id)
+        raise HTTPException(status_code=500, detail=str(error)) from error

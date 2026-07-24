@@ -175,7 +175,11 @@ async def get_knowledge_base(kb_id: str):
 
 @router.get("/{kb_id}/files")
 async def list_kb_files(kb_id: str):
-    """获取知识库下的文件列表"""
+    """获取知识库下的文件列表。
+
+    对仍在排队、处理中或失败的后台上传，文件项会附带 ``processing_id``、阶段、进度、
+    消息、错误和租约时间，供刷新后的页面恢复真实处理状态。
+    """
     try:
         kb = await kb_service.get_knowledge_base(kb_id)
         if not kb:

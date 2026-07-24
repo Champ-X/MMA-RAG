@@ -84,10 +84,6 @@ class ContextBuilder:
             
             # 2b. 为音频（及视频）引用生成 presigned_url，便于前端展示播放器
             await self._enrich_audio_video_presigned_urls(reference_map)
-            # 2c. 为视频引用的关键帧图片生成 presigned_url，便于前端展示关键帧缩略图
-            await self._enrich_video_keyframe_presigned_urls(reference_map)
-            # 2d. 将关键帧作为独立「图片」引用加入 reference_map，加入 prompt 后可被模型单独引用 [n]
-            self._add_keyframe_image_references(reference_map)
             
             # 3. 构建上下文字符串（含本轮用户上传媒体的摘要，非知识库引用）
             context_string = await self._build_context_string(
@@ -99,7 +95,7 @@ class ContextBuilder:
                 context_string, reference_map
             )
             
-            # 5. 构建最终结果（total_images 含检索图片 + 视频关键帧作为图片的引用数）
+            # 5. 构建最终结果。关键帧仅作为视频 Shot 的内部证据，不计为回答图片。
             build_time = (datetime.utcnow() - start_time).total_seconds()
             total_images = len([r for r in reference_map.values() if r.content_type == "image"])
             
@@ -239,7 +235,7 @@ class ContextBuilder:
                         "manifest_path": payload.get("manifest_path"),
                         "key_frames": payload.get("keyframes", []),
                     }
-                    # 合并检索返回的 metadata（含 key_frames 等），供 format_video_content 与前端展示
+                    # 合并检索返回的 metadata（含内部关键视觉证据），供 format_video_content 使用。
                     result_meta = result.get("metadata") or {}
                     payload_meta = {**payload_meta, **result_meta}
                 else:  # doc
@@ -502,79 +498,6 @@ class ContextBuilder:
                 logger.debug("生成音频/视频预签名URL失败: ref_id=%s, e=%s", ref_id, e)
                 reference.presigned_url = None
     
-    async def _enrich_video_keyframe_presigned_urls(self, reference_map: Dict[str, ReferenceMap]) -> None:
-        """为 reference_map 中 content_type 为 video 的引用的关键帧图片生成 presigned URL。"""
-        for ref_id, reference in reference_map.items():
-            if reference.content_type != "video":
-                continue
-            key_frames = (reference.metadata or {}).get("key_frames") or []
-            if not key_frames:
-                continue
-            kb_id = (reference.metadata or {}).get("kb_id")
-            bucket = (
-                self.minio_adapter.get_bucket_for_kb(kb_id)
-                if kb_id
-                else None
-            )
-            if not bucket:
-                continue
-            enriched = []
-            for frame in key_frames:
-                path = frame.get("frame_image_path")
-                if not path:
-                    enriched.append({**frame})
-                    continue
-                try:
-                    url = await self.minio_adapter.get_presigned_url(
-                        bucket=bucket,
-                        object_path=path,
-                        expires_hours=24,
-                    )
-                    enriched.append({
-                        **frame,
-                        "img_url": url,
-                    })
-                except Exception as e:
-                    logger.debug("关键帧预签名URL失败: ref_id=%s path=%s e=%s", ref_id, path, e)
-                    enriched.append({**frame})
-            reference.metadata["key_frames"] = enriched
-    
-    def _add_keyframe_image_references(self, reference_map: Dict[str, ReferenceMap]) -> None:
-        """将视频引用的关键帧作为独立「图片」引用加入 reference_map，便于模型在回答中单独引用 [n] 并前端以图片展示。"""
-        if not reference_map:
-            return
-        next_id = max((int(k) for k in reference_map if str(k).isdigit()), default=0) + 1
-        to_add: List[tuple] = []
-        for ref_id, ref in list(reference_map.items()):
-            if ref.content_type != "video":
-                continue
-            key_frames = (ref.metadata or {}).get("key_frames") or []
-            for frame in key_frames:
-                img_url = frame.get("img_url")
-                if not img_url:
-                    continue
-                frame_path = frame.get("frame_image_path") or ""
-                frame_desc = frame.get("description") or ""
-                to_add.append((
-                    str(next_id),
-                    ReferenceMap(
-                        id=str(next_id),
-                        content_type="image",
-                        file_path=frame_path,
-                        content=frame_desc,
-                        metadata={
-                            "kb_id": (ref.metadata or {}).get("kb_id"),
-                            "score": (ref.metadata or {}).get("score", 0.0),
-                            "from_video_keyframe": True,
-                            "source_video_ref_id": ref_id,
-                        },
-                        presigned_url=img_url,
-                    ),
-                ))
-                next_id += 1
-        for rid, r in to_add:
-            reference_map[rid] = r
-    
     async def _build_context_string(
         self,
         processed_results: List[Dict[str, Any]],
@@ -673,21 +596,6 @@ class ContextBuilder:
                 context_parts.append(video_format)
                 context_parts.append("")  # 空行分隔
                 current_index += 1
-            
-            # 视频关键帧作为独立图片材料（与图片模态一致），模型可单独引用 [n] 并在前端以图片展示
-            for ref_id, ref in sorted(reference_map.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else 999999):
-                if ref.content_type != "image":
-                    continue
-                if not (ref.metadata or {}).get("from_video_keyframe"):
-                    continue
-                keyframe_format = self.formatter.format_image_content(
-                    index=ref_id,
-                    caption=ref.content or "（视频关键帧）",
-                    file_path=ref.file_path or "",
-                    metadata=ref.metadata or {},
-                )
-                context_parts.append(keyframe_format)
-                context_parts.append("")  # 空行分隔
             
             # 添加用户问题
             context_parts.append(f"用户问题：{query}")
@@ -877,6 +785,13 @@ class ContextBuilder:
                     ref_id = reference.id
                     if isinstance(ref_id, str) and ref_id.isdigit():
                         ref_id = int(ref_id)
+                    # 关键帧属于检索/生成的内部视觉证据，不能透传到回答的公开引用载荷；
+                    # 否则任一客户端都可能把它们当作普通图片批量渲染。
+                    public_metadata = {
+                        key: value
+                        for key, value in (reference.metadata or {}).items()
+                        if key not in {"key_frames", "keyframes"}
+                    }
                     ref_dict = {
                         "id": ref_id,
                         "type": reference.content_type,
@@ -889,7 +804,7 @@ class ContextBuilder:
                         "scores": {"rerank": reference.metadata.get("score", 0.0)},
                         "chunk_id": chunk_id,
                         "chunk_index": reference.metadata.get("chunk_index"),
-                        "metadata": reference.metadata
+                        "metadata": public_metadata
                     }
                     if reference.content_type == "video":
                         # 检索结果以 Shot 为单位；播放器应跳至命中的 Shot。兼容旧数据
@@ -905,9 +820,6 @@ class ContextBuilder:
                         if en is not None:
                             ref_dict["end_sec"] = float(en)
                         ref_dict["debug_info"] = {"kb_id": reference.metadata.get("kb_id")}
-                        kf = reference.metadata.get("key_frames")
-                        if kf:
-                            ref_dict["key_frames"] = kf
                     valid_references.append(ref_dict)
                 else:
                     logger.warning(f"发现无效引用: [{ref_num}]")

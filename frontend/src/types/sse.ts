@@ -45,6 +45,8 @@ export interface CitationDebugInfo {
   chunk_id?: string;
   /** 知识库 id，检查器展示用 */
   kb_id?: string;
+  /** 仅供兼容旧会话：该图片是否由视频关键帧生成。关键帧不应作为回答插图渲染。 */
+  from_video_keyframe?: boolean;
   context_window?: { prev: string; next: string };
 }
 
@@ -63,7 +65,7 @@ export interface CitationReference {
   start_sec?: number;
   /** 视频片段结束时间（秒），仅 type 为 video 时可选 */
   end_sec?: number;
-  /** 视频关键帧列表（仅 type 为 video 时），含缩略图 URL 与描述，用于在回答中展示 */
+  /** 历史会话兼容字段：视频关键帧不会在回答中默认展示。 */
   key_frames?: Array<{
     timestamp?: number;
     description?: string;

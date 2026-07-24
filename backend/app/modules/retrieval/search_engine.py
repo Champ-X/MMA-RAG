@@ -700,40 +700,8 @@ class HybridSearchEngine:
                         f"avg={avg_score:.3f}, count={len(search_results)}"
                     )
                 
-                # 4. 可选关键帧视觉索引：仅作为图片候选的视觉补充。
-                video_keyframe_results = await self.vector_store.search_video_keyframes(
-                    text_query_vector=text_query_vector,
-                    clip_query_vector=clip_text_vector,
-                    target_kb_ids=target_kb_ids,
-                    target_file_ids=target_file_ids,
-                    limit=limit,
-                    score_threshold=score_threshold,
-                )
-                for v in video_keyframe_results:
-                    payload = v.get("payload") or {}
-                    caption = payload.get("frame_description") or payload.get("shot_caption") or payload.get("scene_summary") or ""
-                    file_path = payload.get("frame_image_path") or ""
-                    if not file_path:
-                        continue
-                    search_results.append({
-                        "id": v.get("id"),
-                        "score": v.get("score", 0.0),
-                        "payload": {
-                            "caption": caption,
-                            "file_path": file_path,
-                            "kb_id": payload.get("kb_id"),
-                            "file_id": payload.get("file_id"),
-                        },
-                        "scores": {"text_vec": 0.0, "clip_vec": v.get("score", 0.0), "rrf_fused": v.get("score", 0.0)},
-                        "search_type": "visual",
-                        "dual_rrf": True,
-                        "text_vec_score": 0.0,
-                        "clip_vec_score": v.get("score", 0.0),
-                        "visual_intent": visual_intent,
-                        "from_video_keyframe": True,
-                    })
-                if video_keyframe_results:
-                    logger.info("Visual检索补充: 从视频关键帧召回 {} 条，合并为图片结果", len([r for r in search_results if r.get("from_video_keyframe")]))
+                # 视频关键帧不再伪装为普通图片候选。它们仅在 _video_search 中
+                # 为所属 Shot 提供可选视觉排序增强，保证回答层只展示视频引用而不塞满帧图。
                 
                 logger.info(
                     f"Visual检索完成（双路RRF）: {len(search_results)} 个图片结果, "
@@ -785,38 +753,8 @@ class HybridSearchEngine:
                         f"avg={avg_score:.3f}, count={len(search_results)}"
                     )
                 
-                # 用文本向量查询关键帧视觉索引。
-                video_keyframe_results = await self.vector_store.search_video_keyframes(
-                    text_query_vector=text_query_vector,
-                    clip_query_vector=None,
-                    target_kb_ids=target_kb_ids,
-                    target_file_ids=target_file_ids,
-                    limit=limit,
-                    score_threshold=score_threshold,
-                )
-                for v in video_keyframe_results:
-                    payload = v.get("payload") or {}
-                    file_path = payload.get("frame_image_path") or ""
-                    if not file_path:
-                        continue
-                    caption = payload.get("frame_description") or payload.get("shot_caption") or payload.get("scene_summary") or ""
-                    search_results.append({
-                        "id": v.get("id"),
-                        "score": v.get("score", 0.0),
-                        "payload": {
-                            "caption": caption,
-                            "file_path": file_path,
-                            "kb_id": payload.get("kb_id"),
-                            "file_id": payload.get("file_id"),
-                        },
-                        "search_type": "visual",
-                        "dual_rrf": False,
-                        "text_vec_score": v.get("score", 0.0),
-                        "visual_intent": visual_intent,
-                        "from_video_keyframe": True,
-                    })
-                if video_keyframe_results:
-                    logger.info("Visual检索补充: 从视频关键帧召回 {} 条，合并为图片结果", len([r for r in search_results if r.get("from_video_keyframe")]))
+                # 同双路分支：关键帧不作为图片结果返回，避免视觉增强绕过 Shot
+                # 检索单元并在回答中被渲染为大量缩略图。
                 
                 logger.info(
                     f"Visual检索完成（单路文本语义）: {len(search_results)} 个图片结果, "

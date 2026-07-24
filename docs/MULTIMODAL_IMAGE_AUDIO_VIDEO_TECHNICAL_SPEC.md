@@ -154,7 +154,7 @@
 ### 4.1 支持的格式与入口
 
 - **扩展名**：`mp4`、`avi`、`mov`、`mkv`、`webm`、`flv`、`wmv`、`m4v`。
-- **入口**：用户上传视频文件；进入 `IngestionService._process_video_scene_shot`。
+- **入口**：单文件流式上传与异步批量提交。多选文件通过 `POST /api/upload/batch/start` 先为全部有效文件持久化创建独立 `processing_id`，再统一启动后台解析；页面刷新后从 Redis 任务状态恢复“排队中 / 处理中 / 失败”。任务带 lease 心跳，服务异常退出后超时状态会在下次查询中转为失败而不会永久假处理中。视频 Scene–Shot 解析默认并发为 1（`VIDEO_PROCESSING_CONCURRENCY`），避免多个 Qwen Omni 长调用互相抢占。
 
 ### 4.2 解析（VideoParser）
 
@@ -173,8 +173,8 @@
 - **MLLM 输出契约**：`scene_shot_asr_v4`。
   - **Scene**：连续的时间/空间/核心话题段，保留约 100–220 字 `scene_summary` 作为上下文，不作为主检索点。
   - **Semantic Shot**：Scene 内的主检索单元，目标 8–22 秒、通常不超过 35 秒；模型以完整句子或完整动作/话题单元切分，不把普通物理切镜机械拆开。每个 Shot 有纯视觉 `caption`、原语言 `asr_text`、`asr_status` 与 `speech_boundary`。
-  - **Key Frame**：每 Shot 1 帧、视觉转折时最多 2 帧，保存时间戳和客观画面描述。
-- **长视频**：时长超过 `min(VIDEO_LONG_THRESHOLD_SECONDS, VIDEO_CHUNK_WINDOW_SECONDS, VIDEO_MAX_CHUNK_DURATION_SECONDS)` 时，以 `min(VIDEO_CHUNK_WINDOW_SECONDS, VIDEO_MAX_CHUNK_DURATION_SECONDS)` 窗口切段并重叠 `VIDEO_CHUNK_OVERLAP_SECONDS`（默认 240 秒/15 秒）。下一窗口只携带最近场景与 ASR 尾部上下文；`merge_chunk_analyses` 只对真实重叠且 caption 高相似的 Shot 去重，随后重新连续化时间轴。
+  - **Key Frame**：MLLM 按 Shot 内真实视觉信息量自主选择 1～4 帧：稳定构图保留 1 帧，操作演示、前后结果或主体/构图显著变化时保留多帧；不以等间隔凑数。服务端仅用 `VIDEO_MAX_KEYFRAMES_PER_SHOT`（默认 4）和 `VIDEO_KEYFRAME_MIN_GAP_SECONDS`（默认 1 秒）做异常输出与近重复帧保护。
+- **长视频**：时长超过 `min(VIDEO_LONG_THRESHOLD_SECONDS, VIDEO_CHUNK_WINDOW_SECONDS, VIDEO_MAX_CHUNK_DURATION_SECONDS)` 时，以 `min(VIDEO_CHUNK_WINDOW_SECONDS, VIDEO_MAX_CHUNK_DURATION_SECONDS)` 窗口切段并重叠 `VIDEO_CHUNK_OVERLAP_SECONDS`（默认 120 秒/15 秒）。较小窗口避免 Scene/Shot/ASR 的结构化 JSON 因内容过长被截断；下一窗口只携带最近场景与 ASR 尾部上下文；`merge_chunk_analyses` 只对真实重叠且 caption 高相似的 Shot 去重，随后重新连续化时间轴。
 - **规范化与兜底**：模型 JSON 经 `normalize_video_analysis` 校正字段、时间范围、Scene/Shot 覆盖与关键帧落点；失败时生成一个可检索的单 Scene/Shot 兜底记录，而不是丢失整条视频。
 - **向量化与写入**：
   1. `caption` → `caption_dense`（Qwen Embedding，4096）+ `caption_sparse`（BGE-M3）。

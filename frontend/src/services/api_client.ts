@@ -381,7 +381,24 @@ export const knowledgeApi = {
 
   // 获取知识库文件列表
   getKnowledgeBaseFiles: (id: string) =>
-    apiClient.get<{ files: Array<{ id: string; name: string; size: number; date: string; type: string; status?: string; preview_url?: string; text_preview?: string }> }>(`/knowledge/${id}/files`),
+    apiClient.get<{
+      files: Array<{
+        id: string
+        name: string
+        size: number
+        date: string
+        type: string
+        status?: string
+        processing_id?: string
+        stage?: string
+        progress?: number
+        message?: string
+        error?: string
+        updated_at?: string
+        preview_url?: string
+        text_preview?: string
+      }>
+    }>(`/knowledge/${id}/files`),
 
   // 删除知识库中的文件
   deleteKnowledgeBaseFile: (kbId: string, fileId: string) =>
@@ -437,6 +454,37 @@ export const knowledgeApi = {
   uploadFiles: (kbId: string, files: File[], onProgress?: (progress: number, fileIndex: number) => void) =>
     apiClient.uploadFiles(`/upload/batch`, files, onProgress, { kb_id: kbId }),
 
+  /**
+   * 异步批量提交：所有文件先获得独立 processing_id，再由服务端后台处理。
+   * 用于视频等耗时模态，浏览器刷新不会丢失尚未开始解析的后续文件。
+   */
+  startBatchUpload: (
+    kbId: string,
+    files: File[],
+    options?: { sourceType?: string }
+  ) => apiClient.uploadFiles<{
+    kb_id: string
+    total_files: number
+    accepted_count: number
+    failed_count: number
+    results: Array<{
+      filename: string
+      size?: number
+      file_type?: string
+      processing_id?: string
+      status: 'queued' | 'failed'
+      error?: string
+    }>
+  }>(
+    `/upload/batch/start`,
+    files,
+    undefined,
+    {
+      kb_id: kbId,
+      ...(options?.sourceType ? { source_type: options.sourceType } : {}),
+    }
+  ),
+
   // 上传单个文件（用于精细进度）
   uploadSingleFile: (
     kbId: string,
@@ -490,9 +538,21 @@ export const knowledgeApi = {
       stage?: string
       progress?: number
       message?: string
-      result?: { file_id?: string }
       error?: string
+      updated_at?: string
+      file_id?: string
+      result?: { file_id?: string }
     }>(`/upload/progress/${taskId}`),
+
+  /** 对已落盘但失败的视频复用 MinIO 原文件重新入队，不要求浏览器重新选择上传文件。 */
+  retryVideoUpload: (taskId: string) =>
+    apiClient.post<{
+      processing_id: string
+      status: 'queued'
+      file_id: string
+      retry_count: number
+      message: string
+    }>(`/upload/retry/${encodeURIComponent(taskId)}`),
 };
 
 // 知识库导入 API（从 URL 或按关键词搜索图片导入）

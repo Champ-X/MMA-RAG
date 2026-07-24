@@ -198,6 +198,17 @@ function getCitationIdentityKey(citation: CitationReference): string {
   return `${citation.type}:${baseKey}`
 }
 
+/**
+ * 新回答不再下发视频关键帧；这里保留路径与标记双重识别，确保已经持久化的旧会话
+ * 也不会把关键帧伪装成普通图片插入回答正文。
+ */
+function isVideoKeyframeCitation(citation: CitationReference | null | undefined): boolean {
+  if (!citation) return false
+  if (citation.debug_info?.from_video_keyframe) return true
+  const path = `${citation.file_path || ''}/${citation.file_name || ''}`.replace(/\\+/g, '/')
+  return /(?:^|\/)videos\/[^/]+\/keyframes(?:\/|$)/i.test(path)
+}
+
 function buildFirstMediaOccurrenceMap(
   matches: CitationMatch[],
   mediaType: CitationReference['type'],
@@ -209,6 +220,7 @@ function buildFirstMediaOccurrenceMap(
   for (const match of matches) {
     const citation = findCitationById(match.n, citationMap, refs)
     if (!citation || citation.type !== mediaType) continue
+    if (mediaType === 'image' && isVideoKeyframeCitation(citation)) continue
     const key = getCitationIdentityKey(citation)
     if (!firstOccurrenceByKey.has(key)) {
       firstOccurrenceByKey.set(key, match.start)
@@ -231,6 +243,7 @@ function collectFirstMediaRefsForBlock(
   for (const match of blockMatches) {
     const citation = findCitationById(match.n, citationMap, refs)
     if (!citation || citation.type !== mediaType) continue
+    if (mediaType === 'image' && isVideoKeyframeCitation(citation)) continue
 
     const key = getCitationIdentityKey(citation)
     if (seenInBlock.has(key)) continue
@@ -400,6 +413,7 @@ function ParagraphImageDisplay({
     const raw = citations.filter(
       (c): c is CitationReference =>
         c?.type === 'image' &&
+        !isVideoKeyframeCitation(c) &&
         (!!c?.img_url || (!!(c?.file_path || c?.file_name) && !!(c?.debug_info?.kb_id || fallbackKbId)))
     )
     const seen = new Set<number | string>()
@@ -1148,41 +1162,8 @@ function ParagraphVideoDisplay({
                   )}
                 </div>
               )}
-              {citation.key_frames && citation.key_frames.length > 0 && (
-                <div className="mt-2.5">
-                  <p className="text-[11px] text-sky-600 dark:text-sky-400 font-medium mb-1.5 tracking-tight">关键帧</p>
-                  <div className="flex flex-wrap gap-2">
-                    {citation.key_frames
-                      .filter((f) => f.img_url)
-                      .map((frame, idx) => (
-                        <div
-                          key={idx}
-                          className="rounded-lg overflow-hidden border border-slate-200/60 dark:border-slate-600/50 bg-white dark:bg-slate-800/80 shadow-sm hover:shadow-md hover:border-slate-300/50 dark:hover:border-slate-500/50 transition-all duration-150"
-                        >
-                          <img
-                            src={frame.img_url}
-                            alt={frame.description || `关键帧 ${idx + 1}`}
-                            className="w-24 h-[54px] object-cover block"
-                          />
-                          {(frame.timestamp != null || frame.description) && (
-                            <div className="px-1.5 py-0.5 bg-slate-100/80 dark:bg-slate-800/80">
-                              {frame.timestamp != null && (
-                                <span className="text-[10px] text-sky-600 dark:text-sky-400 font-mono mr-1">
-                                  {formatTimeLabel(frame.timestamp)}
-                                </span>
-                              )}
-                              {frame.description && (
-                                <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1" title={frame.description}>
-                                  {frame.description}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
+              {/* 关键帧仅用于后端的视觉检索与生成证据；回答区只保留视频片段本身，
+                  避免一个 Shot 的多张帧图把正文撑满。 */}
             </div>
           </div>
         )
@@ -1266,6 +1247,15 @@ export function MessageBubble({
     // 当文本中没有引用标记时，仍然显示所有可用的引用
     return deduplicateRefs(refs.filter(isCitationLike))
   }, [orderedRefs, refs, deduplicateRefs])
+  // 兼容历史消息：旧服务会把关键帧伪装成 image 引用；默认回答引用栏也不应再显示它们。
+  const visibleRefs = React.useMemo(() => {
+    return uniqueRefs.filter((ref) => {
+      const full = 'type' in ref
+        ? ref as CitationReference
+        : citationMap?.get(getCitationRefId(ref))
+      return !isVideoKeyframeCitation(full)
+    })
+  }, [uniqueRefs, citationMap])
   const allImageRefsForThumbnails = React.useMemo(() => {
     if (isUser) return []
     const seen = new Set<string | number>()
@@ -1274,7 +1264,11 @@ export function MessageBubble({
       const full = isCitationLike(r)
         ? (citationMap?.get(getCitationRefId(r)) ?? r)
         : null
-      if (full && getCitationRefType(full) === 'image') {
+      if (
+        full
+        && getCitationRefType(full) === 'image'
+        && !isVideoKeyframeCitation(full as CitationReference)
+      ) {
         const key = getCitationRefFileName(full) ?? getCitationRefId(full)
         if (!seen.has(key)) {
           seen.add(key)
@@ -1284,7 +1278,7 @@ export function MessageBubble({
     }
     return out
   }, [refs, citationMap, isUser])
-  const hasRefs = showCitations && (uniqueRefs.length > 0 || allImageRefsForThumbnails.length > 0)
+  const hasRefs = showCitations && (visibleRefs.length > 0 || allImageRefsForThumbnails.length > 0)
 
   React.useEffect(() => {
     if (isUser) return
@@ -1531,7 +1525,7 @@ export function MessageBubble({
           {hasRefs && !isUser && (
             <div className="mt-3 space-y-2">
               <InlineCitation
-                references={uniqueRefs}
+                references={visibleRefs}
                 variant="inline"
                 showImageThumbnails
                 citationMap={citationMap}

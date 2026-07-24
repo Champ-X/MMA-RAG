@@ -49,7 +49,7 @@ class MultiModalFormatter:
 命中片段：{shot_range}
 描述：{description}
 语音转录：{asr_text}
-关键帧：
+关键视觉证据（仅用于理解，不作为独立图片引用）：
 {key_frames}"""
     
     def format_document_chunk(

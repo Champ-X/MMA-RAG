@@ -71,3 +71,30 @@ def test_merge_keeps_adjacent_similar_speech_and_only_deduplicates_true_overlap(
 def test_extract_json_object_tolerates_fence_and_surrounding_text():
     result = extract_json_object('说明文字\n```json\n{"scenes": []}\n```')
     assert result == {"scenes": []}
+
+
+def test_normalize_keeps_mllm_selected_multi_keyframes_with_a_safety_cap():
+    raw = _analysis("", "")
+    raw["scenes"][0]["shots"][0]["keyframes"] = [
+        {"timestamp": 1.0, "description": "讲解者完整展示甜瓜外观。"},
+        {"timestamp": 3.0, "description": "镜头切近甜瓜表皮纹理。"},
+        {"timestamp": 5.0, "description": "讲解者用刀切开甜瓜。"},
+        {"timestamp": 8.0, "description": "切开的甜瓜露出果肉和种子。"},
+    ]
+
+    normalized = normalize_video_analysis(
+        raw,
+        duration=20,
+        max_keyframes_per_shot=4,
+        keyframe_min_gap_seconds=1.0,
+    )
+    first_shot_frames = normalized["scenes"][0]["shots"][0]["keyframes"]
+    assert [frame["timestamp"] for frame in first_shot_frames] == [1.0, 3.0, 5.0, 8.0]
+
+    capped = normalize_video_analysis(
+        raw,
+        duration=20,
+        max_keyframes_per_shot=3,
+        keyframe_min_gap_seconds=1.0,
+    )
+    assert len(capped["scenes"][0]["shots"][0]["keyframes"]) == 3
