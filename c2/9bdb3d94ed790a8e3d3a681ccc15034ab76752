@@ -1,0 +1,21 @@
+frontend/src/components/layout/ConversationSidebar.tsx
+  s_f73ebe872b9d5b::t_cc4b1f88bd084b 122,141,367
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c29bdb3d94ed790a8e3d3a681ccc15034ab76752",
+  "prompts": {},
+  "sessions": {
+    "s_f73ebe872b9d5b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f92c6-19ee-7281-b49e-cce4d4ec8acd",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
