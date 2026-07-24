@@ -1,0 +1,33 @@
+frontend/src/components/layout/ConversationSidebar.tsx
+  s_3d97c23fdcc696::t_746a10e3b4909d 122-153,161-162,167-168,172-187,201,214,218-222,227,284,292
+  s_3d97c23fdcc696::t_9329a33fb9ba1d 119-121
+  s_3d97c23fdcc696::t_24710feb1370eb 285-287,289-291
+  s_acc2923728a4a5::t_e96567b11207fb 1-2,8,13,64-65,67-75,113-118,246,251-255,265,268-269,272-273,277,288,303,333,368-376,378-380,383-401,403-445,448-551
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cb3e2d59582f127b5d054681c406b718fdbd0a58",
+  "prompts": {},
+  "sessions": {
+    "s_3d97c23fdcc696": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a60dae81368c775cb795415",
+        "model": "gpt-5.5__max",
+        "display_model_name": "GPT-5.5"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    },
+    "s_acc2923728a4a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9319-f5c7-7621-b4c0-205d43255ad1",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
