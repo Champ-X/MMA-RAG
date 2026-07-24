@@ -184,18 +184,50 @@ function findAllCitationMatches(text: string): CitationMatch[] {
   return merged
 }
 
-function getCitationIdentityKey(citation: CitationReference): string {
-  // 图片/音频：以正文中的引用编号 id 为唯一键。不同模型返回的 file_path、chunk_id 可能略有差异，
-  // 否则同一 [n] 会被当成两种素材；另配合「整消息段落插图只出一次」避免列表/position 异常时多节点重复出图。
-  if (citation.type === 'image' || citation.type === 'audio') {
-    return `${citation.type}:ref:${String(citation.id)}`
+/**
+ * 生成稳定的媒体资源标识。
+ *
+ * 引用编号只代表本次回答里的证据编号：同一图片/音频/视频可能因检索到不同 chunk 或
+ * 不同段落而对应多个编号。因此展示层不能用 id 判重，应优先使用知识库 + 原始文件路径。
+ * 预签名 URL 的 query 会变化，仅在没有文件路径时才把去掉 query 的 URL 作为回退。
+ */
+function getMediaSourceKey(citation: CitationReference): string {
+  const kbId = citation.debug_info?.kb_id?.trim() || 'unknown-kb'
+  const filePath = citation.file_path?.trim()
+  if (filePath) return `kb:${kbId}:path:${filePath.replace(/\\+/g, '/')}`
+
+  const mediaUrl = citation.img_url || citation.audio_url || citation.video_url
+  if (mediaUrl) {
+    try {
+      const parsed = new URL(mediaUrl)
+      return `kb:${kbId}:url:${parsed.origin}${parsed.pathname}`
+    } catch {
+      return `kb:${kbId}:url:${mediaUrl.split(/[?#]/, 1)[0]}`
+    }
   }
-  const baseKey =
-    citation.file_path ||
-    citation.file_name ||
-    citation.debug_info?.chunk_id ||
-    String(citation.id)
-  return `${citation.type}:${baseKey}`
+
+  const fileName = citation.file_name?.trim()
+  if (fileName) return `kb:${kbId}:name:${fileName}`
+  return `kb:${kbId}:ref:${String(citation.id)}`
+}
+
+function getVideoSegmentKey(citation: CitationReference): string {
+  // 后端时间戳可能因序列化有极小差异；0.1 秒精度足以识别同一 Shot，
+  // 又不会把同一视频的不同片段合并成一张卡片。
+  const formatTime = (value: number | undefined) => {
+    const time = Number(value)
+    return Number.isFinite(time) ? (Math.round(time * 10) / 10).toFixed(1) : 'whole'
+  }
+  return `${formatTime(citation.start_sec)}-${formatTime(citation.end_sec)}`
+}
+
+function getCitationIdentityKey(citation: CitationReference): string {
+  const sourceKey = getMediaSourceKey(citation)
+  // 视频的同一文件可以有多个有效 Shot；只有文件和时间片段都相同才视为重复。
+  if (citation.type === 'video') {
+    return `video:${sourceKey}:segment:${getVideoSegmentKey(citation)}`
+  }
+  return `${citation.type}:${sourceKey}`
 }
 
 /**
@@ -232,7 +264,7 @@ function buildFirstMediaOccurrenceMap(
 
 function collectFirstMediaRefsForBlock(
   blockMatches: CitationMatch[],
-  mediaType: 'image' | 'audio',
+  mediaType: 'image' | 'audio' | 'video',
   firstOccurrenceByKey: Map<string, number>,
   citationMap?: Map<number | string, CitationReference>,
   refs?: CitationLike[]
@@ -254,6 +286,31 @@ function collectFirstMediaRefsForBlock(
   }
 
   return mediaRefs
+}
+
+/** 作为展示层的最后一道保护：即使上游传入了同一素材的多个引用，也只保留一个媒体播放器/图片。 */
+function deduplicateMediaCitations(citations: CitationReference[]): CitationReference[] {
+  const seen = new Set<string>()
+  return citations.filter((citation) => {
+    const key = getCitationIdentityKey(citation)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+/** react-markdown 传给 components 的是 HAST：子段落为 element/tagName=p。
+ * 同时兼容直接使用 remark AST 时的 paragraph，避免 li 和其内 p 各自插入一次媒体。 */
+function listItemHasParagraphChild(node: unknown): boolean {
+  if (!node || typeof node !== 'object') return false
+  const children = (node as { children?: unknown }).children
+  if (!Array.isArray(children)) return false
+
+  return children.some((child) => {
+    if (!child || typeof child !== 'object') return false
+    const item = child as { type?: string; tagName?: string }
+    return item.type === 'paragraph' || item.tagName === 'p'
+  })
 }
 
 function splitTextWithCitations(
@@ -346,26 +403,6 @@ function findCitationById(
   return null
 }
 
-// 从文本中提取视频引用ID列表（用于段落下方展示视频卡片）
-function extractVideoRefIdsFromText(
-  text: string,
-  citationMap?: Map<number | string, CitationReference>,
-  refs?: CitationLike[]
-): CitationReference[] {
-  const matches = findAllCitationMatches(text)
-  const videoRefs: CitationReference[] = []
-  const seen = new Set<number | string>()
-  for (const match of matches) {
-    if (seen.has(match.n)) continue
-    const citation = findCitationById(match.n, citationMap, refs)
-    if (citation && 'type' in citation && citation.type === 'video') {
-      seen.add(match.n)
-      videoRefs.push(citation)
-    }
-  }
-  return videoRefs
-}
-
 function CitationInlineButton({ n, onClick }: { n: number; onClick?: (rect: DOMRect) => void }) {
   return (
     <button
@@ -408,7 +445,7 @@ function ParagraphImageDisplay({
   messageId?: string
   fallbackKbId?: string
 }) {
-  // 有 img_url 或具备 file_path + kb_id（可按需刷新）的图片引用均展示；按 id 去重防止同一段落重复传参
+  // 有 img_url 或具备 file_path + kb_id（可按需刷新）的图片引用均展示；按真实素材去重。
   const imageOnlyCitations = React.useMemo(() => {
     const raw = citations.filter(
       (c): c is CitationReference =>
@@ -416,12 +453,7 @@ function ParagraphImageDisplay({
         !isVideoKeyframeCitation(c) &&
         (!!c?.img_url || (!!(c?.file_path || c?.file_name) && !!(c?.debug_info?.kb_id || fallbackKbId)))
     )
-    const seen = new Set<number | string>()
-    return raw.filter((c) => {
-      if (seen.has(c.id)) return false
-      seen.add(c.id)
-      return true
-    })
+    return deduplicateMediaCitations(raw)
   }, [citations, fallbackKbId])
   const [failedImages, setFailedImages] = React.useState<Set<number | string>>(new Set())
   const [loadedImages, setLoadedImages] = React.useState<Set<number | string>>(new Set())
@@ -736,12 +768,13 @@ function ParagraphAudioDisplay({
 }) {
   const [fetchedAudioUrls, setFetchedAudioUrls] = React.useState<Record<string, string>>({})
   const [loadingRefId, setLoadingRefId] = React.useState<string | number | null>(null)
+  const uniqueCitations = React.useMemo(() => deduplicateMediaCitations(citations), [citations])
 
-  if (citations.length === 0) return null
+  if (uniqueCitations.length === 0) return null
 
   return (
     <div className="flex flex-wrap justify-center gap-2 mt-2 mb-0 w-full min-w-0">
-      {citations.map((citation) => {
+      {uniqueCitations.map((citation) => {
         const displayNum = displayIndexByRefId?.get(citation.id) ?? citation.id
         const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
         const resolvedUrl = citation.type === 'audio' && (fetchedAudioUrls[key] || citation.audio_url)
@@ -996,8 +1029,9 @@ function ParagraphVideoDisplay({
   const [fetchedVideoUrls, setFetchedVideoUrls] = React.useState<Record<string, string>>({})
   const [loadingRefId, setLoadingRefId] = React.useState<string | number | null>(null)
   const [expandedDesc, setExpandedDesc] = React.useState<Set<string>>(new Set())
+  const uniqueCitations = React.useMemo(() => deduplicateMediaCitations(citations), [citations])
 
-  if (citations.length === 0) return null
+  if (uniqueCitations.length === 0) return null
 
   const toggleDesc = (k: string) => {
     setExpandedDesc((prev) => {
@@ -1010,7 +1044,7 @@ function ParagraphVideoDisplay({
 
   return (
     <div className="flex flex-wrap justify-center gap-3 mt-3 mb-0">
-      {citations.map((citation) => {
+      {uniqueCitations.map((citation) => {
         const displayNum = displayIndexByRefId?.get(citation.id) ?? citation.id
         const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
         const resolvedUrl = citation.type === 'video' && (fetchedVideoUrls[key] || citation.video_url)
@@ -1221,6 +1255,11 @@ export function MessageBubble({
     [allCitationMatches, citationMap, refs]
   )
 
+  const videoFirstOccurrenceByKey = React.useMemo(
+    () => buildFirstMediaOccurrenceMap(allCitationMatches, 'video', citationMap, refs),
+    [allCitationMatches, citationMap, refs]
+  )
+
   // 去重函数：用于过滤重复的引用
   const deduplicateRefs = React.useCallback((refsToDedup: CitationLike[]) => {
     return refsToDedup.filter((ref, idx, arr) => {
@@ -1256,29 +1295,8 @@ export function MessageBubble({
       return !isVideoKeyframeCitation(full)
     })
   }, [uniqueRefs, citationMap])
-  const allImageRefsForThumbnails = React.useMemo(() => {
-    if (isUser) return []
-    const seen = new Set<string | number>()
-    const out: CitationLike[] = []
-    for (const r of refs) {
-      const full = isCitationLike(r)
-        ? (citationMap?.get(getCitationRefId(r)) ?? r)
-        : null
-      if (
-        full
-        && getCitationRefType(full) === 'image'
-        && !isVideoKeyframeCitation(full as CitationReference)
-      ) {
-        const key = getCitationRefFileName(full) ?? getCitationRefId(full)
-        if (!seen.has(key)) {
-          seen.add(key)
-          out.push(full as CitationReference)
-        }
-      }
-    }
-    return out
-  }, [refs, citationMap, isUser])
-  const hasRefs = showCitations && (visibleRefs.length > 0 || allImageRefsForThumbnails.length > 0)
+  // 正文已在首次引用处展示完整媒体；底部仅保留轻量的来源按钮，避免图片在回答末尾再出现一次。
+  const hasRefs = showCitations && visibleRefs.length > 0
 
   React.useEffect(() => {
     if (isUser) return
@@ -1299,12 +1317,9 @@ export function MessageBubble({
           return <Tag className={className}>{children}</Tag>
         }
 
-        // 列表项在 GFM 中多为 li > p：若在 li 上再挂段落级插图会与内层 p 重复；
-        //  tight list 无 paragraph 子节点时仍只在 li 上挂媒体。
-        const liDefersMediaToChildParagraph =
-          tag === 'li' &&
-          Array.isArray(node?.children) &&
-          node.children.some((c: { type?: string }) => c?.type === 'paragraph')
+        // 列表项在 GFM 中多为 li > p：媒体只能由内层 p 负责；否则 li 和 p 会各插一次。
+        // react-markdown 此处传入 HAST（tagName=p），而不是 MDAST 的 type=paragraph。
+        const liDefersMediaToChildParagraph = tag === 'li' && listItemHasParagraphChild(node)
 
         if (liDefersMediaToChildParagraph) {
           return (
@@ -1336,9 +1351,14 @@ export function MessageBubble({
           citationMap,
           refs
         )
-        const allVideoRefs = extractVideoRefIdsFromText(textContent, citationMap, refs)
-        // 视频引用：段落内出现的每个引用编号都展示一张卡片（[1][2][3][4] 可能对应不同片段），不做按 file_name 去重
-        const newVideoRefs = allVideoRefs
+        // 同一视频的不同 Shot 仍会保留；文件和时间片段都相同的引用只在整条消息的首次出现处展示。
+        const newVideoRefs = collectFirstMediaRefsForBlock(
+          blockMatches,
+          'video',
+          videoFirstOccurrenceByKey,
+          citationMap,
+          refs
+        )
 
         return (
           <>
@@ -1456,6 +1476,7 @@ export function MessageBubble({
     allCitationMatches,
     imageFirstOccurrenceByKey,
     audioFirstOccurrenceByKey,
+    videoFirstOccurrenceByKey,
     citationMap,
     refs,
     originalIdToDisplayIndex,
@@ -1527,12 +1548,11 @@ export function MessageBubble({
               <InlineCitation
                 references={visibleRefs}
                 variant="inline"
-                showImageThumbnails
+                showImageThumbnails={false}
                 citationMap={citationMap}
                 onCiteClick={onCiteClick}
                 messageId={message.id}
                 displayIndexByRefId={originalIdToDisplayIndex}
-                imageThumbnailRefs={allImageRefsForThumbnails.length > 0 ? allImageRefsForThumbnails : undefined}
               />
             </div>
           )}
