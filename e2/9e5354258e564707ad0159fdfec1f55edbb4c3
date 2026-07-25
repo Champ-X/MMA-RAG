@@ -1,0 +1,101 @@
+CHANGELOG.md
+  s_60ff1b7ebf512b::t_3fa47d6680441c 3-7
+README.md
+  s_60ff1b7ebf512b::t_7fd3cdb98a12c7 18,20,41-42,46,113,121,132-139,204
+backend/.env.example
+  s_60ff1b7ebf512b::t_69a4540fdf2607 103-113,157-165
+backend/app/api/chat.py
+  s_60ff1b7ebf512b::t_d9a6b18ab67e39 19,25-26,29,37,60-91,332-334,364-365,384-386,388-396,398-415,422,450-466,482-484,513,545,554-555,557,559-600,616,639,644-646,651-652,656-657,659,672,684,702,766
+backend/app/core/config.py
+  s_60ff1b7ebf512b::t_0b83ac01dfa666 323-365,380-398
+backend/app/modules/agent/mode_router.py
+  s_60ff1b7ebf512b::t_de1fa1fdcfce16 1-203
+backend/app/modules/agent/models.py
+  s_60ff1b7ebf512b::t_c6a8678075ba8d 1-62
+backend/app/modules/agent/service.py
+  s_60ff1b7ebf512b::t_188ce0776de89e 1-569
+backend/app/modules/agent/tools.py
+  s_60ff1b7ebf512b::t_eed883164821c6 1-64
+backend/app/modules/generation/stream_manager.py
+  s_60ff1b7ebf512b::t_cf8a4b14150d0e 6,10,250,272-279,282-285,344,348-350
+backend/app/modules/ingestion/sources/feishu_document.py
+  s_43caa8089bf478::t_74c54843630a51 1-1239
+backend/app/modules/ingestion/sources/url.py
+  s_43caa8089bf478::t_38483aa2693a2f 4,7,9,41-42,207-219,226-231,263-271,311-330,402-437,465-469
+backend/app/modules/knowledge/router.py
+  s_9f257a0370e855::t_b00096d78b1b60 6,8,24-27,39,45-46,57,60-61,64-67,72,76-78,100-102,142-145,151-161,164-165,167-168,172-177,205-257,293,296-302,306-308,311-314,337,339,341,344-355,359-369,372-381,397,408,469,523
+backend/app/modules/knowledge/service.py
+  s_9f257a0370e855::t_a8683018ddaca2 192-205,230,294-300,302-306,319-335,1472,1477-1479,1492-1508,1593
+backend/app/modules/retrieval/service.py
+  s_60ff1b7ebf512b::t_0b89dc54ff1c2d 121,166,185-195,207-209,211-218,233-234,238,275,279-280,366-368,382-383,401,441,540,566-596,598-604,607-612,820
+backend/test_upload_queue.py
+  s_9f257a0370e855::t_4039f6fa3a8a51 7,360-410
+backend/tests/test_agent_mode_router.py
+  s_60ff1b7ebf512b::t_f0aa98ce05cf73 1-46
+backend/tests/test_agentic_retrieval.py
+  s_60ff1b7ebf512b::t_feddf22b5a48db 1-234
+backend/tests/test_feishu_document_source.py
+  s_43caa8089bf478::t_aab3bfc6f3bd71 1-387
+backend/tests/test_knowledge_router.py
+  s_9f257a0370e855::t_690f9b23cfbcec 1-150
+backend/tests/test_stream_manager_terminal_error.py
+  s_60ff1b7ebf512b::t_e3e313a9ce5542 1-41
+docker-compose.yml
+  s_60ff1b7ebf512b::t_fb12be3c862f56 8-12,78-79
+docs/AGENTIC_UPGRADE_WEKNORA_RESEARCH.md
+  s_60ff1b7ebf512b::t_e69699cecc8043 1-202
+docs/MMA_ARCHITECTURE.md
+  s_60ff1b7ebf512b::t_f086a7af08bcce 187,255,383,391,399-400,404,407,530-547
+docs/mira-plan.md
+  s_9f257a0370e855::t_d7b86cfee34f65 1-220
+frontend/src/components/chat/ChatConfigPanel.tsx
+  s_60ff1b7ebf512b::t_47c1f17de400d9 2,14,24,28,44,47,140,161-249
+frontend/src/components/chat/ChatInterface.tsx
+  s_60ff1b7ebf512b::t_cac5625867611e 2,11-17,23-27,333,347,351-366,1068-1092,1123
+frontend/src/components/chat/MessageBubble.tsx
+  s_60ff1b7ebf512b::t_764a6ab1d49d05 1538-1546
+frontend/src/components/chat/ThinkingCapsule.tsx
+  s_60ff1b7ebf512b::t_0ccba230500ae2 2,5,91-93,103-107,113-114,122-150,153-162,164-168,170-174,182-184,189,196-215,218,222-227,265,267,276,286,302,317,321-466,481-496,668-685,731,741-743,747-758
+frontend/src/hooks/useThinkingChain.ts
+  s_60ff1b7ebf512b::t_1c9cb57483c2af 12,22-29,51,60-62,126-129,131-132,134,158-162,167-169,274,276-281,286-289,292,302
+frontend/src/services/sse_stream.ts
+  s_60ff1b7ebf512b::t_ab90a30e54db14 10,35,126,192-194,292,302
+frontend/src/store/useChatStore.ts
+  s_60ff1b7ebf512b::t_f9dcee08d9814f 5,49-60,69-72,119-125,134-135,183-184,245,278,330,366-375
+frontend/src/types/sse.ts
+  s_60ff1b7ebf512b::t_11211c4ec912d9 9-22,46-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e29e5354258e564707ad0159fdfec1f55edbb4c3",
+  "prompts": {},
+  "sessions": {
+    "s_43caa8089bf478": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f97c6-b067-7fe3-879f-e09965a0f9c6",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    },
+    "s_60ff1b7ebf512b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9932-f7dd-7410-83b9-01613d18036b",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    },
+    "s_9f257a0370e855": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9962-399c-7271-9ac1-6f99b173e77f",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
