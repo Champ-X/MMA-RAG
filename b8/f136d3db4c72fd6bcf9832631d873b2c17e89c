@@ -1,0 +1,49 @@
+backend/app/api/chat.py
+  s_b9c6f9fc3c0ef1::t_adb59215242263 962
+backend/app/core/config.py
+  s_b9c6f9fc3c0ef1::t_6b525ebfa195fc 33
+backend/app/core/llm/prompt.py
+  s_b9c6f9fc3c0ef1::t_f1dd4ddd5db137 238,368,371-372
+backend/app/core/llm/providers/openrouter.py
+  s_b9c6f9fc3c0ef1::t_8aa3c03f6d1657 25-26
+backend/app/main.py
+  s_b9c6f9fc3c0ef1::t_8e2c0f9b4c906f 2,53-54,103,112,124
+backend/app/modules/agent/planner.py
+  s_b9c6f9fc3c0ef1::t_d143380edcf21e 21
+backend/app/modules/generation/templates/multimodal_fmt.py
+  s_b9c6f9fc3c0ef1::t_89d1f929047d98 302
+backend/app/modules/generation/templates/system_prompts.py
+  s_b9c6f9fc3c0ef1::t_89ff57a2d8aeca 25,174,253
+docs/AGENTIC_UPGRADE_WEKNORA_RESEARCH.md
+  s_b9c6f9fc3c0ef1::t_75e2d3bead1828 1
+docs/MMA_ARCHITECTURE.md
+  s_b9c6f9fc3c0ef1::t_cf716ae8873af8 1,5,178,602
+docs/mira-plan.md
+  s_b9c6f9fc3c0ef1::t_3fe880164fb727 1,210,220
+frontend/index.html
+  s_b9c6f9fc3c0ef1::t_c2d22d1fe186b3 5,7-11
+frontend/package.json
+  s_b9c6f9fc3c0ef1::t_e3efa7c6af6ee1 4
+frontend/src/data/architectureData.ts
+  s_b9c6f9fc3c0ef1::t_2ba5f5da0c9d3a 57
+start-dev.sh
+  s_b9c6f9fc3c0ef1::t_384f559148aebf 3,105,220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b8f136d3db4c72fd6bcf9832631d873b2c17e89c",
+  "prompts": {},
+  "sessions": {
+    "s_b9c6f9fc3c0ef1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9987-e5e2-7242-b812-49aa93d7ef4a",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
