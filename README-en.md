@@ -1,27 +1,31 @@
 <p align="center">
-  <img src="frontend/public/logo-minimal-v2.png" alt="MMA · Multi-Modal Agentic RAG" height="120" />
+  <img src="frontend/public/tessmora-logo.png" alt="Tessmora" height="120" />
 </p>
 
 <p align="center"><strong>English | <a href="README.md">简体中文</a></strong></p>
 
-# Tessmora — Multi-Modal Agentic RAG: Intelligent routing & extensible multimodal knowledge base
+# Tessmora — An Omni-Modal Agentic Retrieval Platform
 
 <p align="center"><em>Every fragment finds its place.</em></p>
 
-**Tessmora** is a **multimodal Agentic RAG** knowledge-base stack you can self-host: documents, images, and optional audio/video pipelines share one **ingest → portrait routing → hybrid retrieval → streaming generation** path—rather than bolting modalities onto a text-only RAG after the fact. Design goals in three words: **pick the right knowledge bases**, **retrieve evidence across modalities**, **answer with explainable, traceable citations**.
+<p align="center">
+  <img src="docs/images/tessmora-omni-banner.png" alt="Tessmora brings documents, photos, interview audio, and video into one agentic retrieval flow" width="100%" />
+</p>
+
+**Tessmora** is a self-hostable **Omni-Modal Agentic Retrieval Platform** for documents, images, travel footage, interview recordings, films, and extensible audio/video sources. Every modality shares one **ingest → multimodal understanding → semantic routing → hybrid retrieval → agentic research → traceable generation** path instead of being flattened into a text-only RAG pipeline. Its goals are simple: **understand every content form**, **retrieve the right moments from heterogeneous media**, and **let a bounded agent gather and organize traceable evidence**.
 
 ### Tessmora at a glance
 
-- **Multi-KB first**: LLM topic summaries plus sub-topic clustering build per-KB portraits; online semantic weighting and thresholds choose single-KB, multi-KB, or full-corpus search and cut wasted scans.
+- **Multi-space first**: LLM topic summaries plus sub-topic clustering build a semantic portrait for each content space; online semantic weighting and thresholds choose single-space, multi-space, or full-corpus search and cut wasted scans.
 - **Hybrid retrieval + two-stage ranking**: **Dense + BGE-M3 sparse + Visual** at the core; when intent and data allow, audio/video vector search joins in; **weighted RRF** for coarse fusion and **Cross-Encoder** for fine ranking across incomparable scores.
 - **One-pass intent**: One structured LLM call yields intent, rewrite, keywords / multi-view queries, and `visual` / `audio` / `video` flags—fewer chained calls, lower latency and cost.
 - **Glass-box chat**: SSE streams the reasoning chain (intent, routing, retrieval); answers support hover-to-source citations and `context_window` peeks for debugging and trust.
 - **Modular & swappable**: DDD-style backend (Ingestion / Knowledge / Retrieval / Generation); `LLMManager` routes vendors and tasks; data plane MinIO, Qdrant, Redis with Docker Compose for local and team setups.
 - **Optional enterprise channel**: Same pipeline for the web UI or **Feishu IM** (long connection, cards, etc.); see the Feishu doc in the index below.
 
-End-to-end RAG for multi-KB, multimodal use: unified document and image retrieval and generation, with audio/video pipelines behind configuration; portrait-based routing; **Dense + BGE-M3 sparse + Visual** hybrid search with **RRF + Cross-Encoder**; SSE for an explainable chain and `context_window`-aware citations.
+End-to-end agentic retrieval for heterogeneous content: unified parsing and search across documents, photos, audio, and video; portrait-based content-space routing; **Dense + BGE-M3 sparse + Visual** hybrid search with intent-aware audio/video channels, **RRF + Cross-Encoder**, an explainable SSE event stream, and `context_window`-aware citations.
 
-**Who it’s for**: Developers who want to run a multimodal knowledge base and conversational retrieval locally or in Docker. Configure via [`backend/.env`](backend/.env) (copy from [`backend/.env.example`](backend/.env.example)). Architecture: **[MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)**. Secrets: **[SECURITY](SECURITY.md)**.
+**Who it’s for**: Developers and teams who want to understand, retrieve, and conversationally explore multimodal content locally or in Docker. Configure via [`backend/.env`](backend/.env) (copy from [`backend/.env.example`](backend/.env.example)). Architecture: **[MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)**. Secrets: **[SECURITY](SECURITY.md)**.
 
 ## 📑 Contents
 
@@ -57,7 +61,7 @@ End-to-end RAG for multi-KB, multimodal use: unified document and image retrieva
 
 Layers and major components (see **[MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)** or http://localhost:3000/architecture after startup).
 
-![MMA RAG system architecture](docs/images/architecture.jpg)
+![Tessmora system architecture](docs/images/architecture.jpg)
 
 <h2 id="chat--retrieval-examples">💬 Chat & retrieval examples</h2>
 

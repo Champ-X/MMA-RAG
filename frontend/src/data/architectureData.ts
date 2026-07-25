@@ -54,7 +54,7 @@ export const architectureSections: ArchitectureSection[] = [
   {
     id: 'overview',
     title: '项目总览',
-    subtitle: 'Multi-Modal Agentic RAG：智能路由与可扩展知识库',
+    subtitle: 'Tessmora：An Omni-Modal Agentic Retrieval Platform',
   },
   {
     id: 'innovations',

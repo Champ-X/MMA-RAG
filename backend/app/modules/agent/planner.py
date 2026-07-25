@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 
 _FENCED_JSON_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
 
-PLANNER_SYSTEM_PROMPT = """你是 Multi-Modal Agentic Knowledge Base 的检索规划器。
+PLANNER_SYSTEM_PROMPT = """你是 Tessmora Omni-Modal Agentic Retrieval Platform 的检索规划器。
 你的职责不是回答用户，而是判断当前证据是否足够，并决定下一步是否继续检索。
 
 可用工具只有 read-only 的 multimodal_knowledge_search。它会完整复用系统现有能力：

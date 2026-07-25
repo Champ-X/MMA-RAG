@@ -1,29 +1,33 @@
 <p align="center">
-  <img src="frontend/public/logo-minimal-v2.png" alt="MMA · Multi-Modal Agentic RAG" height="120" />
+  <img src="frontend/public/tessmora-logo.png" alt="Tessmora" height="120" />
 </p>
 
 <p align="center"><strong>简体中文 | <a href="README-en.md">English</a></strong></p>
 
-# Tessmora - Multi-Modal Agentic RAG: 多模态智能路由可扩展知识库
+# Tessmora — An Omni-Modal Agentic Retrieval Platform
 
 <p align="center"><em>Every fragment finds its place.</em></p>
 
-**Tessmora** 是可私有化部署的 **多模态 Agentic RAG** 知识库方案：把文档、图像与可扩展的音频、视频流水线放进同一套「导入解析 → 画像路由 → 混合检索 → 流式生成」链路，而不是在纯文本 RAG 上零散外挂多模态能力。设计目标可以概括为三件事：**跨库时选对知识库**、**跨模态时准确召回相关证据**、**回答时过程可解释且引用可追溯**。
+<p align="center">
+  <img src="docs/images/tessmora-omni-banner.png" alt="Tessmora 将文档、照片、访谈音频与视频统一汇入 Agentic 检索" width="100%" />
+</p>
+
+**Tessmora** 是可私有化部署的 **Omni-Modal Agentic Retrieval Platform**：把文档、图片、旅行影像、访谈录音、电影片段以及可扩展的音视频来源放进同一套「内容接入 → 多模态解析 → 语义路由 → 混合检索 → Agent 深研 → 可追溯生成」链路，而不是把所有内容降维成纯文本后再检索。设计目标可以概括为三件事：**理解每一种内容形式**、**从大量异构内容中准确找回相关片段**、**用有界 Agent 持续补查并组织可追溯的回答**。
 
 **Tessmora 的差异化与优势概览**
 
-- **多知识库优先**：基于 LLM 主题摘要与子主题聚类生成知识库画像，在线按查询语义做加权聚合与阈值策略，自动决定单库、多库或全库检索，减少无效扫描。
+- **多内容空间优先**：基于 LLM 主题摘要与子主题聚类为每个内容空间生成语义画像，在线按查询语义做加权聚合与阈值策略，自动决定单空间、多空间或全空间检索，减少无效扫描。
 - **多路混合检索 + 两阶段排序**：以 **Dense + BGE-M3 稀疏 + Visual** 为主干，在意图与数据就绪时并入音/视频向量检索；**加权 RRF 粗排**与 **Cross-Encoder 精排**分工，缓解不同通道分数不可比的问题。
 - **One-Pass 意图**：单次结构化 LLM 调用同时产出意图分类、查询改写、关键词/多视角查询与 `visual` / `audio` / `video` 意图，降低链式调用的延迟与成本。
-- **预算化多轮上下文**：按完整对话轮次和字符预算选择历史，同一份上下文贯通指代消解、查询改写、知识库路由与最终生成，避免只“保存历史”却不参与回答。
+- **预算化多轮上下文**：按完整对话轮次和字符预算选择历史，同一份上下文贯通指代消解、查询改写、内容空间路由与最终生成，避免只“保存历史”却不参与回答。
 - **白盒化对话体验**：通过 SSE 推送思考链（意图、路由、检索策略），回答侧支持引用悬浮溯源与 `context_window` 前后文透视，便于调试与用户信任。
 - **自适应 Agent 深研**：对话输入框可在“自动 / 直接检索 / Agent 深研”之间切换；自动模式根据对比、分步、跨模态和研究复杂度透明选择执行路径。Agent 会规划互补子查询、并发调用原有多模态检索、按证据缺口继续补查，并以轮数、查询数和证据数预算防止失控。
 - **模块化与可替换**：后端按 DDD 划分 Ingestion / Knowledge / Retrieval / Generation；`LLMManager` 统一路由多厂商模型与任务类型；数据面 MinIO、Qdrant、Redis 与 Docker Compose 编排，便于本地与团队环境落地。
 - **可选企业渠道**：同一套管道可接 Web 前端，也可按需启用飞书 IM（长连接、卡片等），见文档索引中的飞书配置说明。
 
-面向多知识库、多模态场景的 RAG（Retrieval-Augmented Generation）系统：在文档与图像统一检索与生成之上，可按配置扩展音频与视频流水线；基于知识库画像做智能路由；以 **Dense + BGE-M3 稀疏 + Visual** 为主干做三路混合检索，辅以 **RRF 粗排与 Cross-Encoder 精排**；通过 SSE 推送可解释思考链与带 `context_window` 的引用。
+面向文档、照片、音频、视频等异构内容的 Agentic Retrieval 系统：在统一解析与检索之上，基于内容空间画像做智能路由；以 **Dense + BGE-M3 稀疏 + Visual** 为主干，并按意图并入音频与视频通道；辅以 **RRF 粗排与 Cross-Encoder 精排**，通过 SSE 推送可解释检索过程与带 `context_window` 的引用。
 
-**适用场景**：希望在本地或 Docker 中自建多模态知识库与对话式检索的开发者。配置入口为 [`backend/.env`](backend/.env)（由 [`backend/.env.example`](backend/.env.example) 复制），设计细节见 **[ARCHITECTURE](docs/MMA_ARCHITECTURE.md)**，密钥管理见 **[SECURITY](SECURITY.md)**。
+**适用场景**：希望在本地或 Docker 中解析、检索并对话式探索多模态内容的开发者与团队。配置入口为 [`backend/.env`](backend/.env)（由 [`backend/.env.example`](backend/.env.example) 复制），设计细节见 **[ARCHITECTURE](docs/MMA_ARCHITECTURE.md)**，密钥管理见 **[SECURITY](SECURITY.md)**。
 
 ## 📑 目录
 
@@ -60,7 +64,7 @@
 
 下图概括整体分层与主要组件关系；更细的模块说明见 **[MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)** 或项目启动之后 http://localhost:3000/architecture。
 
-![MMA RAG 系统架构图](docs/images/architecture.jpg)
+![Tessmora 系统架构图](docs/images/architecture.jpg)
 
 <h2 id="对话与检索示例">💬 对话与检索示例</h2>
 

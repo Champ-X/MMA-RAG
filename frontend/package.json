@@ -1,7 +1,7 @@
 {
   "name": "multi-modal-rag-frontend",
   "version": "1.0.0",
-  "description": "Multi-Modal Agentic RAG Frontend",
+  "description": "Tessmora — An Omni-Modal Agentic Retrieval Platform",
   "type": "module",
   "scripts": {
     "dev": "vite",

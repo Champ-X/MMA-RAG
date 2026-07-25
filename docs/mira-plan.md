@@ -1,4 +1,4 @@
-# MMA-RAG 升级方案：从多模态 RAG 到 Multi-Modal Agentic Knowledge Base
+# Tessmora 升级方案：从多模态 RAG 到 Omni-Modal Agentic Retrieval Platform
 
 > 基于对 `feat/agentic` 分支的深度阅读，以及 Tencent/WeKnora、RAGFlow、LangGraph、ColPali、GraphRAG、Self-RAG/CRAG 等参考项目的横向调研，形成本升级方案。核心原则：**不损失既有多模态与检索能力**、**以能力砖块的方式增量重构**、**用 Agent 循环把已有"局部智能"串联成整体智能**。
 
@@ -207,7 +207,7 @@
 
 ## 八、一句话总结
 
-**这次升级的核心不是加更多模型，而是把 `feat/agentic` 分支已经具备的"局部智能"用一张显式状态图串成整体智能，同时补齐 ColPali/GraphRAG/表格 SQL/引用溯源四块业界短板，最终让 MMA-RAG 从"多模态 RAG"升级为真正意义上的"Multi-Modal Agentic Knowledge Base"——能自主选通道、能反思修正、能跨模态引用、能主动澄清、能沉淀 Wiki、能执行动作。**
+**这次升级的核心不是加更多模型，而是把 `feat/agentic` 分支已经具备的"局部智能"用一张显式状态图串成整体智能，同时补齐 ColPali/GraphRAG/表格 SQL/引用溯源四块业界短板，最终让 Tessmora 从"多模态 RAG"升级为真正意义上的"Omni-Modal Agentic Retrieval Platform"——能自主选通道、能反思修正、能跨模态引用、能主动澄清、能沉淀 Wiki、能执行动作。**
 
 如果你希望，我可以基于本方案的任意一个模块（例如"Agent Runtime 骨架"或"ColPali 集成方案"或"引用协议 v2"）出一份**可以直接开工的详细技术设计（含目录结构、接口定义、迁移步骤）**。
 

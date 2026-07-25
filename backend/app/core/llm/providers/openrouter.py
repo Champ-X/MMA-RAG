@@ -22,8 +22,8 @@ class OpenRouterProvider(BaseLLMProvider):
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/MMA-RAG",  # OpenRouter要求
-            "X-Title": "MMA RAG",  # 应用名称
+            "HTTP-Referer": "https://github.com/Champ-X/MMA-RAG",  # OpenRouter要求
+            "X-Title": "Tessmora",  # 应用名称
         }
         self._registry = None
 

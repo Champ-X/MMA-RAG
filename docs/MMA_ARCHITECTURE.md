@@ -1,8 +1,8 @@
-# MMA 多模态 RAG 知识库 — 架构设计文档
+# Tessmora Omni-Modal Agentic Retrieval Platform — 架构设计文档
 
 ## 文档说明
 
-本文档描述 **MMA-RAG**（本仓库）的模块划分与数据流，以**当前代码实现**为准；与 **[MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](./MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)** 互为补充（后者专述图/音/视的解析、向量形态与检索细节）。
+本文档描述 **Tessmora**（本仓库）的模块划分与数据流，以**当前代码实现**为准；与 **[MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](./MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)** 互为补充（后者专述图/音/视的解析、向量形态与检索细节）。
 
 **路径约定**：除非另行标注，本文中的 **后端路径** 均相对于仓库根目录下的 [`backend/app/`](../backend/app/)；**前端路径** 均相对于 [`frontend/src/`](../frontend/src/)。
 
@@ -175,7 +175,7 @@ flowchart LR
 
 **与「纯文本 RAG + 事后挂插件」的差异**（体现本章目标优先级）：
 
-| 维度 | 纯文本 RAG 常见形态 | MMA-RAG 目标形态 |
+| 维度 | 纯文本 RAG 常见形态 | Tessmora 目标形态 |
 |------|---------------------|------------------|
 | 模态 | 附件或外链，检索仍以文本为主 | 图/音/视与文档 **同等进入向量检索与融合** |
 | 选库 | 用户手选或简单关键词 | **未指定时** 用语义画像做 **库级** 匹配 |
@@ -599,4 +599,4 @@ flowchart TB
 | [docker-compose.yml](../docker-compose.yml) | 本地/容器运行时拓扑（后端与 MinIO、Qdrant、Redis 等依赖） |
 | [FEISHU_BOT_SETUP.md](./FEISHU_BOT_SETUP.md) | 可选：飞书 IM 渠道接入；与核心 RAG 数据面解耦，见第七章 `integrations/` |
 
-以上为当前 MMA-RAG 架构设计及实现概要，后续迭代以代码为准。
+以上为当前 Tessmora 架构设计及实现概要，后续迭代以代码为准。

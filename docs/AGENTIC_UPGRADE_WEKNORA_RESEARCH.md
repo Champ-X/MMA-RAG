@@ -1,4 +1,4 @@
-# Multi-Modal Agentic Knowledge Base 升级设计
+# Tessmora Omni-Modal Agentic Retrieval Platform 升级设计
 
 > 调研基线：Tencent/WeKnora `main`，commit
 > [`c64a48647cd6f7eb8b0fb020b2e8fec74ee375fb`](https://github.com/Tencent/WeKnora/commit/c64a48647cd6f7eb8b0fb020b2e8fec74ee375fb)，

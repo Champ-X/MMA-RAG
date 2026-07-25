@@ -959,7 +959,7 @@ async def list_openrouter_models_catalog():
                     resp = await client.get(
                         OPENROUTER_PUBLIC_MODELS_URL,
                         timeout=90.0,
-                        headers={"Accept": "application/json", "User-Agent": "MMA-RAG/chat-api"},
+                        headers={"Accept": "application/json", "User-Agent": "Tessmora/chat-api"},
                     )
                     resp.raise_for_status()
                     payload = resp.json()

@@ -1,5 +1,5 @@
 """
-Multi-Modal Agentic RAG 主应用入口
+Tessmora Omni-Modal Agentic Retrieval Platform 主应用入口
 FastAPI 应用配置文件
 """
 
@@ -50,8 +50,8 @@ async def _app_lifespan(app: FastAPI):
 
 # 创建 FastAPI 应用实例
 app = FastAPI(
-    title="Multi-Modal Agentic RAG API",
-    description="基于多模态智能路由的可扩展知识库RAG系统",
+    title="Tessmora API",
+    description="Omni-Modal Agentic Retrieval Platform for documents, images, audio, and video",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -100,7 +100,7 @@ async def health_check():
     """健康检查端点"""
     return {
         "status": "healthy",
-        "service": "Multi-Modal Agentic RAG",
+        "service": "Tessmora",
         "version": "1.0.0"
     }
 
@@ -109,7 +109,7 @@ async def health_check():
 async def root():
     """根路径"""
     return {
-        "message": "Multi-Modal Agentic RAG API",
+        "message": "Tessmora API",
         "docs": "/docs",
         "health": "/health"
     }

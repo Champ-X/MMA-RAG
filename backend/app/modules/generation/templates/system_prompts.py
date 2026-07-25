@@ -22,7 +22,7 @@ class SystemPromptManager:
         
         # 基础系统提示词
         self.prompt_templates["base"] = {
-            "role": "你是一个基于多模态知识库的智能助手。你的任务是结合下方的【参考材料】来准确回答用户的问题。",
+            "role": "你是 Tessmora 的多模态内容检索助手。你的任务是结合下方的【参考材料】来准确回答用户的问题。",
             "core_instructions": [
                 "**严格引用机制**：你回答中的每一个事实陈述，**必须**在句末标注来源编号。",
                 "引用格式严格为 `[id]`（例如 `[1]` 或 `[2]`）。",
@@ -171,7 +171,7 @@ class SystemPromptManager:
     
     def _get_fallback_prompt(self) -> str:
         """获取备用提示词"""
-        return """你是一个基于多模态知识库的智能助手。
+        return """你是 Tessmora 的多模态内容检索助手。
 
 请基于提供的参考材料回答问题，并：
 1. 每个事实在对应句末用半角 `[编号]` 标注；勿用①②③代替；同一 `[n]` 在同一段/同一条列表项内勿重复多次。
@@ -250,7 +250,7 @@ class SystemPromptManager:
             if len('\n'.join(shortened_parts).split()) > max_tokens // 4:
                 core_lines = [
                     "# 角色设定",
-                    "你是一个基于多模态知识库的智能助手。",
+                    "你是 Tessmora 的多模态内容检索助手。",
                     "",
                     "# 核心指令",
                     "1. **引用机制**：每个事实必须标注引用编号 [id]",
