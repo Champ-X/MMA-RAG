@@ -189,6 +189,20 @@ def _kb_to_tags(kb: KnowledgeBase) -> Dict[str, str]:
 class KnowledgeBaseService:
     """知识库管理服务。数据源仅为 MinIO（列桶 + 桶标签），不再使用本地 JSON 文件。"""
 
+    def _refresh_kb_in_cache(self, kb_id: str) -> bool:
+        """从 MinIO 刷新单个知识库元数据，避免不同服务实例长期持有旧名称。"""
+        bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
+        if not self.minio_adapter.bucket_exists(bucket_name):
+            self._kb_storage.pop(kb_id, None)
+            return False
+        meta = self.minio_adapter.get_kb_metadata(bucket_name)
+        if meta:
+            self._kb_storage[kb_id] = _kb_from_meta(bucket_name, meta)
+        else:
+            tags = self.minio_adapter.get_bucket_tags(bucket_name)
+            self._kb_storage[kb_id] = _tags_to_kb(bucket_name, tags)
+        return True
+
     def _load_from_minio(self) -> None:
         """从 MinIO 列出所有 kb- 存储桶；优先用桶内 .kb_meta.json（支持任意 UTF-8），无则用桶标签。"""
         self._kb_storage = {}
@@ -213,16 +227,7 @@ class KnowledgeBaseService:
         """若 kb_id 不在缓存中且对应 MinIO 桶存在，则从 .kb_meta.json 或桶标签加载并加入缓存。返回是否在缓存中。"""
         if kb_id in self._kb_storage:
             return True
-        bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
-        if not self.minio_adapter.bucket_exists(bucket_name):
-            return False
-        meta = self.minio_adapter.get_kb_metadata(bucket_name)
-        if meta:
-            self._kb_storage[kb_id] = _kb_from_meta(bucket_name, meta)
-        else:
-            tags = self.minio_adapter.get_bucket_tags(bucket_name)
-            self._kb_storage[kb_id] = _tags_to_kb(bucket_name, tags)
-        return True
+        return self._refresh_kb_in_cache(kb_id)
 
     def __init__(self):
         self.vector_store = VectorStore()
@@ -286,18 +291,23 @@ class KnowledgeBaseService:
             logger.error(f"创建知识库失败: {str(e)}")
             raise
     
-    async def get_knowledge_base(self, kb_id: str) -> Optional[Dict[str, Any]]:
-        """获取知识库信息（若不在缓存则从 MinIO 桶标签加载）"""
+    async def get_knowledge_base_metadata(
+        self,
+        kb_id: str,
+        *,
+        refresh: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """获取轻量元数据；refresh=True 时以 MinIO 为准更新当前实例缓存。"""
         try:
-            if not self._ensure_kb_in_cache(kb_id):
+            if refresh:
+                exists = await asyncio.to_thread(self._refresh_kb_in_cache, kb_id)
+            else:
+                exists = self._ensure_kb_in_cache(kb_id)
+            if not exists:
                 return None
             kb = self._kb_storage.get(kb_id)
             if not kb:
                 return None
-            
-            # 获取统计信息
-            stats = await self._get_kb_statistics(kb_id)
-            
             return {
                 "id": kb.id,
                 "name": kb.name,
@@ -306,6 +316,23 @@ class KnowledgeBaseService:
                 "updated_at": kb.updated_at,
                 "user_id": kb.user_id,
                 "metadata": kb.metadata,
+            }
+        except Exception as e:
+            logger.error(f"获取知识库元数据失败: {str(e)}")
+            return None
+
+    async def get_knowledge_base(self, kb_id: str) -> Optional[Dict[str, Any]]:
+        """获取知识库信息（若不在缓存则从 MinIO 加载），并附加统计信息。"""
+        try:
+            kb = await self.get_knowledge_base_metadata(kb_id)
+            if not kb:
+                return None
+
+            # 获取统计信息
+            stats = await self._get_kb_statistics(kb_id)
+
+            return {
+                **kb,
                 "statistics": stats
             }
             
@@ -1442,12 +1469,14 @@ class KnowledgeBaseService:
         task_state: Optional[Dict[str, Any]] = None,
         *,
         skip_task_lookup: bool = False,
+        object_path: Optional[str] = None,
     ) -> str:
         """返回视频文件的真实索引状态。
 
         MinIO 中存在原文件只表示对象上传成功，不等同于 Scene–Shot 向量已落库。先读取
-        当前进程上传任务状态（可显示处理中/失败），再以 Qdrant Shot 是否存在作为跨重启后的
-        最终事实来源。
+        当前进程上传任务状态（可显示处理中/失败），再以全局唯一 file_id 对应的 Qdrant Shot
+        是否存在作为跨重启后的最终事实来源。这里不按 kb_id 过滤：历史迁移后 MinIO 派生 ID
+        可能与 Qdrant payload 的原始 ID 不同，而检索链路会自动解析这层映射。
         """
         if task_state is None and not skip_task_lookup:
             try:
@@ -1460,12 +1489,23 @@ class KnowledgeBaseService:
         if task_state and self._is_visible_processing_task(task_state):
             return str(task_state.get("status"))
 
-        for candidate in self._kb_id_candidates(kb_id):
-            if self.vector_store.scroll_video_shot_points_by_file_id(
-                file_id=file_id,
-                kb_id=candidate,
-                limit=1,
-            ):
+        points = self.vector_store.scroll_video_shot_points_by_file_id(
+            file_id=file_id,
+            kb_id=None,
+            limit=2,
+        )
+        for point in points:
+            if isinstance(point, dict):
+                payload = point.get("payload") or {}
+            else:
+                payload = getattr(point, "payload", None) or {}
+            indexed_path = str(
+                payload.get("file_path")
+                or payload.get("object_path")
+                or ""
+            )
+            # 旧数据不一定保存 file_path；file_id 已是 UUID，仍可作为可信完成标记。
+            if not object_path or not indexed_path or indexed_path == object_path:
                 return "ready"
         return "unindexed"
 
@@ -1550,6 +1590,7 @@ class KnowledgeBaseService:
                         kb_id,
                         file_id,
                         task_state=task_state,
+                        object_path=op,
                         # task_statuses 已做过一次限时查询；不要在每一行里再次同步访问
                         # 状态服务，否则 Redis 不可用时会拖慢整个文件列表。
                         skip_task_lookup=True,

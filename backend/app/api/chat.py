@@ -16,13 +16,17 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from app.core.logger import get_logger
+from app.core.config import settings
 from app.core.llm.manager import llm_manager
 from app.core.llm import TASK_MODEL_TYPES
 from app.core.llm.models_catalog import ensure_llm_catalog_fresh, get_llm_catalog_status
 from app.modules.retrieval.service import RetrievalService
 from app.modules.generation.service import GenerationService
+from app.modules.agent.mode_router import resolve_agent_mode
+from app.modules.agent.service import AgenticRetrievalService
 from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
 from app.modules.chat.attachment_summarizer import MAX_ATTACHMENTS, summarize_chat_attachments
+from app.modules.chat.context_manager import build_conversation_context, trim_stored_messages
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -30,6 +34,7 @@ logger = get_logger(__name__)
 # 创建服务实例
 retrieval_service = RetrievalService()
 generation_service = GenerationService()
+agentic_retrieval_service = AgenticRetrievalService(retrieval_service)
 
 # 简单的会话存储（生产环境应使用Redis或数据库）
 sessions: Dict[str, Dict[str, Any]] = {}
@@ -50,6 +55,38 @@ TASK_SETTINGS_KEYS = (
     "kb_portrait_generation",
     "final_generation",
 )
+
+
+def _build_session_context(session: Dict[str, Any]) -> List[Dict[str, str]]:
+    context = build_conversation_context(
+        session.get("messages", []),
+        max_messages=settings.chat_context_max_messages,
+        max_chars=settings.chat_context_max_chars,
+        max_message_chars=settings.chat_context_message_max_chars,
+    )
+    if context.omitted_messages:
+        logger.debug(
+            "会话上下文已按预算裁剪: omitted=%s selected=%s chars=%s",
+            context.omitted_messages,
+            len(context.messages),
+            context.total_chars,
+        )
+    return context.messages
+
+
+def _append_session_turn(
+    session: Dict[str, Any],
+    *,
+    user_message: Dict[str, Any],
+    assistant_message: Dict[str, Any],
+) -> None:
+    messages = session.setdefault("messages", [])
+    messages.extend((user_message, assistant_message))
+    session["messages"] = trim_stored_messages(
+        messages,
+        max_messages=settings.chat_session_max_stored_messages,
+    )
+    session["updated_at"] = datetime.utcnow().isoformat()
 
 
 class SelectedFileScope(BaseModel):
@@ -292,7 +329,9 @@ async def chat_message(request: Request):
         knowledge_base_ids = data.get("knowledgeBaseIds", [])
         selected_files = _normalize_selected_files(data.get("selectedFiles"))
         session_id = data.get("sessionId")
-        
+        agent_mode_request = data.get("agentMode", "direct")
+        model = _clean_optional_str(data.get("model"))
+
         if not message:
             raise HTTPException(status_code=400, detail="消息内容不能为空")
         
@@ -322,14 +361,8 @@ async def chat_message(request: Request):
             }
             sessions[session_id] = session
         
-        # 构建会话上下文（最近N条消息）
-        session_context = []
-        for msg in session.get("messages", [])[-10:]:  # 只取最近10条
-            if msg.get("role") in ["user", "assistant"]:
-                session_context.append({
-                    "role": msg["role"],
-                    "content": msg.get("content", "")
-                })
+        # 按完整轮次和字符预算构建统一会话上下文。
+        session_context = _build_session_context(session)
         
         # 构建知识库上下文
         kb_context = None
@@ -348,19 +381,45 @@ async def chat_message(request: Request):
                     effective_kb_ids,
                     [item.get("file_id") for item in selected_files],
                 )
-        
-        # 1. 执行检索
-        retrieval_result = await retrieval_service.search(
+
+        mode_resolution = resolve_agent_mode(
+            agent_mode_request,
             query=message,
-            kb_context=kb_context,
-            session_context=session_context,
+            selected_files=selected_files,
         )
+        agent_mode = mode_resolution.enabled
+        logger.info(
+            "Agent 模式选择: requested=%s selected=%s score=%s reason=%s",
+            mode_resolution.requested_mode,
+            mode_resolution.selected_mode,
+            mode_resolution.score,
+            mode_resolution.reason,
+        )
+
+        # 1. 执行检索。Agent 模式只是在现有多模态检索之上做有界迭代，
+        # 普通模式保持原路径与行为不变。
+        agent_result = None
+        if agent_mode:
+            agent_result = await agentic_retrieval_service.search(
+                query=message,
+                kb_context=kb_context,
+                session_context=session_context,
+                model=model,
+            )
+            retrieval_result = agent_result.retrieval_result
+        else:
+            retrieval_result = await retrieval_service.search(
+                query=message,
+                kb_context=kb_context,
+                session_context=session_context,
+            )
         
         # 2. 生成回答
         generation_result = await generation_service.generate_response(
             query=message,
             retrieval_result=retrieval_result,
             kb_context=kb_context,
+            session_context=session_context,
         )
         
         if not generation_result.get("success"):
@@ -388,19 +447,23 @@ async def chat_message(request: Request):
                 })
         
         # 保存消息到会话
-        session["messages"].append({
-            "role": "user",
-            "content": message,
-            "selected_files": selected_files,
-            "timestamp": datetime.utcnow().isoformat()
-        })
-        session["messages"].append({
-            "role": "assistant",
-            "content": answer,
-            "citations": citations,
-            "timestamp": datetime.utcnow().isoformat()
-        })
-        session["updated_at"] = datetime.utcnow().isoformat()
+        _append_session_turn(
+            session,
+            user_message={
+                "role": "user",
+                "content": message,
+                "selected_files": selected_files,
+                "timestamp": datetime.utcnow().isoformat(),
+            },
+            assistant_message={
+                "role": "assistant",
+                "content": answer,
+                "citations": citations,
+                "agent": agent_result.metadata() if agent_result else None,
+                "agent_selection": mode_resolution.metadata(),
+                "timestamp": datetime.utcnow().isoformat(),
+            },
+        )
         
         logger.info(f"聊天消息处理完成: session_id={session_id}, answer_length={len(answer)}")
         
@@ -416,7 +479,9 @@ async def chat_message(request: Request):
                 "chunks_used": context_used.total_chunks if context_used else 0,
                 "images_used": context_used.total_images if context_used else 0,
                 "tokens_used": generation_result.get("metadata", {}).get("tokens_used", 0),
-                "model_used": generation_result.get("metadata", {}).get("model_used", "")
+                "model_used": generation_result.get("metadata", {}).get("model_used", ""),
+                "agent": agent_result.metadata() if agent_result else {"enabled": False},
+                "agent_selection": mode_resolution.metadata(),
             }
         }
         
@@ -445,6 +510,7 @@ async def _iter_chat_sse(
     selected_files_raw: Optional[str],
     session_id_opt: Optional[str],
     model: Optional[str],
+    agent_mode: Any,
     attachment_context: Optional[str],
     include_connected: bool = True,
 ) -> AsyncGenerator[str, None]:
@@ -476,10 +542,7 @@ async def _iter_chat_sse(
         }
         sessions[current_session_id] = session
 
-    session_context = []
-    for msg in session.get("messages", [])[-10:]:
-        if msg.get("role") in ["user", "assistant"]:
-            session_context.append({"role": msg["role"], "content": msg.get("content", "")})
+    session_context = _build_session_context(session)
 
     kb_context = None
     if kb_ids or selected_files:
@@ -488,17 +551,53 @@ async def _iter_chat_sse(
     if include_connected:
         yield f"data: {json.dumps({'type': 'connected', 'sessionId': current_session_id})}\n\n"
 
-    retrieval_result = None
-    async for stage, payload in retrieval_service.search_stream(
+    mode_resolution = resolve_agent_mode(
+        agent_mode,
         query=message,
-        kb_context=kb_context,
-        session_context=session_context,
+        selected_files=selected_files,
         attachment_context=attachment_context,
-    ):
-        if stage == "_result":
-            retrieval_result = payload
-            break
-        yield f"data: {_thought_event_payload(stage, payload)}\n\n"
+    )
+    if mode_resolution.requested_mode == "auto":
+        auto_mode_payload = {
+            "message": (
+                "自动模式已选择 Agent 深研"
+                if mode_resolution.enabled
+                else "自动模式已选择直接检索"
+            ),
+            "agent_mode_auto": True,
+            "agent_mode": mode_resolution.enabled,
+            "agent_mode_selected": mode_resolution.selected_mode,
+            "agent_mode_reason": mode_resolution.reason,
+            "agent_mode_score": mode_resolution.score,
+        }
+        yield f"data: {_thought_event_payload('intent', auto_mode_payload)}\n\n"
+
+    retrieval_result = None
+    agent_result = None
+    if mode_resolution.enabled:
+        async for stage, payload in agentic_retrieval_service.search_stream(
+            query=message,
+            kb_context=kb_context,
+            session_context=session_context,
+            attachment_context=attachment_context,
+            model=model,
+        ):
+            if stage == "_result":
+                agent_result = payload
+                retrieval_result = payload.retrieval_result
+                break
+            yield f"data: {_thought_event_payload(stage, payload)}\n\n"
+    else:
+        async for stage, payload in retrieval_service.search_stream(
+            query=message,
+            kb_context=kb_context,
+            session_context=session_context,
+            attachment_context=attachment_context,
+        ):
+            if stage == "_result":
+                retrieval_result = payload
+                break
+            yield f"data: {_thought_event_payload(stage, payload)}\n\n"
 
     if retrieval_result is None:
         raise RuntimeError("检索流未返回结果")
@@ -514,6 +613,7 @@ async def _iter_chat_sse(
         kb_context=kb_context,
         model=model,
         attachment_context=attachment_context,
+        session_context=session_context,
     ):
         event_type = event.type.value if hasattr(event.type, "value") else str(event.type)
 
@@ -536,27 +636,28 @@ async def _iter_chat_sse(
             yield f"data: {json.dumps({'type': 'citation', 'data': {'references': refs}}, ensure_ascii=False)}\n\n"
         elif event_type == "error":
             yield f"data: {json.dumps({'type': 'error', 'message': event.data.get('error', '未知错误')})}\n\n"
+            return
         elif event_type == "done":
             break
 
     full_answer = "".join(answer_chunks)
-    session["messages"].append(
-        {
+    _append_session_turn(
+        session,
+        user_message={
             "role": "user",
             "content": message,
             "selected_files": selected_files,
             "timestamp": datetime.utcnow().isoformat(),
-        }
-    )
-    session["messages"].append(
-        {
+        },
+        assistant_message={
             "role": "assistant",
             "content": full_answer,
             "citations": last_citations,
+            "agent": agent_result.metadata() if agent_result else None,
+            "agent_selection": mode_resolution.metadata(),
             "timestamp": datetime.utcnow().isoformat(),
-        }
+        },
     )
-    session["updated_at"] = datetime.utcnow().isoformat()
 
     yield f"data: {json.dumps({'type': 'complete', 'sessionId': current_session_id})}\n\n"
 
@@ -568,6 +669,7 @@ async def stream_chat(
     selectedFiles: Optional[str] = Query(None),
     sessionId: Optional[str] = Query(None),
     model: Optional[str] = Query(None),
+    agentMode: str = Query("direct"),
 ):
     """流式聊天接口 (SSE)，无附件时使用 GET。"""
 
@@ -579,6 +681,7 @@ async def stream_chat(
                 selected_files_raw=selectedFiles,
                 session_id_opt=sessionId,
                 model=model,
+                agent_mode=agentMode,
                 attachment_context=None,
             ):
                 yield line
@@ -596,6 +699,7 @@ async def stream_chat_multipart(
     selectedFiles: Optional[str] = Form(None),
     sessionId: Optional[str] = Form(None),
     model: Optional[str] = Form(None),
+    agentMode: str = Form("direct"),
     files: List[UploadFile] = File(default=[]),
 ):
     """流式聊天 (SSE)，支持 multipart 上传图片/音频附件（服务端生成摘要，不入库）。"""
@@ -659,6 +763,7 @@ async def stream_chat_multipart(
                 selected_files_raw=selectedFiles,
                 session_id_opt=current_sid,
                 model=model,
+                agent_mode=agentMode,
                 attachment_context=attachment_context,
                 include_connected=False,
             ):

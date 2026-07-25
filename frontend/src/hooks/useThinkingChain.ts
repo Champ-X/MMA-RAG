@@ -9,7 +9,7 @@ import {
 } from '@/services/sse_stream'
 import type { ThoughtPhase } from '@/types/sse'
 import { putAttachmentBlob } from '@/lib/chatAttachmentBlobStore'
-import type { ChatMessageAttachment, ChatScopeFile } from '@/store/useChatStore'
+import { normalizeAgentMode, type ChatMessageAttachment, type ChatScopeFile } from '@/store/useChatStore'
 
 interface UseThinkingChainOptions {
   onThought?: (e: ThoughtEvent) => void
@@ -17,6 +17,14 @@ interface UseThinkingChainOptions {
   onMessage?: (e: MessageEvent) => void
   onComplete?: () => void
   onError?: (err: unknown) => void
+}
+
+function getChatErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : '发生未知错误'
+  if (raw.includes("Illegal header value") || raw.includes("Bearer '")) {
+    return '模型服务密钥未配置或无效，请检查后端环境变量后重试。'
+  }
+  return raw
 }
 
 export function useThinkingChain(options: UseThinkingChainOptions = {}) {
@@ -40,7 +48,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
   const currentUserQueryRef = useRef<string | null>(null) // 保存当前用户查询
   const [error, setError] = useState<string | null>(null)
 
-  const cleanup = () => {
+  const cleanup = ({ preserveError = false }: { preserveError?: boolean } = {}) => {
     streamRef.current?.close()
     streamRef.current = null
     setIsStreaming(false)
@@ -49,7 +57,9 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     clearThinking()
     setCurrentResponse('')
     contentBufferRef.current = ''
-    setError(null)
+    if (!preserveError) {
+      setError(null)
+    }
   }
 
   const sendMessage = async (
@@ -113,12 +123,15 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     setCurrentResponse('')
     setStreamingSessionId(session.id)
 
-    // 流一开始就展示「意图识别」进行中，避免长时间只显示「等待思考阶段」
+    const requestedAgentMode = normalizeAgentMode(session.agentMode)
+    const isExplicitAgent = requestedAgentMode === 'agent'
+
+    // 显式 Agent 模式使用独立的研究轨迹，不借用直接检索的「意图解析」占位。
     setThinking({
-      currentStage: 'intent',
-      thoughtData: {},
+      currentStage: isExplicitAgent ? 'agent' : 'intent',
+      thoughtData: isExplicitAgent ? { agent_mode: true } : {},
       stages: {
-        intent: 'processing',
+        intent: isExplicitAgent ? 'idle' : 'processing',
         routing: 'idle',
         retrieval: 'idle',
         generation: 'idle',
@@ -142,14 +155,20 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
               merged.generation_status = payload.status
               merged.generation_message = payload.message || ''
             }
+
+            const isAgentEvent =
+              merged.agent_mode === true ||
+              merged.intent_type === 'agentic' ||
+              merged.agent_mode_selected === 'agent'
             
             // 后端在每个阶段完成时推送事件（带结果），收到后：当前阶段标为已完成，下一阶段标为进行中
             // 注意：只有在收到 generation 阶段的事件时，才将 currentStage 设置为 'generation'
             const nextPhase =
-              phase === 'intent' ? 'routing' 
+              phase === 'generation' ? 'generation'
+              : isAgentEvent ? 'agent'
+              : phase === 'intent' ? 'routing'
               : phase === 'routing' ? 'retrieval' 
               : phase === 'retrieval' ? 'retrieval' // 检索阶段完成后，仍然保持在 retrieval，直到收到 generation 事件
-              : phase === 'generation' ? 'generation' 
               : phase === 'attachment' ? 'intent'
               : 'retrieval'
             
@@ -252,16 +271,25 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             options.onComplete?.()
           },
           onError: (err) => {
-            const msg = err instanceof Error ? err.message : '发生未知错误'
+            const msg = getChatErrorMessage(err)
             setError(msg)
+            const thinking = useChatStore.getState().thinking
+            const failedThinking = {
+              ...(thinking.thoughtData ?? {}),
+              _generation_failed: true,
+              generation_error: msg,
+            }
             const sid = streamingSessionIdRef.current
             const s = sid ? getSessionById(sid) : null
             const last = s?.messages[s?.messages.length - 1]
             if (s && last && last.id === currentMessageIdRef.current) {
-              updateMessage(s.id, last.id, { error: msg })
+              updateMessage(s.id, last.id, {
+                error: msg,
+                thinking: failedThinking,
+              })
             }
             currentUserQueryRef.current = null // 清除保存的查询
-            cleanup()
+            cleanup({ preserveError: true })
             options.onError?.(err)
           },
         },
@@ -271,6 +299,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
           model: config.models.find(m => m.id === 'chat')?.model,
           files: files?.length ? files : undefined,
           selectedFiles: selectedFiles?.length ? selectedFiles : undefined,
+          agentMode: requestedAgentMode,
         }
       )
     } catch (err) {

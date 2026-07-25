@@ -320,6 +320,49 @@ class Settings(BaseSettings):
     max_retrieval_results: int = Field(default=20, validation_alias="MAX_RETRIEVAL_RESULTS")
     max_context_length: int = Field(default=4000, validation_alias="MAX_CONTEXT_LENGTH")
     rerank_top_k: int = Field(default=10, validation_alias="RERANK_TOP_K")
+
+    # 多轮会话上下文：按完整轮次选择最近消息，分别限制消息数、总字符数和单条长度。
+    chat_context_max_messages: int = Field(default=12, ge=2, le=50, validation_alias="CHAT_CONTEXT_MAX_MESSAGES")
+    chat_context_max_chars: int = Field(default=6000, ge=500, le=50000, validation_alias="CHAT_CONTEXT_MAX_CHARS")
+    chat_context_message_max_chars: int = Field(
+        default=1600,
+        ge=100,
+        le=10000,
+        validation_alias="CHAT_CONTEXT_MESSAGE_MAX_CHARS",
+    )
+    chat_session_max_stored_messages: int = Field(
+        default=100,
+        ge=10,
+        le=1000,
+        validation_alias="CHAT_SESSION_MAX_STORED_MESSAGES",
+    )
+
+    # Agentic 检索运行时：在原有多模态检索之上做有界的规划、并发检索与证据收敛。
+    # 所有自动工具均为只读；预算用于避免规划器循环或意外的模型/检索成本失控。
+    agent_max_rounds: int = Field(
+        default=3,
+        ge=1,
+        le=8,
+        validation_alias="AGENT_MAX_ROUNDS",
+    )
+    agent_max_queries_per_round: int = Field(
+        default=3,
+        ge=1,
+        le=5,
+        validation_alias="AGENT_MAX_QUERIES_PER_ROUND",
+    )
+    agent_max_total_queries: int = Field(
+        default=6,
+        ge=1,
+        le=20,
+        validation_alias="AGENT_MAX_TOTAL_QUERIES",
+    )
+    agent_max_evidence: int = Field(
+        default=30,
+        ge=5,
+        le=100,
+        validation_alias="AGENT_MAX_EVIDENCE",
+    )
     
     # 知识库配置（知识库列表与元数据仅从 MinIO 获取，不再使用本地 JSON）
     max_kb_portrait_size: int = Field(default=20, validation_alias="MAX_KB_PORTRAIT_SIZE")
@@ -334,6 +377,25 @@ class Settings(BaseSettings):
     # 飞书机器人（可选；与 Web 共用进程时需 FEISHU_WS_ENABLED 与凭证）
     feishu_app_id: Optional[str] = Field(default=None, validation_alias="FEISHU_APP_ID")
     feishu_app_secret: Optional[str] = Field(default=None, validation_alias="FEISHU_APP_SECRET")
+    # 可选的用户 access token；未配置时文档导入复用 App ID/Secret 获取 tenant token。
+    feishu_doc_access_token: Optional[str] = Field(
+        default=None,
+        validation_alias="FEISHU_DOC_ACCESS_TOKEN",
+    )
+    feishu_doc_max_blocks: int = Field(default=5000, ge=100, le=20000, validation_alias="FEISHU_DOC_MAX_BLOCKS")
+    feishu_doc_max_assets: int = Field(default=100, ge=1, le=500, validation_alias="FEISHU_DOC_MAX_ASSETS")
+    feishu_doc_max_sheet_rows: int = Field(
+        default=200,
+        ge=1,
+        le=5000,
+        validation_alias="FEISHU_DOC_MAX_SHEET_ROWS",
+    )
+    feishu_doc_max_bitable_records: int = Field(
+        default=200,
+        ge=1,
+        le=5000,
+        validation_alias="FEISHU_DOC_MAX_BITABLE_RECORDS",
+    )
     feishu_ws_enabled: bool = Field(default=False, validation_alias="FEISHU_WS_ENABLED")
     feishu_encrypt_key: str = Field(default="", validation_alias="FEISHU_ENCRYPT_KEY")
     feishu_verification_token: str = Field(default="", validation_alias="FEISHU_VERIFICATION_TOKEN")

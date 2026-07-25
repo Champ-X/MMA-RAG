@@ -6,6 +6,20 @@
 // ---------- 1. 思考阶段事件 (用于更新 ThinkingCapsule) ----------
 export type ThoughtPhase = 'intent' | 'routing' | 'retrieval' | 'generation' | 'attachment';
 
+export interface AgentRoundTrace {
+  round: number;
+  action: 'search';
+  status: 'processing' | 'completed' | 'failed';
+  reason: string;
+  queries: string[];
+  result_count: number;
+  new_evidence_count: number;
+  total_evidence_count: number;
+  target_kbs: Array<{ id: string; name: string; score: number }>;
+  duration_seconds: number;
+  error?: string;
+}
+
 export interface ThoughtEvent {
   type: ThoughtPhase;
   data: {
@@ -29,6 +43,8 @@ export interface ThoughtEvent {
     total_found?: number;
     /** 重排后保留的数量 */
     reranked_count?: number;
+    /** Agent 每一轮的完整快照，按执行顺序排列。 */
+    agent_rounds?: AgentRoundTrace[];
   };
 }
 

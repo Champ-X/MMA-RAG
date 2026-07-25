@@ -3,7 +3,12 @@ import { flushSync } from 'react-dom'
 import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, HardDrive, Calendar, Activity, MoreHorizontal, ChevronDown, AlertCircle, RotateCcw } from 'lucide-react'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
-import { knowledgeApi, importApi } from '@/services/api_client'
+import {
+  knowledgeApi,
+  importApi,
+  type ImportUrlKind,
+  type ImportUrlMode,
+} from '@/services/api_client'
 import { cn } from '@/lib/utils'
 import {
   StatusBadge,
@@ -1142,8 +1147,8 @@ function ImportUrlModal({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
-  // 默认按网页解析（最常见诉求）；用户可显式切换到「自动」或「文件下载」
-  const [mode, setMode] = useState<'auto' | 'webpage' | 'file'>('webpage')
+  // 默认按网页解析；飞书链接会在预检后建议切换到 Block 解析模式。
+  const [mode, setMode] = useState<ImportUrlMode>('webpage')
   const [includeLinks, setIncludeLinks] = useState(true)
   const [includeImages, setIncludeImages] = useState(true)
   // 是否下载页面内图片到 KB（走多模态 VLM/CLIP 流水线，可被检索）；仅在保留图片时有效
@@ -1153,9 +1158,9 @@ function ImportUrlModal({
   const [inspectResult, setInspectResult] = useState<{
     original_url: string
     final_url: string
-    kind: 'webpage' | 'file'
-    detected_kind: 'webpage' | 'file'
-    recommended_mode: 'auto' | 'webpage' | 'file'
+    kind: ImportUrlKind
+    detected_kind: ImportUrlKind
+    recommended_mode: ImportUrlMode
     suggested_filename: string
     content_type?: string | null
     content_length?: number | null
@@ -1231,7 +1236,7 @@ function ImportUrlModal({
   /** 始终携带 mode（前端默认与后端默认 auto 不同）；其余字段仅在偏离默认时附带，保持与旧后端兼容 */
   const buildExtraBody = () => {
     const extra: {
-      mode: 'auto' | 'webpage' | 'file'
+      mode: ImportUrlMode
       include_links?: boolean
       include_images?: boolean
       download_images?: boolean
@@ -1280,9 +1285,11 @@ function ImportUrlModal({
   const trimmedUrl = url.trim()
   const suggestedMode =
     inspectResult?.recommended_mode === 'auto'
-      ? inspectResult.detected_kind === 'webpage'
-        ? 'webpage'
-        : 'file'
+      ? inspectResult.detected_kind === 'feishu_document'
+        ? 'feishu'
+        : inspectResult.detected_kind === 'webpage'
+          ? 'webpage'
+          : 'file'
       : inspectResult?.recommended_mode
 
   return (
@@ -1307,7 +1314,7 @@ function ImportUrlModal({
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           <p id={descriptionId} className="text-xs text-slate-500 dark:text-slate-400 -mt-1">
-            支持文件直链（PDF/DOCX/图片/音视频…）与任意网页（自动抽取正文为 Markdown 入库）。
+            支持文件直链、网页正文与飞书文档；飞书会按 Block 解析图片、表格、画板和嵌入数据。
           </p>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">URL <span className="text-red-500">*</span></label>
@@ -1315,7 +1322,7 @@ function ImportUrlModal({
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.com/article 或 https://example.com/file.pdf"
+              placeholder="网页、文件直链或 https://example.feishu.cn/docx/..."
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400 dark:focus:ring-blue-400/20 dark:focus:border-blue-500 transition-shadow"
             />
             {(inspecting || inspectResult || inspectError) && (
@@ -1336,11 +1343,17 @@ function ImportUrlModal({
                       <div className="flex flex-wrap gap-2">
                         <span className={cn(
                           'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium',
-                          inspectResult.detected_kind === 'webpage'
-                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                            : 'bg-slate-200/80 text-slate-700 dark:bg-slate-700/70 dark:text-slate-200'
+                          inspectResult.detected_kind === 'feishu_document'
+                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                            : inspectResult.detected_kind === 'webpage'
+                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                              : 'bg-slate-200/80 text-slate-700 dark:bg-slate-700/70 dark:text-slate-200'
                         )}>
-                          {inspectResult.detected_kind === 'webpage' ? '已识别为网页' : '已识别为文件'}
+                          {inspectResult.detected_kind === 'feishu_document'
+                            ? '已识别为飞书文档'
+                            : inspectResult.detected_kind === 'webpage'
+                              ? '已识别为网页'
+                              : '已识别为文件'}
                         </span>
                         {inspectResult.content_type ? (
                           <span className="inline-flex items-center rounded-full bg-white/80 dark:bg-slate-900/70 px-2 py-0.5 text-[11px] text-slate-500 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700/80">
@@ -1401,9 +1414,10 @@ function ImportUrlModal({
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">解析模式</label>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {([
                 { v: 'webpage', label: '网页解析' },
+                { v: 'feishu', label: '飞书文档' },
                 { v: 'auto', label: '自动' },
                 { v: 'file', label: '文件下载' },
               ] as const).map((opt) => (
@@ -1422,6 +1436,7 @@ function ImportUrlModal({
             </div>
             <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
               {mode === 'webpage' && '强制按网页抽取正文为 Markdown 入库（trafilatura → readability → Tavily 兜底）。'}
+              {mode === 'feishu' && '通过飞书开放平台读取 Docx/Wiki Block，并下钻图片、原生表格、画板、Sheet 与 Base。'}
               {mode === 'auto' && '按 Content-Type 自动判别：HTML 走网页解析，其余走文件下载。'}
               {mode === 'file' && '按文件直链下载原始字节，按扩展名走原有解析（PDF/DOCX/图片/音视频…）。'}
             </p>
@@ -1467,7 +1482,9 @@ function ImportUrlModal({
                     disabled={mode === 'file' || !includeImages}
                     className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 disabled:opacity-40"
                   />
-                  下载图片到知识库（带 Referer/UA，走多模态 VLM/CLIP，可被检索）
+                  {mode === 'feishu'
+                    ? '下载图片与画板缩略图到知识库（走多模态 VLM/CLIP）'
+                    : '下载图片到知识库（带 Referer/UA，走多模态 VLM/CLIP，可被检索）'}
                 </label>
               </div>
             )}

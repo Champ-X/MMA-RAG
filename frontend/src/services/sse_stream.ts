@@ -7,7 +7,7 @@ import type {
   SSEEventType,
   ThoughtPhase,
 } from '@/types/sse';
-import type { ChatScopeFile } from '@/store/useChatStore'
+import type { AgentMode, ChatScopeFile } from '@/store/useChatStore'
 
 export type { ThoughtEvent, CitationEvent, MessageEvent };
 
@@ -32,6 +32,7 @@ export interface StreamChatOptions {
   model?: string;
   files?: File[];
   selectedFiles?: ChatScopeFile[];
+  agentMode?: AgentMode;
 }
 
 function serializeSelectedFiles(selectedFiles: ChatScopeFile[]) {
@@ -122,6 +123,7 @@ class SSEStreamManager {
       }),
       ...(options.sessionId && { sessionId: options.sessionId }),
       ...(options.model && { model: options.model }),
+      ...(options.agentMode != null && { agentMode: String(options.agentMode) }),
     });
     if (options.selectedFiles?.length) {
       params.set('selectedFiles', JSON.stringify(serializeSelectedFiles(options.selectedFiles)))
@@ -186,6 +188,9 @@ class SSEStreamManager {
     }
     if (options.model) {
       form.append('model', options.model);
+    }
+    if (options.agentMode != null) {
+      form.append('agentMode', String(options.agentMode));
     }
     if (options.selectedFiles?.length) {
       form.append('selectedFiles', JSON.stringify(serializeSelectedFiles(options.selectedFiles)));
@@ -284,7 +289,7 @@ export const sseStreamManager = new SSEStreamManager();
 export function createChatStream(
   message: string,
   callbacks: StreamChatCallbacks,
-  opts?: { knowledgeBaseIds?: string[]; sessionId?: string; model?: string; files?: File[]; selectedFiles?: ChatScopeFile[] }
+  opts?: { knowledgeBaseIds?: string[]; sessionId?: string; model?: string; files?: File[]; selectedFiles?: ChatScopeFile[]; agentMode?: AgentMode }
 ) {
   return sseStreamManager.streamChat(
     {
@@ -294,6 +299,7 @@ export function createChatStream(
       model: opts?.model,
       files: opts?.files,
       selectedFiles: opts?.selectedFiles,
+      agentMode: opts?.agentMode,
     },
     callbacks
   );

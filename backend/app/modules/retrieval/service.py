@@ -118,6 +118,7 @@ class RetrievalContext:
     video_reasoning: str  # 视频意图推理说明
     search_strategies: Dict[str, Any]
     target_kb_ids: List[str]
+    target_kbs: List[Dict[str, Any]]
     target_file_ids: List[str]
     selected_files: List[Dict[str, Any]]
     selected_file_modalities: List[str]
@@ -162,6 +163,7 @@ class RetrievalService:
         user_id: Optional[str] = None,
         session_context: Optional[List[Dict[str, str]]] = None,
         attachment_context: Optional[str] = None,
+        preplanned: bool = False,
     ) -> RetrievalResult:
         """
         执行完整检索流程
@@ -180,11 +182,17 @@ class RetrievalService:
         try:
             logger.info(f"开始检索流程: {query}")
             
-            # 1. 查询预处理 - One-Pass 意图识别
-            preprocessing_result = await self._preprocess_query(
-                query=query,
-                session_context=session_context or [],
-                attachment_context=attachment_context,
+            # Agent 已经完成问题拆解时，子查询本身就是可执行检索计划。
+            # 跳过每个子查询重复的远端意图识别与查询改写，仍保留本地
+            # 多模态意图补正、知识库路由、混合召回与重排。
+            preprocessing_result = (
+                self._preprocess_preplanned_query(query)
+                if preplanned
+                else await self._preprocess_query(
+                    query=query,
+                    session_context=session_context or [],
+                    attachment_context=attachment_context,
+                )
             )
             selected_files = list((kb_context or {}).get("selected_files", []) or [])
             preprocessing_result, selected_file_modalities = _override_intents_for_selected_files(
@@ -196,8 +204,18 @@ class RetrievalService:
             # 2. 知识库路由
             routing_result = await self._route_to_knowledge_bases(
                 preprocessing_result["refined_query"],
-                kb_context=kb_context
+                kb_context=kb_context,
+                query_variants=preprocessing_result["search_strategies"].get("multi_view_queries", []),
+                max_targets=3 if preprocessing_result.get("is_complex") else 2,
             )
+            target_kb_ids = getattr(routing_result, "target_kb_ids", []) or []
+            confidence_scores = getattr(routing_result, "confidence_scores", {}) or {}
+            target_kbs = getattr(routing_result, "target_kbs", None)
+            if not target_kbs:
+                target_kbs = [
+                    {"id": kb_id, "name": kb_id, "score": float(confidence_scores.get(kb_id, 0))}
+                    for kb_id in target_kb_ids
+                ]
             
             # 3. 构建检索上下文
             retrieval_context = RetrievalContext(
@@ -212,11 +230,12 @@ class RetrievalService:
                 video_intent=preprocessing_result.get("video_intent", "unnecessary"),
                 video_reasoning=preprocessing_result.get("video_reasoning", "未检测到视频需求"),
                 search_strategies=preprocessing_result["search_strategies"],
-                target_kb_ids=routing_result.target_kb_ids,
+                target_kb_ids=target_kb_ids,
+                target_kbs=target_kbs,
                 target_file_ids=[item.get("file_id", "") for item in selected_files if item.get("file_id")],
                 selected_files=selected_files,
                 selected_file_modalities=selected_file_modalities,
-                confidence_scores=routing_result.confidence_scores
+                confidence_scores=confidence_scores,
             )
             if retrieval_context.target_file_ids:
                 logger.info(
@@ -253,10 +272,12 @@ class RetrievalService:
                 "reranking_time": reranked_results.get("processing_time", 0),
                 "total_time": processing_time,
                 "routing_method": routing_result.routing_method,
+                "routing_query_count": getattr(routing_result, "query_count", 1),
                 "retrieval_strategy": search_results.get("strategy"),
                 "total_candidates": sum(
                     len(results) for results in search_results.get("raw_results", {}).values()
-                )
+                ),
+                "preplanned_query": preplanned,
             }
             
             # 更新检索统计信息
@@ -342,7 +363,9 @@ class RetrievalService:
             # 2. 知识库路由
             routing_result = await self._route_to_knowledge_bases(
                 preprocessing_result["refined_query"],
-                kb_context=kb_context
+                kb_context=kb_context,
+                query_variants=preprocessing_result["search_strategies"].get("multi_view_queries", []),
+                max_targets=3 if preprocessing_result.get("is_complex") else 2,
             )
             target_kb_ids = getattr(routing_result, "target_kb_ids", []) or []
             confidence_scores = getattr(routing_result, "confidence_scores", {}) or {}
@@ -356,6 +379,8 @@ class RetrievalService:
                 "message": "智能路由完成",
                 "target_kbs": target_kbs,
                 "fallback_search": len(target_kb_ids) == 0,
+                "routing_method": getattr(routing_result, "routing_method", ""),
+                "query_count": getattr(routing_result, "query_count", 1),
             }
             yield ("routing", routing_payload)
 
@@ -373,6 +398,7 @@ class RetrievalService:
                 video_reasoning=preprocessing_result.get("video_reasoning", "未检测到视频需求"),
                 search_strategies=preprocessing_result["search_strategies"],
                 target_kb_ids=target_kb_ids,
+                target_kbs=target_kbs,
                 target_file_ids=[item.get("file_id", "") for item in selected_files if item.get("file_id")],
                 selected_files=selected_files,
                 selected_file_modalities=selected_file_modalities,
@@ -412,6 +438,7 @@ class RetrievalService:
                 "reranking_time": reranked_results.get("processing_time", 0),
                 "total_time": processing_time,
                 "routing_method": getattr(routing_result, "routing_method", ""),
+                "routing_query_count": getattr(routing_result, "query_count", 1),
                 "retrieval_strategy": search_results.get("strategy"),
                 "total_candidates": sum(
                     len(results) for results in search_results.get("raw_results", {}).values()
@@ -510,7 +537,7 @@ class RetrievalService:
                 "sub_queries": intent_result.get("sub_queries", []),
                 "processing_time": 0.0
             }
-            
+
             return preprocessing_result
             
         except Exception as e:
@@ -536,11 +563,53 @@ class RetrievalService:
                 "sub_queries": [],
                 "processing_time": 0.0
             }
+
+    def _preprocess_preplanned_query(self, query: str) -> Dict[str, Any]:
+        """为 Agent 已规划的子查询构造无远端 LLM 的检索预处理结果。"""
+        intent_result = self.intent_processor._validate_intent_analysis(
+            {
+                "intent_type": "analysis",
+                "is_complex": False,
+                "reasoning": "Agent 已完成问题拆解，直接执行子查询",
+            },
+            query,
+        )
+        return {
+            "original_query": query,
+            "refined_query": query,
+            "intent_type": intent_result.get("intent_type", "analysis"),
+            "is_complex": False,
+            "visual_intent": intent_result.get("visual_intent", "unnecessary"),
+            "visual_reasoning": intent_result.get("visual_reasoning", "未检测到明确的视觉需求"),
+            "audio_intent": intent_result.get("audio_intent", "unnecessary"),
+            "audio_reasoning": intent_result.get("audio_reasoning", "未检测到音频需求"),
+            "video_intent": intent_result.get("video_intent", "unnecessary"),
+            "video_reasoning": intent_result.get("video_reasoning", "未检测到视频需求"),
+            "search_strategies": {
+                "dense_query": query,
+                "original_query": query,
+                "multi_view_queries": [],
+                "sparse_keywords": [],
+            },
+            "sub_queries": [],
+            "processing_time": 0.0,
+        }
         
-    async def _route_to_knowledge_bases(self, query: str, kb_context: Optional[Dict[str, Any]] = None):
+    async def _route_to_knowledge_bases(
+        self,
+        query: str,
+        kb_context: Optional[Dict[str, Any]] = None,
+        query_variants: Optional[List[str]] = None,
+        max_targets: int = 2,
+    ):
         """路由到知识库"""
         try:
-            return await self.kb_router.route_query(query, kb_context=kb_context)
+            return await self.kb_router.route_query(
+                query,
+                kb_context=kb_context,
+                query_variants=query_variants,
+                max_targets=max_targets,
+            )
         except Exception as e:
             logger.error(f"知识库路由失败: {str(e)}")
             # 返回默认路由

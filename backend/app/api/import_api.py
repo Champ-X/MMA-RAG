@@ -33,9 +33,9 @@ class ImportUrlBody(BaseModel):
     url: HttpUrl
     kb_id: str = Field(..., min_length=1)
     filename: Optional[str] = None
-    mode: Literal["auto", "webpage", "file"] = Field(
+    mode: Literal["auto", "webpage", "file", "feishu"] = Field(
         "auto",
-        description="auto=按 Content-Type 自动识别；webpage=强制按网页抽取正文为 Markdown；file=按文件直链下载原始字节",
+        description="auto=自动识别；webpage=网页正文；file=文件直链；feishu=飞书文档 Block 解析",
     )
     include_links: bool = Field(True, description="网页解析时是否保留正文中的链接")
     include_images: bool = Field(True, description="网页解析时是否保留正文中的图片引用")
@@ -54,9 +54,9 @@ class ImportUrlBody(BaseModel):
 
 class InspectUrlBody(BaseModel):
     url: HttpUrl
-    mode: Literal["auto", "webpage", "file"] = Field(
+    mode: Literal["auto", "webpage", "file", "feishu"] = Field(
         "auto",
-        description="用于模拟导入行为：auto=自动识别；webpage=强制网页解析；file=强制文件下载",
+        description="用于模拟导入行为：auto=自动识别；webpage=网页；file=文件；feishu=飞书文档",
     )
 
 
@@ -220,6 +220,7 @@ async def import_from_url_start(body: ImportUrlBody):
         # asset_map 从 meta 弹出，避免被序列化到 JSON 响应；其余字段透传给前端
         meta = dict(result.meta or {})
         asset_map = meta.pop("asset_map", None)
+        source_type = "feishu_document" if meta.get("kind") == "feishu_document" else None
 
         async def run_ingest():
             try:
@@ -230,6 +231,7 @@ async def import_from_url_start(body: ImportUrlBody):
                     user_id=None,
                     processing_id=processing_id,
                     asset_map=asset_map,
+                    source_type=source_type,
                 )
             except Exception as e:
                 logger.exception("import_from_url background ingest failed: %s", e)
@@ -246,6 +248,12 @@ async def import_from_url_start(body: ImportUrlBody):
                 "source_url": meta.get("source_url"),
                 "kind": meta.get("kind", "file"),
                 "image_count": meta.get("image_count", 0),
+                "block_count": meta.get("block_count", 0),
+                "table_count": meta.get("table_count", 0),
+                "whiteboard_count": meta.get("whiteboard_count", 0),
+                "sheet_count": meta.get("sheet_count", 0),
+                "bitable_count": meta.get("bitable_count", 0),
+                "warnings": meta.get("warnings", []),
                 "message": "已开始处理，请轮询 /api/upload/progress/{processing_id} 获取进度",
             },
         )
@@ -302,12 +310,14 @@ async def import_from_url(body: ImportUrlBody):
         filename = body.filename or result.suggested_filename
         meta = dict(result.meta or {})
         asset_map = meta.pop("asset_map", None)
+        source_type = "feishu_document" if meta.get("kind") == "feishu_document" else None
         ingest_result = await ingestion_service.process_file_upload(
             file_content=result.content,
             file_path=filename,
             kb_id=body.kb_id,
             user_id=None,
             asset_map=asset_map,
+            source_type=source_type,
         )
         return {
             "file_id": ingest_result.get("file_id"),
@@ -328,6 +338,12 @@ async def import_from_url(body: ImportUrlBody):
                 "source_url": meta.get("source_url"),
                 "kind": meta.get("kind", "file"),
                 "image_count": meta.get("image_count", 0),
+                "block_count": meta.get("block_count", 0),
+                "table_count": meta.get("table_count", 0),
+                "whiteboard_count": meta.get("whiteboard_count", 0),
+                "sheet_count": meta.get("sheet_count", 0),
+                "bitable_count": meta.get("bitable_count", 0),
+                "warnings": meta.get("warnings", []),
             },
         }
     except ValueError as e:

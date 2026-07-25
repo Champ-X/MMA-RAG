@@ -1,7 +1,8 @@
 import { useId, useState } from 'react'
-import { Brain, Network, Search, ChevronDown, ChevronRight, CheckCircle, Image as ImageIcon, Music, Video, Sparkles, FileText, Wand2, Target } from 'lucide-react'
+import { Brain, Network, Search, ChevronDown, ChevronRight, CheckCircle, AlertCircle, Image as ImageIcon, Music, Video, Sparkles, FileText, Wand2, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ThoughtData, ThinkingState } from '@/store/useChatStore'
+import type { AgentRoundTrace } from '@/types/sse'
 
 type StageStatus = 'idle' | 'processing' | 'completed' | 'failed'
 
@@ -87,6 +88,9 @@ export function ThinkingCapsule({
     audioReasoning: thoughtData?.audio_reasoning,
     videoIntent: thoughtData?.video_intent,
     videoReasoning: thoughtData?.video_reasoning,
+    agentModeAuto: thoughtData?.agent_mode_auto,
+    agentModeSelected: thoughtData?.agent_mode_selected,
+    agentModeReason: thoughtData?.agent_mode_reason,
   }
 
   const routing = thoughtData?.target_kbs || (thoughtData?.fallback_search ? { strategy: 'fallback' as const } : thoughtData?.target_kbs ? undefined : { strategy: 'weighted' as const })
@@ -96,12 +100,18 @@ export function ThinkingCapsule({
     subQueries: thoughtData?.sub_queries || [],
     totalFound: thoughtData?.total_found,
     reranked: thoughtData?.reranked_count,
+    agentMode: thoughtData?.agent_mode,
+    agentRound: thoughtData?.agent_round,
+    agentReason: thoughtData?.agent_reason,
+    agentNewEvidence: thoughtData?.agent_new_evidence,
+    targetKbs: thoughtData?.target_kbs || [],
   }
 
   // 获取生成阶段的状态信息
   // 如果生成已完成，强制清除状态信息，避免显示旧的动效
   // 检查 message.thinking 中的完成标记
-  const isGenerationCompleted = stages?.generation === 'completed' || thoughtData?._generation_completed === true
+  const isGenerationFailed = stages?.generation === 'failed' || thoughtData?._generation_failed === true
+  const isGenerationCompleted = !isGenerationFailed && (stages?.generation === 'completed' || thoughtData?._generation_completed === true)
   const generationStatus = isGenerationCompleted
     ? null 
     : (thoughtData?.generation_status || thoughtData?.status)
@@ -109,16 +119,59 @@ export function ThinkingCapsule({
     ? ''
     : (thoughtData?.generation_message || thoughtData?.message || '')
 
+  const isAgentMode =
+    thoughtData?.agent_mode === true ||
+    thoughtData?.intent_type === 'agentic' ||
+    thoughtData?.agent_mode_selected === 'agent'
+  const agentActive = isAgentMode
+  const legacyAgentRound: AgentRoundTrace[] =
+    (retrieval.agentRound ?? 0) > 0 && retrieval.subQueries.length > 0
+      ? [{
+          round: retrieval.agentRound ?? 1,
+          action: 'search',
+          status: retrieval.totalFound != null || retrieval.agentNewEvidence != null ? 'completed' : 'processing',
+          reason: retrieval.agentReason || '',
+          queries: retrieval.subQueries,
+          result_count: retrieval.reranked ?? retrieval.totalFound ?? 0,
+          new_evidence_count: retrieval.agentNewEvidence ?? retrieval.totalFound ?? 0,
+          total_evidence_count: retrieval.totalFound ?? 0,
+          target_kbs: retrieval.targetKbs,
+          duration_seconds: 0,
+        }]
+      : []
+  const agentRounds = thoughtData?.agent_rounds?.length
+    ? thoughtData.agent_rounds
+    : legacyAgentRound
+  const latestAgentRound = agentRounds[agentRounds.length - 1]
+  const agentPlanReady = agentRounds.length > 0
+  const agentRoundFailed = latestAgentRound?.status === 'failed'
+  const agentEvidenceReady =
+    latestAgentRound?.status === 'completed' || latestAgentRound?.status === 'failed'
+
   // 有 stages 时按阶段流式展示；无 stages（如历史消息）时按 thoughtData 有则展示
   const intentActive =
-    (stages?.intent && stages.intent !== 'idle') ||
-    (!!thoughtData && (!!thoughtData.intent_type || !!thoughtData.original_query || !!thoughtData.refined_query))
+    !isAgentMode &&
+    (
+      (stages?.intent && stages.intent !== 'idle') ||
+      (!!thoughtData && (
+        !!thoughtData.intent_type ||
+        !!thoughtData.original_query ||
+        !!thoughtData.refined_query ||
+        thoughtData.agent_mode_auto === true
+      ))
+    )
   const routingActive =
-    (stages?.routing && stages.routing !== 'idle') ||
-    (!!thoughtData && (Array.isArray(thoughtData.target_kbs) || thoughtData.fallback_search === true))
+    !isAgentMode &&
+    (
+      (stages?.routing && stages.routing !== 'idle') ||
+      (!!thoughtData && (Array.isArray(thoughtData.target_kbs) || thoughtData.fallback_search === true))
+    )
   const retrievalActive =
-    (stages?.retrieval && stages.retrieval !== 'idle') ||
-    (!!thoughtData && ((thoughtData.sparse_keywords?.length ?? 0) > 0 || (thoughtData.sub_queries?.length ?? 0) > 0 || thoughtData.total_found != null))
+    !isAgentMode &&
+    (
+      (stages?.retrieval && stages.retrieval !== 'idle') ||
+      (!!thoughtData && ((thoughtData.sparse_keywords?.length ?? 0) > 0 || (thoughtData.sub_queries?.length ?? 0) > 0 || thoughtData.total_found != null))
+    )
   // 生成阶段只有在以下情况才显示：
   // 1. 明确收到 generation 阶段的事件（currentStage === 'generation'）
   // 2. 或者生成阶段状态为 processing 或 completed
@@ -126,32 +179,52 @@ export function ThinkingCapsule({
   // 4. 或者从 message.thinking 中检测到完成标记
   // 注意：检索阶段完成时，不应该显示生成阶段，直到明确收到 generation 事件
   const generationActive =
-    isGenerationCompleted || stages?.generation === 'completed' // 已完成时也要显示完成状态
+    isGenerationFailed
+      ? true
+      : isGenerationCompleted || stages?.generation === 'completed' // 已完成时也要显示完成状态
       ? true
       : (currentStage === 'generation' && stages?.generation !== 'idle') || // 必须是 generation 阶段且状态不是 idle
         (stages?.generation === 'processing') || // 或者明确是 processing 状态
         (!!generationStatus && currentStage === 'generation') // 或者有生成状态且当前阶段是 generation
-  const hasAnyStage = intentActive || routingActive || retrievalActive || generationActive
+  const hasAnyStage = agentActive || intentActive || routingActive || retrievalActive || generationActive
 
   const stageLabel = (status: StageStatus) =>
     status === 'processing' ? '进行中…' : status === 'completed' ? '已完成' : status === 'failed' ? '失败' : ''
 
   // 折叠时展示的阶段摘要：意图解析 ✓ · 智能路由 ✓ · 检索中…
   const summaryParts: string[] = []
-  if (intentActive) {
-    summaryParts.push(stages?.intent === 'completed' ? '意图解析 ✓' : stages?.intent === 'processing' ? '意图解析…' : '意图解析 ✓')
-  }
-  if (routingActive) {
-    summaryParts.push(stages?.routing === 'completed' ? '智能路由 ✓' : stages?.routing === 'processing' ? '智能路由…' : '智能路由 ✓')
-  }
-  if (retrievalActive) {
-    summaryParts.push(stages?.retrieval === 'completed' ? '检索 ✓' : stages?.retrieval === 'processing' ? '检索中…' : '检索 ✓')
+  if (agentActive) {
+    summaryParts.push(
+      agentRoundFailed
+        ? `Agent 第 ${latestAgentRound?.round ?? retrieval.agentRound ?? 1} 轮失败`
+        : agentEvidenceReady
+        ? `Agent 第 ${latestAgentRound?.round ?? retrieval.agentRound ?? 1} 轮 ✓`
+        : agentPlanReady
+          ? `Agent 第 ${latestAgentRound?.round ?? retrieval.agentRound ?? 1} 轮检索中…`
+          : 'Agent 正在规划…'
+    )
+  } else {
+    if (intentActive) {
+      summaryParts.push(stages?.intent === 'completed' ? '意图解析 ✓' : stages?.intent === 'processing' ? '意图解析…' : '意图解析 ✓')
+    }
+    if (routingActive) {
+      summaryParts.push(stages?.routing === 'completed' ? '智能路由 ✓' : stages?.routing === 'processing' ? '智能路由…' : '智能路由 ✓')
+    }
+    if (retrievalActive) {
+      summaryParts.push(stages?.retrieval === 'completed' ? '检索 ✓' : stages?.retrieval === 'processing' ? '检索中…' : '检索 ✓')
+    }
   }
   if (generationActive) {
-    summaryParts.push(stages?.generation === 'completed' ? '生成 ✓' : stages?.generation === 'processing' ? '生成中…' : '生成 ✓')
+    summaryParts.push(isGenerationFailed ? '生成失败' : stages?.generation === 'completed' ? '生成 ✓' : stages?.generation === 'processing' ? '生成中…' : '生成 ✓')
   }
   /** 各阶段底色区分；当前阶段左侧加强调条 */
   const stageSkin = {
+    agent: {
+      bg: 'bg-violet-50/90 dark:bg-violet-950/25',
+      bgCurrent: 'bg-violet-100/95 dark:bg-violet-950/40',
+      bar: 'border-l-violet-500 dark:border-l-violet-400',
+      icon: 'text-violet-600 dark:text-violet-400',
+    },
     intent: {
       bg: 'bg-violet-50/95 dark:bg-violet-950/25',
       bgCurrent: 'bg-violet-100/95 dark:bg-violet-950/40',
@@ -189,8 +262,9 @@ export function ThinkingCapsule({
   const pillTag =
     'inline-flex items-center rounded-[6px] border px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm transition-[transform,box-shadow] duration-200 hover:shadow-md'
   const summaryLine = summaryParts.length > 0 ? summaryParts.join(' · ') : null
-  const visibleStageCount = [intentActive, routingActive, retrievalActive, generationActive].filter(Boolean).length
+  const visibleStageCount = [agentActive, intentActive, routingActive, retrievalActive, generationActive].filter(Boolean).length
   const thinkingStatusText = summaryLine || (hasAnyStage ? `已显示 ${visibleStageCount} 个思考阶段` : '等待思考阶段')
+  const capsuleTitle = isAgentMode ? 'Agent 深研过程' : '思考过程'
 
   return (
     <div
@@ -199,7 +273,7 @@ export function ThinkingCapsule({
         'shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]'
       )}
       role="region"
-      aria-label="思考过程"
+      aria-label={capsuleTitle}
     >
       <span className="sr-only" aria-live="polite">
         {thinkingStatusText}
@@ -209,7 +283,7 @@ export function ThinkingCapsule({
         onClick={() => setOpen(v => !v)}
         aria-expanded={open}
         aria-controls={contentId}
-        aria-label={`${open ? '折叠' : '展开'}思考过程${summaryLine ? `：${summaryLine}` : ''}`}
+        aria-label={`${open ? '折叠' : '展开'}${capsuleTitle}${summaryLine ? `：${summaryLine}` : ''}`}
         className={cn(
           'relative flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium transition-colors duration-200',
           'border-b border-slate-200/80 bg-slate-50/90 text-slate-700 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-100',
@@ -225,7 +299,7 @@ export function ThinkingCapsule({
           )}
           aria-hidden
         />
-        <span className="font-semibold tracking-tight text-slate-800 dark:text-slate-100">思考过程</span>
+        <span className="font-semibold tracking-tight text-slate-800 dark:text-slate-100">{capsuleTitle}</span>
         {!open && summaryLine && (
           <span className="min-w-0 flex-1 truncate font-normal text-slate-500 dark:text-slate-400">
             {summaryLine}
@@ -240,10 +314,156 @@ export function ThinkingCapsule({
           id={contentId}
           className="border-t border-slate-100/90 bg-slate-50/30 px-3 pb-2 pt-0 dark:border-slate-800/80 dark:bg-slate-950/40 sm:px-3.5"
           role="region"
-          aria-label="思考阶段详情"
+          aria-label={`${capsuleTitle}详情`}
           aria-live="polite"
         >
           <div className="flex flex-col">
+          {agentActive && (
+          <section
+            className={stageBlockClass('agent', currentStage === 'agent')}
+            aria-label={`Agent 深研，${agentRoundFailed ? '本轮检索失败' : agentEvidenceReady ? '本轮证据检索完成' : agentPlanReady ? '正在执行检索' : '正在制定研究计划'}`}
+          >
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
+              <Sparkles size={14} strokeWidth={2.25} className={cn('shrink-0', stageSkin.agent.icon)} aria-hidden />
+              <span className="tracking-tight">Agent 深研</span>
+              {agentRoundFailed ? (
+                <span className="text-[10px] text-rose-600 dark:text-rose-400">本轮失败</span>
+              ) : agentEvidenceReady ? (
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400">本轮完成</span>
+              ) : (
+                <StageProcessingCue text={agentPlanReady ? '检索中…' : '规划中…'} />
+              )}
+              {latestAgentRound && (
+                <span className="ml-auto rounded-full border border-violet-200/80 bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-violet-700 dark:border-violet-500/30 dark:bg-violet-950/50 dark:text-violet-200">
+                  共 {agentRounds.length} 轮
+                </span>
+              )}
+            </div>
+            <div className="ml-0.5 space-y-2 border-l border-violet-300/60 pl-2.5 dark:border-violet-600/50 sm:pl-3">
+              {intent.agentModeAuto && intent.agentModeReason && (
+                <p className="text-[10px] leading-relaxed text-violet-700/80 dark:text-violet-300/80">
+                  自动选择 Agent 深研：{intent.agentModeReason}
+                </p>
+              )}
+
+              {!agentPlanReady ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs text-violet-700 dark:text-violet-200">
+                    <ThinkingDonutSpinner className="size-3.5" />
+                    <span className="animate-pulse-soft">正在拆解问题并制定研究计划…</span>
+                  </div>
+                  <IndeterminateThinkingBar />
+                </div>
+              ) : (
+                <div className="relative space-y-2 before:absolute before:bottom-3 before:left-[11px] before:top-3 before:w-px before:bg-violet-200 dark:before:bg-violet-700/60" aria-label="Agent 多轮研究日志">
+                  {agentRounds.map((round) => {
+                    const roundFailed = round.status === 'failed'
+                    const roundProcessing = round.status === 'processing'
+                    return (
+                      <article
+                        key={round.round}
+                        className={cn(
+                          'relative ml-7 rounded-lg border px-3 py-2.5 shadow-sm',
+                          roundProcessing
+                            ? 'border-violet-300 bg-white/90 dark:border-violet-500/50 dark:bg-violet-950/35'
+                            : roundFailed
+                              ? 'border-rose-200 bg-rose-50/75 dark:border-rose-700/50 dark:bg-rose-950/25'
+                              : 'border-slate-200/90 bg-white/75 dark:border-slate-700 dark:bg-slate-900/55'
+                        )}
+                        aria-label={`Agent 第 ${round.round} 轮，${roundProcessing ? '检索中' : roundFailed ? '失败' : '已完成'}`}
+                      >
+                        <span
+                          className={cn(
+                            'absolute -left-[29px] top-2.5 flex size-[22px] items-center justify-center rounded-full border text-[9px] font-bold shadow-sm',
+                            roundProcessing
+                              ? 'border-violet-400 bg-violet-600 text-white'
+                              : roundFailed
+                                ? 'border-rose-300 bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                                : 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                          )}
+                          aria-hidden
+                        >
+                          {round.round}
+                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-100">
+                            第 {round.round} 轮
+                          </span>
+                          {roundProcessing ? (
+                            <StageProcessingCue text="检索中…" />
+                          ) : roundFailed ? (
+                            <span className="text-[10px] font-medium text-rose-600 dark:text-rose-400">检索失败</span>
+                          ) : (
+                            <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">已完成</span>
+                          )}
+                          {round.duration_seconds > 0 && !roundProcessing && (
+                            <span className="ml-auto text-[9px] tabular-nums text-slate-400 dark:text-slate-500">
+                              {round.duration_seconds.toFixed(1)}s
+                            </span>
+                          )}
+                        </div>
+
+                        {round.reason && (
+                          <p className="mt-1.5 text-[10px] leading-relaxed text-violet-800/90 dark:text-violet-200/90">
+                            {round.reason}
+                          </p>
+                        )}
+
+                        <div className="mt-2 space-y-1.5" aria-label={`第 ${round.round} 轮子查询`}>
+                          {round.queries.map((query, index) => (
+                            <div key={`${round.round}-${query}-${index}`} className="flex items-start gap-2 text-[10px] text-slate-700 dark:text-slate-300">
+                              {roundProcessing ? (
+                                <ThinkingDonutSpinner className="mt-0.5 size-2.5 shrink-0 text-violet-500 dark:text-violet-400" />
+                              ) : roundFailed ? (
+                                <AlertCircle size={11} className="mt-0.5 shrink-0 text-rose-500" aria-hidden />
+                              ) : (
+                                <CheckCircle size={11} className="mt-0.5 shrink-0 text-emerald-500" aria-hidden />
+                              )}
+                              <span className="leading-relaxed">{query}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {!roundProcessing && (
+                          <div
+                            className={cn(
+                              'mt-2 space-y-1.5 rounded-md border px-2.5 py-2 text-[10px]',
+                              roundFailed
+                                ? 'border-rose-200/80 bg-rose-50/90 text-rose-800 dark:border-rose-700/50 dark:bg-rose-950/30 dark:text-rose-200'
+                                : 'border-emerald-200/80 bg-emerald-50/90 text-emerald-800 dark:border-emerald-700/50 dark:bg-emerald-950/30 dark:text-emerald-200'
+                            )}
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              {roundFailed ? <AlertCircle size={13} aria-hidden /> : <CheckCircle size={13} aria-hidden />}
+                              <span className="font-semibold">{roundFailed ? '本轮未获得证据' : '本轮证据已汇总'}</span>
+                              {!roundFailed && (
+                                <span>
+                                  新增 {round.new_evidence_count} 条，累计 {round.total_evidence_count} 条
+                                </span>
+                              )}
+                            </div>
+                            {round.error && (
+                              <p className="break-words leading-relaxed">{round.error}</p>
+                            )}
+                            {round.target_kbs.length > 0 && (
+                              <div className="flex items-start gap-1.5 border-t border-current/15 pt-1.5">
+                                <span className="shrink-0 opacity-70">来源知识库</span>
+                                <span className="font-medium">
+                                  {round.target_kbs.map(kb => kb.name || kb.id).join('、')}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </article>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </section>
+          )}
+
           {/* 阶段一：意图解析 — 仅在该阶段开始后展示，流式更新 */}
           {intentActive && (
           <section className={stageBlockClass('intent', currentStage === 'intent')} aria-label={`意图解析阶段，${stageLabel(stages?.intent ?? 'completed') || '已展示'}`}>
@@ -258,6 +478,22 @@ export function ThinkingCapsule({
               )}
             </div>
             <div className="ml-0.5 space-y-1 border-l border-slate-300/60 pl-2.5 dark:border-slate-600/50 sm:pl-3">
+              {intent.agentModeAuto && intent.agentModeSelected && (
+                <div className="mb-1.5 rounded-lg border border-indigo-200/80 bg-indigo-50/70 px-2.5 py-2 dark:border-indigo-500/30 dark:bg-indigo-950/30">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold text-indigo-800 dark:text-indigo-200">
+                    <Wand2 size={12} aria-hidden />
+                    <span>
+                      自动选择：
+                      {intent.agentModeSelected === 'agent' ? 'Agent 深研' : '直接检索'}
+                    </span>
+                  </div>
+                  {intent.agentModeReason && (
+                    <p className="mt-1 text-[10px] leading-relaxed text-indigo-700/80 dark:text-indigo-300/80">
+                      {intent.agentModeReason}
+                    </p>
+                  )}
+                </div>
+              )}
               {(intent.type || stages?.intent === 'processing') && (
                 <div className="flex items-center gap-2 text-xs">
                   <span className="w-20 shrink-0 text-slate-400 dark:text-slate-500">类型</span>
@@ -429,6 +665,24 @@ export function ThinkingCapsule({
               )}
             </div>
             <div className="ml-0.5 space-y-1 border-l border-slate-300/60 pl-2.5 dark:border-slate-600/50 sm:pl-3">
+              {retrieval.agentMode && (
+                <div className="mb-1.5 rounded-lg border border-violet-200/80 bg-violet-50/80 px-2.5 py-2 dark:border-violet-500/30 dark:bg-violet-950/30">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold text-violet-800 dark:text-violet-200">
+                    <Sparkles size={12} aria-hidden />
+                    <span>Agent 第 {retrieval.agentRound ?? 1} 轮</span>
+                    {retrieval.agentNewEvidence != null && (
+                      <span className="ml-auto rounded-full bg-white/80 px-2 py-0.5 text-[10px] text-violet-700 dark:bg-violet-900/50 dark:text-violet-200">
+                        +{retrieval.agentNewEvidence} 条新证据
+                      </span>
+                    )}
+                  </div>
+                  {retrieval.agentReason && (
+                    <p className="mt-1 text-[10px] leading-relaxed text-violet-700/80 dark:text-violet-300/80">
+                      {retrieval.agentReason}
+                    </p>
+                  )}
+                </div>
+              )}
               {retrieval.keywords.length > 0 && (
                 <div className="flex items-start gap-2 text-xs">
                   <span className="w-20 flex-shrink-0 text-slate-400 dark:text-slate-500">关键词</span>
@@ -474,7 +728,7 @@ export function ThinkingCapsule({
 
           {/* 阶段四：生成回答 — 只有在明确收到 generation 事件后才显示 */}
           {generationActive && (
-          <section className={stageBlockClass('generation', currentStage === 'generation')} aria-label={`生成回答阶段，${stageLabel(stages?.generation ?? 'completed') || '已展示'}`}>
+          <section className={stageBlockClass('generation', currentStage === 'generation')} aria-label={`生成回答阶段，${isGenerationFailed ? '失败' : stageLabel(stages?.generation ?? 'completed') || '已展示'}`}>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
               <Sparkles size={14} strokeWidth={2.25} className={cn('shrink-0', stageSkin.generation.icon)} aria-hidden />
               <span className="tracking-tight">生成回答</span>
@@ -484,10 +738,24 @@ export function ThinkingCapsule({
               {stages?.generation === 'completed' && (
                 <span className="text-emerald-600 dark:text-emerald-400 text-[10px]">{stageLabel('completed')}</span>
               )}
+              {isGenerationFailed && (
+                <span className="text-rose-600 dark:text-rose-400 text-[10px]">{stageLabel('failed')}</span>
+              )}
             </div>
             <div className="ml-0.5 space-y-1 border-l border-slate-300/60 pl-2.5 dark:border-slate-600/50 sm:pl-3">
               {/* 生成完成后，隐藏动效，只显示完成状态 */}
-              {isGenerationCompleted || stages?.generation === 'completed' ? (
+              {isGenerationFailed ? (
+                <div className="relative flex items-start gap-2.5 overflow-hidden rounded-md border border-rose-200/80 bg-rose-50/95 px-2.5 py-2 shadow-sm dark:border-rose-700/50 dark:bg-rose-950/35">
+                  <span className="absolute bottom-0 left-0 top-0 w-0.5 bg-rose-500 dark:bg-rose-400" aria-hidden />
+                  <AlertCircle className="mt-0.5 shrink-0 text-rose-600 dark:text-rose-400" size={17} strokeWidth={2.25} aria-hidden />
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="text-xs font-semibold text-rose-800 dark:text-rose-200">回答生成失败</span>
+                    <span className="break-words text-[10px] leading-relaxed text-rose-700/80 dark:text-rose-300/80">
+                      {thoughtData?.generation_error || '模型服务暂时不可用，请检查配置后重试。'}
+                    </span>
+                  </div>
+                </div>
+              ) : isGenerationCompleted || stages?.generation === 'completed' ? (
                 <div className="relative flex items-center gap-2.5 overflow-hidden rounded-md border border-emerald-200/80 bg-emerald-50/95 px-2.5 py-2 shadow-sm dark:border-emerald-700/50 dark:bg-emerald-950/35">
                   <span className="absolute bottom-0 left-0 top-0 w-0.5 bg-emerald-500 dark:bg-emerald-400" aria-hidden />
                   <CheckCircle className="shrink-0 text-emerald-600 dark:text-emerald-400" size={18} strokeWidth={2.25} aria-hidden />

@@ -555,19 +555,22 @@ export const knowledgeApi = {
     }>(`/upload/retry/${encodeURIComponent(taskId)}`),
 };
 
+export type ImportUrlMode = 'auto' | 'webpage' | 'file' | 'feishu'
+export type ImportUrlKind = 'webpage' | 'file' | 'feishu_document'
+
 // 知识库导入 API（从 URL 或按关键词搜索图片导入）
 export const importApi = {
-  /** 轻量识别 URL：判断更像网页还是文件，并返回标题/站点/建议文件名等预览信息。 */
+  /** 轻量识别 URL：判断网页、文件或飞书文档，并返回标题/站点/建议文件名。 */
   inspectUrl: (body: {
     url: string
-    mode?: 'auto' | 'webpage' | 'file'
+    mode?: ImportUrlMode
   }) =>
     apiClient.post<{
       original_url: string
       final_url: string
-      kind: 'webpage' | 'file'
-      detected_kind: 'webpage' | 'file'
-      recommended_mode: 'auto' | 'webpage' | 'file'
+      kind: ImportUrlKind
+      detected_kind: ImportUrlKind
+      recommended_mode: ImportUrlMode
       suggested_filename: string
       content_type?: string | null
       content_length?: number | null
@@ -586,7 +589,7 @@ export const importApi = {
     url: string
     kb_id: string
     filename?: string
-    mode?: 'auto' | 'webpage' | 'file'
+    mode?: ImportUrlMode
     include_links?: boolean
     include_images?: boolean
     download_images?: boolean
@@ -604,10 +607,16 @@ export const importApi = {
       title?: string | null
       /** 实际拉取的 URL（302 后可能不同于入参） */
       source_url?: string | null
-      /** 'webpage' | 'file'，方便前端展示来源类型 */
-      kind?: 'webpage' | 'file'
+      /** 来源类型，方便前端展示解析方式 */
+      kind?: ImportUrlKind
       /** 网页解析成功下载的图片数量；未启用图片下载时为 0 */
       image_count?: number
+      block_count?: number
+      table_count?: number
+      whiteboard_count?: number
+      sheet_count?: number
+      bitable_count?: number
+      warnings?: string[]
     }>(`/import/url/start`, body, { timeout: 60000, validateStatus: (s) => s === 202 || (s >= 200 && s < 300) }),
 
   /** 从单个 URL 下载并同步导入知识库（保留兼容，推荐用 importFromUrlStart + 轮询进度） */
@@ -615,7 +624,7 @@ export const importApi = {
     url: string
     kb_id: string
     filename?: string
-    mode?: 'auto' | 'webpage' | 'file'
+    mode?: ImportUrlMode
     include_links?: boolean
     include_images?: boolean
     download_images?: boolean
@@ -639,8 +648,14 @@ export const importApi = {
         author?: string | null
         published?: string | null
         source_url?: string | null
-        kind?: 'webpage' | 'file'
+        kind?: ImportUrlKind
         image_count?: number
+        block_count?: number
+        table_count?: number
+        whiteboard_count?: number
+        sheet_count?: number
+        bitable_count?: number
+        warnings?: string[]
       }
     }>(`/import/url`, body, { timeout: 180000 }),
 

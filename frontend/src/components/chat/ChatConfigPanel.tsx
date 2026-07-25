@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { SlidersHorizontal, Database, Zap, Route, List, CheckSquare } from 'lucide-react'
+import { SlidersHorizontal, Database, Zap, Route, List, CheckSquare, Search, Sparkles } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 import { groupChatModelsByVendor, getModelVendor, VENDOR_DISPLAY_NAMES, VENDOR_LOGOS } from '@/lib/modelVendors'
 import { VendorModelSelect } from './VendorModelSelect'
 import { UnifiedChatModelSearch, type ChatCatalogItem } from './UnifiedChatModelSearch'
-import type { KbMode } from '@/store/useChatStore'
+import { normalizeAgentMode, type AgentMode, type KbMode } from '@/store/useChatStore'
 
 interface ChatConfigPanelProps {
   open: boolean
@@ -21,10 +21,11 @@ interface ChatConfigPanelProps {
 export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
   const { knowledgeBases, fetchKnowledgeBases } = useKnowledgeStore()
   const { config, updateSystemConfig, updateModelConfig } = useConfigStore()
-  const { getActiveSession, updateSessionKnowledgeBases } = useChatStore()
+  const { getActiveSession, updateSessionKnowledgeBases, updateSessionAgentMode } = useChatStore()
 
   const activeSession = getActiveSession()
   const [kbMode, setKbMode] = useState<KbMode>('auto')
+  const [agentMode, setAgentMode] = useState<AgentMode>('auto')
   const [selectedKbIds, setSelectedKbIds] = useState<Set<string>>(new Set())
   const [chatModels, setChatModels] = useState<string[]>([])
   const [chatCatalog, setChatCatalog] = useState<ChatCatalogItem[]>([])
@@ -40,9 +41,10 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
   useEffect(() => {
     if (activeSession) {
       setKbMode(activeSession.kbMode ?? 'auto')
+      setAgentMode(normalizeAgentMode(activeSession.agentMode))
       setSelectedKbIds(new Set(activeSession.knowledgeBaseIds || []))
     }
-  }, [activeSession?.id, activeSession?.knowledgeBaseIds, activeSession?.kbMode])
+  }, [activeSession?.id, activeSession?.knowledgeBaseIds, activeSession?.kbMode, activeSession?.agentMode])
 
   // 仅打开弹窗时拉取列表；勿依赖 config.models，否则选模型会触发全量 loading、滚动跳回顶部（与 ModelConfigPanel 相同原因）
   useEffect(() => {
@@ -135,6 +137,7 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
       updateSessionKnowledgeBases(activeSession.id, ids, 'manual')
       updateSystemConfig({ defaultKnowledgeBaseIds: ids })
     }
+    updateSessionAgentMode(activeSession.id, agentMode)
     onOpenChange(false)
   }
 
@@ -155,6 +158,95 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
 
         <ScrollArea className="min-h-0 flex-1 [scrollbar-width:thin] [&>div]:max-h-full [&>div]:overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300/80 dark:[&::-webkit-scrollbar-thumb]:bg-slate-600">
           <div className="space-y-4 py-1 pr-3 pb-2">
+          {/* 回答方式：保持单次 RAG 与有界 Agentic 检索可切换 */}
+          <div className="rounded-2xl border border-slate-200/50 bg-white/50 p-4 shadow-sm backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-900/50">
+            <div className="mb-3 flex items-center gap-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/40">
+                <Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+              </div>
+              回答方式
+            </div>
+            <div className="grid grid-cols-3 gap-2" role="group" aria-label="回答方式">
+              <button
+                type="button"
+                aria-pressed={agentMode === 'auto'}
+                onClick={() => setAgentMode('auto')}
+                className={cn(
+                  'group rounded-xl border px-2.5 py-3 text-left transition-all duration-200',
+                  agentMode === 'auto'
+                    ? 'border-indigo-400/60 bg-indigo-500/10 text-indigo-800 shadow-md shadow-indigo-500/10 dark:bg-indigo-500/15 dark:text-indigo-200'
+                    : 'border-slate-200/80 bg-white/60 text-slate-600 hover:border-slate-300 dark:border-slate-600/80 dark:bg-slate-800/60 dark:text-slate-300'
+                )}
+              >
+                <span className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                  <Sparkles className="h-4 w-4" />
+                  自动
+                </span>
+                <span className="block text-[10px] leading-4 text-slate-500 dark:text-slate-400">
+                  按问题选择
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={agentMode === 'direct'}
+                onClick={() => setAgentMode('direct')}
+                className={cn(
+                  'group rounded-xl border px-2.5 py-3 text-left transition-all duration-200',
+                  agentMode === 'direct'
+                    ? 'border-sky-400/60 bg-sky-500/10 text-sky-800 shadow-md shadow-sky-500/10 dark:bg-sky-500/15 dark:text-sky-200'
+                    : 'border-slate-200/80 bg-white/60 text-slate-600 hover:border-slate-300 dark:border-slate-600/80 dark:bg-slate-800/60 dark:text-slate-300'
+                )}
+              >
+                <span className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                  <Search className="h-4 w-4" />
+                  直接
+                </span>
+                <span className="block text-[10px] leading-4 text-slate-500 dark:text-slate-400">
+                  固定单轮检索
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={agentMode === 'agent'}
+                onClick={() => setAgentMode('agent')}
+                className={cn(
+                  'group relative overflow-hidden rounded-xl border px-2.5 py-3 text-left transition-all duration-200',
+                  agentMode === 'agent'
+                    ? 'border-violet-400/60 bg-violet-500/10 text-violet-800 shadow-md shadow-violet-500/10 dark:bg-violet-500/15 dark:text-violet-200'
+                    : 'border-slate-200/80 bg-white/60 text-slate-600 hover:border-slate-300 dark:border-slate-600/80 dark:bg-slate-800/60 dark:text-slate-300'
+                )}
+              >
+                <span className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold">
+                  <span className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4" />
+                    深研
+                  </span>
+                  <span className="flex items-center gap-1" aria-hidden>
+                    {[0, 1, 2].map(node => (
+                      <span
+                        key={node}
+                        className={cn(
+                          'h-1.5 w-1.5 rounded-full',
+                          agentMode === 'agent' ? 'bg-violet-500 dark:bg-violet-300' : 'bg-slate-300 dark:bg-slate-600'
+                        )}
+                      />
+                    ))}
+                  </span>
+                </span>
+                <span className="block text-[10px] leading-4 text-slate-500 dark:text-slate-400">
+                  固定多轮补查
+                </span>
+              </button>
+            </div>
+            <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+              {agentMode === 'auto'
+                ? '根据问题的对比、分步、跨模态和研究复杂度自动选择'
+                : agentMode === 'agent'
+                  ? '在预算内迭代调用现有图文音视频检索，并保留原引用链路'
+                  : '适合简单问答；多模态检索与知识库路由仍然启用'}
+            </p>
+          </div>
+
           {/* 检索模式：智能路由 / 全部 / 指定 */}
           <div className="rounded-2xl border border-slate-200/50 bg-white/50 p-4 shadow-sm backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-900/50">
             <div className="mb-3 flex items-center gap-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200">

@@ -1,11 +1,12 @@
 """
 从单个 URL 拉取内容，产出 ContentSourceResult。
 
-支持两种模式：
+支持三种来源策略：
 - 文件下载：原样保存字节，由 ingestion 按扩展名解析（PDF/DOCX/图片/音视频…）。
 - 网页解析：识别为 HTML 时调用 webpage_extractor 抽取正文为 Markdown 入库。
+- 飞书解析：通过 OpenAPI 读取受支持的 Docx/Wiki 资源。
 
-mode = auto / webpage / file 由调用方指定，auto 时按 Content-Type 自动判定。
+mode = auto / webpage / file / feishu 由调用方指定，auto 时按 URL 与 Content-Type 自动判定。
 """
 
 import re
@@ -37,8 +38,8 @@ INSPECT_MAX_BYTES = 256 * 1024  # 轻量预判时最多读取 256KB
 ALLOWED_SCHEMES = ("http", "https")
 HTML_CONTENT_TYPES = ("text/html", "application/xhtml+xml")
 
-UrlMode = Literal["auto", "webpage", "file"]
-UrlKind = Literal["webpage", "file"]
+UrlMode = Literal["auto", "webpage", "file", "feishu"]
+UrlKind = Literal["webpage", "file", "feishu_document"]
 
 
 @dataclass
@@ -203,15 +204,31 @@ class UrlSource(BaseContentSource):
         site: Optional[str],
         headers: httpx.Headers,
     ) -> UrlInspectionResult:
-        kind: UrlKind = detected_kind if mode == "auto" else ("webpage" if mode == "webpage" else "file")
-        recommended_mode: UrlMode = "webpage" if detected_kind == "webpage" else "file"
+        if mode == "auto":
+            kind: UrlKind = detected_kind
+        elif mode == "webpage":
+            kind = "webpage"
+        elif mode == "feishu":
+            kind = "feishu_document"
+        else:
+            kind = "file"
+        recommended_mode: UrlMode = (
+            "feishu"
+            if detected_kind == "feishu_document"
+            else ("webpage" if detected_kind == "webpage" else "file")
+        )
         if kind == "webpage":
             suggested_filename = filename_from_title(title, final_url)
         else:
             suggested_filename = _filename_from_headers(headers) or _filename_from_url(final_url)
 
         warning: Optional[str] = None
-        if mode == "webpage" and detected_kind != "webpage":
+        if mode == "webpage" and detected_kind == "feishu_document":
+            warning = (
+                "当前将按公开网页抽取，页面可能只返回登录壳；"
+                "如已配置飞书应用凭证，建议切换为“飞书文档”模式。"
+            )
+        elif mode == "webpage" and detected_kind != "webpage":
             warning = "该链接看起来更像文件直链，强制按网页解析时可能失败。"
         elif mode == "file" and detected_kind == "webpage":
             warning = "该链接返回的是网页内容，按文件下载会保存原始 HTML，而不是抽取正文。"
@@ -243,6 +260,15 @@ class UrlSource(BaseContentSource):
     ) -> ContentSourceResult:
         """同步拉取 URL（仅文件模式同步可用；网页解析请使用 fetch_async）。"""
         self._validate_scheme(url)
+        from .feishu_document import is_feishu_document_url
+
+        is_feishu_url = is_feishu_document_url(url)
+        if is_feishu_url and mode == "file":
+            raise ValueError("飞书文档链接不能按文件直链下载，请选择“飞书文档”或“自动”模式")
+        if is_feishu_url and mode in ("auto", "feishu"):
+            raise RuntimeError("飞书文档 Block 解析需要异步上下文，请改调用 fetch_async()")
+        if mode == "feishu":
+            raise ValueError("该 URL 不是受支持的飞书 /docx/ 或 /wiki/ 链接")
 
         with httpx.Client(
             timeout=self.timeout,
@@ -282,6 +308,26 @@ class UrlSource(BaseContentSource):
         供 ``process_file_upload`` 走 Markdown 相对路径图片的多模态管道。
         """
         self._validate_scheme(url)
+        from .feishu_document import FeishuDocumentSource, is_feishu_document_url
+
+        is_feishu_url = is_feishu_document_url(url)
+        if is_feishu_url:
+            if mode == "file":
+                raise ValueError("飞书文档链接不能按文件直链下载，请选择“飞书文档”或“自动”模式")
+            if mode in ("auto", "feishu"):
+                return await FeishuDocumentSource(
+                    timeout=self.timeout,
+                    max_assets=image_max_count,
+                ).fetch_async(
+                    url,
+                    include_links=include_links,
+                    include_images=include_images,
+                    download_images=download_images and include_images,
+                    image_max_count=image_max_count,
+                    image_max_bytes=image_max_bytes,
+                )
+        if mode == "feishu":
+            raise ValueError("该 URL 不是受支持的飞书 /docx/ 或 /wiki/ 链接")
 
         # GitHub blob 页面（如 .../blob/main/README.md）：优先 raw.githubusercontent.com，
         # 保留 README 内相对路径图片并可正确下载（HTML 渲染页抽取常丢图）。
@@ -353,6 +399,42 @@ class UrlSource(BaseContentSource):
     ) -> UrlInspectionResult:
         """轻量探测 URL，返回网页/文件判断与建议文件名，供前端导入前预览。"""
         self._validate_scheme(url)
+        from .feishu_document import FeishuDocumentSource, is_feishu_document_url
+
+        is_feishu_url = is_feishu_document_url(url)
+        if is_feishu_url:
+            if mode == "file":
+                return UrlInspectionResult(
+                    original_url=url,
+                    final_url=url,
+                    kind="file",
+                    detected_kind="feishu_document",
+                    recommended_mode="feishu",
+                    suggested_filename="飞书文档.md",
+                    content_type="application/x-feishu-document",
+                    title=None,
+                    site="飞书云文档",
+                    warning="飞书文档链接不能按文件直链下载，请切换为“飞书文档”模式。",
+                )
+            if mode in ("auto", "feishu"):
+                inspection = await FeishuDocumentSource(
+                    timeout=min(self.timeout, 15.0)
+                ).inspect_async(url)
+                return UrlInspectionResult(
+                    original_url=url,
+                    final_url=url,
+                    kind="feishu_document",
+                    detected_kind="feishu_document",
+                    recommended_mode="feishu",
+                    suggested_filename=inspection.suggested_filename,
+                    content_type="application/x-feishu-document",
+                    content_length=None,
+                    title=inspection.title,
+                    site="飞书云文档",
+                    warning="将通过飞书开放平台按 Block 解析正文、图片、表格与画板。",
+                )
+        if mode == "feishu":
+            raise ValueError("该 URL 不是受支持的飞书 /docx/ 或 /wiki/ 链接")
 
         async with httpx.AsyncClient(
             timeout=min(self.timeout, 15.0),
@@ -380,7 +462,11 @@ class UrlSource(BaseContentSource):
                 final_url = str(response.url)
                 content_length = _parse_content_length(response.headers)
                 is_html = _is_html_response(content_type_header, sample)
-                detected_kind: UrlKind = "webpage" if is_html else "file"
+                detected_kind: UrlKind = (
+                    "feishu_document"
+                    if is_feishu_url
+                    else ("webpage" if is_html else "file")
+                )
                 title: Optional[str] = None
                 site: Optional[str] = None
                 if is_html:

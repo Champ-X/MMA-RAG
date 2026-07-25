@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { Send, Zap, Paperclip, Database, Square, AtSign, X } from 'lucide-react'
+import { Send, Zap, Paperclip, Database, Square, AtSign, X, Sparkles, Search, BrainCircuit } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useChatStore } from '@/store/useChatStore'
@@ -8,12 +8,23 @@ import { useThinkingChain } from '@/hooks/useThinkingChain'
 import { cn } from '@/lib/utils'
 import { getModelVendor, VENDOR_LOGOS } from '@/lib/modelVendors'
 import type { CitationReference } from '@/types/sse'
-import type { ChatMessageAttachment, ChatScopeFile, Message } from '@/store/useChatStore'
+import {
+  normalizeAgentMode,
+  type AgentMode,
+  type ChatMessageAttachment,
+  type ChatScopeFile,
+  type Message,
+} from '@/store/useChatStore'
 import { fileScopeKey, formatScopedFileSize, useFileScopeOptions } from './useFileScopeOptions'
 
 const MAX_CHAT_ATTACHMENTS = 3
 const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_CHAT_AUDIO_BYTES = 10 * 1024 * 1024
+const NEXT_AGENT_MODE: Record<AgentMode, AgentMode> = {
+  auto: 'direct',
+  direct: 'agent',
+  agent: 'auto',
+}
 
 const CitationPopover = lazy(() =>
   import('./CitationPopover').then((module) => ({ default: module.CitationPopover }))
@@ -319,6 +330,7 @@ export function ChatInterface() {
     thinking,
     addMessage,
     updateMessage,
+    updateSessionAgentMode,
   } = useChatStore()
 
   const { sendMessage, stopStreaming, isStreaming, error } = useThinkingChain()
@@ -332,8 +344,25 @@ export function ChatInterface() {
   } = useFileScopeOptions(Boolean(mentionState))
 
   const activeSession = getActiveSession()
+  const agentMode = normalizeAgentMode(activeSession?.agentMode)
   const messages = activeSession?.messages ?? []
   const isLoading = isStreaming
+
+  const cycleAgentMode = () => {
+    if (!activeSessionId || isLoading) return
+    updateSessionAgentMode(activeSessionId, NEXT_AGENT_MODE[agentMode])
+  }
+
+  const agentModeLabel =
+    agentMode === 'auto' ? 'Agent 自动' : agentMode === 'agent' ? 'Agent 深研' : '直接检索'
+  const agentModeShortLabel =
+    agentMode === 'auto' ? '自动' : agentMode === 'agent' ? '深研' : '直搜'
+  const agentModeHint =
+    agentMode === 'auto'
+      ? '自动判断是否需要多轮深研；点击切换为直接检索'
+      : agentMode === 'direct'
+        ? '固定使用单轮多模态检索；点击切换为 Agent 深研'
+        : '固定使用 Agent 多轮补查；点击切换为自动判断'
 
   // 获取当前选中的模型名称，简化显示
   const chatFullModelId = useMemo(
@@ -1038,6 +1067,31 @@ export function ChatInterface() {
 
                 <button
                   type="button"
+                  onClick={cycleAgentMode}
+                  disabled={isLoading || !activeSessionId}
+                  title={agentModeHint}
+                  aria-label={`回答方式：${agentModeLabel}。${agentModeHint}`}
+                  className={cn(
+                    'group inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold shadow-sm ring-1 transition-all duration-200 hover:-translate-y-px hover:shadow-md active:translate-y-0 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50',
+                    agentMode === 'auto'
+                      ? 'border-indigo-300/70 bg-indigo-50/90 text-indigo-700 shadow-indigo-500/10 ring-indigo-200/50 hover:bg-indigo-100/90 dark:border-indigo-500/40 dark:bg-indigo-950/45 dark:text-indigo-200 dark:ring-indigo-500/20'
+                      : agentMode === 'agent'
+                        ? 'border-violet-300/70 bg-violet-50/90 text-violet-700 shadow-violet-500/10 ring-violet-200/50 hover:bg-violet-100/90 dark:border-violet-500/40 dark:bg-violet-950/45 dark:text-violet-200 dark:ring-violet-500/20'
+                        : 'border-slate-300/70 bg-white/80 text-slate-600 shadow-slate-500/10 ring-slate-200/60 hover:bg-slate-50 dark:border-slate-600/70 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-slate-700/50'
+                  )}
+                >
+                  {agentMode === 'auto' ? (
+                    <Sparkles className="h-3.5 w-3.5 transition-transform duration-200 group-hover:rotate-12" aria-hidden />
+                  ) : agentMode === 'agent' ? (
+                    <BrainCircuit className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110" aria-hidden />
+                  ) : (
+                    <Search className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110" aria-hidden />
+                  )}
+                  <span className="hidden sm:inline">{agentModeShortLabel}</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setModelConfigPanelOpen(true)}
                   title="对话模型选择"
                   aria-label={`打开对话模型选择，当前模型：${currentModel}`}
@@ -1066,7 +1120,7 @@ export function ChatInterface() {
                   ) : (
                     <Zap className="h-3.5 w-3.5 flex-shrink-0 text-purple-600 dark:text-purple-300 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-12" aria-hidden />
                   )}
-                  <span className="truncate max-w-[120px]">{currentModel}</span>
+                  <span className="hidden max-w-[120px] truncate sm:inline">{currentModel}</span>
                 </button>
               </div>
 

@@ -3,12 +3,11 @@
 实现Server-Sent Events (SSE) 流式通信
 """
 
-from typing import Dict, List, Any, Optional, AsyncGenerator, Callable, Union
+from typing import Dict, List, Any, Optional, AsyncGenerator
 import asyncio
 import json
 import time
-from datetime import datetime
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from enum import Enum
 
 from app.core.logger import get_logger
@@ -248,6 +247,7 @@ class StreamManager:
         user_input: str,
         llm_manager: Any,
         model: Optional[str] = None,
+        session_context: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncGenerator[StreamEvent, None]:
         """流式聊天响应：使用真实 LLM 流式生成，并发送引用事件。思考事件由 chat.py 在检索后发送。"""
         try:
@@ -269,9 +269,20 @@ class StreamManager:
 
             # 2. 真实流式生成 + 引用
             async for event in self._generate_streaming_response(
-                session, query, context_result, system_prompt, user_input, llm_manager, model
+                session,
+                query,
+                context_result,
+                system_prompt,
+                user_input,
+                llm_manager,
+                model,
+                session_context,
             ):
                 yield event
+                # 失败事件是终态。不要随后再发送 done，否则前端会把失败
+                # 误判为成功完成并覆盖已经保存的 Agent 轨迹。
+                if event.type == StreamEventType.ERROR:
+                    return
 
             # 3. 完成事件
             yield StreamEvent(
@@ -330,13 +341,13 @@ class StreamManager:
         user_input: str,
         llm_manager: Any,
         model: Optional[str] = None,
+        session_context: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncGenerator[StreamEvent, None]:
         """使用真实 LLM 流式生成回答，并在结束后发送引用事件。"""
         try:
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_input},
-            ]
+            messages = [{"role": "system", "content": system_prompt}]
+            messages.extend(session_context or [])
+            messages.append({"role": "user", "content": user_input})
             model_name = model or llm_manager.registry.get_task_model("final_generation")
             logger.info(f"开始调用 final_generation 模型流式生成回答: {model_name}")
             chunk_count = 0

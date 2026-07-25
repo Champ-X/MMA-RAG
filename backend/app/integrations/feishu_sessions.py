@@ -13,6 +13,7 @@ import redis
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.modules.chat.context_manager import build_conversation_context, trim_stored_messages
 
 logger = get_logger(__name__)
 
@@ -64,12 +65,14 @@ def save_session(session_key: str, session: Dict[str, Any]) -> None:
     _MEMORY[session_key] = session
 
 
-def build_session_context(session: Dict[str, Any], limit: int = 10) -> List[Dict[str, str]]:
-    out: List[Dict[str, str]] = []
-    for msg in session.get("messages", [])[-limit:]:
-        if msg.get("role") in ("user", "assistant"):
-            out.append({"role": msg["role"], "content": (msg.get("content") or "")})
-    return out
+def build_session_context(session: Dict[str, Any], limit: Optional[int] = None) -> List[Dict[str, str]]:
+    context = build_conversation_context(
+        session.get("messages", []),
+        max_messages=limit or settings.chat_context_max_messages,
+        max_chars=settings.chat_context_max_chars,
+        max_message_chars=settings.chat_context_message_max_chars,
+    )
+    return context.messages
 
 
 def append_turn(session_key: str, user_text: str, assistant_text: str) -> None:
@@ -79,6 +82,10 @@ def append_turn(session_key: str, user_text: str, assistant_text: str) -> None:
     ts = datetime.utcnow().isoformat()
     sess["messages"].append({"role": "user", "content": user_text, "timestamp": ts})
     sess["messages"].append({"role": "assistant", "content": assistant_text, "timestamp": ts})
+    sess["messages"] = trim_stored_messages(
+        sess["messages"],
+        max_messages=settings.chat_session_max_stored_messages,
+    )
     save_session(session_key, sess)
 
 

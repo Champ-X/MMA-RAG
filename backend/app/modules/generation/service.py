@@ -4,16 +4,23 @@
 """
 
 from typing import Dict, List, Any, Optional, AsyncGenerator
-import asyncio
 from datetime import datetime
 
-from .context_builder import ContextBuilder, ContextBuildResult
+from .context_builder import ContextBuilder
 from .stream_manager import StreamManager, StreamEvent, StreamEventType
 from .templates.system_prompts import SystemPromptManager
 from app.core.llm.manager import llm_manager
 from app.core.logger import get_logger, audit_log
 
 logger = get_logger(__name__)
+
+MULTI_TURN_SYSTEM_INSTRUCTIONS = """
+
+# 多轮会话约束
+- 对话历史仅用于理解指代、延续主题和保持回答连贯；当前轮检索到的参考材料优先。
+- 历史助手回答中的 `[n]` 引用编号属于旧轮次，禁止在本轮复用。
+- 本轮只能引用当前用户输入中“参考材料列表”实际提供的编号。
+""".rstrip()
 
 
 def _get_vector_store():
@@ -41,6 +48,7 @@ class GenerationService:
         session_id: Optional[str] = None,
         kb_context: Optional[Dict[str, Any]] = None,
         attachment_context: Optional[str] = None,
+        session_context: Optional[List[Dict[str, str]]] = None,
     ) -> Dict[str, Any]:
         """
         生成回答
@@ -68,6 +76,8 @@ class GenerationService:
             # 2. 构建系统提示词
             intent_type = getattr(retrieval_result.context, 'intent_type', 'factual')
             system_prompt = self.prompt_manager.build_system_prompt(intent_type)
+            if session_context:
+                system_prompt = f"{system_prompt}\n{MULTI_TURN_SYSTEM_INSTRUCTIONS}"
             
             # 3. 构建用户输入
             user_input = self.context_builder.formatter.format_user_query(
@@ -76,10 +86,9 @@ class GenerationService:
             )
             
             # 4. 调用LLM生成回答
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_input}
-            ]
+            messages = [{"role": "system", "content": system_prompt}]
+            messages.extend(session_context or [])
+            messages.append({"role": "user", "content": user_input})
             
             logger.info("开始调用 final_generation 模型生成回答")
             llm_result = await self.llm_manager.chat(
@@ -152,6 +161,7 @@ class GenerationService:
         kb_context: Optional[Dict[str, Any]] = None,
         model: Optional[str] = None,
         attachment_context: Optional[str] = None,
+        session_context: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncGenerator[StreamEvent, None]:
         """
         流式生成回答
@@ -172,8 +182,6 @@ class GenerationService:
                     session_id=session_id,
                     metadata={"query": query, "created_at": datetime.utcnow().isoformat()}
                 )
-            
-            session = self.stream_manager.active_streams[session_id]
             
             # 发送"开始准备上下文"事件
             yield StreamEvent(
@@ -200,6 +208,8 @@ class GenerationService:
             # 构建系统提示词
             intent_type = getattr(retrieval_result.context, 'intent_type', 'factual')
             system_prompt = self.prompt_manager.build_system_prompt(intent_type)
+            if session_context:
+                system_prompt = f"{system_prompt}\n{MULTI_TURN_SYSTEM_INSTRUCTIONS}"
             
             # 构建用户输入
             user_input = self.context_builder.formatter.format_user_query(
@@ -223,7 +233,8 @@ class GenerationService:
                 system_prompt=system_prompt,
                 user_input=user_input,
                 llm_manager=self.llm_manager,
-                model=model
+                model=model,
+                session_context=session_context,
             ):
                 # 收集流式内容以便后续筛掉未在回答中出现的引用
                 if event.type == StreamEventType.MESSAGE:

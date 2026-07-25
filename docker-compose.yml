@@ -5,6 +5,11 @@ services:
     container_name: mmrag_backend
     ports:
       - "8000:8000"
+    # Compose only auto-loads a project-root .env for interpolation. Runtime
+    # credentials live in backend/.env, so load that file into the container
+    # explicitly instead of replacing the key with an empty shell variable.
+    env_file:
+      - ./backend/.env
     environment:
       - MINIO_ENDPOINT=minio:9000
       # 预签名 URL 供浏览器加载；须与宿主机访问 MinIO 的 host:port 一致（见 minio ports 映射）
@@ -17,11 +22,6 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
-      - BGE_M3_MODEL_ID=${BGE_M3_MODEL_ID:-BAAI/bge-m3}
-      - BGE_M3_USE_FP16=${BGE_M3_USE_FP16:-false}
-      - PRELOAD_LOCAL_MODELS_ON_STARTUP=${PRELOAD_LOCAL_MODELS_ON_STARTUP:-false}
-      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
     volumes:
       - ./minio_data:/data
       - ./qdrant_storage:/qdrant/storage
@@ -75,6 +75,8 @@ services:
     build: ./backend
     container_name: mmrag_celery_worker
     command: celery -A celery_app worker -Q knowledge,ingestion,retrieval,celery --loglevel=info
+    env_file:
+      - ./backend/.env
     environment:
       - MINIO_ENDPOINT=minio:9000
       - MINIO_PUBLIC_ENDPOINT=localhost:9000
@@ -86,11 +88,6 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
-      - BGE_M3_MODEL_ID=${BGE_M3_MODEL_ID:-BAAI/bge-m3}
-      - BGE_M3_USE_FP16=${BGE_M3_USE_FP16:-false}
-      - PRELOAD_LOCAL_MODELS_ON_STARTUP=${PRELOAD_LOCAL_MODELS_ON_STARTUP:-false}
-      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
     volumes:
       - ./minio_data:/data
       - ./qdrant_storage:/qdrant/storage

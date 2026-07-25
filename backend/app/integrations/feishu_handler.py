@@ -680,6 +680,7 @@ async def _process_user_message(
             session_id=session_key,
             kb_context=kb_context,
             attachment_context=attachment_context,
+            session_context=session_context,
         )
     except Exception as e:
         logger.error(f"飞书 RAG 失败: {e}", exc_info=True)

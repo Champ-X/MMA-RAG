@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { chatApi } from '@/services/api_client';
 import { collectUserAttachmentIds, deleteAttachmentBlobs } from '@/lib/chatAttachmentBlobStore';
-import type { CitationReference } from '@/types/sse';
+import type { AgentRoundTrace, CitationReference } from '@/types/sse';
 
 /** 用户消息携带的附件展示信息；previewUrl 为内存 Object URL，仅当前页有效；thumbDataUrl 为小图 JPEG data URL，可随会话持久化 */
 export interface ChatMessageAttachment {
@@ -46,6 +46,18 @@ export interface ThoughtData {
   total_found?: number;
   /** 重排后保留的数量（后端 reranked_count） */
   reranked_count?: number;
+  /** Agent 模式的有界检索轨迹摘要。 */
+  agent_mode?: boolean;
+  agent_mode_auto?: boolean;
+  agent_mode_selected?: 'direct' | 'agent';
+  agent_mode_reason?: string;
+  agent_mode_score?: number;
+  agent_round?: number;
+  agent_reason?: string;
+  agent_new_evidence?: number;
+  agent_tool?: string;
+  /** Agent 多轮研究日志；用于保留并展示所有已执行轮次。 */
+  agent_rounds?: AgentRoundTrace[];
   /** 生成阶段流式状态，仅用于前端 ThinkingCapsule 展示，完成后会清理 */
   generation_status?: string;
   generation_message?: string;
@@ -54,6 +66,10 @@ export interface ThoughtData {
   message?: string;
   /** 历史消息中标记生成阶段已完成，避免重新显示进行中动效 */
   _generation_completed?: boolean;
+  /** 历史消息中标记生成失败；保留此前已完成的 Agent 轨迹。 */
+  _generation_failed?: boolean;
+  /** 面向用户的生成失败原因。 */
+  generation_error?: string;
 }
 
 export interface ThoughtStep {
@@ -100,6 +116,13 @@ function cleanupMessageAttachments(messages: Message[] | undefined) {
 }
 
 export type KbMode = 'auto' | 'all' | 'manual'
+export type AgentMode = 'auto' | 'direct' | 'agent'
+
+export function normalizeAgentMode(value: AgentMode | boolean | undefined): AgentMode {
+  if (value === true) return 'agent'
+  if (value === false) return 'direct'
+  return value === 'direct' || value === 'agent' ? value : 'auto'
+}
 
 export interface ChatSession {
   id: string;
@@ -108,6 +131,8 @@ export interface ChatSession {
   knowledgeBaseIds: string[];
   /** 检索模式：智能路由 / 全部知识库 / 指定知识库 */
   kbMode?: KbMode;
+  /** 自动选择 / 直接检索 / Agent 深研；boolean 仅用于兼容旧版持久化会话。 */
+  agentMode?: AgentMode | boolean;
   createdAt: number;
   updatedAt: number;
   isActive: boolean;
@@ -154,6 +179,8 @@ interface ChatStore {
   updateSessionTitle: (sessionId: string, title: string) => void;
 
   updateSessionKnowledgeBases: (sessionId: string, knowledgeBaseIds: string[], kbMode?: KbMode) => void;
+
+  updateSessionAgentMode: (sessionId: string, mode: AgentMode) => void;
 
   loadSessionHistory: (sessionId: string) => Promise<void>;
 
@@ -215,6 +242,7 @@ export const useChatStore = create<ChatStore>()(
           messages: [],
           knowledgeBaseIds: options.knowledgeBaseIds || [],
           kbMode: 'auto',
+          agentMode: 'auto',
           createdAt: now,
           updatedAt: now,
           isActive: true,
@@ -247,6 +275,7 @@ export const useChatStore = create<ChatStore>()(
             messages: [],
             knowledgeBaseIds: options.knowledgeBaseIds || [],
             kbMode: 'auto',
+            agentMode: 'auto',
             createdAt: now,
             updatedAt: now,
             isActive: true,
@@ -298,6 +327,7 @@ export const useChatStore = create<ChatStore>()(
               messages: [],
               knowledgeBaseIds: [],
               kbMode: 'auto',
+              agentMode: 'auto',
               createdAt: now,
               updatedAt: now,
               isActive: true,
@@ -331,6 +361,16 @@ export const useChatStore = create<ChatStore>()(
               : s
           ),
         }));
+      },
+
+      updateSessionAgentMode: (sessionId, mode) => {
+        set((state) => ({
+          sessions: state.sessions.map(session =>
+            session.id === sessionId
+              ? { ...session, agentMode: mode, updatedAt: Date.now() }
+              : session
+          ),
+        }))
       },
 
       // 从后端加载会话历史

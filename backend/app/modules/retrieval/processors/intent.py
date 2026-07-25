@@ -5,11 +5,11 @@ One-Pass意图识别处理器
 
 from typing import Dict, List, Any, Optional
 import json
-from datetime import datetime
 
 from app.core.llm.manager import llm_manager
 from app.core.llm.prompt_engine import prompt_engine
 from app.core.logger import get_logger
+from app.modules.chat.context_manager import build_conversation_context
 
 logger = get_logger(__name__)
 
@@ -93,16 +93,13 @@ class IntentProcessor:
     
     def _format_chat_history(self, chat_history: List[Dict[str, str]]) -> str:
         """格式化对话历史"""
-        if not chat_history:
-            return "无对话历史"
-        
-        history_text = []
-        for message in chat_history[-5:]:  # 只保留最近5轮对话
-            role = "用户" if message["role"] == "user" else "助手"
-            content = message["content"][:100]  # 限制长度
-            history_text.append(f"{role}: {content}")
-        
-        return "\n".join(history_text)
+        context = build_conversation_context(
+            chat_history,
+            max_messages=10,
+            max_chars=4000,
+            max_message_chars=1200,
+        )
+        return context.transcript or "无对话历史"
     
     def _parse_llm_response(self, response_data: Dict[str, Any]) -> Dict[str, Any]:
         """解析LLM响应"""

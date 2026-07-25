@@ -226,7 +226,7 @@ export const requestFlowSteps: RequestFlowStep[] = [
     title: 'Chat API 接收请求',
     short: 'message + kb_ids + session',
     description:
-      '前端通过 /api/chat/stream 将用户问题、选中的知识库 ID 与会话上下文发送到后端，建立 SSE 流式连接。',
+      '前端通过 /api/chat/stream 发送用户问题与知识库范围；后端按完整轮次和字符预算选择会话历史，同一份上下文贯通意图、改写、路由与最终生成。',
     backendEntry: 'backend/app/api/chat.py::stream_chat',
     estimatedTime: '< 50ms',
     keyTechnologies: ['FastAPI', 'SSE', 'Session Management'],
@@ -246,7 +246,7 @@ export const requestFlowSteps: RequestFlowStep[] = [
     title: '知识库画像路由',
     short: 'KnowledgeRouter.route_query',
     description:
-      '若未指定知识库：refined_query 向量在 kb_portraits 全局 TopN 检索，按 KB 取前 K 节点做位置衰减加权平均，归一化后按阈值决定单库/多库/全库，输出 target_kb_ids 与置信度。画像由 K-Means + LLM 主题摘要生成并 Replace 更新。',
+      '若未指定知识库：refined_query 与多视角查询分别在 kb_portraits 做 TopN，信号内按 KB 位置衰减、跨信号加权；基于 raw 分绝对差/相对差与候选比例决定单库、双库、复杂问题多库或全库回退。',
     backendEntry: 'backend/app/modules/knowledge/router.py::KnowledgeRouter.route_query',
     estimatedTime: '100-300ms',
     keyTechnologies: ['TopN Retrieval', 'Per-KB Weighted Avg', 'Normalize', 'Single/Multi/Full KB'],
@@ -300,7 +300,7 @@ export const coreModules: ModuleInfo[] = [
     role: '负责文件解析、切分与全模态向量化（文档 Dense+BGE-M3；图片 VLM+CLIP；音频 ASR+CLAP；视频 Scene–Shot–ASR 四路主索引+关键帧视觉增强），以及写入 MinIO 与 Qdrant。',
     color: 'green',
     highlights: [
-      '统一入口：IngestionService 完成解析 → MinIO → 向量化 → Qdrant 全流程；支持本地上传、URL、文件夹、热点订阅等多来源接入',
+      '统一入口：IngestionService 完成解析 → MinIO → 向量化 → Qdrant；支持本地上传、URL、飞书 Docx/Wiki、文件夹与热点等来源，飞书按 Block 解析图片、原生表格、画板及嵌入 Sheet/Base',
       '解析器工厂：PDF 优先 MinerU（API/本地 2.5）→ PaddleOCR-VL-1.5 → PyMuPDF 兜底；DOCX/PPTX 优先 MinerU 再 python-docx / python-pptx；TXT/Markdown；图片（PIL）；音频（soundfile/librosa）；视频（OpenCV + Qwen Omni）。文档内嵌图先 VLM 再插回原文后分块；音频以文件为条，视频以 Semantic Shot 为主检索条目',
       '分块策略：文档递归语义分块 + 重叠窗口，chunk 携带 context_window；图片/音频各一点；视频按 Scene–Shot 分层，Shot 含视觉 caption 与对齐 ASR，关键帧为从属视觉增强',
       '文档 Agentic Chunker（语义边界、600-token 上限）+ Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏，写入 text_chunks_agentic',
@@ -328,8 +328,8 @@ export const coreModules: ModuleInfo[] = [
       '画像生成：从 Text、Image、Audio、Video 按比例采样向量（文档 dense、图/音 text_vec、视频 frame_vec；懒加载正文），K = sqrt(N/2) 限制内 K-Means 聚类',
       '主题摘要：每簇取近中心若干样本，以 [文档片段]/[图片描述]/[音频转写描述]/[视频帧描述] 等前缀拼成 content_pieces，LLM 生成 topic_summary 后向量化写入 kb_portraits',
       '画像更新：增量/全量触发；Replace 策略（先删该 KB 旧画像再插入新画像）',
-      '路由决策：refined_query 向量在 kb_portraits 全局 TopN 检索；每 KB 取前 K 节点位置衰减加权平均，归一化后按阈值决定单库/多库/全库',
-      '路由策略：全部得分偏低时全库检索；第一名与第二名差距 ≥ 阈值则单库，否则取前两库',
+      '路由决策：refined_query + multi_view_queries 多信号 TopN；每个信号内按 KB 位置衰减，跨信号按优先级与覆盖度聚合',
+      '路由策略：raw 分偏低或无画像时全库；同时满足绝对差与相对差才单库，否则普通问题取前两库、复杂问题最多三库',
     ],
     codeRefs: [
       { label: 'KnowledgeBaseService', path: 'backend/app/modules/knowledge/service.py' },
@@ -405,7 +405,7 @@ export const dataFlowStages: DataFlowStage[] = [
   {
     id: 'upload',
     title: '文件与多来源接入',
-    description: '本地上传通过 /api/upload 或 /file/stream；导入任务（URL、文件夹、Tavily 热点、媒体下载等）经 import_api 提交，由 Ingestion 统一执行下载与后续管道。',
+    description: '本地上传通过 /api/upload 或 /file/stream；URL、飞书 Docx/Wiki、文件夹、Tavily 热点与媒体下载经 import_api 提交。飞书源把 Block 转为 Markdown，并把图片与画板缩略图送入现有多模态管道。',
   },
   {
     id: 'minio',

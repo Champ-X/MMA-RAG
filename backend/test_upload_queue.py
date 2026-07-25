@@ -4,6 +4,7 @@ import asyncio
 import time
 from datetime import datetime, timedelta
 from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from starlette.datastructures import UploadFile
@@ -353,6 +354,57 @@ def test_file_list_merges_live_task_details_into_persisted_video(monkeypatch):
         "updated_at": "2026-07-24T10:03:00",
         "lease_heartbeat_at": "2026-07-24T10:03:00",
         "lease_expires_at": "2026-07-24T10:08:00",
+    }]
+
+
+def test_file_list_marks_migrated_video_ready_by_file_id(monkeypatch):
+    """MinIO 派生 KB ID 与历史 Qdrant KB ID 不同时，已有 Shot 仍表示解析完成。"""
+
+    class FakeMinio:
+        def get_bucket_for_kb(self, _kb_id):
+            return "kb-current-id"
+
+        def bucket_exists(self, _bucket):
+            return True
+
+        async def list_files(self, **_kwargs):
+            return [{
+                "object_path": "videos/video-1_电影.mp4",
+                "size": 1024,
+                "last_modified": None,
+            }]
+
+    class EmptyRegistry:
+        def list_processing_statuses_for_kb(self, _kb_id):
+            return []
+
+    class FakeVectorStore:
+        def __init__(self):
+            self.calls = []
+
+        def scroll_video_shot_points_by_file_id(self, **kwargs):
+            self.calls.append(kwargs)
+            return [SimpleNamespace(payload={
+                "kb_id": "historical-qdrant-id",
+                "file_id": "video-1",
+                "file_path": "videos/video-1_电影.mp4",
+            })]
+
+    import app.modules.ingestion.service as ingestion_service_module
+
+    vector_store = FakeVectorStore()
+    monkeypatch.setattr(ingestion_service_module, "get_ingestion_service", lambda: EmptyRegistry())
+    service = KnowledgeBaseService.__new__(KnowledgeBaseService)
+    service.minio_adapter = FakeMinio()
+    service.vector_store = vector_store
+
+    files = asyncio.run(service.list_kb_files("current-id"))
+
+    assert files[0]["status"] == "ready"
+    assert vector_store.calls == [{
+        "file_id": "video-1",
+        "kb_id": None,
+        "limit": 2,
     }]
 
 

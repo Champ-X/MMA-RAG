@@ -5,6 +5,7 @@
 
 from .base import ContentSourceResult, BaseContentSource
 from .url import UrlSource
+from .feishu_document import FeishuDocumentSource, is_feishu_document_url
 from .media_downloader import MediaDownloaderSource
 from .folder import FolderSource
 
@@ -12,6 +13,8 @@ __all__ = [
     "ContentSourceResult",
     "BaseContentSource",
     "UrlSource",
+    "FeishuDocumentSource",
+    "is_feishu_document_url",
     "MediaDownloaderSource",
     "FolderSource",
 ]

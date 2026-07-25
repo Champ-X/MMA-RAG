@@ -15,7 +15,9 @@
 - **多知识库优先**：基于 LLM 主题摘要与子主题聚类生成知识库画像，在线按查询语义做加权聚合与阈值策略，自动决定单库、多库或全库检索，减少无效扫描。
 - **多路混合检索 + 两阶段排序**：以 **Dense + BGE-M3 稀疏 + Visual** 为主干，在意图与数据就绪时并入音/视频向量检索；**加权 RRF 粗排**与 **Cross-Encoder 精排**分工，缓解不同通道分数不可比的问题。
 - **One-Pass 意图**：单次结构化 LLM 调用同时产出意图分类、查询改写、关键词/多视角查询与 `visual` / `audio` / `video` 意图，降低链式调用的延迟与成本。
+- **预算化多轮上下文**：按完整对话轮次和字符预算选择历史，同一份上下文贯通指代消解、查询改写、知识库路由与最终生成，避免只“保存历史”却不参与回答。
 - **白盒化对话体验**：通过 SSE 推送思考链（意图、路由、检索策略），回答侧支持引用悬浮溯源与 `context_window` 前后文透视，便于调试与用户信任。
+- **自适应 Agent 深研**：对话输入框可在“自动 / 直接检索 / Agent 深研”之间切换；自动模式根据对比、分步、跨模态和研究复杂度透明选择执行路径。Agent 会规划互补子查询、并发调用原有多模态检索、按证据缺口继续补查，并以轮数、查询数和证据数预算防止失控。
 - **模块化与可替换**：后端按 DDD 划分 Ingestion / Knowledge / Retrieval / Generation；`LLMManager` 统一路由多厂商模型与任务类型；数据面 MinIO、Qdrant、Redis 与 Docker Compose 编排，便于本地与团队环境落地。
 - **可选企业渠道**：同一套管道可接 Web 前端，也可按需启用飞书 IM（长连接、卡片等），见文档索引中的飞书配置说明。
 
@@ -36,11 +38,12 @@
 
 ### 🎯 核心能力
 
-- **多模态数据处理**：文档（PDF、PPTX、Word、Markdown等）、图片、音频、视频的解析；文档内嵌图经 VLM 描述后插回原文再分块；支持本地上传、URL、本地文件夹解析导入、热点联网订阅等多来源接入。图片、音频、视频解析与向量化见 **[多模态数据解析处理细节](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**。
-- **智能知识库路由**：基于LLM的知识库主题摘要+知识库子主题聚类的画像生成，按知识库加权聚合，根据用户查询自动决策检索哪些知识库。
+- **多模态数据处理**：文档（PDF、PPTX、Word、Markdown等）、图片、音频、视频的解析；文档内嵌图经 VLM 描述后插回原文再分块；支持本地上传、URL、本地文件夹、热点联网与**飞书 Docx/Wiki 链接**等多来源接入。飞书源按 Block 解析正文、图片、原生表格、画板及嵌入 Sheet/Base。图片、音频、视频解析与向量化见 **[多模态数据解析处理细节](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**。
+- **智能知识库路由**：基于 LLM 主题摘要与子主题聚类生成画像，以独立改写查询和多视角查询做多信号召回，再按原始分数的绝对差/相对差决定单库、双库、复杂问题多库或全库回退。
 - **多模态混合检索**：**Dense**（如 Qwen3-Embedding）+ **Sparse**（BGE-M3）+ **Visual**（CLIP + VLM 描述写入索引）；在 `audio_intent` / `video_intent` 与数据就绪时并入音频、视频向量检索。**加权 RRF 粗排** + **Cross-Encoder 精排**。
 - **One-Pass 意图识别**：意图分类、查询改写、关键词 / 多视角生成与 `visual` / `audio` / `video` 意图在一次 LLM 调用中输出结构化 `IntentObject`。
 - **推理链路可视以及回答引用溯源**：SSE 推送思考链（意图、路由、检索策略）；回答中引用悬浮溯源与 `context_window` 前后文透视。
+- **Agentic Evidence Loop**：Agent 模式以现有 Hybrid Retrieval 为只读工具，执行“规划 → 检索 → 观察 → 补查/停止”，跨查询去重证据并增强重复命中；每轮理由、子查询与新增证据数实时可见。
 - **飞书平台集成**：飞书 IM（长连接、卡片、开放平台 API）为可选部署能力；配置步骤见 **[FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md)**，变量见 `backend/.env.example` 中 `FEISHU_*`，代码见 `backend/app/integrations/`。
 
 ### 🏗️ 技术架构
@@ -107,7 +110,7 @@ Query: `为《浴血黑帮》这部电影挑选合适的海报封面和主题曲
   - **音频**：ASR 转写 + LLM 内容描述 → 拼接文本做 Dense（及可选 BGE-M3 稀疏）+ **CLAP**（`clap_vec`，512 维）→ `audio_vectors`。
   - **视频**：Qwen3.5-Omni 在一次视频调用中联合解析画面与内嵌音频，输出 Scene → Semantic Shot → Key Frame；每个 Shot 写入 `caption_dense/caption_sparse/asr_dense/asr_sparse` 四路向量，关键帧保留 `frame_vec/clip_vec` 作为可选视觉增强。长视频使用重叠窗口并合并，完整解析 manifest 可追溯。细节见 **[docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**。
 - **存储**：MinIO 按知识库分桶，路径前缀含 `documents/`、`images/`、`audios/`、`videos/`（含 `videos/{file_id}/keyframes/` 与 `analysis/scene_shot_asr_v4.json`）。Qdrant 集合包括 `text_chunks_agentic`、`image_vectors`、`audio_vectors`、`video_shot_vectors`、`video_keyframe_vectors`（画像由 Knowledge 写入 `kb_portraits`）。
-- **多来源与异步**：sources 层支持 URL、文件夹、Tavily 热点、媒体下载等；大任务经 Celery + Redis，前端可轮询或流式查进度。
+- **多来源与异步**：sources 层支持 URL、飞书 Docx/Wiki（含图片、表格、画板、Sheet/Base）、文件夹、Tavily 热点、媒体下载等；大任务经 Celery + Redis，前端可轮询或流式查进度。
 - **代码入口**：`modules/ingestion/service.py`、`parsers/factory.py`、`sources/`、`storage/minio_adapter.py`、`storage/vector_store.py`。
 
 ### 2. 📚 Knowledge（知识库管理与画像）
@@ -115,7 +118,7 @@ Query: `为《浴血黑帮》这部电影挑选合适的海报封面和主题曲
 - **职责**：知识库 CRUD、画像生成与更新、基于画像的在线路由（未指定知识库时自动选库）。
 - **知识库 CRUD**：创建/查询/更新/删除；用户指定知识库时可跳过路由。
 - **画像生成**：从该 KB 的 Text、Image、Audio、Video 等集合按比例采样；K-Means（K = sqrt(N/2)，受配置上限约束）；每簇抽样经 LLM 生成 `topic_summary` 后向量化写入 `kb_portraits`；Replace 策略（先删该 KB 旧画像再插入）。
-- **路由决策**：`refined_query` 的 Dense 向量在 `kb_portraits` 上全局 TopN；按 `kb_id` 聚合、位置衰减加权、归一化；低于阈值则全库，否则按分差决定单库或前两库。
+- **路由决策**：`refined_query` 与最多三个 `multi_view_queries` 在 `kb_portraits` 上分别 TopN，按 `kb_id` 做位置衰减与跨信号加权；低于阈值则全库，否则用 raw 分的绝对差、相对差及候选比例决定单库、双库或复杂问题最多三库。
 - **代码入口**：`modules/knowledge/service.py`、`portraits.py`、`router.py`。
 
 ### 3. 🔍 Retrieval（语义路由与混合检索）
@@ -125,6 +128,14 @@ Query: `为《浴血黑帮》这部电影挑选合适的海报封面和主题曲
 - **混合检索**：Dense（主查询 + 多视角融合）、Sparse（BGE-M3）、Visual（`image_vectors` 上 text_vec/clip_vec 双路）；视频以 Shot 的 caption/ASR 四路加权 RRF 为主，按视觉意图可增强关键帧。多路结果去重后加权 RRF 粗排。
 - **两阶段重排**：候选构建 (query, content) 对送 Cross-Encoder；与 RRF 分加权合并得 `final_top_k`；`implicit_enrichment` 等场景可做图片等配额保护。
 - **代码入口**：`modules/retrieval/service.py`、`processors/intent.py`、`processors/rewriter.py`、`search_engine.py`、`reranker.py`。
+
+### 3.5 🧭 Agent Runtime（有界深研与证据收敛）
+
+- **三态模式**：自动模式按问题复杂度选择路径；直接检索保持单次 RAG；Agent 深研在同一检索器之上迭代，不创建第二套索引。
+- **规划与工具**：LLM 只输出 `search/final` JSON 决策；自动工具白名单当前仅含只读 `multimodal_knowledge_search`。
+- **证据账本**：跨子查询按 `content_type + point_id` 去重，记录重复命中、最佳名次和来源检索，合并多模态意图与目标知识库。
+- **预算与降级**：轮数、单轮查询、总查询和证据池均有上限；规划器失败会回退原问题或基于已有证据收敛。
+- **代码入口**：`modules/agent/service.py`、`planner.py`、`tools.py`；完整的 WeKnora 对照研究与演进路线见 **[Agentic Upgrade Research](docs/AGENTIC_UPGRADE_WEKNORA_RESEARCH.md)**。
 
 ### 4. 💬 Generation（上下文构建与生成）
 
@@ -190,7 +201,7 @@ cp backend/.env.example backend/.env
 | `TAVILY_API_KEY` | **Tavily**：联网搜索、热点导入等需要 Tavily 时启用。在 [tavily.com](https://tavily.com/) 注册后在控制台获取 API Key。 |
 | `SERPAPI_KEY` | **SerpAPI**：例如「按关键词搜索图片导入」等需要 Google 等搜索结果时。在 [serpapi.com](https://serpapi.com/manage-api-key) 管理 API Key。 |
 | `PIXABAY_API_KEY` | **Pixabay**：Pixabay 图片搜索导入。在 [Pixabay API](https://pixabay.com/api/docs/) 申请。 |
-| `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 及其它 `FEISHU_*` | **飞书开放平台**：机器人长连接、卡片回复等；需将 `FEISHU_WS_ENABLED` 等与文档对齐。在 [飞书开放平台](https://open.feishu.cn/app) 创建企业自建应用并获取凭证。 |
+| `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 及其它 `FEISHU_*` | **飞书开放平台**：机器人长连接、卡片回复与飞书文档链接导入；文档导入还需 Docx/Wiki/素材/画板及按需 Sheets/Base 只读权限，并将目标文档授权给应用。详见 [FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md)。 |
 
 ### 🐍 2. Python 虚拟环境与后端依赖
 

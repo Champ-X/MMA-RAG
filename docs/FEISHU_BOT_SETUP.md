@@ -79,6 +79,21 @@
 
 保存后按提示完成**版本发布**或**可用范围**，使机器人在目标租户/群可用。
 
+### 2.1 飞书文档链接导入权限
+
+知识库的「URL 导入」支持 `/docx/` 与 `/wiki/` 链接。后端默认复用 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 获取 `tenant_access_token`，不依赖部署机安装 `lark-cli`。按实际文档内容开通以下只读权限：
+
+- 查看新版文档：`docx:document:readonly`
+- 解析 Wiki 节点：在控制台开通知识库节点读取权限
+- 下载正文图片和附件：`docs:document.media:download`
+- 解析画板节点与缩略图：`board:whiteboard:node:read`
+- 文档内嵌电子表格：`sheets:spreadsheet:readonly`
+- 文档内嵌多维表格：`bitable:app:readonly`
+
+应用 scope 只是第一层权限。使用 tenant token 时，还必须在目标文档右上角的「更多」→「添加文档应用」中把该应用添加为可读协作者；Wiki、嵌入 Sheet/Base 和画板也需要调用身份拥有对应资源的读取权限。若已有短期 `user_access_token`，可配置 `FEISHU_DOC_ACCESS_TOKEN` 覆盖 tenant token，但需要自行处理过期更新。
+
+解析结果会保留标题、段落、列表、代码、原生表格等结构；图片和画板缩略图进入知识库图片管道，画板节点文字进入文本索引，嵌入 Sheet/Base 会下钻读取受限行数。相关上限由 `FEISHU_DOC_MAX_BLOCKS`、`FEISHU_DOC_MAX_ASSETS`、`FEISHU_DOC_MAX_SHEET_ROWS`、`FEISHU_DOC_MAX_BITABLE_RECORDS` 控制。
+
 ### 3. 事件订阅：必须使用「长连接」
 
 1. 进入 **事件订阅**。
@@ -154,6 +169,8 @@
 | `FEISHU_WS_OPEN_TIMEOUT` | WebSocket 握手超时（秒），默认较大；弱网可调高。 |
 | `FEISHU_WS_PREFER_IPV4` | WSL 等环境下飞书域名解析到 IPv6 易卡住时，默认 `true` 强制 IPv4；若与代理冲突可试 `false`。 |
 | `FEISHU_MAX_REPLY_IMAGES` / `FEISHU_IMAGE_SEND_ENABLED` | 回复中配图数量与是否从 MinIO 读图上传飞书。 |
+| `FEISHU_DOC_ACCESS_TOKEN` | 可选的短期用户令牌；未配置时文档导入使用 App ID/Secret 换取 tenant token。 |
+| `FEISHU_DOC_MAX_*` | 文档 Block、素材、嵌入 Sheet 行数和 Base 记录数的导入安全上限。 |
 
 更多变量含义以 `backend/.env.example` 内注释为准。
 
@@ -183,6 +200,7 @@
 | 已连上但收不到消息 | 确认控制台为**长连接**且已订阅 `im.message.receive_v1`；群内是否 @ 机器人；是否仅一处进程使用该应用凭证。 |
 | 卡片流式更新失败 | 检查开放平台是否授予卡片写入权限；`FEISHU_RAG_CARD_STREAMING` 与权限是否匹配。 |
 | 回复无图 / 音频失败 | 检查 `FEISHU_IMAGE_SEND_ENABLED`、MinIO 与上传权限；音频 OPUS 依赖 ffmpeg。 |
+| 飞书文档导入返回 400/403 | 检查 Docx/Wiki/素材/画板/Sheets/Base 的只读 scope，并确认已通过「添加文档应用」把目标资源授权给应用。 |
 
 代码入口可参考：`backend/app/integrations/feishu_ws.py`、`feishu_handler.py`、`feishu_rag_card_v2.py`；探活：`backend/app/api/feishu.py`（路由前缀 `/api/feishu`）。
 

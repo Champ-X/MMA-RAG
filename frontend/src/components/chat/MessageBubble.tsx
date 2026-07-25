@@ -1535,6 +1535,15 @@ export function MessageBubble({
                 <MarkdownRenderer content={message.content} components={markdownComponents} />
               </Suspense>
 
+              {message.error && !thoughtData?._generation_failed && message.error !== 'stopped' && message.error !== 'stopped_hint' && (
+                <div
+                  className="mt-3 rounded-lg border border-rose-200/80 bg-rose-50/90 px-3 py-2 text-xs leading-relaxed text-rose-800 dark:border-rose-800/60 dark:bg-rose-950/35 dark:text-rose-200"
+                  role="alert"
+                >
+                  {message.error}
+                </div>
+              )}
+
               {isStreaming && message.content && (
                 <span className="ml-0.5 inline-block h-4 w-2 animate-pulse rounded-sm bg-slate-400 align-middle dark:bg-slate-500" />
               )}

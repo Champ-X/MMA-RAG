@@ -184,7 +184,7 @@ flowchart LR
 
 系统目标：构建**本地可运行、可扩展的语义路由多模态 Agentic RAG 系统**，具备：
 
-- **可扩展知识库**：支持用户自建多主题知识库、增量更新；支持多种内容来源（本地上传、URL 下载、RSS/热点、媒体下载等）。
+- **可扩展知识库**：支持用户自建多主题知识库、增量更新；支持本地上传、URL、飞书 Docx/Wiki、文件夹、热点与媒体下载等来源。
 - **多模态数据**：支持**文档**（PDF、Word、TXT、Markdown 等）、**图片**、**音频**、**视频**。文档与内嵌图、独立图、音、视在 Ingestion 与 Retrieval 中均已**贯通实现**（视频为 **MLLM Scene–Shot–ASR 解析 + Shot 四路向量** 写入 Qdrant，见多模态专文）。
 - **语义路由与混合检索**：根据查询自动路由至合适知识库；混合检索结合 **Dense、Sparse、Visual（图 + 可选并入视频关键帧）、Audio（CLAP + ASR/描述）、Video（caption/ASR 四路 RRF）**，并两阶段重排（RRF 粗排 + Cross-Encoder 精排）。
 - **统一 LLM 管理层**：意图识别、**VLM 图注、ASR 音频转写、多模态描述**、Embedding、Reranker、最终生成等由模块化 LLM Manager 统一调度，支持多厂商 API（如 SiliconFlow、OpenRouter、阿里云百炼、DeepSeek 等）。
@@ -252,7 +252,7 @@ flowchart LR
 - **文档内图片**：PDF 或 Markdown 解析时若发现内嵌图，先提取图片字节与在原文中的占位符（markdown_ref）；每张图单独走 VLM 描述 + 上传 MinIO + CLIP 向量化 + 写入 image_vectors，同时将生成的 caption 记下，在后续分块前插回原文占位符，再对整份文档做分块与向量化，保证图文一致。
 - **音频写入**：ASR 得到 transcript，LLM 生成 description，拼接后经与文档相同的 Dense 模型得到 `text_vec`；CLAP 对解码重采样后的波形提取 `clap_vec`；可选 sparse 写入同一 Point；集合 **`audio_vectors`**，详见 2.3 与多模态专文。
 - **视频写入**：MLLM 产出 Scene、Semantic Shot、关键帧与对齐 ASR；Shot 的 caption/ASR 分别写入 dense+sparse 四路向量至 **`video_shot_vectors`**，关键帧 `frame_vec` / `clip_vec` 写入 **`video_keyframe_vectors`**。Payload 含 Scene/Shot 时间范围、`scene_summary`、`caption`、`asr_text`、`frame_image_path` 等，详见多模态专文。
-- **多来源接入**：sources 层（URL、文件夹、Tavily 热点、媒体下载等）产出统一格式的「待处理文件」或 URL，由 Ingestion 统一执行下载（若需要）、解析、分块/多模态处理、向量化、写入；大任务通过 Celery 异步执行，进度写入 Redis 供前端轮询或 SSE 推送。
+- **多来源接入**：sources 层（URL、飞书 Docx/Wiki、文件夹、Tavily 热点、媒体下载等）产出统一格式的「待处理文件」。飞书源通过开放平台按 Block 读取正文结构，原生表格转 Markdown，图片与画板缩略图进入 `asset_map`，画板节点转为可检索文本，并继续下钻嵌入 Sheet/Base；随后统一交给 Ingestion 做分块、多模态处理、向量化与写入。大任务通过 Celery 异步执行，进度写入 Redis 供前端轮询或 SSE 推送。
 
 ### 2.2 分块策略
 
@@ -380,7 +380,7 @@ flowchart TB
 
 **实现方案要点：**
 
-- **输入**：除用户当前 query 外，将最近若干轮对话历史（如最近 5 轮、每条截断长度）格式化为文本一并放入 Prompt，便于指代消解与多轮语境下的意图判断。
+- **输入**：`context_manager.py` 先按完整对话轮次、消息数、总字符数和单条长度预算选择历史；同一份历史同时供意图识别、查询改写和最终生成使用，避免不同阶段看到相互矛盾的上下文切片。
 - **输出与校验**：LLM 返回的 JSON 需包含上述字段；若解析失败或缺少关键字段，则使用默认意图（如 factual、refined_query 为原 query、visual_intent 为 unnecessary），保证下游检索仍可执行。
 - **字段用途**：`refined_query`（或 dense_query）作为语义检索的主查询与路由查询向量来源；`sparse_keywords` 与 dense_query 可拼接后送 BGE-M3 生成稀疏查询向量；`multi_view_queries` 用于 Dense 多视角检索；`visual_intent` 控制是否执行 **Visual** 及 **视频检索中的 CLIP 分支**；`audio_intent` 控制是否执行 **Audio** 检索（`unnecessary` 时为空）；`video_intent` 主要调节 **Video 路** 在 RRF 中的权重（检索仍执行）。
 
@@ -388,7 +388,7 @@ flowchart TB
 
 **设计思路**：用户未指定库时，系统需要 **「库级语义摘要」** 而非逐文档扫描；通过对各模态向量 **聚类 + LLM 主题句**，把每个 KB 压缩成可检索的 **portrait 点**，在线阶段用 **查询向量最近邻** 完成候选库排序。
 
-**方案特点**：采样 **覆盖 Text/Image/Audio/Video**（视频用 Shot 的 `caption_dense` 与文本同空间），使路由感知全库内容形态；**Replace 策略** 更新画像；在线 **位置衰减 + min-max + 双阈值**（置信不足则全库）平衡 **精准单库** 与 **召回兜底**。
+**方案特点**：采样 **覆盖 Text/Image/Audio/Video**（视频用 Shot 的 `caption_dense` 与文本同空间），使路由感知全库内容形态；**Replace 策略** 更新画像；在线对 `refined_query` 与多视角查询做**多信号画像召回**，再以 raw 分的绝对差、相对差和候选比例决策，置信不足时全库回退。
 
 **为何画像用「聚类 + LLM 主题句」而非直接摘要文件名**：库级路由需要的是 **可与用户问句比对的语义摘要**；对海量 chunk 逐条摘要成本高且噪声大。聚类将 **相近语义折叠为簇心邻域**，再对少量代表样本做 LLM 主题句，在 **覆盖度、成本与可检索性** 之间折中。
 
@@ -396,15 +396,15 @@ flowchart TB
   - 从 **Text、Image、Audio、Video** 各 Collection 采样向量（文档 dense、图/音的 text 侧、视频 Shot 的 **caption_dense**），K-Means 聚类；聚类数 **K 取 `sqrt(N/2)`（经验公式）并上限 `max_kb_portrait_size`**。**轮廓系数**在聚类完成后计算，用于日志与质量观测，**不用肘部法则在多个 K 间搜索**。
   - 对每个簇取近中心若干 Chunk/条目，经 LLM 生成 topic_summary，再向量化写入 `kb_portraits`；采用 Replace 策略更新该 KB 的画像。
 - **在线路由**（`modules/knowledge/router.py`）：
-  - 使用 processed_query（refined_query）的向量在 `kb_portraits` 中检索 TopN 相似节点。
-  - 按 KB 聚合：位置衰减加权平均、min-max 归一化后按阈值决定单库/多库/全库（实现细节见同文件）。
+  - 批量向量化 `refined_query` 与最多三个 `multi_view_queries`，分别在 `kb_portraits` 中检索 TopN 相似节点。
+  - 每个信号内按 KB 做位置衰减加权平均，再按查询优先级与跨信号覆盖度聚合；置信度相对第一名归一化，但路由决策直接使用 raw 分，避免两个近似分数被 min-max 人为拉成 1 和 0。
 
 **实现方案要点：**
 
-**配置与数值时效**：下文中的路由阈值（如 `ROUTING_ALL_LOW_THRESHOLD`、`ROUTING_GAP_DOMINANT`）、精排 `top_k` / `final_top_k` 及 RRF 权重等，**均以仓库内当前实现为准**——见 `modules/knowledge/router.py`、`modules/retrieval/reranker.py`、`modules/retrieval/search_engine.py` 及应用内 `settings`（或等价配置模块）；本文所举数字仅供阅读对照。
+**配置与数值时效**：下文中的路由阈值（如 `ROUTING_ALL_LOW_THRESHOLD`、`ROUTING_DOMINANT_ABSOLUTE_GAP`、`ROUTING_DOMINANT_RELATIVE_GAP`）、精排 `top_k` / `final_top_k` 及 RRF 权重等，**均以仓库内当前实现为准**——见 `modules/knowledge/router.py`、`modules/retrieval/reranker.py`、`modules/retrieval/search_engine.py` 及应用内 `settings`（或等价配置模块）；本文所举数字仅供阅读对照。
 
 - **画像生成**：从该 KB 的 **Text、Image、Audio、Video** 各 Collection 按比例采样（视频为 Shot 点，使用 **caption_dense**）；若总条目数小于阈值（如 5000）则全量取，否则蓄水池采样并设上下限（如 50～1000）。采样时只带 id、vector、source_type（doc/image/audio/video），不加载正文以节省内存；确定聚类中心后，再按 id 回查各 Collection 取正文。K-Means 的 K 取 `sqrt(N/2)` 并限制在配置的 `max_kb_portrait_size` 内。每个簇取距离中心最近的若干样本，将其文本以「[文档片段]」「[图片描述]」「[音频转写/描述]」「[视频片段]」等前缀拼成 content_pieces，调用 LLM 生成 topic_summary，再 Dense 向量化写入 `kb_portraits`。存储前先删除该 kb_id 下全部旧画像（Replace 策略）。
-- **路由决策**：若用户已指定知识库则直接使用，不查画像。否则用 refined_query 的 Dense 向量在 `kb_portraits` 上做**全局**向量检索（不按 kb_id 过滤），取 TopN（如 30）个最相似节点。按 kb_id 聚合时，每个 KB 只取这 TopN 中属于该 KB 的、得分最高的前 K 个节点（如 5 个），对这些相似度做**位置衰减加权平均**（实现中为 `α^i` 权重、`i` 从 0 起，与文档常用写法 `w_i=α^(i-1)`（`i` 从 1 计）等价），得到该 KB 的 **raw 分**。若 **raw 分的全局最大值** 仍低于阈值（`modules/knowledge/router.py` 中 `ROUTING_ALL_LOW_THRESHOLD`，当前为 **0.08**），则判定「全部偏小」，改为拉取**全部知识库 id** 做全库检索（`low_confidence`）；否则再对 raw 分做 **min-max 归一化** 到 [0,1]，若第一名与第二名的归一化分差 ≥ **0.3**（`ROUTING_GAP_DOMINANT`）则只选第一名（单库），否则取前两名（多库）。最终输出 target_kb_ids 及置信度，供检索阶段 Pre-filter 使用。
+- **路由决策**：若用户已指定知识库则直接使用，不查画像。否则批量向量化 `refined_query` 与最多三个多视角查询，每个信号都在 `kb_portraits` 上做全局 TopN（当前 30）检索。信号内每个 KB 只取最高的前 K 个节点（当前 5）做位置衰减加权平均，随后按查询优先级和跨信号覆盖度聚合成 raw 分。若最大 raw 分低于 `ROUTING_ALL_LOW_THRESHOLD`（当前 0.08），则全库检索；否则置信度按第一名做相对归一化，决策本身同时检查 raw 分的绝对差与相对差。优势明确时选单库，近似分数时保留候选比例不低于阈值的前两库；复杂问题最多保留三库。画像为空时同样回退全库，而不是返回空目标。
 
 ### 3.3 混合检索（HybridSearchEngine）
 
@@ -524,6 +524,24 @@ flowchart TB
 - **统一接口**：chat（含多轮消息、temperature、**多模态输入如图片/音频**）、embed（文本列表）、rerank（query + documents）等对上层统一；底层各 provider 实现 OpenAI 兼容的请求/响应格式，Manager 负责拼装与解析。
 - **提示词**：所有模板字符串集中在 `prompt.py`，由 `prompt_engine` 加载并对外提供 `render_template(template_name, **kwargs)`；各业务模块只传变量名与值，不写死 Prompt 内容；**image_captioning、audio_transcription** 等模板支持文档内图上下文、语音/音乐策略等，便于全模态迭代。
 - **可观测与弹性**：每次调用可记录 task_type、model、耗时、Token 用量、成功/失败；超时或失败时可选择重试或回退到默认结果，精排/生成等关键路径可考虑备用模型切换（当前实现中部分能力可选配）。
+
+---
+
+## 五点五、Agent Runtime（可选增强层）
+
+**设计思路**：Agent Runtime 不拥有独立索引，而把完整的 Retrieval Service 暴露为受控只读工具。对话输入区提供自动、直接检索、Agent 深研三态控制；自动模式依据可解释的复杂度信号选择路径。直接模式执行一次 `Retrieval → Generation`；Agent 模式执行有界的 `Plan → Search → Observe` 循环，最后把合并后的标准 `RetrievalResult` 交还原 Generation 链路。
+
+**关键不变量**：
+
+- 每个子查询仍经过 Dense / Sparse / Visual / Audio / Video、KB 画像路由、RRF 与 Cross-Encoder；
+- `kb_id` 与 `file_id` 作用域在每次工具调用中原样透传；
+- 引用继续使用同一 ReferenceMap、MinIO 预签名 URL 与 `context_window`；
+- Agent 自动工具当前全部只读，注册表采用 first-wins；
+- 轮数、fan-out、总查询和证据池均有硬预算。
+
+**证据融合**：跨查询以 `content_type + point_id` 去重；记录命中次数、最佳名次和来源检索；重复命中只施加有上限的置信增益，避免查询数量淹没原始相关性。不同检索轮次中更强的 visual/audio/video intent 会被保留。
+
+**代码入口**：`modules/agent/`。WeKnora 源码对照、风险边界和 Phase 2–4 路线见 [AGENTIC_UPGRADE_WEKNORA_RESEARCH](./AGENTIC_UPGRADE_WEKNORA_RESEARCH.md)。
 
 ---
 
