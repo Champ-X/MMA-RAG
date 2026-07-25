@@ -1,0 +1,41 @@
+README.md
+  s_4b280906bf961d::t_a360070161c220 246-257
+backend/app/api/retrieval.py
+  s_4b280906bf961d::t_ad30e9c2468e10 1-260
+backend/app/main.py
+  s_4b280906bf961d::t_30bcdc570c30c6 71,87
+backend/tests/test_mma_rag_cli.py
+  s_4b280906bf961d::t_28e1de05040f0d 1-188
+backend/tests/test_retrieval_api.py
+  s_4b280906bf961d::t_2e7b8839108dbd 1-116
+scripts/install-codex-skill.sh
+  s_4b280906bf961d::t_bd0d49ffd2ba05 1-34
+skills/mma-rag/SKILL.md
+  s_4b280906bf961d::t_53cf6529a0dff4 1-32
+skills/mma-rag/agents/openai.yaml
+  s_4b280906bf961d::t_2513827f1f3ccf 1-4
+skills/mma-rag/references/cli-reference.md
+  s_4b280906bf961d::t_327b4ebcf18fc0 1-122
+skills/mma-rag/scripts/mma-rag
+  s_4b280906bf961d::t_78c754fc3831c7 1-4
+skills/mma-rag/scripts/mma_rag_cli.py
+  s_4b280906bf961d::t_97b8643733b979 1-698
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c1ea6c07eae7cb8e8d85afff8ddf22a26d862981",
+  "prompts": {},
+  "sessions": {
+    "s_4b280906bf961d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f99fd-6304-7600-b87e-52a582860b7e",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
