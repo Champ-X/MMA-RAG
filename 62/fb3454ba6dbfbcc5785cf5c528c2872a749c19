@@ -1,0 +1,23 @@
+README-en.md
+  s_b9c6f9fc3c0ef1::t_98e50ec3eb3f38 9
+README.md
+  s_b9c6f9fc3c0ef1::t_230852fba7f9d3 9,51,55-61,65,74,80-81,86,92,98,105,120,137,166,174-180,193,195-198,200,206-213,238-244,270-275,277,279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "62fb3454ba6dbfbcc5785cf5c528c2872a749c19",
+  "prompts": {},
+  "sessions": {
+    "s_b9c6f9fc3c0ef1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9987-e5e2-7242-b812-49aa93d7ef4a",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
