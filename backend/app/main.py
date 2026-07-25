@@ -68,7 +68,7 @@ app.add_middleware(
 )
 
 # 导入路由模块
-from app.api import chat, knowledge, upload, debug, import_api, feishu
+from app.api import chat, knowledge, upload, debug, import_api, feishu, retrieval
 from app.core.logger import setup_logger
 
 # 设置日志
@@ -84,6 +84,7 @@ app.include_router(upload.router, prefix="/api/upload", tags=["upload"])
 app.include_router(debug.router, prefix="/api/debug", tags=["debug"])
 app.include_router(import_api.router, prefix="/api/import", tags=["import"])
 app.include_router(feishu.router, prefix="/api/feishu", tags=["feishu"])
+app.include_router(retrieval.router, prefix="/api/v1/retrieval", tags=["retrieval"])
 
 # 全局异常处理
 @app.exception_handler(Exception)

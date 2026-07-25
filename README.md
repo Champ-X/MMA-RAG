@@ -243,6 +243,18 @@ chmod +x start-dev.sh
 | MinIO 控制台        | <http://localhost:9001> （账号密码与 `backend/.env` 或 `docker-compose.yml` 一致，本地多为 `minioadmin`）               |
 | Qdrant Dashboard | <http://localhost:6333/dashboard> （向量库 Web 控制台；端口与 `QDRANT_PORT` / `docker-compose.yml` 中映射一致，默认 `6333`） |
 
+### 🤖 5. 安装本地 Codex Skill
+
+项目包含一个内置 CLI 的 `mma-rag` Skill，可让本机 Codex 创建/查询知识库、上传多模态文件、等待入库、检索证据并生成回答：
+
+```bash
+./scripts/install-codex-skill.sh
+skills/mma-rag/scripts/mma-rag health
+skills/mma-rag/scripts/mma-rag kb list
+```
+
+安装脚本会在 `${CODEX_HOME:-$HOME/.codex}/skills/mma-rag` 创建指向仓库 Skill 的符号链接，不会覆盖已有同名目录。CLI 默认连接 `http://127.0.0.1:8000`；详细命令与安全上传目录配置见 [`skills/mma-rag/references/cli-reference.md`](skills/mma-rag/references/cli-reference.md)。
+
 <h2 id="可选系统依赖">🔧 可选系统依赖</h2>
 
 ### 📄 Office 预览（PPTX / DOCX）
