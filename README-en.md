@@ -6,7 +6,7 @@
 
 # Tessmora — An Omni-Modal Agentic Retrieval Platform
 
-<p align="center"><em>Every fragment finds its place.</em></p>
+<h3 align="center"><em>Every fragment finds its place.</em></h3>
 
 <p align="center">
   <img src="docs/images/tessmora-omni-banner.png" alt="Tessmora brings documents, photos, interview audio, and video into one agentic retrieval flow" width="100%" />
