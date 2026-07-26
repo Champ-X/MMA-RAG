@@ -1,0 +1,43 @@
+frontend/src/components/architecture/ArchitectureDiagram.tsx
+  s_1b7a8405fb6e93::t_0b000b770d50db 2,8-11,14-17,20-29,36-44,49-59,65,73,82-87,89-104,106-121,125,131,135,141
+frontend/src/components/architecture/ArchitectureNav.tsx
+  s_1b7a8405fb6e93::t_8f679cfdeb5c22 1,12-24,27,34,43,45-46,49
+frontend/src/components/architecture/DataFlowDiagram.tsx
+  s_1b7a8405fb6e93::t_1428e732b84b87 7-10,14-17,21-26,28-32,35-44,48-49,51-57,59-73,75-76,82-85,87-115
+frontend/src/components/architecture/ModuleExplorer.tsx
+  s_1b7a8405fb6e93::t_4a2a5692c89c52 3-4,30-48,55-56,58-73,75-82,84,86-87,90-94,96-107,112,114,116-126,128-132,134-145,147,149-166,172-183
+frontend/src/components/architecture/OverviewSection.tsx
+  s_1b7a8405fb6e93::t_a236ff472e5a71 1-32,41-47,51-56,58-59,63-66,68-71,74-95,98-117
+frontend/src/components/architecture/RequestFlowStepper.tsx
+  s_1b7a8405fb6e93::t_8293048f6867b7 1-2,21-24,35-39,42-45,49-65,69-93,95-103,107-111,113-122,125,127-129,131,134,161,164,166-169,190,198,200-203,208,210-213,219-220
+frontend/src/components/architecture/TechStackSection.tsx
+  s_1b7a8405fb6e93::t_e8dae4599c06d2 1,4-10,14-29,42-51,55-81,84-107
+frontend/src/components/chat/ThinkingCapsule.tsx
+  s_1b7a8405fb6e93::t_7e1e093185d72f 268-310,315-318,333-336,339,341-344,347-404,406-421
+frontend/src/components/layout/ConversationSidebar.tsx
+  s_1b7a8405fb6e93::t_c289522785ef0f 267,315,349,380,387,394,424-425,430-431,507-508,520
+frontend/src/data/architectureData.ts
+  s_1b7a8405fb6e93::t_50c8895f9331b7 31-32,183-184,202-203,220-221,239-240,258-259,276-277
+frontend/src/index.css
+  s_1b7a8405fb6e93::t_ae5b7b8bad4210 1,16-133,252-255,457-543
+frontend/src/pages/ArchitecturePage.tsx
+  s_1b7a8405fb6e93::t_516fa59978a4ce 2-14,42,74,88,91,93-115,117-134,136-138,142-143,152,158-167,174,176,179,181,190-337,339-344
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5178df7ccc46233b37e9f9e8f6a5e2e0ee62877c",
+  "prompts": {},
+  "sessions": {
+    "s_1b7a8405fb6e93": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9a57-cf6f-76a0-88ad-c5016b7206cb",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
