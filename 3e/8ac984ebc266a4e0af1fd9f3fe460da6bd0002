@@ -1,0 +1,75 @@
+CHANGELOG.md
+  s_1b7a8405fb6e93::t_1dfd396331d40c 3-11
+README-en.md
+  s_1b7a8405fb6e93::t_76920f30958a9e 12,15,17,19-21,23,25-33,35,37,39,41,43-50,52,54-57,59,61-67,69,71,73-74,76,78,80,82,84,86,88,90,92,94,96,98,100,102,104,106,108,110,112,114,117-122,124,132,134-142,144,146,150,155,158,162,164-167,169,171,173-180,182,184,186-187,190,192,195-199,202,204,206-210,212-214,216-227,229
+README.md
+  s_1b7a8405fb6e93::t_985586680757c0 12,15,17,19-21,23,25-33,35,37,39,41,43-50,52,54-57,59,61-67,69,71,73-74,76,78,80,82,84,86,88,90,92,94,96,98,100,102,104,106,108,110,112,114,116-122,124,132,134-142,144,146,150,155,158,162,164-167,169,171,173-180,182,184,186-188,190,192,195-199,202,204,206-210,212,214,216-225,227,229
+SECURITY.md
+  s_1b7a8405fb6e93::t_1b74b16fca315c 3-14,17-51,55
+backend/app/modules/knowledge/suggested_questions.py
+  s_6b9a029d71acce::t_3eccfb3dffec76 38,42-64,123-185,191,249,251-255,298-321,338-340,348,757,793,845-846
+backend/experiments/agentic_chunker/README.md
+  s_1b7a8405fb6e93::t_bd62186d765172 1,3,5,7-14,21-25
+backend/tests/test_suggested_questions.py
+  s_6b9a029d71acce::t_b89b05b70581e0 1-62
+docs/AGENTIC_UPGRADE_WEKNORA_RESEARCH.md
+  s_1b7a8405fb6e93::t_42b70dd34b0753 6-7,148-159,175
+docs/FEISHU_BOT_SETUP.md
+  s_1b7a8405fb6e93::t_ccbd725370f943 5-6
+docs/MMA_ARCHITECTURE.md
+  s_1b7a8405fb6e93::t_f6afe68a59d6e0 1,3,5,7,9-10,12,14,16-19,21,23-29,31,33,35,37,39-47,49,53-65,68,70,72-75,77,79,81-87,89,91,93-102,104,108-119,122,124,126-129,131,133,135,137-139,141,143,145,147-151,153,155,157-161,163,165-170,172,174,176,178,180-184,186,188,190,192,194,196,198-202,204,206,208,210-211,213,215-221,223,225,227-233,235,237,239,241,243-245,247,249,251,253-258,260,262,264,266-271,273,275,277-289
+docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md
+  s_1b7a8405fb6e93::t_3ed4492be79d89 5-6
+frontend/public/vendor-logos/README.md
+  s_1b7a8405fb6e93::t_f43472bd21c8e9 1,3,5-17,19,21-22,24,26
+frontend/src/components/architecture/ArchitectureDiagram.tsx
+  s_1b7a8405fb6e93::t_d61abaefa5274f 1-19,23-26,28-29,33-38,40-57,59,61-74,76-83,85-87,89-110,112-114
+frontend/src/components/architecture/ArchitectureNav.tsx
+  s_1b7a8405fb6e93::t_3bfd2418119b08 12-26,28-31,34-45
+frontend/src/components/architecture/DataFlowDiagram.tsx
+  s_1b7a8405fb6e93::t_d6e779f15c3595 1-2,4-17,19,21-28,31-34,36-45,48-62,65-67,69-71,73-77,83-88,91-93,95-100
+frontend/src/components/architecture/ModuleExplorer.tsx
+  s_1b7a8405fb6e93::t_92f01e5c41de54 2-11,15-16,19-26,28-32,35-44,46,48,50-59,61-82,84-86,88-113,115-127,129-130,132,134-135
+frontend/src/components/architecture/OverviewSection.tsx
+  s_1b7a8405fb6e93::t_a53423764d2458 1-9,13-21,23-37,39-43,45-61,63-71,73-90,92-103
+frontend/src/components/architecture/RequestFlowStepper.tsx
+  s_1b7a8405fb6e93::t_25120216bf373b 1-2,4,6-15,18-28,30-33,36-45,47-59,61-74,76-78,82-94,96-103,105-111,113-114,116,121-198
+frontend/src/components/architecture/TechStackSection.tsx
+  s_1b7a8405fb6e93::t_68eb04d2e13b28 1,4-10,13-19,21-27,29-36,39-48,50-65,68-76,78
+frontend/src/components/chat/SuggestedQuestions.tsx
+  s_6b9a029d71acce::t_59ca52d2147826 2,11-18,106-135,183-195,259-273,470-473,509,517-527,538,540,544,548-550,554-560
+frontend/src/data/architectureData.ts
+  s_1b7a8405fb6e93::t_97be0d9a437395 17,21,38-40,43-46,59-60,64-65,69-70,74-75,79-80,84-85,90-93,97-98,100,102-103,108-112,114-116,119-123,125-127,130-134,136-138,141-145,147-149,152-156,158-160,163-167,169-171,178-179,182-185,188-190,195-196,199-201,204-206,211-212,215-235,238-240,245-246,249-251,254-256,261-262,265-267,270-272,277,279-289,292-302,309,311,315,317,323,329,333-335,338-339,341,344-345,347,350-351,353,357,359,362-363,365
+frontend/src/pages/ArchitecturePage.tsx
+  s_1b7a8405fb6e93::t_def6dafaf34a5f 1-2,9,24,27,29-30,39-40,42-63,65,67-70,72,79,81-105,108-129,132-163,168-176
+skills/mma-rag/SKILL.md
+  s_1b7a8405fb6e93::t_10d9269e1cc36b 3,6,8,13,19,25
+skills/mma-rag/references/cli-reference.md
+  s_1b7a8405fb6e93::t_b0c4ea961fb130 1-3,83,87-88,110-111,125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3e8ac984ebc266a4e0af1fd9f3fe460da6bd0002",
+  "prompts": {},
+  "sessions": {
+    "s_1b7a8405fb6e93": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9a57-cf6f-76a0-88ad-c5016b7206cb",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    },
+    "s_6b9a029d71acce": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9c5f-7064-7400-95c7-1050bd2f1280",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
