@@ -1,0 +1,41 @@
+frontend/src/App.tsx
+  s_f44ffc7bd0656c::t_4430c2b1f9d326 1,12-18
+frontend/src/components/architecture/ArchitectureDiagram.tsx
+  s_f44ffc7bd0656c::t_c7fd6b93f4ead5 10,16,22,28,40,44,53-54,104
+frontend/src/components/architecture/ArchitectureNav.tsx
+  s_f44ffc7bd0656c::t_4909948da85ba6 12-13,17-18,20-24,31,36,38,41,43,45,53
+frontend/src/components/architecture/DataFlowDiagram.tsx
+  s_f44ffc7bd0656c::t_339f6b0e097f33 39-40,44
+frontend/src/components/architecture/OverviewSection.tsx
+  s_f44ffc7bd0656c::t_51342a3f9645d7 8,15,22,29,55-56,59,69
+frontend/src/components/architecture/RequestFlowStepper.tsx
+  s_f44ffc7bd0656c::t_d9ab1ee7c5c96e 39,44,53
+frontend/src/components/architecture/TechStackSection.tsx
+  s_f44ffc7bd0656c::t_b867b777e2b976 46-47,51
+frontend/src/components/knowledge/KnowledgeList.tsx
+  s_f44ffc7bd0656c::t_18270e12d5c6a6 3,36-84,259-276,2312-2325,2328-2332,2364,2390-2456,2490-2492,2494,2511-2515,2517,2520-2523,2526,2528-2529,2534-2552,2558,2560,2563,2577,2579,3120,3198-3211,3214-3230,3233-3236,3239-3240,3242,3244,3247,3250,3253,3255-3257,3265,3267-3269,3275,3330-3340,3342,3348,3358-3359,3363,3368-3375,3380-3387,3390-3397,3400-3407,3444-3449,3631-3633,3658,3670,3970-3976,4057-4059
+frontend/src/components/layout/AppLayout.tsx
+  s_f44ffc7bd0656c::t_6ba31bcf282513 2,43-51,64,89-90,112-128,148-153,158-167,191,218-228
+frontend/src/index.css
+  s_f44ffc7bd0656c::t_8710455553258f 21-36,52-71
+frontend/src/pages/ArchitecturePage.tsx
+  s_f44ffc7bd0656c::t_12ff2c8fa8fe46 15,26-27,29,31-33,35-42,44-46,48,50,52-53,56,86-99,103-105,117-118,121,131-137,144,152,163,174,184-185,188,207,212-250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5845b4500175bb5d254faf2f28c7031244fc890b",
+  "prompts": {},
+  "sessions": {
+    "s_f44ffc7bd0656c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9eee-6aee-7682-b90c-41a1e3bb4fce",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
