@@ -43,12 +43,12 @@ export function TechStackSection() {
         <div className="max-w-2xl">
           <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2f7f93] dark:text-[#7fc2cf]">Runtime boundary</p>
           <h2 className="architecture-display mt-3 text-3xl font-semibold leading-tight tracking-[-0.035em] text-[#102d42] [text-wrap:balance] dark:text-[#edf6f3] sm:text-[2.55rem]">
-            <span className="sm:hidden">技术选型，<br />服务于边界，<br />而不是反过来</span>
-            <span className="hidden sm:inline">技术选型服务于边界，而不是反过来</span>
+            <span className="sm:hidden">运行时组件，<br />服务于证据边界，<br />而不是反过来</span>
+            <span className="hidden sm:inline">运行时组件服务于证据边界，而不是反过来</span>
           </h2>
         </div>
         <p className="max-w-2xl text-sm leading-7 text-[#5a7075] dark:text-[#a7bcbd] sm:text-[15px] lg:justify-self-end">
-          下列组件是当前运行时快照。可选基础设施和现有约束被明确标出，避免把集成能力误读为在线检索的强依赖。
+          下列组件是当前实现快照：哪些服务位于请求主路径、哪些只是可选控制面、哪些能力尚未开放，都会明确标出，避免把“已接入”误读为“在线问答强依赖”。
         </p>
       </div>
 

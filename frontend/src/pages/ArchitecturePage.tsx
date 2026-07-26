@@ -12,8 +12,7 @@ import {
   Sparkles,
   Video,
 } from 'lucide-react'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { architectureSections, coreModules, type ArchitectureSectionId } from '@/data/architectureData'
+import { architectureSections, coreModules, overviewTags, type ArchitectureSectionId } from '@/data/architectureData'
 import { ArchitectureNav } from '@/components/architecture/ArchitectureNav'
 import { OverviewSection } from '@/components/architecture/OverviewSection'
 import { ArchitectureDiagram } from '@/components/architecture/ArchitectureDiagram'
@@ -24,35 +23,37 @@ import { TechStackSection } from '@/components/architecture/TechStackSection'
 
 export function ArchitecturePage() {
   const [activeSection, setActiveSection] = useState<ArchitectureSectionId>('overview')
-  const scrollAreaRef = useRef<HTMLDivElement | null>(null)
+  const scrollViewportRef = useRef<HTMLDivElement | null>(null)
+  const stickyNavRef = useRef<HTMLDivElement | null>(null)
 
-  const getScrollContainer = useCallback(() => {
-    const viewport = scrollAreaRef.current?.firstElementChild
-    return viewport instanceof HTMLDivElement ? viewport : null
-  }, [])
-
-  const handleNavigate = useCallback((id: ArchitectureSectionId) => {
+  const handleNavigate = useCallback((id: ArchitectureSectionId, options: { writeHistory?: boolean } = {}) => {
     setActiveSection(id)
-    const section = document.getElementById(id)
-    const scrollContainer = getScrollContainer()
-
-    if (section && scrollContainer) {
-      const containerRect = scrollContainer.getBoundingClientRect()
-      const sectionRect = section.getBoundingClientRect()
-      const nextTop = scrollContainer.scrollTop + sectionRect.top - containerRect.top - 78
-
-      scrollContainer.scrollTo({
-        top: Math.max(nextTop, 0),
-        behavior: 'smooth',
-      })
-      return
+    if (options.writeHistory !== false && window.location.hash !== `#${id}`) {
+      window.history.pushState(null, '', `${window.location.pathname}${window.location.search}#${id}`)
     }
 
-    section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [getScrollContainer])
+    // ScrollArea 的实际滚动层是内部 viewport。这里直接持有 viewport ref，避免通过
+    // firstElementChild 猜测 DOM 结构，在懒加载/样式调整后导致导航失效。
+    window.requestAnimationFrame(() => {
+      const section = document.getElementById(id)
+      const viewport = scrollViewportRef.current
+      if (!section || !viewport) return
+
+      const viewportRect = viewport.getBoundingClientRect()
+      const sectionRect = section.getBoundingClientRect()
+      const stickyNavHeight = stickyNavRef.current?.getBoundingClientRect().height ?? 0
+      const nextTop = viewport.scrollTop + sectionRect.top - viewportRect.top - stickyNavHeight - 18
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+      viewport.scrollTo({
+        top: Math.max(nextTop, 0),
+        behavior: reducedMotion ? 'auto' : 'smooth',
+      })
+    })
+  }, [])
 
   useEffect(() => {
-    const root = getScrollContainer()
+    const root = scrollViewportRef.current
     if (!root) return
 
     const observer = new IntersectionObserver(
@@ -82,13 +83,26 @@ export function ArchitecturePage() {
     })
 
     return () => observer.disconnect()
-  }, [getScrollContainer])
+  }, [])
+
+  useEffect(() => {
+    const readSectionFromHash = () => {
+      const candidate = window.location.hash.replace(/^#/, '') as ArchitectureSectionId
+      if (architectureSections.some((section) => section.id === candidate)) {
+        handleNavigate(candidate, { writeHistory: false })
+      }
+    }
+
+    readSectionFromHash()
+    window.addEventListener('popstate', readSectionFromHash)
+    return () => window.removeEventListener('popstate', readSectionFromHash)
+  }, [handleNavigate])
 
   return (
     <div className="architecture-page h-full min-h-0">
-      <ScrollArea
-        ref={scrollAreaRef}
-        className="h-full rounded-[22px] border border-[#cad8d3] bg-[#f3f6f2] shadow-[0_24px_80px_-54px_rgba(16,45,66,0.55)] dark:border-[#1f3d49] dark:bg-[#071a24]"
+      <div
+        ref={scrollViewportRef}
+        className="architecture-scroll-viewport h-full overflow-y-auto rounded-[22px] border border-[#cad8d3] bg-[#f3f6f2] shadow-[0_24px_80px_-54px_rgba(16,45,66,0.55)] dark:border-[#1f3d49] dark:bg-[#071a24]"
       >
         <header className="architecture-hero relative overflow-hidden border-b border-[#c9d9d3] dark:border-[#1e414d]">
           <div className="architecture-contours" aria-hidden />
@@ -100,11 +114,11 @@ export function ArchitecturePage() {
                   Tessmora system atlas
                 </div>
                 <h1 className="architecture-display mt-6 text-[2.65rem] font-semibold leading-[1.1] tracking-[-0.045em] text-[#102d42] [text-wrap:balance] dark:text-[#eef7f4] sm:text-[4rem] lg:text-[4.35rem] 2xl:text-[4.65rem]">
-                  <span className="block">一个检索内核，</span>
-                  <span className="block text-[#2f7f93] dark:text-[#86c8d3]">服务两种推理深度</span>
+                  <span className="block">同一份证据，</span>
+                  <span className="block text-[#2f7f93] dark:text-[#86c8d3]">恰到好处的推理深度</span>
                 </h1>
                 <p className="mt-6 max-w-2xl text-[15px] leading-8 text-[#526b72] dark:text-[#afc4c5] sm:text-base">
-                  Tessmora 让文档、图片、音频和视频保留各自最合适的理解方式，再汇入同一套证据合同。简单问题一次检索，复杂问题由 Agent 在明确预算内补充取证。
+                  Tessmora 不把多模态素材粗暴压成一种文本。文档、图片、音频与视频先按各自的结构被理解，再汇入同一份可排序、可引用、可回看的证据合同；简单问题一次取证，复杂问题才在严格预算内补查。
                 </p>
 
                 <div className="mt-7 flex flex-wrap items-center gap-2" aria-label="支持的证据模态">
@@ -114,13 +128,20 @@ export function ArchitecturePage() {
                   <Modality icon={<Video />} label="Video" />
                 </div>
 
+                <div className="mt-8 grid max-w-[37rem] grid-cols-2 overflow-hidden rounded-[18px] border border-[#b8ccc5] bg-white/40 dark:border-[#2d505b] dark:bg-white/[0.035] sm:grid-cols-4">
+                  <ArchitectureSignal value="4" label="原生模态" detail="文 · 图 · 声 · 视频" />
+                  <ArchitectureSignal value="2" label="执行路径" detail="Direct / Agent" bordered />
+                  <ArchitectureSignal value="1" label="证据合同" detail="RetrievalResult" bordered />
+                  <ArchitectureSignal value="≤3" label="Agent 轮次" detail="默认硬预算" bordered />
+                </div>
+
                 <div className="mt-8 flex flex-wrap gap-3">
                   <button
                     type="button"
                     onClick={() => handleNavigate('overview')}
                     className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#102d42] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_30px_-18px_rgba(16,45,66,0.9)] transition-transform duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7f93] focus-visible:ring-offset-2 active:translate-y-0 dark:bg-[#dbece7] dark:text-[#102d42] dark:focus-visible:ring-offset-[#071a24]"
                   >
-                    先看设计原则
+                    阅读系统契约
                     <ArrowDown className="h-4 w-4" />
                   </button>
                   <button
@@ -128,7 +149,7 @@ export function ArchitecturePage() {
                     onClick={() => handleNavigate('system-architecture')}
                     className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#afc8c2] bg-white/45 px-5 py-2.5 text-sm font-semibold text-[#173b4d] transition-colors hover:border-[#2f7f93] hover:bg-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7f93]/70 dark:border-[#315461] dark:bg-white/[0.04] dark:text-[#dce9e6] dark:hover:bg-white/[0.08]"
                   >
-                    打开完整架构图
+                    查看分层架构
                     <ArrowRight className="h-4 w-4" />
                   </button>
                 </div>
@@ -139,7 +160,7 @@ export function ArchitecturePage() {
           </div>
         </header>
 
-        <div className="sticky top-0 z-30 border-b border-[#c7d7d1] bg-[#f3f6f2]/90 backdrop-blur-xl dark:border-[#1e414d] dark:bg-[#071a24]/90">
+        <div ref={stickyNavRef} className="sticky top-0 z-30 border-b border-[#c7d7d1] bg-[#f3f6f2]/90 backdrop-blur-xl dark:border-[#1e414d] dark:bg-[#071a24]/90">
           <div className="mx-auto max-w-[1480px] px-3 sm:px-7 lg:px-11 xl:px-16">
             <ArchitectureNav
               sections={architectureSections}
@@ -150,6 +171,7 @@ export function ArchitecturePage() {
         </div>
 
         <div className="mx-auto flex max-w-[1480px] flex-col gap-24 px-5 py-14 sm:px-8 sm:py-18 lg:gap-32 lg:px-12 lg:py-24 xl:px-16">
+          <ArchitectureReadingGuide />
           <OverviewSection />
           <ArchitectureDiagram />
           <RequestFlowStepper />
@@ -159,11 +181,11 @@ export function ArchitecturePage() {
               eyebrow="Module contracts"
               title={
                 <>
-                  <span className="block sm:inline">六个模块，</span>
-                  <span className="block sm:inline">一组清晰契约</span>
+                  <span className="block sm:inline">六个领域模块，</span>
+                  <span className="block sm:inline">围绕同一份证据合同协作</span>
                 </>
               }
-              description="模块边界不是代码目录的复述。选择一个模块，查看它接收什么、交付什么，以及职责落在哪些当前代码入口。"
+              description="模块边界不是代码目录的复述。选择一个模块即可查看它接收什么、需要做出哪些关键决定、最终交付什么，以及这些职责对应到哪些当前代码入口。"
             />
             <ModuleExplorer modules={coreModules} />
           </section>
@@ -182,8 +204,47 @@ export function ArchitecturePage() {
             </span>
           </footer>
         </div>
-      </ScrollArea>
+      </div>
     </div>
+  )
+}
+
+function ArchitectureSignal({
+  value,
+  label,
+  detail,
+  bordered = false,
+}: {
+  value: string
+  label: string
+  detail: string
+  bordered?: boolean
+}) {
+  return (
+    <div className={`min-w-0 px-3 py-3 ${bordered ? 'border-l border-[#b8ccc5] dark:border-[#2d505b]' : ''}`}>
+      <p className="font-mono text-base font-semibold tracking-[-0.05em] text-[#173b4d] dark:text-[#e4f1ee]">{value}</p>
+      <p className="mt-0.5 text-[11px] font-semibold text-[#4f6f73] dark:text-[#a3bbbc]">{label}</p>
+      <p className="mt-1 font-mono text-[9px] leading-4 text-[#789093] dark:text-[#7e9da0]">{detail}</p>
+    </div>
+  )
+}
+
+function ArchitectureReadingGuide() {
+  return (
+    <aside className="architecture-reading-guide grid gap-5 overflow-hidden rounded-[24px] border border-[#b8ccc5] bg-[#e8f0eb]/75 p-5 shadow-[0_18px_50px_-42px_rgba(16,45,66,0.8)] dark:border-[#2d505b] dark:bg-[#0b2530]/72 sm:p-6 lg:grid-cols-[minmax(17rem,0.55fr)_minmax(0,1fr)] lg:items-center">
+      <div>
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[#2f7f93] dark:text-[#83c4cf]">Reading guide</p>
+        <h2 className="architecture-display mt-2 text-2xl font-semibold tracking-[-0.035em] text-[#102d42] dark:text-[#eaf4f0]">先找证据主干，再看实现细节</h2>
+        <p className="mt-2 text-xs leading-6 text-[#5d7478] dark:text-[#9cb6b7]">顶部目录会滚动到对应章节并同步更新高亮。建议按“系统契约 → 分层架构 → 问答链路 → 模块与边界”的顺序阅读。</p>
+      </div>
+      <div className="flex flex-wrap content-center gap-2">
+        {overviewTags.map((tag) => (
+          <span key={tag} className="rounded-full border border-[#bed0ca] bg-white/45 px-3 py-1.5 font-mono text-[10px] font-medium tracking-[-0.02em] text-[#48686d] dark:border-[#31525e] dark:bg-white/[0.035] dark:text-[#a7c0c0]">
+            {tag}
+          </span>
+        ))}
+      </div>
+    </aside>
   )
 }
 

@@ -18,6 +18,22 @@ body {
   font-family: 'Manrope', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
 }
 
+.architecture-scroll-viewport {
+  scrollbar-color: rgb(109 138 137 / 0.62) transparent;
+  scrollbar-width: thin;
+}
+
+.architecture-scroll-viewport::-webkit-scrollbar {
+  width: 10px;
+}
+
+.architecture-scroll-viewport::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 9999px;
+  background: rgb(109 138 137 / 0.62);
+  background-clip: padding-box;
+}
+
 .architecture-page .font-mono {
   font-family: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
 }
@@ -31,6 +47,26 @@ body {
     radial-gradient(circle at 84% 18%, rgb(47 127 147 / 0.13), transparent 28rem),
     radial-gradient(circle at 14% 86%, rgb(95 142 114 / 0.1), transparent 24rem),
     linear-gradient(145deg, #f6f8f3 0%, #edf4f0 54%, #edf2ed 100%);
+}
+
+.architecture-reading-guide {
+  position: relative;
+  isolation: isolate;
+}
+
+.architecture-reading-guide::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: '';
+  opacity: 0.46;
+  background:
+    radial-gradient(circle at 86% 28%, rgb(47 127 147 / 0.16), transparent 11rem),
+    linear-gradient(108deg, transparent 0 57%, rgb(95 142 114 / 0.08) 57% 58%, transparent 58% 100%);
+}
+
+.dark .architecture-reading-guide::before {
+  opacity: 0.7;
 }
 
 .dark .architecture-hero {

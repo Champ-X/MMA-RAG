@@ -36,12 +36,12 @@ export function RequestFlowStepper() {
         <div className="max-w-2xl">
           <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2f7f93] dark:text-[#7fc2cf]">Request journey</p>
           <h2 className="architecture-display mt-3 text-3xl font-semibold leading-tight tracking-[-0.035em] text-[#102d42] [text-wrap:balance] dark:text-[#edf6f3] sm:text-[2.55rem]">
-            一处分流，两种推理深度
+            请求先选取证策略，再决定是否深研
           </h2>
         </div>
         <div className="lg:justify-self-end">
           <p className="max-w-xl text-sm leading-7 text-[#5a7075] dark:text-[#a7bcbd] sm:text-[15px]">
-            切换路径，观察只有第三阶段发生变化。上下文恢复、引用映射与答案交付始终复用同一份合同。
+            切换路径可看到真正的差异只发生在取证阶段：Direct 一次完成，Agent 在预算内补查。会话上下文、范围约束、引用映射和最终交付始终复用同一份合同。
           </p>
         </div>
       </div>
@@ -50,7 +50,7 @@ export function RequestFlowStepper() {
         <div className="flex flex-col gap-4 border-b border-[#c5d5cf] p-4 dark:border-[#294a56] sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5">
           <div>
             <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#718587] dark:text-[#89a5a7]">Choose execution policy</p>
-            <p className="mt-1 text-[13px] font-semibold text-[#17384a] dark:text-[#e5efec]">同一个问题入口，不同的取证预算</p>
+            <p className="mt-1 text-[13px] font-semibold text-[#17384a] dark:text-[#e5efec]">同一个问题入口，只有取证预算与停止规则不同</p>
           </div>
           <div
             role="tablist"

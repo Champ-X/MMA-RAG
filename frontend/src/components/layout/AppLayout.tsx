@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import { useChatStore } from '@/store/useChatStore'
 import { useConfigStore } from '@/store/useConfigStore'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
@@ -40,6 +40,15 @@ function RoutePanelLoading({ label }: { label: string }) {
 export function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { sessionId: routeSessionId, knowledgeBaseId: routeKnowledgeBaseId } = useParams<{
+    sessionId?: string
+    knowledgeBaseId?: string
+  }>()
+  const pathname = location.pathname
+  const isChatActive = pathname === '/' || pathname.startsWith('/chat/')
+  const isKnowledgeActive = pathname === '/knowledge' || pathname.startsWith('/knowledge/')
+  const isSettingsActive = pathname === '/settings'
+  const isArchitectureActive = pathname === '/architecture'
   const {
     sessions,
     activeSessionId,
@@ -52,7 +61,7 @@ export function AppLayout() {
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [hasVisitedKnowledge, setHasVisitedKnowledge] = useState(
-    () => location.pathname === '/knowledge'
+    () => location.pathname === '/knowledge' || location.pathname.startsWith('/knowledge/')
   )
   const [hasVisitedSettings, setHasVisitedSettings] = useState(
     () => location.pathname === '/settings'
@@ -69,8 +78,6 @@ export function AppLayout() {
     .filter((m) => m.role === 'assistant')
     .pop()
   const citations = lastAssistant?.citations ?? []
-  const pathname = location.pathname
-
   const toggleTheme = () => {
     const nextTheme = resolvedTheme === 'dark' ? 'light' : 'dark'
     setTheme(nextTheme)
@@ -79,18 +86,14 @@ export function AppLayout() {
   }
 
   const getActiveView = (): SidebarView => {
-    if (pathname === '/') return 'chat'
-    if (pathname === '/knowledge') return 'knowledge'
+    if (isChatActive) return 'chat'
+    if (isKnowledgeActive) return 'knowledge'
     if (pathname === '/settings') return 'settings'
     if (pathname === '/architecture') return 'architecture'
     return 'chat'
   }
 
   const activeView = getActiveView()
-  const isChatActive = pathname === '/'
-  const isKnowledgeActive = pathname === '/knowledge'
-  const isSettingsActive = pathname === '/settings'
-  const isArchitectureActive = pathname === '/architecture'
 
   useEffect(() => {
     void loadConfig()
@@ -105,6 +108,23 @@ export function AppLayout() {
   useEffect(() => {
     void fetchKnowledgeBases()
   }, [fetchKnowledgeBases])
+
+  // URL 是当前工作上下文的一部分：从会话链接进入时切换到对应会话；未命中本地会话时，
+  // 保留当前会话而不是错误地创建一个同名会话。
+  useEffect(() => {
+    if (!routeSessionId || !isChatActive || activeSessionId === routeSessionId) return
+    if (sessions.some((candidate) => candidate.id === routeSessionId)) {
+      switchSession(routeSessionId)
+    }
+  }, [activeSessionId, isChatActive, routeSessionId, sessions, switchSession])
+
+  // 新建会话由 ChatInterface 在后台完成后，根路径也应同步为可定位的会话 URL。
+  useEffect(() => {
+    if (!isChatActive || !activeSessionId || routeSessionId === activeSessionId) return
+    // 先让上一个 effect 将 URL 中已存在的会话设为 active，避免在同一轮 effect 中又改回旧会话。
+    if (routeSessionId && sessions.some((candidate) => candidate.id === routeSessionId)) return
+    navigate(`/chat/${encodeURIComponent(activeSessionId)}`, { replace: pathname === '/' })
+  }, [activeSessionId, isChatActive, navigate, pathname, routeSessionId, sessions])
 
   useEffect(() => {
     if (isKnowledgeActive) {
@@ -125,13 +145,26 @@ export function AppLayout() {
   }, [isArchitectureActive])
 
   const handleNewConversation = () => {
-    navigate('/')
-    void createSessionFromApi().catch(() => createSession())
+    void createSessionFromApi().then((sessionId) => {
+      navigate(`/chat/${encodeURIComponent(sessionId)}`)
+    }).catch(() => {
+      const sessionId = createSession()
+      navigate(`/chat/${encodeURIComponent(sessionId)}`)
+    })
   }
 
   const handleSelectConversation = (sessionId: string) => {
     switchSession(sessionId)
-    navigate('/')
+    navigate(`/chat/${encodeURIComponent(sessionId)}`)
+  }
+
+  const handleDeleteConversation = (sessionId: string) => {
+    const wasActive = activeSessionId === sessionId
+    const nextSession = sessions.find((session) => session.id !== sessionId)
+    deleteSession(sessionId)
+    if (wasActive) {
+      navigate(nextSession ? `/chat/${encodeURIComponent(nextSession.id)}` : '/')
+    }
   }
 
   const handleNavigate = (view: Exclude<SidebarView, 'chat'>) => {
@@ -155,7 +188,7 @@ export function AppLayout() {
         onToggleTheme={toggleTheme}
         onNewConversation={handleNewConversation}
         onSelectConversation={handleSelectConversation}
-        onDeleteConversation={deleteSession}
+        onDeleteConversation={handleDeleteConversation}
         onNavigate={handleNavigate}
       />
 
@@ -182,7 +215,17 @@ export function AppLayout() {
         >
           {(isKnowledgeActive || hasVisitedKnowledge) ? (
             <Suspense fallback={<RoutePanelLoading label="正在载入知识库工作台…" />}>
-              <KnowledgeList />
+              <KnowledgeList
+                routeKnowledgeBaseId={routeKnowledgeBaseId}
+                isKnowledgePageActive={isKnowledgeActive}
+                onRouteChange={(knowledgeBaseId) => {
+                  navigate(
+                    knowledgeBaseId
+                      ? `/knowledge/${encodeURIComponent(knowledgeBaseId)}`
+                      : '/knowledge'
+                  )
+                }}
+              />
             </Suspense>
           ) : null}
         </div>
