@@ -1,102 +1,81 @@
+import { ShieldAlert } from 'lucide-react'
 import { techStackItems } from '@/data/architectureData'
 
-const categoryLabel: Record<
-  (typeof techStackItems)[number]['category'],
-  { label: string; color: string; bg: string }
-> = {
-  backend: {
-    label: '后端',
-    color: 'text-emerald-700 dark:text-emerald-300',
-    bg: 'bg-emerald-50 dark:bg-emerald-950/30',
-  },
-  frontend: {
-    label: '前端',
-    color: 'text-sky-700 dark:text-sky-300',
-    bg: 'bg-sky-50 dark:bg-sky-950/30',
-  },
-  storage: {
-    label: '存储',
-    color: 'text-amber-700 dark:text-amber-300',
-    bg: 'bg-amber-50 dark:bg-amber-950/30',
-  },
-  model: {
-    label: '模型',
-    color: 'text-violet-700 dark:text-violet-300',
-    bg: 'bg-violet-50 dark:bg-violet-950/30',
-  },
-  infra: {
-    label: '基础设施',
-    color: 'text-slate-700 dark:text-slate-300',
-    bg: 'bg-slate-50 dark:bg-slate-900/60',
-  },
-  integration: {
-    label: '集成',
-    color: 'text-sky-700 dark:text-sky-300',
-    bg: 'bg-sky-50 dark:bg-sky-950/30',
-  },
+const categoryLabels: Record<(typeof techStackItems)[number]['category'], string> = {
+  backend: 'Backend',
+  frontend: 'Frontend',
+  storage: 'Storage',
+  model: 'Models',
+  infra: 'Infrastructure',
+  integration: 'Optional integrations',
 }
 
+const knownBoundaries = [
+  'Chat session 与检索统计仍保存在进程内，多实例部署前需要迁移到 Redis 或数据库。',
+  '应用 API 当前没有内置用户鉴权，开发配置允许任意 CORS 来源，不能直接暴露到公网。',
+  'Agent 自动工具当前只有只读 multimodal_knowledge_search，尚无写工具、审批、MCP 或沙箱。',
+  '飞书聊天当前走直接检索路径，三态 Agent 模式由 Web Chat API 与 mma-rag ask 提供。',
+]
+
 export function TechStackSection() {
+  const groups = Object.entries(
+    techStackItems.reduce<Record<string, typeof techStackItems>>((acc, item) => {
+      ;(acc[item.category] ||= []).push(item)
+      return acc
+    }, {})
+  )
+
   return (
-    <section id="tech-stack" className="scroll-mt-24 space-y-4">
-      <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-slate-100/90 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm dark:border-slate-700/80 dark:bg-slate-800/70 dark:text-slate-100">
-        <span className="h-2 w-2 rounded-full bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-500 shadow-[0_0_8px_rgba(99,102,241,0.45)]" />
-        <span>技术栈与非功能特性</span>
+    <section id="tech-stack" className="scroll-mt-24">
+      <div className="max-w-3xl">
+        <h2 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950 [text-wrap:balance] dark:text-white sm:text-3xl">
+          技术选型与当前边界
+        </h2>
+        <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300 sm:text-[15px]">
+          这里记录运行中的基础设施和明确限制，避免把可选集成或未来规划误写成已完成能力。
+        </p>
       </div>
 
-      <p className="max-w-4xl break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-        后端 FastAPI + DDD，前端 React + Vite + Tailwind；数据平面为 MinIO、Qdrant、Redis（Celery broker）；模型由 LLMManager 按 task_type 路由至 SiliconFlow / OpenRouter / 阿里云百炼 / DeepSeek 等；嵌入与检索侧含 Qwen3-Embedding、BGE-M3、CLIP、CLAP、Reranker。飞书为<strong className="font-medium text-slate-800 dark:text-slate-200"> 可选 </strong>
-        集成。默认依赖编排见仓库根目录 <span className="font-mono text-[12px]">docker-compose.yml</span>。
-      </p>
-
-      <div className="grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-3">
-        {techStackItems.map((item, index) => {
-          const meta = categoryLabel[item.category]
-          return (
-            <div
-              key={item.id}
-              className="group relative flex flex-col overflow-hidden rounded-xl border border-slate-100 bg-white/90 p-3 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:border-slate-200/90 dark:border-slate-800/80 dark:bg-slate-950/80 dark:hover:border-slate-700/90"
-              style={{ animationDelay: `${index * 50}ms` }}
+      <div className="mt-8 overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_24px_70px_-60px_rgba(15,23,42,0.5)] dark:border-slate-800 dark:bg-slate-950">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3">
+          {groups.map(([category, items], index) => (
+            <section
+              key={category}
+              className={`p-5 sm:p-6 ${
+                index > 0 ? 'border-t border-slate-200/80 dark:border-slate-800 sm:border-t-0' : ''
+              } ${index % 2 === 1 ? 'sm:border-l' : ''} ${index >= 2 ? 'sm:border-t lg:border-t-0' : ''} ${
+                index % 3 !== 0 ? 'lg:border-l' : 'lg:border-l-0'
+              } border-slate-200/80 dark:border-slate-800`}
             >
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/0 via-indigo-50/0 to-violet-50/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 dark:from-transparent dark:via-indigo-950/20 dark:to-transparent" />
-              <div className="relative mb-1 flex items-center justify-between gap-2">
-                <div className="break-words text-[11px] font-semibold text-slate-900 transition-colors duration-300 group-hover:text-slate-700 dark:text-slate-50 dark:group-hover:text-slate-200">
-                  {item.name}
-                </div>
-                <span
-                  className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium shadow-sm transition-all duration-300 group-hover:scale-105 ${meta.bg} ${meta.color}`}
-                >
-                  {meta.label}
-                </span>
-              </div>
-              {item.description && (
-                <p className="relative mt-0.5 break-words text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
-                  {item.description}
-                </p>
-              )}
-            </div>
-          )
-        })}
+              <h3 className="font-mono text-[10px] font-semibold tracking-[0.12em] text-teal-700 dark:text-teal-300">
+                {categoryLabels[category as keyof typeof categoryLabels]}
+              </h3>
+              <dl className="mt-4 space-y-4">
+                {items.map((item) => (
+                  <div key={item.id}>
+                    <dt className="text-xs font-semibold text-slate-900 dark:text-slate-100">{item.name}</dt>
+                    {item.description ? (
+                      <dd className="mt-1 text-[10px] leading-5 text-slate-500 dark:text-slate-400">{item.description}</dd>
+                    ) : null}
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ))}
+        </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50/90 via-indigo-50/20 to-teal-50/15 p-4 dark:border-slate-800/80 dark:from-slate-900/60 dark:via-indigo-950/25 dark:to-teal-950/10">
-        <p className="mb-2 text-[11px] font-semibold text-slate-700 dark:text-slate-200">非功能特性（按模块可扩展）</p>
-        <ul className="space-y-1.5 text-[11px] text-slate-600 dark:text-slate-300">
-          <li className="flex items-start gap-2">
-            <span className="mt-[5px] h-1 w-1 flex-shrink-0 rounded-full bg-indigo-500" />
-            <span>可观测性：结构化日志、检索与生成链路事件，便于对接监控与排障</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="mt-[5px] h-1 w-1 flex-shrink-0 rounded-full bg-indigo-500" />
-            <span>安全性：密钥集中于 backend/.env（勿提交）；可按需在 API 层增加认证与限流</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="mt-[5px] h-1 w-1 flex-shrink-0 rounded-full bg-indigo-500" />
-            <span>扩展性：DDD 边界清晰，可替换向量库、Provider 或存储实现</span>
-          </li>
+      <aside className="mt-5 rounded-2xl border border-orange-200/90 bg-orange-50/60 p-5 dark:border-orange-900/70 dark:bg-orange-950/15 sm:p-6">
+        <div className="flex items-center gap-2">
+          <ShieldAlert className="h-4 w-4 text-orange-700 dark:text-orange-300" />
+          <h3 className="text-sm font-semibold text-slate-950 dark:text-white">部署前必须知道</h3>
+        </div>
+        <ul className="mt-4 grid gap-x-8 gap-y-3 text-xs leading-6 text-slate-600 dark:text-slate-300 sm:grid-cols-2">
+          {knownBoundaries.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
         </ul>
-      </div>
+      </aside>
     </section>
   )
 }
-

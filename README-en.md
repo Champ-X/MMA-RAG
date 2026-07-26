@@ -9,258 +9,221 @@
 <h3 align="center"><em>Every fragment finds its place.</em></h3>
 
 <p align="center">
-  <img src="docs/images/tessmora-omni-banner.png" alt="Tessmora brings documents, photos, interview audio, and video into one agentic retrieval flow" width="100%" />
+  <img src="docs/images/tessmora-omni-banner.png" alt="Tessmora brings documents, images, audio, and video into one agentic retrieval path" width="100%" />
 </p>
 
-**Tessmora** is a self-hostable **Omni-Modal Agentic Retrieval Platform** for documents, images, travel footage, interview recordings, films, and extensible audio/video sources. Every modality shares one **ingest → multimodal understanding → semantic routing → hybrid retrieval → agentic research → traceable generation** path instead of being flattened into a text-only RAG pipeline. Its goals are simple: **understand every content form**, **retrieve the right moments from heterogeneous media**, and **let a bounded agent gather and organize traceable evidence**.
+Tessmora is a self-hostable omni-modal agentic retrieval platform. Documents, images, audio, and video retain modality-appropriate parsing units and specialized vectors, then converge through knowledge-base portrait routing, hybrid retrieval, two-stage ranking, and a bounded agent into one traceable answer pipeline.
 
-### Tessmora at a glance
+It addresses three core questions:
 
-- **Multi-space first**: LLM topic summaries plus sub-topic clustering build a semantic portrait for each content space; online semantic weighting and thresholds choose single-space, multi-space, or full-corpus search and cut wasted scans.
-- **Hybrid retrieval + two-stage ranking**: **Dense + BGE-M3 sparse + Visual** at the core; when intent and data allow, audio/video vector search joins in; **weighted RRF** for coarse fusion and **Cross-Encoder** for fine ranking across incomparable scores.
-- **One-pass intent**: One structured LLM call yields intent, rewrite, keywords / multi-view queries, and `visual` / `audio` / `video` flags—fewer chained calls, lower latency and cost.
-- **Glass-box chat**: SSE streams the reasoning chain (intent, routing, retrieval); answers support hover-to-source citations and `context_window` peeks for debugging and trust.
-- **Modular & swappable**: DDD-style backend (Ingestion / Knowledge / Retrieval / Generation); `LLMManager` routes vendors and tasks; data plane MinIO, Qdrant, Redis with Docker Compose for local and team setups.
-- **Optional enterprise channel**: Same pipeline for the web UI or **Feishu IM** (long connection, cards, etc.); see the Feishu doc in the index below.
+- **How content enters the system**: lossless Agentic Chunking for documents; VLM + CLIP for images; ASR + CLAP for audio; Scene → Shot → Key Frame for video.
+- **How a question finds evidence**: One-Pass intent, KB portrait routing, Dense / Sparse / Visual / Audio / Video retrieval, weighted RRF, and Cross-Encoder reranking.
+- **How complex questions gather more evidence**: Auto, Direct, and Agent modes; the agent only calls the existing read-only retriever and is bounded by round, query, and evidence budgets.
 
-End-to-end agentic retrieval for heterogeneous content: unified parsing and search across documents, photos, audio, and video; portrait-based content-space routing; **Dense + BGE-M3 sparse + Visual** hybrid search with intent-aware audio/video channels, **RRF + Cross-Encoder**, an explainable SSE event stream, and `context_window`-aware citations.
+## Why Tessmora
 
-**Who it’s for**: Developers and teams who want to understand, retrieve, and conversationally explore multimodal content locally or in Docker. Configure via [`backend/.env`](backend/.env) (copy from [`backend/.env.example`](backend/.env.example)). Architecture: **[MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)**. Secrets: **[SECURITY](SECURITY.md)**.
+| Capability | Current implementation |
+|---|---|
+| **Omni-modal data plane** | Documents, images, audio, and video keep native semantic units instead of being flattened into plain text |
+| **Intelligent search scope** | When no KB is pinned, topic portraits and multi-view queries choose one, several, or all KBs |
+| **Cross-channel fusion** | Dense + BGE-M3 Sparse + Visual at the core, plus specialized audio/video vectors and intent-aware weights |
+| **Agentic Evidence Loop** | A planner generates complementary queries; retrieval fans out; evidence is deduplicated and repeat hits add bounded confidence |
+| **Budgeted conversation context** | Complete turns are selected under message and character budgets and reused across retrieval and generation |
+| **Verifiable output** | SSE streams stage summaries, citations, and answer text; references retain sources, media URLs, time ranges, and `context_window` |
+| **Multiple entry points** | Full Web UI, optional Feishu IM and Docx/Wiki import, plus a bundled Codex Skill/CLI |
 
-## 📑 Contents
+## Architecture at a glance
 
-- [✨ Features](#features)
-- [💬 Chat & retrieval examples](#chat--retrieval-examples)
-- [🧩 Core modules](#core-modules)
-- [🚀 Quick start](#quick-start)
-- [🔧 Optional system dependencies](#optional-system-dependencies)
-- [📘 Documentation index](#documentation-index)
+![Tessmora system architecture covering access and routing, shared retrieval, the agent evidence loop, the offline data plane, and model routing](docs/images/tessmora-system-architecture.png)
 
-<h2 id="features">✨ Features</h2>
+Direct and Agent reuse the same Retrieval Core. Qdrant provides online retrieval vectors, while MinIO supplies original media to the citation context. After startup, open [http://localhost:3000/architecture](http://localhost:3000/architecture) for the interactive guide. See [MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md) for code-level details.
 
-### 🎯 Capabilities
+## Core modules
 
-- **Multimodal ingestion**: Parse documents (PDF, PPTX, Word, Markdown, etc.), images, audio, and video; inline figures get VLM captions merged back before chunking; uploads, URLs, folder import, trending feeds, and more. Details: **[Multimodal image / audio / video spec](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**.
-- **Intelligent KB routing**: Portrait generation from LLM topic summaries and sub-topic clustering; weighted aggregation per KB to decide which bases to query.
-- **Multimodal hybrid retrieval**: **Dense** (e.g. Qwen3-Embedding) + **Sparse** (BGE-M3) + **Visual** (CLIP + VLM text in the index); with `audio_intent` / `video_intent` and data ready, audio/video vectors join search. **Weighted RRF** + **Cross-Encoder** reranking.
-- **One-pass intent**: One LLM call outputs a structured `IntentObject`—intent class, rewrite, keywords / multi-view queries, and `visual` / `audio` / `video` intent.
-- **Visible reasoning & citations**: SSE thought stream (intent, routing, retrieval); hover citations and `context_window` context in answers.
-- **Feishu integration**: Optional Feishu IM (long connection, cards, Open Platform APIs). Setup: **[FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md)**; env vars `FEISHU_*` in `backend/.env.example`; code under `backend/app/integrations/`.
+| Module | Responsibility | Main entry |
+|---|---|---|
+| **Ingestion** | Multi-source parsing, agentic chunking, omni-modal vectorization, MinIO/Qdrant writes | `backend/app/modules/ingestion/` |
+| **Knowledge** | KB lifecycle, omni-modal portraits, cross-KB routing | `backend/app/modules/knowledge/` |
+| **Retrieval** | One-Pass intent, five retrieval routes, RRF, Cross-Encoder | `backend/app/modules/retrieval/` |
+| **Agent Runtime** | Three-state mode selection, planning, read-only tools, evidence convergence | `backend/app/modules/agent/` |
+| **Generation** | Multimodal context, ReferenceMap, streaming generation | `backend/app/modules/generation/` |
+| **LLM Manager** | Unified `task_type` → model/provider routing | `backend/app/core/llm/` |
 
-### 🏗️ Technical stack
+### Document and spreadsheet chunking
 
-| Layer | Notes |
-|------|------|
-| **Backend** | FastAPI + Python 3.12; DDD modules (Ingestion / Knowledge / Retrieval / Generation); Core LLM Manager, BGE-M3 sparse encoder, etc. |
-| **Frontend** | React + TypeScript + Vite, Tailwind CSS; chat, KB, architecture, debug pages. |
-| **Data plane** | MinIO (objects), Qdrant (vectors + sparse), Redis (cache & Celery broker). |
-| **Models** | `LLMManager` task routing; SiliconFlow, OpenRouter, Alibaba Bailian, DeepSeek, etc.; embedding / rerank / VLM / CLIP / CLAP as configured. |
-| **Deployment** | `docker-compose.yml` for backend deps; frontend dev or standalone build. |
+- PDF, DOCX, PPTX, TXT, Markdown, and other regular documents use the production Agentic Chunker.
+- Source text is frozen into immutable headings, paragraphs, lists, tables, and code units. The LLM only plans contiguous unit ranges; it never emits or rewrites source text.
+- The server validates lossless coverage, non-overlap, and a 600 estimated-token hard ceiling. Invalid or unavailable planning falls back to deterministic structural chunking.
+- Excel/CSV keeps its dedicated sheet summary, header-preserving row blocks, and column profile strategy.
 
-### 📐 Architecture diagram
+### Multimodal indexes
 
-Layers and major components (see **[MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)** or http://localhost:3000/architecture after startup).
+| Modality | Primary semantic unit | Qdrant |
+|---|---|---|
+| Document | Agentic Chunk | `text_chunks_agentic`: Dense + BGE-M3 Sparse |
+| Image | One image | `image_vectors`: `text_vec` + `clip_vec` |
+| Audio | One file/segment | `audio_vectors`: `text_vec` + `clap_vec` + optional Sparse |
+| Video | Semantic Shot | `video_shot_vectors`: caption/ASR Dense+Sparse; `video_keyframe_vectors`: `frame_vec` + `clip_vec` |
+| KB portrait | Cluster topic summary | `kb_portraits` |
 
-![Tessmora system architecture](docs/images/architecture.jpg)
+See the [multimodal technical specification](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) for Scene–Shot–ASR fields, long-video windows, and keyframe selection.
 
-<h2 id="chat--retrieval-examples">💬 Chat & retrieval examples</h2>
+## Chat and retrieval examples
 
-Illustrative **web chat** and **Feishu IM (optional)** runs—actual KB content and model answers depend on your deployment.
+<details>
+<summary>Expand Web and Feishu examples</summary>
 
-### 📄 Document retrieval
-Query: `Summarize DeepSeek OCR2’s training pipeline design across stages.`
+### Document retrieval
 
-![Example: document retrieval](docs/images/chat-document.png)
+Query: `Summarize the design of each stage in DeepSeek OCR2 training.`
 
-### 🖼️ Image retrieval
-Query: `Find one landscape image for each mood: rugged, delicate, relaxed.`
+![Document retrieval example](docs/images/chat-document.png)
 
-![Example: image retrieval](docs/images/chat-image.png)
+### Image retrieval
 
-### 🎵 Audio retrieval
-Query: `Find pieces that use the same instrument as this audio.` (Example attachment: guzheng piece *Purple Bamboo Melody*.)
+Query: `Find one landscape image for each mood: rugged, delicate, and relaxed.`
 
-![Example: audio retrieval](docs/images/chat-audio.png)
+![Image retrieval example](docs/images/chat-image.png)
 
-### 🎬 Video retrieval
-Query: `What is Tang Shiye’s personality in Let the Bullets Fly?`
+### Audio retrieval
 
-![Example: video retrieval](docs/images/chat-video.png)
+Query: `Find music that uses the same instrument as this audio.`
 
-### 🔀 Multimodal mix (multiple modalities & KBs)
-Query: `Pick a suitable poster and theme song for the show Peaky Blinders.`
+![Audio retrieval example](docs/images/chat-audio.png)
 
-![Example: mixed multimodal retrieval](docs/images/chat-mix.png)
+### Video retrieval
 
-### 📱 Feishu (optional)
+Query: `What is Tang Shiye's personality in Let the Bullets Fly?`
 
-Follow **[FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md)**. With the bot and websocket enabled, groups and DMs use the same retrieval/generation stack as the web UI; UI may be cards, Posts, etc. (`FEISHU_*` in `backend/.env.example`).
+![Video retrieval example](docs/images/chat-video.png)
 
-![Example: Feishu IM retrieval](docs/images/chat-feishu.png)
+### Cross-modal retrieval
 
-<h2 id="core-modules">🧩 Core modules</h2>
+Query: `Choose a suitable poster and theme song for Peaky Blinders.`
 
-### 1. 📥 Ingestion (ingest & storage)
+![Cross-modal retrieval example](docs/images/chat-mix.png)
 
-- **Role**: Parse files and multi-source content, chunk documents, embed, write to object store and vector DB for retrieval and portraits.
-- **Parsing**: `ParserFactory` by type—**PDF / DOCX / PPTX**: MinerU; figures go through VLM then merge into text before chunking; **TXT / Markdown**, **images** (PIL / `ImageParser`); **audio** (`AudioParser`: `mp3`/`wav`/`m4a`/`flac`, metadata via `soundfile`/`librosa`); **video** (`VideoParser`: `mp4`/`avi`/`mov`/`mkv`, OpenCV metadata; segmenting and audio extraction need **FFmpeg**, see [optional dependencies](#optional-system-dependencies)). Inline images: VLM caption → MinIO → placeholder in source → unified chunking.
-- **Chunking**: **Documents** use the Agentic Chunker: parsed text is first frozen into heading, paragraph, list, table, and code units; an LLM then plans continuous semantic ranges. The server validates full coverage, no overlap, and the 600-token cap, with a deterministic structural fallback if the model is unavailable. Each chunk has `context_window` (neighbor chunk IDs). **Image / audio**—one **record** per asset; **video**—Scene–Shot hierarchy, with one main retrieval point per Shot and optional child keyframes.
-- **Embedding**:
-  - **Documents**: Agentic Chunker (semantic boundaries, 600-token cap) + Qwen3-Embedding-8B (dense 4096) + BGE-M3 sparse → `text_chunks_agentic`.
-  - **Images**: VLM caption → `text_vec` (4096) + CLIP → `clip_vec` (768) → `image_vectors`.
-  - **Audio**: ASR + LLM description → text for dense (optional BGE-M3 sparse) + **CLAP** (`clap_vec`, 512) → `audio_vectors`.
-  - **Video**: Qwen Omni jointly parses visual scenes, semantic Shots, and in-video ASR. Each Shot writes caption/ASR dense+sparse vectors to `video_shot_vectors`; optional keyframes write `frame_vec` + CLIP `clip_vec` to `video_keyframe_vectors`. See **[MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**.
-- **Storage**: MinIO per-KB buckets; prefixes `documents/`, `images/`, `audios/`, `videos/` (including `videos/{file_id}/keyframes/`). Qdrant: `text_chunks_agentic`, `image_vectors`, `audio_vectors`, `video_shot_vectors`, `video_keyframe_vectors`; portraits in `kb_portraits` (Knowledge).
-- **Sources & async**: URLs, folders, Tavily trends, media downloads, etc.; heavy jobs via Celery + Redis; frontend polls or streams progress.
-- **Entry points**: `modules/ingestion/service.py`, `parsers/factory.py`, `sources/`, `storage/minio_adapter.py`, `storage/vector_store.py`.
+### Feishu IM (optional)
 
-### 2. 📚 Knowledge (KB management & portraits)
+![Feishu IM example](docs/images/chat-feishu.png)
 
-- **Role**: KB CRUD, portrait build/update, online portrait-based routing when no KB is pinned.
-- **KB CRUD**: Create/read/update/delete; routing skipped if the user selects a KB.
-- **Portraits**: Sample Text/Image/Audio/Video collections; K-Means (K ≈ sqrt(N/2), capped by config); per-cluster LLM `topic_summary` → embed → `kb_portraits`; replace strategy (delete old portraits for that KB, then insert).
-- **Routing**: Dense embedding of `refined_query` against global TopN on `kb_portraits`; aggregate by `kb_id`, position decay, normalize; below threshold → all KBs; else single or top-two by score gap.
-- **Entry points**: `modules/knowledge/service.py`, `portraits.py`, `router.py`.
+</details>
 
-### 3. 🔍 Retrieval (intent & hybrid search)
+## Quick start
 
-- **Role**: After One-Pass intent and target KBs, hybrid retrieval and two-stage rerank → Top-K for generation.
-- **One-pass intent**: One LLM call → `IntentObject` (`refined_query`, `sparse_keywords`, `multi_view_queries`, `visual_intent` / `audio_intent` / `video_intent`, …); fallback defaults on parse failure.
-- **Hybrid search**: Dense (main + multi-view), Sparse (BGE-M3), Visual (dual text_vec/clip_vec on `image_vectors`), Audio, and Shot-based Video (`video_shot_vectors`, with optional `video_keyframe_vectors` enhancement); dedupe, weighted RRF.
-- **Rerank**: Build (query, content) pairs for Cross-Encoder; merge with RRF for `final_top_k`; quota guards (e.g. images) for `implicit_enrichment`.
-- **Entry points**: `modules/retrieval/service.py`, `processors/intent.py`, `processors/rewriter.py`, `search_engine.py`, `reranker.py`.
-
-### 4. 💬 Generation (context & streaming)
-
-- **Role**: Reranked hits → reference map + multimodal prompt → LLM; SSE for thoughts, citations, and tokens.
-- **Context**: ReferenceMap (index, `content_type`, `presigned_url`, metadata with `chunk_id`, …); limits `max_context_length`, `max_chunks`, `max_images`, AV caps; Type A/B slots in the prompt.
-- **Prompts**: `core/llm/prompt.py`; `[id]` citations and multimodal formatting.
-- **Stream**: `thought` / `citation` / `message`; UI: ThinkingCapsule, CitationPopover, lightbox/player.
-- **Entry points**: `modules/generation/service.py`, `context_builder.py`, `templates/multimodal_fmt.py`, `stream_manager.py`.
-
-### 5. 🤖 LLM Manager
-
-- **Role**: Route chat/embed/rerank (and more) to models and providers; unify vendor APIs and prompts.
-- **Tasks**: e.g. `intent_recognition`, `image_captioning`, `final_generation`, `reranking`, `kb_portrait_generation` → configured models; callers pass `task_type` and params.
-- **APIs**: chat, embed, rerank; providers mostly OpenAI-compatible.
-- **Providers**: SiliconFlow, OpenRouter, Alibaba Bailian, DeepSeek, …; timeouts and failover configurable.
-- **Other Core**: `sparse_encoder.py`, `portrait_trigger.py`, `keyword_extract.py`, etc.
-- **Entry points**: `core/llm/manager.py`, `core/llm/__init__.py` (LLMRegistry), `prompt.py`, `prompt_engine.py`, `providers/`.
-
-More design detail: **[MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)**.
-
-<h2 id="quick-start">🚀 Quick start</h2>
-
-**Targets**: Linux, WSL, macOS.
-
-### 🛠️ Requirements
+### Requirements
 
 | Dependency | Purpose |
-|------------|---------|
-| Docker & Docker Compose | MinIO, Qdrant, Redis, … |
-| Node.js 20.20.1 | Frontend (npm or pnpm) |
-| Python 3.12 | Backend locally |
-| LibreOffice | Office → PDF for in-app preview; see [optional dependencies](#optional-system-dependencies) |
-| FFmpeg | Video segmenting / audio extract; see [optional dependencies](#optional-system-dependencies) |
+|---|---|
+| Docker and Docker Compose | MinIO, Qdrant, Redis |
+| Node.js ≥ 18 | Frontend; Node 20 LTS recommended |
+| Python ≥ 3.11 | Docker image uses 3.11; Python 3.12 recommended locally |
+| FFmpeg / ffprobe | Audio/video probing, segmentation, and frames |
+| LibreOffice | DOCX/PPTX → PDF and in-app preview |
 
-### 📦 1. Clone & configure
+### 1. Clone and configure
 
 ```bash
 git clone https://github.com/Champ-X/MMA-RAG.git
 cd MMA-RAG
 cp backend/.env.example backend/.env
-# Edit backend/.env: fill at least the required keys below (see backend/.env.example)
 ```
 
-#### Required environment variables
+The default model registry requires at least:
 
-Used for default model routing, multi-provider setup, and MinerU parsing. If local Docker ports match the sample, you can keep Redis/Qdrant/MinIO values from `backend/.env.example`. **For the full experience, configure all listed API keys.**
+| Variable | Requirement |
+|---|---|
+| `SILICONFLOW_API_KEY` | **Required** for default LLM, embedding, and reranking tasks |
+| `OPENROUTER_API_KEY` | Optional; required for OpenRouter models |
+| `ALIYUN_BAILIAN_API_KEY` | Optional; required for Bailian models and configurations that use Omni video parsing |
+| `DEEPSEEK_API_KEY` | Optional; required when a task routes to DeepSeek |
+| `MINERU_TOKEN` | Optional; enables MinerU cloud parsing before local/other fallbacks |
+| `PADDLEOCR_API_URL` / `PADDLEOCR_TOKEN` | Optional; enables the PaddleOCR parsing branch |
+| `FEISHU_*` | Optional; Feishu IM or document import. See [FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md) |
 
-| Variable | Notes |
-|----------|--------|
-| `SILICONFLOW_API_KEY` | **SiliconFlow**: default LLM, embedding, rerank, etc. (OpenAI-compatible). Create a key in the [SiliconFlow console](https://cloud.siliconflow.cn/). |
-| `OPENROUTER_API_KEY` | **OpenRouter**: when tasks route to OpenRouter models (`core/llm/providers/openrouter.py`, etc.). Keys: [openrouter.ai/keys](https://openrouter.ai/keys). |
-| `ALIYUN_BAILIAN_API_KEY` | **Alibaba Bailian (DashScope)**: Tongyi and other Bailian models. [Bailian console](https://bailian.console.aliyun.com/); [API key help](https://help.aliyun.com/zh/model-studio/get-api-key). |
-| `MINERU_TOKEN` | **MinerU cloud**: auth for PDF/Word via MinerU API (`ParserFactory`). Apply at [mineru.net](https://mineru.net/) or MinerU/OpenDataLab docs. |
+Use [`backend/.env.example`](backend/.env.example) as the complete source of variable names and defaults. Never commit live secrets; see [SECURITY](SECURITY.md).
 
-#### Optional environment variables
-
-Omit for defaults/degraded paths; add when you need the feature. Full list: [`backend/.env.example`](backend/.env.example).
-
-| Variable | Notes |
-|----------|--------|
-| `DEEPSEEK_API_KEY` | **DeepSeek** API when routed. [platform.deepseek.com](https://platform.deepseek.com/) → API keys. |
-| `PADDLEOCR_API_URL` / `PADDLEOCR_TOKEN` | **PaddleOCR** layout/VL in PDF paths. Service + token often from [AI Studio](https://aistudio.baidu.com/) or self-hosted; [PaddleOCR docs](https://www.paddleocr.ai/). |
-| `TAVILY_API_KEY` | **Tavily** search / trending import. [tavily.com](https://tavily.com/). |
-| `SERPAPI_KEY` | **SerpAPI** (e.g. image search import). [serpapi.com/manage-api-key](https://serpapi.com/manage-api-key). |
-| `PIXABAY_API_KEY` | **Pixabay** image import. [Pixabay API](https://pixabay.com/api/docs/). |
-| `FEISHU_APP_ID` / `FEISHU_APP_SECRET` and other `FEISHU_*` | **Feishu Open Platform**: bot websocket, cards, etc.; align `FEISHU_WS_ENABLED` with docs. [open.feishu.cn/app](https://open.feishu.cn/app). |
-
-### 🐍 2. Python venv & backend deps
-
-From the repo root (isolated venv):
+### 2. Install backend dependencies
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate          # Linux / WSL / macOS
+source .venv/bin/activate
 pip install -U pip
 pip install -r backend/requirements.txt
 ```
 
-### ▶️ 3. Start the dev stack
+### 3. Start the development stack
 
 ```bash
-source .venv/bin/activate           # same venv as above
-chmod +x start-dev.sh
+source .venv/bin/activate
 ./start-dev.sh
 ```
 
-The script checks `backend/.env`, starts MinIO/Qdrant/Redis via Docker Compose, then runs backend and frontend locally. First run may install LibreOffice/FFmpeg (if the script does) and download CLIP, CLAP, BGE-M3, etc. (see `PRELOAD_LOCAL_MODELS_ON_STARTUP`)—can take a while.
+`start-dev.sh`:
 
-### 🌐 4. URLs
+1. checks `backend/.env`;
+2. checks or attempts to install FFmpeg and LibreOffice;
+3. starts MinIO, Qdrant, and Redis with Docker Compose;
+4. starts FastAPI and Vite locally.
+
+Compose also defines optional `celery_worker` / `celery_flower` services; the development script does not start them by default.
+
+### 4. URLs
 
 | Service | URL |
-|---------|-----|
-| Web UI | http://localhost:3000 |
-| Backend API | http://localhost:8000 |
-| API docs | http://localhost:8000/docs |
-| MinIO console | http://localhost:9001 (credentials in `backend/.env` / `docker-compose.yml`; often `minioadmin` locally) |
-| Qdrant dashboard | http://localhost:6333/dashboard (port from `QDRANT_PORT` / compose; default `6333`) |
+|---|---|
+| Web UI | [http://localhost:3000](http://localhost:3000) |
+| Architecture | [http://localhost:3000/architecture](http://localhost:3000/architecture) |
+| Backend API | [http://localhost:8000](http://localhost:8000) |
+| OpenAPI | [http://localhost:8000/docs](http://localhost:8000/docs) |
+| MinIO Console | [http://localhost:9001](http://localhost:9001) |
+| Qdrant Dashboard | [http://localhost:6333/dashboard](http://localhost:6333/dashboard) |
 
+## API and Codex Skill
 
-<h2 id="optional-system-dependencies">🔧 Optional system dependencies</h2>
+The backend exposes a stable read-only evidence endpoint:
 
-### 📄 Office preview (PPTX / DOCX)
-
-- In-page preview can convert to PDF for iframe viewing.
-- Without LibreOffice, UI falls back to text/chunk preview. Linux / WSL:
-
-```bash
-sudo apt-get update && sudo apt-get install -y libreoffice
+```text
+POST /api/v1/retrieval/search
 ```
 
-### 🎬 Video (FFmpeg)
+It returns a compact `doc | image | audio | video` evidence contract rather than internal Qdrant payloads. Chat and Agent modes continue to use `/api/chat/message` or `/api/chat/stream`.
 
-- Segmenting and audio extraction need `ffmpeg`; missing binary may degrade or error.
-- Linux / WSL:
+The repository includes a Tessmora Codex Skill whose CLI command remains `mma-rag`:
 
 ```bash
-sudo apt-get update && sudo apt-get install -y ffmpeg
+./scripts/install-codex-skill.sh
+skills/mma-rag/scripts/mma-rag health
+skills/mma-rag/scripts/mma-rag kb list
+skills/mma-rag/scripts/mma-rag search --query "How do I roll back a failed deployment?" --kb-id KB_ID
+skills/mma-rag/scripts/mma-rag ask --query "Summarize the deployment flow" --kb-id KB_ID --agent-mode auto
 ```
 
-- If not on `PATH`, set `FFMPEG_PATH=/your/path/to/ffmpeg` in `backend/.env`.
+The installer creates a symlink at `${CODEX_HOME:-$HOME/.codex}/skills/mma-rag` and never overwrites an existing directory. See the [CLI reference](skills/mma-rag/references/cli-reference.md) for every command, safe upload roots, and exit codes.
 
-<h2 id="documentation-index">📘 Documentation index</h2>
+## Current boundaries
 
-| Doc | Description |
-|-----|-------------|
-| [MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md) | Architecture and implementation notes |
-| [MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | Image / audio / video technical spec |
-| [FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md) | Feishu bot: Open Platform and `FEISHU_*` env |
-| [SECURITY.md](SECURITY.md) | Secrets and sensitive data |
+- The application API has **no built-in user authentication**, and development CORS allows every origin. Keep it on a trusted network; add authentication, TLS, origin restrictions, rate limits, and upload controls at a reverse proxy or API gateway before public deployment.
+- Chat sessions and some statistics remain in process memory and are not ready for stateless multi-replica deployment.
+- The Agent currently has one read-only `multimodal_knowledge_search` tool. There are no write tools, approval flow, MCP runtime, long-term memory, or sandbox.
+- Feishu chat currently uses Direct retrieval. Three-state Agent mode is available through the Web Chat API and `mma-rag ask`.
+- Retrieval weights and some thresholds are still code-level constants rather than fully centralized configuration.
+
+See the [architecture document](docs/MMA_ARCHITECTURE.md) and [roadmap](docs/mira-plan.md) for the full implementation/status view.
+
+## Documentation
+
+| Document | Scope |
+|---|---|
+| [MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md) | Current implementation: module boundaries, ingestion/query flows, data plane, Agent, and APIs |
+| [MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | Image, audio, and video fields, vectors, and retrieval |
+| [AGENTIC_UPGRADE_WEKNORA_RESEARCH](docs/AGENTIC_UPGRADE_WEKNORA_RESEARCH.md) | Agent research baseline, shipped capabilities, and risk principles |
+| [mira-plan](docs/mira-plan.md) | Roadmap maintained as shipped / partial / planned |
+| [FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md) | Feishu IM and Docx/Wiki permissions, variables, and verification |
+| [CLI reference](skills/mma-rag/references/cli-reference.md) | Local Skill/CLI commands and safety boundaries |
+| [SECURITY](SECURITY.md) | Current security posture and production checklist |
+| [CHANGELOG](CHANGELOG.md) | Recent feature and documentation changes |
 
 ---
 
-**Quick try**: `./start-dev.sh` → http://localhost:3000 → create a KB, upload docs or images → chat with citations.
-
-**Value**: unified multimodal retrieval, intelligent KB routing, explainable reasoning, traceable references.
+**Try it**: `./start-dev.sh` → open [http://localhost:3000](http://localhost:3000) → create a KB and upload content → choose Auto, Direct, or Agent → inspect the citations.

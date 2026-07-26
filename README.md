@@ -9,285 +9,221 @@
 <h3 align="center"><em>Every fragment finds its place.</em></h3>
 
 <p align="center">
-  <img src="docs/images/tessmora-omni-banner.png" alt="Tessmora 将文档、照片、访谈音频与视频统一汇入 Agentic 检索" width="100%" />
+  <img src="docs/images/tessmora-omni-banner.png" alt="Tessmora 将文档、图片、音频与视频汇入同一 Agentic Retrieval 链路" width="100%" />
 </p>
 
-**Tessmora** 是可私有化部署的 **Omni-Modal Agentic Retrieval Platform**：把文档、图片、旅行影像、访谈录音、电影片段以及可扩展的音视频来源放进同一套「内容接入 → 多模态解析 → 语义路由 → 混合检索 → Agent 深研 → 可追溯生成」链路，而不是把所有内容降维成纯文本后再检索。设计目标可以概括为三件事：**理解每一种内容形式**、**从大量异构内容中准确找回相关片段**、**用有界 Agent 持续补查并组织可追溯的回答**。
+Tessmora 是可私有化部署的全模态 Agentic Retrieval 平台。文档、图片、音频与视频保留各自合适的解析单元和专用向量，再通过知识库画像路由、混合检索、两阶段排序和有界 Agent 汇入同一套可追溯回答链路。
 
-**Tessmora 的差异化与优势概览**
+它解决三个核心问题：
 
-- **多内容空间优先**：基于 LLM 主题摘要与子主题聚类为每个内容空间生成语义画像，在线按查询语义做加权聚合与阈值策略，自动决定单空间、多空间或全空间检索，减少无效扫描。
-- **多路混合检索 + 两阶段排序**：以 **Dense + BGE-M3 稀疏 + Visual** 为主干，在意图与数据就绪时并入音/视频向量检索；**加权 RRF 粗排**与 **Cross-Encoder 精排**分工，缓解不同通道分数不可比的问题。
-- **One-Pass 意图**：单次结构化 LLM 调用同时产出意图分类、查询改写、关键词/多视角查询与 `visual` / `audio` / `video` 意图，降低链式调用的延迟与成本。
-- **预算化多轮上下文**：按完整对话轮次和字符预算选择历史，同一份上下文贯通指代消解、查询改写、内容空间路由与最终生成，避免只“保存历史”却不参与回答。
-- **白盒化对话体验**：通过 SSE 推送思考链（意图、路由、检索策略），回答侧支持引用悬浮溯源与 `context_window` 前后文透视，便于调试与用户信任。
-- **自适应 Agent 深研**：对话输入框可在“自动 / 直接检索 / Agent 深研”之间切换；自动模式根据对比、分步、跨模态和研究复杂度透明选择执行路径。Agent 会规划互补子查询、并发调用原有多模态检索、按证据缺口继续补查，并以轮数、查询数和证据数预算防止失控。
-- **模块化与可替换**：后端按 DDD 划分 Ingestion / Knowledge / Retrieval / Generation；`LLMManager` 统一路由多厂商模型与任务类型；数据面 MinIO、Qdrant、Redis 与 Docker Compose 编排，便于本地与团队环境落地。
-- **可选企业渠道**：同一套管道可接 Web 前端，也可按需启用飞书 IM（长连接、卡片等），见文档索引中的飞书配置说明。
+- **内容怎么进入系统**：普通文档用无损 Agentic Chunker；图片用 VLM + CLIP；音频用 ASR + CLAP；视频用 Scene → Shot → Key Frame。
+- **问题怎么找到证据**：One-Pass 意图、KB 画像路由、Dense / Sparse / Visual / Audio / Video 召回、加权 RRF 与 Cross-Encoder 精排。
+- **复杂问题怎么继续补查**：自动、直接检索、Agent 深研三态可选；Agent 只调用现有只读检索工具，并受轮数、查询数和证据池预算约束。
 
-面向文档、照片、音频、视频等异构内容的 Agentic Retrieval 系统：在统一解析与检索之上，基于内容空间画像做智能路由；以 **Dense + BGE-M3 稀疏 + Visual** 为主干，并按意图并入音频与视频通道；辅以 **RRF 粗排与 Cross-Encoder 精排**，通过 SSE 推送可解释检索过程与带 `context_window` 的引用。
+## 为什么是 Tessmora
 
-**适用场景**：希望在本地或 Docker 中解析、检索并对话式探索多模态内容的开发者与团队。配置入口为 [`backend/.env`](backend/.env)（由 [`backend/.env.example`](backend/.env.example) 复制），设计细节见 **[ARCHITECTURE](docs/MMA_ARCHITECTURE.md)**，密钥管理见 **[SECURITY](SECURITY.md)**。
+| 能力 | 当前实现 |
+|---|---|
+| **全模态数据面** | 文档、图片、音频、视频分别建模，不把所有内容降维为纯文本 |
+| **智能检索范围** | 未指定 KB 时，以主题画像和多视角查询决定单库、多库或全库 |
+| **跨通道融合** | Dense + BGE-M3 Sparse + Visual 为主干，音频与视频使用专用向量与意图权重 |
+| **Agentic Evidence Loop** | Planner 规划互补子查询，并发检索，跨轮证据去重与有限置信增强 |
+| **预算化多轮上下文** | 按完整对话轮次、消息数和字符预算选取历史，贯通检索与生成 |
+| **可验证输出** | SSE 推送阶段摘要、引用与正文；引用保留来源、媒体 URL、时间范围与 `context_window` |
+| **多入口** | Web 为完整交互入口；可选飞书 IM 与 Docx/Wiki 导入；内置 Codex Skill/CLI |
 
-## 📑 目录
+## 架构速览
 
-- [✨ 项目特色](#项目特色)
-- [💬 对话与检索示例](#对话与检索示例)
-- [🧩 核心模块概览](#核心模块概览)
-- [🚀 快速开始](#快速开始)
-- [🔧 可选系统依赖](#可选系统依赖)
-- [📘 文档索引](#文档索引)
+![Tessmora 系统架构：接入与分流、共享检索、Agent 证据循环、离线数据面和模型路由](docs/images/tessmora-system-architecture.png)
 
-<h2 id="项目特色">✨ 项目特色</h2>
+图中 Direct 与 Agent 复用同一个 Retrieval Core；Qdrant 提供在线检索向量，MinIO 为引用上下文补充原始媒体。项目启动后可通过 [http://localhost:3000/architecture](http://localhost:3000/architecture) 查看可交互架构页；代码级设计见 [MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)。
 
-### 🎯 核心能力
+## 核心模块
 
-- **多模态数据处理**：文档（PDF、PPTX、Word、Markdown等）、图片、音频、视频的解析；文档内嵌图经 VLM 描述后插回原文再分块；支持本地上传、URL、本地文件夹、热点联网与**飞书 Docx/Wiki 链接**等多来源接入。飞书源按 Block 解析正文、图片、原生表格、画板及嵌入 Sheet/Base。图片、音频、视频解析与向量化见 **[多模态数据解析处理细节](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**。
-- **智能知识库路由**：基于 LLM 主题摘要与子主题聚类生成画像，以独立改写查询和多视角查询做多信号召回，再按原始分数的绝对差/相对差决定单库、双库、复杂问题多库或全库回退。
-- **多模态混合检索**：**Dense**（如 Qwen3-Embedding）+ **Sparse**（BGE-M3）+ **Visual**（CLIP + VLM 描述写入索引）；在 `audio_intent` / `video_intent` 与数据就绪时并入音频、视频向量检索。**加权 RRF 粗排** + **Cross-Encoder 精排**。
-- **One-Pass 意图识别**：意图分类、查询改写、关键词 / 多视角生成与 `visual` / `audio` / `video` 意图在一次 LLM 调用中输出结构化 `IntentObject`。
-- **推理链路可视以及回答引用溯源**：SSE 推送思考链（意图、路由、检索策略）；回答中引用悬浮溯源与 `context_window` 前后文透视。
-- **Agentic Evidence Loop**：Agent 模式以现有 Hybrid Retrieval 为只读工具，执行“规划 → 检索 → 观察 → 补查/停止”，跨查询去重证据并增强重复命中；每轮理由、子查询与新增证据数实时可见。
-- **飞书平台集成**：飞书 IM（长连接、卡片、开放平台 API）为可选部署能力；配置步骤见 **[FEISHU\_BOT\_SETUP](docs/FEISHU_BOT_SETUP.md)**，变量见 `backend/.env.example` 中 `FEISHU_*`，代码见 `backend/app/integrations/`。
+| 模块 | 职责 | 主要入口 |
+|---|---|---|
+| **Ingestion** | 多来源解析、Agentic 分块、全模态向量化、MinIO/Qdrant 写入 | `backend/app/modules/ingestion/` |
+| **Knowledge** | KB 生命周期、全模态画像与跨库路由 | `backend/app/modules/knowledge/` |
+| **Retrieval** | One-Pass 意图、五路召回、RRF、Cross-Encoder | `backend/app/modules/retrieval/` |
+| **Agent Runtime** | 三态分流、规划、只读工具调用与证据收敛 | `backend/app/modules/agent/` |
+| **Generation** | 多模态上下文、ReferenceMap、流式生成 | `backend/app/modules/generation/` |
+| **LLM Manager** | `task_type` 到模型/Provider 的统一路由 | `backend/app/core/llm/` |
 
-### 🏗️ 技术架构
+### 文档与表格分块
 
-| 层级       | 说明                                                                                                             |
-| -------- | -------------------------------------------------------------------------------------------------------------- |
-| **后端**   | FastAPI + Python 3.12；DDD 模块化（Ingestion / Knowledge / Retrieval / Generation）；Core 层 LLM Manager、BGE-M3 稀疏编码等。 |
-| **前端**   | React + TypeScript + Vite，Tailwind CSS；对话、知识库、架构说明、调试等页面。                                                      |
-| **数据平面** | MinIO（对象）、Qdrant（向量与稀疏索引）、Redis（缓存与 Celery 队列）。                                                                |
-| **模型**   | LLMManager 按任务路由；支持 SiliconFlow、OpenRouter、阿里云百炼、DeepSeek 等；Embedding / Rerank / VLM / CLIP / CLAP 等按配置启用。     |
-| **部署**   | `docker-compose.yml` 编排后端与依赖；前端可本地开发或单独构建。                                                                     |
+- PDF、DOCX、PPTX、TXT、Markdown 等普通文档进入生产版 Agentic Chunker。
+- Chunker 先把原文固化为标题、段落、列表、表格、代码等不可变单元；LLM 只规划连续单元范围，不生成或改写原文。
+- 服务端校验无损覆盖、无重叠与 600 estimated-token 硬上限；规划失败时使用确定性结构分块兜底。
+- Excel/CSV 不走通用 Agentic Chunker，继续使用 Sheet 摘要、带表头行块和列画像策略。
 
-### 📐 系统架构概览
+### 多模态索引
 
-下图概括整体分层与主要组件关系；更细的模块说明见 **[MMA\_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)** 或项目启动之后 <http://localhost:3000/architecture。>
+| 模态 | 主语义单元 | Qdrant |
+|---|---|---|
+| 文档 | Agentic Chunk | `text_chunks_agentic`：Dense + BGE-M3 Sparse |
+| 图片 | 单图 | `image_vectors`：`text_vec` + `clip_vec` |
+| 音频 | 单文件/整段 | `audio_vectors`：`text_vec` + `clap_vec` + 可选 Sparse |
+| 视频 | Semantic Shot | `video_shot_vectors`：caption/ASR Dense+Sparse；`video_keyframe_vectors`：`frame_vec` + `clip_vec` |
+| KB 画像 | 聚类主题摘要 | `kb_portraits` |
 
-![Tessmora 系统架构图](docs/images/architecture.jpg)
+视频 Scene–Shot–ASR 的字段、长视频分窗和关键帧策略见 [多模态技术说明](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)。
 
-<h2 id="对话与检索示例">💬 对话与检索示例</h2>
+## 对话与检索示例
 
-以下为 **Web 对话** 与 **飞书 IM（可选部署）** 中的多模态检索与回答示意（知识库内容与模型回答以实际部署为准）。
+<details>
+<summary>展开 Web 与飞书示例</summary>
 
-### 📄 文档检索
+### 文档检索
 
-Query: `介绍DeepSeek OCR2在训练过程的各个阶段的设计方案。`
+Query：`介绍 DeepSeek OCR2 在训练过程各阶段的设计方案。`
 
-![对话示例：文档类检索](docs/images/chat-document.png)
+![对话示例：文档检索](docs/images/chat-document.png)
 
-### 🖼️ 图片检索
+### 图片检索
 
-Query: `帮我分别找一张符合以下描述词的风景：粗犷、婉约、惬意。`
+Query：`分别找一张符合粗犷、婉约、惬意的风景图。`
 
-![对话示例：图片相关检索](docs/images/chat-image.png)
+![对话示例：图片检索](docs/images/chat-image.png)
 
-### 🎵 音频检索
+### 音频检索
 
-Query: `查找和该音频使用相同乐器的曲子。`（示例带音频附件：古筝曲《紫竹调》。）
+Query：`查找和该音频使用相同乐器的曲子。`
 
-![对话示例：音频相关检索](docs/images/chat-audio.png)
+![对话示例：音频检索](docs/images/chat-audio.png)
 
-### 🎬 视频检索
+### 视频检索
 
-Query: `让子弹飞中汤师爷的人物性格是怎么样的？`
+Query：`《让子弹飞》中汤师爷的人物性格是怎样的？`
 
-![对话示例：视频相关检索](docs/images/chat-video.png)
+![对话示例：视频检索](docs/images/chat-video.png)
 
-### 🔀 多模态混合（跨多个模态多个知识库的混合检索）
+### 跨模态混合
 
-Query: `为《浴血黑帮》这部电影挑选合适的海报封面和主题曲。`
+Query：`为《浴血黑帮》挑选合适的海报封面和主题曲。`
 
-![对话示例：多路混合检索与回答](docs/images/chat-mix.png)
+![对话示例：跨模态检索](docs/images/chat-mix.png)
 
-### 📱 飞书端对话（可选部署）
+### 飞书 IM（可选）
 
-参考 **[FEISHU\_BOT\_SETUP](docs/FEISHU_BOT_SETUP.md)** 配置飞书渠道的对话功能。启用飞书机器人与长连接后，可在群聊/单聊中使用与 Web 同一套检索与生成管道；展示形态可为卡片、Post 等（配置见 `backend/.env.example` 中 `FEISHU_*`）。
+![对话示例：飞书 IM](docs/images/chat-feishu.png)
 
-![对话示例：飞书 IM 中的检索与回答](docs/images/chat-feishu.png)
+</details>
 
-<h2 id="核心模块概览">🧩 核心模块概览</h2>
+## 快速开始
 
-### 1. 📥 Ingestion（数据输入处理与存储）
+### 环境要求
 
-- **职责**：将各类文件与多来源内容解析、分块（文档）、向量化后写入对象存储与向量库，为检索与画像提供数据基础。
-- **解析**：`ParserFactory` 按类型调度——**PDF / DOCX / PPTX**：MinerU解析，文档中的图片会VLM之后反嵌入文本再做分块；**TXT / Markdown**、**图片**（PIL / `ImageParser`）；**音频**（`AudioParser`：`mp3`/`wav`/`m4a`/`flac` 等，元数据优先 `soundfile`/`librosa`）；**视频**（`VideoParser`：`mp4`/`avi`/`mov`/`mkv` 等，OpenCV 读元数据；长视频切段与音轨检测依赖 **FFmpeg/ffprobe**，见 [可选系统依赖](#可选系统依赖)）。文档内嵌图先 VLM 描述并上传 MinIO，再将 caption 插回原文占位符后统一分块。
-- **分块**：**文档**使用 Agentic Chunker：先将解析文本固化为标题、段落、列表、表格、代码等原子单元，再由 LLM 规划语义完整的连续范围；服务端校验全量覆盖、无 overlap 与 600-token 上限，并在模型不可用时降级为结构化分块。每个 chunk 带 `context_window`（前后 chunk ID）便于调试。**图片 / 音频 / 视频**不以传统 chunk 切分，而以**语义单元**入库（图片单张；音频整段；视频为 Scene → Shot → Key Frame，Shot 是主检索单元）。
-- **向量化**：
-  - **文档**：Agentic Chunker（语义边界、600-token 上限）+ Qwen3-Embedding-8B（Dense 4096 维）+ BGE-M3 稀疏 → `text_chunks_agentic`。
-  - **图片**：VLM caption → `text_vec`（4096）+ CLIP → `clip_vec`（768）→ `image_vectors`。
-  - **音频**：ASR 转写 + LLM 内容描述 → 拼接文本做 Dense（及可选 BGE-M3 稀疏）+ **CLAP**（`clap_vec`，512 维）→ `audio_vectors`。
-  - **视频**：Qwen3.5-Omni 在一次视频调用中联合解析画面与内嵌音频，输出 Scene → Semantic Shot → Key Frame；每个 Shot 写入 `caption_dense/caption_sparse/asr_dense/asr_sparse` 四路向量，关键帧保留 `frame_vec/clip_vec` 作为可选视觉增强。长视频使用重叠窗口并合并，完整解析 manifest 可追溯。细节见 **[docs/MULTIMODAL\_IMAGE\_AUDIO\_VIDEO\_TECHNICAL\_SPEC.md](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)**。
-- **存储**：MinIO 按知识库分桶，路径前缀含 `documents/`、`images/`、`audios/`、`videos/`（含 `videos/{file_id}/keyframes/` 与 `analysis/scene_shot_asr_v4.json`）。Qdrant 集合包括 `text_chunks_agentic`、`image_vectors`、`audio_vectors`、`video_shot_vectors`、`video_keyframe_vectors`（画像由 Knowledge 写入 `kb_portraits`）。
-- **多来源与异步**：sources 层支持 URL、飞书 Docx/Wiki（含图片、表格、画板、Sheet/Base）、文件夹、Tavily 热点、媒体下载等；大任务经 Celery + Redis，前端可轮询或流式查进度。
-- **代码入口**：`modules/ingestion/service.py`、`parsers/factory.py`、`sources/`、`storage/minio_adapter.py`、`storage/vector_store.py`。
+| 依赖 | 说明 |
+|---|---|
+| Docker 与 Docker Compose | 启动 MinIO、Qdrant、Redis |
+| Node.js ≥ 18 | 前端；推荐 Node 20 LTS |
+| Python ≥ 3.11 | Docker 镜像使用 3.11；本地开发推荐 3.12 |
+| FFmpeg / ffprobe | 音视频探测、分段与关键帧 |
+| LibreOffice | DOCX/PPTX 转 PDF 与页内预览 |
 
-### 2. 📚 Knowledge（知识库管理与画像）
-
-- **职责**：知识库 CRUD、画像生成与更新、基于画像的在线路由（未指定知识库时自动选库）。
-- **知识库 CRUD**：创建/查询/更新/删除；用户指定知识库时可跳过路由。
-- **画像生成**：从该 KB 的 Text、Image、Audio、Video 等集合按比例采样；K-Means（K = sqrt(N/2)，受配置上限约束）；每簇抽样经 LLM 生成 `topic_summary` 后向量化写入 `kb_portraits`；Replace 策略（先删该 KB 旧画像再插入）。
-- **路由决策**：`refined_query` 与最多三个 `multi_view_queries` 在 `kb_portraits` 上分别 TopN，按 `kb_id` 做位置衰减与跨信号加权；低于阈值则全库，否则用 raw 分的绝对差、相对差及候选比例决定单库、双库或复杂问题最多三库。
-- **代码入口**：`modules/knowledge/service.py`、`portraits.py`、`router.py`。
-
-### 3. 🔍 Retrieval（语义路由与混合检索）
-
-- **职责**：One-Pass 意图、目标知识库确定后的混合检索与两阶段重排，输出供生成的 Top-K。
-- **One-Pass 意图**：一次 LLM 调用输出 `IntentObject`（含 `refined_query`、`sparse_keywords`、`multi_view_queries`、`visual_intent` / `audio_intent` / `video_intent` 等）；解析失败时回退默认意图。
-- **混合检索**：Dense（主查询 + 多视角融合）、Sparse（BGE-M3）、Visual（`image_vectors` 上 text\_vec/clip\_vec 双路）；视频以 Shot 的 caption/ASR 四路加权 RRF 为主，按视觉意图可增强关键帧。多路结果去重后加权 RRF 粗排。
-- **两阶段重排**：候选构建 (query, content) 对送 Cross-Encoder；与 RRF 分加权合并得 `final_top_k`；`implicit_enrichment` 等场景可做图片等配额保护。
-- **代码入口**：`modules/retrieval/service.py`、`processors/intent.py`、`processors/rewriter.py`、`search_engine.py`、`reranker.py`。
-
-### 3.5 🧭 Agent Runtime（有界深研与证据收敛）
-
-- **三态模式**：自动模式按问题复杂度选择路径；直接检索保持单次 RAG；Agent 深研在同一检索器之上迭代，不创建第二套索引。
-- **规划与工具**：LLM 只输出 `search/final` JSON 决策；自动工具白名单当前仅含只读 `multimodal_knowledge_search`。
-- **证据账本**：跨子查询按 `content_type + point_id` 去重，记录重复命中、最佳名次和来源检索，合并多模态意图与目标知识库。
-- **预算与降级**：轮数、单轮查询、总查询和证据池均有上限；规划器失败会回退原问题或基于已有证据收敛。
-- **代码入口**：`modules/agent/service.py`、`planner.py`、`tools.py`；完整的 WeKnora 对照研究与演进路线见 **[Agentic Upgrade Research](docs/AGENTIC_UPGRADE_WEKNORA_RESEARCH.md)**。
-
-### 4. 💬 Generation（上下文构建与生成）
-
-- **职责**：重排结果 → 引用映射与多模态 Prompt → LLM 生成；SSE 推送思考链、引用与正文。
-- **上下文构建**：ReferenceMap（序号、`content_type`、`presigned_url`、metadata 含 `chunk_id` 等）；按 `max_context_length`、`max_chunks`、`max_images` 及音视频上限控制长度；Type A/B 插槽填入 Prompt。
-- **提示词**：`core/llm/prompt.py` 集中管理；规定 `[id]` 引用与多模态描述方式。
-- **流式输出**：`thought` / `citation` / `message`；前端 ThinkingCapsule、CitationPopover、灯箱/播放器等。
-- **代码入口**：`modules/generation/service.py`、`context_builder.py`、`templates/multimodal_fmt.py`、`stream_manager.py`。
-
-### 5. 🤖 LLM Manager（模型管理与路由）
-
-- **职责**：按任务类型将 chat/embed/rerank 等请求路由到对应模型与 Provider；统一多厂商 API 与提示词。
-- **任务路由**：如 `intent_recognition`、`image_captioning`、`final_generation`、`reranking`、`kb_portrait_generation` 等映射到具体模型；业务层传 `task_type` 与参数即可。
-- **统一接口**：chat、embed、rerank；Provider 侧多为 OpenAI 兼容协议。
-- **多 Provider**：SiliconFlow、OpenRouter、阿里云百炼、DeepSeek 等；可配置超时与故障转移。
-- **其它 Core**：`sparse_encoder.py`、`portrait_trigger.py`、`keyword_extract.py` 等。
-- **代码入口**：`core/llm/manager.py`、`core/llm/__init__.py`（LLMRegistry）、`prompt.py`、`prompt_engine.py`、`providers/`。
-
-更细的设计与边界说明见 **[MMA\_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)**。
-
-<h2 id="快速开始">🚀 快速开始</h2>
-
-**适用环境**：Linux、WSL、MacOS。
-
-### 🛠️ 环境要求
-
-| 依赖                      | 说明                                 |
-| ----------------------- | ---------------------------------- |
-| Docker & Docker Compose | 启动 MinIO、Qdrant、Redis 等            |
-| Node.js 20.20.1         | 前端（npm 或 pnpm）                     |
-| Python 3.12             | 本地运行后端时                            |
-| LibreOffice             | Office 预览转 PDF，见 [可选系统依赖](#可选系统依赖) |
-| FFmpeg                  | 视频解析/切段，见 [可选系统依赖](#可选系统依赖)        |
-
-### 📦 1. 克隆与配置
+### 1. 克隆与配置
 
 ```bash
 git clone https://github.com/Champ-X/MMA-RAG.git
 cd MMA-RAG
 cp backend/.env.example backend/.env
-# 编辑 backend/.env：至少填写下表「必填」项（与 `backend/.env.example` 对照）
 ```
 
-#### 必填环境变量
+默认模型注册至少要求：
 
-以下密钥与连接信息用于默认模型路由、多 Provider 与 MinerU 解析链路；本地 Docker 依赖（Redis / Qdrant / MinIO）若与示例一致，可直接沿用 `backend/.env.example` 中的值。**为了体验全部功能，建议配置所有API\_KEY。**
+| 变量 | 要求 |
+|---|---|
+| `SILICONFLOW_API_KEY` | **必填**：默认 LLM、Embedding、Rerank 等任务 |
+| `OPENROUTER_API_KEY` | 选填：使用 OpenRouter 模型时配置 |
+| `ALIYUN_BAILIAN_API_KEY` | 选填：使用阿里云百炼模型、Omni 视频解析或飞书相关模型配置时配置 |
+| `DEEPSEEK_API_KEY` | 选填：任务路由到 DeepSeek 时配置 |
+| `MINERU_TOKEN` | 选填：优先使用 MinerU 云解析；缺失时按本地/其它解析链降级 |
+| `PADDLEOCR_API_URL` / `PADDLEOCR_TOKEN` | 选填：启用 PaddleOCR 解析分支 |
+| `FEISHU_*` | 选填：飞书 IM 或飞书文档导入，详见 [FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md) |
 
-| 变量                       | 说明                                                                                                                                                                                |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SILICONFLOW_API_KEY`    | **SiliconFlow**：默认 LLM、Embedding、Rerank 等多数任务走 SiliconFlow OpenAI 兼容接口。在 [SiliconFlow 控制台](https://cloud.siliconflow.cn/) 注册后于「API 密钥」页创建。                                        |
-| `OPENROUTER_API_KEY`     | **OpenRouter**：在 `LLMManager` 中将任务路由到 OpenRouter 上聚合的模型时使用（与 `core/llm/providers/openrouter.py` 等配置配合）。在 [openrouter.ai/keys](https://openrouter.ai/keys) 创建 API Key。             |
-| `ALIYUN_BAILIAN_API_KEY` | **阿里云百炼（DashScope）**：选用通义等百炼模型、或 Provider 指向阿里云时使用。在 [百炼控制台](https://bailian.console.aliyun.com/) 开通模型服务，密钥说明见 [获取 API Key](https://help.aliyun.com/zh/model-studio/get-api-key)。 |
-| `MINERU_TOKEN`           | **MinerU 云端解析**：PDF / Word 等走 MinerU API 优先链路时用于鉴权（见 `ParserFactory` 中 MinerU API 分支）。在 [MinerU 开放服务](https://mineru.net/)（或 OpenDataLab MinerU 文档指引）申请 Token。                    |
+完整变量与默认值以 [`backend/.env.example`](backend/.env.example) 为准。不要提交真实密钥，部署边界见 [SECURITY](SECURITY.md)。
 
-#### 选填环境变量
-
-未配置时多数功能使用代码内默认或降级路径；需要对应能力时再填写。完整键名与默认值见 [`backend/.env.example`](backend/.env.example)。
-
-| 变量                                                   | 说明                                                                                                                                                                                     |
-| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DEEPSEEK_API_KEY`                                   | **DeepSeek**：任务路由到 DeepSeek API 时使用。在 [DeepSeek 开放平台](https://platform.deepseek.com/) → API keys 创建。                                                                                   |
-| `PADDLEOCR_API_URL` / `PADDLEOCR_TOKEN`              | **PaddleOCR 版面解析**：PDF 链路中 PaddleOCR-VL 等调用（与 `paddleocr_client` 配置一致）。服务与 Token 通常来自 [飞桨 AI Studio](https://aistudio.baidu.com/) 或自建推理地址，见 [PaddleOCR 文档](https://www.paddleocr.ai/)。 |
-| `TAVILY_API_KEY`                                     | **Tavily**：联网搜索、热点导入等需要 Tavily 时启用。在 [tavily.com](https://tavily.com/) 注册后在控制台获取 API Key。                                                                                              |
-| `SERPAPI_KEY`                                        | **SerpAPI**：例如「按关键词搜索图片导入」等需要 Google 等搜索结果时。在 [serpapi.com](https://serpapi.com/manage-api-key) 管理 API Key。                                                                            |
-| `PIXABAY_API_KEY`                                    | **Pixabay**：Pixabay 图片搜索导入。在 [Pixabay API](https://pixabay.com/api/docs/) 申请。                                                                                                          |
-| `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 及其它 `FEISHU_*` | **飞书开放平台**：机器人长连接、卡片回复与飞书文档链接导入；文档导入还需 Docx/Wiki/素材/画板及按需 Sheets/Base 只读权限，并将目标文档授权给应用。详见 [FEISHU\_BOT\_SETUP](docs/FEISHU_BOT_SETUP.md)。                                              |
-
-### 🐍 2. Python 虚拟环境与后端依赖
-
-在仓库根目录执行（将后端依赖安装到独立虚拟环境，避免与系统 Python 混用）：
+### 2. 安装后端依赖
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate          # Linux / WSL / macOS
+source .venv/bin/activate
 pip install -U pip
 pip install -r backend/requirements.txt
 ```
 
-### ▶️ 3. 启动开发环境
+### 3. 启动开发环境
 
 ```bash
-source .venv/bin/activate           # 与上一步在仓库根创建的 venv 一致
-chmod +x start-dev.sh
+source .venv/bin/activate
 ./start-dev.sh
 ```
 
-脚本会检查 `backend/.env` 是否存在，用 Docker Compose 启动 MinIO、Qdrant、Redis，再在本地启动后端与前端。首次运行可能下载或预载 LibreOffice/FFmpeg（若脚本尝试安装）以及 CLIP、CLAP、BGE-M3 等模型（视 `PRELOAD_LOCAL_MODELS_ON_STARTUP` 等配置），耗时可能较长。
+`start-dev.sh` 会：
 
-### 🌐 4. 访问
+1. 检查 `backend/.env`；
+2. 检查或尝试安装 FFmpeg 与 LibreOffice；
+3. 通过 Docker Compose 启动 MinIO、Qdrant、Redis；
+4. 在本机启动 FastAPI 与 Vite。
 
-| 服务               | 地址                                                                                                       |
-| ---------------- | -------------------------------------------------------------------------------------------------------- |
-| Web 前端           | <http://localhost:3000>                                                                                  |
-| 后端 API           | <http://localhost:8000>                                                                                  |
-| API 文档           | <http://localhost:8000/docs>                                                                             |
-| MinIO 控制台        | <http://localhost:9001> （账号密码与 `backend/.env` 或 `docker-compose.yml` 一致，本地多为 `minioadmin`）               |
-| Qdrant Dashboard | <http://localhost:6333/dashboard> （向量库 Web 控制台；端口与 `QDRANT_PORT` / `docker-compose.yml` 中映射一致，默认 `6333`） |
+Compose 还定义了可选的 `celery_worker` / `celery_flower`，开发脚本默认不启动它们。
 
-### 🤖 5. 安装本地 Codex Skill
+### 4. 访问
 
-项目包含一个内置 CLI 的 `mma-rag` Skill，可让本机 Codex 创建/查询知识库、上传多模态文件、等待入库、检索证据并生成回答：
+| 服务 | 地址 |
+|---|---|
+| Web UI | [http://localhost:3000](http://localhost:3000) |
+| 架构页 | [http://localhost:3000/architecture](http://localhost:3000/architecture) |
+| 后端 API | [http://localhost:8000](http://localhost:8000) |
+| OpenAPI | [http://localhost:8000/docs](http://localhost:8000/docs) |
+| MinIO Console | [http://localhost:9001](http://localhost:9001) |
+| Qdrant Dashboard | [http://localhost:6333/dashboard](http://localhost:6333/dashboard) |
+
+## API 与 Codex Skill
+
+后端提供稳定的只读证据接口：
+
+```text
+POST /api/v1/retrieval/search
+```
+
+它返回紧凑的 `doc | image | audio | video` 证据合同，不直接暴露内部 Qdrant payload。对话与 Agent 模式继续使用 `/api/chat/message` 或 `/api/chat/stream`。
+
+仓库自带 Tessmora Codex Skill，CLI 名称保留为 `mma-rag`：
 
 ```bash
 ./scripts/install-codex-skill.sh
 skills/mma-rag/scripts/mma-rag health
 skills/mma-rag/scripts/mma-rag kb list
+skills/mma-rag/scripts/mma-rag search --query "部署失败后如何回滚？" --kb-id KB_ID
+skills/mma-rag/scripts/mma-rag ask --query "总结部署流程" --kb-id KB_ID --agent-mode auto
 ```
 
-安装脚本会在 `${CODEX_HOME:-$HOME/.codex}/skills/mma-rag` 创建指向仓库 Skill 的符号链接，不会覆盖已有同名目录。CLI 默认连接 `http://127.0.0.1:8000`；详细命令与安全上传目录配置见 [`skills/mma-rag/references/cli-reference.md`](skills/mma-rag/references/cli-reference.md)。
+安装脚本会在 `${CODEX_HOME:-$HOME/.codex}/skills/mma-rag` 创建指向仓库 Skill 的符号链接，不覆盖已有同名目录。完整命令、安全上传根目录与退出码见 [CLI reference](skills/mma-rag/references/cli-reference.md)。
 
-<h2 id="可选系统依赖">🔧 可选系统依赖</h2>
+## 当前边界
 
-### 📄 Office 预览（PPTX / DOCX）
+- 应用 API **没有内置用户鉴权**，开发配置中的 CORS 允许任意来源；请只在可信网络使用，公网部署前必须在反向代理或 API Gateway 增加认证、TLS、来源限制、限流与上传大小控制。
+- Chat session 和部分统计仍是进程内状态，不适合直接做无状态多副本部署。
+- Agent 当前只有只读 `multimodal_knowledge_search` 工具；没有写工具、审批流、MCP、长期记忆或沙箱。
+- 飞书聊天当前走直接检索路径；Web Chat API 与 `mma-rag ask` 支持三态 Agent 模式。
+- 检索权重和部分阈值仍在代码中，尚未全部迁入配置中心。
 
-- 页内预览 `pptx`/`docx` 时，后端可先转 PDF 再供 iframe 展示。
-- 未安装 LibreOffice 时会回退到文本/分块预览。Linux / WSL 示例：
+更完整的现状与演进状态见 [架构文档](docs/MMA_ARCHITECTURE.md) 和 [路线图](docs/mira-plan.md)。
 
-```bash
-sudo apt-get update && sudo apt-get install -y libreoffice
-```
+## 文档索引
 
-### 🎬 视频（FFmpeg）
+| 文档 | 定位 |
+|---|---|
+| [MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md) | 当前实现：模块边界、入库与问答链路、数据面、Agent 与 API |
+| [MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 图片、音频、视频的字段、向量与检索细节 |
+| [AGENTIC_UPGRADE_WEKNORA_RESEARCH](docs/AGENTIC_UPGRADE_WEKNORA_RESEARCH.md) | Agent 调研基线、已落地能力与风险原则 |
+| [mira-plan](docs/mira-plan.md) | 按“已完成 / 部分完成 / 待规划”维护的演进路线 |
+| [FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md) | 飞书 IM 与 Docx/Wiki 权限、变量、验证 |
+| [CLI reference](skills/mma-rag/references/cli-reference.md) | 本地 Skill/CLI 命令与安全边界 |
+| [SECURITY](SECURITY.md) | 当前安全姿态与生产部署清单 |
+| [CHANGELOG](CHANGELOG.md) | 近期功能与文档变更 |
 
-- 视频切段、音轨抽取等依赖系统 `ffmpeg`；未安装时相关流程可能降级或报错。
-- Linux / WSL 示例：
+---
 
-```bash
-sudo apt-get update && sudo apt-get install -y ffmpeg
-```
-
-- 若不在 `PATH` 中，可在 `backend/.env` 设置 `FFMPEG_PATH=/your/path/to/ffmpeg`。
-
-<h2 id="文档索引">📘 文档索引</h2>
-
-| 文档                                                                                                      | 说明                            |
-| ------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| [MMA\_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)                                                           | 架构设计与实现要点                     |
-| [MULTIMODAL\_IMAGE\_AUDIO\_VIDEO\_TECHNICAL\_SPEC](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 图 / 音 / 视多模态技术说明              |
-| [FEISHU\_BOT\_SETUP](docs/FEISHU_BOT_SETUP.md)                                                          | 飞书机器人：开放平台与 `FEISHU_*` 环境变量配置 |
-| [SECURITY.md](SECURITY.md)                                                                              | 密钥与敏感信息                       |
-
-***
-
-**快速体验**：`./start-dev.sh` → 打开 <http://localhost:3000> → 创建知识库并上传文档或图片 → 对话与引用溯源。
-
-**核心价值**：多模态统一检索、知识库智能路由、思考过程可解释、引用可追溯。
+**快速体验**：`./start-dev.sh` → 打开 [http://localhost:3000](http://localhost:3000) → 创建知识库并上传内容 → 选择自动、直接或 Agent 深研 → 检查回答引用。

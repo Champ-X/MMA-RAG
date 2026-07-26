@@ -1,185 +1,103 @@
-import { ArrowRight, ArrowDown, FileText, Database, GitBranch, Server, Activity, Zap, Sparkles } from 'lucide-react'
-import { dataFlowStages } from '@/data/architectureData'
+import { ArrowRight, Database, HardDrive, RadioTower, ServerCog } from 'lucide-react'
+import { dataFlowLanes } from '@/data/architectureData'
+
+const laneMeta = {
+  ingestion: {
+    icon: HardDrive,
+    label: '写入路径',
+    accent: 'text-orange-700 dark:text-orange-300',
+    surface: 'border-orange-200/80 bg-orange-50/55 dark:border-orange-900/70 dark:bg-orange-950/15',
+  },
+  query: {
+    icon: RadioTower,
+    label: '读取路径',
+    accent: 'text-teal-700 dark:text-teal-300',
+    surface: 'border-teal-200/80 bg-teal-50/55 dark:border-teal-900/70 dark:bg-teal-950/15',
+  },
+}
 
 export function DataFlowDiagram() {
-  const ingestionStages = [
-    { id: 'upload', icon: <FileText className="h-4 w-4 text-sky-500" />, title: '多来源接入', label: '上传 / URL / 文件夹 / 热点' },
-    { id: 'minio', icon: <Database className="h-4 w-4 text-amber-600" />, title: 'MinIO', label: '文档 / 图片 / 音频 / 视频' },
-    { id: 'vectorize-qdrant', icon: <Activity className="h-4 w-4 text-emerald-600" />, title: '向量化 & Qdrant', label: 'Dense + BGE-M3 + CLIP + CLAP' },
-    { id: 'redis-celery', icon: <Server className="h-4 w-4 text-rose-600" />, title: 'Redis & Celery', label: '异步任务与进度' },
-  ]
-
-  const ragStages = [
-    { id: 'retrieval-generation', icon: <Sparkles className="h-4 w-4 text-indigo-600" />, title: '检索 → 生成', label: 'RAG 主链路' },
-    { id: 'citation', icon: <ArrowRight className="h-4 w-4 text-purple-600" />, title: 'Citation', label: '引用展示' },
-  ]
-
-  const channelStage = dataFlowStages.find((s) => s.id === 'channels')
-
   return (
-    <section id="data-flow" className="scroll-mt-24 space-y-4">
-      <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 shadow-sm dark:bg-amber-950/40 dark:text-amber-200">
-        <GitBranch className="h-3.5 w-3.5" />
-        <span>数据流与存储</span>
+    <section id="data-flow" className="scroll-mt-24">
+      <div className="max-w-3xl">
+        <h2 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950 [text-wrap:balance] dark:text-white sm:text-3xl">
+          写入和读取，各走自己的路径
+        </h2>
+        <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300 sm:text-[15px]">
+          离线链路负责固化对象与索引，在线链路只读取证据并组装引用。Redis / Celery 只位于任务控制面。
+        </p>
       </div>
 
-      <p className="max-w-4xl text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-        从「多来源接入」到 MinIO、全模态向量化与 Qdrant，再经检索与生成得到引用映射；最终通过{' '}
-        <strong className="font-medium text-slate-700 dark:text-slate-200">Web SSE</strong> 或{' '}
-        <strong className="font-medium text-slate-700 dark:text-slate-200">飞书消息 / 卡片</strong> 送达用户。
-      </p>
+      <div className="mt-8 space-y-4">
+        {dataFlowLanes.map((lane) => {
+          const meta = laneMeta[lane.id]
+          const Icon = meta.icon
 
-      <div className="space-y-6 rounded-2xl border border-amber-100/80 bg-gradient-to-br from-amber-50/60 via-slate-50/80 to-slate-50/80 p-6 shadow-lg dark:border-amber-900/80 dark:from-amber-950/30 dark:via-slate-950 dark:to-slate-950">
-        {/* 数据摄取阶段 */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <div className="rounded-full bg-gradient-to-br from-sky-500 to-emerald-500 p-1.5 shadow-md">
-              <Zap className="h-3 w-3 text-white" />
-            </div>
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">数据摄取阶段</h3>
-          </div>
-          <div className="flex flex-col items-center gap-3 md:flex-row md:flex-wrap md:justify-center md:gap-2 lg:gap-3">
-            {ingestionStages.map((stage, index) => {
-              const stageData = dataFlowStages.find(s => s.id === stage.id)
-              const description = stage.id === 'vectorize-qdrant'
-                ? `${dataFlowStages.find(s => s.id === 'vectorize')?.description ?? ''} ${dataFlowStages.find(s => s.id === 'qdrant')?.description ?? ''}`
-                : stageData?.description
-
-              return (
-                <div key={stage.id} className="flex items-center gap-2">
-                  <StageCard icon={stage.icon} title={stage.title} label={stage.label} description={description} />
-                  {index < ingestionStages.length - 1 && (
-                    <>
-                      <div className="hidden md:block">
-                        <ArrowHorizontal />
-                      </div>
-                      <div className="block md:hidden">
-                        <ArrowVertical />
-                      </div>
-                    </>
-                  )}
+          return (
+            <div key={lane.id} className={`rounded-2xl border p-5 sm:p-6 ${meta.surface}`}>
+              <div className="grid gap-6 xl:grid-cols-[15rem_minmax(0,1fr)] xl:items-center">
+                <div>
+                  <div className={`flex items-center gap-2 text-xs font-semibold ${meta.accent}`}>
+                    <Icon className="h-4 w-4" />
+                    {meta.label}
+                  </div>
+                  <h3 className="mt-3 text-lg font-semibold text-slate-950 dark:text-white">{lane.title}</h3>
+                  <p className="mt-2 text-xs leading-6 text-slate-500 dark:text-slate-400">{lane.description}</p>
                 </div>
-              )
-            })}
-          </div>
-        </div>
 
-        {/* 连接线 - 从摄取到RAG */}
-        <div className="flex items-center justify-center py-2">
-          <div className="flex flex-col items-center gap-2 md:flex-row">
-            <div className="hidden h-px w-16 bg-gradient-to-r from-rose-400/60 to-transparent md:block" />
-            <div className="flex h-12 w-px items-center justify-center bg-gradient-to-b from-rose-400/60 via-indigo-400/60 to-purple-400/60 md:h-px md:w-12 md:bg-gradient-to-r dark:from-rose-500 dark:via-indigo-500 dark:to-purple-500">
-              <div className="rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 p-1.5 shadow-md">
-                <ArrowDown className="h-4 w-4 animate-bounce text-white md:hidden" />
-                <ArrowRight className="hidden h-4 w-4 animate-bounce text-white md:block" />
+                <ol className="flex flex-col lg:flex-row lg:items-stretch">
+                  {lane.stages.map((stage, index) => (
+                    <li key={stage.title} className="contents">
+                      <div className="min-w-0 flex-1 rounded-xl border border-white/80 bg-white/85 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+                        <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">{stage.title}</div>
+                        <div className="mt-1.5 text-[10px] leading-5 text-slate-500 dark:text-slate-400">{stage.detail}</div>
+                      </div>
+                      {index < lane.stages.length - 1 ? (
+                        <div className="flex h-7 items-center justify-center text-slate-400 lg:h-auto lg:w-6 lg:shrink-0">
+                          <ArrowRight className="h-3.5 w-3.5 rotate-90 lg:rotate-0" />
+                        </div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
               </div>
             </div>
-            <div className="hidden h-px w-16 bg-gradient-to-l from-purple-400/60 to-transparent md:block" />
-          </div>
-        </div>
+          )
+        })}
+      </div>
 
-        {/* RAG阶段 */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <div className="rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 p-1.5 shadow-md">
-              <Sparkles className="h-3 w-3 text-white" />
-            </div>
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">RAG 检索与生成阶段</h3>
-          </div>
-          <div className="flex flex-col items-center gap-3 md:flex-row md:justify-center md:gap-2 lg:gap-3">
-            {ragStages.map((stage, index) => {
-              const stageData = dataFlowStages.find(s => s.id === stage.id)
-              const description = stageData?.description
-
-              return (
-                <div key={stage.id} className="flex items-center gap-2">
-                  <StageCard icon={stage.icon} title={stage.title} label={stage.label} description={description} />
-                  {index < ragStages.length - 1 && (
-                    <>
-                      <div className="hidden md:block">
-                        <ArrowHorizontal />
-                      </div>
-                      <div className="block md:hidden">
-                        <ArrowVertical />
-                      </div>
-                    </>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+      <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200/90 bg-white dark:border-slate-800 dark:bg-slate-950">
+        <div className="border-b border-slate-200/80 px-5 py-3 text-xs font-semibold text-slate-800 dark:border-slate-800 dark:text-slate-100">
+          共享数据面
         </div>
-
-        {/* 输出渠道 */}
-        <div className="space-y-3 rounded-xl border border-cyan-200/50 bg-gradient-to-r from-cyan-50/40 via-white/60 to-indigo-50/40 p-4 dark:border-cyan-900/40 dark:from-cyan-950/20 dark:via-slate-950/40 dark:to-indigo-950/20">
-          <div className="flex items-center gap-2">
-            <div className="rounded-full bg-gradient-to-br from-cyan-500 to-indigo-500 p-1.5 shadow-md">
-              <GitBranch className="h-3 w-3 text-white" />
-            </div>
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">输出与触达</h3>
-          </div>
-          <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break">
-            {channelStage?.description}
-          </p>
-          <div className="flex flex-wrap justify-center gap-3 text-center">
-            <div className="rounded-lg border border-indigo-200/70 bg-white/90 px-4 py-2 text-[11px] font-medium text-indigo-800 shadow-sm dark:border-indigo-800/60 dark:bg-slate-900/70 dark:text-indigo-200">
-              浏览器 · SSE 流式
-            </div>
-            <div className="rounded-lg border border-sky-200/70 bg-white/90 px-4 py-2 text-[11px] font-medium text-sky-800 shadow-sm dark:border-sky-800/60 dark:bg-slate-900/70 dark:text-sky-200">
-              飞书 · 卡片 / Post / 文件
-            </div>
-          </div>
-        </div>
+        <dl className="grid md:grid-cols-3">
+          <SharedCell icon={<Database className="h-4 w-4" />} title="Qdrant" detail="语义与专用向量，在线检索的主要读取面。" />
+          <SharedCell icon={<HardDrive className="h-4 w-4" />} title="MinIO" detail="原始对象、关键帧、manifest 与媒体 URL。" bordered />
+          <SharedCell icon={<ServerCog className="h-4 w-4" />} title="Redis / Celery" detail="导入任务控制面，不位于检索结果链中。" bordered />
+        </dl>
       </div>
     </section>
   )
 }
 
-interface StageCardProps {
+function SharedCell({
+  icon,
+  title,
+  detail,
+  bordered = false,
+}: {
   icon: React.ReactNode
   title: string
-  label: string
-  description?: string
-}
-
-function StageCard({ icon, title, label, description }: StageCardProps) {
+  detail: string
+  bordered?: boolean
+}) {
   return (
-    <div className="group relative flex w-full flex-shrink-0 flex-col overflow-hidden rounded-xl border-2 border-amber-200/60 bg-gradient-to-br from-white/95 via-amber-50/30 to-white/95 p-4 text-xs shadow-md backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/80 hover:shadow-lg sm:max-w-[280px] md:w-[200px] lg:w-[220px] xl:w-[240px] dark:border-amber-800/60 dark:from-slate-950/95 dark:via-amber-950/20 dark:to-slate-950/95">
-      <div className="absolute inset-0 bg-gradient-to-br from-amber-500/0 to-orange-500/0 transition-all duration-300 group-hover:from-amber-500/5 group-hover:to-orange-500/5" />
-      <div className="relative mb-3 flex items-center gap-2">
-        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-100 to-orange-100 shadow-sm transition-transform duration-300 group-hover:scale-110 group-hover:shadow-md dark:from-amber-900/50 dark:to-orange-900/50">
-          {icon}
-        </div>
-        <span className="break-words text-xs font-bold text-slate-800 dark:text-slate-50">{title}</span>
-      </div>
-      <p className="relative mb-3 text-[10px] font-semibold uppercase tracking-wide text-amber-700/90 dark:text-amber-300/90 break-words">
-        {label}
-      </p>
-      {description && (
-        <p className="relative flex-1 break-words text-[11px] leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break">
-          {description}
-        </p>
-      )}
-    </div>
-  )
-}
-
-function ArrowHorizontal() {
-  return (
-    <div className="flex items-center">
-      <div className="group/arrow flex h-px w-6 items-center justify-center bg-gradient-to-r from-amber-400/70 via-amber-500/80 to-amber-400/70 transition-all duration-300 hover:w-8 dark:from-amber-600 dark:via-amber-500 dark:to-amber-600">
-        <ArrowRight className="h-3.5 w-3.5 -mr-1 animate-pulse text-amber-600 transition-transform duration-300 group-hover/arrow:translate-x-1 dark:text-amber-300" />
-      </div>
-    </div>
-  )
-}
-
-function ArrowVertical() {
-  return (
-    <div className="flex items-center justify-center py-1">
-      <div className="group/arrow flex w-px h-6 flex-col items-center justify-center bg-gradient-to-b from-amber-400/70 via-amber-500/80 to-amber-400/70 transition-all duration-300 hover:h-8 dark:from-amber-600 dark:via-amber-500 dark:to-amber-600">
-        <ArrowDown className="h-3.5 w-3.5 -mb-1 animate-pulse text-amber-600 transition-transform duration-300 group-hover/arrow:translate-y-1 dark:text-amber-300" />
-      </div>
+    <div className={bordered ? 'border-t border-slate-200/80 p-5 dark:border-slate-800 md:border-l md:border-t-0' : 'p-5'}>
+      <dt className="flex items-center gap-2 text-xs font-semibold text-slate-900 dark:text-slate-100">
+        <span className="text-teal-600 dark:text-teal-400">{icon}</span>
+        {title}
+      </dt>
+      <dd className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">{detail}</dd>
     </div>
   )
 }

@@ -3,6 +3,8 @@
 > 调研基线：Tencent/WeKnora `main`，commit
 > [`c64a48647cd6f7eb8b0fb020b2e8fec74ee375fb`](https://github.com/Tencent/WeKnora/commit/c64a48647cd6f7eb8b0fb020b2e8fec74ee375fb)，
 > 版本 `v0.7.1`，2026-07-24。
+>
+> Tessmora 实现同步基线：2026-07-26，覆盖 `c1ea6c0` 及此前实现。本文保留外部项目调研和第一阶段设计依据；最新系统事实见 [架构设计](./MMA_ARCHITECTURE.md)，后续优先级见 [演进路线图](./mira-plan.md)。
 
 ## 1. 结论
 
@@ -143,6 +145,18 @@ Agent 对多轮结果执行：
 - 全部工具失败且没有任何证据：明确失败，不伪造回答；
 - Agent 模式未传入：后端保持旧行为，兼容已有客户端。
 
+### 3.5 Agent-facing API 与本地 Skill/CLI
+
+第一阶段同时交付了一个不生成回答的稳定检索面：
+
+- `POST /api/v1/retrieval/search` 接收查询、KB/文件范围、模态过滤和 `top_k`；
+- 响应使用紧凑 `EvidenceItem`，不暴露 Qdrant 原始 payload 或内部 `RetrievalResult`；
+- `mma-rag search` 调用该公开检索 API，适合由外部 Agent 自行综合证据；
+- `mma-rag ask` 调用 Chat API，并支持 `direct / auto / agent`；
+- 上传命令只接受安全根目录内的用户指定文件。
+
+仓库内 [`skills/mma-rag/SKILL.md`](../skills/mma-rag/SKILL.md) 是 Codex 本地操作 Skill，已经使用渐进式说明和独立 CLI reference。它与 Phase 3 规划的“知识库内可治理 Skill 平台”不是同一层能力。
+
 ## 4. 后续演进路线
 
 ### Phase 2：Evidence Agent
@@ -158,7 +172,7 @@ Agent 对多轮结果执行：
 1. GraphRAG 查询工具和实体关系视图；
 2. DuckDB 表格分析工具；
 3. Web Search / Fetch 作为显式外部来源，和知识库引用分栏；
-4. `SKILL.md` 渐进式披露、白名单与版本管理；
+4. 知识库/租户作用域的 Skill 白名单与版本管理（本地 Codex 操作 Skill 已交付）；
 5. MCP Stdio/HTTP/SSE 接入；
 6. 风险分级、人工审批、参数修改、超时拒绝、审计与沙箱。
 

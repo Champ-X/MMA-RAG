@@ -1,40 +1,26 @@
-# Vendor Logos
+# Vendor and provider logos
 
-厂商logo文件应放置在此目录下。
+This directory currently contains:
 
-## 需要的Logo文件
+| File | Display role |
+|---|---|
+| `anthropic.svg` | Anthropic / Claude |
+| `chatgpt.png` | OpenAI / GPT |
+| `gemini.png` | Google / Gemini |
+| `qwen.png` | Qwen |
+| `deepseek.png` | DeepSeek |
+| `minimax.png` | MiniMax |
+| `moonshot.png` | Moonshot |
+| `zai.png`, `zhipu.png` | Z.AI / Zhipu assets |
+| `openrouter.png` | OpenRouter provider fallback |
+| `bailian.png` | Aliyun Bailian provider fallback |
+| `siliconcloud.png` | SiliconFlow provider fallback |
 
-- ✅ `qwen.png` - 已存在
-- ✅ `deepseek.png` - 已存在
-- ✅ `minimax.png` - 已存在
-- ✅ `moonshot.png` - 已存在
-- ✅ `zai.png` - 已存在
-- ⚠️ `gemini.png` - 需要下载（Google Gemini logo）
-- ⚠️ `openai.png` - 需要下载（OpenAI/ChatGPT logo）
+The authoritative mapping lives in:
 
-**注意**：OpenRouter 和 AliyunBailian 是提供商（provider），不是厂商（vendor），它们提供的模型会按照实际厂商分类显示，因此不需要它们的 logo。
+- `frontend/src/lib/modelVendors.ts`
+- `frontend/src/lib/lobeOpenRouterIcons.ts`
 
-## Logo下载建议
+OpenRouter models are normally classified by their actual model vendor. Provider logos are used when the UI needs to represent the provider itself or when a more specific vendor asset is unavailable.
 
-### Gemini Logo
-- 来源：Google官方或Wikimedia Commons
-- 推荐尺寸：512x512px 或 640x640px
-- 格式：PNG（透明背景）
-- 下载链接：
-  - https://commons.wikimedia.org/wiki/File:Google_Gemini_logo_2025.svg (可转换为PNG)
-  - https://seeklogo.com/free-vector-logos/google-gemini
-
-### OpenAI Logo
-- 来源：OpenAI官方
-- 推荐尺寸：512x512px 或 640x640px
-- 格式：PNG（透明背景）
-- 下载链接：
-  - OpenAI官方品牌资源
-  - https://seeklogo.com/free-vector-logos/openai
-
-## 注意事项
-
-- Logo文件应使用PNG格式，支持透明背景
-- 建议尺寸：640x640px（与其他logo保持一致）
-- 如果logo不存在，UI会正常显示，只是不显示logo图标
-- OpenRouter 和 AliyunBailian 提供的模型会按照实际厂商（Qwen、Gemini、OpenAI等）分类显示
+When adding or renaming an asset, update the TypeScript mapping in the same change. Prefer a transparent, tightly cropped PNG or SVG and verify both light and dark themes. Missing assets must degrade to the existing text/icon fallback rather than breaking model selection.

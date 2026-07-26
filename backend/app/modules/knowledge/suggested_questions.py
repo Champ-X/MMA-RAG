@@ -35,8 +35,32 @@ MAX_KB_SAMPLE_GLOBAL = 8
 MAX_FILES_PER_KB = 5
 PREVIEW_TIMEOUT_SEC = 18.0
 MAX_QUESTION_TEXT_CHARS = 96
+SUGGESTION_STRATEGY_VERSION = "content-first-v2"
 _CACHE_CLEANUP_INTERVAL_SEC = 600
 _last_cache_cleanup_ts = 0.0
+
+_UUID_RE = re.compile(
+    r"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b"
+)
+_LONG_OPAQUE_TOKEN_RE = re.compile(r"(?i)\b[0-9a-f]{16,}\b")
+_FILE_REFERENCE_RE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_.-])([a-z0-9][a-z0-9._-]{2,180}\."
+    r"(?:png|jpe?g|gif|webp|bmp|tiff?|svg|pdf|docx?|pptx?|xlsx?|csv|txt|md|"
+    r"mp3|wav|m4a|aac|flac|mp4|mov|avi|mkv|webm))(?![A-Za-z0-9_.-])"
+)
+_TEMP_FILE_PREFIX_RE = re.compile(
+    r"(?i)^(?:"
+    r"codex[-_ ]*clipboard|clipboard|pasted?[-_ ]*(?:image|file)|"
+    r"screen[-_ ]*shot|screenshot|image|img|upload(?:ed)?|"
+    r"wechatimg|wx_camera|mmexport|dsc|pxl"
+    r")[-_ .]*"
+)
+_GENERIC_FILE_WORD_RE = re.compile(
+    r"(?i)\b(?:at|copy|file|image|photo|picture|scan|new|final)\b"
+)
+_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".svg"}
+_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac"}
+_VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 
 
 def _sha256_text(s: str) -> str:
@@ -96,11 +120,75 @@ def _safe_json_loads_array(raw: str) -> List[str]:
     return out
 
 
+def _readable_file_title(file_name: str) -> str:
+    """将人工标题与上传工具生成的临时文件名区分开。"""
+    raw_name = re.split(r"[/\\]", str(file_name or "").strip())[-1]
+    stem = re.sub(r"\.[^.]+$", "", raw_name).strip()
+    if not stem:
+        return ""
+
+    had_temp_prefix = bool(_TEMP_FILE_PREFIX_RE.match(stem))
+    cleaned = _TEMP_FILE_PREFIX_RE.sub("", stem)
+    cleaned = _UUID_RE.sub(" ", cleaned)
+    cleaned = _LONG_OPAQUE_TOKEN_RE.sub(" ", cleaned)
+    cleaned = re.sub(r"[-_.]+", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -_.")
+    semantic = _GENERIC_FILE_WORD_RE.sub(" ", cleaned)
+    semantic = re.sub(r"[\d\s:.-]+", " ", semantic).strip()
+
+    # 截图时间、纯编号、UUID/哈希与工具前缀都不应被当成用户可读主题。
+    if not semantic or not re.search(r"[A-Za-z\u4e00-\u9fff]", semantic):
+        return ""
+    if had_temp_prefix and not re.sub(r"(?i)[0-9a-f\s:.-]+", "", cleaned):
+        return ""
+    if had_temp_prefix and len(semantic) < 3:
+        return ""
+    return _trim(cleaned, 48)
+
+
+def _generic_material_label(file_name: str) -> str:
+    suffix = Path(str(file_name or "")).suffix.lower()
+    if suffix in _IMAGE_EXTENSIONS:
+        return "上传图片"
+    if suffix in _AUDIO_EXTENSIONS:
+        return "上传音频"
+    if suffix in _VIDEO_EXTENSIONS:
+        return "上传视频"
+    return "上传材料"
+
+
+def _remove_opaque_file_references(text: str) -> str:
+    """清理旧缓存或模型偶尔复述的 UUID/临时文件名，同时保留问题主题。"""
+    cleaned = text
+    removed = False
+    for match in list(_FILE_REFERENCE_RE.finditer(text)):
+        file_ref = match.group(1)
+        if _readable_file_title(file_ref):
+            continue
+        cleaned = cleaned.replace(file_ref, "")
+        removed = True
+
+    if not removed:
+        return cleaned
+
+    cleaned = re.sub(r"[「《“\"]\s*[」》”\"]", "", cleaned)
+    cleaned = re.sub(
+        r"(?:在|从|根据|关于)?\s*(?:该|这个|这份|这张)?\s*"
+        r"(?:文件|文档|图片|图像|附件)\s*"
+        r"(?:中|里|内|所示(?:的)?|显示(?:的)?)?\s*[，,:：]?\s*",
+        "",
+        cleaned,
+    )
+    cleaned = re.sub(r"^\s*(?:中|里|内)(?:的)?\s*", "", cleaned)
+    return cleaned
+
+
 def _normalize_question_text(text: str) -> str:
     t = str(text or "").strip()
     if not t:
         return ""
     t = re.sub(r"^[\-\*\d\.\)\s]+", "", t)
+    t = _remove_opaque_file_references(t)
     t = re.sub(r"\s+", " ", t).strip()
     t = t.strip("，,。;；:：")
     if not t:
@@ -158,14 +246,13 @@ async def _preview_with_timeout(
         return {"caption": None, "chunks": [], "transcript": None, "description": None}
 
 
-def _format_file_block(
-    kb_name: str,
-    file_name: str,
-    file_id: str,
-    details: Dict[str, Any],
-) -> str:
+def _format_file_block(file_name: str, details: Dict[str, Any]) -> str:
     lines: List[str] = []
-    lines.append(f"### 文件: {file_name} (id={file_id})")
+    readable_title = _readable_file_title(file_name)
+    if readable_title:
+        lines.append(f"### 素材主题: {readable_title}")
+    else:
+        lines.append(f"### 素材类型: {_generic_material_label(file_name)}（临时文件名已省略）")
     chunks = details.get("chunks") or []
     if isinstance(chunks, list) and chunks:
         parts = []
@@ -208,6 +295,30 @@ def _portrait_summaries(portraits: List[Dict[str, Any]]) -> List[str]:
     return out
 
 
+def _fallback_seed_from_file_block(block: str) -> str:
+    """优先从材料内容抽主题；仅在标题可读时才退回标题。"""
+    title_seed = ""
+    for raw_line in str(block or "").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("## 知识库:"):
+            continue
+        if line.startswith("### 素材主题:"):
+            title_seed = line.split(":", 1)[-1].strip()
+            continue
+        if line.startswith("###") or line in {
+            "- 文档分块摘录:",
+            "- 图片/视频画面说明:",
+            "- 音频:",
+        }:
+            continue
+        line = re.sub(r"^[·\-]\s*", "", line)
+        line = re.sub(r"^(?:概述|转写摘录)\s*[:：]\s*", "", line)
+        line = line.strip()
+        if len(line) >= 4:
+            return _trim(line, 30)
+    return _trim(title_seed, 24)
+
+
 def _fallback_questions_from_context(
     kb_names: List[str],
     portrait_lines: List[str],
@@ -224,10 +335,9 @@ def _fallback_questions_from_context(
             seeds.append(_trim(line.replace("- ", "").strip(), 24))
     if not seeds and file_lines:
         for block in file_lines[:3]:
-            if "### 文件:" in block:
-                m = re.search(r"### 文件:\s*([^(\n]+)", block)
-                if m:
-                    seeds.append(_trim(m.group(1).strip(), 24))
+            seed = _fallback_seed_from_file_block(block)
+            if seed:
+                seeds.append(seed)
     seeds = [s for s in seeds if s][:6]
     if not seeds:
         seeds = ["知识库内容"]
@@ -235,7 +345,7 @@ def _fallback_questions_from_context(
     templates = [
         lambda s: f"关于「{s}」，材料里有哪些结论或要点？",
         lambda s: f"「{s}」相关的流程或注意事项是什么？",
-        lambda s: f"如何用常识理解「{s}」这条线在材料中的含义？",
+        lambda s: f"材料如何说明「{s}」的核心含义？",
     ]
     kb_label = kb_names[0] if len(kb_names) == 1 else "多个知识库"
     out: List[Dict[str, str]] = []
@@ -644,7 +754,7 @@ async def build_context_and_questions_payload(
     async def _one(kb_id: str, kb_name: str, fid: str, fname: str) -> Tuple[str, str]:
         async with sem:
             det = await _preview_with_timeout(kb_service, kb_id, fid)
-        block = _format_file_block(kb_name, fname, fid, det)
+        block = _format_file_block(fname, det)
         header = f"## 知识库: {kb_name}\n"
         return kb_name, header + block
 
@@ -680,6 +790,7 @@ async def build_context_and_questions_payload(
         ),
         "max_q": max_q,
         "revision": revision,
+        "strategy": SUGGESTION_STRATEGY_VERSION,
     }
     cache_key = _sha256_text(json.dumps(scope_obj, sort_keys=True, ensure_ascii=False))
 
@@ -731,6 +842,8 @@ async def build_context_and_questions_payload(
             "3) 不得虚构材料中不存在的实体、指标、结论、时间、数值或关系；"
             "4) 问题应尽量引用材料中出现过的术语、对象、文件主题、caption/摘要表达；"
             "5) 问题要具体、可检索、彼此不重复，避免空泛提问。"
+            "6) 问题必须以材料内容为主语，不得出现文件名、扩展名、文件 ID、UUID、哈希、"
+            "上传工具生成的临时名称；即使材料标题可读，也只在确有助于区分主题时使用自然标题。"
             f"必须恰好输出 {max_q} 个问题。"
             "只输出 JSON 数组，元素为字符串，不要其它说明或 markdown。"
         )

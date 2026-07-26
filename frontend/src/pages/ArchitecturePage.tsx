@@ -1,16 +1,14 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowDown, BookOpenText, CheckCircle2, SearchCheck } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { architectureSections, coreModules, type ArchitectureSectionId } from '@/data/architectureData'
 import { ArchitectureNav } from '@/components/architecture/ArchitectureNav'
 import { OverviewSection } from '@/components/architecture/OverviewSection'
 import { ArchitectureDiagram } from '@/components/architecture/ArchitectureDiagram'
 import { RequestFlowStepper } from '@/components/architecture/RequestFlowStepper'
-import { ModuleCard } from '@/components/architecture/ModuleCard'
+import { ModuleExplorer } from '@/components/architecture/ModuleExplorer'
 import { DataFlowDiagram } from '@/components/architecture/DataFlowDiagram'
 import { TechStackSection } from '@/components/architecture/TechStackSection'
-import { InnovationSection } from '@/components/architecture/InnovationSection'
-import { PerformanceMetrics } from '@/components/architecture/PerformanceMetrics'
-import { IntegrationsSection } from '@/components/architecture/IntegrationsSection'
 
 export function ArchitecturePage() {
   const [activeSection, setActiveSection] = useState<ArchitectureSectionId>('overview')
@@ -23,142 +21,156 @@ export function ArchitecturePage() {
 
   const handleNavigate = useCallback((id: ArchitectureSectionId) => {
     setActiveSection(id)
-    const el = document.getElementById(id)
+    const section = document.getElementById(id)
     const scrollContainer = getScrollContainer()
 
-    if (el && scrollContainer) {
+    if (section && scrollContainer) {
       const containerRect = scrollContainer.getBoundingClientRect()
-      const elementRect = el.getBoundingClientRect()
-      const nextTop = scrollContainer.scrollTop + (elementRect.top - containerRect.top) - 24
+      const sectionRect = section.getBoundingClientRect()
+      const nextTop = scrollContainer.scrollTop + sectionRect.top - containerRect.top - 72
 
       scrollContainer.scrollTo({
         top: Math.max(nextTop, 0),
         behavior: 'smooth',
       })
-    } else if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
-  }, [getScrollContainer])
-
-  // 监听正文滚动容器，保持侧边导航与阅读位置同步
-  useEffect(() => {
-    const scrollContainer = getScrollContainer()
-
-    if (!scrollContainer) {
       return
     }
 
-    let frameId = 0
+    section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [getScrollContainer])
 
-    const updateActiveSection = () => {
-      const containerRect = scrollContainer.getBoundingClientRect()
-      const anchorTop = containerRect.top + 120
-      const offsets: { id: ArchitectureSectionId; top: number }[] = []
+  useEffect(() => {
+    const root = getScrollContainer()
+    if (!root) return
 
-      architectureSections.forEach(section => {
-        const el = document.getElementById(section.id)
-        if (el) {
-          const rect = el.getBoundingClientRect()
-          offsets.push({ id: section.id, top: Math.abs(rect.top - anchorTop) })
-        }
-      })
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => {
+            if (b.intersectionRatio !== a.intersectionRatio) {
+              return b.intersectionRatio - a.intersectionRatio
+            }
+            return Math.abs(a.boundingClientRect.top) - Math.abs(b.boundingClientRect.top)
+          })
 
-      if (offsets.length) {
-        offsets.sort((a, b) => a.top - b.top)
-        setActiveSection(prev => (prev === offsets[0].id ? prev : offsets[0].id))
+        const id = visible[0]?.target.id as ArchitectureSectionId | undefined
+        if (id) setActiveSection(id)
+      },
+      {
+        root,
+        rootMargin: '-12% 0px -70% 0px',
+        threshold: [0, 0.08, 0.3],
       }
-    }
+    )
 
-    const handler = () => {
-      cancelAnimationFrame(frameId)
-      frameId = requestAnimationFrame(updateActiveSection)
-    }
+    architectureSections.forEach(({ id }) => {
+      const section = document.getElementById(id)
+      if (section) observer.observe(section)
+    })
 
-    scrollContainer.addEventListener('scroll', handler, { passive: true })
-    window.addEventListener('resize', handler)
-    handler()
-
-    return () => {
-      cancelAnimationFrame(frameId)
-      scrollContainer.removeEventListener('scroll', handler)
-      window.removeEventListener('resize', handler)
-    }
+    return () => observer.disconnect()
   }, [getScrollContainer])
 
   return (
     <div className="h-full min-h-0">
       <ScrollArea
         ref={scrollAreaRef}
-        className="h-full rounded-[8px] border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
+        className="h-full rounded-[18px] border border-slate-200/80 bg-[#fcfdfc] shadow-[0_18px_60px_-46px_rgba(15,23,42,0.45)] dark:border-slate-800 dark:bg-slate-950"
       >
-        <div className="mx-auto max-w-[1260px] px-5 py-7 sm:px-8 sm:py-9 lg:px-10">
-          <header className="border-b border-slate-200 pb-8 dark:border-slate-800">
-            <div className="mb-5 flex h-1 w-24 overflow-hidden rounded-full" aria-hidden>
-              <span className="flex-1 bg-blue-500" />
-              <span className="flex-1 bg-teal-500" />
-              <span className="flex-1 bg-violet-500" />
-              <span className="flex-1 bg-orange-400" />
-            </div>
-            <p className="font-mono text-[11px] font-semibold tracking-[0.16em] text-slate-500 dark:text-slate-400">
-              架构导读
-            </p>
-            <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-[-0.045em] text-slate-950 dark:text-slate-50 sm:text-[2.35rem] sm:leading-tight">
-              多模态 RAG 系统如何协同工作
-            </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600 dark:text-slate-300 text-chinese-break">
-              从资料接入、意图识别和混合检索，到重排、生成与引用返回，沿一条完整链路理解系统模块及数据流向。
-            </p>
-            <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-500 dark:text-slate-400">
-              <span><strong className="font-mono font-semibold text-slate-800 dark:text-slate-200">{coreModules.length}</strong> 个核心模块</span>
-              <span><strong className="font-mono font-semibold text-slate-800 dark:text-slate-200">4</strong> 类内容模态</span>
-              <span><strong className="font-mono font-semibold text-slate-800 dark:text-slate-200">3–5</strong> 分钟阅读</span>
-            </div>
-          </header>
+        <header className="relative overflow-hidden border-b border-slate-200/80 dark:border-slate-800">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_12%,rgba(13,148,136,0.12),transparent_34%),radial-gradient(circle_at_18%_90%,rgba(249,115,22,0.07),transparent_28%)] dark:bg-[radial-gradient(circle_at_78%_12%,rgba(20,184,166,0.12),transparent_32%),radial-gradient(circle_at_18%_90%,rgba(249,115,22,0.05),transparent_30%)]"
+          />
 
-          <div className="grid items-start gap-10 py-10 xl:grid-cols-[minmax(0,1fr)_15rem] xl:gap-14">
-            <div className="flex min-w-0 flex-col gap-12">
-              <OverviewSection />
-              <InnovationSection />
-              <PerformanceMetrics />
-              <ArchitectureDiagram />
-              <IntegrationsSection />
-              <RequestFlowStepper />
-
-              <section id="modules" className="scroll-mt-8 space-y-5">
-                <div>
-                  <p className="font-mono text-[11px] font-semibold tracking-[0.14em] text-indigo-600 dark:text-indigo-300">
-                    核心模块
-                  </p>
-                  <h2 className="mt-1 text-xl font-semibold tracking-[-0.025em] text-slate-950 dark:text-slate-50">
-                    按职责拆分，沿请求链路协作
-                  </h2>
-                </div>
-                <p className="max-w-4xl text-sm leading-7 text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-                  Ingestion、Knowledge、Retrieval、Generation 与 LLM Manager 可以独立演进，并通过统一接口完成端到端 RAG 流程。
-                </p>
-                <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-                  {coreModules.map((m) => (
-                    <ModuleCard key={m.id} module={m} />
-                  ))}
-                </div>
-              </section>
-
-              <DataFlowDiagram />
-              <TechStackSection />
-
-              <footer className="border-t border-slate-200 pt-5 text-[11px] leading-relaxed text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                本页为架构导读；细节与迭代说明以{' '}
-                <span className="font-mono text-slate-600 dark:text-slate-300">docs/MMA_ARCHITECTURE.md</span>、
-                <span className="font-mono text-slate-600 dark:text-slate-300"> backend/.env.example</span> 与源码为准。
-              </footer>
+          <div className="relative mx-auto max-w-[1440px] px-5 pb-9 pt-8 sm:px-8 sm:pb-11 sm:pt-10 lg:px-12 lg:pt-12">
+            <div className="max-w-4xl">
+              <p className="font-mono text-[11px] font-semibold tracking-[0.16em] text-teal-700 dark:text-teal-300">
+                Architecture
+              </p>
+              <h1 className="mt-4 max-w-3xl text-3xl font-semibold leading-[1.12] tracking-[-0.045em] text-slate-950 [text-wrap:balance] dark:text-white sm:text-5xl">
+                从输入到证据，再到可追溯回答
+              </h1>
+              <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-600 dark:text-slate-300 sm:text-base">
+                一张图读懂 Tessmora 的多模态入库、共享检索、Agent 取证循环与引用生成。
+              </p>
+              <button
+                type="button"
+                onClick={() => handleNavigate('system-architecture')}
+                className="mt-7 inline-flex min-h-11 items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-transform duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 active:translate-y-0 dark:bg-slate-100 dark:text-slate-950 dark:focus-visible:ring-offset-slate-950"
+              >
+                查看系统图
+                <ArrowDown className="h-4 w-4" />
+              </button>
             </div>
 
-            <aside className="hidden xl:block">
-              <ArchitectureNav sections={architectureSections} activeId={activeSection} onNavigate={handleNavigate} />
-            </aside>
+            <dl className="mt-9 grid max-w-4xl grid-cols-2 gap-x-8 gap-y-5 border-t border-slate-200/80 pt-5 dark:border-slate-800 sm:grid-cols-4">
+              <HeroStat value={coreModules.length.toString()} label="核心模块" />
+              <HeroStat value="2" label="执行路径" />
+              <HeroStat value="4" label="证据模态" />
+              <div>
+                <dt className="flex items-center gap-1.5 text-xs text-teal-700 dark:text-teal-300">
+                  <SearchCheck className="h-3.5 w-3.5" />
+                  实现状态
+                </dt>
+                <dd className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">与当前代码同步</dd>
+              </div>
+            </dl>
+          </div>
+        </header>
+
+        <div className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90">
+          <div className="mx-auto max-w-[1440px] px-4 sm:px-7 lg:px-11">
+            <ArchitectureNav
+              sections={architectureSections}
+              activeId={activeSection}
+              onNavigate={handleNavigate}
+            />
           </div>
         </div>
+
+        <div className="mx-auto flex max-w-[1440px] flex-col gap-24 px-5 py-12 sm:px-8 sm:py-16 lg:px-12 lg:py-20">
+          <OverviewSection />
+          <ArchitectureDiagram />
+          <RequestFlowStepper />
+
+          <section id="modules" className="scroll-mt-24">
+            <div className="max-w-3xl">
+              <h2 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950 [text-wrap:balance] dark:text-white sm:text-3xl">
+                六个模块，一套证据合同
+              </h2>
+              <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300 sm:text-[15px]">
+                选择模块即可查看职责、实现边界和当前代码入口，页面不会跳离阅读上下文。
+              </p>
+            </div>
+            <ModuleExplorer modules={coreModules} />
+          </section>
+
+          <DataFlowDiagram />
+          <TechStackSection />
+
+          <footer className="grid gap-4 border-t border-slate-200/80 pt-6 text-xs leading-6 text-slate-500 dark:border-slate-800 dark:text-slate-400 sm:grid-cols-[1fr_auto] sm:items-center">
+            <span className="inline-flex items-center gap-2">
+              <BookOpenText className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+              完整实现说明：docs/MMA_ARCHITECTURE.md
+            </span>
+            <span className="inline-flex items-center gap-2 font-mono text-[10px]">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              implementation snapshot 2026-07-26
+            </span>
+          </footer>
+        </div>
       </ScrollArea>
+    </div>
+  )
+}
+
+function HeroStat({ value, label }: { value: string; label: string }) {
+  return (
+    <div>
+      <dt className="text-xs text-slate-500 dark:text-slate-400">{label}</dt>
+      <dd className="mt-1 font-mono text-lg font-semibold tabular-nums text-slate-950 dark:text-slate-100">{value}</dd>
     </div>
   )
 }

@@ -1,23 +1,25 @@
-# Standalone Agentic Chunker experiment
+# Agentic Chunker comparison harness
 
-This directory is intentionally not imported by `app.modules.ingestion.service`.
-It validates a lossless semantic-boundary chunking design before production
-integration.
+This directory contains the standalone experiment that validated Tessmora's lossless semantic-boundary chunking design. It is intentionally not imported by `app.modules.ingestion.service`.
 
-The planner can only return contiguous ranges over immutable source-unit IDs.
-The implementation rebuilds each chunk from original offsets, verifies exact
-source coverage, enforces a hard safety ceiling, and falls back to a
-deterministic structural planner if an LLM response is invalid or unavailable.
-The standalone default hard ceiling is 600 estimated tokens; it is a guardrail,
-not a target size.
+The production implementation has already shipped at:
 
-Run a real-document comparison from the repository root:
+- `backend/app/modules/ingestion/splitters/agentic.py`
+- its integration in `backend/app/modules/ingestion/service.py`
+
+Both designs keep source units immutable: the planner returns contiguous unit IDs, server code materializes content from the original units, validates coverage, applies a hard safety ceiling, and falls back to deterministic structural planning when model output is invalid or unavailable.
+
+Use this directory only for isolated comparisons and regression investigation; do not modify it expecting production ingestion behavior to change.
+
+Run a comparison from the repository root:
 
 ```bash
 PYTHONPATH=backend backend/.venv/bin/python -m experiments.agentic_chunker.run_demo \
   README.md --mode auto --output /private/tmp/agentic-readme-report.json
 ```
 
-`--mode heuristic` performs the same lossless validation without calling a
-remote model. `--mode llm` and `--mode auto` use the existing generic chat
-route only for this experiment; no production task routing is changed.
+- `--mode heuristic` performs lossless validation without a remote model.
+- `--mode llm` forces the experiment's model planner.
+- `--mode auto` uses the model when available and otherwise falls back.
+
+The experiment's 600 estimated-token hard ceiling is a guardrail for this harness, not the production target size.
