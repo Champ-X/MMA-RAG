@@ -1,0 +1,91 @@
+.gitignore
+  s_306e408ba237dc::t_a31b8849df53a1 64-67,92
+CHANGELOG.md
+  s_41ba7404cf3e71::t_c120407771b46b 5
+README-en.md
+  s_41ba7404cf3e71::t_7d894c5fd46825 204-205,226
+README.md
+  s_41ba7404cf3e71::t_6802a802f3357c 204-205,226
+backend/.env.example
+  s_41ba7404cf3e71::t_87b6a2a1d018f9 45-46
+backend/app/core/config.py
+  s_41ba7404cf3e71::t_9ed67777f0e555 36-37
+backend/app/main.py
+  s_41ba7404cf3e71::t_76d9ab7838cfb8 102-103,107-108
+backend/app/modules/ingestion/storage/vector_store.py
+  s_41ba7404cf3e71::t_25cc51a035b91a 570-574,585
+backend/evaluation/__init__.py
+  s_41ba7404cf3e71::t_99d613c6d71a63 1-6
+backend/evaluation/__main__.py
+  s_41ba7404cf3e71::t_cfb39122d8920e 1-4
+backend/evaluation/cli.py
+  s_41ba7404cf3e71::t_460ab37ac8e0fb 1-407
+backend/evaluation/judge.py
+  s_41ba7404cf3e71::t_0d6b5ff23d69e7 1-213
+backend/evaluation/live.py
+  s_41ba7404cf3e71::t_83014db545b360 1-512
+backend/evaluation/metrics.py
+  s_41ba7404cf3e71::t_aaf55bf489b8ef 1-215
+backend/evaluation/schema.py
+  s_41ba7404cf3e71::t_570ef20ea7237d 1-504
+backend/tests/test_rag_evaluation.py
+  s_41ba7404cf3e71::t_a287484b374a96 1-304
+docker-compose.eval.yml
+  s_41ba7404cf3e71::t_1614bd6163416d 1-86
+docs/RAG_EVALUATION.md
+  s_41ba7404cf3e71::t_ad65e489445106 1-110
+evals/baseline_v1/README.md
+  s_41ba7404cf3e71::t_06fefc1a46e0b0 1-10
+evals/baseline_v1/cases.jsonl
+  s_41ba7404cf3e71::t_a1c6e11b6e6924 1-8
+evals/baseline_v1/corpus/access-control.md
+  s_41ba7404cf3e71::t_359c4355d4a418 1-7
+evals/baseline_v1/corpus/coverage-boundary.md
+  s_41ba7404cf3e71::t_c7f5c39f74be41 1-7
+evals/baseline_v1/corpus/data-retention.md
+  s_41ba7404cf3e71::t_f1cfdfba664d3f 1-7
+evals/baseline_v1/corpus/incident-escalation.md
+  s_41ba7404cf3e71::t_6553bfb11cb139 1-7
+evals/baseline_v1/corpus/ops-rollback.md
+  s_41ba7404cf3e71::t_54d2a84baf2198 1-11
+evals/baseline_v1/corpus/release-policy.md
+  s_41ba7404cf3e71::t_d67bb092efd928 1-7
+evals/baseline_v1/corpus/service-limits.md
+  s_41ba7404cf3e71::t_faa4fee82819da 1-7
+evals/baseline_v1/manifest.json
+  s_41ba7404cf3e71::t_aa7e30957a2480 1-44
+evals/baselines/README.md
+  s_41ba7404cf3e71::t_49b429bf212154 1-9
+evals/baselines/direct-generation-qwen35-20260420-v1.json
+  s_41ba7404cf3e71::t_3dff69d013de94 1-305
+evals/baselines/direct-hybrid-retrieval-v1.json
+  s_41ba7404cf3e71::t_4e6470914d8b96 1-61
+scripts/rag-eval
+  s_41ba7404cf3e71::t_cbf1a1f8da73b9 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1a1dd12b589115df054579873d9b96dca7b276dc",
+  "prompts": {},
+  "sessions": {
+    "s_306e408ba237dc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9db7-c158-79a2-a0af-fa5206df3874",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    },
+    "s_41ba7404cf3e71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9da7-3322-74c1-b4e7-daba02a48bcb",
+        "model": "unknown"
+      },
+      "human_author": "Champ-X <754022168@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
