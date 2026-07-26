@@ -1,241 +1,152 @@
-import {
-  Globe2,
-  Server,
-  Database,
-  Cloud,
-  Workflow,
-  ArrowDown,
-  Zap,
-  MessageSquare,
-  FileStack,
-  BookOpen,
-  ScanSearch,
-  Sparkles,
-} from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import * as Dialog from '@radix-ui/react-dialog'
+import { ArrowDown, ArrowUp, Download, Expand, Layers3, X } from 'lucide-react'
+
+const architectureImage = '/architecture/tessmora-system-architecture.png'
+
+const mapNotes = [
+  {
+    badge: 'S',
+    title: '入口不是一条',
+    description: 'Web / SSE、Codex Skill / CLI、飞书 WSS 与 Retrieval API 面向不同使用场景。',
+    color: 'border-[#79b4b4] bg-[#dcebea] text-[#246b76] dark:border-[#35626b] dark:bg-[#2f7f93]/12 dark:text-[#87c6d0]',
+  },
+  {
+    badge: 'R·A',
+    title: '检索是共享主干',
+    description: 'Retrieval Core 提供一次取证；Agent Runtime 只在其上增加规划、补查与证据收敛。',
+    color: 'border-[#9fb6dd] bg-[#e5ebf6] text-[#42679d] dark:border-[#465c83] dark:bg-[#4f6fa5]/12 dark:text-[#9db8e4]',
+  },
+  {
+    badge: 'G·K',
+    title: '入库与生成分工',
+    description: 'Knowledge & Ingestion 负责写入可检索语义；Generation 负责预算、引用和流式交付。',
+    color: 'border-[#b8ca83] bg-[#eef0d7] text-[#65752c] dark:border-[#566432] dark:bg-[#87943f]/12 dark:text-[#c0cc7b]',
+  },
+  {
+    badge: 'D·M',
+    title: '能力由两层托底',
+    description: 'Qdrant、MinIO 与可选 Redis 形成数据面；LLM Manager 按任务统一路由模型。',
+    color: 'border-[#d2b2cf] bg-[#f0e5ef] text-[#765c95] dark:border-[#604d72] dark:bg-[#765c95]/12 dark:text-[#c5b1d9]',
+  },
+]
 
 export function ArchitectureDiagram() {
   return (
-    <section id="system-architecture" className="scroll-mt-24 space-y-3">
-      <div className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700 shadow-sm dark:bg-sky-950/40 dark:text-sky-200">
-        <Workflow className="h-3.5 w-3.5" />
-        <span>整体架构图</span>
-      </div>
-
-      <div className="space-y-1.5">
-        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-50">
-          Web / 飞书 ↓ RAG 领域服务 ↓ 存储与模型
-        </h2>
-        <p className="max-w-3xl break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-          默认路径为浏览器访问前端并通过 SSE 调用后端；若启用飞书集成，则经 WSS 将 IM 事件汇入同一 FastAPI。二者共享 Ingestion / Knowledge / Retrieval / Generation 与 Core LLM 层，数据落在 MinIO、Qdrant、Redis。
+    <section id="system-architecture" className="scroll-mt-24">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,0.72fr)_minmax(28rem,1.28fr)] lg:items-end lg:gap-14">
+        <div className="max-w-2xl">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2f7f93] dark:text-[#7fc2cf]">System atlas</p>
+          <h2 className="architecture-display mt-3 text-3xl font-semibold leading-tight tracking-[-0.035em] text-[#102d42] [text-wrap:balance] dark:text-[#edf6f3] sm:text-[2.55rem]">
+            完整系统图，是一张分层地图
+          </h2>
+        </div>
+        <p className="max-w-2xl text-sm leading-7 text-[#5a7075] dark:text-[#a7bcbd] sm:text-[15px] lg:justify-self-end">
+          从上向下读取请求入口与领域职责，从下向上读取数据和模型如何提供证据。绿色箭头表示请求进入，紫色箭头表示证据回流。
         </p>
       </div>
 
-      <Card className="group relative overflow-hidden border-slate-200/80 bg-gradient-to-br from-slate-50/95 via-indigo-50/30 to-purple-50/30 shadow-xl transition-all duration-500 hover:shadow-2xl dark:border-slate-800/80 dark:from-slate-950 dark:via-indigo-950/20 dark:to-purple-950/20">
-        {/* 背景装饰 */}
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/0 via-purple-500/0 to-pink-500/0 transition-all duration-700 group-hover:from-indigo-500/5 group-hover:via-purple-500/5 group-hover:to-pink-500/5" />
-        <div className="absolute -right-20 -top-20 h-40 w-40 rounded-full bg-gradient-to-br from-indigo-200/20 to-purple-200/20 blur-3xl dark:from-indigo-800/10 dark:to-purple-800/10" />
-        <div className="absolute -bottom-20 -left-20 h-40 w-40 rounded-full bg-gradient-to-br from-emerald-200/20 to-teal-200/20 blur-3xl dark:from-emerald-800/10 dark:to-teal-800/10" />
-
-        <CardHeader className="relative px-6 pb-1 pt-4">
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
-            <Zap className="h-4 w-4 text-indigo-500" />
-            <span>系统架构示意</span>
-          </CardTitle>
-        </CardHeader>
-
-        <CardContent className="relative space-y-3 pb-4 pt-0">
-          <div className="flex flex-col items-center gap-2.5">
-            {/* 顶部：双入口 Web + 飞书 */}
-            <div className="grid w-full max-w-3xl grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3">
-              <div className="group/browser relative flex flex-col items-center justify-center rounded-xl border-2 border-indigo-200/60 bg-gradient-to-br from-indigo-50/90 via-white to-purple-50/50 px-4 py-3.5 text-center shadow-lg backdrop-blur-sm transition-all duration-300 hover:border-indigo-300/80 hover:shadow-xl dark:border-indigo-800/60 dark:from-indigo-950/50 dark:via-slate-950 dark:to-purple-950/30 sm:hover:scale-[1.01]">
-                <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-indigo-500/0 to-purple-500/0 transition-all duration-300 group-hover/browser:from-indigo-500/10 group-hover/browser:to-purple-500/10" />
-                <div className="relative mb-1.5 flex items-center gap-2">
-                  <div className="rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 p-1.5 shadow-md">
-                    <Globe2 className="h-4 w-4 text-white" />
-                  </div>
-                  <span className="text-base font-bold text-slate-800 dark:text-slate-100">Web 前端</span>
-                </div>
-                <div className="relative space-y-0.5">
-                  <p className="break-words text-sm font-medium leading-snug text-slate-600 dark:text-slate-300">
-                    React + TypeScript + Vite
-                  </p>
-                  <p className="break-words text-sm leading-snug text-slate-500 dark:text-slate-400">
-                    SSE · Chat / 知识库 / 思考链 / 引用弹层
-                  </p>
-                </div>
+      <Dialog.Root>
+        <div className="mt-9 overflow-hidden rounded-[28px] border border-[#b9ccc6] bg-[#e9efea] shadow-[0_34px_90px_-60px_rgba(16,45,66,0.72)] dark:border-[#2b4d58] dark:bg-[#0b222c]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#c5d5cf] px-4 py-3.5 dark:border-[#294a56] sm:px-6">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <div>
+                <p className="text-sm font-semibold text-[#17384a] dark:text-[#e4efeb]">Tessmora · layered system view</p>
+                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[#7a8e90] dark:text-[#89a4a6]">Current implementation · ImageGen atlas</p>
               </div>
-              <div className="group/feishu relative flex flex-col items-center justify-center rounded-xl border-2 border-sky-200/60 bg-gradient-to-br from-sky-50/90 via-white to-cyan-50/50 px-4 py-3.5 text-center shadow-lg backdrop-blur-sm transition-all duration-300 hover:border-sky-300/80 hover:shadow-xl dark:border-sky-800/60 dark:from-sky-950/50 dark:via-slate-950 dark:to-cyan-950/30 sm:hover:scale-[1.01]">
-                <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-sky-500/0 to-cyan-500/0 transition-all duration-300 group-hover/feishu:from-sky-500/10 group-hover/feishu:to-cyan-500/10" />
-                <div className="relative mb-1.5 flex items-center gap-2">
-                  <div className="rounded-full bg-gradient-to-br from-sky-500 to-cyan-500 p-1.5 shadow-md">
-                    <MessageSquare className="h-4 w-4 text-white" />
-                  </div>
-                  <span className="text-base font-bold text-slate-800 dark:text-slate-100">飞书 Lark IM</span>
-                </div>
-                <div className="relative space-y-0.5">
-                  <p className="break-words text-sm font-medium leading-snug text-slate-600 dark:text-slate-300">
-                    WSS 长连接 · lark-oapi
-                  </p>
-                  <p className="break-words text-sm leading-snug text-slate-500 dark:text-slate-400">卡片 2.0 / Post · 多模态引用（可选部署）</p>
-                </div>
+              <div className="hidden items-center gap-4 border-l border-[#c5d5cf] pl-5 font-mono text-[10px] text-[#61777a] dark:border-[#294a56] dark:text-[#9ab1b2] md:flex">
+                <span className="inline-flex items-center gap-1.5"><ArrowDown className="h-3.5 w-3.5 text-[#5f8e72]" /> request flows in</span>
+                <span className="inline-flex items-center gap-1.5"><ArrowUp className="h-3.5 w-3.5 text-[#765c95]" /> evidence flows in</span>
               </div>
             </div>
-
-            {/* 连接箭头 - 增强版 */}
-            <div className="relative flex items-center justify-center py-0.5">
-              <div className="absolute flex h-6 w-px items-center justify-center bg-gradient-to-b from-indigo-400/60 via-purple-400/60 to-emerald-400/60 dark:from-indigo-500 dark:via-purple-500 dark:to-emerald-500">
-                <div className="absolute h-full w-full bg-gradient-to-b from-transparent via-white/50 to-transparent dark:via-slate-900/50" />
-              </div>
-              <div className="relative z-10 rounded-full bg-gradient-to-br from-indigo-500 to-emerald-500 p-1.5 shadow-lg ring-2 ring-white/30 dark:ring-slate-900/40">
-                <ArrowDown className="h-4 w-4 text-white" />
-              </div>
-            </div>
-
-            {/* 中间：RAG 领域服务（FastAPI · DDD） */}
-            <div className="group/backend relative w-full max-w-5xl rounded-xl border-2 border-emerald-200/60 bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/50 p-3.5 shadow-lg backdrop-blur-sm transition-all duration-300 hover:border-emerald-300/80 hover:shadow-xl dark:border-emerald-800/60 dark:from-emerald-950/50 dark:via-slate-950 dark:to-teal-950/30">
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-emerald-500/0 to-teal-500/0 transition-all duration-300 group-hover/backend:from-emerald-500/10 group-hover/backend:to-teal-500/10" />
-              <div className="relative mb-2 flex items-center justify-center gap-2">
-                <div className="rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 p-1.5 shadow-md">
-                  <Server className="h-4 w-4 text-white" />
-                </div>
-                <span className="text-center text-base font-bold leading-snug text-slate-800 dark:text-slate-100">
-                  Multi-Modal RAG Core Engine
-                </span>
-              </div>
-              <div className="relative grid gap-2 text-sm text-slate-600 dark:text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="group/module relative overflow-hidden rounded-lg border border-indigo-200/50 bg-gradient-to-br from-indigo-50/80 to-indigo-100/40 p-3 transition-all duration-300 hover:scale-105 hover:border-indigo-300/70 hover:bg-indigo-100/90 hover:shadow-lg dark:border-indigo-800/50 dark:from-indigo-950/40 dark:to-indigo-900/30 dark:hover:border-indigo-700/70 dark:hover:bg-indigo-900/50">
-                  <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/0 to-purple-500/0 transition-all duration-300 group-hover/module:from-indigo-500/10 group-hover/module:to-purple-500/10" />
-                  <div className="relative mb-1.5 flex items-center gap-1.5">
-                    <div className="rounded-lg bg-indigo-500/10 p-1.5 dark:bg-indigo-500/20">
-                      <FileStack
-                        className="h-4 w-4 flex-shrink-0 text-indigo-600 transition-transform duration-300 group-hover/module:scale-110 dark:text-indigo-300"
-                        strokeWidth={2}
-                        aria-hidden
-                      />
-                    </div>
-                    <span className="text-sm font-bold text-indigo-700 dark:text-indigo-200">Ingestion</span>
-                  </div>
-                  <p className="relative text-xs leading-snug break-words text-indigo-900/80 dark:text-indigo-100/90">
-                    解析与分块、全模态向量化；原文与媒体入 MinIO，向量索引（文档 Dense+Sparse，图/音/视各模态命名向量）入 Qdrant
-                  </p>
-                </div>
-                <div className="group/module relative overflow-hidden rounded-lg border border-sky-200/50 bg-gradient-to-br from-sky-50/80 to-sky-100/40 p-3 transition-all duration-300 hover:scale-105 hover:border-sky-300/70 hover:bg-sky-100/90 hover:shadow-lg dark:border-sky-800/50 dark:from-sky-950/40 dark:to-sky-900/30 dark:hover:border-sky-700/70 dark:hover:bg-sky-900/50">
-                  <div className="absolute inset-0 bg-gradient-to-br from-sky-500/0 to-cyan-500/0 transition-all duration-300 group-hover/module:from-sky-500/10 group-hover/module:to-cyan-500/10" />
-                  <div className="relative mb-1.5 flex items-center gap-1.5">
-                    <div className="rounded-lg bg-sky-500/10 p-1.5 dark:bg-sky-500/20">
-                      <BookOpen
-                        className="h-4 w-4 flex-shrink-0 text-sky-600 transition-transform duration-300 group-hover/module:scale-110 group-hover/module:-translate-y-px dark:text-sky-300"
-                        strokeWidth={2}
-                        aria-hidden
-                      />
-                    </div>
-                    <span className="text-sm font-bold text-sky-700 dark:text-sky-200">Knowledge Base</span>
-                  </div>
-                  <p className="relative text-xs leading-snug break-words text-sky-900/80 dark:text-sky-100/90">
-                    知识库生命周期管理与画像更新（聚类 + 主题摘要）；未指定知识库时，依画像做跨库语义路由与单库/多库/全库决策
-                  </p>
-                </div>
-                <div className="group/module relative overflow-hidden rounded-lg border border-emerald-200/50 bg-gradient-to-br from-emerald-50/80 to-emerald-100/40 p-3 transition-all duration-300 hover:scale-105 hover:border-emerald-300/70 hover:bg-emerald-100/90 hover:shadow-lg dark:border-emerald-800/50 dark:from-emerald-950/40 dark:to-emerald-900/30 dark:hover:border-emerald-700/70 dark:hover:bg-emerald-900/50">
-                  <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 to-teal-500/0 transition-all duration-300 group-hover/module:from-emerald-500/10 group-hover/module:to-teal-500/10" />
-                  <div className="relative mb-1.5 flex items-center gap-1.5">
-                    <div className="rounded-lg bg-emerald-500/10 p-1.5 dark:bg-emerald-500/20">
-                      <ScanSearch
-                        className="h-4 w-4 flex-shrink-0 text-emerald-600 transition-transform duration-300 group-hover/module:scale-110 dark:text-emerald-300"
-                        strokeWidth={2}
-                        aria-hidden
-                      />
-                    </div>
-                    <span className="text-sm font-bold text-emerald-700 dark:text-emerald-200">Retrieval</span>
-                  </div>
-                  <p className="relative text-xs leading-snug break-words text-emerald-900/80 dark:text-emerald-100/90">
-                    One-Pass 产出意图与查询策略；Dense+Sparse+Visual 为主干，音/视频分支按意图并入；RRF 粗排后与 Cross-Encoder 精排
-                  </p>
-                </div>
-                <div className="group/module relative overflow-hidden rounded-lg border border-purple-200/50 bg-gradient-to-br from-purple-50/80 to-purple-100/40 p-3 transition-all duration-300 hover:scale-105 hover:border-purple-300/70 hover:bg-purple-100/90 hover:shadow-lg dark:border-purple-800/50 dark:from-purple-950/40 dark:to-purple-900/30 dark:hover:border-purple-700/70 dark:hover:bg-purple-900/50">
-                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/0 to-pink-500/0 transition-all duration-300 group-hover/module:from-purple-500/10 group-hover/module:to-pink-500/10" />
-                  <div className="relative mb-1.5 flex items-center gap-1.5">
-                    <div className="rounded-lg bg-purple-500/10 p-1.5 dark:bg-purple-500/20">
-                      <Sparkles
-                        className="h-4 w-4 flex-shrink-0 text-purple-600 transition-transform duration-300 group-hover/module:scale-110 group-hover/module:rotate-6 dark:text-purple-300"
-                        strokeWidth={2}
-                        aria-hidden
-                      />
-                    </div>
-                    <span className="text-sm font-bold text-purple-700 dark:text-purple-200">Generation &amp; LLM</span>
-                  </div>
-                  <p className="relative text-xs leading-snug break-words text-purple-900/80 dark:text-purple-100/90">
-                    检索结果拼装上下文与系统提示；多模型路由与 SSE 流式输出，意图、VLM/ASR 与生成等由 LLM Manager 统一调度
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* 连接箭头 - 增强版 */}
-            <div className="relative flex items-center justify-center py-0.5">
-              <div className="absolute flex h-6 w-px items-center justify-center bg-gradient-to-b from-emerald-400/60 via-amber-400/60 to-violet-400/60 dark:from-emerald-500 dark:via-amber-500 dark:to-violet-500">
-                <div className="absolute h-full w-full bg-gradient-to-b from-transparent via-white/50 to-transparent dark:via-slate-900/50" />
-              </div>
-              <div className="relative z-10 rounded-full bg-gradient-to-br from-emerald-500 to-violet-500 p-1.5 shadow-lg ring-2 ring-white/30 dark:ring-slate-900/40">
-                <ArrowDown className="h-4 w-4 text-white" />
-              </div>
-            </div>
-
-            {/* 底部：Storage & Models */}
-            <div className="grid w-full max-w-5xl gap-2.5 sm:grid-cols-2 sm:gap-3">
-              <div className="group/storage relative overflow-hidden rounded-xl border-2 border-amber-200/60 bg-gradient-to-br from-amber-50/90 via-white to-orange-50/50 p-3 text-sm shadow-lg backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] hover:border-amber-300/80 hover:shadow-xl dark:border-amber-800/60 dark:from-amber-950/50 dark:via-slate-950 dark:to-orange-950/30">
-                <div className="absolute inset-0 bg-gradient-to-br from-amber-500/0 to-orange-500/0 transition-all duration-300 group-hover/storage:from-amber-500/10 group-hover/storage:to-orange-500/10" />
-                <div className="relative mb-2 flex items-center justify-center gap-2">
-                  <div className="rounded-full bg-gradient-to-br from-amber-500 to-orange-500 p-1.5 shadow-md">
-                    <Database className="h-4 w-4 flex-shrink-0 text-white" />
-                  </div>
-                  <span className="text-sm font-bold text-amber-800 dark:text-amber-200">Storage Layer</span>
-                </div>
-                <div className="relative space-y-1.5 text-center">
-                  <div className="rounded-lg bg-amber-100/50 px-2.5 py-1.5 text-xs leading-snug text-amber-900/90 dark:bg-amber-900/30 dark:text-amber-100/90">
-                    <p className="break-words font-medium">MinIO（对象存储）</p>
-                  </div>
-                  <div className="rounded-lg bg-amber-100/50 px-2.5 py-1.5 text-xs leading-snug text-amber-900/90 dark:bg-amber-900/30 dark:text-amber-100/90">
-                    <p className="break-words font-medium">Qdrant（向量与稀疏索引）</p>
-                  </div>
-                  <div className="rounded-lg bg-amber-100/50 px-2.5 py-1.5 text-xs leading-snug text-amber-900/90 dark:bg-amber-900/30 dark:text-amber-100/90">
-                    <p className="break-words font-medium">Redis（缓存与队列）</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="group/models relative overflow-hidden rounded-xl border-2 border-violet-200/60 bg-gradient-to-br from-violet-50/90 via-white to-purple-50/50 p-3 text-sm shadow-lg backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] hover:border-violet-300/80 hover:shadow-xl dark:border-violet-800/60 dark:from-violet-950/50 dark:via-slate-950 dark:to-purple-950/30">
-                <div className="absolute inset-0 bg-gradient-to-br from-violet-500/0 to-purple-500/0 transition-all duration-300 group-hover/models:from-violet-500/10 group-hover/models:to-purple-500/10" />
-                <div className="relative mb-2 flex items-center justify-center gap-2">
-                  <div className="rounded-full bg-gradient-to-br from-violet-500 to-purple-500 p-1.5 shadow-md">
-                    <Cloud className="h-4 w-4 flex-shrink-0 text-white" />
-                  </div>
-                  <span className="text-sm font-bold text-violet-800 dark:text-violet-200">Model &amp; External Services</span>
-                </div>
-                <div className="relative space-y-1.5 text-center">
-                  <div className="rounded-lg bg-violet-100/50 px-2.5 py-1.5 text-xs leading-snug text-violet-900/90 dark:bg-violet-900/30 dark:text-violet-100/90">
-                    <p className="break-words font-medium">SiliconFlow / OpenRouter / 阿里云百炼 / DeepSeek / Qwen</p>
-                  </div>
-                  <div className="rounded-lg bg-violet-100/50 px-2.5 py-1.5 text-xs leading-snug text-violet-900/90 dark:bg-violet-900/30 dark:text-violet-100/90">
-                    <p className="break-words font-medium">Qwen3-Embedding / BGE-M3 / Reranker / VLM / CLIP / CLAP</p>
-                  </div>
-                  <div className="rounded-lg bg-sky-100/50 px-2.5 py-1.5 text-xs leading-snug text-sky-900/90 dark:bg-sky-900/30 dark:text-sky-100/90">
-                    <p className="break-words font-medium">飞书开放平台（租户 Token、消息、卡片、IM 文件上传）</p>
-                  </div>
-                </div>
-              </div>
+            <div className="flex items-center gap-1.5">
+              <a
+                href={architectureImage}
+                download="tessmora-system-architecture.png"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-[#60777b] transition-colors hover:bg-white/70 hover:text-[#17384a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7f93]/70 dark:text-[#9cb2b4] dark:hover:bg-white/[0.06] dark:hover:text-white"
+              >
+                <Download className="h-3.5 w-3.5" />
+                下载
+              </a>
+              <Dialog.Trigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-[#102d42] px-3.5 text-xs font-semibold text-white transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7f93] focus-visible:ring-offset-2 active:translate-y-0 dark:bg-[#dcebe7] dark:text-[#102d42] dark:focus-visible:ring-offset-[#0b222c]"
+                >
+                  <Expand className="h-3.5 w-3.5" />
+                  全屏查看
+                </button>
+              </Dialog.Trigger>
             </div>
           </div>
 
-          <div className="mt-2 rounded-lg border border-slate-200/60 bg-gradient-to-r from-slate-50/80 to-indigo-50/40 p-3 dark:border-slate-800/60 dark:from-slate-950/80 dark:to-indigo-950/40">
-            <p className="break-words text-sm leading-snug text-slate-600 dark:text-slate-300 text-chinese-break">
-              <span className="font-semibold text-slate-700 dark:text-slate-200">一句话概括：</span>
-              客户端（Web 为主，飞书可选）→ FastAPI「意图 → 路由 → 检索 → 生成」→ MinIO / Qdrant / Redis + LLM
-              Provider；SSE 推送思考链与引用，飞书启用时再走消息/卡片 API。
-            </p>
+          <div className="grid xl:grid-cols-[minmax(0,1fr)_20rem]">
+            <Dialog.Trigger asChild>
+              <button
+                type="button"
+                aria-label="全屏查看 Tessmora 系统架构图"
+                className="group block w-full cursor-zoom-in overflow-hidden bg-[#f9f5e9] p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2f7f93] sm:p-3 xl:border-r xl:border-[#c5d5cf] dark:bg-[#102832] dark:xl:border-[#294a56]"
+              >
+                <img
+                  src={architectureImage}
+                  alt="Tessmora 多模态 Agentic Retrieval 系统架构图"
+                  className="block h-auto w-full rounded-[18px] transition-transform duration-500 group-hover:scale-[1.004]"
+                  loading="eager"
+                />
+              </button>
+            </Dialog.Trigger>
+
+            <aside className="grid border-t border-[#c5d5cf] dark:border-[#294a56] sm:grid-cols-2 xl:block xl:border-t-0">
+              <div className="p-5 sm:col-span-2 sm:p-6 xl:col-span-1">
+                <div className="flex items-center gap-2 text-[#2f7f93] dark:text-[#7fc2cf]">
+                  <Layers3 className="h-4 w-4" />
+                  <h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em]">How to read it</h3>
+                </div>
+                <p className="mt-2 text-xs leading-6 text-[#6b8083] dark:text-[#9db3b5]">先看四个领域柱，再看它们共同依赖的数据面与模型面。</p>
+              </div>
+              {mapNotes.map((note, index) => (
+                <div
+                  key={note.title}
+                  className={`border-t border-[#c8d7d1] p-5 dark:border-[#294a56] ${index % 2 === 1 ? 'sm:border-l xl:border-l-0' : ''}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span className={`flex h-9 min-w-9 items-center justify-center rounded-xl border px-2 font-mono text-[10px] font-bold ${note.color}`}>{note.badge}</span>
+                    <div>
+                      <h4 className="text-[13px] font-semibold text-[#18394a] dark:text-[#e4efeb]">{note.title}</h4>
+                      <p className="mt-1.5 text-xs leading-6 text-[#6a7f82] dark:text-[#99b0b2]">{note.description}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </aside>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-[#06141c]/90 backdrop-blur-md data-[state=open]:animate-in data-[state=open]:fade-in" />
+          <Dialog.Content className="fixed inset-0 z-50 flex items-center justify-center p-3 focus:outline-none sm:p-6">
+            <Dialog.Title className="sr-only">Tessmora 系统架构图</Dialog.Title>
+            <Dialog.Description className="sr-only">
+              查看完整尺寸的 Tessmora 多模态 Agentic Retrieval 系统架构图。
+            </Dialog.Description>
+            <div className="relative max-h-[94dvh] max-w-[96vw] overflow-auto rounded-[24px] border border-white/15 bg-[#071a24] p-2 shadow-2xl sm:p-3">
+              <img
+                src={architectureImage}
+                alt="Tessmora 多模态 Agentic Retrieval 系统架构图全屏视图"
+                className="block h-auto min-w-[980px] max-w-none rounded-[18px] lg:min-w-0 lg:max-h-[88dvh] lg:max-w-[92vw]"
+              />
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  aria-label="关闭架构图全屏视图"
+                  className="fixed right-5 top-5 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#071a24]/85 text-white shadow-lg backdrop-blur transition-colors hover:bg-[#17384a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7fc2cf]"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </Dialog.Close>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </section>
   )
 }

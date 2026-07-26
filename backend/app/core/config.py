@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     app_name: str = Field(default="Tessmora", validation_alias="APP_NAME")
     app_version: str = Field(default="1.0.0", validation_alias="APP_VERSION")
     debug: bool = Field(default=False, validation_alias="API_DEBUG")
+    # 评测实例安全标记。只有显式开启的隔离实例才允许 rag-eval 自动创建 KB/上传语料。
+    evaluation_mode: bool = Field(default=False, validation_alias="EVALUATION_MODE")
     
     # 服务器配置
     host: str = Field(default="0.0.0.0", validation_alias="API_HOST")

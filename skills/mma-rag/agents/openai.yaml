@@ -1,0 +1,4 @@
+interface:
+  display_name: "MMA-RAG Local Knowledge"
+  short_description: "Use local MMA-RAG through a deterministic CLI"
+  default_prompt: "Use $mma-rag to upload local multimodal files and search the indexed evidence."

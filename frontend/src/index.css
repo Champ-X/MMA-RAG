@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Ma+Shan+Zheng&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -11,6 +11,124 @@ body {
 
 body {
   margin: 0;
+}
+
+/* Tessmora architecture atlas */
+.architecture-page {
+  font-family: 'Manrope', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+}
+
+.architecture-page .font-mono {
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+}
+
+.architecture-display {
+  font-family: 'Noto Serif SC', 'Songti SC', STSong, serif;
+}
+
+.architecture-hero {
+  background:
+    radial-gradient(circle at 84% 18%, rgb(47 127 147 / 0.13), transparent 28rem),
+    radial-gradient(circle at 14% 86%, rgb(95 142 114 / 0.1), transparent 24rem),
+    linear-gradient(145deg, #f6f8f3 0%, #edf4f0 54%, #edf2ed 100%);
+}
+
+.dark .architecture-hero {
+  background:
+    radial-gradient(circle at 84% 18%, rgb(47 127 147 / 0.18), transparent 28rem),
+    radial-gradient(circle at 14% 86%, rgb(95 142 114 / 0.1), transparent 24rem),
+    linear-gradient(145deg, #0a202b 0%, #071a24 58%, #0b2028 100%);
+}
+
+.architecture-contours {
+  position: absolute;
+  inset: -20%;
+  opacity: 0.24;
+  background-image:
+    repeating-radial-gradient(
+      ellipse at 82% 34%,
+      transparent 0,
+      transparent 28px,
+      rgb(47 127 147 / 0.12) 29px,
+      transparent 30px,
+      transparent 46px
+    );
+  mask-image: linear-gradient(90deg, transparent 8%, black 46%, black 100%);
+  pointer-events: none;
+}
+
+.dark .architecture-contours {
+  opacity: 0.35;
+}
+
+.architecture-map-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.34;
+  background-image:
+    linear-gradient(rgb(16 45 66 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(16 45 66 / 0.035) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.architecture-orbit {
+  position: absolute;
+  width: 18rem;
+  height: 18rem;
+  right: -8rem;
+  top: -9rem;
+  border: 1px solid rgb(47 127 147 / 0.2);
+  border-radius: 9999px;
+  box-shadow:
+    0 0 0 24px rgb(47 127 147 / 0.05),
+    0 0 0 48px rgb(47 127 147 / 0.035),
+    0 0 0 72px rgb(47 127 147 / 0.02);
+}
+
+.architecture-flow-rail-line {
+  position: relative;
+  display: block;
+  height: 2px;
+  overflow: hidden;
+  background: repeating-linear-gradient(90deg, currentColor 0 7px, transparent 7px 13px);
+  opacity: 0.68;
+}
+
+.architecture-flow-rail-line::after {
+  content: '';
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid currentColor;
+  border-top: 2px solid currentColor;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.architecture-flow-rail-line span {
+  position: absolute;
+  top: -2px;
+  width: 44px;
+  height: 6px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, transparent, currentColor, transparent);
+  animation: architecture-flow-rail 4.2s linear infinite;
+}
+
+.architecture-flow-rail-reverse {
+  transform: scaleX(-1);
+}
+
+.architecture-flow-rail-reverse span {
+  animation-delay: -2.1s;
+}
+
+@keyframes architecture-flow-rail {
+  from { left: -3rem; }
+  to { left: calc(100% + 3rem); }
 }
 
 /* 轻量 dark-mode 基础 */
@@ -128,6 +246,10 @@ body {
   [class*="slide-in"],
   [class*="slide-out"],
   [class*="animate-[spin"] {
+    animation: none !important;
+  }
+
+  .architecture-flow-rail-line span {
     animation: none !important;
   }
 
@@ -330,6 +452,93 @@ body {
 .rag-markdown img {
   max-width: 100%;
   height: auto;
+}
+
+/* Inline audio evidence: keep the transport visually consistent across browsers. */
+.media-audio-range {
+  --media-progress: 0%;
+  height: 1.25rem;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.media-audio-range::-webkit-slider-runnable-track {
+  height: 0.25rem;
+  border-radius: 9999px;
+  background: linear-gradient(
+    90deg,
+    rgb(124 58 237) 0 var(--media-progress),
+    rgb(203 213 225) var(--media-progress) 100%
+  );
+}
+
+.media-audio-range::-webkit-slider-thumb {
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-top: -0.25rem;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 2px solid white;
+  border-radius: 9999px;
+  background: rgb(124 58 237);
+  box-shadow: 0 1px 4px rgb(76 29 149 / 0.24);
+}
+
+.media-audio-range::-moz-range-track {
+  height: 0.25rem;
+  border-radius: 9999px;
+  background: rgb(203 213 225);
+}
+
+.media-audio-range::-moz-range-progress {
+  height: 0.25rem;
+  border-radius: 9999px;
+  background: rgb(124 58 237);
+}
+
+.media-audio-range::-moz-range-thumb {
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid white;
+  border-radius: 9999px;
+  background: rgb(124 58 237);
+  box-shadow: 0 1px 4px rgb(76 29 149 / 0.24);
+}
+
+.media-audio-range:focus-visible {
+  outline: 2px solid rgb(139 92 246);
+  outline-offset: 3px;
+  border-radius: 9999px;
+}
+
+.dark .media-audio-range::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    90deg,
+    rgb(167 139 250) 0 var(--media-progress),
+    rgb(71 85 105) var(--media-progress) 100%
+  );
+}
+
+.dark .media-audio-range::-webkit-slider-thumb,
+.dark .media-audio-range::-moz-range-thumb {
+  border-color: rgb(30 41 59);
+  background: rgb(167 139 250);
+}
+
+.dark .media-audio-range::-moz-range-track {
+  background: rgb(71 85 105);
+}
+
+.dark .media-audio-range::-moz-range-progress {
+  background: rgb(167 139 250);
+}
+
+@media (max-width: 480px) {
+  .media-audio-current {
+    display: none;
+  }
 }
 
 /* 改善中文换行，避免在词语中间换行 */

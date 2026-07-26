@@ -567,8 +567,11 @@ class VectorStore:
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 
-                # 准备向量（支持密集向量和稀疏向量）
-                vectors = chunk["vector"]  # 默认是密集向量（列表）
+                # text_chunks_agentic 始终以 Named Vector ``dense`` 创建。
+                # 即使 BGE-M3 暂时不可用、当前 chunk 没有 sparse_vector，也必须
+                # 保持 named-vector 写入格式；直接传 list 会被 Qdrant 当成未命名
+                # 向量并以 "Not existing vector name" 拒绝。
+                vectors = {"dense": chunk["vector"]}
                 
                 # 如果 chunk 包含稀疏向量，构建 Named Vector 格式
                 if "sparse_vector" in chunk and chunk["sparse_vector"]:
@@ -579,10 +582,7 @@ class VectorStore:
                         values=list(sparse_dict.values())
                     )
                     # 使用 Named Vector 格式同时存储密集和稀疏向量
-                    vectors = {
-                        "dense": vectors,  # 密集向量
-                        "sparse": sparse_vector  # 稀疏向量
-                    }
+                    vectors["sparse"] = sparse_vector
                 
                 point = PointStruct(
                     id=point_id,

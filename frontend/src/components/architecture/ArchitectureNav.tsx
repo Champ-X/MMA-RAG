@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import type { ArchitectureSection, ArchitectureSectionId } from '@/data/architectureData'
 
@@ -8,44 +9,49 @@ interface ArchitectureNavProps {
 }
 
 export function ArchitectureNav({ sections, activeId, onNavigate }: ArchitectureNavProps) {
+  const activeLinkRef = useRef<HTMLAnchorElement | null>(null)
+
+  useEffect(() => {
+    const link = activeLinkRef.current
+    if (!link) return
+
+    link.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    })
+  }, [activeId])
+
   return (
-    <nav className="border-l border-slate-200 pl-4 text-xs dark:border-slate-800" aria-label="架构页目录">
-      <div className="mb-3 font-mono text-[10px] font-semibold tracking-[0.16em] text-slate-400 dark:text-slate-500">
-        阅读目录
-      </div>
-      <ul className="space-y-1">
-        {sections.map((section) => (
-          <li key={section.id}>
-            <button
-              type="button"
-              onClick={() => onNavigate(section.id)}
+    <nav aria-label="架构页目录" className="min-w-0">
+      <div className="scrollbar-hide flex min-w-0 items-center gap-1.5 overflow-x-auto py-2.5">
+        {sections.map((section) => {
+          const isActive = activeId === section.id
+
+          return (
+            <a
+              key={section.id}
+              ref={isActive ? activeLinkRef : undefined}
+              href={`#${section.id}`}
+              aria-current={isActive ? 'location' : undefined}
+              title={section.subtitle}
+              onClick={(event) => {
+                event.preventDefault()
+                onNavigate(section.id)
+              }}
               className={cn(
-                'flex w-full flex-col gap-0.5 rounded-[6px] px-2.5 py-2 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/70',
-                activeId === section.id
-                  ? 'bg-slate-100 text-slate-950 dark:bg-slate-900 dark:text-slate-100'
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900/60 dark:hover:text-slate-100'
+                'relative flex min-h-10 shrink-0 items-center gap-2 rounded-full border px-4 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7f93]/70',
+                isActive
+                  ? 'border-[#102d42] bg-[#102d42] text-white shadow-sm dark:border-[#dbe9e5] dark:bg-[#dbe9e5] dark:text-[#102d42]'
+                  : 'border-transparent text-[#647a7e] hover:border-[#bfd0ca] hover:bg-white/50 hover:text-[#17384a] dark:text-[#91aaac] dark:hover:border-[#31525e] dark:hover:bg-white/[0.04] dark:hover:text-white'
               )}
             >
-              <span className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    'h-1.5 w-1.5 shrink-0 rounded-full transition-transform',
-                    activeId === section.id
-                      ? 'scale-110 bg-indigo-500'
-                      : 'bg-slate-300 dark:bg-slate-600'
-                  )}
-                />
-                <span className="font-medium leading-snug">{section.title}</span>
-              </span>
-              {section.subtitle && activeId === section.id && (
-                <span className="line-clamp-2 pl-3.5 text-[10px] font-normal leading-snug text-slate-500 dark:text-slate-400">
-                  {section.subtitle}
-                </span>
-              )}
-            </button>
-          </li>
-        ))}
-      </ul>
+              <span className={cn('h-1.5 w-1.5 rounded-full', isActive ? 'bg-[#7fc2cf] dark:bg-[#2f7f93]' : 'bg-[#b0c4bf] dark:bg-[#3e606a]')} />
+              {section.title}
+            </a>
+          )
+        })}
+      </div>
     </nav>
   )
 }

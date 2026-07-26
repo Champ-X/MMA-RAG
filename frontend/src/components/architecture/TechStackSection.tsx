@@ -1,102 +1,110 @@
+import { Box, Boxes, Braces, CloudCog, Database, MonitorSmartphone, ShieldAlert } from 'lucide-react'
 import { techStackItems } from '@/data/architectureData'
 
-const categoryLabel: Record<
-  (typeof techStackItems)[number]['category'],
-  { label: string; color: string; bg: string }
-> = {
-  backend: {
-    label: '后端',
-    color: 'text-emerald-700 dark:text-emerald-300',
-    bg: 'bg-emerald-50 dark:bg-emerald-950/30',
-  },
-  frontend: {
-    label: '前端',
-    color: 'text-sky-700 dark:text-sky-300',
-    bg: 'bg-sky-50 dark:bg-sky-950/30',
-  },
-  storage: {
-    label: '存储',
-    color: 'text-amber-700 dark:text-amber-300',
-    bg: 'bg-amber-50 dark:bg-amber-950/30',
-  },
-  model: {
-    label: '模型',
-    color: 'text-violet-700 dark:text-violet-300',
-    bg: 'bg-violet-50 dark:bg-violet-950/30',
-  },
-  infra: {
-    label: '基础设施',
-    color: 'text-slate-700 dark:text-slate-300',
-    bg: 'bg-slate-50 dark:bg-slate-900/60',
-  },
-  integration: {
-    label: '集成',
-    color: 'text-sky-700 dark:text-sky-300',
-    bg: 'bg-sky-50 dark:bg-sky-950/30',
-  },
+const categoryMeta: Record<(typeof techStackItems)[number]['category'], { label: string; icon: typeof Box }> = {
+  backend: { label: 'Backend', icon: Braces },
+  frontend: { label: 'Frontend', icon: MonitorSmartphone },
+  storage: { label: 'Storage', icon: Database },
+  model: { label: 'Models', icon: Boxes },
+  infra: { label: 'Infrastructure', icon: CloudCog },
+  integration: { label: 'Optional integration', icon: Box },
 }
 
+const knownBoundaries = [
+  {
+    title: '状态仍需外置',
+    detail: 'Chat session 与检索统计仍保存在进程内，多实例部署前需要迁移到 Redis 或数据库。',
+  },
+  {
+    title: '公网暴露前需要鉴权',
+    detail: '应用 API 当前没有内置用户鉴权，开发配置允许任意 CORS 来源。',
+  },
+  {
+    title: 'Agent 工具保持只读',
+    detail: '当前只有 multimodal_knowledge_search，尚无写工具、审批、MCP 或执行沙箱。',
+  },
+  {
+    title: '飞书保持 Direct',
+    detail: '三态 Agent 模式由 Web Chat API 与 mma-rag ask 提供；飞书聊天当前走直接检索。',
+  },
+]
+
 export function TechStackSection() {
+  const groups = Object.entries(
+    techStackItems.reduce<Record<string, typeof techStackItems>>((acc, item) => {
+      ;(acc[item.category] ||= []).push(item)
+      return acc
+    }, {})
+  )
+
   return (
-    <section id="tech-stack" className="scroll-mt-24 space-y-4">
-      <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-slate-100/90 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm dark:border-slate-700/80 dark:bg-slate-800/70 dark:text-slate-100">
-        <span className="h-2 w-2 rounded-full bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-500 shadow-[0_0_8px_rgba(99,102,241,0.45)]" />
-        <span>技术栈与非功能特性</span>
+    <section id="tech-stack" className="scroll-mt-24">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,0.78fr)_minmax(28rem,1.22fr)] lg:items-end lg:gap-14">
+        <div className="max-w-2xl">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2f7f93] dark:text-[#7fc2cf]">Runtime boundary</p>
+          <h2 className="architecture-display mt-3 text-3xl font-semibold leading-tight tracking-[-0.035em] text-[#102d42] [text-wrap:balance] dark:text-[#edf6f3] sm:text-[2.55rem]">
+            <span className="sm:hidden">技术选型，<br />服务于边界，<br />而不是反过来</span>
+            <span className="hidden sm:inline">技术选型服务于边界，而不是反过来</span>
+          </h2>
+        </div>
+        <p className="max-w-2xl text-sm leading-7 text-[#5a7075] dark:text-[#a7bcbd] sm:text-[15px] lg:justify-self-end">
+          下列组件是当前运行时快照。可选基础设施和现有约束被明确标出，避免把集成能力误读为在线检索的强依赖。
+        </p>
       </div>
 
-      <p className="max-w-4xl break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 text-chinese-break text-description">
-        后端 FastAPI + DDD，前端 React + Vite + Tailwind；数据平面为 MinIO、Qdrant、Redis（Celery broker）；模型由 LLMManager 按 task_type 路由至 SiliconFlow / OpenRouter / 阿里云百炼 / DeepSeek 等；嵌入与检索侧含 Qwen3-Embedding、BGE-M3、CLIP、CLAP、Reranker。飞书为<strong className="font-medium text-slate-800 dark:text-slate-200"> 可选 </strong>
-        集成。默认依赖编排见仓库根目录 <span className="font-mono text-[12px]">docker-compose.yml</span>。
-      </p>
-
-      <div className="grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-3">
-        {techStackItems.map((item, index) => {
-          const meta = categoryLabel[item.category]
-          return (
-            <div
-              key={item.id}
-              className="group relative flex flex-col overflow-hidden rounded-xl border border-slate-100 bg-white/90 p-3 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:border-slate-200/90 dark:border-slate-800/80 dark:bg-slate-950/80 dark:hover:border-slate-700/90"
-              style={{ animationDelay: `${index * 50}ms` }}
-            >
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/0 via-indigo-50/0 to-violet-50/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 dark:from-transparent dark:via-indigo-950/20 dark:to-transparent" />
-              <div className="relative mb-1 flex items-center justify-between gap-2">
-                <div className="break-words text-[11px] font-semibold text-slate-900 transition-colors duration-300 group-hover:text-slate-700 dark:text-slate-50 dark:group-hover:text-slate-200">
-                  {item.name}
+      <div className="mt-9 grid gap-5 xl:grid-cols-[minmax(0,1.28fr)_minmax(22rem,0.72fr)]">
+        <div className="grid overflow-hidden rounded-[28px] border border-[#b9ccc6] bg-[#edf2ed] dark:border-[#2b4d58] dark:bg-[#0b222c] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-2">
+          {groups.map(([category, items], index) => {
+            const meta = categoryMeta[category as keyof typeof categoryMeta]
+            const Icon = meta.icon
+            return (
+              <section
+                key={category}
+                className={`min-h-[12rem] p-5 sm:p-6 ${index > 0 ? 'border-t border-[#c8d7d1] dark:border-[#294a56] sm:border-t-0' : ''} ${index % 2 === 1 ? 'sm:border-l' : ''} ${index >= 2 ? 'sm:border-t' : ''} ${index % 3 !== 0 ? 'lg:border-l' : 'lg:border-l-0'} ${index >= 3 ? 'lg:border-t' : ''} ${index % 2 === 1 ? 'xl:border-l' : 'xl:border-l-0'} ${index >= 2 ? 'xl:border-t' : 'xl:border-t-0'} border-[#c8d7d1] dark:border-[#294a56]`}
+              >
+                <div className="flex items-center gap-2 text-[#2f7f93] dark:text-[#7fc2cf]">
+                  <Icon className="h-4 w-4" />
+                  <h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em]">{meta.label}</h3>
                 </div>
-                <span
-                  className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium shadow-sm transition-all duration-300 group-hover:scale-105 ${meta.bg} ${meta.color}`}
-                >
-                  {meta.label}
-                </span>
-              </div>
-              {item.description && (
-                <p className="relative mt-0.5 break-words text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
-                  {item.description}
-                </p>
-              )}
-            </div>
-          )
-        })}
-      </div>
+                <dl className="mt-5 space-y-4">
+                  {items.map((item) => (
+                    <div key={item.id}>
+                      <dt className="text-[13px] font-semibold text-[#17384a] dark:text-[#e4efeb]">{item.name}</dt>
+                      {item.description ? (
+                        <dd className="mt-1.5 text-xs leading-5 text-[#6a7f82] dark:text-[#99b0b2]">{item.description}</dd>
+                      ) : null}
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            )
+          })}
+        </div>
 
-      <div className="rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50/90 via-indigo-50/20 to-teal-50/15 p-4 dark:border-slate-800/80 dark:from-slate-900/60 dark:via-indigo-950/25 dark:to-teal-950/10">
-        <p className="mb-2 text-[11px] font-semibold text-slate-700 dark:text-slate-200">非功能特性（按模块可扩展）</p>
-        <ul className="space-y-1.5 text-[11px] text-slate-600 dark:text-slate-300">
-          <li className="flex items-start gap-2">
-            <span className="mt-[5px] h-1 w-1 flex-shrink-0 rounded-full bg-indigo-500" />
-            <span>可观测性：结构化日志、检索与生成链路事件，便于对接监控与排障</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="mt-[5px] h-1 w-1 flex-shrink-0 rounded-full bg-indigo-500" />
-            <span>安全性：密钥集中于 backend/.env（勿提交）；可按需在 API 层增加认证与限流</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="mt-[5px] h-1 w-1 flex-shrink-0 rounded-full bg-indigo-500" />
-            <span>扩展性：DDD 边界清晰，可替换向量库、Provider 或存储实现</span>
-          </li>
-        </ul>
+        <aside className="overflow-hidden rounded-[28px] border border-[#d9aa8d] bg-[#f3dfd1] dark:border-[#744a36] dark:bg-[#2a1b18]">
+          <div className="border-b border-[#dfb499] p-5 dark:border-[#5f3e30] sm:p-6">
+            <div className="flex items-center gap-2 text-[#c45f36] dark:text-[#eea47f]">
+              <ShieldAlert className="h-4 w-4" />
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em]">Before production</p>
+            </div>
+            <h3 className="architecture-display mt-3 text-2xl font-semibold text-[#5a3021] dark:text-[#f5ded1]">部署前必须知道</h3>
+            <p className="mt-2 text-xs leading-6 text-[#89614f] dark:text-[#c29e8c]">这些是当前实现边界，不是未来路线图。</p>
+          </div>
+          <ol>
+            {knownBoundaries.map((item, index) => (
+              <li key={item.title} className={index > 0 ? 'border-t border-[#dfb499] p-5 dark:border-[#5f3e30]' : 'p-5'}>
+                <div className="flex gap-3">
+                  <span className="font-mono text-[10px] font-semibold text-[#c45f36] dark:text-[#eea47f]">{String(index + 1).padStart(2, '0')}</span>
+                  <div>
+                    <h4 className="text-[13px] font-semibold text-[#5a3021] dark:text-[#f5ded1]">{item.title}</h4>
+                    <p className="mt-1.5 text-xs leading-6 text-[#89614f] dark:text-[#c29e8c]">{item.detail}</p>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </aside>
       </div>
     </section>
   )
 }
-

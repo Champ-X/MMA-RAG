@@ -2,6 +2,8 @@
 
 本文说明如何在 [飞书开放平台](https://open.feishu.cn/) 创建应用、开通权限与事件订阅，并在本仓库后端通过**长连接（WebSocket）**接入机器人，使 IM 内对话与 Web 端共用同一套 RAG 检索与生成能力。
 
+> **当前能力边界（2026-07-26）**：飞书聊天复用多模态 `RetrievalService` 与生成能力，但目前仍是直接检索路径；`auto / direct / agent` 三态选择只在 Web Chat、Chat API 和 `mma-rag ask` 中可用。
+>
 > **与 Webhook 请求 URL 的区别**：本实现使用 **lark-oapi 长连接** 接收 `im.message.receive_v1` 等事件，**不需要**在开放平台填写「请求地址 URL」式的 HTTP Webhook 来完成收消息。请勿将长连接与 Webhook 混在同一套事件链路上重复配置。
 
 ---

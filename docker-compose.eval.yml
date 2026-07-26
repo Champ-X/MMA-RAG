@@ -1,0 +1,86 @@
+# Dedicated data plane for RAG evaluation. It never mounts the normal
+# minio_data/ or qdrant_storage/ directories used by the development stack.
+name: tessmora-eval
+
+services:
+  backend:
+    image: mma-rag-backend:latest
+    build: ./backend
+    container_name: tessmora_eval_backend
+    ports:
+      - "18000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      EVALUATION_MODE: "true"
+      PRELOAD_LOCAL_MODELS_ON_STARTUP: "false"
+      DATABASE_URL: sqlite:////eval-data/app.db
+      MINIO_ENDPOINT: minio:9000
+      MINIO_PUBLIC_ENDPOINT: localhost:19000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: "6333"
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    volumes:
+      # Reuse an existing dependency image during local iteration while always
+      # executing the current backend source tree.
+      - ./backend/app:/app/app:ro
+      - tessmora_eval_app:/eval-data
+      # Model weights are immutable inputs, not user knowledge data. Reuse the
+      # normal cache read-only so hybrid sparse retrieval is not silently lost.
+      - ./data/huggingface_cache:/root/.cache/huggingface:ro
+    depends_on:
+      - minio
+      - qdrant
+      - redis
+    networks:
+      - tessmora_eval
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: tessmora_eval_minio
+    ports:
+      - "19000:9000"
+      - "19001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - tessmora_eval_minio:/data
+    networks:
+      - tessmora_eval
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: tessmora_eval_qdrant
+    ports:
+      - "16333:6333"
+    volumes:
+      - tessmora_eval_qdrant:/qdrant/storage
+    networks:
+      - tessmora_eval
+
+  redis:
+    image: redis:7-alpine
+    container_name: tessmora_eval_redis
+    ports:
+      - "16379:6379"
+    volumes:
+      - tessmora_eval_redis:/data
+    networks:
+      - tessmora_eval
+
+networks:
+  tessmora_eval:
+    driver: bridge
+
+volumes:
+  tessmora_eval_app:
+  tessmora_eval_minio:
+  tessmora_eval_qdrant:
+  tessmora_eval_redis:

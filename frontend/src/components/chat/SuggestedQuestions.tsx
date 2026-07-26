@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ArrowUpRight, Sparkles } from 'lucide-react'
 import { knowledgeApi } from '@/services/api_client'
 import { useKnowledgeStore, type KnowledgeBase } from '@/store/useKnowledgeStore'
 import type { ChatSession, ChatScopeFile } from '@/store/useChatStore'
@@ -7,6 +8,14 @@ import { cn } from '@/lib/utils'
 const MAX_QUESTIONS = 3
 /** 本地兜底：未指定范围时随机抽若干库 */
 const RANDOM_KB_SAMPLE_SIZE = 10
+const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi
+const LONG_OPAQUE_TOKEN_PATTERN = /\b[0-9a-f]{16,}\b/gi
+const FILE_REFERENCE_PATTERN = /(?<![A-Za-z0-9_.-])([a-z0-9][a-z0-9._-]{2,180}\.(?:png|jpe?g|gif|webp|bmp|tiff?|svg|pdf|docx?|pptx?|xlsx?|csv|txt|md|mp3|wav|m4a|aac|flac|mp4|mov|avi|mkv|webm))(?![A-Za-z0-9_.-])/gi
+const TEMP_FILE_PREFIX_PATTERN = /^(?:codex[-_ ]*clipboard|clipboard|pasted?[-_ ]*(?:image|file)|screen[-_ ]*shot|screenshot|image|img|upload(?:ed)?|wechatimg|wx_camera|mmexport|dsc|pxl)[-_ .]*/i
+const GENERIC_FILE_WORD_PATTERN = /\b(?:at|copy|file|image|photo|picture|scan|new|final)\b/gi
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'svg'])
+const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'm4a', 'aac', 'flac'])
+const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'avi', 'mkv', 'webm'])
 
 interface SuggestedQuestionsProps {
   session: ChatSession | null
@@ -94,6 +103,36 @@ function stripFileExtension(name: string) {
   return name.replace(/\.[^.]+$/, '').trim()
 }
 
+function getReadableFileTitle(name: string) {
+  const fileName = String(name ?? '').split(/[/\\]/).pop()?.trim() ?? ''
+  const stem = stripFileExtension(fileName)
+  if (!stem) return ''
+
+  const cleaned = stem
+    .replace(TEMP_FILE_PREFIX_PATTERN, '')
+    .replace(UUID_PATTERN, ' ')
+    .replace(LONG_OPAQUE_TOKEN_PATTERN, ' ')
+    .replace(/[-_.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const semantic = cleaned
+    .replace(GENERIC_FILE_WORD_PATTERN, ' ')
+    .replace(/[\d\s:.-]+/g, ' ')
+    .trim()
+
+  if (!semantic || !/[A-Za-z\u4e00-\u9fff]/.test(semantic)) return ''
+  if (TEMP_FILE_PREFIX_PATTERN.test(stem) && !cleaned.replace(/[0-9a-f\s:.-]+/gi, '')) return ''
+  return truncateSeed(cleaned, 28)
+}
+
+function getGenericMaterialLabel(name: string) {
+  const extension = String(name ?? '').split('.').pop()?.toLowerCase() ?? ''
+  if (IMAGE_EXTENSIONS.has(extension)) return '这张图片'
+  if (AUDIO_EXTENSIONS.has(extension)) return '这段音频'
+  if (VIDEO_EXTENSIONS.has(extension)) return '这段视频'
+  return '这份材料'
+}
+
 function truncateSeed(text: string, max = 18) {
   const normalized = text.replace(/\s+/g, ' ').trim()
   if (!normalized) return ''
@@ -141,12 +180,19 @@ function buildQuestionsFromClusters(kb: KnowledgeBase, clusters: PortraitCluster
 
 function buildQuestionsFromFiles(kb: KnowledgeBase, files: KnowledgeFileItem[]): SuggestedQuestionItem[] {
   return files.map((file, index) => {
-    const title = truncateSeed(stripFileExtension(file.name), 20) || truncateSeed(file.name, 20)
-    const templates = [
-      `《${title}》主要讲了什么？`,
-      `《${title}》里有哪些优先关注的点？`,
-      `怎样快速读懂《${title}》？`,
-    ]
+    const title = getReadableFileTitle(file.name)
+    const subject = getGenericMaterialLabel(file.name)
+    const templates = title
+      ? [
+        `《${title}》主要讲了什么？`,
+        `《${title}》里有哪些优先关注的点？`,
+        `怎样快速读懂《${title}》？`,
+      ]
+      : [
+        `${subject}展示了哪些关键信息？`,
+        `${subject}有哪些值得关注的细节？`,
+        `可以如何理解${subject}的主要内容？`,
+      ]
     return {
       id: `${kb.id}-file-${file.id}`,
       text: templates[index % templates.length],
@@ -210,7 +256,21 @@ function takeRandomFromPool(
 }
 
 function normalizeQuestionText(text: string): string {
-  const normalized = String(text ?? '')
+  let removedOpaqueReference = false
+  let cleaned = String(text ?? '').replace(FILE_REFERENCE_PATTERN, (fileName) => {
+    if (getReadableFileTitle(fileName)) return fileName
+    removedOpaqueReference = true
+    return ''
+  })
+
+  if (removedOpaqueReference) {
+    cleaned = cleaned
+      .replace(/[「《“"]\s*[」》”"]/g, '')
+      .replace(/(?:在|从|根据|关于)?\s*(?:该|这个|这份|这张)?\s*(?:文件|文档|图片|图像|附件)\s*(?:中|里|内|所示(?:的)?|显示(?:的)?)?\s*[，,:：]?\s*/g, '')
+      .replace(/^\s*(?:中|里|内)(?:的)?\s*/, '')
+  }
+
+  const normalized = cleaned
     .replace(/^[\-\*\d\.\)\s]+/, '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -407,8 +467,10 @@ export function SuggestedQuestions({
         const list = res?.questions ?? []
         if (list.length > 0) {
           const normalized = normalizeSuggestedItems(list, res.revision)
-          setQuestions(normalized)
-          return
+          if (normalized.length > 0) {
+            setQuestions(normalized)
+            return
+          }
         }
       } catch (e) {
         console.warn('推荐问题接口失败，使用本地模板', e)
@@ -444,7 +506,7 @@ export function SuggestedQuestions({
   if (!loading && questions.length === 0 && !status) return null
 
   return (
-    <div className="mx-auto mt-4 w-full max-w-lg px-1 md:max-w-2xl md:px-0">
+    <div className="mx-auto mt-5 w-full max-w-lg px-1 md:max-w-3xl md:px-0">
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-3 text-xs text-slate-500 dark:text-slate-400" role="status" aria-label="正在生成推荐问题">
           <span className="h-3.5 w-3.5 animate-spin rounded-full border border-slate-300 border-t-indigo-500 dark:border-slate-700 dark:border-t-indigo-300" aria-hidden />
@@ -452,6 +514,17 @@ export function SuggestedQuestions({
         </div>
       ) : (
         <>
+          {questions.length > 0 && (
+            <div className="mb-2.5 flex items-center justify-between gap-3 px-1">
+              <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                <Sparkles className="h-3.5 w-3.5 shrink-0 text-indigo-500 dark:text-indigo-300" aria-hidden />
+                <span>你可以这样问</span>
+              </div>
+              <span className="truncate text-[10px] tracking-wide text-slate-400 dark:text-slate-500">
+                基于当前知识范围
+              </span>
+            </div>
+          )}
           {status === 'degraded' && (
             <div className="mb-3 rounded-[6px] border border-amber-200/80 bg-amber-50/70 px-3 py-2 text-[11px] text-amber-700 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-300" role="status">
               已切换推荐策略
@@ -462,52 +535,34 @@ export function SuggestedQuestions({
               暂时无法生成推荐问题
             </div>
           )}
-          <ul className="flex flex-col gap-2 md:hidden" aria-label="推荐问题">
+          <ul className="grid grid-cols-1 gap-2.5 md:grid-cols-3" aria-label="推荐问题">
             {questions.map((item) => (
-              <li key={`mobile-${item.id}`}>
+              <li key={item.id} className="min-w-0">
                 <button
                   type="button"
                   disabled={disabled}
+                  title={item.text}
                   aria-label={`发送推荐问题：${item.text}`}
                   onClick={() => onSelect(item.text)}
                   className={cn(
-                    'flex h-[72px] w-full items-center rounded-[10px] border border-slate-200/90 bg-white/45 px-3.5 text-left transition-colors duration-150',
-                    'hover:border-slate-300 hover:bg-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/70 focus-visible:ring-offset-2',
-                    'dark:border-slate-800 dark:bg-slate-900/30 dark:hover:border-slate-700 dark:hover:bg-slate-900/60',
+                    'group flex min-h-[88px] w-full flex-col justify-between gap-3 overflow-hidden rounded-[12px] border border-slate-200/90 bg-white/55 px-3.5 py-3 text-left shadow-sm shadow-slate-200/20 transition-[border-color,background-color,box-shadow] duration-150 md:min-h-[112px] md:px-4 md:py-3.5',
+                    'hover:border-indigo-200 hover:bg-white hover:shadow-md hover:shadow-indigo-100/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/70 focus-visible:ring-offset-2',
+                    'dark:border-slate-800 dark:bg-slate-900/35 dark:shadow-none dark:hover:border-indigo-500/40 dark:hover:bg-slate-900/65',
                     disabled && 'cursor-not-allowed opacity-55'
                   )}
                 >
-                  <span className="block line-clamp-2 text-[13px] font-medium leading-snug text-slate-800 dark:text-slate-100">
+                  <span className="flex w-full min-w-0 items-center justify-between gap-2">
+                    <span className="max-w-[85%] truncate rounded-full bg-slate-100/90 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      {item.kbName}
+                    </span>
+                    <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-slate-300 transition-colors group-hover:text-indigo-500 dark:text-slate-600 dark:group-hover:text-indigo-300" aria-hidden />
+                  </span>
+                  <span className="block line-clamp-2 break-words text-[13px] font-medium leading-relaxed text-slate-800 [overflow-wrap:anywhere] md:line-clamp-3 md:text-[13.5px] dark:text-slate-100">
                     {item.text}
                   </span>
                 </button>
               </li>
             ))}
-          </ul>
-
-          <ul className="hidden gap-3 md:grid md:grid-cols-3" aria-label="推荐问题">
-            {questions.map((item) => {
-              return (
-                <li key={`desktop-${item.id}`} className="min-w-0">
-                  <button
-                    type="button"
-                    disabled={disabled}
-                    aria-label={`发送推荐问题：${item.text}`}
-                    onClick={() => onSelect(item.text)}
-                    className={cn(
-                      'flex h-[92px] w-full items-center rounded-[10px] border border-slate-200/90 bg-white/45 px-4 text-left transition-colors duration-150',
-                      'hover:border-slate-300 hover:bg-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/70 focus-visible:ring-offset-2',
-                      'dark:border-slate-800 dark:bg-slate-900/30 dark:hover:border-slate-700 dark:hover:bg-slate-900/60',
-                      disabled && 'cursor-not-allowed opacity-55'
-                    )}
-                  >
-                    <span className="block line-clamp-3 text-[13px] font-medium leading-relaxed text-slate-700 dark:text-slate-200">
-                      {item.text}
-                    </span>
-                  </button>
-                </li>
-              )
-            })}
           </ul>
         </>
       )}

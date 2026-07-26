@@ -1,0 +1,4 @@
+#!/bin/sh
+
+script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+exec python3 "$script_dir/mma_rag_cli.py" "$@"
