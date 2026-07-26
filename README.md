@@ -201,6 +201,8 @@ skills/mma-rag/scripts/mma-rag ask --query "总结部署流程" --kb-id KB_ID --
 
 安装脚本会在 `${CODEX_HOME:-$HOME/.codex}/skills/mma-rag` 创建指向仓库 Skill 的符号链接，不覆盖已有同名目录。完整命令、安全上传根目录与退出码见 [CLI reference](skills/mma-rag/references/cli-reference.md)。
 
+仓库还提供隔离的合成 RAG 评测集与 `rag-eval` runner，覆盖 Recall@K、nDCG、MRR、Faithfulness、Answer Relevance 和 Context Precision；使用方式和指标口径见 [RAG 评测基线](docs/RAG_EVALUATION.md)。
+
 ## 当前边界
 
 - 应用 API **没有内置用户鉴权**，开发配置中的 CORS 允许任意来源；请只在可信网络使用，公网部署前必须在反向代理或 API Gateway 增加认证、TLS、来源限制、限流与上传大小控制。
@@ -221,6 +223,7 @@ skills/mma-rag/scripts/mma-rag ask --query "总结部署流程" --kb-id KB_ID --
 | [mira-plan](docs/mira-plan.md) | 按“已完成 / 部分完成 / 待规划”维护的演进路线 |
 | [FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md) | 飞书 IM 与 Docx/Wiki 权限、变量、验证 |
 | [CLI reference](skills/mma-rag/references/cli-reference.md) | 本地 Skill/CLI 命令与安全边界 |
+| [RAG_EVALUATION](docs/RAG_EVALUATION.md) | 合成评测集、隔离运行方式、六类指标与回归门禁 |
 | [SECURITY](SECURITY.md) | 当前安全姿态与生产部署清单 |
 | [CHANGELOG](CHANGELOG.md) | 近期功能与文档变更 |
 

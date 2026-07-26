@@ -2,6 +2,7 @@
 
 ## 2026-07-26
 
+- [评测/质量] 新增完全合成且带内容指纹的 RAG baseline v1、隔离评测 Compose 数据面与 `rag-eval` runner；覆盖 Recall@K、nDCG、MRR 及 RAGAS 类 Faithfulness、Answer Relevance、Context Precision，并支持离线复算与回归比较。
 - [品牌/文档] 项目对外名称统一为 Tessmora，并补齐中英文 README 的 Agent 模式、公开检索 API、Codex Skill/CLI、运行依赖与当前能力边界。
 - [Agent-facing API] 新增 `POST /api/v1/retrieval/search` 紧凑多模态证据契约，以及 `mma-rag` 本地 CLI/Skill 的知识库、摄取、检索和问答工作流。
 - [架构/体验] 重构 `/architecture` 页面和架构文档，明确写入/读取两条数据流、Direct/Agent 分支、统一生成链和真实数据服务边界；移除重复的创新、性能与集成展示。

@@ -99,10 +99,13 @@ async def global_exception_handler(request, exc):
 @app.get("/health")
 async def health_check():
     """健康检查端点"""
+    from app.core.config import settings
+
     return {
         "status": "healthy",
         "service": "Tessmora",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "evaluation_mode": settings.evaluation_mode,
     }
 
 # 根路径

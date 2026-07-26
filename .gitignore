@@ -61,6 +61,10 @@ coverage.xml
 *.cover
 .hypothesis/
 
+# RAG 评测临时运行产物；人工确认的 evals/baselines/ 可提交
+/evals/runs/
+/evals/reports/
+
 # —— IDE / 编辑器 ——
 .idea/
 *.swp
@@ -85,6 +89,7 @@ tests/
 !backend/tests/test_conversation_context.py
 !backend/tests/test_feishu_document_source.py
 !backend/tests/test_knowledge_router.py
+!backend/tests/test_rag_evaluation.py
 
 # —— 密钥与环境（勿提交 backend/.env）——
 .env

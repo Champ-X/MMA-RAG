@@ -201,6 +201,8 @@ skills/mma-rag/scripts/mma-rag ask --query "Summarize the deployment flow" --kb-
 
 The installer creates a symlink at `${CODEX_HOME:-$HOME/.codex}/skills/mma-rag` and never overwrites an existing directory. See the [CLI reference](skills/mma-rag/references/cli-reference.md) for every command, safe upload roots, and exit codes.
 
+The repository also includes an isolated synthetic RAG dataset and `rag-eval` runner for Recall@K, nDCG, MRR, Faithfulness, Answer Relevance, and Context Precision. See the [RAG evaluation baseline](docs/RAG_EVALUATION.md) for metric definitions and the safe workflow.
+
 ## Current boundaries
 
 - The application API has **no built-in user authentication**, and development CORS allows every origin. Keep it on a trusted network; add authentication, TLS, origin restrictions, rate limits, and upload controls at a reverse proxy or API gateway before public deployment.
@@ -221,6 +223,7 @@ See the [architecture document](docs/MMA_ARCHITECTURE.md) and [roadmap](docs/mir
 | [mira-plan](docs/mira-plan.md) | Roadmap maintained as shipped / partial / planned |
 | [FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md) | Feishu IM and Docx/Wiki permissions, variables, and verification |
 | [CLI reference](skills/mma-rag/references/cli-reference.md) | Local Skill/CLI commands and safety boundaries |
+| [RAG_EVALUATION](docs/RAG_EVALUATION.md) | Synthetic dataset, isolated runner, six metrics, and regression gates |
 | [SECURITY](SECURITY.md) | Current security posture and production checklist |
 | [CHANGELOG](CHANGELOG.md) | Recent feature and documentation changes |
 

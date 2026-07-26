@@ -1,0 +1,44 @@
+{
+  "schema_version": "1",
+  "name": "tessmora-rag-baseline",
+  "version": "1.0.0",
+  "description": "Small synthetic Chinese corpus for stable retrieval and grounded-generation regression tests.",
+  "cases": "cases.jsonl",
+  "corpus": [
+    {
+      "document_id": "ops-rollback.md",
+      "path": "corpus/ops-rollback.md",
+      "sha256": "48e659837c162de29f2e14ec7d46563e30291cf566a77b93b05f47e723007c00"
+    },
+    {
+      "document_id": "release-policy.md",
+      "path": "corpus/release-policy.md",
+      "sha256": "3fa4b5dee4fc7e3b3808c77b26940cb77656b2a70898ba50e4a0f08c169b1e32"
+    },
+    {
+      "document_id": "incident-escalation.md",
+      "path": "corpus/incident-escalation.md",
+      "sha256": "068ada11e48d82a29c8396ae1cdc7753913b31cefa57afff986456adcd8c8619"
+    },
+    {
+      "document_id": "data-retention.md",
+      "path": "corpus/data-retention.md",
+      "sha256": "0853ec662adc93f9ce846d3b803fbcd682cb6dc8f9f65592c09e8780dfd09c6f"
+    },
+    {
+      "document_id": "access-control.md",
+      "path": "corpus/access-control.md",
+      "sha256": "06a63cb477a4ff17ac433c8c969a1f302b209f9dac7a25615e880049b1205ccf"
+    },
+    {
+      "document_id": "service-limits.md",
+      "path": "corpus/service-limits.md",
+      "sha256": "f507387d901f52c864549ab2b0036b3bef185ab2706dbd7f54ddc8729781faed"
+    },
+    {
+      "document_id": "coverage-boundary.md",
+      "path": "corpus/coverage-boundary.md",
+      "sha256": "17460e2a75eecc52bc250b85fdbdbe6acd9b7b7be4eb64ae842bbaa2364cccb8"
+    }
+  ]
+}
