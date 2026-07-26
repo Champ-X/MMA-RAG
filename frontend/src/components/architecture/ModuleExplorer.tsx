@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
   Bot,
   Braces,
   ChevronRight,
@@ -25,113 +27,157 @@ const moduleIcons = {
   'llm-manager': Braces,
 } as const
 
+const moduleColors = {
+  blue: {
+    badge: 'border-[#a5c3d4] bg-[#e7eff5] text-[#426f92] dark:border-[#3f6078] dark:bg-[#426f92]/12 dark:text-[#9bc0dc]',
+    dot: 'bg-[#5e8db0]',
+  },
+  green: {
+    badge: 'border-[#afcbb8] bg-[#e8f0e8] text-[#5f8e72] dark:border-[#3d624d] dark:bg-[#5f8e72]/12 dark:text-[#91c3a1]',
+    dot: 'bg-[#5f8e72]',
+  },
+  orange: {
+    badge: 'border-[#e5b89d] bg-[#f6e8dc] text-[#d76f43] dark:border-[#754b37] dark:bg-[#e47b4e]/12 dark:text-[#eeaa88]',
+    dot: 'bg-[#e47b4e]',
+  },
+  purple: {
+    badge: 'border-[#c6b8d2] bg-[#eee9f2] text-[#765c95] dark:border-[#59476e] dark:bg-[#765c95]/12 dark:text-[#c2add6]',
+    dot: 'bg-[#765c95]',
+  },
+} as const
+
 export function ModuleExplorer({ modules }: ModuleExplorerProps) {
   const [activeId, setActiveId] = useState(modules[0]?.id ?? '')
   const activeModule = modules.find((module) => module.id === activeId) ?? modules[0]
 
   if (!activeModule) return null
 
-  return (
-    <div className="mt-8 overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_24px_70px_-58px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-950">
-      <div className="grid lg:grid-cols-[18rem_minmax(0,1fr)]">
-        <div
-          role="tablist"
-          aria-label="核心模块"
-          className="scrollbar-hide flex overflow-x-auto border-b border-slate-200/80 bg-slate-50/70 p-2 dark:border-slate-800 dark:bg-slate-900/40 lg:block lg:border-b-0 lg:border-r lg:p-3"
-        >
-          {modules.map((module) => {
-            const Icon = moduleIcons[module.id as keyof typeof moduleIcons] ?? Code2
-            const isActive = module.id === activeModule.id
+  const activeColors = moduleColors[activeModule.color]
 
-            return (
-              <button
-                key={module.id}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                aria-controls={`module-panel-${module.id}`}
-                onClick={() => setActiveId(module.id)}
-                className={cn(
-                  'group flex min-h-14 min-w-[11.5rem] items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 lg:min-w-0 lg:w-full',
-                  isActive
-                    ? 'bg-white text-slate-950 shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-800 dark:text-white dark:ring-slate-700'
-                    : 'text-slate-500 hover:bg-white/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100'
-                )}
-              >
-                <span
+  return (
+    <div className="mt-9 overflow-hidden rounded-[28px] border border-[#b9ccc6] bg-[#edf2ed] shadow-[0_34px_90px_-64px_rgba(16,45,66,0.72)] dark:border-[#2b4d58] dark:bg-[#0b222c]">
+      <div className="grid min-w-0 lg:grid-cols-[20rem_minmax(0,1fr)]">
+        <div className="min-w-0 bg-[#102d42] p-3 text-white sm:p-4">
+          <div className="px-3 pb-4 pt-2">
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[#80bdc7]">Domain index</p>
+            <p className="mt-1.5 text-[13px] leading-6 text-[#a9bec1]">从职责切换到代码，而不是从目录猜职责。</p>
+          </div>
+          <div
+            role="tablist"
+            aria-label="核心模块"
+            className="scrollbar-hide flex min-w-0 max-w-full gap-2 overflow-x-auto lg:block lg:space-y-1"
+          >
+            {modules.map((module) => {
+              const Icon = moduleIcons[module.id as keyof typeof moduleIcons] ?? Code2
+              const isActive = module.id === activeModule.id
+              const colors = moduleColors[module.color]
+
+              return (
+                <button
+                  key={module.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-controls="module-panel"
+                  onClick={() => setActiveId(module.id)}
                   className={cn(
-                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors',
+                    'group flex min-h-[4.25rem] min-w-[10rem] items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7fc2cf] lg:min-w-0 lg:w-full',
                     isActive
-                      ? 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300'
-                      : 'border-slate-200 bg-white text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-500'
+                      ? 'border-white/15 bg-white/10 text-white shadow-[inset_0_1px_rgba(255,255,255,0.08)]'
+                      : 'border-transparent text-[#9fb5b9] hover:border-white/10 hover:bg-white/[0.055] hover:text-white'
                   )}
                 >
-                  <Icon className="h-4 w-4" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold">{module.name}</span>
-                  <span className="mt-0.5 block truncate text-[10px] text-slate-400 dark:text-slate-500">
-                    {module.id}
+                  <span className={cn(
+                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.06] text-[#9fb5b9] transition-colors',
+                    isActive && 'bg-white text-[#102d42]'
+                  )}>
+                    <Icon className="h-4 w-4" />
                   </span>
-                </span>
-                <ChevronRight
-                  className={cn(
-                    'hidden h-4 w-4 shrink-0 transition-transform lg:block',
-                    isActive ? 'translate-x-0 text-teal-600' : '-translate-x-1 text-slate-300 group-hover:translate-x-0'
-                  )}
-                />
-              </button>
-            )
-          })}
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold">{module.name}</span>
+                    <span className="mt-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[#78939a]">
+                      <i className={cn('h-1.5 w-1.5 rounded-full', colors.dot)} />
+                      {module.id}
+                    </span>
+                  </span>
+                  <ChevronRight className={cn('hidden h-4 w-4 shrink-0 transition-transform lg:block', isActive ? 'text-[#7fc2cf]' : '-translate-x-1 text-[#496976] group-hover:translate-x-0')} />
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         <div
           key={activeModule.id}
-          id={`module-panel-${activeModule.id}`}
+          id="module-panel"
           role="tabpanel"
-          className="animate-in fade-in p-5 sm:p-7 lg:p-9"
+          className="animate-in fade-in min-w-0 bg-white/30 p-5 dark:bg-white/[0.018] sm:p-8 lg:p-10"
         >
-          <div className="max-w-3xl">
-            <p className="font-mono text-[10px] font-semibold tracking-[0.14em] text-teal-700 dark:text-teal-300">
-              {activeModule.id}
-            </p>
-            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-white">
-              {activeModule.name}
-            </h3>
-            <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300">{activeModule.role}</p>
+          <div className="flex flex-col gap-8 xl:flex-row xl:items-start xl:justify-between">
+            <div className="max-w-2xl">
+              <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] ${activeColors.badge}`}>
+                <i className={`h-1.5 w-1.5 rounded-full ${activeColors.dot}`} />
+                {activeModule.id}
+              </div>
+              <h3 className="architecture-display mt-4 text-3xl font-semibold tracking-[-0.035em] text-[#102d42] dark:text-[#edf6f3] sm:text-4xl">
+                {activeModule.name}
+              </h3>
+              <p className="mt-3 text-sm leading-7 text-[#586f74] dark:text-[#abc0c1]">{activeModule.role}</p>
+            </div>
+
+            <div className="grid w-full overflow-hidden rounded-[20px] border border-[#c5d5cf] bg-[#e8eee9] dark:border-[#294a56] dark:bg-[#071a24]/45 sm:grid-cols-2 xl:max-w-[32rem]">
+              <ContractCell icon={<ArrowDownToLine />} label="接收" value={activeModule.receives} />
+              <ContractCell icon={<ArrowUpFromLine />} label="交付" value={activeModule.delivers} bordered />
+            </div>
           </div>
 
-          <ul className="mt-7 grid gap-3 sm:grid-cols-2">
-            {activeModule.highlights.map((item) => (
-              <li
-                key={item}
-                className="rounded-xl bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-600 ring-1 ring-inset ring-slate-200/70 dark:bg-slate-900/60 dark:text-slate-300 dark:ring-slate-800"
-              >
-                {item}
-              </li>
-            ))}
-          </ul>
-
-          {activeModule.codeRefs?.length ? (
-            <div className="mt-8 border-t border-slate-200/80 pt-5 dark:border-slate-800">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-800 dark:text-slate-100">
-                <Code2 className="h-4 w-4 text-teal-600 dark:text-teal-400" />
-                当前代码入口
-              </div>
-              <dl className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2">
-                {activeModule.codeRefs.map((ref) => (
-                  <div key={`${ref.label}-${ref.path}`} className="min-w-0">
-                    <dt className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">{ref.label}</dt>
-                    <dd className="mt-1 overflow-x-auto font-mono text-[10px] leading-5 text-slate-700 dark:text-slate-300">
-                      {ref.path}
-                    </dd>
-                  </div>
+          <div className="mt-9 grid min-w-0 gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(17rem,0.62fr)]">
+            <div className="min-w-0">
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#738789] dark:text-[#8ba5a7]">Responsibilities</p>
+              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                {activeModule.highlights.map((item) => (
+                  <li
+                    key={item}
+                    className="relative rounded-2xl border border-[#cad8d3] bg-white/55 px-4 py-3.5 pl-6 text-[13px] leading-6 text-[#526b70] dark:border-[#2b4c57] dark:bg-white/[0.03] dark:text-[#b2c5c5]"
+                  >
+                    <span className={`absolute left-3 top-[1.12rem] h-1.5 w-1.5 rounded-full ${activeColors.dot}`} />
+                    {item}
+                  </li>
                 ))}
-              </dl>
+              </ul>
             </div>
-          ) : null}
+
+            {activeModule.codeRefs?.length ? (
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#738789] dark:text-[#8ba5a7]">
+                  <Code2 className="h-3.5 w-3.5 text-[#2f7f93]" />
+                  Code map
+                </p>
+                <dl className="mt-3 min-w-0 max-w-full overflow-hidden rounded-2xl bg-[#102d42] text-[#d3e2df]">
+                  {activeModule.codeRefs.map((ref, index) => (
+                    <div key={`${ref.label}-${ref.path}`} className={cn('px-4 py-3.5', index > 0 && 'border-t border-white/10')}>
+                      <dt className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[#7fc2cf]">{ref.label}</dt>
+                      <dd className="mt-1.5 overflow-x-auto font-mono text-[10px] leading-6 text-[#c5d7d4]">{ref.path}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function ContractCell({ icon, label, value, bordered = false }: { icon: React.ReactNode; label: string; value: string; bordered?: boolean }) {
+  return (
+    <div className={cn('p-4', bordered && 'border-t border-[#c5d5cf] dark:border-[#294a56] sm:border-l sm:border-t-0')}>
+      <div className="flex items-center gap-2 text-[#2f7f93] dark:text-[#7fc2cf] [&_svg]:h-3.5 [&_svg]:w-3.5">
+        {icon}
+        <dt className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em]">{label}</dt>
+      </div>
+      <dd className="mt-2 text-xs leading-6 text-[#526d72] dark:text-[#a6bcbc]">{value}</dd>
     </div>
   )
 }

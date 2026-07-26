@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react'
-import { Music, Play, Video, FileText } from 'lucide-react'
+import { ChevronDown, FileText, Music, Pause, Play, Video } from 'lucide-react'
 import { InlineCitation } from './InlineCitation'
 import type { Components, ExtraProps } from 'react-markdown'
 import { cn } from '@/lib/utils'
@@ -474,9 +474,10 @@ function ParagraphImageDisplay({
   }, [loadedImages])
 
   React.useEffect(() => {
+    const loadTimeouts = loadTimeoutsRef.current
     return () => {
-      loadTimeoutsRef.current.forEach((timer) => window.clearTimeout(timer))
-      loadTimeoutsRef.current.clear()
+      loadTimeouts.forEach((timer) => window.clearTimeout(timer))
+      loadTimeouts.clear()
     }
   }, [])
 
@@ -503,9 +504,7 @@ function ParagraphImageDisplay({
     return () => {
       cancelled = true
     }
-  }, [buildImageKey, fallbackKbId, imageOnlyCitations, messageId])
-
-  if (imageOnlyCitations.length === 0) return null
+  }, [buildImageKey, fallbackKbId, imageOnlyCitations, refreshedImgUrls])
 
   // 当 citations 变化时，检查图片是否已经加载完成（从缓存中）
   // 使用稳定的字符串作为依赖，避免数组引用变化导致的重新计算
@@ -537,9 +536,7 @@ function ParagraphImageDisplay({
         })
       }
     })
-    // 只依赖 citationIds 字符串，避免无限循环
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [citationIds])
+  }, [citationIds, imageOnlyCitations])
 
   const handleImageError = React.useCallback(
     async (citationId: number | string, citation: CitationReference, e: React.SyntheticEvent<HTMLImageElement, Event>) => {
@@ -596,16 +593,12 @@ function ParagraphImageDisplay({
   }
 
   // 仅过滤加载失败图片；“首次引用去重”在父组件渲染阶段完成
-  // 使用稳定的字符串作为依赖，避免 Set 对象引用变化导致的重新计算
-  const failedIdsStr = React.useMemo(() => {
-    return Array.from(failedImages).sort().join(',')
-  }, [failedImages])
-
   const validCitations = React.useMemo(
     () => imageOnlyCitations.filter((citation) => !failedImages.has(citation.id)),
-    [imageOnlyCitations, failedIdsStr]
+    [failedImages, imageOnlyCitations]
   )
 
+  if (imageOnlyCitations.length === 0) return null
   if (validCitations.length === 0) return null
 
   return (
@@ -711,42 +704,181 @@ function ParagraphImageDisplay({
   )
 }
 
-/** 音频卡片内描述：默认两行，偏长时可展开，避免整块卡片过高 */
-function AudioCardDescription({ content }: { content: string }) {
+/** 媒体摘要：以轻量模态底色承接播放器，保持为回答中的次级信息。 */
+function MediaEvidenceDescription({
+  content,
+  accent,
+}: {
+  content: string
+  accent: 'audio' | 'video'
+}) {
   const [expanded, setExpanded] = React.useState(false)
-  const likelyOverflow =
-    content.length > 96 || (content.match(/\n/g)?.length ?? 0) >= 1
+  const [canExpand, setCanExpand] = React.useState(false)
+  const textRef = React.useRef<HTMLSpanElement>(null)
+
+  React.useLayoutEffect(() => {
+    const text = textRef.current
+    if (!text || expanded) return
+
+    const measureOverflow = () => {
+      setCanExpand(text.scrollHeight > text.clientHeight + 1)
+    }
+
+    measureOverflow()
+    const observer = new ResizeObserver(measureOverflow)
+    observer.observe(text)
+    return () => observer.disconnect()
+  }, [content, expanded])
 
   return (
-    <div
+    <figcaption
       className={cn(
-        'mt-1.5',
-        likelyOverflow &&
-        'border-t border-violet-200/50 pt-1.5 dark:border-violet-800/40',
+        'px-3 py-2.5',
+        accent === 'audio'
+          ? 'bg-[#F7F5FF] dark:bg-[#211B38]'
+          : 'bg-[#F1FCFE] dark:bg-[#102C36]'
       )}
     >
-      <div className="flex flex-col gap-0">
-        <p
+      <p className="relative mb-0 text-[13px] leading-[1.55] text-slate-600 antialiased dark:text-slate-300">
+        <span
+          ref={textRef}
           className={cn(
-            'text-[11px] text-slate-600/95 dark:text-slate-400 leading-tight mb-0 antialiased',
-            !expanded && 'line-clamp-2 [overflow-wrap:anywhere]',
+            '[overflow-wrap:anywhere]',
+            expanded ? 'inline' : 'block line-clamp-2',
+            !expanded && canExpand && 'pr-[4.5rem]',
           )}
         >
           {content}
-        </p>
-        {likelyOverflow && (
+        </span>
+        {canExpand && (
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation()
-              setExpanded((v) => !v)
+              setExpanded((value) => !value)
             }}
-            className="self-end mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium leading-none text-violet-700 transition-colors hover:bg-violet-100/90 dark:text-violet-300 dark:hover:bg-violet-900/50"
+            aria-expanded={expanded}
+            className={cn(
+              'inline-flex items-center gap-0.5 rounded-[6px] px-1 text-xs font-semibold leading-[1.55] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-900',
+              !expanded && 'absolute bottom-0 right-0 pl-5',
+              expanded && 'ml-1 align-baseline',
+              accent === 'audio'
+                ? cn(
+                    'text-violet-700 hover:text-violet-800 focus-visible:ring-violet-500 dark:text-violet-300 dark:hover:text-violet-200',
+                    !expanded && 'bg-[linear-gradient(90deg,transparent_0%,rgba(247,245,255,0.96)_28%,#F7F5FF_48%)] dark:bg-[linear-gradient(90deg,transparent_0%,rgba(33,27,56,0.96)_28%,#211B38_48%)]'
+                  )
+                : cn(
+                    'text-cyan-700 hover:text-cyan-800 focus-visible:ring-cyan-500 dark:text-cyan-300 dark:hover:text-cyan-200',
+                    !expanded && 'bg-[linear-gradient(90deg,transparent_0%,rgba(241,252,254,0.96)_28%,#F1FCFE_48%)] dark:bg-[linear-gradient(90deg,transparent_0%,rgba(16,44,54,0.96)_28%,#102C36_48%)]'
+                  ),
+            )}
           >
             {expanded ? '收起' : '展开'}
+            <ChevronDown
+              className={cn('size-3.5 transition-transform', expanded && 'rotate-180')}
+              strokeWidth={2}
+              aria-hidden
+            />
           </button>
         )}
-      </div>
+      </p>
+    </figcaption>
+  )
+}
+
+/** 比浏览器原生控件更紧凑的音频播放条，与回答正文的排版尺度保持一致。 */
+function InlineAudioPlayer({
+  src,
+  label,
+  onError,
+}: {
+  src: string
+  label: string
+  onError?: (event: React.SyntheticEvent<HTMLAudioElement, Event>) => void
+}) {
+  const audioRef = React.useRef<HTMLAudioElement>(null)
+  const [isPlaying, setIsPlaying] = React.useState(false)
+  const [currentTime, setCurrentTime] = React.useState(0)
+  const [duration, setDuration] = React.useState(0)
+
+  React.useEffect(() => {
+    setIsPlaying(false)
+    setCurrentTime(0)
+    setDuration(0)
+  }, [src])
+
+  const togglePlayback = async () => {
+    const audio = audioRef.current
+    if (!audio) return
+    if (audio.paused) {
+      try {
+        await audio.play()
+      } catch {
+        setIsPlaying(false)
+      }
+    } else {
+      audio.pause()
+    }
+  }
+
+  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0
+  const progress = safeDuration > 0 ? Math.min(100, (currentTime / safeDuration) * 100) : 0
+  const rangeStyle = { '--media-progress': `${progress}%` } as React.CSSProperties
+
+  return (
+    <div
+      className="flex min-h-14 items-center gap-3 border-x-0 border-y border-[#E9E3FF] bg-[#FCFBFF] px-3 py-2.5 dark:border-[#393057] dark:bg-[#191827]"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="metadata"
+        aria-label={label}
+        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+        onDurationChange={(event) => setDuration(event.currentTarget.duration)}
+        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => setIsPlaying(false)}
+        onError={onError}
+      />
+      <button
+        type="button"
+        onClick={() => void togglePlayback()}
+        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white shadow-sm shadow-violet-900/15 transition-[background-color,transform] hover:bg-violet-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 dark:bg-violet-500 dark:hover:bg-violet-400 dark:focus-visible:ring-offset-slate-800"
+        aria-label={isPlaying ? `暂停${label}` : `播放${label}`}
+      >
+        {isPlaying ? (
+          <Pause className="size-3.5" fill="currentColor" strokeWidth={2.25} aria-hidden />
+        ) : (
+          <Play className="ml-0.5 size-3.5" fill="currentColor" strokeWidth={2.25} aria-hidden />
+        )}
+      </button>
+      <span className="media-audio-current w-9 shrink-0 font-mono text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
+        {formatTimeLabel(currentTime)}
+      </span>
+      <input
+        type="range"
+        min={0}
+        max={safeDuration || 0}
+        step={0.1}
+        value={safeDuration ? Math.min(currentTime, safeDuration) : 0}
+        disabled={!safeDuration}
+        onChange={(event) => {
+          const nextTime = Number(event.currentTarget.value)
+          if (!audioRef.current || !Number.isFinite(nextTime)) return
+          audioRef.current.currentTime = nextTime
+          setCurrentTime(nextTime)
+        }}
+        aria-label={`${label}播放进度`}
+        aria-valuetext={`${formatTimeLabel(currentTime)} / ${formatTimeLabel(safeDuration)}`}
+        className="media-audio-range min-w-0 flex-1 disabled:cursor-wait disabled:opacity-50"
+        style={rangeStyle}
+      />
+      <span className="w-9 shrink-0 text-right font-mono text-[11px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
+        {safeDuration ? formatTimeLabel(safeDuration) : '--:--'}
+      </span>
     </div>
   )
 }
@@ -772,7 +904,7 @@ function ParagraphAudioDisplay({
   if (uniqueCitations.length === 0) return null
 
   return (
-    <div className="flex flex-wrap justify-center gap-2 mt-2 mb-0 w-full min-w-0">
+    <div className="mx-auto mt-3 w-full min-w-0 max-w-[42rem] space-y-3">
       {uniqueCitations.map((citation) => {
         const displayNum = displayIndexByRefId?.get(citation.id) ?? citation.id
         const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
@@ -814,93 +946,78 @@ function ParagraphAudioDisplay({
         }
 
         return (
-          <div
+          <figure
             key={citation.id}
             data-audio-key={key}
-            className={cn(
-              'paragraph-audio-card relative w-full min-w-0 max-w-lg mx-auto overflow-hidden rounded-2xl',
-              'border border-violet-200/40 bg-gradient-to-br from-white via-violet-50/[0.35] to-indigo-50/25',
-              'shadow-md shadow-violet-500/[0.07] ring-1 ring-black/[0.03] dark:from-slate-950 dark:via-violet-950/25 dark:to-slate-950',
-              'dark:border-violet-500/[0.15] dark:shadow-lg dark:shadow-black/25 dark:ring-white/[0.06]',
-              'transition-all duration-300 hover:border-violet-300/50 hover:shadow-lg hover:shadow-violet-500/10',
-              'dark:hover:border-violet-400/25',
-              "before:pointer-events-none before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-br before:from-white/50 before:to-transparent before:content-[''] dark:before:from-white/[0.03] dark:before:to-transparent",
-            )}
+            className="paragraph-audio-card relative min-w-0 overflow-hidden rounded-[16px] border border-[#E9E3FF] bg-[#F7F5FF] shadow-[0_12px_30px_-26px_rgba(76,29,149,0.32)] transition-[border-color,box-shadow] hover:border-[#DCD2FF] hover:shadow-[0_16px_34px_-26px_rgba(76,29,149,0.38)] dark:border-[#393057] dark:bg-[#211B38] dark:shadow-[0_14px_32px_-26px_rgba(0,0,0,0.8)] dark:hover:border-[#4A3C72]"
           >
-            <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-violet-400 via-fuchsia-500 to-indigo-600 dark:from-violet-400 dark:via-fuchsia-500 dark:to-indigo-500 rounded-l-2xl" />
-            <div className="relative z-[1] pl-3.5 pr-3 py-2.5">
+            <div>
               <button
                 type="button"
                 onClick={handleOpenPopover}
-            aria-label={`打开音频引用 ${displayNum}${citation.file_name ? `：${citation.file_name}` : ''}`}
-                className="flex items-center gap-2.5 w-full min-w-0 text-left rounded-xl -mx-0.5 px-1 py-0.5 transition-colors hover:bg-violet-500/[0.07] dark:hover:bg-violet-400/[0.09]"
+                aria-label={`打开音频引用 ${displayNum}${citation.file_name ? `：${citation.file_name}` : ''}`}
+                className="group flex w-full min-w-0 items-center gap-2.5 bg-[#F7F5FF] px-3 py-2.5 text-left transition-colors hover:bg-[#F2EFFF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 dark:bg-[#211B38] dark:hover:bg-[#282046]"
               >
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-100 to-indigo-100 text-violet-700 shadow-sm shadow-violet-500/10 ring-1 ring-violet-200/60 dark:from-violet-900/50 dark:to-indigo-950/50 dark:text-violet-300 dark:ring-violet-600/40">
-              <Music className="h-4 w-4" strokeWidth={2} aria-hidden />
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-white/80 text-violet-700 ring-1 ring-violet-200/80 transition-colors group-hover:bg-white dark:bg-violet-950/60 dark:text-violet-300 dark:ring-violet-800/70 dark:group-hover:bg-violet-900/70">
+                  <Music className="size-3.5" strokeWidth={2.1} aria-hidden />
                 </span>
-                <span className="min-w-0 flex-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0 text-xs leading-tight">
-                  <span className="shrink-0 font-mono text-sm font-semibold tracking-tight text-violet-600 tabular-nums dark:text-violet-400">
-                    [{displayNum}]
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-center gap-2 text-[13px] leading-5">
+                    {citation.file_name ? (
+                      <span
+                        className="min-w-0 truncate text-xs text-slate-500 transition-colors group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-300"
+                        title={citation.file_name}
+                      >
+                        {shortenFileName(citation.file_name)}
+                      </span>
+                    ) : null}
                   </span>
-                  <span className="shrink-0 font-medium text-slate-800 dark:text-slate-100">音频引用</span>
-                  {citation.file_name ? (
-                    <span
-                      className="min-w-0 max-w-full truncate font-mono text-[11px] text-slate-500 dark:text-slate-400"
-                      title={citation.file_name}
-                    >
-                      · {shortenFileName(citation.file_name)}
-                    </span>
-                  ) : null}
                 </span>
               </button>
 
               {hasAudioUrl ? (
-                <div className="mt-2 rounded-xl border border-violet-100/90 bg-white/75 px-2 py-1 shadow-inner shadow-violet-500/[0.04] backdrop-blur-[2px] dark:border-slate-700/50 dark:bg-slate-950/40 dark:shadow-black/20">
-                  <audio
-                    src={resolvedUrl!}
-                    controls
-                    aria-label={`播放音频引用 ${displayNum}${citation.file_name ? `：${citation.file_name}` : ''}`}
-                    className="h-8 w-full rounded-lg bg-transparent [&::-webkit-media-controls-panel]:min-h-8 [&::-webkit-media-controls-panel]:rounded-lg [&::-webkit-media-controls-panel]:bg-violet-50/90 dark:[&::-webkit-media-controls-panel]:bg-slate-900/95"
-                    preload="metadata"
-                    onClick={(e) => e.stopPropagation()}
-                    onError={async () => {
-                      const filePath = citation.file_path || citation.file_name
-                      const kbId = citation.debug_info?.kb_id || fallbackKbId
-                      if (!filePath || !kbId) return
-                      try {
-                        const res = await chatApi.getReferenceAudioUrl({
-                          kb_id: kbId,
-                          file_path: filePath,
-                        })
-                        if (res?.audio_url) setFetchedAudioUrls((prev) => ({ ...prev, [key]: res.audio_url }))
-                      } catch {
-                        // 刷新失败，用户可点击弹层查看
-                      }
-                    }}
-                  />
-                </div>
+                <InlineAudioPlayer
+                  src={resolvedUrl!}
+                  label={`音频引用 ${displayNum}${citation.file_name ? `：${citation.file_name}` : ''}`}
+                  onError={async () => {
+                    const filePath = citation.file_path || citation.file_name
+                    const kbId = citation.debug_info?.kb_id || fallbackKbId
+                    if (!filePath || !kbId) return
+                    try {
+                      const res = await chatApi.getReferenceAudioUrl({
+                        kb_id: kbId,
+                        file_path: filePath,
+                      })
+                      if (res?.audio_url) setFetchedAudioUrls((prev) => ({ ...prev, [key]: res.audio_url }))
+                    } catch {
+                      // 刷新失败，用户可点击弹层查看
+                    }
+                  }}
+                />
               ) : (
                 <button
                   type="button"
                   onClick={handleClickPlay}
                   disabled={loadingRefId === citation.id}
-                  aria-label={`${loadingRefId === citation.id ? '正在加载' : '加载并播放'}音频引用 ${displayNum}`}
-                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200/70 bg-white/90 py-2 px-3 text-xs font-medium text-violet-800 shadow-sm shadow-violet-500/5 transition-all hover:border-violet-300 hover:bg-violet-50/80 hover:shadow-md disabled:opacity-60 dark:border-violet-800/40 dark:bg-slate-950/50 dark:text-violet-200 dark:hover:border-violet-700/50 dark:hover:bg-violet-950/40"
+                  aria-label={`${loadingRefId === citation.id ? '正在加载' : '加载'}音频播放器 ${displayNum}`}
+                  className="flex min-h-14 w-full items-center justify-center gap-2 border-x-0 border-y border-[#E9E3FF] bg-[#FCFBFF] px-3 py-2.5 text-[13px] font-semibold text-violet-700 transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 dark:border-[#393057] dark:bg-[#191827] dark:text-violet-300 dark:hover:bg-[#1E1D31]"
                 >
                   {loadingRefId === citation.id ? (
                     <span>加载中…</span>
                   ) : (
                     <>
                       <Play className="h-3.5 w-3.5 flex-shrink-0" fill="currentColor" aria-hidden />
-                      <span>点击播放</span>
+                      <span>加载音频播放器</span>
                     </>
                   )}
                 </button>
               )}
 
-              {citation.content ? <AudioCardDescription content={citation.content} /> : null}
+              {citation.content ? (
+                <MediaEvidenceDescription content={citation.content} accent="audio" />
+              ) : null}
             </div>
-          </div>
+          </figure>
         )
       })}
     </div>
@@ -927,7 +1044,7 @@ function VideoPlayerWithSeek({
   const hasSeeked = React.useRef(false)
   React.useEffect(() => {
     hasSeeked.current = false
-  }, [src])
+  }, [src, startSec])
   React.useEffect(() => {
     const el = videoRef.current
     if (!el || startSec == null || !Number.isFinite(startSec)) return
@@ -1027,22 +1144,12 @@ function ParagraphVideoDisplay({
 }) {
   const [fetchedVideoUrls, setFetchedVideoUrls] = React.useState<Record<string, string>>({})
   const [loadingRefId, setLoadingRefId] = React.useState<string | number | null>(null)
-  const [expandedDesc, setExpandedDesc] = React.useState<Set<string>>(new Set())
   const uniqueCitations = React.useMemo(() => deduplicateMediaCitations(citations), [citations])
 
   if (uniqueCitations.length === 0) return null
 
-  const toggleDesc = (k: string) => {
-    setExpandedDesc((prev) => {
-      const next = new Set(prev)
-      if (next.has(k)) next.delete(k)
-      else next.add(k)
-      return next
-    })
-  }
-
   return (
-    <div className="flex flex-wrap justify-center gap-3 mt-3 mb-0">
+    <div className="mx-auto mt-3 w-full min-w-0 max-w-[42rem] space-y-3">
       {uniqueCitations.map((citation) => {
         const displayNum = displayIndexByRefId?.get(citation.id) ?? citation.id
         const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
@@ -1058,9 +1165,7 @@ function ParagraphVideoDisplay({
               : endSec != null
                 ? `至 ${formatTimeLabel(endSec)} 结束`
                 : null
-        const descExpanded = expandedDesc.has(key)
         const content = citation.content?.trim() ?? ''
-        const canExpand = content.length > 120
 
         const handleOpenPopover = (e: React.MouseEvent) => {
           if (onCiteClick) {
@@ -1096,32 +1201,42 @@ function ParagraphVideoDisplay({
         }
 
         return (
-          <div
+          <figure
             key={citation.id}
             data-video-key={key}
-            className="paragraph-video-card relative overflow-hidden rounded-2xl border border-slate-200/70 dark:border-slate-600/50 bg-white dark:bg-slate-900/80 w-full min-w-[400px] max-w-[560px] p-0 shadow-sm shadow-slate-300/10 dark:shadow-slate-950/40 ring-1 ring-slate-200/40 dark:ring-slate-700/40 hover:shadow-md hover:ring-sky-200/50 dark:hover:ring-sky-800/40 hover:border-sky-200/80 dark:hover:border-sky-600/50 transition-all duration-200"
+            className="paragraph-video-card relative min-w-0 overflow-hidden rounded-[16px] border border-[#D6F3F8] bg-[#F1FCFE] shadow-[0_12px_30px_-26px_rgba(8,145,178,0.32)] transition-[border-color,box-shadow] hover:border-[#BEEAF1] hover:shadow-[0_16px_34px_-26px_rgba(8,145,178,0.38)] dark:border-[#1B4855] dark:bg-[#102C36] dark:shadow-[0_14px_32px_-26px_rgba(0,0,0,0.8)] dark:hover:border-[#246071]"
           >
-            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-sky-400 via-sky-500 to-cyan-500 dark:from-sky-500 dark:via-cyan-500 dark:to-sky-600 rounded-l-2xl shadow-[2px_0_8px_-2px_rgba(14,165,233,0.25)] dark:shadow-[2px_0_8px_-2px_rgba(14,165,233,0.2)]" aria-hidden />
-            <div className="pl-[18px] pr-4 pt-2.5 pb-2.5">
+            <div>
               <button
                 type="button"
                 onClick={handleOpenPopover}
                 aria-label={`打开视频引用 ${displayNum}${citation.file_name ? `：${citation.file_name}` : ''}`}
-                className="flex items-center gap-3 w-full text-left mb-1.5 group rounded-xl -mx-0.5 px-1.5 py-0.5 hover:bg-sky-50/70 dark:hover:bg-sky-900/30 transition-colors duration-150"
+                className="group flex w-full min-w-0 items-center gap-2.5 bg-[#F1FCFE] px-3 py-2.5 text-left transition-colors hover:bg-[#EAF9FC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-500 dark:bg-[#102C36] dark:hover:bg-[#143844]"
               >
-                <span className="flex items-center justify-center shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-sky-50 to-cyan-50/80 dark:from-sky-900/50 dark:to-cyan-900/30 text-sky-600 dark:text-sky-400 group-hover:from-sky-100 group-hover:to-cyan-100/80 dark:group-hover:from-sky-800/60 dark:group-hover:to-cyan-800/40 border border-sky-200/50 dark:border-sky-700/40 shadow-sm transition-all duration-150">
-                  <Video className="h-4.5 w-4.5" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden />
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-white/80 text-cyan-700 ring-1 ring-cyan-200/80 transition-colors group-hover:bg-white dark:bg-cyan-950/60 dark:text-cyan-300 dark:ring-cyan-800/70 dark:group-hover:bg-cyan-900/70">
+                  <Video className="size-3.5" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" aria-hidden />
                 </span>
-                <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate flex items-baseline gap-2 tracking-tight">
-                  <span className="font-mono text-sky-600 dark:text-sky-400 font-bold tabular-nums">[{displayNum}]</span>
-                  <span className="text-slate-600 dark:text-slate-300">视频引用</span>
+                <span className="flex min-w-0 flex-1 items-center gap-2 text-[13px] leading-5">
+                  {citation.file_name ? (
+                    <span
+                      className="min-w-0 truncate text-xs font-normal text-slate-500 transition-colors group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-300"
+                      title={citation.file_name}
+                    >
+                      {shortenFileName(citation.file_name, 34)}
+                    </span>
+                  ) : null}
+                  {segmentLabel ? (
+                    <span className="ml-auto hidden shrink-0 rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-slate-500 ring-1 ring-inset ring-slate-200/80 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700 sm:inline-flex">
+                      {segmentLabel}
+                    </span>
+                  ) : null}
                 </span>
               </button>
               {hasVideoUrl ? (
-                <div className="rounded-xl overflow-hidden bg-slate-50/90 dark:bg-slate-800/90 border border-slate-200/60 dark:border-slate-600/50 p-0 mb-0.5 shadow-inner shadow-slate-200/30 dark:shadow-slate-900/50">
+                <div className="overflow-hidden border-x-0 border-y border-[#D6F3F8] bg-slate-950 dark:border-[#1B4855]">
                   {segmentLabel && (
-                    <div className="mb-0.5 mt-0.5 flex items-center px-0.5">
-                      <span className="inline-flex items-center px-1 py-0.5 rounded-full text-[10px] font-medium bg-sky-100/90 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300 border border-sky-200/60 dark:border-sky-700/50 shadow-sm shadow-sky-500/5">
+                    <div className="flex items-center border-b border-white/10 bg-slate-900 px-3 py-1.5 sm:hidden">
+                      <span className="font-mono text-[10px] font-semibold tabular-nums text-slate-300">
                         {segmentLabel}
                       </span>
                     </div>
@@ -1130,7 +1245,7 @@ function ParagraphVideoDisplay({
                     src={resolvedUrl!}
                     startSec={startSec}
                     endSec={endSec}
-                    className="w-full h-auto aspect-video rounded-lg object-contain bg-black shadow-sm"
+                    className="aspect-video h-auto w-full bg-black object-contain"
                     onClick={(e) => e.stopPropagation()}
                     onError={async () => {
                       const filePath = citation.file_path || citation.file_name
@@ -1153,52 +1268,24 @@ function ParagraphVideoDisplay({
                   type="button"
                   onClick={handleClickPlay}
                   disabled={loadingRefId === citation.id}
-                  aria-label={`${loadingRefId === citation.id ? '正在加载' : '加载并播放'}视频引用 ${displayNum}`}
-                  className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-gradient-to-b from-sky-50/90 to-cyan-50/50 dark:from-sky-950/50 dark:to-cyan-950/30 text-sky-700 dark:text-sky-300 hover:from-sky-100 hover:to-cyan-100/60 dark:hover:from-sky-900/60 dark:hover:to-cyan-900/40 border border-sky-200/60 dark:border-sky-700/50 transition-all duration-150 mb-2 disabled:opacity-60 text-sm font-medium shadow-sm"
+                  aria-label={`${loadingRefId === citation.id ? '正在加载' : '加载'}视频播放器 ${displayNum}`}
+                  className="flex aspect-[16/5] min-h-20 w-full items-center justify-center gap-2.5 border-x-0 border-y border-[#D6F3F8] bg-[#F8FDFF] px-4 py-3 text-[13px] font-semibold text-cyan-700 transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-500 dark:border-[#1B4855] dark:bg-[#122630] dark:text-cyan-300 dark:hover:bg-[#152F3A]"
                 >
                   {loadingRefId === citation.id ? (
                     <span>加载中…</span>
                   ) : (
                     <>
                       <Play className="h-4 w-4 flex-shrink-0" fill="currentColor" aria-hidden />
-                      <span>点击播放</span>
+                      <span>加载视频播放器</span>
                     </>
                   )}
                 </button>
               )}
-              {citation.file_name && (
-                <p
-                  className="text-[10px] text-slate-400 dark:text-slate-500 truncate mb-0.5 font-mono pl-0.5 tracking-tight"
-                  title={citation.file_name}
-                >
-                  {shortenFileName(citation.file_name)}
-                </p>
-              )}
-              {content && (
-                <div className="rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/50 dark:border-slate-600/40 px-2.5 py-1 shadow-inner shadow-slate-200/20 dark:shadow-slate-900/30">
-                  <p
-                    className={cn(
-                      'text-[11px] text-slate-600 dark:text-slate-300 leading-snug',
-                      !descExpanded && canExpand && 'line-clamp-2'
-                    )}
-                  >
-                    {content}
-                  </p>
-                  {canExpand && (
-                    <button
-                      type="button"
-                      onClick={() => toggleDesc(key)}
-                      className="mt-0.5 text-[11px] font-medium text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 hover:underline underline-offset-1 transition-colors"
-                    >
-                      {descExpanded ? '收起' : '展开'}
-                    </button>
-                  )}
-                </div>
-              )}
+              {content ? <MediaEvidenceDescription content={content} accent="video" /> : null}
               {/* 关键帧仅用于后端的视觉检索与生成证据；回答区只保留视频片段本身，
                   避免一个 Shot 的多张帧图把正文撑满。 */}
             </div>
-          </div>
+          </figure>
         )
       })}
     </div>
@@ -1224,19 +1311,22 @@ export function MessageBubble({
     : Array.isArray(message.thinking)
       ? (message.thinking[0]?.data as ThoughtData) ?? null
       : (message.thinking as ThoughtData) ?? null
-  const refs = message.citations ?? []
+  const refs = React.useMemo(() => message.citations ?? [], [message.citations])
 
-  const orderedRefIds = !isUser ? getOrderedRefIdsFromContent(message.content) : []
+  const orderedRefIds = React.useMemo(
+    () => (!isUser ? getOrderedRefIdsFromContent(message.content) : []),
+    [isUser, message.content]
+  )
   const originalIdToDisplayIndex = React.useMemo(() => {
     const m = new Map<number | string, number>()
     orderedRefIds.forEach((id, i) => m.set(id, i + 1))
     return m
-  }, [orderedRefIds.join(',')])
+  }, [orderedRefIds])
   const orderedRefs = React.useMemo(() => {
     return orderedRefIds
       .map((id) => citationMap?.get(id) ?? refs.find((r) => isCitationLike(r) && getCitationRefId(r) === id) ?? { id })
       .filter(isCitationLike)
-  }, [orderedRefIds.join(','), citationMap, refs])
+  }, [orderedRefIds, citationMap, refs])
 
   const allCitationMatches = React.useMemo(
     () => (isUser ? [] : findAllCitationMatches(message.content)),

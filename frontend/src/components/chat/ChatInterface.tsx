@@ -345,7 +345,7 @@ export function ChatInterface() {
 
   const activeSession = getActiveSession()
   const agentMode = normalizeAgentMode(activeSession?.agentMode)
-  const messages = activeSession?.messages ?? []
+  const messages = useMemo(() => activeSession?.messages ?? [], [activeSession?.messages])
   const isLoading = isStreaming
 
   const cycleAgentMode = () => {
@@ -1046,7 +1046,7 @@ export function ChatInterface() {
             )}
 
             {/* 底部功能栏 - 独立区域，与文字区物理分离 */}
-            <div className="flex flex-shrink-0 items-center justify-between border-t border-slate-100/80 bg-gradient-to-b from-transparent to-slate-50/60 px-4 py-2.5 dark:border-slate-800/70 dark:to-slate-950/25">
+            <div className="flex flex-shrink-0 items-center justify-between bg-gradient-to-b from-transparent to-slate-50/60 px-4 py-2.5 dark:to-slate-950/25">
               <div className="flex items-center gap-2">
                 <button
                   type="button"

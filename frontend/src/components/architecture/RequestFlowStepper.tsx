@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { ArrowRight, Bot, Braces, GitFork, Search, Send, Split } from 'lucide-react'
+import { useState } from 'react'
+import { Bot, Braces, Check, GitFork, Search, Send, Split } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { requestFlowSteps, type RequestFlowStep } from '@/data/architectureData'
 
@@ -18,12 +18,10 @@ export function RequestFlowStepper() {
   const [mode, setMode] = useState<ExecutionMode>('direct')
   const [activeId, setActiveId] = useState('direct-retrieval')
 
-  const visibleSteps = useMemo(() => {
-    const branchId = mode === 'direct' ? 'direct-retrieval' : 'agent-evidence-loop'
-    return requestFlowSteps.filter((step) =>
-      ['request-context', 'mode-routing', branchId, 'context-citation', 'generation-delivery'].includes(step.id)
-    )
-  }, [mode])
+  const branchId = mode === 'direct' ? 'direct-retrieval' : 'agent-evidence-loop'
+  const visibleSteps = requestFlowSteps.filter((step) =>
+    ['request-context', 'mode-routing', branchId, 'context-citation', 'generation-delivery'].includes(step.id)
+  )
 
   const activeStep = requestFlowSteps.find((step) => step.id === activeId) ?? visibleSteps[2]
 
@@ -34,84 +32,106 @@ export function RequestFlowStepper() {
 
   return (
     <section id="request-flow" className="scroll-mt-24">
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-        <div className="max-w-3xl">
-          <h2 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950 [text-wrap:balance] dark:text-white sm:text-3xl">
-            一处分流，两条取证路径
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,0.85fr)_minmax(28rem,1.15fr)] lg:items-end lg:gap-14">
+        <div className="max-w-2xl">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2f7f93] dark:text-[#7fc2cf]">Request journey</p>
+          <h2 className="architecture-display mt-3 text-3xl font-semibold leading-tight tracking-[-0.035em] text-[#102d42] [text-wrap:balance] dark:text-[#edf6f3] sm:text-[2.55rem]">
+            一处分流，两种推理深度
           </h2>
-          <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300 sm:text-[15px]">
-            切换执行模式，观察共享阶段和分支阶段如何重新组合。点击任一节点可查看实现入口。
-          </p>
         </div>
-
-        <div
-          role="tablist"
-          aria-label="执行路径"
-          className="inline-flex w-fit rounded-xl bg-slate-100 p-1 ring-1 ring-inset ring-slate-200/80 dark:bg-slate-900 dark:ring-slate-800"
-        >
-          <ModeButton mode="direct" current={mode} onSelect={selectMode} icon={<Search className="h-3.5 w-3.5" />}>
-            Direct
-          </ModeButton>
-          <ModeButton mode="agent" current={mode} onSelect={selectMode} icon={<Bot className="h-3.5 w-3.5" />}>
-            Agent
-          </ModeButton>
+        <div className="lg:justify-self-end">
+          <p className="max-w-xl text-sm leading-7 text-[#5a7075] dark:text-[#a7bcbd] sm:text-[15px]">
+            切换路径，观察只有第三阶段发生变化。上下文恢复、引用映射与答案交付始终复用同一份合同。
+          </p>
         </div>
       </div>
 
-      <div className="mt-8 overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_24px_70px_-60px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-950">
-        <div className="p-4 sm:p-6">
-          <div className="flex flex-col lg:flex-row lg:items-stretch">
-            {visibleSteps.map((step, index) => (
-              <div key={step.id} className="contents">
-                <FlowNode
-                  step={step}
-                  active={step.id === activeStep.id}
-                  mode={mode}
-                  onSelect={setActiveId}
-                />
-                {index < visibleSteps.length - 1 ? (
-                  <div className="flex h-8 items-center justify-center text-slate-300 dark:text-slate-700 lg:h-auto lg:w-9 lg:shrink-0">
-                    <ArrowRight className="h-4 w-4 rotate-90 lg:rotate-0" />
-                  </div>
-                ) : null}
-              </div>
-            ))}
+      <div className="mt-9 overflow-hidden rounded-[28px] border border-[#b9ccc6] bg-[#edf2ed] shadow-[0_34px_90px_-64px_rgba(16,45,66,0.72)] dark:border-[#2b4d58] dark:bg-[#0b222c]">
+        <div className="flex flex-col gap-4 border-b border-[#c5d5cf] p-4 dark:border-[#294a56] sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5">
+          <div>
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#718587] dark:text-[#89a5a7]">Choose execution policy</p>
+            <p className="mt-1 text-[13px] font-semibold text-[#17384a] dark:text-[#e5efec]">同一个问题入口，不同的取证预算</p>
+          </div>
+          <div
+            role="tablist"
+            aria-label="执行路径"
+            className="grid w-full grid-cols-2 rounded-full border border-[#bfd0ca] bg-[#e4ebe6] p-1 dark:border-[#31525e] dark:bg-[#071a24] sm:w-auto"
+          >
+            <ModeButton mode="direct" current={mode} onSelect={selectMode} icon={<Search className="h-3.5 w-3.5" />}>
+              Direct <span className="hidden sm:inline">· 快速回答</span>
+            </ModeButton>
+            <ModeButton mode="agent" current={mode} onSelect={selectMode} icon={<Bot className="h-3.5 w-3.5" />}>
+              Agent <span className="hidden sm:inline">· 深度取证</span>
+            </ModeButton>
           </div>
         </div>
 
-        <div
-          key={activeStep.id}
-          className="animate-in fade-in border-t border-slate-200/80 bg-slate-50/70 p-5 dark:border-slate-800 dark:bg-slate-900/40 sm:p-6"
-        >
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.7fr)]">
-            <div>
+        <div className="grid lg:grid-cols-[22rem_minmax(0,1fr)]">
+          <div className="relative border-b border-[#c5d5cf] p-4 dark:border-[#294a56] sm:p-6 lg:border-b-0 lg:border-r">
+            <div className="absolute bottom-10 left-[2.42rem] top-10 w-px bg-[#bdcfca] dark:bg-[#31525e] sm:left-[3.42rem]" aria-hidden />
+            <ol className="relative space-y-2" aria-label={`${mode === 'direct' ? 'Direct' : 'Agent'} 请求处理阶段`}>
+              {visibleSteps.map((step) => (
+                <li key={step.id}>
+                  <FlowNode
+                    step={step}
+                    active={step.id === activeStep.id}
+                    mode={mode}
+                    onSelect={setActiveId}
+                  />
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div
+            id="request-flow-panel"
+            role="tabpanel"
+            key={activeStep.id}
+            className="animate-in fade-in relative min-h-[32rem] overflow-hidden bg-white/35 p-5 dark:bg-white/[0.018] sm:p-8 lg:p-10"
+          >
+            <div className="architecture-orbit !-right-20 !-top-20" aria-hidden />
+            <div className="relative flex h-full flex-col">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-base font-semibold text-slate-950 dark:text-white">{activeStep.title}</h3>
-                <span className="font-mono text-[9px] font-semibold text-teal-700 dark:text-teal-300">
-                  {activeStep.lane}
+                <span className={cn(
+                  'rounded-full border px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em]',
+                  activeStep.lane === 'agent'
+                    ? 'border-[#c7b7d3] bg-[#eee8f2] text-[#765c95] dark:border-[#5d4971] dark:bg-[#765c95]/10 dark:text-[#c6b1d9]'
+                    : activeStep.lane === 'direct'
+                      ? 'border-[#9ec2cc] bg-[#e5f0f2] text-[#2f7f93] dark:border-[#345d67] dark:bg-[#2f7f93]/10 dark:text-[#84c5cf]'
+                      : 'border-[#b7cbbb] bg-[#e8f0e8] text-[#5f8e72] dark:border-[#3d624d] dark:bg-[#5f8e72]/10 dark:text-[#91c3a1]'
+                )}>
+                  {activeStep.marker} · {activeStep.lane}
                 </span>
               </div>
-              <p className="mt-3 text-xs leading-6 text-slate-600 dark:text-slate-300">{activeStep.description}</p>
-            </div>
 
-            <dl className="space-y-4">
+              <h3 className="architecture-display mt-6 text-3xl font-semibold tracking-[-0.035em] text-[#102d42] dark:text-[#edf6f3] sm:text-4xl">
+                {activeStep.title}
+              </h3>
+              <p className="mt-5 max-w-3xl text-sm leading-8 text-[#526b72] dark:text-[#abc0c1]">{activeStep.description}</p>
+
               {activeStep.keyTechnologies?.length ? (
-                <div>
-                  <dt className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">关键技术</dt>
-                  <dd className="mt-1.5 text-xs leading-6 text-slate-700 dark:text-slate-300">
-                    {activeStep.keyTechnologies.join(' / ')}
-                  </dd>
+                <div className="mt-8">
+                  <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#738789] dark:text-[#8ba5a7]">What happens here</p>
+                  <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {activeStep.keyTechnologies.map((technology) => (
+                      <li key={technology} className="flex items-center gap-2 rounded-xl border border-[#c9d7d2] bg-white/55 px-3.5 py-3 text-xs font-medium text-[#435f65] dark:border-[#2b4c57] dark:bg-white/[0.035] dark:text-[#b5c7c7]">
+                        <Check className="h-3.5 w-3.5 shrink-0 text-[#5f8e72] dark:text-[#8fc09f]" />
+                        {technology}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               ) : null}
+
               {activeStep.backendEntry ? (
-                <div>
-                  <dt className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">后端入口</dt>
-                  <dd className="mt-1.5 overflow-x-auto font-mono text-[10px] leading-5 text-slate-700 dark:text-slate-300">
+                <div className="mt-auto pt-9">
+                  <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#738789] dark:text-[#8ba5a7]">Implementation entry</p>
+                  <div className="mt-3 overflow-x-auto rounded-2xl bg-[#102d42] px-4 py-4 font-mono text-[11px] leading-6 text-[#cce0dc] shadow-[inset_0_1px_rgba(255,255,255,0.08)]">
                     {activeStep.backendEntry}
-                  </dd>
+                  </div>
                 </div>
               ) : null}
-            </dl>
+            </div>
           </div>
         </div>
       </div>
@@ -138,12 +158,15 @@ function ModeButton({
       type="button"
       role="tab"
       aria-selected={selected}
+      aria-controls="request-flow-panel"
       onClick={() => onSelect(mode)}
       className={cn(
-        'inline-flex min-h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70',
+        'inline-flex min-h-10 items-center justify-center gap-2 rounded-full px-4 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7f93]/70',
         selected
-          ? 'bg-white text-slate-950 shadow-sm dark:bg-slate-700 dark:text-white'
-          : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
+          ? mode === 'agent'
+            ? 'bg-[#765c95] text-white shadow-sm'
+            : 'bg-[#102d42] text-white shadow-sm dark:bg-[#dcebe7] dark:text-[#102d42]'
+          : 'text-[#61777a] hover:text-[#17384a] dark:text-[#90aaac] dark:hover:text-white'
       )}
     >
       {icon}
@@ -164,7 +187,7 @@ function FlowNode({
   onSelect: (id: string) => void
 }) {
   const Icon = stepIcons[step.id as keyof typeof stepIcons] ?? Braces
-  const isBranch = step.lane === 'direct' || step.lane === 'agent'
+  const branchColor = mode === 'agent' && step.lane === 'agent'
 
   return (
     <button
@@ -172,26 +195,29 @@ function FlowNode({
       onClick={() => onSelect(step.id)}
       aria-pressed={active}
       className={cn(
-        'group flex min-h-[86px] min-w-0 flex-1 items-center gap-3 rounded-xl border p-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70',
+        'group relative flex min-h-[4.5rem] w-full items-center gap-3 rounded-2xl border border-transparent py-2 pl-2 pr-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7f93]/70',
         active
-          ? 'border-teal-300 bg-teal-50/75 shadow-sm dark:border-teal-800 dark:bg-teal-950/30'
-          : 'border-slate-200/90 bg-white hover:border-teal-200 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-teal-900 dark:hover:bg-slate-900/70',
-        isBranch && mode === 'agent' && 'border-violet-200 dark:border-violet-900'
+          ? branchColor
+            ? 'border-[#c8b9d4] bg-[#eee9f2] shadow-sm dark:border-[#5d4971] dark:bg-[#765c95]/12'
+            : 'border-[#9fc0c3] bg-[#e2efed] shadow-sm dark:border-[#35606a] dark:bg-[#2f7f93]/12'
+          : 'hover:border-[#c7d5d0] hover:bg-white/45 dark:hover:border-[#2c4d58] dark:hover:bg-white/[0.03]'
       )}
     >
       <span
         className={cn(
-          'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+          'relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-4 border-[#edf2ed] transition-colors dark:border-[#0b222c]',
           active
-            ? 'bg-white text-teal-700 shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-900 dark:text-teal-300 dark:ring-slate-700'
-            : 'bg-slate-100 text-slate-500 dark:bg-slate-900 dark:text-slate-400'
+            ? branchColor
+              ? 'bg-[#765c95] text-white'
+              : 'bg-[#2f7f93] text-white'
+            : 'bg-[#cad8d3] text-[#526d72] group-hover:bg-[#b8cbc5] dark:bg-[#294a56] dark:text-[#a8bdbd]'
         )}
       >
         <Icon className="h-4 w-4" />
       </span>
       <span className="min-w-0">
-        <span className="block text-xs font-semibold leading-5 text-slate-900 dark:text-slate-100">{step.title}</span>
-        <span className="mt-0.5 block truncate font-mono text-[9px] text-slate-400 dark:text-slate-500">{step.short}</span>
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[#7b8e90] dark:text-[#839ea0]">{step.marker} · {step.short}</span>
+        <span className="mt-1.5 block text-[13px] font-semibold leading-5 text-[#18394a] dark:text-[#e2eeea]">{step.title}</span>
       </span>
     </button>
   )

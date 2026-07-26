@@ -28,6 +28,8 @@ export interface ModuleInfo {
   name: string
   role: string
   color: 'blue' | 'green' | 'orange' | 'purple'
+  receives: string
+  delivers: string
   highlights: string[]
   codeRefs?: {
     label: string
@@ -178,6 +180,8 @@ export const coreModules: ModuleInfo[] = [
     name: 'Ingestion',
     role: '把异构来源变成可追溯、可检索的结构化内容。',
     color: 'green',
+    receives: '文件、URL、目录、热点与飞书内容',
+    delivers: '原始对象、语义单元与多模态索引',
     highlights: [
       '本地上传、URL、文件夹、热点与飞书 Docx/Wiki 统一进入 IngestionService',
       '普通文档使用无损 Agentic Chunker；Excel/CSV 保留行块、Sheet 摘要与列画像专用策略',
@@ -195,6 +199,8 @@ export const coreModules: ModuleInfo[] = [
     name: 'Knowledge',
     role: '管理知识库生命周期，并在未指定范围时做跨库语义路由。',
     color: 'blue',
+    receives: '知识库内容、统计信息与用户问题',
+    delivers: '知识库画像、候选范围与生命周期状态',
     highlights: [
       '知识库 CRUD、文件统计、画像生成与重建',
       '从文档、图片、音频和视频 Shot 采样，K-Means 聚类后生成主题摘要',
@@ -211,6 +217,8 @@ export const coreModules: ModuleInfo[] = [
     name: 'Retrieval',
     role: '把问题转成检索策略，并融合文档、图片、音频与视频证据。',
     color: 'blue',
+    receives: '问题、会话上下文与 KB / File 范围',
+    delivers: '统一 RetrievalResult 与排序后的多模态证据',
     highlights: [
       'One-Pass 输出查询改写、关键词、多视角查询与三类模态意图',
       '文档 Dense + BGE-M3 Sparse；图片 text_vec + CLIP；音频 text_vec + CLAP；视频 Shot caption/ASR 四路',
@@ -228,6 +236,8 @@ export const coreModules: ModuleInfo[] = [
     name: 'Agent Runtime',
     role: '在原检索器之上执行有界、只读、可降级的深研循环。',
     color: 'orange',
+    receives: '复杂问题、执行预算与只读检索工具',
+    delivers: '去重、收敛且带停止理由的证据池',
     highlights: [
       '三态入口：自动、直接检索、Agent 深研',
       'Planner 每轮产生 search / final 决策，子查询并发调用现有多模态检索',
@@ -245,6 +255,8 @@ export const coreModules: ModuleInfo[] = [
     name: 'Generation',
     role: '把异构证据变成有预算、有编号、可播放的生成上下文。',
     color: 'purple',
+    receives: 'RetrievalResult、历史上下文与生成约束',
+    delivers: 'ReferenceMap、带引用回答与 SSE 事件',
     highlights: [
       'ContextBuilder 按文档、图片、音频、视频分别控制条数与总长度',
       'ReferenceMap 统一引用编号、来源、媒体 URL、时间范围与调试元数据',
@@ -261,6 +273,8 @@ export const coreModules: ModuleInfo[] = [
     name: 'LLM Manager',
     role: '按任务语义路由模型与 Provider，隔离业务代码和厂商协议。',
     color: 'purple',
+    receives: 'task_type、提示词与标准化模型参数',
+    delivers: '与供应商无关的 Chat / Embed / Rerank 结果',
     highlights: [
       'intent_recognition、document_chunking、image_captioning、video_parsing、reranking、final_generation 等任务映射',
       '统一 chat / embed / rerank 接口，支持 SiliconFlow、OpenRouter、阿里云百炼与 DeepSeek',

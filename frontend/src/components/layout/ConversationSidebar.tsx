@@ -264,7 +264,7 @@ export function ConversationSidebar({
       className={cn(
         'relative z-30 flex h-[100dvh] shrink-0 flex-col overflow-hidden border-r font-sans transition-[width] duration-200 ease-out motion-reduce:transition-none',
         theme.rail,
-        collapsed ? 'w-[80px]' : 'w-[240px]',
+        collapsed ? 'w-[80px]' : 'w-[204px]',
         'max-[640px]:w-[72px]'
       )}
     >
@@ -312,7 +312,7 @@ export function ConversationSidebar({
           title="新建对话"
           aria-label="新建对话"
           className={cn(
-            'flex h-10 w-full items-center rounded-[10px] px-3 text-[16px] font-medium tracking-[-0.02em]',
+            'flex h-10 w-full items-center rounded-[10px] px-3 text-[14px] font-medium tracking-[-0.01em]',
             theme.secondary,
             theme.hover,
             'active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
@@ -346,7 +346,7 @@ export function ConversationSidebar({
                 aria-label={item.label}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'flex h-10 w-full items-center rounded-[10px] px-3 text-[16px] font-medium tracking-[-0.02em]',
+                  'flex h-10 w-full items-center rounded-[10px] px-3 text-[14px] font-medium tracking-[-0.01em]',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
                   theme.focus,
                   railTransition,
@@ -377,21 +377,21 @@ export function ConversationSidebar({
         )}
       >
         <div className={cn('shrink-0 px-3 pb-1.5', collapsed && 'hidden', 'max-[640px]:hidden')}>
-          <span className={cn('text-[14px] font-medium', theme.muted)}>最近会话</span>
+          <span className={cn('text-[12px] font-medium tracking-[0.02em]', theme.muted)}>最近会话</span>
         </div>
 
         <div
           role="list"
           aria-label="会话列表"
           className={cn(
-            'min-h-0 flex-1 space-y-0.5 overflow-y-auto pb-3 scrollbar-hide',
+            'min-h-0 flex-1 space-y-0 overflow-y-auto pb-3 scrollbar-hide',
             collapsed && 'hidden',
             'max-[640px]:hidden'
           )}
         >
           {sessions.length === 0 ? (
             <p
-              className={cn('px-3 py-3 text-[15px] leading-6', theme.muted, collapsed && 'hidden', 'max-[640px]:hidden')}
+              className={cn('px-3 py-3 text-[13px] leading-5', theme.muted, collapsed && 'hidden', 'max-[640px]:hidden')}
               role="status"
             >
               还没有对话
@@ -421,14 +421,14 @@ export function ConversationSidebar({
                     className={cn(
                       'flex min-w-0 flex-1 items-center text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset',
                       theme.focus,
-                      collapsed ? 'justify-center px-1.5 py-2.5' : 'px-3 py-2.5',
-                      'max-[640px]:justify-center max-[640px]:px-1.5 max-[640px]:py-2.5'
+                      collapsed ? 'justify-center px-1.5 py-2' : 'px-3 py-1.5',
+                      'max-[640px]:justify-center max-[640px]:px-1.5 max-[640px]:py-2'
                     )}
                   >
                     <span
                       className={cn(
-                        'min-w-0 flex-1 truncate leading-6 tracking-[-0.02em]',
-                        active ? 'text-[17px] font-medium' : 'text-[16px] font-normal',
+                        'min-w-0 flex-1 truncate text-[14px] leading-5 tracking-[-0.01em]',
+                        active ? 'font-semibold' : 'font-normal',
                         theme.secondary
                       )}
                     >
@@ -504,8 +504,8 @@ export function ConversationSidebar({
             title="搜索页面与会话"
             aria-label="搜索页面与会话"
             className={cn(
-              'h-8 w-full rounded-[10px] text-[13px] font-medium',
-              collapsed ? 'grid h-9 place-items-center px-0' : 'flex items-center gap-2 px-2.5',
+              'h-8 w-full rounded-[10px] text-[12px] font-medium',
+              collapsed ? 'grid h-9 place-items-center px-0' : 'flex items-center gap-1 px-1.5',
               'bg-[#F0F4F8] hover:bg-[#EAF0F6] dark:bg-[#2B2B28] dark:hover:bg-[#33332F]',
               theme.secondary,
               'active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
@@ -517,7 +517,7 @@ export function ConversationSidebar({
             <span className={cn(collapsed && 'hidden', 'max-[640px]:hidden')}>搜索</span>
             <kbd
               className={cn(
-                'rounded-[5px] border border-slate-200/90 bg-white px-1.5 py-0.5 font-sans text-[9px] font-medium leading-none text-slate-400 shadow-sm',
+                'rounded-[5px] border border-slate-200/90 bg-white px-1 py-0.5 font-sans text-[8px] font-medium leading-none text-slate-400 shadow-sm',
                 'dark:border-[#484842] dark:bg-[#1D1D1B] dark:text-[#929188]',
                 collapsed && 'hidden',
                 'max-[640px]:hidden'

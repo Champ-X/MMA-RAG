@@ -4,100 +4,115 @@ import { dataFlowLanes } from '@/data/architectureData'
 const laneMeta = {
   ingestion: {
     icon: HardDrive,
-    label: '写入路径',
-    accent: 'text-orange-700 dark:text-orange-300',
-    surface: 'border-orange-200/80 bg-orange-50/55 dark:border-orange-900/70 dark:bg-orange-950/15',
+    label: '写入路径 · write',
+    accent: 'text-[#d66d41] dark:text-[#eeaa88]',
+    marker: 'bg-[#e47b4e]',
+    rail: 'border-[#e1b296] bg-[#f5e4d7] dark:border-[#744a36] dark:bg-[#e47b4e]/10',
   },
   query: {
     icon: RadioTower,
-    label: '读取路径',
-    accent: 'text-teal-700 dark:text-teal-300',
-    surface: 'border-teal-200/80 bg-teal-50/55 dark:border-teal-900/70 dark:bg-teal-950/15',
+    label: '读取路径 · read',
+    accent: 'text-[#2f7f93] dark:text-[#83c4cf]',
+    marker: 'bg-[#2f7f93]',
+    rail: 'border-[#9fc2c7] bg-[#e2eef0] dark:border-[#35606a] dark:bg-[#2f7f93]/10',
   },
 }
 
+const sharedData = [
+  { icon: Database, title: 'Qdrant', detail: '语义、稀疏与专用向量；在线检索的主要读取面。' },
+  { icon: HardDrive, title: 'MinIO', detail: '原始对象、关键帧、manifest 与预签名媒体 URL。' },
+  { icon: ServerCog, title: 'Redis / Celery', detail: '可选任务控制面；不参与在线检索结果合同。' },
+]
+
 export function DataFlowDiagram() {
+  const ingestion = dataFlowLanes.find((lane) => lane.id === 'ingestion')
+  const query = dataFlowLanes.find((lane) => lane.id === 'query')
+
+  if (!ingestion || !query) return null
+
   return (
     <section id="data-flow" className="scroll-mt-24">
-      <div className="max-w-3xl">
-        <h2 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950 [text-wrap:balance] dark:text-white sm:text-3xl">
-          写入和读取，各走自己的路径
-        </h2>
-        <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300 sm:text-[15px]">
-          离线链路负责固化对象与索引，在线链路只读取证据并组装引用。Redis / Celery 只位于任务控制面。
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,0.75fr)_minmax(30rem,1.25fr)] lg:items-end lg:gap-14">
+        <div className="max-w-2xl">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2f7f93] dark:text-[#7fc2cf]">Data plane</p>
+          <h2 className="architecture-display mt-3 text-3xl font-semibold leading-tight tracking-[-0.035em] text-[#102d42] [text-wrap:balance] dark:text-[#edf6f3] sm:text-[2.55rem]">
+            <span className="block">同一个数据面，</span>
+            <span className="block">承接相反方向的数据流</span>
+          </h2>
+        </div>
+        <p className="max-w-2xl text-sm leading-7 text-[#5a7075] dark:text-[#a7bcbd] sm:text-[15px] lg:justify-self-end">
+          离线链路把对象转成索引并写入；在线链路只读取证据并组装引用。Redis / Celery 只承担可选的长任务控制。
         </p>
       </div>
 
-      <div className="mt-8 space-y-4">
-        {dataFlowLanes.map((lane) => {
-          const meta = laneMeta[lane.id]
-          const Icon = meta.icon
+      <div className="mt-9 overflow-hidden rounded-[28px] border border-[#b9ccc6] bg-[#edf2ed] shadow-[0_34px_90px_-64px_rgba(16,45,66,0.72)] dark:border-[#2b4d58] dark:bg-[#0b222c]">
+        <FlowLane lane={ingestion} />
 
-          return (
-            <div key={lane.id} className={`rounded-2xl border p-5 sm:p-6 ${meta.surface}`}>
-              <div className="grid gap-6 xl:grid-cols-[15rem_minmax(0,1fr)] xl:items-center">
-                <div>
-                  <div className={`flex items-center gap-2 text-xs font-semibold ${meta.accent}`}>
-                    <Icon className="h-4 w-4" />
-                    {meta.label}
-                  </div>
-                  <h3 className="mt-3 text-lg font-semibold text-slate-950 dark:text-white">{lane.title}</h3>
-                  <p className="mt-2 text-xs leading-6 text-slate-500 dark:text-slate-400">{lane.description}</p>
-                </div>
-
-                <ol className="flex flex-col lg:flex-row lg:items-stretch">
-                  {lane.stages.map((stage, index) => (
-                    <li key={stage.title} className="contents">
-                      <div className="min-w-0 flex-1 rounded-xl border border-white/80 bg-white/85 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
-                        <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">{stage.title}</div>
-                        <div className="mt-1.5 text-[10px] leading-5 text-slate-500 dark:text-slate-400">{stage.detail}</div>
-                      </div>
-                      {index < lane.stages.length - 1 ? (
-                        <div className="flex h-7 items-center justify-center text-slate-400 lg:h-auto lg:w-6 lg:shrink-0">
-                          <ArrowRight className="h-3.5 w-3.5 rotate-90 lg:rotate-0" />
-                        </div>
-                      ) : null}
-                    </li>
-                  ))}
-                </ol>
-              </div>
+        <div className="relative border-y border-[#aebfba] bg-[#102d42] px-5 py-7 text-white dark:border-[#31525e] sm:px-7">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+          <div className="grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-center">
+            <div>
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7fc2cf]">Shared data plane</p>
+              <h3 className="architecture-display mt-2 text-2xl font-semibold">对象、索引与控制</h3>
+              <p className="mt-2 text-xs leading-6 text-[#9eb5ba]">存储职责明确分开，读取链路不依赖异步控制面。</p>
             </div>
-          )
-        })}
-      </div>
-
-      <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200/90 bg-white dark:border-slate-800 dark:bg-slate-950">
-        <div className="border-b border-slate-200/80 px-5 py-3 text-xs font-semibold text-slate-800 dark:border-slate-800 dark:text-slate-100">
-          共享数据面
+            <dl className="grid overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.045] sm:grid-cols-3">
+              {sharedData.map((item, index) => {
+                const Icon = item.icon
+                return (
+                  <div key={item.title} className={index > 0 ? 'border-t border-white/10 p-4 sm:border-l sm:border-t-0' : 'p-4'}>
+                    <dt className="flex items-center gap-2 text-[13px] font-semibold text-white">
+                      <Icon className="h-4 w-4 text-[#8bc7cf]" />
+                      {item.title}
+                    </dt>
+                    <dd className="mt-2 text-xs leading-5 text-[#a9bec1]">{item.detail}</dd>
+                  </div>
+                )
+              })}
+            </dl>
+          </div>
         </div>
-        <dl className="grid md:grid-cols-3">
-          <SharedCell icon={<Database className="h-4 w-4" />} title="Qdrant" detail="语义与专用向量，在线检索的主要读取面。" />
-          <SharedCell icon={<HardDrive className="h-4 w-4" />} title="MinIO" detail="原始对象、关键帧、manifest 与媒体 URL。" bordered />
-          <SharedCell icon={<ServerCog className="h-4 w-4" />} title="Redis / Celery" detail="导入任务控制面，不位于检索结果链中。" bordered />
-        </dl>
+
+        <FlowLane lane={query} />
       </div>
     </section>
   )
 }
 
-function SharedCell({
-  icon,
-  title,
-  detail,
-  bordered = false,
-}: {
-  icon: React.ReactNode
-  title: string
-  detail: string
-  bordered?: boolean
-}) {
+function FlowLane({ lane }: { lane: (typeof dataFlowLanes)[number] }) {
+  const meta = laneMeta[lane.id]
+  const Icon = meta.icon
+
   return (
-    <div className={bordered ? 'border-t border-slate-200/80 p-5 dark:border-slate-800 md:border-l md:border-t-0' : 'p-5'}>
-      <dt className="flex items-center gap-2 text-xs font-semibold text-slate-900 dark:text-slate-100">
-        <span className="text-teal-600 dark:text-teal-400">{icon}</span>
-        {title}
-      </dt>
-      <dd className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">{detail}</dd>
+    <div className="p-5 sm:p-7">
+      <div className="grid gap-6 xl:grid-cols-[14rem_minmax(0,1fr)] xl:items-center">
+        <div>
+          <div className={`flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] ${meta.accent}`}>
+            <Icon className="h-4 w-4" />
+            {meta.label}
+          </div>
+          <h3 className="architecture-display mt-2 text-2xl font-semibold text-[#102d42] dark:text-[#edf6f3]">{lane.title}</h3>
+          <p className="mt-2 text-xs leading-6 text-[#687d81] dark:text-[#9db4b5]">{lane.description}</p>
+        </div>
+
+        <ol className="grid gap-2 sm:grid-cols-5" aria-label={`${lane.title}阶段`}>
+          {lane.stages.map((stage, index) => (
+            <li key={stage.title} className="relative flex min-w-0 sm:block">
+              <div className={`relative z-10 min-h-[7.1rem] w-full rounded-[18px] border p-3 ${meta.rail}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`h-2 w-2 rounded-full ${meta.marker}`} />
+                  <span className="font-mono text-[9px] font-semibold text-[#7a8d8f] dark:text-[#839ea0]">{String(index + 1).padStart(2, '0')}</span>
+                </div>
+                <div className="mt-3 text-[13px] font-semibold text-[#18394a] dark:text-[#e2eeea]">{stage.title}</div>
+                <div className="mt-1.5 text-xs leading-5 text-[#687d81] dark:text-[#9cb2b4]">{stage.detail}</div>
+              </div>
+              {index < lane.stages.length - 1 ? (
+                <ArrowRight className="absolute -right-[0.45rem] top-1/2 z-20 hidden h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-[#edf2ed] text-[#718587] dark:bg-[#0b222c] dark:text-[#8ba5a7] sm:block" />
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      </div>
     </div>
   )
 }
