@@ -286,7 +286,7 @@ export function FileHero({ file }: { file: KnowledgeFileView }) {
   )
 }
 
-// 创建知识库模态框
+// 创建素材空间模态框
 export function CreateKbModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, desc: string) => void }) {
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
@@ -318,14 +318,14 @@ export function CreateKbModal({ onClose, onCreate }: { onClose: () => void; onCr
                 <Database size={20} strokeWidth={2.5} aria-hidden />
               </div>
               <div>
-                <h3 id={titleId} className="text-lg font-bold text-slate-800 dark:text-slate-100">新建知识库</h3>
-                <p id={descriptionId} className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">创建新的知识库以开始管理数据</p>
+                <h3 id={titleId} className="text-lg font-bold text-slate-800 dark:text-slate-100">新建素材空间</h3>
+                <p id={descriptionId} className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">创建独立空间，开始汇集与检索多模态素材</p>
               </div>
             </div>
             <button 
               type="button"
               onClick={onClose} 
-              aria-label="关闭新建知识库弹窗"
+              aria-label="关闭新建素材空间弹窗"
               className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-800/60 transition-colors"
             >
               <X size={20} aria-hidden />
@@ -336,7 +336,7 @@ export function CreateKbModal({ onClose, onCreate }: { onClose: () => void; onCr
         {/* Content */}
         <div className="p-6 space-y-5 bg-white dark:bg-slate-950">
           <span id={formStatusId} className="sr-only" role="status" aria-live="polite">
-            {isNameValid ? `将创建知识库：${name.trim()}` : '请输入知识库名称后再创建'}
+            {isNameValid ? `将创建素材空间：${name.trim()}` : '请输入素材空间名称后再创建'}
           </span>
           <div className="space-y-2">
             <label htmlFor={nameInputId} className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -349,7 +349,7 @@ export function CreateKbModal({ onClose, onCreate }: { onClose: () => void; onCr
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full border-2 border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 dark:focus:border-indigo-500 outline-none transition-all shadow-sm hover:border-slate-300 dark:hover:border-slate-600"
-                placeholder="例如：产品文档库"
+                placeholder="例如：产品资料"
                 autoFocus
                 required
                 aria-required="true"
@@ -371,7 +371,7 @@ export function CreateKbModal({ onClose, onCreate }: { onClose: () => void; onCr
                 value={desc}
                 onChange={(e) => setDesc(e.target.value)}
                 className="w-full border-2 border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 h-28 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 dark:focus:border-indigo-500 outline-none resize-none transition-all shadow-sm hover:border-slate-300 dark:hover:border-slate-600"
-                placeholder="这个知识库会包含哪些数据？"
+                placeholder="这个空间会包含哪些素材？"
               />
             </div>
           </div>
@@ -382,7 +382,7 @@ export function CreateKbModal({ onClose, onCreate }: { onClose: () => void; onCr
           <button
             type="button"
             onClick={onClose}
-            aria-label="取消新建知识库"
+            aria-label="取消新建素材空间"
             className="px-5 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors"
           >
             取消
@@ -393,14 +393,14 @@ export function CreateKbModal({ onClose, onCreate }: { onClose: () => void; onCr
               if (name.trim()) onCreate(name.trim(), desc.trim())
             }}
             disabled={!isNameValid}
-            aria-label={isNameValid ? `创建知识库：${name.trim()}` : '创建知识库：请先输入名称'}
+            aria-label={isNameValid ? `创建素材空间：${name.trim()}` : '创建素材空间：请先输入名称'}
             aria-describedby={formStatusId}
             className={cn(
               'px-5 py-2.5 bg-gradient-to-tr from-indigo-600 to-fuchsia-600 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/30 hover:from-indigo-500 hover:to-fuchsia-500 hover:shadow-xl hover:shadow-indigo-500/40 transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center gap-2',
             )}
           >
             <Sparkles size={16} aria-hidden />
-            创建
+            创建空间
           </button>
         </div>
       </div>

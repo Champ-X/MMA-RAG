@@ -1,5 +1,6 @@
 export type ArchitectureSectionId =
   | 'overview'
+  | 'flow-lab'
   | 'system-architecture'
   | 'request-flow'
   | 'modules'
@@ -60,6 +61,11 @@ export const architectureSections: ArchitectureSection[] = [
     id: 'overview',
     title: '系统契约',
     subtitle: '边界、原则与两种执行路径',
+  },
+  {
+    id: 'flow-lab',
+    title: '交互演示',
+    subtitle: '逐步观看多模态解析与检索链路',
   },
   {
     id: 'system-architecture',

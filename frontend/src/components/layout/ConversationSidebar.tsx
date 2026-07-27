@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import {
   Database,
@@ -33,13 +41,34 @@ interface ConversationSidebarProps {
 }
 
 const navigationItems = [
-  { id: 'knowledge' as const, label: '知识库', icon: Database },
+  { id: 'knowledge' as const, label: 'Space', icon: Database },
   { id: 'architecture' as const, label: '架构', icon: Network },
   { id: 'settings' as const, label: '设置', icon: Settings },
 ]
 
 const railTransition =
   'transition-[background-color,color,opacity,transform] duration-150 ease-out motion-reduce:transition-none'
+
+const SIDEBAR_WIDTH_STORAGE_KEY = 'tessmora.sidebar.width.v1'
+const SIDEBAR_DEFAULT_WIDTH = 264
+const SIDEBAR_MIN_WIDTH = 224
+const SIDEBAR_MAX_WIDTH = 420
+
+function getSidebarMaxWidth() {
+  if (typeof window === 'undefined') return SIDEBAR_MAX_WIDTH
+  return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, window.innerWidth - 420))
+}
+
+function clampSidebarWidth(width: number) {
+  return Math.round(Math.min(getSidebarMaxWidth(), Math.max(SIDEBAR_MIN_WIDTH, width)))
+}
+
+function getInitialSidebarWidth() {
+  if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH
+
+  const savedWidth = Number.parseInt(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY) ?? '', 10)
+  return Number.isFinite(savedWidth) ? clampSidebarWidth(savedWidth) : SIDEBAR_DEFAULT_WIDTH
+}
 
 const brandWordmarkStyle = {
   fontFamily: '"Snell Roundhand", "Segoe Script", "Brush Script MT", cursive',
@@ -164,9 +193,15 @@ export function ConversationSidebar({
   onDeleteConversation,
   onNavigate,
 }: ConversationSidebarProps) {
+  const sidebarRef = useRef<HTMLElement | null>(null)
   const activeSessionRef = useRef<HTMLDivElement | null>(null)
+  const resizeOriginRef = useRef(0)
+  const isResizingRef = useRef(false)
+  const bodyStyleRef = useRef({ cursor: '', userSelect: '' })
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [sidebarWidth, setSidebarWidth] = useState(getInitialSidebarWidth)
+  const [isResizing, setIsResizing] = useState(false)
   const normalizedSearchQuery = normalizeSearchText(searchQuery)
   const filteredNavigationItems = navigationItems.filter((item) =>
     item.label.toLocaleLowerCase().includes(normalizedSearchQuery)
@@ -230,6 +265,36 @@ export function ConversationSidebar({
     return () => window.removeEventListener('keydown', handleShortcut)
   }, [])
 
+  useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth))
+  }, [sidebarWidth])
+
+  useEffect(() => {
+    const finishResize = () => {
+      if (!isResizingRef.current) return
+      isResizingRef.current = false
+      setIsResizing(false)
+      document.body.style.cursor = bodyStyleRef.current.cursor
+      document.body.style.userSelect = bodyStyleRef.current.userSelect
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!isResizingRef.current) return
+      setSidebarWidth(clampSidebarWidth(event.clientX - resizeOriginRef.current))
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', finishResize)
+    window.addEventListener('pointercancel', finishResize)
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', finishResize)
+      window.removeEventListener('pointercancel', finishResize)
+      finishResize()
+    }
+  }, [])
+
   const closeSearch = () => {
     setSearchOpen(false)
     setSearchQuery('')
@@ -240,18 +305,54 @@ export function ConversationSidebar({
     if (!open) setSearchQuery('')
   }
 
+  const handleResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (collapsed || (event.pointerType === 'mouse' && event.button !== 0) || window.innerWidth <= 640) {
+      return
+    }
+
+    const sidebarRect = sidebarRef.current?.getBoundingClientRect()
+    if (!sidebarRect) return
+
+    event.preventDefault()
+    resizeOriginRef.current = sidebarRect.left
+    isResizingRef.current = true
+    bodyStyleRef.current = {
+      cursor: document.body.style.cursor,
+      userSelect: document.body.style.userSelect,
+    }
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    setIsResizing(true)
+  }
+
+  const handleResizeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (collapsed) return
+
+    const step = event.shiftKey ? 32 : 16
+    let nextWidth: number | null = null
+
+    if (event.key === 'ArrowLeft') nextWidth = sidebarWidth - step
+    if (event.key === 'ArrowRight') nextWidth = sidebarWidth + step
+    if (event.key === 'Home') nextWidth = SIDEBAR_MIN_WIDTH
+    if (event.key === 'End') nextWidth = getSidebarMaxWidth()
+
+    if (nextWidth === null) return
+    event.preventDefault()
+    setSidebarWidth(clampSidebarWidth(nextWidth))
+  }
+
   const brandMark = (
     <span
       className={cn(
-        'grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl border',
+        'grid h-[52px] w-[52px] shrink-0 place-items-center overflow-hidden rounded-[16px] border',
         theme.logo
       )}
     >
       <img
         src="/tessmora-logo.png"
         alt=""
-        width={40}
-        height={40}
+        width={52}
+        height={52}
         draggable={false}
         className="h-full w-full scale-[1.22] object-cover object-center"
       />
@@ -260,18 +361,21 @@ export function ConversationSidebar({
 
   return (
     <aside
+      ref={sidebarRef}
       aria-label="主导航与会话"
+      style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}
       className={cn(
         'relative z-30 flex h-[100dvh] shrink-0 flex-col overflow-hidden border-r font-sans transition-[width] duration-200 ease-out motion-reduce:transition-none',
         theme.rail,
-        collapsed ? 'w-[80px]' : 'w-[204px]',
+        collapsed ? 'w-[80px]' : 'w-[var(--sidebar-width)]',
+        isResizing && 'select-none',
         'max-[640px]:w-[72px]'
       )}
     >
       <header
         className={cn(
           'relative flex shrink-0 items-center',
-          collapsed ? 'h-[72px] justify-center px-0' : 'h-[76px] justify-start px-3',
+          collapsed ? 'h-[82px] justify-center px-0' : 'h-[92px] justify-start px-4',
           'max-[640px]:h-[68px] max-[640px]:justify-center max-[640px]:px-2'
         )}
       >
@@ -282,7 +386,7 @@ export function ConversationSidebar({
             title={collapsed ? '展开侧栏' : '收起侧栏'}
             aria-label={collapsed ? '展开侧栏' : '收起侧栏'}
             className={cn(
-              'grid h-12 w-12 place-items-center rounded-xl',
+              'grid h-[62px] w-[62px] place-items-center rounded-[18px]',
               theme.hover,
               'active:translate-y-px focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-offset-0',
               theme.focus,
@@ -293,7 +397,7 @@ export function ConversationSidebar({
           </button>
           <span
             className={cn(
-              'truncate bg-gradient-to-r from-slate-950 via-indigo-700 to-violet-600 bg-clip-text text-[26px] font-bold leading-none tracking-[0.01em] text-transparent drop-shadow-[0_1px_0_rgba(255,255,255,0.7)]',
+              'truncate bg-gradient-to-r from-slate-950 via-indigo-700 to-violet-600 bg-clip-text text-[31px] font-bold leading-none tracking-[0.015em] text-transparent drop-shadow-[0_1px_0_rgba(255,255,255,0.7)]',
               'dark:from-slate-50 dark:via-indigo-300 dark:to-violet-300 dark:drop-shadow-none',
               collapsed && 'hidden',
               'max-[640px]:hidden'
@@ -419,9 +523,9 @@ export function ConversationSidebar({
                     aria-label={`${active ? '当前会话：' : '打开会话：'}${title}`}
                     aria-current={active ? 'true' : undefined}
                     className={cn(
-                      'flex min-w-0 flex-1 items-center text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset',
+                      'flex min-w-0 flex-1 items-center text-left transition-[padding] duration-150 ease-out motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset',
                       theme.focus,
-                      collapsed ? 'justify-center px-1.5 py-2' : 'px-3 py-1.5',
+                      collapsed ? 'justify-center px-1.5 py-2' : 'px-3 py-1.5 group-hover:pr-11 group-focus-within:pr-11',
                       'max-[640px]:justify-center max-[640px]:px-1.5 max-[640px]:py-2'
                     )}
                   >
@@ -445,10 +549,10 @@ export function ConversationSidebar({
                       title="删除会话"
                       aria-label={`删除会话：${title}`}
                       className={cn(
-                        'mr-1.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg opacity-0',
+                        'pointer-events-none absolute right-1.5 top-1/2 z-10 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg opacity-0',
                         theme.muted,
                         theme.delete,
-                        'focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 group-hover:opacity-100',
+                        'focus:pointer-events-auto focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 group-hover:pointer-events-auto group-hover:opacity-100',
                         railTransition,
                         collapsed && 'hidden',
                         'max-[640px]:hidden'
@@ -562,6 +666,34 @@ export function ConversationSidebar({
           </button>
         </div>
       </footer>
+
+      {!collapsed && (
+        <div
+          role="separator"
+          aria-label="调整侧栏宽度"
+          aria-orientation="vertical"
+          aria-valuemin={SIDEBAR_MIN_WIDTH}
+          aria-valuemax={getSidebarMaxWidth()}
+          aria-valuenow={sidebarWidth}
+          tabIndex={0}
+          onPointerDown={handleResizeStart}
+          onKeyDown={handleResizeKeyDown}
+          title="拖动调整侧栏宽度；方向键可微调"
+          className={cn(
+            'group absolute inset-y-0 right-0 z-40 w-3 touch-none cursor-col-resize outline-none focus-visible:bg-indigo-500/12 max-[640px]:hidden',
+            isResizing ? 'bg-indigo-500/12' : 'hover:bg-indigo-500/[0.07]'
+          )}
+        >
+          <span
+            aria-hidden
+            className={cn(
+              'absolute bottom-5 right-1 top-5 w-px rounded-full bg-slate-300/40 transition-colors duration-150 dark:bg-slate-600/40',
+              'group-hover:bg-indigo-400/75 group-focus-visible:bg-indigo-500/90 dark:group-hover:bg-indigo-300/70 dark:group-focus-visible:bg-indigo-300/90',
+              isResizing && 'bg-indigo-500/90 dark:bg-indigo-300/90'
+            )}
+          />
+        </div>
+      )}
 
       <Dialog.Root open={searchOpen} onOpenChange={handleSearchOpenChange}>
         <Dialog.Portal>

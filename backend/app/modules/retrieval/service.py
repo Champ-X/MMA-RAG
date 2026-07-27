@@ -6,6 +6,7 @@
 from typing import Dict, List, Any, Optional, AsyncGenerator, Tuple
 from datetime import datetime
 from dataclasses import dataclass
+import copy
 import re
 
 from .processors.intent import IntentProcessor
@@ -31,6 +32,133 @@ DEICTIC_REFERENCE_PATTERNS = (
     "什么意思", "讲了什么", "说了什么", "介绍一下这个",
     "whatisthis", "whatsthis", "what is this", "what's this", "what is shown",
 )
+
+_MODALITY_INTENT_PRIORITY = {
+    "unnecessary": 0,
+    "implicit_enrichment": 1,
+    "explicit_demand": 2,
+}
+
+
+def _normalize_modality_intent(value: Any) -> str:
+    intent = str(value or "unnecessary").strip()
+    return intent if intent in _MODALITY_INTENT_PRIORITY else "unnecessary"
+
+
+def _apply_agent_base_modality_intents(
+    preprocessing_result: Dict[str, Any],
+    base_modality_intents: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Keep explicit original-query modality demands on Agent subqueries.
+
+    An Agent may deliberately use a terse textual sub-query.  That is useful
+    for recall, but must not silently drop an explicit request such as
+    "show the poster".  Implicit enrichment is covered by a dedicated Agent
+    coverage query instead, avoiding three duplicate visual searches per
+    round.
+    """
+    if not base_modality_intents:
+        return preprocessing_result
+
+    updated = dict(preprocessing_result)
+    for modality, field, reasoning_field in (
+        ("image", "visual_intent", "visual_reasoning"),
+        ("audio", "audio_intent", "audio_reasoning"),
+        ("video", "video_intent", "video_reasoning"),
+    ):
+        base_intent = _normalize_modality_intent(
+            base_modality_intents.get(modality)
+        )
+        current_intent = _normalize_modality_intent(updated.get(field))
+        if (
+            base_intent == "explicit_demand"
+            and _MODALITY_INTENT_PRIORITY[base_intent]
+            > _MODALITY_INTENT_PRIORITY[current_intent]
+        ):
+            updated[field] = base_intent
+            updated[reasoning_field] = "继承原始问题的明确模态需求"
+    return updated
+
+
+def _apply_agent_target_modality_fallback(
+    preprocessing_result: Dict[str, Any],
+    *,
+    target_kb_ids: List[str],
+    modality_inventory: Optional[Dict[str, Dict[str, Any]]],
+    routing_details: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Enable one implicit modal route when Agent's semantic anchor is non-text.
+
+    A user can ask a purely factual question whose best matching knowledge
+    base is indexed only as video (or audio/image).  Text dense/sparse recall
+    then returns zero even though the correct KB was selected.  Direct and
+    Agent modes must both be able to consume that evidence, but the safeguard
+    is intentionally scoped to Agent routing so it does not turn ordinary
+    queries into blanket multimodal searches.
+
+    Explicit user modality requirements are never substituted.  For example,
+    an explicit image request should not silently become a video answer just
+    because the first KB happens to be video-only.
+    """
+    inventory = modality_inventory or {}
+    if not target_kb_ids or not inventory:
+        return preprocessing_result, {}
+
+    current_intents = {
+        "image": _normalize_modality_intent(preprocessing_result.get("visual_intent")),
+        "audio": _normalize_modality_intent(preprocessing_result.get("audio_intent")),
+        "video": _normalize_modality_intent(preprocessing_result.get("video_intent")),
+    }
+    if any(intent == "explicit_demand" for intent in current_intents.values()):
+        return preprocessing_result, {}
+
+    details = routing_details or {}
+    preferred_kb_id = str(details.get("anchor_kb_id") or "").strip()
+    primary_kb_id = (
+        preferred_kb_id
+        if preferred_kb_id in inventory
+        else str(target_kb_ids[0] or "").strip()
+    )
+    primary = inventory.get(primary_kb_id) or {}
+    if int(primary.get("text") or 0) > 0:
+        return preprocessing_result, {}
+
+    # Prefer the modality with the richest actual index.  The deterministic
+    # tiebreak keeps video ahead of audio ahead of images, which is useful for
+    # knowledge bases that hold both keyframes and their source video.
+    order = {"video": 3, "audio": 2, "image": 1}
+    candidates = [
+        modality
+        for modality in ("video", "audio", "image")
+        if int(primary.get(modality) or 0) > 0
+        and current_intents[modality] == "unnecessary"
+    ]
+    if not candidates:
+        return preprocessing_result, {}
+    modality = max(
+        candidates,
+        key=lambda item: (int(primary.get(item) or 0), order[item]),
+    )
+
+    fields = {
+        "image": ("visual_intent", "visual_reasoning"),
+        "audio": ("audio_intent", "audio_reasoning"),
+        "video": ("video_intent", "video_reasoning"),
+    }
+    intent_field, reasoning_field = fields[modality]
+    updated = dict(preprocessing_result)
+    kb_name = str(primary.get("name") or primary_kb_id)
+    updated[intent_field] = "implicit_enrichment"
+    updated[reasoning_field] = (
+        f"Agent 命中知识库“{kb_name}”未建文本索引，"
+        f"自动补充{ {'image': '图片', 'audio': '音频', 'video': '视频'}[modality] }证据检索"
+    )
+    return updated, {
+        "kb_id": primary_kb_id,
+        "kb_name": kb_name,
+        "modality": modality,
+        "available_count": int(primary.get(modality) or 0),
+    }
 
 
 def _infer_selected_file_modality(file_info: Dict[str, Any]) -> str:
@@ -164,6 +292,8 @@ class RetrievalService:
         session_context: Optional[List[Dict[str, str]]] = None,
         attachment_context: Optional[str] = None,
         preplanned: bool = False,
+        routing_hints: Optional[Dict[str, Any]] = None,
+        preprocessing_result: Optional[Dict[str, Any]] = None,
     ) -> RetrievalResult:
         """
         执行完整检索流程
@@ -185,21 +315,37 @@ class RetrievalService:
             # Agent 已经完成问题拆解时，子查询本身就是可执行检索计划。
             # 跳过每个子查询重复的远端意图识别与查询改写，仍保留本地
             # 多模态意图补正、知识库路由、混合召回与重排。
-            preprocessing_result = (
-                self._preprocess_preplanned_query(query)
-                if preplanned
-                else await self._preprocess_query(
-                    query=query,
-                    session_context=session_context or [],
-                    attachment_context=attachment_context,
+            # Agent 的原问题锚点会复用一次已经完成的完整预处理。这样既保留
+            # 直接检索的意图/改写能力，也避免深研模式重复调用远端模型。
+            if preprocessing_result is not None:
+                preprocessing_result = copy.deepcopy(preprocessing_result)
+            else:
+                preprocessing_result = (
+                    self._preprocess_preplanned_query(query)
+                    if preplanned
+                    else await self._preprocess_query(
+                        query=query,
+                        session_context=session_context or [],
+                        attachment_context=attachment_context,
+                    )
                 )
-            )
             selected_files = list((kb_context or {}).get("selected_files", []) or [])
             preprocessing_result, selected_file_modalities = _override_intents_for_selected_files(
                 query,
                 preprocessing_result,
                 selected_files,
             )
+            effective_routing_hints = dict(routing_hints or {})
+            if effective_routing_hints.get("agent_mode"):
+                preprocessing_result = _apply_agent_base_modality_intents(
+                    preprocessing_result,
+                    effective_routing_hints.get("agent_base_modality_intents"),
+                )
+                effective_routing_hints["modality_intents"] = {
+                    "image": preprocessing_result.get("visual_intent", "unnecessary"),
+                    "audio": preprocessing_result.get("audio_intent", "unnecessary"),
+                    "video": preprocessing_result.get("video_intent", "unnecessary"),
+                }
             
             # 2. 知识库路由
             routing_result = await self._route_to_knowledge_bases(
@@ -207,6 +353,7 @@ class RetrievalService:
                 kb_context=kb_context,
                 query_variants=preprocessing_result["search_strategies"].get("multi_view_queries", []),
                 max_targets=3 if preprocessing_result.get("is_complex") else 2,
+                routing_hints=effective_routing_hints,
             )
             target_kb_ids = getattr(routing_result, "target_kb_ids", []) or []
             confidence_scores = getattr(routing_result, "confidence_scores", {}) or {}
@@ -216,6 +363,27 @@ class RetrievalService:
                     {"id": kb_id, "name": kb_id, "score": float(confidence_scores.get(kb_id, 0))}
                     for kb_id in target_kb_ids
                 ]
+
+            # Agent child queries are intentionally terse.  When their
+            # semantic anchor is a KB with no text index (e.g. a source video
+            # KB), use the available indexed modality instead of returning an
+            # empty text retrieval result despite having routed correctly.
+            agent_target_modality_fallback: Dict[str, Any] = {}
+            if effective_routing_hints.get("agent_mode"):
+                inventory_getter = getattr(self.kb_router, "get_modality_inventory", None)
+                if callable(inventory_getter):
+                    try:
+                        modality_inventory = await inventory_getter()
+                        preprocessing_result, agent_target_modality_fallback = (
+                            _apply_agent_target_modality_fallback(
+                                preprocessing_result,
+                                target_kb_ids=target_kb_ids,
+                                modality_inventory=modality_inventory,
+                                routing_details=getattr(routing_result, "routing_details", None),
+                            )
+                        )
+                    except Exception as exc:
+                        logger.debug("Agent 目标库模态兜底判断失败，继续常规检索: {}", exc)
             
             # 3. 构建检索上下文
             retrieval_context = RetrievalContext(
@@ -278,6 +446,8 @@ class RetrievalService:
                     len(results) for results in search_results.get("raw_results", {}).values()
                 ),
                 "preplanned_query": preplanned,
+                "routing_details": getattr(routing_result, "routing_details", None),
+                "agent_target_modality_fallback": agent_target_modality_fallback,
             }
             
             # 更新检索统计信息
@@ -315,6 +485,82 @@ class RetrievalService:
         except Exception as e:
             logger.error(f"检索流程失败: {str(e)}")
             raise
+
+    async def get_agent_modality_requirements(
+        self,
+        *,
+        query: str,
+        kb_context: Optional[Dict[str, Any]] = None,
+        session_context: Optional[List[Dict[str, str]]] = None,
+        attachment_context: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """Analyze the original Agent question once for modality requirements.
+
+        Agent child queries intentionally skip remote intent analysis to keep
+        the Observe → Decide → Act loop bounded.  Running that shortcut on
+        the *original* question, however, lost the semantic visual signal in
+        requests such as "阿凡达的经典取景地在哪里".  This lightweight preflight
+        preserves the existing IntentProcessor (without query rewriting) and
+        leaves the Agent UI free of the normal intent/routing panels.
+        """
+        clean_query = " ".join((query or "").split()).strip()
+        if not clean_query:
+            return {"image": "unnecessary", "audio": "unnecessary", "video": "unnecessary"}
+
+        try:
+            intent_result = await self.intent_processor.process(
+                query=clean_query,
+                chat_history=session_context or [],
+                attachment_context_block=attachment_context,
+            )
+            selected_files = list((kb_context or {}).get("selected_files", []) or [])
+            intent_result, _ = _override_intents_for_selected_files(
+                clean_query,
+                intent_result,
+                selected_files,
+            )
+        except Exception as exc:
+            logger.warning("Agent 原始问题多模态预分析失败，使用本地兜底: %s", exc)
+            intent_result = self._preprocess_preplanned_query(clean_query)
+
+        return {
+            "image": _normalize_modality_intent(intent_result.get("visual_intent")),
+            "audio": _normalize_modality_intent(intent_result.get("audio_intent")),
+            "video": _normalize_modality_intent(intent_result.get("video_intent")),
+        }
+
+    async def prepare_agent_original_query(
+        self,
+        *,
+        query: str,
+        kb_context: Optional[Dict[str, Any]] = None,
+        session_context: Optional[List[Dict[str, str]]] = None,
+        attachment_context: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Prepare the original Agent question with the normal direct path.
+
+        Agent child queries deliberately use the lightweight ``preplanned``
+        path.  That is efficient, but it does not inherit the full query
+        rewriting and semantic intent analysis of a normal chat request.  A
+        single reusable preparation result gives Agent mode a faithful
+        original-question anchor without doubling those LLM calls.
+        """
+        clean_query = " ".join((query or "").split()).strip()
+        if not clean_query:
+            return self._preprocess_preplanned_query("")
+
+        preprocessing_result = await self._preprocess_query(
+            query=clean_query,
+            session_context=session_context or [],
+            attachment_context=attachment_context,
+        )
+        selected_files = list((kb_context or {}).get("selected_files", []) or [])
+        preprocessing_result, _ = _override_intents_for_selected_files(
+            clean_query,
+            preprocessing_result,
+            selected_files,
+        )
+        return preprocessing_result
 
     async def search_stream(
         self,
@@ -601,6 +847,7 @@ class RetrievalService:
         kb_context: Optional[Dict[str, Any]] = None,
         query_variants: Optional[List[str]] = None,
         max_targets: int = 2,
+        routing_hints: Optional[Dict[str, Any]] = None,
     ):
         """路由到知识库"""
         try:
@@ -609,6 +856,7 @@ class RetrievalService:
                 kb_context=kb_context,
                 query_variants=query_variants,
                 max_targets=max_targets,
+                routing_hints=routing_hints,
             )
         except Exception as e:
             logger.error(f"知识库路由失败: {str(e)}")

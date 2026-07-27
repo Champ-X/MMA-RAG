@@ -201,7 +201,8 @@ class IntentProcessor:
             implicit_video_keywords_fallback = [
                 "教程", "演示", "录屏", "回放", "直播", "纪录片", "演讲视频", "会议录像",
                 "操作演示", "教学视频", "发布会", "录播", "直播回放", "教程视频", "录播课",
-                "tutorial", "demo", "recording", "playback", "webinar", "keynote"
+                "电影", "影片", "影视", "影视剧", "电视剧", "剧集", "动画片",
+                "tutorial", "demo", "recording", "playback", "webinar", "keynote", "movie", "film", "series"
             ]
             has_explicit_video = any(kw in content_lower for kw in explicit_video_keywords_fallback)
             has_implicit_video = any(kw in content_lower for kw in implicit_video_keywords_fallback)
@@ -276,8 +277,10 @@ class IntentProcessor:
                 "有图吗", "有图片吗", "有图表吗", "有架构图吗", "有示意图吗",
                 "show me", "let me see", "display", "view",
                 "图片", "图表", "示意图", "流程图", "设计图", "可视化",
+                "海报", "封面", "配图", "插图", "场景图", "景观图", "实景图", "照片",
                 "查看图片", "显示图片", "展示图片", "图片中", "图表中", "图中",
                 "image", "chart", "diagram", "graph", "figure", "visualization",
+                "poster", "cover", "illustration", "scene image", "photo",
                 "架构图", "结构图", "系统图", "网络图", "拓扑图"
             ]
             # 隐性视觉相关主题（无明确请求时可推断为 implicit_enrichment：空间结构性/视觉审美性/数据对比性）
@@ -333,7 +336,8 @@ class IntentProcessor:
             explicit_audio_request_keywords = [
                 "找音频", "找音乐", "找歌", "有录音吗", "有音乐吗", "播放", "听一下", "听这段", "放一下", "给我听",
                 "有没有音频", "play", "listen to", "find the song", "audio", "music", "podcast", "recording",
-                "音频", "音乐", "歌曲", "播客", "录音", "语音", "播放一下"
+                "音频", "音乐", "歌曲", "主题曲", "原声", "原声带", "播客", "录音", "语音", "播放一下",
+                "soundtrack", "theme song"
             ]
             # 隐性音频相关词（无明确请求时可推断为 implicit_enrichment）
             implicit_audio_keywords = [
@@ -373,7 +377,8 @@ class IntentProcessor:
             implicit_video_keywords = [
                 "教程", "演示", "录屏", "回放", "直播", "纪录片", "演讲视频", "会议录像",
                 "操作演示", "教学视频", "发布会", "录播", "直播回放", "教程视频", "录播课",
-                "tutorial", "demo", "recording", "playback", "webinar", "keynote"
+                "电影", "影片", "影视", "影视剧", "电视剧", "剧集", "动画片",
+                "tutorial", "demo", "recording", "playback", "webinar", "keynote", "movie", "film", "series"
             ]
             query_lower_video = original_query.lower()
             has_explicit_video_request = any(kw in query_lower_video for kw in explicit_video_keywords)

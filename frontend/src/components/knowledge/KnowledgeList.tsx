@@ -3223,21 +3223,24 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
           <div className="relative flex min-h-[164px] items-center px-5 py-4 sm:px-8 sm:py-5 lg:px-10">
             <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-start gap-3.5 sm:items-center sm:gap-4">
-                <span className="relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-[18px] border border-indigo-100 bg-white/80 text-indigo-600 shadow-[0_14px_28px_-18px_rgba(79,70,229,0.45)] backdrop-blur-xl dark:border-indigo-500/25 dark:bg-slate-900/75 dark:text-indigo-300">
-                  <span className="absolute inset-1 rounded-[14px] border border-indigo-100/80 bg-gradient-to-br from-sky-50 via-white to-violet-50 dark:border-indigo-500/15 dark:from-indigo-500/10 dark:via-slate-900 dark:to-violet-500/10" aria-hidden />
-                  <Database className="relative h-6 w-6" strokeWidth={1.8} aria-hidden />
-                  <span className="absolute bottom-1.5 right-1.5 h-2 w-2 rounded-full bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.7)]" aria-hidden />
+                <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-[20px] border border-white/90 bg-white/90 p-1 shadow-[0_18px_32px_-20px_rgba(41,75,147,0.55)] ring-1 ring-indigo-100/75 backdrop-blur-xl dark:border-slate-700/80 dark:bg-slate-900/80 dark:ring-indigo-400/20 sm:h-[68px] sm:w-[68px]">
+                  <img
+                    src="/knowledge-library-icon.png"
+                    alt=""
+                    draggable={false}
+                    className="h-full w-full rounded-[15px] object-cover sm:rounded-[17px]"
+                  />
                 </span>
 
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="text-[1.65rem] font-semibold tracking-[-0.04em] text-slate-900 dark:text-slate-50 sm:text-[1.8rem]">知识库</h1>
+                    <h1 className="text-[1.65rem] font-semibold tracking-[-0.04em] text-slate-900 dark:text-slate-50 sm:text-[1.8rem]">素材空间</h1>
                     <span className="rounded-full border border-indigo-100 bg-white/75 px-2.5 py-1 font-mono text-[10px] font-semibold tracking-[0.08em] text-indigo-600 shadow-sm backdrop-blur-sm dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-200">
                       {knowledgeBases.length} 个空间
                     </span>
                   </div>
                   <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-[15px]">
-                    管理文档、图像、音频与视频，并将它们整理为可检索的知识。
+                    汇集文档、图像、音频与视频，让每一份素材都可定位、检索与引用。
                   </p>
                   <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                     <span className="inline-flex items-center gap-1.5">
@@ -3262,13 +3265,22 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
               <button
                 type="button"
                 onClick={() => setShowCreateModal(true)}
-                className="group relative inline-flex min-h-[44px] w-full shrink-0 items-center justify-center gap-2.5 overflow-hidden rounded-xl border border-indigo-100 bg-white/80 px-4 text-sm font-semibold text-indigo-700 shadow-[0_14px_28px_-18px_rgba(79,70,229,0.45)] backdrop-blur-xl transition-[transform,background-color,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-white hover:text-indigo-800 hover:shadow-[0_18px_30px_-16px_rgba(79,70,229,0.5)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fbfaf7] active:translate-y-0 dark:border-indigo-500/30 dark:bg-slate-900/75 dark:text-indigo-200 dark:hover:border-indigo-400/50 dark:hover:bg-slate-900 dark:focus-visible:ring-offset-slate-950 lg:w-auto"
+                title="新建素材空间"
+                aria-label="新建素材空间"
+                className="group relative inline-flex min-h-[60px] w-full shrink-0 items-center gap-3 overflow-hidden rounded-[18px] border border-indigo-200/90 bg-white/92 px-2.5 py-2 text-left shadow-[0_16px_30px_-18px_rgba(57,72,146,0.45)] backdrop-blur-xl transition-[transform,border-color,box-shadow,background-color] duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-white hover:shadow-[0_22px_34px_-18px_rgba(82,91,188,0.5)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fbfaf7] active:translate-y-0 dark:border-indigo-400/25 dark:bg-slate-900/85 dark:hover:border-indigo-300/45 dark:hover:bg-slate-900 dark:focus-visible:ring-offset-slate-950 lg:w-[220px]"
               >
-                <span className="pointer-events-none absolute inset-y-0 -left-10 w-10 rotate-12 bg-indigo-100/70 blur-md transition-transform duration-500 group-hover:translate-x-48 dark:bg-indigo-300/10" aria-hidden />
-                <span className="relative grid h-7 w-7 place-items-center rounded-[9px] border border-indigo-100 bg-gradient-to-br from-indigo-50 to-violet-100 text-indigo-600 shadow-[inset_0_1px_rgba(255,255,255,0.8)] dark:border-indigo-500/25 dark:from-indigo-500/20 dark:to-violet-500/15 dark:text-indigo-200">
-                  <FolderPlus size={17} strokeWidth={2.15} aria-hidden />
+                <span className="pointer-events-none absolute -right-5 -top-8 h-20 w-20 rounded-full bg-indigo-100/70 blur-2xl transition-transform duration-500 group-hover:scale-125 dark:bg-indigo-500/15" aria-hidden />
+                <span className="pointer-events-none absolute bottom-0 left-0 h-px w-full bg-gradient-to-r from-transparent via-indigo-300/70 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100 dark:via-indigo-300/45" aria-hidden />
+                <span className="relative grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-white/70 bg-gradient-to-br from-[#4f84ef] via-[#6871e5] to-[#9a68da] text-white shadow-[0_10px_18px_-10px_rgba(82,90,215,0.8)] transition-transform duration-200 group-hover:scale-[1.05] motion-reduce:transition-none">
+                  <FolderPlus size={20} strokeWidth={2.2} aria-hidden />
                 </span>
-                <span className="relative">新建知识库</span>
+                <span className="relative min-w-0 flex-1">
+                  <span className="block truncate text-[14px] font-semibold tracking-[-0.015em] text-[#26345f] dark:text-slate-100">新建素材空间</span>
+                  <span className="mt-0.5 block truncate text-[11px] font-medium tracking-[0.01em] text-indigo-500/85 dark:text-indigo-300/85">从一份素材开始</span>
+                </span>
+                <span className="relative grid h-7 w-7 shrink-0 place-items-center rounded-full text-indigo-400 transition-[transform,color,background-color] duration-200 group-hover:translate-x-0.5 group-hover:bg-indigo-50 group-hover:text-indigo-600 dark:text-indigo-300 dark:group-hover:bg-indigo-400/10 dark:group-hover:text-indigo-100">
+                  <ChevronRight size={17} strokeWidth={2.2} aria-hidden />
+                </span>
               </button>
             </div>
           </div>
@@ -3306,7 +3318,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
               ) : (
                 <KnowledgeEmptyState
                   icon={Database}
-                  title="创建第一个知识库"
+                  title="创建第一个素材空间"
                   description="把文档、图片、音频和视频放进同一个可检索空间，系统会自动完成解析、向量化和主题画像。"
                   tone="indigo"
                   action={
@@ -3316,7 +3328,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                       className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition-colors hover:from-indigo-500 hover:to-violet-500"
                     >
                       <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-                      新建知识库
+                      新建素材空间
                     </button>
                   }
                 />

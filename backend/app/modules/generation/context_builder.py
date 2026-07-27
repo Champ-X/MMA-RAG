@@ -263,13 +263,29 @@ class ContextBuilder:
                     "file_path": file_path,
                     "file_type": file_type,
                     "score": result.get("final_score", 0.0),
+                    # Agent 合并结果会保留一组经原问题直接检索得到的
+                    # evidence anchor。它们已经在合并器中被优先选择；此处
+                    # 不能再仅按跨子查询分数重排，否则低分但准确的原问题
+                    # 证据会被发散子查询的高分泛化材料挤出最终上下文。
+                    "agent_original_query_anchor": bool(
+                        (result.get("metadata") or {}).get(
+                            "agent_original_query_anchor"
+                        )
+                    ),
                     "metadata": metadata,
                 }
                 
                 processed_results.append(processed_result)
             
-            # 按分数排序
-            processed_results.sort(key=lambda x: x["score"], reverse=True)
+            # 原问题锚点优先，随后才是分数。只有 Agent 合并结果会携带该
+            # 标记，所以普通直接检索的排序行为完全保持不变。
+            processed_results.sort(
+                key=lambda item: (
+                    bool(item.get("agent_original_query_anchor")),
+                    float(item.get("score", 0.0) or 0.0),
+                ),
+                reverse=True,
+            )
             
             # 限制结果数量（使用动态的max_images）
             limited_results = []

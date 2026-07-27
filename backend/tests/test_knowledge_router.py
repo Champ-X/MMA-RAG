@@ -138,6 +138,23 @@ async def test_clear_raw_score_gap_routes_to_single_knowledge_base():
 
 
 @pytest.mark.asyncio
+async def test_agent_round_one_keeps_a_single_dominant_knowledge_base():
+    router = _router_without_dependencies()
+
+    result = await router._apply_agent_exploration_strategy(
+        {"kb-a": 0.76, "kb-b": 0.60, "kb-c": 0.32},
+        max_targets=3,
+        agent_round=1,
+        explored_kb_counts={},
+        modality_intents={},
+        modality_inventory={},
+    )
+
+    assert result.target_kb_ids == ["kb-a"]
+    assert result.routing_details["base_routing_method"] == "single_kb_dominant"
+
+
+@pytest.mark.asyncio
 async def test_complex_query_can_keep_three_close_candidates():
     router = _router_without_dependencies()
 
@@ -148,3 +165,112 @@ async def test_complex_query_can_keep_three_close_candidates():
 
     assert result.routing_method == "multi_kb"
     assert result.target_kb_ids == ["kb-a", "kb-b", "kb-c"]
+
+
+@pytest.mark.asyncio
+async def test_agent_keeps_relevance_anchor_and_reserves_unseen_audio_kb():
+    router = _router_without_dependencies()
+
+    result = await router._apply_agent_exploration_strategy(
+        {"movies": 0.76, "music": 0.55, "landscape": 0.48},
+        max_targets=2,
+        agent_round=2,
+        explored_kb_counts={"movies": 1, "landscape": 1},
+        modality_intents={"audio": "explicit_demand"},
+        modality_inventory={
+            "movies": {"audio": 0},
+            "music": {"audio": 16},
+            "landscape": {"audio": 0},
+        },
+    )
+
+    assert result.routing_method == "agent_modality_coverage"
+    assert result.target_kb_ids == ["movies", "music"]
+    assert result.routing_details["modality_coverage_kb_ids"] == ["music"]
+
+
+@pytest.mark.asyncio
+async def test_agent_round_two_reserves_one_relevant_unseen_kb_without_modality_hint():
+    router = _router_without_dependencies()
+
+    result = await router._apply_agent_exploration_strategy(
+        {"kb-seen": 0.75, "kb-new": 0.55, "kb-weak": 0.20},
+        max_targets=2,
+        agent_round=2,
+        explored_kb_counts={"kb-seen": 1},
+        modality_intents={},
+        modality_inventory={},
+    )
+
+    assert result.routing_method == "agent_anchor_explore"
+    assert result.target_kb_ids == ["kb-seen", "kb-new"]
+    assert result.routing_details["exploration_kb_id"] == "kb-new"
+
+
+@pytest.mark.asyncio
+async def test_agent_modality_inventory_can_make_music_the_round_one_anchor():
+    router = _router_without_dependencies()
+
+    result = await router._apply_agent_exploration_strategy(
+        {"landscape": 0.75, "music": 0.65},
+        max_targets=2,
+        agent_round=1,
+        explored_kb_counts={},
+        modality_intents={"audio": "explicit_demand"},
+        modality_inventory={
+            "landscape": {"audio": 0},
+            "music": {"audio": 16},
+        },
+    )
+
+    assert result.target_kb_ids[0] == "music"
+    assert result.routing_details["anchor_kb_id"] == "music"
+
+
+@pytest.mark.asyncio
+async def test_combined_image_and_audio_query_covers_both_kb_inventories():
+    router = _router_without_dependencies()
+
+    result = await router._apply_agent_exploration_strategy(
+        {"landscape": 0.75, "movies": 0.70, "music": 0.58},
+        max_targets=2,
+        agent_round=1,
+        explored_kb_counts={},
+        modality_intents={
+            "image": "explicit_demand",
+            "audio": "explicit_demand",
+        },
+        modality_inventory={
+            "landscape": {"image": 20, "audio": 0},
+            "movies": {"image": 10, "audio": 0},
+            "music": {"image": 0, "audio": 16},
+        },
+    )
+
+    assert result.target_kb_ids == ["landscape", "music"]
+    assert result.routing_method == "agent_modality_coverage"
+    assert result.routing_details["modality_coverage_kb_ids"] == ["music"]
+
+
+@pytest.mark.asyncio
+async def test_explicit_kb_scope_ignores_agent_exploration_hints():
+    class _KnowledgeServiceStub:
+        async def get_knowledge_base_metadata(self, kb_id, *, refresh=False):
+            return {"id": kb_id, "name": kb_id}
+
+    router = _router_without_dependencies()
+    router.kb_service = _KnowledgeServiceStub()
+
+    result = await router.route_query(
+        "主题曲",
+        kb_context={"kb_ids": ["movies"]},
+        routing_hints={
+            "agent_mode": True,
+            "agent_round": 3,
+            "explored_kb_counts": {"movies": 2},
+            "modality_intents": {"audio": "explicit_demand"},
+        },
+    )
+
+    assert result.routing_method == "explicit"
+    assert result.target_kb_ids == ["movies"]

@@ -54,8 +54,8 @@ class Reranker:
                 query, coarse_ranking, context
             )
             
-            # 3. 最终排序和限制数量，并对implicit_enrichment进行图片保护
-            final_results = self._apply_final_ranking_with_image_protection(
+            # 3. 最终排序和限制数量，并保护用户显式要求的多模态证据。
+            final_results = self._apply_final_ranking_with_modality_protection(
                 reranked_results, context
             )
             
@@ -87,7 +87,102 @@ class Reranker:
                 "error": str(e)
             }
     
-    def _apply_final_ranking_with_image_protection(
+    @staticmethod
+    def _result_modality(result: Dict[str, Any]) -> str:
+        content_type = str(result.get("content_type") or "").lower()
+        if content_type in {"image", "audio", "video"}:
+            return content_type
+        payload = result.get("payload") or {}
+        if payload.get("transcript") is not None:
+            return "audio"
+        if any(key in payload for key in ("scene_summary", "scene_start_time", "shot_id")):
+            return "video"
+        if payload.get("caption") is not None:
+            return "image"
+        return "doc"
+
+    def _protected_modality_minimums(self, context: Optional[Any]) -> Dict[str, int]:
+        if context is None:
+            return {}
+        requirements: Dict[str, int] = {}
+        for modality, attribute in (
+            ("image", "visual_intent"),
+            ("audio", "audio_intent"),
+            ("video", "video_intent"),
+        ):
+            intent = getattr(context, attribute, "unnecessary")
+            if intent == "explicit_demand":
+                requirements[modality] = 2
+            # Audio/video implicit enrichment is also an actual retrieval
+            # decision, not merely a presentation preference.  In particular,
+            # Agent mode can promote a video-only / audio-only routed KB here
+            # after discovering it has no text index.  Without a small quota,
+            # the cross-encoder's text-heavy coarse ranking removes every one
+            # of those candidates before the Agent evidence merger can see
+            # them, producing a false "no related content" answer.
+            #
+            # Image implicit enrichment keeps its existing richer specialised
+            # path below, so do not turn it into this two-item quota.
+            elif modality in {"audio", "video"} and intent == "implicit_enrichment":
+                requirements[modality] = 2
+        for modality in getattr(context, "selected_file_modalities", []) or []:
+            if modality in {"image", "audio", "video"}:
+                requirements[modality] = max(1, requirements.get(modality, 0))
+        return requirements
+
+    def _ensure_modality_minimums(
+        self,
+        ranked_results: List[Dict[str, Any]],
+        *,
+        limit: int,
+        requirements: Dict[str, int],
+    ) -> List[Dict[str, Any]]:
+        """Reserve bounded slots without changing the relative ranking more than needed."""
+        selected = list(ranked_results[:limit])
+        if not selected or not requirements:
+            return selected
+
+        def result_key(item: Dict[str, Any]) -> str:
+            return f"{self._result_modality(item)}:{item.get('id') or id(item)}"
+
+        selected_keys = {result_key(item) for item in selected}
+        rank_index = {result_key(item): index for index, item in enumerate(ranked_results)}
+
+        for modality, minimum in requirements.items():
+            available = [
+                item for item in ranked_results
+                if self._result_modality(item) == modality
+            ]
+            desired = min(minimum, len(available), limit)
+            current = sum(self._result_modality(item) == modality for item in selected)
+            for candidate in available:
+                if current >= desired:
+                    break
+                candidate_key = result_key(candidate)
+                if candidate_key in selected_keys:
+                    continue
+                replace_index = None
+                for index in range(len(selected) - 1, -1, -1):
+                    existing_modality = self._result_modality(selected[index])
+                    protected_minimum = requirements.get(existing_modality, 0)
+                    existing_count = sum(
+                        self._result_modality(item) == existing_modality
+                        for item in selected
+                    )
+                    if protected_minimum == 0 or existing_count > protected_minimum:
+                        replace_index = index
+                        break
+                if replace_index is None:
+                    break
+                selected_keys.discard(result_key(selected[replace_index]))
+                selected[replace_index] = candidate
+                selected_keys.add(candidate_key)
+                current += 1
+
+        selected.sort(key=lambda item: rank_index.get(result_key(item), len(ranked_results)))
+        return selected[:limit]
+
+    def _apply_final_ranking_with_modality_protection(
         self,
         reranked_results: List[Dict[str, Any]],
         context: Optional[Any] = None
@@ -99,12 +194,17 @@ class Reranker:
         避免图片被文本结果完全挤掉
         """
         try:
-            # 检查是否是implicit_enrichment
-            visual_intent = None
-            if context and hasattr(context, 'visual_intent'):
-                visual_intent = context.visual_intent
-            
-            # 如果不是implicit_enrichment，直接返回Top-K
+            requirements = self._protected_modality_minimums(context)
+            if requirements:
+                protected = self._ensure_modality_minimums(
+                    reranked_results,
+                    limit=self.final_top_k,
+                    requirements=requirements,
+                )
+                logger.info("多模态结果保护: requirements={}, results={}", requirements, len(protected))
+                return protected
+
+            visual_intent = getattr(context, "visual_intent", None) if context else None
             if visual_intent != "implicit_enrichment":
                 return reranked_results[:self.final_top_k]
             
@@ -114,9 +214,7 @@ class Reranker:
             text_results = []
             
             for result in reranked_results:
-                payload = result.get("payload", {})
-                # 判断是否为图片：如果有caption字段，则为图片
-                is_image = "caption" in payload
+                is_image = self._result_modality(result) == "image"
                 if is_image:
                     image_results.append(result)
                 else:
@@ -153,6 +251,25 @@ class Reranker:
             logger.error(f"应用图片保护失败: {str(e)}")
             # 如果出错，返回原始排序结果
             return reranked_results[:self.final_top_k]
+
+    # Backward-compatible alias for callers/tests using the former private name.
+    def _apply_final_ranking_with_image_protection(
+        self,
+        reranked_results: List[Dict[str, Any]],
+        context: Optional[Any] = None,
+    ) -> List[Dict[str, Any]]:
+        return self._apply_final_ranking_with_modality_protection(reranked_results, context)
+
+    def _select_candidates_for_reranking(
+        self,
+        coarse_candidates: List[Dict[str, Any]],
+        context: Optional[Any],
+    ) -> List[Dict[str, Any]]:
+        return self._ensure_modality_minimums(
+            coarse_candidates,
+            limit=self.top_k,
+            requirements=self._protected_modality_minimums(context),
+        )
     
     def _prepare_coarse_ranking(self, raw_results: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         """准备粗排候选列表"""
@@ -260,7 +377,10 @@ class Reranker:
                 return []
             
             # 选择Top-K候选进行精排
-            candidates_to_rerank = coarse_candidates[:self.top_k]
+            candidates_to_rerank = self._select_candidates_for_reranking(
+                coarse_candidates,
+                context,
+            )
             
             # 构建文档列表
             documents = []
@@ -274,12 +394,12 @@ class Reranker:
             # 验证文档列表
             if not documents:
                 logger.warning("文档列表为空，跳过Cross-Encoder重排")
-                return coarse_candidates[:self.final_top_k]
+                return candidates_to_rerank
             
             # 验证查询不为空
             if not query or not query.strip():
                 logger.warning("查询为空，跳过Cross-Encoder重排")
-                return coarse_candidates[:self.final_top_k]
+                return candidates_to_rerank
             
             logger.info(f"Cross-Encoder重排候选: {len(documents)} 个文档")
             
@@ -293,7 +413,7 @@ class Reranker:
             if not reranker_result.success or not reranker_result.data:
                 error_msg = reranker_result.error or "未知错误"
                 logger.warning(f"Cross-Encoder调用失败: {error_msg}，使用原始排序结果")
-                return coarse_candidates[:self.final_top_k]
+                return candidates_to_rerank
             
             # 解析重排结果
             # 根据 SiliconFlow API 文档，返回格式是：

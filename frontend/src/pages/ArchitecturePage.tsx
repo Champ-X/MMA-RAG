@@ -15,6 +15,7 @@ import {
 import { architectureSections, coreModules, overviewTags, type ArchitectureSectionId } from '@/data/architectureData'
 import { ArchitectureNav } from '@/components/architecture/ArchitectureNav'
 import { OverviewSection } from '@/components/architecture/OverviewSection'
+import { InteractiveFlowStudio } from '@/components/architecture/InteractiveFlowStudio'
 import { ArchitectureDiagram } from '@/components/architecture/ArchitectureDiagram'
 import { RequestFlowStepper } from '@/components/architecture/RequestFlowStepper'
 import { ModuleExplorer } from '@/components/architecture/ModuleExplorer'
@@ -138,10 +139,10 @@ export function ArchitecturePage() {
                 <div className="mt-8 flex flex-wrap gap-3">
                   <button
                     type="button"
-                    onClick={() => handleNavigate('overview')}
+                    onClick={() => handleNavigate('flow-lab')}
                     className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#102d42] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_30px_-18px_rgba(16,45,66,0.9)] transition-transform duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7f93] focus-visible:ring-offset-2 active:translate-y-0 dark:bg-[#dbece7] dark:text-[#102d42] dark:focus-visible:ring-offset-[#071a24]"
                   >
-                    阅读系统契约
+                    进入交互演示
                     <ArrowDown className="h-4 w-4" />
                   </button>
                   <button
@@ -173,6 +174,7 @@ export function ArchitecturePage() {
         <div className="mx-auto flex max-w-[1480px] flex-col gap-24 px-5 py-14 sm:px-8 sm:py-18 lg:gap-32 lg:px-12 lg:py-24 xl:px-16">
           <ArchitectureReadingGuide />
           <OverviewSection />
+          <InteractiveFlowStudio />
           <ArchitectureDiagram />
           <RequestFlowStepper />
 
@@ -235,7 +237,7 @@ function ArchitectureReadingGuide() {
       <div>
         <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[#2f7f93] dark:text-[#83c4cf]">Reading guide</p>
         <h2 className="architecture-display mt-2 text-2xl font-semibold tracking-[-0.035em] text-[#102d42] dark:text-[#eaf4f0]">先找证据主干，再看实现细节</h2>
-        <p className="mt-2 text-xs leading-6 text-[#5d7478] dark:text-[#9cb6b7]">顶部目录会滚动到对应章节并同步更新高亮。建议按“系统契约 → 分层架构 → 问答链路 → 模块与边界”的顺序阅读。</p>
+        <p className="mt-2 text-xs leading-6 text-[#5d7478] dark:text-[#9cb6b7]">顶部目录会滚动到对应章节并同步更新高亮。可先阅读系统契约，再用交互演示亲手推进解析与检索链路，最后查看分层架构和模块边界。</p>
       </div>
       <div className="flex flex-wrap content-center gap-2">
         {overviewTags.map((tag) => (

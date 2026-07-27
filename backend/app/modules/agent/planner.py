@@ -25,12 +25,14 @@ PLANNER_SYSTEM_PROMPT = """你是 Tessmora Omni-Modal Agentic Retrieval Platform
 Dense + Sparse + Visual + Audio + Video、多知识库画像路由、RRF 与 Cross-Encoder 重排。
 
 规则：
-1. 证据为空时必须 search。
+1. 证据为空时必须 search；若已有“原问题直接检索锚点”证据，先判断其是否已覆盖主问题，不得把它当作空证据。
 2. 将复杂问题拆为互补、短而明确的检索问题；一次最多 3 条。
-3. 需要图片、音频或视频证据时，在检索问题中明确表达该模态需求。
+3. 若“原问题多模态要求”中图片、音频或视频不是 unnecessary，至少安排一条检索问题明确表达对应模态需求；不要把原问题已有的模态要求丢失在子查询改写中。
 4. 不重复已经执行过的查询；根据证据缺口提出后续查询。
-5. 已有证据能覆盖用户问题的主要方面时返回 final。
-6. 只输出一个 JSON 对象，不要 Markdown，不要解释。
+5. 原问题直接检索已解析出主题或知识库时，子查询必须沿用该已解析语义。不得仅因词面多义就擅自扩展到另一个领域；只有现有证据或用户问题明确要求时才能跨领域补查。
+6. 参考知识库探索记录：若仍有证据缺口，优先用新的主题/模态表述触发尚未探索的相关知识库；不要为了“新”而牺牲相关性。
+7. 已有证据能覆盖用户问题的主要方面时返回 final。
+8. 只输出一个 JSON 对象，不要 Markdown，不要解释。
 
 JSON 格式：
 {"action":"search","reason":"为什么需要这些证据","queries":["问题1","问题2"]}
@@ -110,12 +112,18 @@ class AgentPlanner:
         round_number: int,
         max_rounds: int,
         max_queries: int,
+        explored_knowledge_bases: Optional[List[Dict[str, Any]]] = None,
+        modality_requirements: Optional[Dict[str, str]] = None,
+        anchor_knowledge_bases: Optional[List[Dict[str, Any]]] = None,
         model: Optional[str] = None,
     ) -> Optional[AgentDecision]:
         user_prompt = f"""<task>
 用户问题：{query}
 当前轮次：{round_number}/{max_rounds}
 已经执行的查询：{json.dumps(executed_queries, ensure_ascii=False)}
+知识库探索记录：{json.dumps(explored_knowledge_bases or [], ensure_ascii=False)}
+原问题多模态要求：{json.dumps(modality_requirements or {}, ensure_ascii=False)}
+原问题直接检索锚点知识库：{json.dumps(anchor_knowledge_bases or [], ensure_ascii=False)}
 </task>
 
 <evidence>
