@@ -1,6 +1,6 @@
 import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, HardDrive, Calendar, Activity, MoreHorizontal, ChevronDown, AlertCircle, RotateCcw } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, FolderPlus, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, HardDrive, Calendar, Activity, MoreHorizontal, ChevronDown, AlertCircle, RotateCcw } from 'lucide-react'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import {
@@ -32,6 +32,55 @@ const PortraitGraph = React.lazy(() =>
 const KnowledgeMarkdownPreview = React.lazy(() =>
   import('./KnowledgeMarkdownPreview').then((module) => ({ default: module.KnowledgeMarkdownPreview }))
 )
+
+const DEFAULT_KNOWLEDGE_COVERS = [
+  '/knowledge/knowledge-library-default-01.jpg',
+  '/knowledge/knowledge-library-default-02.jpg',
+  '/knowledge/knowledge-library-default-03.jpg',
+  '/knowledge/knowledge-library-default-04.jpg',
+  '/knowledge/knowledge-library-default-05.jpg',
+  '/knowledge/knowledge-library-default-06.jpg',
+] as const
+
+const KNOWLEDGE_HEADER_BACKGROUNDS = [
+  '/knowledge/knowledge-library-banner-01.jpg',
+  '/knowledge/knowledge-library-banner-02.jpg',
+  '/knowledge/knowledge-library-banner-03.jpg',
+  '/knowledge/knowledge-library-banner-04.jpg',
+  '/knowledge/knowledge-library-banner-05.jpg',
+  '/knowledge/knowledge-library-banner-06.jpg',
+  '/knowledge/knowledge-library-banner-07.jpg',
+  '/knowledge/knowledge-library-banner-08.jpg',
+] as const
+
+// 固定的洗牌顺序：同一知识库刷新时不换图，前六个默认空间也不会重复。
+const DEFAULT_KNOWLEDGE_COVER_ORDER = [4, 1, 5, 0, 3, 2] as const
+
+const DEFAULT_KNOWLEDGE_COVER_TINTS = [
+  'from-sky-50/90 via-white/48 to-white/10',
+  'from-rose-50/90 via-white/48 to-white/10',
+  'from-violet-50/90 via-white/48 to-white/10',
+  'from-amber-50/90 via-white/48 to-white/10',
+  'from-teal-50/90 via-white/48 to-white/10',
+  'from-indigo-50/90 via-white/48 to-white/10',
+  'from-orange-50/90 via-white/48 to-white/10',
+] as const
+
+function getKnowledgeBaseCoverSeed(knowledgeBaseId: string) {
+  let hash = 2166136261
+  for (let index = 0; index < knowledgeBaseId.length; index += 1) {
+    hash ^= knowledgeBaseId.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+function pickKnowledgeHeaderBackground(previous?: string) {
+  const candidates = previous && KNOWLEDGE_HEADER_BACKGROUNDS.length > 1
+    ? KNOWLEDGE_HEADER_BACKGROUNDS.filter((background) => background !== previous)
+    : KNOWLEDGE_HEADER_BACKGROUNDS
+  return candidates[Math.floor(Math.random() * candidates.length)] ?? KNOWLEDGE_HEADER_BACKGROUNDS[0]
+}
 
 /** 预览区 / 分块区加载占位：居中、旋转指示与骨架，避免大片空白只有一行字 */
 function PreviewPaneLoading({
@@ -203,6 +252,24 @@ function KnowledgeEmptyState({
         {description}
       </p>
       {action ? <div className="relative mt-5">{action}</div> : null}
+    </div>
+  )
+}
+
+function FileListLoadingState({ knowledgeBaseName }: { knowledgeBaseName: string }) {
+  return (
+    <div
+      className="flex min-h-[14rem] flex-col items-center justify-center px-6 text-center"
+      role="status"
+      aria-live="polite"
+      aria-label={`正在加载 ${knowledgeBaseName} 的文件列表`}
+    >
+      <span className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-100 bg-indigo-50 text-indigo-600 shadow-sm dark:border-indigo-500/20 dark:bg-indigo-950/35 dark:text-indigo-300">
+        <span className="absolute inset-0 rounded-2xl border border-indigo-300/50 animate-ping dark:border-indigo-400/20" aria-hidden />
+        <Loader2 className="relative h-5 w-5 animate-spin" aria-hidden />
+      </span>
+      <p className="mt-4 text-sm font-semibold text-slate-800 dark:text-slate-100">正在读取文件清单</p>
+      <p className="mt-1.5 max-w-sm text-xs leading-5 text-slate-500 dark:text-slate-400">已切换到「{knowledgeBaseName}」，上一知识库的内容不会继续显示。</p>
     </div>
   )
 }
@@ -2242,9 +2309,27 @@ function ImportSearchModal({
   )
 }
 
-const KnowledgeList: React.FC = () => {
+interface KnowledgeListProps {
+  /** 由应用路由提供；为空时显示知识库总览。 */
+  routeKnowledgeBaseId?: string
+  /** 总览重新可见时抽取一张新的横幅背景。 */
+  isKnowledgePageActive: boolean
+  /** 让详情选择与浏览器前进/后退保持同一份状态。 */
+  onRouteChange?: (knowledgeBaseId?: string) => void
+}
+
+const KnowledgeList: React.FC<KnowledgeListProps> = ({
+  routeKnowledgeBaseId,
+  isKnowledgePageActive,
+  onRouteChange,
+}) => {
   const [viewState, setViewState] = useState<'list' | 'detail'>('list')
   const [activeKbId, setActiveKbId] = useState<string | null>(null)
+  const activeKbIdRef = useRef<string | null>(null)
+  const fileRequestVersionRef = useRef(0)
+  const statsRequestVersionRef = useRef(0)
+  const wasKnowledgePageActiveRef = useRef(isKnowledgePageActive)
+  const [knowledgeHeaderBackground, setKnowledgeHeaderBackground] = useState(() => pickKnowledgeHeaderBackground())
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [fileQuery, setFileQuery] = useState('')
   const [fileView, setFileView] = useState<'grid' | 'table'>('grid')
@@ -2276,6 +2361,7 @@ const KnowledgeList: React.FC = () => {
   /** URL 异步导入的 processing_id，用于轮询进度并在上传流水线中展示 */
   const [urlImportProcessingId, setUrlImportProcessingId] = useState<string | null>(null)
   const [files, setFiles] = useState<KnowledgeFileView[]>([])
+  const [filesLoading, setFilesLoading] = useState(false)
   /** 文件列表临时不可用时保留上一帧数据，并以指数退避重新同步。 */
   const [fileListRetry, setFileListRetry] = useState<{ kbId: string; attempt: number } | null>(null)
   /** 进度接口短暂失败不能直接把服务端任务判死；仅用于控制下一次轮询间隔。 */
@@ -2301,6 +2387,73 @@ const KnowledgeList: React.FC = () => {
     updateKnowledgeBase,
     deleteKnowledgeBase,
   } = useKnowledgeStore()
+  const totalSourceItems = knowledgeBases.reduce((total, knowledgeBase) => {
+    const stats = knowledgeBase.stats
+    return total
+      + (stats?.documents ?? 0)
+      + (stats?.images ?? 0)
+      + (stats?.audio ?? 0)
+      + (stats?.video ?? 0)
+  }, 0)
+
+  const activateKnowledgeBase = useCallback((knowledgeBaseId: string, syncRoute = true) => {
+    // 先使所有旧请求失效并清空可见数据，再进入新库。这样不会让 A 库的慢响应写回 B 库。
+    activeKbIdRef.current = knowledgeBaseId
+    fileRequestVersionRef.current += 1
+    statsRequestVersionRef.current += 1
+    setActiveKbId(knowledgeBaseId)
+    setViewState('detail')
+    setFiles([])
+    setFilesLoading(true)
+    setKbStats(null)
+    setFileListRetry(null)
+    setFileQuery('')
+    setPreviewFile(null)
+    if (syncRoute && routeKnowledgeBaseId !== knowledgeBaseId) {
+      onRouteChange?.(knowledgeBaseId)
+    }
+  }, [onRouteChange, routeKnowledgeBaseId])
+
+  const returnToKnowledgeList = useCallback((syncRoute = true) => {
+    activeKbIdRef.current = null
+    fileRequestVersionRef.current += 1
+    statsRequestVersionRef.current += 1
+    setActiveKbId(null)
+    setViewState('list')
+    setFiles([])
+    setFilesLoading(false)
+    setKbStats(null)
+    setFileListRetry(null)
+    setFileQuery('')
+    setPreviewFile(null)
+    if (syncRoute && routeKnowledgeBaseId) {
+      onRouteChange?.()
+    }
+  }, [onRouteChange, routeKnowledgeBaseId])
+
+  // 处理地址栏、浏览器前进/后退和卡片点击三种入口。状态只以 URL 对应的知识库为准。
+  useEffect(() => {
+    const nextKnowledgeBaseId = routeKnowledgeBaseId?.trim() || null
+    if (!nextKnowledgeBaseId) {
+      if (viewState === 'detail' || activeKbId) returnToKnowledgeList(false)
+      return
+    }
+    if (viewState !== 'detail' || activeKbId !== nextKnowledgeBaseId) {
+      activateKnowledgeBase(nextKnowledgeBaseId, false)
+    }
+  }, [activateKnowledgeBase, activeKbId, returnToKnowledgeList, routeKnowledgeBaseId, viewState])
+
+  useEffect(() => {
+    activeKbIdRef.current = activeKbId
+  }, [activeKbId])
+
+  // 知识库页本身常驻挂载，不能依赖组件重挂来换图；仅在从其他页面进入时刷新横幅。
+  useEffect(() => {
+    if (isKnowledgePageActive && !wasKnowledgePageActiveRef.current) {
+      setKnowledgeHeaderBackground((previous) => pickKnowledgeHeaderBackground(previous))
+    }
+    wasKnowledgePageActiveRef.current = isKnowledgePageActive
+  }, [isKnowledgePageActive])
 
   const [menuOpenKbId, setMenuOpenKbId] = useState<string | null>(null)
   const [editKb, setEditKb] = useState<{ id: string; name: string; description: string } | null>(null)
@@ -2334,10 +2487,11 @@ const KnowledgeList: React.FC = () => {
     return () => document.removeEventListener('click', close)
   }, [menuOpenKbId])
 
-  const fetchFiles = useCallback(async () => {
-    if (!activeKbId) return
+  const fetchFiles = useCallback(async (knowledgeBaseId = activeKbId) => {
+    if (!knowledgeBaseId) return
+    const requestVersion = ++fileRequestVersionRef.current
     try {
-      const res = await knowledgeApi.getKnowledgeBaseFiles(activeKbId)
+      const res = await knowledgeApi.getKnowledgeBaseFiles(knowledgeBaseId)
       const list: KnowledgeFileView[] = (res?.files || []).map((f: KnowledgeFileApiItem) => ({
         id: f.id,
         name: f.name,
@@ -2354,15 +2508,45 @@ const KnowledgeList: React.FC = () => {
         previewUrl: f.preview_url,
         textPreview: f.text_preview,
       }))
+      // 一个请求只允许写回它发起时所对应的知识库；切换或后续刷新都会使它失效。
+      if (
+        activeKbIdRef.current !== knowledgeBaseId
+        || requestVersion !== fileRequestVersionRef.current
+      ) return
       setFiles(list)
+      setFilesLoading(false)
       setFileListRetry(null)
     } catch (error) {
+      if (
+        activeKbIdRef.current !== knowledgeBaseId
+        || requestVersion !== fileRequestVersionRef.current
+      ) return
       // 网络波动或后端暂时繁忙时，不能抹掉已经显示的待处理视频，否则轮询条件也会随之丢失。
       console.warn('获取文件列表失败，将保留当前列表并重试', error)
+      setFilesLoading(false)
       setFileListRetry((previous) => ({
-        kbId: activeKbId,
-        attempt: previous?.kbId === activeKbId ? Math.min(previous.attempt + 1, 6) : 1,
+        kbId: knowledgeBaseId,
+        attempt: previous?.kbId === knowledgeBaseId ? Math.min(previous.attempt + 1, 6) : 1,
       }))
+    }
+  }, [activeKbId])
+
+  const fetchKbStats = useCallback(async (knowledgeBaseId = activeKbId) => {
+    if (!knowledgeBaseId) return
+    const requestVersion = ++statsRequestVersionRef.current
+    try {
+      const stats = await knowledgeApi.getKnowledgeBaseStats(knowledgeBaseId)
+      if (
+        activeKbIdRef.current !== knowledgeBaseId
+        || requestVersion !== statsRequestVersionRef.current
+      ) return
+      setKbStats(stats)
+    } catch {
+      if (
+        activeKbIdRef.current !== knowledgeBaseId
+        || requestVersion !== statsRequestVersionRef.current
+      ) return
+      setKbStats(null)
     }
   }, [activeKbId])
 
@@ -2371,12 +2555,12 @@ const KnowledgeList: React.FC = () => {
     await Promise.all([
       fetchKnowledgeBases(),
       fetchFiles(),
-      knowledgeApi.getKnowledgeBaseStats(activeKbId).then(setKbStats).catch(() => setKbStats(null)),
+      fetchKbStats(),
     ])
-  }, [activeKbId, fetchFiles, fetchKnowledgeBases])
+  }, [activeKbId, fetchFiles, fetchKbStats, fetchKnowledgeBases])
 
   useEffect(() => {
-    if (viewState === 'detail' && activeKbId) fetchFiles()
+    if (viewState === 'detail' && activeKbId) void fetchFiles()
   }, [viewState, activeKbId, fetchFiles])
 
   // 文件列表失败后在 1/2/4/8/16/30 秒退避重试；成功时由 fetchFiles 清除 retry 状态。
@@ -2390,9 +2574,9 @@ const KnowledgeList: React.FC = () => {
   useEffect(() => {
     if (viewState === 'detail' && activeKbId) {
       setKbStats(null)
-      knowledgeApi.getKnowledgeBaseStats(activeKbId).then(setKbStats).catch(() => setKbStats(null))
+      void fetchKbStats()
     }
-  }, [viewState, activeKbId])
+  }, [viewState, activeKbId, fetchKbStats])
 
   // URL 异步导入：轮询进度并更新上传流水线展示（与普通上传同一套进度样式）
   useEffect(() => {
@@ -2933,8 +3117,7 @@ const KnowledgeList: React.FC = () => {
     try {
       await deleteKnowledgeBase(kbId)
       if (activeKbId === kbId) {
-        setActiveKbId(null)
-        setViewState('list')
+        returnToKnowledgeList()
       }
     } catch (error) {
       console.error('删除知识库失败:', error)
@@ -3012,53 +3195,69 @@ const KnowledgeList: React.FC = () => {
 
   // --- KB 列表视图 ---
   if (viewState === 'list') {
+    const defaultCoverSlotByKnowledgeBaseId = new Map(
+      knowledgeBases
+        .filter((knowledgeBase) => {
+          const hasVisualMedia = (knowledgeBase.stats?.images ?? 0) > 0 || (knowledgeBase.stats?.video ?? 0) > 0
+          return !knowledgeBase.cover_url && !hasVisualMedia
+        })
+        .map((knowledgeBase) => knowledgeBase.id)
+        .sort((left, right) => {
+          const seedDifference = getKnowledgeBaseCoverSeed(left) - getKnowledgeBaseCoverSeed(right)
+          return seedDifference || left.localeCompare(right)
+        })
+        .map((knowledgeBaseId, index) => [knowledgeBaseId, index])
+    )
+
     return (
       <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative">
-        {/* Header */}
-        <div className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-          <div className="px-5 py-5 sm:px-8 sm:py-6">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-start gap-4 sm:items-center sm:gap-5">
-                <div className="h-[68px] w-[68px] shrink-0 overflow-hidden rounded-[12px] sm:h-[76px] sm:w-[76px]">
+        {/* 紧凑的浅色横幅：保留资料地图意象，但不让它压过内容区。 */}
+        <header className="relative isolate overflow-hidden border-b border-slate-200 bg-[#fbfaf7] dark:border-slate-800 dark:bg-slate-950">
+          <img
+            src={knowledgeHeaderBackground}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover object-right opacity-95 dark:opacity-25"
+            aria-hidden
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,253,249,0.98)_0%,rgba(255,253,249,0.95)_44%,rgba(255,253,249,0.5)_100%)] dark:bg-[linear-gradient(90deg,rgba(2,6,23,0.96)_0%,rgba(2,6,23,0.88)_44%,rgba(2,6,23,0.5)_100%)]" aria-hidden />
+          <div className="relative flex min-h-[164px] items-center px-5 py-4 sm:px-8 sm:py-5 lg:px-10">
+            <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-start gap-3.5 sm:items-center sm:gap-4">
+                <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-[20px] border border-white/90 bg-white/90 p-1 shadow-[0_18px_32px_-20px_rgba(41,75,147,0.55)] ring-1 ring-indigo-100/75 backdrop-blur-xl dark:border-slate-700/80 dark:bg-slate-900/80 dark:ring-indigo-400/20 sm:h-[68px] sm:w-[68px]">
                   <img
                     src="/knowledge-library-icon.png"
                     alt=""
-                    width={76}
-                    height={76}
-                    className="h-full w-full scale-[1.08] object-cover object-center"
-                    aria-hidden
+                    draggable={false}
+                    className="h-full w-full rounded-[15px] object-cover sm:rounded-[17px]"
                   />
-                </div>
+                </span>
 
                 <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <h1 className="text-2xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-slate-50 sm:text-[1.75rem]">
-                      知识库
-                    </h1>
-                    <span className="rounded-[6px] bg-slate-100 px-2 py-1 font-mono text-[11px] font-medium text-slate-500 dark:bg-slate-900 dark:text-slate-400">
-                      {knowledgeBases.length} 个
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="text-[1.65rem] font-semibold tracking-[-0.04em] text-slate-900 dark:text-slate-50 sm:text-[1.8rem]">素材空间</h1>
+                    <span className="rounded-full border border-indigo-100 bg-white/75 px-2.5 py-1 font-mono text-[10px] font-semibold tracking-[0.08em] text-indigo-600 shadow-sm backdrop-blur-sm dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-200">
+                      {knowledgeBases.length} 个空间
                     </span>
                   </div>
-                  <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">
-                    管理文档、图片和音视频资料，并将它们整理为可检索的知识。
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-[15px]">
+                    汇集文档、图像、音频与视频，让每一份素材都可定位、检索与引用。
                   </p>
-                  <div className="mt-2.5 hidden flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500 sm:flex dark:text-slate-400">
+                  <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                     <span className="inline-flex items-center gap-1.5">
-                      <FileText className="h-3.5 w-3.5 text-blue-500" aria-hidden />
-                      文档
+                      <FileText className="h-3.5 w-3.5 text-sky-600 dark:text-sky-300" aria-hidden /> 文档
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <ImageIcon className="h-3.5 w-3.5 text-teal-500" aria-hidden />
-                      图片
+                      <ImageIcon className="h-3.5 w-3.5 text-teal-600 dark:text-teal-300" aria-hidden /> 图片
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <Music className="h-3.5 w-3.5 text-violet-500" aria-hidden />
-                      音频
+                      <Music className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" aria-hidden /> 音频
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <Video className="h-3.5 w-3.5 text-orange-500" aria-hidden />
-                      视频
+                      <Video className="h-3.5 w-3.5 text-amber-600 dark:text-amber-300" aria-hidden /> 视频
                     </span>
+                    {totalSourceItems > 0 ? (
+                      <span className="font-mono text-[10px] tracking-[0.08em] text-slate-400 dark:text-slate-500">· 已收录 {totalSourceItems} 份素材</span>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -3066,20 +3265,26 @@ const KnowledgeList: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowCreateModal(true)}
-                className="group relative inline-flex min-h-[46px] w-full shrink-0 items-center justify-center gap-2.5 overflow-hidden rounded-[12px] border border-indigo-400/35 bg-gradient-to-br from-indigo-500 via-indigo-600 to-violet-600 px-5 text-sm font-semibold text-white shadow-[0_16px_32px_-20px_rgba(79,70,229,0.95)] transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 hover:border-indigo-300/60 hover:shadow-[0_20px_38px_-20px_rgba(79,70,229,0.9)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 active:translate-y-0 lg:w-auto"
+                title="新建素材空间"
+                aria-label="新建素材空间"
+                className="group relative inline-flex min-h-[60px] w-full shrink-0 items-center gap-3 overflow-hidden rounded-[18px] border border-indigo-200/90 bg-white/92 px-2.5 py-2 text-left shadow-[0_16px_30px_-18px_rgba(57,72,146,0.45)] backdrop-blur-xl transition-[transform,border-color,box-shadow,background-color] duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-white hover:shadow-[0_22px_34px_-18px_rgba(82,91,188,0.5)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fbfaf7] active:translate-y-0 dark:border-indigo-400/25 dark:bg-slate-900/85 dark:hover:border-indigo-300/45 dark:hover:bg-slate-900 dark:focus-visible:ring-offset-slate-950 lg:w-[220px]"
               >
-                <span
-                  className="pointer-events-none absolute inset-y-0 -left-10 w-8 rotate-12 bg-white/15 blur-md transition-transform duration-500 group-hover:translate-x-40"
-                  aria-hidden
-                />
-                <span className="relative grid h-7 w-7 place-items-center rounded-[8px] bg-white/14 ring-1 ring-inset ring-white/25">
-                  <Plus size={16} strokeWidth={2.5} aria-hidden />
+                <span className="pointer-events-none absolute -right-5 -top-8 h-20 w-20 rounded-full bg-indigo-100/70 blur-2xl transition-transform duration-500 group-hover:scale-125 dark:bg-indigo-500/15" aria-hidden />
+                <span className="pointer-events-none absolute bottom-0 left-0 h-px w-full bg-gradient-to-r from-transparent via-indigo-300/70 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100 dark:via-indigo-300/45" aria-hidden />
+                <span className="relative grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-white/70 bg-gradient-to-br from-[#4f84ef] via-[#6871e5] to-[#9a68da] text-white shadow-[0_10px_18px_-10px_rgba(82,90,215,0.8)] transition-transform duration-200 group-hover:scale-[1.05] motion-reduce:transition-none">
+                  <FolderPlus size={20} strokeWidth={2.2} aria-hidden />
                 </span>
-                <span className="relative">新建知识库</span>
+                <span className="relative min-w-0 flex-1">
+                  <span className="block truncate text-[14px] font-semibold tracking-[-0.015em] text-[#26345f] dark:text-slate-100">新建素材空间</span>
+                  <span className="mt-0.5 block truncate text-[11px] font-medium tracking-[0.01em] text-indigo-500/85 dark:text-indigo-300/85">从一份素材开始</span>
+                </span>
+                <span className="relative grid h-7 w-7 shrink-0 place-items-center rounded-full text-indigo-400 transition-[transform,color,background-color] duration-200 group-hover:translate-x-0.5 group-hover:bg-indigo-50 group-hover:text-indigo-600 dark:text-indigo-300 dark:group-hover:bg-indigo-400/10 dark:group-hover:text-indigo-100">
+                  <ChevronRight size={17} strokeWidth={2.2} aria-hidden />
+                </span>
               </button>
             </div>
           </div>
-        </div>
+        </header>
 
         {/* Content */}
         <div className="min-h-0 flex-1 overflow-y-auto p-8">
@@ -3113,7 +3318,7 @@ const KnowledgeList: React.FC = () => {
               ) : (
                 <KnowledgeEmptyState
                   icon={Database}
-                  title="创建第一个知识库"
+                  title="创建第一个素材空间"
                   description="把文档、图片、音频和视频放进同一个可检索空间，系统会自动完成解析、向量化和主题画像。"
                   tone="indigo"
                   action={
@@ -3123,7 +3328,7 @@ const KnowledgeList: React.FC = () => {
                       className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition-colors hover:from-indigo-500 hover:to-violet-500"
                     >
                       <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-                      新建知识库
+                      新建素材空间
                     </button>
                   }
                 />
@@ -3134,16 +3339,25 @@ const KnowledgeList: React.FC = () => {
               {knowledgeBases.map((kb) => {
                 const kbCardTitleClass =
                   'line-clamp-2 min-h-0 text-base font-bold leading-snug sm:text-lg mb-0.5 break-words'
+                const hasCustomCover = Boolean(kb.cover_url)
+                const hasVisualMedia = (kb.stats?.images ?? 0) > 0 || (kb.stats?.video ?? 0) > 0
+                const shouldUseDefaultCover = !hasCustomCover && !hasVisualMedia
+                const defaultCoverSlot = defaultCoverSlotByKnowledgeBaseId.get(kb.id) ?? 0
+                const defaultCoverIndex = DEFAULT_KNOWLEDGE_COVER_ORDER[
+                  defaultCoverSlot % DEFAULT_KNOWLEDGE_COVER_ORDER.length
+                ] ?? 0
+                const coverUrl = kb.cover_url || (shouldUseDefaultCover ? DEFAULT_KNOWLEDGE_COVERS[defaultCoverIndex] : undefined)
+                const defaultCoverTint = DEFAULT_KNOWLEDGE_COVER_TINTS[
+                  defaultCoverSlot % DEFAULT_KNOWLEDGE_COVER_TINTS.length
+                ]
                 const openKbDetail = () => {
-                  setActiveKbId(kb.id)
-                  setViewState('detail')
+                  activateKnowledgeBase(kb.id)
                 }
                 return (
                   <div
                     key={kb.id}
                     className={cn(
-                      'relative flex h-full min-h-0 flex-col rounded-xl border border-slate-200 dark:border-slate-800 ring-1 ring-transparent hover:-translate-y-1.5 hover:shadow-[0_24px_44px_-22px_rgba(168,85,247,0.24)] hover:border-fuchsia-400 hover:ring-fuchsia-200/90 dark:hover:border-fuchsia-400 dark:hover:ring-fuchsia-500/35 transition-all duration-300 group overflow-hidden',
-                      kb.cover_url ? 'p-0' : 'bg-white dark:bg-slate-900 px-4 pb-2.5 pt-4'
+                      'relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 ring-1 ring-transparent transition-all duration-300 hover:-translate-y-1.5 hover:border-fuchsia-400 hover:shadow-[0_24px_44px_-22px_rgba(168,85,247,0.24)] hover:ring-fuchsia-200/90 dark:border-slate-800 dark:hover:border-fuchsia-400 dark:hover:ring-fuchsia-500/35'
                     )}
                   >
                     <button
@@ -3153,28 +3367,56 @@ const KnowledgeList: React.FC = () => {
                       title={`打开知识库：${kb.name}`}
                       className="absolute inset-0 z-20 cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-fuchsia-400/40 dark:focus-visible:ring-offset-slate-950"
                     />
-                    {/* 有封面时：图片铺满整卡作为背景 */}
-                    {kb.cover_url ? (
+                    {/* 未上传图片/视频时按素材类型配一张浅色默认封面，并以轻微色调区分每个空间。 */}
+                    {coverUrl ? (
                       <>
                         <div className="absolute inset-0">
                           <img
-                            src={kb.cover_url}
+                            src={coverUrl}
                             alt=""
                             className="w-full h-full object-cover group-hover:-translate-y-1 group-hover:scale-[1.08] transition-transform duration-500 ease-out"
                           />
                         </div>
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent rounded-xl transition-all duration-300 group-hover:from-black/85 group-hover:via-black/28" />
+                        <div
+                          className={cn(
+                            'absolute inset-0 rounded-xl transition-all duration-300',
+                            hasCustomCover
+                              ? 'bg-gradient-to-t from-slate-950/78 via-slate-950/26 to-transparent group-hover:from-slate-950/72 group-hover:via-slate-950/18'
+                              : ['bg-gradient-to-t', defaultCoverTint].join(' ')
+                          )}
+                        />
                         <div className="pointer-events-none relative z-30 flex min-h-0 h-full flex-col p-3 transition-transform duration-300 ease-out group-hover:-translate-y-1">
                           {/* 顶部弹性空间，把标题/描述与统计条整体压到底部 */}
                           <div className="min-h-0 flex-1" />
                           <div className="flex-shrink-0 pb-0.5 pt-2.5">
-                            <h3 className={cn(kbCardTitleClass, 'text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_8px_rgba(0,0,0,0.7)]')}>
+                            <h3
+                              className={cn(
+                                kbCardTitleClass,
+                                hasCustomCover
+                                  ? 'text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_8px_rgba(0,0,0,0.7)]'
+                                  : 'text-slate-900 [text-shadow:0_1px_0_rgba(255,255,255,0.9)] dark:text-slate-100'
+                              )}
+                            >
                               {kb.name}
                             </h3>
-                            <p className="line-clamp-2 h-8 overflow-hidden text-ellipsis text-sm leading-snug text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_6px_rgba(0,0,0,0.6)]">
+                            <p
+                              className={cn(
+                                'line-clamp-2 h-8 overflow-hidden text-ellipsis text-sm leading-snug',
+                                hasCustomCover
+                                  ? 'text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_6px_rgba(0,0,0,0.6)]'
+                                  : 'text-slate-600 dark:text-slate-300'
+                              )}
+                            >
                               {kb.description || '暂无描述'}
                             </p>
-                            <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-white/30 pt-2 text-[11px] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
+                            <div
+                              className={cn(
+                                'mt-1.5 flex items-center justify-between gap-2 border-t pt-2 text-[11px]',
+                                hasCustomCover
+                                  ? 'border-white/30 text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]'
+                                  : 'border-slate-800/10 text-slate-600 dark:border-white/10 dark:text-slate-300'
+                              )}
+                            >
                               <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden whitespace-nowrap">
                                 <span className="inline-flex items-center gap-1 shrink-0">
                                   <span className="text-[13px] leading-none" aria-hidden>
@@ -3211,7 +3453,12 @@ const KnowledgeList: React.FC = () => {
                                     e.stopPropagation()
                                     setMenuOpenKbId((id) => (id === kb.id ? null : kb.id))
                                   }}
-                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-white/30 bg-white/15 text-white/90 shadow-md backdrop-blur-sm transition-all hover:bg-white/25 hover:text-white hover:border-white/40 active:scale-95"
+                                  className={cn(
+                                    'flex h-7 w-7 items-center justify-center rounded-full border shadow-sm backdrop-blur-sm transition-all active:scale-95',
+                                    hasCustomCover
+                                      ? 'border-white/30 bg-white/15 text-white/90 shadow-md hover:border-white/40 hover:bg-white/25 hover:text-white'
+                                      : 'border-slate-200/90 bg-white/70 text-slate-500 hover:border-indigo-200 hover:bg-white hover:text-indigo-600 dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-indigo-400/40 dark:hover:text-indigo-200'
+                                  )}
                                   title="更多操作"
                                   aria-label={`更多操作：${kb.name}`}
                                 >
@@ -3393,7 +3640,9 @@ const KnowledgeList: React.FC = () => {
     })
     const currentFileViewLabel = fileView === 'grid' ? '画廊视图' : '列表视图'
     const activeFilePanelId = `${fileListDomId}-file-active-panel`
-    const fileResultBaseText = trimmedFileQuery
+    const fileResultBaseText = filesLoading
+      ? `${currentFileViewLabel}，正在读取「${activeKb.name}」的文件清单。`
+      : trimmedFileQuery
       ? `${currentFileViewLabel}，搜索“${trimmedFileQuery}”命中 ${filteredFiles.length} 个文件，共 ${files.length} 个文件。`
       : `${currentFileViewLabel}，显示全部 ${files.length} 个文件。`
     const fileListRetryDelaySeconds = fileListRetry?.kbId === activeKbId
@@ -3418,7 +3667,7 @@ const KnowledgeList: React.FC = () => {
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex items-center gap-4">
           <button
             type="button"
-            onClick={() => setViewState('list')}
+            onClick={() => returnToKnowledgeList()}
             title="返回知识库列表"
             aria-label="返回知识库列表"
             className="p-2 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full text-slate-500 dark:text-slate-300 transition-colors"
@@ -3430,7 +3679,7 @@ const KnowledgeList: React.FC = () => {
               <button
                 type="button"
                 className="rounded-sm transition-colors hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
-                onClick={() => setViewState('list')}
+                onClick={() => returnToKnowledgeList()}
                 aria-label="返回知识库列表"
               >
                 知识库
@@ -3730,7 +3979,13 @@ const KnowledgeList: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/90">
-                      {filteredFiles.length === 0 ? (
+                      {filesLoading ? (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-6">
+                            <FileListLoadingState knowledgeBaseName={activeKb.name} />
+                          </td>
+                        </tr>
+                      ) : filteredFiles.length === 0 ? (
                         <tr>
                           <td colSpan={5} className="px-6 py-12">
                             <KnowledgeEmptyState
@@ -3811,7 +4066,9 @@ const KnowledgeList: React.FC = () => {
                   aria-labelledby={fileGridTabId}
                   aria-describedby={fileResultsStatusId}
                 >
-                  {filteredFiles.length === 0 ? (
+                  {filesLoading ? (
+                    <FileListLoadingState knowledgeBaseName={activeKb.name} />
+                  ) : filteredFiles.length === 0 ? (
                     <div className="py-8">
                       <KnowledgeEmptyState
                         compact

@@ -5,28 +5,28 @@ const designPrinciples = [
     icon: Aperture,
     label: 'Modal-native ingestion',
     title: '先尊重模态，再统一证据',
-    description: '文档保留结构，图片使用视觉语义，音频保留声学线索，视频按 Scene → Shot → Key Frame 建模。',
+    description: '文档保留章节与表格，图片保留视觉语义，音频保留转写与声学线索，视频先拆 Scene / Shot / Key Frame；不会为了统一而抹平原始证据。',
     color: 'blue',
   },
   {
     icon: Layers3,
     label: 'Retrieval as substrate',
     title: '检索器是共享底座',
-    description: 'Direct 与 Agent 不维护两套能力；它们复用相同的画像路由、混合召回、融合与精排。',
+    description: 'Direct 与 Agent 不维护两套召回逻辑：两者都复用画像路由、Dense / Sparse / Visual 召回、RRF 融合与 Cross-Encoder 精排，只改变取证次数。',
     color: 'green',
   },
   {
     icon: LockKeyhole,
     label: 'Bounded agency',
     title: 'Agent 只增加深度',
-    description: 'Planner 只能调用只读检索工具，并受轮数、查询数和证据池预算约束，随时可以降级。',
+    description: 'Planner 只能调用只读检索工具；轮数、每轮子查询数、总查询数与证据池容量均有硬上限，因此深研可以解释、可以停止、也可以回退。',
     color: 'orange',
   },
   {
     icon: Route,
     label: 'Evidence-native delivery',
     title: '回答天然可追溯',
-    description: '所有路径汇入 RetrievalResult 与 ReferenceMap，引用、媒体定位和生成文本沿同一事件流送达。',
+    description: '所有路径都汇入 RetrievalResult 与 ReferenceMap：引用编号、媒体定位、上下文窗口和最终回答沿同一 SSE 事件流送达，不在生成阶段补造来源。',
     color: 'purple',
   },
 ] as const
@@ -52,11 +52,11 @@ export function OverviewSection() {
         <div className="max-w-xl">
           <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2f7f93] dark:text-[#7fc2cf]">Design doctrine</p>
           <h2 className="architecture-display mt-3 text-3xl font-semibold leading-tight tracking-[-0.035em] text-[#102d42] [text-wrap:balance] dark:text-[#edf6f3] sm:text-[2.55rem]">
-            <span className="block sm:inline">先理解</span>
-            <span className="block sm:inline">四个设计决定</span>
+            <span className="block sm:inline">四条约束，</span>
+            <span className="block sm:inline">定义可控的多模态检索</span>
           </h2>
           <p className="mt-4 text-sm leading-7 text-[#5a7075] dark:text-[#a7bcbd] sm:text-[15px]">
-            Tessmora 的重点不是把 Agent 放在 RAG 前面，而是让“模态理解、共享检索、有界推理、证据交付”形成一条稳定主干。
+            Tessmora 的重点不是把 Agent 叠在 RAG 前面，而是先定义哪些信息必须保留、哪些能力必须复用、哪些动作必须受限，以及答案如何带着证据交付。
           </p>
         </div>
 
@@ -66,7 +66,7 @@ export function OverviewSection() {
             <p className="text-sm font-semibold text-[#17384a] dark:text-[#e6f0ed]">变化的是取证深度，不变的是证据边界</p>
           </div>
           <p className="mt-2 text-[13px] leading-6 text-[#687d81] dark:text-[#9db4b5]">
-            Direct 调用一次 RetrievalService；Agent 规划互补子查询并重复调用它。两条路径最终交付同一种证据对象。
+            Direct 只调用一次 RetrievalService；Agent 只是在同一服务之上规划互补子查询、合并新证据并按预算停止。无论走哪条路，交付物始终是同一种可引用证据对象。
           </p>
         </div>
       </div>

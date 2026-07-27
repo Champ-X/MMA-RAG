@@ -365,6 +365,38 @@ class Settings(BaseSettings):
         le=100,
         validation_alias="AGENT_MAX_EVIDENCE",
     )
+    # 多轮知识库探索：保留相关性锚点，同时温和降低重复访问库的排序分，
+    # 并结合知识库的多模态库存为尚未探索的相关库预留一个探索位。
+    agent_kb_repeat_penalty_per_round: float = Field(
+        default=0.16,
+        ge=0.0,
+        le=0.5,
+        validation_alias="AGENT_KB_REPEAT_PENALTY_PER_ROUND",
+    )
+    agent_kb_repeat_penalty_cap: float = Field(
+        default=0.35,
+        ge=0.0,
+        le=0.8,
+        validation_alias="AGENT_KB_REPEAT_PENALTY_CAP",
+    )
+    agent_kb_novelty_bonus: float = Field(
+        default=0.08,
+        ge=0.0,
+        le=0.5,
+        validation_alias="AGENT_KB_NOVELTY_BONUS",
+    )
+    agent_kb_modality_bonus: float = Field(
+        default=0.22,
+        ge=0.0,
+        le=0.8,
+        validation_alias="AGENT_KB_MODALITY_BONUS",
+    )
+    agent_kb_exploration_min_ratio: float = Field(
+        default=0.40,
+        ge=0.0,
+        le=1.0,
+        validation_alias="AGENT_KB_EXPLORATION_MIN_RATIO",
+    )
     
     # 知识库配置（知识库列表与元数据仅从 MinIO 获取，不再使用本地 JSON）
     max_kb_portrait_size: int = Field(default=20, validation_alias="MAX_KB_PORTRAIT_SIZE")

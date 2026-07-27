@@ -7,25 +7,25 @@ const mapNotes = [
   {
     badge: 'S',
     title: '入口不是一条',
-    description: 'Web / SSE、Codex Skill / CLI、飞书 WSS 与 Retrieval API 面向不同使用场景。',
+    description: 'Web / SSE、Codex Skill / CLI、飞书 WSS 与 Retrieval API 共享领域能力，但分别适配交互、自动化与集成场景。',
     color: 'border-[#79b4b4] bg-[#dcebea] text-[#246b76] dark:border-[#35626b] dark:bg-[#2f7f93]/12 dark:text-[#87c6d0]',
   },
   {
     badge: 'R·A',
     title: '检索是共享主干',
-    description: 'Retrieval Core 提供一次取证；Agent Runtime 只在其上增加规划、补查与证据收敛。',
+    description: 'Retrieval Core 负责完整的一次取证；Agent Runtime 只能在其上增加规划、补查、去重与停止决策，不复制检索能力。',
     color: 'border-[#9fb6dd] bg-[#e5ebf6] text-[#42679d] dark:border-[#465c83] dark:bg-[#4f6fa5]/12 dark:text-[#9db8e4]',
   },
   {
     badge: 'G·K',
     title: '入库与生成分工',
-    description: 'Knowledge & Ingestion 负责写入可检索语义；Generation 负责预算、引用和流式交付。',
+    description: 'Knowledge & Ingestion 将来源变成可检索语义；Generation 只消费已排序的证据，负责上下文预算、引用映射与流式交付。',
     color: 'border-[#b8ca83] bg-[#eef0d7] text-[#65752c] dark:border-[#566432] dark:bg-[#87943f]/12 dark:text-[#c0cc7b]',
   },
   {
     badge: 'D·M',
     title: '能力由两层托底',
-    description: 'Qdrant、MinIO 与可选 Redis 形成数据面；LLM Manager 按任务统一路由模型。',
+    description: 'MinIO 保存原始对象，Qdrant 保存多路索引，Redis / Celery 只承担可选控制面；LLM Manager 按 task_type 隔离厂商差异。',
     color: 'border-[#d2b2cf] bg-[#f0e5ef] text-[#765c95] dark:border-[#604d72] dark:bg-[#765c95]/12 dark:text-[#c5b1d9]',
   },
 ]
@@ -37,11 +37,11 @@ export function ArchitectureDiagram() {
         <div className="max-w-2xl">
           <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2f7f93] dark:text-[#7fc2cf]">System atlas</p>
           <h2 className="architecture-display mt-3 text-3xl font-semibold leading-tight tracking-[-0.035em] text-[#102d42] [text-wrap:balance] dark:text-[#edf6f3] sm:text-[2.55rem]">
-            完整系统图，是一张分层地图
+            从请求入口到证据交付，每一层各司其职
           </h2>
         </div>
         <p className="max-w-2xl text-sm leading-7 text-[#5a7075] dark:text-[#a7bcbd] sm:text-[15px] lg:justify-self-end">
-          从上向下读取请求入口与领域职责，从下向上读取数据和模型如何提供证据。绿色箭头表示请求进入，紫色箭头表示证据回流。
+          先自上而下定位“谁接收请求、谁做决定、谁写入或读取数据”，再自下而上检查证据如何被索引、排序和引用。绿色箭头表示请求推进，紫色箭头表示证据回流。
         </p>
       </div>
 
@@ -50,8 +50,8 @@ export function ArchitectureDiagram() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#c5d5cf] px-4 py-3.5 dark:border-[#294a56] sm:px-6">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
               <div>
-                <p className="text-sm font-semibold text-[#17384a] dark:text-[#e4efeb]">Tessmora · layered system view</p>
-                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[#7a8e90] dark:text-[#89a4a6]">Current implementation · ImageGen atlas</p>
+                <p className="text-sm font-semibold text-[#17384a] dark:text-[#e4efeb]">Tessmora · 分层系统视图</p>
+                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[#7a8e90] dark:text-[#89a4a6]">Implementation snapshot · code-linked reading</p>
               </div>
               <div className="hidden items-center gap-4 border-l border-[#c5d5cf] pl-5 font-mono text-[10px] text-[#61777a] dark:border-[#294a56] dark:text-[#9ab1b2] md:flex">
                 <span className="inline-flex items-center gap-1.5"><ArrowDown className="h-3.5 w-3.5 text-[#5f8e72]" /> request flows in</span>
@@ -101,7 +101,7 @@ export function ArchitectureDiagram() {
                   <Layers3 className="h-4 w-4" />
                   <h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em]">How to read it</h3>
                 </div>
-                <p className="mt-2 text-xs leading-6 text-[#6b8083] dark:text-[#9db3b5]">先看四个领域柱，再看它们共同依赖的数据面与模型面。</p>
+                <p className="mt-2 text-xs leading-6 text-[#6b8083] dark:text-[#9db3b5]">先看请求跨过哪些领域柱，再确认所有路径如何落到共享数据面和模型面；这样能快速识别“复用”与“边界”。</p>
               </div>
               {mapNotes.map((note, index) => (
                 <div

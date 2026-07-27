@@ -108,29 +108,32 @@ class HybridSearchEngine:
                 )
                 search_tasks.append(("visual", visual_task))
             
-            # 4. Audio检索（基于 audio_intent：unnecessary 时直接返回空；explicit/implicit 时使用 CLAP 双路 RRF）
-            audio_task = self._audio_search(
-                query_strategies.get("dense_query", ""),
-                target_kb_ids,
-                target_file_ids=target_file_ids,
-                audio_intent=audio_intent,
-                limit=10
-            )
-            search_tasks.append(("audio", audio_task))
+            # 4. Audio检索：无音频需求时不创建任务，避免零分候选进入融合池。
+            if audio_intent in ["explicit_demand", "implicit_enrichment"]:
+                audio_task = self._audio_search(
+                    query_strategies.get("dense_query", ""),
+                    target_kb_ids,
+                    target_file_ids=target_file_ids,
+                    audio_intent=audio_intent,
+                    limit=10
+                )
+                search_tasks.append(("audio", audio_task))
             
-            # 5. Video检索
-            video_task = self._video_search(
-                query_strategies.get("dense_query", ""),
-                target_kb_ids,
-                target_file_ids=target_file_ids,
-                sparse_query=(
-                    " ".join(str(item) for item in (query_strategies.get("sparse_keywords", []) or []) if item)
-                    or query_strategies.get("dense_query", "")
-                ),
-                visual_query=query_strategies.get("dense_query", "") if visual_intent != "unnecessary" else None,
-                limit=10
-            )
-            search_tasks.append(("video", video_task))
+            # 5. Video检索：仅在显式/隐式视频需求下执行。此前始终检索视频，
+            # 会让与主题无关的景观片段挤占音频等显式模态候选。
+            if video_intent in ["explicit_demand", "implicit_enrichment"]:
+                video_task = self._video_search(
+                    query_strategies.get("dense_query", ""),
+                    target_kb_ids,
+                    target_file_ids=target_file_ids,
+                    sparse_query=(
+                        " ".join(str(item) for item in (query_strategies.get("sparse_keywords", []) or []) if item)
+                        or query_strategies.get("dense_query", "")
+                    ),
+                    visual_query=query_strategies.get("dense_query", "") if visual_intent != "unnecessary" else None,
+                    limit=10
+                )
+                search_tasks.append(("video", video_task))
             
             # 并行执行检索任务
             results = {}
@@ -947,7 +950,7 @@ class HybridSearchEngine:
             elif video_intent == "implicit_enrichment":
                 dynamic_weights["video"] = 1.0
             else:
-                dynamic_weights["video"] = self.rrf_weights.get("video", 0.8)
+                dynamic_weights["video"] = 0.0
             # sparse 始终启用，保持默认权重（与 rrf_weights 一致）
             if "sparse" not in dynamic_weights or dynamic_weights.get("sparse", 0) <= 0:
                 dynamic_weights["sparse"] = self.rrf_weights.get("sparse", 0.8)
@@ -958,6 +961,8 @@ class HybridSearchEngine:
                     continue
                 
                 weight = dynamic_weights.get(search_type, 1.0)
+                if weight <= 0:
+                    continue
                 
                 # 为每个结果计算RRF分数
                 for rank, result in enumerate(results):
@@ -1076,8 +1081,14 @@ class HybridSearchEngine:
                 logger.error("音频检索向量化失败")
                 return []
             query_vector = embed_result.data[0] if isinstance(embed_result.data, list) else embed_result.data
-            sparse_result = self.sparse_encoder.encode_query(query)
-            sparse_vector = sparse_result.get("sparse") if sparse_result else None
+            # Sparse 是音频召回的可选增强，不能因本地 BGE-M3 版本/模型加载
+            # 异常而中断 text_vec + CLAP 主召回路径。
+            sparse_vector = None
+            try:
+                sparse_result = self.sparse_encoder.encode_query(query)
+                sparse_vector = sparse_result.get("sparse") if sparse_result else None
+            except Exception as exc:
+                logger.warning("音频稀疏查询编码失败，降级为 Dense/CLAP 召回: {}", exc)
             # 2. 有音频意图时尝试 CLAP 双路 RRF（text_vec + clap_vec [+ sparse]）
             if audio_intent in ["explicit_demand", "implicit_enrichment"]:
                 clap_vector = None
@@ -1132,7 +1143,7 @@ class HybridSearchEngine:
                 })
             return formatted_results
         except Exception as e:
-            logger.error("音频检索失败: %s", e, exc_info=True)
+            logger.error("音频检索失败: {}", e, exc_info=True)
             return []
     
     async def _video_search(

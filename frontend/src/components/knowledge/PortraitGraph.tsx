@@ -11,10 +11,13 @@ import { Button } from '@/components/ui/button'
 import { ScatterChart, FileText, Image, Music, Video, RefreshCw, LayoutList } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { knowledgeApi } from '@/services/api_client'
-import { BUBBLE_THEME_TIER_COUNT, pickRandomBubbleTheme } from './portraitBubbleThemes'
+import { BUBBLE_THEME_TIER_COUNT, BUBBLE_THEMES } from './portraitBubbleThemes'
 
 /** 词云字体：现代无衬线，兼顾中文与科技感 */
 const WORD_CLOUD_FONT = '"PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", "Open Sans", Roboto, sans-serif'
+
+/** 画像保持一套稳定的星图配色，避免每次刷新让用户重新建立视觉记忆。 */
+const ATLAS_BUBBLE_THEME = BUBBLE_THEMES.find((theme) => theme.id === 'ui-code') ?? BUBBLE_THEMES[0]!
 
 /** 从 topic_summary 提取关键词（用于气泡内词云，数量少而精以适配小气泡） */
 function extractKeywords(summary: string, maxWords = 6): string[] {
@@ -87,35 +90,12 @@ export function PortraitGraph({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const pollingIntervalRef = useRef<number | null>(null)
   const pollingTimeoutRef = useRef<number | null>(null)
-  /** 点击气泡后展示 topic_summary 的浮层；再次点击同一气泡或点击外部关闭 */
-  const [summaryPopupNode, setSummaryPopupNode] = useState<{
-    cluster: PortraitCluster
-    clientX: number
-    clientY: number
-  } | null>(null)
   /** 悬停气泡：其他变淡、目标放大、显示关系连线 */
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
-  const summaryPopoverRef = useRef<HTMLDivElement>(null)
   const portraitId = useId().replace(/:/g, '')
   const chartSummaryId = `${portraitId}-portrait-summary`
   const chartRegionId = `${portraitId}-portrait-chart`
-  const selectedSummaryTitleId = `${portraitId}-selected-topic-title`
-
-  /** 每次进入知识库或重新生成画像完成后随机换一套气泡配色 */
-  const [bubbleTheme, setBubbleTheme] = useState(() => pickRandomBubbleTheme())
-  const wasGeneratingRef = useRef(false)
-
-  useEffect(() => {
-    wasGeneratingRef.current = false
-    setBubbleTheme(pickRandomBubbleTheme())
-  }, [knowledgeBaseId])
-
-  useEffect(() => {
-    if (wasGeneratingRef.current && !generating && clusters.length > 0) {
-      setBubbleTheme(pickRandomBubbleTheme())
-    }
-    wasGeneratingRef.current = generating
-  }, [generating, clusters.length])
+  const bubbleTheme = ATLAS_BUBBLE_THEME
 
   const fetchPortrait = useCallback(async () => {
     setLoading(true)
@@ -162,6 +142,11 @@ export function PortraitGraph({
     fetchPortrait()
   }, [fetchPortrait])
 
+  useEffect(() => {
+    setSelectedId(null)
+    setHoveredNodeId(null)
+  }, [knowledgeBaseId])
+
   // 清理轮询定时器
   useEffect(() => {
     return () => {
@@ -175,22 +160,6 @@ export function PortraitGraph({
       }
     }
   }, [])
-
-  /** 点击气泡外或摘要浮层外时关闭摘要浮层 */
-  useEffect(() => {
-    if (!summaryPopupNode) return
-    const handleMouseDown = (e: MouseEvent) => {
-      const target = e.target as Node
-      if (
-        summaryPopoverRef.current?.contains(target) ||
-        containerRef.current?.contains(target)
-      )
-        return
-      setSummaryPopupNode(null)
-    }
-    document.addEventListener('mousedown', handleMouseDown)
-    return () => document.removeEventListener('mousedown', handleMouseDown)
-  }, [summaryPopupNode])
 
   const handleRegenerate = async () => {
     // 清理之前的轮询
@@ -316,9 +285,9 @@ export function PortraitGraph({
   const maxSize = clusters.length ? Math.max(...clusters.map((c) => c.cluster_size), 1) : 1
   const minSize = clusters.length ? Math.min(...clusters.map((c) => c.cluster_size), maxSize) : 1
 
-  /** 气泡半径：面积 ∝ cluster_size，半径 = sqrt(面积)，映射到 [minR, maxR]，略大以便更好展示主题关键词 */
-  const MIN_R = 40
-  const MAX_R = 88
+  /** 气泡面积与主题内容数量成正比；少量主题时放大，形成更有呼吸感的主视觉。 */
+  const MIN_R = clusters.length <= 3 ? 72 : clusters.length <= 6 ? 58 : 46
+  const MAX_R = clusters.length <= 3 ? 120 : clusters.length <= 6 ? 96 : 78
   const scaleRadius = useCallback(
     (size: number) => {
       if (maxSize <= 0) return MIN_R
@@ -343,12 +312,15 @@ export function PortraitGraph({
       setLayoutReady(true)
       return
     }
+    setLayoutReady(false)
     const cx = chartWidth / 2
     const cy = chartHeight / 2
+    const clusterCount = clusters.length
+    const orbitRadius = clusterCount === 1 ? 0 : clusterCount === 2 ? 134 : Math.min(205, 118 + clusterCount * 10)
     const nodes = clusters.map((c, i) => ({
       id: c.cluster_id,
-      x: cx + (Math.random() - 0.5) * 180,
-      y: cy + (Math.random() - 0.5) * 160,
+      x: cx + Math.cos(clusterCount === 2 ? i * Math.PI : -Math.PI / 2 + (i / clusterCount) * Math.PI * 2) * orbitRadius,
+      y: cy + Math.sin(clusterCount === 2 ? i * Math.PI : -Math.PI / 2 + (i / clusterCount) * Math.PI * 2) * orbitRadius * 0.72,
       r: scaleRadius(c.cluster_size),
       cluster: c,
       index: i,
@@ -358,12 +330,10 @@ export function PortraitGraph({
       .force('center', d3.forceCenter(cx, cy))
       .force(
         'collision',
-        d3.forceCollide<d3.SimulationNodeDatum & { r: number }>().radius((d) => (d as { r: number }).r + 18)
+        d3.forceCollide<d3.SimulationNodeDatum & { r: number }>().radius((d) => (d as { r: number }).r + 24)
       )
-      .force('x', d3.forceX(cx).strength(0.05))
-      .force('y', d3.forceY(cy).strength(0.05))
       .stop()
-    for (let i = 0; i < 120; i++) sim.tick()
+    for (let i = 0; i < 160; i++) sim.tick()
     setBubbleNodes(
       nodes.map((n) => ({
         x: (n as { x: number }).x,
@@ -384,7 +354,11 @@ export function PortraitGraph({
   const sourceRatioLabel = total
     ? `画像样本比例：文本 ${textPct.toFixed(0)}%，图片 ${imagePct.toFixed(0)}%，音频 ${audioPct.toFixed(0)}%，视频 Shot ${videoPct.toFixed(0)}%`
     : '暂无数据源比例'
-  const selectedCluster = summaryPopupNode?.cluster ?? clusters.find((cluster) => cluster.cluster_id === selectedId)
+  const selectedCluster = clusters.find((cluster) => cluster.cluster_id === selectedId) ?? null
+  const selectedKeywords = selectedCluster
+    ? (selectedCluster.keywords?.length ? selectedCluster.keywords : extractKeywords(selectedCluster.topic_summary))
+    : []
+  const clusteredContentCount = clusters.reduce((count, cluster) => count + cluster.cluster_size, 0)
   const portraitSummaryText = generating
     ? '主题画像正在生成中'
     : clusters.length > 0
@@ -393,24 +367,15 @@ export function PortraitGraph({
         ? '主题画像正在加载'
         : '暂无主题画像'
 
-  const toggleBubbleSelection = useCallback((
-    cluster: PortraitCluster,
-    point: { clientX: number; clientY: number },
-    isSummaryOpen: boolean
-  ) => {
-    if (isSummaryOpen) {
-      setSummaryPopupNode(null)
-      setSelectedId(null)
-      onClusterSelect?.(null)
-      return
-    }
-    setSummaryPopupNode({
-      cluster,
-      clientX: point.clientX,
-      clientY: point.clientY,
-    })
-    setSelectedId(cluster.cluster_id)
-    onClusterSelect?.(cluster.cluster_id)
+  const toggleBubbleSelection = useCallback((cluster: PortraitCluster) => {
+    const nextSelectedId = selectedId === cluster.cluster_id ? null : cluster.cluster_id
+    setSelectedId(nextSelectedId)
+    onClusterSelect?.(nextSelectedId)
+  }, [onClusterSelect, selectedId])
+
+  const clearSelection = useCallback(() => {
+    setSelectedId(null)
+    onClusterSelect?.(null)
   }, [onClusterSelect])
 
   return (
@@ -418,45 +383,52 @@ export function PortraitGraph({
       <span id={chartSummaryId} className="sr-only" aria-live="polite">
         {portraitSummaryText}
       </span>
-      <Card className="overflow-hidden border-slate-200/70 shadow-sm dark:border-slate-700/70">
-        <CardHeader className="space-y-0 border-b border-slate-100/90 bg-gradient-to-r from-slate-50/60 via-white to-indigo-50/35 pb-3 pt-4 dark:border-slate-800/90 dark:from-slate-900/50 dark:via-slate-950 dark:to-indigo-950/25">
+      <Card className="overflow-hidden rounded-[24px] border-slate-200/80 shadow-[0_20px_55px_-44px_rgba(15,57,74,0.46)] dark:border-slate-700/80">
+        <CardHeader className="space-y-0 border-b border-slate-100/90 bg-[linear-gradient(110deg,rgba(247,252,251,0.96),rgba(255,255,255,0.98)_52%,rgba(238,248,247,0.92))] pb-4 pt-4 dark:border-slate-800/90 dark:bg-[linear-gradient(110deg,rgba(13,31,43,0.94),rgba(15,23,42,0.98)_52%,rgba(19,45,54,0.92))]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="flex flex-wrap items-center gap-x-3 gap-y-1 text-base font-semibold tracking-tight text-slate-900 dark:text-slate-50">
-              <ScatterChart
-                className="h-6 w-6 shrink-0 text-indigo-600 drop-shadow-[0_1px_2px_rgba(99,102,241,0.2)] transition-colors duration-200 dark:text-indigo-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]"
-                strokeWidth={2.25}
-                aria-hidden
-              />
-              <span>知识库主题气泡图</span>
-            </CardTitle>
-            {clusters.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRegenerate}
-                disabled={generating}
-                aria-label={generating ? '主题画像生成中' : '重新生成主题画像'}
-                className="group h-9 shrink-0 gap-2 rounded-xl border-indigo-200/80 bg-white/90 px-3.5 text-sm font-semibold text-indigo-700 shadow-sm transition-all duration-200 hover:border-fuchsia-300/80 hover:bg-indigo-50/60 hover:text-indigo-900 hover:shadow-md dark:border-indigo-500/35 dark:bg-slate-900/70 dark:text-indigo-200 dark:hover:border-fuchsia-500/40 dark:hover:bg-indigo-950/50 dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {generating ? (
-                  <>
-                    <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-indigo-600 dark:text-indigo-400" aria-hidden />
-                    <span>生成中…</span>
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw
-                      className="h-3.5 w-3.5 shrink-0 text-indigo-600 transition-transform duration-300 group-hover:rotate-180 group-hover:text-fuchsia-600 dark:text-indigo-400 dark:group-hover:text-fuchsia-400"
-                      aria-hidden
-                    />
-                    <span>重新生成</span>
-                  </>
-                )}
-              </Button>
-            )}
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-cyan-100 bg-[linear-gradient(145deg,#ecfeff,#eef2ff)] shadow-[0_10px_24px_-16px_rgba(6,148,162,0.9)] dark:border-cyan-400/20 dark:bg-cyan-400/10">
+                <ScatterChart className="h-5 w-5 text-[#177e9b] dark:text-cyan-200" strokeWidth={2.15} aria-hidden />
+                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#e9c46a] dark:border-slate-900" />
+              </span>
+              <div className="min-w-0">
+                <CardTitle className="text-base font-semibold tracking-tight text-slate-900 dark:text-slate-50">主题星图</CardTitle>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">按语义聚类呈现已解析内容的分布</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {clusters.length > 0 && (
+                <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#b9d8d8] bg-white/80 px-3 text-xs font-semibold text-[#246276] shadow-sm dark:border-cyan-400/20 dark:bg-slate-900/60 dark:text-cyan-100">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#1e9e9b]" />
+                  {clusters.length} 个主题
+                </span>
+              )}
+              {clusters.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRegenerate}
+                  disabled={generating}
+                  aria-label={generating ? '主题画像生成中' : '重新生成主题画像'}
+                  className="group h-8 shrink-0 gap-2 rounded-full border-[#b9d8d8] bg-white/90 px-3 text-xs font-semibold text-[#246276] shadow-sm transition-all duration-200 hover:border-[#79b9c8] hover:bg-[#effafa] hover:text-[#0f4f65] hover:shadow-md dark:border-cyan-400/25 dark:bg-slate-900/70 dark:text-cyan-100 dark:hover:border-cyan-300/45 dark:hover:bg-cyan-950/35 dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {generating ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+                      <span>生成中…</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 shrink-0 transition-transform duration-300 group-hover:rotate-180" aria-hidden />
+                      <span>重新生成</span>
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 px-4 pb-4 pt-4 sm:px-5 sm:pb-5">
           {loading ? (
             <div className="flex h-80 items-center justify-center" role="status" aria-live="polite" aria-label="正在加载知识库主题画像">
               <div className="text-center">
@@ -530,9 +502,9 @@ export function PortraitGraph({
             <div
               ref={containerRef}
               id={chartRegionId}
-              className="relative min-h-[520px] w-full overflow-hidden rounded-xl border border-slate-200/55 bg-slate-50/20 shadow-inner ring-1 ring-slate-100/80 dark:border-slate-700/55 dark:bg-slate-950/20 dark:ring-slate-800/60 portrait-chart-container"
+              className="relative min-h-[520px] w-full overflow-hidden rounded-[20px] border border-[#d4e5e3] bg-[#f7fbfa] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_14px_30px_-28px_rgba(13,72,85,0.7)] dark:border-cyan-400/15 dark:bg-slate-950 portrait-chart-container"
               role="region"
-              aria-label={`主题气泡图，共 ${clusters.length} 个主题`}
+              aria-label={`主题星图，共 ${clusters.length} 个主题`}
             >
               {/* 生成中的遮罩层 */}
               {generating && (
@@ -567,12 +539,25 @@ export function PortraitGraph({
                   </div>
                 </motion.div>
               )}
-              {/* 亮色：径向渐变 + 极淡 indigo/fuchsia 中心光晕；暗色：带蓝深色 + 极弱径向景深 */}
+              <div className="pointer-events-none absolute left-4 top-4 z-20 rounded-2xl border border-white/80 bg-white/75 px-3.5 py-2.5 shadow-[0_12px_30px_-24px_rgba(15,66,79,0.72)] backdrop-blur-sm dark:border-white/10 dark:bg-slate-950/65 sm:left-5 sm:top-5" aria-hidden>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#398297] dark:text-cyan-300">Semantic atlas</p>
+                <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                  <span className="font-semibold text-[#17455a] dark:text-white">{clusters.length} 个主题</span>
+                  <span className="mx-1.5 text-slate-300 dark:text-slate-600">·</span>
+                  {clusteredContentCount} 条已归类素材
+                </p>
+              </div>
+              <div className="pointer-events-none absolute right-4 top-5 z-20 hidden items-center gap-1.5 rounded-full border border-[#d8e9e6] bg-white/70 px-3 py-1.5 text-[11px] font-medium text-[#52747d] shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-slate-950/65 dark:text-slate-300 sm:flex" aria-hidden>
+                <span className="h-1.5 w-1.5 rounded-full bg-[#e9c46a] shadow-[0_0_0_3px_rgba(233,196,106,0.16)]" />
+                点击星团查看摘要
+              </div>
+              {/* 纸张般的浅色网格让布局有坐标感，同时保持气泡为视觉主体。 */}
               <div
                 className="absolute inset-0 z-0 rounded-[inherit] opacity-100 dark:opacity-0"
                 style={{
                   background:
-                    'radial-gradient(ellipse 92% 82% at 48% 44%, rgba(255,255,255,0.995) 0%, rgba(248,250,252,0.97) 48%, rgba(241,245,249,0.94) 100%), radial-gradient(ellipse 72% 62% at 52% 52%, rgba(199,210,254,0.22) 0%, rgba(167,139,250,0.1) 40%, rgba(244,114,182,0.07) 68%, transparent 100%)',
+                    'radial-gradient(ellipse 76% 68% at 50% 50%, rgba(255,255,255,0.99) 0%, rgba(244,250,249,0.98) 56%, rgba(231,242,240,0.98) 100%), linear-gradient(rgba(23,126,155,0.048) 1px, transparent 1px), linear-gradient(90deg, rgba(23,126,155,0.048) 1px, transparent 1px)',
+                  backgroundSize: 'auto, 30px 30px, 30px 30px',
                 }}
                 aria-hidden
               />
@@ -580,7 +565,8 @@ export function PortraitGraph({
                 className="absolute inset-0 z-0 hidden rounded-[inherit] dark:block"
                 style={{
                   background:
-                    'radial-gradient(ellipse 88% 76% at 50% 48%, rgba(17,24,39,0.98) 0%, #0f172a 52%, #0a0f1a 100%), radial-gradient(ellipse 58% 52% at 50% 46%, rgba(129,140,248,0.14) 0%, rgba(168,85,247,0.07) 45%, rgba(59,130,246,0.04) 70%, transparent 100%)',
+                    'radial-gradient(ellipse 76% 68% at 50% 50%, rgba(24,51,63,0.98) 0%, rgba(13,31,43,0.99) 60%, rgba(10,22,31,1) 100%), linear-gradient(rgba(103,232,249,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(103,232,249,0.06) 1px, transparent 1px)',
+                  backgroundSize: 'auto, 30px 30px, 30px 30px',
                 }}
                 aria-hidden
               />
@@ -593,7 +579,7 @@ export function PortraitGraph({
                 aria-label={`知识库主题气泡图，共 ${clusters.length} 个主题，气泡大小表示文档数量`}
               >
                 <defs>
-                  {/* 柔和弥散渐变：中心更亮、边缘过渡更顺，整体偏 pastel */}
+                  {/* 颜色从亮心向外收束，保证主题名在任何气泡上都有足够对比。 */}
                   {bubbleTheme.tiers.map((pal, ti) => (
                     <radialGradient
                       key={`${bubbleTheme.id}-t${ti}`}
@@ -603,26 +589,19 @@ export function PortraitGraph({
                       r="78%"
                     >
                       <stop offset="0%" stopColor={pal.centerLight} stopOpacity={0.98} />
-                      <stop offset="22%" stopColor={pal.centerLight} stopOpacity={0.9} />
-                      <stop offset="45%" stopColor={pal.fill} stopOpacity={0.88} />
-                      <stop offset="68%" stopColor={pal.mid} stopOpacity={0.82} />
-                      <stop offset="88%" stopColor={pal.edge} stopOpacity={0.78} />
-                      <stop offset="100%" stopColor={pal.edge} stopOpacity={0.72} />
+                      <stop offset="26%" stopColor={pal.centerLight} stopOpacity={0.94} />
+                      <stop offset="54%" stopColor={pal.fill} stopOpacity={0.97} />
+                      <stop offset="80%" stopColor={pal.mid} stopOpacity={0.94} />
+                      <stop offset="100%" stopColor={pal.edge} stopOpacity={0.96} />
                     </radialGradient>
                   ))}
-                  {/* 内阴影：轻微玻璃感，不抢色 */}
-                  <filter id="bubble-inner-shadow" x="-30%" y="-30%" width="160%" height="160%">
-                    <feOffset in="SourceAlpha" dx="1.5" dy="1.5" result="offset" />
-                    <feGaussianBlur in="offset" stdDeviation="2.2" result="blur" />
-                    <feFlood floodColor="rgb(0,0,0)" floodOpacity="0.08" result="shadowFill" />
-                    <feComposite in="shadowFill" in2="blur" operator="in" result="shadowShape" />
-                    <feComposite in="shadowShape" in2="SourceAlpha" operator="in" result="innerOnly" />
-                    <feComposite in="SourceGraphic" in2="innerOnly" operator="over" result="comp" />
+                  <filter id="bubble-atlas-shadow" x="-35%" y="-35%" width="170%" height="180%">
+                    <feDropShadow dx="0" dy="9" stdDeviation="7" floodColor="#153b4d" floodOpacity="0.22" />
                   </filter>
-                  {/* 选中态：主色外发光（模糊描边 + 半透明 indigo/fuchsia） */}
+                  {/* 选中态：青绿色外发光，既醒目又不破坏星图的安静感。 */}
                   <filter id="bubble-selected-glow" x="-80%" y="-80%" width="260%" height="260%">
                     <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
-                    <feFlood floodColor="#6366f1" floodOpacity="0.45" result="fill" />
+                    <feFlood floodColor="#147d90" floodOpacity="0.52" result="fill" />
                     <feComposite in="fill" in2="blur" operator="in" result="glow" />
                     <feMerge>
                       <feMergeNode in="glow" />
@@ -630,6 +609,13 @@ export function PortraitGraph({
                     </feMerge>
                   </filter>
                 </defs>
+                <g className="pointer-events-none" aria-hidden="true">
+                  <ellipse cx={chartWidth / 2} cy={chartHeight / 2} rx="256" ry="156" fill="none" stroke="#1f7789" strokeOpacity="0.16" strokeWidth="1" strokeDasharray="4 7" />
+                  <ellipse cx={chartWidth / 2} cy={chartHeight / 2} rx="188" ry="108" fill="none" stroke="#1f7789" strokeOpacity="0.1" strokeWidth="1" />
+                  <path d={`M${chartWidth / 2 - 286} ${chartHeight / 2}H${chartWidth / 2 + 286}M${chartWidth / 2} ${chartHeight / 2 - 196}V${chartHeight / 2 + 196}`} stroke="#1f7789" strokeOpacity="0.08" strokeWidth="1" strokeDasharray="3 8" />
+                  <circle cx={chartWidth / 2} cy={chartHeight / 2} r="14" fill="#d9f0eb" fillOpacity="0.64" />
+                  <circle cx={chartWidth / 2} cy={chartHeight / 2} r="4" fill="#e9c46a" fillOpacity="0.9" />
+                </g>
                 {/* 悬停时：从当前气泡到其他气泡的关系连线 */}
                 {layoutReady && hoveredNodeId && (() => {
                   const hovered = bubbleNodes.find((n) => n.cluster.cluster_id === hoveredNodeId)
@@ -664,13 +650,36 @@ export function PortraitGraph({
                     const allKeywords = (node.cluster.keywords && node.cluster.keywords.length > 0)
                       ? node.cluster.keywords
                       : extractKeywords(node.cluster.topic_summary)
-                    const maxWords = node.r < 50 ? 2 : node.r < 68 ? 4 : 6
+                    const maxWords = node.r < 60 ? 2 : node.r < 80 ? 3 : node.r < 100 ? 4 : 5
                     const keywords = allKeywords.slice(0, maxWords)
-                    const hasKeywords = keywords.length > 0
-                    const baseFont = Math.max(10, Math.min(13, Math.round(node.r / 5)))
-                    const isSummaryOpen = summaryPopupNode?.cluster.cluster_id === node.cluster.cluster_id
-                    const bubbleOpacity = 0.78 + 0.2 * Math.min(1, (node.r - 40) / 48)
-                    const opacityWhenOtherHovered = hoveredNodeId && !isHovered ? 0.35 : bubbleOpacity
+                    const primaryKeyword = keywords[0] ?? `主题 ${node.index + 1}`
+                    const supportingKeywords = keywords.slice(1)
+                    const supportingPositions = (() => {
+                      switch (supportingKeywords.length) {
+                        case 1:
+                          return [{ left: '50%', top: '22%' }]
+                        case 2:
+                          return [
+                            { left: '28%', top: '29%' },
+                            { left: '72%', top: '72%' },
+                          ]
+                        case 3:
+                          return [
+                            { left: '50%', top: '18%' },
+                            { left: '20%', top: '68%' },
+                            { left: '80%', top: '68%' },
+                          ]
+                        default:
+                          return [
+                            { left: '50%', top: '17%' },
+                            { left: '17%', top: '48%' },
+                            { left: '83%', top: '48%' },
+                            { left: '50%', top: '83%' },
+                          ]
+                      }
+                    })()
+                    const bubbleOpacity = 0.96
+                    const opacityWhenOtherHovered = hoveredNodeId && !isHovered ? 0.3 : bubbleOpacity
                     const bubbleLabel = `查看主题摘要：${keywords[0] ?? (node.cluster.topic_summary || `主题 ${node.index + 1}`)}，共 ${node.cluster.cluster_size} 条`
                     return (
                       <g
@@ -689,142 +698,88 @@ export function PortraitGraph({
                         onKeyDown={(e) => {
                           if (e.key !== 'Enter' && e.key !== ' ') return
                           e.preventDefault()
-                          const rect = (e.currentTarget as SVGGElement).getBoundingClientRect()
-                          toggleBubbleSelection(
-                            node.cluster,
-                            {
-                              clientX: rect.left + rect.width / 2,
-                              clientY: rect.top + rect.height / 2,
-                            },
-                            isSummaryOpen
-                          )
+                          toggleBubbleSelection(node.cluster)
                         }}
-                        onClick={(e) => {
-                          toggleBubbleSelection(node.cluster, e, isSummaryOpen)
+                        onClick={() => {
+                          toggleBubbleSelection(node.cluster)
                           requestAnimationFrame(() => (document.activeElement as HTMLElement)?.blur())
                         }}
                       >
                         <motion.g
-                          animate={{
-                            y: [0, 1.2, -0.8, 0],
-                            x: [0, 0.6, -0.5, 0],
-                          }}
-                          transition={{
-                            duration: 5.2 + (node.index % 4) * 0.5,
-                            repeat: Infinity,
-                            repeatType: 'reverse',
-                          }}
+                          initial={{ scale: 0.72, opacity: 0 }}
+                          animate={{ scale: isHovered ? 1.075 : 1, opacity: 1 }}
+                          transition={{ type: 'spring', stiffness: 190, damping: 19, delay: node.index * 0.045 }}
                         >
-                          <motion.circle
+                          <circle
                             r={node.r}
                             fill={`url(#${gradId})`}
-                            filter="url(#bubble-inner-shadow)"
-                            initial={{ scale: 0, opacity: 0 }}
-                            animate={{
-                              scale: isHovered ? 1.12 : 1,
-                              opacity: 1,
-                            }}
-                            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-                            whileHover={{ scale: 1.08 }}
-                            whileTap={{ scale: 1.02 }}
+                            filter="url(#bubble-atlas-shadow)"
                           />
-                          {/* 动态呼吸发光边框 */}
                           <circle
                             r={node.r}
                             fill="none"
                             stroke={palette.glowBorder}
-                            strokeWidth={1}
-                            strokeOpacity={0.58}
-                            className="bubble-breathe"
+                            strokeWidth={1.3}
+                            strokeOpacity={0.8}
                           />
                           {isSelected && (
                             <g filter="url(#bubble-selected-glow)">
                               <circle
-                                r={node.r + 6}
+                                r={node.r + 8}
                                 fill="none"
-                                stroke="#6366f1"
-                                strokeWidth={2.5}
+                                stroke="#147d90"
+                                strokeWidth={2.25}
                                 strokeOpacity={0.95}
                               />
                             </g>
                           )}
                           <foreignObject
-                          x={-node.r + 4}
-                          y={-node.r + 4}
-                          width={Math.max(0, node.r * 2 - 8)}
-                          height={Math.max(0, node.r * 2 - 8)}
-                          className="pointer-events-none overflow-visible"
-                        >
-                          {/* 用圆形裁剪替代方形 overflow-hidden，避免大字重 text-shadow 在直角处被裁成灰块 */}
-                          <div
-                            className="relative h-full w-full overflow-hidden rounded-full bg-transparent"
-                            style={{
-                              fontFamily: WORD_CLOUD_FONT,
-                              backgroundColor: 'transparent',
-                            }}
+                            x={-node.r + 4}
+                            y={-node.r + 4}
+                            width={Math.max(0, node.r * 2 - 8)}
+                            height={Math.max(0, node.r * 2 - 8)}
+                            className="pointer-events-none overflow-visible"
                           >
-                            {hasKeywords ? (
-                              <>
-                                {/* 核心词：保持水平、纯白加粗，字号略小以留出视觉空间 */}
+                            <div className="relative h-full w-full overflow-hidden rounded-full" style={{ fontFamily: WORD_CLOUD_FONT }}>
+                              {supportingKeywords.map((keyword, keywordIndex) => {
+                                const position = supportingPositions[keywordIndex]
+                                if (!position) return null
+                                return (
+                                  <span
+                                    key={`${keyword}-${keywordIndex}`}
+                                    className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-white/20 bg-slate-950/10 px-1.5 py-0.5 text-[10px] font-medium text-white/90"
+                                    style={{
+                                      left: position.left,
+                                      top: position.top,
+                                      maxWidth: `${Math.min(node.r * 0.98, 82)}px`,
+                                      textOverflow: 'ellipsis',
+                                      overflow: 'hidden',
+                                      textShadow: '0 1px 1px rgba(8,28,40,0.3)',
+                                    }}
+                                    title={keyword}
+                                  >
+                                    {keyword.length > 6 ? `${keyword.slice(0, 5)}…` : keyword}
+                                  </span>
+                                )
+                              })}
+                              <div className="absolute left-1/2 top-1/2 w-full -translate-x-1/2 -translate-y-1/2 px-4 text-center text-white">
                                 <span
-                                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap font-bold text-white [background:none]"
+                                  className="block truncate font-black tracking-tight"
                                   style={{
-                                    fontSize: Math.min(node.r * 0.28, baseFont * 1.85),
-                                    maxWidth: `${Math.min(node.r * 1.6, 96)}px`,
-                                    backgroundColor: 'transparent',
-                                    boxShadow: 'none',
-                                    // 避免多层「0 0 大模糊」阴影叠成字背后的灰黑矩形；用细描边 + 轻微下沉阴影保证可读
-                                    WebkitTextStroke: '0.45px rgba(15, 23, 42, 0.28)',
-                                    paintOrder: 'stroke fill',
-                                    textShadow: '0 1px 2px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.22)',
+                                    fontSize: Math.min(node.r * 0.28, 25),
+                                    lineHeight: 1.12,
+                                    textShadow: '0 1px 2px rgba(8,28,40,0.42)',
                                   }}
-                                  title={keywords[0]}
+                                  title={primaryKeyword}
                                 >
-                                  {keywords[0].length > 8 ? `${keywords[0].slice(0, 7)}…` : keywords[0]}
+                                  {primaryKeyword.length > 9 ? `${primaryKeyword.slice(0, 8)}…` : primaryKeyword}
                                 </span>
-                                {/* 次要词：横向排列，浅色，环绕核心词 */}
-                                {keywords.slice(1).map((word, wi) => {
-                                  const n = keywords.length - 1
-                                  const angle = (wi / Math.max(1, n)) * 2 * Math.PI + (node.index * 0.5)
-                                  const radiusRatio = 0.52 + 0.35 * (wi / Math.max(1, n))
-                                  const cx = node.r - 4
-                                  const cy = node.r - 4
-                                  const left = cx + cx * radiusRatio * Math.cos(angle)
-                                  const top = cy + cy * radiusRatio * Math.sin(angle)
-                                  const wordFontSize = Math.max(baseFont, baseFont + 1 - Math.floor(wi / 2))
-                                  return (
-                                    <span
-                                      key={`${word}-${wi}`}
-                                      className="absolute whitespace-nowrap font-semibold text-white [background:none]"
-                                      style={{
-                                        left: `${left}px`,
-                                        top: `${top}px`,
-                                        transform: 'translate(-50%, -50%)',
-                                        fontSize: wordFontSize,
-                                        maxWidth: `${Math.min(node.r * 1.1, 64)}px`,
-                                        backgroundColor: 'transparent',
-                                        boxShadow: 'none',
-                                        WebkitTextStroke: '0.4px rgba(15, 23, 42, 0.24)',
-                                        paintOrder: 'stroke fill',
-                                        textShadow: '0 1px 2px rgba(0,0,0,0.45), 0 1px 4px rgba(0,0,0,0.2)',
-                                      }}
-                                      title={word}
-                                    >
-                                      {word.length > 5 ? `${word.slice(0, 4)}…` : word}
-                                    </span>
-                                  )
-                                })}
-                              </>
-                            ) : (
-                              <span
-                                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 font-medium text-slate-500 dark:text-slate-400"
-                                style={{ fontSize: baseFont }}
-                              >
-                                主题 {node.index + 1}
-                              </span>
-                            )}
-                          </div>
-                        </foreignObject>
+                                <span className="mt-1.5 inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white/95">
+                                  {node.cluster.cluster_size} 条素材
+                                </span>
+                              </div>
+                            </div>
+                          </foreignObject>
                         </motion.g>
                       </g>
                     )
@@ -833,81 +788,70 @@ export function PortraitGraph({
             </div>
           )}
 
-          {/* 点击气泡后展示 topic_summary 的浮层（再次点击同一气泡或点击外部关闭） */}
-          {summaryPopupNode && (() => {
-            const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
-            const vh = typeof window !== 'undefined' ? window.innerHeight : 800
-            const pad = 16
-            const boxW = 400
-            const maxH = 280
-            let left = summaryPopupNode.clientX + 16
-            let top = summaryPopupNode.clientY + 12
-            if (left + boxW > vw - pad) left = vw - boxW - pad
-            if (left < pad) left = pad
-            if (top + maxH > vh - pad) top = vh - maxH - pad
-            if (top < pad) top = pad
-            return (
-              <motion.div
-                ref={summaryPopoverRef}
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.15 }}
-                className="fixed z-50 w-[400px] max-h-[280px] overflow-hidden rounded-xl border border-slate-200/90 bg-white/98 shadow-xl backdrop-blur-sm dark:border-slate-600/90 dark:bg-slate-900/98"
-                style={{ left, top }}
-                role="dialog"
-                aria-modal="false"
-                aria-labelledby={selectedSummaryTitleId}
-              >
-                <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5 dark:border-slate-700">
-                  <div className="flex items-center gap-2">
-                    <span id={selectedSummaryTitleId} className="rounded-md bg-gradient-to-r from-indigo-100 to-fuchsia-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:from-indigo-900/40 dark:to-fuchsia-900/40 dark:text-indigo-200">
-                      主题摘要
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {summaryPopupNode.cluster.cluster_size} 条
-                    </span>
+          {selectedCluster && (
+            <motion.section
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden rounded-[18px] border border-[#b9dedd] bg-[linear-gradient(118deg,#f0fbfa,#ffffff_56%,#f4f7ff)] shadow-[0_14px_28px_-26px_rgba(16,92,105,0.72)] dark:border-cyan-300/20 dark:bg-[linear-gradient(118deg,rgba(12,48,57,0.62),rgba(15,23,42,0.78)_56%,rgba(43,35,80,0.48))]"
+              aria-label="已选主题摘要"
+            >
+              <div className="flex items-start justify-between gap-4 border-b border-[#d8ebe8] px-4 py-3 dark:border-cyan-300/10 sm:px-5">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-[#dff4f1] px-2.5 py-1 text-[11px] font-bold text-[#176a72] dark:bg-cyan-300/10 dark:text-cyan-200">已选主题</span>
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{selectedCluster.cluster_size} 条关联素材</span>
                   </div>
-                  <button
-                    type="button"
-                    className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
-                    aria-label="关闭主题摘要"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setSummaryPopupNode(null)
-                    }}
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+                  <h3 className="mt-2 truncate text-base font-semibold text-[#163d4e] dark:text-white">
+                    {selectedKeywords[0] || '未命名主题'}
+                  </h3>
                 </div>
-                <div className="max-h-[220px] overflow-y-auto px-4 py-3">
-                  <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">
-                    {summaryPopupNode.cluster.topic_summary || '暂无摘要'}
-                  </p>
-                </div>
-              </motion.div>
-            )
-          })()}
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="shrink-0 rounded-full border border-[#c6dfdc] bg-white/80 px-3 py-1.5 text-xs font-semibold text-[#397076] transition-colors hover:border-[#73b7bd] hover:bg-[#effaf8] dark:border-cyan-300/20 dark:bg-slate-900/60 dark:text-cyan-100 dark:hover:bg-cyan-950/50"
+                >
+                  清除选择
+                </button>
+              </div>
+              <div className="grid gap-4 px-4 py-4 sm:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.6fr)] sm:px-5">
+                <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  {selectedCluster.topic_summary || '该主题暂未生成摘要。'}
+                </p>
+                {selectedKeywords.length > 0 && (
+                  <div className="border-t border-[#dcebe8] pt-3 dark:border-cyan-300/10 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#5c8990] dark:text-cyan-300">Topic signals</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {selectedKeywords.slice(0, 6).map((keyword) => (
+                        <span key={keyword} className="rounded-full border border-[#cce5e1] bg-white/75 px-2 py-1 text-xs font-medium text-[#376c72] dark:border-cyan-300/20 dark:bg-slate-900/55 dark:text-cyan-100">
+                          {keyword}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.section>
+          )}
 
           {clusters.length > 0 && (
-            <div className="rounded-xl border border-slate-200/70 dark:border-slate-700/70 bg-gradient-to-r from-slate-50/95 via-white to-indigo-50/40 px-4 py-3 shadow-sm dark:from-slate-900/80 dark:via-slate-950 dark:to-indigo-950/35">
+            <div className="rounded-2xl border border-slate-200/80 bg-slate-50/75 px-4 py-3 dark:border-slate-700/70 dark:bg-slate-900/45">
               <div className="flex flex-wrap items-start gap-x-3 gap-y-2 sm:items-center">
                 <ScatterChart
-                  className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400 sm:mt-0"
+                  className="mt-0.5 h-4 w-4 shrink-0 text-[#177e9b] dark:text-cyan-300 sm:mt-0"
                   strokeWidth={2.25}
                   aria-hidden
                 />
                 <p className="min-w-0 flex-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-                  <span className="font-semibold text-indigo-800 dark:text-indigo-200">气泡内为主题关键词</span>
+                  <span className="font-semibold text-[#245c70] dark:text-cyan-100">气泡代表语义相近的素材簇</span>
                   <span className="mx-2 text-slate-300 dark:text-slate-600" aria-hidden>
                     ·
                   </span>
-                  <span className="font-medium text-slate-700 dark:text-slate-200">点击气泡查看主题摘要并筛选文档</span>
+                  <span className="font-medium text-slate-700 dark:text-slate-200">点击星团查看主题摘要与关键信号</span>
                   <span className="mx-2 text-slate-300 dark:text-slate-600" aria-hidden>
                     ·
                   </span>
-                  <span className="font-semibold text-fuchsia-700 dark:text-fuchsia-300">气泡大小表示文档数量</span>
+                  <span className="font-semibold text-[#a6642d] dark:text-amber-200">圆的面积表示素材数量</span>
                 </p>
               </div>
             </div>

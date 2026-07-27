@@ -11,6 +11,13 @@ class ToolContext:
     kb_context: Optional[Dict[str, Any]]
     session_context: List[Dict[str, str]]
     attachment_context: Optional[str]
+    agent_round: int = 1
+    explored_kb_counts: Optional[Dict[str, int]] = None
+    # The original user question is analyzed once before the Agent starts
+    # planning.  Child queries inherit explicit modality demands so a planner
+    # cannot accidentally turn an "include images" request into text-only
+    # retrieval just by wording a sub-query differently.
+    base_modality_intents: Optional[Dict[str, str]] = None
 
 
 class MultimodalKnowledgeSearchTool:
@@ -36,6 +43,14 @@ class MultimodalKnowledgeSearchTool:
             session_context=context.session_context,
             attachment_context=context.attachment_context,
             preplanned=True,
+            routing_hints={
+                "agent_mode": True,
+                "agent_round": context.agent_round,
+                "explored_kb_counts": dict(context.explored_kb_counts or {}),
+                "agent_base_modality_intents": dict(
+                    context.base_modality_intents or {}
+                ),
+            },
         )
 
 

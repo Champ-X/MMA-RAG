@@ -36,12 +36,12 @@ export function DataFlowDiagram() {
         <div className="max-w-2xl">
           <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2f7f93] dark:text-[#7fc2cf]">Data plane</p>
           <h2 className="architecture-display mt-3 text-3xl font-semibold leading-tight tracking-[-0.035em] text-[#102d42] [text-wrap:balance] dark:text-[#edf6f3] sm:text-[2.55rem]">
-            <span className="block">同一个数据面，</span>
-            <span className="block">承接相反方向的数据流</span>
+            <span className="block">写入一次可检索语义，</span>
+            <span className="block">读取时只取可核验的证据</span>
           </h2>
         </div>
         <p className="max-w-2xl text-sm leading-7 text-[#5a7075] dark:text-[#a7bcbd] sm:text-[15px] lg:justify-self-end">
-          离线链路把对象转成索引并写入；在线链路只读取证据并组装引用。Redis / Celery 只承担可选的长任务控制。
+          离线链路负责固化原始对象、解析模态并写入索引；在线链路不重新加工原文，只读取候选、排序并组装引用。Redis / Celery 是长任务控制面，不参与答案证据合同。
         </p>
       </div>
 

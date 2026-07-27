@@ -4,12 +4,14 @@
 """
 
 import asyncio
+import time
 from collections import defaultdict
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
 from dataclasses import dataclass
 
 from app.core.logger import get_logger, audit_log
+from app.core.config import settings
 from app.modules.ingestion.storage.vector_store import VectorStore
 from app.modules.knowledge.service import KnowledgeBaseService
 from app.core.llm.manager import llm_manager
@@ -37,6 +39,7 @@ class RoutingResult:
     """目标知识库列表（含 id、name、score），供前端展示名称"""
     target_kbs: Optional[List[Dict[str, Any]]] = None
     query_count: int = 1
+    routing_details: Optional[Dict[str, Any]] = None
 
 class KnowledgeRouter:
     """知识库智能路由控制器"""
@@ -48,6 +51,9 @@ class KnowledgeRouter:
         self.kb_service = KnowledgeBaseService()
         self.portrait_generator = PortraitGenerator()
         self.llm_manager = llm_manager
+        self._modality_inventory_cache: Dict[str, Dict[str, Any]] = {}
+        self._modality_inventory_cached_at = 0.0
+        self._modality_inventory_lock = asyncio.Lock()
 
     async def _enrich_target_kbs(
         self,
@@ -100,6 +106,7 @@ class KnowledgeRouter:
         kb_context: Optional[Dict[str, Any]] = None,
         query_variants: Optional[List[str]] = None,
         max_targets: int = 2,
+        routing_hints: Optional[Dict[str, Any]] = None,
     ) -> RoutingResult:
         """
         路由用户查询到合适的知识库
@@ -170,10 +177,22 @@ class KnowledgeRouter:
             _log_kb_scores_raw(kb_scores_raw)
             
             # 4. 相对置信度与路由决策
-            routing_result = await self._apply_routing_strategy(
-                kb_scores_raw,
-                max_targets=max_targets,
-            )
+            hints = routing_hints or {}
+            if hints.get("agent_mode"):
+                inventory = await self._get_modality_inventory()
+                routing_result = await self._apply_agent_exploration_strategy(
+                    kb_scores_raw,
+                    max_targets=max_targets,
+                    agent_round=int(hints.get("agent_round") or 1),
+                    explored_kb_counts=hints.get("explored_kb_counts") or {},
+                    modality_intents=hints.get("modality_intents") or {},
+                    modality_inventory=inventory,
+                )
+            else:
+                routing_result = await self._apply_routing_strategy(
+                    kb_scores_raw,
+                    max_targets=max_targets,
+                )
             routing_result.query_count = len(query_vectors)
             
             # 5. 计算处理时间
@@ -201,6 +220,260 @@ class KnowledgeRouter:
         except Exception as e:
             logger.error(f"知识库路由失败: {str(e)}")
             return await self._default_routing()
+
+    async def _get_modality_inventory(self) -> Dict[str, Dict[str, Any]]:
+        """Return a short-lived KB modality inventory for Agent-only routing."""
+        now = time.monotonic()
+        cached = getattr(self, "_modality_inventory_cache", {})
+        cached_at = float(getattr(self, "_modality_inventory_cached_at", 0.0) or 0.0)
+        if cached and now - cached_at < 60.0:
+            return cached
+
+        lock = getattr(self, "_modality_inventory_lock", None)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._modality_inventory_lock = lock
+        async with lock:
+            now = time.monotonic()
+            cached = getattr(self, "_modality_inventory_cache", {})
+            cached_at = float(getattr(self, "_modality_inventory_cached_at", 0.0) or 0.0)
+            if cached and now - cached_at < 60.0:
+                return cached
+
+            inventory: Dict[str, Dict[str, Any]] = {}
+            try:
+                rows = await self.kb_service.list_knowledge_bases(limit=1000)
+                for row in rows:
+                    kb_id = str(row.get("id") or "").strip()
+                    if not kb_id:
+                        continue
+                    stats = row.get("statistics") or {}
+                    inventory[kb_id] = {
+                        "name": str(row.get("name") or kb_id),
+                        # A document count alone is not enough here: a video
+                        # KB can contain ready source files but no searchable
+                        # text chunks.  Keep indexed-text availability so the
+                        # retrieval layer can decide whether a modal fallback
+                        # is needed after routing.
+                        "text": int(
+                            stats.get("total_chunks")
+                            or stats.get("chunks")
+                            or 0
+                        ),
+                        "image": int(stats.get("total_images") or 0),
+                        "audio": int(stats.get("total_audio") or 0),
+                        "video": int(
+                            stats.get("total_video_shots")
+                            or stats.get("total_video")
+                            or stats.get("total_video_files")
+                            or 0
+                        ),
+                    }
+            except Exception as exc:
+                logger.warning("读取 Agent 知识库模态库存失败，继续使用画像相关性路由: {}", exc)
+                return cached
+
+            self._modality_inventory_cache = inventory
+            self._modality_inventory_cached_at = now
+            return inventory
+
+    async def get_modality_inventory(self) -> Dict[str, Dict[str, Any]]:
+        """Expose the cached index inventory for retrieval-time safeguards.
+
+        Routing owns the authoritative KB statistics and already maintains a
+        short-lived cache.  The retrieval service uses this only after Agent
+        routing, to avoid a text-only path when the selected semantic anchor
+        is actually a video, audio, or image knowledge base.
+        """
+        return await self._get_modality_inventory()
+
+    async def _apply_agent_exploration_strategy(
+        self,
+        kb_scores_raw: Dict[str, float],
+        *,
+        max_targets: int,
+        agent_round: int,
+        explored_kb_counts: Dict[str, Any],
+        modality_intents: Dict[str, str],
+        modality_inventory: Dict[str, Dict[str, Any]],
+    ) -> RoutingResult:
+        """Balance semantic relevance, modality fitness and cross-round novelty.
+
+        The highest relevance/modality candidate is always retained as an anchor.
+        From round two onward, one slot may be reserved for an unseen candidate,
+        but only when it clears a semantic relevance floor. Previously visited KBs
+        are softly penalized and never hard-excluded.
+        """
+        if not kb_scores_raw:
+            return await self._default_routing()
+
+        max_raw = max(kb_scores_raw.values())
+        if max_raw < ROUTING_ALL_LOW_THRESHOLD:
+            return await self._apply_routing_strategy(
+                kb_scores_raw,
+                max_targets=max_targets,
+            )
+
+        visits = {
+            str(kb_id): max(0, int(count or 0))
+            for kb_id, count in (explored_kb_counts or {}).items()
+        }
+        explicit_modalities = {
+            modality
+            for modality in ("image", "audio", "video")
+            if modality_intents.get(modality) == "explicit_demand"
+        }
+        implicit_modalities = {
+            modality
+            for modality in ("image", "audio", "video")
+            if modality_intents.get(modality) == "implicit_enrichment"
+        }
+
+        relevance_with_modality: Dict[str, float] = {}
+        adjusted_scores: Dict[str, float] = {}
+        for kb_id, raw_score in kb_scores_raw.items():
+            inventory = modality_inventory.get(kb_id, {})
+            modality_bonus = 0.0
+            for modality in explicit_modalities:
+                if int(inventory.get(modality) or 0) > 0:
+                    modality_bonus += settings.agent_kb_modality_bonus
+            for modality in implicit_modalities:
+                if int(inventory.get(modality) or 0) > 0:
+                    modality_bonus += settings.agent_kb_modality_bonus * 0.35
+            modality_bonus = min(modality_bonus, settings.agent_kb_modality_bonus * 1.5)
+
+            anchored_score = raw_score + (max_raw * modality_bonus)
+            relevance_with_modality[kb_id] = anchored_score
+
+            visit_count = visits.get(kb_id, 0)
+            repeat_penalty = min(
+                settings.agent_kb_repeat_penalty_cap,
+                settings.agent_kb_repeat_penalty_per_round * visit_count,
+            )
+            novelty_bonus = (
+                settings.agent_kb_novelty_bonus
+                if agent_round >= 2 and visit_count == 0
+                else 0.0
+            )
+            adjusted_scores[kb_id] = (
+                anchored_score * (1.0 - repeat_penalty)
+                + (max_raw * novelty_bonus)
+            )
+
+        anchor_id = max(relevance_with_modality, key=relevance_with_modality.get)
+        base_result = await self._apply_routing_strategy(
+            adjusted_scores,
+            max_targets=max_targets,
+        )
+        bounded_max_targets = max(1, min(int(max_targets or 1), 3))
+        selected: List[str] = [anchor_id]
+        exploration_id: Optional[str] = None
+        modality_coverage_ids: List[str] = []
+
+        # When one subquery explicitly requests more than one modality, reserve
+        # available slots for KBs that cover modalities absent from the anchor.
+        # This prevents an image-heavy pair from excluding an otherwise relevant
+        # audio KB in a combined "poster + theme song" query.
+        relevance_floor = max_raw * settings.agent_kb_exploration_min_ratio * 0.5
+        covered_modalities = {
+            modality
+            for modality in explicit_modalities
+            if int((modality_inventory.get(anchor_id) or {}).get(modality) or 0) > 0
+        }
+        for modality in sorted(explicit_modalities - covered_modalities):
+            if len(selected) >= bounded_max_targets:
+                break
+            candidates = [
+                kb_id
+                for kb_id, raw_score in kb_scores_raw.items()
+                if kb_id not in selected
+                and raw_score >= relevance_floor
+                and int((modality_inventory.get(kb_id) or {}).get(modality) or 0) > 0
+            ]
+            if not candidates:
+                continue
+            coverage_id = max(candidates, key=lambda kb_id: adjusted_scores[kb_id])
+            selected.append(coverage_id)
+            modality_coverage_ids.append(coverage_id)
+            covered_modalities.update(
+                candidate_modality
+                for candidate_modality in explicit_modalities
+                if int(
+                    (modality_inventory.get(coverage_id) or {}).get(candidate_modality)
+                    or 0
+                ) > 0
+            )
+
+        # If the anchor itself is new, the exploration objective is already met.
+        # Otherwise reserve at most one slot for the best relevant unseen KB.
+        if (
+            agent_round >= 2
+            and len(selected) < bounded_max_targets
+            and visits.get(anchor_id, 0) > 0
+        ):
+            floor = max_raw * settings.agent_kb_exploration_min_ratio
+            candidates: List[str] = []
+            for kb_id, raw_score in kb_scores_raw.items():
+                if kb_id == anchor_id or visits.get(kb_id, 0) > 0:
+                    continue
+                inventory = modality_inventory.get(kb_id, {})
+                explicit_match = any(
+                    int(inventory.get(modality) or 0) > 0
+                    for modality in explicit_modalities
+                )
+                modality_floor = floor * 0.5 if explicit_match else floor
+                if raw_score >= modality_floor:
+                    candidates.append(kb_id)
+            if candidates:
+                exploration_id = max(candidates, key=lambda kb_id: adjusted_scores[kb_id])
+                selected.append(exploration_id)
+
+        # The normal router already encodes its confidence-gap policy.  Do not
+        # fill every remaining Agent slot simply because a score exists: doing
+        # so turns a single dominant direct hit into unrelated secondary KBs.
+        # Extra slots are reserved above for an explicit modality gap or a
+        # sufficiently relevant later-round exploration target.
+        for kb_id in base_result.target_kb_ids:
+            if kb_id not in selected:
+                selected.append(kb_id)
+            if len(selected) >= bounded_max_targets:
+                break
+        selected = selected[:bounded_max_targets]
+        confidence = self._normalize_scores(adjusted_scores)
+        method = (
+            "agent_anchor_explore"
+            if exploration_id
+            else "agent_modality_coverage"
+            if modality_coverage_ids
+            else "agent_modality_route"
+            if explicit_modalities or implicit_modalities
+            else "agent_relevance_route"
+        )
+        logger.info(
+            "Agent知识库路由: round={} anchor={} explore={} visits={} modalities={} targets={}",
+            agent_round,
+            anchor_id,
+            exploration_id or "-",
+            visits,
+            modality_intents,
+            selected,
+        )
+        return RoutingResult(
+            target_kb_ids=selected,
+            confidence_scores={kb_id: confidence.get(kb_id, 0.0) for kb_id in selected},
+            routing_method=method,
+            total_candidates=len(kb_scores_raw),
+            processing_time=0.0,
+            routing_details={
+                "agent_round": agent_round,
+                "anchor_kb_id": anchor_id,
+                "exploration_kb_id": exploration_id,
+                "modality_coverage_kb_ids": modality_coverage_ids,
+                "base_routing_method": base_result.routing_method,
+                "explored_kb_counts": visits,
+                "modality_intents": dict(modality_intents),
+            },
+        )
 
     def _normalize_routing_queries(
         self,
