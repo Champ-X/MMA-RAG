@@ -4,6 +4,7 @@ import { InlineCitation } from './InlineCitation'
 import type { Components, ExtraProps } from 'react-markdown'
 import { cn } from '@/lib/utils'
 import { chatApi } from '@/services/api_client'
+import { getFreshReferenceVideoUrl, isReferenceMediaUrlFresh } from '@/services/reference_media_url'
 import type { CitationReference } from '@/types/sse'
 import {
   useChatStore,
@@ -1044,6 +1045,7 @@ function VideoPlayerWithSeek({
   const hasSeeked = React.useRef(false)
   React.useEffect(() => {
     hasSeeked.current = false
+    videoRef.current?.load()
   }, [src, startSec])
   React.useEffect(() => {
     const el = videoRef.current
@@ -1146,6 +1148,34 @@ function ParagraphVideoDisplay({
   const [loadingRefId, setLoadingRefId] = React.useState<string | number | null>(null)
   const uniqueCitations = React.useMemo(() => deduplicateMediaCitations(citations), [citations])
 
+  React.useEffect(() => {
+    let cancelled = false
+
+    for (const citation of uniqueCitations) {
+      if (citation.type !== 'video' || isReferenceMediaUrlFresh(citation.video_url)) continue
+      const filePath = citation.file_path || citation.file_name
+      const kbId = citation.debug_info?.kb_id || fallbackKbId
+      if (!filePath || !kbId) continue
+
+      const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
+      void getFreshReferenceVideoUrl({
+        kbId,
+        filePath,
+        currentUrl: citation.video_url,
+      }).then((videoUrl) => {
+        if (!cancelled) {
+          setFetchedVideoUrls((prev) => (prev[key] === videoUrl ? prev : { ...prev, [key]: videoUrl }))
+        }
+      }).catch(() => {
+        // 卡片仍保留原始引用信息，用户可以打开引用详情重试。
+      })
+    }
+
+    return () => {
+      cancelled = true
+    }
+  }, [fallbackKbId, messageId, uniqueCitations])
+
   if (uniqueCitations.length === 0) return null
 
   return (
@@ -1178,17 +1208,18 @@ function ParagraphVideoDisplay({
           if (hasVideoUrl) return
           const filePath = citation.file_path || citation.file_name
           const kbId = citation.debug_info?.kb_id || fallbackKbId
-          if (!filePath && onCiteClick) {
-            onCiteClick(citation.id, new DOMRect(0, 0, 0, 0), messageId)
+          if (!filePath || !kbId) {
+            if (onCiteClick) onCiteClick(citation.id, new DOMRect(0, 0, 0, 0), messageId)
             return
           }
           setLoadingRefId(citation.id)
           try {
-            const res = await chatApi.getReferenceVideoUrl({
-              kb_id: kbId ?? undefined,
-              file_path: filePath!,
+            const videoUrl = await getFreshReferenceVideoUrl({
+              kbId,
+              filePath,
+              currentUrl: citation.video_url,
             })
-            if (res?.video_url) setFetchedVideoUrls((prev) => ({ ...prev, [key]: res.video_url }))
+            setFetchedVideoUrls((prev) => ({ ...prev, [key]: videoUrl }))
           } catch {
             if (onCiteClick) {
               const el = document.querySelector(`.paragraph-video-card[data-video-key="${key}"]`) as HTMLElement
@@ -1252,11 +1283,13 @@ function ParagraphVideoDisplay({
                       const kbId = citation.debug_info?.kb_id || fallbackKbId
                       if (!filePath || !kbId) return
                       try {
-                        const res = await chatApi.getReferenceVideoUrl({
-                          kb_id: kbId,
-                          file_path: filePath,
+                        const videoUrl = await getFreshReferenceVideoUrl({
+                          kbId,
+                          filePath,
+                          currentUrl: resolvedUrl,
+                          force: true,
                         })
-                        if (res?.video_url) setFetchedVideoUrls((prev) => ({ ...prev, [key]: res.video_url }))
+                        setFetchedVideoUrls((prev) => ({ ...prev, [key]: videoUrl }))
                       } catch {
                         // 刷新失败，用户可点击弹层查看
                       }
