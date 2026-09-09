@@ -4,6 +4,7 @@ import { useCallback, useState, useRef, useEffect, useId } from 'react'
 import type { SyntheticEvent } from 'react'
 import type { CitationReference } from '@/types/sse'
 import { chatApi } from '@/services/api_client'
+import { getFreshReferenceVideoUrl, isReferenceMediaUrlFresh } from '@/services/reference_media_url'
 import { useChatStore } from '@/store/useChatStore'
 
 function formatTimeLabel(sec: number): string {
@@ -42,6 +43,7 @@ function VideoWithSeek({
   const hasSeeked = useRef(false)
   useEffect(() => {
     hasSeeked.current = false
+    ref.current?.load()
   }, [src])
   useEffect(() => {
     const el = ref.current
@@ -263,12 +265,15 @@ export function CitationPopover({
         cancelled = true
       }
     }
-    if (item.type === 'video' && !item.video_url && !refreshedVideoUrl) {
+    if (item.type === 'video' && !refreshedVideoUrl && !isReferenceMediaUrlFresh(item.video_url)) {
       let cancelled = false
-      chatApi
-        .getReferenceVideoUrl({ kb_id: kbId, file_path: filePath })
-        .then((res) => {
-          if (!cancelled && res?.video_url) setRefreshedVideoUrl(res.video_url)
+      getFreshReferenceVideoUrl({
+        kbId,
+        filePath,
+        currentUrl: item.video_url,
+      })
+        .then((videoUrl) => {
+          if (!cancelled) setRefreshedVideoUrl(videoUrl)
         })
         .catch(() => {})
       return () => {
@@ -521,11 +526,13 @@ export function CitationPopover({
                         (item.file_path || item.file_name) && (item.debug_info?.kb_id || fallbackKbId)
                           ? async () => {
                               try {
-                                const res = await chatApi.getReferenceVideoUrl({
-                                  kb_id: item.debug_info?.kb_id || fallbackKbId!,
-                                  file_path: item.file_path || item.file_name || '',
+                                const videoUrl = await getFreshReferenceVideoUrl({
+                                  kbId: item.debug_info?.kb_id || fallbackKbId!,
+                                  filePath: item.file_path || item.file_name || '',
+                                  currentUrl: refreshedVideoUrl || item.video_url,
+                                  force: true,
                                 })
-                                if (res?.video_url) setRefreshedVideoUrl(res.video_url)
+                                setRefreshedVideoUrl(videoUrl)
                               } catch {
                                 //
                               }
