@@ -7,6 +7,7 @@ from typing import Dict, List, Any, Optional, AsyncGenerator, Tuple
 from datetime import datetime
 from dataclasses import dataclass
 import copy
+import time
 import re
 
 from .processors.intent import IntentProcessor
@@ -15,6 +16,7 @@ from .search_engine import HybridSearchEngine
 from .reranker import Reranker
 from app.core.logger import get_logger, audit_log
 from app.modules.knowledge.router import KnowledgeRouter
+from app.core.llm.query_embeddings import QueryEmbeddingCache
 
 logger = get_logger(__name__)
 
@@ -284,6 +286,57 @@ class RetrievalService:
             "last_updated": datetime.utcnow().isoformat()
         }
     
+    async def _try_fast_path(
+        self,
+        query: str,
+        kb_context: Optional[Dict[str, Any]],
+        session_context: Optional[List[Dict[str, str]]],
+        attachment_context: Optional[str],
+        allow_smalltalk: bool = False,
+    ) -> Optional[RetrievalResult]:
+        """Skip only work proven irrelevant; uncertainty retains full recall."""
+        started = time.perf_counter()
+        if kb_context or attachment_context:
+            return None  # Preserve explicit scope, file bootstrap, and attachments.
+        reason = None
+        if (
+            allow_smalltalk
+            and not session_context
+            and re.fullmatch(r"(?:你好|您好|嗨|哈喽|hello|hi|hey)[!！。.\s]*", query.strip(), re.I)
+        ):
+            reason = "standalone_greeting"
+        else:
+            vector_store = getattr(getattr(self, "search_engine", None), "vector_store", None)
+            probe = getattr(vector_store, "is_retrieval_index_empty", None)
+            if probe is not None:
+                try:
+                    if await probe() is True:
+                        reason = "empty_index"
+                except Exception as exc:
+                    logger.debug("Index probe failed; retain retrieval: {}", type(exc).__name__)
+        if reason is None:
+            return None
+
+        elapsed = time.perf_counter() - started
+        context = RetrievalContext(
+            original_query=query, refined_query=query, intent_type="factual",
+            is_complex=False,
+            visual_intent="unnecessary", visual_reasoning="无需检索",
+            audio_intent="unnecessary", audio_reasoning="无需检索",
+            video_intent="unnecessary", video_reasoning="无需检索",
+            search_strategies={"dense_query": query, "original_query": query,
+                               "multi_view_queries": [], "sparse_keywords": []},
+            target_kb_ids=[], target_kbs=[], target_file_ids=[], selected_files=[],
+            selected_file_modalities=[], confidence_scores={}, processing_time=elapsed,
+        )
+        self._update_retrieval_stats("factual", reason, reason, elapsed, 0)
+        logger.info("Retrieval fast path: reason={} duration={:.4f}s", reason, elapsed)
+        return RetrievalResult(
+            context=context, raw_results={}, reranked_results=[], processing_time=elapsed,
+            debug_info={"fast_path": reason, "total_time": elapsed, "total_candidates": 0,
+                        "retrieval_strategy": reason, "routing_method": reason},
+        )
+
     async def search(
         self,
         query: str,
@@ -294,6 +347,7 @@ class RetrievalService:
         preplanned: bool = False,
         routing_hints: Optional[Dict[str, Any]] = None,
         preprocessing_result: Optional[Dict[str, Any]] = None,
+        allow_smalltalk: bool = False,
     ) -> RetrievalResult:
         """
         执行完整检索流程
@@ -311,6 +365,12 @@ class RetrievalService:
         
         try:
             logger.info(f"开始检索流程: {query}")
+            fast_result = await self._try_fast_path(
+                query, kb_context, session_context, attachment_context, allow_smalltalk,
+            )
+            if fast_result is not None:
+                return fast_result
+            embedding_cache = QueryEmbeddingCache()
             
             # Agent 已经完成问题拆解时，子查询本身就是可执行检索计划。
             # 跳过每个子查询重复的远端意图识别与查询改写，仍保留本地
@@ -354,6 +414,7 @@ class RetrievalService:
                 query_variants=preprocessing_result["search_strategies"].get("multi_view_queries", []),
                 max_targets=3 if preprocessing_result.get("is_complex") else 2,
                 routing_hints=effective_routing_hints,
+                embedding_cache=embedding_cache,
             )
             target_kb_ids = getattr(routing_result, "target_kb_ids", []) or []
             confidence_scores = getattr(routing_result, "confidence_scores", {}) or {}
@@ -421,7 +482,7 @@ class RetrievalService:
                 )
             
             # 4. 混合检索
-            search_results = await self._perform_hybrid_search(retrieval_context)
+            search_results = await self._perform_hybrid_search(retrieval_context, embedding_cache=embedding_cache)
             
             # 5. 两阶段重排
             reranked_results = await self._apply_reranking(
@@ -435,6 +496,9 @@ class RetrievalService:
             # 7. 构建调试信息
             debug_info = {
                 "preprocessing_time": preprocessing_result.get("processing_time", 0),
+                "preprocessing_stages": preprocessing_result.get("stage_times", {}),
+                "search_branch_times": search_results.get("branch_times", {}),
+                "reused_embedding_vectors": embedding_cache.reused_vectors,
                 "routing_time": routing_result.processing_time,
                 "search_time": search_results.get("processing_time", 0),
                 "reranking_time": reranked_results.get("processing_time", 0),
@@ -569,6 +633,7 @@ class RetrievalService:
         user_id: Optional[str] = None,
         session_context: Optional[List[Dict[str, str]]] = None,
         attachment_context: Optional[str] = None,
+        allow_smalltalk: bool = False,
     ) -> AsyncGenerator[Tuple[str, Any], None]:
         """
         流式检索：每完成一个阶段就 yield (stage, payload)，最后 yield ("_result", retrieval_result)。
@@ -577,6 +642,19 @@ class RetrievalService:
         start_time = datetime.utcnow()
         try:
             logger.info(f"开始检索流程(流式): {query}")
+            fast_result = await self._try_fast_path(
+                query, kb_context, session_context, attachment_context, allow_smalltalk,
+            )
+            if fast_result is not None:
+                reason = fast_result.debug_info["fast_path"]
+                yield ("retrieval", {
+                    "message": "问候无需检索" if reason == "standalone_greeting" else "当前检索索引为空",
+                    "fast_path": reason, "total_found": 0, "reranked_count": 0,
+                    "sparse_keywords": [], "sub_queries": [],
+                })
+                yield ("_result", fast_result)
+                return
+            embedding_cache = QueryEmbeddingCache()
 
             # 1. 查询预处理 - One-Pass 意图识别
             preprocessing_result = await self._preprocess_query(
@@ -612,6 +690,7 @@ class RetrievalService:
                 kb_context=kb_context,
                 query_variants=preprocessing_result["search_strategies"].get("multi_view_queries", []),
                 max_targets=3 if preprocessing_result.get("is_complex") else 2,
+                embedding_cache=embedding_cache,
             )
             target_kb_ids = getattr(routing_result, "target_kb_ids", []) or []
             confidence_scores = getattr(routing_result, "confidence_scores", {}) or {}
@@ -666,7 +745,7 @@ class RetrievalService:
                 )
 
             # 4. 混合检索
-            search_results = await self._perform_hybrid_search(retrieval_context)
+            search_results = await self._perform_hybrid_search(retrieval_context, embedding_cache=embedding_cache)
 
             # 5. 两阶段重排
             reranked_results = await self._apply_reranking(
@@ -679,6 +758,9 @@ class RetrievalService:
             retrieval_context.processing_time = processing_time
             debug_info = {
                 "preprocessing_time": preprocessing_result.get("processing_time", 0),
+                "preprocessing_stages": preprocessing_result.get("stage_times", {}),
+                "search_branch_times": search_results.get("branch_times", {}),
+                "reused_embedding_vectors": embedding_cache.reused_vectors,
                 "routing_time": getattr(routing_result, "processing_time", 0),
                 "search_time": search_results.get("processing_time", 0),
                 "reranking_time": reranked_results.get("processing_time", 0),
@@ -740,6 +822,7 @@ class RetrievalService:
         attachment_context: Optional[str] = None,
     ) -> Dict[str, Any]:
         """查询预处理"""
+        started = time.perf_counter()
         try:
             # One-Pass 意图识别
             intent_result = await self.intent_processor.process(
@@ -748,6 +831,8 @@ class RetrievalService:
                 attachment_context_block=attachment_context,
             )
             
+            intent_elapsed = time.perf_counter() - started
+
             # 获取 refined_query，如果不存在则从 search_strategies 或使用 original_query
             refined_query = intent_result.get(
                 "refined_query",
@@ -755,12 +840,16 @@ class RetrievalService:
             )
             
             # 查询改写与扩展
+            rewrite_started = time.perf_counter()
             rewriter_result = await self.query_rewriter.rewrite(
                 original_query=refined_query,
                 chat_history=session_context,
                 intent_analysis=intent_result
             )
             
+            rewrite_elapsed = time.perf_counter() - rewrite_started
+            logger.info("Preprocessing durations: intent={:.3f}s rewrite={:.3f}s", intent_elapsed, rewrite_elapsed)
+
             # 合并结果
             final_refined_query = rewriter_result.get("refined_query", refined_query)
             preprocessing_result = {
@@ -781,7 +870,8 @@ class RetrievalService:
                     "sparse_keywords": rewriter_result.get("keywords", [])
                 },
                 "sub_queries": intent_result.get("sub_queries", []),
-                "processing_time": 0.0
+                "processing_time": time.perf_counter() - started,
+                "stage_times": {"intent": intent_elapsed, "rewrite": rewrite_elapsed},
             }
 
             return preprocessing_result
@@ -807,7 +897,7 @@ class RetrievalService:
                     "sparse_keywords": []
                 },
                 "sub_queries": [],
-                "processing_time": 0.0
+                "processing_time": time.perf_counter() - started
             }
 
     def _preprocess_preplanned_query(self, query: str) -> Dict[str, Any]:
@@ -848,6 +938,7 @@ class RetrievalService:
         query_variants: Optional[List[str]] = None,
         max_targets: int = 2,
         routing_hints: Optional[Dict[str, Any]] = None,
+        embedding_cache: Optional[QueryEmbeddingCache] = None,
     ):
         """路由到知识库"""
         try:
@@ -857,6 +948,7 @@ class RetrievalService:
                 query_variants=query_variants,
                 max_targets=max_targets,
                 routing_hints=routing_hints,
+                embedding_cache=embedding_cache,
             )
         except Exception as e:
             logger.error(f"知识库路由失败: {str(e)}")
@@ -872,7 +964,8 @@ class RetrievalService:
     
     async def _perform_hybrid_search(
         self,
-        context: RetrievalContext
+        context: RetrievalContext,
+        embedding_cache: Optional[QueryEmbeddingCache] = None,
     ) -> Dict[str, Any]:
         """执行混合检索。仅使用 Qdrant 中的 kb_id，将指定知识库的 ID 解析为向量库实际存储的 kb_id 后再检索。"""
         try:
@@ -885,7 +978,8 @@ class RetrievalService:
                 visual_intent=context.visual_intent,
                 audio_intent=context.audio_intent,
                 video_intent=context.video_intent,
-                intent_type=context.intent_type
+                intent_type=context.intent_type,
+                embedding_cache=embedding_cache,
             )
         except Exception as e:
             logger.error(f"混合检索失败: {str(e)}")

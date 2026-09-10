@@ -409,6 +409,7 @@ async def chat_message(request: Request):
             retrieval_result = agent_result.retrieval_result
         else:
             retrieval_result = await retrieval_service.search(
+                allow_smalltalk=True,
                 query=message,
                 kb_context=kb_context,
                 session_context=session_context,
@@ -589,6 +590,7 @@ async def _iter_chat_sse(
             yield f"data: {_thought_event_payload(stage, payload)}\n\n"
     else:
         async for stage, payload in retrieval_service.search_stream(
+            allow_smalltalk=True,
             query=message,
             kb_context=kb_context,
             session_context=session_context,

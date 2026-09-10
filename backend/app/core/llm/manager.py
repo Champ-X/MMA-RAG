@@ -382,12 +382,13 @@ class LLMManager:
                         await asyncio.sleep(backoff)
                         logger.info(f"模型调用重试 ({attempt + 1}/{_CALL_MAX_RETRIES}) {model}.{method}: {str(e)}")
                     else:
-                        logger.error(f"模型调用失败（已重试 {_CALL_MAX_RETRIES} 次） {model}.{method}: {str(e)}")
+                        logger.error(f"模型调用失败（已重试 {_CALL_MAX_RETRIES} 次） {model}.{method}: {type(e).__name__}: {str(e) or repr(e)}")
                         break
             duration = time.time() - start_time
             return LLMCallResult(
                 success=False,
-                error=str(last_error) if last_error else "unknown",
+                error=f"{type(last_error).__name__}: {str(last_error) or repr(last_error)}" if last_error is not None else "unknown",
+                duration=duration,
                 model_used=model,
                 fallback_used=False
             )

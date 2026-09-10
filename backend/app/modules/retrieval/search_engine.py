@@ -5,9 +5,12 @@
 
 from typing import Dict, List, Any, Optional
 import asyncio
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from app.core.llm.manager import llm_manager
+from app.core.llm.query_embeddings import QueryEmbeddingCache, embed_queries
 from app.core.sparse_encoder import get_sparse_encoder
 from app.core.logger import get_logger, audit_log
 from app.modules.ingestion.storage.vector_store import TEXT_CHUNK_COLLECTION, VectorStore
@@ -15,6 +18,15 @@ from app.modules.ingestion.service import IngestionService
 from app.modules.knowledge.service import KnowledgeBaseService
 
 logger = get_logger(__name__)
+
+# Local query inference stays serial, but never blocks SSE or remote I/O.
+_sparse_query_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sparse-query")
+
+
+async def _encode_sparse_query(encoder, query):
+    return await asyncio.get_running_loop().run_in_executor(
+        _sparse_query_executor, encoder.encode_query, query
+    )
 
 class HybridSearchEngine:
     """混合搜索引擎"""
@@ -48,7 +60,8 @@ class HybridSearchEngine:
         visual_intent: str = "unnecessary",
         audio_intent: str = "unnecessary",
         video_intent: str = "unnecessary",
-        intent_type: str = "factual"
+        intent_type: str = "factual",
+        embedding_cache: Optional[QueryEmbeddingCache] = None,
     ) -> Dict[str, Any]:
         """
         执行混合检索
@@ -82,7 +95,8 @@ class HybridSearchEngine:
                 query_strategies.get("multi_view_queries", []),
                 target_kb_ids,
                 target_file_ids,
-                intent_type
+                intent_type,
+                embedding_cache=embedding_cache,
             )
             search_tasks.append(("dense", dense_task))
             
@@ -104,7 +118,8 @@ class HybridSearchEngine:
                     query_strategies.get("multi_view_queries", []),
                     target_kb_ids,
                     target_file_ids=target_file_ids,
-                    visual_intent=visual_intent
+                    visual_intent=visual_intent,
+                    embedding_cache=embedding_cache,
                 )
                 search_tasks.append(("visual", visual_task))
             
@@ -115,7 +130,8 @@ class HybridSearchEngine:
                     target_kb_ids,
                     target_file_ids=target_file_ids,
                     audio_intent=audio_intent,
-                    limit=10
+                    limit=10,
+                    embedding_cache=embedding_cache,
                 )
                 search_tasks.append(("audio", audio_task))
             
@@ -131,32 +147,37 @@ class HybridSearchEngine:
                         or query_strategies.get("dense_query", "")
                     ),
                     visual_query=query_strategies.get("dense_query", "") if visual_intent != "unnecessary" else None,
-                    limit=10
+                    limit=10,
+                    embedding_cache=embedding_cache,
                 )
                 search_tasks.append(("video", video_task))
             
-            # 并行执行检索任务
-            results = {}
-            for task_type, task in search_tasks:
+            if selected_files:
+                search_tasks.append(("selected_file", self._selected_file_bootstrap_search(
+                    selected_files=selected_files,
+                    target_kb_ids=target_kb_ids,
+                )))
+
+            # Wait for every enabled branch; preserve insertion order for RRF
+            # tie-breaking regardless of completion order. No latency cutoff.
+            branch_times = {}
+
+            async def run_branch(task_type, task):
+                started = time.perf_counter()
                 try:
                     result = await task
-                    results[task_type] = result
                     logger.info(f"{task_type}检索完成: {len(result)} 个结果")
-                except Exception as e:
-                    logger.error(f"{task_type}检索失败: {str(e)}")
-                    results[task_type] = []
+                    return result
+                except Exception as exc:
+                    logger.error(f"{task_type}检索失败: {type(exc).__name__}: {exc}")
+                    return []
+                finally:
+                    branch_times[task_type] = time.perf_counter() - started
 
-            if selected_files:
-                try:
-                    selected_file_results = await self._selected_file_bootstrap_search(
-                        selected_files=selected_files,
-                        target_kb_ids=target_kb_ids,
-                    )
-                    results["selected_file"] = selected_file_results
-                    logger.info("指定文件直取候选完成: %s 个结果", len(selected_file_results))
-                except Exception as e:
-                    logger.error("指定文件直取候选失败: %s", e)
-                    results["selected_file"] = []
+            rows = await asyncio.gather(*[
+                run_branch(task_type, task) for task_type, task in search_tasks
+            ])
+            results = dict(zip((name for name, _ in search_tasks), rows))
 
             # 当 Dense 与 Sparse 均无结果时，记录各目标 KB 的文本/图/音频数量，便于排查“未建索引”问题
             dense_count = len(results.get("dense", []))
@@ -211,6 +232,7 @@ class HybridSearchEngine:
                 "fused_results": fused_results,
                 "strategy": f"hybrid_{len(results)}_way",
                 "processing_time": processing_time,
+                "branch_times": branch_times,
                 "kb_targets": target_kb_ids
             }
             
@@ -453,7 +475,8 @@ class HybridSearchEngine:
         multi_view_queries: List[str],
         target_kb_ids: List[str],
         target_file_ids: Optional[List[str]],
-        intent_type: str
+        intent_type: str,
+        embedding_cache: Optional[QueryEmbeddingCache] = None,
     ) -> List[Dict[str, Any]]:
         """Dense向量检索（支持多角度查询）"""
         try:
@@ -473,7 +496,7 @@ class HybridSearchEngine:
                 logger.info("Dense检索仅使用主查询，未使用多角度查询")
             
             # 向量化所有查询
-            embedding_result = await self.llm_manager.embed(texts=all_queries)
+            embedding_result = await embed_queries(self.llm_manager, all_queries, embedding_cache)
             
             if not embedding_result.success or not embedding_result.data:
                 logger.error("Dense检索向量化失败")
@@ -483,17 +506,20 @@ class HybridSearchEngine:
             results = []
             query_result_counts = {}  # 记录每个查询的结果数量
             
-            # 对每个查询向量执行检索
-            for i, query_vector in enumerate(query_vectors):
+            # Bound fan-out, retaining query order and every successful result.
+            semaphore = asyncio.Semaphore(4)
+
+            async def search_one(i, query_vector):
                 try:
                     query_text = all_queries[i]
-                    search_results = await self.vector_store.search_text_chunks(
-                        query_vector=query_vector,
-                        kb_ids=target_kb_ids,
-                        file_ids=target_file_ids,
-                        limit=20,
-                        score_threshold=0.0
-                    )
+                    async with semaphore:
+                        search_results = await self.vector_store.search_text_chunks(
+                            query_vector=query_vector,
+                            kb_ids=target_kb_ids,
+                            file_ids=target_file_ids,
+                            limit=20,
+                            score_threshold=0.0
+                        )
                     
                     query_result_counts[i] = len(search_results)
                     
@@ -508,18 +534,23 @@ class HybridSearchEngine:
                             result["is_primary_query"] = False
                             result["multi_view_index"] = i - 1
                     
-                    results.extend(search_results)
                     
                     logger.debug(
                         f"Dense检索查询{i+1}/{len(all_queries)} ({'主查询' if i == 0 else f'多角度查询{i}'}) "
                         f"完成: 找到{len(search_results)}个结果"
                     )
-                    
+                    return search_results
+
                 except Exception as e:
                     logger.error(f"Dense检索查询{i}失败: {str(e)}")
                     query_result_counts[i] = 0
-                    continue
+                    return []
             
+            query_rows = await asyncio.gather(*[
+                search_one(i, vector) for i, vector in enumerate(query_vectors)
+            ])
+            results = [row for rows in query_rows for row in rows]
+
             # 去重和排序
             unique_results = self._deduplicate_results(results)
             
@@ -576,7 +607,7 @@ class HybridSearchEngine:
             
             # 使用 BGE-M3 生成稀疏向量
             try:
-                sparse_result = self.sparse_encoder.encode_query(query_text)
+                sparse_result = await _encode_sparse_query(self.sparse_encoder, query_text)
                 
                 if not sparse_result.get("sparse"):
                     logger.warning("BGE-M3 稀疏向量生成失败，跳过Sparse检索")
@@ -619,7 +650,8 @@ class HybridSearchEngine:
         multi_view_queries: List[str],
         target_kb_ids: List[str],
         target_file_ids: Optional[List[str]] = None,
-        visual_intent: str = "explicit_demand"
+        visual_intent: str = "explicit_demand",
+        embedding_cache: Optional[QueryEmbeddingCache] = None,
     ) -> List[Dict[str, Any]]:
         """
         Visual图像检索（真正的双路RRF：文本语义向量 + CLIP视觉特征向量）
@@ -654,7 +686,7 @@ class HybridSearchEngine:
             
             # 1. 生成文本语义向量（用于匹配VLM生成的图片描述）
             logger.info("Visual检索步骤1: 生成文本语义向量（匹配图片描述）")
-            text_embedding_result = await self.llm_manager.embed(texts=[query])
+            text_embedding_result = await embed_queries(self.llm_manager, [query], embedding_cache)
             
             if not text_embedding_result.success or not text_embedding_result.data:
                 logger.error("Visual检索文本语义向量化失败")
@@ -1069,14 +1101,15 @@ class HybridSearchEngine:
         target_kb_ids: List[str],
         target_file_ids: Optional[List[str]] = None,
         audio_intent: str = "unnecessary",
-        limit: int = 10
+        limit: int = 10,
+        embedding_cache: Optional[QueryEmbeddingCache] = None,
     ) -> List[Dict[str, Any]]:
         """音频检索。基于 audio_intent：unnecessary 不检索；explicit/implicit 时使用 text_vec + clap_vec 双路 RRF（可选 sparse）。"""
         try:
             if audio_intent == "unnecessary":
                 return []
             # 1. 文本向量化查询
-            embed_result = await self.llm_manager.embed(texts=[query])
+            embed_result = await embed_queries(self.llm_manager, [query], embedding_cache)
             if not embed_result.success or not embed_result.data:
                 logger.error("音频检索向量化失败")
                 return []
@@ -1085,7 +1118,7 @@ class HybridSearchEngine:
             # 异常而中断 text_vec + CLAP 主召回路径。
             sparse_vector = None
             try:
-                sparse_result = self.sparse_encoder.encode_query(query)
+                sparse_result = await _encode_sparse_query(self.sparse_encoder, query)
                 sparse_vector = sparse_result.get("sparse") if sparse_result else None
             except Exception as exc:
                 logger.warning("音频稀疏查询编码失败，降级为 Dense/CLAP 召回: {}", exc)
@@ -1153,12 +1186,13 @@ class HybridSearchEngine:
         target_file_ids: Optional[List[str]] = None,
         sparse_query: Optional[str] = None,
         visual_query: Optional[str] = None,
-        limit: int = 10
+        limit: int = 10,
+        embedding_cache: Optional[QueryEmbeddingCache] = None,
     ) -> List[Dict[str, Any]]:
         """以 Shot 为主检索单元的四路视频检索，关键帧只在需要视觉增强时参与。"""
         try:
             # 1. 生成 dense 查询向量；caption 与 ASR 共享语义查询，但在向量库中独立召回、独立加权。
-            embed_result = await self.llm_manager.embed(texts=[query])
+            embed_result = await embed_queries(self.llm_manager, [query], embedding_cache)
             if not embed_result.success or not embed_result.data:
                 logger.error("视频检索向量化失败")
                 return []
@@ -1167,7 +1201,7 @@ class HybridSearchEngine:
             # 2. Sparse 查询与普通文本检索保持同一 BGE-M3 语义；失败时不影响 dense 两路。
             query_sparse: Dict[int, float] = {}
             try:
-                sparse_result = self.sparse_encoder.encode_query((sparse_query or query or "").strip())
+                sparse_result = await _encode_sparse_query(self.sparse_encoder, (sparse_query or query or "").strip())
                 query_sparse = (sparse_result or {}).get("sparse", {}) or {}
             except Exception as sparse_error:
                 logger.warning("视频 Shot sparse 查询向量生成失败，仅使用 dense: {}", sparse_error)

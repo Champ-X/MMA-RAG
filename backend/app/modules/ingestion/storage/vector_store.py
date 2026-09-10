@@ -4,6 +4,7 @@ Qdrant向量数据库适配器
 """
 
 from typing import Dict, List, Any, Optional, Union, Tuple
+import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
@@ -1064,6 +1065,31 @@ class VectorStore:
             return must_filters[0]
         return Filter(must=must_filters)
     
+    async def is_retrieval_index_empty(self) -> Optional[bool]:
+        """Only a fresh, successful probe of ALL indexes can prove emptiness.
+
+        Do not use the KB metadata list: stale/missing metadata or portraits
+        must not hide searchable documents. Errors/timeouts mean unknown.
+        This result is never cached across requests (ingestion may add data).
+        """
+        def probe():
+            existing = {item.name for item in self.client.get_collections().collections}
+            for name in (
+                TEXT_CHUNK_COLLECTION, "image_vectors", "audio_vectors",
+                VIDEO_SHOT_COLLECTION, VIDEO_KEYFRAME_COLLECTION, "kb_portraits",
+            ):
+                if name in existing and self.client.count(
+                    collection_name=name, exact=True, timeout=1,
+                ).count > 0:
+                    return False
+            return True
+
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(probe), timeout=1.0)
+        except Exception as exc:
+            logger.debug("Index emptiness unknown; retain full retrieval: {}", type(exc).__name__)
+            return None
+
     async def search_text_chunks(
         self,
         query_vector: List[float],
@@ -1083,7 +1109,7 @@ class VectorStore:
             # 使用 query_points API (新版本 qdrant-client)
             # 检查集合是否是 Named Vector 格式，如果是则指定 using="dense"
             try:
-                collection_info = self.client.get_collection(TEXT_CHUNK_COLLECTION)
+                collection_info = await asyncio.to_thread(self.client.get_collection, TEXT_CHUNK_COLLECTION)
                 is_named_vector = False
                 if hasattr(collection_info, 'config') and hasattr(collection_info.config, 'params'):
                     if hasattr(collection_info.config.params, 'vectors'):
@@ -1107,7 +1133,7 @@ class VectorStore:
             if is_named_vector:
                 query_kwargs["using"] = "dense"
             
-            query_result = self.client.query_points(**query_kwargs)
+            query_result = await asyncio.to_thread(self.client.query_points, **query_kwargs)
             
             # 处理返回结果：QueryResponse 对象有 points 属性
             if hasattr(query_result, 'points'):
@@ -1183,7 +1209,8 @@ class VectorStore:
             )
             
             # 使用 query_points API 进行稀疏向量检索
-            query_result = self.client.query_points(
+            query_result = await asyncio.to_thread(
+                self.client.query_points,
                 collection_name=TEXT_CHUNK_COLLECTION,
                 query=sparse_vector,
                 using="sparse",  # 指定使用稀疏向量
@@ -1247,7 +1274,8 @@ class VectorStore:
             # 使用 query_points API (新版本 qdrant-client)
             # 对于多向量集合，使用 using 参数指定命名向量
             # 使用 text_vec 进行查询（因为查询向量是文本嵌入向量）
-            query_result = self.client.query_points(
+            query_result = await asyncio.to_thread(
+                self.client.query_points,
                 collection_name="image_vectors",
                 query=query_vector,  # 直接传入向量列表
                 using="text_vec",  # 指定使用 text_vec 命名向量
@@ -1358,7 +1386,8 @@ class VectorStore:
             )
             
             # 执行融合查询
-            query_result = self.client.query_points(
+            query_result = await asyncio.to_thread(
+                self.client.query_points,
                 collection_name="image_vectors",
                 prefetch=prefetch_queries,
                 query=fusion_query,
@@ -1456,7 +1485,8 @@ class VectorStore:
                 file_fields=["file_id", "source_file_id"],
             )
             
-            query_result = self.client.query_points(
+            query_result = await asyncio.to_thread(
+                self.client.query_points,
                 collection_name="image_vectors",
                 query=query_vector,
                 using=vector_name,
@@ -1506,7 +1536,8 @@ class VectorStore:
         返回每条带 score（作 Similarity）、kb_id、cluster_size，便于按策略聚合打分。
         """
         try:
-            query_result = self.client.query_points(
+            query_result = await asyncio.to_thread(
+                self.client.query_points,
                 collection_name="kb_portraits",
                 query=query_vector,
                 limit=limit,
@@ -2123,7 +2154,8 @@ class VectorStore:
                     )
                 ]
                 # 使用query_points进行混合检索（prefetch 与 query 分开传参）
-                search_results = self.client.query_points(
+                search_results = await asyncio.to_thread(
+                    self.client.query_points,
                     collection_name="audio_vectors",
                     prefetch=prefetch_queries,
                     query=FusionQuery(fusion=Fusion.RRF),
@@ -2135,7 +2167,8 @@ class VectorStore:
                 )
             else:
                 # 仅使用文本语义向量检索（audio_vectors 的 text_vec）
-                search_results = self.client.query_points(
+                search_results = await asyncio.to_thread(
+                    self.client.query_points,
                     collection_name="audio_vectors",
                     query=query_vector,
                     using="text_vec",
@@ -2190,7 +2223,8 @@ class VectorStore:
                     values=list(sparse_vector.values())
                 )
                 prefetch_queries.append(Prefetch(query=sparse_vec, using="sparse", limit=limit * 2))
-            search_results = self.client.query_points(
+            search_results = await asyncio.to_thread(
+                self.client.query_points,
                 collection_name="audio_vectors",
                 prefetch=prefetch_queries,
                 query=FusionQuery(fusion=Fusion.RRF),
@@ -2335,7 +2369,8 @@ class VectorStore:
                         if route_name == "asr_dense"
                         else score_threshold
                     )
-                    response = self.client.query_points(
+                    response = await asyncio.to_thread(
+                        self.client.query_points,
                         collection_name=VIDEO_SHOT_COLLECTION,
                         query=query,
                         using=route_name,
@@ -2391,7 +2426,8 @@ class VectorStore:
             prefetch = [Prefetch(query=text_query_vector, using="frame_vec", limit=max(limit * 2, limit))]
             if clip_query_vector:
                 prefetch.append(Prefetch(query=clip_query_vector, using="clip_vec", limit=max(limit * 2, limit)))
-            response = self.client.query_points(
+            response = await asyncio.to_thread(
+                self.client.query_points,
                 collection_name=VIDEO_KEYFRAME_COLLECTION,
                 prefetch=prefetch,
                 query=FusionQuery(fusion=Fusion.RRF),
