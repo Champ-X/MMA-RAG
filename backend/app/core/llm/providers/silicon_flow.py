@@ -8,6 +8,7 @@ import httpx
 import json
 import asyncio
 from .base import BaseLLMProvider
+from ..model_health import raise_for_stream_error
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -95,7 +96,7 @@ class SiliconFlowProvider(BaseLLMProvider):
         }
         
         # 根据模型类型动态设置超时时间（使用原始模型名称）
-        timeout = self._get_timeout_for_model(model, is_stream=False)
+        timeout = float(kwargs.get("timeout", self._get_timeout_for_model(model, is_stream=False)))
         
         try:
             # 使用临时客户端以应用动态超时
@@ -234,11 +235,10 @@ class SiliconFlowProvider(BaseLLMProvider):
         }
         
         try:
-            response = await self.client.post(
-                f"{self.base_url}/rerank",
-                headers=self.headers,
-                json=payload
-            )
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/rerank", headers=self.headers, json=payload
+                )
             response.raise_for_status()
             result = response.json()
             
@@ -278,6 +278,8 @@ class SiliconFlowProvider(BaseLLMProvider):
         
         # 使用专门的流式超时配置
         timeout = self._get_stream_timeout(model)
+        if "timeout" in kwargs:
+            timeout = httpx.Timeout(float(kwargs["timeout"]), connect=10.0)
         total_timeout_seconds = timeout.read  # 用于日志记录
         
         try:
@@ -288,6 +290,8 @@ class SiliconFlowProvider(BaseLLMProvider):
                     headers=self.headers,
                     json=payload
                 ) as response:
+                    if response.is_error:
+                        await response.aread()
                     response.raise_for_status()
                     async for chunk in response.aiter_lines():
                         if isinstance(chunk, bytes):
@@ -300,11 +304,7 @@ class SiliconFlowProvider(BaseLLMProvider):
                                 chunk_data = json.loads(data_str)
                             except json.JSONDecodeError:
                                 continue
-                            err = (chunk_data or {}).get("error")
-                            if err is not None:
-                                msg = err.get("message", err) if isinstance(err, dict) else str(err)
-                                logger.error(f"SiliconFlow 流式返回错误 [{model}]: {msg}")
-                                raise RuntimeError(f"流式 API 错误: {msg}")
+                            raise_for_stream_error(chunk_data or {})
                             yield chunk_data
         except httpx.HTTPStatusError as e:
             body = getattr(e.response, "text", "") or ""
@@ -327,14 +327,18 @@ class SiliconFlowProvider(BaseLLMProvider):
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""
         try:
-            # 使用嵌入API进行简单测试
+            model = self._registry.get_task_model("embedding") if self._registry else None
+            if not model or self._registry.get_model_config(model).get("provider") != "siliconflow":
+                return {"status": "unknown", "scope": "embedding", "error": "No SiliconFlow embedding route"}
             test_result = await self.embed_texts(
                 texts=["hello"],
-                model="Qwen/Qwen3-Embedding-8B"
+                model=self._registry.get_raw_model_name(model)
             )
             return {
                 "status": "healthy",
                 "test_passed": True,
+                "scope": "single_model_embedding",
+                "model": model,
                 "embedding_dimension": len(test_result[0]) if test_result else 0
             }
         except Exception as e:

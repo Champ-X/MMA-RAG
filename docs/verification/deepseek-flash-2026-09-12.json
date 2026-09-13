@@ -1,0 +1,110 @@
+{
+  "routes": {
+    "intent_recognition": {
+      "model": "aliyun_bailian:qwen3.5-plus",
+      "fallbacks": [
+        "deepseek:deepseek-flash",
+        "Pro/moonshotai/Kimi-K2.5"
+      ]
+    },
+    "query_rewriting": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": [
+        "Pro/moonshotai/Kimi-K2.5"
+      ]
+    },
+    "image_captioning": {
+      "model": "aliyun_bailian:qwen3-vl-plus-2025-12-19",
+      "fallbacks": [
+        "Qwen/Qwen3-Omni-30B-A3B-Captioner",
+        "Pro/moonshotai/Kimi-K2.5",
+        "Qwen/Qwen3-Omni-30B-A3B-Instruct"
+      ]
+    },
+    "document_chunking": {
+      "model": "Pro/moonshotai/Kimi-K2.6",
+      "fallbacks": []
+    },
+    "final_generation": {
+      "model": "Pro/moonshotai/Kimi-K2.6",
+      "fallbacks": [
+        "aliyun_bailian:qwen3.5-plus",
+        "deepseek:deepseek-flash",
+        "Pro/moonshotai/Kimi-K2.5"
+      ]
+    },
+    "kb_portrait_generation": {
+      "model": "Pro/moonshotai/Kimi-K2.6",
+      "fallbacks": [
+        "deepseek:deepseek-flash",
+        "Pro/moonshotai/Kimi-K2.5"
+      ]
+    },
+    "health_check": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": []
+    },
+    "reranking": {
+      "model": "Qwen/Qwen3-Reranker-8B",
+      "fallbacks": [
+        "Qwen/Qwen3-Reranker-4B",
+        "BAAI/bge-reranker-v2-m3"
+      ]
+    },
+    "embedding": {
+      "model": "Qwen/Qwen3-Embedding-8B",
+      "fallbacks": []
+    },
+    "audio_transcription": {
+      "model": "aliyun_bailian:qwen3-omni-flash",
+      "fallbacks": [
+        "aliyun_bailian:qwen-omni-turbo",
+        "openrouter:google/gemini-3-flash-preview",
+        "openrouter:google/gemini-2.5-flash"
+      ]
+    },
+    "video_parsing": {
+      "model": "aliyun_bailian:qwen3.5-omni-plus-2026-03-15",
+      "fallbacks": [
+        "aliyun_bailian:qwen3-omni-flash",
+        "aliyun_bailian:qwen-omni-turbo"
+      ]
+    }
+  },
+  "rewrite": {
+    "refined_query": "软件发布失败后如何回滚到上一版本",
+    "multi_view_queries": [
+      "部署失败后如何恢复到之前的版本",
+      "版本发布失败时怎样执行回滚操作",
+      "应用更新失败后如何退回到上一个稳定版本"
+    ],
+    "keywords": [
+      "版本恢复",
+      "软件发布失败后如何回滚到上一版本",
+      "部署失败",
+      "上一版本",
+      "应用更新失败后如何退回到上一个稳定版本",
+      "发布失败",
+      "版本发布失败时怎样执行回滚操作",
+      "回滚",
+      "回滚操作",
+      "版本回滚"
+    ]
+  },
+  "stream_has_content": true,
+  "health": [
+    {
+      "provider": "deepseek",
+      "raw_model": "deepseek-flash",
+      "method": "chat_completion",
+      "checked_at": 1789219381.465156,
+      "duration_seconds": 0.9909,
+      "success": true,
+      "retry_after": 0,
+      "success_count": 2,
+      "failure_count": 0,
+      "cooling_down": false
+    }
+  ],
+  "validation_seconds": 3.761
+}

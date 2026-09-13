@@ -45,7 +45,14 @@ async def _app_lifespan(app: FastAPI):
 
     feishu_state.main_loop = asyncio.get_running_loop()
     start_feishu_ws_thread()
-    yield
+    from app.core.llm.manager import llm_manager
+    from app.core.llm.models_catalog import maintain_llm_catalog
+    catalog_task = asyncio.create_task(maintain_llm_catalog(llm_manager.registry), name="llm-catalog")
+    try:
+        yield
+    finally:
+        catalog_task.cancel()
+        await asyncio.gather(catalog_task, return_exceptions=True)
 
 
 # 创建 FastAPI 应用实例

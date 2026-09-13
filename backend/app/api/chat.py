@@ -1022,6 +1022,7 @@ async def list_models(refresh_catalog: bool = Query(False)):
         "model_details": r.list_model_details(),
         "task_candidates": r.list_task_candidates_by_task(list(TASK_SETTINGS_KEYS)),
         "catalog_status": get_llm_catalog_status(),
+        "model_health": r.model_health.snapshot(),
         "current_config": _serialize_current_task_config(),
         "task_types": {task: TASK_MODEL_TYPES.get(task) for task in TASK_SETTINGS_KEYS},
     }

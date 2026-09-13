@@ -5,6 +5,7 @@
 
 from typing import Dict, List, Any, Optional
 from pathlib import Path
+from app.core.llm.model_health import ModelHealth
 from app.core.config import settings
 from app.core.logger import get_logger
 import json
@@ -40,6 +41,7 @@ class LLMRegistry:
         self._providers: Dict[str, BaseLLMProvider] = {}
         self._models: Dict[str, Dict[str, Any]] = {}
         self._task_routing: Dict[str, str] = {}
+        self.model_health = ModelHealth()
         self._task_overrides_path = Path(__file__).resolve().parents[3] / "data" / "llm_task_overrides.json"
         self._load_config()
     
@@ -96,29 +98,11 @@ class LLMRegistry:
                 "context_length": 262144,  # 256K tokens，与 OpenRouter 同系模型一致
                 "description": "Qwen3.5 397B MoE 指令模型（SiliconFlow）"
             },
-            "Pro/deepseek-ai/DeepSeek-V3.2": {
-                "provider": "siliconflow",
+            "deepseek:deepseek-flash": {
+                "provider": "deepseek",
+                "raw_model": "deepseek-flash",
                 "type": "chat",
-                "context_length": 160000, # 160K tokens
-                "description": "DeepSeek V3.2 模型"
-            },
-            "Pro/deepseek-ai/DeepSeek-R1": {
-                "provider": "siliconflow",
-                "type": "chat",
-                "context_length": 160000, # 160K tokens
-                "description": "DeepSeek R1 模型"
-            },
-            "deepseek-ai/DeepSeek-R1": {
-                "provider": "siliconflow",
-                "type": "chat",
-                "context_length": 160000, # 160K tokens
-                "description": "DeepSeek R1 模型"
-            },
-            "deepseek-ai/DeepSeek-V3.2": {
-                "provider": "siliconflow",
-                "type": "chat",
-                "context_length": 160000, # 160K tokens
-                "description": "DeepSeek V3.2 模型"
+                "description": "DeepSeek Flash（官方 API）",
             },
             # Siliconflow 新增模型
             "Pro/MiniMaxAI/MiniMax-M2.5": {
@@ -212,8 +196,7 @@ class LLMRegistry:
                 "description": "BGE 重排序模型"
             }
         }
-        # DeepSeek 官方模型 id 由运行时 models_catalog 从 GET /v1/models 合并；此处不再硬编码（避免 API 已下线仍展示）。
-        # 兼容历史：无前缀的 deepseek-chat / deepseek-reasoner 仍可在 get_model_config 中解析。
+        # 默认 DeepSeek 路由统一使用官方 deepseek-flash；目录仍保留实际发现信息。
 
         # OpenRouter 模型（仅当已配置 OPENROUTER_API_KEY 时注册）
         # 使用 openrouter:model_name 格式避免冲突
@@ -411,31 +394,14 @@ class LLMRegistry:
             "intent_recognition": {
                 "model": "aliyun_bailian:qwen3.5-plus",
                 "fallbacks": [
-                    "deepseek-ai/DeepSeek-V3.2",
-                    "Pro/deepseek-ai/DeepSeek-R1",
-                    "Qwen/Qwen3-235B-A22B-Instruct-2507",
+                    "deepseek:deepseek-flash",
                     "Pro/moonshotai/Kimi-K2.5",
-                    "Pro/deepseek-ai/DeepSeek-V3.2",
-                    "Pro/zai-org/GLM-5",
-                    "moonshotai/Kimi-K2-Thinking",
-                    "Pro/MiniMaxAI/MiniMax-M2.5",
-                    "deepseek-chat",
-                    "deepseek-reasoner"
                 ],
             },
             "query_rewriting": {
-                "model": "Qwen/Qwen3.5-397B-A17B",
+                "model": "deepseek:deepseek-flash",
                 "fallbacks": [
-                    "Qwen/Qwen3-235B-A22B-Instruct-2507",
-                    "deepseek-ai/DeepSeek-V3.2",
-                    "Pro/deepseek-ai/DeepSeek-R1",
-                    "Pro/deepseek-ai/DeepSeek-V3.2",
                     "Pro/moonshotai/Kimi-K2.5",
-                    "Pro/zai-org/GLM-5",
-                    "moonshotai/Kimi-K2-Thinking",
-                    "Pro/MiniMaxAI/MiniMax-M2.5",
-                    "deepseek-chat",
-                    "deepseek-reasoner"
                 ],
             },
             "image_captioning": {
@@ -444,8 +410,6 @@ class LLMRegistry:
                     "Qwen/Qwen3-Omni-30B-A3B-Captioner",
                     "Pro/moonshotai/Kimi-K2.5",
                     "Qwen/Qwen3-Omni-30B-A3B-Instruct",
-                    "Qwen/Qwen3-VL-235B-A22B-Instruct",
-                    "zai-org/GLM-4.6V",
                 ],
             },
             # 文档分块使用独立任务路由。调用端禁用 provider fallback：LLM
@@ -459,40 +423,20 @@ class LLMRegistry:
                 "model": "Pro/moonshotai/Kimi-K2.6",
                 "fallbacks": [
                     "aliyun_bailian:qwen3.5-plus",
-                    "deepseek-ai/DeepSeek-V3.2", 
-                    "deepseek-ai/DeepSeek-R1",
-                    "Pro/deepseek-ai/DeepSeek-R1",
-                    "Qwen/Qwen3-235B-A22B-Thinking-2507",
+                    "deepseek:deepseek-flash",
                     "Pro/moonshotai/Kimi-K2.5",
-                    "Pro/zai-org/GLM-5",
-                    "moonshotai/Kimi-K2-Thinking",
-                    "Pro/MiniMaxAI/MiniMax-M2.5",
-                    "deepseek-chat",
-                    "deepseek-reasoner"
                 ],
             },
             "kb_portrait_generation": {
                 "model": "Pro/moonshotai/Kimi-K2.6",
                 "fallbacks": [
-                    "Pro/deepseek-ai/DeepSeek-R1",
-                    "deepseek-ai/DeepSeek-V3.2",
+                    "deepseek:deepseek-flash",
                     "Pro/moonshotai/Kimi-K2.5",
-                    "Pro/zai-org/GLM-5",
-                    "moonshotai/Kimi-K2-Thinking",
-                    "Pro/MiniMaxAI/MiniMax-M2.5",
-                    "deepseek-chat",
-                    "deepseek-reasoner"
                 ],
             },
             "health_check": {
-                "model": "deepseek-ai/DeepSeek-V3.2",
-                "fallbacks": [
-                    "Qwen/Qwen3-235B-A22B-Instruct-2507",
-                    "Pro/deepseek-ai/DeepSeek-R1",
-                    "deepseek-ai/DeepSeek-V3.2",
-                    "deepseek-chat",
-                    "deepseek-reasoner"
-                ],
+                "model": "deepseek:deepseek-flash",
+                "fallbacks": [],
             },
             "reranking": {
                 "model": "Qwen/Qwen3-Reranker-8B",
@@ -512,7 +456,6 @@ class LLMRegistry:
                     "aliyun_bailian:qwen-omni-turbo",
                     "openrouter:google/gemini-3-flash-preview",
                     "openrouter:google/gemini-2.5-flash",
-                    "openrouter:google/gemini-3-pro-preview",
                 ],
             },
             # 视频解析：Scene–Shot 结果含逐 Shot ASR。video_local 会被阿里云 provider
@@ -557,6 +500,9 @@ class LLMRegistry:
         provider_name = model_config.get("provider") or "siliconflow"
         if provider_name not in self._providers:
             return False
+        if task_type == "video_parsing":
+            if provider_name != "aliyun_bailian" or "omni" not in self.get_raw_model_name(model_name).lower():
+                return False
         required_type = TASK_MODEL_TYPES.get(task_type)
         if not required_type:
             return True
@@ -700,8 +646,9 @@ class LLMRegistry:
                     if rest:
                         return {
                             "provider": "openrouter",
-                            "type": "chat,vision,audio,video",
-                            "description": "OpenRouter（动态模型）",
+                            "type": "chat",
+                            "capability_source": "unknown",
+                            "description": "OpenRouter（动态模型，模态能力未验证）",
                             "raw_model": rest,
                         }
                 # DeepSeek：deepseek:<api_id>，目录外 id 亦可调用
@@ -728,15 +675,8 @@ class LLMRegistry:
                         }
                 # 如果没找到，尝试直接查找（向后兼容）
                 return self._models.get(model_name, {})
-        # 历史配置：DeepSeek 官方曾使用无前缀 id
-        if model_name in ("deepseek-chat", "deepseek-reasoner") and "deepseek" in self._providers:
-            return {
-                "provider": "deepseek",
-                "type": "chat",
-                "context_length": 131072,
-                "description": "DeepSeek 官方 API（兼容旧配置）",
-                "raw_model": model_name,
-            }
+        if model_name == "deepseek-flash":
+            return self._models.get("deepseek:deepseek-flash", {})
         return self._models.get(model_name, {})
     
     def get_raw_model_name(self, model_name: str) -> str:
@@ -753,7 +693,10 @@ class LLMRegistry:
     def get_task_fallbacks(self, task_type: str) -> List[str]:
         """根据任务类型获取备用模型列表（用于主模型失败时的故障转移）"""
         cfg = self._task_config.get(task_type, {})
-        return list(cfg.get("fallbacks") or [])
+        return list(dict.fromkeys(
+            model for model in (cfg.get("fallbacks") or [])
+            if self._is_model_compatible_with_task(task_type, model)
+        ))
     
     def update_task_fallbacks(self, task_type: str, fallbacks: List[str]) -> None:
         """运行时更新某任务的备用模型列表（供 set_fallback_models 使用）"""
@@ -794,34 +737,21 @@ class LLMRegistry:
         return result
 
     def add_model(self, name: str, config: Dict[str, Any]):
-        """添加或合并模型。
-
-        官网目录同步只负责“发现当前可用模型与基础元数据”；静态注册表里已有的人工标注
-        可能包含更具体的项目能力（例如图像/视频理解），因此合并时保留能力并集。
-        """
+        """Merge fresh metadata without preserving disproven old capabilities/limits."""
         existing = self._models.get(name)
         if not existing:
             self._models[name] = dict(config)
             return
 
         merged = {**existing, **config}
-        type_set = set(self._extract_model_types(existing))
-        type_set.update(self._extract_model_types(config))
-        if type_set:
-            merged["type"] = self._join_model_types(type_set)
-
+        # Unknown upstream limits must not replace a known static limit with a
+        # fabricated default. An explicit smaller limit always wins.
+        if config.get("context_length") is None:
+            merged["context_length"] = existing.get("context_length")
         existing_desc = str(existing.get("description") or "").strip()
         incoming_desc = str(config.get("description") or "").strip()
         if existing_desc and (not incoming_desc or "目录同步" in incoming_desc):
             merged["description"] = existing_desc
-
-        try:
-            existing_ctx = int(existing.get("context_length") or 0)
-            incoming_ctx = int(config.get("context_length") or 0)
-            if existing_ctx or incoming_ctx:
-                merged["context_length"] = max(existing_ctx, incoming_ctx)
-        except (TypeError, ValueError):
-            pass
 
         self._models[name] = merged
 
@@ -844,6 +774,11 @@ class LLMRegistry:
                 "max_output_tokens": config.get("max_output_tokens"),
                 "description": config.get("description"),
                 "catalog_synced": bool(config.get("catalog_synced")),
+                "catalog_presence": config.get("catalog_presence", "unknown"),
+                "catalog_checked_at": config.get("catalog_checked_at"),
+                "capability_source": config.get("capability_source", "static"),
+                "call_health": [row for row in self.model_health.snapshot()
+                                if row["provider"] == provider and row["raw_model"] == self.get_raw_model_name(name)],
                 "catalog_source": config.get("catalog_source"),
                 "catalog_sub_types": config.get("catalog_sub_types"),
                 "input_modalities": config.get("input_modalities"),
@@ -910,7 +845,14 @@ class LLMRegistry:
             provider = config.get("provider") or "siliconflow"
             if provider not in available_providers:
                 continue
+            if not self._is_model_compatible_with_task(task_type, model_name):
+                continue
+            method = {"embedding": "embed_texts", "reranking": "rerank"}.get(task_type, "chat_completion")
+            blocked = self.model_health.blocked(provider, self.get_raw_model_name(model_name), method)
             scoring = self._score_model_for_task(task_type, model_name, config)
+            if blocked:
+                scoring["score"] -= 1000000
+                scoring["reasons"].append("cooling_down")
             rows.append(
                 {
                     "model": model_name,
@@ -918,6 +860,10 @@ class LLMRegistry:
                     "capabilities": self._extract_model_types(config),
                     "context_length": config.get("context_length"),
                     "catalog_synced": bool(config.get("catalog_synced")),
+                    "catalog_presence": config.get("catalog_presence", "unknown"),
+                    "catalog_checked_at": config.get("catalog_checked_at"),
+                    "capability_source": config.get("capability_source", "static"),
+                    "cooldown": blocked,
                     "score": scoring["score"],
                     "reasons": scoring["reasons"],
                 }
