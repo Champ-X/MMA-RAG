@@ -476,11 +476,17 @@ async def chat_message(request: Request):
             "metadata": {
                 "query": message,
                 "intent_type": retrieval_result.context.intent_type,
-                "processing_time": retrieval_result.processing_time + generation_result.get("metadata", {}).get("generation_time", 0),
+                "processing_time": (
+                    retrieval_result.processing_time
+                    + generation_result.get("metadata", {}).get("generation_time", 0)
+                    + generation_result.get("metadata", {}).get("jev_citation_audit", {}).get("duration_s", 0)
+                ),
                 "chunks_used": context_used.total_chunks if context_used else 0,
                 "images_used": context_used.total_images if context_used else 0,
                 "tokens_used": generation_result.get("metadata", {}).get("tokens_used", 0),
                 "model_used": generation_result.get("metadata", {}).get("model_used", ""),
+                **({"jev_citation_audit": generation_result["metadata"]["jev_citation_audit"]}
+                   if "jev_citation_audit" in generation_result.get("metadata", {}) else {}),
                 "agent": agent_result.metadata() if agent_result else {"enabled": False},
                 "agent_selection": mode_resolution.metadata(),
             }
@@ -608,6 +614,7 @@ async def _iter_chat_sse(
 
     answer_chunks: List[str] = []
     last_citations: List[Any] = []
+    citation_audit = None
     async for event in generation_service.stream_generate_response(
         query=message,
         retrieval_result=retrieval_result,
@@ -640,6 +647,7 @@ async def _iter_chat_sse(
             yield f"data: {json.dumps({'type': 'error', 'message': event.data.get('error', '未知错误')})}\n\n"
             return
         elif event_type == "done":
+            citation_audit = event.data.get("jev_citation_audit")
             break
 
     full_answer = "".join(answer_chunks)
@@ -661,7 +669,10 @@ async def _iter_chat_sse(
         },
     )
 
-    yield f"data: {json.dumps({'type': 'complete', 'sessionId': current_session_id})}\n\n"
+    completion = {'type': 'complete', 'sessionId': current_session_id}
+    if citation_audit is not None:
+        completion['diagnostics'] = {'jev_citation_audit': citation_audit}
+    yield f"data: {json.dumps(completion)}\n\n"
 
 
 @router.get("/stream")

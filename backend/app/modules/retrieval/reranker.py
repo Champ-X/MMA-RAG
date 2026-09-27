@@ -5,9 +5,12 @@
 
 from typing import Dict, List, Any, Optional
 import asyncio
+import time
 from datetime import datetime
 
 from app.core.llm.manager import llm_manager
+from app.core.llm.jev import JevError, get_jev_client
+from app.core.jev_settings import get_jev_config
 from app.core.logger import get_logger, audit_log
 
 logger = get_logger(__name__)
@@ -23,6 +26,8 @@ class Reranker:
         self.rrf_weight = 0.3          # RRF权重
         self.top_k = 20                # Cross-Encoder处理的候选数量（从20增加到30，提高重排质量）
         self.final_top_k = 10          # 最终返回结果数量（从10增加到15，提高图片丰富度）
+        self.jev_mode = None
+        self.jev_client = get_jev_client()
     
     async def rerank(
         self,
@@ -50,9 +55,7 @@ class Reranker:
             coarse_ranking = self._prepare_coarse_ranking(raw_results)
             
             # 2. 第二阶段：Cross-Encoder精排
-            reranked_results = await self._apply_cross_encoder_reranking(
-                query, coarse_ranking, context
-            )
+            reranked_results, scorer_info = await self._rank_with_optional_jev(query, coarse_ranking, context)
             
             # 3. 最终排序和限制数量，并保护用户显式要求的多模态证据。
             final_results = self._apply_final_ranking_with_modality_protection(
@@ -76,7 +79,8 @@ class Reranker:
                 "processing_time": processing_time,
                 "coarse_ranking_count": len(coarse_ranking),
                 "final_ranking_count": len(final_results),
-                "strategy": "two_stage_reranking"
+                "strategy": "two_stage_reranking",
+                "scorer": scorer_info,
             }
             
         except Exception as e:
@@ -87,6 +91,37 @@ class Reranker:
                 "error": str(e)
             }
     
+    async def _rank_with_optional_jev(self, query, candidates, context):
+        mode = getattr(self, "jev_mode", None) or get_jev_config().rerank_mode
+        if mode == "off" or not candidates or not query.strip():
+            return await self._apply_cross_encoder_reranking(query, candidates, context), {"mode": "off"}
+
+        async def jev_rank():
+            started = time.perf_counter()
+            selected = self._select_candidates_for_reranking(candidates, context)
+            documents = [self._build_document_content(item) for item in selected]
+            try:
+                response = await self.jev_client.score(query.strip(), documents)
+                ranked = self._merge_scores(query, selected, response.scores, context)
+                ranked.sort(key=lambda item: item["final_score"], reverse=True)
+                return ranked, {"mode": mode, "status": "ok", **response.metadata()}
+            except JevError as exc:
+                return None, {"mode": mode, "status": "fallback", "reason": str(exc),
+                              "duration_s": time.perf_counter() - started}
+
+        if mode == "shadow":
+            baseline, (proposed, info) = await asyncio.gather(
+                self._apply_cross_encoder_reranking(query, candidates, context), jev_rank(),
+            )
+            if proposed is not None:
+                # Metadata is request-local; no concurrent request overwrites it.
+                info["proposed_ids"] = [item.get("id") for item in self._apply_final_ranking_with_modality_protection(proposed, context)]
+            return baseline, info
+        proposed, info = await jev_rank()
+        if proposed is not None:
+            return proposed, info
+        return await self._apply_cross_encoder_reranking(query, candidates, context), info
+
     @staticmethod
     def _result_modality(result: Dict[str, Any]) -> str:
         content_type = str(result.get("content_type") or "").lower()

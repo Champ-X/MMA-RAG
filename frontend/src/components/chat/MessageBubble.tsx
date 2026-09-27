@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react'
 import { ChevronDown, FileText, Music, Pause, Play, Video } from 'lucide-react'
 import { InlineCitation } from './InlineCitation'
+import { ReferenceImage } from './ReferenceImage'
 import type { Components, ExtraProps } from 'react-markdown'
 import { cn } from '@/lib/utils'
 import { chatApi } from '@/services/api_client'
@@ -20,6 +21,17 @@ import { UserMessageAttachmentStrip } from './ChatAttachmentPreview'
 type CitationStub = { id: number | string }
 type CitationLike = CitationReference | CitationStub
 type ReactNodeChildrenProps = { children?: React.ReactNode }
+type MarkdownBlockProps = ReactNodeChildrenProps & ExtraProps
+type MarkdownBlockRenderers = Record<'p' | 'li', (props: MarkdownBlockProps) => React.ReactNode>
+
+// Stable component types preserve image loading/retry state while streaming changes the text.
+const MarkdownBlockContext = React.createContext<MarkdownBlockRenderers | null>(null)
+function CitationParagraph(props: MarkdownBlockProps) {
+  return React.useContext(MarkdownBlockContext)?.p(props)
+}
+function CitationListItem(props: MarkdownBlockProps) {
+  return React.useContext(MarkdownBlockContext)?.li(props)
+}
 
 let katexCssLoadPromise: Promise<unknown> | null = null
 
@@ -90,6 +102,8 @@ interface MessageBubbleProps {
   citationMap?: Map<number | string, CitationReference>
   /** 点击引用时的回调；messageId 用于只从当前消息取引用，避免多条回答共用 [1][2] 时错用上一条的引用 */
   onCiteClick?: (refId: number | string, event: React.MouseEvent, messageId?: string) => void
+  onRegenerate?: () => void
+  regenerationDisabled?: boolean
 }
 
 /** 正文中引用按首次出现顺序去重得到的 id 列表，用于连续编号 1,2,3... */
@@ -115,7 +129,7 @@ function injectCitations(
   citationMap?: Map<number | string, CitationReference>
 ): React.ReactNode {
   if (typeof children === 'string') {
-    return splitTextWithCitations(children, onCiteClick, messageId, originalIdToDisplayIndex)
+    return splitTextWithCitations(children, onCiteClick, messageId, originalIdToDisplayIndex, citationMap)
   }
   if (Array.isArray(children)) {
     return children.map((child, idx) => (
@@ -317,7 +331,8 @@ function splitTextWithCitations(
   text: string,
   onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void,
   messageId?: string,
-  originalIdToDisplayIndex?: Map<number | string, number>
+  originalIdToDisplayIndex?: Map<number | string, number>,
+  citationMap?: Map<number | string, CitationReference>
 ) {
   const matches = findAllCitationMatches(text)
   if (matches.length === 0) return text
@@ -335,6 +350,7 @@ function splitTextWithCitations(
       <CitationInlineButton
         key={`c_${messageId}_${idx}_${match.n}`}
         n={typeof displayN === 'number' ? displayN : Number(displayN) || 0}
+        available={!!citationMap?.get(match.n)?.type}
         onClick={(rect) => onCiteClick?.(match.n, rect, messageId)}
       />
     )
@@ -403,17 +419,20 @@ function findCitationById(
   return null
 }
 
-function CitationInlineButton({ n, onClick }: { n: number; onClick?: (rect: DOMRect) => void }) {
+function CitationInlineButton({ n, available, onClick }: { n: number; available: boolean; onClick?: (rect: DOMRect) => void }) {
   return (
     <button
       type="button"
+      disabled={!available}
       onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
         const rect = e.currentTarget.getBoundingClientRect()
         onClick?.(rect)
       }}
       className="inline-flex items-center justify-center mx-0.5 text-[9px] font-semibold rounded-[5px] transition-all border align-text-top min-w-[1rem] h-4 px-1 text-indigo-700 dark:text-indigo-200 bg-gradient-to-br from-indigo-50 via-purple-50 to-fuchsia-50 dark:from-indigo-600/30 dark:via-purple-600/20 dark:to-fuchsia-600/30 hover:from-indigo-100 hover:via-purple-100 hover:to-fuchsia-100 dark:hover:from-indigo-600/40 dark:hover:via-purple-600/30 dark:hover:to-fuchsia-600/40 border-indigo-300/60 dark:border-indigo-700/60 shadow-sm hover:shadow active:scale-95"
-      title={`点击查看引用 ${n}`}
-      aria-label={`查看引用 ${n}`}
+      title={available ? `点击查看引用 ${n}` : `引用 ${n} 的来源数据不可用`}
+      aria-label={available ? `查看引用 ${n}` : `引用 ${n} 的来源数据不可用`}
     >
       {n}
     </button>
@@ -445,262 +464,23 @@ function ParagraphImageDisplay({
   messageId?: string
   fallbackKbId?: string
 }) {
-  // 有 img_url 或具备 file_path + kb_id（可按需刷新）的图片引用均展示；按真实素材去重。
-  const imageOnlyCitations = React.useMemo(() => {
-    const raw = citations.filter(
-      (c): c is CitationReference =>
-        c?.type === 'image' &&
-        !isVideoKeyframeCitation(c) &&
-        (!!c?.img_url || (!!(c?.file_path || c?.file_name) && !!(c?.debug_info?.kb_id || fallbackKbId)))
-    )
-    return deduplicateMediaCitations(raw)
-  }, [citations, fallbackKbId])
-  const [failedImages, setFailedImages] = React.useState<Set<number | string>>(new Set())
-  const [loadedImages, setLoadedImages] = React.useState<Set<number | string>>(new Set())
-  /** 按需刷新后的图片 URL（用于历史消息中 presigned URL 过期后重新拉取） */
-  const [refreshedImgUrls, setRefreshedImgUrls] = React.useState<Record<string, string>>({})
-  const refreshAttemptedRef = React.useRef<Set<string>>(new Set())
-  const loadTimeoutsRef = React.useRef<Map<string, number>>(new Map())
-  const imageRefs = React.useRef<Map<number | string, HTMLImageElement>>(new Map())
-  const failedImagesRef = React.useRef<Set<number | string>>(new Set())
-  const loadedImagesRef = React.useRef<Set<number | string>>(new Set())
-
-  // 同步 state 到 ref（避免在 useEffect 中依赖 Set）
-  React.useEffect(() => {
-    failedImagesRef.current = failedImages
-  }, [failedImages])
-
-  React.useEffect(() => {
-    loadedImagesRef.current = loadedImages
-  }, [loadedImages])
-
-  React.useEffect(() => {
-    const loadTimeouts = loadTimeoutsRef.current
-    return () => {
-      loadTimeouts.forEach((timer) => window.clearTimeout(timer))
-      loadTimeouts.clear()
-    }
-  }, [])
-
-  const buildImageKey = React.useCallback(
-    (citationId: number | string) => (messageId ? `${messageId}-${citationId}` : String(citationId)),
-    [messageId]
+  const images = deduplicateMediaCitations(
+    citations.filter((citation) => citation.type === 'image' && !isVideoKeyframeCitation(citation))
   )
-
-  // 无有效 URL 但有 file_path + kb_id 时按需拉取图片预览（如从历史加载的引用）
-  React.useEffect(() => {
-    let cancelled = false
-    imageOnlyCitations.forEach((citation) => {
-      const key = buildImageKey(citation.id)
-      const kbId = citation.debug_info?.kb_id || fallbackKbId
-      const filePath = citation.file_path || citation.file_name
-      if (citation.img_url || refreshedImgUrls[key] || !filePath || !kbId) return
-      chatApi
-        .getReferenceImageUrl({ kb_id: kbId, file_path: filePath })
-        .then((res) => {
-          if (!cancelled && res?.img_url) setRefreshedImgUrls((prev) => ({ ...prev, [key]: res.img_url }))
-        })
-        .catch(() => { })
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [buildImageKey, fallbackKbId, imageOnlyCitations, refreshedImgUrls])
-
-  // 当 citations 变化时，检查图片是否已经加载完成（从缓存中）
-  // 使用稳定的字符串作为依赖，避免数组引用变化导致的重新计算
-  const citationIds = React.useMemo(() => {
-    try {
-      const ids = imageOnlyCitations.map(c => String(c?.id ?? '')).filter(Boolean).sort().join(',')
-      return ids
-    } catch {
-      return ''
-    }
-  }, [imageOnlyCitations])
-
-  React.useEffect(() => {
-    if (!citationIds) return
-
-    imageOnlyCitations.forEach((citation) => {
-      if (!citation?.id) return
-
-      // 使用 ref 检查状态，避免依赖 Set 对象
-      if (failedImagesRef.current.has(citation.id)) return
-      if (loadedImagesRef.current.has(citation.id)) return
-
-      const img = imageRefs.current.get(citation.id)
-      if (img && img.complete && img.naturalHeight !== 0) {
-        // 图片已经加载完成（可能是从缓存中）
-        setLoadedImages((prevLoaded) => {
-          if (prevLoaded.has(citation.id)) return prevLoaded
-          return new Set(prevLoaded).add(citation.id)
-        })
-      }
-    })
-  }, [citationIds, imageOnlyCitations])
-
-  const handleImageError = React.useCallback(
-    async (citationId: number | string, citation: CitationReference, e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-      e.preventDefault()
-      e.stopPropagation()
-      const key = buildImageKey(citationId)
-      const oldTimer = loadTimeoutsRef.current.get(key)
-      if (oldTimer) {
-        window.clearTimeout(oldTimer)
-        loadTimeoutsRef.current.delete(key)
-      }
-      const kbId = citation.debug_info?.kb_id || fallbackKbId
-      const filePath = citation.file_path || citation.file_name
-      if (filePath && kbId) {
-        try {
-          const res = await chatApi.getReferenceImageUrl({ kb_id: kbId, file_path: filePath })
-          if (res?.img_url) {
-            setRefreshedImgUrls((prev) => ({ ...prev, [key]: res.img_url }))
-            refreshAttemptedRef.current.add(key)
-            setFailedImages((prev) => {
-              const next = new Set(prev)
-              next.delete(citationId)
-              return next
-            })
-            return
-          }
-        } catch {
-          // 刷新失败，下面会标记为失败
-        }
-      }
-      setFailedImages((prev) => new Set(prev).add(citationId))
-      setLoadedImages((prev) => {
-        const next = new Set(prev)
-        next.delete(citationId)
-        return next
-      })
-      const img = e.currentTarget
-      img.setAttribute('data-error', 'true')
-      img.style.display = 'none'
-      img.style.visibility = 'hidden'
-      img.style.opacity = '0'
-      img.style.width = '0'
-      img.style.height = '0'
-      const button = img.closest('button')
-      if (button) {
-        button.style.display = 'none'
-      }
-    },
-    [buildImageKey, fallbackKbId]
-  )
-
-  const handleImageLoad = (citationId: number | string) => {
-    setLoadedImages((prev) => new Set(prev).add(citationId))
-  }
-
-  // 仅过滤加载失败图片；“首次引用去重”在父组件渲染阶段完成
-  const validCitations = React.useMemo(
-    () => imageOnlyCitations.filter((citation) => !failedImages.has(citation.id)),
-    [failedImages, imageOnlyCitations]
-  )
-
-  if (imageOnlyCitations.length === 0) return null
-  if (validCitations.length === 0) return null
+  if (!images.length) return null
 
   return (
     <div className="flex flex-wrap justify-center gap-3 mt-3 mb-0">
-      {validCitations.map((citation) => {
-        const isFailed = failedImages.has(citation.id)
-        const isLoaded = loadedImages.has(citation.id)
-        const imageKey = buildImageKey(citation.id)
-
-        if (isFailed) return null
-
-        return (
-          <button
-            key={citation.id}
-            type="button"
-            onClick={(e) => {
-              if (onCiteClick) {
-                const rect = e.currentTarget.getBoundingClientRect()
-                onCiteClick(citation.id, rect, messageId)
-              }
-            }}
-            className="rounded-lg border-0 overflow-hidden hover:ring-2 ring-primary/40 transition-all p-0 m-0 relative"
-            aria-label={`查看图片引用：${citation.file_name || `引用 ${citation.id}`}`}
-          >
-            {!isLoaded && (
-              <div className="absolute inset-0 flex items-center justify-center bg-slate-100 dark:bg-slate-800 z-10" role="status" aria-label="图片引用加载中">
-                <div className="animate-spin h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full" aria-hidden />
-              </div>
-            )}
-            <img
-              ref={(el) => {
-                if (el) {
-                  imageRefs.current.set(citation.id, el)
-
-                  // 立即检查是否已加载（从缓存）
-                  if (el.complete && el.naturalHeight !== 0 && !loadedImagesRef.current.has(citation.id)) {
-                    // 图片已从缓存加载，立即显示
-                    setLoadedImages((prev) => {
-                      if (prev.has(citation.id)) return prev
-                      return new Set(prev).add(citation.id)
-                    })
-                  } else if (!el.complete) {
-                    // 图片未加载，先隐藏防止显示破损图标
-                    el.style.visibility = 'hidden'
-                    el.style.opacity = '0'
-                  }
-                } else {
-                  imageRefs.current.delete(citation.id)
-                }
-              }}
-              src={refreshedImgUrls[imageKey] || citation.img_url || ''}
-              alt={citation.file_name || ''}
-              className="max-h-64 max-w-full object-contain block m-0 p-0"
-              style={{
-                opacity: isLoaded ? 1 : 0,
-                transition: isLoaded ? 'opacity 0.2s' : 'none',
-                visibility: isLoaded ? 'visible' : 'hidden'
-              }}
-              onError={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                handleImageError(citation.id, citation, e)
-              }}
-              onLoad={() => handleImageLoad(citation.id)}
-              // 防止显示 broken image 图标
-              onAbort={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                handleImageError(citation.id, citation, e as React.SyntheticEvent<HTMLImageElement, Event>)
-              }}
-              // 添加额外的错误处理
-              onLoadStart={() => {
-                // 确保加载开始时图片是隐藏的
-                const img = imageRefs.current.get(citation.id)
-                if (img) {
-                  img.style.visibility = 'hidden'
-                }
-                const oldTimer = loadTimeoutsRef.current.get(imageKey)
-                if (oldTimer) window.clearTimeout(oldTimer)
-                const timer = window.setTimeout(async () => {
-                  if (loadedImagesRef.current.has(citation.id) || failedImagesRef.current.has(citation.id)) return
-                  if (refreshAttemptedRef.current.has(imageKey)) return
-                  const kbId = citation.debug_info?.kb_id || fallbackKbId
-                  const filePath = citation.file_path || citation.file_name
-                  if (!kbId || !filePath) return
-                  try {
-                    const res = await chatApi.getReferenceImageUrl({ kb_id: kbId, file_path: filePath })
-                    if (res?.img_url) {
-                      refreshAttemptedRef.current.add(imageKey)
-                      setRefreshedImgUrls((prev) => ({ ...prev, [imageKey]: res.img_url }))
-                    }
-                  } catch {
-                    // ignore
-                  }
-                }, 8000)
-                loadTimeoutsRef.current.set(imageKey, timer)
-              }}
-            />
-          </button>
-        )
-      })}
+      {images.map((citation) => (
+        <ReferenceImage
+          key={getCitationIdentityKey(citation)}
+          url={citation.img_url}
+          kbId={citation.debug_info?.kb_id || fallbackKbId}
+          filePath={citation.file_path || citation.file_name}
+          label={citation.file_name || `引用 ${citation.id}`}
+          onOpen={(rect) => onCiteClick?.(citation.id, rect, messageId)}
+        />
+      ))}
     </div>
   )
 }
@@ -1329,8 +1109,10 @@ export function MessageBubble({
   message,
   isStreaming = false,
   liveThinking,
-  citationMap,
+  citationMap: preloadedCitationMap,
   onCiteClick,
+  onRegenerate,
+  regenerationDisabled = false,
 }: MessageBubbleProps) {
   const activeSession = useChatStore((s) => s.getActiveSession())
   const uiConfig = useConfigStore((s) => s.config)
@@ -1345,6 +1127,16 @@ export function MessageBubble({
       ? (message.thinking[0]?.data as ThoughtData) ?? null
       : (message.thinking as ThoughtData) ?? null
   const refs = React.useMemo(() => message.citations ?? [], [message.citations])
+  const citationMap = React.useMemo(() => {
+    const map = new Map<number | string, CitationReference>()
+    for (const ref of [...(preloadedCitationMap?.values() ?? []), ...refs]) {
+      if (!('type' in ref)) continue
+      map.set(ref.id, ref)
+      map.set(String(ref.id), ref)
+      if (/^\d+$/.test(String(ref.id))) map.set(Number(ref.id), ref)
+    }
+    return map
+  }, [preloadedCitationMap, refs])
 
   const orderedRefIds = React.useMemo(
     () => (!isUser ? getOrderedRefIdsFromContent(message.content) : []),
@@ -1355,6 +1147,7 @@ export function MessageBubble({
     orderedRefIds.forEach((id, i) => m.set(id, i + 1))
     return m
   }, [orderedRefIds])
+  const hasMissingReferences = !isUser && !isStreaming && orderedRefIds.some((id) => !citationMap.has(id))
   const orderedRefs = React.useMemo(() => {
     return orderedRefIds
       .map((id) => citationMap?.get(id) ?? refs.find((r) => isCitationLike(r) && getCitationRefId(r) === id) ?? { id })
@@ -1414,7 +1207,7 @@ export function MessageBubble({
       const full = 'type' in ref
         ? ref as CitationReference
         : citationMap?.get(getCitationRefId(ref))
-      return !isVideoKeyframeCitation(full)
+      return !!full?.type && !isVideoKeyframeCitation(full)
     })
   }, [uniqueRefs, citationMap])
   // 正文已在首次引用处展示完整媒体；底部仅保留轻量的来源按钮，避免图片在回答末尾再出现一次。
@@ -1426,7 +1219,7 @@ export function MessageBubble({
   }, [isUser])
 
   // 创建 markdown 组件的工厂函数
-  const markdownComponents = React.useMemo<Components>(() => {
+  const markdownRendering = React.useMemo(() => {
     const handleCiteClick = createCiteClickHandler(onCiteClick, message.id)
 
     const createComponent = (tag: 'p' | 'li', className: string) => {
@@ -1590,9 +1383,15 @@ export function MessageBubble({
     ImageComponent.displayName = 'MarkdownImage'
 
     return {
-      p: createComponent('p', 'mb-2 leading-relaxed'),
-      li: createComponent('li', 'mb-0'),
-      img: ImageComponent,
+      blocks: {
+        p: createComponent('p', 'mb-2 leading-relaxed'),
+        li: createComponent('li', 'mb-0'),
+      },
+      components: {
+        p: CitationParagraph,
+        li: CitationListItem,
+        img: ImageComponent,
+      } satisfies Components,
     }
   }, [
     allCitationMatches,
@@ -1655,7 +1454,9 @@ export function MessageBubble({
               )}
             >
               <Suspense fallback={<MarkdownRendererFallback streaming={isStreaming} />}>
-                <MarkdownRenderer content={message.content} components={markdownComponents} />
+                <MarkdownBlockContext.Provider value={markdownRendering.blocks}>
+                  <MarkdownRenderer content={message.content} components={markdownRendering.components} />
+                </MarkdownBlockContext.Provider>
               </Suspense>
 
               {message.error && !thoughtData?._generation_failed && message.error !== 'stopped' && message.error !== 'stopped_hint' && (
@@ -1673,6 +1474,16 @@ export function MessageBubble({
             </div>
           )}
 
+          {showCitations && hasMissingReferences && (
+            <div role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+              <p>这条回答的部分引用缺少来源数据，对应图片和来源详情无法显示。请重新生成回答。</p>
+              {onRegenerate && (
+                <button type="button" disabled={regenerationDisabled} onClick={onRegenerate} className="mt-1 min-h-11 font-medium underline underline-offset-4 disabled:opacity-50">
+                  重新生成回答
+                </button>
+              )}
+            </div>
+          )}
           {hasRefs && !isUser && (
             <div className="mt-3 space-y-2">
               <InlineCitation

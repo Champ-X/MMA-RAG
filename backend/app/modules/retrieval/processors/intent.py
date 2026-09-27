@@ -10,6 +10,9 @@ from app.core.llm.manager import llm_manager
 from app.core.llm.prompt_engine import prompt_engine
 from app.core.logger import get_logger
 from app.modules.chat.context_manager import build_conversation_context
+from app.core.jev_settings import get_jev_config
+from app.core.llm.jev import JevError, get_jev_client
+from .jev_intent import classify_intent
 
 logger = get_logger(__name__)
 
@@ -19,6 +22,8 @@ class IntentProcessor:
     def __init__(self):
         self.llm_manager = llm_manager
         self.prompt_engine = prompt_engine
+        # Explicit instance overrides remain available for frozen experiments.
+        self.jev_mode = None
     
     async def process(
         self,
@@ -36,6 +41,29 @@ class IntentProcessor:
         Returns:
             意图分析结果
         """
+        decision = {"mode": getattr(self, "jev_mode", None) or get_jev_config().intent_mode, "accepted": False}
+        if decision["mode"] == "adaptive":
+            if chat_history or (attachment_context_block or "").strip():
+                decision["reason"] = "context_requires_generative_handler"
+            elif not query.strip() or len(query) > 4000:
+                decision["reason"] = "query_outside_bounds"
+            else:
+                try:
+                    analysis, metadata = await classify_intent(get_jev_client(), query)
+                    decision.update(metadata)
+                    if metadata["accepted"]:
+                        # The legacy validator force-enables media on keywords,
+                        # undoing semantic handling of negation and quoted code.
+                        analysis["jev_decision"] = decision
+                        return analysis
+                    decision["reason"] = "uncertain_or_complex"
+                except JevError as exc:
+                    decision["reason"] = str(exc)
+        analysis = await self._process_generative(query, chat_history, attachment_context_block)
+        analysis["jev_decision"] = decision
+        return analysis
+
+    async def _process_generative(self, query, chat_history=None, attachment_context_block=None):
         try:
             # 构建对话历史文本
             chat_history_text = self._format_chat_history(chat_history or [])

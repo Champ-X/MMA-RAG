@@ -42,6 +42,7 @@ minio_data/
 
 # 推荐问题 LLM 缓存（服务端）
 backend/data/suggestion_cache/
+backend/data/jev_settings.json
 qdrant_storage/
 minio.pid
 qdrant.pid
@@ -64,6 +65,11 @@ coverage.xml
 # RAG 评测临时运行产物；人工确认的 evals/baselines/ 可提交
 /evals/runs/
 /evals/reports/
+
+# Live experiment locks and billing/resume ledgers stay local; frozen receipts are versioned.
+/docs/research/**/results/*.lock
+/docs/research/**/results/*.pending.json
+/docs/research/**/results/*.execution.json
 
 # —— IDE / 编辑器 ——
 .idea/

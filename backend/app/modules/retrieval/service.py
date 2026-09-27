@@ -497,11 +497,13 @@ class RetrievalService:
             debug_info = {
                 "preprocessing_time": preprocessing_result.get("processing_time", 0),
                 "preprocessing_stages": preprocessing_result.get("stage_times", {}),
+                "jev_decision": preprocessing_result.get("jev_decision", {}),
                 "search_branch_times": search_results.get("branch_times", {}),
                 "reused_embedding_vectors": embedding_cache.reused_vectors,
                 "routing_time": routing_result.processing_time,
                 "search_time": search_results.get("processing_time", 0),
                 "reranking_time": reranked_results.get("processing_time", 0),
+                "reranking_scorer": reranked_results.get("scorer", {}),
                 "total_time": processing_time,
                 "routing_method": routing_result.routing_method,
                 "routing_query_count": getattr(routing_result, "query_count", 1),
@@ -759,11 +761,13 @@ class RetrievalService:
             debug_info = {
                 "preprocessing_time": preprocessing_result.get("processing_time", 0),
                 "preprocessing_stages": preprocessing_result.get("stage_times", {}),
+                "jev_decision": preprocessing_result.get("jev_decision", {}),
                 "search_branch_times": search_results.get("branch_times", {}),
                 "reused_embedding_vectors": embedding_cache.reused_vectors,
                 "routing_time": getattr(routing_result, "processing_time", 0),
                 "search_time": search_results.get("processing_time", 0),
                 "reranking_time": reranked_results.get("processing_time", 0),
+                "reranking_scorer": reranked_results.get("scorer", {}),
                 "total_time": processing_time,
                 "routing_method": getattr(routing_result, "routing_method", ""),
                 "routing_query_count": getattr(routing_result, "query_count", 1),
@@ -872,6 +876,7 @@ class RetrievalService:
                 "sub_queries": intent_result.get("sub_queries", []),
                 "processing_time": time.perf_counter() - started,
                 "stage_times": {"intent": intent_elapsed, "rewrite": rewrite_elapsed},
+                "jev_decision": intent_result.get("jev_decision", {"mode": "off", "accepted": False}),
             }
 
             return preprocessing_result

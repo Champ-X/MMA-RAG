@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import type { TaskModelEntry } from '@/components/settings/ModelConfig'
+import { JevSettings } from '@/components/settings/JevSettings'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useTheme } from '@/hooks/useTheme'
@@ -224,12 +225,13 @@ export function SettingsPage() {
   const { theme, setTheme } = useTheme()
   const { showSuccess, showError } = useToastStore()
   const [modelSettingsHaveChanges, setModelSettingsHaveChanges] = useState(false)
+  const [jevSettingsHaveChanges, setJevSettingsHaveChanges] = useState(false)
   const [isSavingPreferences, setIsSavingPreferences] = useState(false)
   const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false)
   const [hasActivatedModelMatrix, setHasActivatedModelMatrix] = useState(
     () => location.pathname === '/settings'
   )
-  const pendingChanges = modelSettingsHaveChanges || hasUnsavedChanges
+  const pendingChanges = modelSettingsHaveChanges || jevSettingsHaveChanges || hasUnsavedChanges
   const isSettingsActive = location.pathname === '/settings'
 
   useEffect(() => {
@@ -515,6 +517,8 @@ export function SettingsPage() {
                 </Button>
               </footer>
             </section>
+
+            {hasActivatedModelMatrix && <JevSettings onHasChangesChange={setJevSettingsHaveChanges} />}
 
             <section id="models" className="scroll-mt-6">
               {(isSettingsActive || hasActivatedModelMatrix) ? (

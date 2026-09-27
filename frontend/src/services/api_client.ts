@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import type { ChatScopeFile } from '@/store/useChatStore'
+import type { JevConfig, JevSettingsResponse } from '@/types/jev'
 
 /** 未设置 VITE_API_BASE_URL 时默认 /api：开发时由 Vite 代理到后端，避免浏览器直连 localhost:8000（WSL/端口转发下易失败或超时）；生产需同源反代或显式配置环境变量。 */
 function resolveDefaultApiBaseURL(): string {
@@ -984,6 +985,8 @@ export const debugApi = {
 
 // 系统相关API（模型配置来自 /api/chat/models）
 export const systemApi = {
+  getJevSettings: () => apiClient.get<JevSettingsResponse>('/jev/settings'),
+  updateJevSettings: (config: JevConfig) => apiClient.put<JevSettingsResponse>('/jev/settings', config),
   // 获取系统状态（使用 debug/stats）
   getSystemStatus: () => apiClient.get('/debug/stats'),
   // 获取模型配置（来自 chat/models）

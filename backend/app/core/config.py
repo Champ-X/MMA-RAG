@@ -3,7 +3,7 @@
 使用 Pydantic 进行配置管理和验证
 """
 
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Union, Literal
 from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from loguru import logger
@@ -322,6 +322,15 @@ class Settings(BaseSettings):
     max_retrieval_results: int = Field(default=20, validation_alias="MAX_RETRIEVAL_RESULTS")
     max_context_length: int = Field(default=4000, validation_alias="MAX_CONTEXT_LENGTH")
     rerank_top_k: int = Field(default=10, validation_alias="RERANK_TOP_K")
+
+    # Experimental semantic scorer. Disabled unless explicitly enabled.
+    jev_rerank_mode: Literal["off", "shadow", "replace"] = Field(default="off", validation_alias="JEV_RERANK_MODE")
+    jev_intent_mode: Literal["off", "adaptive"] = Field(default="off", validation_alias="JEV_INTENT_MODE")
+    jev_citation_mode: Literal["off", "shadow"] = Field(default="off", validation_alias="JEV_CITATION_MODE")
+    jev_citation_strategy: Literal["per_unit", "batch_choice"] = Field(default="per_unit", validation_alias="JEV_CITATION_STRATEGY")
+    typesafe_api_key: Optional[str] = Field(default=None, validation_alias="TYPESAFE_API_KEY", repr=False)
+    jev_timeout_s: float = Field(default=3.0, gt=0, le=30, validation_alias="JEV_TIMEOUT_S")
+    jev_max_input_tokens: int = Field(default=250000, ge=0, validation_alias="JEV_MAX_INPUT_TOKENS")
 
     # 多轮会话上下文：按完整轮次选择最近消息，分别限制消息数、总字符数和单条长度。
     chat_context_max_messages: int = Field(default=12, ge=2, le=50, validation_alias="CHAT_CONTEXT_MAX_MESSAGES")

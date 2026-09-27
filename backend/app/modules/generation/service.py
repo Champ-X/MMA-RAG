@@ -5,10 +5,12 @@
 
 from typing import Dict, List, Any, Optional, AsyncGenerator
 from datetime import datetime
+import time
 
 from .context_builder import ContextBuilder
 from .stream_manager import StreamManager, StreamEvent, StreamEventType
 from .templates.system_prompts import SystemPromptManager
+from .jev_answer_audit import maybe_audit_answer
 from app.core.llm.manager import llm_manager
 from app.core.logger import get_logger, audit_log
 
@@ -127,6 +129,7 @@ class GenerationService:
             )
             
             logger.info(f"回答生成完成: 长度={len(answer)}, 引用={len(valid_references)}")
+            citation_audit = await maybe_audit_answer(answer, context_result.reference_map)
             
             return {
                 "success": True,
@@ -140,7 +143,8 @@ class GenerationService:
                     "images_count": context_result.total_images,
                     "tokens_used": (llm_result.data or {}).get("usage", {}).get("total_tokens", 0),
                     "model_used": llm_result.model_used,
-                    "generation_time": llm_result.duration
+                    "generation_time": llm_result.duration,
+                    **({"jev_citation_audit": citation_audit} if citation_audit is not None else {})
                 }
             }
             
@@ -236,78 +240,24 @@ class GenerationService:
                 model=model,
                 session_context=session_context,
             ):
-                # 收集流式内容以便后续筛掉未在回答中出现的引用
+                # 收集完整正文供完成后的引用审计使用
                 if event.type == StreamEventType.MESSAGE:
                     chunk = event.data.get("content") or event.data.get("delta") or ""
                     if chunk:
                         answer_chunks.append(chunk)
                     yield event
                 elif event.type == StreamEventType.CITATION:
-                    full_answer = "".join(answer_chunks)
-                    valid_references = self.context_builder.validate_references(
-                        full_answer,
-                        context_result.reference_map
-                    )
-                    # 合并 stream_manager 的引用（含 debug_info/context_window）与校验后的引用列表
-                    base_refs = (event.data or {}).get("references") or []
-                    base_by_id = {}
-                    for r in base_refs:
-                        if isinstance(r, dict) and "id" in r:
-                            base_by_id[str(r.get("id"))] = r
-
-                    merged_refs: List[Dict[str, Any]] = []
-                    for v in valid_references:
-                        if not isinstance(v, dict):
-                            continue
-                        ref_id = str(v.get("id"))
-                        base = base_by_id.get(ref_id)
-                        if base:
-                            merged = dict(base)
-                            # 补全基础字段
-                            if not merged.get("file_path") and v.get("file_path"):
-                                merged["file_path"] = v.get("file_path")
-                            if not merged.get("file_name") and v.get("file_name"):
-                                merged["file_name"] = v.get("file_name")
-                            if not merged.get("content") and v.get("content"):
-                                merged["content"] = v.get("content")
-                            if not merged.get("scores") and v.get("scores"):
-                                merged["scores"] = v.get("scores")
-                            if not merged.get("metadata") and v.get("metadata"):
-                                merged["metadata"] = v.get("metadata")
-                            # 兼容 chunk_id 顶层字段 -> debug_info
-                            chunk_id = v.get("chunk_id")
-                            if chunk_id:
-                                debug_info = merged.get("debug_info")
-                                if not isinstance(debug_info, dict):
-                                    debug_info = {}
-                                if not debug_info.get("chunk_id"):
-                                    debug_info["chunk_id"] = str(chunk_id)
-                                raw_metadata = v.get("metadata")
-                                metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
-                                kb_id = metadata.get("kb_id")
-                                if kb_id is not None and not debug_info.get("kb_id"):
-                                    debug_info["kb_id"] = str(kb_id)
-                                merged["debug_info"] = debug_info
-                                merged.setdefault("chunk_id", str(chunk_id))
-                            merged_refs.append(merged)
-                        else:
-                            merged = dict(v)
-                            chunk_id = v.get("chunk_id")
-                            if chunk_id:
-                                debug_info = {"chunk_id": str(chunk_id)}
-                                raw_metadata = v.get("metadata") if isinstance(v, dict) else None
-                                metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
-                                kb_id = metadata.get("kb_id")
-                                if kb_id is not None:
-                                    debug_info["kb_id"] = str(kb_id)
-                                merged["debug_info"] = debug_info
-                            merged_refs.append(merged)
-
-                    yield StreamEvent(
-                        type=StreamEventType.CITATION,
-                        data={"references": merged_refs},
-                        timestamp=event.timestamp,
-                    )
+                    # 引用在正文前预加载，不能用尚为空的正文筛选，否则整张映射被清空。
+                    # 保留完整证据编号；前端按正文出现顺序选择要展示的来源。
+                    yield event
+                elif event.type == StreamEventType.DONE:
+                    # Only successful completed answers are audited. MESSAGE
+                    # and CITATION events have already reached the caller.
+                    citation_audit = await maybe_audit_answer("".join(answer_chunks), context_result.reference_map)
+                    if citation_audit is not None:
+                        event = StreamEvent(type=event.type, timestamp=time.time(),
+                                            data={**event.data, "jev_citation_audit": citation_audit})
+                    yield event
                 else:
                     yield event
             
