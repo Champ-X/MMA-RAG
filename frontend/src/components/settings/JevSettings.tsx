@@ -116,6 +116,8 @@ export function JevSettings({ onHasChangesChange }: { onHasChangesChange: (dirty
   const unavailable = !saved?.api_key_configured
   const enabled = saved && [saved.config.intent_mode, saved.config.rerank_mode, saved.config.citation_mode]
     .some((mode) => mode !== 'off')
+  const forced = draft?.intent_mode === 'force' || draft?.rerank_mode === 'force'
+  const savedForced = saved?.config.intent_mode === 'force' || saved?.config.rerank_mode === 'force'
 
   return (
     <section id="jev" aria-labelledby="jev-title"
@@ -125,11 +127,11 @@ export function JevSettings({ onHasChangesChange }: { onHasChangesChange: (dirty
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px] bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300"><Zap className="h-5 w-5" aria-hidden /></span>
           <div>
             <h2 id="jev-title" className="text-base font-semibold text-slate-950 dark:text-white">Jev 语义判断</h2>
-            <p className="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">选择在哪些环节使用 Jev，回答仍由对话模型生成。</p>
+            <p className="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">选择在哪些环节使用 Jev，查询改写和最终回答仍使用原模型。</p>
           </div>
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-          {loading ? '正在读取' : !saved ? '状态未知' : enabled ? '当前已启用' : '当前未启用'}
+          {loading ? '正在读取' : !saved ? '状态未知' : savedForced ? '当前含强制模式' : enabled ? '当前已启用' : '当前未启用'}
         </span>
       </header>
       <form onSubmit={submit} aria-busy={loading || saving}>
@@ -145,15 +147,23 @@ export function JevSettings({ onHasChangesChange }: { onHasChangesChange: (dirty
               </p>
               <p>保存到当前服务，对所有会话生效；重启后保留。正在处理的请求沿用原设置。</p>
             </div>
+            <div className="flex flex-wrap items-center gap-3 rounded-[6px] border border-slate-200 p-3 dark:border-slate-700">
+              <Button type="button" variant="outline" size="sm" className={outlineButtonClass} disabled={unavailable}
+                onClick={() => { setDraft({ ...draft, intent_mode: 'force', rerank_mode: 'force' }); setMessage(''); setError(null) }}>
+                一键强制测试
+              </Button>
+              <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">将意图识别和重排设为强制 Jev，保存后生效。引用诊断保持当前选择。</p>
+            </div>
             <ModeOptions name="jev-intent" title="意图识别" value={draft.intent_mode}
-              description="简单问题优先使用 Jev 判断意图；复杂、有历史或不确定的请求继续使用原模型。"
-              options={[{ value: 'off', label: '关闭' }, { value: 'adaptive', label: '开启简单问题快路径', disabled: unavailable }]}
+              description="快路径仅对简单问题优先使用 Jev，其他请求回退原模型。强制模式始终采用 Jev 意图判断，包括复杂和多轮问题。"
+              options={[{ value: 'off', label: '关闭' }, { value: 'adaptive', label: '开启简单问题快路径', disabled: unavailable }, { value: 'force', label: '强制 Jev（不回退）', disabled: unavailable }]}
               onChange={(value) => change('intent_mode', value)} />
             <ModeOptions name="jev-rerank" title="检索结果重排" value={draft.rerank_mode}
-              description="对照评估会额外调用 Jev，但仍采用原重排结果。替换重排仅适合实验。"
-              options={[{ value: 'off', label: '关闭 · 保留原重排' }, { value: 'shadow', label: '对照评估', disabled: unavailable }, { value: 'replace', label: '替换重排（实验）', disabled: unavailable }]}
+              description="对照评估仍采用原重排结果；替换重排在 Jev 失败时回退原策略；强制模式仅采用 Jev 重排。"
+              options={[{ value: 'off', label: '关闭 · 保留原重排' }, { value: 'shadow', label: '对照评估', disabled: unavailable }, { value: 'replace', label: '替换重排（实验）', disabled: unavailable }, { value: 'force', label: '强制 Jev（不回退）', disabled: unavailable }]}
               onChange={(value) => change('rerank_mode', value)} />
             {draft.rerank_mode === 'replace' && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">已有评测中 Jev 重排质量低于 Qwen，建议优先使用对照评估。</p>}
+            {forced && <p role="status" className="rounded-[6px] bg-indigo-50/70 p-3 text-sm leading-6 text-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-100">强制模式仅作用于选中的意图识别、重排环节。若 Jev 超时、调用失败或返回无效结果，当前请求会明确报错并终止，不会回退其他模型。查询改写和最终回答仍使用原模型。</p>}
             <ModeOptions name="jev-citation" title="回答引用诊断" value={draft.citation_mode}
               description="检查声明是否被所引来源支持。仅提供诊断，不改写或拦截答案；会增加回答完成等待。"
               options={[{ value: 'off', label: '关闭' }, { value: 'shadow', label: '开启引用诊断', disabled: unavailable }]}

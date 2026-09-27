@@ -324,8 +324,8 @@ class Settings(BaseSettings):
     rerank_top_k: int = Field(default=10, validation_alias="RERANK_TOP_K")
 
     # Experimental semantic scorer. Disabled unless explicitly enabled.
-    jev_rerank_mode: Literal["off", "shadow", "replace"] = Field(default="off", validation_alias="JEV_RERANK_MODE")
-    jev_intent_mode: Literal["off", "adaptive"] = Field(default="off", validation_alias="JEV_INTENT_MODE")
+    jev_rerank_mode: Literal["off", "shadow", "replace", "force"] = Field(default="off", validation_alias="JEV_RERANK_MODE")
+    jev_intent_mode: Literal["off", "adaptive", "force"] = Field(default="off", validation_alias="JEV_INTENT_MODE")
     jev_citation_mode: Literal["off", "shadow"] = Field(default="off", validation_alias="JEV_CITATION_MODE")
     jev_citation_strategy: Literal["per_unit", "batch_choice"] = Field(default="per_unit", validation_alias="JEV_CITATION_STRATEGY")
     typesafe_api_key: Optional[str] = Field(default=None, validation_alias="TYPESAFE_API_KEY", repr=False)

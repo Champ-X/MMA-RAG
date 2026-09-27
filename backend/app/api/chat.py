@@ -18,6 +18,7 @@ from urllib.parse import unquote, urlparse
 from app.core.logger import get_logger
 from app.core.config import settings
 from app.core.jev_settings import get_jev_config
+from app.core.llm.jev import JevRequiredError
 from app.core.llm.manager import llm_manager
 from app.core.llm import TASK_MODEL_TYPES
 from app.core.llm.models_catalog import ensure_llm_catalog_fresh, get_llm_catalog_status
@@ -507,6 +508,8 @@ async def chat_message(request: Request):
             }
         }
         
+    except JevRequiredError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
     except HTTPException:
         raise
     except Exception as e:
@@ -715,6 +718,9 @@ async def stream_chat(
                 attachment_context=None,
             ):
                 yield line
+        except JevRequiredError as exc:
+            event = {'type': 'error', 'message': str(exc), 'diagnostics': exc.diagnostics()}
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as e:
             logger.error(f"流式聊天失败: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
@@ -798,6 +804,9 @@ async def stream_chat_multipart(
                 include_connected=False,
             ):
                 yield line
+        except JevRequiredError as exc:
+            event = {'type': 'error', 'message': str(exc), 'diagnostics': exc.diagnostics()}
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as e:
             logger.error(f"流式聊天(附件)失败: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

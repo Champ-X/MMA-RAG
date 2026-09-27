@@ -25,8 +25,9 @@ def app(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_api_persists_complete_config_without_exposing_credentials(app):
-    wanted = dict(intent_mode="adaptive", rerank_mode="shadow", citation_mode="shadow", citation_strategy="batch_choice")
+@pytest.mark.parametrize("intent_mode,rerank_mode", [("adaptive", "shadow"), ("force", "force")])
+async def test_api_persists_complete_config_without_exposing_credentials(app, intent_mode, rerank_mode):
+    wanted = dict(intent_mode=intent_mode, rerank_mode=rerank_mode, citation_mode="shadow", citation_strategy="batch_choice")
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         initial = await client.get("/api/jev/settings")
         assert initial.json()["config"] == runtime.OFF_CONFIG.model_dump()
@@ -40,6 +41,15 @@ async def test_api_persists_complete_config_without_exposing_credentials(app):
     assert runtime.JevConfigStore(runtime.jev_config_store.path).read().model_dump() == wanted
     assert settings.jev_intent_mode == "off"
     assert "test-secret" not in runtime.jev_config_store.path.read_text()
+
+
+def test_force_environment_modes_are_validated(monkeypatch):
+    from app.core.config import Settings
+    monkeypatch.setenv("JEV_INTENT_MODE", "force")
+    monkeypatch.setenv("JEV_RERANK_MODE", "force")
+    environment = Settings(_env_file=None, SILICONFLOW_API_KEY="test")
+    assert environment.jev_intent_mode == environment.jev_rerank_mode == "force"
+    assert runtime.JevConfig(intent_mode="force", rerank_mode="force", citation_mode="off", citation_strategy="per_unit").enabled
 
 
 @pytest.mark.asyncio

@@ -11,7 +11,7 @@ from app.core.llm.prompt_engine import prompt_engine
 from app.core.logger import get_logger
 from app.modules.chat.context_manager import build_conversation_context
 from app.core.jev_settings import get_jev_config
-from app.core.llm.jev import JevError, get_jev_client
+from app.core.llm.jev import JevError, JevRequiredError, get_jev_client
 from .jev_intent import classify_intent
 
 logger = get_logger(__name__)
@@ -42,6 +42,22 @@ class IntentProcessor:
             意图分析结果
         """
         decision = {"mode": getattr(self, "jev_mode", None) or get_jev_config().intent_mode, "accepted": False}
+        if decision["mode"] == "force":
+            try:
+                analysis, metadata = await classify_intent(
+                    get_jev_client(), query, force=True, chat_history=chat_history,
+                    attachment_context_block=attachment_context_block,
+                )
+                decision.update(metadata)
+                analysis["jev_decision"] = decision
+                return analysis
+            except JevRequiredError:
+                raise
+            except JevError as exc:
+                raise JevRequiredError(stage="intent", reason=str(exc)) from None
+            except Exception:
+                # Never leak provider data or start a generative fallback in force mode.
+                raise JevRequiredError(stage="intent", reason="invalid_response_or_transport") from None
         if decision["mode"] == "adaptive":
             if chat_history or (attachment_context_block or "").strip():
                 decision["reason"] = "context_requires_generative_handler"

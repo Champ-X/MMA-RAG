@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.core.llm.jev import JevClient, JevError
+from app.core.llm.jev import JevClient, JevError, JevRequiredError
 from app.modules.retrieval.processors import intent as module
 from app.modules.retrieval.processors.jev_intent import classify_intent
 
@@ -91,6 +91,105 @@ async def test_uncertain_result_keeps_generator_decomposition(monkeypatch):
     result=await processor.process('比较两个版本，并解释差异')
     assert result['sub_queries']==['事实A','事实B']
     assert result['jev_decision']['reason']=='uncertain_or_complex'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('prob,complex_prob,context_prob', [
+    (.74, .05, .05), (.9, .9, .05), (.9, .05, .9), (.4, .9, .9),
+])
+async def test_force_uses_jev_despite_each_adaptive_gate(monkeypatch, prob, complex_prob, context_prob):
+    processor = module.IntentProcessor()
+    processor.jev_mode = 'force'
+    client = SimpleNamespace(evaluate=AsyncMock(return_value=decision(prob, complex_prob, context_prob)))
+    monkeypatch.setattr(module, 'get_jev_client', lambda: client)
+    processor._process_generative = AsyncMock(side_effect=AssertionError('forced stage fell back'))
+    result = await processor.process('介绍一下茶叶的驯化史')
+    info = result['jev_decision']
+    assert info['mode'] == 'force'
+    assert info['accepted'] and info['forced']
+    assert info['eligible'] is False
+    assert result['is_complex'] == (complex_prob >= .5)
+    client.evaluate.assert_awaited_once()
+    processor._process_generative.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_force_supplies_history_and_attachment_without_silent_truncation(monkeypatch):
+    processor = module.IntentProcessor()
+    processor.jev_mode = 'force'
+    client = SimpleNamespace(evaluate=AsyncMock(return_value=decision(context_prob=.9)))
+    monkeypatch.setattr(module, 'get_jev_client', lambda: client)
+    processor._process_generative = AsyncMock()
+    history = [{'role': 'user', 'content': '介绍一下茶叶的驯化史'},
+               {'role': 'assistant', 'content': '已有资料覆盖茶树的起源。'}]
+    attachment = '用户图片内容：古茶树产地分布图'
+    result = await processor.process('结合这张图继续', history, attachment)
+    state, questions = client.evaluate.call_args.args
+    assert state == {'query': '结合这张图继续', 'chat_history': history, 'attachment_context': attachment}
+    assert 'already supplied is not missing' in questions['needs_context']['instructions']
+    assert all('chat_history' in question['instructions'] for question in questions.values())
+    assert result['jev_decision']['history_messages'] == 2
+    assert result['jev_decision']['context_chars'] == sum(len(m['content']) for m in history) + len(attachment)
+    assert result['jev_decision']['accepted']
+    processor._process_generative.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('query,history,attachment,reason', [
+    (' ', None, None, 'query_outside_bounds'),
+    ('q' * 4001, None, None, 'query_outside_bounds'),
+    (None, None, None, 'query_outside_bounds'),
+    ('q', [{'role': 'user', 'content': 'h'}] * 13, None, 'context_outside_bounds'),
+    ('q', [{'role': 'user', 'content': 'h' * 4001}], 'a' * 4000, 'context_outside_bounds'),
+    ('q', None, 'a' * 8001, 'context_outside_bounds'),
+    ('q', {'role': 'user', 'content': 'h'}, None, 'invalid_context'),
+    ('q', [{'role': 'tool', 'content': 'h'}], None, 'invalid_context'),
+    ('q', [{'role': [], 'content': 'h'}], None, 'invalid_context'),
+    ('q', [{'role': 'user', 'content': None}], None, 'invalid_context'),
+    ('q', None, {'secret': 'attachment'}, 'invalid_context'),
+])
+async def test_force_rejects_invalid_or_oversized_input_before_network(monkeypatch, query, history, attachment, reason):
+    processor = module.IntentProcessor()
+    processor.jev_mode = 'force'
+    client = SimpleNamespace(evaluate=AsyncMock())
+    monkeypatch.setattr(module, 'get_jev_client', lambda: client)
+    processor._process_generative = AsyncMock()
+    with pytest.raises(JevRequiredError) as error:
+        await processor.process(query, history, attachment)
+    assert error.value.stage == 'intent'
+    assert error.value.reason == reason
+    client.evaluate.assert_not_awaited()
+    processor._process_generative.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('reason', ['timeout', 'budget_exhausted', 'invalid_probabilities', 'missing_key', 'http_429'])
+async def test_force_failure_stops_without_generative_fallback(monkeypatch, reason):
+    processor = module.IntentProcessor()
+    processor.jev_mode = 'force'
+    monkeypatch.setattr(module, 'get_jev_client', lambda: SimpleNamespace(evaluate=AsyncMock(side_effect=JevError(reason))))
+    processor._process_generative = AsyncMock()
+    with pytest.raises(JevRequiredError) as error:
+        await processor.process('介绍一下茶叶的驯化史')
+    assert error.value.stage == 'intent'
+    assert error.value.reason == reason
+    processor._process_generative.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_force_unexpected_error_is_sanitized_and_cancellation_propagates(monkeypatch):
+    processor = module.IntentProcessor()
+    processor.jev_mode = 'force'
+    evaluate = AsyncMock(side_effect=ValueError('private provider response'))
+    monkeypatch.setattr(module, 'get_jev_client', lambda: SimpleNamespace(evaluate=evaluate))
+    processor._process_generative = AsyncMock()
+    with pytest.raises(JevRequiredError) as error:
+        await processor.process('q')
+    assert 'private provider response' not in str(error.value)
+    evaluate.side_effect = asyncio.CancelledError()
+    with pytest.raises(asyncio.CancelledError):
+        await processor.process('q')
+    processor._process_generative.assert_not_awaited()
 
 
 @pytest.mark.asyncio

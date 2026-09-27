@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, model_validator
 
 from app.core.logger import get_logger
+from app.core.llm.jev import JevRequiredError
 from app.modules.retrieval.service import RetrievalResult, RetrievalService
 
 
@@ -253,6 +254,8 @@ async def search_knowledge(request: KnowledgeSearchRequest) -> KnowledgeSearchRe
     try:
         result = await retrieval_service.search(query=query, kb_context=kb_context)
         return serialize_search_response(request=request, retrieval_result=result)
+    except JevRequiredError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
     except HTTPException:
         raise
     except Exception as error:

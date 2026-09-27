@@ -15,6 +15,8 @@ from .processors.rewriter import QueryRewriter
 from .search_engine import HybridSearchEngine
 from .reranker import Reranker
 from app.core.logger import get_logger, audit_log
+from app.core.llm.jev import JevRequiredError
+from app.core.jev_settings import get_jev_config
 from app.modules.knowledge.router import KnowledgeRouter
 from app.core.llm.query_embeddings import QueryEmbeddingCache
 
@@ -292,6 +294,9 @@ class RetrievalService:
         allow_smalltalk: bool = False,
     ) -> Optional[RetrievalResult]:
         """Skip only work proven irrelevant; uncertainty retains full recall."""
+        intent_mode = getattr(getattr(self, "intent_processor", None), "jev_mode", None) or get_jev_config().intent_mode
+        if intent_mode == "force":
+            return None  # An explicit model experiment must reach its intent stage.
         started = time.perf_counter()
         if kb_context or attachment_context:
             return None  # Preserve explicit scope, file bootstrap, and attachments.
@@ -566,6 +571,8 @@ class RetrievalService:
                 intent_result,
                 selected_files,
             )
+        except JevRequiredError:
+            raise
         except Exception as exc:
             logger.warning("Agent 原始问题多模态预分析失败，使用本地兜底: %s", exc)
             intent_result = self._preprocess_preplanned_query(clean_query)
@@ -879,6 +886,8 @@ class RetrievalService:
 
             return preprocessing_result
             
+        except JevRequiredError:
+            raise
         except Exception as e:
             logger.error(f"查询预处理失败: {str(e)}")
             # 返回默认值
@@ -1030,6 +1039,8 @@ class RetrievalService:
                 raw_results=search_results.get("raw_results", {}),
                 context=context
             )
+        except JevRequiredError:
+            raise
         except Exception as e:
             logger.error(f"重排序失败: {str(e)}")
             return {
@@ -1057,6 +1068,8 @@ class RetrievalService:
             
             return results
             
+        except JevRequiredError:
+            raise
         except Exception as e:
             logger.error(f"批量检索失败: {str(e)}")
             return []

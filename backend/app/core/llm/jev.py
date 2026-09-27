@@ -21,6 +21,32 @@ class JevError(RuntimeError):
     """Sanitized failure category suitable for request diagnostics."""
 
 
+class JevRequiredError(JevError):
+    """A forced Jev stage failed: callers must stop, never substitute a model."""
+
+    def __init__(self, stage: str, reason: str):
+        known = {
+            "missing_key", "invalid_input", "invalid_document", "query_too_long",
+            "query_outside_bounds", "context_outside_bounds", "invalid_context",
+            "invalid_questions", "invalid_question_type", "invalid_choice_criteria",
+            "invalid_score_criteria", "request_too_large", "circuit_open",
+            "budget_exhausted", "model_mismatch", "incomplete_answers", "invalid_usage",
+            "timeout", "invalid_response_or_transport", "invalid_answer_type",
+            "invalid_score", "invalid_probabilities", "invalid_choice",
+            "invalid_scores", "incomplete_scores", "unexpected_error",
+        }
+        self.stage = stage if stage in {"intent", "rerank"} else "jev"
+        self.reason = reason if reason in known or (
+            reason.startswith("http_") and len(reason) == 8 and reason[5:].isdigit()
+        ) else "unexpected_error"
+        label = {"intent": "意图识别", "rerank": "检索重排"}.get(self.stage, "处理")
+        super().__init__(f"Jev 强制模式的{label}失败（{self.reason}），已停止本次请求，未回退到其他模型。")
+
+    def diagnostics(self):
+        return {"code": "jev_required_failed", "stage": self.stage,
+                "reason": self.reason, "fallback_used": False}
+
+
 @dataclass
 class JevScores:
     scores: list[dict[str, Any]]

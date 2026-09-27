@@ -14,8 +14,8 @@ from app.core.config import settings
 class JevConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    intent_mode: Literal["off", "adaptive"]
-    rerank_mode: Literal["off", "shadow", "replace"]
+    intent_mode: Literal["off", "adaptive", "force"]
+    rerank_mode: Literal["off", "shadow", "replace", "force"]
     citation_mode: Literal["off", "shadow"]
     citation_strategy: Literal["per_unit", "batch_choice"]
 

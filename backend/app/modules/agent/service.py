@@ -9,6 +9,7 @@ from collections import defaultdict
 from typing import Any, AsyncGenerator, Dict, Iterable, List, Optional, Tuple
 
 from app.core.config import settings
+from app.core.llm.jev import JevRequiredError
 from app.core.llm.manager import llm_manager
 from app.core.logger import get_logger
 from app.modules.agent.models import AgentDecision, AgentRunResult, AgentTraceStep
@@ -907,6 +908,10 @@ class AgenticRetrievalService:
             successful: List[RetrievalResult] = []
             errors: List[str] = []
             for item in gathered:
+                if isinstance(item, JevRequiredError):
+                    raise item
+                if isinstance(item, asyncio.CancelledError):
+                    raise item
                 if isinstance(item, Exception):
                     errors.append(str(item))
                 else:
@@ -1073,6 +1078,8 @@ class AgenticRetrievalService:
             if isinstance(prepared, dict):
                 return prepared
             logger.warning("Agent 原问题锚点预处理返回了无效结果，跳过直接检索锚点")
+        except JevRequiredError:
+            raise
         except Exception as exc:
             logger.warning("Agent 原问题锚点预处理失败，继续使用子查询检索: %s", exc)
         return None
@@ -1112,6 +1119,8 @@ class AgenticRetrievalService:
                 len(result.reranked_results or []),
             )
             return result
+        except JevRequiredError:
+            raise
         except Exception as exc:
             # Deep research remains available when the anchor's normal path
             # has a transient model/vector failure.
@@ -1138,6 +1147,8 @@ class AgenticRetrievalService:
                 attachment_context=attachment_context,
             )
             return _normalize_modality_requirements(requirements)
+        except JevRequiredError:
+            raise
         except Exception as exc:
             logger.warning("Agent 多模态预分析不可用，继续使用保底策略: %s", exc)
             return _normalize_modality_requirements(None)
