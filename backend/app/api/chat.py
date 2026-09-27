@@ -17,6 +17,7 @@ from urllib.parse import unquote, urlparse
 
 from app.core.logger import get_logger
 from app.core.config import settings
+from app.core.jev_settings import get_jev_config
 from app.core.llm.manager import llm_manager
 from app.core.llm import TASK_MODEL_TYPES
 from app.core.llm.models_catalog import ensure_llm_catalog_fresh, get_llm_catalog_status
@@ -35,6 +36,18 @@ logger = get_logger(__name__)
 retrieval_service = RetrievalService()
 generation_service = GenerationService()
 agentic_retrieval_service = AgenticRetrievalService(retrieval_service)
+
+def _retrieval_diagnostics(result):
+    """Keep configured vs actually used Jev stages inspectable in history."""
+    debug = getattr(result, "debug_info", None) or {}
+    keys = ("jev_decision", "reranking_scorer", "target_modality_fallback",
+            "total_candidates", "total_time")
+    runs = debug.get("retrieval_runs") or [debug]
+    return {
+        "jev_config": get_jev_config().model_dump(),
+        "runs": [{key: run[key] for key in keys if key in run} for run in runs],
+    }
+
 
 # 简单的会话存储（生产环境应使用Redis或数据库）
 sessions: Dict[str, Dict[str, Any]] = {}
@@ -462,6 +475,7 @@ async def chat_message(request: Request):
                 "citations": citations,
                 "agent": agent_result.metadata() if agent_result else None,
                 "agent_selection": mode_resolution.metadata(),
+                "retrieval_diagnostics": _retrieval_diagnostics(retrieval_result),
                 "timestamp": datetime.utcnow().isoformat(),
             },
         )
@@ -489,6 +503,7 @@ async def chat_message(request: Request):
                    if "jev_citation_audit" in generation_result.get("metadata", {}) else {}),
                 "agent": agent_result.metadata() if agent_result else {"enabled": False},
                 "agent_selection": mode_resolution.metadata(),
+                "retrieval_diagnostics": _retrieval_diagnostics(retrieval_result),
             }
         }
         
@@ -665,13 +680,15 @@ async def _iter_chat_sse(
             "citations": last_citations,
             "agent": agent_result.metadata() if agent_result else None,
             "agent_selection": mode_resolution.metadata(),
+            "retrieval_diagnostics": _retrieval_diagnostics(retrieval_result),
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
 
-    completion = {'type': 'complete', 'sessionId': current_session_id}
+    completion = {'type': 'complete', 'sessionId': current_session_id,
+                  'diagnostics': {'retrieval': _retrieval_diagnostics(retrieval_result)}}
     if citation_audit is not None:
-        completion['diagnostics'] = {'jev_citation_audit': citation_audit}
+        completion['diagnostics']['jev_citation_audit'] = citation_audit
     yield f"data: {json.dumps(completion)}\n\n"
 
 

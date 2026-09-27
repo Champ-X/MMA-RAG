@@ -82,25 +82,18 @@ def _apply_agent_base_modality_intents(
     return updated
 
 
-def _apply_agent_target_modality_fallback(
+def _apply_target_modality_fallback(
     preprocessing_result: Dict[str, Any],
     *,
     target_kb_ids: List[str],
     modality_inventory: Optional[Dict[str, Dict[str, Any]]],
     routing_details: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """Enable one implicit modal route when Agent's semantic anchor is non-text.
+    """Use the primary routed KB's indexed medium when it has no text index.
 
-    A user can ask a purely factual question whose best matching knowledge
-    base is indexed only as video (or audio/image).  Text dense/sparse recall
-    then returns zero even though the correct KB was selected.  Direct and
-    Agent modes must both be able to consume that evidence, but the safeguard
-    is intentionally scoped to Agent routing so it does not turn ordinary
-    queries into blanket multimodal searches.
-
-    Explicit user modality requirements are never substituted.  For example,
-    an explicit image request should not silently become a video answer just
-    because the first KB happens to be video-only.
+    A factual question can be answered by a video transcript. This safeguard
+    applies to direct search and Agent alike, without widening KB/file scope
+    or replacing an explicit media request.
     """
     inventory = modality_inventory or {}
     if not target_kb_ids or not inventory:
@@ -118,7 +111,7 @@ def _apply_agent_target_modality_fallback(
     preferred_kb_id = str(details.get("anchor_kb_id") or "").strip()
     primary_kb_id = (
         preferred_kb_id
-        if preferred_kb_id in inventory
+        if preferred_kb_id in target_kb_ids and preferred_kb_id in inventory
         else str(target_kb_ids[0] or "").strip()
     )
     primary = inventory.get(primary_kb_id) or {}
@@ -152,7 +145,7 @@ def _apply_agent_target_modality_fallback(
     kb_name = str(primary.get("name") or primary_kb_id)
     updated[intent_field] = "implicit_enrichment"
     updated[reasoning_field] = (
-        f"Agent 命中知识库“{kb_name}”未建文本索引，"
+        f"知识库“{kb_name}”的相关资料保存在媒体文件中，"
         f"自动补充{ {'image': '图片', 'audio': '音频', 'video': '视频'}[modality] }证据检索"
     )
     return updated, {
@@ -161,6 +154,10 @@ def _apply_agent_target_modality_fallback(
         "modality": modality,
         "available_count": int(primary.get(modality) or 0),
     }
+
+
+# Compatibility for existing Agent callers.
+_apply_agent_target_modality_fallback = _apply_target_modality_fallback
 
 
 def _infer_selected_file_modality(file_info: Dict[str, Any]) -> str:
@@ -425,27 +422,10 @@ class RetrievalService:
                     for kb_id in target_kb_ids
                 ]
 
-            # Agent child queries are intentionally terse.  When their
-            # semantic anchor is a KB with no text index (e.g. a source video
-            # KB), use the available indexed modality instead of returning an
-            # empty text retrieval result despite having routed correctly.
-            agent_target_modality_fallback: Dict[str, Any] = {}
-            if effective_routing_hints.get("agent_mode"):
-                inventory_getter = getattr(self.kb_router, "get_modality_inventory", None)
-                if callable(inventory_getter):
-                    try:
-                        modality_inventory = await inventory_getter()
-                        preprocessing_result, agent_target_modality_fallback = (
-                            _apply_agent_target_modality_fallback(
-                                preprocessing_result,
-                                target_kb_ids=target_kb_ids,
-                                modality_inventory=modality_inventory,
-                                routing_details=getattr(routing_result, "routing_details", None),
-                            )
-                        )
-                    except Exception as exc:
-                        logger.debug("Agent 目标库模态兜底判断失败，继续常规检索: {}", exc)
-            
+            preprocessing_result, target_modality_fallback = await self._prepare_target_modality(
+                preprocessing_result, routing_result, selected_files=selected_files,
+            )
+
             # 3. 构建检索上下文
             retrieval_context = RetrievalContext(
                 original_query=query,
@@ -513,7 +493,8 @@ class RetrievalService:
                 ),
                 "preplanned_query": preplanned,
                 "routing_details": getattr(routing_result, "routing_details", None),
-                "agent_target_modality_fallback": agent_target_modality_fallback,
+                "target_modality_fallback": target_modality_fallback,
+                "agent_target_modality_fallback": target_modality_fallback if effective_routing_hints.get("agent_mode") else {},
             }
             
             # 更新检索统计信息
@@ -672,6 +653,7 @@ class RetrievalService:
             )
             intent_payload = {
                 "message": "意图解析完成",
+                "jev_decision": preprocessing_result.get("jev_decision", {}),
                 "intent_type": preprocessing_result.get("intent_type", "factual"),
                 "original_query": preprocessing_result.get("original_query", query),
                 "refined_query": preprocessing_result.get("refined_query", query),
@@ -709,7 +691,20 @@ class RetrievalService:
                 "routing_method": getattr(routing_result, "routing_method", ""),
                 "query_count": getattr(routing_result, "query_count", 1),
             }
+            preprocessing_result, target_modality_fallback = await self._prepare_target_modality(
+                preprocessing_result, routing_result, selected_files=selected_files,
+            )
             yield ("routing", routing_payload)
+            if target_modality_fallback:
+                intent_payload = dict(intent_payload)
+                intent_payload.update({
+                    key: preprocessing_result[key]
+                    for key in ("visual_intent", "visual_reasoning", "audio_intent",
+                                "audio_reasoning", "video_intent", "video_reasoning")
+                    if key in preprocessing_result
+                })
+                intent_payload["target_modality_fallback"] = target_modality_fallback
+                yield ("intent", intent_payload)
 
             # 3. 构建检索上下文
             retrieval_context = RetrievalContext(
@@ -759,6 +754,7 @@ class RetrievalService:
             processing_time = (datetime.utcnow() - start_time).total_seconds()
             retrieval_context.processing_time = processing_time
             debug_info = {
+                "target_modality_fallback": target_modality_fallback,
                 "preprocessing_time": preprocessing_result.get("processing_time", 0),
                 "preprocessing_stages": preprocessing_result.get("stage_times", {}),
                 "jev_decision": preprocessing_result.get("jev_decision", {}),
@@ -783,6 +779,8 @@ class RetrievalService:
             final_ranking_count = reranked_results.get("final_ranking_count", len(results_list))
             retrieval_payload = {
                 "message": f"检索完成，找到 {len(results_list)} 个相关结果",
+                "reranking_scorer": reranked_results.get("scorer", {}),
+                "target_modality_fallback": target_modality_fallback,
                 "sparse_keywords": sparse_keywords,
                 "sub_queries": getattr(retrieval_context, "sub_queries", []) or preprocessing_result.get("sub_queries", []) or [],
                 "total_found": coarse_ranking_count if coarse_ranking_count > 0 else len(results_list),  # 粗排后的候选数量
@@ -967,6 +965,32 @@ class RetrievalService:
                 processing_time=0.0
             )
     
+    async def _prepare_target_modality(self, preprocessing, routing, *, selected_files):
+        # Explicit file selection already determines its source modalities.
+        # Do not interpret "text-only answer" as a restriction on source media;
+        # explicit source exclusions, however, must not be overridden.
+        query = str(preprocessing.get("original_query") or "")
+        if selected_files or re.search(
+            r"(?:不要|不用|不搜|不检索|排除|忽略|不使用|不参考).{0,8}(?:视频|音频|图片)|"
+            r"(?:只|仅).{0,6}(?:文档|文本资料)|"
+            r"(?:no|exclude|ignore|without)\s+(?:videos?|audio|images?)|"
+            r"(?:only\s+(?:documents?|text sources)|documents?\s+only)", query, re.I,
+        ):
+            return preprocessing, {}
+        getter = getattr(self.kb_router, "get_modality_inventory", None)
+        if not callable(getter):
+            return preprocessing, {}
+        try:
+            return _apply_target_modality_fallback(
+                preprocessing,
+                target_kb_ids=getattr(routing, "target_kb_ids", []) or [],
+                modality_inventory=await getter(),
+                routing_details=getattr(routing, "routing_details", None),
+            )
+        except Exception as exc:
+            logger.debug("目标库模态检查失败，继续常规检索: {}", type(exc).__name__)
+            return preprocessing, {}
+
     async def _perform_hybrid_search(
         self,
         context: RetrievalContext,

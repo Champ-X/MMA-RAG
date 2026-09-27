@@ -224,7 +224,7 @@ class KnowledgeRouter:
             return await self._default_routing()
 
     async def _get_modality_inventory(self) -> Dict[str, Dict[str, Any]]:
-        """Return a short-lived KB modality inventory for Agent-only routing."""
+        """Return a short-lived KB modality inventory for routing and retrieval."""
         now = time.monotonic()
         cached = getattr(self, "_modality_inventory_cache", {})
         cached_at = float(getattr(self, "_modality_inventory_cached_at", 0.0) or 0.0)
@@ -272,7 +272,7 @@ class KnowledgeRouter:
                         ),
                     }
             except Exception as exc:
-                logger.warning("读取 Agent 知识库模态库存失败，继续使用画像相关性路由: {}", exc)
+                logger.warning("读取知识库模态库存失败，继续使用画像相关性路由: {}", exc)
                 return cached
 
             self._modality_inventory_cache = inventory
@@ -283,7 +283,7 @@ class KnowledgeRouter:
         """Expose the cached index inventory for retrieval-time safeguards.
 
         Routing owns the authoritative KB statistics and already maintains a
-        short-lived cache.  The retrieval service uses this only after Agent
+        short-lived cache.  The retrieval service uses this after
         routing, to avoid a text-only path when the selected semantic anchor
         is actually a video, audio, or image knowledge base.
         """

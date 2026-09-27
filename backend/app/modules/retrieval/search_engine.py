@@ -179,19 +179,17 @@ class HybridSearchEngine:
             ])
             results = dict(zip((name for name, _ in search_tasks), rows))
 
-            # 当 Dense 与 Sparse 均无结果时，记录各目标 KB 的文本/图/音频数量，便于排查“未建索引”问题
-            dense_count = len(results.get("dense", []))
-            sparse_count = len(results.get("sparse", []))
-            selected_file_count = len(results.get("selected_file", []))
-            if dense_count == 0 and sparse_count == 0 and selected_file_count == 0 and target_kb_ids:
+            # 所有已启用分支均未命中时，记录各模态库存，区分漏搜与空库。
+            if not any(results.values()) and target_kb_ids:
                 try:
                     for kb_id in target_kb_ids:
                         n_text, n_img = await self.vector_store.count_kb_chunks(kb_id)
                         n_audio = await self.vector_store.count_kb_audio(kb_id)
+                        n_video = await self.vector_store.count_kb_video(kb_id)
                         logger.warning(
-                            "目标知识库无文本检索结果，请确认是否已对文本建索引: kb_id={}, "
-                            "text_chunks={}, image_vectors={}, audio_vectors={}",
-                            kb_id, n_text, n_img, n_audio
+                            "目标知识库当前检索分支未命中: kb_id={}, "
+                            "text_chunks={}, image_vectors={}, audio_vectors={}, video_shots={}",
+                            kb_id, n_text, n_img, n_audio, n_video
                         )
                 except Exception as e:
                     logger.debug("统计目标KB数量时出错: {}", e)
