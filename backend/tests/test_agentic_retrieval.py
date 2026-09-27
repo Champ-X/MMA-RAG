@@ -292,6 +292,12 @@ async def test_agent_stream_keeps_all_round_snapshots():
     ]
     assert routing_payloads[1]["agent_rounds"][0]["queries"] == ["Agent 机制"]
 
+    planning = [payload for phase, payload in events if phase != "_result" and payload.get("agent_status") == "planning"]
+    # Planning after a completed round is still active work; preserve prior evidence.
+    assert len(planning) >= 3
+    assert planning[2]["agent_rounds"][0]["status"] == "completed"
+    assert retrieval_payloads[-1]["agent_status"] == "completed"
+
     final_rounds = retrieval_payloads[1]["agent_rounds"]
     assert [row["round"] for row in final_rounds] == [1, 2]
     assert [row["status"] for row in final_rounds] == ["completed", "completed"]

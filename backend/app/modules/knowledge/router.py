@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.modules.ingestion.storage.vector_store import VectorStore
 from app.modules.knowledge.service import KnowledgeBaseService
 from app.core.llm.manager import llm_manager
+from app.core.llm.query_embeddings import QueryEmbeddingCache, embed_queries
 
 logger = get_logger(__name__)
 
@@ -107,6 +108,7 @@ class KnowledgeRouter:
         query_variants: Optional[List[str]] = None,
         max_targets: int = 2,
         routing_hints: Optional[Dict[str, Any]] = None,
+        embedding_cache: Optional[QueryEmbeddingCache] = None,
     ) -> RoutingResult:
         """
         路由用户查询到合适的知识库
@@ -149,7 +151,7 @@ class KnowledgeRouter:
             routing_queries = self._normalize_routing_queries(query_text, query_variants)
 
             # 1. 批量向量化独立改写与多视角查询，减少指代和单一措辞造成的路由偏差。
-            query_vector_result = await self.llm_manager.embed(texts=routing_queries)
+            query_vector_result = await embed_queries(self.llm_manager, routing_queries, embedding_cache)
             
             if not query_vector_result.success or not query_vector_result.data:
                 logger.warning("查询向量化失败，使用默认路由")
@@ -222,7 +224,7 @@ class KnowledgeRouter:
             return await self._default_routing()
 
     async def _get_modality_inventory(self) -> Dict[str, Dict[str, Any]]:
-        """Return a short-lived KB modality inventory for Agent-only routing."""
+        """Return a short-lived KB modality inventory for routing and retrieval."""
         now = time.monotonic()
         cached = getattr(self, "_modality_inventory_cache", {})
         cached_at = float(getattr(self, "_modality_inventory_cached_at", 0.0) or 0.0)
@@ -270,7 +272,7 @@ class KnowledgeRouter:
                         ),
                     }
             except Exception as exc:
-                logger.warning("读取 Agent 知识库模态库存失败，继续使用画像相关性路由: {}", exc)
+                logger.warning("读取知识库模态库存失败，继续使用画像相关性路由: {}", exc)
                 return cached
 
             self._modality_inventory_cache = inventory
@@ -281,7 +283,7 @@ class KnowledgeRouter:
         """Expose the cached index inventory for retrieval-time safeguards.
 
         Routing owns the authoritative KB statistics and already maintains a
-        short-lived cache.  The retrieval service uses this only after Agent
+        short-lived cache.  The retrieval service uses this after
         routing, to avoid a text-only path when the selected semantic anchor
         is actually a video, audio, or image knowledge base.
         """

@@ -343,7 +343,7 @@ class StreamManager:
         model: Optional[str] = None,
         session_context: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncGenerator[StreamEvent, None]:
-        """使用真实 LLM 流式生成回答，并在结束后发送引用事件。"""
+        """先发送引用映射，再流式生成正文，让图片随首次引用即可展示。"""
         try:
             messages = [{"role": "system", "content": system_prompt}]
             messages.extend(session_context or [])
@@ -351,49 +351,32 @@ class StreamManager:
             model_name = model or llm_manager.registry.get_task_model("final_generation")
             logger.info(f"开始调用 final_generation 模型流式生成回答: {model_name}")
             chunk_count = 0
-            citation_sent = False
+            refs = _reference_map_to_frontend_refs(
+                getattr(context_result, "reference_map", None) or {}
+            )
+            if self.vector_store:
+                refs = await _enrich_refs_with_context_window(refs, self.vector_store)
+            yield StreamEvent(
+                type=StreamEventType.CITATION,
+                data={"references": refs},
+                timestamp=time.time(),
+            )
 
-            async def _yield_citations() -> None:
-                nonlocal citation_sent
-                if citation_sent:
-                    return
-                refs = _reference_map_to_frontend_refs(
-                    getattr(context_result, "reference_map", None) or {}
-                )
-                if self.vector_store:
-                    refs = await _enrich_refs_with_context_window(refs, self.vector_store)
-                yield StreamEvent(
-                    type=StreamEventType.CITATION,
-                    data={"references": refs},
-                    timestamp=time.time()
-                )
-                citation_sent = True
-
-            try:
-                async for delta in llm_manager.stream_chat(
-                    messages=messages,
-                    task_type="final_generation",
-                    model=model,
-                    temperature=0.3,
-                ):
-                    if delta:
-                        chunk_count += 1
-                        yield StreamEvent(
-                            type=StreamEventType.MESSAGE,
-                            data={"content": delta, "delta": True},
-                            timestamp=time.time()
-                        )
-            except Exception:
-                # 已输出部分正文时仍下发引用，避免 [n] 与底栏无法点击、图片不展示
-                if chunk_count > 0:
-                    async for ev in _yield_citations():
-                        yield ev
-                raise
+            async for delta in llm_manager.stream_chat(
+                messages=messages,
+                task_type="final_generation",
+                model=model,
+                temperature=0.3,
+            ):
+                if delta:
+                    chunk_count += 1
+                    yield StreamEvent(
+                        type=StreamEventType.MESSAGE,
+                        data={"content": delta, "delta": True},
+                        timestamp=time.time(),
+                    )
 
             logger.info(f"final_generation 模型流式生成完成: 共收到 {chunk_count} 个数据块")
-
-            async for ev in _yield_citations():
-                yield ev
 
         except Exception as e:
             err_msg = str(e).strip() or repr(e)

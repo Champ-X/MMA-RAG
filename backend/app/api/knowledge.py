@@ -18,7 +18,6 @@ from app.modules.knowledge.service import KnowledgeBaseService, office_preview_c
 from app.modules.knowledge.portraits import PortraitGenerator
 from app.modules.knowledge.suggested_questions import (
     build_context_and_questions_payload,
-    get_precomputed_questions_fast,
 )
 
 router = APIRouter()
@@ -513,7 +512,7 @@ class SuggestedQuestionFileIn(BaseModel):
 
 
 class SuggestedQuestionsRequest(BaseModel):
-    """推荐检索问题：默认仅从已落盘问题池随机选取，不做现场生成。"""
+    """默认读问题池或范围元数据；refresh=True 显式重新生成。"""
     kb_mode: str = "auto"
     knowledge_base_ids: List[str] = Field(default_factory=list)
     selected_files: List[SuggestedQuestionFileIn] = Field(default_factory=list)
@@ -525,30 +524,10 @@ class SuggestedQuestionsRequest(BaseModel):
 
 @router.post("/suggested-questions")
 async def post_suggested_questions(body: SuggestedQuestionsRequest):
-    """优先从问题池/预计算/scope缓存读取；未命中时再现场生成。"""
+    """首屏不等待内容采样或 LLM；显式刷新保留现场生成能力。"""
     try:
         started = time.perf_counter()
         files_payload = [f.model_dump() for f in body.selected_files]
-        fast = await get_precomputed_questions_fast(
-            kb_service,
-            kb_mode=body.kb_mode,
-            knowledge_base_ids=body.knowledge_base_ids,
-            selected_files=files_payload,
-            max_questions=body.max_questions,
-        )
-        if fast and not body.refresh:
-            logger.info(
-                "推荐问题命中 source=question_bank count=%s elapsed_ms=%s",
-                len(fast),
-                int((time.perf_counter() - started) * 1000),
-            )
-            return {
-                "questions": fast,
-                "source": "question_bank",
-                "cached": True,
-            }
-
-        # 未命中问题池时，继续走预计算/scope缓存/生成逻辑
         result = await build_context_and_questions_payload(
             kb_service,
             kb_mode=body.kb_mode,
@@ -560,7 +539,7 @@ async def post_suggested_questions(body: SuggestedQuestionsRequest):
             prefer_precomputed=body.prefer_precomputed,
         )
         logger.info(
-            "推荐问题返回 source=%s cached=%s count=%s elapsed_ms=%s",
+            "推荐问题返回 source={} cached={} count={} elapsed_ms={}",
             result.get("source"),
             bool(result.get("cached")),
             len(result.get("questions") or []),

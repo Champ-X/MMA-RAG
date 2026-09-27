@@ -87,16 +87,26 @@ class BaseLLMProvider(ABC):
     
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""
+        registry = getattr(self, "_registry", None)
+        if registry is None:
+            return {"status": "unknown", "error": "No registry for provider health probe"}
+        models = [name for name in registry.list_models("chat")
+                  if registry.get_provider(registry.get_model_config(name).get("provider")) is self]
+        if not models:
+            return {"status": "unknown", "error": "No chat model configured"}
+        preferred = [registry.get_task_model(task) for task in ("health_check", "final_generation", "intent_recognition")]
+        model = next((name for name in preferred if name in models), None)
+        if model is None:
+            model = next((name for name in models if registry.get_model_config(name).get("catalog_presence") == "present"), models[0])
         try:
-            # 简单的健康检查
-            test_result = await self.chat_completion(
-                messages=[{"role": "user", "content": "Hello"}],
-                model="test",
-                max_tokens=1
-            )
-            return {"status": "healthy", "test_passed": True}
-        except Exception as e:
-            return {"status": "unhealthy", "error": str(e)}
+            result = await asyncio.wait_for(self.chat_completion(
+                messages=[{"role": "user", "content": "Reply with OK."}],
+                model=registry.get_raw_model_name(model), max_tokens=256, timeout=15,
+            ), timeout=20)
+            return {"status": "healthy" if result.get("choices") else "unhealthy",
+                    "model": model, "scope": "single_model_chat"}
+        except Exception as exc:
+            return {"status": "unhealthy", "model": model, "error": type(exc).__name__}
 
 class ChatProvider(ABC):
     """聊天功能提供商基类"""

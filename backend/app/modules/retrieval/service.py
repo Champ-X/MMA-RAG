@@ -7,14 +7,20 @@ from typing import Dict, List, Any, Optional, AsyncGenerator, Tuple
 from datetime import datetime
 from dataclasses import dataclass
 import copy
+import time
 import re
+import asyncio
 
 from .processors.intent import IntentProcessor
 from .processors.rewriter import QueryRewriter
 from .search_engine import HybridSearchEngine
 from .reranker import Reranker
 from app.core.logger import get_logger, audit_log
+from app.core.llm.jev import JevRequiredError
+from app.core.jev_settings import get_jev_config
+from app.core.stage_timing import StageTimings
 from app.modules.knowledge.router import KnowledgeRouter
+from app.core.llm.query_embeddings import QueryEmbeddingCache
 
 logger = get_logger(__name__)
 
@@ -80,25 +86,18 @@ def _apply_agent_base_modality_intents(
     return updated
 
 
-def _apply_agent_target_modality_fallback(
+def _apply_target_modality_fallback(
     preprocessing_result: Dict[str, Any],
     *,
     target_kb_ids: List[str],
     modality_inventory: Optional[Dict[str, Dict[str, Any]]],
     routing_details: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """Enable one implicit modal route when Agent's semantic anchor is non-text.
+    """Use the primary routed KB's indexed medium when it has no text index.
 
-    A user can ask a purely factual question whose best matching knowledge
-    base is indexed only as video (or audio/image).  Text dense/sparse recall
-    then returns zero even though the correct KB was selected.  Direct and
-    Agent modes must both be able to consume that evidence, but the safeguard
-    is intentionally scoped to Agent routing so it does not turn ordinary
-    queries into blanket multimodal searches.
-
-    Explicit user modality requirements are never substituted.  For example,
-    an explicit image request should not silently become a video answer just
-    because the first KB happens to be video-only.
+    A factual question can be answered by a video transcript. This safeguard
+    applies to direct search and Agent alike, without widening KB/file scope
+    or replacing an explicit media request.
     """
     inventory = modality_inventory or {}
     if not target_kb_ids or not inventory:
@@ -116,7 +115,7 @@ def _apply_agent_target_modality_fallback(
     preferred_kb_id = str(details.get("anchor_kb_id") or "").strip()
     primary_kb_id = (
         preferred_kb_id
-        if preferred_kb_id in inventory
+        if preferred_kb_id in target_kb_ids and preferred_kb_id in inventory
         else str(target_kb_ids[0] or "").strip()
     )
     primary = inventory.get(primary_kb_id) or {}
@@ -150,7 +149,7 @@ def _apply_agent_target_modality_fallback(
     kb_name = str(primary.get("name") or primary_kb_id)
     updated[intent_field] = "implicit_enrichment"
     updated[reasoning_field] = (
-        f"Agent 命中知识库“{kb_name}”未建文本索引，"
+        f"知识库“{kb_name}”的相关资料保存在媒体文件中，"
         f"自动补充{ {'image': '图片', 'audio': '音频', 'video': '视频'}[modality] }证据检索"
     )
     return updated, {
@@ -159,6 +158,10 @@ def _apply_agent_target_modality_fallback(
         "modality": modality,
         "available_count": int(primary.get(modality) or 0),
     }
+
+
+# Compatibility for existing Agent callers.
+_apply_agent_target_modality_fallback = _apply_target_modality_fallback
 
 
 def _infer_selected_file_modality(file_info: Dict[str, Any]) -> str:
@@ -284,6 +287,60 @@ class RetrievalService:
             "last_updated": datetime.utcnow().isoformat()
         }
     
+    async def _try_fast_path(
+        self,
+        query: str,
+        kb_context: Optional[Dict[str, Any]],
+        session_context: Optional[List[Dict[str, str]]],
+        attachment_context: Optional[str],
+        allow_smalltalk: bool = False,
+    ) -> Optional[RetrievalResult]:
+        """Skip only work proven irrelevant; uncertainty retains full recall."""
+        intent_mode = getattr(getattr(self, "intent_processor", None), "jev_mode", None) or get_jev_config().intent_mode
+        if intent_mode == "force":
+            return None  # An explicit model experiment must reach its intent stage.
+        started = time.perf_counter()
+        if kb_context or attachment_context:
+            return None  # Preserve explicit scope, file bootstrap, and attachments.
+        reason = None
+        if (
+            allow_smalltalk
+            and not session_context
+            and re.fullmatch(r"(?:你好|您好|嗨|哈喽|hello|hi|hey)[!！。.\s]*", query.strip(), re.I)
+        ):
+            reason = "standalone_greeting"
+        else:
+            vector_store = getattr(getattr(self, "search_engine", None), "vector_store", None)
+            probe = getattr(vector_store, "is_retrieval_index_empty", None)
+            if probe is not None:
+                try:
+                    if await probe() is True:
+                        reason = "empty_index"
+                except Exception as exc:
+                    logger.debug("Index probe failed; retain retrieval: {}", type(exc).__name__)
+        if reason is None:
+            return None
+
+        elapsed = time.perf_counter() - started
+        context = RetrievalContext(
+            original_query=query, refined_query=query, intent_type="factual",
+            is_complex=False,
+            visual_intent="unnecessary", visual_reasoning="无需检索",
+            audio_intent="unnecessary", audio_reasoning="无需检索",
+            video_intent="unnecessary", video_reasoning="无需检索",
+            search_strategies={"dense_query": query, "original_query": query,
+                               "multi_view_queries": [], "sparse_keywords": []},
+            target_kb_ids=[], target_kbs=[], target_file_ids=[], selected_files=[],
+            selected_file_modalities=[], confidence_scores={}, processing_time=elapsed,
+        )
+        self._update_retrieval_stats("factual", reason, reason, elapsed, 0)
+        logger.info("Retrieval fast path: reason={} duration={:.4f}s", reason, elapsed)
+        return RetrievalResult(
+            context=context, raw_results={}, reranked_results=[], processing_time=elapsed,
+            debug_info={"fast_path": reason, "total_time": elapsed, "total_candidates": 0,
+                        "retrieval_strategy": reason, "routing_method": reason},
+        )
+
     async def search(
         self,
         query: str,
@@ -294,6 +351,7 @@ class RetrievalService:
         preplanned: bool = False,
         routing_hints: Optional[Dict[str, Any]] = None,
         preprocessing_result: Optional[Dict[str, Any]] = None,
+        allow_smalltalk: bool = False,
     ) -> RetrievalResult:
         """
         执行完整检索流程
@@ -311,6 +369,12 @@ class RetrievalService:
         
         try:
             logger.info(f"开始检索流程: {query}")
+            fast_result = await self._try_fast_path(
+                query, kb_context, session_context, attachment_context, allow_smalltalk,
+            )
+            if fast_result is not None:
+                return fast_result
+            embedding_cache = QueryEmbeddingCache()
             
             # Agent 已经完成问题拆解时，子查询本身就是可执行检索计划。
             # 跳过每个子查询重复的远端意图识别与查询改写，仍保留本地
@@ -354,6 +418,7 @@ class RetrievalService:
                 query_variants=preprocessing_result["search_strategies"].get("multi_view_queries", []),
                 max_targets=3 if preprocessing_result.get("is_complex") else 2,
                 routing_hints=effective_routing_hints,
+                embedding_cache=embedding_cache,
             )
             target_kb_ids = getattr(routing_result, "target_kb_ids", []) or []
             confidence_scores = getattr(routing_result, "confidence_scores", {}) or {}
@@ -364,27 +429,10 @@ class RetrievalService:
                     for kb_id in target_kb_ids
                 ]
 
-            # Agent child queries are intentionally terse.  When their
-            # semantic anchor is a KB with no text index (e.g. a source video
-            # KB), use the available indexed modality instead of returning an
-            # empty text retrieval result despite having routed correctly.
-            agent_target_modality_fallback: Dict[str, Any] = {}
-            if effective_routing_hints.get("agent_mode"):
-                inventory_getter = getattr(self.kb_router, "get_modality_inventory", None)
-                if callable(inventory_getter):
-                    try:
-                        modality_inventory = await inventory_getter()
-                        preprocessing_result, agent_target_modality_fallback = (
-                            _apply_agent_target_modality_fallback(
-                                preprocessing_result,
-                                target_kb_ids=target_kb_ids,
-                                modality_inventory=modality_inventory,
-                                routing_details=getattr(routing_result, "routing_details", None),
-                            )
-                        )
-                    except Exception as exc:
-                        logger.debug("Agent 目标库模态兜底判断失败，继续常规检索: {}", exc)
-            
+            preprocessing_result, target_modality_fallback = await self._prepare_target_modality(
+                preprocessing_result, routing_result, selected_files=selected_files,
+            )
+
             # 3. 构建检索上下文
             retrieval_context = RetrievalContext(
                 original_query=query,
@@ -421,7 +469,7 @@ class RetrievalService:
                 )
             
             # 4. 混合检索
-            search_results = await self._perform_hybrid_search(retrieval_context)
+            search_results = await self._perform_hybrid_search(retrieval_context, embedding_cache=embedding_cache)
             
             # 5. 两阶段重排
             reranked_results = await self._apply_reranking(
@@ -435,9 +483,14 @@ class RetrievalService:
             # 7. 构建调试信息
             debug_info = {
                 "preprocessing_time": preprocessing_result.get("processing_time", 0),
+                "preprocessing_stages": preprocessing_result.get("stage_times", {}),
+                "jev_decision": preprocessing_result.get("jev_decision", {}),
+                "search_branch_times": search_results.get("branch_times", {}),
+                "reused_embedding_vectors": embedding_cache.reused_vectors,
                 "routing_time": routing_result.processing_time,
                 "search_time": search_results.get("processing_time", 0),
                 "reranking_time": reranked_results.get("processing_time", 0),
+                "reranking_scorer": reranked_results.get("scorer", {}),
                 "total_time": processing_time,
                 "routing_method": routing_result.routing_method,
                 "routing_query_count": getattr(routing_result, "query_count", 1),
@@ -447,7 +500,8 @@ class RetrievalService:
                 ),
                 "preplanned_query": preplanned,
                 "routing_details": getattr(routing_result, "routing_details", None),
-                "agent_target_modality_fallback": agent_target_modality_fallback,
+                "target_modality_fallback": target_modality_fallback,
+                "agent_target_modality_fallback": target_modality_fallback if effective_routing_hints.get("agent_mode") else {},
             }
             
             # 更新检索统计信息
@@ -519,6 +573,8 @@ class RetrievalService:
                 intent_result,
                 selected_files,
             )
+        except JevRequiredError:
+            raise
         except Exception as exc:
             logger.warning("Agent 原始问题多模态预分析失败，使用本地兜底: %s", exc)
             intent_result = self._preprocess_preplanned_query(clean_query)
@@ -569,14 +625,35 @@ class RetrievalService:
         user_id: Optional[str] = None,
         session_context: Optional[List[Dict[str, str]]] = None,
         attachment_context: Optional[str] = None,
+        allow_smalltalk: bool = False,
+        stage_timer: Optional[StageTimings] = None,
     ) -> AsyncGenerator[Tuple[str, Any], None]:
         """
         流式检索：每完成一个阶段就 yield (stage, payload)，最后 yield ("_result", retrieval_result)。
         用于 SSE 流式聊天时按阶段推送思考过程，避免等全部检索完才一次性展示。
         """
         start_time = datetime.utcnow()
+        timings = stage_timer if stage_timer is not None else StageTimings()
         try:
             logger.info(f"开始检索流程(流式): {query}")
+            timings.start("intent")
+            yield ("intent", timings.attach("intent", {"stage_status": "processing", "message": "正在分析问题与检索需求…"}))
+            fast_result = await self._try_fast_path(
+                query, kb_context, session_context, attachment_context, allow_smalltalk,
+            )
+            if fast_result is not None:
+                reason = fast_result.debug_info["fast_path"]
+                timings.finish("intent")
+                fast_result.debug_info["stage_timings"] = timings.snapshot()
+                yield ("retrieval", timings.attach("retrieval", {
+                    "stage_status": "completed",
+                    "message": "问候无需检索" if reason == "standalone_greeting" else "当前检索索引为空",
+                    "fast_path": reason, "total_found": 0, "reranked_count": 0,
+                    "sparse_keywords": [], "sub_queries": [],
+                }))
+                yield ("_result", fast_result)
+                return
+            embedding_cache = QueryEmbeddingCache()
 
             # 1. 查询预处理 - One-Pass 意图识别
             preprocessing_result = await self._preprocess_query(
@@ -591,7 +668,9 @@ class RetrievalService:
                 selected_files,
             )
             intent_payload = {
+                "stage_status": "completed",
                 "message": "意图解析完成",
+                "jev_decision": preprocessing_result.get("jev_decision", {}),
                 "intent_type": preprocessing_result.get("intent_type", "factual"),
                 "original_query": preprocessing_result.get("original_query", query),
                 "refined_query": preprocessing_result.get("refined_query", query),
@@ -604,14 +683,24 @@ class RetrievalService:
                 "is_complex": preprocessing_result.get("is_complex", False),
                 "sub_queries": preprocessing_result.get("sub_queries", []) or [],
             }
-            yield ("intent", intent_payload)
+            timings.finish("intent", substage_durations_ms={
+                name: seconds * 1000
+                for name, seconds in preprocessing_result.get("stage_times", {}).items()
+                if type(seconds) in {int, float}
+            })
+            yield ("intent", timings.attach("intent", intent_payload))
 
             # 2. 知识库路由
+            timings.start("routing")
+            yield ("routing", timings.attach("routing", {
+                "stage_status": "processing", "message": "正在选择相关知识库…",
+            }))
             routing_result = await self._route_to_knowledge_bases(
                 preprocessing_result["refined_query"],
                 kb_context=kb_context,
                 query_variants=preprocessing_result["search_strategies"].get("multi_view_queries", []),
                 max_targets=3 if preprocessing_result.get("is_complex") else 2,
+                embedding_cache=embedding_cache,
             )
             target_kb_ids = getattr(routing_result, "target_kb_ids", []) or []
             confidence_scores = getattr(routing_result, "confidence_scores", {}) or {}
@@ -622,15 +711,31 @@ class RetrievalService:
                     for kb_id in target_kb_ids
                 ]
             routing_payload = {
+                "stage_status": "completed",
                 "message": "智能路由完成",
                 "target_kbs": target_kbs,
                 "fallback_search": len(target_kb_ids) == 0,
                 "routing_method": getattr(routing_result, "routing_method", ""),
                 "query_count": getattr(routing_result, "query_count", 1),
             }
-            yield ("routing", routing_payload)
+            preprocessing_result, target_modality_fallback = await self._prepare_target_modality(
+                preprocessing_result, routing_result, selected_files=selected_files,
+            )
+            timings.finish("routing")
+            yield ("routing", timings.attach("routing", routing_payload))
+            if target_modality_fallback:
+                intent_payload = dict(intent_payload)
+                intent_payload.update({
+                    key: preprocessing_result[key]
+                    for key in ("visual_intent", "visual_reasoning", "audio_intent",
+                                "audio_reasoning", "video_intent", "video_reasoning")
+                    if key in preprocessing_result
+                })
+                intent_payload["target_modality_fallback"] = target_modality_fallback
+                yield ("intent", timings.attach("intent", intent_payload))
 
             # 3. 构建检索上下文
+            timings.start("retrieval")
             retrieval_context = RetrievalContext(
                 original_query=query,
                 refined_query=preprocessing_result["refined_query"],
@@ -665,23 +770,47 @@ class RetrievalService:
                     retrieval_context.video_intent,
                 )
 
+            yield ("retrieval", timings.attach("retrieval", {
+                "stage_status": "processing", "message": "正在检索相关材料…",
+                "sparse_keywords": list(retrieval_context.search_strategies.get("sparse_keywords", []) or []),
+                "sub_queries": preprocessing_result.get("sub_queries", []) or [],
+            }))
             # 4. 混合检索
-            search_results = await self._perform_hybrid_search(retrieval_context)
+            search_started = time.perf_counter()
+            search_results = await self._perform_hybrid_search(retrieval_context, embedding_cache=embedding_cache)
+            search_duration_ms = (time.perf_counter() - search_started) * 1000
+            if search_results.get("strategy") == "error":
+                # A total search failure is distinct from a valid empty result.
+                # Preserve the failed stage and stop before ranking/generation.
+                raise RuntimeError("检索服务暂时不可用，本次检索未完成，请稍后重试。")
 
+            yield ("retrieval", timings.attach("retrieval", {"stage_status": "processing", "message": "正在比较相关性并整理检索结果…"}))
             # 5. 两阶段重排
+            rerank_started = time.perf_counter()
             reranked_results = await self._apply_reranking(
                 retrieval_context, search_results
             )
             results_list = reranked_results.get("results", [])
+            timings.finish("retrieval", substage_durations_ms={
+                "search": search_duration_ms,
+                "rerank": (time.perf_counter() - rerank_started) * 1000,
+            })
 
             # 6. 总处理时间与调试信息
             processing_time = (datetime.utcnow() - start_time).total_seconds()
             retrieval_context.processing_time = processing_time
             debug_info = {
+                "stage_timings": timings.snapshot(),
+                "target_modality_fallback": target_modality_fallback,
                 "preprocessing_time": preprocessing_result.get("processing_time", 0),
+                "preprocessing_stages": preprocessing_result.get("stage_times", {}),
+                "jev_decision": preprocessing_result.get("jev_decision", {}),
+                "search_branch_times": search_results.get("branch_times", {}),
+                "reused_embedding_vectors": embedding_cache.reused_vectors,
                 "routing_time": getattr(routing_result, "processing_time", 0),
                 "search_time": search_results.get("processing_time", 0),
                 "reranking_time": reranked_results.get("processing_time", 0),
+                "reranking_scorer": reranked_results.get("scorer", {}),
                 "total_time": processing_time,
                 "routing_method": getattr(routing_result, "routing_method", ""),
                 "routing_query_count": getattr(routing_result, "query_count", 1),
@@ -696,13 +825,16 @@ class RetrievalService:
             coarse_ranking_count = reranked_results.get("coarse_ranking_count", 0)
             final_ranking_count = reranked_results.get("final_ranking_count", len(results_list))
             retrieval_payload = {
+                "stage_status": "completed",
                 "message": f"检索完成，找到 {len(results_list)} 个相关结果",
+                "reranking_scorer": reranked_results.get("scorer", {}),
+                "target_modality_fallback": target_modality_fallback,
                 "sparse_keywords": sparse_keywords,
                 "sub_queries": getattr(retrieval_context, "sub_queries", []) or preprocessing_result.get("sub_queries", []) or [],
                 "total_found": coarse_ranking_count if coarse_ranking_count > 0 else len(results_list),  # 粗排后的候选数量
                 "reranked_count": final_ranking_count,  # 重排后保留的数量
             }
-            yield ("retrieval", retrieval_payload)
+            yield ("retrieval", timings.attach("retrieval", retrieval_payload))
 
             self._update_retrieval_stats(
                 intent_type=preprocessing_result["intent_type"],
@@ -729,7 +861,11 @@ class RetrievalService:
             )
             yield ("_result", retrieval_result)
 
+        except asyncio.CancelledError:
+            timings.finish_active("cancelled")
+            raise
         except Exception as e:
+            timings.finish_active("failed")
             logger.error(f"检索流程(流式)失败: {str(e)}")
             raise
 
@@ -740,6 +876,7 @@ class RetrievalService:
         attachment_context: Optional[str] = None,
     ) -> Dict[str, Any]:
         """查询预处理"""
+        started = time.perf_counter()
         try:
             # One-Pass 意图识别
             intent_result = await self.intent_processor.process(
@@ -748,6 +885,8 @@ class RetrievalService:
                 attachment_context_block=attachment_context,
             )
             
+            intent_elapsed = time.perf_counter() - started
+
             # 获取 refined_query，如果不存在则从 search_strategies 或使用 original_query
             refined_query = intent_result.get(
                 "refined_query",
@@ -755,12 +894,16 @@ class RetrievalService:
             )
             
             # 查询改写与扩展
+            rewrite_started = time.perf_counter()
             rewriter_result = await self.query_rewriter.rewrite(
                 original_query=refined_query,
                 chat_history=session_context,
                 intent_analysis=intent_result
             )
             
+            rewrite_elapsed = time.perf_counter() - rewrite_started
+            logger.info("Preprocessing durations: intent={:.3f}s rewrite={:.3f}s", intent_elapsed, rewrite_elapsed)
+
             # 合并结果
             final_refined_query = rewriter_result.get("refined_query", refined_query)
             preprocessing_result = {
@@ -781,11 +924,15 @@ class RetrievalService:
                     "sparse_keywords": rewriter_result.get("keywords", [])
                 },
                 "sub_queries": intent_result.get("sub_queries", []),
-                "processing_time": 0.0
+                "processing_time": time.perf_counter() - started,
+                "stage_times": {"intent": intent_elapsed, "rewrite": rewrite_elapsed},
+                "jev_decision": intent_result.get("jev_decision", {"mode": "off", "accepted": False}),
             }
 
             return preprocessing_result
             
+        except JevRequiredError:
+            raise
         except Exception as e:
             logger.error(f"查询预处理失败: {str(e)}")
             # 返回默认值
@@ -807,7 +954,7 @@ class RetrievalService:
                     "sparse_keywords": []
                 },
                 "sub_queries": [],
-                "processing_time": 0.0
+                "processing_time": time.perf_counter() - started
             }
 
     def _preprocess_preplanned_query(self, query: str) -> Dict[str, Any]:
@@ -848,6 +995,7 @@ class RetrievalService:
         query_variants: Optional[List[str]] = None,
         max_targets: int = 2,
         routing_hints: Optional[Dict[str, Any]] = None,
+        embedding_cache: Optional[QueryEmbeddingCache] = None,
     ):
         """路由到知识库"""
         try:
@@ -857,6 +1005,7 @@ class RetrievalService:
                 query_variants=query_variants,
                 max_targets=max_targets,
                 routing_hints=routing_hints,
+                embedding_cache=embedding_cache,
             )
         except Exception as e:
             logger.error(f"知识库路由失败: {str(e)}")
@@ -870,9 +1019,36 @@ class RetrievalService:
                 processing_time=0.0
             )
     
+    async def _prepare_target_modality(self, preprocessing, routing, *, selected_files):
+        # Explicit file selection already determines its source modalities.
+        # Do not interpret "text-only answer" as a restriction on source media;
+        # explicit source exclusions, however, must not be overridden.
+        query = str(preprocessing.get("original_query") or "")
+        if selected_files or re.search(
+            r"(?:不要|不用|不搜|不检索|排除|忽略|不使用|不参考).{0,8}(?:视频|音频|图片)|"
+            r"(?:只|仅).{0,6}(?:文档|文本资料)|"
+            r"(?:no|exclude|ignore|without)\s+(?:videos?|audio|images?)|"
+            r"(?:only\s+(?:documents?|text sources)|documents?\s+only)", query, re.I,
+        ):
+            return preprocessing, {}
+        getter = getattr(self.kb_router, "get_modality_inventory", None)
+        if not callable(getter):
+            return preprocessing, {}
+        try:
+            return _apply_target_modality_fallback(
+                preprocessing,
+                target_kb_ids=getattr(routing, "target_kb_ids", []) or [],
+                modality_inventory=await getter(),
+                routing_details=getattr(routing, "routing_details", None),
+            )
+        except Exception as exc:
+            logger.debug("目标库模态检查失败，继续常规检索: {}", type(exc).__name__)
+            return preprocessing, {}
+
     async def _perform_hybrid_search(
         self,
-        context: RetrievalContext
+        context: RetrievalContext,
+        embedding_cache: Optional[QueryEmbeddingCache] = None,
     ) -> Dict[str, Any]:
         """执行混合检索。仅使用 Qdrant 中的 kb_id，将指定知识库的 ID 解析为向量库实际存储的 kb_id 后再检索。"""
         try:
@@ -885,7 +1061,8 @@ class RetrievalService:
                 visual_intent=context.visual_intent,
                 audio_intent=context.audio_intent,
                 video_intent=context.video_intent,
-                intent_type=context.intent_type
+                intent_type=context.intent_type,
+                embedding_cache=embedding_cache,
             )
         except Exception as e:
             logger.error(f"混合检索失败: {str(e)}")
@@ -907,6 +1084,8 @@ class RetrievalService:
                 raw_results=search_results.get("raw_results", {}),
                 context=context
             )
+        except JevRequiredError:
+            raise
         except Exception as e:
             logger.error(f"重排序失败: {str(e)}")
             return {
@@ -934,6 +1113,8 @@ class RetrievalService:
             
             return results
             
+        except JevRequiredError:
+            raise
         except Exception as e:
             logger.error(f"批量检索失败: {str(e)}")
             return []

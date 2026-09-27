@@ -1,0 +1,207 @@
+[
+  {
+    "url": "https://docs.typesafe.ai/cookbooks/semantic_find.md",
+    "path": "sources/41315b6cc087.txt",
+    "sha256": "1fad271a5cf1be3671a153c1ea5e9777974a71e1187f6466d56617ac30a99cd8",
+    "retrieved_at": "2026-09-21T16:00:16.020461+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/cookbooks/skill_suggestion.md",
+    "path": "sources/ec3184bd3393.txt",
+    "sha256": "62728bba4a38dd0e61ae4118524941904a2a687a53e2dd0e08ad3bf63e5198f8",
+    "retrieved_at": "2026-09-21T16:00:16.915119+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/cookbooks/entity_alignment.md",
+    "path": "sources/d45b2a99789d.txt",
+    "sha256": "c8808786d3e4205c05ad2a65e7b880cee229537d0df16004c71523848950206c",
+    "retrieved_at": "2026-09-21T16:00:16.061508+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/cookbooks/sde_cascade.md",
+    "path": "sources/5cfbf6000f13.txt",
+    "sha256": "5d513d682f45ccaa85004d2e5437ae37b862b33e97e80013b458bc73ba6b5ddb",
+    "retrieved_at": "2026-09-21T16:00:16.020617+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/cookbooks/hierarchical_classification.md",
+    "path": "sources/eedf84b3568e.txt",
+    "sha256": "5525161d2b5597a29bd315a58aa817fe00e6bc2470cb31ece0530dbb8221dbfe",
+    "retrieved_at": "2026-09-21T16:00:16.040896+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/cookbooks/autoresearch_feature_discovery.md",
+    "path": "sources/4f789d2e065a.txt",
+    "sha256": "0aab7e2e6f30687ad774a6a2f44230a4f5f1be14482c88055452753305178418",
+    "retrieved_at": "2026-09-21T16:00:17.099501+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/cookbooks/consistency_noul_cookbook.md",
+    "path": "sources/22cd98c3cb84.txt",
+    "sha256": "fb141c4937d9c65a6a35aa5650b5137b4f7ef4a562ee814591da41730a751047",
+    "retrieved_at": "2026-09-21T16:00:18.085723+00:00"
+  },
+  {
+    "url": "https://api.github.com/search/repositories?q=jev+typesafe&sort=updated&per_page=20",
+    "path": "sources/17b48f9c2c5b.txt",
+    "sha256": "0632b726a5af998d1b3a9eed6de2f16278a6c87471b3dca2ca7dba2e6e5b173c",
+    "retrieved_at": "2026-09-21T16:00:17.848346+00:00"
+  },
+  {
+    "url": "https://api.github.com/search/repositories?q=typesafe-ai+language:Python&sort=stars&per_page=15",
+    "path": "sources/a75156f42080.txt",
+    "sha256": "394798589523249025dddb35ceed713cb7c7d89e5b4d39fae5ea5c509f3dc7ea",
+    "retrieved_at": "2026-09-21T16:00:17.299081+00:00"
+  },
+  {
+    "url": "https://api.github.com/repos/zhlei07/open-system-one/readme",
+    "error": "HTTP Error 403: rate limit exceeded"
+  },
+  {
+    "url": "https://api.github.com/repos/zhlei07/open-system-one/git/trees/HEAD?recursive=1",
+    "error": "HTTP Error 403: rate limit exceeded"
+  },
+  {
+    "url": "https://api.github.com/repos/AHTOOOXA/jev-cyrillic-audit/readme",
+    "error": "HTTP Error 403: rate limit exceeded"
+  },
+  {
+    "url": "https://api.github.com/repos/AHTOOOXA/jev-cyrillic-audit/git/trees/HEAD?recursive=1",
+    "error": "HTTP Error 403: rate limit exceeded"
+  },
+  {
+    "url": "https://api.github.com/repos/sutro-sh/jev-align/readme",
+    "error": "HTTP Error 403: rate limit exceeded"
+  },
+  {
+    "url": "https://api.github.com/repos/sutro-sh/jev-align/git/trees/HEAD?recursive=1",
+    "error": "HTTP Error 403: rate limit exceeded"
+  },
+  {
+    "url": "https://api.github.com/repos/onlyjq04/jev-agent-hooks/readme",
+    "error": "HTTP Error 403: rate limit exceeded"
+  },
+  {
+    "url": "https://api.github.com/repos/onlyjq04/jev-agent-hooks/git/trees/HEAD?recursive=1",
+    "error": "HTTP Error 403: rate limit exceeded"
+  },
+  {
+    "url": "https://api.github.com/repos/chopratejas/invalidate/readme",
+    "error": "HTTP Error 403: rate limit exceeded"
+  },
+  {
+    "url": "https://api.github.com/repos/chopratejas/invalidate/git/trees/HEAD?recursive=1",
+    "error": "HTTP Error 403: rate limit exceeded"
+  },
+  {
+    "url": "https://api.github.com/repos/yibie/awesome-jev/readme",
+    "error": "HTTP Error 403: rate limit exceeded"
+  },
+  {
+    "url": "https://api.github.com/repos/yibie/awesome-jev/git/trees/HEAD?recursive=1",
+    "error": "HTTP Error 403: rate limit exceeded"
+  },
+  {
+    "url": "https://datasets-server.huggingface.co/rows?dataset=C-MTEB%2FT2Reranking&config=default&split=dev&offset=1000&length=100",
+    "error": "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1082)>"
+  },
+  {
+    "url": "https://datasets-server.huggingface.co/rows?dataset=C-MTEB%2FT2Reranking&config=default&split=dev&offset=1100&length=100",
+    "error": "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1082)>"
+  },
+  {
+    "url": "https://datasets-server.huggingface.co/rows?dataset=C-MTEB%2FT2Reranking&config=default&split=dev&offset=1200&length=100",
+    "error": "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1082)>"
+  },
+  {
+    "url": "https://datasets-server.huggingface.co/splits?dataset=C-MTEB%2FMMarcoReranking",
+    "error": "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1082)>"
+  },
+  {
+    "url": "https://huggingface.co/api/datasets?author=C-MTEB&search=reranking",
+    "path": "sources/4db272ad6016.txt",
+    "sha256": "01cd00cd07c0ad3cf931a484a7a2c26b0312aa18dd53577afc3413a32025a5d3",
+    "bytes": 1724,
+    "retrieved_at": "2026-09-21T16:06:06.970840+00:00"
+  },
+  {
+    "url": "https://datasets-server.huggingface.co/rows?dataset=C-MTEB/T2Reranking&config=default&split=dev&offset=1000&length=100",
+    "path": "sources/e4deab02abba.txt",
+    "sha256": "c55cdb75b0c6bdb650b91224c72f467a436d64b744e77e273c714dbb172d9195",
+    "bytes": 3508281,
+    "retrieved_at": "2026-09-21T16:06:08.673656+00:00"
+  },
+  {
+    "url": "https://hf-mirror.com/datasets/C-MTEB/T2Reranking/resolve/main/data/dev-00000-of-00001-65d96bde8023d9b9.parquet",
+    "path": "../../../data/jev-v2/T2Reranking.parquet",
+    "sha256": "ceaf1ba1a4777dbb7aecad86fb8aa9cae7a678af6d711d5529c238e89bb6adff",
+    "bytes": 120293598,
+    "retrieved_at": "2026-09-21T16:06:20.030755+00:00",
+    "retention": "Large original in ignored data directory; selected evaluation rows will be frozen in evals/jev_v2"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/AHTOOOXA/jev-cyrillic-audit/main/README.md",
+    "path": "sources/47961409f1f8.txt",
+    "sha256": "646ca936cd46010902fbc1f23cdfb223bec929fc0a9b18718c8a9d8e54409d88",
+    "bytes": 25537,
+    "retrieved_at": "2026-09-21T16:06:07.614530+00:00"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/sutro-sh/jev-align/main/README.md",
+    "path": "sources/f031e23763ee.txt",
+    "sha256": "009cbf42d65371e81f9fbdc669b91ea117b02484a417a5c6f020ce2adb24941e",
+    "bytes": 6688,
+    "retrieved_at": "2026-09-21T16:06:07.594571+00:00"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/onlyjq04/jev-agent-hooks/main/README.md",
+    "path": "sources/24121df9d966.txt",
+    "sha256": "26b70e274df482768adc28b1cae71d3c3c71a468a34f5617504906a19ebcb55a",
+    "bytes": 9198,
+    "retrieved_at": "2026-09-21T16:06:09.695242+00:00"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/chopratejas/invalidate/main/README.md",
+    "path": "sources/46604eae18af.txt",
+    "sha256": "5a48a8d97da42ed65d37c35933f7156e33715f508dd87c53a0490461e62abde3",
+    "bytes": 22014,
+    "retrieved_at": "2026-09-21T16:06:09.282516+00:00"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/yibie/awesome-jev/main/README.md",
+    "path": "sources/1866dfc4d53f.txt",
+    "sha256": "4e4f2d3e58d81dc4d71e3fea9a0bd63a9668db612839acda6852f4a0f56aaf7a",
+    "bytes": 80596,
+    "retrieved_at": "2026-09-21T16:06:10.062212+00:00"
+  },
+  {
+    "url": "https://huggingface.co/api/datasets/C-MTEB/Mmarco-reranking/tree/main/data",
+    "path": "sources/389c3493398d.json",
+    "sha256": "ad7c46dc79bd8b57c00ee87b08cd8e1f053ff042771925406d1a403801a52c8f",
+    "retrieved_at": "2026-09-21T16:10:49.505476+00:00"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/zhlei07/open-system-one/main/README.md",
+    "path": "sources/open-system-one-README.md",
+    "sha256": "cd46dbce75b8c1b18a082862e4d4ddb245183456ed8a36675de8f45be15bdf21",
+    "retrieved_at": "2026-09-21T16:23:33.439993+00:00"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/zhlei07/open-system-one/main/data.py",
+    "path": "sources/open-system-one-data.py",
+    "sha256": "a05ee716c4021bc9c59c16fdb3f9751711aaefe2bb9100f847e2be9a07743171",
+    "retrieved_at": "2026-09-21T16:23:34.064626+00:00"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/zhlei07/open-system-one/main/descriptions.py",
+    "path": "sources/open-system-one-descriptions.py",
+    "sha256": "b5dcb721d2e1045dc3e442fb6284dcf61be3c06f71fd11efacf075ce9197a7f5",
+    "retrieved_at": "2026-09-21T16:23:34.659906+00:00"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/zhlei07/open-system-one/main/out/REPORT.md",
+    "path": "sources/open-system-one-out-REPORT.md",
+    "sha256": "89f586c88ee5a64149c577ab125ed75bb214fdf9f4648ac0e93215035a66dd11",
+    "retrieved_at": "2026-09-21T16:23:35.242974+00:00"
+  }
+]

@@ -18,7 +18,7 @@ from app.core.logger import get_logger
 logger = get_logger(__name__)
 
 CATALOG_TTL_SEC = 600.0
-OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=all&limit=500"
+OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=all"
 
 _refresh_lock = asyncio.Lock()
 _last_refresh_monotonic: float = 0.0
@@ -62,6 +62,8 @@ def _normalize_type_names(types: Set[str]) -> str:
 def infer_siliconflow_model_types(model_id: str, sub_types: Optional[List[str]] = None) -> str:
     """基于 SiliconFlow 官方 /models + sub_type 结果和模型族名推断项目可用能力。"""
     m = model_id.lower()
+    if sub_types and not any(_sub_type_to_registry_types(st) for st in sub_types):
+        return ""
     type_set: Set[str] = set()
     for sub_type in sub_types or []:
         type_set.update(_sub_type_to_registry_types(sub_type))
@@ -142,8 +144,6 @@ def _openrouter_arch_to_types(arch: Dict[str, Any]) -> str:
             types.add("audio")
         if "video" in input_modalities:
             types.add("video")
-    if not types:
-        types.add("chat")
     return _normalize_type_names(types)
 
 
@@ -167,17 +167,17 @@ async def _http_get_json(client: httpx.AsyncClient, url: str, headers: Dict[str,
 async def _fetch_siliconflow_models(client: httpx.AsyncClient, api_key: str) -> List[Tuple[str, Dict[str, Any]]]:
     base = "https://api.siliconflow.cn/v1"
     headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json", "User-Agent": "MMAA-RAG/catalog"}
-    payload = await _http_get_json(client, f"{base}/models", headers, 120.0)
+    payload = await _http_get_json(client, f"{base}/models", headers, 10.0)
     data_list = payload.get("data")
-    if not isinstance(data_list, list):
-        return []
+    if not isinstance(data_list, list) or not data_list:
+        raise ValueError("Provider returned an empty or invalid model catalog")
 
     sub_type_map: Dict[str, List[str]] = {}
 
     async def fetch_sub(st: str) -> None:
         q = urlencode({"sub_type": st})
         try:
-            p = await _http_get_json(client, f"{base}/models?{q}", headers, 120.0)
+            p = await _http_get_json(client, f"{base}/models?{q}", headers, 10.0)
             rows = p.get("data")
             if not isinstance(rows, list):
                 return
@@ -200,9 +200,9 @@ async def _fetch_siliconflow_models(client: httpx.AsyncClient, api_key: str) -> 
             continue
         typ = infer_siliconflow_model_types(mid, sub_type_map.get(mid, []))
         try:
-            ctx = int(raw.get("context_length") or raw.get("max_model_len") or 0) or 32768
+            ctx = int(raw.get("context_length") or raw.get("max_model_len") or 0) or None
         except (TypeError, ValueError):
-            ctx = 32768
+            ctx = None
         cfg: Dict[str, Any] = {
             "provider": "siliconflow",
             "type": typ,
@@ -220,10 +220,10 @@ async def _fetch_siliconflow_models(client: httpx.AsyncClient, api_key: str) -> 
 async def _fetch_deepseek_models(client: httpx.AsyncClient, api_key: str) -> List[Tuple[str, Dict[str, Any]]]:
     base = "https://api.deepseek.com/v1"
     headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json", "User-Agent": "MMAA-RAG/catalog"}
-    payload = await _http_get_json(client, f"{base}/models", headers, 90.0)
+    payload = await _http_get_json(client, f"{base}/models", headers, 10.0)
     data_list = payload.get("data")
-    if not isinstance(data_list, list):
-        return []
+    if not isinstance(data_list, list) or not data_list:
+        raise ValueError("Provider returned an empty or invalid model catalog")
     out: List[Tuple[str, Dict[str, Any]]] = []
     for raw in data_list:
         if not isinstance(raw, dict):
@@ -236,7 +236,7 @@ async def _fetch_deepseek_models(client: httpx.AsyncClient, api_key: str) -> Lis
         cfg: Dict[str, Any] = {
             "provider": "deepseek",
             "type": typ,
-            "context_length": 131072,
+            "context_length": None,
             "description": "DeepSeek 官方 API（目录同步）",
             "raw_model": mid,
             "catalog_synced": True,
@@ -249,10 +249,10 @@ async def _fetch_deepseek_models(client: httpx.AsyncClient, api_key: str) -> Lis
 async def _fetch_aliyun_bailian_models(client: httpx.AsyncClient, api_key: str) -> List[Tuple[str, Dict[str, Any]]]:
     base = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json", "User-Agent": "MMAA-RAG/catalog"}
-    payload = await _http_get_json(client, f"{base}/models", headers, 120.0)
+    payload = await _http_get_json(client, f"{base}/models", headers, 10.0)
     data_list = payload.get("data")
-    if not isinstance(data_list, list):
-        return []
+    if not isinstance(data_list, list) or not data_list:
+        raise ValueError("Provider returned an empty or invalid model catalog")
     out: List[Tuple[str, Dict[str, Any]]] = []
     for raw in data_list:
         if not isinstance(raw, dict):
@@ -265,7 +265,7 @@ async def _fetch_aliyun_bailian_models(client: httpx.AsyncClient, api_key: str) 
         cfg: Dict[str, Any] = {
             "provider": "aliyun_bailian",
             "type": typ,
-            "context_length": 131072,
+            "context_length": None,
             "description": "阿里云百炼（目录同步）",
             "raw_model": mid,
             "catalog_synced": True,
@@ -277,10 +277,10 @@ async def _fetch_aliyun_bailian_models(client: httpx.AsyncClient, api_key: str) 
 
 async def _fetch_openrouter_models(client: httpx.AsyncClient) -> List[Tuple[str, Dict[str, Any]]]:
     headers = {"Accept": "application/json", "User-Agent": "MMAA-RAG/catalog"}
-    payload = await _http_get_json(client, OPENROUTER_MODELS_URL, headers, 90.0)
+    payload = await _http_get_json(client, OPENROUTER_MODELS_URL, headers, 10.0)
     raw_list = payload.get("data")
-    if not isinstance(raw_list, list):
-        return []
+    if not isinstance(raw_list, list) or not raw_list:
+        raise ValueError("Provider returned an empty or invalid model catalog")
     out: List[Tuple[str, Dict[str, Any]]] = []
     for raw in raw_list:
         if not isinstance(raw, dict):
@@ -293,9 +293,9 @@ async def _fetch_openrouter_models(client: httpx.AsyncClient) -> List[Tuple[str,
         reg_id = f"openrouter:{mid}"
         ctx_raw = raw.get("context_length")
         try:
-            ctx = int(ctx_raw) if ctx_raw is not None else 128000
+            ctx = int(ctx_raw) if ctx_raw is not None else None
         except (TypeError, ValueError):
-            ctx = 128000
+            ctx = None
         cfg: Dict[str, Any] = {
             "provider": "openrouter",
             "type": typ,
@@ -322,10 +322,13 @@ async def _collect_provider(
 ) -> List[Tuple[str, Dict[str, Any]]]:
     started = time.time()
     try:
-        rows = await fetcher
+        rows = await asyncio.wait_for(fetcher, timeout=25.0)
+        if not rows:
+            raise ValueError("Provider returned no model entries")
         _catalog_provider_status[provider_name] = {
             "ok": True,
             "count": len(rows),
+            "last_success_at": time.time(),
             "error": None,
             "source": source,
             "started_at": started,
@@ -336,7 +339,8 @@ async def _collect_provider(
         _catalog_provider_status[provider_name] = {
             "ok": False,
             "count": 0,
-            "error": str(e),
+            "error": type(e).__name__,
+            "last_success_at": _catalog_provider_status.get(provider_name, {}).get("last_success_at"),
             "source": source,
             "started_at": started,
             "finished_at": time.time(),
@@ -348,7 +352,7 @@ async def _collect_provider(
 async def _refresh_all_providers(registry: Any) -> None:
     to_merge: List[Tuple[str, Dict[str, Any]]] = []
     providers = set(registry.list_providers())
-    _catalog_provider_status.clear()
+    # Keep the last successful snapshot when a provider refresh fails.
 
     async with httpx.AsyncClient() as client:
         tasks: List[Awaitable[List[Tuple[str, Dict[str, Any]]]]] = []
@@ -395,7 +399,16 @@ async def _refresh_all_providers(registry: Any) -> None:
             for rows in results:
                 to_merge.extend(rows)
 
+    checked_at = time.time()
+    successful = {p for p, status in _catalog_provider_status.items() if status.get("ok")}
+    # Absence is evidence about the catalog, not proof that an alias cannot run.
+    for config in registry._models.values():
+        if config.get("provider") in successful:
+            config.update(catalog_presence="missing", catalog_synced=False,
+                          catalog_checked_at=checked_at)
     for name, cfg in to_merge:
+        cfg.update(catalog_presence="present", catalog_checked_at=checked_at,
+                   capability_source="provider_metadata" if cfg.get("provider") == "openrouter" else "inferred")
         registry.add_model(name, cfg)
 
     try:
@@ -411,14 +424,15 @@ async def ensure_llm_catalog_fresh(registry: Any, *, force: bool = False) -> Non
     global _last_refresh_monotonic, _last_refresh_started_at, _last_refresh_finished_at, _last_refresh_forced
     async with _refresh_lock:
         now = time.monotonic()
-        if not force and (now - _last_refresh_monotonic) < CATALOG_TTL_SEC:
+        if not force and (now - getattr(registry, "_catalog_refreshed_at", float("-inf"))) < CATALOG_TTL_SEC:
             return
         _last_refresh_started_at = time.time()
         _last_refresh_finished_at = None
         _last_refresh_forced = force
         try:
             await _refresh_all_providers(registry)
-            _last_refresh_monotonic = now
+            _last_refresh_monotonic = time.monotonic()
+            registry._catalog_refreshed_at = _last_refresh_monotonic
         finally:
             _last_refresh_finished_at = time.time()
 
@@ -430,5 +444,17 @@ def get_llm_catalog_status() -> Dict[str, Any]:
         "last_refresh_started_at": _last_refresh_started_at,
         "last_refresh_finished_at": _last_refresh_finished_at,
         "last_refresh_forced": _last_refresh_forced,
-        "providers": dict(_catalog_provider_status),
+        "providers": {name: {**status, "stale": not status.get("ok") or
+                            time.time() - (status.get("last_success_at") or 0) > CATALOG_TTL_SEC}
+                      for name, status in _catalog_provider_status.items()},
     }
+
+
+async def maintain_llm_catalog(registry: Any) -> None:
+    """Refresh independently of visits to the settings page; cancellable at shutdown."""
+    while True:
+        try:
+            await ensure_llm_catalog_fresh(registry)
+        except Exception as exc:
+            logger.warning("Background model catalog refresh failed: {}", type(exc).__name__)
+        await asyncio.sleep(CATALOG_TTL_SEC)

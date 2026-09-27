@@ -1,0 +1,8 @@
+{
+  "version": "jev-v1",
+  "cases": 80,
+  "sha256": "a3f7139f58cf3f9c671835598d3eb60e83f9db049baafec870d2b994f40f2373",
+  "public_source": "C-MTEB/T2Reranking dev rows 100-147, first 2 positives and 18 negatives, deduplicated",
+  "split": "12 authored + 8 public dev; 8 project + 12 authored + 40 public held out",
+  "created_before_live_evaluation": true
+}

@@ -1,0 +1,136 @@
+[
+  {
+    "url": "https://docs.typesafe.ai/api.md",
+    "path": "sources/docs.typesafe.ai_api.md.txt",
+    "sha256": "7ea1c82d9d16bd06e3d38885a5292548293f91e6d1ade4682c27398ced51a9e5",
+    "bytes": 11772,
+    "retrieved_at": "2026-09-21T15:11:14.737867+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/models.md",
+    "path": "sources/docs.typesafe.ai_models.md.txt",
+    "sha256": "9d20bb3c90a0147532d0b20ddc4c64579391be7842e965543b27bad684eeb4d6",
+    "bytes": 7245,
+    "retrieved_at": "2026-09-21T15:11:15.396418+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/primitives/noul.md",
+    "path": "sources/docs.typesafe.ai_primitives_noul.md.txt",
+    "sha256": "aa7bff0d04bd42614e0e851a9ad4917ccc6287c882bc5dece7689b085ef789e6",
+    "bytes": 27363,
+    "retrieved_at": "2026-09-21T15:11:14.356579+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/primitives/score.md",
+    "path": "sources/docs.typesafe.ai_primitives_score.md.txt",
+    "sha256": "5afe0db1d2d108c3bf35f73f5fddbfcd2b9ade2d3c6f553af8a02b2bfd005ae9",
+    "bytes": 43992,
+    "retrieved_at": "2026-09-21T15:11:14.680214+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/cookbooks/rerank_typesafe.md",
+    "path": "sources/docs.typesafe.ai_cookbooks_rerank_typesafe.md.txt",
+    "sha256": "85b8158a7cc00bef100bf07aa00a506e117e2979d38c3650b50e122c8e69f1df",
+    "bytes": 26143,
+    "retrieved_at": "2026-09-21T15:11:14.812207+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/cookbooks/classifying_rag_passages.md",
+    "path": "sources/docs.typesafe.ai_cookbooks_classifying_rag_passages.md.txt",
+    "sha256": "02c271ada2472d0a62e7e889d72c40fc254118a5c0ae6c24d92dfb92c38f3def",
+    "bytes": 32569,
+    "retrieved_at": "2026-09-21T15:11:14.491275+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/cookbooks/citation_check.md",
+    "path": "sources/docs.typesafe.ai_cookbooks_citation_check.md.txt",
+    "sha256": "c8b3defc1632aaee0f4993476eda3d11f3d140a89adb3aacb564efe89879c5a0",
+    "bytes": 15370,
+    "retrieved_at": "2026-09-21T15:11:14.900439+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/patterns/intent-routing.md",
+    "path": "sources/docs.typesafe.ai_patterns_intent-routing.md.txt",
+    "sha256": "84b670d502b3f41165a901495688dc7bd586ff3082854f5432a7a4962d697cfb",
+    "bytes": 13444,
+    "retrieved_at": "2026-09-21T15:11:15.112360+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/confidence.md",
+    "path": "sources/docs.typesafe.ai_confidence.md.txt",
+    "sha256": "97dafe98b77979906a2ad456013dd85a70dcecd109d0644b096817d910997ea5",
+    "bytes": 11396,
+    "retrieved_at": "2026-09-21T15:11:15.252775+00:00"
+  },
+  {
+    "url": "https://docs.typesafe.ai/model-jaggedness/jev-1.13.md",
+    "path": "sources/docs.typesafe.ai_model-jaggedness_jev-1.13.md.txt",
+    "sha256": "e69329bd32e91ac08f0bd2681ceb4aacc34923b9190e29c15c8f75d8e22950e2",
+    "bytes": 11588,
+    "retrieved_at": "2026-09-21T15:11:15.363124+00:00"
+  },
+  {
+    "url": "https://api.github.com/orgs/typesafe-ai/repos?per_page=100",
+    "path": "sources/api.github.com_orgs_typesafe-ai_repos_per_page=100.txt",
+    "sha256": "b7dca30dddc7b3ff191ad13e9897d11b482a2534abc527b27b62cbaaa35505e5",
+    "bytes": 55774,
+    "retrieved_at": "2026-09-21T15:11:15.547911+00:00"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/typesafe-ai/system-one-adapter-python/main/README.md",
+    "path": "sources/raw.githubusercontent.com_typesafe-ai_system-one-adapter-python_main_README.md.txt",
+    "sha256": "131f22241ff30f4b31523cfdf8813188c672fbac6e0a7b9497b94b93bb95dc93",
+    "bytes": 5208,
+    "retrieved_at": "2026-09-21T15:12:19.097960+00:00"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/TheoLeeCJ/SemIf/main/README.md",
+    "error": "HTTP Error 404: Not Found"
+  },
+  {
+    "url": "https://www.langchain.com/blog/building-a-harness-with-jev",
+    "path": "sources/www.langchain.com_blog_building-a-harness-with-jev.txt",
+    "sha256": "893d0758312ed343c64e9d9539e0546ad1d1af5d42604832a439cdea39de329d",
+    "bytes": 170414,
+    "retrieved_at": "2026-09-21T15:12:19.444889+00:00"
+  },
+  {
+    "url": "https://huggingface.co/api/datasets/C-MTEB/T2Reranking/tree/main",
+    "path": "sources/huggingface.co_api_datasets_C-MTEB_T2Reranking_tree_main.txt",
+    "sha256": "57d70572831a72b109819e865bab691a999471bb6c0ac574aa9e8663d0cbdf0d",
+    "bytes": 290,
+    "retrieved_at": "2026-09-21T15:12:19.092918+00:00"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/TheoLeeCJ/SemIf/master/README.md",
+    "path": "sources/semif-readme.md",
+    "sha256": "9b16c39c60b9374a0d67f9fda3208ef0eb08f17da1e19fd136f48f3e56d1f5c9",
+    "bytes": 8615,
+    "retrieved_at": "2026-09-21T15:14:43.138141+00:00"
+  },
+  {
+    "url": "https://datasets-server.huggingface.co/rows?dataset=C-MTEB%2FT2Reranking&config=default&split=dev&offset=100&length=48",
+    "path": "sources/t2-rows-100-147.json",
+    "sha256": "4049235897ff4022e5ff3ebd81b0712c826ffd802517e93cb99a92622e76e0d9",
+    "bytes": 1591214,
+    "retrieved_at": "2026-09-21T15:14:44.989204+00:00"
+  },
+  {
+    "url": "https://typesafe.ai/blog/introducing-system-one-models-and-jev",
+    "path": "sources/launch.txt",
+    "sha256": "6a46d0d3ab8494dcc7e98102161537287b12d4d084d2a0c50a51f03555c08bef",
+    "bytes": 13677,
+    "retrieved_at": "2026-09-21T15:22:59.070733+00:00"
+  },
+  {
+    "url": "https://evals.typesafe.ai/",
+    "error": "HTTPError"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/typesafe-ai/Overwatch/main/README.md",
+    "path": "sources/overwatch-readme.md",
+    "sha256": "f041e6f8a967d81fe517a038133fb5d2055671b07d1e1b1023670cbd5cb6dce3",
+    "bytes": 3789,
+    "retrieved_at": "2026-09-21T15:26:39.654825+00:00"
+  }
+]

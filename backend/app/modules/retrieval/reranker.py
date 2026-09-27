@@ -5,9 +5,13 @@
 
 from typing import Dict, List, Any, Optional
 import asyncio
+import math
+import time
 from datetime import datetime
 
 from app.core.llm.manager import llm_manager
+from app.core.llm.jev import JevError, JevRequiredError, get_jev_client
+from app.core.jev_settings import get_jev_config
 from app.core.logger import get_logger, audit_log
 
 logger = get_logger(__name__)
@@ -23,6 +27,8 @@ class Reranker:
         self.rrf_weight = 0.3          # RRF权重
         self.top_k = 20                # Cross-Encoder处理的候选数量（从20增加到30，提高重排质量）
         self.final_top_k = 10          # 最终返回结果数量（从10增加到15，提高图片丰富度）
+        self.jev_mode = None
+        self.jev_client = get_jev_client()
     
     async def rerank(
         self,
@@ -47,16 +53,17 @@ class Reranker:
             logger.info(f"开始两阶段重排序: {len(raw_results)} 种检索类型")
             
             # 1. 第一阶段：合并和粗排（已在HybridSearchEngine中完成RRF）
-            coarse_ranking = self._prepare_coarse_ranking(raw_results)
+            if (getattr(self, "jev_mode", None) or get_jev_config().rerank_mode) == "force":
+                coarse_ranking = self._prepare_coarse_ranking(raw_results, strict=True)
+            else:
+                coarse_ranking = self._prepare_coarse_ranking(raw_results)
             
             # 2. 第二阶段：Cross-Encoder精排
-            reranked_results = await self._apply_cross_encoder_reranking(
-                query, coarse_ranking, context
-            )
+            reranked_results, scorer_info = await self._rank_with_optional_jev(query, coarse_ranking, context)
             
             # 3. 最终排序和限制数量，并保护用户显式要求的多模态证据。
             final_results = self._apply_final_ranking_with_modality_protection(
-                reranked_results, context
+                reranked_results, context, strict=scorer_info.get("mode") == "force"
             )
             
             processing_time = (datetime.utcnow() - start_time).total_seconds()
@@ -76,10 +83,17 @@ class Reranker:
                 "processing_time": processing_time,
                 "coarse_ranking_count": len(coarse_ranking),
                 "final_ranking_count": len(final_results),
-                "strategy": "two_stage_reranking"
+                "strategy": "two_stage_reranking",
+                "scorer": scorer_info,
             }
             
+        except JevRequiredError:
+            # A required Jev scorer failure must reach the request handler;
+            # returning an empty result would look like a successful search.
+            raise
         except Exception as e:
+            if (getattr(self, "jev_mode", None) or get_jev_config().rerank_mode) == "force":
+                raise JevRequiredError(stage="rerank", reason="unexpected_error") from None
             logger.error(f"两阶段重排失败: {str(e)}")
             return {
                 "results": [],
@@ -87,6 +101,75 @@ class Reranker:
                 "error": str(e)
             }
     
+    async def _rank_with_optional_jev(self, query, candidates, context):
+        mode = getattr(self, "jev_mode", None) or get_jev_config().rerank_mode
+        if mode == "force":
+            if not candidates:
+                return [], {"mode": mode, "status": "skipped", "reason": "no_candidates"}
+            if not query or not query.strip():
+                raise JevRequiredError(stage="rerank", reason="invalid_input")
+        if mode == "off" or not candidates or not query.strip():
+            return await self._apply_cross_encoder_reranking(query, candidates, context), {"mode": "off"}
+
+        async def jev_rank():
+            started = time.perf_counter()
+            try:
+                selected = self._select_candidates_for_reranking(candidates, context)
+                if mode == "force":
+                    documents = [self._build_document_content(item, strict=True) for item in selected]
+                else:
+                    documents = [self._build_document_content(item) for item in selected]
+                response = await self.jev_client.score(query.strip(), documents)
+                if mode == "force":
+                    self._validate_required_scores(response.scores, len(selected))
+                if mode == "force":
+                    ranked = self._merge_scores(query, selected, response.scores, context, strict=True)
+                else:
+                    ranked = self._merge_scores(query, selected, response.scores, context)
+                ranked.sort(key=lambda item: item["final_score"], reverse=True)
+                return ranked, {"mode": mode, "status": "ok", **response.metadata()}
+            except JevRequiredError:
+                raise
+            except JevError as exc:
+                if mode == "force":
+                    raise JevRequiredError(stage="rerank", reason=str(exc)) from None
+                return None, {"mode": mode, "status": "fallback", "reason": str(exc),
+                              "duration_s": time.perf_counter() - started}
+            except Exception:
+                if mode == "force":
+                    raise JevRequiredError(stage="rerank", reason="unexpected_error") from None
+                raise
+
+        if mode == "shadow":
+            baseline, (proposed, info) = await asyncio.gather(
+                self._apply_cross_encoder_reranking(query, candidates, context), jev_rank(),
+            )
+            if proposed is not None:
+                # Metadata is request-local; no concurrent request overwrites it.
+                info["proposed_ids"] = [item.get("id") for item in self._apply_final_ranking_with_modality_protection(proposed, context)]
+            return baseline, info
+        proposed, info = await jev_rank()
+        if proposed is not None:
+            return proposed, info
+        return await self._apply_cross_encoder_reranking(query, candidates, context), info
+
+    @staticmethod
+    def _validate_required_scores(scores, candidate_count):
+        """Do not silently substitute missing Jev scores with zero or rank order."""
+        if not isinstance(scores, list) or len(scores) != candidate_count:
+            raise JevError("incomplete_scores")
+        indexes = set()
+        for item in scores:
+            if not isinstance(item, dict):
+                raise JevError("invalid_score")
+            index = item.get("index")
+            value = item.get("relevance_score")
+            if type(index) is not int or index < 0 or index >= candidate_count or index in indexes:
+                raise JevError("incomplete_scores")
+            if type(value) not in {int, float} or not math.isfinite(value) or not 0 <= value <= 1:
+                raise JevError("invalid_score")
+            indexes.add(index)
+
     @staticmethod
     def _result_modality(result: Dict[str, Any]) -> str:
         content_type = str(result.get("content_type") or "").lower()
@@ -185,7 +268,9 @@ class Reranker:
     def _apply_final_ranking_with_modality_protection(
         self,
         reranked_results: List[Dict[str, Any]],
-        context: Optional[Any] = None
+        context: Optional[Any] = None,
+        *,
+        strict: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         应用最终排序，并对implicit_enrichment进行图片保护
@@ -248,6 +333,8 @@ class Reranker:
                 return text_results[:self.final_top_k]
                 
         except Exception as e:
+            if strict:
+                raise
             logger.error(f"应用图片保护失败: {str(e)}")
             # 如果出错，返回原始排序结果
             return reranked_results[:self.final_top_k]
@@ -271,7 +358,9 @@ class Reranker:
             requirements=self._protected_modality_minimums(context),
         )
     
-    def _prepare_coarse_ranking(self, raw_results: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    def _prepare_coarse_ranking(
+        self, raw_results: Dict[str, List[Dict[str, Any]]], *, strict: bool = False
+    ) -> List[Dict[str, Any]]:
         """准备粗排候选列表"""
         try:
             # 合并所有检索结果
@@ -334,7 +423,7 @@ class Reranker:
                     all_candidates.append(candidate)
             
             # 去重和初步排序
-            unique_candidates = self._deduplicate_candidates(all_candidates)
+            unique_candidates = self._deduplicate_candidates(all_candidates, strict=strict)
             
             # 按总分排序
             unique_candidates.sort(key=lambda x: x.get("total_score", 0), reverse=True)
@@ -344,10 +433,14 @@ class Reranker:
             return unique_candidates[:max_candidates]
             
         except Exception as e:
+            if strict:
+                raise
             logger.error(f"准备粗排候选失败: {str(e)}")
             return []
     
-    def _deduplicate_candidates(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _deduplicate_candidates(
+        self, candidates: List[Dict[str, Any]], *, strict: bool = False
+    ) -> List[Dict[str, Any]]:
         """去重候选结果。同一 id 可能既来自 visual（关键帧图）又来自 video（视频片段），优先保留 video 避免视频被图片排挤。"""
         try:
             unique_by_id: Dict[str, Dict[str, Any]] = {}
@@ -361,6 +454,8 @@ class Reranker:
                         unique_by_id[candidate_id] = candidate
             return list(unique_by_id.values())
         except Exception as e:
+            if strict:
+                raise
             logger.error(f"候选去重失败: {str(e)}")
             return candidates
     
@@ -456,7 +551,7 @@ class Reranker:
             # 返回原始排序结果，确保系统继续运行
             return coarse_candidates[:self.final_top_k]
     
-    def _build_document_content(self, candidate: Dict[str, Any]) -> str:
+    def _build_document_content(self, candidate: Dict[str, Any], *, strict: bool = False) -> str:
         """构建文档内容用于重排序"""
         try:
             payload = candidate.get("payload", {})
@@ -491,6 +586,8 @@ class Reranker:
             return content
             
         except Exception as e:
+            if strict:
+                raise
             logger.error(f"构建文档内容失败: {str(e)}")
             return "文档内容解析失败"
     
@@ -580,7 +677,9 @@ class Reranker:
         query: str,
         candidates: List[Dict[str, Any]],
         reranked_scores: List[Dict[str, Any]],
-        context: Optional[Any] = None
+        context: Optional[Any] = None,
+        *,
+        strict: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         合并原始分数和Cross-Encoder分数
@@ -790,6 +889,8 @@ class Reranker:
             return final_ranking
             
         except Exception as e:
+            if strict:
+                raise
             logger.error(f"合并分数失败: {str(e)}")
             return candidates
     

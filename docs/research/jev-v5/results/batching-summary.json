@@ -1,0 +1,250 @@
+{
+  "groups": {
+    "dev": {
+      "current": {
+        "attempted_cases": 12,
+        "expected_cases": 12,
+        "successful_cases": 12,
+        "evaluated_units": 22,
+        "supported_units": 11,
+        "unsupported_units": 11,
+        "true_support": 9,
+        "false_support": 0,
+        "false_support_ids": [],
+        "missed_support_ids": [
+          [
+            "dev-system-11-adaptive-original",
+            0
+          ],
+          [
+            "dev-system-11-off-original",
+            0
+          ]
+        ],
+        "reported_input_tokens": 17682,
+        "attempted_requests": 22,
+        "p50_s": 0.7986309790139785,
+        "p95_s": 1.461234785761917,
+        "support_recall": 0.8181818181818182
+      },
+      "structured_single": {
+        "attempted_cases": 12,
+        "expected_cases": 12,
+        "successful_cases": 11,
+        "evaluated_units": 21,
+        "supported_units": 11,
+        "unsupported_units": 11,
+        "true_support": 7,
+        "false_support": 0,
+        "false_support_ids": [],
+        "missed_support_ids": [
+          [
+            "dev-system-08-adaptive-original",
+            0
+          ],
+          [
+            "dev-system-08-adaptive-original",
+            1
+          ],
+          [
+            "dev-system-11-adaptive-original",
+            0
+          ],
+          [
+            "dev-system-11-off-original",
+            0
+          ]
+        ],
+        "reported_input_tokens": 12358,
+        "attempted_requests": 22,
+        "p50_s": 0.7501294995163335,
+        "p95_s": 3.059673681260026,
+        "support_recall": 0.6363636363636364
+      },
+      "batch": {
+        "attempted_cases": 12,
+        "expected_cases": 12,
+        "successful_cases": 12,
+        "evaluated_units": 22,
+        "supported_units": 11,
+        "unsupported_units": 11,
+        "true_support": 9,
+        "false_support": 0,
+        "false_support_ids": [],
+        "missed_support_ids": [
+          [
+            "dev-system-11-adaptive-original",
+            0
+          ],
+          [
+            "dev-system-11-off-original",
+            0
+          ]
+        ],
+        "reported_input_tokens": 10340,
+        "attempted_requests": 12,
+        "p50_s": 0.6871681880002143,
+        "p95_s": 0.8374492312577785,
+        "support_recall": 0.8181818181818182
+      },
+      "batch_background": {
+        "attempted_cases": 12,
+        "expected_cases": 12,
+        "successful_cases": 12,
+        "evaluated_units": 22,
+        "supported_units": 11,
+        "unsupported_units": 11,
+        "true_support": 8,
+        "false_support": 0,
+        "false_support_ids": [],
+        "missed_support_ids": [
+          [
+            "dev-system-08-adaptive-original",
+            0
+          ],
+          [
+            "dev-system-11-adaptive-original",
+            0
+          ],
+          [
+            "dev-system-11-off-original",
+            0
+          ]
+        ],
+        "reported_input_tokens": 13254,
+        "attempted_requests": 12,
+        "p50_s": 0.7227108960069017,
+        "p95_s": 0.8214046773035079,
+        "support_recall": 0.7272727272727273
+      }
+    },
+    "test": {
+      "current": {
+        "attempted_cases": 24,
+        "expected_cases": 24,
+        "successful_cases": 24,
+        "evaluated_units": 48,
+        "supported_units": 24,
+        "unsupported_units": 24,
+        "true_support": 24,
+        "false_support": 0,
+        "false_support_ids": [],
+        "missed_support_ids": [],
+        "reported_input_tokens": 35217,
+        "attempted_requests": 48,
+        "p50_s": 0.7648742710007355,
+        "p95_s": 0.9694836410955757,
+        "support_recall": 1.0
+      },
+      "structured_single": {
+        "attempted_cases": 24,
+        "expected_cases": 24,
+        "successful_cases": 23,
+        "evaluated_units": 46,
+        "supported_units": 24,
+        "unsupported_units": 24,
+        "true_support": 24,
+        "false_support": 0,
+        "false_support_ids": [],
+        "missed_support_ids": [],
+        "reported_input_tokens": 23810,
+        "attempted_requests": 48,
+        "p50_s": 0.7425399589992594,
+        "p95_s": 1.0017148892467953,
+        "support_recall": 1.0
+      },
+      "batch": {
+        "attempted_cases": 24,
+        "expected_cases": 24,
+        "successful_cases": 24,
+        "evaluated_units": 48,
+        "supported_units": 24,
+        "unsupported_units": 24,
+        "true_support": 24,
+        "false_support": 0,
+        "false_support_ids": [],
+        "missed_support_ids": [],
+        "reported_input_tokens": 18633,
+        "attempted_requests": 24,
+        "p50_s": 0.7016948539967416,
+        "p95_s": 0.8335300999970059,
+        "support_recall": 1.0
+      },
+      "batch_background": {
+        "attempted_cases": 24,
+        "expected_cases": 24,
+        "successful_cases": 24,
+        "evaluated_units": 48,
+        "supported_units": 24,
+        "unsupported_units": 24,
+        "true_support": 24,
+        "false_support": 0,
+        "false_support_ids": [],
+        "missed_support_ids": [],
+        "reported_input_tokens": 24870,
+        "attempted_requests": 24,
+        "p50_s": 0.7123628955014283,
+        "p95_s": 0.8330676285491789,
+        "support_recall": 1.0
+      }
+    }
+  },
+  "paired_against_structured_single_test": {
+    "batch": {
+      "successful_pairs": 23,
+      "families": 8,
+      "mean_latency_difference_s": -0.03450255438751217,
+      "family_bootstrap_95_interval_s": [
+        -0.09478071603653797,
+        0.007863658182405153
+      ],
+      "classification_disagreements": 0,
+      "support_signal_disagreements": 0,
+      "support_signal_disagreement_ids": [],
+      "support_signal_changes": []
+    },
+    "batch_background": {
+      "successful_pairs": 23,
+      "families": 8,
+      "mean_latency_difference_s": -0.026165695912862684,
+      "family_bootstrap_95_interval_s": [
+        -0.0638512774137345,
+        0.013641698828787017
+      ],
+      "classification_disagreements": 0,
+      "support_signal_disagreements": 0,
+      "support_signal_disagreement_ids": [],
+      "support_signal_changes": []
+    }
+  },
+  "observed_input_usd": 0.0065588880000000006,
+  "budget_accounted_tokens": 163404,
+  "budget_accounted_usd": 0.0068629680000000005,
+  "unconfirmed_reserved_tokens": 7240,
+  "unconfirmed_reserved_usd": 0.00030408000000000003,
+  "unresolved_pending_group": false,
+  "billing_total_unknown": true,
+  "billing_scope": "Observed USD uses provider-reported input usage from successful receipts. Budget USD also includes conservative reservations for failures and is not an invoice. An unresolved pending group may have incurred additional unrecorded charges; neither estimate proves the final bill.",
+  "attempted_requests_definition": "Client invocation attempts, including possible local validation, budget or circuit rejections; not verified server-received requests.",
+  "execution_manifest_status": "absent_legacy_offline_only",
+  "failures": [
+    {
+      "id": "dev-system-08-adaptive-original",
+      "mode": "structured_single",
+      "reason": null,
+      "unit_reasons": [
+        "timeout"
+      ]
+    },
+    {
+      "id": "test-retention-adversarial",
+      "mode": "structured_single",
+      "reason": null,
+      "unit_reasons": [
+        "timeout",
+        "timeout"
+      ]
+    }
+  ],
+  "scope": "Authored grouped stress set and known dev replay. Success-paired latency is not failure-inclusive deployment latency."
+}

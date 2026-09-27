@@ -1,0 +1,30 @@
+[
+  {
+    "url": "https://docs.typesafe.ai/cookbooks/citation_check.md",
+    "retrieved_at": "2026-09-22T05:27:38.227390+00:00",
+    "path": "sources/cookbooks_citation_check.md",
+    "sha256": "c8b3defc1632aaee0f4993476eda3d11f3d140a89adb3aacb564efe89879c5a0",
+    "bytes": 15370
+  },
+  {
+    "url": "https://docs.typesafe.ai/model-jaggedness/jev-1.13.md",
+    "retrieved_at": "2026-09-22T05:27:38.742416+00:00",
+    "path": "sources/model-jaggedness_jev-1.13.md",
+    "sha256": "e69329bd32e91ac08f0bd2681ceb4aacc34923b9190e29c15c8f75d8e22950e2",
+    "bytes": 11588
+  },
+  {
+    "url": "https://docs.typesafe.ai/confidence.md",
+    "retrieved_at": "2026-09-22T05:27:39.631500+00:00",
+    "path": "sources/confidence.md",
+    "sha256": "97dafe98b77979906a2ad456013dd85a70dcecd109d0644b096817d910997ea5",
+    "bytes": 11396
+  },
+  {
+    "url": "https://docs.typesafe.ai/models.md",
+    "retrieved_at": "2026-09-22T05:27:40.390901+00:00",
+    "path": "sources/models.md",
+    "sha256": "9d20bb3c90a0147532d0b20ddc4c64579391be7842e965543b27bad684eeb4d6",
+    "bytes": 7245
+  }
+]

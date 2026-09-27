@@ -346,6 +346,14 @@ export function ChatInterface() {
   const activeSession = getActiveSession()
   const agentMode = normalizeAgentMode(activeSession?.agentMode)
   const messages = useMemo(() => activeSession?.messages ?? [], [activeSession?.messages])
+  const precedingQuestions = useMemo(() => {
+    let question: Message | undefined
+    return messages.map((message) => {
+      const preceding = question
+      if (message.role === 'user') question = message
+      return preceding
+    })
+  }, [messages])
   const isLoading = isStreaming
 
   const cycleAgentMode = () => {
@@ -614,6 +622,20 @@ export function ChatInterface() {
     void submitMessage()
   }, [submitMessage])
 
+  const regenerateAnswer = useCallback(async (originalQuestion: Message) => {
+    if (!activeSessionId || isLoading || isStreaming) return
+    setLoading(true)
+    try {
+      const files = originalQuestion.scopeFiles ?? []
+      const kbIds = files.length
+        ? [...new Set(files.map((file) => file.kbId))]
+        : activeSession?.kbMode === 'manual' ? activeSession.knowledgeBaseIds : undefined
+      await sendMessage(originalQuestion.content, kbIds, activeSessionId, undefined, files)
+    } finally {
+      setLoading(false)
+    }
+  }, [activeSessionId, activeSession, isLoading, isStreaming, sendMessage, setLoading])
+
   const handleStop = () => {
     if (!activeSessionId || !isStreaming) return
 
@@ -798,6 +820,7 @@ export function ChatInterface() {
             )}
 
             {messages.map((m, i) => {
+              const originalQuestion = precedingQuestions[i]
               const isLastMessage = m.role === 'assistant' && i === messages.length - 1
               const isThisTabStreaming = isStreaming && activeSessionId === streamingSessionId
               const isLastAndStreaming = isLastMessage && isThisTabStreaming
@@ -830,6 +853,10 @@ export function ChatInterface() {
                     }
                     citationMap={messageCitationMap}
                     onCiteClick={handleCitationClick}
+                    onRegenerate={originalQuestion && !originalQuestion.attachments?.length
+                      ? () => { void regenerateAnswer(originalQuestion) }
+                      : undefined}
+                    regenerationDisabled={isLoading || isStreaming}
                   />
                 </Suspense>
               )

@@ -1,0 +1,278 @@
+{
+  "answer": "1. 桥塔服务1每小时限额为100次[1]。\n2. 桥塔服务2每小时限额为118次[2]。\n3. 桥塔服务3每小时限额为134次[3]。\n4. 桥塔服务4每小时限额为152次[4]。\n5. 桥塔服务5每小时限额为168次[5]。\n6. 桥塔服务6每小时限额为186次[6]。\n7. 桥塔服务7每小时限额为202次[7]。\n8. 桥塔服务8每小时限额为220次[8]。",
+  "references": {
+    "1": {
+      "content_type": "doc",
+      "content": "桥塔服务1每小时限额为100次。该规则只适用于该服务。"
+    },
+    "2": {
+      "content_type": "doc",
+      "content": "桥塔服务2每小时限额为117次。该规则只适用于该服务。"
+    },
+    "3": {
+      "content_type": "doc",
+      "content": "桥塔服务3每小时限额为134次。该规则只适用于该服务。"
+    },
+    "4": {
+      "content_type": "doc",
+      "content": "桥塔服务4每小时限额为151次。该规则只适用于该服务。"
+    },
+    "5": {
+      "content_type": "doc",
+      "content": "桥塔服务5每小时限额为168次。该规则只适用于该服务。"
+    },
+    "6": {
+      "content_type": "doc",
+      "content": "桥塔服务6每小时限额为185次。该规则只适用于该服务。"
+    },
+    "7": {
+      "content_type": "doc",
+      "content": "桥塔服务7每小时限额为202次。该规则只适用于该服务。"
+    },
+    "8": {
+      "content_type": "doc",
+      "content": "桥塔服务8每小时限额为219次。该规则只适用于该服务。"
+    }
+  },
+  "expected_support": [
+    true,
+    false,
+    true,
+    false,
+    true,
+    false,
+    true,
+    false
+  ],
+  "result": {
+    "mode": "shadow",
+    "diagnostic_only": true,
+    "strategy": "batch_choice",
+    "extractor_version": "trailing-citations-v2",
+    "duration_s": 0.7675043749914039,
+    "units": [
+      {
+        "start": 0,
+        "end": 21,
+        "citation_ids": [
+          "1"
+        ],
+        "claim_sha256": "595dfc6ffc387243c71bab9ca2348b1743c8e192cc6ebd1153c8970cb33b63ab",
+        "result": {
+          "status": "evaluated",
+          "answers": {
+            "relation": {
+              "type": "choice",
+              "choice": "supported",
+              "confidence": 0.99,
+              "probabilities": {
+                "contradicted": 0.0,
+                "supported": 0.99,
+                "insufficient": 0.01
+              }
+            }
+          },
+          "choice_support_signal": true,
+          "diagnostic_only": true
+        }
+      },
+      {
+        "start": 23,
+        "end": 44,
+        "citation_ids": [
+          "2"
+        ],
+        "claim_sha256": "c74ab63e3ab4482a4d4b4d70d61b465108695756b91439438b3b44da11117f56",
+        "result": {
+          "status": "evaluated",
+          "answers": {
+            "relation": {
+              "type": "choice",
+              "choice": "contradicted",
+              "confidence": 1.0,
+              "probabilities": {
+                "contradicted": 1.0,
+                "supported": 0.0,
+                "insufficient": 0.0
+              }
+            }
+          },
+          "choice_support_signal": false,
+          "diagnostic_only": true
+        }
+      },
+      {
+        "start": 46,
+        "end": 67,
+        "citation_ids": [
+          "3"
+        ],
+        "claim_sha256": "9e00e91850b55c5dcd249752be2a693984f78507ce065e1461a4d639e5261760",
+        "result": {
+          "status": "evaluated",
+          "answers": {
+            "relation": {
+              "type": "choice",
+              "choice": "supported",
+              "confidence": 0.98,
+              "probabilities": {
+                "contradicted": 0.0,
+                "supported": 0.99,
+                "insufficient": 0.01
+              }
+            }
+          },
+          "choice_support_signal": true,
+          "diagnostic_only": true
+        }
+      },
+      {
+        "start": 69,
+        "end": 90,
+        "citation_ids": [
+          "4"
+        ],
+        "claim_sha256": "22acb1d36c6bc26086d4107d8d2690df4124a050454bc42152a0f1f355b66a19",
+        "result": {
+          "status": "evaluated",
+          "answers": {
+            "relation": {
+              "type": "choice",
+              "choice": "contradicted",
+              "confidence": 1.0,
+              "probabilities": {
+                "contradicted": 1.0,
+                "supported": 0.0,
+                "insufficient": 0.0
+              }
+            }
+          },
+          "choice_support_signal": false,
+          "diagnostic_only": true
+        }
+      },
+      {
+        "start": 92,
+        "end": 113,
+        "citation_ids": [
+          "5"
+        ],
+        "claim_sha256": "7fc00e0b970d6b9a367a85f0fdd366513615ac0aa364e0df601c5e260faa1d87",
+        "result": {
+          "status": "evaluated",
+          "answers": {
+            "relation": {
+              "type": "choice",
+              "choice": "supported",
+              "confidence": 0.98,
+              "probabilities": {
+                "contradicted": 0.0,
+                "supported": 0.99,
+                "insufficient": 0.01
+              }
+            }
+          },
+          "choice_support_signal": true,
+          "diagnostic_only": true
+        }
+      },
+      {
+        "start": 115,
+        "end": 136,
+        "citation_ids": [
+          "6"
+        ],
+        "claim_sha256": "c775472e6d5aa2f8d30aa8e36fdca9fe0143b8061d018cd3db3d2582dfa42c27",
+        "result": {
+          "status": "evaluated",
+          "answers": {
+            "relation": {
+              "type": "choice",
+              "choice": "contradicted",
+              "confidence": 1.0,
+              "probabilities": {
+                "contradicted": 1.0,
+                "supported": 0.0,
+                "insufficient": 0.0
+              }
+            }
+          },
+          "choice_support_signal": false,
+          "diagnostic_only": true
+        }
+      },
+      {
+        "start": 138,
+        "end": 159,
+        "citation_ids": [
+          "7"
+        ],
+        "claim_sha256": "afe71c184d462e46eec2d8d6a81adafe01f2e35a19fe2791e35975613769d7ab",
+        "result": {
+          "status": "evaluated",
+          "answers": {
+            "relation": {
+              "type": "choice",
+              "choice": "supported",
+              "confidence": 0.99,
+              "probabilities": {
+                "contradicted": 0.0,
+                "supported": 0.99,
+                "insufficient": 0.01
+              }
+            }
+          },
+          "choice_support_signal": true,
+          "diagnostic_only": true
+        }
+      },
+      {
+        "start": 161,
+        "end": 182,
+        "citation_ids": [
+          "8"
+        ],
+        "claim_sha256": "029534467a8cb3e224f312b7ebfc5647988a934e6b1befc45c06a48b971aeb3d",
+        "result": {
+          "status": "evaluated",
+          "answers": {
+            "relation": {
+              "type": "choice",
+              "choice": "contradicted",
+              "confidence": 1.0,
+              "probabilities": {
+                "contradicted": 1.0,
+                "supported": 0.0,
+                "insufficient": 0.0
+              }
+            }
+          },
+          "choice_support_signal": false,
+          "diagnostic_only": true
+        }
+      }
+    ],
+    "gaps": [],
+    "coverage": {
+      "cited_units": 8,
+      "evaluated_units": 8,
+      "not_evaluated_units": 0,
+      "unattributed_spans": 0
+    },
+    "batch_metadata": {
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 2395,
+        "output_tokens": 351
+      },
+      "duration_s": 0.7671786669816356,
+      "prompt_version": "citation-batch-choice-v5-frozen1-isolated",
+      "estimated_usd": 0.00010059
+    }
+  },
+  "client_evaluations": 1,
+  "budget_accounted_tokens": 2395,
+  "scope": "Eight related synthetic units, real model call. Capacity/scope smoke, not independent quality evidence.",
+  "all_units_evaluated": true,
+  "signals_match_predeclared_labels": true
+}

@@ -1,0 +1,7 @@
+{
+  "sha256": "bcbcf0bb1f90e06efe1b81848a68203a455b5e40d080e5cd97c4674a56c4c07b",
+  "answers": 30,
+  "source_sha256": "487e88c00f965e1427443b9acbe426041768fb673984732434b9c0ebaf2a5158",
+  "labeling": "Assistant predeclared binary support labels; original and unchanged units supported; altered facts and wrong sources unsupported.",
+  "scope": "Six existing live answers, five variants each; correlated stress test, not independent holdout."
+}

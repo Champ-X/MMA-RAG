@@ -18,6 +18,8 @@ from dotenv import load_dotenv
 # 加载环境变量
 load_dotenv()
 
+from app.core.jev_settings import JevConfigMiddleware
+
 
 class _SuppressProgressPollAccessLog(logging.Filter):
     """过滤 uvicorn 对 /api/upload/progress 的访问日志，避免前端轮询产生大量重复 200 OK 日志。"""
@@ -45,7 +47,14 @@ async def _app_lifespan(app: FastAPI):
 
     feishu_state.main_loop = asyncio.get_running_loop()
     start_feishu_ws_thread()
-    yield
+    from app.core.llm.manager import llm_manager
+    from app.core.llm.models_catalog import maintain_llm_catalog
+    catalog_task = asyncio.create_task(maintain_llm_catalog(llm_manager.registry), name="llm-catalog")
+    try:
+        yield
+    finally:
+        catalog_task.cancel()
+        await asyncio.gather(catalog_task, return_exceptions=True)
 
 
 # 创建 FastAPI 应用实例
@@ -66,9 +75,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(JevConfigMiddleware)
 
 # 导入路由模块
-from app.api import chat, knowledge, upload, debug, import_api, feishu, retrieval
+from app.api import chat, knowledge, upload, debug, import_api, feishu, retrieval, jev
 from app.core.logger import setup_logger
 
 # 设置日志
@@ -79,6 +89,7 @@ logging.getLogger("uvicorn.access").addFilter(_SuppressProgressPollAccessLog())
 
 # 注册路由
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+app.include_router(jev.router, prefix="/api/jev", tags=["jev"])
 app.include_router(knowledge.router, prefix="/api/knowledge", tags=["knowledge"])
 app.include_router(upload.router, prefix="/api/upload", tags=["upload"])
 app.include_router(debug.router, prefix="/api/debug", tags=["debug"])

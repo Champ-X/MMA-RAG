@@ -111,6 +111,11 @@ Query：`为《浴血黑帮》挑选合适的海报封面和主题曲。`
 
 ## 快速开始
 
+本机已迁移数据的启动入口：在项目根目录运行 `./scripts/start-restored.sh`，访问
+[http://localhost:3001](http://localhost:3001)。该入口复用项目内的 MinIO/Qdrant
+存储，不执行上传、解析或重新向量化，也不启动 Celery worker。
+迁移清单、验证结果和回滚说明见 [本机数据迁移记录](docs/local-data-migration.md)。
+
 ### 环境要求
 
 | 依赖 | 说明 |
@@ -170,6 +175,8 @@ Compose 还定义了可选的 `celery_worker` / `celery_flower`，开发脚本�
 
 ### 4. 访问
 
+下表是 `start-dev.sh` 的默认端口；本机迁移入口 `scripts/start-restored.sh` 默认使用 Web 端口 3001。
+
 | 服务 | 地址 |
 |---|---|
 | Web UI | [http://localhost:3000](http://localhost:3000) |
@@ -178,6 +185,18 @@ Compose 还定义了可选的 `celery_worker` / `celery_flower`，开发脚本�
 | OpenAPI | [http://localhost:8000/docs](http://localhost:8000/docs) |
 | MinIO Console | [http://localhost:9001](http://localhost:9001) |
 | Qdrant Dashboard | [http://localhost:6333/dashboard](http://localhost:6333/dashboard) |
+
+### 在页面配置 Jev
+
+进入「设置 → Jev 语义判断」，可分别开启简单问题意图快路径、选择重排模式，以及开启逐条或批量引用诊断。点击「保存 Jev 设置」后，对当前服务的后续请求生效；正在处理的请求（包括流式回答）沿用开始时的配置。
+
+需要对照测试时，可以分别选择意图识别或重排的“强制 Jev（不回退）”，也可点击“一键强制测试”后保存。强制阶段失败会停止请求；查询改写和最终回答仍使用原模型。详情见 [Jev 强制模式](docs/qa/jev-force-mode.md)。
+
+首次使用需在服务端 `backend/.env` 配置 `TYPESAFE_API_KEY` 并重启后端。页面只显示是否已配置，不读取或保存密钥。模式通过 `GET/PUT /api/jev/settings` 保存至被 Git 忽略的 `backend/data/jev_settings.json`，重启保留，并优先于环境变量；删除该本地配置文件可恢复环境变量默认值。此配置与已有模型路由设置一样作用于整个服务，不是单个浏览器的偏好。
+
+默认仍全部关闭；重排建议保留原模型，引用诊断不自动修改或认证答案。配置开关不会重置 Jev 的 worker 额度。多 worker 共享同一个配置文件时会在新请求读取最新值；多副本部署需共享该文件所在目录。验证记录见 [Jev 页面配置](docs/research/jev-ui/README.md)。
+
+独立评测入口 `jev_eval_server.py`、`evaluate_jev_system.py` 和 `verify_jev_generation.py` 使用隔离的只读环境配置，忽略页面保存值，也不会覆盖日常服务配置。它们只用于单独启动的评测进程。
 
 ## API 与 Codex Skill
 
@@ -224,6 +243,10 @@ skills/mma-rag/scripts/mma-rag ask --query "总结部署流程" --kb-id KB_ID --
 | [FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md) | 飞书 IM 与 Docx/Wiki 权限、变量、验证 |
 | [CLI reference](skills/mma-rag/references/cli-reference.md) | 本地 Skill/CLI 命令与安全边界 |
 | [RAG_EVALUATION](docs/RAG_EVALUATION.md) | 合成评测集、隔离运行方式、六类指标与回归门禁 |
+| [Jev 调研与重排实验](docs/research/jev/README.md) | 真实 API 配对评测、实验开关、费用与采用结论 |
+| [Jev 扩展评估与意图快路径](docs/research/jev-v2/README.md) | 社区实践、独立大样本、复杂系统验证与接入说明 |
+| [Jev 引用支持诊断](docs/research/jev-v3/README.md) | 冻结语义边界样本、真实答案重放与两种诊断方案 |
+| [Jev 跨轮采用结论](docs/research/JEV-DECISIONS.md) | 九类方案比较、可选批量引用诊断与验证边界 |
 | [SECURITY](SECURITY.md) | 当前安全姿态与生产部署清单 |
 | [CHANGELOG](CHANGELOG.md) | 近期功能与文档变更 |
 

@@ -1,0 +1,68 @@
+{
+  "completed_answers": 30,
+  "expected_answers": 30,
+  "groups": {
+    "original": {
+      "answers": 6,
+      "units": 11,
+      "evaluated": 11,
+      "true_support": 9,
+      "false_support": 0,
+      "expected_support": 11,
+      "unattributed_spans": 4,
+      "reasons": {}
+    },
+    "wrong_citation": {
+      "answers": 6,
+      "units": 11,
+      "evaluated": 10,
+      "true_support": 0,
+      "false_support": 0,
+      "expected_support": 0,
+      "unattributed_spans": 4,
+      "reasons": {
+        "answer_deadline": 1
+      }
+    },
+    "mutated_fact": {
+      "answers": 6,
+      "units": 11,
+      "evaluated": 11,
+      "true_support": 3,
+      "false_support": 0,
+      "expected_support": 3,
+      "unattributed_spans": 4,
+      "reasons": {}
+    },
+    "missing_id": {
+      "answers": 6,
+      "units": 11,
+      "evaluated": 0,
+      "true_support": 0,
+      "false_support": 0,
+      "expected_support": 0,
+      "unattributed_spans": 4,
+      "reasons": {
+        "missing_reference": 11
+      }
+    },
+    "uncited": {
+      "answers": 6,
+      "units": 0,
+      "evaluated": 0,
+      "true_support": 0,
+      "false_support": 0,
+      "expected_support": 0,
+      "unattributed_spans": 12,
+      "reasons": {}
+    }
+  },
+  "reported_input_tokens": 25757,
+  "estimated_input_usd": 0.001081794,
+  "unknown_error_answers": [
+    "system-11-off-wrong_citation"
+  ],
+  "budget_accounted_input_tokens": 30015,
+  "budget_accounted_input_usd": 0.0012606300000000002,
+  "scope": "Correlated answer perturbations and real Jev calls. Not a production distribution or new retrieval run."
+}

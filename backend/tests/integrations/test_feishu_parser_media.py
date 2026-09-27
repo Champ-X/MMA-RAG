@@ -23,14 +23,18 @@ def test_extract_file_mp3_resource():
     assert spec == ("file", "file_v2_abc", ".mp3", "ZiZhuDiao.mp3")
 
 
-def test_extract_file_pdf_rejected():
-    assert (
-        extract_message_resource_spec(
-            "file",
-            '{"file_key": "file_v2_x", "file_name": "a.pdf"}',
-        )
-        is None
-    )
+def test_extract_file_pdf_for_document_ingestion():
+    # File messages are downloaded for downstream document ingestion; they are
+    # not restricted to the audio/image formats accepted by the chat model.
+    assert extract_message_resource_spec(
+        "file", '{"file_key": "file_v2_x", "file_name": "a.pdf"}',
+    ) == ("file", "file_v2_x", ".pdf", "a.pdf")
+
+
+def test_extract_file_requires_resource_key():
+    assert extract_message_resource_spec(
+        "file", '{"file_name": "a.pdf"}',
+    ) is None
 
 
 def test_extract_none_for_text():

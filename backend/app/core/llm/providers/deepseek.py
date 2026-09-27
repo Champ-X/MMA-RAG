@@ -65,7 +65,7 @@ class DeepSeekProvider(BaseLLMProvider):
         }
 
         # reasoner 为思考模式，需更长超时
-        timeout = 90.0 if "reasoner" in model.lower() else 30.0
+        timeout = float(kwargs.get("timeout", 90.0 if "reasoner" in model.lower() else 30.0))
         start = time.time()
         try:
             async with httpx.AsyncClient() as client:
@@ -109,7 +109,7 @@ class DeepSeekProvider(BaseLLMProvider):
             "temperature": kwargs.get("temperature", 0.7),
             "max_tokens": max_tokens,
         }
-        timeout = 120.0 if "reasoner" in model.lower() else 60.0  # reasoner需要更长的超时时间
+        timeout = float(kwargs.get("timeout", 120.0 if "reasoner" in model.lower() else 60.0))
         try:
             async with httpx.AsyncClient() as client:
                 async with client.stream(
@@ -122,13 +122,7 @@ class DeepSeekProvider(BaseLLMProvider):
                     if response.status_code != 200:
                         # 读取错误响应
                         error_text = ""
-                        try:
-                            async for line in response.aiter_lines():
-                                error_text += line + "\n"
-                        except:
-                            pass
-                        error_detail = error_text[:500] if error_text else response.text[:500]
-                        logger.error(f"DeepSeek stream_chat HTTP错误 [{model}]: {response.status_code} - {error_detail}")
+                        await response.aread()
                         response.raise_for_status()
                     async for line in response.aiter_lines():
                         if not line.strip():

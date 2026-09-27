@@ -17,6 +17,9 @@ from urllib.parse import unquote, urlparse
 
 from app.core.logger import get_logger
 from app.core.config import settings
+from app.core.jev_settings import get_jev_config
+from app.core.llm.jev import JevRequiredError
+from app.core.stage_timing import StageTimings
 from app.core.llm.manager import llm_manager
 from app.core.llm import TASK_MODEL_TYPES
 from app.core.llm.models_catalog import ensure_llm_catalog_fresh, get_llm_catalog_status
@@ -35,6 +38,18 @@ logger = get_logger(__name__)
 retrieval_service = RetrievalService()
 generation_service = GenerationService()
 agentic_retrieval_service = AgenticRetrievalService(retrieval_service)
+
+def _retrieval_diagnostics(result):
+    """Keep configured vs actually used Jev stages inspectable in history."""
+    debug = getattr(result, "debug_info", None) or {}
+    keys = ("jev_decision", "reranking_scorer", "target_modality_fallback",
+            "total_candidates", "total_time")
+    runs = debug.get("retrieval_runs") or [debug]
+    return {
+        "jev_config": get_jev_config().model_dump(),
+        "runs": [{key: run[key] for key in keys if key in run} for run in runs],
+    }
+
 
 # 简单的会话存储（生产环境应使用Redis或数据库）
 sessions: Dict[str, Dict[str, Any]] = {}
@@ -409,6 +424,7 @@ async def chat_message(request: Request):
             retrieval_result = agent_result.retrieval_result
         else:
             retrieval_result = await retrieval_service.search(
+                allow_smalltalk=True,
                 query=message,
                 kb_context=kb_context,
                 session_context=session_context,
@@ -461,6 +477,7 @@ async def chat_message(request: Request):
                 "citations": citations,
                 "agent": agent_result.metadata() if agent_result else None,
                 "agent_selection": mode_resolution.metadata(),
+                "retrieval_diagnostics": _retrieval_diagnostics(retrieval_result),
                 "timestamp": datetime.utcnow().isoformat(),
             },
         )
@@ -475,16 +492,25 @@ async def chat_message(request: Request):
             "metadata": {
                 "query": message,
                 "intent_type": retrieval_result.context.intent_type,
-                "processing_time": retrieval_result.processing_time + generation_result.get("metadata", {}).get("generation_time", 0),
+                "processing_time": (
+                    retrieval_result.processing_time
+                    + generation_result.get("metadata", {}).get("generation_time", 0)
+                    + generation_result.get("metadata", {}).get("jev_citation_audit", {}).get("duration_s", 0)
+                ),
                 "chunks_used": context_used.total_chunks if context_used else 0,
                 "images_used": context_used.total_images if context_used else 0,
                 "tokens_used": generation_result.get("metadata", {}).get("tokens_used", 0),
                 "model_used": generation_result.get("metadata", {}).get("model_used", ""),
+                **({"jev_citation_audit": generation_result["metadata"]["jev_citation_audit"]}
+                   if "jev_citation_audit" in generation_result.get("metadata", {}) else {}),
                 "agent": agent_result.metadata() if agent_result else {"enabled": False},
                 "agent_selection": mode_resolution.metadata(),
+                "retrieval_diagnostics": _retrieval_diagnostics(retrieval_result),
             }
         }
         
+    except JevRequiredError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
     except HTTPException:
         raise
     except Exception as e:
@@ -504,6 +530,27 @@ def _thought_event_payload(stage: str, payload: dict) -> str:
 
 
 async def _iter_chat_sse(
+    **kwargs,
+) -> AsyncGenerator[str, None]:
+    """Keep terminal timing diagnostics even when retrieval raises early."""
+    timings = StageTimings()
+    try:
+        async for line in _iter_chat_sse_impl(stage_timer=timings, **kwargs):
+            yield line
+    except asyncio.CancelledError:
+        timings.finish_active("cancelled")
+        raise
+    except Exception as exc:
+        timings.finish_active("failed")
+        event = {"type": "error", "message": str(exc), "stage_timings": timings.snapshot()}
+        if isinstance(exc, JevRequiredError):
+            event["diagnostics"] = exc.diagnostics()
+        else:
+            logger.error(f"流式聊天失败: {str(exc)}", exc_info=True)
+        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+
+async def _iter_chat_sse_impl(
     *,
     message: str,
     knowledge_base_ids_csv: Optional[str],
@@ -512,9 +559,22 @@ async def _iter_chat_sse(
     model: Optional[str],
     agent_mode: Any,
     attachment_context: Optional[str],
+    stage_timer: StageTimings,
     include_connected: bool = True,
 ) -> AsyncGenerator[str, None]:
     """流式聊天 SSE 行迭代器（GET/POST 共用）。"""
+    thinking: Dict[str, Any] = {}
+
+    def thought(stage: str, payload: dict) -> str:
+        enriched = stage_timer.attach(stage, payload)
+        # The persisted shape matches the frontend's flattened ThoughtData.
+        # Stage-specific clocks live in stage_timings, not the last event slot.
+        thinking.update({key: value for key, value in enriched.items() if key != "stage_timing"})
+        if stage == "generation":
+            thinking["generation_status"] = payload.get("status", "generating")
+            thinking["generation_message"] = payload.get("message", "")
+        return f"data: {_thought_event_payload(stage, enriched)}\n\n"
+
     kb_ids: List[str] = []
     if knowledge_base_ids_csv:
         kb_ids = [kb_id.strip() for kb_id in knowledge_base_ids_csv.split(",") if kb_id.strip()]
@@ -559,6 +619,7 @@ async def _iter_chat_sse(
     )
     if mode_resolution.requested_mode == "auto":
         auto_mode_payload = {
+            "stage_status": "processing",
             "message": (
                 "自动模式已选择 Agent 深研"
                 if mode_resolution.enabled
@@ -570,7 +631,9 @@ async def _iter_chat_sse(
             "agent_mode_reason": mode_resolution.reason,
             "agent_mode_score": mode_resolution.score,
         }
-        yield f"data: {_thought_event_payload('intent', auto_mode_payload)}\n\n"
+        if not mode_resolution.enabled:
+            stage_timer.start("intent")
+        yield thought("intent", auto_mode_payload)
 
     retrieval_result = None
     agent_result = None
@@ -586,26 +649,31 @@ async def _iter_chat_sse(
                 agent_result = payload
                 retrieval_result = payload.retrieval_result
                 break
-            yield f"data: {_thought_event_payload(stage, payload)}\n\n"
+            yield thought(stage, payload)
     else:
         async for stage, payload in retrieval_service.search_stream(
+            allow_smalltalk=True,
             query=message,
             kb_context=kb_context,
             session_context=session_context,
             attachment_context=attachment_context,
+            stage_timer=stage_timer,
         ):
             if stage == "_result":
                 retrieval_result = payload
                 break
-            yield f"data: {_thought_event_payload(stage, payload)}\n\n"
+            yield thought(stage, payload)
 
     if retrieval_result is None:
         raise RuntimeError("检索流未返回结果")
 
-    yield f"data: {_thought_event_payload('generation', {'message': '正在准备生成回答...', 'status': 'preparing'})}\n\n"
+    stage_timer.start("generation")
+    yield thought("generation", {"message": "正在准备生成回答...", "status": "preparing", "stage_status": "processing"})
 
     answer_chunks: List[str] = []
     last_citations: List[Any] = []
+    citation_audit = None
+    generation_done = False
     async for event in generation_service.stream_generate_response(
         query=message,
         retrieval_result=retrieval_result,
@@ -629,17 +697,27 @@ async def _iter_chat_sse(
                 pl = {"message": event.data.get("message", "")}
             if "status" in event.data:
                 pl["status"] = event.data["status"]
-            yield f"data: {_thought_event_payload(stage, pl)}\n\n"
+            yield thought(stage, pl)
         elif event_type == "citation":
             refs = event.data.get("references", event.data.get("citations", []))
             last_citations = refs
             yield f"data: {json.dumps({'type': 'citation', 'data': {'references': refs}}, ensure_ascii=False)}\n\n"
         elif event_type == "error":
-            yield f"data: {json.dumps({'type': 'error', 'message': event.data.get('error', '未知错误')})}\n\n"
+            stage_timer.finish_active("failed")
+            yield f"data: {json.dumps({'type': 'error', 'message': event.data.get('error', '未知错误'), 'stage_timings': stage_timer.snapshot()}, ensure_ascii=False)}\n\n"
             return
         elif event_type == "done":
+            citation_audit = event.data.get("jev_citation_audit")
+            generation_done = True
             break
 
+    if not generation_done:
+        raise RuntimeError("生成流未正常结束")
+    stage_timer.finish("generation")
+    yield thought("generation", {"message": "回答生成完成", "status": "completed", "stage_status": "completed"})
+    thinking["_generation_completed"] = True
+    final_timings = stage_timer.snapshot()
+    thinking["stage_timings"] = final_timings
     full_answer = "".join(answer_chunks)
     _append_session_turn(
         session,
@@ -655,11 +733,19 @@ async def _iter_chat_sse(
             "citations": last_citations,
             "agent": agent_result.metadata() if agent_result else None,
             "agent_selection": mode_resolution.metadata(),
+            "retrieval_diagnostics": _retrieval_diagnostics(retrieval_result),
+            "thinking": thinking,
+            "stage_timings": final_timings,
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
 
-    yield f"data: {json.dumps({'type': 'complete', 'sessionId': current_session_id})}\n\n"
+    completion = {'type': 'complete', 'sessionId': current_session_id,
+                  'stage_timings': final_timings, 'thinking': thinking,
+                  'diagnostics': {'retrieval': _retrieval_diagnostics(retrieval_result)}}
+    if citation_audit is not None:
+        completion['diagnostics']['jev_citation_audit'] = citation_audit
+    yield f"data: {json.dumps(completion)}\n\n"
 
 
 @router.get("/stream")
@@ -685,6 +771,9 @@ async def stream_chat(
                 attachment_context=None,
             ):
                 yield line
+        except JevRequiredError as exc:
+            event = {'type': 'error', 'message': str(exc), 'diagnostics': exc.diagnostics()}
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as e:
             logger.error(f"流式聊天失败: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
@@ -768,6 +857,9 @@ async def stream_chat_multipart(
                 include_connected=False,
             ):
                 yield line
+        except JevRequiredError as exc:
+            event = {'type': 'error', 'message': str(exc), 'diagnostics': exc.diagnostics()}
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as e:
             logger.error(f"流式聊天(附件)失败: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
@@ -1020,6 +1112,7 @@ async def list_models(refresh_catalog: bool = Query(False)):
         "model_details": r.list_model_details(),
         "task_candidates": r.list_task_candidates_by_task(list(TASK_SETTINGS_KEYS)),
         "catalog_status": get_llm_catalog_status(),
+        "model_health": r.model_health.snapshot(),
         "current_config": _serialize_current_task_config(),
         "task_types": {task: TASK_MODEL_TYPES.get(task) for task in TASK_SETTINGS_KEYS},
     }

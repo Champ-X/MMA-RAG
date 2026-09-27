@@ -90,7 +90,7 @@ class OpenRouterProvider(BaseLLMProvider):
         if "presence_penalty" in kwargs:
             payload["presence_penalty"] = kwargs["presence_penalty"]
 
-        timeout = 90.0  # OpenRouter默认超时
+        timeout = float(kwargs.get("timeout", 90.0))
         start = time.time()
         try:
             async with httpx.AsyncClient() as client:
@@ -161,7 +161,7 @@ class OpenRouterProvider(BaseLLMProvider):
         if "top_k" in kwargs:
             payload["top_k"] = kwargs["top_k"]
 
-        timeout = 120.0  # 流式调用需要更长超时
+        timeout = float(kwargs.get("timeout", 120.0))
         try:
             async with httpx.AsyncClient() as client:
                 async with client.stream(
@@ -172,15 +172,7 @@ class OpenRouterProvider(BaseLLMProvider):
                     timeout=timeout,
                 ) as response:
                     if response.status_code != 200:
-                        # 读取错误响应
-                        error_text = ""
-                        try:
-                            async for line in response.aiter_lines():
-                                error_text += line + "\n"
-                        except:
-                            pass
-                        error_detail = error_text[:500] if error_text else response.text[:500]
-                        logger.error(f"OpenRouter stream_chat HTTP错误 [{model}]: {response.status_code} - {error_detail}")
+                        await response.aread()
                         response.raise_for_status()
                     async for line in response.aiter_lines():
                         if line.startswith("data: "):

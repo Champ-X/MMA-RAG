@@ -1,0 +1,15 @@
+{
+  "source_snapshots_verified": 4,
+  "dataset_and_receipt_count": 46,
+  "prompt_and_module_hashes_match": true,
+  "dev_test_families_disjoint": true,
+  "prior_live_answers_and_references_identical": 6,
+  "live_successful_calls": 42,
+  "structural_rejections_without_calls": 4,
+  "offline_summary_reproduced_without_credentials": true,
+  "contract_regression_tests_passed": 44,
+  "test_log": "regression-tests.txt",
+  "diff_check_passed": true,
+  "exact_configured_key_not_in_new_artifacts": true,
+  "scope": "Source/input/receipt integrity, live Jev diagnostics and contract tests. Not production integration or general answer correctness."
+}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useChatStore } from '@/store/useChatStore'
 import { useConfigStore } from '@/store/useConfigStore'
 import {
@@ -8,6 +8,8 @@ import {
   type MessageEvent,
 } from '@/services/sse_stream'
 import type { ThoughtPhase } from '@/types/sse'
+import { advanceThinking } from '@/lib/thinkingState'
+import { freezeStageTimings, mergeStageTimings } from '@/lib/stageTiming'
 import { putAttachmentBlob } from '@/lib/chatAttachmentBlobStore'
 import { normalizeAgentMode, type ChatMessageAttachment, type ChatScopeFile } from '@/store/useChatStore'
 
@@ -20,7 +22,9 @@ interface UseThinkingChainOptions {
 }
 
 function getChatErrorMessage(err: unknown): string {
-  const raw = err instanceof Error ? err.message : '发生未知错误'
+  const raw = err instanceof Error ? err.message
+    : err && typeof err === 'object' && 'message' in err && typeof err.message === 'string'
+      ? err.message : '发生未知错误'
   if (raw.includes("Illegal header value") || raw.includes("Bearer '")) {
     return '模型服务密钥未配置或无效，请检查后端环境变量后重试。'
   }
@@ -48,7 +52,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
   const currentUserQueryRef = useRef<string | null>(null) // 保存当前用户查询
   const [error, setError] = useState<string | null>(null)
 
-  const cleanup = ({ preserveError = false }: { preserveError?: boolean } = {}) => {
+  const cleanup = useCallback(({ preserveError = false }: { preserveError?: boolean } = {}) => {
     streamRef.current?.close()
     streamRef.current = null
     setIsStreaming(false)
@@ -60,7 +64,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     if (!preserveError) {
       setError(null)
     }
-  }
+  }, [clearThinking, setStreamingSessionId])
 
   const sendMessage = async (
     content: string,
@@ -147,60 +151,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             const phase = ev.type as ThoughtPhase
             const inner = ev.data?.data ?? ev.data
             const payload = (typeof inner === 'object' && inner !== null ? inner : {}) as Record<string, unknown>
-            const prev = useChatStore.getState().thinking.thoughtData
-            const merged = { ...prev, ...payload } as Record<string, unknown>
-            
-            // 提取生成阶段的状态信息
-            if (phase === 'generation' && payload.status) {
-              merged.generation_status = payload.status
-              merged.generation_message = payload.message || ''
-            }
-
-            const isAgentEvent =
-              merged.agent_mode === true ||
-              merged.intent_type === 'agentic' ||
-              merged.agent_mode_selected === 'agent'
-            
-            // 后端在每个阶段完成时推送事件（带结果），收到后：当前阶段标为已完成，下一阶段标为进行中
-            // 注意：只有在收到 generation 阶段的事件时，才将 currentStage 设置为 'generation'
-            const nextPhase =
-              phase === 'generation' ? 'generation'
-              : isAgentEvent ? 'agent'
-              : phase === 'intent' ? 'routing'
-              : phase === 'routing' ? 'retrieval' 
-              : phase === 'retrieval' ? 'retrieval' // 检索阶段完成后，仍然保持在 retrieval，直到收到 generation 事件
-              : phase === 'attachment' ? 'intent'
-              : 'retrieval'
-            
-            // 根据阶段设置状态
-            let generationStage: 'idle' | 'processing' | 'completed' | 'failed' = 'idle'
-            if (phase === 'generation') {
-              if (payload.status === 'preparing' || payload.status === 'building_context' || payload.status === 'preparing_prompt' || payload.status === 'generating') {
-                generationStage = 'processing'
-              } else {
-                generationStage = 'completed'
-              }
-            }
-            // 只有在明确收到 generation 阶段事件时，才设置 generation 为 processing
-            // 检索阶段完成时，不自动激活生成阶段
-            
-            setThinking({
-              currentStage: nextPhase,
-              thoughtData: merged,
-              stages: {
-                intent:
-                  phase === 'intent'
-                    ? 'completed'
-                    : ['routing', 'retrieval', 'generation'].includes(phase)
-                      ? 'completed'
-                      : phase === 'attachment'
-                        ? 'processing'
-                        : 'idle',
-                routing: phase === 'routing' ? 'completed' : phase === 'retrieval' || phase === 'generation' ? 'completed' : phase === 'intent' ? 'processing' : 'idle',
-                retrieval: phase === 'retrieval' ? 'completed' : phase === 'generation' ? 'completed' : phase === 'routing' ? 'processing' : 'idle',
-                generation: generationStage !== 'idle' ? generationStage : (phase === 'generation' ? 'processing' : 'idle'),
-              },
-            })
+            setThinking(advanceThinking(useChatStore.getState().thinking, phase, payload))
             options.onThought?.(e as ThoughtEvent)
           },
           onCitation: (ev) => {
@@ -226,10 +177,12 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             }
             options.onMessage?.(ev)
           },
-          onComplete: () => {
+          onComplete: (event) => {
             const thoughtData = useChatStore.getState().thinking.thoughtData
             // 清除生成阶段的状态信息，避免显示旧的动效
-            const cleanedThoughtData = { ...thoughtData }
+            const cleanedThoughtData = { ...thoughtData,
+              stage_timings: mergeStageTimings(thoughtData?.stage_timings, event.stage_timings),
+            }
             if (cleanedThoughtData) {
               delete cleanedThoughtData.generation_status
               delete cleanedThoughtData.generation_message
@@ -240,9 +193,9 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
               currentStage: 'generation',
               thoughtData: cleanedThoughtData,
               stages: {
-                intent: 'completed',
-                routing: 'completed',
-                retrieval: 'completed',
+                intent: cleanedThoughtData.stage_timings && !cleanedThoughtData.stage_timings.intent ? 'idle' : 'completed',
+                routing: cleanedThoughtData.stage_timings && !cleanedThoughtData.stage_timings.routing ? 'idle' : 'completed',
+                retrieval: cleanedThoughtData.stage_timings && !cleanedThoughtData.stage_timings.retrieval ? 'idle' : 'completed',
                 generation: 'completed',
               },
               progress: 100,
@@ -276,6 +229,10 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             const thinking = useChatStore.getState().thinking
             const failedThinking = {
               ...(thinking.thoughtData ?? {}),
+              stage_timings: freezeStageTimings(mergeStageTimings(
+                thinking.thoughtData?.stage_timings,
+                err && typeof err === 'object' && 'stage_timings' in err ? err.stage_timings : undefined,
+              ), 'failed'),
               _generation_failed: true,
               generation_error: msg,
             }
@@ -311,13 +268,23 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
 
   const stopStreaming = () => {
     const userQuery = currentUserQueryRef.current // 获取用户原始查询
+    const sid = streamingSessionIdRef.current
+    const messageId = currentMessageIdRef.current
+    if (sid && messageId) {
+      const thoughtData = useChatStore.getState().thinking.thoughtData
+      updateMessage(sid, messageId, { thinking: {
+        ...thoughtData,
+        stage_timings: freezeStageTimings(thoughtData?.stage_timings, 'cancelled'),
+        _generation_cancelled: true,
+      } })
+    }
     cleanup()
     return userQuery // 返回用户原始查询，用于填充输入框
   }
 
   useEffect(() => {
     return () => cleanup()
-  }, [])
+  }, [cleanup])
 
   const thinking = useChatStore((state) => state.thinking)
   const progress = {

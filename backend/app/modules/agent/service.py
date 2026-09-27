@@ -9,6 +9,7 @@ from collections import defaultdict
 from typing import Any, AsyncGenerator, Dict, Iterable, List, Optional, Tuple
 
 from app.core.config import settings
+from app.core.llm.jev import JevRequiredError
 from app.core.llm.manager import llm_manager
 from app.core.logger import get_logger
 from app.modules.agent.models import AgentDecision, AgentRunResult, AgentTraceStep
@@ -694,7 +695,8 @@ class AgenticRetrievalService:
         yield (
             "intent",
             {
-                "message": "Agent 模式已启用，正在分析证据需求",
+                "message": "正在分析问题并查找初始证据…",
+                "agent_status": "planning",
                 "intent_type": "agentic",
                 "original_query": clean_query,
                 "refined_query": clean_query,
@@ -783,6 +785,11 @@ class AgenticRetrievalService:
             ):
                 round_query_limit = min(round_query_limit, 1)
 
+            yield ("intent", {
+                "agent_mode": True, "agent_status": "planning",
+                "message": "正在评估已有证据并规划下一步…" if evidence else "正在制定检索计划…",
+                "agent_rounds": _agent_rounds_payload(trace),
+            })
             decision = await self.planner.decide(
                 query=clean_query,
                 evidence_digest=_evidence_digest(evidence),
@@ -873,7 +880,8 @@ class AgenticRetrievalService:
             yield (
                 "routing",
                 {
-                    "message": f"Agent 第 {round_number} 轮计划了 {len(queries)} 条检索",
+                    "message": f"Agent 第 {round_number} 轮正在执行 {len(queries)} 条检索",
+                    "agent_status": "searching",
                     "target_kbs": [],
                     "fallback_search": not bool((kb_context or {}).get("kb_ids")),
                     "agent_mode": True,
@@ -907,6 +915,10 @@ class AgenticRetrievalService:
             successful: List[RetrievalResult] = []
             errors: List[str] = []
             for item in gathered:
+                if isinstance(item, JevRequiredError):
+                    raise item
+                if isinstance(item, asyncio.CancelledError):
+                    raise item
                 if isinstance(item, Exception):
                     errors.append(str(item))
                 else:
@@ -936,6 +948,7 @@ class AgenticRetrievalService:
                         "agent_mode": True,
                         "agent_round": round_number,
                         "agent_reason": decision.reason,
+                        "agent_status": "evaluating",
                         "agent_new_evidence": 0,
                         "agent_tool": tool.name,
                         "agent_rounds": _agent_rounds_payload(trace),
@@ -1011,6 +1024,7 @@ class AgenticRetrievalService:
                     "agent_mode": True,
                     "agent_round": round_number,
                     "agent_reason": decision.reason,
+                    "agent_status": "evaluating",
                     "agent_new_evidence": new_count,
                     "agent_tool": tool.name,
                     "agent_rounds": _agent_rounds_payload(trace),
@@ -1049,6 +1063,11 @@ class AgenticRetrievalService:
             }
             for kb_id, count in explored_kb_counts.items()
         ]
+        yield ("retrieval", {
+            "agent_mode": True, "agent_status": "completed",
+            "message": "证据整理完成，正在准备回答…",
+            "agent_rounds": _agent_rounds_payload(trace),
+        })
         yield ("_result", run_result)
 
     async def _prepare_original_query_anchor(
@@ -1073,6 +1092,8 @@ class AgenticRetrievalService:
             if isinstance(prepared, dict):
                 return prepared
             logger.warning("Agent 原问题锚点预处理返回了无效结果，跳过直接检索锚点")
+        except JevRequiredError:
+            raise
         except Exception as exc:
             logger.warning("Agent 原问题锚点预处理失败，继续使用子查询检索: %s", exc)
         return None
@@ -1112,6 +1133,8 @@ class AgenticRetrievalService:
                 len(result.reranked_results or []),
             )
             return result
+        except JevRequiredError:
+            raise
         except Exception as exc:
             # Deep research remains available when the anchor's normal path
             # has a transient model/vector failure.
@@ -1138,6 +1161,8 @@ class AgenticRetrievalService:
                 attachment_context=attachment_context,
             )
             return _normalize_modality_requirements(requirements)
+        except JevRequiredError:
+            raise
         except Exception as exc:
             logger.warning("Agent 多模态预分析不可用，继续使用保底策略: %s", exc)
             return _normalize_modality_requirements(None)

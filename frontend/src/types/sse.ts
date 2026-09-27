@@ -6,6 +6,22 @@
 // ---------- 1. 思考阶段事件 (用于更新 ThinkingCapsule) ----------
 export type ThoughtPhase = 'intent' | 'routing' | 'retrieval' | 'generation' | 'attachment';
 
+/** Durations are measured with the server's monotonic clock, in milliseconds. */
+export interface StageTiming {
+  started_at: number;
+  duration_ms: number;
+  status: 'processing' | 'completed' | 'failed' | 'cancelled' | 'skipped';
+  substage_durations_ms?: Record<string, number>;
+  /** Local monotonic receipt time, only used while this stream is active. */
+  _received_at?: number;
+  _local_snapshot?: boolean;
+}
+export type StageTimings = Partial<Record<ThoughtPhase, StageTiming>>;
+export interface CompleteEvent {
+  stage_timings?: StageTimings;
+  thinking?: Record<string, unknown>;
+}
+
 export interface AgentRoundTrace {
   round: number;
   action: 'search';
@@ -23,7 +39,12 @@ export interface AgentRoundTrace {
 export interface ThoughtEvent {
   type: ThoughtPhase;
   data: {
+    stage_timing?: StageTiming;
+    stage_timings?: StageTimings;
     message?: string;
+    stage_status?: 'processing' | 'completed' | 'failed';
+    status?: string;
+    agent_status?: 'planning' | 'searching' | 'evaluating' | 'completed';
     intent_type?: string;
     original_query?: string;
     refined_query?: string;

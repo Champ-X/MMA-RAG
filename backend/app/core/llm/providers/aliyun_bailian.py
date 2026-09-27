@@ -8,6 +8,7 @@ from typing import Dict, List, Any, Optional, AsyncGenerator
 import time
 
 from app.core.llm.providers.base import BaseLLMProvider
+from app.core.llm.model_health import ProviderAPIError, raise_for_stream_error
 from app.core.logger import get_logger, log_llm_call
 
 logger = get_logger(__name__)
@@ -242,7 +243,8 @@ class AliyunBailianProvider(BaseLLMProvider):
                 output = resp.get("output") if isinstance(resp, dict) else getattr(resp, "output", None)
                 message = resp.get("message") if isinstance(resp, dict) else getattr(resp, "message", None)
                 if status_code != 200 or not output:
-                    raise RuntimeError(message or str(resp) or "MultiModalConversation 调用失败")
+                    code = resp.get("code") if isinstance(resp, dict) else getattr(resp, "code", None)
+                    raise ProviderAPIError(str(message or ""), status_code=status_code, code=code)
                 # incremental_output=True 时每个 chunk 是累积内容，取最后一个非空结果即可；
                 # 非增量 SDK 则拼接防止丢字。
                 current = _response_content(resp)
@@ -398,7 +400,7 @@ class AliyunBailianProvider(BaseLLMProvider):
         payload["modalities"] = ["text"]
         payload["stream_options"] = {"include_usage": True}
 
-        timeout = 120.0
+        timeout = float(kwargs.get("timeout", 120.0))
         start = time.time()
         content_parts: List[str] = []
         usage: Optional[Dict[str, Any]] = None
@@ -419,12 +421,7 @@ class AliyunBailianProvider(BaseLLMProvider):
                         logger.error(
                             f"阿里云百炼 Omni stream [{model}]: HTTP {response.status_code} - {error_text[:1200]}"
                         )
-                        api_msg = _parse_dashscope_error_body(error_text)
-                        if api_msg:
-                            raise ValueError(f"阿里云百炼: {api_msg}")
-                        raise RuntimeError(
-                            f"阿里云百炼请求失败 HTTP {response.status_code}: {error_text[:500]}"
-                        )
+                        response.raise_for_status()
 
                     async for line in response.aiter_lines():
                         line = line.strip()
@@ -439,9 +436,7 @@ class AliyunBailianProvider(BaseLLMProvider):
                             chunk = json.loads(data_str)
                         except json.JSONDecodeError:
                             continue
-                        if "error" in chunk:
-                            err = chunk["error"]
-                            raise ValueError(err.get("message", str(err)))
+                        raise_for_stream_error(chunk)
                         if "usage" in chunk:
                             usage = chunk["usage"]
                         if chunk.get("choices"):
@@ -522,7 +517,7 @@ class AliyunBailianProvider(BaseLLMProvider):
         if "stream_options" in kwargs:
             payload["stream_options"] = kwargs["stream_options"]
 
-        timeout = 120.0  # 流式调用需要更长超时
+        timeout = float(kwargs.get("timeout", 120.0))
         chunk_count = 0
         try:
             # 流式请求需要特殊的 Accept 头
@@ -545,13 +540,8 @@ class AliyunBailianProvider(BaseLLMProvider):
                         logger.error(
                             f"阿里云百炼 stream_chat HTTP错误 [{model}]: {response.status_code} - {error_text[:1200]}"
                         )
-                        api_msg = _parse_dashscope_error_body(error_text)
-                        if api_msg:
-                            raise ValueError(f"阿里云百炼: {api_msg}")
-                        raise RuntimeError(
-                            f"阿里云百炼请求失败 HTTP {response.status_code}: {error_text[:500]}"
-                        )
-                    
+                        response.raise_for_status()
+
                     # 解析 SSE 格式的流式响应
                     line_count = 0
                     first_lines = []  # 记录前几行用于调试

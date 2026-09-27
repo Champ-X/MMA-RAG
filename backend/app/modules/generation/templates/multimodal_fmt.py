@@ -354,7 +354,7 @@ class MultiModalFormatter:
         """格式化用户查询"""
         try:
             if context:
-                formatted_query = f"""以下是根据检索结果整理的参考材料，以及用户的最新问题。
+                formatted_query = f"""以下是根据检索结果整理的候选参考材料，以及用户的最新问题。材料可能包含无关项；只使用能支持答案的部分，不需要逐条点评或展示未采用项。
 
 ---
 {context}

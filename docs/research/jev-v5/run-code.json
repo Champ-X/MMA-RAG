@@ -1,0 +1,20 @@
+{
+  "note": "Archived immediately after all 144 case-mode receipts, before evaluator hardening; no changes to these files during the recorded run.",
+  "files": [
+    {
+      "original_path": "backend/scripts/evaluate_jev_batching.py",
+      "snapshot_path": "run-code/evaluate_jev_batching.py",
+      "sha256": "f3ec8ec28a20e406c1d7594e952f264d49017c6860787db5b77d54dd63c95ce1"
+    },
+    {
+      "original_path": "backend/scripts/jev_batch_candidate.py",
+      "snapshot_path": "run-code/jev_batch_candidate.py",
+      "sha256": "9e36b725fc6d9cc9c58834c703d03496bed13eb0d4fb805990798d757c1791fe"
+    },
+    {
+      "original_path": "backend/app/core/llm/jev.py",
+      "snapshot_path": "run-code/jev.py",
+      "sha256": "7940b266ddc75ff76d18fdcfd8a1692201edd8c7e189a7493b98391893a073b8"
+    }
+  ]
+}
