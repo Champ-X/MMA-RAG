@@ -358,9 +358,7 @@ export const knowledgeApi = {
       { params: { sync }, timeout: 120000 }
     ),
 
-  /**
-   * 推荐检索问题：服务端汇总画像/分块/caption/音视频描述等，可选 LLM 生成并磁盘缓存。
-   */
+  /** 推荐检索问题：首屏仅取已有问题或元数据，显式 refresh 才现场生成。 */
   postSuggestedQuestions: (body: {
     kb_mode: string
     knowledge_base_ids?: string[]
@@ -369,7 +367,7 @@ export const knowledgeApi = {
     use_llm?: boolean
     refresh?: boolean
     prefer_precomputed?: boolean
-  }) =>
+  }, options: { signal?: AbortSignal } = {}) =>
     apiClient.post<{
       questions: Array<{ text: string; kb_name: string }>
       source: string
@@ -378,7 +376,7 @@ export const knowledgeApi = {
       revision?: string
       error?: string
       note?: string
-    }>('/knowledge/suggested-questions', body, { timeout: 120000 }),
+    }>('/knowledge/suggested-questions', body, { timeout: body.refresh ? 120000 : 8000, signal: options.signal }),
 
   // 获取知识库文件列表
   getKnowledgeBaseFiles: (id: string) =>

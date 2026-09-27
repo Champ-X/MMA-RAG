@@ -328,6 +328,8 @@ def _fallback_questions_from_context(
     """无 LLM 时的模板兜底。"""
     seeds: List[str] = []
     for line in portrait_lines[:6]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
         m = re.search(r"\)\s*(.+)$", line)
         if m:
             seeds.append(_trim(m.group(1).strip(), 24))
@@ -568,43 +570,96 @@ async def get_precomputed_questions_fast(
     max_questions: int,
     ttl_sec: int = CACHE_TTL_SECONDS_DEFAULT,
 ) -> List[Dict[str, str]]:
-    """
-    快速读取问题池（不做重计算）。
-    - manual: 按指定库拼接
-    - files: 按文件所属库拼接（不做文件级过滤，目的是首屏秒出）
-    - auto/all: 从全库随机挑若干库拼接
-    """
-    max_q = max(1, min(int(max_questions or 3), 10))
-    _cleanup_expired_cache_files(ttl_sec)
-    all_kbs = await kb_service.list_knowledge_bases()
-    if not all_kbs:
-        return []
+    """Compatibility wrapper returning only stored, scope-matching questions."""
+    result = await get_suggested_questions_fast(
+        kb_service, kb_mode=kb_mode, knowledge_base_ids=knowledge_base_ids,
+        selected_files=selected_files, max_questions=max_questions, ttl_sec=ttl_sec,
+        include_fallback=False,
+    )
+    return result['questions']
 
-    kb_ids: List[str] = []
+
+def _questions_from_scope_metadata(
+    candidate_kbs: Sequence[Dict[str, Any]],
+    selected_files: Sequence[Dict[str, Any]],
+    max_q: int,
+) -> List[Dict[str, str]]:
+    """Quick suggestions describe the actual scope without inventing content facts."""
+    by_id = {str(k['id']): k for k in candidate_kbs}
+    seeds = []
     if selected_files:
-        kb_ids = sorted({str(f.get("kb_id") or "").strip() for f in selected_files if f.get("kb_id")})
-    elif kb_mode == "manual" and knowledge_base_ids:
-        kb_ids = [str(x).strip() for x in knowledge_base_ids if str(x).strip()]
-    else:
-        pool = [str(k.get("id")) for k in all_kbs if k.get("id")]
-        random.shuffle(pool)
-        kb_ids = pool[:MAX_KB_SAMPLE_GLOBAL]
-
-    # 从每个库的问题池随机抽样后拼接，优先保证“秒出”
-    pool: List[Dict[str, str]] = []
-    seen = set()
-    for kb_id in kb_ids:
-        bank = _read_question_bank(kb_id)
-        qs = bank.get("questions", []) or []
-        random.shuffle(qs)
-        for q in qs:
-            text = str((q or {}).get("text") or "").strip()
-            if not text or text in seen:
+        for file in selected_files:
+            kb = by_id.get(str(file.get('kb_id') or ''))
+            if not kb or not file.get('file_id'):
                 continue
-            seen.add(text)
-            pool.append({"text": text, "kb_name": str((q or {}).get("kb_name") or kb_id)})
+            name = str(file.get('name') or '')
+            title = _readable_file_title(name) if name else ''
+            label = f'「{title}」' if title else '所选材料'
+            seeds.append((label, str(kb.get('name') or '所选知识库')))
+    else:
+        for kb in candidate_kbs:
+            name = str(kb.get('name') or '').strip()
+            if name:
+                seeds.append((f'「{name}」的资料', name))
+    random.shuffle(seeds)
+    templates = [
+        lambda label: f'{label}主要介绍了哪些内容？',
+        lambda label: f'请梳理{label}中的重要概念和结论。',
+        lambda label: f'{label}有哪些值得进一步了解的主题？',
+        lambda label: f'请结合{label}归纳相关内容之间的联系。',
+    ]
+    random.shuffle(templates)
+    questions = [
+        {'text': template(label), 'kb_name': kb_name}
+        for template in templates for label, kb_name in seeds
+    ]
+    return _normalize_question_items(questions, kb_name='知识库', max_q=max_q)
+
+
+async def get_suggested_questions_fast(
+    kb_service: KnowledgeBaseService,
+    *,
+    kb_mode: str,
+    knowledge_base_ids: Sequence[str],
+    selected_files: Sequence[Dict[str, Any]],
+    max_questions: int,
+    ttl_sec: int = CACHE_TTL_SECONDS_DEFAULT,
+    include_fallback: bool = True,
+) -> Dict[str, Any]:
+    """No portraits, file previews or model calls on the new-chat request path."""
+    max_q = max(1, min(int(max_questions or 3), 10))
+    candidate_kbs = await _pick_candidate_kbs(
+        kb_service, kb_mode, knowledge_base_ids, selected_files, exclude_known_empty=True,
+    )
+    if not candidate_kbs:
+        return {'questions': [], 'source': 'empty', 'cached': False, 'error': 'no_knowledge_bases'}
+    allowed_files = {(str(f.get('kb_id') or ''), str(f.get('file_id') or '')) for f in selected_files}
+    pool: List[Dict[str, str]] = []
+    used_bank = False
+    for kb in candidate_kbs:
+        kb_id = str(kb['id'])
+        bank = _read_question_bank(kb_id)
+        for question in bank.get('questions') or []:
+            if not isinstance(question, dict):
+                continue
+            if selected_files and (kb_id, str(question.get('file_id') or '')) not in allowed_files:
+                continue
+            if _normalize_question_text(question.get('text') or ''):
+                used_bank = True
+                pool.append({'text': question['text'], 'kb_name': str(kb.get('name') or '知识库')})
+        # A whole-library snapshot cannot guarantee a selected-file scope.
+        if not selected_files:
+            precomputed = _read_precomputed_for_kb(kb_id, ttl_sec=ttl_sec)
+            if precomputed and isinstance(precomputed.get('questions'), list):
+                pool.extend(_normalize_question_items(precomputed['questions'],
+                            kb_name=str(kb.get('name') or '知识库'), max_q=10))
     random.shuffle(pool)
-    return _normalize_question_items(pool, kb_name="知识库", max_q=max_q)
+    questions = _normalize_question_items(pool, kb_name='知识库', max_q=max_q)
+    if questions:
+        return {'questions': questions, 'source': 'question_bank' if used_bank else 'precomputed', 'cached': True}
+    if include_fallback:
+        questions = _questions_from_scope_metadata(candidate_kbs, selected_files, max_q)
+    return {'questions': questions, 'source': 'scope_fallback', 'cached': False}
 
 
 async def _pick_candidate_kbs(
@@ -612,10 +667,24 @@ async def _pick_candidate_kbs(
     kb_mode: str,
     knowledge_base_ids: Sequence[str],
     selected_files: Sequence[Dict[str, Any]],
+    *,
+    exclude_known_empty: bool = False,
 ) -> List[Dict[str, Any]]:
+    if not selected_files and (kb_mode == 'files' or (kb_mode == 'manual' and not knowledge_base_ids)):
+        return []
     all_kbs = await kb_service.list_knowledge_bases()
     if not all_kbs:
         return []
+    if exclude_known_empty:
+        def known_empty(kb):
+            stats = kb.get('statistics') or {}
+            keys = ('total_chunks', 'total_images', 'total_audio', 'total_video')
+            # Missing statistics mean unknown, rather than an empty library.
+            return all(isinstance(stats.get(key), (int, float)) and stats[key] == 0 for key in keys)
+
+        # Filter before the global sample: empty libraries must not use all
+        # eight slots while an indexed library remains outside the sample.
+        all_kbs = [kb for kb in all_kbs if not known_empty(kb)]
 
     if selected_files:
         kb_ids = sorted({str(f.get("kb_id") or "").strip() for f in selected_files if f.get("kb_id")})
@@ -625,7 +694,7 @@ async def _pick_candidate_kbs(
         wanted = {str(x).strip() for x in knowledge_base_ids if str(x).strip()}
         return [k for k in all_kbs if k.get("id") in wanted]
 
-    # auto / all / 未选手动：随机抽样若干知识库
+    # auto / all：随机抽样若干知识库
     pool = list(all_kbs)
     random.shuffle(pool)
     return pool[:MAX_KB_SAMPLE_GLOBAL]
@@ -646,8 +715,12 @@ async def build_context_and_questions_payload(
     """
     生成推荐问题。返回 questions、source、cached、cache_key 等。
     """
-    t0 = time.perf_counter()
     max_q = max(1, min(int(max_questions or 3), 10))
+    if prefer_precomputed and not refresh:
+        return await get_suggested_questions_fast(
+            kb_service, kb_mode=kb_mode, knowledge_base_ids=knowledge_base_ids,
+            selected_files=selected_files, max_questions=max_q, ttl_sec=cache_ttl_sec,
+        )
     _cleanup_expired_cache_files(cache_ttl_sec)
 
     candidate_kbs = await _pick_candidate_kbs(
@@ -662,42 +735,13 @@ async def build_context_and_questions_payload(
         }
 
     kb_by_id = {k["id"]: k for k in candidate_kbs}
-    # refresh=false 且单库、无文件范围时优先读取预生成快照
-    if (
-        not refresh
-        and prefer_precomputed
-        and len(candidate_kbs) == 1
-        and not selected_files
-    ):
-        kb0 = candidate_kbs[0]
-        pre = _read_precomputed_for_kb(kb0["id"], ttl_sec=cache_ttl_sec)
-        if pre and isinstance(pre.get("questions"), list):
-            questions = _normalize_question_items(
-                pre.get("questions") or [],
-                kb_name=str(kb0.get("name") or kb0["id"]),
-                max_q=max_q,
-            )
-            if questions:
-                logger.info(
-                    "推荐问题预生成缓存命中 kb_id=%s elapsed_ms=%s",
-                    kb0["id"],
-                    int((time.perf_counter() - t0) * 1000),
-                )
-                return {
-                    "questions": questions,
-                    "source": "precomputed",
-                    "cached": True,
-                    "cache_key": pre.get("cache_key"),
-                    "revision": pre.get("revision"),
-                }
-
     portrait_lines_all: List[str] = []
     file_blocks_all: List[str] = []
 
     file_tasks: List[Tuple[str, str, str, str]] = []
     # (kb_id, kb_name, file_id, display_name)
 
-    # 每个候选库都拉主题画像（含「仅指定文件」场景）；并行请求降低首包延迟
+    # 文件范围不能掺入整个知识库的其他主题。
     async def _one_portrait_block(kb: Dict[str, Any]) -> Optional[str]:
         kb_id = kb["id"]
         kb_name = kb.get("name") or kb_id
@@ -708,7 +752,7 @@ async def build_context_and_questions_payload(
         return f"## 知识库: {kb_name}\n### 主题聚类摘要\n" + "\n".join(plines)
 
     portrait_blocks = await asyncio.gather(
-        *[_one_portrait_block(kb) for kb in candidate_kbs],
+        *[_one_portrait_block(kb) for kb in candidate_kbs if not selected_files],
         return_exceptions=True,
     )
     for block in portrait_blocks:
@@ -722,7 +766,7 @@ async def build_context_and_questions_payload(
             kb_id = str(sf.get("kb_id") or "").strip()
             fid = str(sf.get("file_id") or "").strip()
             name = str(sf.get("name") or fid).strip()
-            if kb_id and fid:
+            if kb_id in kb_by_id and fid:
                 kb_name = kb_by_id.get(kb_id, {}).get("name") or kb_id
                 file_tasks.append((kb_id, kb_name, fid, name))
     else:
@@ -886,11 +930,17 @@ async def build_context_and_questions_payload(
                     questions_out = _normalize_question_items(parsed[:max_q], kb_name=kb_label, max_q=max_q)
                     source = "llm"
                 else:
-                    logger.warning("LLM 未解析到有效问题: %s", raw_content[:200])
+                    choice = ((llm_res.data or {}).get('choices') or [{}])[0]
+                    message = choice.get('message') or {}
+                    logger.warning(
+                        "LLM 未解析到有效问题 model={} finish_reason={} content_chars={} reasoning_chars={}",
+                        getattr(llm_res, 'model_used', None), choice.get('finish_reason'),
+                        len(str(raw_content or '')), len(str(message.get('reasoning_content') or '')),
+                    )
             else:
-                logger.warning("LLM 推荐问题调用失败: %s", llm_res.error)
+                logger.warning("LLM 推荐问题调用失败: {}", llm_res.error)
         except Exception as e:
-            logger.warning("LLM 推荐问题异常: %s", e, exc_info=True)
+            logger.warning("LLM 推荐问题异常: {}", e, exc_info=True)
 
     if not questions_out:
         pl_flat: List[str] = []
@@ -909,7 +959,7 @@ async def build_context_and_questions_payload(
     }
     _write_cache(cache_key, payload)
     # 更新“按知识库秒读”的预生成缓存（仅在单库范围下写入，避免跨库污染）
-    if len(candidate_kbs) == 1:
+    if len(candidate_kbs) == 1 and not selected_files:
         kb0 = candidate_kbs[0]
         _write_precomputed_for_kb(
             kb0["id"],
