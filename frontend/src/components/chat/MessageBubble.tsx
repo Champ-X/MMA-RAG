@@ -4,6 +4,7 @@ import { InlineCitation } from './InlineCitation'
 import { ReferenceImage } from './ReferenceImage'
 import type { Components, ExtraProps } from 'react-markdown'
 import { cn } from '@/lib/utils'
+import { findAllCitationMatches, getOrderedRefIdsFromContent, type CitationMatch } from '@/lib/citations'
 import { chatApi } from '@/services/api_client'
 import { getFreshReferenceVideoUrl, isReferenceMediaUrlFresh } from '@/services/reference_media_url'
 import type { CitationReference } from '@/types/sse'
@@ -106,20 +107,6 @@ interface MessageBubbleProps {
   regenerationDisabled?: boolean
 }
 
-/** 正文中引用按首次出现顺序去重得到的 id 列表，用于连续编号 1,2,3... */
-function getOrderedRefIdsFromContent(content: string): (number | string)[] {
-  const matches = findAllCitationMatches(content)
-  const seen = new Set<number | string>()
-  const ordered: (number | string)[] = []
-  for (const m of matches) {
-    if (!seen.has(m.n)) {
-      seen.add(m.n)
-      ordered.push(m.n)
-    }
-  }
-  return ordered
-}
-
 // 从文本中提取引用标记并转换为可点击按钮；originalIdToDisplayIndex 用于连续编号展示
 function injectCitations(
   children: React.ReactNode,
@@ -146,56 +133,6 @@ function injectCitations(
     })
   }
   return children
-}
-
-type CitationMatch = { start: number; end: number; n: number; leadingSpace?: boolean }
-
-function findAllCitationMatches(text: string): CitationMatch[] {
-  const list: CitationMatch[] = []
-  let m: RegExpExecArray | null
-  const re1 = /\[(\d+)\]/g
-  while ((m = re1.exec(text)) !== null) {
-    list.push({ start: m.index, end: m.index + m[0].length, n: Number(m[1]) })
-  }
-  const re2 = /【(\d+)】/g
-  while ((m = re2.exec(text)) !== null) {
-    list.push({ start: m.index, end: m.index + m[0].length, n: Number(m[1]) })
-  }
-  const re2b = /[（(](\d+)[）)]/g
-  while ((m = re2b.exec(text)) !== null) {
-    list.push({ start: m.index, end: m.index + m[0].length, n: Number(m[1]) })
-  }
-  const re2c = /〔(\d+)〕|〖(\d+)〗/g
-  while ((m = re2c.exec(text)) !== null) {
-    const n = Number(m[1] ?? m[2])
-    list.push({ start: m.index, end: m.index + m[0].length, n })
-  }
-  const re3 = /[\s\u3000]+(\d+)(?=[。！？；;:：、）\)])/g
-  while ((m = re3.exec(text)) !== null) {
-    list.push({
-      start: m.index,
-      end: m.index + m[0].length,
-      n: Number(m[1]),
-      leadingSpace: true,
-    })
-  }
-  const re4 = /[\s\u3000]+(\d+)(?=$)/g
-  while ((m = re4.exec(text)) !== null) {
-    list.push({
-      start: m.index,
-      end: m.index + m[0].length,
-      n: Number(m[1]),
-      leadingSpace: true,
-    })
-  }
-  list.sort((a, b) => a.start - b.start)
-  const merged: CitationMatch[] = []
-  for (const x of list) {
-    if (merged.length === 0 || x.start >= merged[merged.length - 1].end) {
-      merged.push(x)
-    }
-  }
-  return merged
 }
 
 /**
@@ -341,7 +278,6 @@ function splitTextWithCitations(
   let last = 0
   matches.forEach((match, idx) => {
     if (match.start > last) out.push(text.slice(last, match.start))
-    if (match.leadingSpace) out.push(' ')
     const displayN = originalIdToDisplayIndex != null
       ? (originalIdToDisplayIndex.get(match.n) ?? match.n)
       : match.n

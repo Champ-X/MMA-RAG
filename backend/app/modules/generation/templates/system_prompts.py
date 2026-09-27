@@ -10,6 +10,13 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+ANSWER_SCOPE_INSTRUCTIONS = """**正文范围与材料取舍（适用于所有回答类型）**：
+检索材料是供判断的候选证据，不是必须逐条展示的清单。仅呈现直接回答用户问题的结论、实际推荐项、必要理由与对应引用。
+不相关、不适合或未被采用的材料应静默忽略；不得主动生成“被淘汰的候选”“未采用的材料”“排除理由”等章节、列表或段落，也不要以否定评价的方式引用这些材料。不要为了覆盖全部引用而扩写答案。
+推荐、选配、策划任务应围绕最终推荐展开；用户明确要求备选时，可给出同样符合需求的备选，不要展示检索噪声或内部筛选过程。
+只有用户明确要求比较某些选项、解释为什么不选某项或审阅筛选结果时，才讨论其指定范围内的取舍；正常的优缺点分析、事实否定、证据不足说明不受限制。"""
+
+
 class SystemPromptManager:
     """系统提示词管理器"""
     
@@ -59,7 +66,7 @@ class SystemPromptManager:
                 "",
                 "**回答原则**：",
                 "**语义匹配优先**：仔细阅读所有【参考材料】，包括文档和图片的视觉描述。判断相关性时应基于语义相似性和主题一致性，而非严格的字面匹配。",
-                "如果材料内容（包括图片描述）在语义上与用户查询相关，就应该使用并引用。",
+                "仅使用能支持当前结论或实际推荐的相关材料并就地引用；无需用完所有候选。",
                 "**诚实**：只有在【参考材料】中**完全**没有与用户查询相关的任何信息时，才回答：\"知识库中未找到相关内容\"。",
                 "若材料中包含 `(类型: 音频)` 且与用户问的歌曲/音乐/意境相关，**应视为有相关内容**，须根据其转写与描述作答并引用，不得回答未找到。",
                 "**格式**：使用 Markdown 格式组织答案。对于要点，请使用无序列表。",
@@ -163,6 +170,7 @@ class SystemPromptManager:
             if additional_context:
                 system_prompt_parts.extend(["", f"# 额外上下文", additional_context])
             
+            system_prompt_parts.extend(["", "# 回答范围", ANSWER_SCOPE_INSTRUCTIONS])
             return "\n".join(system_prompt_parts)
             
         except Exception as e:
@@ -171,7 +179,7 @@ class SystemPromptManager:
     
     def _get_fallback_prompt(self) -> str:
         """获取备用提示词"""
-        return """你是 Tessmora 的多模态内容检索助手。
+        return ANSWER_SCOPE_INSTRUCTIONS + "\n\n" + """你是 Tessmora 的多模态内容检索助手。
 
 请基于提供的参考材料回答问题，并：
 1. 每个事实在对应句末用半角 `[编号]` 标注；勿用①②③代替；同一 `[n]` 在同一段/同一条列表项内勿重复多次。
@@ -238,7 +246,7 @@ class SystemPromptManager:
             # 逐步缩短指令
             shortened_parts = []
             
-            for line in prompt.split('\n'):
+            for line in prompt.replace(ANSWER_SCOPE_INSTRUCTIONS, '').split('\n'):
                 if line.startswith('#'):
                     # 保留标题
                     shortened_parts.append(line)
@@ -258,9 +266,9 @@ class SystemPromptManager:
                     "3. **诚实回答**：如无相关信息，请诚实回答",
                     "4. **格式要求**：使用 Markdown 格式"
                 ]
-                return '\n'.join(core_lines)
+                return '\n'.join(core_lines) + "\n" + ANSWER_SCOPE_INSTRUCTIONS
             
-            return '\n'.join(shortened_parts)
+            return '\n'.join(shortened_parts) + '\n' + ANSWER_SCOPE_INSTRUCTIONS
             
         except Exception as e:
             logger.error(f"提示词长度优化失败: {str(e)}")
