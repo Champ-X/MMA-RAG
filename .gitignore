@@ -10,6 +10,7 @@ __pycache__/
 *.so
 .Python
 .venv/
+/.venv
 venv/
 ENV/
 *.egg-info/
@@ -112,3 +113,6 @@ backend/.env
 .minimax/
 personal/
 docs/superpowers/
+
+# Frontend regression tests and trace replays
+!frontend/tests/
