@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import copy
 import time
 import re
+import asyncio
 
 from .processors.intent import IntentProcessor
 from .processors.rewriter import QueryRewriter
@@ -17,6 +18,7 @@ from .reranker import Reranker
 from app.core.logger import get_logger, audit_log
 from app.core.llm.jev import JevRequiredError
 from app.core.jev_settings import get_jev_config
+from app.core.stage_timing import StageTimings
 from app.modules.knowledge.router import KnowledgeRouter
 from app.core.llm.query_embeddings import QueryEmbeddingCache
 
@@ -624,24 +626,31 @@ class RetrievalService:
         session_context: Optional[List[Dict[str, str]]] = None,
         attachment_context: Optional[str] = None,
         allow_smalltalk: bool = False,
+        stage_timer: Optional[StageTimings] = None,
     ) -> AsyncGenerator[Tuple[str, Any], None]:
         """
         流式检索：每完成一个阶段就 yield (stage, payload)，最后 yield ("_result", retrieval_result)。
         用于 SSE 流式聊天时按阶段推送思考过程，避免等全部检索完才一次性展示。
         """
         start_time = datetime.utcnow()
+        timings = stage_timer if stage_timer is not None else StageTimings()
         try:
             logger.info(f"开始检索流程(流式): {query}")
+            timings.start("intent")
+            yield ("intent", timings.attach("intent", {"stage_status": "processing", "message": "正在分析问题与检索需求…"}))
             fast_result = await self._try_fast_path(
                 query, kb_context, session_context, attachment_context, allow_smalltalk,
             )
             if fast_result is not None:
                 reason = fast_result.debug_info["fast_path"]
-                yield ("retrieval", {
+                timings.finish("intent")
+                fast_result.debug_info["stage_timings"] = timings.snapshot()
+                yield ("retrieval", timings.attach("retrieval", {
+                    "stage_status": "completed",
                     "message": "问候无需检索" if reason == "standalone_greeting" else "当前检索索引为空",
                     "fast_path": reason, "total_found": 0, "reranked_count": 0,
                     "sparse_keywords": [], "sub_queries": [],
-                })
+                }))
                 yield ("_result", fast_result)
                 return
             embedding_cache = QueryEmbeddingCache()
@@ -659,6 +668,7 @@ class RetrievalService:
                 selected_files,
             )
             intent_payload = {
+                "stage_status": "completed",
                 "message": "意图解析完成",
                 "jev_decision": preprocessing_result.get("jev_decision", {}),
                 "intent_type": preprocessing_result.get("intent_type", "factual"),
@@ -673,9 +683,18 @@ class RetrievalService:
                 "is_complex": preprocessing_result.get("is_complex", False),
                 "sub_queries": preprocessing_result.get("sub_queries", []) or [],
             }
-            yield ("intent", intent_payload)
+            timings.finish("intent", substage_durations_ms={
+                name: seconds * 1000
+                for name, seconds in preprocessing_result.get("stage_times", {}).items()
+                if type(seconds) in {int, float}
+            })
+            yield ("intent", timings.attach("intent", intent_payload))
 
             # 2. 知识库路由
+            timings.start("routing")
+            yield ("routing", timings.attach("routing", {
+                "stage_status": "processing", "message": "正在选择相关知识库…",
+            }))
             routing_result = await self._route_to_knowledge_bases(
                 preprocessing_result["refined_query"],
                 kb_context=kb_context,
@@ -692,6 +711,7 @@ class RetrievalService:
                     for kb_id in target_kb_ids
                 ]
             routing_payload = {
+                "stage_status": "completed",
                 "message": "智能路由完成",
                 "target_kbs": target_kbs,
                 "fallback_search": len(target_kb_ids) == 0,
@@ -701,7 +721,8 @@ class RetrievalService:
             preprocessing_result, target_modality_fallback = await self._prepare_target_modality(
                 preprocessing_result, routing_result, selected_files=selected_files,
             )
-            yield ("routing", routing_payload)
+            timings.finish("routing")
+            yield ("routing", timings.attach("routing", routing_payload))
             if target_modality_fallback:
                 intent_payload = dict(intent_payload)
                 intent_payload.update({
@@ -711,9 +732,10 @@ class RetrievalService:
                     if key in preprocessing_result
                 })
                 intent_payload["target_modality_fallback"] = target_modality_fallback
-                yield ("intent", intent_payload)
+                yield ("intent", timings.attach("intent", intent_payload))
 
             # 3. 构建检索上下文
+            timings.start("retrieval")
             retrieval_context = RetrievalContext(
                 original_query=query,
                 refined_query=preprocessing_result["refined_query"],
@@ -748,19 +770,37 @@ class RetrievalService:
                     retrieval_context.video_intent,
                 )
 
+            yield ("retrieval", timings.attach("retrieval", {
+                "stage_status": "processing", "message": "正在检索相关材料…",
+                "sparse_keywords": list(retrieval_context.search_strategies.get("sparse_keywords", []) or []),
+                "sub_queries": preprocessing_result.get("sub_queries", []) or [],
+            }))
             # 4. 混合检索
+            search_started = time.perf_counter()
             search_results = await self._perform_hybrid_search(retrieval_context, embedding_cache=embedding_cache)
+            search_duration_ms = (time.perf_counter() - search_started) * 1000
+            if search_results.get("strategy") == "error":
+                # A total search failure is distinct from a valid empty result.
+                # Preserve the failed stage and stop before ranking/generation.
+                raise RuntimeError("检索服务暂时不可用，本次检索未完成，请稍后重试。")
 
+            yield ("retrieval", timings.attach("retrieval", {"stage_status": "processing", "message": "正在比较相关性并整理检索结果…"}))
             # 5. 两阶段重排
+            rerank_started = time.perf_counter()
             reranked_results = await self._apply_reranking(
                 retrieval_context, search_results
             )
             results_list = reranked_results.get("results", [])
+            timings.finish("retrieval", substage_durations_ms={
+                "search": search_duration_ms,
+                "rerank": (time.perf_counter() - rerank_started) * 1000,
+            })
 
             # 6. 总处理时间与调试信息
             processing_time = (datetime.utcnow() - start_time).total_seconds()
             retrieval_context.processing_time = processing_time
             debug_info = {
+                "stage_timings": timings.snapshot(),
                 "target_modality_fallback": target_modality_fallback,
                 "preprocessing_time": preprocessing_result.get("processing_time", 0),
                 "preprocessing_stages": preprocessing_result.get("stage_times", {}),
@@ -785,6 +825,7 @@ class RetrievalService:
             coarse_ranking_count = reranked_results.get("coarse_ranking_count", 0)
             final_ranking_count = reranked_results.get("final_ranking_count", len(results_list))
             retrieval_payload = {
+                "stage_status": "completed",
                 "message": f"检索完成，找到 {len(results_list)} 个相关结果",
                 "reranking_scorer": reranked_results.get("scorer", {}),
                 "target_modality_fallback": target_modality_fallback,
@@ -793,7 +834,7 @@ class RetrievalService:
                 "total_found": coarse_ranking_count if coarse_ranking_count > 0 else len(results_list),  # 粗排后的候选数量
                 "reranked_count": final_ranking_count,  # 重排后保留的数量
             }
-            yield ("retrieval", retrieval_payload)
+            yield ("retrieval", timings.attach("retrieval", retrieval_payload))
 
             self._update_retrieval_stats(
                 intent_type=preprocessing_result["intent_type"],
@@ -820,7 +861,11 @@ class RetrievalService:
             )
             yield ("_result", retrieval_result)
 
+        except asyncio.CancelledError:
+            timings.finish_active("cancelled")
+            raise
         except Exception as e:
+            timings.finish_active("failed")
             logger.error(f"检索流程(流式)失败: {str(e)}")
             raise
 

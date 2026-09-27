@@ -6,6 +6,7 @@ import type {
   MessageEvent,
   SSEEventType,
   ThoughtPhase,
+  CompleteEvent,
 } from '@/types/sse';
 import type { AgentMode, ChatScopeFile } from '@/store/useChatStore'
 
@@ -21,7 +22,7 @@ export interface StreamChatCallbacks {
   onThought?: (event: ThoughtEvent) => void;
   onCitation?: (event: CitationEvent) => void;
   onMessage?: (event: MessageEvent) => void;
-  onComplete?: () => void;
+  onComplete?: (event: CompleteEvent) => void;
   onError?: (error: unknown) => void;
 }
 
@@ -79,14 +80,10 @@ function dispatchSseJsonPayload(raw: Record<string, unknown>, callbacks: StreamC
     }
     case 'complete':
     case 'done':
-      callbacks.onComplete?.();
+      callbacks.onComplete?.(payload as CompleteEvent);
       break;
     case 'error':
-      callbacks.onError?.(
-        typeof (raw as { message?: string }).message === 'string'
-          ? new Error((raw as { message: string }).message)
-          : payload
-      );
+      callbacks.onError?.(payload);
       break;
     default:
       if (typeof (payload as { delta?: string }).delta === 'string') {

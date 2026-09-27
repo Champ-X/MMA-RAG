@@ -113,7 +113,7 @@ async def test_standalone_chat_greeting_never_calls_preprocessing_or_storage(str
     service._preprocess_query = AsyncMock(side_effect=AssertionError("unnecessary LLM call"))
     if stream:
         events = [event async for event in service.search_stream(query="你好！", allow_smalltalk=True)]
-        assert [stage for stage, _ in events] == ["retrieval", "_result"]
+        assert [stage for stage, _ in events] == ["intent", "retrieval", "_result"]
         result = events[-1][1]
     else:
         result = await service.search(query="你好！", allow_smalltalk=True)
@@ -356,7 +356,10 @@ async def test_service_shares_one_embedding_batch_from_routing_through_all_modal
     if stream:
         events = [event async for event in service.search_stream("query")]
         result = events[-1][1]
-        assert [stage for stage, _ in events] == ["intent", "routing", "retrieval", "_result"]
+        assert [stage for stage, _ in events] == ["intent", "intent", "routing", "routing", "retrieval", "retrieval", "retrieval", "_result"]
+        assert [payload.get("stage_status") for stage, payload in events[:-1]] == [
+            "processing", "completed", "processing", "completed", "processing", "processing", "completed",
+        ]
     else:
         result = await service.search("query")
     assert manager.calls == [["query", "variant"]]

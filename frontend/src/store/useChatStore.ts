@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { chatApi } from '@/services/api_client';
 import { collectUserAttachmentIds, deleteAttachmentBlobs } from '@/lib/chatAttachmentBlobStore';
-import type { AgentRoundTrace, CitationReference } from '@/types/sse';
+import type { AgentRoundTrace, CitationReference, StageTimings } from '@/types/sse';
 
 /** 用户消息携带的附件展示信息；previewUrl 为内存 Object URL，仅当前页有效；thumbDataUrl 为小图 JPEG data URL，可随会话持久化 */
 export interface ChatMessageAttachment {
@@ -25,6 +25,7 @@ export interface ChatScopeFile {
 }
 
 export interface ThoughtData {
+  stage_timings?: StageTimings;
   intent_type?: string;
   original_query?: string;
   refined_query?: string;
@@ -52,6 +53,8 @@ export interface ThoughtData {
   agent_mode_selected?: 'direct' | 'agent';
   agent_mode_reason?: string;
   agent_mode_score?: number;
+  agent_status?: 'planning' | 'searching' | 'evaluating' | 'completed';
+  stage_status?: 'processing' | 'completed' | 'failed';
   agent_round?: number;
   agent_reason?: string;
   agent_new_evidence?: number;
@@ -68,6 +71,7 @@ export interface ThoughtData {
   _generation_completed?: boolean;
   /** 历史消息中标记生成失败；保留此前已完成的 Agent 轨迹。 */
   _generation_failed?: boolean;
+  _generation_cancelled?: boolean;
   /** 面向用户的生成失败原因。 */
   generation_error?: string;
 }
@@ -383,6 +387,8 @@ export const useChatStore = create<ChatStore>()(
               content: string;
               timestamp?: string;
               citations?: unknown[];
+              thinking?: ThoughtData;
+              stage_timings?: StageTimings;
               selected_files?: Array<{ kb_id?: string; file_id?: string; name?: string; type?: string; kb_name?: string }>;
             }>;
           };
@@ -393,6 +399,9 @@ export const useChatStore = create<ChatStore>()(
               content: m.content || '',
               timestamp: m.timestamp ? new Date(m.timestamp).getTime() : Date.now(),
               citations: m.citations as Message['citations'],
+              thinking: m.role === 'assistant' && (m.thinking || m.stage_timings)
+                ? { ...m.thinking, stage_timings: m.stage_timings ?? m.thinking?.stage_timings }
+                : undefined,
               scopeFiles: Array.isArray(m.selected_files)
                 ? m.selected_files
                     .map((file) => ({
