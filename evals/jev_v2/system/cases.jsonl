@@ -1,0 +1,12 @@
+{"id": "system-00", "query": "苍鹭API在2026正式版中的企业版每分钟限额是多少？", "expected_files": ["p0-2026正式版"], "family": "version_conflict", "kb": "primary", "answer_contains": ["600"]}
+{"id": "system-01", "query": "不要图片或视频，只查玄武企业版2026正式版API限额。", "expected_files": ["p1-2026正式版"], "family": "negated_media", "kb": "primary", "answer_contains": ["610"]}
+{"id": "system-02", "query": "白鹭SDK的image_timeout默认值是多少？", "expected_files": ["p2-code"], "family": "code_identifier", "kb": "primary", "answer_contains": ["2500"]}
+{"id": "system-03", "query": "青岚SDK的audio_retry默认重试几次？", "expected_files": ["p3-code"], "family": "code_identifier", "kb": "primary", "answer_contains": ["3"]}
+{"id": "system-04", "query": "星河API如何申请临时访问权限？", "expected_files": ["p4-access"], "family": "procedure", "kb": "primary", "answer_contains": ["48"]}
+{"id": "system-05", "query": "海棠请求日志保留多久？", "expected_files": ["p6-audit"], "family": "policy", "kb": "primary", "answer_contains": ["180"]}
+{"id": "system-06", "query": "苍鹭企业版2026正式版与2025年的API限额分别是多少？", "expected_files": ["p0-2026正式版", "p0-2025"], "family": "multi_document", "kb": "primary", "answer_contains": ["600", "100"]}
+{"id": "system-07", "query": "对比玄武和白鹭的2026正式版企业版API限额。", "expected_files": ["p1-2026正式版", "p2-2026正式版"], "family": "multi_entity", "kb": "primary", "answer_contains": ["610", "620"]}
+{"id": "system-08", "query": "云杉临时权限如何审批、有效期多久，权限变更日志保留多久？", "expected_files": ["p5-access", "p5-audit"], "family": "multi_hop", "kb": "primary", "answer_contains": ["48", "365"]}
+{"id": "system-09", "query": "银杏API企业版2026正式版限额是多少？", "expected_files": ["p7-2026正式版"], "family": "file_scope", "kb": "primary", "scope_files": ["p7-2026正式版"], "answer_contains": ["670"]}
+{"id": "system-10", "query": "青岚API在2026正式版中的企业版每分钟限额是多少？", "expected_files": ["p3-2026正式版"], "family": "kb_scope", "kb": "primary", "answer_contains": ["630"]}
+{"id": "system-11", "query": "Where can I find the default value of video_token in the 白鹭 SDK?", "expected_files": ["p2-code"], "family": "missing_fact", "kb": "primary", "unanswerable": true}

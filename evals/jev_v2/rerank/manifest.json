@@ -1,0 +1,16 @@
+{
+  "version": "jev-rerank-v2",
+  "cases": 300,
+  "sha256": "5c83894fba8081b5e4ffbfde2cd816b1093fa06bbde8efecf2f0ac84986dfced",
+  "sampling_seed": 20260922,
+  "source_sha256": "ceaf1ba1a4777dbb7aecad86fb8aa9cae7a678af6d711d5529c238e89bb6adff",
+  "selection": "300 unique queries, 60 dev and 240 test, excludes all v1 normalized queries; eligibility requires positive and >=5 distinct negatives",
+  "source": "C-MTEB/T2Reranking; frozen 2 positives + up to 18 negatives per query; not official full-pool metric",
+  "preregistered_primary": "paired mean nDCG@5 delta with query bootstrap 95% CI",
+  "preregistered_candidates": [
+    "Qwen",
+    "Jev",
+    "0.5 Qwen + 0.5 Jev"
+  ],
+  "decision": "Do not promote a reranker whose paired CI crosses zero; report quality/latency tradeoff separately."
+}

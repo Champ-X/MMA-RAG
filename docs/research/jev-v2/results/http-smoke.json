@@ -1,0 +1,47 @@
+{
+  "request": {
+    "query": "白鹭SDK的image_timeout默认值是多少？",
+    "knowledge_base_ids": [
+      "b15b6228-6759-4f56-98d0-97b3f17c169b"
+    ],
+    "file_ids": [
+      "p2-code"
+    ],
+    "top_k": 5
+  },
+  "response": {
+    "query": "白鹭SDK的image_timeout默认值是多少？",
+    "refined_query": "白鹭SDK中image_timeout参数的默认值是多少？",
+    "intent_type": "factual",
+    "target_knowledge_bases": [
+      {
+        "id": "b15b6228-6759-4f56-98d0-97b3f17c169b",
+        "name": "Jev v2 primary",
+        "score": 1.0
+      }
+    ],
+    "processing_time": 65.373374,
+    "results": [
+      {
+        "id": "32655a07-28a5-425a-bfbf-cf4ea57f311f",
+        "modality": "doc",
+        "content": "白鹭 SDK 故障排查。image_timeout 参数单位为毫秒，默认 2500。audio_retry 是整数，默认3次。video_token 是鉴权字段，不是视频地址。这些是代码标识符，无需寻找图片、录音或视频。",
+        "score": 0.8390667888193054,
+        "source": {
+          "knowledge_base_id": "b15b6228-6759-4f56-98d0-97b3f17c169b",
+          "file_id": "p2-code",
+          "file_name": "p2-code.txt",
+          "file_path": "documents/p2-code.txt",
+          "chunk_index": 0,
+          "page": null,
+          "start_seconds": null,
+          "end_seconds": null
+        }
+      }
+    ]
+  },
+  "wall_time_s": 65.37911795801483,
+  "evaluation_mode": true,
+  "scope_valid": true,
+  "server_configuration": "jev_eval_server --port 18001 --intent-mode adaptive; rerank off"
+}

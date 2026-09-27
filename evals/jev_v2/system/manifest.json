@@ -1,0 +1,12 @@
+{
+  "authored": true,
+  "counts": {
+    "documents": 57,
+    "queries": 12
+  },
+  "hashes": {
+    "corpus": "bd100da525b35e9bc2e4ce59ba3f12d6c9a81b9eaaa105b33238d635c7959f19",
+    "cases": "204e34cf5518b1a82cd99d97777b284074d3757db740890bb3f7159f3dbb5d0b"
+  },
+  "boundary": "Synthetic indexed text, real embeddings/sparse/Qdrant/MinIO and RetrievalService; no document parsing or binary-media ingestion."
+}

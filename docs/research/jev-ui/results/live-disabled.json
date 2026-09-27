@@ -1,0 +1,32 @@
+{
+  "config": {
+    "intent_mode": "off",
+    "rerank_mode": "off",
+    "citation_mode": "off",
+    "citation_strategy": "batch_choice"
+  },
+  "http_status": 200,
+  "elapsed_s": 72.94,
+  "success": true,
+  "answer": "R200 的额定功率为 **7.5 kW**。[1]",
+  "citation_count": 1,
+  "metadata": {
+    "query": "R200的额定功率是多少？请给出引用来源。",
+    "intent_type": "factual",
+    "processing_time": 72.93444654099983,
+    "chunks_used": 10,
+    "images_used": 0,
+    "tokens_used": 4012,
+    "model_used": "Pro/moonshotai/Kimi-K2.6",
+    "agent": {
+      "enabled": false
+    },
+    "agent_selection": {
+      "requested": "direct",
+      "selected": "direct",
+      "enabled": false,
+      "reason": "已手动选择直接检索",
+      "score": 0
+    }
+  }
+}

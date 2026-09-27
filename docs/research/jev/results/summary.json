@@ -1,0 +1,619 @@
+{
+  "fingerprint": "a3f7139f58cf3f9c671835598d3eb60e83f9db049baafec870d2b994f40f2373",
+  "cases_completed": 80,
+  "paired_successes": 80,
+  "failures": [],
+  "scope": "Real APIs; frozen capped candidates; project reranker fusion; not full retrieval or answer quality.",
+  "jev_estimated_usd": 0.0145866,
+  "jev_input_tokens": 347300,
+  "qwen_usage": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "groups": {
+    "authored_challenge/dev": {
+      "n": 12,
+      "cascade_qwen_calls": 1,
+      "lexical": {
+        "ndcg5": 0.8968216255952429,
+        "recall5": 1.0,
+        "mrr5": 0.8611111111111112,
+        "hit1": 0.75,
+        "latency_p50_s": 0.0,
+        "latency_p95_s": 0.0
+      },
+      "qwen": {
+        "ndcg5": 1.0,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0,
+        "latency_p50_s": 0.4657412914966699,
+        "latency_p95_s": 2.2135625123613862
+      },
+      "jev": {
+        "ndcg5": 1.0,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0,
+        "latency_p50_s": 0.6892502500122646,
+        "latency_p95_s": 1.0266164098939041
+      },
+      "cascade": {
+        "ndcg5": 1.0,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0,
+        "latency_p50_s": 0.6892502500122646,
+        "latency_p95_s": 1.1291327210434245
+      },
+      "jev_minus_qwen_ndcg5": {
+        "mean": 0.0,
+        "bootstrap95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "authored_challenge/test": {
+      "n": 12,
+      "cascade_qwen_calls": 2,
+      "lexical": {
+        "ndcg5": 0.8442441461309548,
+        "recall5": 1.0,
+        "mrr5": 0.7916666666666666,
+        "hit1": 0.6666666666666666,
+        "latency_p50_s": 0.0,
+        "latency_p95_s": 0.0
+      },
+      "qwen": {
+        "ndcg5": 0.9583333333333334,
+        "recall5": 1.0,
+        "mrr5": 0.9444444444444444,
+        "hit1": 0.9166666666666666,
+        "latency_p50_s": 0.31483714599744417,
+        "latency_p95_s": 0.47195620174461494
+      },
+      "jev": {
+        "ndcg5": 1.0,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0,
+        "latency_p50_s": 0.6952123545052018,
+        "latency_p95_s": 1.1367728024517412
+      },
+      "cascade": {
+        "ndcg5": 1.0,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0,
+        "latency_p50_s": 0.7029260834970046,
+        "latency_p95_s": 1.46061827934609
+      },
+      "jev_minus_qwen_ndcg5": {
+        "mean": 0.041666666666666664,
+        "bootstrap95": [
+          0.0,
+          0.125
+        ]
+      }
+    },
+    "project_baseline/test": {
+      "n": 8,
+      "cascade_qwen_calls": 2,
+      "lexical": {
+        "ndcg5": 0.9637262176746082,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0,
+        "latency_p50_s": 0.0,
+        "latency_p95_s": 0.0
+      },
+      "qwen": {
+        "ndcg5": 1.0,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0,
+        "latency_p50_s": 0.4817816249997122,
+        "latency_p95_s": 2.113416745504946
+      },
+      "jev": {
+        "ndcg5": 1.0,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0,
+        "latency_p50_s": 0.7605958954954986,
+        "latency_p95_s": 0.8126392687569023
+      },
+      "cascade": {
+        "ndcg5": 1.0,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0,
+        "latency_p50_s": 0.8058452709956327,
+        "latency_p95_s": 2.4069240728073042
+      },
+      "jev_minus_qwen_ndcg5": {
+        "mean": 0.0,
+        "bootstrap95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "public_t2/dev": {
+      "n": 8,
+      "cascade_qwen_calls": 8,
+      "lexical": {
+        "ndcg5": 0.38094610189721084,
+        "recall5": 0.625,
+        "mrr5": 0.3416666666666667,
+        "hit1": 0.125,
+        "latency_p50_s": 0.0,
+        "latency_p95_s": 0.0
+      },
+      "qwen": {
+        "ndcg5": 0.6416139726695044,
+        "recall5": 0.75,
+        "mrr5": 0.74375,
+        "hit1": 0.625,
+        "latency_p50_s": 1.4008758125128224,
+        "latency_p95_s": 3.860051924902653
+      },
+      "jev": {
+        "ndcg5": 0.6113312891575254,
+        "recall5": 0.8125,
+        "mrr5": 0.6125,
+        "hit1": 0.375,
+        "latency_p50_s": 0.8649695204949239,
+        "latency_p95_s": 1.0922303959378041
+      },
+      "cascade": {
+        "ndcg5": 0.6416139726695044,
+        "recall5": 0.75,
+        "mrr5": 0.74375,
+        "hit1": 0.625,
+        "latency_p50_s": 2.243394999517477,
+        "latency_p95_s": 4.791339685753336
+      },
+      "jev_minus_qwen_ndcg5": {
+        "mean": -0.030282683511978988,
+        "bootstrap95": [
+          -0.24200248628389678,
+          0.15650912229398606
+        ]
+      }
+    },
+    "public_t2/test": {
+      "n": 39,
+      "cascade_qwen_calls": 37,
+      "lexical": {
+        "ndcg5": 0.518230115230849,
+        "recall5": 0.6282051282051282,
+        "mrr5": 0.5893162393162393,
+        "hit1": 0.4358974358974359,
+        "latency_p50_s": 0.0,
+        "latency_p95_s": 0.0
+      },
+      "qwen": {
+        "ndcg5": 0.5784349165952221,
+        "recall5": 0.7307692307692307,
+        "mrr5": 0.614957264957265,
+        "hit1": 0.38461538461538464,
+        "latency_p50_s": 0.9465165830042679,
+        "latency_p95_s": 2.421492962515913
+      },
+      "jev": {
+        "ndcg5": 0.6037229418136778,
+        "recall5": 0.7564102564102564,
+        "mrr5": 0.6106837606837607,
+        "hit1": 0.38461538461538464,
+        "latency_p50_s": 0.9238041669887025,
+        "latency_p95_s": 1.126459954411257
+      },
+      "cascade": {
+        "ndcg5": 0.5842373367370404,
+        "recall5": 0.7307692307692307,
+        "mrr5": 0.6277777777777778,
+        "hit1": 0.41025641025641024,
+        "latency_p50_s": 1.8435637499787845,
+        "latency_p95_s": 3.3945292416145096
+      },
+      "jev_minus_qwen_ndcg5": {
+        "mean": 0.02528802521845576,
+        "bootstrap95": [
+          -0.05777671714944194,
+          0.11231778218876967
+        ]
+      }
+    },
+    "all/test": {
+      "n": 59,
+      "cascade_qwen_calls": 41,
+      "lexical": {
+        "ndcg5": 0.644944304897821,
+        "recall5": 0.7542372881355932,
+        "mrr5": 0.6861581920903955,
+        "hit1": 0.559322033898305,
+        "latency_p50_s": 0.0,
+        "latency_p95_s": 0.0
+      },
+      "qwen": {
+        "ndcg5": 0.7128637584273502,
+        "recall5": 0.8220338983050848,
+        "mrr5": 0.734180790960452,
+        "hit1": 0.576271186440678,
+        "latency_p50_s": 0.7098464580194559,
+        "latency_p95_s": 2.39903857470199
+      },
+      "jev": {
+        "ndcg5": 0.7380541479785327,
+        "recall5": 0.8389830508474576,
+        "mrr5": 0.7426553672316384,
+        "hit1": 0.5932203389830508,
+        "latency_p50_s": 0.8326470000029076,
+        "latency_p95_s": 1.1264599544112568
+      },
+      "cascade": {
+        "ndcg5": 0.7251738327583827,
+        "recall5": 0.8220338983050848,
+        "mrr5": 0.753954802259887,
+        "hit1": 0.6101694915254238,
+        "latency_p50_s": 1.5398448330233805,
+        "latency_p95_s": 3.114251375003367
+      },
+      "jev_minus_qwen_ndcg5": {
+        "mean": 0.02519038955118262,
+        "bootstrap95": [
+          -0.033102779221728766,
+          0.08550682644062055
+        ]
+      }
+    }
+  },
+  "ranking_ineligible_no_positive_qrels": [
+    "t2-113"
+  ],
+  "regressions": [
+    {
+      "id": "t2-101",
+      "query": "形容好的言论的名词",
+      "qwen": {
+        "ndcg5": 0.2640681225725909,
+        "recall5": 0.5,
+        "mrr5": 0.25,
+        "hit1": 0.0
+      },
+      "jev": {
+        "ndcg5": 0.23719771276929622,
+        "recall5": 0.5,
+        "mrr5": 0.2,
+        "hit1": 0.0
+      }
+    },
+    {
+      "id": "t2-102",
+      "query": "数控铣床编程100例图",
+      "qwen": {
+        "ndcg5": 0.8772153153380493,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0
+      },
+      "jev": {
+        "ndcg5": 0.23719771276929622,
+        "recall5": 0.5,
+        "mrr5": 0.2,
+        "hit1": 0.0
+      }
+    },
+    {
+      "id": "t2-103",
+      "query": "李字行书怎么写好看",
+      "qwen": {
+        "ndcg5": 0.8772153153380493,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0
+      },
+      "jev": {
+        "ndcg5": 0.6509209298071326,
+        "recall5": 1.0,
+        "mrr5": 0.5,
+        "hit1": 0.0
+      }
+    },
+    {
+      "id": "t2-112",
+      "query": "鸿鹄怎知鲲鹏之意",
+      "qwen": {
+        "ndcg5": 0.38685280723454163,
+        "recall5": 0.5,
+        "mrr5": 0.5,
+        "hit1": 0.0
+      },
+      "jev": {
+        "ndcg5": 0.0,
+        "recall5": 0.0,
+        "mrr5": 0,
+        "hit1": 0.0
+      }
+    },
+    {
+      "id": "t2-116",
+      "query": "塞尔达透视镜作用",
+      "qwen": {
+        "ndcg5": 0.8772153153380493,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0
+      },
+      "jev": {
+        "ndcg5": 0.6240505200038379,
+        "recall5": 1.0,
+        "mrr5": 0.5,
+        "hit1": 0.0
+      }
+    },
+    {
+      "id": "t2-119",
+      "query": "五星批发部和中保研",
+      "qwen": {
+        "ndcg5": 1.0,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0
+      },
+      "jev": {
+        "ndcg5": 0.6509209298071326,
+        "recall5": 1.0,
+        "mrr5": 0.5,
+        "hit1": 0.0
+      }
+    },
+    {
+      "id": "t2-120",
+      "query": "心肌酶组套是什么意思",
+      "qwen": {
+        "ndcg5": 0.9197207891481876,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0
+      },
+      "jev": {
+        "ndcg5": 0.6934264036172708,
+        "recall5": 1.0,
+        "mrr5": 0.5,
+        "hit1": 0.0
+      }
+    },
+    {
+      "id": "t2-122",
+      "query": "女人绝经后阴道会有什么变化",
+      "qwen": {
+        "ndcg5": 0.6131471927654584,
+        "recall5": 0.5,
+        "mrr5": 1.0,
+        "hit1": 1.0
+      },
+      "jev": {
+        "ndcg5": 0.38685280723454163,
+        "recall5": 0.5,
+        "mrr5": 0.5,
+        "hit1": 0.0
+      }
+    },
+    {
+      "id": "t2-128",
+      "query": "中国突破第一岛链了吗",
+      "qwen": {
+        "ndcg5": 0.6131471927654584,
+        "recall5": 0.5,
+        "mrr5": 1.0,
+        "hit1": 1.0
+      },
+      "jev": {
+        "ndcg5": 0.0,
+        "recall5": 0.0,
+        "mrr5": 0,
+        "hit1": 0.0
+      }
+    },
+    {
+      "id": "t2-130",
+      "query": "不勤奋导致失败的例子",
+      "qwen": {
+        "ndcg5": 0.38685280723454163,
+        "recall5": 0.5,
+        "mrr5": 0.5,
+        "hit1": 0.0
+      },
+      "jev": {
+        "ndcg5": 0.23719771276929622,
+        "recall5": 0.5,
+        "mrr5": 0.2,
+        "hit1": 0.0
+      }
+    },
+    {
+      "id": "t2-131",
+      "query": "红梅白雪两相映啥意思",
+      "qwen": {
+        "ndcg5": 0.8772153153380493,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0
+      },
+      "jev": {
+        "ndcg5": 0.23719771276929622,
+        "recall5": 0.5,
+        "mrr5": 0.2,
+        "hit1": 0.0
+      }
+    },
+    {
+      "id": "t2-132",
+      "query": "欲钱买春光灿烂打一肖",
+      "qwen": {
+        "ndcg5": 0.6240505200038379,
+        "recall5": 1.0,
+        "mrr5": 0.5,
+        "hit1": 0.0
+      },
+      "jev": {
+        "ndcg5": 0.3065735963827292,
+        "recall5": 0.5,
+        "mrr5": 0.3333333333333333,
+        "hit1": 0.0
+      }
+    },
+    {
+      "id": "t2-134",
+      "query": "金砖可以直接去金店卖了吗",
+      "qwen": {
+        "ndcg5": 0.2640681225725909,
+        "recall5": 0.5,
+        "mrr5": 0.25,
+        "hit1": 0.0
+      },
+      "jev": {
+        "ndcg5": 0.0,
+        "recall5": 0.0,
+        "mrr5": 0,
+        "hit1": 0.0
+      }
+    },
+    {
+      "id": "t2-135",
+      "query": "富士xt200好不好",
+      "qwen": {
+        "ndcg5": 0.8772153153380493,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0
+      },
+      "jev": {
+        "ndcg5": 0.8503449055347546,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0
+      }
+    },
+    {
+      "id": "t2-139",
+      "query": "高一网课推荐",
+      "qwen": {
+        "ndcg5": 1.0,
+        "recall5": 1.0,
+        "mrr5": 1.0,
+        "hit1": 1.0
+      },
+      "jev": {
+        "ndcg5": 0.6934264036172708,
+        "recall5": 1.0,
+        "mrr5": 0.5,
+        "hit1": 0.0
+      }
+    }
+  ],
+  "pair_diagnostics": {
+    "authored_challenge": {
+      "pairs": 36,
+      "brier": 0.03765,
+      "ece10": 0.10277777777777777,
+      "threshold_0.5_accuracy": 0.9444444444444444,
+      "caveat": "Correlated pairs; incomplete public qrels; scores are not validated correctness probabilities."
+    },
+    "project_baseline": {
+      "pairs": 56,
+      "brier": 0.028,
+      "ece10": 0.07107142857142858,
+      "threshold_0.5_accuracy": 0.9821428571428571,
+      "caveat": "Correlated pairs; incomplete public qrels; scores are not validated correctness probabilities."
+    },
+    "public_t2": {
+      "pairs": 416,
+      "brier": 0.1908064903846154,
+      "ece10": 0.16959134615384616,
+      "threshold_0.5_accuracy": 0.7259615384615384,
+      "caveat": "Correlated pairs; incomplete public qrels; scores are not validated correctness probabilities."
+    }
+  }
+}

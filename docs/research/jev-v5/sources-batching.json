@@ -1,0 +1,34 @@
+[
+  {
+    "url": "https://docs.typesafe.ai/api.md",
+    "retrieved_at": "2026-09-22T09:24:48.234125+00:00",
+    "path": "sources/api.md",
+    "sha256": "7ea1c82d9d16bd06e3d38885a5292548293f91e6d1ade4682c27398ced51a9e5",
+    "bytes": 11772,
+    "http_status": 200
+  },
+  {
+    "url": "https://docs.typesafe.ai/models.md",
+    "retrieved_at": "2026-09-22T09:24:48.306915+00:00",
+    "path": "sources/models.md",
+    "sha256": "9d20bb3c90a0147532d0b20ddc4c64579391be7842e965543b27bad684eeb4d6",
+    "bytes": 7245,
+    "http_status": 200
+  },
+  {
+    "url": "https://docs.typesafe.ai/patterns/fan-out.md",
+    "retrieved_at": "2026-09-22T09:24:48.268116+00:00",
+    "path": "sources/patterns_fan-out.md",
+    "sha256": "8d7a251ea6b735cb4994c1e0a95166cc0b3febce7d18189c3aa5e1673f182c91",
+    "bytes": 13967,
+    "http_status": 200
+  },
+  {
+    "url": "https://docs.typesafe.ai/concepts/how-to-build-with-system-one.md",
+    "retrieved_at": "2026-09-22T09:24:48.238457+00:00",
+    "path": "sources/concepts_how-to-build-with-system-one.md",
+    "sha256": "d9f4d34c1349bf5acb55c99d6a1651eacfc481ad8d1f78ccb8776769da729a49",
+    "bytes": 40921,
+    "http_status": 200
+  }
+]

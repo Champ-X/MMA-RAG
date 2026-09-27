@@ -1,0 +1,42 @@
+{
+  "date": "2026-09-23",
+  "backend_tests_passed": 128,
+  "frontend_build_passed": true,
+  "react_hooks_checks_passed": true,
+  "full_project_lint": "Unavailable: repository has no ESLint config",
+  "browser_save_and_reload_verified": true,
+  "backend_reload_persistence_verified": true,
+  "browser_mouse_and_keyboard_save_verified": true,
+  "mobile_viewport_width": 390,
+  "mobile_document_width": 390,
+  "mobile_jev_width": 253,
+  "mobile_jev_scroll_width": 251,
+  "console_errors_observed": 0,
+  "live_generation_enabled": true,
+  "live_generation_disabled": true,
+  "final_config": {
+    "intent_mode": "off",
+    "rerank_mode": "off",
+    "citation_mode": "off",
+    "citation_strategy": "per_unit"
+  },
+  "credential_values_absent_in_change_files": true,
+  "diff_check_passed": true,
+  "code_sha256": {
+    ".gitignore": "e1b6d7f1d8b318e92c4d4ed35fdcad0e4846435b3aebf586d9b139428b4a2822",
+    "README.md": "831a2b209197e64eaac7c3411b1572edf7e939dfb186c448ef7a50471d56d3b3",
+    "backend/.env.example": "6725cf20191917f45292a7842f4071f2eb44c2619697e042660f35af96f45fd0",
+    "backend/app/main.py": "49cc7e0bc1ab3045d686ba16370c441a436181c0cc32eb6f2f57c94fc5a87dea",
+    "backend/app/core/jev_settings.py": "b883c1dc862c928867b6a04c3dd2c1b805fac72025ef36f0a47c66da269bfeb8",
+    "backend/app/api/jev.py": "6c81f3ffdbcdeaa490a43c7d93004da170a05817a35aa4a83133ee5cd2b9f2b4",
+    "backend/app/modules/retrieval/processors/intent.py": "09fe23a812874cbf16d65022b31636030e1276b3f3d7f8b54caca7a2f0eaad48",
+    "backend/app/modules/retrieval/reranker.py": "8c662a87d88cca0c206443be08bac9785de83800d2113a4929e92eb7d26f0104",
+    "backend/app/modules/generation/jev_answer_audit.py": "c37a2089fecec9453ec6dd3761d7a8d7c30579ee2045193b513c55e26cf85269",
+    "backend/tests/conftest.py": "da39ad0e3c107e2870f7ed1948b3ff4ce71f64f05f20d67c387d85e1281e375a",
+    "backend/tests/test_jev_settings.py": "72ae2c194aa2e4a20ed0f5939c80b854f3e438c574e441541b879f8be0a7b157",
+    "frontend/src/types/jev.ts": "e7f376cb22c5bf9c0d0f6a063005c8e2ca0a5c8ef707ccfdfcec1aa1758fa57c",
+    "frontend/src/services/api_client.ts": "7b500344148fc823dbc672d607518524a9da84c55c1b67e716acb33b41537a51",
+    "frontend/src/components/settings/JevSettings.tsx": "14916d1712332b804a6cb02f083dad0a20a79755f03bb0be81eea5403792a248",
+    "frontend/src/pages/SettingsPage.tsx": "1424297e8c46282bedc5effa528d6396db6444a3d458b425892ba6384c470866"
+  }
+}

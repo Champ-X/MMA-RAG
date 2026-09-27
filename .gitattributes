@@ -1,0 +1,5 @@
+# Research inputs and archived execution code are hashed evidence, not editable source.
+# Preserve upstream line endings/whitespace instead of invalidating their SHA-256.
+docs/research/**/sources/** -text -whitespace
+docs/research/**/run-code/** -text -whitespace
+evals/jev_*/** -text

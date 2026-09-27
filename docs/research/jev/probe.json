@@ -1,0 +1,21 @@
+{
+  "status": 200,
+  "elapsed_s": 0.8075339169881772,
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "d0": {
+        "type": "noul",
+        "noul": 0.78
+      },
+      "d1": {
+        "type": "noul",
+        "noul": 0.04
+      }
+    },
+    "usage": {
+      "input_tokens": 353,
+      "output_tokens": 38
+    }
+  }
+}

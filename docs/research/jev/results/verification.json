@@ -1,0 +1,56 @@
+{
+  "verified_at": "2026-09-21T15:32:54.203355+00:00",
+  "base_git_revision": "2c6cac50c1d406db366f619a5855b2fd86ec3e14",
+  "default_mode": "off",
+  "tests": [
+    {
+      "artifact": "jev-tests-complete.txt",
+      "passed": 56,
+      "summary": "56 passed, 26 warnings in 7.30s"
+    },
+    {
+      "artifact": "jev-regression.txt",
+      "passed": 60,
+      "summary": "60 passed, 5 warnings in 142.36s (0:02:22)"
+    }
+  ],
+  "total_tests_passed": 116,
+  "test_commands": [
+    "cd backend && SILICONFLOW_API_KEY=unit-test python -m pytest tests/test_jev.py tests/test_jev_evaluation.py tests/test_multimodal_result_protection.py tests/test_retrieval_efficiency.py -q",
+    "cd backend && SILICONFLOW_API_KEY=unit-test python -m pytest tests/test_retrieval_api.py tests/test_rag_evaluation.py tests/test_agentic_retrieval.py tests/test_model_call_reliability.py -q"
+  ],
+  "source_hashes_verified": 18,
+  "dataset_rebuild_byte_identical": true,
+  "real_paired_calls": {
+    "jev": 80,
+    "qwen": 80,
+    "failures": 0
+  },
+  "real_changed_stage_pipeline_runs": 4,
+  "all_reference_ids_valid": true,
+  "manual_fact_review": "Both modes: P1 thresholds/roles/rollback checks match synthetic sources; boundary answers decline unsupported country/residency claims.",
+  "total_jev_requests": 83,
+  "total_jev_input_tokens": 353325,
+  "total_jev_estimated_usd": 0.014839650000000001,
+  "qwen_and_generation_cost": "unknown; Qwen rerank receipt has no usage; generation manager reported zero, not evidence of free calls",
+  "secret_scan": "No exact match for supplied Jev key or configured provider secret values in new research/data/code artifacts",
+  "limitations": [
+    "Fixed candidate-pool scoring, not live Dense/Sparse recall",
+    "Two-question changed-stage downstream smoke, not HTTP/browser/full deployment acceptance",
+    "Docker daemon unavailable; no ingestion or user KB writes",
+    "Public qrels incomplete; 1 no-positive query excluded only from ranking metrics",
+    "Single-run latency and small public subset; accuracy CI overlaps zero"
+  ],
+  "sha256": {
+    "backend/app/core/llm/jev.py": "0ff729dc4932e5b0d681bcc414a634cec2a15a5d9cf84fa8c2949f98a672ff4a",
+    "backend/app/modules/retrieval/reranker.py": "f939502e4f371c3d4545f7ff5196fb97aecaf27f2f4a95b8483e53e45765c59b",
+    "backend/app/modules/retrieval/service.py": "4e53996f70db82a0040b5074823819e2137c5a004524aa590ab016f9eda1955f",
+    "backend/scripts/evaluate_jev.py": "7e099ad0d4cda36999d000ca9b3a7a28c254f7c039b9c4dbf35cf25614b57675",
+    "backend/scripts/build_jev_dataset.py": "5a010dc284a6d41066f8f37678988b7284a3dcc8d3ed7e3c0cd40e76711ca1c0",
+    "backend/scripts/verify_jev_pipeline.py": "4d25263f4640e3c5489cacf419f21667c31b2d2426df18e09370f613ecba8a61",
+    "evals/jev_v1/cases.jsonl": "a3f7139f58cf3f9c671835598d3eb60e83f9db049baafec870d2b994f40f2373",
+    "docs/research/jev/results/paired.jsonl": "d7209e5e054c418fa4498aa1fa476716d7da1e9448faac84edcfca49b5e11511",
+    "docs/research/jev/results/pipeline.json": "a102b4ef206e05aca3d77b330554243fac90e96671c220f9a8dfdf9f1d40a15c",
+    "docs/research/jev/results/summary.json": "0b0a55372b2b217219929891e03a744fb2b141a717e83afb9ecc42676573a2a8"
+  }
+}
