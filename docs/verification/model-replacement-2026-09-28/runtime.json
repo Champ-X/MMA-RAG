@@ -1,0 +1,46 @@
+{
+  "pid_before": 78204,
+  "pid_after": 86140,
+  "history_sessions_restored": 37,
+  "messages_preserved": 70,
+  "visible_history_identical": true,
+  "jev_settings_unchanged": true,
+  "current_config": {
+    "intent_recognition": {
+      "model": "deepseek:deepseek-flash",
+      "provider": "deepseek"
+    },
+    "query_rewriting": {
+      "model": "deepseek:deepseek-flash",
+      "provider": "deepseek"
+    },
+    "image_captioning": {
+      "model": "aliyun_bailian:qwen3-vl-plus-2025-12-19",
+      "provider": "aliyun_bailian"
+    },
+    "embedding": {
+      "model": "Qwen/Qwen3-Embedding-8B",
+      "provider": "siliconflow"
+    },
+    "reranking": {
+      "model": "Qwen/Qwen3-Reranker-8B",
+      "provider": "siliconflow"
+    },
+    "audio_transcription": {
+      "model": "aliyun_bailian:qwen3-omni-flash",
+      "provider": "aliyun_bailian"
+    },
+    "video_parsing": {
+      "model": "aliyun_bailian:qwen3.5-omni-plus-2026-03-15",
+      "provider": "aliyun_bailian"
+    },
+    "kb_portrait_generation": {
+      "model": "deepseek:deepseek-flash",
+      "provider": "deepseek"
+    },
+    "final_generation": {
+      "model": "deepseek:deepseek-flash",
+      "provider": "deepseek"
+    }
+  }
+}

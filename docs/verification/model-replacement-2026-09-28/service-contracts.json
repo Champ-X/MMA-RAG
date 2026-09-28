@@ -1,0 +1,458 @@
+{
+  "captured_at": 1790527545.7472708,
+  "scope": "Real production methods and manager/provider transport. Synthetic inputs only. No KB writes or persistent settings overrides. Outer deadline 30s per task; concurrency 2.",
+  "routes": {
+    "intent_recognition": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": [
+        "aliyun_bailian:qwen3.5-flash"
+      ]
+    },
+    "query_rewriting": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": [
+        "aliyun_bailian:qwen3.5-flash"
+      ]
+    },
+    "image_captioning": {
+      "model": "aliyun_bailian:qwen3-vl-plus-2025-12-19",
+      "fallbacks": [
+        "Qwen/Qwen3-Omni-30B-A3B-Captioner",
+        "Qwen/Qwen3-Omni-30B-A3B-Instruct"
+      ]
+    },
+    "document_chunking": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": []
+    },
+    "final_generation": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": [
+        "aliyun_bailian:qwen3.5-flash"
+      ]
+    },
+    "kb_portrait_generation": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": [
+        "aliyun_bailian:qwen3.5-flash"
+      ]
+    },
+    "health_check": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": []
+    },
+    "reranking": {
+      "model": "Qwen/Qwen3-Reranker-8B",
+      "fallbacks": [
+        "Qwen/Qwen3-Reranker-4B",
+        "BAAI/bge-reranker-v2-m3"
+      ]
+    },
+    "embedding": {
+      "model": "Qwen/Qwen3-Embedding-8B",
+      "fallbacks": []
+    },
+    "audio_transcription": {
+      "model": "aliyun_bailian:qwen3-omni-flash",
+      "fallbacks": [
+        "aliyun_bailian:qwen-omni-turbo"
+      ]
+    },
+    "video_parsing": {
+      "model": "aliyun_bailian:qwen3.5-omni-plus-2026-03-15",
+      "fallbacks": [
+        "aliyun_bailian:qwen3-omni-flash",
+        "aliyun_bailian:qwen-omni-turbo"
+      ]
+    }
+  },
+  "probes": [
+    {
+      "kind": "default_chunking",
+      "calls": [
+        {
+          "model_used": "deepseek:deepseek-flash",
+          "fallback_used": false,
+          "success": true,
+          "error_category": null,
+          "status_code": null,
+          "seconds": 0.888,
+          "content_chars": 393,
+          "reasoning_chars": 0,
+          "finish_reason": "stop",
+          "parsed_json": {
+            "chunks": [
+              {
+                "start_unit_id": "u_0001",
+                "end_unit_id": "u_0003",
+                "title": "HNSW 索引：分层图近似最近邻搜索",
+                "semantic_type": "definition_explanation",
+                "relations": []
+              },
+              {
+                "start_unit_id": "u_0005",
+                "end_unit_id": "u_0007",
+                "title": "IVF-PQ 索引：倒排列表与乘积量化检索",
+                "semantic_type": "definition_explanation",
+                "relations": []
+              }
+            ]
+          }
+        }
+      ],
+      "lossless": true,
+      "fallback_windows": 0,
+      "planner_name": "llm-semantic-planner",
+      "chunk_count": 2,
+      "warnings": [],
+      "success": true,
+      "seconds": 0.889
+    },
+    {
+      "kind": "default_portrait",
+      "calls": [
+        {
+          "model_used": "deepseek:deepseek-flash",
+          "fallback_used": false,
+          "success": true,
+          "error_category": null,
+          "status_code": null,
+          "seconds": 1.188,
+          "content_chars": 193,
+          "reasoning_chars": 0,
+          "finish_reason": "stop",
+          "parsed_json": null
+        }
+      ],
+      "summary": "本聚类聚焦于大规模向量检索与近似最近邻搜索的技术领域，核心涵盖HNSW分层图导航机制与IVF-PQ倒排索引结合乘积量化的索引策略，涉及距离计算优化、内存开销压缩等关键工程问题，面向向量数据库与相似性搜索系统。文档片段以技术说明为主，阐述算法原理与性能权衡。当前输入未包含图片、音频或视频关键帧内容，故无对应视觉、听觉或场景语义可供概括。整体知识空间集中于向量索引算法与检索系统优化方向。",
+      "nonfallback": true,
+      "success": true,
+      "seconds": 1.189
+    },
+    {
+      "kind": "qwen_rewrite",
+      "calls": [
+        {
+          "model_used": "aliyun_bailian:qwen3.5-flash",
+          "fallback_used": false,
+          "success": true,
+          "error_category": null,
+          "status_code": null,
+          "seconds": 1.383,
+          "content_chars": 270,
+          "reasoning_chars": 0,
+          "finish_reason": "stop",
+          "parsed_json": {
+            "refined_query": "HNSW 索引与 IVF-PQ 索引的内存开销区别是什么",
+            "multi_view_queries": [
+              "比较 HNSW 和 IVF-PQ 两种索引结构的内存占用差异",
+              "HNSW 近似最近邻索引相比 IVF-PQ 在内存消耗上有何不同",
+              "分析 HNSW 与 IVF-PQ 算法的内存效率对比"
+            ],
+            "keywords": [
+              "HNSW",
+              "IVF-PQ",
+              "内存开销",
+              "索引结构",
+              "内存占用",
+              "近似最近邻",
+              "算法对比"
+            ]
+          }
+        }
+      ],
+      "production_parsed": {
+        "refined_query": "HNSW 索引与 IVF-PQ 索引的内存开销区别是什么",
+        "multi_view_queries": [
+          "比较 HNSW 和 IVF-PQ 两种索引结构的内存占用差异",
+          "HNSW 近似最近邻索引相比 IVF-PQ 在内存消耗上有何不同",
+          "分析 HNSW 与 IVF-PQ 算法的内存效率对比"
+        ],
+        "keywords": [
+          "算法对比",
+          "HNSW",
+          "内存占用",
+          "的内存开销有什么区别",
+          "索引结构",
+          "IVF",
+          "PQ",
+          "它和",
+          "内存开销",
+          "IVF-PQ"
+        ]
+      },
+      "success": true,
+      "structured_semantic_pass": true,
+      "seconds": 1.383
+    },
+    {
+      "kind": "qwen_planner",
+      "calls": [
+        {
+          "model_used": "aliyun_bailian:qwen3.5-flash",
+          "fallback_used": false,
+          "success": true,
+          "error_category": null,
+          "status_code": null,
+          "seconds": 1.369,
+          "content_chars": 251,
+          "reasoning_chars": 0,
+          "finish_reason": "stop",
+          "parsed_json": null
+        }
+      ],
+      "production_parsed": null,
+      "success": false,
+      "structured_semantic_pass": false,
+      "seconds": 1.369
+    },
+    {
+      "kind": "qwen_stream_final",
+      "calls": [],
+      "first_text_seconds": 0.576,
+      "content_chars": 69,
+      "parsed_json": {
+        "answer": "HNSW使用分层图，IVF-PQ使用倒排索引和乘积量化。",
+        "citations": [
+          1,
+          2
+        ]
+      },
+      "success": true,
+      "structured_semantic_pass": true,
+      "seconds": 0.97
+    },
+    {
+      "kind": "qwen_intent",
+      "calls": [
+        {
+          "model_used": "aliyun_bailian:qwen3.5-flash",
+          "fallback_used": false,
+          "success": true,
+          "error_category": null,
+          "status_code": null,
+          "seconds": 4.63,
+          "content_chars": 1112,
+          "reasoning_chars": 0,
+          "finish_reason": "stop",
+          "parsed_json": {
+            "reasoning": "用户明确要求比较两种索引算法的性能指标（召回率、内存），并显式请求提供架构图。虽然排除了音视频，但“给出架构图”属于明确的视觉需求。查询涉及技术对比和可视化展示，需要多步检索策略来分别获取数据指标和架构信息。",
+            "intent_type": "comparison",
+            "is_complex": true,
+            "visual_intent": "explicit_demand",
+            "visual_reasoning": "用户明确使用了“给出架构图”这一指令词，根据评估法则第一步，包含明确的视觉请求词必须优先判断为explicit_demand。架构图对于理解HNSW与IVF-PQ的拓扑结构差异至关重要。",
+            "audio_intent": "unnecessary",
+            "audio_reasoning": "用户明确在查询中声明“不要音频”，且算法性能对比属于纯逻辑和数据范畴，无需音频载体即可传达核心信息，故判定为unnecessary。",
+            "video_intent": "unnecessary",
+            "video_reasoning": "用户明确声明“不要视频”，且静态的算法原理和性能对比通常通过文本和静态图表即可清晰表达，视频无法提供额外的时序或过程信息增益，故判定为unnecessary。",
+            "search_strategies": {
+              "dense_query": "HNSW与IVF-PQ索引算法的召回率和内存开销对比分析及其系统架构图",
+              "sparse_keywords": [
+                "HNSW",
+                "IVF-PQ",
+                "Recall Rate",
+                "Memory Overhead",
+                "Vector Index",
+                "Graph Structure",
+                "Quantization"
+              ],
+              "multi_view_queries": [
+                "HNSW和IVF-PQ在向量检索中的召回率及内存消耗对比",
+                "HNSW与IVF-PQ算法架构示意图及性能指标分析",
+                "比较HNSW和IVF-PQ的内存占用与检索准确率"
+              ]
+            },
+            "sub_queries": [
+              "HNSW算法的内存开销机制与召回率特性分析",
+              "IVF-PQ算法的内存开销机制与召回率特性分析",
+              "HNSW与IVF-PQ算法的架构原理对比图"
+            ]
+          }
+        }
+      ],
+      "production_parsed": {
+        "original_query": "请比较 HNSW 与 IVF-PQ 的召回率和内存开销，给出架构图，但不要音频或视频。",
+        "reasoning": "用户明确要求比较两种索引算法的性能指标（召回率、内存），并显式请求提供架构图。虽然排除了音视频，但“给出架构图”属于明确的视觉需求。查询涉及技术对比和可视化展示，需要多步检索策略来分别获取数据指标和架构信息。",
+        "intent_type": "comparison",
+        "is_complex": true,
+        "visual_intent": "explicit_demand",
+        "visual_reasoning": "用户明确使用了“给出架构图”这一指令词，根据评估法则第一步，包含明确的视觉请求词必须优先判断为explicit_demand。架构图对于理解HNSW与IVF-PQ的拓扑结构差异至关重要。",
+        "audio_intent": "explicit_demand",
+        "audio_reasoning": "检测到明确的音频请求关键词，优先判断为显式需求",
+        "video_intent": "explicit_demand",
+        "video_reasoning": "检测到明确的视频请求关键词（如'结合视频'、'看视频'等），优先判断为显式需求",
+        "search_strategies": {
+          "dense_query": "HNSW与IVF-PQ索引算法的召回率和内存开销对比分析及其系统架构图",
+          "sparse_keywords": [
+            "HNSW",
+            "IVF-PQ",
+            "Recall Rate",
+            "Memory Overhead",
+            "Vector Index",
+            "Graph Structure",
+            "Quantization"
+          ],
+          "multi_view_queries": [
+            "HNSW和IVF-PQ在向量检索中的召回率及内存消耗对比",
+            "HNSW与IVF-PQ算法架构示意图及性能指标分析",
+            "比较HNSW和IVF-PQ的内存占用与检索准确率"
+          ]
+        },
+        "sub_queries": [
+          "HNSW算法的内存开销机制与召回率特性分析",
+          "IVF-PQ算法的内存开销机制与召回率特性分析",
+          "HNSW与IVF-PQ算法的架构原理对比图"
+        ],
+        "jev_decision": {
+          "mode": "off",
+          "accepted": false
+        }
+      },
+      "success": true,
+      "structured_semantic_pass": true,
+      "seconds": 4.63,
+      "raw_model_negation_pass": true,
+      "production_postprocessing_negation_pass": false
+    },
+    {
+      "kind": "default_generative_intent",
+      "calls": [
+        {
+          "model_used": "deepseek:deepseek-flash",
+          "fallback_used": false,
+          "success": true,
+          "error_category": null,
+          "status_code": null,
+          "seconds": 1.927,
+          "content_chars": 931,
+          "reasoning_chars": 0,
+          "finish_reason": "stop",
+          "parsed_json": {
+            "reasoning": "用户明确要求比较HNSW与IVF-PQ两种向量索引算法在召回率和内存开销方面的差异，并明确要求提供架构图，同时明确排除音频和视频。查询涉及技术对比，需要多维度分析，但结构清晰，无需拆解为多个子问题。",
+            "intent_type": "comparison",
+            "is_complex": false,
+            "visual_intent": "explicit_demand",
+            "visual_reasoning": "用户明确要求'给出架构图'，属于显式的视觉请求，因此必须判断为explicit_demand。架构图能直观展示两种算法的结构差异，对理解其工作原理和性能特点有重要帮助。",
+            "audio_intent": "unnecessary",
+            "audio_reasoning": "用户明确表示'不要音频'，且查询内容为技术对比，音频无法提供实质性的信息增益，因此判断为unnecessary。",
+            "video_intent": "unnecessary",
+            "video_reasoning": "用户明确表示'不要视频'，且查询内容为技术对比，视频无法提供比文本和架构图更有效的时序或过程信息，因此判断为unnecessary。",
+            "search_strategies": {
+              "dense_query": "比较HNSW与IVF-PQ两种向量索引算法在召回率和内存开销方面的性能差异，并提供它们的架构图",
+              "sparse_keywords": [
+                "HNSW",
+                "IVF-PQ",
+                "召回率",
+                "内存开销",
+                "架构图",
+                "向量索引",
+                "近似最近邻搜索"
+              ],
+              "multi_view_queries": [
+                "HNSW和IVF-PQ在召回率与内存占用上的对比分析及架构示意图",
+                "向量检索算法HNSW与IVF-PQ的性能指标比较：召回率和内存消耗，附架构图",
+                "HNSW与IVF-PQ的优缺点对比：召回率、内存开销及系统架构图解"
+              ]
+            },
+            "sub_queries": []
+          }
+        }
+      ],
+      "production_parsed": {
+        "original_query": "请比较 HNSW 与 IVF-PQ 的召回率和内存开销，给出架构图，但不要音频或视频。",
+        "reasoning": "用户明确要求比较HNSW与IVF-PQ两种向量索引算法在召回率和内存开销方面的差异，并明确要求提供架构图，同时明确排除音频和视频。查询涉及技术对比，需要多维度分析，但结构清晰，无需拆解为多个子问题。",
+        "intent_type": "comparison",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "visual_reasoning": "用户明确要求'给出架构图'，属于显式的视觉请求，因此必须判断为explicit_demand。架构图能直观展示两种算法的结构差异，对理解其工作原理和性能特点有重要帮助。",
+        "audio_intent": "explicit_demand",
+        "audio_reasoning": "检测到明确的音频请求关键词，优先判断为显式需求",
+        "video_intent": "explicit_demand",
+        "video_reasoning": "检测到明确的视频请求关键词（如'结合视频'、'看视频'等），优先判断为显式需求",
+        "search_strategies": {
+          "dense_query": "比较HNSW与IVF-PQ两种向量索引算法在召回率和内存开销方面的性能差异，并提供它们的架构图",
+          "sparse_keywords": [
+            "HNSW",
+            "IVF-PQ",
+            "召回率",
+            "内存开销",
+            "架构图",
+            "向量索引",
+            "近似最近邻搜索"
+          ],
+          "multi_view_queries": [
+            "HNSW和IVF-PQ在召回率与内存占用上的对比分析及架构示意图",
+            "向量检索算法HNSW与IVF-PQ的性能指标比较：召回率和内存消耗，附架构图",
+            "HNSW与IVF-PQ的优缺点对比：召回率、内存开销及系统架构图解"
+          ]
+        },
+        "sub_queries": [],
+        "jev_decision": {
+          "mode": "off",
+          "accepted": false
+        }
+      },
+      "success": true,
+      "structured_semantic_pass": true,
+      "seconds": 1.927,
+      "raw_model_negation_pass": true,
+      "production_postprocessing_negation_pass": false
+    }
+  ],
+  "summary": {
+    "total": 7,
+    "passed": 6,
+    "http_or_stream_completed_count": 7,
+    "structured_or_task_contract_pass_count": 6,
+    "all_semantic_checks_passed": false
+  },
+  "previous_batch_evidence": "/tmp/tessmora-model-replacement-20260928/service-contracts-initial.json",
+  "contract_scope": "Success checks selected structural contracts, complete model JSON, lossless chunking, non-fallback portrait or complete streamed JSON; it is not full semantic-quality acceptance.",
+  "known_semantic_limitations": [
+    "Generative intent postprocessing forces audio/video explicit_demand from bare query keywords even in negation; raw model JSON correctly says unnecessary in both new candidate tests. Current force-Jev path does not call this generative postprocessor."
+  ],
+  "planner_followup": {
+    "failure_note": "One provider-success response (finish_reason stop, 251 content characters) could not be extracted as JSON and parse_planner_decision returned None. Raw failed content was not retained by the original script; exact syntactic cause remains unknown.",
+    "recheck_files": [
+      "/tmp/tessmora-model-replacement-20260928/planner-recheck.json",
+      "/tmp/tessmora-model-replacement-20260928/planner-recheck-pair.json"
+    ],
+    "recheck_attempts": 3,
+    "recheck_parse_successes": 3,
+    "recheck_seconds": [
+      1.479,
+      1.404,
+      1.466
+    ],
+    "all_post_change_production_manager_planner_attempts": 5,
+    "all_post_change_production_manager_planner_parse_successes": 4,
+    "direct_no_thinking_candidate_planner_attempts": 1,
+    "direct_no_thinking_candidate_planner_parse_successes": 1,
+    "conclusion": "Default no-thinking Qwen Flash is reachable and generally fast in this small sample; one malformed JSON result remains in the denominator. No parser or JSON-mode change was made without knowing the failed format."
+  },
+  "post_fix_planner_json_mode": {
+    "evidence_file": "/tmp/tessmora-model-replacement-20260928/planner-json-mode.json",
+    "requested_response_format": {
+      "type": "json_object"
+    },
+    "attempt_count": 2,
+    "contract_pass_count": 2,
+    "models": [
+      {
+        "model": "deepseek:deepseek-flash",
+        "seconds": 0.786,
+        "success": true,
+        "fallback_used": false,
+        "reasoning_chars": 0
+      },
+      {
+        "model": "aliyun_bailian:qwen3.5-flash",
+        "seconds": 1.654,
+        "success": true,
+        "fallback_used": false,
+        "reasoning_chars": 0
+      }
+    ],
+    "note": "Both providers accepted the production AgentPlanner native JSON request. Prior unconstrained JSON failure remains in summary and planner_followup; two successful requests are not a reliability SLA."
+  }
+}

@@ -215,8 +215,8 @@ const defaultConfig: SystemConfig = {
     {
       id: 'intent',
       name: '意图识别模型',
-      provider: 'aliyun_bailian',
-      model: 'aliyun_bailian:qwen3.5-plus',
+      provider: 'deepseek',
+      model: 'deepseek:deepseek-flash',
       maxTokens: 1024,
       temperature: 0.1,
       topP: 0.9,
@@ -225,8 +225,8 @@ const defaultConfig: SystemConfig = {
     {
       id: 'rewrite',
       name: '查询改写模型',
-      provider: 'siliconflow',
-      model: 'Qwen/Qwen3.5-397B-A17B',
+      provider: 'deepseek',
+      model: 'deepseek:deepseek-flash',
       maxTokens: 1024,
       temperature: 0.1,
       topP: 0.9,
@@ -235,8 +235,8 @@ const defaultConfig: SystemConfig = {
     {
       id: 'chat',
       name: '对话模型',
-      provider: 'siliconflow',
-      model: 'Pro/moonshotai/Kimi-K2.6',
+      provider: 'deepseek',
+      model: 'deepseek:deepseek-flash',
       maxTokens: 4096,
       temperature: 0.7,
       topP: 0.9,
@@ -295,8 +295,8 @@ const defaultConfig: SystemConfig = {
     {
       id: 'portrait',
       name: '知识库画像模型',
-      provider: 'siliconflow',
-      model: 'Pro/moonshotai/Kimi-K2.6',
+      provider: 'deepseek',
+      model: 'deepseek:deepseek-flash',
       maxTokens: 1024,
       temperature: 0.3,
       topP: 0.9,
@@ -309,6 +309,15 @@ const defaultConfig: SystemConfig = {
   enableThinking: true,
   theme: 'system',
   language: 'zh-CN',
+};
+
+// Version 0 persisted automatic defaults without recording their origin. Migrate
+// only the known task/model pairs once; later explicit choices remain untouched.
+const LEGACY_TASK_DEFAULTS: Record<string, string> = {
+  intent: 'aliyun_bailian:qwen3.5-plus',
+  rewrite: 'Qwen/Qwen3.5-397B-A17B',
+  chat: 'Pro/moonshotai/Kimi-K2.6',
+  portrait: 'Pro/moonshotai/Kimi-K2.6',
 };
 
 export const useConfigStore = create<ConfigStore>()(
@@ -536,6 +545,22 @@ export const useConfigStore = create<ConfigStore>()(
     }),
     {
       name: 'config-store',
+      version: 1,
+      migrate: (persistedState, version) => {
+        const state = persistedState as { config: SystemConfig };
+        if (version >= 1 || !Array.isArray(state?.config?.models)) return state;
+        return {
+          ...state,
+          config: {
+            ...state.config,
+            models: state.config.models.map((model) =>
+              LEGACY_TASK_DEFAULTS[model.id] === model.model
+                ? { ...model, provider: 'deepseek', model: 'deepseek:deepseek-flash' }
+                : model
+            ),
+          },
+        };
+      },
       partialize: (state) => ({
         config: state.config,
       }),

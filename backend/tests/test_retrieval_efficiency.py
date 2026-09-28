@@ -28,7 +28,7 @@ class Embeddings:
         self.failure = False
         self.fallback = False
 
-    async def embed(self, texts):
+    async def embed(self, texts, **kwargs):
         self.calls.append(list(texts))
         await asyncio.sleep(0)
         return LLMCallResult(

@@ -290,7 +290,7 @@ class LLMRegistry:
                     "provider": "aliyun_bailian",
                     "type": "chat,vision,video",
                     "context_length": 991000,  # 252K
-                    "description": "Qwen3 Max（阿里云百炼）",
+                    "description": "Qwen3.5 Flash（阿里云百炼，默认非思考模式）",
                     "raw_model": "qwen3.5-flash",
                 },
                 "aliyun_bailian:qwen3-max": {
@@ -392,23 +392,21 @@ class LLMRegistry:
         # 结构: task_type -> {"model": 主模型, "fallbacks": [备用模型列表]}
         self._task_config: Dict[str, Dict[str, Any]] = {
             "intent_recognition": {
-                "model": "aliyun_bailian:qwen3.5-plus",
+                "model": "deepseek:deepseek-flash",
                 "fallbacks": [
-                    "deepseek:deepseek-flash",
-                    "Pro/moonshotai/Kimi-K2.5",
+                    "aliyun_bailian:qwen3.5-flash",
                 ],
             },
             "query_rewriting": {
                 "model": "deepseek:deepseek-flash",
                 "fallbacks": [
-                    "Pro/moonshotai/Kimi-K2.5",
+                    "aliyun_bailian:qwen3.5-flash",
                 ],
             },
             "image_captioning": {
                 "model": "aliyun_bailian:qwen3-vl-plus-2025-12-19",
                 "fallbacks": [
                     "Qwen/Qwen3-Omni-30B-A3B-Captioner",
-                    "Pro/moonshotai/Kimi-K2.5",
                     "Qwen/Qwen3-Omni-30B-A3B-Instruct",
                 ],
             },
@@ -416,22 +414,19 @@ class LLMRegistry:
             # 不可用或返回非法计划时由本地结构化 planner 单次降级，避免把同一
             # 文档内容转发给多个模型并放大成本。
             "document_chunking": {
-                "model": "Pro/moonshotai/Kimi-K2.6",
+                "model": "deepseek:deepseek-flash",
                 "fallbacks": [],
             },
             "final_generation": {
-                "model": "Pro/moonshotai/Kimi-K2.6",
+                "model": "deepseek:deepseek-flash",
                 "fallbacks": [
-                    "aliyun_bailian:qwen3.5-plus",
-                    "deepseek:deepseek-flash",
-                    "Pro/moonshotai/Kimi-K2.5",
+                    "aliyun_bailian:qwen3.5-flash",
                 ],
             },
             "kb_portrait_generation": {
-                "model": "Pro/moonshotai/Kimi-K2.6",
+                "model": "deepseek:deepseek-flash",
                 "fallbacks": [
-                    "deepseek:deepseek-flash",
-                    "Pro/moonshotai/Kimi-K2.5",
+                    "aliyun_bailian:qwen3.5-flash",
                 ],
             },
             "health_check": {
@@ -449,13 +444,11 @@ class LLMRegistry:
                 "model": "Qwen/Qwen3-Embedding-8B",
                 "fallbacks": [],
             },
-            # 音频转写：优先 OpenRouter Gemini（与当前 content 格式兼容），阿里云 Omni 需 WebSocket/专用格式
+            # 仅保留已通过实际音频输入验证的百炼 Omni 路由。
             "audio_transcription": {
                 "model": "aliyun_bailian:qwen3-omni-flash",
                 "fallbacks": [
                     "aliyun_bailian:qwen-omni-turbo",
-                    "openrouter:google/gemini-3-flash-preview",
-                    "openrouter:google/gemini-2.5-flash",
                 ],
             },
             # 视频解析：Scene–Shot 结果含逐 Shot ASR。video_local 会被阿里云 provider
