@@ -7,6 +7,7 @@ from typing import Dict, List, Any, Optional, AsyncGenerator
 from . import LLMRegistry
 from app.core.logger import get_logger
 import asyncio
+import math
 import time
 from dataclasses import dataclass
 from .model_health import ModelHealth, raise_for_stream_error
@@ -15,6 +16,24 @@ logger = get_logger(__name__)
 
 # One request may call a primary and at most two usable fallbacks.
 _MAX_FALLBACK_ATTEMPTS = 2
+
+# Interactive preparation must leave time for a usable fallback. Ingestion
+# tasks retain their existing longer budgets unless the caller opts in.
+_INTERACTIVE_CHAT_TIMEOUTS = {
+    "intent_recognition": (12.0, 30.0),
+    "query_rewriting": (12.0, 30.0),
+    "final_generation": (30.0, 75.0),
+    "health_check": (8.0, 12.0),
+}
+_FIRST_CONTENT_TIMEOUT = 20.0
+_STREAM_CLOSE_TIMEOUT = 1.0
+
+
+def _timeout_seconds(value: Any, name: str) -> float:
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError(f"{name} must be a positive finite number")
+    return seconds
 
 @dataclass
 class LLMCallResult:
@@ -69,7 +88,20 @@ class LLMManager:
             )
         
         kwargs = dict(kwargs)
-        total_timeout = float(kwargs.pop("total_timeout", 360 if task_type == "video_parsing" else 180))
+        default_attempt, default_total = _INTERACTIVE_CHAT_TIMEOUTS.get(
+            task_type, (None, 360.0 if task_type == "video_parsing" else 180.0)
+        )
+        # An explicit provider timeout remains meaningful for callers that
+        # deliberately allow a longer operation. An explicit total_timeout
+        # always wins, including when it is shorter than one attempt.
+        if "timeout" in kwargs:
+            default_attempt = _timeout_seconds(kwargs["timeout"], "timeout")
+            if task_type in _INTERACTIVE_CHAT_TIMEOUTS:
+                default_total = max(default_total, default_attempt)
+        attempt_timeout = kwargs.pop("attempt_timeout", default_attempt)
+        if attempt_timeout is not None:
+            kwargs["_attempt_timeout"] = _timeout_seconds(attempt_timeout, "attempt_timeout")
+        total_timeout = _timeout_seconds(kwargs.pop("total_timeout", default_total), "total_timeout")
         kwargs["_deadline"] = time.monotonic() + total_timeout
         # 记录主模型调用
         logger.info(f"使用主模型: {model} (任务类型: {task_type})")
@@ -137,7 +169,14 @@ class LLMManager:
         model = model or self.registry.get_task_model(task_type)
         if not model:
             raise ValueError(f"没有找到任务类型 {task_type} 对应的模型")
-        deadline = time.monotonic() + float(kwargs.pop("total_timeout", 360))
+        total_timeout = _timeout_seconds(kwargs.pop("total_timeout", 360), "total_timeout")
+        deadline = time.monotonic() + total_timeout
+        # Video callers keep their long-input allowance. Other streams must
+        # produce answer text promptly, even if reasoning/heartbeats arrive.
+        first_content_timeout = _timeout_seconds(
+            kwargs.pop("first_content_timeout", total_timeout if task_type == "video_parsing" else _FIRST_CONTENT_TIMEOUT),
+            "first_content_timeout",
+        )
         candidates = list(dict.fromkeys([model, *(self.registry.get_task_fallbacks(task_type) if fallback else [])]))
         attempts = 0
         last_error: Exception = RuntimeError("No usable streaming model")
@@ -160,20 +199,30 @@ class LLMManager:
             params.setdefault("temperature", 0.3)
             emitted = False
             started = time.monotonic()
+            first_content_deadline = min(deadline, started + first_content_timeout)
             stream = provider.stream_chat(**params)
             try:
-                async with asyncio.timeout(remaining):
-                    async for chunk in stream:
-                        raise_for_stream_error(chunk or {})
-                        choices = (chunk or {}).get("choices") or []
-                        if not choices or not isinstance(choices[0], dict):
-                            continue
-                        content = (choices[0].get("delta") or {}).get("content")
-                        if content:
-                            emitted = True
-                            yield content
-                    if not emitted:
-                        raise RuntimeError("Provider stream ended without answer content")
+                while True:
+                    # Timeouts apply only while awaiting the provider, never
+                    # across yield where they could cancel downstream code.
+                    active_deadline = deadline if emitted else first_content_deadline
+                    wait_seconds = active_deadline - time.monotonic()
+                    if wait_seconds <= 0:
+                        raise TimeoutError("Model stream total time budget exhausted" if emitted else "Model stream first answer content timed out")
+                    try:
+                        chunk = await asyncio.wait_for(anext(stream), timeout=wait_seconds)
+                    except StopAsyncIteration:
+                        break
+                    raise_for_stream_error(chunk or {})
+                    choices = (chunk or {}).get("choices") or []
+                    if not choices or not isinstance(choices[0], dict):
+                        continue
+                    content = (choices[0].get("delta") or {}).get("content")
+                    if content:
+                        emitted = True
+                        yield content
+                if not emitted:
+                    raise RuntimeError("Provider stream ended without answer content")
                 self._health().record(cfg["provider"], raw, "chat_completion",
                                       duration=time.monotonic() - started)
                 return
@@ -184,7 +233,12 @@ class LLMManager:
                 if emitted:
                     raise
             finally:
-                await stream.aclose()
+                try:
+                    await asyncio.wait_for(stream.aclose(), timeout=_STREAM_CLOSE_TIMEOUT)
+                except Exception as close_error:
+                    # Cleanup must neither hide the original provider error
+                    # nor prevent a prompt pre-content fallback.
+                    logger.warning("Model stream cleanup failed: {} {}", candidate, type(close_error).__name__)
         raise last_error
 
     async def embed(
@@ -207,6 +261,8 @@ class LLMManager:
             )
         
         kwargs = dict(kwargs)
+        if "attempt_timeout" in kwargs:
+            kwargs["_attempt_timeout"] = _timeout_seconds(kwargs.pop("attempt_timeout"), "attempt_timeout")
         kwargs["_deadline"] = time.monotonic() + float(kwargs.pop("total_timeout", 180))
         result = await self._call_with_model(
             "embed_texts",
@@ -243,6 +299,8 @@ class LLMManager:
             )
         
         kwargs = dict(kwargs)
+        if "attempt_timeout" in kwargs:
+            kwargs["_attempt_timeout"] = _timeout_seconds(kwargs.pop("attempt_timeout"), "attempt_timeout")
         kwargs["_deadline"] = time.monotonic() + float(kwargs.pop("total_timeout", 180))
         result = await self._call_with_model(
             "rerank", 
@@ -288,7 +346,11 @@ class LLMManager:
         if method == "chat_completion":
             params.setdefault("max_tokens", 2000)
         deadline = params.pop("_deadline", None)
+        attempt_timeout = params.pop("_attempt_timeout", None)
         started = time.monotonic()
+        if attempt_timeout is not None:
+            attempt_deadline = started + attempt_timeout
+            deadline = min(deadline, attempt_deadline) if deadline is not None else attempt_deadline
         try:
             if deadline is not None:
                 remaining = deadline - started

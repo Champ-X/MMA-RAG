@@ -1,0 +1,870 @@
+{
+  "captured_at": 1790527038.058367,
+  "scope": "Synthetic structured task candidates using unchanged production prompts and parsers; single 20s bounded direct attempts, no failover; no persistent config changes",
+  "probes": [
+    {
+      "model": "aliyun_bailian:qwen3.5-flash",
+      "kind": "intent_production",
+      "transport_success": false,
+      "error_category": "transport",
+      "status_code": null,
+      "content_chars": 0,
+      "reasoning_chars": 0,
+      "finish_reason": null,
+      "strict_json": false,
+      "parsed_json": null,
+      "production_parsed": {
+        "original_query": "请比较 HNSW 与 IVF-PQ 的召回率和内存开销，给出架构图，但不要音频或视频。",
+        "reasoning": "使用默认规则进行简单分析",
+        "intent_type": "factual",
+        "is_complex": false,
+        "visual_intent": "unnecessary",
+        "visual_reasoning": "使用默认规则，未检测到明确的视觉需求",
+        "audio_intent": "unnecessary",
+        "audio_reasoning": "使用默认规则，未检测到音频需求",
+        "video_intent": "unnecessary",
+        "video_reasoning": "使用默认规则，未检测到视频需求",
+        "search_strategies": {
+          "dense_query": "请比较 HNSW 与 IVF-PQ 的召回率和内存开销，给出架构图，但不要音频或视频。",
+          "sparse_keywords": [],
+          "multi_view_queries": []
+        },
+        "sub_queries": []
+      },
+      "structured_semantic_pass": false,
+      "success": false,
+      "seconds": 20.001,
+      "note": "This 20s diagnostic bound was reached; does not prove permanent provider unavailability."
+    },
+    {
+      "model": "aliyun_bailian:qwen3.5-flash",
+      "kind": "vision_json",
+      "transport_success": false,
+      "error_category": "transport",
+      "status_code": null,
+      "content_chars": 0,
+      "reasoning_chars": 0,
+      "finish_reason": null,
+      "strict_json": false,
+      "parsed_json": null,
+      "production_parsed": null,
+      "structured_semantic_pass": false,
+      "success": false,
+      "seconds": 0.004,
+      "network_attempted": false,
+      "note": "Short-circuited by process-local cooldown following preceding 20s bounded failures; this is not a media or generation provider attempt."
+    },
+    {
+      "model": "aliyun_bailian:qwen3.5-flash",
+      "kind": "planner_production",
+      "transport_success": false,
+      "error_category": "transport",
+      "status_code": null,
+      "content_chars": 0,
+      "reasoning_chars": 0,
+      "finish_reason": null,
+      "strict_json": false,
+      "parsed_json": null,
+      "production_parsed": null,
+      "structured_semantic_pass": false,
+      "success": false,
+      "seconds": 20.001,
+      "note": "This 20s diagnostic bound was reached; does not prove permanent provider unavailability."
+    },
+    {
+      "model": "deepseek:deepseek-flash",
+      "kind": "planner_production",
+      "transport_success": true,
+      "error_category": null,
+      "status_code": null,
+      "content_chars": 250,
+      "reasoning_chars": 285,
+      "finish_reason": "stop",
+      "strict_json": true,
+      "parsed_json": {
+        "action": "search",
+        "reason": "当前没有任何证据，无法比较 HNSW 与 IVF-PQ 的召回率与内存开销，也无法提供架构图。需要分别针对两者的召回率/内存性能对比、各自的索引结构与架构图（图片模态为显式需求）发起互补检索，以覆盖对比结论与可视化架构两方面。",
+        "queries": [
+          "HNSW 与 IVF-PQ 召回率和内存开销对比",
+          "HNSW 和 IVF-PQ 索引架构图 示意图 结构对比",
+          "HNSW 图结构内存占用与 IVF-PQ 乘积量化压缩的召回率权衡"
+        ]
+      },
+      "production_parsed": {
+        "action": "search",
+        "reason": "当前没有任何证据，无法比较 HNSW 与 IVF-PQ 的召回率与内存开销，也无法提供架构图。需要分别针对两者的召回率/内存性能对比、各自的索引结构与架构图（图片模态为显式需求）发起互补检索，以覆盖对比结论与可视化架构两方面。",
+        "queries": [
+          "HNSW 与 IVF-PQ 召回率和内存开销对比",
+          "HNSW 和 IVF-PQ 索引架构图 示意图 结构对比",
+          "HNSW 图结构内存占用与 IVF-PQ 乘积量化压缩的召回率权衡"
+        ]
+      },
+      "structured_semantic_pass": true,
+      "success": true,
+      "seconds": 1.753
+    },
+    {
+      "model": "aliyun_bailian:qwen3.5-flash",
+      "kind": "grounded_final_json",
+      "transport_success": false,
+      "error_category": "transport",
+      "status_code": null,
+      "content_chars": 0,
+      "reasoning_chars": 0,
+      "finish_reason": null,
+      "strict_json": false,
+      "parsed_json": null,
+      "production_parsed": null,
+      "structured_semantic_pass": false,
+      "success": false,
+      "seconds": 0.0,
+      "network_attempted": false,
+      "note": "Short-circuited by process-local cooldown following preceding 20s bounded failures; this is not a media or generation provider attempt."
+    },
+    {
+      "model": "deepseek:deepseek-flash",
+      "kind": "grounded_final_json",
+      "transport_success": true,
+      "error_category": null,
+      "status_code": null,
+      "content_chars": 85,
+      "reasoning_chars": 333,
+      "finish_reason": "stop",
+      "strict_json": true,
+      "parsed_json": {
+        "answer": "HNSW的主要方法是使用分层图来加速近似最近邻搜索；IVF-PQ的主要方法是结合倒排文件与乘积量化压缩向量。",
+        "citations": [
+          1,
+          2
+        ]
+      },
+      "production_parsed": null,
+      "structured_semantic_pass": true,
+      "success": true,
+      "seconds": 1.468
+    },
+    {
+      "model": "deepseek:deepseek-flash",
+      "kind": "rewrite_production",
+      "transport_success": true,
+      "error_category": null,
+      "status_code": null,
+      "content_chars": 280,
+      "reasoning_chars": 876,
+      "finish_reason": "stop",
+      "strict_json": true,
+      "parsed_json": {
+        "refined_query": "HNSW 近似最近邻索引和 IVF-PQ 索引在内存开销方面有什么区别？",
+        "multi_view_queries": [
+          "HNSW 索引与 IVF-PQ 索引的内存占用差异是什么？",
+          "比较 HNSW 和 IVF-PQ 两种向量索引的内存消耗区别",
+          "分层可导航小世界图与倒排文件乘积量化在内存开销上有何不同？"
+        ],
+        "keywords": [
+          "HNSW",
+          "IVF-PQ",
+          "内存开销",
+          "近似最近邻索引",
+          "向量检索",
+          "乘积量化",
+          "内存占用"
+        ]
+      },
+      "production_parsed": {
+        "refined_query": "HNSW 近似最近邻索引和 IVF-PQ 索引在内存开销方面有什么区别？",
+        "multi_view_queries": [
+          "HNSW 索引与 IVF-PQ 索引的内存占用差异是什么？",
+          "比较 HNSW 和 IVF-PQ 两种向量索引的内存消耗区别",
+          "分层可导航小世界图与倒排文件乘积量化在内存开销上有何不同？"
+        ],
+        "keywords": [
+          "向量检索",
+          "HNSW",
+          "内存开销",
+          "它和",
+          "近似最近邻索引",
+          "乘积量化",
+          "IVF-PQ",
+          "IVF",
+          "内存占用",
+          "PQ"
+        ]
+      },
+      "structured_semantic_pass": true,
+      "success": true,
+      "seconds": 3.329
+    },
+    {
+      "model": "aliyun_bailian:qwen3.5-flash",
+      "kind": "vision_json_thinking_off",
+      "transport": "direct same configured provider endpoint; enable_thinking=false",
+      "enable_thinking": false,
+      "success": true,
+      "transport_success": true,
+      "structured_semantic_pass": true,
+      "content_chars": 37,
+      "reasoning_chars": 0,
+      "finish_reason": "stop",
+      "parsed_json": {
+        "main_color": "red"
+      },
+      "seconds": 0.524
+    },
+    {
+      "model": "aliyun_bailian:qwen3.5-flash",
+      "kind": "intent_production_thinking_off",
+      "transport": "direct same configured provider endpoint; enable_thinking=false",
+      "enable_thinking": false,
+      "success": true,
+      "transport_success": true,
+      "structured_semantic_pass": true,
+      "content_chars": 1205,
+      "reasoning_chars": 0,
+      "finish_reason": "stop",
+      "parsed_json": {
+        "reasoning": "用户明确要求比较两种索引算法的性能指标（召回率、内存），并请求提供架构图。虽然排除了音视频，但“给出架构图”属于显式的视觉需求。查询涉及技术对比和可视化展示，逻辑清晰，无需多步拆解。",
+        "intent_type": "comparison",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "visual_reasoning": "用户明确使用了“给出架构图”这一指令词，根据规则中明确的视觉请求词列表（如“展示”、“显示”、“架构”等组合），必须优先判断为显式需求。架构图对于理解IVF-PQ和HNSW的空间结构至关重要。",
+        "audio_intent": "unnecessary",
+        "audio_reasoning": "用户明确声明“不要音频”，且查询内容涉及算法性能对比和静态架构图，属于纯逻辑和技术概念，音频无法提供任何信息增益。",
+        "video_intent": "unnecessary",
+        "video_reasoning": "用户明确声明“不要视频”，且查询关注的是静态的算法原理对比和架构拓扑，不需要时序演示或动态过程展示，视频无法提供额外价值。",
+        "search_strategies": {
+          "dense_query": "HNSW与IVF-PQ索引算法的召回率和内存开销对比分析及其系统架构图",
+          "sparse_keywords": [
+            "HNSW",
+            "IVF-PQ",
+            "Recall Rate",
+            "Memory Overhead",
+            "Vector Index",
+            "Approximate Nearest Neighbor",
+            "Architecture Diagram"
+          ],
+          "multi_view_queries": [
+            "HNSW vs IVF-PQ: Recall and Memory Usage Comparison with Architecture Diagrams",
+            "Visual comparison of HNSW and IVF-PQ index structures, recall performance, and memory costs",
+            "Detailed analysis of HNSW and IVF-PQ algorithms including their architecture diagrams and efficiency metrics"
+          ]
+        },
+        "sub_queries": []
+      },
+      "seconds": 4.226
+    },
+    {
+      "model": "openrouter:qwen/qwen3-embedding-8b",
+      "kind": "embedding_alignment",
+      "texts_count": 2,
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "dimensions": [
+        4096,
+        4096
+      ],
+      "seconds": 1.754
+    },
+    {
+      "model": "Qwen/Qwen3-Embedding-8B",
+      "kind": "embedding_alignment",
+      "texts_count": 2,
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "dimensions": [
+        4096,
+        4096
+      ],
+      "seconds": 6.624
+    },
+    {
+      "model": "aliyun_bailian:qwen3.5-flash",
+      "kind": "rewrite_production_thinking_off",
+      "enable_thinking": false,
+      "transport": "direct same configured provider endpoint",
+      "success": true,
+      "structured_semantic_pass": true,
+      "transport_success": true,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "content_chars": 255,
+      "parsed_json": {
+        "refined_query": "HNSW 与 IVF-PQ 索引的内存开销区别",
+        "multi_view_queries": [
+          "比较 HNSW 和 IVF-PQ 算法的内存占用差异",
+          "HNSW 近似最近邻索引相比 IVF-PQ 节省多少内存",
+          "分析 HNSW 与 IVF-PQ 在存储成本上的不同"
+        ],
+        "keywords": [
+          "HNSW",
+          "IVF-PQ",
+          "内存开销",
+          "内存占用",
+          "存储成本",
+          "近似最近邻",
+          "索引"
+        ]
+      },
+      "production_parsed": {
+        "refined_query": "HNSW 与 IVF-PQ 索引的内存开销区别",
+        "multi_view_queries": [
+          "比较 HNSW 和 IVF-PQ 算法的内存占用差异",
+          "HNSW 近似最近邻索引相比 IVF-PQ 节省多少内存",
+          "分析 HNSW 与 IVF-PQ 在存储成本上的不同"
+        ],
+        "keywords": [
+          "PQ",
+          "索引",
+          "近似最近邻",
+          "IVF",
+          "它和",
+          "内存开销",
+          "的内存开销有什么区别",
+          "内存占用",
+          "HNSW",
+          "存储成本"
+        ]
+      },
+      "seconds": 1.289
+    },
+    {
+      "model": "aliyun_bailian:qwen3.5-flash",
+      "kind": "planner_production_thinking_off",
+      "enable_thinking": false,
+      "transport": "direct same configured provider endpoint",
+      "success": true,
+      "structured_semantic_pass": true,
+      "transport_success": true,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "content_chars": 289,
+      "parsed_json": {
+        "action": "search",
+        "reason": "当前无证据，需同时获取HNSW与IVF-PQ的召回率对比数据、内存开销分析以及架构图。由于用户明确要求提供架构图（visual_intent为explicit_demand），必须包含显式的视觉检索查询以触发图像生成或检索能力。",
+        "queries": [
+          "HNSW vs IVF-PQ recall rate comparison memory overhead",
+          "HNSW indexing architecture diagram",
+          "IVF-PQ indexing architecture diagram"
+        ]
+      },
+      "production_parsed": {
+        "action": "search",
+        "reason": "当前无证据，需同时获取HNSW与IVF-PQ的召回率对比数据、内存开销分析以及架构图。由于用户明确要求提供架构图（visual_intent为explicit_demand），必须包含显式的视觉检索查询以触发图像生成或检索能力。",
+        "queries": [
+          "HNSW vs IVF-PQ recall rate comparison memory overhead",
+          "HNSW indexing architecture diagram",
+          "IVF-PQ indexing architecture diagram"
+        ]
+      },
+      "seconds": 1.498
+    },
+    {
+      "model": "deepseek:deepseek-flash",
+      "kind": "intent_production_thinking_disabled",
+      "transport": "direct same configured provider endpoint",
+      "thinking": {
+        "type": "disabled"
+      },
+      "success": true,
+      "transport_success": true,
+      "finish_reason": "stop",
+      "content_chars": 981,
+      "reasoning_chars": 0,
+      "parsed_json": {
+        "reasoning": "用户明确要求比较HNSW与IVF-PQ两种向量索引算法在召回率和内存开销方面的差异，并明确要求提供架构图，同时排除音频和视频。查询包含两个对比维度，需要结构化对比分析，属于比较型意图。",
+        "intent_type": "comparison",
+        "is_complex": true,
+        "visual_intent": "explicit_demand",
+        "visual_reasoning": "用户明确要求'给出架构图'，属于显式的视觉请求，必须判定为explicit_demand。架构图能直观展示两种索引的数据结构和算法流程差异，视觉信息增益极高。",
+        "audio_intent": "unnecessary",
+        "audio_reasoning": "用户明确表示'不要音频'，且查询内容为技术算法对比，与音频载体无关，音频无法提供任何信息增益。",
+        "video_intent": "unnecessary",
+        "video_reasoning": "用户明确表示'不要视频'，且查询内容为静态算法对比，视频无法提供比文本和架构图更优的信息传达效果。",
+        "search_strategies": {
+          "dense_query": "比较HNSW和IVF-PQ两种向量索引算法在召回率和内存开销方面的性能差异，并提供架构图",
+          "sparse_keywords": [
+            "HNSW",
+            "IVF-PQ",
+            "召回率",
+            "内存开销",
+            "向量索引",
+            "近似最近邻搜索",
+            "架构图"
+          ],
+          "multi_view_queries": [
+            "HNSW与IVF-PQ在召回率和内存占用上的对比分析",
+            "向量检索算法HNSW和IVF-PQ的性能指标比较",
+            "HNSW和IVF-PQ两种ANN索引的召回率与内存消耗差异"
+          ]
+        },
+        "sub_queries": [
+          "HNSW算法的召回率表现和内存开销特点",
+          "IVF-PQ算法的召回率表现和内存开销特点",
+          "HNSW与IVF-PQ在召回率和内存开销方面的对比分析",
+          "HNSW与IVF-PQ的架构图"
+        ]
+      },
+      "production_parsed": {
+        "original_query": "请比较 HNSW 与 IVF-PQ 的召回率和内存开销，给出架构图，但不要音频或视频。",
+        "reasoning": "用户明确要求比较HNSW与IVF-PQ两种向量索引算法在召回率和内存开销方面的差异，并明确要求提供架构图，同时排除音频和视频。查询包含两个对比维度，需要结构化对比分析，属于比较型意图。",
+        "intent_type": "comparison",
+        "is_complex": true,
+        "visual_intent": "explicit_demand",
+        "visual_reasoning": "用户明确要求'给出架构图'，属于显式的视觉请求，必须判定为explicit_demand。架构图能直观展示两种索引的数据结构和算法流程差异，视觉信息增益极高。",
+        "audio_intent": "explicit_demand",
+        "audio_reasoning": "检测到明确的音频请求关键词，优先判断为显式需求",
+        "video_intent": "explicit_demand",
+        "video_reasoning": "检测到明确的视频请求关键词（如'结合视频'、'看视频'等），优先判断为显式需求",
+        "search_strategies": {
+          "dense_query": "比较HNSW和IVF-PQ两种向量索引算法在召回率和内存开销方面的性能差异，并提供架构图",
+          "sparse_keywords": [
+            "HNSW",
+            "IVF-PQ",
+            "召回率",
+            "内存开销",
+            "向量索引",
+            "近似最近邻搜索",
+            "架构图"
+          ],
+          "multi_view_queries": [
+            "HNSW与IVF-PQ在召回率和内存占用上的对比分析",
+            "向量检索算法HNSW和IVF-PQ的性能指标比较",
+            "HNSW和IVF-PQ两种ANN索引的召回率与内存消耗差异"
+          ]
+        },
+        "sub_queries": [
+          "HNSW算法的召回率表现和内存开销特点",
+          "IVF-PQ算法的召回率表现和内存开销特点",
+          "HNSW与IVF-PQ在召回率和内存开销方面的对比分析",
+          "HNSW与IVF-PQ的架构图"
+        ],
+        "jev_decision": {
+          "mode": "off",
+          "accepted": false
+        }
+      },
+      "seconds": 1.943
+    }
+  ],
+  "catalog": {
+    "ttl_seconds": 600.0,
+    "last_refresh_started_at": 1790527038.058524,
+    "last_refresh_finished_at": 1790527038.583236,
+    "last_refresh_forced": true,
+    "providers": {
+      "aliyun_bailian": {
+        "ok": true,
+        "count": 261,
+        "last_success_at": 1790527038.206655,
+        "error": null,
+        "source": "https://dashscope.aliyuncs.com/compatible-mode/v1/models",
+        "started_at": 1790527038.068952,
+        "finished_at": 1790527038.206655,
+        "stale": false
+      },
+      "deepseek": {
+        "ok": true,
+        "count": 2,
+        "last_success_at": 1790527038.406938,
+        "error": null,
+        "source": "https://api.deepseek.com/v1/models",
+        "started_at": 1790527038.0687392,
+        "finished_at": 1790527038.406938,
+        "stale": false
+      },
+      "siliconflow": {
+        "ok": true,
+        "count": 98,
+        "last_success_at": 1790527038.4859142,
+        "error": null,
+        "source": "https://api.siliconflow.cn/v1/models",
+        "started_at": 1790527038.0669708,
+        "finished_at": 1790527038.485915,
+        "stale": false
+      },
+      "openrouter": {
+        "ok": true,
+        "count": 628,
+        "last_success_at": 1790527038.581706,
+        "error": null,
+        "source": "https://openrouter.ai/api/v1/models?output_modalities=all",
+        "started_at": 1790527038.069022,
+        "finished_at": 1790527038.581707,
+        "stale": false
+      }
+    }
+  },
+  "embedding_catalog": [
+    {
+      "model": "Qwen/Qwen3-Embedding-8B",
+      "provider": "siliconflow",
+      "raw_model": "Qwen/Qwen3-Embedding-8B",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:qwen/qwen3-embedding-8b",
+      "provider": "openrouter",
+      "raw_model": "qwen/qwen3-embedding-8b",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "aliyun_bailian:text-embedding-v4",
+      "provider": "aliyun_bailian",
+      "raw_model": "text-embedding-v4",
+      "catalog_presence": "missing",
+      "type": "embedding"
+    },
+    {
+      "model": "aliyun_bailian:qwen3-vl-embedding",
+      "provider": "aliyun_bailian",
+      "raw_model": "qwen3-vl-embedding",
+      "catalog_presence": "missing",
+      "type": "embedding"
+    },
+    {
+      "model": "Qwen/Qwen3-VL-Embedding-8B",
+      "provider": "siliconflow",
+      "raw_model": "Qwen/Qwen3-VL-Embedding-8B",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "Qwen/Qwen3-Embedding-4B",
+      "provider": "siliconflow",
+      "raw_model": "Qwen/Qwen3-Embedding-4B",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "provider": "siliconflow",
+      "raw_model": "Qwen/Qwen3-Embedding-0.6B",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "BAAI/bge-m3",
+      "provider": "siliconflow",
+      "raw_model": "BAAI/bge-m3",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "BAAI/bge-large-en-v1.5",
+      "provider": "siliconflow",
+      "raw_model": "BAAI/bge-large-en-v1.5",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "BAAI/bge-large-zh-v1.5",
+      "provider": "siliconflow",
+      "raw_model": "BAAI/bge-large-zh-v1.5",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "Pro/BAAI/bge-m3",
+      "provider": "siliconflow",
+      "raw_model": "Pro/BAAI/bge-m3",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "aliyun_bailian:qwen3.7-text-embedding-flash",
+      "provider": "aliyun_bailian",
+      "raw_model": "qwen3.7-text-embedding-flash",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "aliyun_bailian:qwen3.7-text-embedding",
+      "provider": "aliyun_bailian",
+      "raw_model": "qwen3.7-text-embedding",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:liquid/lfm-2.5-embedding-350m:free",
+      "provider": "openrouter",
+      "raw_model": "liquid/lfm-2.5-embedding-350m:free",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:voyageai/voyage-code-4",
+      "provider": "openrouter",
+      "raw_model": "voyageai/voyage-code-4",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:voyageai/voyage-multimodal-3.5",
+      "provider": "openrouter",
+      "raw_model": "voyageai/voyage-multimodal-3.5",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:voyageai/voyage-4-lite",
+      "provider": "openrouter",
+      "raw_model": "voyageai/voyage-4-lite",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:voyageai/voyage-4",
+      "provider": "openrouter",
+      "raw_model": "voyageai/voyage-4",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:voyageai/voyage-4-large",
+      "provider": "openrouter",
+      "raw_model": "voyageai/voyage-4-large",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:nvidia/nemotron-3-embed-1b:free",
+      "provider": "openrouter",
+      "raw_model": "nvidia/nemotron-3-embed-1b:free",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:google/gemini-embedding-2",
+      "provider": "openrouter",
+      "raw_model": "google/gemini-embedding-2",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:google/gemini-embedding-2:batch",
+      "provider": "openrouter",
+      "raw_model": "google/gemini-embedding-2:batch",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:google/gemini-embedding-2-preview",
+      "provider": "openrouter",
+      "raw_model": "google/gemini-embedding-2-preview",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:perplexity/pplx-embed-v1-4b",
+      "provider": "openrouter",
+      "raw_model": "perplexity/pplx-embed-v1-4b",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:perplexity/pplx-embed-v1-0.6b",
+      "provider": "openrouter",
+      "raw_model": "perplexity/pplx-embed-v1-0.6b",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:nvidia/llama-nemotron-embed-vl-1b-v2:free",
+      "provider": "openrouter",
+      "raw_model": "nvidia/llama-nemotron-embed-vl-1b-v2:free",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:thenlper/gte-base",
+      "provider": "openrouter",
+      "raw_model": "thenlper/gte-base",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:thenlper/gte-large",
+      "provider": "openrouter",
+      "raw_model": "thenlper/gte-large",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:intfloat/e5-large-v2",
+      "provider": "openrouter",
+      "raw_model": "intfloat/e5-large-v2",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:intfloat/e5-base-v2",
+      "provider": "openrouter",
+      "raw_model": "intfloat/e5-base-v2",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:intfloat/multilingual-e5-large",
+      "provider": "openrouter",
+      "raw_model": "intfloat/multilingual-e5-large",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:sentence-transformers/paraphrase-minilm-l6-v2",
+      "provider": "openrouter",
+      "raw_model": "sentence-transformers/paraphrase-minilm-l6-v2",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:sentence-transformers/all-minilm-l12-v2",
+      "provider": "openrouter",
+      "raw_model": "sentence-transformers/all-minilm-l12-v2",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:baai/bge-base-en-v1.5",
+      "provider": "openrouter",
+      "raw_model": "baai/bge-base-en-v1.5",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "provider": "openrouter",
+      "raw_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:baai/bge-large-en-v1.5",
+      "provider": "openrouter",
+      "raw_model": "baai/bge-large-en-v1.5",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:baai/bge-m3",
+      "provider": "openrouter",
+      "raw_model": "baai/bge-m3",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:sentence-transformers/all-mpnet-base-v2",
+      "provider": "openrouter",
+      "raw_model": "sentence-transformers/all-mpnet-base-v2",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:sentence-transformers/all-minilm-l6-v2",
+      "provider": "openrouter",
+      "raw_model": "sentence-transformers/all-minilm-l6-v2",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:mistralai/mistral-embed-2312",
+      "provider": "openrouter",
+      "raw_model": "mistralai/mistral-embed-2312",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:google/gemini-embedding-001",
+      "provider": "openrouter",
+      "raw_model": "google/gemini-embedding-001",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:openai/text-embedding-ada-002",
+      "provider": "openrouter",
+      "raw_model": "openai/text-embedding-ada-002",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:openai/text-embedding-ada-002:batch",
+      "provider": "openrouter",
+      "raw_model": "openai/text-embedding-ada-002:batch",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:mistralai/codestral-embed-2505",
+      "provider": "openrouter",
+      "raw_model": "mistralai/codestral-embed-2505",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:openai/text-embedding-3-large",
+      "provider": "openrouter",
+      "raw_model": "openai/text-embedding-3-large",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:openai/text-embedding-3-large:batch",
+      "provider": "openrouter",
+      "raw_model": "openai/text-embedding-3-large:batch",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:openai/text-embedding-3-small",
+      "provider": "openrouter",
+      "raw_model": "openai/text-embedding-3-small",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:openai/text-embedding-3-small:batch",
+      "provider": "openrouter",
+      "raw_model": "openai/text-embedding-3-small:batch",
+      "catalog_presence": "present",
+      "type": "embedding"
+    },
+    {
+      "model": "openrouter:qwen/qwen3-embedding-4b",
+      "provider": "openrouter",
+      "raw_model": "qwen/qwen3-embedding-4b",
+      "catalog_presence": "present",
+      "type": "embedding"
+    }
+  ],
+  "same_embedding_candidates": [
+    {
+      "model": "openrouter:qwen/qwen3-embedding-8b",
+      "provider": "openrouter",
+      "raw_model": "qwen/qwen3-embedding-8b",
+      "catalog_presence": "present",
+      "type": "embedding"
+    }
+  ],
+  "embedding_followup": "Completed bounded two-text comparison; no production modification.",
+  "embedding_alignment": {
+    "reference": "Qwen/Qwen3-Embedding-8B",
+    "candidate": "openrouter:qwen/qwen3-embedding-8b",
+    "same_weights_verified": false,
+    "note": "Matching catalog model names do not prove identical weights or serving preprocessing.",
+    "cosine_aligned_pairs": [
+      0.9999173762801516,
+      0.9999348625607767
+    ],
+    "dimensions": 4096,
+    "two_sample_alignment_pass": true
+  },
+  "recommendations": {
+    "primary_text": "deepseek:deepseek-flash",
+    "cross_provider_backup": "aliyun_bailian:qwen3.5-flash with provider payload enable_thinking=false",
+    "embedding": "Keep original embedding provider until larger frozen retrieval equivalence verification; 2 same-dimension pairs had cosine >0.9999 but identical weights not independently confirmed."
+  }
+}

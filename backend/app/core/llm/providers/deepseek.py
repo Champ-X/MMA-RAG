@@ -63,6 +63,12 @@ class DeepSeekProvider(BaseLLMProvider):
             "temperature": kwargs.get("temperature", 0.7),
             "max_tokens": max_tokens,
         }
+        # Interactive Flash tasks need the output budget for the answer/JSON,
+        # rather than exhausting it on hidden reasoning before any content.
+        if "thinking" in kwargs or model == "deepseek-flash":
+            payload["thinking"] = kwargs.get("thinking", {"type": "disabled"})
+        if "response_format" in kwargs:
+            payload["response_format"] = kwargs["response_format"]
 
         # reasoner 为思考模式，需更长超时
         timeout = float(kwargs.get("timeout", 90.0 if "reasoner" in model.lower() else 30.0))
@@ -109,6 +115,10 @@ class DeepSeekProvider(BaseLLMProvider):
             "temperature": kwargs.get("temperature", 0.7),
             "max_tokens": max_tokens,
         }
+        if "thinking" in kwargs or model == "deepseek-flash":
+            payload["thinking"] = kwargs.get("thinking", {"type": "disabled"})
+        if "response_format" in kwargs:
+            payload["response_format"] = kwargs["response_format"]
         timeout = float(kwargs.get("timeout", 120.0 if "reasoner" in model.lower() else 60.0))
         try:
             async with httpx.AsyncClient() as client:

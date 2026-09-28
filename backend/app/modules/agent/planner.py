@@ -140,6 +140,7 @@ class AgentPlanner:
             model=model,
             temperature=0.1,
             max_tokens=900,
+            response_format={"type": "json_object"},
         )
         if not result.success:
             logger.warning("Agent planner 调用失败: %s", result.error)

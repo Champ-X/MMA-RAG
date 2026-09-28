@@ -1,0 +1,157 @@
+{
+  "captured_at": 1790527714.617238,
+  "scope": "Real production methods and manager/provider transport. Synthetic inputs only. No KB writes or persistent settings overrides. Outer deadline 30s per task; concurrency 2.",
+  "routes": {
+    "intent_recognition": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": [
+        "aliyun_bailian:qwen3.5-flash"
+      ]
+    },
+    "query_rewriting": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": [
+        "aliyun_bailian:qwen3.5-flash"
+      ]
+    },
+    "image_captioning": {
+      "model": "aliyun_bailian:qwen3-vl-plus-2025-12-19",
+      "fallbacks": [
+        "Qwen/Qwen3-Omni-30B-A3B-Captioner",
+        "Qwen/Qwen3-Omni-30B-A3B-Instruct"
+      ]
+    },
+    "document_chunking": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": []
+    },
+    "final_generation": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": [
+        "aliyun_bailian:qwen3.5-flash"
+      ]
+    },
+    "kb_portrait_generation": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": [
+        "aliyun_bailian:qwen3.5-flash"
+      ]
+    },
+    "health_check": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": []
+    },
+    "reranking": {
+      "model": "Qwen/Qwen3-Reranker-8B",
+      "fallbacks": [
+        "Qwen/Qwen3-Reranker-4B",
+        "BAAI/bge-reranker-v2-m3"
+      ]
+    },
+    "embedding": {
+      "model": "Qwen/Qwen3-Embedding-8B",
+      "fallbacks": []
+    },
+    "audio_transcription": {
+      "model": "aliyun_bailian:qwen3-omni-flash",
+      "fallbacks": [
+        "aliyun_bailian:qwen-omni-turbo"
+      ]
+    },
+    "video_parsing": {
+      "model": "aliyun_bailian:qwen3.5-omni-plus-2026-03-15",
+      "fallbacks": [
+        "aliyun_bailian:qwen3-omni-flash",
+        "aliyun_bailian:qwen-omni-turbo"
+      ]
+    }
+  },
+  "probes": [
+    {
+      "kind": "default_planner",
+      "calls": [
+        {
+          "requested_response_format": {
+            "type": "json_object"
+          },
+          "model_used": "deepseek:deepseek-flash",
+          "fallback_used": false,
+          "success": true,
+          "error_category": null,
+          "status_code": null,
+          "seconds": 0.786,
+          "content_chars": 169,
+          "reasoning_chars": 0,
+          "finish_reason": "stop",
+          "parsed_json": {
+            "action": "search",
+            "reason": "尚无任何证据，需要检索 HNSW 与 IVF-PQ 在召回率、内存开销方面的对比资料，并获取架构图以满足显式视觉需求。",
+            "queries": [
+              "HNSW 与 IVF-PQ 召回率对比",
+              "HNSW 与 IVF-PQ 内存开销对比",
+              "HNSW IVF-PQ 架构图 示意图"
+            ]
+          },
+          "synthetic_response_content": "{\"action\":\"search\",\"reason\":\"尚无任何证据，需要检索 HNSW 与 IVF-PQ 在召回率、内存开销方面的对比资料，并获取架构图以满足显式视觉需求。\",\"queries\":[\"HNSW 与 IVF-PQ 召回率对比\",\"HNSW 与 IVF-PQ 内存开销对比\",\"HNSW IVF-PQ 架构图 示意图\"]}"
+        }
+      ],
+      "production_parsed": {
+        "action": "search",
+        "reason": "尚无任何证据，需要检索 HNSW 与 IVF-PQ 在召回率、内存开销方面的对比资料，并获取架构图以满足显式视觉需求。",
+        "queries": [
+          "HNSW 与 IVF-PQ 召回率对比",
+          "HNSW 与 IVF-PQ 内存开销对比",
+          "HNSW IVF-PQ 架构图 示意图"
+        ]
+      },
+      "success": true,
+      "structured_semantic_pass": true,
+      "seconds": 0.786
+    },
+    {
+      "kind": "qwen_planner",
+      "calls": [
+        {
+          "requested_response_format": {
+            "type": "json_object"
+          },
+          "model_used": "aliyun_bailian:qwen3.5-flash",
+          "fallback_used": false,
+          "success": true,
+          "error_category": null,
+          "status_code": null,
+          "seconds": 1.654,
+          "content_chars": 248,
+          "reasoning_chars": 0,
+          "finish_reason": "stop",
+          "parsed_json": {
+            "action": "search",
+            "reason": "当前无证据，需同时获取HNSW与IVF-PQ的召回率及内存开销对比数据，并生成架构图。根据多模态要求，必须包含显式的视觉检索以获取架构图。",
+            "queries": [
+              "HNSW vs IVF-PQ recall rate and memory overhead comparison",
+              "HNSW indexing architecture diagram",
+              "IVF-PQ indexing architecture diagram"
+            ]
+          },
+          "synthetic_response_content": "{\"action\":\"search\",\"reason\":\"当前无证据，需同时获取HNSW与IVF-PQ的召回率及内存开销对比数据，并生成架构图。根据多模态要求，必须包含显式的视觉检索以获取架构图。\",\"queries\":[\"HNSW vs IVF-PQ recall rate and memory overhead comparison\",\"HNSW indexing architecture diagram\",\"IVF-PQ indexing architecture diagram\"]}"
+        }
+      ],
+      "production_parsed": {
+        "action": "search",
+        "reason": "当前无证据，需同时获取HNSW与IVF-PQ的召回率及内存开销对比数据，并生成架构图。根据多模态要求，必须包含显式的视觉检索以获取架构图。",
+        "queries": [
+          "HNSW vs IVF-PQ recall rate and memory overhead comparison",
+          "HNSW indexing architecture diagram",
+          "IVF-PQ indexing architecture diagram"
+        ]
+      },
+      "success": true,
+      "structured_semantic_pass": true,
+      "seconds": 1.654
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "passed": 2
+  }
+}

@@ -339,6 +339,12 @@ class AliyunBailianProvider(BaseLLMProvider):
             "temperature": kwargs.get("temperature", 0.7),
             "max_tokens": max_tokens,
         }
+        # Flash serves bounded interactive fallbacks. Its upstream thinking
+        # default can spend the whole attempt budget before returning content.
+        if "enable_thinking" in kwargs or model == "qwen3.5-flash":
+            payload["enable_thinking"] = kwargs.get("enable_thinking", False)
+        if "response_format" in kwargs:
+            payload["response_format"] = kwargs["response_format"]
         if "top_p" in kwargs:
             payload["top_p"] = kwargs["top_p"]
         if "top_k" in kwargs:
@@ -392,6 +398,10 @@ class AliyunBailianProvider(BaseLLMProvider):
             "temperature": kwargs.get("temperature", 0.7),
             "max_tokens": max_tokens,
         }
+        if "enable_thinking" in kwargs or model == "qwen3.5-flash":
+            payload["enable_thinking"] = kwargs.get("enable_thinking", False)
+        if "response_format" in kwargs:
+            payload["response_format"] = kwargs["response_format"]
         if "top_p" in kwargs:
             payload["top_p"] = kwargs["top_p"]
         if "top_k" in kwargs:
@@ -513,6 +523,11 @@ class AliyunBailianProvider(BaseLLMProvider):
         if "top_k" in kwargs:
             payload["top_k"] = kwargs["top_k"]
         
+        if "enable_thinking" in kwargs or model == "qwen3.5-flash":
+            payload["enable_thinking"] = kwargs.get("enable_thinking", False)
+        if "response_format" in kwargs:
+            payload["response_format"] = kwargs["response_format"]
+
         # 添加 stream_options 以包含使用统计（可选）
         if "stream_options" in kwargs:
             payload["stream_options"] = kwargs["stream_options"]

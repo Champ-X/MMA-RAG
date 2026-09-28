@@ -1,0 +1,1520 @@
+{
+  "scope": "All registered task routes; synthetic model connectivity. Deduplicated across identical model/kind. Does not validate full task prompts, parsing, long-document chunking or portrait quality.",
+  "captured_at": 1790526526.506239,
+  "git_sha": "a0148c858146a25b4a5f9f9a7b4c5de005e965cc",
+  "live_backend": {
+    "url": "http://127.0.0.1:8000",
+    "pid": 44267,
+    "started_local": "2026-09-27 20:21:10 +08:00"
+  },
+  "routes": {
+    "intent_recognition": {
+      "model": "aliyun_bailian:qwen3.5-plus",
+      "fallbacks": [
+        "deepseek:deepseek-flash",
+        "Pro/moonshotai/Kimi-K2.5"
+      ]
+    },
+    "query_rewriting": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": [
+        "Pro/moonshotai/Kimi-K2.5"
+      ]
+    },
+    "image_captioning": {
+      "model": "aliyun_bailian:qwen3-vl-plus-2025-12-19",
+      "fallbacks": [
+        "Qwen/Qwen3-Omni-30B-A3B-Captioner",
+        "Pro/moonshotai/Kimi-K2.5",
+        "Qwen/Qwen3-Omni-30B-A3B-Instruct"
+      ]
+    },
+    "document_chunking": {
+      "model": "Pro/moonshotai/Kimi-K2.6",
+      "fallbacks": []
+    },
+    "final_generation": {
+      "model": "Pro/moonshotai/Kimi-K2.6",
+      "fallbacks": [
+        "aliyun_bailian:qwen3.5-plus",
+        "deepseek:deepseek-flash",
+        "Pro/moonshotai/Kimi-K2.5"
+      ]
+    },
+    "kb_portrait_generation": {
+      "model": "Pro/moonshotai/Kimi-K2.6",
+      "fallbacks": [
+        "deepseek:deepseek-flash",
+        "Pro/moonshotai/Kimi-K2.5"
+      ]
+    },
+    "health_check": {
+      "model": "deepseek:deepseek-flash",
+      "fallbacks": []
+    },
+    "reranking": {
+      "model": "Qwen/Qwen3-Reranker-8B",
+      "fallbacks": [
+        "Qwen/Qwen3-Reranker-4B",
+        "BAAI/bge-reranker-v2-m3"
+      ]
+    },
+    "embedding": {
+      "model": "Qwen/Qwen3-Embedding-8B",
+      "fallbacks": []
+    },
+    "audio_transcription": {
+      "model": "aliyun_bailian:qwen3-omni-flash",
+      "fallbacks": [
+        "aliyun_bailian:qwen-omni-turbo",
+        "openrouter:google/gemini-3-flash-preview",
+        "openrouter:google/gemini-2.5-flash"
+      ]
+    },
+    "video_parsing": {
+      "model": "aliyun_bailian:qwen3.5-omni-plus-2026-03-15",
+      "fallbacks": [
+        "aliyun_bailian:qwen3-omni-flash",
+        "aliyun_bailian:qwen-omni-turbo"
+      ]
+    }
+  },
+  "live_current_config": {
+    "intent_recognition": {
+      "model": "aliyun_bailian:qwen3.5-plus",
+      "provider": "aliyun_bailian"
+    },
+    "query_rewriting": {
+      "model": "deepseek:deepseek-flash",
+      "provider": "deepseek"
+    },
+    "image_captioning": {
+      "model": "aliyun_bailian:qwen3-vl-plus-2025-12-19",
+      "provider": "aliyun_bailian"
+    },
+    "embedding": {
+      "model": "Qwen/Qwen3-Embedding-8B",
+      "provider": "siliconflow"
+    },
+    "reranking": {
+      "model": "Qwen/Qwen3-Reranker-8B",
+      "provider": "siliconflow"
+    },
+    "audio_transcription": {
+      "model": "aliyun_bailian:qwen3-omni-flash",
+      "provider": "aliyun_bailian"
+    },
+    "video_parsing": {
+      "model": "aliyun_bailian:qwen3.5-omni-plus-2026-03-15",
+      "provider": "aliyun_bailian"
+    },
+    "kb_portrait_generation": {
+      "model": "Pro/moonshotai/Kimi-K2.6",
+      "provider": "siliconflow"
+    },
+    "final_generation": {
+      "model": "Pro/moonshotai/Kimi-K2.6",
+      "provider": "siliconflow"
+    }
+  },
+  "jev_settings": {
+    "config": {
+      "intent_mode": "force",
+      "rerank_mode": "force",
+      "citation_mode": "off",
+      "citation_strategy": "per_unit"
+    },
+    "api_key_configured": true,
+    "model": "jev-1.13.0"
+  },
+  "summary": {
+    "task_count": 11,
+    "primary_available_count": 11,
+    "model_route_slot_count": 29,
+    "unique_model_kind_count": 27,
+    "unprobed_model_kind_count": 0,
+    "new_network_call_count": 0,
+    "unique_registry_model_ids": 16,
+    "direct_network_probes": 24,
+    "direct_network_successes": 21,
+    "direct_network_failures": 3,
+    "cooldown_skips": 3
+  },
+  "probes": [
+    {
+      "model": "Pro/moonshotai/Kimi-K2.5",
+      "kind": "chat",
+      "tasks": [
+        "intent_recognition",
+        "query_rewriting",
+        "image_captioning",
+        "final_generation"
+      ],
+      "success": false,
+      "error_category": "model_disabled",
+      "status_code": 403,
+      "seconds": 0.194,
+      "catalog_presence": "missing"
+    },
+    {
+      "model": "deepseek:deepseek-flash",
+      "kind": "chat",
+      "tasks": [
+        "intent_recognition",
+        "query_rewriting",
+        "final_generation"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": "stop",
+      "seconds": 0.611,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "aliyun_bailian:qwen3-vl-plus-2025-12-19",
+      "kind": "chat",
+      "tasks": [
+        "image_captioning"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": "stop",
+      "seconds": 0.422,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "Qwen/Qwen3-Omni-30B-A3B-Captioner",
+      "kind": "chat",
+      "tasks": [
+        "image_captioning"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": "stop",
+      "seconds": 0.352,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "aliyun_bailian:qwen3-vl-plus-2025-12-19",
+      "kind": "image_captioning",
+      "tasks": [
+        "image_captioning"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": "stop",
+      "seconds": 1.043,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "Pro/moonshotai/Kimi-K2.5",
+      "kind": "image_captioning",
+      "tasks": [
+        "image_captioning"
+      ],
+      "success": false,
+      "error_category": "model_disabled",
+      "status_code": 403,
+      "seconds": 0.0,
+      "catalog_presence": "missing"
+    },
+    {
+      "model": "Qwen/Qwen3-Omni-30B-A3B-Instruct",
+      "kind": "chat",
+      "tasks": [
+        "image_captioning"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": "stop",
+      "seconds": 0.401,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "Qwen/Qwen3-Omni-30B-A3B-Captioner",
+      "kind": "image_captioning",
+      "tasks": [
+        "image_captioning"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": "stop",
+      "seconds": 1.277,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "Qwen/Qwen3-Omni-30B-A3B-Instruct",
+      "kind": "image_captioning",
+      "tasks": [
+        "image_captioning"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": "stop",
+      "seconds": 0.431,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "Qwen/Qwen3-Reranker-8B",
+      "kind": "reranking",
+      "tasks": [
+        "reranking"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "result_count": 2,
+      "seconds": 0.306,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "Qwen/Qwen3-Reranker-4B",
+      "kind": "reranking",
+      "tasks": [
+        "reranking"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "result_count": 2,
+      "seconds": 0.727,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "BAAI/bge-reranker-v2-m3",
+      "kind": "reranking",
+      "tasks": [
+        "reranking"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "result_count": 2,
+      "seconds": 0.29,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "Qwen/Qwen3-Embedding-8B",
+      "kind": "embedding",
+      "tasks": [
+        "embedding"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "dimensions": 4096,
+      "seconds": 0.472,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "aliyun_bailian:qwen3-omni-flash",
+      "kind": "chat",
+      "tasks": [
+        "audio_transcription",
+        "video_parsing"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": "stop",
+      "seconds": 0.285,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "aliyun_bailian:qwen3.5-plus",
+      "kind": "chat",
+      "tasks": [
+        "intent_recognition",
+        "final_generation"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": "stop",
+      "seconds": 4.996,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "aliyun_bailian:qwen-omni-turbo",
+      "kind": "chat",
+      "tasks": [
+        "audio_transcription",
+        "video_parsing"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": "stop",
+      "seconds": 0.286,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "aliyun_bailian:qwen3-omni-flash",
+      "kind": "audio_transcription",
+      "tasks": [
+        "audio_transcription"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": "stop",
+      "seconds": 0.927,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "openrouter:google/gemini-3-flash-preview",
+      "kind": "chat",
+      "tasks": [
+        "audio_transcription"
+      ],
+      "success": false,
+      "error_category": "access_denied",
+      "status_code": 403,
+      "seconds": 0.423,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "openrouter:google/gemini-3-flash-preview",
+      "kind": "audio_transcription",
+      "tasks": [
+        "audio_transcription"
+      ],
+      "success": false,
+      "error_category": "access_denied",
+      "status_code": 403,
+      "seconds": 0.0,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "openrouter:google/gemini-2.5-flash",
+      "kind": "chat",
+      "tasks": [
+        "audio_transcription"
+      ],
+      "success": false,
+      "error_category": "access_denied",
+      "status_code": 403,
+      "seconds": 0.239,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "openrouter:google/gemini-2.5-flash",
+      "kind": "audio_transcription",
+      "tasks": [
+        "audio_transcription"
+      ],
+      "success": false,
+      "error_category": "access_denied",
+      "status_code": 403,
+      "seconds": 0.0,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "aliyun_bailian:qwen-omni-turbo",
+      "kind": "audio_transcription",
+      "tasks": [
+        "audio_transcription"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": "stop",
+      "seconds": 1.174,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "aliyun_bailian:qwen3.5-omni-plus-2026-03-15",
+      "kind": "chat",
+      "tasks": [
+        "video_parsing"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": "stop",
+      "seconds": 0.672,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "aliyun_bailian:qwen3-omni-flash",
+      "kind": "video_parsing",
+      "tasks": [
+        "video_parsing"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": null,
+      "seconds": 1.933,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "aliyun_bailian:qwen3.5-omni-plus-2026-03-15",
+      "kind": "video_parsing",
+      "tasks": [
+        "video_parsing"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": null,
+      "seconds": 2.421,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "aliyun_bailian:qwen-omni-turbo",
+      "kind": "video_parsing",
+      "tasks": [
+        "video_parsing"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": null,
+      "seconds": 0.789,
+      "catalog_presence": "present"
+    },
+    {
+      "model": "Pro/moonshotai/Kimi-K2.6",
+      "kind": "chat",
+      "tasks": [
+        "final_generation"
+      ],
+      "success": true,
+      "error_category": null,
+      "status_code": null,
+      "has_content": true,
+      "finish_reason": "stop",
+      "seconds": 7.924,
+      "catalog_presence": "present"
+    }
+  ],
+  "probe_model_health": [
+    {
+      "provider": "siliconflow",
+      "raw_model": "Pro/moonshotai/Kimi-K2.5",
+      "method": "chat_completion",
+      "checked_at": 1790526398.686225,
+      "duration_seconds": 0.1943,
+      "success": false,
+      "retry_after": 1790526998.686225,
+      "success_count": 0,
+      "failure_count": 1,
+      "category": "model_disabled",
+      "status_code": 403,
+      "provider_code": 30003,
+      "cooldown_seconds": 600,
+      "scope": "model",
+      "cooling_down": true
+    },
+    {
+      "provider": "deepseek",
+      "raw_model": "deepseek-flash",
+      "method": "chat_completion",
+      "checked_at": 1790526399.0956612,
+      "duration_seconds": 0.6108,
+      "success": true,
+      "retry_after": 0,
+      "success_count": 1,
+      "failure_count": 0,
+      "cooling_down": false
+    },
+    {
+      "provider": "aliyun_bailian",
+      "raw_model": "qwen3-vl-plus-2025-12-19",
+      "method": "chat_completion",
+      "checked_at": 1790526400.138994,
+      "duration_seconds": 1.0433,
+      "success": true,
+      "retry_after": 0,
+      "success_count": 2,
+      "failure_count": 0,
+      "cooling_down": false
+    },
+    {
+      "provider": "siliconflow",
+      "raw_model": "Qwen/Qwen3-Omni-30B-A3B-Captioner",
+      "method": "chat_completion",
+      "checked_at": 1790526400.7369852,
+      "duration_seconds": 1.2773,
+      "success": true,
+      "retry_after": 0,
+      "success_count": 2,
+      "failure_count": 0,
+      "cooling_down": false
+    },
+    {
+      "provider": "siliconflow",
+      "raw_model": "Qwen/Qwen3-Omni-30B-A3B-Instruct",
+      "method": "chat_completion",
+      "checked_at": 1790526400.9711108,
+      "duration_seconds": 0.4305,
+      "success": true,
+      "retry_after": 0,
+      "success_count": 2,
+      "failure_count": 0,
+      "cooling_down": false
+    },
+    {
+      "provider": "siliconflow",
+      "raw_model": "Qwen/Qwen3-Reranker-8B",
+      "method": "rerank",
+      "checked_at": 1790526401.277049,
+      "duration_seconds": 0.3059,
+      "success": true,
+      "retry_after": 0,
+      "success_count": 1,
+      "failure_count": 0,
+      "cooling_down": false
+    },
+    {
+      "provider": "siliconflow",
+      "raw_model": "Qwen/Qwen3-Reranker-4B",
+      "method": "rerank",
+      "checked_at": 1790526402.0044749,
+      "duration_seconds": 0.7273,
+      "success": true,
+      "retry_after": 0,
+      "success_count": 1,
+      "failure_count": 0,
+      "cooling_down": false
+    },
+    {
+      "provider": "siliconflow",
+      "raw_model": "BAAI/bge-reranker-v2-m3",
+      "method": "rerank",
+      "checked_at": 1790526402.294205,
+      "duration_seconds": 0.2896,
+      "success": true,
+      "retry_after": 0,
+      "success_count": 1,
+      "failure_count": 0,
+      "cooling_down": false
+    },
+    {
+      "provider": "siliconflow",
+      "raw_model": "Qwen/Qwen3-Embedding-8B",
+      "method": "embed_texts",
+      "checked_at": 1790526402.766552,
+      "duration_seconds": 0.4721,
+      "success": true,
+      "retry_after": 0,
+      "success_count": 1,
+      "failure_count": 0,
+      "cooling_down": false
+    },
+    {
+      "provider": "aliyun_bailian",
+      "raw_model": "qwen3-omni-flash",
+      "method": "chat_completion",
+      "checked_at": 1790526407.246437,
+      "duration_seconds": 1.9328,
+      "success": true,
+      "retry_after": 0,
+      "success_count": 3,
+      "failure_count": 0,
+      "cooling_down": false
+    },
+    {
+      "provider": "aliyun_bailian",
+      "raw_model": "qwen3.5-plus",
+      "method": "chat_completion",
+      "checked_at": 1790526403.472147,
+      "duration_seconds": 4.9958,
+      "success": true,
+      "retry_after": 0,
+      "success_count": 1,
+      "failure_count": 0,
+      "cooling_down": false
+    },
+    {
+      "provider": "aliyun_bailian",
+      "raw_model": "qwen-omni-turbo",
+      "method": "chat_completion",
+      "checked_at": 1790526408.034993,
+      "duration_seconds": 0.7885,
+      "success": true,
+      "retry_after": 0,
+      "success_count": 3,
+      "failure_count": 0,
+      "cooling_down": false
+    },
+    {
+      "provider": "openrouter",
+      "raw_model": "google/gemini-3-flash-preview",
+      "method": "chat_completion",
+      "checked_at": 1790526404.40084,
+      "duration_seconds": 0.4215,
+      "success": false,
+      "retry_after": 1790527004.40084,
+      "success_count": 0,
+      "failure_count": 1,
+      "category": "access_denied",
+      "status_code": 403,
+      "provider_code": 403,
+      "cooldown_seconds": 600,
+      "scope": "model",
+      "cooling_down": true
+    },
+    {
+      "provider": "openrouter",
+      "raw_model": "google/gemini-2.5-flash",
+      "method": "chat_completion",
+      "checked_at": 1790526404.641154,
+      "duration_seconds": 0.2393,
+      "success": false,
+      "retry_after": 1790527004.641154,
+      "success_count": 0,
+      "failure_count": 1,
+      "category": "access_denied",
+      "status_code": 403,
+      "provider_code": 403,
+      "cooldown_seconds": 600,
+      "scope": "model",
+      "cooling_down": true
+    },
+    {
+      "provider": "aliyun_bailian",
+      "raw_model": "qwen3.5-omni-plus-2026-03-15",
+      "method": "chat_completion",
+      "checked_at": 1790526407.353549,
+      "duration_seconds": 2.4205,
+      "success": true,
+      "retry_after": 0,
+      "success_count": 2,
+      "failure_count": 0,
+      "cooling_down": false
+    },
+    {
+      "provider": "siliconflow",
+      "raw_model": "Pro/moonshotai/Kimi-K2.6",
+      "method": "chat_completion",
+      "checked_at": 1790526408.660699,
+      "duration_seconds": 7.9237,
+      "success": true,
+      "retry_after": 0,
+      "success_count": 1,
+      "failure_count": 0,
+      "cooling_down": false
+    }
+  ],
+  "coverage": [
+    {
+      "task": "intent_recognition",
+      "primary_available": true,
+      "models": [
+        {
+          "role": "primary",
+          "model": "aliyun_bailian:qwen3.5-plus",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 14,
+              "success": true,
+              "seconds": 4.996,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "deepseek:deepseek-flash",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 1,
+              "success": true,
+              "seconds": 0.611,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "Pro/moonshotai/Kimi-K2.5",
+          "model_available": false,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 0,
+              "success": false,
+              "seconds": 0.194,
+              "error_category": "model_disabled",
+              "status_code": 403,
+              "catalog_presence": "missing",
+              "has_content": null,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task": "query_rewriting",
+      "primary_available": true,
+      "models": [
+        {
+          "role": "primary",
+          "model": "deepseek:deepseek-flash",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 1,
+              "success": true,
+              "seconds": 0.611,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "Pro/moonshotai/Kimi-K2.5",
+          "model_available": false,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 0,
+              "success": false,
+              "seconds": 0.194,
+              "error_category": "model_disabled",
+              "status_code": 403,
+              "catalog_presence": "missing",
+              "has_content": null,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task": "image_captioning",
+      "primary_available": true,
+      "models": [
+        {
+          "role": "primary",
+          "model": "aliyun_bailian:qwen3-vl-plus-2025-12-19",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 2,
+              "success": true,
+              "seconds": 0.422,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            },
+            {
+              "kind": "image_captioning",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 4,
+              "success": true,
+              "seconds": 1.043,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "Qwen/Qwen3-Omni-30B-A3B-Captioner",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 3,
+              "success": true,
+              "seconds": 0.352,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            },
+            {
+              "kind": "image_captioning",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 7,
+              "success": true,
+              "seconds": 1.277,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "Pro/moonshotai/Kimi-K2.5",
+          "model_available": false,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 0,
+              "success": false,
+              "seconds": 0.194,
+              "error_category": "model_disabled",
+              "status_code": 403,
+              "catalog_presence": "missing",
+              "has_content": null,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            },
+            {
+              "kind": "image_captioning",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 5,
+              "success": false,
+              "seconds": 0.0,
+              "error_category": "model_disabled",
+              "status_code": 403,
+              "catalog_presence": "missing",
+              "has_content": null,
+              "direct_network_call": false,
+              "note": "cooldown short-circuit following actual HTTP 403 in chat probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "Qwen/Qwen3-Omni-30B-A3B-Instruct",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 6,
+              "success": true,
+              "seconds": 0.401,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            },
+            {
+              "kind": "image_captioning",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 8,
+              "success": true,
+              "seconds": 0.431,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task": "document_chunking",
+      "primary_available": true,
+      "models": [
+        {
+          "role": "primary",
+          "model": "Pro/moonshotai/Kimi-K2.6",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 26,
+              "success": true,
+              "seconds": 7.924,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task": "final_generation",
+      "primary_available": true,
+      "models": [
+        {
+          "role": "primary",
+          "model": "Pro/moonshotai/Kimi-K2.6",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 26,
+              "success": true,
+              "seconds": 7.924,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "aliyun_bailian:qwen3.5-plus",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 14,
+              "success": true,
+              "seconds": 4.996,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "deepseek:deepseek-flash",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 1,
+              "success": true,
+              "seconds": 0.611,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "Pro/moonshotai/Kimi-K2.5",
+          "model_available": false,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 0,
+              "success": false,
+              "seconds": 0.194,
+              "error_category": "model_disabled",
+              "status_code": 403,
+              "catalog_presence": "missing",
+              "has_content": null,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task": "kb_portrait_generation",
+      "primary_available": true,
+      "models": [
+        {
+          "role": "primary",
+          "model": "Pro/moonshotai/Kimi-K2.6",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 26,
+              "success": true,
+              "seconds": 7.924,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "deepseek:deepseek-flash",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 1,
+              "success": true,
+              "seconds": 0.611,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "Pro/moonshotai/Kimi-K2.5",
+          "model_available": false,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 0,
+              "success": false,
+              "seconds": 0.194,
+              "error_category": "model_disabled",
+              "status_code": 403,
+              "catalog_presence": "missing",
+              "has_content": null,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task": "health_check",
+      "primary_available": true,
+      "models": [
+        {
+          "role": "primary",
+          "model": "deepseek:deepseek-flash",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 1,
+              "success": true,
+              "seconds": 0.611,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task": "reranking",
+      "primary_available": true,
+      "models": [
+        {
+          "role": "primary",
+          "model": "Qwen/Qwen3-Reranker-8B",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "reranking",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 9,
+              "success": true,
+              "seconds": 0.306,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": null,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "Qwen/Qwen3-Reranker-4B",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "reranking",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 10,
+              "success": true,
+              "seconds": 0.727,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": null,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "BAAI/bge-reranker-v2-m3",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "reranking",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 11,
+              "success": true,
+              "seconds": 0.29,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": null,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task": "embedding",
+      "primary_available": true,
+      "models": [
+        {
+          "role": "primary",
+          "model": "Qwen/Qwen3-Embedding-8B",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "embedding",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 12,
+              "success": true,
+              "seconds": 0.472,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": null,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task": "audio_transcription",
+      "primary_available": true,
+      "models": [
+        {
+          "role": "primary",
+          "model": "aliyun_bailian:qwen3-omni-flash",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 13,
+              "success": true,
+              "seconds": 0.285,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            },
+            {
+              "kind": "audio_transcription",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 16,
+              "success": true,
+              "seconds": 0.927,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "aliyun_bailian:qwen-omni-turbo",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 15,
+              "success": true,
+              "seconds": 0.286,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            },
+            {
+              "kind": "audio_transcription",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 21,
+              "success": true,
+              "seconds": 1.174,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "openrouter:google/gemini-3-flash-preview",
+          "model_available": false,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 17,
+              "success": false,
+              "seconds": 0.423,
+              "error_category": "access_denied",
+              "status_code": 403,
+              "catalog_presence": "present",
+              "has_content": null,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            },
+            {
+              "kind": "audio_transcription",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 18,
+              "success": false,
+              "seconds": 0.0,
+              "error_category": "access_denied",
+              "status_code": 403,
+              "catalog_presence": "present",
+              "has_content": null,
+              "direct_network_call": false,
+              "note": "cooldown short-circuit following actual HTTP 403 in chat probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "openrouter:google/gemini-2.5-flash",
+          "model_available": false,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 19,
+              "success": false,
+              "seconds": 0.239,
+              "error_category": "access_denied",
+              "status_code": 403,
+              "catalog_presence": "present",
+              "has_content": null,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            },
+            {
+              "kind": "audio_transcription",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 20,
+              "success": false,
+              "seconds": 0.0,
+              "error_category": "access_denied",
+              "status_code": 403,
+              "catalog_presence": "present",
+              "has_content": null,
+              "direct_network_call": false,
+              "note": "cooldown short-circuit following actual HTTP 403 in chat probe"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task": "video_parsing",
+      "primary_available": true,
+      "models": [
+        {
+          "role": "primary",
+          "model": "aliyun_bailian:qwen3.5-omni-plus-2026-03-15",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 22,
+              "success": true,
+              "seconds": 0.672,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            },
+            {
+              "kind": "video_parsing",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 24,
+              "success": true,
+              "seconds": 2.421,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "aliyun_bailian:qwen3-omni-flash",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 13,
+              "success": true,
+              "seconds": 0.285,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            },
+            {
+              "kind": "video_parsing",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 23,
+              "success": true,
+              "seconds": 1.933,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        },
+        {
+          "role": "fallback",
+          "model": "aliyun_bailian:qwen-omni-turbo",
+          "model_available": true,
+          "evidence": [
+            {
+              "kind": "chat",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 15,
+              "success": true,
+              "seconds": 0.286,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            },
+            {
+              "kind": "video_parsing",
+              "source_file": "/tmp/tessmora-model-audit-20260928/probes.json",
+              "source_probe_index": 25,
+              "success": true,
+              "seconds": 0.789,
+              "error_category": null,
+              "status_code": null,
+              "catalog_presence": "present",
+              "has_content": true,
+              "direct_network_call": true,
+              "note": "synthetic input direct model probe"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Failed media entries with zero seconds are cooldown short-circuits after an actual chat HTTP 403; they are not additional network failures.",
+    "Media success uses generated image, pure-tone audio and synthetic video; it demonstrates input transport and nonempty output, not transcription or visual reasoning quality.",
+    "Simple text chat success uses a 512-token OK prompt. Kimi evidence is reused for document_chunking and kb_portrait_generation and DeepSeek evidence for health_check."
+  ]
+}

@@ -2,20 +2,46 @@
 
 No text normalization, approximate matches, cross-request storage, or fallback
 model vectors are cached. A partially cached batch is sent intact to preserve
-provider batching and fallback behavior.
+provider batching and fallback behavior. Query-only deadline failures suppress
+further uncached calls in this request, without cooling down ingestion models.
 """
 
 import asyncio
 import copy
 import json
+import time
 from typing import List, Optional
 
+from app.core.config import settings
+from app.core.logger import get_logger
 from .manager import LLMCallResult
+
+logger = get_logger(__name__)
+
+
+async def _embed_query_batch(manager, texts: List[str]) -> LLMCallResult:
+    registry = getattr(manager, "registry", None)
+    model = registry.get_task_model("embedding") if registry else ""
+    timeout = settings.query_embedding_timeout_seconds
+    started = time.monotonic()
+    try:
+        # Cancellation propagates through LLMManager without recording a
+        # provider failure: this is the query's patience limit, not evidence
+        # that the same model cannot finish an ingestion batch.
+        return await asyncio.wait_for(manager.embed(texts=texts), timeout=timeout)
+    except asyncio.TimeoutError:
+        elapsed = time.monotonic() - started
+        logger.warning("Query embedding deadline exceeded: model={} duration={:.3f}s", model, elapsed)
+        return LLMCallResult(
+            success=False, error=f"Query embedding exceeded {timeout:g}s deadline",
+            duration=elapsed, model_used=model or "", error_category="query_timeout",
+        )
 
 
 class QueryEmbeddingCache:
     def __init__(self):
         self._vectors = {}
+        self._timed_out_signatures = set()
         self._lock = asyncio.Lock()
         self.reused_vectors = 0
 
@@ -24,7 +50,7 @@ class QueryEmbeddingCache:
             registry = getattr(manager, "registry", None)
             model = registry.get_task_model("embedding") if registry else None
             if not model or not texts:
-                return await manager.embed(texts=texts)
+                return await _embed_query_batch(manager, texts)
             # Include configuration so switching provider/dimensions/model in
             # the middle of a request cannot reuse an incompatible vector.
             config = registry.get_model_config(model)
@@ -38,7 +64,15 @@ class QueryEmbeddingCache:
                     model_used=model,
                 )
 
-            result = await manager.embed(texts=texts)
+            if signature in self._timed_out_signatures:
+                return LLMCallResult(
+                    success=False, model_used=model, error_category="query_timeout",
+                    error="Query embedding deadline already exceeded for this request",
+                )
+
+            result = await _embed_query_batch(manager, texts)
+            if result.error_category == "query_timeout":
+                self._timed_out_signatures.add(signature)
             if (
                 result.success
                 and not result.fallback_used
@@ -54,5 +88,5 @@ class QueryEmbeddingCache:
 
 async def embed_queries(manager, texts: List[str], cache: Optional[QueryEmbeddingCache] = None):
     if cache is None:
-        return await manager.embed(texts=texts)
+        return await _embed_query_batch(manager, texts)
     return await cache.embed(manager, texts)
