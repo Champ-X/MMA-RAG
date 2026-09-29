@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import * as Tabs from '@radix-ui/react-tabs'
 import type { LucideIcon } from 'lucide-react'
 import {
   ArrowRight,
@@ -21,6 +22,7 @@ import {
   Video,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import './InteractiveFlowStudio.css'
 
 type JourneyId = 'ingestion' | 'retrieval'
 type FlowTone = 'cyan' | 'green' | 'violet' | 'coral'
@@ -217,13 +219,14 @@ export function InteractiveFlowStudio() {
   const [journeyId, setJourneyId] = useState<JourneyId>('ingestion')
   const [activeStepIndex, setActiveStepIndex] = useState(0)
   const [autoPlaying, setAutoPlaying] = useState(false)
+  const studioRef = useRef<HTMLElement>(null)
   const journey = journeys[journeyId]
   const activeStep = journey.steps[activeStepIndex]
   const isLastStep = activeStepIndex === journey.steps.length - 1
 
   useEffect(() => {
     if (!autoPlaying || isLastStep) return
-    const timer = window.setTimeout(() => setActiveStepIndex((current) => current + 1), 1700)
+    const timer = window.setTimeout(() => setActiveStepIndex((current) => current + 1), 3200)
     return () => window.clearTimeout(timer)
   }, [autoPlaying, activeStepIndex, isLastStep])
 
@@ -231,10 +234,30 @@ export function InteractiveFlowStudio() {
     if (autoPlaying && isLastStep) setAutoPlaying(false)
   }, [autoPlaying, isLastStep])
 
-  const selectJourney = (nextJourney: JourneyId) => {
-    setJourneyId(nextJourney)
+  useEffect(() => {
+    const pauseWhenHidden = () => {
+      if (document.hidden) setAutoPlaying(false)
+    }
+    document.addEventListener('visibilitychange', pauseWhenHidden)
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) setAutoPlaying(false)
+    })
+    if (studioRef.current) observer.observe(studioRef.current)
+    return () => {
+      document.removeEventListener('visibilitychange', pauseWhenHidden)
+      observer.disconnect()
+    }
+  }, [])
+
+  const selectJourney = (nextJourney: string) => {
+    setJourneyId(nextJourney as JourneyId)
     setActiveStepIndex(0)
     setAutoPlaying(false)
+  }
+
+  const togglePlayback = () => {
+    if (!autoPlaying && isLastStep) setActiveStepIndex(0)
+    setAutoPlaying((playing) => !playing)
   }
 
   const statusFor = (stepIndex: number): StepStatus => {
@@ -244,79 +267,40 @@ export function InteractiveFlowStudio() {
   }
 
   return (
-    <section id="flow-lab" className="scroll-mt-24">
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,0.78fr)_minmax(31rem,1.22fr)] lg:items-end lg:gap-14">
-        <div className="max-w-2xl">
-          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2f7f93] dark:text-[#7fc2cf]">Interactive flow lab</p>
-          <h2 className="architecture-display mt-3 text-3xl font-semibold leading-tight tracking-[-0.035em] text-[#102d42] [text-wrap:balance] dark:text-[#edf6f3] sm:text-[2.55rem]">
-            把静态架构，变成能亲手推进的证据旅程
-          </h2>
+    <section ref={studioRef} id="flow-lab" className="flow-studio scroll-mt-24" data-playing={autoPlaying}>
+      <div className="flow-studio-section-heading">
+        <div>
+          <p className="flow-studio-eyebrow">INTERACTIVE EXPLORER</p>
+          <h2 className="architecture-display">沿着证据，走一遍系统。</h2>
         </div>
-        <p className="max-w-2xl text-sm leading-7 text-[#5a7075] dark:text-[#a7bcbd] sm:text-[15px] lg:justify-self-end">
-          选择一条链路，点击任一步，或者用“上一步 / 下一步”观察信号包如何流转。动画只标记此刻正在发生的工作，不会替代真实的系统边界。
+        <p className="flow-studio-section-intro">
+          从原始素材到可引用的回答，逐步观察每个环节接收什么、产出什么。
+          点击节点探索，或播放完整链路。
         </p>
       </div>
 
-      <div className="flow-lab-shell mt-9 overflow-hidden rounded-[30px] border border-[#b5cbc4] bg-[#e9f0ec] shadow-[0_36px_90px_-62px_rgba(16,45,66,0.82)] dark:border-[#2a4d59] dark:bg-[#0a202a]">
-        <div className="flex flex-col gap-4 border-b border-[#c7d7d1] bg-[#f5f8f4]/75 p-4 dark:border-[#294b57] dark:bg-white/[0.02] sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5">
-          <div>
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[#718588] dark:text-[#86a3a5]">Choose a journey</p>
-            <p className="mt-1 text-sm font-semibold text-[#17384a] dark:text-[#e5f0ed]">每次只演示一个可验证的流转动作</p>
-          </div>
-          <div role="tablist" aria-label="交互式架构演示" className="grid w-full grid-cols-2 rounded-full border border-[#bfd1ca] bg-[#e3ebe6] p-1 dark:border-[#31535f] dark:bg-[#071a24] sm:w-auto">
-            {(Object.keys(journeys) as JourneyId[]).map((id) => {
-              const selected = journeyId === id
-              const isIngestion = id === 'ingestion'
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  onClick={() => selectJourney(id)}
-                  className={cn(
-                    'inline-flex min-h-10 items-center justify-center gap-2 rounded-full px-3 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7f93]/70 sm:px-4',
-                    selected
-                      ? isIngestion
-                        ? 'bg-[#e47b4e] text-white shadow-[0_6px_16px_-10px_rgba(189,84,43,0.95)]'
-                        : 'bg-[#102d42] text-white shadow-sm dark:bg-[#dcebe7] dark:text-[#102d42]'
-                      : 'text-[#62787c] hover:text-[#16384a] dark:text-[#9bb1b3] dark:hover:text-white'
-                  )}
-                >
-                  {isIngestion ? <Boxes className="h-3.5 w-3.5" /> : <Search className="h-3.5 w-3.5" />}
-                  <span className="hidden sm:inline">{journeys[id].label}</span>
-                  <span className="sm:hidden">{isIngestion ? '解析' : '检索'}</span>
-                </button>
-              )
-            })}
-          </div>
+      <Tabs.Root value={journeyId} onValueChange={selectJourney} className="flow-studio-shell">
+        <div className="flow-studio-toolbar">
+          <Tabs.List aria-label="选择架构演示链路" className="flow-studio-tabs">
+            {(Object.keys(journeys) as JourneyId[]).map((id) => (
+              <Tabs.Trigger key={id} value={id} className="flow-studio-tab">
+                {id === 'ingestion' ? <Boxes aria-hidden="true" /> : <Search aria-hidden="true" />}
+                <span>{id === 'ingestion' ? '数据解析' : '检索链路'}</span>
+                <span className="flow-studio-tab-code" aria-hidden="true">{id === 'ingestion' ? 'WRITE' : 'READ'}</span>
+              </Tabs.Trigger>
+            ))}
+          </Tabs.List>
+          <span className="flow-studio-demo-label"><span aria-hidden="true" />交互示意 · 非实时任务</span>
         </div>
 
-        <div className="grid xl:grid-cols-[19.5rem_minmax(0,1fr)]">
-          <aside className="border-b border-[#c7d7d1] bg-white/30 p-4 dark:border-[#294b57] dark:bg-white/[0.018] sm:p-5 xl:border-b-0 xl:border-r xl:p-6">
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6d8285] dark:text-[#8ca5a7]">Manual timeline</span>
-              <span className={cn('rounded-full border px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.1em]', toneStyles[activeStep.tone].badge)}>
-                Step {activeStep.marker}
-              </span>
+        <Tabs.Content value={journeyId} className="flow-studio-content">
+          <div className="flow-studio-journey-heading">
+            <div>
+              <p className="flow-studio-eyebrow">{journey.eyebrow}</p>
+              <h3 className="architecture-display">{journey.title}</h3>
+              <p className="flow-studio-journey-description">{journey.description}</p>
             </div>
-            <ol className="relative mt-4 space-y-1.5" aria-label={`${journey.label}步骤`}>
-              <span className="absolute bottom-5 left-[1.1rem] top-5 w-px bg-[#bfcec8] dark:bg-[#31515c]" aria-hidden />
-              {journey.steps.map((step, index) => (
-                <li key={step.id} className="relative">
-                  <TimelineStep
-                    step={step}
-                    status={statusFor(index)}
-                    onSelect={() => {
-                      setActiveStepIndex(index)
-                      setAutoPlaying(false)
-                    }}
-                  />
-                </li>
-              ))}
-            </ol>
-
-            <div className="mt-5 flex items-center gap-2 border-t border-[#c7d7d1] pt-4 dark:border-[#294b57]">
+            <div className="flow-studio-controls" role="group" aria-label="演示播放控制">
               <button
                 type="button"
                 onClick={() => {
@@ -324,25 +308,19 @@ export function InteractiveFlowStudio() {
                   setAutoPlaying(false)
                 }}
                 disabled={activeStepIndex === 0}
-                className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#bfd1ca] bg-white/60 px-2 text-xs font-semibold text-[#3d6268] transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 dark:border-[#31535f] dark:bg-white/[0.04] dark:text-[#b3c9c9] dark:hover:bg-white/[0.08]"
+                className="flow-studio-control"
+                aria-label="上一步"
               >
-                <ChevronLeft className="h-3.5 w-3.5" />
-                上一步
+                <ChevronLeft aria-hidden="true" />
               </button>
               <button
                 type="button"
-                onClick={() => setAutoPlaying((playing) => !playing)}
-                aria-pressed={autoPlaying}
-                className={cn(
-                  'inline-flex min-h-9 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7f93]/70',
-                  autoPlaying
-                    ? 'border-[#cfb7df] bg-[#765c95] text-white'
-                    : 'border-[#bfd1ca] bg-white/60 text-[#506e73] hover:bg-white dark:border-[#31535f] dark:bg-white/[0.04] dark:text-[#b3c9c9] dark:hover:bg-white/[0.08]'
-                )}
-                title={autoPlaying ? '暂停自动演示' : '自动播放演示'}
-                aria-label={autoPlaying ? '暂停自动演示' : '自动播放演示'}
+                onClick={togglePlayback}
+                className="flow-studio-play"
+                aria-label={autoPlaying ? '暂停演示' : isLastStep ? '重新播放演示' : '播放演示'}
               >
-                {autoPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="ml-0.5 h-3.5 w-3.5" />}
+                {autoPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+                <span>{autoPlaying ? '暂停' : isLastStep ? '重播' : '播放'}</span>
               </button>
               <button
                 type="button"
@@ -351,56 +329,57 @@ export function InteractiveFlowStudio() {
                   setAutoPlaying(false)
                 }}
                 disabled={isLastStep}
-                className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#102d42] px-2 text-xs font-semibold text-white transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-[#dcebe7] dark:text-[#102d42]"
+                className="flow-studio-control"
+                aria-label="下一步"
               >
-                下一步
-                <ChevronRight className="h-3.5 w-3.5" />
+                <ChevronRight aria-hidden="true" />
               </button>
             </div>
-          </aside>
-
-          <div className="min-w-0 p-4 sm:p-6 lg:p-7">
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_15rem] lg:items-start">
-              <div>
-                <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[#72878a] dark:text-[#8da6a8]">{journey.eyebrow}</p>
-                <h3 className="architecture-display mt-2 text-2xl font-semibold tracking-[-0.03em] text-[#102d42] dark:text-[#eff7f4] sm:text-[2rem]">{journey.title}</h3>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-[#5e7478] dark:text-[#a3b9bb]">{journey.description}</p>
-              </div>
-              <FlowNarrator step={activeStep} stepIndex={activeStepIndex} total={journey.steps.length} />
-            </div>
-
-            <div className="mt-6">
-              {journeyId === 'ingestion' ? (
-                <IngestionStage activeStepIndex={activeStepIndex} activeStep={activeStep} />
-              ) : (
-                <RetrievalStage activeStepIndex={activeStepIndex} activeStep={activeStep} />
-              )}
-            </div>
-
-            <div className="mt-5 grid gap-3 rounded-[18px] border border-[#c5d6d0] bg-white/52 p-4 dark:border-[#294c57] dark:bg-white/[0.025] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-              <div className="flex min-w-0 items-start gap-3">
-                <span className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border', toneStyles[activeStep.tone].node, toneStyles[activeStep.tone].icon)}>
-                  <activeStep.icon className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-[#193d4d] dark:text-[#e6f0ed]">{activeStep.title}</p>
-                  <p className="mt-1 text-xs leading-5 text-[#62797d] dark:text-[#9bb2b4]">{activeStep.description}</p>
-                </div>
-              </div>
-              <div className="rounded-xl border border-[#c9d9d3] bg-[#eff5f1] px-3 py-2 font-mono text-[10px] leading-5 text-[#567277] dark:border-[#31525e] dark:bg-[#102a34] dark:text-[#aec3c4] sm:max-w-[14rem]">
-                <span className="block text-[#2f7f93] dark:text-[#88cbd5]">{activeStep.signal}</span>
-                {activeStep.detail}
-              </div>
-            </div>
           </div>
-        </div>
-      </div>
+
+          <ol className="flow-studio-timeline" role="list" data-steps={journey.steps.length} aria-label={`${journey.label}步骤`}>
+            {journey.steps.map((step, index) => (
+              <li key={step.id}>
+                <TimelineStep
+                  step={step}
+                  status={statusFor(index)}
+                  onSelect={() => {
+                    setActiveStepIndex(index)
+                    setAutoPlaying(false)
+                  }}
+                />
+              </li>
+            ))}
+          </ol>
+
+          <div className="flow-studio-stage-container">
+            {journeyId === 'ingestion' ? (
+              <IngestionStage activeStepIndex={activeStepIndex} activeStep={activeStep} />
+            ) : (
+              <RetrievalStage activeStepIndex={activeStepIndex} activeStep={activeStep} />
+            )}
+          </div>
+
+          <div className="flow-studio-detail">
+            <div className="flow-studio-detail-copy">
+              <span className="flow-studio-detail-marker" aria-hidden="true">{activeStep.marker}</span>
+              <div>
+                <p className="flow-studio-detail-title">{activeStep.title}</p>
+                <p>{activeStep.description}</p>
+              </div>
+            </div>
+            <FlowNarrator step={activeStep} stepIndex={activeStepIndex} total={journey.steps.length} />
+          </div>
+          <p className="sr-only" aria-live="polite" aria-atomic="true">
+            {journey.label}，第 {activeStepIndex + 1} 步，共 {journey.steps.length} 步：{activeStep.title}
+          </p>
+        </Tabs.Content>
+      </Tabs.Root>
     </section>
   )
 }
 
 function TimelineStep({ step, status, onSelect }: { step: FlowStep; status: StepStatus; onSelect: () => void }) {
-  const Icon = step.icon
   const active = status === 'active'
   const complete = status === 'complete'
 
@@ -409,48 +388,26 @@ function TimelineStep({ step, status, onSelect }: { step: FlowStep; status: Step
       type="button"
       aria-current={active ? 'step' : undefined}
       onClick={onSelect}
-      className={cn(
-        'group relative flex w-full items-center gap-3 rounded-2xl border px-2.5 py-2.5 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7f93]/70',
-        active
-          ? cn('shadow-[0_10px_20px_-18px_rgba(16,45,66,0.72)]', toneStyles[step.tone].node)
-          : complete
-            ? 'border-transparent bg-transparent hover:bg-white/45 dark:hover:bg-white/[0.035]'
-            : 'border-transparent hover:border-[#c4d5cf] hover:bg-white/35 dark:hover:border-[#2d4e59] dark:hover:bg-white/[0.025]'
-      )}
+      className="flow-studio-step"
+      data-status={status}
     >
-      <span className={cn(
-        'relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-[#e9f0ec] text-[10px] font-bold transition-colors dark:border-[#0a202a]',
-        active
-          ? cn(toneStyles[step.tone].dot, 'text-white')
-          : complete
-            ? 'bg-[#5f8e72] text-white'
-            : 'bg-[#c8d7d1] text-[#60777a] dark:bg-[#294c57] dark:text-[#93acad]'
-      )}>
-        {complete ? <Check className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
+      <span className="flow-studio-step-marker" aria-hidden="true">
+        {complete ? <Check /> : step.marker}
       </span>
-      <span className="min-w-0">
-        <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-[#799093] dark:text-[#839ea1]">{step.marker} · {step.short}</span>
-        <span className="mt-0.5 block text-[12px] font-semibold text-[#1d4353] dark:text-[#deebe7]">{step.title}</span>
+      <span className="flow-studio-step-copy">
+        <span className="flow-studio-step-title">{step.title}</span>
+        <span className="flow-studio-step-short">{step.short}</span>
       </span>
     </button>
   )
 }
 
 function FlowNarrator({ step, stepIndex, total }: { step: FlowStep; stepIndex: number; total: number }) {
-  const Icon = step.icon
   return (
-    <div className={cn('relative overflow-hidden rounded-[20px] border p-4', toneStyles[step.tone].node)}>
-      <div className="flow-lab-narrator-scan" aria-hidden />
-      <div className="relative flex items-start gap-3">
-        <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/55 bg-white/55 dark:border-white/10 dark:bg-white/[0.06]', toneStyles[step.tone].icon)}>
-          <Icon className="h-4 w-4" />
-        </span>
-        <div>
-          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.13em] text-[#668287] dark:text-[#a1b9ba]">Now running · {String(stepIndex + 1).padStart(2, '0')} / {String(total).padStart(2, '0')}</p>
-          <p className="mt-1 text-sm font-semibold text-[#193d4d] dark:text-[#edf6f2]">{step.signal}</p>
-          <p className="mt-1 text-xs leading-5 text-[#557176] dark:text-[#b0c4c4]">{step.detail}</p>
-        </div>
-      </div>
+    <div className="flow-studio-narrator">
+      <p className="flow-studio-eyebrow">STEP {String(stepIndex + 1).padStart(2, '0')} / {String(total).padStart(2, '0')}</p>
+      <p className="flow-studio-narrator-signal">{step.signal}</p>
+      <p>{step.detail}</p>
     </div>
   )
 }
@@ -468,8 +425,8 @@ function IngestionStage({ activeStepIndex, activeStep }: { activeStepIndex: numb
   const storageStatus = stageStatus(activeStepIndex, 4)
 
   return (
-    <div className="flow-lab-stage flow-lab-stage--ingestion" aria-label="多模态数据解析动画">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,0.92fr)_2.5rem_minmax(0,1.15fr)_2.5rem_minmax(0,0.92fr)] lg:items-stretch">
+    <div className="flow-lab-stage flow-lab-stage--ingestion" role="group" aria-label="多模态数据解析示意">
+      <div className="flow-studio-diagram">
         <StagePanel eyebrow="01 · source deck" title="原始素材" status={stageStatus(activeStepIndex, 0)} tone="coral">
           <div className="grid grid-cols-2 gap-2">
             {sourceModes.map((source, index) => {
@@ -481,12 +438,12 @@ function IngestionStage({ activeStepIndex, activeStep }: { activeStepIndex: numb
                     <Icon className="h-3.5 w-3.5" />
                   </span>
                   <span className="mt-3 block text-[11px] font-semibold text-[#244957] dark:text-[#dfece8]">{source.label}</span>
-                  <span className="mt-0.5 block font-mono text-[9px] text-[#72888a] dark:text-[#88a2a3]">{source.detail}</span>
+                  <span className="mt-0.5 block font-mono text-[11px] text-[#72888a] dark:text-[#88a2a3]">{source.detail}</span>
                 </div>
               )
             })}
           </div>
-          <p className="mt-3 font-mono text-[9px] tracking-[0.06em] text-[#768c8e] dark:text-[#8ca4a5]">source manifest → original object</p>
+          <p className="mt-3 font-mono text-[11px] tracking-[0.06em] text-[#768c8e] dark:text-[#8ca4a5]">source manifest → original object</p>
         </StagePanel>
 
         <FlowConnector tone="coral" status={connectorStatus(activeStepIndex, 0)} />
@@ -503,7 +460,7 @@ function IngestionStage({ activeStepIndex, activeStep }: { activeStepIndex: numb
           </StagePanel>
           <FlowConnector tone="green" status={connectorStatus(activeStepIndex, 1)} inside />
           <StagePanel eyebrow="03 · semantic manifest" title="可定位语义单元" status={unitStatus} tone="green" compact>
-            <div className="grid grid-cols-2 gap-1.5 text-[10px] font-medium text-[#516f72] dark:text-[#b2c5c5]">
+            <div className="grid grid-cols-2 gap-1.5 text-[11px] font-medium text-[#516f72] dark:text-[#b2c5c5]">
               {['段落 Chunk', '图像 Caption', '音频片段', 'Video Shot'].map((unit) => (
                 <span key={unit} className={cn('rounded-lg border px-2 py-1.5', unitStatus === 'upcoming' ? 'border-[#d5e0db] bg-white/30 dark:border-[#2c4c57] dark:bg-white/[0.02]' : 'border-[#b5d0bd] bg-white/60 dark:border-[#3d614a] dark:bg-[#5f8e72]/10')}>
                   {unit}
@@ -546,24 +503,24 @@ function RetrievalStage({ activeStepIndex, activeStep }: { activeStepIndex: numb
   const recallLanes = ['Dense', 'Sparse', 'Visual', 'Audio', 'Video']
 
   return (
-    <div className="flow-lab-stage flow-lab-stage--retrieval" aria-label="多模态检索全链路动画">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,0.82fr)_2.5rem_minmax(0,1.2fr)_2.5rem_minmax(0,0.9fr)] lg:items-stretch">
+    <div className="flow-lab-stage flow-lab-stage--retrieval" role="group" aria-label="多模态检索全链路示意">
+      <div className="flow-studio-diagram">
         <div className="grid gap-3">
           <StagePanel eyebrow="01 · query envelope" title="问题与范围" status={stageStatus(activeStepIndex, 0)} tone="coral" compact>
             <div className="rounded-xl border border-[#e5b49c] bg-white/60 p-3 dark:border-[#754a37] dark:bg-white/[0.03]">
               <div className="flex items-center gap-2 text-[#c8643c] dark:text-[#f0ad8d]">
                 <Search className="h-3.5 w-3.5" />
-                <span className="font-mono text-[9px] font-bold uppercase tracking-[0.1em]">question</span>
+                <span className="font-mono text-[11px] font-bold uppercase tracking-[0.1em]">question</span>
               </div>
               <p className="mt-2 text-xs font-semibold text-[#264a58] dark:text-[#e4efeb]">“找出音乐中的暗黑摇滚线索”</p>
-              <p className="mt-2 text-[10px] text-[#6b8284] dark:text-[#a2b8b9]">KB · 文件范围 · 会话历史</p>
+              <p className="mt-2 text-[11px] text-[#6b8284] dark:text-[#a2b8b9]">KB · 文件范围 · 会话历史</p>
             </div>
           </StagePanel>
           <FlowConnector tone="cyan" status={connectorStatus(activeStepIndex, 0)} inside />
           <StagePanel eyebrow="02 · understand" title="检索计划" status={routingStatus} tone="cyan" compact>
             <div className="flex flex-wrap gap-1.5">
               {['query rewrite', 'modal intent', 'KB portrait'].map((item) => (
-                <span key={item} className={cn('rounded-full border px-2 py-1 font-mono text-[9px]', routingStatus === 'upcoming' ? 'border-[#d3e0db] text-[#829797] dark:border-[#2c4d58] dark:text-[#7d9799]' : 'border-[#9ec8cf] bg-white/65 text-[#367484] dark:border-[#35606a] dark:bg-[#2f7f93]/10 dark:text-[#9ad8e0]')}>
+                <span key={item} className={cn('rounded-full border px-2 py-1 font-mono text-[11px]', routingStatus === 'upcoming' ? 'border-[#d3e0db] text-[#829797] dark:border-[#2c4d58] dark:text-[#7d9799]' : 'border-[#9ec8cf] bg-white/65 text-[#367484] dark:border-[#35606a] dark:bg-[#2f7f93]/10 dark:text-[#9ad8e0]')}>
                   {item}
                 </span>
               ))}
@@ -578,9 +535,9 @@ function RetrievalStage({ activeStepIndex, activeStep }: { activeStepIndex: numb
             <div className="space-y-1.5">
               {recallLanes.map((lane, index) => (
                 <div key={lane} className={cn('flow-lab-recall-lane', recallStatus === 'active' && `is-active flow-lab-recall-lane-${index % 5}`)}>
-                  <span className="font-mono text-[9px] font-semibold">{lane}</span>
+                  <span className="font-mono text-[11px] font-semibold">{lane}</span>
                   <span className="flow-lab-recall-track"><i /></span>
-                  <span className="font-mono text-[9px] text-[#73898b] dark:text-[#91aaab]">候选</span>
+                  <span className="font-mono text-[11px] text-[#73898b] dark:text-[#91aaab]">候选</span>
                 </div>
               ))}
             </div>
@@ -600,7 +557,7 @@ function RetrievalStage({ activeStepIndex, activeStep }: { activeStepIndex: numb
           <StagePanel eyebrow="05 · contract" title="RetrievalResult" status={contractStatus} tone="cyan" compact>
             <div className="space-y-1.5">
               {['来源与编号', '页码 / 时间范围', '媒体 URL'].map((item, index) => (
-                <span key={item} className={cn('flex items-center gap-2 rounded-lg border px-2 py-1.5 text-[10px]', contractStatus === 'upcoming' ? 'border-[#d5e0db] bg-white/30 text-[#829596] dark:border-[#2c4d58] dark:bg-white/[0.02]' : 'border-[#a5cbd0] bg-white/65 text-[#426e75] dark:border-[#355f69] dark:bg-[#2f7f93]/10 dark:text-[#aad9de]')}>
+                <span key={item} className={cn('flex items-center gap-2 rounded-lg border px-2 py-1.5 text-[11px]', contractStatus === 'upcoming' ? 'border-[#d5e0db] bg-white/30 text-[#829596] dark:border-[#2c4d58] dark:bg-white/[0.02]' : 'border-[#a5cbd0] bg-white/65 text-[#426e75] dark:border-[#355f69] dark:bg-[#2f7f93]/10 dark:text-[#aad9de]')}>
                   <i className={cn('h-1.5 w-1.5 rounded-full', index === 0 ? 'bg-[#2f7f93]' : index === 1 ? 'bg-[#765c95]' : 'bg-[#e47b4e]')} />
                   {item}
                 </span>
@@ -610,7 +567,7 @@ function RetrievalStage({ activeStepIndex, activeStep }: { activeStepIndex: numb
           <FlowConnector tone="coral" status={connectorStatus(activeStepIndex, 4)} inside />
           <StagePanel eyebrow="06 · delivery" title="带引用回答" status={answerStatus} tone="coral" compact>
             <div className={cn('rounded-xl border bg-white/65 p-2.5 dark:bg-white/[0.04]', answerStatus === 'active' ? 'border-[#e6ad91]' : 'border-[#d7e0dc] dark:border-[#2d4e58]')}>
-              <p className="text-[10px] leading-5 text-[#4f6b70] dark:text-[#bfd0d0]">暗黑摇滚线索集中在… <span className="font-semibold text-[#c8643c] dark:text-[#f0ad8d]">[1] [2]</span></p>
+              <p className="text-[11px] leading-5 text-[#4f6b70] dark:text-[#bfd0d0]">暗黑摇滚线索集中在… <span className="font-semibold text-[#c8643c] dark:text-[#f0ad8d]">[1] [2]</span></p>
               <span className={cn('mt-2 block h-1.5 rounded-full bg-[#d7e2dd] dark:bg-[#2a4c57]', answerStatus === 'active' && 'flow-lab-answer-line')} />
             </div>
           </StagePanel>
@@ -624,17 +581,17 @@ function RetrievalStage({ activeStepIndex, activeStep }: { activeStepIndex: numb
 function StagePanel({ eyebrow, title, status, tone, compact = false, children }: { eyebrow: string; title: string; status: StepStatus; tone: FlowTone; compact?: boolean; children: React.ReactNode }) {
   return (
     <section className={cn(
-      'relative overflow-hidden rounded-[20px] border p-3 transition-all duration-500 sm:p-4',
+      'flow-studio-stage-panel relative overflow-hidden rounded-xl border p-3 transition-colors duration-300 sm:p-4',
       status === 'active'
         ? cn('shadow-[0_14px_28px_-24px_rgba(16,45,66,0.85)]', toneStyles[tone].node, 'flow-lab-panel-active')
         : status === 'complete'
           ? 'border-[#b9cec6] bg-[#f6faf6]/80 dark:border-[#34545c] dark:bg-white/[0.035]'
-          : 'border-[#d1ded8] bg-white/36 opacity-62 dark:border-[#294954] dark:bg-white/[0.018]'
+          : 'border-[#d4dfe2] bg-white/75 dark:border-[#294954] dark:bg-white/[0.018]'
     )}>
       {status === 'active' ? <span className={cn('flow-lab-panel-beacon', toneStyles[tone].dot)} aria-hidden /> : null}
       <div className="relative flex items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-[#74898b] dark:text-[#8da6a8]">{eyebrow}</p>
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-[#74898b] dark:text-[#8da6a8]">{eyebrow}</p>
           <h4 className={cn('mt-1 text-[13px] font-semibold', status === 'upcoming' ? 'text-[#72878a] dark:text-[#8ca4a6]' : 'text-[#1e4554] dark:text-[#e4efeb]')}>{title}</h4>
         </div>
         {status === 'complete' ? <Check className="h-4 w-4 shrink-0 text-[#5f8e72] dark:text-[#9bcaab]" /> : null}
@@ -658,7 +615,7 @@ function StorageChip({ label, detail, status }: { label: string; detail: string;
   return (
     <div className={cn('rounded-xl border p-2.5', status === 'upcoming' ? 'border-[#d8e2dd] bg-white/30 dark:border-[#2c4d58] dark:bg-white/[0.02]' : 'border-[#aac9b4] bg-white/65 dark:border-[#3c624a] dark:bg-[#5f8e72]/10')}>
       <p className="text-[11px] font-semibold text-[#244b57] dark:text-[#e0ece8]">{label}</p>
-      <p className="mt-0.5 font-mono text-[9px] text-[#73898a] dark:text-[#94adae]">{detail}</p>
+      <p className="mt-0.5 font-mono text-[11px] text-[#73898a] dark:text-[#94adae]">{detail}</p>
     </div>
   )
 }
@@ -666,13 +623,13 @@ function StorageChip({ label, detail, status }: { label: string; detail: string;
 function StageCaption({ tone, title, detail }: { tone: FlowTone; title: string; detail: string }) {
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-[#c9d8d2] pt-3 dark:border-[#294b56]">
-      <span className={cn('inline-flex items-center gap-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.1em]', toneStyles[tone].icon)}>
+      <span className={cn('inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.1em]', toneStyles[tone].icon)}>
         <span className={cn('h-1.5 w-1.5 rounded-full', toneStyles[tone].dot)} />
-        active signal
+        selected signal
       </span>
-      <span className="font-mono text-[10px] text-[#587479] dark:text-[#abc0c1]">{title}</span>
+      <span className="font-mono text-[11px] text-[#587479] dark:text-[#abc0c1]">{title}</span>
       <span className="hidden h-1 w-1 rounded-full bg-[#a9bcb7] sm:inline" />
-      <span className="text-[10px] text-[#788e90] dark:text-[#8fa7a8]">{detail}</span>
+      <span className="text-[11px] text-[#788e90] dark:text-[#8fa7a8]">{detail}</span>
     </div>
   )
 }

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
+import * as Tabs from '@radix-ui/react-tabs'
 import { Bot, Braces, Check, GitFork, Search, Send, Split } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { requestFlowSteps, type RequestFlowStep } from '@/data/architectureData'
@@ -18,206 +19,167 @@ export function RequestFlowStepper() {
   const [mode, setMode] = useState<ExecutionMode>('direct')
   const [activeId, setActiveId] = useState('direct-retrieval')
 
-  const branchId = mode === 'direct' ? 'direct-retrieval' : 'agent-evidence-loop'
-  const visibleSteps = requestFlowSteps.filter((step) =>
-    ['request-context', 'mode-routing', branchId, 'context-citation', 'generation-delivery'].includes(step.id)
-  )
-
-  const activeStep = requestFlowSteps.find((step) => step.id === activeId) ?? visibleSteps[2]
-
-  const selectMode = (nextMode: ExecutionMode) => {
+  const selectMode = (nextMode: string) => {
+    if (nextMode !== 'direct' && nextMode !== 'agent') return
     setMode(nextMode)
     setActiveId(nextMode === 'direct' ? 'direct-retrieval' : 'agent-evidence-loop')
   }
 
   return (
     <section id="request-flow" className="scroll-mt-24">
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,0.85fr)_minmax(28rem,1.15fr)] lg:items-end lg:gap-14">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-end lg:gap-12">
         <div className="max-w-2xl">
-          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2f7f93] dark:text-[#7fc2cf]">Request journey</p>
-          <h2 className="architecture-display mt-3 text-3xl font-semibold leading-tight tracking-[-0.035em] text-[#102d42] [text-wrap:balance] dark:text-[#edf6f3] sm:text-[2.55rem]">
-            请求先选取证策略，再决定是否深研
+          <p className="font-mono text-xs font-semibold uppercase tracking-[0.14em] text-[#2f7f93] dark:text-[#7fc2cf]">Request journey</p>
+          <h2 className="architecture-display mt-3 text-2xl font-semibold leading-tight tracking-[-0.025em] text-[#102d42] [text-wrap:balance] dark:text-[#edf6f3] sm:text-3xl">
+            一次取证，或按需深研
           </h2>
         </div>
-        <div className="lg:justify-self-end">
-          <p className="max-w-xl text-sm leading-7 text-[#5a7075] dark:text-[#a7bcbd] sm:text-[15px]">
-            切换路径可看到真正的差异只发生在取证阶段：Direct 一次完成，Agent 在预算内补查。会话上下文、范围约束、引用映射和最终交付始终复用同一份合同。
-          </p>
-        </div>
+        <p className="max-w-2xl text-sm leading-7 text-[#5a7075] dark:text-[#a7bcbd]">
+          Direct 一次完成检索，Agent 在预算内补查。两条路径始终复用会话上下文、范围约束、引用映射与最终交付。
+        </p>
       </div>
 
-      <div className="mt-9 overflow-hidden rounded-[28px] border border-[#b9ccc6] bg-[#edf2ed] shadow-[0_34px_90px_-64px_rgba(16,45,66,0.72)] dark:border-[#2b4d58] dark:bg-[#0b222c]">
-        <div className="flex flex-col gap-4 border-b border-[#c5d5cf] p-4 dark:border-[#294a56] sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5">
+      <Tabs.Root
+        value={mode}
+        onValueChange={selectMode}
+        className="architecture-request-flow mt-8 overflow-hidden rounded-2xl border border-[#b9ccc6] bg-white/45 dark:border-[#2b4d58] dark:bg-[#0b222c]"
+      >
+        <div className="flex flex-col gap-4 border-b border-[#c5d5cf] p-4 dark:border-[#294a56] sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div>
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#718587] dark:text-[#89a5a7]">Choose execution policy</p>
-            <p className="mt-1 text-[13px] font-semibold text-[#17384a] dark:text-[#e5efec]">同一个问题入口，只有取证预算与停止规则不同</p>
+            <p className="text-sm font-semibold text-[#17384a] dark:text-[#e5efec]">选择取证策略</p>
+            <p className="mt-1 text-xs leading-5 text-[#61777a] dark:text-[#9ab1b2]">点击阶段，查看具体职责与代码入口</p>
           </div>
-          <div
-            role="tablist"
-            aria-label="执行路径"
-            className="grid w-full grid-cols-2 rounded-full border border-[#bfd0ca] bg-[#e4ebe6] p-1 dark:border-[#31525e] dark:bg-[#071a24] sm:w-auto"
-          >
-            <ModeButton mode="direct" current={mode} onSelect={selectMode} icon={<Search className="h-3.5 w-3.5" />}>
-              Direct <span className="hidden sm:inline">· 快速回答</span>
+          <Tabs.List aria-label="执行路径" className="grid w-full grid-cols-2 gap-1 rounded-xl bg-[#edf2ed] p-1 dark:bg-[#071a24] sm:w-auto">
+            <ModeButton mode="direct" icon={<Search className="h-4 w-4" />}>
+              Direct <span className="hidden sm:inline">· 直接检索</span>
             </ModeButton>
-            <ModeButton mode="agent" current={mode} onSelect={selectMode} icon={<Bot className="h-3.5 w-3.5" />}>
+            <ModeButton mode="agent" icon={<Bot className="h-4 w-4" />}>
               Agent <span className="hidden sm:inline">· 深度取证</span>
             </ModeButton>
-          </div>
+          </Tabs.List>
         </div>
 
-        <div className="grid lg:grid-cols-[22rem_minmax(0,1fr)]">
-          <div className="relative border-b border-[#c5d5cf] p-4 dark:border-[#294a56] sm:p-6 lg:border-b-0 lg:border-r">
-            <div className="absolute bottom-10 left-[2.42rem] top-10 w-px bg-[#bdcfca] dark:bg-[#31525e] sm:left-[3.42rem]" aria-hidden />
-            <ol className="relative space-y-2" aria-label={`${mode === 'direct' ? 'Direct' : 'Agent'} 请求处理阶段`}>
-              {visibleSteps.map((step) => (
-                <li key={step.id}>
-                  <FlowNode
-                    step={step}
-                    active={step.id === activeStep.id}
-                    mode={mode}
-                    onSelect={setActiveId}
-                  />
-                </li>
-              ))}
-            </ol>
-          </div>
-
-          <div
-            id="request-flow-panel"
-            role="tabpanel"
-            key={activeStep.id}
-            className="animate-in fade-in relative min-h-[32rem] overflow-hidden bg-white/35 p-5 dark:bg-white/[0.018] sm:p-8 lg:p-10"
+        {(['direct', 'agent'] as const).map((path) => (
+          <Tabs.Content
+            key={path}
+            value={path}
+            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2f7f93]"
           >
-            <div className="architecture-orbit !-right-20 !-top-20" aria-hidden />
-            <div className="relative flex h-full flex-col">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={cn(
-                  'rounded-full border px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em]',
-                  activeStep.lane === 'agent'
-                    ? 'border-[#c7b7d3] bg-[#eee8f2] text-[#765c95] dark:border-[#5d4971] dark:bg-[#765c95]/10 dark:text-[#c6b1d9]'
-                    : activeStep.lane === 'direct'
-                      ? 'border-[#9ec2cc] bg-[#e5f0f2] text-[#2f7f93] dark:border-[#345d67] dark:bg-[#2f7f93]/10 dark:text-[#84c5cf]'
-                      : 'border-[#b7cbbb] bg-[#e8f0e8] text-[#5f8e72] dark:border-[#3d624d] dark:bg-[#5f8e72]/10 dark:text-[#91c3a1]'
-                )}>
-                  {activeStep.marker} · {activeStep.lane}
-                </span>
-              </div>
-
-              <h3 className="architecture-display mt-6 text-3xl font-semibold tracking-[-0.035em] text-[#102d42] dark:text-[#edf6f3] sm:text-4xl">
-                {activeStep.title}
-              </h3>
-              <p className="mt-5 max-w-3xl text-sm leading-8 text-[#526b72] dark:text-[#abc0c1]">{activeStep.description}</p>
-
-              {activeStep.keyTechnologies?.length ? (
-                <div className="mt-8">
-                  <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#738789] dark:text-[#8ba5a7]">What happens here</p>
-                  <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-                    {activeStep.keyTechnologies.map((technology) => (
-                      <li key={technology} className="flex items-center gap-2 rounded-xl border border-[#c9d7d2] bg-white/55 px-3.5 py-3 text-xs font-medium text-[#435f65] dark:border-[#2b4c57] dark:bg-white/[0.035] dark:text-[#b5c7c7]">
-                        <Check className="h-3.5 w-3.5 shrink-0 text-[#5f8e72] dark:text-[#8fc09f]" />
-                        {technology}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {activeStep.backendEntry ? (
-                <div className="mt-auto pt-9">
-                  <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#738789] dark:text-[#8ba5a7]">Implementation entry</p>
-                  <div className="mt-3 overflow-x-auto rounded-2xl bg-[#102d42] px-4 py-4 font-mono text-[11px] leading-6 text-[#cce0dc] shadow-[inset_0_1px_rgba(255,255,255,0.08)]">
-                    {activeStep.backendEntry}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </div>
+            <RequestPath mode={path} activeId={activeId} onSelect={setActiveId} />
+          </Tabs.Content>
+        ))}
+      </Tabs.Root>
     </section>
   )
 }
 
-function ModeButton({
-  mode,
-  current,
-  onSelect,
-  icon,
-  children,
-}: {
-  mode: ExecutionMode
-  current: ExecutionMode
-  onSelect: (mode: ExecutionMode) => void
-  icon: React.ReactNode
-  children: React.ReactNode
-}) {
-  const selected = mode === current
+function RequestPath({ mode, activeId, onSelect }: { mode: ExecutionMode; activeId: string; onSelect: (id: string) => void }) {
+  const panelId = useId()
+  const headingId = useId()
+  const branchId = mode === 'direct' ? 'direct-retrieval' : 'agent-evidence-loop'
+  const visibleSteps = requestFlowSteps.filter((step) =>
+    ['request-context', 'mode-routing', branchId, 'context-citation', 'generation-delivery'].includes(step.id)
+  )
+  const activeStep = visibleSteps.find((step) => step.id === activeId) ?? visibleSteps[2]
+
   return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={selected}
-      aria-controls="request-flow-panel"
-      onClick={() => onSelect(mode)}
-      className={cn(
-        'inline-flex min-h-10 items-center justify-center gap-2 rounded-full px-4 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7f93]/70',
-        selected
-          ? mode === 'agent'
-            ? 'bg-[#765c95] text-white shadow-sm'
-            : 'bg-[#102d42] text-white shadow-sm dark:bg-[#dcebe7] dark:text-[#102d42]'
-          : 'text-[#61777a] hover:text-[#17384a] dark:text-[#90aaac] dark:hover:text-white'
-      )}
-    >
-      {icon}
-      {children}
-    </button>
+    <div className="architecture-request-path grid lg:grid-cols-[19rem_minmax(0,1fr)]">
+      <div className="relative border-b border-[#c5d5cf] bg-[#edf2ed]/50 p-3 dark:border-[#294a56] dark:bg-white/[0.018] sm:p-5 lg:border-b-0 lg:border-r">
+        <div className="absolute bottom-11 left-[2.1rem] top-11 w-px bg-[#bdcfca] dark:bg-[#31525e] sm:left-[2.6rem]" aria-hidden="true" />
+        <ol className="relative space-y-1" aria-label={`${mode === 'direct' ? 'Direct' : 'Agent'} 请求处理阶段`} role="list">
+          {visibleSteps.map((step) => (
+            <li key={step.id}>
+              <FlowNode step={step} active={step.id === activeStep.id} mode={mode} onSelect={onSelect} panelId={panelId} />
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      <div id={panelId} aria-labelledby={headingId} role="region" className="architecture-request-detail min-w-0 p-5 sm:p-7 lg:p-8">
+        <div className="flex items-center gap-2 text-xs font-medium text-[#61777a] dark:text-[#9ab1b2]">
+          <span className={cn('h-2 w-2 rounded-full', activeStep.lane === 'agent' ? 'bg-[#765c95]' : activeStep.lane === 'direct' ? 'bg-[#2f7f93]' : 'bg-[#5f8e72]')} aria-hidden="true" />
+          <span className="font-mono">{activeStep.marker}</span>
+          <span aria-hidden="true">/</span>
+          {activeStep.lane === 'shared' ? '共享阶段' : activeStep.lane === 'direct' ? 'Direct 取证' : 'Agent 取证'}
+        </div>
+        <h3 id={headingId} className="mt-4 text-2xl font-semibold tracking-[-0.025em] text-[#102d42] dark:text-[#edf6f3]">
+          {activeStep.title}
+        </h3>
+        <p className="mt-4 max-w-3xl text-sm leading-8 text-[#526b72] dark:text-[#abc0c1]">{activeStep.description}</p>
+
+        {activeStep.keyTechnologies?.length ? (
+          <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-3" aria-label="涉及的关键能力" role="list">
+            {activeStep.keyTechnologies.map((technology) => (
+              <li key={technology} className="flex items-center gap-2 text-xs font-medium leading-5 text-[#435f65] dark:text-[#b5c7c7]">
+                <Check className="h-3.5 w-3.5 shrink-0 text-[#5f8e72] dark:text-[#8fc09f]" aria-hidden="true" />
+                {technology}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        {activeStep.backendEntry ? (
+          <div className="mt-7 border-t border-[#c5d5cf] pt-5 dark:border-[#294a56]">
+            <h4 className="text-xs font-semibold text-[#526b70] dark:text-[#a9bfc0]">代码入口</h4>
+            <p className="mt-2 break-words font-mono text-xs leading-6 text-[#526b70] dark:text-[#b2c5c5]">{activeStep.backendEntry}</p>
+          </div>
+        ) : null}
+      </div>
+    </div>
   )
 }
 
-function FlowNode({
-  step,
-  active,
-  mode,
-  onSelect,
-}: {
+function ModeButton({ mode, icon, children }: { mode: ExecutionMode; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <Tabs.Trigger
+      value={mode}
+      className={cn(
+        'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium text-[#61777a] transition-colors hover:text-[#17384a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2f7f93] data-[state=active]:text-white dark:text-[#90aaac] dark:hover:text-white',
+        mode === 'agent'
+          ? 'data-[state=active]:bg-[#765c95]'
+          : 'data-[state=active]:bg-[#102d42] dark:data-[state=active]:bg-[#dcebe7] dark:data-[state=active]:text-[#102d42]'
+      )}
+    >
+      <span aria-hidden="true">{icon}</span>
+      {children}
+    </Tabs.Trigger>
+  )
+}
+
+function FlowNode({ step, active, mode, onSelect, panelId }: {
   step: RequestFlowStep
   active: boolean
   mode: ExecutionMode
   onSelect: (id: string) => void
+  panelId: string
 }) {
   const Icon = stepIcons[step.id as keyof typeof stepIcons] ?? Braces
-  const branchColor = mode === 'agent' && step.lane === 'agent'
+  const isAgentBranch = mode === 'agent' && step.lane === 'agent'
 
   return (
     <button
       type="button"
       onClick={() => onSelect(step.id)}
       aria-pressed={active}
+      aria-controls={panelId}
       className={cn(
-        'group relative flex min-h-[4.5rem] w-full items-center gap-3 rounded-2xl border border-transparent py-2 pl-2 pr-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7f93]/70',
+        'group relative flex min-h-[4.5rem] w-full items-center gap-3 rounded-xl py-2 pl-2 pr-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2f7f93]',
         active
-          ? branchColor
-            ? 'border-[#c8b9d4] bg-[#eee9f2] shadow-sm dark:border-[#5d4971] dark:bg-[#765c95]/12'
-            : 'border-[#9fc0c3] bg-[#e2efed] shadow-sm dark:border-[#35606a] dark:bg-[#2f7f93]/12'
-          : 'hover:border-[#c7d5d0] hover:bg-white/45 dark:hover:border-[#2c4d58] dark:hover:bg-white/[0.03]'
+          ? isAgentBranch
+            ? 'bg-[#eee9f2] dark:bg-[#765c95]/15'
+            : 'bg-[#e2efed] dark:bg-[#2f7f93]/15'
+          : 'hover:bg-white/60 dark:hover:bg-white/[0.04]'
       )}
     >
-      <span
-        className={cn(
-          'relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-4 border-[#edf2ed] transition-colors dark:border-[#0b222c]',
-          active
-            ? branchColor
-              ? 'bg-[#765c95] text-white'
-              : 'bg-[#2f7f93] text-white'
-            : 'bg-[#cad8d3] text-[#526d72] group-hover:bg-[#b8cbc5] dark:bg-[#294a56] dark:text-[#a8bdbd]'
-        )}
-      >
-        <Icon className="h-4 w-4" />
+      <span className={cn(
+        'relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-[3px] border-[#edf2ed] transition-colors dark:border-[#0b222c]',
+        active ? isAgentBranch ? 'bg-[#765c95] text-white' : 'bg-[#2f7f93] text-white' : 'bg-[#cad8d3] text-[#526d72] dark:bg-[#294a56] dark:text-[#a8bdbd]'
+      )}>
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       </span>
       <span className="min-w-0">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[#7b8e90] dark:text-[#839ea0]">{step.marker} · {step.short}</span>
-        <span className="mt-1.5 block text-[13px] font-semibold leading-5 text-[#18394a] dark:text-[#e2eeea]">{step.title}</span>
+        <span className="font-mono text-xs leading-5 text-[#61777a] dark:text-[#9ab1b2]">{step.marker}</span>
+        <span className="mt-0.5 block text-sm font-medium leading-6 text-[#18394a] dark:text-[#e2eeea]">{step.title}</span>
       </span>
     </button>
   )
