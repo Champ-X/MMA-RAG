@@ -75,6 +75,56 @@ def _count_raw_video_files(raw_files: List[Dict[str, Any]]) -> int:
     )
 
 
+def _video_keyframe_timestamp(object_path: str) -> Optional[float]:
+    """Read timestamps from current Scene–Shot and legacy segment filenames only."""
+    filename = object_path.rsplit("/", 1)[-1]
+    match = re.fullmatch(
+        r"(?:scene[_-].+_shot[_-].+_\d+|seg_\d+)_(\d+)_(\d{1,3})\.[^.]+",
+        filename,
+        re.IGNORECASE,
+    )
+    return float(f"{match[1]}.{match[2]}") if match else None
+
+
+def _select_video_file_covers(
+    raw_files: List[Dict[str, Any]],
+) -> Dict[str, Tuple[str, Optional[float]]]:
+    """Reuse the current bucket listing; never read manifests or scan vector payloads.
+
+    Pick a stable frame near the first third of the available timeline to avoid
+    the usual opening/closing titles. Unknown legacy names use a stable ordinal
+    instead. This is a temporal heuristic, not a visual quality assessment.
+    """
+    frames_by_file: Dict[str, List[Tuple[str, Optional[float]]]] = {}
+    for item in raw_files:
+        object_path = str(item.get("object_path") or "")
+        parts = object_path.split("/")
+        if (
+            len(parts) != 4
+            or parts[0] != "videos"
+            or parts[2] != "keyframes"
+            or not parts[1]
+            or parts[-1].rsplit(".", 1)[-1].lower() not in {"jpg", "jpeg", "png", "webp"}
+            or item.get("size") == 0
+        ):
+            continue
+        frames_by_file.setdefault(parts[1], []).append(
+            (object_path, _video_keyframe_timestamp(object_path))
+        )
+
+    covers: Dict[str, Tuple[str, Optional[float]]] = {}
+    for file_id, frames in frames_by_file.items():
+        timed_frames = [(path, timestamp) for path, timestamp in frames if timestamp is not None]
+        if timed_frames:
+            times = [timestamp for _, timestamp in timed_frames]
+            target = min(times) + (max(times) - min(times)) / 3
+            covers[file_id] = min(timed_frames, key=lambda frame: (abs(frame[1] - target), frame[0]))
+        else:
+            frames.sort(key=lambda frame: frame[0])
+            covers[file_id] = frames[(len(frames) - 1) // 3]
+    return covers
+
+
 def _default_kb_list_statistics() -> Dict[str, Any]:
     """列表页统计超时或失败时的占位，避免串行统计拖垮 GET /knowledge/。"""
     return {
@@ -1510,7 +1560,8 @@ class KnowledgeBaseService:
         return "unindexed"
 
     async def list_kb_files(self, kb_id: str) -> List[Dict[str, Any]]:
-        """列出知识库下的文件，图片和 PDF 附带 preview_url。不依赖 _kb_storage，按 kb_id 解析桶名以支持已有知识库。
+        """列出知识库下的文件，图片和 PDF 附带 preview_url，视频附带已有关键帧的 cover_url。
+        不依赖 _kb_storage，按 kb_id 解析桶名以支持已有知识库。
         若传入的 kb_id 对应桶不存在，则尝试候选 kb_id 的桶（兼容前端/API 传入的格式与 MinIO 实际桶名不一致）。"""
         raw_files: List[Dict[str, Any]] = []
         bucket_used: Optional[str] = None
@@ -1551,6 +1602,7 @@ class KnowledgeBaseService:
                 task_by_file_id[task_file_id] = task
 
         try:
+            video_covers = _select_video_file_covers(raw_files)
             files = []
             for f in raw_files:
                 op = f.get("object_path", "")
@@ -1595,6 +1647,18 @@ class KnowledgeBaseService:
                         # 状态服务，否则 Redis 不可用时会拖慢整个文件列表。
                         skip_task_lookup=True,
                     )
+                    cover = video_covers.get(file_id)
+                    if cover and bucket_used:
+                        try:
+                            item["cover_url"] = await self.minio_adapter.get_presigned_url(
+                                bucket_used, cover[0], expires_hours=24
+                            )
+                            if cover[1] is not None:
+                                item["cover_timestamp"] = cover[1]
+                        except Exception as e:
+                            # A missing cover must not hide the original video or
+                            # alter its stream/preview URL and processing status.
+                            logger.debug(f"生成视频封面 URL 失败 {op}: {e}")
                 if self._is_previewable_type(ext) and bucket_used:
                     try:
                         item["preview_url"] = await self.minio_adapter.get_presigned_url(

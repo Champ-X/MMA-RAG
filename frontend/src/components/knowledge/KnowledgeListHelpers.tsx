@@ -199,6 +199,8 @@ export interface KnowledgeFileView {
   error?: string
   updatedAt?: string
   previewUrl?: string
+  coverUrl?: string
+  coverTimestamp?: number
   textPreview?: string
 }
 

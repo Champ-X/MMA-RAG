@@ -395,6 +395,8 @@ export const knowledgeApi = {
         error?: string
         updated_at?: string
         preview_url?: string
+        cover_url?: string
+        cover_timestamp?: number
         text_preview?: string
       }>
     }>(`/knowledge/${id}/files`),

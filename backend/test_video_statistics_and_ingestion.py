@@ -178,6 +178,7 @@ def test_video_keyframe_artifacts_stay_with_the_original_video_bucket():
     service = IngestionService.__new__(IngestionService)
     service.minio_adapter = FakeMinio()
     service.sparse_encoder = FakeSparseEncoder()
+    service._update_processing_status = Mock()
     service._embed_video_texts = embed
     service._extract_frame_at_timestamp_from_path = lambda *_args: b"jpeg-bytes"
     service._vectorize_with_clip = AsyncMock(return_value={"clip_vector": [0.1] * 768})

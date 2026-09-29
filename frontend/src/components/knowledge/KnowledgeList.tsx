@@ -1,7 +1,9 @@
 import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, FolderPlus, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, HardDrive, Calendar, Activity, MoreHorizontal, ChevronDown, AlertCircle, RotateCcw } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, HardDrive, Calendar, Activity, MoreHorizontal, ChevronDown, AlertCircle, RotateCcw } from 'lucide-react'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
+import { KnowledgeLibraryHeader } from './KnowledgeLibraryHeader'
+import { VideoFileCover } from './VideoFileCover'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import {
   knowledgeApi,
@@ -305,6 +307,8 @@ type KnowledgeFileApiItem = {
   error?: string
   updated_at?: string
   preview_url?: string
+  cover_url?: string
+  cover_timestamp?: number
   text_preview?: string
 }
 
@@ -2387,14 +2391,6 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     updateKnowledgeBase,
     deleteKnowledgeBase,
   } = useKnowledgeStore()
-  const totalSourceItems = knowledgeBases.reduce((total, knowledgeBase) => {
-    const stats = knowledgeBase.stats
-    return total
-      + (stats?.documents ?? 0)
-      + (stats?.images ?? 0)
-      + (stats?.audio ?? 0)
-      + (stats?.video ?? 0)
-  }, 0)
 
   const activateKnowledgeBase = useCallback((knowledgeBaseId: string, syncRoute = true) => {
     // 先使所有旧请求失效并清空可见数据，再进入新库。这样不会让 A 库的慢响应写回 B 库。
@@ -2506,6 +2502,8 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
         error: f.error,
         updatedAt: f.updated_at,
         previewUrl: f.preview_url,
+        coverUrl: f.cover_url,
+        coverTimestamp: f.cover_timestamp,
         textPreview: f.text_preview,
       }))
       // 一个请求只允许写回它发起时所对应的知识库；切换或后续刷新都会使它失效。
@@ -3211,83 +3209,16 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
 
     return (
       <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative">
-        {/* 紧凑的浅色横幅：保留资料地图意象，但不让它压过内容区。 */}
-        <header className="relative isolate overflow-hidden border-b border-slate-200 bg-[#fbfaf7] dark:border-slate-800 dark:bg-slate-950">
-          <img
-            src={knowledgeHeaderBackground}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover object-right opacity-95 dark:opacity-25"
-            aria-hidden
-          />
-          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,253,249,0.98)_0%,rgba(255,253,249,0.95)_44%,rgba(255,253,249,0.5)_100%)] dark:bg-[linear-gradient(90deg,rgba(2,6,23,0.96)_0%,rgba(2,6,23,0.88)_44%,rgba(2,6,23,0.5)_100%)]" aria-hidden />
-          <div className="relative flex min-h-[164px] items-center px-5 py-4 sm:px-8 sm:py-5 lg:px-10">
-            <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-start gap-3.5 sm:items-center sm:gap-4">
-                <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-[20px] border border-white/90 bg-white/90 p-1 shadow-[0_18px_32px_-20px_rgba(41,75,147,0.55)] ring-1 ring-indigo-100/75 backdrop-blur-xl dark:border-slate-700/80 dark:bg-slate-900/80 dark:ring-indigo-400/20 sm:h-[68px] sm:w-[68px]">
-                  <img
-                    src="/knowledge-library-icon.png"
-                    alt=""
-                    draggable={false}
-                    className="h-full w-full rounded-[15px] object-cover sm:rounded-[17px]"
-                  />
-                </span>
-
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="text-[1.65rem] font-semibold tracking-[-0.04em] text-slate-900 dark:text-slate-50 sm:text-[1.8rem]">素材空间</h1>
-                    <span className="rounded-full border border-indigo-100 bg-white/75 px-2.5 py-1 font-mono text-[10px] font-semibold tracking-[0.08em] text-indigo-600 shadow-sm backdrop-blur-sm dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-200">
-                      {knowledgeBases.length} 个空间
-                    </span>
-                  </div>
-                  <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-[15px]">
-                    汇集文档、图像、音频与视频，让每一份素材都可定位、检索与引用。
-                  </p>
-                  <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                    <span className="inline-flex items-center gap-1.5">
-                      <FileText className="h-3.5 w-3.5 text-sky-600 dark:text-sky-300" aria-hidden /> 文档
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <ImageIcon className="h-3.5 w-3.5 text-teal-600 dark:text-teal-300" aria-hidden /> 图片
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Music className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" aria-hidden /> 音频
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Video className="h-3.5 w-3.5 text-amber-600 dark:text-amber-300" aria-hidden /> 视频
-                    </span>
-                    {totalSourceItems > 0 ? (
-                      <span className="font-mono text-[10px] tracking-[0.08em] text-slate-400 dark:text-slate-500">· 已收录 {totalSourceItems} 份素材</span>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(true)}
-                title="新建素材空间"
-                aria-label="新建素材空间"
-                className="group relative inline-flex min-h-[60px] w-full shrink-0 items-center gap-3 overflow-hidden rounded-[18px] border border-indigo-200/90 bg-white/92 px-2.5 py-2 text-left shadow-[0_16px_30px_-18px_rgba(57,72,146,0.45)] backdrop-blur-xl transition-[transform,border-color,box-shadow,background-color] duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-white hover:shadow-[0_22px_34px_-18px_rgba(82,91,188,0.5)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fbfaf7] active:translate-y-0 dark:border-indigo-400/25 dark:bg-slate-900/85 dark:hover:border-indigo-300/45 dark:hover:bg-slate-900 dark:focus-visible:ring-offset-slate-950 lg:w-[220px]"
-              >
-                <span className="pointer-events-none absolute -right-5 -top-8 h-20 w-20 rounded-full bg-indigo-100/70 blur-2xl transition-transform duration-500 group-hover:scale-125 dark:bg-indigo-500/15" aria-hidden />
-                <span className="pointer-events-none absolute bottom-0 left-0 h-px w-full bg-gradient-to-r from-transparent via-indigo-300/70 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100 dark:via-indigo-300/45" aria-hidden />
-                <span className="relative grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-white/70 bg-gradient-to-br from-[#4f84ef] via-[#6871e5] to-[#9a68da] text-white shadow-[0_10px_18px_-10px_rgba(82,90,215,0.8)] transition-transform duration-200 group-hover:scale-[1.05] motion-reduce:transition-none">
-                  <FolderPlus size={20} strokeWidth={2.2} aria-hidden />
-                </span>
-                <span className="relative min-w-0 flex-1">
-                  <span className="block truncate text-[14px] font-semibold tracking-[-0.015em] text-[#26345f] dark:text-slate-100">新建素材空间</span>
-                  <span className="mt-0.5 block truncate text-[11px] font-medium tracking-[0.01em] text-indigo-500/85 dark:text-indigo-300/85">从一份素材开始</span>
-                </span>
-                <span className="relative grid h-7 w-7 shrink-0 place-items-center rounded-full text-indigo-400 transition-[transform,color,background-color] duration-200 group-hover:translate-x-0.5 group-hover:bg-indigo-50 group-hover:text-indigo-600 dark:text-indigo-300 dark:group-hover:bg-indigo-400/10 dark:group-hover:text-indigo-100">
-                  <ChevronRight size={17} strokeWidth={2.2} aria-hidden />
-                </span>
-              </button>
-            </div>
-          </div>
-        </header>
+        <KnowledgeLibraryHeader
+          knowledgeBases={knowledgeBases}
+          background={knowledgeHeaderBackground}
+          loading={loading && knowledgeBases.length === 0}
+          unavailable={Boolean(listFetchError) && knowledgeBases.length === 0}
+          onCreate={() => setShowCreateModal(true)}
+        />
 
         {/* Content */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-8">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-8">
           {loading ? (
             <div className="grid auto-rows-[11rem] grid-cols-1 items-stretch md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3].map((i) => (
@@ -4093,7 +4024,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                             key={file.id}
                             onClick={() => setPreviewFile(file)}
                             className={cn(
-                              'text-left rounded-xl border transition-all overflow-hidden group',
+                              'text-left rounded-xl border transition-[border-color,box-shadow] overflow-hidden group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950 motion-reduce:transition-none',
                               isAudio
                                 ? 'bg-gradient-to-b from-violet-50/80 to-white dark:from-violet-950/30 dark:to-slate-900 border-violet-200/80 dark:border-violet-800/60 hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-md hover:shadow-violet-500/10'
                                 : isVideo
@@ -4106,10 +4037,13 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                           >
                             <div className="relative">
                               <div className={cn(
-                                'h-36 overflow-hidden flex items-center justify-center',
+                                'overflow-hidden flex items-center justify-center',
+                                isVideo ? 'aspect-video' : 'h-36',
                                 isAudio ? 'bg-violet-50/50 dark:bg-violet-950/30' : isVideo ? 'bg-sky-50/50 dark:bg-sky-950/30' : 'bg-slate-50 dark:bg-slate-900'
                               )}>
-                                <FileHero file={file} />
+                                {isVideo ? (
+                                  <VideoFileCover src={file.coverUrl} name={file.name} timestamp={file.coverTimestamp} />
+                                ) : <FileHero file={file} />}
                               </div>
                               <div className="absolute top-3 left-3">
                                 <StatusBadge
@@ -4121,9 +4055,9 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                   updatedAt={file.updatedAt}
                                 />
                               </div>
-                              {isMedia && (
+                              {isAudio && (
                                 <div className={cn(
-                                  'absolute bottom-3 right-3 flex items-center justify-center w-9 h-9 rounded-full text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity',
+                                  'absolute bottom-3 right-3 flex items-center justify-center w-9 h-9 rounded-full text-white shadow-lg opacity-80 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity motion-reduce:transition-none',
                                   isVideo ? 'bg-sky-500/90 dark:bg-sky-600/90' : 'bg-violet-500/90 dark:bg-violet-600/90'
                                 )}>
                                   <Play size={18} className="ml-0.5" fill="currentColor" aria-hidden />
