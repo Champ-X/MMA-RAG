@@ -1,0 +1,60 @@
+.suggested-questions {
+  --suggestion-ink: #263d4b;
+  --suggestion-muted: #758692;
+  --suggestion-accent: #337f7c;
+  --suggestion-tint: #eaf4f2;
+  --suggestion-border: #e0e8ed;
+  --suggestion-surface: #ffffff;
+}
+.dark .suggested-questions {
+  --suggestion-ink: #e1eaf0;
+  --suggestion-muted: #9badba;
+  --suggestion-accent: #89c8c3;
+  --suggestion-tint: #203d43;
+  --suggestion-border: #2c3c4c;
+  --suggestion-surface: #162431;
+}
+.suggestions-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; padding: 0 2px; }
+.suggestions-title { display: flex; align-items: center; gap: 8px; color: var(--suggestion-ink); font-size: 12px; font-weight: 600; }
+.suggestions-title-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--suggestion-tint); color: var(--suggestion-accent); }
+.suggestions-refresh { display: inline-flex; min-height: 32px; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid transparent; border-radius: 8px; font-size: 11px; color: var(--suggestion-muted); transition: color .16s, background-color .16s, border-color .16s; }
+.suggestions-refresh:hover:not(:disabled) { color: var(--suggestion-accent); background: var(--suggestion-surface); border-color: var(--suggestion-border); }
+.suggestions-refresh:disabled { cursor: not-allowed; opacity: .5; }
+.suggestions-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 21px; padding: 0 3px 6px; }
+.suggestion-card[data-note="honey"] { --note-paper: #fff5d6; --note-edge: #eedfae; --note-fold: #ebd79b; --note-ink: #5b4d2c; --note-muted: #8c7b50; --note-rotation: -.85deg; }
+.suggestion-card[data-note="sage"] { --note-paper: #eaf3e8; --note-edge: #d2e2ce; --note-fold: #c1d7bc; --note-ink: #40553d; --note-muted: #70866b; --note-rotation: .65deg; }
+.suggestion-card[data-note="lavender"] { --note-paper: #efedf9; --note-edge: #dcd6ed; --note-fold: #cfc5e4; --note-ink: #534969; --note-muted: #857899; --note-rotation: -.5deg; }
+.dark .suggestion-card[data-note="honey"] { --note-paper: #373326; --note-edge: #514a33; --note-fold: #5d5132; --note-ink: #eee1bc; --note-muted: #c0b18c; }
+.dark .suggestion-card[data-note="sage"] { --note-paper: #283a32; --note-edge: #3d5143; --note-fold: #4b604b; --note-ink: #d5e5cf; --note-muted: #a8bea0; }
+.dark .suggestion-card[data-note="lavender"] { --note-paper: #343044; --note-edge: #4b435d; --note-fold: #5a4e70; --note-ink: #e3dcf1; --note-muted: #b7a9cd; }
+.suggestion-card { position: relative; isolation: isolate; display: flex; width: 100%; height: 100%; min-height: 140px; flex-direction: column; gap: 20px; padding: 25px 20px 15px; border: 1px solid var(--note-edge); border-radius: 3px 4px 2px 4px; background: linear-gradient(165deg, #ffffff2b, transparent 60%), var(--note-paper); text-align: left; box-shadow: 1px 6px 10px -7px #2637464a, 0 1px 2px #2637460a; translate: 0 0; rotate: 0deg; transition: translate .2s ease, rotate .2s ease, box-shadow .2s; }
+/* A translucent strip pins the note; the folded corner stays clear of its content. */
+.suggestion-card::before { content: ''; position: absolute; z-index: 1; top: -7px; left: calc(50% - 28px); width: 56px; height: 15px; border: 1px solid #ffffff66; background: #ffffff80; box-shadow: 0 1px 1px #394e5910; rotate: -4deg; pointer-events: none; }
+.suggestion-card::after { content: ''; position: absolute; right: -1px; bottom: -1px; width: 17px; height: 17px; background: linear-gradient(135deg, #ffffff66, var(--note-fold)); clip-path: polygon(0 0, 100% 100%, 0 100%); pointer-events: none; }
+.dark .suggestion-card::before { background: #b9c6bb21; border-color: #c4ccbd24; }
+.suggestion-question { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; color: var(--note-ink); font-family: 'Kaiti SC', 'STKaiti', 'KaiTi', 'PingFang SC', serif; font-size: 16px; font-weight: 500; line-height: 1.7; letter-spacing: .015em; }
+.suggestion-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 11px; border-top: 1px dashed var(--note-edge); }
+.suggestion-source { display: flex; align-items: center; min-width: 0; gap: 6px; color: var(--note-muted); font-size: 10px; line-height: 1.5; }
+.suggestion-source > svg { flex-shrink: 0; opacity: .8; }
+.suggestion-source > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggestion-action { display: grid; flex-shrink: 0; place-items: center; width: 26px; height: 26px; margin-right: 3px; border-radius: 50%; color: var(--note-muted); transition: color .18s, background-color .18s; }
+.suggestion-action > svg { translate: 0 0; transition: translate .18s ease; }
+.suggestion-card:focus-visible, .suggestions-refresh:focus-visible { outline: 2px solid var(--suggestion-accent); outline-offset: 4px; }
+.suggestion-card:focus-visible .suggestion-action { background: #ffffff50; color: var(--note-ink); }
+.suggestion-card:disabled { cursor: not-allowed; opacity: .5; }
+.suggestion-card:not(:disabled):active { translate: 0 0; box-shadow: 0 1px 3px #26374624; }
+@media (hover: hover) {
+  .suggestion-card:not(:disabled):hover { translate: 0 -3px; rotate: 0deg; box-shadow: 2px 12px 18px -10px #26374642, 0 2px 3px #2637460a; }
+  .suggestion-card:not(:disabled):hover .suggestion-action { background: #ffffff55; color: var(--note-ink); }
+  .suggestion-card:not(:disabled):hover .suggestion-action > svg { translate: 1px -1px; }
+  .suggestion-card:not(:disabled):active { translate: 0 0; }
+}
+@media (min-width: 768px) {
+  .suggestions-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 17px; }
+  .suggestion-card { min-height: 166px; rotate: var(--note-rotation); }
+  .suggestion-card:not(:disabled):hover { rotate: 0deg; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .suggested-questions *, .suggested-questions *::before { transition: none !important; animation: none !important; }
+  .suggestion-card, .suggestion-card:not(:disabled):hover, .suggestion-action > svg { translate: 0 0 !important; rotate: 0deg !important; }
+}

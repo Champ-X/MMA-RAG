@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -9,7 +10,9 @@ import {
 } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import {
+  CornerDownLeft,
   Database,
+  MessageSquare,
   MessageSquarePlus,
   Moon,
   Network,
@@ -23,6 +26,8 @@ import {
 import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import type { ChatSession } from '@/store/useChatStore'
+import { getConversationSearchAction } from './conversationSearchKeyboard'
+import './conversationSearch.css'
 
 export type SidebarView = 'chat' | 'knowledge' | 'architecture' | 'settings'
 
@@ -41,9 +46,9 @@ interface ConversationSidebarProps {
 }
 
 const navigationItems = [
-  { id: 'knowledge' as const, label: 'Space', icon: Database },
-  { id: 'architecture' as const, label: '架构', icon: Network },
-  { id: 'settings' as const, label: '设置', icon: Settings },
+  { id: 'knowledge' as const, label: 'Space', description: '浏览与管理知识库', keywords: '知识空间 文档 文件', icon: Database },
+  { id: 'architecture' as const, label: '架构', description: '查看系统模块与处理流程', keywords: 'architecture', icon: Network },
+  { id: 'settings' as const, label: '设置', description: '调整模型与偏好设置', keywords: 'settings 配置', icon: Settings },
 ]
 
 const railTransition =
@@ -165,19 +170,17 @@ function HighlightedSearchText({ text, query }: { text: string; query: string })
   if (!query) return <>{text}</>
 
   const normalizedText = text.toLocaleLowerCase()
-  const matchIndex = normalizedText.indexOf(query)
-  if (matchIndex < 0) return <>{text}</>
-
-  const matchEnd = matchIndex + query.length
-  return (
-    <>
-      {text.slice(0, matchIndex)}
-      <mark className="rounded-[3px] bg-indigo-100 px-0.5 text-indigo-950 dark:bg-indigo-500/25 dark:text-indigo-100">
-        {text.slice(matchIndex, matchEnd)}
-      </mark>
-      {text.slice(matchEnd)}
-    </>
-  )
+  const parts = []
+  let position = 0
+  let matchIndex = normalizedText.indexOf(query)
+  while (matchIndex >= 0) {
+    parts.push(text.slice(position, matchIndex))
+    parts.push(<mark key={matchIndex}>{text.slice(matchIndex, matchIndex + query.length)}</mark>)
+    position = matchIndex + query.length
+    matchIndex = normalizedText.indexOf(query, position)
+  }
+  parts.push(text.slice(position))
+  return <>{parts}</>
 }
 
 export function ConversationSidebar({
@@ -198,22 +201,35 @@ export function ConversationSidebar({
   const resizeOriginRef = useRef(0)
   const isResizingRef = useRef(false)
   const bodyStyleRef = useRef({ cursor: '', userSelect: '' })
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const searchTriggerRef = useRef<HTMLButtonElement>(null)
+  const searchReturnFocusRef = useRef<HTMLElement | null>(null)
+  const searchResultsRef = useRef<HTMLDivElement>(null)
+  const searchId = useId()
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [activeSearchResult, setActiveSearchResult] = useState<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(getInitialSidebarWidth)
   const [isResizing, setIsResizing] = useState(false)
   const normalizedSearchQuery = normalizeSearchText(searchQuery)
   const filteredNavigationItems = navigationItems.filter((item) =>
-    item.label.toLocaleLowerCase().includes(normalizedSearchQuery)
+    normalizeSearchText(`${item.label} ${item.description} ${item.keywords}`).includes(normalizedSearchQuery)
   )
-  const filteredSessions = useMemo(
+  const matchingSessions = useMemo(
     () =>
       sessions
         .map((session) => getSessionSearchResult(session, normalizedSearchQuery))
-        .filter((result): result is SessionSearchResult => result !== null)
-        .slice(0, 8),
+        .filter((result): result is SessionSearchResult => result !== null),
     [normalizedSearchQuery, sessions]
   )
+  const filteredSessions = matchingSessions.slice(0, 8)
+  const searchResultIds = [
+    ...filteredNavigationItems.map(item => `page:${item.id}`),
+    ...filteredSessions.map(result => `chat:${result.session.id}`),
+  ]
+  const selectedSearchResult = activeSearchResult && searchResultIds.includes(activeSearchResult)
+    ? activeSearchResult : searchResultIds[0] ?? null
+  const searchOptionId = (id: string) => `${searchId}-option-${encodeURIComponent(id)}`
   const theme = isDark
     ? {
         rail: 'border-[#3A3A36] bg-[#1D1D1B] text-[#F0EFEA] shadow-[12px_0_30px_-24px_rgba(0,0,0,0.72)]',
@@ -257,6 +273,12 @@ export function ConversationSidebar({
     const handleShortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'k') {
         event.preventDefault()
+        if (searchInputRef.current) {
+          searchInputRef.current.focus()
+          return
+        }
+        searchReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+        setActiveSearchResult(null)
         setSearchOpen(true)
       }
     }
@@ -264,6 +286,11 @@ export function ConversationSidebar({
     window.addEventListener('keydown', handleShortcut)
     return () => window.removeEventListener('keydown', handleShortcut)
   }, [])
+
+  useEffect(() => {
+    if (!searchOpen) return
+    searchResultsRef.current?.querySelector<HTMLElement>('[data-search-active="true"]')?.scrollIntoView({ block: 'nearest' })
+  }, [searchOpen, selectedSearchResult, normalizedSearchQuery])
 
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth))
@@ -298,11 +325,41 @@ export function ConversationSidebar({
   const closeSearch = () => {
     setSearchOpen(false)
     setSearchQuery('')
+    setActiveSearchResult(null)
   }
 
   const handleSearchOpenChange = (open: boolean) => {
     setSearchOpen(open)
-    if (!open) setSearchQuery('')
+    if (!open) {
+      setSearchQuery('')
+      setActiveSearchResult(null)
+    }
+  }
+
+  const activateSearchResult = (id: string) => {
+    const page = filteredNavigationItems.find(item => `page:${item.id}` === id)
+    const conversation = filteredSessions.find(result => `chat:${result.session.id}` === id)
+    if (!page && !conversation) return
+    closeSearch()
+    if (page) onNavigate(page.id)
+    else if (conversation) onSelectConversation(conversation.session.id)
+  }
+
+  const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    const action = getConversationSearchAction({
+      key: event.key, isComposing: event.nativeEvent.isComposing, keyCode: event.nativeEvent.keyCode,
+      altKey: event.altKey, ctrlKey: event.ctrlKey, metaKey: event.metaKey, shiftKey: event.shiftKey,
+    }, searchResultIds, selectedSearchResult)
+    if (!action) return
+    event.preventDefault()
+    if (action.type === 'move') setActiveSearchResult(action.id)
+    else activateSearchResult(action.id)
+  }
+
+  const clearSearchQuery = () => {
+    setSearchQuery('')
+    setActiveSearchResult(null)
+    searchInputRef.current?.focus()
   }
 
   const handleResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -603,8 +660,13 @@ export function ConversationSidebar({
           </div>
 
           <button
+            ref={searchTriggerRef}
             type="button"
-            onClick={() => setSearchOpen(true)}
+            onClick={() => {
+              searchReturnFocusRef.current = searchTriggerRef.current
+              setActiveSearchResult(null)
+              setSearchOpen(true)
+            }}
             title="搜索页面与会话"
             aria-label="搜索页面与会话"
             className={cn(
@@ -697,140 +759,132 @@ export function ConversationSidebar({
 
       <Dialog.Root open={searchOpen} onOpenChange={handleSearchOpenChange}>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-[80] bg-slate-950/30 backdrop-blur-[2px] data-[state=closed]:animate-out data-[state=open]:animate-in" />
+          <Dialog.Overlay className="conversation-search-overlay" />
           <Dialog.Content
-            aria-describedby="sidebar-search-description"
-            className="fixed left-1/2 top-[14vh] z-[90] flex max-h-[68vh] w-[min(620px,calc(100vw-32px))] -translate-x-1/2 flex-col overflow-hidden rounded-[10px] border border-slate-200 bg-white shadow-[0_28px_80px_-24px_rgba(15,23,42,0.45)] outline-none dark:border-slate-700 dark:bg-slate-900"
+            className="conversation-search"
+            onOpenAutoFocus={(event) => { event.preventDefault(); searchInputRef.current?.focus() }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault()
+              const target = searchReturnFocusRef.current
+              if (target?.isConnected) target.focus()
+              else searchTriggerRef.current?.focus()
+            }}
           >
-            <Dialog.Title className="sr-only">搜索页面与会话</Dialog.Title>
-            <Dialog.Description id="sidebar-search-description" className="sr-only">
-              输入关键词，搜索功能页面、会话标题、用户提问或 AI 回答。
+            <Dialog.Description className="sr-only">
+              搜索功能页面、会话标题、提问或回答。使用上下方向键选择结果，按 Enter 打开，按 Esc 关闭。
             </Dialog.Description>
-
-            <div className="flex h-14 shrink-0 items-center border-b border-slate-200 px-4 dark:border-slate-700">
-              <Search className="h-5 w-5 shrink-0 text-slate-400" strokeWidth={1.75} aria-hidden />
-              <input
-                autoFocus
-                type="search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="搜索页面、问题或回答…"
-                aria-label="搜索页面、问题或回答"
-                className="min-w-0 flex-1 border-0 bg-transparent px-3 text-[15px] text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100"
-              />
-              <Dialog.Close asChild>
-                <button
-                  type="button"
-                  aria-label="关闭搜索"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-[6px] text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                >
-                  <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-                </button>
-              </Dialog.Close>
+            <div className="conversation-search-header">
+              <div className="conversation-search-heading">
+                <Dialog.Title>搜索</Dialog.Title>
+                <span>页面 · 会话 · 消息</span>
+              </div>
+              <div className="conversation-search-input-row">
+                <Search size={19} strokeWidth={1.8} aria-hidden />
+                <input
+                  ref={searchInputRef}
+                  type="search"
+                  role="combobox"
+                  autoComplete="off"
+                  value={searchQuery}
+                  onChange={(event) => { setSearchQuery(event.target.value); setActiveSearchResult(null) }}
+                  onKeyDown={handleSearchKeyDown}
+                  placeholder="搜索页面、问题或回答…"
+                  aria-label="搜索页面、问题或回答"
+                  aria-autocomplete="list"
+                  aria-expanded={searchOpen}
+                  aria-controls={`${searchId}-results`}
+                  aria-activedescendant={selectedSearchResult ? searchOptionId(selectedSearchResult) : undefined}
+                />
+                {searchQuery && <button type="button" className="conversation-search-clear" onClick={clearSearchQuery} aria-label="清空搜索内容"><X size={14} aria-hidden /></button>}
+                <Dialog.Close asChild>
+                  <button type="button" aria-label="关闭搜索" className="conversation-search-close">esc</button>
+                </Dialog.Close>
+              </div>
             </div>
-
-            <div className="min-h-0 overflow-y-auto p-2">
+            <div ref={searchResultsRef} className="conversation-search-results" id={`${searchId}-results`} role="listbox" aria-label="页面与会话搜索结果">
               {filteredNavigationItems.length > 0 && (
-                <section aria-labelledby="search-navigation-heading">
-                  <h3
-                    id="search-navigation-heading"
-                    className="px-2 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400"
-                  >
-                    功能
-                  </h3>
-                  <div className="space-y-0.5">
-                    {filteredNavigationItems.map((item) => {
-                      const Icon = item.icon
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => {
-                            closeSearch()
-                            onNavigate(item.id)
-                          }}
-                          className="flex h-11 w-full items-center gap-3 rounded-[6px] px-3 text-left text-[14px] font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 dark:text-slate-200 dark:hover:bg-slate-800"
-                        >
-                          <Icon className="h-[18px] w-[18px] text-slate-500 dark:text-slate-400" strokeWidth={1.75} aria-hidden />
-                          {item.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </section>
-              )}
-
-              {filteredSessions.length > 0 && (
-                <section aria-labelledby="search-sessions-heading" className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
-                  <h3
-                    id="search-sessions-heading"
-                    className="px-2 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400"
-                  >
-                    会话与消息
-                  </h3>
-                  <div className="space-y-0.5">
-                    {filteredSessions.map((result) => (
+                <div className="conversation-search-group" role="group" aria-labelledby={`${searchId}-navigation`}>
+                  <div className="conversation-search-group-heading" id={`${searchId}-navigation`}>页面与功能 <span>{filteredNavigationItems.length}</span></div>
+                  {filteredNavigationItems.map((item) => {
+                    const Icon = item.icon
+                    const id = `page:${item.id}`
+                    return (
                       <button
-                        key={result.session.id}
-                        type="button"
-                        onClick={() => {
-                          closeSearch()
-                          onSelectConversation(result.session.id)
-                        }}
-                        aria-label={`打开会话：${result.title}`}
-                        className="flex min-h-11 w-full items-start gap-3 rounded-[6px] px-3 py-2.5 text-left text-[14px] text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 dark:text-slate-200 dark:hover:bg-slate-800"
+                        key={id} id={searchOptionId(id)} type="button" role="option" tabIndex={-1}
+                        aria-selected={selectedSearchResult === id}
+                        data-search-active={selectedSearchResult === id}
+                        onMouseEnter={() => setActiveSearchResult(id)}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => activateSearchResult(id)}
+                        className="conversation-search-option"
                       >
-                        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-[6px] bg-slate-100 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                          {result.title.slice(0, 1).toUpperCase()}
+                        <span className="conversation-search-option-icon"><Icon size={17} strokeWidth={1.7} aria-hidden /></span>
+                        <span className="conversation-search-option-copy">
+                          <span className="conversation-search-option-title"><span><HighlightedSearchText text={item.label} query={normalizedSearchQuery} /></span>{activeView === item.id && <span className="conversation-search-result-tag">当前</span>}</span>
+                          <span className="conversation-search-option-description"><HighlightedSearchText text={item.description} query={normalizedSearchQuery} /></span>
                         </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex min-w-0 items-center gap-2">
-                            <span className="min-w-0 flex-1 truncate font-medium">
-                              <HighlightedSearchText text={result.title} query={normalizedSearchQuery} />
-                            </span>
-                            {result.titleMatched && (
-                              <span className="shrink-0 rounded-[4px] bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                                标题
-                              </span>
-                            )}
+                        <CornerDownLeft size={15} className="conversation-search-open-icon" aria-hidden />
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {filteredSessions.length > 0 && (
+                <div className="conversation-search-group" role="group" aria-labelledby={`${searchId}-sessions`}>
+                  <div className="conversation-search-group-heading" id={`${searchId}-sessions`}>{normalizedSearchQuery ? '会话与消息' : '最近会话'} <span>{filteredSessions.length}{matchingSessions.length > filteredSessions.length ? ` / ${matchingSessions.length}` : ''}</span></div>
+                  {filteredSessions.map((result) => {
+                    const id = `chat:${result.session.id}`
+                    return (
+                      <button
+                        key={id} id={searchOptionId(id)} type="button" role="option" tabIndex={-1}
+                        aria-selected={selectedSearchResult === id}
+                        data-search-active={selectedSearchResult === id}
+                        onMouseEnter={() => setActiveSearchResult(id)}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => activateSearchResult(id)}
+                        aria-label={`打开会话：${result.title}${result.matches.length ? `，匹配${result.matches.map(match => match.role === 'assistant' ? '回答' : '提问').join('、')}` : ''}`}
+                        className="conversation-search-option"
+                      >
+                        <span className="conversation-search-option-icon"><MessageSquare size={17} strokeWidth={1.7} aria-hidden /></span>
+                        <span className="conversation-search-option-copy">
+                          <span className="conversation-search-option-title">
+                            <span><HighlightedSearchText text={result.title} query={normalizedSearchQuery} /></span>
+                            {result.session.id === activeSessionId && activeView === 'chat' && <span className="conversation-search-result-tag">当前</span>}
+                            {result.titleMatched && <span className="conversation-search-result-tag">标题匹配</span>}
                           </span>
-
-                          {result.matches.length > 0 && (
-                            <span className="mt-1.5 block space-y-1.5">
+                          {result.matches.length > 0 ? (
+                            <span className="conversation-search-matches">
                               {result.matches.map((match) => (
-                                <span
-                                  key={match.id}
-                                  className="flex min-w-0 items-start gap-2 text-[12px] leading-5 text-slate-500 dark:text-slate-400"
-                                >
-                                  <span
-                                    className={cn(
-                                      'mt-0.5 shrink-0 rounded-[4px] px-1.5 py-0.5 text-[10px] leading-4',
-                                      match.role === 'assistant'
-                                        ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300'
-                                        : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300'
-                                    )}
-                                  >
-                                    {match.role === 'assistant' ? '回答' : '提问'}
-                                  </span>
-                                  <span className="line-clamp-2 min-w-0 flex-1">
-                                    <HighlightedSearchText text={match.snippet} query={normalizedSearchQuery} />
-                                  </span>
+                                <span key={match.id} className="conversation-search-match">
+                                  <span className="conversation-search-match-role" data-role={match.role}>{match.role === 'assistant' ? '回答' : '提问'}</span>
+                                  <span className="conversation-search-snippet"><HighlightedSearchText text={match.snippet} query={normalizedSearchQuery} /></span>
                                 </span>
                               ))}
                             </span>
-                          )}
+                          ) : <span className="conversation-search-option-description">{result.session.messages.length > 0 ? `${result.session.messages.length} 条消息` : '尚无消息'} · 打开会话</span>}
                         </span>
+                        <CornerDownLeft size={15} className="conversation-search-open-icon" aria-hidden />
                       </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {filteredNavigationItems.length === 0 && filteredSessions.length === 0 && (
-                <div className="px-4 py-10 text-center text-[14px] text-slate-500 dark:text-slate-400">
-                  没有找到匹配的页面、问题或回答
+                    )
+                  })}
+                  {matchingSessions.length > filteredSessions.length && <p className="conversation-search-more">显示前 {filteredSessions.length} 个会话，可输入更具体的关键词继续查找。</p>}
                 </div>
               )}
+              {searchResultIds.length === 0 && (
+                <div className="conversation-search-empty">
+                  <span className="conversation-search-empty-icon"><Search size={21} strokeWidth={1.5} aria-hidden /></span>
+                  <strong>没有找到相关结果</strong>
+                  <p>试试更短的关键词，也可以搜索会话中的提问或回答。</p>
+                </div>
+              )}
+            </div>
+            <div className="conversation-search-footer">
+              <div className="conversation-search-shortcuts" aria-hidden>
+                <span><kbd>↑</kbd><kbd>↓</kbd>选择</span>
+                <span><kbd>↵</kbd>打开</span>
+                <span><kbd>esc</kbd>关闭</span>
+              </div>
+              <span role="status" aria-live="polite" aria-atomic="true">{searchResultIds.length ? `${searchResultIds.length} 项结果` : '暂无匹配'}</span>
             </div>
           </Dialog.Content>
         </Dialog.Portal>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUpRight, RefreshCw, Sparkles } from 'lucide-react'
+import { ArrowUpRight, Library, RefreshCw, Sparkles } from 'lucide-react'
 import { knowledgeApi } from '@/services/api_client'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import type { ChatSession, ChatScopeFile } from '@/store/useChatStore'
@@ -8,6 +8,7 @@ import {
   createSuggestedQuestionsCache, getSuggestionScope, localSuggestedQuestions,
   MAX_QUESTIONS, suggestionCacheKey, type SuggestionScope, type SuggestedQuestionItem,
 } from '@/lib/suggestedQuestions'
+import './suggestedQuestions.css'
 
 interface SuggestedQuestionsProps {
   session: ChatSession | null
@@ -80,15 +81,15 @@ export function SuggestedQuestions({
   const loading = current.loading
 
   return (
-    <div className="mx-auto mt-5 w-full max-w-lg px-1 md:max-w-3xl md:px-0" aria-busy={loading}>
-      <div className="mb-2.5 flex items-center justify-between gap-3 px-1">
-        <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
-          <Sparkles className="h-3.5 w-3.5 shrink-0 text-indigo-500 dark:text-indigo-300" aria-hidden />
-          <span>你可以这样问</span>
-        </div>
+    <div className="suggested-questions mx-auto mt-5 w-full max-w-lg px-1 md:max-w-3xl md:px-0" aria-busy={loading}>
+      <div className="suggestions-heading">
+        <h2 className="suggestions-title">
+          <span className="suggestions-title-icon"><Sparkles size={14} aria-hidden /></span>
+          你可以这样问
+        </h2>
         <button type="button" disabled={disabled || loading}
           onClick={() => setRefresh((value) => ({ key: cacheKey, revision: value.revision + 1 }))}
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2 text-xs text-slate-500 hover:bg-slate-100 hover:text-indigo-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-indigo-300">
+          className="suggestions-refresh">
           <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin motion-reduce:animate-none')} aria-hidden />
           {loading ? '正在加载' : current.failed && !questions.length ? '重试' : '换一批'}
         </button>
@@ -99,8 +100,8 @@ export function SuggestedQuestions({
             ? '暂时无法加载推荐问题，你可以直接提问。' : '当前范围暂无推荐问题，可直接输入问题。'}
         </p>
       )}
-          <ul className="grid grid-cols-1 gap-2.5 md:grid-cols-3" aria-label="推荐问题">
-            {questions.map((item) => (
+          <ul className="suggestions-grid" aria-label="推荐问题">
+            {questions.map((item, index) => (
               <li key={item.id} className="min-w-0">
                 <button
                   type="button"
@@ -108,21 +109,16 @@ export function SuggestedQuestions({
                   title={item.text}
                   aria-label={`发送推荐问题：${item.text}`}
                   onClick={() => onSelect(item.text)}
-                  className={cn(
-                    'group flex min-h-[88px] w-full flex-col justify-between gap-3 overflow-hidden rounded-[12px] border border-slate-200/90 bg-white/55 px-3.5 py-3 text-left shadow-sm shadow-slate-200/20 transition-[border-color,background-color,box-shadow] duration-150 md:min-h-[112px] md:px-4 md:py-3.5',
-                    'hover:border-indigo-200 hover:bg-white hover:shadow-md hover:shadow-indigo-100/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/70 focus-visible:ring-offset-2',
-                    'dark:border-slate-800 dark:bg-slate-900/35 dark:shadow-none dark:hover:border-indigo-500/40 dark:hover:bg-slate-900/65',
-                    disabled && 'cursor-not-allowed opacity-55'
-                  )}
+                  className="suggestion-card"
+                  data-note={['honey', 'sage', 'lavender'][index % 3]}
                 >
-                  <span className="flex w-full min-w-0 items-center justify-between gap-2">
-                    <span className="max-w-[85%] truncate rounded-full bg-slate-100/90 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                      {item.kbName}
+                  <span className="suggestion-question">{item.text}</span>
+                  <span className="suggestion-footer">
+                    <span className="suggestion-source" title={item.kbName}>
+                      <Library size={12} aria-hidden />
+                      <span>{item.kbName}</span>
                     </span>
-                    <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-slate-300 transition-colors group-hover:text-indigo-500 dark:text-slate-600 dark:group-hover:text-indigo-300" aria-hidden />
-                  </span>
-                  <span className="block line-clamp-2 break-words text-[13px] font-medium leading-relaxed text-slate-800 [overflow-wrap:anywhere] md:line-clamp-3 md:text-[13.5px] dark:text-slate-100">
-                    {item.text}
+                    <span className="suggestion-action" aria-hidden><ArrowUpRight size={16} /></span>
                   </span>
                 </button>
               </li>
