@@ -1,266 +1,85 @@
-"""
-为已有知识库批量回填推荐问题（问题池）。
-
-策略：
-- 每次从 text_chunks_agentic 抽样 10 个 chunk 作为材料
-- 单次 LLM 调用生成 20 个问题
-- 结果写入 backend/data/suggestion_cache/question_bank_by_kb/<kb_id>.json
-"""
-
+"""回填基于已有分块、图片说明、视频场景与 ASR 的自然问题，无需重新解析。"""
 from __future__ import annotations
 
 import argparse
 import asyncio
-import random
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
 
-from qdrant_client.http.models import FieldCondition, Filter, MatchValue
-
-# 兼容从仓库根目录执行：
-# python backend/scripts/backfill_suggested_questions.py ...
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app.core.llm.manager import llm_manager
 from app.core.logger import get_logger
-from app.modules.ingestion.storage.vector_store import TEXT_CHUNK_COLLECTION
+from app.modules.knowledge.natural_questions import generate_natural_questions, sample_evidence_for_kb
 from app.modules.knowledge.service import KnowledgeBaseService
-from app.modules.knowledge.suggested_questions import (
-    _safe_json_loads_array,
-    add_questions_to_bank,
-    remove_kb_question_bank,
-)
+from app.modules.knowledge import suggested_questions as suggestions
 
 logger = get_logger(__name__)
 
 
-def _payload(p: Any) -> Dict[str, Any]:
-    return p if isinstance(p, dict) else {}
-
-
-def _trim(s: str, n: int = 360) -> str:
-    s = (s or "").strip()
-    return s if len(s) <= n else s[: n - 1] + "…"
-
-
-def _sample_text_chunks_for_kb(
-    kb_service: KnowledgeBaseService,
-    kb_id: str,
-    *,
-    limit: int,
-) -> List[Dict[str, str]]:
-    candidates = list(dict.fromkeys(kb_service._kb_id_candidates(kb_id)))
-    out: List[Dict[str, str]] = []
-    seen = set()
-    for cid in candidates:
-        try:
-            filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=cid))])
-            pts, _ = kb_service.vector_store.client.scroll(
-                collection_name=TEXT_CHUNK_COLLECTION,
-                scroll_filter=filt,
-                limit=limit,
-                with_payload=True,
-            )
-        except Exception:
-            pts = []
-        for pt in pts or []:
-            p = _payload(getattr(pt, "payload", None))
-            text = str(p.get("text_content") or "").strip()
-            file_id = str(p.get("file_id") or "").strip()
-            if not text:
-                continue
-            sig = (file_id, text[:120])
-            if sig in seen:
-                continue
-            seen.add(sig)
-            out.append({"file_id": file_id, "text": text})
-            if len(out) >= limit:
-                return out
-    return out
-
-
-def _sample_multimodal_texts_for_kb(
-    kb_service: KnowledgeBaseService,
-    kb_id: str,
-    *,
-    total_limit: int,
-) -> List[Dict[str, str]]:
-    """
-    从多模态集合抽取“可用于提问生成”的文本材料：
-    - text_chunks_agentic.text_content
-    - image_vectors.caption / description
-    - audio_vectors.transcript / description
-    - video_shot_vectors.scene_summary / caption / asr_text
-    """
-    candidates = list(dict.fromkeys(kb_service._kb_id_candidates(kb_id)))
-    out: List[Dict[str, str]] = []
-    seen = set()
-
-    def _push(kind: str, file_id: str, text: str) -> None:
-        nonlocal out
-        t = (text or "").strip()
-        if not t:
-            return
-        sig = (kind, file_id, t[:120])
-        if sig in seen:
-            return
-        seen.add(sig)
-        out.append({"kind": kind, "file_id": file_id, "text": t})
-
-    # 1) 文本 chunks（优先更多）
-    text_limit = max(10, int(total_limit * 0.5))
-    text_rows = _sample_text_chunks_for_kb(kb_service, kb_id, limit=text_limit)
-    for r in text_rows:
-        _push("text", r.get("file_id", ""), r.get("text", ""))
-
-    # 2) 其它模态文本
-    per_collection_limit = max(6, int(total_limit * 0.2))
-    collections = {
-        "image_vectors": [("caption", "image_caption"), ("description", "image_desc")],
-        "audio_vectors": [("transcript", "audio_transcript"), ("description", "audio_desc")],
-        "video_shot_vectors": [
-            ("scene_summary", "video_scene"),
-            ("caption", "video_shot"),
-            ("asr_text", "video_asr"),
-        ],
-    }
-    for cid in candidates:
-        filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=cid))])
-        for coll, fields in collections.items():
-            try:
-                pts, _ = kb_service.vector_store.client.scroll(
-                    collection_name=coll,
-                    scroll_filter=filt,
-                    limit=per_collection_limit,
-                    with_payload=True,
-                )
-            except Exception:
-                pts = []
-            for pt in pts or []:
-                p = _payload(getattr(pt, "payload", None))
-                fid = str(p.get("file_id") or "")
-                for key, kind in fields:
-                    _push(kind, fid, str(p.get(key) or ""))
-
-    random.shuffle(out)
-    return out[:total_limit]
-
-
-async def _generate_questions_from_chunk_batch(
-    kb_name: str,
-    batch: Sequence[Dict[str, str]],
-    *,
-    out_count: int,
-) -> List[str]:
-    context = []
-    for i, item in enumerate(batch, 1):
-        context.append(
-            f"[{i}] kind={item.get('kind','text')} file_id={item.get('file_id')}\n"
-            f"{_trim(item.get('text') or '', 380)}"
-        )
-    prompt = "\n\n".join(context)
-    system = (
-        "你是知识库检索问题生成器。只基于给定材料片段生成问题。"
-        "禁止外部知识推断，禁止虚构。"
-        f"请输出恰好 {out_count} 条中文检索问题，JSON 字符串数组格式。"
-    )
-    user = f"知识库：{kb_name}\n以下是抽样文本分块：\n\n{prompt}\n\n请输出 JSON 数组。"
-    res = await llm_manager.chat(
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        task_type="query_rewriting",
-        temperature=0.5,
-        max_tokens=1200,
-    )
-    if not res.success:
-        logger.warning("LLM 生成失败: %s", res.error)
-        return []
-    raw = (
-        (res.data or {}).get("choices", [{}])[0]
-        .get("message", {})
-        .get("content", "")
-    )
-    return _safe_json_loads_array(str(raw))
-
-
 async def backfill(
-    *,
-    chunk_batch_size: int,
-    out_questions_per_call: int,
-    calls_per_kb: int,
-    sample_limit_per_kb: int,
-    reset: bool,
+    *, chunk_batch_size: int, out_questions_per_call: int, calls_per_kb: int,
+    sample_limit_per_kb: int, reset: bool,
 ) -> None:
-    kb_service = KnowledgeBaseService()
-    kbs = await kb_service.list_knowledge_bases()
-    if not kbs:
-        logger.info("无知识库，结束")
-        return
-
-    logger.info("开始回填推荐问题，知识库数量={}", len(kbs))
-    for kb in kbs:
-        kb_id = str(kb.get("id") or "").strip()
-        kb_name = str(kb.get("name") or kb_id)
+    service = KnowledgeBaseService()
+    libraries = await service.list_knowledge_bases()
+    logger.info("开始回填自然问题，知识库数量={}", len(libraries))
+    for kb in libraries:
+        kb_id = str(kb.get("id") or "")
         if not kb_id:
             continue
-        if reset:
-            remove_kb_question_bank(kb_id)
-        chunks = _sample_multimodal_texts_for_kb(kb_service, kb_id, total_limit=sample_limit_per_kb)
-        if len(chunks) < 3:
-            logger.info("跳过 kb_id={}（可用 chunks 太少: {}）", kb_id, len(chunks))
+        kb_name = str(kb.get("name") or kb_id)
+        with suggestions._bank_lock(kb_id):
+            generation_epoch = suggestions._generation_epoch(kb_id)
+        evidence = await sample_evidence_for_kb(service, kb_id, kb_name, limit=sample_limit_per_kb)
+        if not evidence:
+            logger.info("跳过 kb_id={}（无可用内容证据）", kb_id)
             continue
-        random.shuffle(chunks)
-
         total_added = 0
-        for i in range(calls_per_kb):
-            start = i * chunk_batch_size
-            end = start + chunk_batch_size
-            batch = chunks[start:end]
-            if len(batch) < max(3, chunk_batch_size // 2):
+        reset_pending = reset
+        for index in range(calls_per_kb):
+            batch = evidence[index * chunk_batch_size:(index + 1) * chunk_batch_size]
+            if not batch:
                 break
-            qs = await _generate_questions_from_chunk_batch(
-                kb_name,
-                batch,
-                out_count=out_questions_per_call,
-            )
-            q_objs = [{"text": q, "kb_name": kb_name} for q in qs if q]
-            added = add_questions_to_bank(
-                kb_id,
-                q_objs,
-                source="backfill",
-                file_id=None,
-            )
-            total_added += added
-            logger.info(
-                "kb_id={} 回填批次 {}/{} 完成，新增问题={}",
-                kb_id,
-                i + 1,
-                calls_per_kb,
-                added,
-            )
-        logger.info("kb_id={} 回填结束，累计新增问题={}", kb_id, total_added)
+            result = await generate_natural_questions(batch, max_questions=out_questions_per_call)
+            questions = suggestions._current_questions(result["questions"])
+            # The CLI shares banks with API/ingestion workers. Check and merge
+            # under one lock so deleted source material cannot reappear afterward.
+            with suggestions._bank_lock(kb_id):
+                if suggestions._generation_epoch(kb_id) != generation_epoch:
+                    logger.info("停止回填 kb_id={}（生成期间资料已删除或问题池已重置）", kb_id)
+                    break
+                # Failed generation leaves the previous bank intact, even with --reset.
+                if reset_pending and questions:
+                    suggestions._invalidate_generation(kb_id)
+                    suggestions._bank_path(kb_id).unlink(missing_ok=True)
+                    suggestions._precomputed_path(kb_id).unlink(missing_ok=True)
+                    generation_epoch = suggestions._generation_epoch(kb_id)
+                    reset_pending = False
+                by_file = {}
+                for question in questions:
+                    by_file.setdefault(question["file_id"], []).append(question)
+                for file_id, items in by_file.items():
+                    total_added += suggestions._add_questions_to_bank_unlocked(
+                        kb_id, items, source="backfill:llm", file_id=file_id)
+            logger.info("kb_id={} 批次={}/{} 有效问题={} model={}", kb_id, index + 1,
+                        calls_per_kb, len(questions), result.get("model_used", ""))
+        logger.info("kb_id={} 回填结束，新增问题={}", kb_id, total_added)
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Backfill suggested questions for all KBs")
-    p.add_argument("--chunk-batch-size", type=int, default=10)
-    p.add_argument("--out-questions-per-call", type=int, default=20)
-    p.add_argument("--calls-per-kb", type=int, default=3)
-    p.add_argument("--sample-limit-per-kb", type=int, default=120)
-    p.add_argument("--reset", action="store_true", help="先清空每个知识库的问题池再回填")
-    args = p.parse_args()
-
-    asyncio.run(
-        backfill(
-            chunk_batch_size=max(3, args.chunk_batch_size),
-            out_questions_per_call=max(1, args.out_questions_per_call),
-            calls_per_kb=max(1, args.calls_per_kb),
-            sample_limit_per_kb=max(10, args.sample_limit_per_kb),
-            reset=bool(args.reset),
-        )
-    )
+    parser = argparse.ArgumentParser(description="Backfill grounded natural questions from indexed evidence")
+    parser.add_argument("--chunk-batch-size", type=int, default=12)
+    parser.add_argument("--out-questions-per-call", type=int, default=6)
+    parser.add_argument("--calls-per-kb", type=int, default=3)
+    parser.add_argument("--sample-limit-per-kb", type=int, default=72)
+    parser.add_argument("--reset", action="store_true", help="成功生成新问题后替换每个知识库的旧问题池")
+    args = parser.parse_args()
+    asyncio.run(backfill(chunk_batch_size=max(1, args.chunk_batch_size),
+                         out_questions_per_call=max(1, min(8, args.out_questions_per_call)),
+                         calls_per_kb=max(1, args.calls_per_kb),
+                         sample_limit_per_kb=max(1, args.sample_limit_per_kb), reset=args.reset))
 
 
 if __name__ == "__main__":

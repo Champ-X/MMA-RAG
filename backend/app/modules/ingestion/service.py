@@ -831,10 +831,10 @@ class IngestionService:
                 if generated_file_id:
                     asyncio.create_task(
                         generate_questions_for_file_and_store(
-                            kb_id,
+                            actual_kb_id,
                             generated_file_id,
                             file_name=generated_file_name,
-                            max_questions=20,
+                            max_questions=6,
                             use_llm=True,
                         )
                     )

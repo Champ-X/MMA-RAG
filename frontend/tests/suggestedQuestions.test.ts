@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  createSuggestedQuestionsCache, getSuggestionScope, localSuggestedQuestions,
+  createSuggestedQuestionsCache, getSuggestionScope,
   suggestionCacheKey, type SuggestedQuestionsResponse,
 } from '../src/lib/suggestedQuestions'
 import type { KnowledgeBase } from '../src/store/useKnowledgeStore'
@@ -26,20 +26,13 @@ test('equivalent scope arrays and KB ordering share a cache key; content updates
   assert.notEqual(first, suggestionCacheKey(b, [{ ...kb('a'), stats: { documents: 2, chunks: 4, images: 0 } }, kb('b')]))
 })
 
-test('selected files strictly override KB scope, with local fallback limited to selected metadata', () => {
+test('selected files strictly override KB scope without broadening to other materials', () => {
   const scope = getSuggestionScope({ kbMode: 'manual', knowledgeBaseIds: ['other'] }, [
     { kbId: 'a', fileId: 'tea', name: '茶叶驯化史.mp4' },
   ])
   assert.deepEqual(scope.knowledge_base_ids, ['a'])
-  const questions = localSuggestedQuestions(scope, [kb('a'), kb('other')])
-  assert.equal(questions.length, 1)
-  assert.match(questions[0].text, /茶叶驯化史/)
-  assert.equal(questions[0].kbName, '资料a')
-  const empty = getSuggestionScope({ kbMode: 'manual', knowledgeBaseIds: [] })
-  assert.deepEqual(localSuggestedQuestions(empty, [kb('a')]), [])
-  assert.deepEqual(localSuggestedQuestions(getSuggestionScope(null), [{ ...kb('a'), stats: {
-    documents: 0, chunks: 0, images: 0, text_vector_dim: 2048,
-  } }]), [])
+  assert.deepEqual(scope.selected_files, [{ kb_id: 'a', file_id: 'tea', name: '茶叶驯化史.mp4' }])
+  assert.equal(scope.kb_mode, 'manual')
 })
 
 test('simultaneous mounts share one request and another conversation reuses its result', async () => {
@@ -114,7 +107,120 @@ test('empty results are terminal and cached, while network failures remain retry
   })
   const scope = getSuggestionScope(null)
   await assert.rejects(cache.load('scope', scope), /offline/)
-  assert.deepEqual(await cache.load('scope', scope), [])
-  assert.deepEqual(await cache.load('scope', scope), [])
+  assert.deepEqual(await cache.load('scope', scope), { questions: [], pending: false })
+  assert.deepEqual(await cache.load('scope', scope), { questions: [], pending: false })
   assert.equal(calls, 2)
+})
+
+
+test('warming and legacy template fallbacks are never cached or displayed as questions', async () => {
+  let calls = 0
+  const cache = createSuggestedQuestionsCache(async () => {
+    calls += 1
+    if (calls === 1) return { questions: [], source: 'warming', retry_after_ms: 2000 }
+    if (calls === 2) return { ...payload('请梳理「资料」中的重要概念和结论？'), source: 'scope_fallback' }
+    return { ...payload('茶树是怎么从野生变成栽培作物的？'), source: 'precomputed' }
+  })
+  const scope = getSuggestionScope(null)
+  assert.deepEqual(await cache.load('scope', scope), { questions: [], pending: true, retryAfterMs: 2000 })
+  assert.equal(cache.peek('scope'), undefined)
+  assert.deepEqual((await cache.load('scope', scope)).questions, [])
+  assert.equal(cache.peek('scope'), undefined)
+  assert.equal((await cache.load('scope', scope)).pending, false)
+  assert.equal(cache.peek('scope')?.[0].text, '茶树是怎么从野生变成栽培作物的？')
+})
+
+test('background polling replaces a warming response with ready content', async () => {
+  let calls = 0
+  const cache = createSuggestedQuestionsCache(async () => ++calls < 3
+    ? { questions: [], source: 'warming' }
+    : payload('这段视频里，茶叶是怎样加工的？'))
+  const result = await cache.loadUntilReady('scope', getSuggestionScope(null), {
+    firstRetryMs: 1, retryMs: 1,
+  })
+  assert.equal(calls, 3)
+  assert.equal(result.pending, false)
+  assert.equal(result.questions[0].text, '这段视频里，茶叶是怎样加工的？')
+})
+
+test('warming polling stops at its limit and remains retryable', async () => {
+  let calls = 0
+  const cache = createSuggestedQuestionsCache(async () => {
+    calls += 1
+    return { questions: [], source: 'warming' }
+  })
+  const result = await cache.loadUntilReady('scope', getSuggestionScope(null), {
+    firstRetryMs: 1, retryMs: 1, maxAttempts: 3,
+  })
+  assert.equal(calls, 3)
+  assert.equal(result.pending, true)
+  assert.equal(cache.peek('scope'), undefined)
+  await cache.load('scope', getSuggestionScope(null))
+  assert.equal(calls, 4)
+})
+
+test('changing scope or unmounting cancels pending retries without another request', async () => {
+  let calls = 0
+  const controller = new AbortController()
+  const cache = createSuggestedQuestionsCache(async () => {
+    calls += 1
+    return { questions: [], source: 'warming' }
+  })
+  const pending = cache.loadUntilReady('scope', getSuggestionScope(null), {
+    signal: controller.signal, firstRetryMs: 20,
+  })
+  setTimeout(() => controller.abort(), 2)
+  await assert.rejects(pending, { name: 'AbortError' })
+  await new Promise((resolve) => setTimeout(resolve, 25))
+  assert.equal(calls, 1)
+})
+
+test('settled empty and unavailable responses do not keep polling', async () => {
+  for (const source of ['empty', 'unavailable']) {
+    let calls = 0
+    const cache = createSuggestedQuestionsCache(async () => {
+      calls += 1
+      return { questions: [], source }
+    })
+    const result = await cache.loadUntilReady(source, getSuggestionScope(null), {
+      firstRetryMs: 1, retryMs: 1,
+    })
+    assert.deepEqual(result, { questions: [], pending: false })
+    assert.equal(calls, 1)
+  }
+})
+
+test('cancelling one observer preserves a shared in-flight result for another mount', async () => {
+  let calls = 0
+  const response = deferred<SuggestedQuestionsResponse>()
+  const controller = new AbortController()
+  const scope = getSuggestionScope(null)
+  const cache = createSuggestedQuestionsCache(async () => {
+    calls += 1
+    return response.promise
+  })
+  const oldMount = cache.loadUntilReady('scope', scope, { signal: controller.signal })
+  const currentMount = cache.loadUntilReady('scope', scope)
+  controller.abort()
+  response.resolve(payload('声音里的鸟叫有什么特点？'))
+  await assert.rejects(oldMount, { name: 'AbortError' })
+  const result = await currentMount
+  assert.equal(calls, 1)
+  assert.equal(result.questions[0].text, '声音里的鸟叫有什么特点？')
+  assert.equal(cache.peek('scope')?.[0].text, result.questions[0].text)
+})
+
+test('elapsed polling deadline stops slow pending responses before the attempt limit', async () => {
+  let time = 0
+  let calls = 0
+  const cache = createSuggestedQuestionsCache(async () => {
+    calls += 1
+    time += 100
+    return { questions: [], source: 'warming' }
+  }, { now: () => time })
+  const result = await cache.loadUntilReady('scope', getSuggestionScope(null), {
+    maxWaitMs: 50, maxAttempts: 16,
+  })
+  assert.equal(result.pending, true)
+  assert.equal(calls, 1)
 })

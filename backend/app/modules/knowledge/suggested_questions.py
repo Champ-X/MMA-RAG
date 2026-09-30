@@ -1,16 +1,20 @@
 """
 基于知识库画像、文件分块、图片 caption、音视频描述等生成推荐检索问题。
-支持 LLM 生成与本地模板兜底；结果按内容摘要哈希落盘缓存。
+轻量模型离线生成有来源的问题，首页只读问题池；缺失时后台补齐。
 """
 
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager, ExitStack
+import fcntl
 import hashlib
 import json
 import random
 import re
 import time
+import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -18,6 +22,10 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from app.core.llm.manager import llm_manager
 from app.core.logger import get_logger
 from app.modules.knowledge.service import KnowledgeBaseService
+from app.modules.knowledge.natural_questions import (
+    NATURAL_QUESTION_VERSION, evidence_from_preview, generate_natural_questions,
+    sample_evidence_for_kb, is_natural_question,
+)
 
 logger = get_logger(__name__)
 
@@ -35,7 +43,12 @@ MAX_KB_SAMPLE_GLOBAL = 8
 MAX_FILES_PER_KB = 5
 PREVIEW_TIMEOUT_SEC = 18.0
 MAX_QUESTION_TEXT_CHARS = 96
-SUGGESTION_STRATEGY_VERSION = "content-first-v2"
+SUGGESTION_STRATEGY_VERSION = NATURAL_QUESTION_VERSION
+_background_tasks: Dict[str, asyncio.Task] = {}
+_background_cooldowns: Dict[str, float] = {}
+_generation_semaphore = asyncio.Semaphore(2)
+BACKGROUND_RETRY_SECONDS = 300
+MAX_BACKGROUND_SCOPES = 16
 _CACHE_CLEANUP_INTERVAL_SEC = 600
 _last_cache_cleanup_ts = 0.0
 
@@ -392,10 +405,8 @@ def _write_cache(cache_key: str, payload: Dict[str, Any]) -> None:
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         path = _cache_path(cache_key)
-        tmp = path.with_suffix(".tmp")
         out = {**payload, "cache_key": cache_key, "saved_at": datetime.now(timezone.utc).isoformat()}
-        tmp.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(path)
+        _atomic_write_json(path, out)
     except Exception as e:
         logger.warning("写入推荐问题缓存失败: %s", e)
 
@@ -436,6 +447,60 @@ def _bank_path(kb_id: str) -> Path:
     return BANK_DIR / f"{safe}.json"
 
 
+def _atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
+    """Separate writers must never share a temporary filename."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=f".{path.name}.", suffix=".tmp", delete=False) as stream:
+            temporary = Path(stream.name)
+            json.dump(payload, stream, ensure_ascii=False, indent=2)
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+@contextmanager
+def _bank_lock(kb_id: str):
+    """Lock the complete read/merge/write operation across API and worker processes."""
+    BANK_DIR.mkdir(parents=True, exist_ok=True)
+    # Keep lock files when deleting banks so another process cannot lock a new inode.
+    with _bank_path(kb_id).with_suffix(".lock").open("a+") as stream:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def _scope_locks(kb_ids: Sequence[str]):
+    # All callers take multiple locks in the same order. No await occurs inside.
+    with ExitStack() as stack:
+        for kb_id in sorted(set(kb_ids)):
+            stack.enter_context(_bank_lock(kb_id))
+        yield
+
+
+def _generation_epoch(kb_id: str) -> str:
+    path = _bank_path(kb_id).with_suffix(".epoch")
+    try:
+        return str(json.loads(path.read_text(encoding="utf-8"))["epoch"])
+    except FileNotFoundError:
+        return "initial"
+
+
+def _invalidate_generation(kb_id: str) -> None:
+    # Called under the KB lock, even when no bank has ever been created.
+    _atomic_write_json(_bank_path(kb_id).with_suffix(".epoch"), {"epoch": uuid.uuid4().hex})
+
+
+def _epochs_match(epochs: Dict[str, str]) -> bool:
+    return all(_generation_epoch(kb_id) == epoch for kb_id, epoch in epochs.items())
+
+
 def _read_question_bank(kb_id: str) -> Dict[str, Any]:
     path = _bank_path(kb_id)
     if not path.is_file():
@@ -455,14 +520,13 @@ def _write_question_bank(kb_id: str, payload: Dict[str, Any]) -> None:
     try:
         BANK_DIR.mkdir(parents=True, exist_ok=True)
         path = _bank_path(kb_id)
-        tmp = path.with_suffix(".tmp")
         out = {
             "kb_id": kb_id,
             "updated_at": datetime.now(timezone.utc).isoformat(),
+            "strategy": SUGGESTION_STRATEGY_VERSION,
             "questions": payload.get("questions", []),
         }
-        tmp.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(path)
+        _atomic_write_json(path, out)
     except Exception as e:
         logger.warning("写入问题池失败 kb_id=%s: %s", kb_id, e)
 
@@ -474,28 +538,43 @@ def add_questions_to_bank(
     source: str,
     file_id: Optional[str] = None,
     max_total: int = 800,
+    replace_file_ids: Sequence[str] = (),
 ) -> int:
     """写入知识库问题池（去重、限量）。"""
+    with _bank_lock(kb_id):
+        return _add_questions_to_bank_unlocked(kb_id, questions, source=source, file_id=file_id,
+                                               max_total=max_total, replace_file_ids=replace_file_ids)
+
+
+def _add_questions_to_bank_unlocked(
+    kb_id: str, questions: Sequence[Dict[str, str]], *, source: str,
+    file_id: Optional[str] = None, max_total: int = 800, replace_file_ids: Sequence[str] = (),
+) -> int:
     if not questions:
         return 0
     bank = _read_question_bank(kb_id)
-    existing = bank.get("questions", []) or []
-    seen = {_canonical_question_key(str((q or {}).get("text") or "")) for q in existing}
+    existing = [q for q in bank.get("questions", []) or []
+                if isinstance(q, dict) and q.get("strategy") == SUGGESTION_STRATEGY_VERSION
+                and q.get("file_id") not in replace_file_ids]
+    seen = {(q.get("file_id"), _canonical_question_key(str(q.get("text") or ""))) for q in existing}
     added = 0
     now = datetime.now(timezone.utc).isoformat()
     for q in questions:
+        if q.get("strategy") != SUGGESTION_STRATEGY_VERSION or not q.get("evidence_quote") or not is_natural_question(q.get("text")):
+            continue
         text = _normalize_question_text(str((q or {}).get("text") or ""))
-        key = _canonical_question_key(text)
+        key = (file_id or q.get("file_id"), _canonical_question_key(text))
         if not text or not key or key in seen:
             continue
         seen.add(key)
         existing.append(
             {
-                "id": _sha256_text(f"{kb_id}|{file_id or ''}|{text}")[:16],
+                **q,
+                "id": _sha256_text(f"{kb_id}|{file_id or q.get('file_id') or ''}|{text}")[:16],
                 "text": text,
                 "kb_name": str((q or {}).get("kb_name") or kb_id),
                 "source": source,
-                "file_id": file_id,
+                "file_id": file_id or q.get("file_id"),
                 "created_at": now,
             }
         )
@@ -507,23 +586,24 @@ def add_questions_to_bank(
 
 
 def remove_questions_by_file(kb_id: str, file_id: str) -> int:
-    bank = _read_question_bank(kb_id)
-    qs = bank.get("questions", []) or []
-    kept = [q for q in qs if str((q or {}).get("file_id") or "") != str(file_id)]
-    removed = len(qs) - len(kept)
-    if removed > 0:
-        _write_question_bank(kb_id, {"questions": kept})
-    return removed
+    with _bank_lock(kb_id):
+        _invalidate_generation(kb_id)
+        bank = _read_question_bank(kb_id)
+        qs = bank.get("questions", []) or []
+        kept = [q for q in qs if str((q or {}).get("file_id") or "") != str(file_id)]
+        removed = len(qs) - len(kept)
+        if removed > 0:
+            _write_question_bank(kb_id, {"questions": kept})
+        _precomputed_path(kb_id).unlink(missing_ok=True)
+        return removed
 
 
 def remove_kb_question_bank(kb_id: str) -> None:
     try:
-        p1 = _bank_path(kb_id)
-        if p1.exists():
-            p1.unlink()
-        p2 = _precomputed_path(kb_id)
-        if p2.exists():
-            p2.unlink()
+        with _bank_lock(kb_id):
+            _invalidate_generation(kb_id)
+            _bank_path(kb_id).unlink(missing_ok=True)
+            _precomputed_path(kb_id).unlink(missing_ok=True)
     except Exception as e:
         logger.warning("删除知识库问题缓存失败 kb_id=%s: %s", kb_id, e)
 
@@ -533,14 +613,13 @@ def _write_precomputed_for_kb(kb_id: str, payload: Dict[str, Any]) -> None:
     try:
         PRECOMPUTED_DIR.mkdir(parents=True, exist_ok=True)
         path = _precomputed_path(kb_id)
-        tmp = path.with_suffix(".tmp")
         out = {
             "kb_id": kb_id,
             "updated_at": datetime.now(timezone.utc).isoformat(),
             **payload,
+            "strategy": SUGGESTION_STRATEGY_VERSION,
         }
-        tmp.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(path)
+        _atomic_write_json(path, out)
     except Exception as e:
         logger.warning("写入 KB 预生成问题缓存失败 kb_id=%s: %s", kb_id, e)
 
@@ -555,6 +634,8 @@ def _read_precomputed_for_kb(kb_id: str, ttl_sec: int = CACHE_TTL_SECONDS_DEFAUL
             return None
         raw = json.loads(path.read_text(encoding="utf-8"))
         if str(raw.get("kb_id") or "") != str(kb_id):
+            return None
+        if raw.get("strategy") != SUGGESTION_STRATEGY_VERSION or raw.get("source") != "llm":
             return None
         return raw
     except Exception:
@@ -579,41 +660,51 @@ async def get_precomputed_questions_fast(
     return result['questions']
 
 
-def _questions_from_scope_metadata(
-    candidate_kbs: Sequence[Dict[str, Any]],
-    selected_files: Sequence[Dict[str, Any]],
-    max_q: int,
-) -> List[Dict[str, str]]:
-    """Quick suggestions describe the actual scope without inventing content facts."""
-    by_id = {str(k['id']): k for k in candidate_kbs}
-    seeds = []
-    if selected_files:
-        for file in selected_files:
-            kb = by_id.get(str(file.get('kb_id') or ''))
-            if not kb or not file.get('file_id'):
-                continue
-            name = str(file.get('name') or '')
-            title = _readable_file_title(name) if name else ''
-            label = f'「{title}」' if title else '所选材料'
-            seeds.append((label, str(kb.get('name') or '所选知识库')))
-    else:
-        for kb in candidate_kbs:
-            name = str(kb.get('name') or '').strip()
-            if name:
-                seeds.append((f'「{name}」的资料', name))
-    random.shuffle(seeds)
-    templates = [
-        lambda label: f'{label}主要介绍了哪些内容？',
-        lambda label: f'请梳理{label}中的重要概念和结论。',
-        lambda label: f'{label}有哪些值得进一步了解的主题？',
-        lambda label: f'请结合{label}归纳相关内容之间的联系。',
-    ]
-    random.shuffle(templates)
-    questions = [
-        {'text': template(label), 'kb_name': kb_name}
-        for template in templates for label, kb_name in seeds
-    ]
-    return _normalize_question_items(questions, kb_name='知识库', max_q=max_q)
+def _current_questions(items: Sequence[Any]) -> List[Dict[str, Any]]:
+    return [q for q in items if isinstance(q, dict)
+            and q.get("strategy") == SUGGESTION_STRATEGY_VERSION
+            and q.get("evidence_quote") and q.get("file_id") and is_natural_question(q.get("text"))]
+
+
+def _schedule_background_generation(kb_service, kb, selected_files) -> bool:
+    files = [f for f in selected_files if str(f.get("kb_id")) == str(kb["id"])]
+    key = json.dumps([kb["id"], sorted(str(f["file_id"]) for f in files)], ensure_ascii=False)
+    existing = _background_tasks.get(key)
+    if existing and not existing.done():
+        return True
+    now = time.monotonic()
+    for old_key, deadline in list(_background_cooldowns.items()):
+        if deadline <= now:
+            _background_cooldowns.pop(old_key, None)
+    if _background_cooldowns.get(key, 0) > now or len(_background_tasks) >= MAX_BACKGROUND_SCOPES:
+        return False
+
+    async def run():
+        try:
+            async with _generation_semaphore:
+                await asyncio.wait_for(build_context_and_questions_payload(
+                    kb_service, kb_mode="files" if files else "manual",
+                    knowledge_base_ids=[kb["id"]], selected_files=files,
+                    max_questions=8, use_llm=True, refresh=True,
+                ), timeout=90)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("推荐问题后台生成失败 kb_id={}", kb["id"], exc_info=True)
+        finally:
+            _background_tasks.pop(key, None)
+            _background_cooldowns[key] = time.monotonic() + BACKGROUND_RETRY_SECONDS
+
+    _background_tasks[key] = asyncio.create_task(run(), name=f"suggestions:{kb['id']}")
+    return True
+
+
+async def stop_suggestion_background_tasks() -> None:
+    tasks = list(_background_tasks.values())
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    _background_tasks.clear()
 
 
 async def get_suggested_questions_fast(
@@ -625,41 +716,46 @@ async def get_suggested_questions_fast(
     max_questions: int,
     ttl_sec: int = CACHE_TTL_SECONDS_DEFAULT,
     include_fallback: bool = True,
+    use_llm: bool = True,
 ) -> Dict[str, Any]:
-    """No portraits, file previews or model calls on the new-chat request path."""
+    """Read versioned, grounded questions; never await a model on the landing page."""
     max_q = max(1, min(int(max_questions or 3), 10))
     candidate_kbs = await _pick_candidate_kbs(
         kb_service, kb_mode, knowledge_base_ids, selected_files, exclude_known_empty=True,
     )
     if not candidate_kbs:
-        return {'questions': [], 'source': 'empty', 'cached': False, 'error': 'no_knowledge_bases'}
-    allowed_files = {(str(f.get('kb_id') or ''), str(f.get('file_id') or '')) for f in selected_files}
-    pool: List[Dict[str, str]] = []
+        return {"questions": [], "source": "empty", "cached": False, "error": "no_knowledge_bases"}
+    allowed_files = {(str(f.get("kb_id") or ""), str(f.get("file_id") or "")) for f in selected_files}
+    pools = []
+    warming = False
     used_bank = False
     for kb in candidate_kbs:
-        kb_id = str(kb['id'])
-        bank = _read_question_bank(kb_id)
-        for question in bank.get('questions') or []:
-            if not isinstance(question, dict):
+        kb_id = str(kb["id"])
+        pool = []
+        for question in _current_questions(_read_question_bank(kb_id).get("questions") or []):
+            if selected_files and (kb_id, str(question.get("file_id") or "")) not in allowed_files:
                 continue
-            if selected_files and (kb_id, str(question.get('file_id') or '')) not in allowed_files:
-                continue
-            if _normalize_question_text(question.get('text') or ''):
-                used_bank = True
-                pool.append({'text': question['text'], 'kb_name': str(kb.get('name') or '知识库')})
-        # A whole-library snapshot cannot guarantee a selected-file scope.
+            pool.append({"text": question["text"], "kb_name": str(kb.get("name") or "知识库")})
+            used_bank = True
         if not selected_files:
             precomputed = _read_precomputed_for_kb(kb_id, ttl_sec=ttl_sec)
-            if precomputed and isinstance(precomputed.get('questions'), list):
-                pool.extend(_normalize_question_items(precomputed['questions'],
-                            kb_name=str(kb.get('name') or '知识库'), max_q=10))
-    random.shuffle(pool)
-    questions = _normalize_question_items(pool, kb_name='知识库', max_q=max_q)
+            if precomputed:
+                pool.extend({"text": q["text"], "kb_name": str(kb.get("name") or "知识库")}
+                            for q in _current_questions(precomputed.get("questions") or []))
+        if not pool and include_fallback and use_llm:
+            warming = _schedule_background_generation(kb_service, kb, selected_files) or warming
+        random.shuffle(pool)
+        if pool:
+            pools.append(pool)
+    # Round-robin across libraries so a large paper bank cannot crowd out images/audio.
+    random.shuffle(pools)
+    pool = [items[i] for i in range(max((len(p) for p in pools), default=0))
+            for items in pools if i < len(items)]
+    questions = _normalize_question_items(pool, kb_name="知识库", max_q=max_q)
     if questions:
-        return {'questions': questions, 'source': 'question_bank' if used_bank else 'precomputed', 'cached': True}
-    if include_fallback:
-        questions = _questions_from_scope_metadata(candidate_kbs, selected_files, max_q)
-    return {'questions': questions, 'source': 'scope_fallback', 'cached': False}
+        return {"questions": questions, "source": "question_bank" if used_bank else "precomputed", "cached": True}
+    return {"questions": [], "source": "warming" if warming else "unavailable", "cached": False,
+            **({"retry_after_ms": 2000} if warming else {})}
 
 
 async def _pick_candidate_kbs(
@@ -712,271 +808,65 @@ async def build_context_and_questions_payload(
     prefer_precomputed: bool = True,
     cache_ttl_sec: int = CACHE_TTL_SECONDS_DEFAULT,
 ) -> Dict[str, Any]:
-    """
-    生成推荐问题。返回 questions、source、cached、cache_key 等。
-    """
+    """Cached-first suggestions; explicit generation uses only parsed source evidence."""
     max_q = max(1, min(int(max_questions or 3), 10))
     if prefer_precomputed and not refresh:
         return await get_suggested_questions_fast(
             kb_service, kb_mode=kb_mode, knowledge_base_ids=knowledge_base_ids,
             selected_files=selected_files, max_questions=max_q, ttl_sec=cache_ttl_sec,
+            use_llm=use_llm,
         )
+    if not use_llm:
+        return {"questions": [], "source": "unavailable", "cached": False}
+    candidates = await _pick_candidate_kbs(kb_service, kb_mode, knowledge_base_ids, selected_files)
+    if not candidates:
+        return {"questions": [], "source": "empty", "cached": False}
+    kb_ids = [str(kb["id"]) for kb in candidates]
+    with _scope_locks(kb_ids):
+        epochs = {kb_id: _generation_epoch(kb_id) for kb_id in kb_ids}
+    evidence = []
+    for kb in candidates:
+        kb_id, kb_name = str(kb["id"]), str(kb.get("name") or kb["id"])
+        files = [f for f in selected_files if str(f.get("kb_id")) == kb_id]
+        # The UI preview permits a legacy global file_id fallback. Generation must
+        # always enforce both KB and file filters before assigning source ownership.
+        evidence.extend(await asyncio.wait_for(sample_evidence_for_kb(
+            kb_service, kb_id, kb_name,
+            file_ids=[str(f["file_id"]) for f in files] if files else None, limit=24,
+        ), timeout=20))
+    if not evidence:
+        return {"questions": [], "source": "empty", "cached": False, "note": "no_parsed_evidence"}
+    revision = _sha256_text(json.dumps(evidence, ensure_ascii=False, sort_keys=True))
+    cache_key = _sha256_text(
+        f"{SUGGESTION_STRATEGY_VERSION}|{revision}|{max_q}|{json.dumps(epochs, sort_keys=True)}"
+    )
     _cleanup_expired_cache_files(cache_ttl_sec)
-
-    candidate_kbs = await _pick_candidate_kbs(
-        kb_service, kb_mode, knowledge_base_ids, selected_files
-    )
-    if not candidate_kbs:
-        return {
-            "questions": [],
-            "source": "empty",
-            "cached": False,
-            "error": "no_knowledge_bases",
-        }
-
-    kb_by_id = {k["id"]: k for k in candidate_kbs}
-    portrait_lines_all: List[str] = []
-    file_blocks_all: List[str] = []
-
-    file_tasks: List[Tuple[str, str, str, str]] = []
-    # (kb_id, kb_name, file_id, display_name)
-
-    # 文件范围不能掺入整个知识库的其他主题。
-    async def _one_portrait_block(kb: Dict[str, Any]) -> Optional[str]:
-        kb_id = kb["id"]
-        kb_name = kb.get("name") or kb_id
-        portraits = await kb_service.get_kb_portraits_with_fallback(kb_id)
-        plines = _portrait_summaries(portraits)
-        if not plines:
-            return None
-        return f"## 知识库: {kb_name}\n### 主题聚类摘要\n" + "\n".join(plines)
-
-    portrait_blocks = await asyncio.gather(
-        *[_one_portrait_block(kb) for kb in candidate_kbs if not selected_files],
-        return_exceptions=True,
-    )
-    for block in portrait_blocks:
-        if isinstance(block, str) and block:
-            portrait_lines_all.append(block)
-        elif isinstance(block, Exception):
-            logger.debug("画像拉取异常: %s", block)
-
-    if selected_files:
-        for sf in selected_files:
-            kb_id = str(sf.get("kb_id") or "").strip()
-            fid = str(sf.get("file_id") or "").strip()
-            name = str(sf.get("name") or fid).strip()
-            if kb_id in kb_by_id and fid:
-                kb_name = kb_by_id.get(kb_id, {}).get("name") or kb_id
-                file_tasks.append((kb_id, kb_name, fid, name))
-    else:
-        for kb in candidate_kbs:
-            kb_id = kb["id"]
-            kb_name = kb.get("name") or kb_id
-            try:
-                files = await kb_service.list_kb_files(kb_id)
-            except Exception as e:
-                logger.debug("list_kb_files failed %s: %s", kb_id, e)
-                files = []
-
-            eligible = []
-            for f in files:
-                oid = str(f.get("id") or "")
-                if "/keyframes/" in oid:
-                    continue
-                eligible.append(f)
-            random.shuffle(eligible)
-            for f in eligible[:MAX_FILES_PER_KB]:
-                fid = str(f.get("id") or "")
-                fname = str(f.get("name") or fid)
-                if fid:
-                    file_tasks.append((kb_id, kb_name, fid, fname))
-
-    # 并行拉取文件预览（限制并发）
-    sem = asyncio.Semaphore(12)
-
-    async def _one(kb_id: str, kb_name: str, fid: str, fname: str) -> Tuple[str, str]:
-        async with sem:
-            det = await _preview_with_timeout(kb_service, kb_id, fid)
-        block = _format_file_block(fname, det)
-        header = f"## 知识库: {kb_name}\n"
-        return kb_name, header + block
-
-    preview_results = await asyncio.gather(
-        *[_one(a, b, c, d) for a, b, c, d in file_tasks],
-        return_exceptions=True,
-    )
-    for pr in preview_results:
-        if isinstance(pr, Exception):
-            logger.debug("预览聚合异常: %s", pr)
-            continue
-        _kbn, block = pr
-        file_blocks_all.append(block)
-
-    context_parts: List[str] = []
-    if portrait_lines_all:
-        context_parts.extend(portrait_lines_all)
-    if file_blocks_all:
-        context_parts.append("\n\n".join(file_blocks_all))
-
-    context = "\n\n---\n\n".join(context_parts).strip()
-    if len(context) > MAX_CONTEXT_CHARS:
-        context = context[: MAX_CONTEXT_CHARS - 1] + "…"
-
-    revision = _sha256_text(context or "empty")
-    scope_obj = {
-        "kb_mode": kb_mode,
-        "kb_ids": sorted(knowledge_base_ids) if knowledge_base_ids else [],
-        "files": sorted(
-            (str(f.get("kb_id")), str(f.get("file_id")))
-            for f in selected_files
-            if f.get("kb_id") and f.get("file_id")
-        ),
-        "max_q": max_q,
-        "revision": revision,
-        "strategy": SUGGESTION_STRATEGY_VERSION,
-    }
-    cache_key = _sha256_text(json.dumps(scope_obj, sort_keys=True, ensure_ascii=False))
-
     if not refresh:
-        cached = _read_cache(cache_key, cache_ttl_sec)
-        if cached and isinstance(cached.get("questions"), list):
-            questions = _normalize_question_items(
-                cached.get("questions") or [],
-                kb_name="知识库",
-                max_q=max_q,
-            )
-            logger.info("推荐问题缓存命中 cache_key=%s...", cache_key[:16])
-            return {
-                "questions": questions,
-                "source": "scope_cache",
-                "cached": True,
-                "cache_key": cache_key,
-                "revision": revision,
-            }
-
-    display_kb_names = [k.get("name") or k["id"] for k in candidate_kbs]
-    kb_label = display_kb_names[0] if len(display_kb_names) == 1 else "多个知识库"
-
-    if not context.strip():
-        fb = _normalize_question_items(
-            _fallback_questions_from_context(display_kb_names, [], [], max_q),
-            kb_name=kb_label,
-            max_q=max_q,
-        )
-        return {
-            "questions": fb,
-            "source": "fallback",
-            "cached": False,
-            "cache_key": cache_key,
-            "revision": revision,
-            "note": "empty_context",
-        }
-
-    questions_out: List[Dict[str, str]] = []
-    source = "fallback"
-
-    if use_llm:
-        system = (
-            "你是企业知识库检索问题生成器。你的输出必须强依赖输入材料，禁止脱离材料自由发挥。"
-            "根据提供的材料摘要，生成用户可能提出的中文检索问题，用于在知识库中查找答案。"
-            "【硬性约束】"
-            "1) 每个问题都必须能在给定材料中找到明确依据或线索；"
-            "2) 不得使用外部知识、常识补全、行业通用经验来构造问题；"
-            "3) 不得虚构材料中不存在的实体、指标、结论、时间、数值或关系；"
-            "4) 问题应尽量引用材料中出现过的术语、对象、文件主题、caption/摘要表达；"
-            "5) 问题要具体、可检索、彼此不重复，避免空泛提问。"
-            "6) 问题必须以材料内容为主语，不得出现文件名、扩展名、文件 ID、UUID、哈希、"
-            "上传工具生成的临时名称；即使材料标题可读，也只在确有助于区分主题时使用自然标题。"
-            f"必须恰好输出 {max_q} 个问题。"
-            "只输出 JSON 数组，元素为字符串，不要其它说明或 markdown。"
-        )
-        user = (
-            f"材料如下（含主题聚类、文档分块、图片描述、音视频转写等）：\n\n{context}\n\n"
-            "请仅基于以上材料生成问题；若某个潜在问题无法在材料中定位依据，则不要生成。"
-            f"请输出 {max_q} 条 JSON 字符串数组。"
-        )
-        try:
-            llm_res = await llm_manager.chat(
-                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-                task_type="query_rewriting",
-                temperature=0.45,
-                max_tokens=900,
-            )
-            if llm_res.success:
-                raw_content = (
-                    (llm_res.data or {}).get("choices", [{}])[0]
-                    .get("message", {})
-                    .get("content", "")
-                )
-                parsed = _safe_json_loads_array(str(raw_content))
-                parsed = [_normalize_question_text(p) for p in parsed if p]
-                parsed = [p for p in parsed if p][:max_q]
-                if len(parsed) >= 1:
-                    if len(parsed) < max_q:
-                        fb_pad = _fallback_questions_from_context(
-                            display_kb_names,
-                            "\n".join(portrait_lines_all).split("\n"),
-                            file_blocks_all,
-                            max_q,
-                        )
-                        seen = set(parsed)
-                        for item in fb_pad:
-                            if item["text"] not in seen:
-                                parsed.append(item["text"])
-                                seen.add(item["text"])
-                            if len(parsed) >= max_q:
-                                break
-                    questions_out = _normalize_question_items(parsed[:max_q], kb_name=kb_label, max_q=max_q)
-                    source = "llm"
-                else:
-                    choice = ((llm_res.data or {}).get('choices') or [{}])[0]
-                    message = choice.get('message') or {}
-                    logger.warning(
-                        "LLM 未解析到有效问题 model={} finish_reason={} content_chars={} reasoning_chars={}",
-                        getattr(llm_res, 'model_used', None), choice.get('finish_reason'),
-                        len(str(raw_content or '')), len(str(message.get('reasoning_content') or '')),
-                    )
-            else:
-                logger.warning("LLM 推荐问题调用失败: {}", llm_res.error)
-        except Exception as e:
-            logger.warning("LLM 推荐问题异常: {}", e, exc_info=True)
-
-    if not questions_out:
-        pl_flat: List[str] = []
-        for block in portrait_lines_all:
-            pl_flat.extend(block.split("\n"))
-        fb = _fallback_questions_from_context(display_kb_names, pl_flat, file_blocks_all, max_q)
-        questions_out = _normalize_question_items(fb, kb_name=kb_label, max_q=max_q)
-        source = "fallback"
-
-    questions_out = _normalize_question_items(questions_out, kb_name=kb_label, max_q=max_q)
-
-    payload = {
-        "questions": questions_out,
-        "source": source,
-        "revision": revision,
-    }
-    _write_cache(cache_key, payload)
-    # 更新“按知识库秒读”的预生成缓存（仅在单库范围下写入，避免跨库污染）
-    if len(candidate_kbs) == 1 and not selected_files:
-        kb0 = candidate_kbs[0]
-        _write_precomputed_for_kb(
-            kb0["id"],
-            {
-                "questions": questions_out[:max_q],
-                "source": source,
-                "revision": revision,
-            },
-        )
-
-    return {
-        "questions": questions_out,
-        "source": source,
-        "cached": False,
-        "cache_key": cache_key,
-        "revision": revision,
-    }
+        with _scope_locks(kb_ids):
+            if not _epochs_match(epochs):
+                return {"questions": [], "source": "unavailable", "cached": False, "note": "scope_changed"}
+            cached = _read_cache(cache_key, cache_ttl_sec)
+            if cached and _current_questions(cached.get("questions") or []):
+                return {**cached, "source": "scope_cache", "cached": True}
+    generated = await generate_natural_questions(evidence, max_questions=max_q, llm=llm_manager)
+    questions = generated.get("questions") or []
+    payload = {**generated, "questions": questions, "revision": revision, "cache_key": cache_key,
+               "cached": False, "strategy": SUGGESTION_STRATEGY_VERSION}
+    if questions:
+        with _scope_locks(kb_ids):
+            if not _epochs_match(epochs):
+                return {"questions": [], "source": "unavailable", "cached": False, "note": "scope_changed"}
+            for kb in candidates:
+                own_questions = [q for q in questions if str(q.get("kb_id")) == str(kb["id"])]
+                if not own_questions:
+                    continue
+                _add_questions_to_bank_unlocked(str(kb["id"]), own_questions, source="llm", replace_file_ids=[
+                    str(f["file_id"]) for f in selected_files if str(f.get("kb_id")) == str(kb["id"])
+                ])
+                if not selected_files:
+                    _write_precomputed_for_kb(str(kb["id"]), {**payload, "questions": own_questions})
+            _write_cache(cache_key, payload)
+    return payload
 
 
 async def warmup_suggested_questions_for_kb(
@@ -1012,7 +902,7 @@ async def generate_questions_for_file_and_store(
     file_id: str,
     *,
     file_name: Optional[str] = None,
-    max_questions: int = 20,
+    max_questions: int = 6,
     use_llm: bool = True,
 ) -> int:
     """
@@ -1020,21 +910,18 @@ async def generate_questions_for_file_and_store(
     供“文件入库完成后”触发，避免新会话现场生成。
     """
     kb_service = KnowledgeBaseService()
-    payload = await build_context_and_questions_payload(
-        kb_service,
-        kb_mode="files",
-        knowledge_base_ids=[],
-        selected_files=[{"kb_id": kb_id, "file_id": file_id, "name": file_name or file_id}],
-        max_questions=max_questions,
-        use_llm=use_llm,
-        refresh=True,
-    )
+    async with _generation_semaphore:
+        payload = await build_context_and_questions_payload(
+            kb_service,
+            kb_mode="files",
+            knowledge_base_ids=[],
+            selected_files=[{"kb_id": kb_id, "file_id": file_id, "name": file_name or file_id}],
+            max_questions=max_questions,
+            use_llm=use_llm,
+            refresh=True,
+        )
     questions = payload.get("questions") or []
-    added = add_questions_to_bank(
-        kb_id,
-        questions,
-        source=f"upload:{payload.get('source','llm')}",
-        file_id=file_id,
-    )
+    # build_context_and_questions_payload already persists this file's validated batch.
+    added = sum(str(q.get("file_id")) == file_id for q in questions)
     logger.info("文件入库问题生成完成 kb_id=%s file_id=%s added=%s", kb_id, file_id, added)
     return added

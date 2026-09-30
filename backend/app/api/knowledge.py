@@ -512,7 +512,7 @@ class SuggestedQuestionFileIn(BaseModel):
 
 
 class SuggestedQuestionsRequest(BaseModel):
-    """默认读问题池或范围元数据；refresh=True 显式重新生成。"""
+    """默认秒读问题池，缺失时后台预生成；refresh=True 显式重新生成。"""
     kb_mode: str = "auto"
     knowledge_base_ids: List[str] = Field(default_factory=list)
     selected_files: List[SuggestedQuestionFileIn] = Field(default_factory=list)
@@ -545,7 +545,7 @@ async def post_suggested_questions(body: SuggestedQuestionsRequest):
             len(result.get("questions") or []),
             int((time.perf_counter() - started) * 1000),
         )
-        if not body.refresh and not result.get("questions"):
+        if not body.refresh and not result.get("questions") and result.get("source") != "warming":
             result["note"] = "no_suggestions"
         return result
     except Exception as e:

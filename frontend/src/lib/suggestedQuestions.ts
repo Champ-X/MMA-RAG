@@ -13,9 +13,6 @@ const LONG_OPAQUE_TOKEN_PATTERN = /\b[0-9a-f]{16,}\b/gi
 const FILE_REFERENCE_PATTERN = /(?<![A-Za-z0-9_.-])([a-z0-9][a-z0-9._-]{2,180}\.(?:png|jpe?g|gif|webp|bmp|tiff?|svg|pdf|docx?|pptx?|xlsx?|csv|txt|md|mp3|wav|m4a|aac|flac|mp4|mov|avi|mkv|webm))(?![A-Za-z0-9_.-])/gi
 const TEMP_FILE_PREFIX_PATTERN = /^(?:codex[-_ ]*clipboard|clipboard|pasted?[-_ ]*(?:image|file)|screen[-_ ]*shot|screenshot|image|img|upload(?:ed)?|wechatimg|wx_camera|mmexport|dsc|pxl)[-_ .]*/i
 const GENERIC_FILE_WORD_PATTERN = /\b(?:at|copy|file|image|photo|picture|scan|new|final)\b/gi
-const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'svg'])
-const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'm4a', 'aac', 'flac'])
-const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'avi', 'mkv', 'webm'])
 
 function stripFileExtension(name: string) {
   return name.replace(/\.[^.]+$/, '').trim()
@@ -41,14 +38,6 @@ function getReadableFileTitle(name: string) {
   if (!semantic || !/[A-Za-z\u4e00-\u9fff]/.test(semantic)) return ''
   if (TEMP_FILE_PREFIX_PATTERN.test(stem) && !cleaned.replace(/[0-9a-f\s:.-]+/gi, '')) return ''
   return truncateSeed(cleaned, 28)
-}
-
-function getGenericMaterialLabel(name: string) {
-  const extension = String(name ?? '').split('.').pop()?.toLowerCase() ?? ''
-  if (IMAGE_EXTENSIONS.has(extension)) return '这张图片'
-  if (AUDIO_EXTENSIONS.has(extension)) return '这段音频'
-  if (VIDEO_EXTENSIONS.has(extension)) return '这段视频'
-  return '这份材料'
 }
 
 function truncateSeed(text: string, max = 18) {
@@ -149,25 +138,33 @@ export function suggestionCacheKey(scope: SuggestionScope, knowledgeBases: Knowl
   return JSON.stringify([scope, version])
 }
 
-/** Emergency fallback uses metadata already in memory; never fans out file/portrait requests. */
-export function localSuggestedQuestions(scope: SuggestionScope, knowledgeBases: KnowledgeBase[]) {
-  if (scope.selected_files.length) {
-    return normalizeSuggestedItems(scope.selected_files.map((file) => ({
-      text: getReadableFileTitle(file.name)
-        ? `《${getReadableFileTitle(file.name)}》主要讲了什么？`
-        : `${getGenericMaterialLabel(file.name)}展示了哪些关键信息？`,
-      kb_name: knowledgeBases.find((kb) => kb.id === file.kb_id)?.name ?? '所选材料',
-    })), 'local-files')
-  }
-  return normalizeSuggestedItems(scopedKnowledgeBases(scope, knowledgeBases)
-    .filter((kb) => !kb.stats || [kb.stats.documents, kb.stats.chunks, kb.stats.images,
-      kb.stats.audio, kb.stats.video, kb.stats.video_shots].some((count) => Number(count) > 0))
-    .map((kb) => ({ text: `「${kb.name}」知识库里有哪些主要内容？`, kb_name: kb.name })), 'local-kbs')
-}
-
 export interface SuggestedQuestionsResponse {
   questions: Array<{ text: string; kb_name: string }>
   revision?: string
+  source?: string
+  retry_after_ms?: number
+}
+
+export interface SuggestedQuestionsResult {
+  questions: SuggestedQuestionItem[]
+  pending: boolean
+  retryAfterMs?: number
+}
+
+function waitForRetry(delayMs: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', abort)
+      reject(new DOMException('推荐问题加载已取消', 'AbortError'))
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', abort)
+      resolve()
+    }, delayMs)
+    signal?.addEventListener('abort', abort, { once: true })
+    if (signal?.aborted) abort()
+  })
 }
 
 /** Shared across new conversations and React StrictMode remounts, bounded in time and size. */
@@ -176,18 +173,18 @@ export function createSuggestedQuestionsCache(
   { ttlMs = 60_000, timeoutMs = 8_000, now = Date.now } = {}
 ) {
   const cache = new Map<string, { expires: number; questions: SuggestedQuestionItem[] }>()
-  const inFlight = new Map<string, Promise<SuggestedQuestionItem[]>>()
+  const inFlight = new Map<string, Promise<SuggestedQuestionsResult>>()
 
   function peek(key: string) {
     const hit = cache.get(key)
     return hit && hit.expires > now() ? hit.questions : undefined
   }
 
-  function load(key: string, scope: SuggestionScope, fresh = false): Promise<SuggestedQuestionItem[]> {
+  function load(key: string, scope: SuggestionScope, fresh = false): Promise<SuggestedQuestionsResult> {
     const pending = inFlight.get(key)
     if (pending) return pending
     const hit = !fresh ? peek(key) : undefined
-    if (hit) return Promise.resolve(hit)
+    if (hit) return Promise.resolve({ questions: hit, pending: false })
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout>
     const deadline = new Promise<never>((_, reject) => {
@@ -199,11 +196,18 @@ export function createSuggestedQuestionsCache(
     const task = Promise.race([
       Promise.resolve().then(() => fetchQuestions(scope, controller.signal)), deadline,
     ]).then((result) => {
+      // Older servers returned title-only cards under scope_fallback. Treat those as
+      // pending too, so a cold cache never puts rigid placeholder questions on screen.
+      const pending = result.source === 'warming' || result.source === 'scope_fallback'
+      if (pending) return {
+        questions: [], pending: true,
+        retryAfterMs: result.retry_after_ms,
+      }
       const questions = normalizeSuggestedItems(result.questions ?? [], result.revision)
       cache.delete(key)
       cache.set(key, { expires: now() + ttlMs, questions })
       if (cache.size > 40) cache.delete(cache.keys().next().value!)
-      return questions
+      return { questions, pending: false }
     }).finally(() => {
       clearTimeout(timer)
       inFlight.delete(key)
@@ -212,5 +216,33 @@ export function createSuggestedQuestionsCache(
     return task
   }
 
-  return { peek, load }
+  async function loadUntilReady(
+    key: string,
+    scope: SuggestionScope,
+    { fresh = false, signal, firstRetryMs = 2_000, retryMs = 4_000,
+      maxWaitMs = 60_000, maxAttempts = 16 }: {
+      fresh?: boolean
+      signal?: AbortSignal
+      firstRetryMs?: number
+      retryMs?: number
+      maxWaitMs?: number
+      maxAttempts?: number
+    } = {}
+  ): Promise<SuggestedQuestionsResult> {
+    const started = now()
+    for (let attempt = 0; ; attempt += 1) {
+      if (signal?.aborted) throw new DOMException('推荐问题加载已取消', 'AbortError')
+      const result = await load(key, scope, fresh || attempt > 0)
+      if (signal?.aborted) throw new DOMException('推荐问题加载已取消', 'AbortError')
+      if (!result.pending) return result
+      const remaining = maxWaitMs - (now() - started)
+      if (attempt + 1 >= maxAttempts || remaining <= 0) return result
+      const requestedDelay = attempt === 0 ? firstRetryMs : retryMs
+      const delay = Math.min(remaining, Math.max(requestedDelay, result.retryAfterMs ?? 0))
+      await waitForRetry(delay, signal)
+      if (now() - started >= maxWaitMs) return result
+    }
+  }
+
+  return { peek, load, loadUntilReady }
 }

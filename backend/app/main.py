@@ -55,6 +55,8 @@ async def _app_lifespan(app: FastAPI):
     finally:
         catalog_task.cancel()
         await asyncio.gather(catalog_task, return_exceptions=True)
+        from app.modules.knowledge.suggested_questions import stop_suggestion_background_tasks
+        await stop_suggestion_background_tasks()
 
 
 # 创建 FastAPI 应用实例

@@ -22,6 +22,7 @@ _MAX_FALLBACK_ATTEMPTS = 2
 _INTERACTIVE_CHAT_TIMEOUTS = {
     "intent_recognition": (12.0, 30.0),
     "query_rewriting": (12.0, 30.0),
+    "suggestion_generation": (20.0, 35.0),
     "final_generation": (30.0, 75.0),
     "health_check": (8.0, 12.0),
 }

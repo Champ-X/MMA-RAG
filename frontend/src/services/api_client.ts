@@ -358,7 +358,7 @@ export const knowledgeApi = {
       { params: { sync }, timeout: 120000 }
     ),
 
-  /** 推荐检索问题：首屏仅取已有问题或元数据，显式 refresh 才现场生成。 */
+  /** 推荐检索问题：优先读取已生成的问题；冷启动返回 warming，并在后台准备问题。 */
   postSuggestedQuestions: (body: {
     kb_mode: string
     knowledge_base_ids?: string[]
@@ -374,6 +374,7 @@ export const knowledgeApi = {
       cached?: boolean
       cache_key?: string
       revision?: string
+      retry_after_ms?: number
       error?: string
       note?: string
     }>('/knowledge/suggested-questions', body, { timeout: body.refresh ? 120000 : 8000, signal: options.signal }),

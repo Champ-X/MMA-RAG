@@ -22,6 +22,7 @@ MODEL_TYPE_KEYS = ("chat", "embedding", "vision", "reranker", "audio", "video")
 TASK_MODEL_TYPES: Dict[str, str] = {
     "intent_recognition": "chat",
     "query_rewriting": "chat",
+    "suggestion_generation": "chat",
     "image_captioning": "vision",
     "document_chunking": "chat",
     "final_generation": "chat",
@@ -402,6 +403,10 @@ class LLMRegistry:
                 "fallbacks": [
                     "aliyun_bailian:qwen3.5-flash",
                 ],
+            },
+            "suggestion_generation": {
+                "model": "deepseek:deepseek-flash",
+                "fallbacks": ["aliyun_bailian:qwen3.5-flash"],
             },
             "image_captioning": {
                 "model": "aliyun_bailian:qwen3-vl-plus-2025-12-19",
