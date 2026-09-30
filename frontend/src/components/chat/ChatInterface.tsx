@@ -16,6 +16,7 @@ import {
   type Message,
 } from '@/store/useChatStore'
 import { fileScopeKey, formatScopedFileSize, useFileScopeOptions } from './useFileScopeOptions'
+import { ChatWelcome } from './ChatWelcome'
 
 const MAX_CHAT_ATTACHMENTS = 3
 const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024
@@ -113,19 +114,11 @@ function SuggestedQuestionsLoading() {
       aria-live="polite"
       aria-label="正在载入推荐问题"
     >
-      <div className="hidden gap-2 md:grid md:grid-cols-3" aria-hidden>
+      <div className="chat-suggestions-loading" aria-hidden>
         {[0, 1, 2].map((item) => (
           <div
             key={item}
-            className="h-16 animate-pulse rounded-[8px] border border-slate-200/80 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-900/60"
-          />
-        ))}
-      </div>
-      <div className="flex flex-col gap-2 md:hidden" aria-hidden>
-        {[0, 1, 2].map((item) => (
-          <div
-            key={item}
-            className="h-14 animate-pulse rounded-[8px] border border-slate-200/80 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-900/60"
+            className="h-40 animate-pulse rounded-[8px] border border-slate-200/80 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-900/60"
           />
         ))}
       </div>
@@ -151,9 +144,6 @@ function buildCitationMapForMessage(
   return map
 }
 
-const EMPTY_STATE_GREETING_PREFIX = '你好，我是 '
-const EMPTY_STATE_GREETING_FULL = `${EMPTY_STATE_GREETING_PREFIX}Tessmora`
-
 interface FileMentionState {
   query: string
   start: number
@@ -172,121 +162,6 @@ function getFileMentionState(value: string, caret: number | null | undefined): F
     start: triggerStart,
     end: safeCaret,
   }
-}
-
-/** 新对话空状态标题：逐字打字；切换会话时重播；尊重减少动效偏好 */
-function EmptyStateGreetingTitle({ sessionKey }: { sessionKey: string }) {
-  const [visibleLen, setVisibleLen] = useState(0)
-  const [reducedMotion, setReducedMotion] = useState(false)
-
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    setReducedMotion(mq.matches)
-    const onChange = () => setReducedMotion(mq.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-
-  useEffect(() => {
-    if (reducedMotion) {
-      setVisibleLen(EMPTY_STATE_GREETING_FULL.length)
-      return
-    }
-
-    const fullLen = EMPTY_STATE_GREETING_FULL.length
-    const stepMs = 150
-    const pauseBeforeReplayMs = 5200
-
-    let cancelled = false
-    let intervalId: ReturnType<typeof setInterval> | null = null
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
-
-    const clearTimers = () => {
-      if (intervalId != null) {
-        clearInterval(intervalId)
-        intervalId = null
-      }
-      if (timeoutId != null) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
-    }
-
-    const scheduleReplay = () => {
-      if (cancelled) return
-      timeoutId = window.setTimeout(() => {
-        timeoutId = null
-        if (cancelled) return
-        startCycle()
-      }, pauseBeforeReplayMs)
-    }
-
-    const startCycle = () => {
-      if (cancelled) return
-      setVisibleLen(0)
-      let i = 0
-      intervalId = window.setInterval(() => {
-        if (cancelled) {
-          clearTimers()
-          return
-        }
-        i += 1
-        setVisibleLen(i)
-        if (i >= fullLen) {
-          if (intervalId != null) clearInterval(intervalId)
-          intervalId = null
-          scheduleReplay()
-        }
-      }, stepMs)
-    }
-
-    startCycle()
-
-    return () => {
-      cancelled = true
-      clearTimers()
-    }
-  }, [sessionKey, reducedMotion])
-
-  const visible = EMPTY_STATE_GREETING_FULL.slice(0, visibleLen)
-  const prefixLen = EMPTY_STATE_GREETING_PREFIX.length
-  const prefixPart =
-    visible.length <= prefixLen ? visible : EMPTY_STATE_GREETING_PREFIX
-  const namePart =
-    visible.length > prefixLen ? visible.slice(prefixLen) : ''
-  const done = visibleLen >= EMPTY_STATE_GREETING_FULL.length
-
-  return (
-    <h3
-      className="mb-2 text-balance text-3xl font-semibold tracking-[-0.045em] text-slate-950 dark:text-slate-50 sm:text-[2.15rem] sm:leading-tight"
-      aria-label={EMPTY_STATE_GREETING_FULL}
-    >
-      <span>
-        {prefixPart}
-        {namePart ? (
-          <span className="font-semibold text-indigo-600 dark:text-indigo-300">{namePart}</span>
-        ) : null}
-      </span>
-      {!done && (
-        <span
-          className="ml-0.5 inline-block min-w-[0.35em] translate-y-px text-indigo-600/90 animate-pulse dark:text-indigo-300/90"
-          aria-hidden
-        >
-          ▍
-        </span>
-      )}
-    </h3>
-  )
-}
-
-function EmptyStateHint() {
-  return (
-    <div className="mx-auto max-w-lg px-4">
-      <p className="text-balance text-center text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
-        从知识库中检索线索，整理成带来源的回答。
-      </p>
-    </div>
-  )
 }
 
 export function ChatInterface() {
@@ -784,27 +659,21 @@ export function ChatInterface() {
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-transparent">
       {/* 消息区 */}
       <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
-        <div className="px-4 pb-1 pt-5 sm:px-8 sm:pt-7">
+        <div className={cn(
+          'px-4 pb-1 pt-5 sm:px-8 sm:pt-7',
+          messages.length === 0 && 'flex min-h-full flex-col justify-center'
+        )}>
           <div
-            className="mx-auto max-w-4xl flex flex-col gap-6"
+            className="mx-auto flex w-full max-w-4xl flex-col gap-6"
             role={messages.length > 0 ? 'log' : undefined}
             aria-label={messages.length > 0 ? '对话消息' : undefined}
             aria-live={messages.length > 0 ? 'polite' : undefined}
             aria-relevant={messages.length > 0 ? 'additions text' : undefined}
           >
             {messages.length === 0 && (
-              <div className="mx-auto w-full max-w-3xl px-3 py-8 text-center sm:py-11">
-                <div className="mx-auto mb-4 h-24 w-24 overflow-hidden rounded-[22px] sm:h-28 sm:w-28">
-                  <img
-                    src="/tessmora-logo.png"
-                    alt=""
-                    className="h-full w-full origin-center scale-[1.18] select-none object-cover object-center"
-                    aria-hidden
-                  />
-                </div>
-                <EmptyStateGreetingTitle sessionKey={activeSessionId ?? ''} />
-                <EmptyStateHint />
-                <div className="mt-7 sm:mt-8">
+              <div className="chat-empty-state mx-auto w-full min-w-0 max-w-3xl py-6 text-center sm:py-9">
+                <ChatWelcome />
+                <div className="mt-8 sm:mt-10">
                   <Suspense fallback={<SuggestedQuestionsLoading />}>
                     <SuggestedQuestions
                       session={activeSession}

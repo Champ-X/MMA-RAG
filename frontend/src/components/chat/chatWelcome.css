@@ -1,0 +1,224 @@
+.chat-empty-state {
+  container: chat-welcome / inline-size;
+}
+
+.chat-suggestions-loading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.3125rem;
+}
+
+.chat-welcome {
+  --welcome-ink: #273449;
+  --welcome-muted: #64748b;
+  --welcome-accent: #6559bd;
+  --welcome-mark: #ebe8fa;
+  --welcome-paper: #fffefa;
+  --welcome-edge: #e2e8f0;
+  --welcome-fragment: #fff0c7;
+  --welcome-slogan: #4c6a67;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1.35rem;
+  margin: 0 auto;
+  padding: 0.25rem 0 0.75rem;
+  color: var(--welcome-ink);
+}
+
+.dark .chat-welcome,
+[data-theme="dark"] .chat-welcome {
+  --welcome-ink: #e2e8f0;
+  --welcome-muted: #94a3b8;
+  --welcome-accent: #c4b5fd;
+  --welcome-mark: #353054;
+  --welcome-paper: #1e293b;
+  --welcome-edge: #475569;
+  --welcome-fragment: #55462d;
+  --welcome-slogan: #a8ccc5;
+}
+
+.chat-welcome-emblem {
+  position: relative;
+  isolation: isolate;
+  flex: 0 0 5.5rem;
+  width: 5.5rem;
+  height: 5.5rem;
+  pointer-events: none;
+}
+
+.chat-welcome-emblem::before,
+.chat-welcome-emblem::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0.2rem;
+  border: 1px solid var(--welcome-edge);
+  border-radius: 1.15rem;
+  content: '';
+}
+
+.chat-welcome-emblem::before {
+  background: var(--welcome-mark);
+  transform: translate(-0.35rem, 0.12rem) rotate(-10deg);
+}
+
+.chat-welcome-emblem::after {
+  background: var(--welcome-paper);
+  transform: translate(0.35rem, 0.15rem) rotate(7deg);
+}
+
+.chat-welcome-logo {
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid #e9e7e0;
+  border-radius: 1.25rem;
+  background: #fffefa;
+  box-shadow: 0 5px 12px -8px #27344945;
+}
+
+.chat-welcome-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.15);
+  user-select: none;
+}
+
+.chat-welcome-copy {
+  min-width: 0;
+  max-width: 100%;
+  text-align: center;
+}
+
+.chat-welcome-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  column-gap: 0.35rem;
+  margin: 0;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.chat-welcome-greeting {
+  font-family: 'Kaiti SC', 'STKaiti', 'KaiTi', 'PingFang SC', serif;
+  font-size: 1.5rem;
+}
+
+.chat-welcome-name {
+  position: relative;
+  isolation: isolate;
+  color: var(--welcome-accent);
+  font-family: 'Bradley Hand', 'Segoe Print', 'Chalkboard SE', cursive;
+  font-size: 2.125rem;
+  font-size-adjust: from-font;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.chat-welcome-name::after {
+  position: absolute;
+  z-index: -1;
+  right: -0.05em;
+  bottom: 0.13em;
+  left: 0.02em;
+  height: 0.17em;
+  border-radius: 60% 35% 55% 30%;
+  background: var(--welcome-mark);
+  transform: rotate(-1.5deg);
+  content: '';
+}
+
+.chat-welcome-hint {
+  max-width: 28em;
+  margin: 0.65rem auto 0;
+  color: var(--welcome-muted);
+  font-family: 'Bradley Hand', 'Segoe Print', 'Chalkboard SE', cursive;
+  font-size: 1.1875rem;
+  font-size-adjust: from-font;
+  line-height: 1.75;
+  text-wrap: balance;
+}
+
+.chat-welcome-fragment {
+  position: relative;
+  isolation: isolate;
+  display: inline-block;
+  color: var(--welcome-ink);
+  padding-inline: 0.1em;
+}
+
+.chat-welcome-fragment::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0.25em -0.06em 0.08em;
+  border-radius: 0.08em 0.18em 0.12em 0.06em;
+  background: var(--welcome-fragment);
+  transform: rotate(-2.5deg);
+  content: '';
+}
+
+.chat-welcome-destination {
+  position: relative;
+  display: inline-block;
+  color: var(--welcome-slogan);
+}
+
+.chat-welcome-slogan-stroke {
+  position: absolute;
+  right: 0;
+  bottom: -0.1em;
+  left: 0;
+  width: 100%;
+  height: 0.45em;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+@container chat-welcome (min-width: 34rem) {
+  .chat-welcome {
+    flex-direction: row;
+    gap: 2rem;
+    padding-top: 0.75rem;
+  }
+
+  .chat-welcome-copy {
+    text-align: left;
+  }
+
+  .chat-welcome-title {
+    justify-content: flex-start;
+    column-gap: 0.45rem;
+  }
+
+  .chat-welcome-greeting {
+    font-size: 1.75rem;
+  }
+
+  .chat-welcome-name {
+    font-size: 2.5rem;
+  }
+
+  .chat-welcome-hint {
+    margin: 0.6rem 0 0;
+    font-size: 1.375rem;
+  }
+}
+
+@container chat-welcome (min-width: 38rem) {
+  .chat-suggestions-loading {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.125rem;
+  }
+}

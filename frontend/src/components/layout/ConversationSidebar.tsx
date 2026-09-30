@@ -776,7 +776,6 @@ export function ConversationSidebar({
             <div className="conversation-search-header">
               <div className="conversation-search-heading">
                 <Dialog.Title>搜索</Dialog.Title>
-                <span>页面 · 会话 · 消息</span>
               </div>
               <div className="conversation-search-input-row">
                 <Search size={19} strokeWidth={1.8} aria-hidden />
@@ -878,14 +877,9 @@ export function ConversationSidebar({
                 </div>
               )}
             </div>
-            <div className="conversation-search-footer">
-              <div className="conversation-search-shortcuts" aria-hidden>
-                <span><kbd>↑</kbd><kbd>↓</kbd>选择</span>
-                <span><kbd>↵</kbd>打开</span>
-                <span><kbd>esc</kbd>关闭</span>
-              </div>
-              <span role="status" aria-live="polite" aria-atomic="true">{searchResultIds.length ? `${searchResultIds.length} 项结果` : '暂无匹配'}</span>
-            </div>
+            <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+              {searchResultIds.length ? `${searchResultIds.length} 项结果` : '暂无匹配'}
+            </span>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
