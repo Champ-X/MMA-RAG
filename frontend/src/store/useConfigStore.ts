@@ -186,7 +186,7 @@ interface ConfigStore {
   
   resetAllConfig: () => void;
   
-  saveConfig: () => Promise<void>;
+  saveConfig: (draftModels?: ModelConfig[]) => Promise<void>;
   
   loadConfig: (options?: { refreshCatalog?: boolean }) => Promise<void>;
   
@@ -412,13 +412,16 @@ export const useConfigStore = create<ConfigStore>()(
       },
 
       // 保存配置（后端运行时更新并持久化）
-      saveConfig: async () => {
+      saveConfig: async (draftModels) => {
+        // Keep drafts outside the persisted config until the backend accepts them.
+        const submittedModels = draftModels?.map((model) => ({ ...model }));
+        const modelsToSave = submittedModels ?? get().config.models;
         set({ isLoading: true, error: null });
 
         try {
           const taskSelections = Object.entries(TASK_MODEL_BINDINGS).reduce<Record<string, { model: string; provider?: string }>>(
             (acc, [modelId, binding]) => {
-              const model = get().config.models.find((item) => item.id === modelId);
+              const model = modelsToSave.find((item) => item.id === modelId);
               if (!model?.model) return acc;
               acc[binding.taskKey] = {
                 model: model.model,
@@ -429,7 +432,11 @@ export const useConfigStore = create<ConfigStore>()(
             {}
           );
           await systemApi.updateModelConfig({ tasks: taskSelections });
-          set({ hasUnsavedChanges: false, isLoading: false });
+          set((state) => ({
+            ...(submittedModels ? { config: { ...state.config, models: submittedModels } } : {}),
+            hasUnsavedChanges: false,
+            isLoading: false,
+          }));
         } catch (error) {
           set({
             hasUnsavedChanges: true,
