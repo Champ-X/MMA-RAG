@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useLocation } from 'react-router-dom'
 import type { TaskModelEntry } from '@/components/settings/ModelConfig'
 import { JevSettings } from '@/components/settings/JevSettings'
@@ -16,9 +16,12 @@ import {
   Moon,
   Palette,
   Quote,
-  Save,
+  Route,
+  Settings2,
   Sun,
+  Zap,
 } from 'lucide-react'
+import './settingsPage.css'
 
 const ModelConfig = lazy(() =>
   import('@/components/settings/ModelConfig').then((module) => ({ default: module.ModelConfig }))
@@ -109,13 +112,20 @@ function configToTaskMatrix(config: {
 const THEME_OPTIONS: Array<{
   value: SystemConfig['theme']
   label: string
-  description: string
   icon: typeof Sun
 }> = [
-  { value: 'light', label: '浅色', description: '明亮环境与投屏', icon: Sun },
-  { value: 'dark', label: '深色', description: '夜间与长时间阅读', icon: Moon },
-  { value: 'system', label: '跟随系统', description: '自动匹配设备外观', icon: Monitor },
+  { value: 'light', label: '浅色', icon: Sun },
+  { value: 'dark', label: '深色', icon: Moon },
+  { value: 'system', label: '跟随系统', icon: Monitor },
 ]
+
+const SETTINGS_SECTIONS = [
+  { id: 'interface', label: '界面与显示', icon: Palette },
+  { id: 'models', label: '模型与路由', icon: Route },
+  { id: 'jev', label: 'Jev 语义判断', icon: Zap },
+] as const
+
+type SettingsSection = typeof SETTINGS_SECTIONS[number]['id']
 
 function PreferenceToggle({
   icon: Icon,
@@ -130,37 +140,27 @@ function PreferenceToggle({
   enabled: boolean
   onToggle: () => void
 }) {
+  const helpId = useId()
   return (
     <button
       type="button"
       role="switch"
       aria-checked={enabled}
-      aria-label={`${enabled ? '关闭' : '开启'}${title}`}
+      aria-label={title}
+      aria-describedby={helpId}
       onClick={onToggle}
-      className="group flex w-full items-center gap-4 rounded-[6px] border border-slate-200 bg-white px-4 py-3.5 text-left transition-colors hover:border-slate-300 hover:bg-slate-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 max-[480px]:gap-2.5 max-[480px]:px-3 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-700 dark:hover:bg-slate-900/70"
+      className="settings-preference"
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] bg-slate-100 text-slate-600 max-[480px]:hidden dark:bg-slate-800 dark:text-slate-300">
-        <Icon className="h-[18px] w-[18px]" aria-hidden />
+      <span className="settings-preference-icon">
+        <Icon size={20} aria-hidden />
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</span>
-        <span className="mt-0.5 block text-xs leading-5 text-slate-500 dark:text-slate-400">{description}</span>
+      <span className="settings-preference-copy">
+        <span className="settings-preference-title">{title}</span>
+        <span id={helpId} className="settings-help">{description}</span>
       </span>
-      <span
-        className={cn(
-          'relative h-6 w-11 shrink-0 rounded-full border transition-colors',
-          enabled
-            ? 'border-indigo-600 bg-indigo-600'
-            : 'border-slate-300 bg-slate-200 dark:border-slate-600 dark:bg-slate-700'
-        )}
-        aria-hidden
-      >
-        <span
-          className={cn(
-            'absolute top-0.5 h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform',
-            enabled ? 'translate-x-[21px]' : 'translate-x-0.5'
-          )}
-        />
+      <span className="settings-preference-state" aria-hidden>{enabled ? '已开启' : '已关闭'}</span>
+      <span className={cn('settings-switch', enabled && 'is-on')} aria-hidden>
+        <span />
       </span>
     </button>
   )
@@ -169,7 +169,7 @@ function PreferenceToggle({
 function ModelConfigLoading() {
   return (
     <section
-      className="rounded-[8px] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+      className="settings-panel settings-loading-panel"
       role="status"
       aria-live="polite"
       aria-label="正在载入模型路由"
@@ -195,8 +195,8 @@ function ModelConfigLoading() {
 
 function SettingsPageLoading() {
   return (
-    <ScrollArea className="h-full bg-slate-50/70 dark:bg-slate-950">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <ScrollArea className="settings-page h-full">
+      <div className="settings-container">
         <div className="mb-6 flex items-center justify-between">
           <div className="h-8 w-20 animate-pulse rounded-[8px] bg-slate-200 dark:bg-slate-800" />
           <div className="h-7 w-20 animate-pulse rounded-full bg-slate-100 dark:bg-slate-900" />
@@ -214,11 +214,10 @@ export function SettingsPage() {
     availableModels,
     loadConfig,
     saveConfig,
-    updateModelConfig,
     updateSystemConfig,
+    markAsSaved,
     isLoading,
     error,
-    hasUnsavedChanges,
     hasLoadedConfigOnce,
     setError,
   } = useConfigStore()
@@ -226,13 +225,33 @@ export function SettingsPage() {
   const { showSuccess, showError } = useToastStore()
   const [modelSettingsHaveChanges, setModelSettingsHaveChanges] = useState(false)
   const [jevSettingsHaveChanges, setJevSettingsHaveChanges] = useState(false)
-  const [isSavingPreferences, setIsSavingPreferences] = useState(false)
   const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false)
+  const [activeSection, setActiveSection] = useState<SettingsSection>('interface')
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
   const [hasActivatedModelMatrix, setHasActivatedModelMatrix] = useState(
     () => location.pathname === '/settings'
   )
-  const pendingChanges = modelSettingsHaveChanges || jevSettingsHaveChanges || hasUnsavedChanges
+  const pendingChanges = modelSettingsHaveChanges || jevSettingsHaveChanges
   const isSettingsActive = location.pathname === '/settings'
+
+  const activateSection = (section: SettingsSection) => {
+    setActiveSection(section)
+    const viewport = scrollRef.current?.firstElementChild
+    if (viewport instanceof HTMLElement) viewport.scrollTo({ top: 0 })
+  }
+
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex = index
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % SETTINGS_SECTIONS.length
+    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + SETTINGS_SECTIONS.length) % SETTINGS_SECTIONS.length
+    else if (event.key === 'Home') nextIndex = 0
+    else if (event.key === 'End') nextIndex = SETTINGS_SECTIONS.length - 1
+    else return
+    event.preventDefault()
+    activateSection(SETTINGS_SECTIONS[nextIndex].id)
+    tabRefs.current[nextIndex]?.focus()
+  }
 
   useEffect(() => {
     if (config.theme && theme !== config.theme) {
@@ -264,11 +283,7 @@ export function SettingsPage() {
     () => THEME_OPTIONS.find((item) => item.value === config.theme)?.label ?? '浅色',
     [config.theme]
   )
-  const preferencesStatusText = isSavingPreferences
-    ? '正在保存页面设置'
-    : hasUnsavedChanges
-      ? `页面设置有未保存更改，当前主题为${themeLabel}`
-      : `页面设置已同步，当前主题为${themeLabel}`
+  const preferencesStatusText = `界面偏好已自动保存，当前主题为${themeLabel}`
 
   const handleRetry = useCallback(() => {
     setError(null)
@@ -295,245 +310,211 @@ export function SettingsPage() {
     taskMatrix: TaskModelEntry[]
     reranker: { provider: string; model: string }
   }) => {
-    data.taskMatrix.forEach((task) => {
+    const selections = new Map(data.taskMatrix.map((task) => {
       const meta = TASK_MATRIX_META.find((item) => item.taskId === task.taskId)
-      if (!meta) return
-      updateModelConfig(meta.modelId, {
-        model: task.model,
-        provider: task.provider,
-        name: task.label,
-      })
+      return [meta?.modelId, { model: task.model, provider: task.provider, name: task.label }] as const
+    }))
+    selections.set('rerank', { ...data.reranker, name: 'Reranker' })
+    const nextModels = useConfigStore.getState().config.models.map((model) => {
+      const selection = selections.get(model.id)
+      return selection ? { ...model, ...selection } : model
     })
-    updateModelConfig('rerank', {
-      model: data.reranker.model,
-      provider: data.reranker.provider,
-      name: 'Reranker',
-    })
-    await saveConfig()
+    await saveConfig(nextModels)
   }
 
   const handleThemeChange = (nextTheme: SystemConfig['theme']) => {
     if (config.theme === nextTheme) return
     setTheme(nextTheme)
     updateSystemConfig({ theme: nextTheme })
+    markAsSaved()
   }
 
   const handleToggle = (key: 'enableThinking' | 'enableCitations') => {
     updateSystemConfig({ [key]: !config[key] } as Pick<SystemConfig, typeof key>)
-  }
-
-  const handleSavePreferences = async () => {
-    setIsSavingPreferences(true)
-    try {
-      await saveConfig()
-      showSuccess('界面设置已保存')
-    } catch (caughtError) {
-      const message = caughtError instanceof Error ? caughtError.message : '保存失败'
-      showError(message)
-    } finally {
-      setIsSavingPreferences(false)
-    }
+    markAsSaved()
   }
 
   if (!hasLoadedConfigOnce) {
     return <SettingsPageLoading />
   }
 
-  return (
-    <ScrollArea className="h-full rounded-[8px] border border-slate-200/80 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-950">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <span className="sr-only" aria-live="polite">
-          {preferencesStatusText}
-        </span>
+  const sectionDirty: Record<SettingsSection, boolean> = {
+    interface: false,
+    models: modelSettingsHaveChanges,
+    jev: jevSettingsHaveChanges,
+  }
 
-        <header className="mb-5 flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-semibold tracking-[-0.025em] text-slate-950 dark:text-white">设置</h1>
-          <div
-            className={cn(
-              'inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold',
-              pendingChanges
-                ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
-                : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300'
-            )}
-          >
-            <span
-              className={cn('h-1.5 w-1.5 rounded-full', pendingChanges ? 'bg-amber-500' : 'bg-emerald-500')}
-              aria-hidden
-            />
-            {pendingChanges ? '未保存' : '已同步'}
+  return (
+    <ScrollArea ref={scrollRef} className="settings-page h-full">
+      <div className="settings-container">
+        <span className="sr-only" aria-live="polite">{preferencesStatusText}</span>
+
+        <header className="settings-page-header">
+          <div className="settings-page-heading">
+            <span className="settings-page-emblem" aria-hidden><Settings2 size={24} /></span>
+            <div>
+              <h1>设置</h1>
+              <p>调整外观、模型和检索行为，让工具更合你的习惯。</p>
+            </div>
+          </div>
+          <div className={cn('settings-sync-status', pendingChanges && 'has-changes')} role="status">
+            {pendingChanges ? <span className="settings-status-dot" aria-hidden /> : <Check size={15} aria-hidden />}
+            {pendingChanges ? '有未保存的更改' : '所有更改已保存'}
           </div>
         </header>
 
+        <div className="settings-navigation">
+          <div role="tablist" aria-label="设置分区" className="settings-tabs">
+            {SETTINGS_SECTIONS.map((section, index) => {
+              const Icon = section.icon
+              return (
+                <button
+                  key={section.id}
+                  ref={(node) => { tabRefs.current[index] = node }}
+                  type="button"
+                  role="tab"
+                  id={`settings-tab-${section.id}`}
+                  aria-controls={`settings-panel-${section.id}`}
+                  aria-selected={activeSection === section.id}
+                  tabIndex={activeSection === section.id ? 0 : -1}
+                  className={cn('settings-tab', activeSection === section.id && 'is-active')}
+                  onClick={() => activateSection(section.id)}
+                  onKeyDown={(event) => handleTabKeyDown(event, index)}
+                >
+                  <Icon size={18} aria-hidden />
+                  {section.label}
+                  {sectionDirty[section.id] && <span className="settings-tab-dirty"><span aria-hidden /><span className="sr-only">有未保存更改</span></span>}
+                </button>
+              )
+            })}
+          </div>
+          <span className="settings-navigation-hint">界面偏好自动保存</span>
+        </div>
+
         {error && (
-          <div
-            className="mb-6 flex flex-col gap-3 rounded-[8px] border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 sm:flex-row sm:items-center sm:justify-between dark:border-amber-900 dark:bg-amber-950/35 dark:text-amber-100"
-            role="alert"
-          >
-            <div className="flex items-start gap-3">
-              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-              <div>
-                <p className="text-sm font-semibold">配置同步失败</p>
-                <p className="mt-0.5 text-xs leading-5 text-amber-800 dark:text-amber-300">
-                  当前显示本地或默认配置。{error}
-                </p>
-              </div>
+          <div className="settings-error" role="alert">
+            <AlertCircle size={20} aria-hidden />
+            <div>
+              <p className="settings-error-title">配置同步失败</p>
+              <p>当前显示本地或默认配置。{error}</p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0 rounded-[6px] border-amber-300 bg-white text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-transparent dark:text-amber-200 dark:hover:bg-amber-950"
-              aria-label="重试加载设置配置"
-              onClick={handleRetry}
-            >
+            <Button variant="outline" className="settings-secondary-button" aria-label="重试加载设置配置" onClick={handleRetry}>
               重试加载
             </Button>
           </div>
         )}
 
-        <div className="min-w-0 space-y-6">
-            <section
-              id="interface"
-              className="scroll-mt-6 overflow-hidden rounded-[8px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950"
-            >
-              <div className="grid h-1 grid-cols-6" aria-hidden>
-                <span className="bg-sky-400" />
-                <span className="bg-cyan-400" />
-                <span className="bg-teal-400" />
-                <span className="bg-violet-400" />
-                <span className="bg-amber-400" />
-                <span className="bg-rose-400" />
+        <div
+          id="settings-panel-interface"
+          role="tabpanel"
+          aria-labelledby="settings-tab-interface"
+          hidden={activeSection !== 'interface'}
+          tabIndex={0}
+          className="settings-tabpanel"
+        >
+          <section id="interface" className="settings-panel" aria-labelledby="settings-interface-title">
+            <header className="settings-panel-header">
+              <span className="settings-section-icon" aria-hidden><Palette size={21} /></span>
+              <div>
+                <h2 id="settings-interface-title">界面与显示</h2>
               </div>
-              <div className="border-b border-slate-100 px-5 py-5 dark:border-slate-800 sm:px-6">
-                <div className="flex items-start gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px] bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300">
-                    <Palette className="h-5 w-5" aria-hidden />
-                  </span>
-                  <div>
-                    <h2 className="text-base font-semibold text-slate-950 dark:text-white">界面与显示</h2>
-                    <p className="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">
-                      设置颜色模式，以及回答中要显示的辅助信息。
-                    </p>
-                  </div>
-                </div>
-              </div>
+            </header>
 
-              <div className="space-y-7 p-5 sm:p-6">
-                <fieldset>
-                  <legend className="text-sm font-semibold text-slate-900 dark:text-slate-100">颜色模式</legend>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">切换后立即预览，保存后记住选择。</p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                    {THEME_OPTIONS.map((item) => {
-                      const Icon = item.icon
-                      const active = config.theme === item.value
-                      return (
-                        <button
-                          key={item.value}
-                          type="button"
-                          aria-pressed={active}
-                          onClick={() => handleThemeChange(item.value)}
-                          className={cn(
-                            'relative flex items-center gap-3 rounded-[6px] border px-3.5 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2',
-                            active
-                              ? 'border-indigo-500 bg-indigo-50/70 dark:border-indigo-500 dark:bg-indigo-950/40'
-                              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-700 dark:hover:bg-slate-900'
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              'flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px]',
-                              active
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                            )}
-                          >
-                            <Icon className="h-[18px] w-[18px]" aria-hidden />
+            <div className="settings-interface-body">
+              <fieldset className="settings-fieldset">
+                <legend>颜色模式</legend>
+                <div className="settings-theme-options">
+                  {THEME_OPTIONS.map((item) => {
+                    const Icon = item.icon
+                    const active = config.theme === item.value
+                    return (
+                      <label key={item.value} className={cn('settings-theme-card', active && 'is-selected')}>
+                        <input
+                          type="radio"
+                          name="settings-theme"
+                          value={item.value}
+                          checked={active}
+                          onChange={() => handleThemeChange(item.value)}
+                          className="sr-only"
+                        />
+                        <span className={cn('settings-theme-preview', `settings-theme-preview--${item.value}`)} aria-hidden>
+                          <span className="settings-preview-sidebar"><i /><i /><i /></span>
+                          <span className="settings-preview-content">
+                            <span className="settings-preview-heading" />
+                            <span className="settings-preview-notes"><i /><i /><i /></span>
+                            <span className="settings-preview-composer"><i /><i /></span>
                           </span>
-                          <span className="min-w-0">
-                            <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                              {item.label}
-                              {active && <Check className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-300" aria-hidden />}
-                            </span>
-                            <span className="mt-0.5 block text-[11px] leading-4 text-slate-500 dark:text-slate-400">
-                              {item.description}
-                            </span>
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </fieldset>
-
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">回答辅助信息</h3>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    控制回答中展示多少推理与来源信息，不影响后端检索流程。
-                  </p>
-                  <div className="mt-3 grid gap-2 xl:grid-cols-2">
-                    <PreferenceToggle
-                      icon={Brain}
-                      title="显示思考链"
-                      description="展示意图识别、路由与检索策略。"
-                      enabled={config.enableThinking}
-                      onToggle={() => handleToggle('enableThinking')}
-                    />
-                    <PreferenceToggle
-                      icon={Quote}
-                      title="显示引用"
-                      description="展示引用编号、来源卡片与消息引用条。"
-                      enabled={config.enableCitations}
-                      onToggle={() => handleToggle('enableCitations')}
-                    />
-                  </div>
+                          {item.value === 'system' && <span className="settings-preview-system"><Sun size={13} /><Moon size={13} /></span>}
+                        </span>
+                        <span className="settings-theme-label">
+                          <Icon size={18} aria-hidden />
+                          <span>{item.label}</span>
+                          <span className="settings-theme-check" aria-hidden>{active && <Check size={13} />}</span>
+                        </span>
+                      </label>
+                    )
+                  })}
                 </div>
-              </div>
+              </fieldset>
 
-              <footer className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-slate-800 dark:bg-slate-900/35">
-                <div className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  {hasUnsavedChanges ? '界面设置已修改，保存后记住当前选择。' : '界面设置已保存。'}
+              <div className="settings-answer-preferences">
+                <div className="settings-group-heading">
+                  <h3>回答辅助信息</h3>
                 </div>
-                <Button
-                  onClick={handleSavePreferences}
-                  disabled={!hasUnsavedChanges || isSavingPreferences || isLoading}
-                  aria-label={
-                    isSavingPreferences
-                      ? '正在保存界面设置'
-                      : hasUnsavedChanges
-                        ? '保存界面设置'
-                        : '当前没有需要保存的界面设置'
-                  }
-                  className="rounded-[6px] bg-indigo-600 text-white shadow-sm hover:bg-indigo-500 focus-visible:ring-indigo-500"
-                >
-                  {isSavingPreferences ? (
-                    <>
-                      <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
-                      保存中
-                    </>
-                  ) : (
-                    <>
-                      <Save className="mr-2 h-4 w-4" aria-hidden />
-                      保存界面设置
-                    </>
-                  )}
-                </Button>
-              </footer>
-            </section>
-
-            {hasActivatedModelMatrix && <JevSettings onHasChangesChange={setJevSettingsHaveChanges} />}
-
-            <section id="models" className="scroll-mt-6">
-              {(isSettingsActive || hasActivatedModelMatrix) ? (
-                <Suspense fallback={<ModelConfigLoading />}>
-                  <ModelConfig
-                    initialConfig={initialConfig}
-                    availableModels={availableModels}
-                    onSave={handleSaveModels}
-                    onRefreshCatalog={handleRefreshCatalog}
-                    catalogRefreshing={isRefreshingCatalog || isLoading}
-                    onHasChangesChange={setModelSettingsHaveChanges}
+                <div className="settings-preference-list">
+                  <PreferenceToggle
+                    icon={Brain}
+                    title="显示思考链"
+                    description="展开查询理解、路由与检索策略，方便了解回答过程。"
+                    enabled={config.enableThinking}
+                    onToggle={() => handleToggle('enableThinking')}
                   />
-                </Suspense>
-              ) : null}
-            </section>
+                  <PreferenceToggle
+                    icon={Quote}
+                    title="显示引用"
+                    description="展示引用编号和来源卡片，方便查看原始材料。"
+                    enabled={config.enableCitations}
+                    onToggle={() => handleToggle('enableCitations')}
+                  />
+                </div>
+              </div>
+            </div>
+
+          </section>
+        </div>
+
+        <div
+          id="settings-panel-models"
+          role="tabpanel"
+          aria-labelledby="settings-tab-models"
+          hidden={activeSection !== 'models'}
+          tabIndex={0}
+          className="settings-tabpanel"
+        >
+          {(isSettingsActive || hasActivatedModelMatrix) && (
+            <Suspense fallback={<ModelConfigLoading />}>
+              <ModelConfig
+                isActive={activeSection === 'models' && isSettingsActive}
+                initialConfig={initialConfig}
+                availableModels={availableModels}
+                onSave={handleSaveModels}
+                onRefreshCatalog={handleRefreshCatalog}
+                catalogRefreshing={isRefreshingCatalog || isLoading}
+                onHasChangesChange={setModelSettingsHaveChanges}
+              />
+            </Suspense>
+          )}
+        </div>
+
+        <div
+          id="settings-panel-jev"
+          role="tabpanel"
+          aria-labelledby="settings-tab-jev"
+          hidden={activeSection !== 'jev'}
+          tabIndex={0}
+          className="settings-tabpanel"
+        >
+          {hasActivatedModelMatrix && <JevSettings onHasChangesChange={setJevSettingsHaveChanges} />}
         </div>
       </div>
     </ScrollArea>

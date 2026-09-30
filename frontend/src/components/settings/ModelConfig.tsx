@@ -1,14 +1,14 @@
-import { useState, useEffect, useId, useLayoutEffect, useRef, type ComponentType } from 'react'
+import { useState, useEffect, useId, useLayoutEffect, useRef, useMemo, type ComponentType } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Save, RotateCcw, Settings, AlertCircle, Brain, Image, MessageSquare, ArrowDownUp, Check, ChevronDown, Route, Mic, Film, BookText, Database, RefreshCw, Type } from 'lucide-react'
+import { Save, RotateCcw, AlertCircle, Brain, Image, MessageSquare, ArrowDownUp, Check, ChevronDown, Route, Mic, Film, BookText, Database, RefreshCw, Search } from 'lucide-react'
 import { useToastStore } from '@/store/useToastStore'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import type { AvailableModels, AvailableModelType, ModelCatalogDetail } from '@/store/useConfigStore'
 import { getModelProvider, getModelVendor, PROVIDER_LOGOS, VENDOR_LOGOS } from '@/lib/modelVendors'
 import { OpenRouterModelBrandIcon } from '@/components/chat/OpenRouterModelBrandIcon'
+import './modelSettings.css'
 
 export type TaskId =
   | 'intent'
@@ -43,15 +43,6 @@ const CAPABILITY_LABELS: Record<AvailableModelType, string> = {
   reranker: '重排',
   audio: '音频理解',
   video: '视频理解',
-}
-
-const CAPABILITY_ICON_META: Record<AvailableModelType, { icon: ComponentType<{ className?: string }>; className: string }> = {
-  chat: { icon: Type, className: 'bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300' },
-  embedding: { icon: BookText, className: 'bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-300' },
-  vision: { icon: Image, className: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-300' },
-  reranker: { icon: ArrowDownUp, className: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300' },
-  audio: { icon: Mic, className: 'bg-violet-100 text-violet-600 dark:bg-violet-950/60 dark:text-violet-300' },
-  video: { icon: Film, className: 'bg-orange-100 text-orange-600 dark:bg-orange-950/60 dark:text-orange-300' },
 }
 
 const TASK_BACKEND_KEYS: Record<TaskId, string> = {
@@ -158,18 +149,19 @@ const DEFAULT_RERANK = {
   model: 'Qwen/Qwen3-Reranker-8B',
 }
 
-const TASK_META: Record<TaskId, { icon: ComponentType<{ className?: string }>; barClass: string; isPrimary?: boolean }> = {
-  intent: { icon: Brain, barClass: 'bg-blue-400/80 dark:bg-blue-500/80' },
-  rewrite: { icon: Route, barClass: 'bg-cyan-400/80 dark:bg-cyan-500/80' },
-  embedding: { icon: Database, barClass: 'bg-teal-400/80 dark:bg-teal-500/80' },
-  caption: { icon: Image, barClass: 'bg-violet-400/80 dark:bg-violet-500/80' },
-  audio: { icon: Mic, barClass: 'bg-amber-400/80 dark:bg-amber-500/80' },
-  video: { icon: Film, barClass: 'bg-rose-400/80 dark:bg-rose-500/80' },
-  portrait: { icon: BookText, barClass: 'bg-emerald-400/80 dark:bg-emerald-500/80' },
-  generation: { icon: MessageSquare, barClass: 'bg-indigo-500 dark:bg-indigo-400', isPrimary: true },
+const TASK_META: Record<TaskId, { icon: ComponentType<{ className?: string }>; isPrimary?: boolean }> = {
+  intent: { icon: Brain },
+  rewrite: { icon: Route },
+  embedding: { icon: Database },
+  caption: { icon: Image },
+  audio: { icon: Mic },
+  video: { icon: Film },
+  portrait: { icon: BookText },
+  generation: { icon: MessageSquare, isPrimary: true },
 }
 
 interface ModelConfigProps {
+  isActive?: boolean
   onSave?: (config: {
     taskMatrix: TaskModelEntry[]
     reranker: { provider: string; model: string }
@@ -202,36 +194,16 @@ function formatCatalogTime(value?: number | null): string {
   })
 }
 
-function ModelMetaLine({ detail, className }: { detail?: ModelCatalogDetail; className?: string }) {
-  if (!detail) return null
-  const capabilities = (detail.capabilities ?? []).filter((item): item is AvailableModelType => item in CAPABILITY_ICON_META)
-  const context = formatTokenCount(detail.context_length)
-  return (
-    <div className={cn('flex max-w-full flex-wrap items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400', className)}>
-      {capabilities.map((capability) => {
-        const meta = CAPABILITY_ICON_META[capability]
-        const Icon = meta.icon
-        return (
-          <span
-            key={capability}
-            title={CAPABILITY_LABELS[capability]}
-            aria-label={CAPABILITY_LABELS[capability]}
-            className={cn('inline-flex h-7 w-7 items-center justify-center rounded-[6px]', meta.className)}
-          >
-            <Icon className="h-3.5 w-3.5" aria-hidden />
-          </span>
-        )
-      })}
-      {context && (
-        <span
-          title={`上下文约 ${detail.context_length?.toLocaleString()} tokens`}
-          className="inline-flex h-7 items-center rounded-[6px] bg-slate-100 px-2 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300"
-        >
-          {context} ctx
-        </span>
-      )}
-    </div>
-  )
+function modelDisplayName(model: string): string {
+  const raw = model.replace(/^(deepseek|openrouter|aliyun_bailian|siliconflow|siliconcloud):/, '')
+  if (raw === 'deepseek-flash') return 'DeepSeek Flash'
+  return raw.replace(/^Qwen\//, '')
+}
+
+function modelSummary(model: string, detail?: ModelCatalogDetail): string {
+  const capabilities = (detail?.capabilities ?? []).map((item) => CAPABILITY_LABELS[item]).filter(Boolean)
+  const context = formatTokenCount(detail?.context_length)
+  return [model, ...capabilities, context && `${context} tokens 上下文`].filter(Boolean).join(' · ')
 }
 
 function ModelLogo({ modelId, provider, className }: { modelId: string; provider?: string; className?: string }) {
@@ -271,6 +243,8 @@ function LogoModelSelect({
   onChange,
   className,
   ariaLabel,
+  isActive = true,
+  details = {},
 }: {
   value: string
   list: string[]
@@ -279,28 +253,35 @@ function LogoModelSelect({
   onChange: (value: string) => void
   className?: string
   ariaLabel?: string
+  isActive?: boolean
+  details?: Record<string, ModelCatalogDetail>
 }) {
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const generatedId = useId().replace(/:/g, '')
   const ref = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const optionRefs = useRef<Array<HTMLLIElement | null>>([])
-  const focusOnOpenRef = useRef<number | null>(null)
+  const focusOnOpenRef = useRef<'search' | 'option' | null>(null)
   const [menuBox, setMenuBox] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null)
+  const filteredModels = useMemo(() => list.filter((model) => `${model} ${modelDisplayName(model)}`.toLowerCase().includes(query.trim().toLowerCase())), [list, query])
+  const searchable = list.length > 7
   const displayValue = value || list[0] || ''
   const listboxId = `${generatedId}-settings-model-listbox`
-  const activeOptionId = open && list.length > 0 ? `${listboxId}-option-${activeIndex}` : undefined
+  const searchId = `${generatedId}-settings-model-search`
+  const activeOptionId = open && filteredModels.length > 0 ? `${listboxId}-option-${activeIndex}` : undefined
   const selectLabel = displayValue
     ? `选择模型，当前模型：${displayValue}，共 ${list.length} 个候选`
     : `选择模型，当前无可用模型，共 ${list.length} 个候选`
 
-  const getSelectedIndex = () => Math.max(0, list.findIndex((model) => model === value))
+  const getSelectedIndex = (models = filteredModels) => Math.max(0, models.findIndex((model) => model === value))
 
   const focusOption = (idx: number) => {
-    if (list.length === 0) return
-    const boundedIdx = Math.max(0, Math.min(idx, list.length - 1))
+    if (filteredModels.length === 0) return
+    const boundedIdx = Math.max(0, Math.min(idx, filteredModels.length - 1))
     setActiveIndex(boundedIdx)
     requestAnimationFrame(() => {
       optionRefs.current[boundedIdx]?.focus()
@@ -309,18 +290,20 @@ function LogoModelSelect({
   }
 
   const openMenu = (options?: { focus?: boolean; index?: number }) => {
-    if (disabled || list.length === 0) return
-    const nextIndex = Math.max(0, Math.min(options?.index ?? getSelectedIndex(), list.length - 1))
-    setActiveIndex(nextIndex)
-    focusOnOpenRef.current = options?.focus ? nextIndex : null
+    if (!isActive || disabled || list.length === 0) return
+    if (open) {
+      focusOption(options?.index ?? getSelectedIndex())
+      return
+    }
+    setQuery('')
+    setActiveIndex(Math.max(0, Math.min(options?.index ?? getSelectedIndex(list), list.length - 1)))
+    focusOnOpenRef.current = options?.focus ? 'option' : searchable ? 'search' : null
     setOpen(true)
   }
 
   const closeMenu = (restoreFocus = false) => {
     setOpen(false)
-    if (restoreFocus) {
-      requestAnimationFrame(() => buttonRef.current?.focus())
-    }
+    if (restoreFocus) requestAnimationFrame(() => buttonRef.current?.focus())
   }
 
   const selectModel = (model: string, restoreFocus = false) => {
@@ -332,15 +315,19 @@ function LogoModelSelect({
     const button = buttonRef.current
     if (!button) return
     const rect = button.getBoundingClientRect()
+    if (!rect.width || !rect.height) {
+      setOpen(false)
+      return
+    }
     const viewportPadding = 16
-    const maxWidth = Math.max(240, window.innerWidth - viewportPadding * 2)
-    const width = Math.min(544, maxWidth, Math.max(rect.width, 320))
-    const left = Math.min(
-      Math.max(viewportPadding, rect.right - width),
-      Math.max(viewportPadding, window.innerWidth - width - viewportPadding)
-    )
-    const top = rect.bottom + 8
-    const maxHeight = Math.max(180, window.innerHeight - top - viewportPadding)
+    const width = Math.min(560, window.innerWidth - viewportPadding * 2, Math.max(rect.width, 360))
+    const left = Math.min(Math.max(viewportPadding, rect.right - width), Math.max(viewportPadding, window.innerWidth - width - viewportPadding))
+    const below = window.innerHeight - rect.bottom - 8 - viewportPadding
+    const above = rect.top - 8 - viewportPadding
+    const showAbove = below < 240 && above > below
+    const contentHeight = list.length * 62 + (searchable ? 60 : 0) + 16
+    const maxHeight = Math.min(420, contentHeight, Math.max(120, showAbove ? above : below))
+    const top = showAbove ? rect.top - maxHeight - 8 : rect.bottom + 8
     setMenuBox({ top, left, width, maxHeight })
   }
 
@@ -378,141 +365,138 @@ function LogoModelSelect({
   }, [disabled])
 
   useEffect(() => {
-    optionRefs.current = optionRefs.current.slice(0, list.length)
-  }, [list.length])
+    if (!isActive) {
+      setOpen(false)
+      setQuery('')
+    }
+  }, [isActive])
 
   useEffect(() => {
-    if (!open || !menuBox || list.length === 0) return
-    const pendingFocusIndex = focusOnOpenRef.current
-    const nextIndex = Math.max(0, Math.min(pendingFocusIndex ?? getSelectedIndex(), list.length - 1))
-    setActiveIndex(nextIndex)
+    optionRefs.current = optionRefs.current.slice(0, filteredModels.length)
+  }, [filteredModels.length])
+
+  useEffect(() => {
+    if (!open || !menuBox) return
+    const pendingFocus = focusOnOpenRef.current
+    if (pendingFocus === null) return
     requestAnimationFrame(() => {
-      const option = optionRefs.current[nextIndex]
-      if (pendingFocusIndex !== null) option?.focus()
-      option?.scrollIntoView({ block: 'nearest' })
+      if (pendingFocus === 'search') searchRef.current?.focus()
+      else {
+        optionRefs.current[activeIndex]?.focus()
+        optionRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest' })
+      }
       focusOnOpenRef.current = null
     })
-  }, [open, menuBox, list, value])
-
-  const handleButtonClick = () => {
-    if (open) {
-      closeMenu()
-      return
-    }
-    openMenu()
-  }
+  }, [open, menuBox, activeIndex])
 
   const handleButtonKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (disabled || list.length === 0) return
     if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      openMenu({ focus: true, index: getSelectedIndex() })
-      return
-    }
-    if (event.key === 'ArrowUp' || event.key === 'End') {
+      openMenu({ focus: true, index: getSelectedIndex(list) })
+    } else if (event.key === 'ArrowUp' || event.key === 'End') {
       event.preventDefault()
       openMenu({ focus: true, index: list.length - 1 })
-      return
-    }
-    if (event.key === 'Home') {
+    } else if (event.key === 'Home') {
       event.preventDefault()
       openMenu({ focus: true, index: 0 })
     }
   }
 
   const handleOptionKeyDown = (event: ReactKeyboardEvent<HTMLLIElement>, idx: number) => {
-    if (list.length === 0) return
+    if (event.nativeEvent.isComposing || filteredModels.length === 0) return
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      focusOption((idx + 1) % list.length)
-      return
-    }
-    if (event.key === 'ArrowUp') {
+      focusOption((idx + 1) % filteredModels.length)
+    } else if (event.key === 'ArrowUp') {
       event.preventDefault()
-      focusOption((idx - 1 + list.length) % list.length)
-      return
-    }
-    if (event.key === 'Home') {
+      if (idx === 0 && searchable) searchRef.current?.focus()
+      else focusOption((idx - 1 + filteredModels.length) % filteredModels.length)
+    } else if (event.key === 'Home') {
       event.preventDefault()
       focusOption(0)
-      return
-    }
-    if (event.key === 'End') {
+    } else if (event.key === 'End') {
       event.preventDefault()
-      focusOption(list.length - 1)
-      return
-    }
-    if (event.key === 'Enter' || event.key === ' ') {
+      focusOption(filteredModels.length - 1)
+    } else if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      const model = list[idx]
+      const model = filteredModels[idx]
       if (model) selectModel(model, true)
-      return
-    }
-    if (event.key === 'Escape') {
+    } else if (event.key === 'Escape') {
       event.preventDefault()
       closeMenu(true)
     }
   }
 
-  const menu =
-    open && menuBox && typeof document !== 'undefined'
-      ? createPortal(
-          <div
-            ref={menuRef}
-            className="fixed z-[1000] overflow-y-auto rounded-[8px] border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-900/15 dark:border-slate-700 dark:bg-slate-900"
-            style={{
-              top: menuBox.top,
-              left: menuBox.left,
-              width: menuBox.width,
-              maxHeight: menuBox.maxHeight,
-            }}
+  const menu = isActive && open && menuBox && typeof document !== 'undefined'
+    ? createPortal(
+        <div
+          ref={menuRef}
+          className="settings-model-picker"
+          onBlurCapture={(event) => {
+            const target = event.relatedTarget as Node | null
+            if (target && !menuRef.current?.contains(target) && target !== buttonRef.current) closeMenu()
+          }}
+          style={{ top: menuBox.top, left: menuBox.left, width: menuBox.width, maxHeight: menuBox.maxHeight }}
+        >
+          {searchable && (
+            <div className="settings-model-picker-search">
+              <Search className="h-4 w-4" aria-hidden />
+              <label className="sr-only" htmlFor={searchId}>搜索模型</label>
+              <input
+                id={searchId}
+                ref={searchRef}
+                type="search"
+                autoComplete="off"
+                placeholder="输入模型名称搜索…"
+                value={query}
+                aria-controls={listboxId}
+                onChange={(event) => { setQuery(event.target.value); setActiveIndex(0) }}
+                onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing) return
+                  if (event.key === 'ArrowDown' || event.key === 'Enter') {
+                    event.preventDefault()
+                    focusOption(0)
+                  }
+                }}
+              />
+              <span>{filteredModels.length} 个</span>
+            </div>
+          )}
+          <ul
+            id={listboxId}
+            role="listbox"
+            aria-label={`模型列表，共 ${filteredModels.length} 个候选`}
+            aria-activedescendant={activeOptionId}
+            className="settings-model-picker-list"
           >
-            <ul
-              id={listboxId}
-              role="listbox"
-              aria-label={`模型列表，共 ${list.length} 个候选`}
-              aria-activedescendant={activeOptionId}
-              className="space-y-0.5"
-            >
-              {list.map((model, idx) => {
-                const active = model === value
-                const focused = idx === activeIndex
-                return (
-                  <li
-                    key={model}
-                    ref={(node) => {
-                      optionRefs.current[idx] = node
-                    }}
-                    id={`${listboxId}-option-${idx}`}
-                    role="option"
-                    aria-selected={active}
-                    tabIndex={focused ? 0 : -1}
-                    onClick={() => selectModel(model)}
-                    onMouseEnter={() => setActiveIndex(idx)}
-                    onKeyDown={(event) => handleOptionKeyDown(event, idx)}
-                    className={cn(
-                      'flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-[6px] px-2.5 py-2 text-left text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/40',
-                      active
-                        ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200'
-                        : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800',
-                      focused && !active
-                        ? 'bg-slate-50 ring-1 ring-inset ring-indigo-200 dark:bg-slate-800 dark:ring-indigo-500/30'
-                        : undefined
-                    )}
-                  >
-                    <span className="w-5 text-center text-base leading-none">{active ? '✓' : ''}</span>
-                    <ModelLogo modelId={model} provider={provider} />
-                    <span className="min-w-0 flex-1 truncate font-medium" title={model}>
-                      {model}
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          </div>,
-          document.body
-        )
-      : null
+            {filteredModels.map((model, idx) => (
+              <li
+                key={model}
+                ref={(node) => { optionRefs.current[idx] = node }}
+                id={`${listboxId}-option-${idx}`}
+                role="option"
+                aria-selected={model === value}
+                tabIndex={idx === activeIndex ? 0 : -1}
+                onClick={() => selectModel(model, true)}
+                onMouseEnter={() => setActiveIndex(idx)}
+                onKeyDown={(event) => handleOptionKeyDown(event, idx)}
+                className={cn('settings-model-picker-option', model === value && 'is-selected')}
+              >
+                <ModelLogo modelId={model} provider={provider} />
+                <span className="settings-model-option-copy" title={modelSummary(model, details[model])}>
+                  <span>{modelDisplayName(model)}</span>
+                  <small>{model}</small>
+                </span>
+                {model === value && <Check className="h-4 w-4 shrink-0" aria-hidden />}
+              </li>
+            ))}
+          </ul>
+          {filteredModels.length === 0 && <p className="settings-model-picker-empty" role="status">没有匹配的模型，试试其他名称。</p>}
+        </div>,
+        document.body
+      )
+    : null
 
   return (
     <div ref={ref} className={cn('relative', className)}>
@@ -520,20 +504,27 @@ function LogoModelSelect({
         ref={buttonRef}
         type="button"
         disabled={disabled}
-        title={displayValue || '当前无可用模型'}
+        title={displayValue ? modelSummary(displayValue, details[displayValue]) : '当前无可用模型'}
         aria-label={ariaLabel ?? selectLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listboxId}
-        onClick={handleButtonClick}
+        onClick={() => open ? closeMenu() : openMenu()}
         onKeyDown={handleButtonKeyDown}
-        className={cn(
-          'relative flex h-10 w-full min-w-0 items-center gap-2 rounded-[6px] border border-slate-300 bg-white py-2 pl-3 pr-10 text-left text-sm font-medium text-slate-800 shadow-sm transition-colors hover:border-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-600 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20'
-        )}
+        onBlur={(event) => {
+          const target = event.relatedTarget as Node | null
+          if (target && !menuRef.current?.contains(target)) closeMenu()
+        }}
+        className="settings-model-control settings-model-trigger"
       >
-        {displayValue ? <ModelLogo modelId={displayValue} provider={provider} /> : null}
-        <span className="min-w-0 flex-1 truncate">{displayValue || '当前无可用模型'}</span>
-        <ChevronDown className={cn('pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 transition-transform dark:text-slate-400', open && 'rotate-180')} />
+        {displayValue && <ModelLogo modelId={displayValue} provider={provider} />}
+        <span className="min-w-0 flex-1 truncate">{displayValue ? modelDisplayName(displayValue) : '当前无可用模型'}</span>
+        {formatTokenCount(details[displayValue]?.context_length) && (
+          <span className="settings-model-context" aria-label={`上下文 ${formatTokenCount(details[displayValue]?.context_length)} tokens`}>
+            {formatTokenCount(details[displayValue]?.context_length)}
+          </span>
+        )}
+        <ChevronDown className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')} aria-hidden />
       </button>
       {menu}
     </div>
@@ -541,6 +532,7 @@ function LogoModelSelect({
 }
 
 export function ModelConfig({
+  isActive = true,
   onSave,
   initialConfig,
   availableModels,
@@ -555,6 +547,11 @@ export function ModelConfig({
   const [saving, setSaving] = useState(false)
   const [savedBrief, setSavedBrief] = useState(false)
   const savedBriefTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const draftIsDirtyRef = useRef(false)
+  const savedConfigRef = useRef({
+    taskMatrix: initialConfig?.taskMatrix ?? DEFAULT_MATRIX,
+    reranker: initialConfig?.reranker ?? DEFAULT_RERANK,
+  })
   const { showSuccess, showError } = useToastStore()
   const modelDetails = availableModels?.model_details ?? {}
   const catalogStatus = availableModels?.catalog_status
@@ -618,8 +615,17 @@ export function ModelConfig({
   }
 
   useEffect(() => {
+    draftIsDirtyRef.current = hasChanges || saving
+  }, [hasChanges, saving])
+
+  useEffect(() => {
+    if (draftIsDirtyRef.current) return
     if (initialConfig?.taskMatrix) setMatrix(initialConfig.taskMatrix)
     if (initialConfig?.reranker) setReranker(initialConfig.reranker)
+    savedConfigRef.current = {
+      taskMatrix: initialConfig?.taskMatrix ?? DEFAULT_MATRIX,
+      reranker: initialConfig?.reranker ?? DEFAULT_RERANK,
+    }
   }, [initialConfig?.taskMatrix, initialConfig?.reranker])
 
   useEffect(() => {
@@ -635,6 +641,11 @@ export function ModelConfig({
   }, [])
 
   useEffect(() => {
+    if (draftIsDirtyRef.current) return
+    savedConfigRef.current = {
+      taskMatrix: savedConfigRef.current.taskMatrix.map((entry) => normalizeSelection(entry, entry.category, TASK_BACKEND_KEYS[entry.taskId])),
+      reranker: normalizeSelection(savedConfigRef.current.reranker, 'reranker', 'reranking'),
+    }
     setMatrix((prev) => {
       const next = prev.map((entry) => normalizeSelection(entry, entry.category, TASK_BACKEND_KEYS[entry.taskId]))
       const changed = next.some((entry, index) => entry.provider !== prev[index]?.provider || entry.model !== prev[index]?.model)
@@ -646,38 +657,50 @@ export function ModelConfig({
     })
   }, [availableModels])
 
+  const markDraftChanges = (nextMatrix: TaskModelEntry[], nextReranker: { provider: string; model: string }) => {
+    const saved = savedConfigRef.current
+    setSavedBrief(false)
+    setHasChanges(nextMatrix.some((task) => {
+      const previous = saved.taskMatrix.find((entry) => entry.taskId === task.taskId)
+      return previous?.provider !== task.provider || previous?.model !== task.model
+    }) || saved.reranker.provider !== nextReranker.provider || saved.reranker.model !== nextReranker.model)
+  }
+
   const updateTask = (taskId: TaskId, field: 'provider' | 'model', value: string) => {
-    setMatrix((prev) =>
-      prev.map((task) => {
-        if (task.taskId !== taskId) return task
-        if (field === 'provider') {
-          const nextModels = modelList(value, task.category, TASK_BACKEND_KEYS[task.taskId])
-          const nextModel = nextModels.includes(task.model) ? task.model : (nextModels[0] ?? '')
-          return { ...task, provider: value, model: nextModel }
-        }
-        return { ...task, [field]: value }
-      })
-    )
-    setHasChanges(true)
+    if (matrix.find((task) => task.taskId === taskId)?.[field] === value) return
+    const nextMatrix = matrix.map((task) => {
+      if (task.taskId !== taskId) return task
+      if (field === 'provider') {
+        const nextModels = modelList(value, task.category, TASK_BACKEND_KEYS[task.taskId])
+        const nextModel = nextModels.includes(task.model) ? task.model : (nextModels[0] ?? '')
+        return { ...task, provider: value, model: nextModel }
+      }
+      return { ...task, model: value }
+    })
+    setMatrix(nextMatrix)
+    markDraftChanges(nextMatrix, reranker)
   }
 
   const updateReranker = (field: 'provider' | 'model', value: string) => {
-    setReranker((prev) => {
-      if (field === 'provider') {
-        const nextModels = modelList(value, 'reranker', 'reranking')
-        const nextModel = nextModels.includes(prev.model) ? prev.model : (nextModels[0] ?? '')
-        return { ...prev, provider: value, model: nextModel }
-      }
-      return { ...prev, [field]: value }
-    })
-    setHasChanges(true)
+    if (reranker[field] === value) return
+    const nextModels = field === 'provider' ? modelList(value, 'reranker', 'reranking') : []
+    const nextReranker = field === 'provider'
+      ? { ...reranker, provider: value, model: nextModels.includes(reranker.model) ? reranker.model : (nextModels[0] ?? '') }
+      : { ...reranker, model: value }
+    setReranker(nextReranker)
+    markDraftChanges(matrix, nextReranker)
   }
 
   const handleSave = async () => {
+    if (invalidSelections.length > 0) {
+      showError(`${invalidSelections.join('、')}的模型已不在当前目录中，请重新选择后保存。`)
+      return
+    }
     setSaving(true)
     setSavedBrief(false)
     try {
       await onSave?.({ taskMatrix: matrix, reranker })
+      savedConfigRef.current = { taskMatrix: matrix, reranker }
       setHasChanges(false)
       showSuccess('配置已保存')
       setSavedBrief(true)
@@ -694,279 +717,167 @@ export function ModelConfig({
   }
 
   const handleReset = () => {
-    if (!window.confirm('将恢复为上次保存的配置，是否继续？')) return
-    setMatrix(initialConfig?.taskMatrix ?? DEFAULT_MATRIX)
-    setReranker(initialConfig?.reranker ?? DEFAULT_RERANK)
+    setSavedBrief(false)
+    setMatrix(savedConfigRef.current.taskMatrix)
+    setReranker(savedConfigRef.current.reranker)
     setHasChanges(false)
   }
 
   const rerankerProviders = providerList('reranker', 'reranking')
   const rerankerModels = reranker.provider ? modelList(reranker.provider, 'reranker', 'reranking') : []
+  const invalidSelections = matrix
+    .filter((task) => !providerList(task.category, TASK_BACKEND_KEYS[task.taskId]).includes(task.provider)
+      || !modelList(task.provider, task.category, TASK_BACKEND_KEYS[task.taskId]).includes(task.model))
+    .map((task) => task.label)
+  if (!rerankerProviders.includes(reranker.provider) || !rerankerModels.includes(reranker.model)) invalidSelections.push('检索结果重排')
 
-  const selectBase =
-    'relative flex h-10 w-full min-w-0 cursor-pointer appearance-none truncate rounded-[6px] border border-slate-300 bg-white py-2 pl-3 pr-9 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:border-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-600 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20'
+  const failedCatalogProviders = Object.entries(catalogStatus?.providers ?? {})
+    .filter(([, status]) => !status.ok)
+    .map(([provider]) => PROVIDER_DISPLAY_NAMES[provider] ?? provider)
+
+  const routeGroups: Array<{ id: string; label: string; tasks: Array<TaskId | 'reranker'> }> = [
+    { id: 'conversation', label: '对话与检索', tasks: ['generation', 'intent', 'rewrite', 'embedding', 'reranker'] },
+    { id: 'content', label: '内容理解', tasks: ['caption', 'audio', 'video', 'portrait'] },
+  ]
+
+  const renderRoute = (taskId: TaskId | 'reranker') => {
+    const isReranker = taskId === 'reranker'
+    const task = isReranker
+      ? { ...reranker, taskId, label: '检索结果重排', description: '调整召回结果的相关性顺序', category: 'reranker' as const }
+      : matrix.find((item) => item.taskId === taskId)
+    if (!task) return null
+    const Icon = isReranker ? ArrowDownUp : TASK_META[taskId].icon
+    const isPrimary = taskId === 'generation'
+    const taskKey = isReranker ? 'reranking' : TASK_BACKEND_KEYS[taskId]
+    const providers = providerList(task.category, taskKey)
+    const models = task.provider ? modelList(task.provider, task.category, taskKey) : []
+    const updateSelection = (field: 'provider' | 'model', value: string) => {
+      if (isReranker) updateReranker(field, value)
+      else updateTask(taskId, field, value)
+    }
+    const saved = isReranker ? savedConfigRef.current.reranker : savedConfigRef.current.taskMatrix.find((item) => item.taskId === taskId)
+    const changed = saved?.provider !== task.provider || saved?.model !== task.model
+    return (
+      <div key={taskId} className={cn('settings-model-row', isPrimary && 'is-primary', changed && 'is-changed')}>
+        <div className="settings-model-task">
+          <span className="settings-model-task-icon" data-task={taskId}><Icon className="h-5 w-5" aria-hidden /></span>
+          <div className="settings-model-task-copy">
+            <div className="settings-model-task-title">
+              {task.label}
+              {isPrimary && <span className="settings-model-primary-label">主模型</span>}
+              {changed && <span className="settings-model-change-dot" title="未保存的更改"><span className="sr-only">未保存的更改</span></span>}
+            </div>
+            <p id={`model-task-help-${taskId}`}>{task.description}</p>
+          </div>
+        </div>
+        <div className="settings-model-route" role="group" aria-label={`${task.label}路由`} aria-describedby={`model-task-help-${taskId}`}>
+          <div className="settings-model-provider-wrap">
+            <select
+              name={`${taskId}-provider`}
+              value={task.provider}
+              onChange={(event) => updateSelection('provider', event.target.value)}
+              className="settings-model-control settings-model-provider"
+              aria-label={isReranker ? 'Reranker Provider' : `${task.label} Provider`}
+              title={`服务商：${PROVIDER_DISPLAY_NAMES[task.provider] ?? task.provider}`}
+              disabled={providers.length === 0 || saving}
+            >
+              {providers.length === 0 && <option value="">无可用服务商</option>}
+              {task.provider && !providers.includes(task.provider) && <option value={task.provider} disabled>{PROVIDER_DISPLAY_NAMES[task.provider] ?? task.provider}（不可用）</option>}
+              {providers.map((provider) => <option key={provider} value={provider}>{PROVIDER_DISPLAY_NAMES[provider] ?? provider}</option>)}
+            </select>
+            <ChevronDown className="settings-model-select-arrow h-3.5 w-3.5" aria-hidden />
+          </div>
+          <LogoModelSelect
+            value={task.model}
+            list={models}
+            provider={task.provider}
+            details={modelDetails}
+            disabled={models.length === 0 || saving}
+            onChange={(value) => updateSelection('model', value)}
+            ariaLabel={`${isReranker ? 'Reranker 模型' : `${task.label}模型`}，当前模型：${modelDisplayName(task.model) || '无'}`}
+            isActive={isActive}
+            className="settings-model-selection"
+          />
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className={cn('animate-in fade-in duration-300', className)}>
-      <span id={configStatusId} className="sr-only" aria-live="polite">
-        {configStatusText}
-      </span>
-      <div className="rounded-[8px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
-        <header className="sticky top-0 z-20 rounded-t-[8px] border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/95 sm:px-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px] bg-slate-950 text-white dark:bg-white dark:text-slate-950">
-                <Settings className="h-5 w-5" aria-hidden />
-              </div>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-base font-semibold text-slate-950 dark:text-white">模型路由</h2>
-                  {hasChanges && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-                      <AlertCircle className="h-3 w-3" aria-hidden />
-                      未保存
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  为每个任务步骤指定 Provider 与模型，保存后用于新的请求。
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-              {onRefreshCatalog && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="rounded-[6px] border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900"
-                  disabled={catalogRefreshing || saving}
-                  aria-label={catalogRefreshing ? '正在刷新官方模型目录' : '刷新官方模型目录'}
-                  aria-describedby={configStatusId}
-                  onClick={() => void onRefreshCatalog()}
-                >
-                  <RefreshCw className={cn('mr-2 h-4 w-4', catalogRefreshing && 'animate-spin')} aria-hidden />
-                  {catalogRefreshing ? '同步中' : '刷新目录'}
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-[6px] border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900"
-                disabled={!hasChanges || saving}
-                aria-label={hasChanges ? '重置模型配置为上次保存状态' : '当前没有可重置的模型配置更改'}
+    <div className={cn('settings-model-config', className)}>
+      <span id={configStatusId} className="sr-only" aria-live="polite">{configStatusText}</span>
+      <div className="settings-model-card">
+        <header className="settings-model-header">
+          <div className="settings-model-title-line">
+            <Route className="h-5 w-5" aria-hidden />
+            <h2>模型路由</h2>
+          </div>
+          <div className="settings-model-catalog">
+            <span className="settings-model-catalog-status" title={`${totalModelCount} 个候选模型 · 已同步 ${syncedModelCount} 个官方模型 · ${lastRefreshLabel}`}>
+              <span aria-hidden />{syncedModelCount} 个官方模型
+              <span className="settings-model-catalog-time">{lastRefreshLabel === '尚未同步' ? lastRefreshLabel : `${lastRefreshLabel} 更新`}</span>
+            </span>
+            {onRefreshCatalog && (
+              <button
+                type="button"
+                className="settings-model-refresh"
+                disabled={catalogRefreshing || saving}
+                aria-label={catalogRefreshing ? '正在刷新官方模型目录' : '刷新官方模型目录'}
                 aria-describedby={configStatusId}
-                onClick={handleReset}
+                onClick={() => void onRefreshCatalog()}
               >
-                <RotateCcw className="mr-2 h-4 w-4" aria-hidden />
-                重置
-              </Button>
-              <Button
-                size="sm"
-                className="rounded-[6px] bg-indigo-600 font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:ring-indigo-500"
-                disabled={!hasChanges || saving}
-                aria-label={saving ? '正在保存模型配置' : hasChanges ? '保存模型配置' : '当前没有可保存的模型配置更改'}
-                aria-describedby={configStatusId}
-                onClick={handleSave}
-              >
-                {saving ? (
-                  <>
-                    <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden />
-                    保存中…
-                  </>
-                ) : savedBrief ? (
-                  <>
-                    已保存
-                    <Check className="ml-2 h-4 w-4 text-emerald-200" aria-hidden />
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" aria-hidden />
-                    保存模型路由
-                  </>
-                )}
-              </Button>
-            </div>
+                <RefreshCw className={cn('h-3.5 w-3.5', catalogRefreshing && 'animate-spin')} aria-hidden />
+                {catalogRefreshing ? '同步中' : '刷新'}
+              </button>
+            )}
           </div>
         </header>
 
-        <div className="space-y-7 p-5 sm:p-6">
-          <div className="flex flex-col gap-3 rounded-[6px] border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900/50">
-            <p className="text-xs leading-5 text-slate-600 dark:text-slate-400">
-              候选模型会按任务能力自动过滤；目录合并官方数据与本地注册表。
-            </p>
-            <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
-              <span>
-                <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{syncedModelCount}/{totalModelCount || 0}</span>
-                {' '}官网同步
-              </span>
-              <span>更新于 {lastRefreshLabel}</span>
-            </div>
+        {(failedCatalogProviders.length > 0 || (hasChanges && invalidSelections.length > 0)) && (
+          <div className="settings-model-notices" role="status">
+            {failedCatalogProviders.length > 0 && <p><AlertCircle className="h-4 w-4" aria-hidden />{failedCatalogProviders.join('、')} 更新失败，仍可使用已有目录。</p>}
+            {hasChanges && invalidSelections.length > 0 && <p><AlertCircle className="h-4 w-4" aria-hidden />目录已更新，请为{invalidSelections.join('、')}重新选择模型。</p>}
           </div>
+        )}
 
-          <section>
-            <div className="mb-3 flex items-end justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-950 dark:text-white">任务模型映射</h3>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">沿着处理链路，为每一步选择最合适的模型。</p>
+        <div className="settings-model-body">
+          {routeGroups.map((group) => (
+            <section key={group.id} aria-labelledby={`settings-model-group-${group.id}`} className="settings-model-group" data-group={group.id}>
+              <div className="settings-model-section-heading">
+                <h3 id={`settings-model-group-${group.id}`}>{group.label}</h3>
+                <div className="settings-model-column-labels" aria-hidden><span>服务商</span><span>模型</span></div>
               </div>
-              <span className="shrink-0 font-mono text-xs font-semibold text-slate-400 dark:text-slate-500">
-                {matrix.length} STEPS
-              </span>
-            </div>
-            <div className="overflow-hidden rounded-[8px] border border-slate-200 dark:border-slate-800">
-              <div className="hidden grid-cols-[minmax(0,0.9fr)_minmax(8.5rem,0.65fr)_minmax(0,1.7fr)] gap-4 border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400 lg:grid">
-                <div>任务</div>
-                <div>Provider</div>
-                <div>模型</div>
-              </div>
-
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {matrix.map((task) => {
-                const meta = TASK_META[task.taskId]
-                const Icon = meta.icon
-                const taskKey = TASK_BACKEND_KEYS[task.taskId]
-                const providers = providerList(task.category, taskKey)
-                const models = task.provider ? modelList(task.provider, task.category, taskKey) : []
-                const selectedDetail = modelDetails[task.model]
-
-                return (
-                  <div
-                    key={task.taskId}
-                    className={cn(
-                      'group relative bg-white px-4 py-4 transition-colors hover:bg-slate-50/80 dark:bg-slate-950 dark:hover:bg-slate-900/45',
-                      meta.isPrimary
-                        ? 'bg-indigo-50/45 hover:bg-indigo-50/70 dark:bg-indigo-950/20 dark:hover:bg-indigo-950/30'
-                        : undefined
-                    )}
-                  >
-                    <span className={cn('absolute inset-y-3 left-0 w-1 rounded-r-full', meta.barClass)} aria-hidden />
-                    <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(8.5rem,0.65fr)_minmax(0,1.7fr)] lg:items-center">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-3">
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                            <Icon className="h-[18px] w-[18px]" aria-hidden />
-                          </span>
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                              <span>{task.label}</span>
-                              {meta.isPrimary && (
-                                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300">
-                                  主模型
-                                </span>
-                              )}
-                            </div>
-                            <p className="mt-0.5 truncate text-[11px] leading-4 text-slate-500 dark:text-slate-400" title={task.description}>
-                              {task.description}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="min-w-0">
-                        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400 lg:hidden">
-                          Provider
-                        </div>
-                        <div className="relative">
-                          <select
-                            value={task.provider}
-                            onChange={(e) => updateTask(task.taskId, 'provider', e.target.value)}
-                            className={selectBase}
-                            aria-label={`${task.label} Provider`}
-                            title={task.provider || '当前无可用 Provider'}
-                            disabled={providers.length === 0}
-                          >
-                            {providers.length === 0 && <option value="">当前无可用 Provider</option>}
-                            {providers.map((provider) => (
-                              <option key={provider} value={provider}>
-                                {PROVIDER_DISPLAY_NAMES[provider] ?? provider}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
-                        </div>
-                      </div>
-
-                      <div className="min-w-0">
-                        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400 lg:hidden">
-                          模型
-                        </div>
-                        <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <LogoModelSelect
-                            value={task.model}
-                            list={models}
-                            provider={task.provider}
-                            disabled={models.length === 0}
-                            onChange={(value) => updateTask(task.taskId, 'model', value)}
-                            ariaLabel={`${task.label}模型，当前模型：${task.model || '无'}`}
-                            className="w-full min-w-0 flex-none sm:min-w-[12rem] sm:flex-1"
-                          />
-                          <ModelMetaLine detail={selectedDetail} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-              </div>
-            </div>
-          </section>
-
-          <section>
-            <div className="mb-3 flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-[6px] bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-300">
-                <ArrowDownUp className="h-[18px] w-[18px]" aria-hidden />
-              </span>
-              <div>
-                <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Reranker</h3>
-                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">对召回结果重新排序，提高最终上下文的相关性。</p>
-              </div>
-            </div>
-            <div className="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-900/35">
-              <div className="grid gap-4 lg:grid-cols-[minmax(8.5rem,0.65fr)_minmax(0,1.7fr)]">
-                <div className="min-w-0 space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">
-                    Provider
-                  </Label>
-                  <div className="relative">
-                    <select
-                      value={reranker.provider}
-                      onChange={(e) => updateReranker('provider', e.target.value)}
-                      className={selectBase}
-                      aria-label="Reranker Provider"
-                      title={reranker.provider || '当前无可用 Provider'}
-                      disabled={rerankerProviders.length === 0}
-                    >
-                      {rerankerProviders.length === 0 && <option value="">当前无可用 Provider</option>}
-                      {rerankerProviders.map((provider) => (
-                        <option key={provider} value={provider}>
-                          {PROVIDER_DISPLAY_NAMES[provider] ?? provider}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-                <div className="min-w-0 space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">
-                    模型
-                  </Label>
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <LogoModelSelect
-                      value={reranker.model}
-                      list={rerankerModels}
-                      provider={reranker.provider}
-                      disabled={rerankerModels.length === 0}
-                      onChange={(value) => updateReranker('model', value)}
-                      ariaLabel={`Reranker 模型，当前模型：${reranker.model || '无'}`}
-                      className="w-full min-w-0 flex-none sm:min-w-[12rem] sm:flex-1"
-                    />
-                    <ModelMetaLine detail={modelDetails[reranker.model]} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
+              {group.tasks.map(renderRoute)}
+            </section>
+          ))}
         </div>
+
+        <footer className={cn('settings-model-actions', hasChanges && 'has-changes')}>
+          <p className={cn(savedBrief && 'is-saved')}>
+            {savedBrief ? <Check className="h-4 w-4" aria-hidden /> : hasChanges ? <AlertCircle className="h-4 w-4" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
+            {saving ? '正在保存模型路由…' : savedBrief ? '模型路由已保存' : hasChanges ? '有未保存的更改' : '当前配置已保存'}
+          </p>
+          <div className="settings-model-action-buttons">
+            <Button
+              variant="outline"
+              className="settings-model-secondary"
+              disabled={!hasChanges || saving}
+              aria-label={hasChanges ? '重置模型配置为上次保存状态' : '当前没有可重置的模型配置更改'}
+              aria-describedby={configStatusId}
+              onClick={handleReset}
+            ><RotateCcw className="mr-2 h-4 w-4" aria-hidden />撤销更改</Button>
+            <Button
+              className="settings-model-save"
+              disabled={!hasChanges || saving}
+              aria-label={saving ? '正在保存模型配置' : hasChanges ? '保存模型配置' : '当前没有可保存的模型配置更改'}
+              aria-describedby={configStatusId}
+              onClick={handleSave}
+            >
+              {saving ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : savedBrief ? <Check className="mr-2 h-4 w-4" aria-hidden /> : <Save className="mr-2 h-4 w-4" aria-hidden />}
+              {saving ? '保存中…' : savedBrief ? '已保存' : '保存模型路由'}
+            </Button>
+          </div>
+        </footer>
       </div>
     </div>
   )
