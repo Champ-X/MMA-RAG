@@ -1,5 +1,9 @@
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 
+from app.core.llm.manager import LLMCallResult
 from app.modules.knowledge.router import KnowledgeRouter
 from app.modules.knowledge.service import KnowledgeBase, KnowledgeBaseService
 
@@ -65,6 +69,71 @@ async def test_router_enrichment_requests_fresh_metadata():
 
     assert target_kbs == [{"id": "kb-a", "name": "最新知识库名称", "score": 0.9}]
     assert router.kb_service.refresh_values == [True]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fallback", ["embedding_failure", "no_portraits", "portrait_error"])
+async def test_route_fallback_preserves_latest_kb_names(monkeypatch, fallback):
+    router = _router_without_dependencies()
+    router.llm_manager = object()
+    router.kb_service = SimpleNamespace(
+        list_knowledge_bases=AsyncMock(return_value=[
+            {"id": "kb-a", "name": "旧知识库名称"},
+            {"id": "kb-b", "name": "音乐收集"},
+        ]),
+        get_knowledge_base_metadata=AsyncMock(side_effect=[
+            {"id": "kb-a", "name": "最新知识库名称"},
+            {"id": "kb-b", "name": "音乐收集"},
+        ]),
+    )
+    router.vector_store = SimpleNamespace(
+        search_kb_portraits_topn=AsyncMock(
+            return_value=[],
+            side_effect=ConnectionError("Qdrant unavailable") if fallback == "portrait_error" else None,
+        ),
+    )
+    monkeypatch.setattr("app.modules.knowledge.router.embed_queries", AsyncMock(
+        return_value=LLMCallResult(
+            success=fallback != "embedding_failure",
+            data=None if fallback == "embedding_failure" else [[0.1, 0.2]],
+        ),
+    ))
+
+    result = await router.route_query("麝香甜瓜最早来自哪里？")
+
+    expected_method = "no_portraits_default_all" if fallback == "no_portraits" else "default_all"
+    assert result.routing_method == expected_method
+    assert result.target_kb_ids == ["kb-a", "kb-b"]
+    assert result.target_kbs == [
+        {"id": "kb-a", "name": "最新知识库名称", "score": 1.0},
+        {"id": "kb-b", "name": "音乐收集", "score": 1.0},
+    ]
+    assert all(call.kwargs["refresh"] for call in router.kb_service.get_knowledge_base_metadata.await_args_list)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [None, ConnectionError("MinIO unavailable")])
+async def test_default_routing_keeps_listed_name_when_metadata_refresh_fails(failure):
+    router = _router_without_dependencies()
+    router.kb_service = SimpleNamespace(
+        list_knowledge_bases=AsyncMock(return_value=[{"id": "kb-a", "name": "生物科普"}]),
+        get_knowledge_base_metadata=AsyncMock(return_value=None, side_effect=failure),
+    )
+
+    result = await router._default_routing()
+
+    assert result.target_kbs == [{"id": "kb-a", "name": "生物科普", "score": 1.0}]
+
+
+@pytest.mark.asyncio
+async def test_default_routing_without_knowledge_bases_has_empty_display_targets():
+    router = _router_without_dependencies()
+    router.kb_service = SimpleNamespace(list_knowledge_bases=AsyncMock(return_value=[]))
+
+    result = await router._default_routing()
+
+    assert result.routing_method == "no_kb_available"
+    assert result.target_kbs == []
 
 
 def test_relative_normalization_keeps_close_scores_close():

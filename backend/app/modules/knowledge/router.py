@@ -60,13 +60,16 @@ class KnowledgeRouter:
         self,
         target_kb_ids: List[str],
         confidence_scores: Dict[str, float],
+        known_names: Optional[Dict[str, str]] = None,
     ) -> List[Dict[str, Any]]:
         """用 MinIO 最新元数据构建 target_kbs，避免路由实例展示重命名前的缓存值。"""
         if not target_kb_ids:
             return []
 
         async def _enrich_one(kb_id: str) -> Dict[str, Any]:
-            name = kb_id
+            # A fresh read may fail transiently. Keep the name already supplied
+            # by the KB listing instead of replacing it with an opaque ID.
+            name = (known_names or {}).get(kb_id) or kb_id
             try:
                 kb = await self.kb_service.get_knowledge_base_metadata(
                     kb_id,
@@ -677,12 +680,19 @@ class KnowledgeRouter:
             
             if kbs:
                 target_kb_ids = [kb["id"] for kb in kbs]
+                confidence_scores = {kb_id: 1.0 for kb_id in target_kb_ids}
+                target_kbs = await self._enrich_target_kbs(
+                    target_kb_ids,
+                    confidence_scores,
+                    known_names={kb["id"]: kb.get("name") or kb["id"] for kb in kbs},
+                )
                 return RoutingResult(
                     target_kb_ids=target_kb_ids,
-                    confidence_scores={kb_id: 1.0 for kb_id in target_kb_ids},
+                    confidence_scores=confidence_scores,
                     routing_method=routing_method,
                     total_candidates=len(target_kb_ids),
-                    processing_time=0.0
+                    processing_time=0.0,
+                    target_kbs=target_kbs,
                 )
             else:
                 return RoutingResult(
@@ -690,7 +700,8 @@ class KnowledgeRouter:
                     confidence_scores={},
                     routing_method="no_kb_available",
                     total_candidates=0,
-                    processing_time=0.0
+                    processing_time=0.0,
+                    target_kbs=[],
                 )
                 
         except Exception as e:
@@ -700,7 +711,8 @@ class KnowledgeRouter:
                 confidence_scores={},
                 routing_method="error",
                 total_candidates=0,
-                processing_time=0.0
+                processing_time=0.0,
+                target_kbs=[],
             )
     
     async def update_all_kb_portraits(self) -> Dict[str, Any]:

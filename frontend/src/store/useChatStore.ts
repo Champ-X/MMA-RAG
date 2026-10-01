@@ -39,6 +39,7 @@ export interface ThoughtData {
   sub_queries?: string[];
   current_sub_step?: number;
   target_kbs?: Array<{ id: string; name: string; score: number }>;
+  routing_method?: string;
   fallback_search?: boolean;
   visual_activated?: boolean;
   sparse_keywords?: string[];

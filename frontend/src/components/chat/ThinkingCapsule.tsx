@@ -1,9 +1,10 @@
-import { useId, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { Brain, Network, Search, ChevronDown, ChevronRight, CheckCircle, AlertCircle, Square, Image as ImageIcon, Music, Video, Sparkles, FileText, Wand2, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ThoughtData, ThinkingState } from '@/store/useChatStore'
 import type { AgentRoundTrace } from '@/types/sse'
 import { StageDuration, StageTimingDetails } from './StageDuration'
+import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 
 type StageStatus = 'idle' | 'processing' | 'completed' | 'failed' | 'cancelled'
 
@@ -78,6 +79,11 @@ export function ThinkingCapsule({
   const [open, setOpen] = useState(true)
   const capsuleId = useId().replace(/:/g, '')
   const contentId = `${capsuleId}-thinking-capsule-content`
+  const knowledgeBases = useKnowledgeStore((state) => state.knowledgeBases)
+  const kbNames = useMemo(() => new Map(knowledgeBases.map((kb) => [kb.id, kb.name])), [knowledgeBases])
+  // 旧历史在默认路由中把 ID 写入 name，使用已加载元数据补齐显示。
+  const kbDisplayName = (kb: { id: string; name: string }) =>
+    kb.name?.trim() && kb.name !== kb.id ? kb.name : kbNames.get(kb.id) || '未命名知识库'
 
   const intent = {
     type: thoughtData?.intent_type,
@@ -95,6 +101,7 @@ export function ThinkingCapsule({
   }
 
   const routing = thoughtData?.target_kbs ?? (thoughtData?.fallback_search ? { strategy: 'fallback' as const } : undefined)
+  const isDefaultRouting = ['default_all', 'no_portraits_default_all'].includes(thoughtData?.routing_method ?? '')
 
   const retrieval = {
     keywords: thoughtData?.sparse_keywords || [],
@@ -606,7 +613,7 @@ export function ThinkingCapsule({
                               <div className="flex items-start gap-1.5 border-t border-current/15 pt-1.5">
                                 <span className="shrink-0 opacity-70">来源知识库</span>
                                 <span className="font-medium">
-                                  {round.target_kbs.map(kb => kb.name || kb.id).join('、')}
+                                  {round.target_kbs.map(kbDisplayName).join('、')}
                                 </span>
                               </div>
                             )}
@@ -770,15 +777,18 @@ export function ThinkingCapsule({
               <StageDuration timing={timings?.routing} live={isWorking && stages?.routing === 'processing'} label="智能路由" />
             </div>
             <StageTimingDetails timing={timings?.routing} />
+            {isDefaultRouting && (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">未确定相关知识库，已兜底搜索全部知识库。</p>
+            )}
             <div className="ml-0.5 space-y-1 border-l border-slate-300/60 pl-2.5 dark:border-slate-600/50 sm:pl-3">
               {Array.isArray(routing) && routing.length > 0 ? (
                 routing.map((kb, idx) => {
                   const score = kb.score || 0
                   const percentage = Math.round(score * 100)
                   return (
-                    <div key={idx} className="flex items-center gap-3 text-xs">
-                      <span className="w-20 shrink-0 truncate font-medium text-slate-600 dark:text-slate-400">{kb.name}</span>
-                      <div className="flex flex-1 items-center gap-2.5">
+                    <div key={kb.id || idx} className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] items-center gap-3 text-xs sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)]">
+                      <span title={kbDisplayName(kb)} className="break-words font-medium leading-relaxed text-slate-600 dark:text-slate-400">{kbDisplayName(kb)}</span>
+                      <div className="flex min-w-0 items-center gap-2.5">
                         <div className="relative h-2 flex-1 overflow-hidden bg-slate-200/90 shadow-[inset_0_1px_2px_rgba(15,23,42,0.08)] dark:bg-slate-800/90 dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)]">
                           <div
                             className="relative h-full bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500 shadow-[0_0_8px_-2px_rgba(99,102,241,0.55)] transition-all duration-500 ease-out dark:shadow-[0_0_10px_-2px_rgba(129,140,248,0.45)]"
@@ -790,7 +800,7 @@ export function ThinkingCapsule({
                           </div>
                         </div>
                         <span className="w-10 shrink-0 text-right text-[10px] font-bold tabular-nums text-indigo-700 dark:text-indigo-300">
-                          {percentage}%
+                          {isDefaultRouting ? '搜索范围' : `${percentage}%`}
                         </span>
                       </div>
                     </div>

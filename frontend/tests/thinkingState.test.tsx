@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { advanceThinking } from '../src/lib/thinkingState'
 import { ThinkingCapsule } from '../src/components/chat/ThinkingCapsule'
 import type { ThinkingState, ThoughtData } from '../src/store/useChatStore'
+import { useKnowledgeStore } from '../src/store/useKnowledgeStore'
 
 const initial = (): ThinkingState => ({ currentStage: 'intent', progress: 0,
   stages: { intent: 'processing', routing: 'idle', retrieval: 'idle', generation: 'idle' } })
@@ -66,4 +67,37 @@ test('legacy generation statuses remain active until explicit completion', () =>
   const state = { ...initial(), ...advanceThinking(initial(), 'generation', { status: 'completed' }) }
   assert.equal(state.stages.generation, 'completed')
   assert.doesNotMatch(render(state), /thinking-spinner|thinking-activity-rail/)
+})
+
+test('legacy default routing resolves IDs against knowledge-base metadata and labels scope honestly', () => {
+  // React's server renderer reads the initial snapshot instead of the live store.
+  const snapshot = useKnowledgeStore.getInitialState()
+  const previous = snapshot.knowledgeBases
+  try {
+    snapshot.knowledgeBases = [
+      { id: 'kb-old', name: '生物科普知识库', description: '' },
+    ]
+    const html = renderToStaticMarkup(<ThinkingCapsule thoughtData={{
+      routing_method: 'default_all',
+      target_kbs: [{ id: 'kb-old', name: 'kb-old', score: 1 }],
+      _generation_completed: true,
+    }} />)
+    assert.match(html, /生物科普知识库/)
+    assert.doesNotMatch(html, />kb-old</)
+    assert.match(html, /兜底搜索全部知识库/)
+    assert.match(html, /搜索范围/)
+    assert.doesNotMatch(html, />100%</)
+  } finally {
+    snapshot.knowledgeBases = previous
+  }
+})
+
+test('named routing results keep the returned name and confidence', () => {
+  const html = renderToStaticMarkup(<ThinkingCapsule thoughtData={{
+    target_kbs: [{ id: 'kb', name: '来自路由的完整名称', score: 0.75 }],
+    _generation_completed: true,
+  }} />)
+  assert.match(html, /来自路由的完整名称/)
+  assert.match(html, /75%/)
+  assert.doesNotMatch(html, /兜底搜索/)
 })
