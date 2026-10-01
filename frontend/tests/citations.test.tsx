@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { findAllCitationMatches, getOrderedRefIdsFromContent } from '../src/lib/citations'
+import { findAllCitationMatches, getOrderedRefIdsFromContent, mergeCitationReferences } from '../src/lib/citations'
 import { MessageBubble, type MessageBubbleMessage } from '../src/components/chat/MessageBubble'
 
 const warning = /部分引用缺少来源数据/
@@ -42,4 +42,36 @@ test('restored messages and serialized string IDs retain valid citations', () =>
   const restored = JSON.parse(JSON.stringify(message)) as MessageBubbleMessage
   restored.citations = restored.citations?.map((ref) => ({ ...ref, id: String(ref.id) }))
   assert.doesNotMatch(render(restored), warning)
+})
+
+test('a refusal or uncited answer never displays preloaded retrieval candidates', () => {
+  for (const content of ['知识库中未找到相关内容。', '没有足够资料回答这个问题。', '']) {
+    const html = render({ ...message, content })
+    assert.doesNotMatch(html, /text-amber-700/)
+    assert.doesNotMatch(html, warning)
+  }
+})
+
+test('partial answers retain only the sources actually cited, including during streaming', () => {
+  for (const streaming of [false, true]) {
+    const html = render({ ...message, content: '已知结论 [9]。其他方面未找到资料。' }, streaming)
+    assert.equal((html.match(/text-amber-700/g) ?? []).length, 2)
+    assert.doesNotMatch(html, warning)
+  }
+})
+
+test('code, links and escaped brackets are not sources and prose offsets stay intact', () => {
+  const content = '数组 `values[4]`；链接 [9](https://example.test)；\\[4]。\n```python\narray[4]\n```\n正文【9】。'
+  assert.deepEqual(getOrderedRefIdsFromContent(content), [9])
+  const [match] = findAllCitationMatches(content)
+  assert.equal(content.slice(match.start, match.end), '【9】')
+  assert.doesNotMatch(render({ ...message, content, citations: [] }), /\[4\].*缺少来源/)
+})
+
+test('final citation events replace candidates and an empty set clears old preloads', () => {
+  const refs = message.citations as NonNullable<typeof message.citations>
+  const preloaded = mergeCitationReferences([], { references: refs })
+  assert.deepEqual(preloaded, refs)
+  assert.deepEqual(mergeCitationReferences(preloaded, { references: [refs[1]], replace: true }), [refs[1]])
+  assert.deepEqual(mergeCitationReferences(preloaded, { references: [], replace: true }), [])
 })

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from app.core.logger import get_logger
 from app.modules.generation.templates.multimodal_fmt import MultiModalFormatter
+from app.modules.generation.citation_selection import ordered_citation_ids
 from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
 
 logger = get_logger(__name__)
@@ -773,14 +774,7 @@ class ContextBuilder:
     def validate_references(self, answer: str, reference_map: Dict[str, ReferenceMap]) -> List[Dict[str, Any]]:
         """验证引用是否有效，返回引用详细信息字典列表（去重）"""
         try:
-            import re
-            
-            # 查找所有引用格式 [数字]
-            ref_pattern = r'\[(\d+)\]'
-            references = re.findall(ref_pattern, answer)
-            
-            # 使用集合去重，确保每个引用编号只处理一次
-            unique_ref_nums = list(dict.fromkeys(references))  # 保持顺序的去重
+            unique_ref_nums = ordered_citation_ids(answer)
             
             valid_references = []
             seen_keys = set()  # 用于去重，确保同一素材不重复出现

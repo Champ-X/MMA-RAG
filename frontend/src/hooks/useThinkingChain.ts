@@ -11,6 +11,7 @@ import type { ThoughtPhase } from '@/types/sse'
 import { advanceThinking } from '@/lib/thinkingState'
 import { freezeStageTimings, mergeStageTimings } from '@/lib/stageTiming'
 import { putAttachmentBlob } from '@/lib/chatAttachmentBlobStore'
+import { mergeCitationReferences } from '@/lib/citations'
 import { normalizeAgentMode, type ChatMessageAttachment, type ChatScopeFile } from '@/store/useChatStore'
 
 interface UseThinkingChainOptions {
@@ -158,9 +159,9 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             const sid = streamingSessionIdRef.current
             const s = sid ? getSessionById(sid) : null
             const last = s?.messages[s?.messages.length - 1]
-            if (s && last && last.id === currentMessageIdRef.current && ev.references?.length) {
+            if (s && last && last.id === currentMessageIdRef.current && Array.isArray(ev.references)) {
               const prev = last.citations ?? []
-              const next = [...prev, ...ev.references]
+              const next = mergeCitationReferences(prev, ev)
               updateMessage(s.id, last.id, { citations: next })
             }
             options.onCitation?.(ev)

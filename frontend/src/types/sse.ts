@@ -115,6 +115,8 @@ export interface CitationReference {
 
 export interface CitationEvent {
   references: CitationReference[];
+  /** 最终正文的来源集合；空数组也必须覆盖预加载候选。 */
+  replace?: boolean;
 }
 
 // ---------- 3. 消息流 (用于打字机) ----------

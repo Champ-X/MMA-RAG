@@ -11,6 +11,7 @@ from .context_builder import ContextBuilder
 from .stream_manager import StreamManager, StreamEvent, StreamEventType
 from .templates.system_prompts import SystemPromptManager
 from .jev_answer_audit import maybe_audit_answer
+from .citation_selection import select_answer_references
 from app.core.llm.manager import llm_manager
 from app.core.logger import get_logger, audit_log
 
@@ -230,6 +231,7 @@ class GenerationService:
             
             # 开始流式响应（传入 context、提示词与用户输入，供真实 LLM 流式生成）
             answer_chunks: List[str] = []
+            candidate_references: List[Dict[str, Any]] = []
             async for event in self.stream_manager.stream_chat_response(
                 session_id=session_id,
                 query=query,
@@ -248,12 +250,19 @@ class GenerationService:
                     yield event
                 elif event.type == StreamEventType.CITATION:
                     # 引用在正文前预加载，不能用尚为空的正文筛选，否则整张映射被清空。
-                    # 保留完整证据编号；前端按正文出现顺序选择要展示的来源。
+                    # 完成后以实际正文引用替换候选映射，避免把检索命中当作已采用的来源。
+                    candidate_references = event.data.get("references", [])
                     yield event
                 elif event.type == StreamEventType.DONE:
-                    # Only successful completed answers are audited. MESSAGE
-                    # and CITATION events have already reached the caller.
-                    citation_audit = await maybe_audit_answer("".join(answer_chunks), context_result.reference_map)
+                    full_answer = "".join(answer_chunks)
+                    yield StreamEvent(
+                        type=StreamEventType.CITATION,
+                        data={"references": select_answer_references(full_answer, candidate_references),
+                              "replace": True},
+                        timestamp=time.time(),
+                    )
+                    # Only successful completed answers are audited.
+                    citation_audit = await maybe_audit_answer(full_answer, context_result.reference_map)
                     if citation_audit is not None:
                         event = StreamEvent(type=event.type, timestamp=time.time(),
                                             data={**event.data, "jev_citation_audit": citation_audit})

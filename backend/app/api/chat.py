@@ -25,6 +25,7 @@ from app.core.llm import TASK_MODEL_TYPES
 from app.core.llm.models_catalog import ensure_llm_catalog_fresh, get_llm_catalog_status
 from app.modules.retrieval.service import RetrievalService
 from app.modules.generation.service import GenerationService
+from app.modules.generation.citation_selection import select_answer_references
 from app.modules.agent.mode_router import resolve_agent_mode
 from app.modules.agent.service import AgenticRetrievalService
 from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
@@ -701,7 +702,10 @@ async def _iter_chat_sse_impl(
         elif event_type == "citation":
             refs = event.data.get("references", event.data.get("citations", []))
             last_citations = refs
-            yield f"data: {json.dumps({'type': 'citation', 'data': {'references': refs}}, ensure_ascii=False)}\n\n"
+            citation_data = {"references": refs}
+            if event.data.get("replace"):
+                citation_data["replace"] = True
+            yield f"data: {json.dumps({'type': 'citation', 'data': citation_data}, ensure_ascii=False)}\n\n"
         elif event_type == "error":
             stage_timer.finish_active("failed")
             yield f"data: {json.dumps({'type': 'error', 'message': event.data.get('error', '未知错误'), 'stage_timings': stage_timer.snapshot()}, ensure_ascii=False)}\n\n"
@@ -719,6 +723,7 @@ async def _iter_chat_sse_impl(
     final_timings = stage_timer.snapshot()
     thinking["stage_timings"] = final_timings
     full_answer = "".join(answer_chunks)
+    last_citations = select_answer_references(full_answer, last_citations)
     _append_session_turn(
         session,
         user_message={
@@ -967,10 +972,18 @@ async def get_chat_history(sessionId: Optional[str] = Query(None)):
         if sessionId:
             session = sessions.get(sessionId)
             if session:
+                # Older streams saved the full candidate map before the final
+                # answer existed. Repair the response without mutating history.
+                messages = [
+                    {**message, "citations": select_answer_references(
+                        message.get("content", ""), message.get("citations", []))}
+                    if message.get("role") == "assistant" else message
+                    for message in session.get("messages", [])
+                ]
                 return {
                     "success": True,
                     "sessionId": sessionId,
-                    "messages": session.get("messages", []),
+                    "messages": messages,
                     "created_at": session.get("created_at"),
                     "updated_at": session.get("updated_at")
                 }

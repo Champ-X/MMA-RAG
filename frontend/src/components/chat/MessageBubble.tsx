@@ -317,14 +317,6 @@ function getCitationRefId(ref: CitationLike) {
   return ref.id
 }
 
-function getCitationRefType(ref: CitationLike) {
-  return 'type' in ref ? ref.type : undefined
-}
-
-function getCitationRefFileName(ref: CitationLike) {
-  return 'file_name' in ref ? ref.file_name : undefined
-}
-
 // 从 refs / citationMap 中查找 citation：优先当前消息 refs，避免跨轮次共用 id 时误用其它消息的 map
 function findCitationById(
   refId: number | string,
@@ -1111,41 +1103,16 @@ export function MessageBubble({
     [allCitationMatches, citationMap, refs]
   )
 
-  // 去重函数：用于过滤重复的引用
-  const deduplicateRefs = React.useCallback((refsToDedup: CitationLike[]) => {
-    return refsToDedup.filter((ref, idx, arr) => {
-      if (!isCitationLike(ref)) return false
-      const type = getCitationRefType(ref)
-      const fileName = getCitationRefFileName(ref) || ''
-      // 对于图片类型，使用 file_name 去重；对于文档类型，使用 id 去重
-      const key = type === 'image' && fileName ? `image:${fileName}` : String(getCitationRefId(ref))
-      return arr.findIndex(r => {
-        if (!isCitationLike(r)) return false
-        const rType = getCitationRefType(r)
-        const rFileName = getCitationRefFileName(r) || ''
-        const rKey = rType === 'image' && rFileName ? `image:${rFileName}` : String(getCitationRefId(r))
-        return rKey === key
-      }) === idx
-    })
-  }, [])
-
-  const uniqueRefs = React.useMemo(() => {
-    // 如果文本中有引用标记，使用 orderedRefs；否则使用所有 refs（去重后）
-    if (orderedRefs.length > 0) {
-      return orderedRefs
-    }
-    // 当文本中没有引用标记时，仍然显示所有可用的引用
-    return deduplicateRefs(refs.filter(isCitationLike))
-  }, [orderedRefs, refs, deduplicateRefs])
   // 兼容历史消息：旧服务会把关键帧伪装成 image 引用；默认回答引用栏也不应再显示它们。
   const visibleRefs = React.useMemo(() => {
-    return uniqueRefs.filter((ref) => {
+    // 预加载的检索候选只用于解析正文引用，不能自动成为回答来源。
+    return orderedRefs.filter((ref) => {
       const full = 'type' in ref
         ? ref as CitationReference
         : citationMap?.get(getCitationRefId(ref))
       return !!full?.type && !isVideoKeyframeCitation(full)
     })
-  }, [uniqueRefs, citationMap])
+  }, [orderedRefs, citationMap])
   // 正文已在首次引用处展示完整媒体；底部仅保留轻量的来源按钮，避免图片在回答末尾再出现一次。
   const hasRefs = showCitations && visibleRefs.length > 0
 

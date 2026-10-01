@@ -27,9 +27,10 @@ async def test_stream_diagnostics_only_after_body_and_citations_before_done(monk
     async def audit(answer,refs):
         assert answer=='firstsecond'
         types = [event.type for event in events]
-        assert types.count(StreamEventType.CITATION) == 1
+        assert types.count(StreamEventType.CITATION) == 2
         assert types.index(StreamEventType.CITATION) < types.index(StreamEventType.MESSAGE)
-        assert events[-1].type == StreamEventType.MESSAGE
+        assert events[-1].type == StreamEventType.CITATION
+        assert events[-1].data == {"references": [], "replace": True}
         assert sum(e.type==StreamEventType.MESSAGE for e in events)==2
         return {'diagnostic_only':True}
     monkeypatch.setattr('app.modules.generation.service.maybe_audit_answer',audit)
