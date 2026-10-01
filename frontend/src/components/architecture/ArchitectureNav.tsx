@@ -1,11 +1,21 @@
 import { useEffect, useRef } from 'react'
-import { Layers3 } from 'lucide-react'
+import { Boxes, Database, GitBranch, Layers3, Network, Play, ServerCog } from 'lucide-react'
 import type { ArchitectureSection, ArchitectureSectionId } from '@/data/architectureData'
 
 interface ArchitectureNavProps {
   sections: ArchitectureSection[]
   activeId: ArchitectureSectionId
   onNavigate: (id: ArchitectureSectionId) => void
+}
+
+const sectionIcons = {
+  overview: Layers3,
+  'flow-lab': Play,
+  'system-architecture': Network,
+  'request-flow': GitBranch,
+  modules: Boxes,
+  'data-flow': Database,
+  'tech-stack': ServerCog,
 }
 
 export function ArchitectureNav({ sections, activeId, onNavigate }: ArchitectureNavProps) {
@@ -25,13 +35,17 @@ export function ArchitectureNav({ sections, activeId, onNavigate }: Architecture
     <nav aria-label="架构页目录" className="atlas-nav">
       <span className="atlas-nav-label"><Layers3 size={16} aria-hidden="true" />导览</span>
       <div ref={navScrollerRef} className="atlas-nav-scroller">
-        {sections.map((section) => (
+        {sections.map((section) => {
+          const Icon = sectionIcons[section.id]
+          return (
           <a key={section.id} ref={activeId === section.id ? activeLinkRef : undefined}
-            href={`#${section.id}`} aria-current={activeId === section.id ? 'location' : undefined}
+            href={`#${section.id}`} title={section.subtitle} aria-current={activeId === section.id ? 'location' : undefined}
             onClick={(event) => { event.preventDefault(); onNavigate(section.id) }}>
+            <Icon size={16} aria-hidden="true" />
             {section.title}
           </a>
-        ))}
+          )
+        })}
       </div>
     </nav>
   )

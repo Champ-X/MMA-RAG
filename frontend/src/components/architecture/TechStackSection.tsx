@@ -1,4 +1,4 @@
-import { Box, Boxes, Braces, CloudCog, Database, Info, MonitorSmartphone } from 'lucide-react'
+import { Box, Boxes, Braces, ChevronDown, CloudCog, Database, Info, MonitorSmartphone } from 'lucide-react'
 import { techStackItems } from '@/data/architectureData'
 import './architectureSections.css'
 
@@ -41,7 +41,7 @@ export function TechStackSection() {
           const meta = categoryMeta[category as keyof typeof categoryMeta]
           const Icon = meta.icon
           return (
-            <section key={category} className="atlas-stack-group">
+            <section key={category} className="atlas-stack-group" data-category={category}>
               <h3><Icon size={17} aria-hidden="true" />{meta.label}</h3>
               <dl>
                 {items.map((item) => (
@@ -53,15 +53,12 @@ export function TechStackSection() {
         })}
       </div>
 
-      <aside className="atlas-boundaries" aria-labelledby="atlas-boundaries-title">
-        <div className="atlas-boundaries-intro">
-          <h3 id="atlas-boundaries-title"><Info size={17} aria-hidden="true" />当前实现边界</h3>
-          <p>部署前需了解的限制，基于当前实现。</p>
-        </div>
+      <details className="atlas-boundaries">
+        <summary><Info size={18} aria-hidden="true" /><span>当前实现边界<small>会话持久化、鉴权与工具范围</small></span><span className="atlas-boundaries-count">{knownBoundaries.length} 项</span><ChevronDown size={18} className="atlas-boundaries-chevron" aria-hidden="true" /></summary>
         <dl>
           {knownBoundaries.map((item) => <div key={item.title}><dt>{item.title}</dt><dd>{item.detail}</dd></div>)}
         </dl>
-      </aside>
+      </details>
     </section>
   )
 }

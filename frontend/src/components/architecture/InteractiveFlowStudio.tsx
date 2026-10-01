@@ -82,9 +82,9 @@ const journeys: Record<JourneyId, Journey> = {
         marker: '03',
         title: '形成语义单元',
         short: '可定位、可引用',
-        description: '解析结果被组织为段落、caption、转写片段和视频 Shot；每个单元都保留回到原始素材的定位。',
+        description: '解析结果组织为文档块、图片描述、音频转写与视频 Shot，并保留回到原始素材的来源定位。',
         signal: 'evidence units',
-        detail: 'Chunk · Caption · Transcript · Shot',
+        detail: 'Chunk · Caption · Audio transcript · Shot',
         tone: 'green',
         icon: ListTree,
       },
@@ -143,9 +143,9 @@ const journeys: Record<JourneyId, Journey> = {
       {
         id: 'recall',
         marker: '03',
-        title: '五路并行召回',
+        title: '五路按需召回',
         short: '每个模态各取所长',
-        description: 'Dense、Sparse、Visual、Audio 与 Video Shot 在同一范围内并发工作，返回各自最擅长发现的候选证据。',
+        description: 'Dense 与 Sparse 常规启用，图片、音频与视频通道按模态需求并行召回，所有通道遵循同一范围约束。',
         signal: 'parallel recall',
         detail: 'Dense · Sparse · Visual · Audio · Video',
         tone: 'violet',
@@ -461,7 +461,7 @@ function IngestionStage({ activeStepIndex, activeStep }: { activeStepIndex: numb
           <FlowConnector tone="green" status={connectorStatus(activeStepIndex, 1)} inside />
           <StagePanel eyebrow="03 · semantic manifest" title="可定位语义单元" status={unitStatus} tone="green" compact>
             <div className="grid grid-cols-2 gap-1.5 text-[11px] font-medium text-[#516f72] dark:text-[#b2c5c5]">
-              {['段落 Chunk', '图像 Caption', '音频片段', 'Video Shot'].map((unit) => (
+              {['段落 Chunk', '图像 Caption', '音频转写', 'Video Shot'].map((unit) => (
                 <span key={unit} className={cn('rounded-lg border px-2 py-1.5', unitStatus === 'upcoming' ? 'border-[#d5e0db] bg-white/30 dark:border-[#2c4c57] dark:bg-white/[0.02]' : 'border-[#b5d0bd] bg-white/60 dark:border-[#3d614a] dark:bg-[#5f8e72]/10')}>
                   {unit}
                 </span>
@@ -531,7 +531,7 @@ function RetrievalStage({ activeStepIndex, activeStep }: { activeStepIndex: numb
         <FlowConnector tone="violet" status={connectorStatus(activeStepIndex, 1)} />
 
         <div className="grid gap-3">
-          <StagePanel eyebrow="03 · concurrent recall" title="五路并发取证" status={recallStatus} tone="violet" compact>
+          <StagePanel eyebrow="03 · concurrent recall" title="五路按需取证" status={recallStatus} tone="violet" compact>
             <div className="space-y-1.5">
               {recallLanes.map((lane, index) => (
                 <div key={lane} className={cn('flow-lab-recall-lane', recallStatus === 'active' && `is-active flow-lab-recall-lane-${index % 5}`)}>

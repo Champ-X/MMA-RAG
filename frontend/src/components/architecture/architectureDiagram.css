@@ -1,0 +1,123 @@
+.diagram-atlas { --diagram-green: #438875; margin-top: 30px; overflow: hidden; border: 1px solid var(--atlas-line); border-radius: 20px; background: var(--atlas-surface); box-shadow: 0 12px 32px -24px rgb(47 51 91 / 22%); container: diagram / inline-size; }
+.dark .diagram-atlas { --diagram-green: #80c6ad; }
+.diagram-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 22px 28px; border-bottom: 1px solid var(--atlas-line); }
+.diagram-toolbar-title { display: flex; align-items: center; gap: 13px; }
+.diagram-toolbar-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: var(--atlas-tint); color: var(--atlas-accent); }
+.diagram-toolbar-title strong { display: block; font-size: 18px; font-weight: 650; letter-spacing: -.025em; }
+.diagram-toolbar-title div > span { display: block; margin-top: 5px; color: var(--atlas-muted); font-size: 14px; }
+.diagram-toolbar-actions { display: flex; gap: 8px; }
+.diagram-toolbar-actions :is(a,button) { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 9px 13px; border: 1px solid var(--atlas-line); border-radius: 9px; color: var(--atlas-muted); font-size: 14px; transition: background .18s, border-color .18s, color .18s; }
+.diagram-toolbar-actions button { background: var(--atlas-tint); border-color: transparent; color: var(--atlas-accent); }
+.diagram-toolbar-actions :is(a,button):hover { color: var(--atlas-accent); background: var(--atlas-tint); border-color: var(--atlas-accent); }
+.diagram-body { padding: 30px 28px 28px; }
+.diagram-layer { display: grid; grid-template-columns: 84px minmax(0,1fr); gap: 20px; }
+.diagram-layer-label { padding-top: 17px; }
+.diagram-layer-label > span { display: block; font-size: 15px; font-weight: 650; }
+.diagram-layer-label > small { display: block; font: 500 10px/1.5 var(--atlas-mono); letter-spacing: .08em; color: var(--atlas-muted); margin-top: 5px; }
+.diagram-access { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); background: var(--atlas-paper); border: 1px solid var(--atlas-line); border-radius: 12px; }
+.diagram-access > div { display: flex; align-items: center; gap: 11px; padding: 18px 16px; }
+.diagram-access > div + div { border-left: 1px solid var(--atlas-line); }
+.diagram-access > div > svg { flex-shrink: 0; color: var(--atlas-accent); }
+.diagram-access strong { display: block; font-size: 15px; font-weight: 600; }
+.diagram-access span { display: block; color: var(--atlas-muted); font-size: 14px; margin-top: 5px; }
+.diagram-request-link { display: flex; align-items: center; gap: 8px; color: var(--atlas-muted); font-size: 13px; margin: 17px 0 17px 104px; }
+.diagram-request-link > svg { color: var(--atlas-accent); }
+.diagram-request-line { height: 1px; width: 32px; background: var(--atlas-line); }
+.diagram-domain-layer > .diagram-layer-label { padding-top: 29px; }
+.diagram-topology { padding: 22px; border: 1px solid var(--atlas-line); border-radius: 14px; background-color: var(--atlas-paper); background-image: radial-gradient(var(--atlas-line) .7px,transparent .7px); background-size: 18px 18px; }
+.diagram-agent-branch,.diagram-evidence-path { display: grid; grid-template-columns: minmax(0,1fr) 66px minmax(0,1fr) 66px minmax(0,1fr); gap: 0; }
+.diagram-agent-branch .diagram-node { grid-column: 3; }
+.diagram-path-note { grid-column: 1; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--atlas-teal, #277e83); font-size: 14px; line-height: 1.75; }
+.diagram-path-note strong { display: block; font-size: 14px; font-weight: 600; }
+.diagram-path-note svg { flex-shrink: 0; }
+.diagram-direct-note { grid-column: 5; color: var(--atlas-muted); }
+.diagram-direct-note svg { color: var(--atlas-accent); }
+.diagram-agent-link { position: relative; height: 49px; color: var(--atlas-teal, #277e83); font-size: 12px; }
+.diagram-agent-link::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px dashed currentColor; opacity: .6; }
+.diagram-agent-link svg { position: absolute; left: 50%; top: 50%; width: 22px; height: 24px; padding: 3px; background: var(--atlas-paper); transform: translate(-50%,-50%); }
+.diagram-agent-link span { position: absolute; left: calc(50% + 19px); top: 50%; transform: translateY(-50%); white-space: nowrap; background: var(--atlas-paper); padding: 3px 0; }
+.diagram-tone-retrieval { --diagram-tone: var(--atlas-accent); }
+.diagram-tone-agent { --diagram-tone: var(--atlas-teal, #277e83); }
+.diagram-tone-generation { --diagram-tone: var(--atlas-amber, #a87535); }
+.diagram-tone-knowledge { --diagram-tone: var(--diagram-green); }
+.diagram-node { position: relative; padding: 20px 18px 18px; border: 1px solid var(--atlas-line); border-radius: 12px; background: var(--atlas-surface); transition: border-color .18s, box-shadow .18s, background .18s; }
+.diagram-node[data-selected=true] { border-color: var(--diagram-tone); box-shadow: 0 0 0 3px color-mix(in srgb,var(--diagram-tone) 8%,transparent); }
+.diagram-node:hover { border-color: var(--diagram-tone); }
+.diagram-node h3 { margin: 0; }
+.diagram-node-button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; }
+.diagram-node-button::after { content: ''; position: absolute; inset: 0; border-radius: 12px; }
+.diagram-node-button:focus-visible { outline: none !important; }
+.diagram-node-button:focus-visible::after { outline: 2px solid var(--diagram-tone); outline-offset: 4px; }
+.diagram-node-icon { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 11px; color: var(--diagram-tone); background: color-mix(in srgb,var(--diagram-tone) 9%,var(--atlas-surface)); }
+.diagram-node-title { font-size: 18px; font-weight: 650; line-height: 1.4; letter-spacing: -.035em; }
+.diagram-node-indicator { display: grid; place-items: center; color: var(--diagram-tone); margin-left: auto; opacity: .7; }
+.diagram-node[data-selected=true] .diagram-node-indicator { opacity: 1; }
+.diagram-node-name { font: 500 11px/1.6 var(--atlas-mono); color: var(--atlas-muted); margin: 12px 0 8px; }
+.diagram-node-summary { font-size: 14px; line-height: 1.8; color: var(--atlas-muted); margin: 0; }
+.diagram-horizontal-link { position: relative; color: var(--atlas-muted); }
+.diagram-horizontal-link::before { content: ''; position: absolute; left: 0; right: 5px; top: 50%; height: 1px; background: var(--atlas-line); }
+.diagram-horizontal-link span { position: absolute; bottom: calc(50% + 11px); left: 50%; transform: translateX(-50%); font-size: 11px; white-space: nowrap; }
+.diagram-horizontal-link svg { position: absolute; top: 50%; right: 1px; transform: translateY(-50%); color: var(--atlas-accent); background: var(--atlas-paper); }
+.diagram-detail { padding: 20px 2px 0; }
+.diagram-detail-heading { display: flex; gap: 9px; align-items: center; }
+.diagram-detail-marker { width: 6px; height: 20px; border-radius: 3px; background: var(--diagram-tone); }
+.diagram-detail-heading h3 { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; }
+.diagram-detail-heading h3 span { border-left: 1px solid var(--atlas-line); padding-left: 10px; color: var(--atlas-muted); font-size: 13px; font-weight: 400; }
+.diagram-detail-status { margin-left: auto; color: var(--atlas-muted); font: 500 11px/1.6 var(--atlas-mono); }
+.diagram-responsibilities { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin: 15px 0 13px; list-style: none; padding: 0; }
+.diagram-responsibilities li { display: flex; align-items: center; gap: 7px; padding: 11px 10px; background: var(--atlas-paper); border-radius: 8px; color: var(--atlas-ink); font-size: 14px; line-height: 1.6; }
+.diagram-responsibilities svg { flex-shrink: 0; color: var(--diagram-tone); }
+.diagram-detail > p { margin: 0; color: var(--atlas-muted); font-size: 14px; line-height: 1.8; }
+.diagram-foundation-link { margin: 24px 0 21px 104px; display: flex; align-items: center; gap: 13px; color: var(--atlas-muted); font-size: 13px; }
+.diagram-foundation-link > span { height: 1px; flex: 1; background: var(--atlas-line); }
+.diagram-foundation { display: grid; grid-template-columns: minmax(0,1.65fr) minmax(0,1fr); gap: 18px; }
+.diagram-data-plane,.diagram-model-plane { padding: 18px 20px; border: 1px solid var(--atlas-line); border-radius: 12px; background: var(--atlas-paper); }
+.diagram-foundation h3 { display: flex; align-items: center; gap: 8px; color: var(--atlas-muted); font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+.diagram-foundation h3 svg { color: var(--atlas-accent); }
+.diagram-storage { display: grid; gap: 18px; }
+.diagram-storage > div { display: flex; gap: 13px; align-items: center; }
+.diagram-storage > div > svg { flex-shrink: 0; color: var(--atlas-teal, #277e83); }
+.diagram-storage > div:nth-child(2) > svg { color: var(--atlas-purple); }
+.diagram-storage > div:nth-child(3) > svg { color: var(--atlas-muted); }
+.diagram-storage strong,.diagram-model-manager strong { display: block; font-size: 15px; font-weight: 600; }
+.diagram-storage strong em { font-size: 12px; font-style: normal; font-weight: 400; color: var(--atlas-muted); border: 1px solid var(--atlas-line); border-radius: 4px; padding: 2px 5px; margin-left: 5px; }
+.diagram-storage span,.diagram-model-manager div > span { display: block; color: var(--atlas-muted); font-size: 14px; line-height: 1.6; margin-top: 4px; }
+.diagram-model-manager { display: flex; align-items: center; gap: 13px; margin-top: 28px; }
+.diagram-model-icon { display: grid; place-items: center; width: 48px; height: 48px; border: 1px solid var(--atlas-line); border-radius: 12px; background: var(--atlas-surface); color: var(--atlas-accent); flex-shrink: 0; }
+.diagram-model-tasks { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 22px; }
+.diagram-model-tasks > span { color: var(--atlas-accent); background: var(--atlas-tint); padding: 7px 9px; font-size: 12px; border-radius: 6px; }
+.diagram-caption { display: flex; gap: 10px; align-items: baseline; margin: 0; padding: 18px 28px; border-top: 1px solid var(--atlas-line); color: var(--atlas-muted); font-size: 13px; line-height: 1.85; background: var(--atlas-paper); }
+.diagram-caption > span { height: 6px; width: 6px; border-radius: 50%; background: var(--atlas-accent); flex-shrink: 0; align-self: flex-start; margin-top: 9px; }
+.diagram-modal-overlay { position: fixed; inset: 0; z-index: 50; background: rgb(20 27 44 / 88%); backdrop-filter: blur(8px); }
+.diagram-modal-content { position: fixed; left: 50%; top: 50%; z-index: 50; max-width: 96vw; max-height: 94dvh; transform: translate(-50%,-50%); outline: none; }
+.diagram-modal-image { max-height: 92dvh; max-width: 96vw; overflow: auto; border: 1px solid rgb(255 255 255 / 20%); border-radius: 16px; background: #172235; padding: 8px; box-shadow: 0 24px 80px rgb(0 0 0 / 30%); }
+.diagram-modal-image img { display: block; height: auto; max-height: 88dvh; max-width: 92vw; border-radius: 9px; }
+.diagram-modal-close { position: absolute; right: 18px; top: 18px; display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid rgb(255 255 255 / 35%); border-radius: 50%; background: #172235; color: white; box-shadow: 0 4px 16px rgb(0 0 0 / 25%); }
+.diagram-modal-close:hover { background: #28394e; }
+.diagram-modal-close:focus-visible { outline: 2px solid white; outline-offset: 4px; }
+@container diagram (max-width:1080px) {
+  .diagram-toolbar { padding: 20px 22px; }
+  .diagram-body { padding: 24px 20px; }
+  .diagram-layer { grid-template-columns: 70px minmax(0,1fr); gap: 16px; }
+  .diagram-layer-label > small { font-size: 9px; letter-spacing: 0; }
+  .diagram-request-link,.diagram-foundation-link { margin-left: 86px; }
+  .diagram-access > div { padding: 16px 12px; gap: 8px; }
+  .diagram-access > div > svg { display: none; }
+  .diagram-access span { font-size: 14px; }
+  .diagram-topology { padding: 18px 14px; }
+  .diagram-agent-branch,.diagram-evidence-path { grid-template-columns: minmax(0,1fr) 51px minmax(0,1fr) 51px minmax(0,1fr); }
+  .diagram-node { padding: 17px 13px 15px; }
+  .diagram-node-button { gap: 8px; }
+  .diagram-node-icon { width: 34px; height: 34px; border-radius: 9px; }
+  .diagram-node-icon svg { width: 20px; }
+  .diagram-node-indicator { display: none; }
+  .diagram-path-note { font-size: 13px; gap: 8px; }
+  .diagram-node-name { font-size: 10px; letter-spacing: -.025em; }
+  .diagram-responsibilities { gap: 8px; }
+  .diagram-responsibilities li { padding: 10px 8px; font-size: 14px; }
+  .diagram-foundation { grid-template-columns: minmax(0,1.4fr) minmax(0,1fr); }
+  .diagram-data-plane,.diagram-model-plane { padding: 17px 16px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .diagram-atlas *, .diagram-atlas *::after { transition: none; }
+}

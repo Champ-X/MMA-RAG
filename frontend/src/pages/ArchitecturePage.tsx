@@ -80,22 +80,23 @@ export function ArchitecturePage() {
       <div ref={scrollViewportRef} className="architecture-scroll-viewport atlas-viewport">
         <header className="atlas-hero">
           <div className="atlas-masthead">
-            <span><Layers3 size={17} aria-hidden="true" /> TESSMORA <span className="atlas-masthead-divider" /> 架构图谱</span>
+            <span><span className="atlas-masthead-symbol"><Layers3 size={19} aria-hidden="true" /></span> TESSMORA <span className="atlas-masthead-divider" /> 系统架构</span>
             <span className="atlas-masthead-caption">MULTIMODAL · AGENTIC RETRIEVAL</span>
           </div>
           <div className="atlas-hero-grid">
             <div className="atlas-hero-copy">
-              <p className="atlas-eyebrow"><span /> 从来源到答案 / SOURCE TO ANSWER</p>
-              <h1>从多模态素材，<br />到<span>有据可循</span>的回答。</h1>
-              <p className="atlas-hero-description">文档、图片、音频与视频，各自被理解，汇入同一条证据主线。问题决定检索深度，来源始终可以回溯。</p>
+              <p className="atlas-eyebrow">THE ARCHITECTURE OF AN ANSWER</p>
+              <h1>让零散的素材，<br />成为<span>有据可循</span>的回答。</h1>
+            </div>
+            <div className="atlas-hero-aside">
+              <p className="atlas-hero-description">文档、图片、音频与视频，被各自理解，汇入同一条证据主线。<br />从素材入库到答案送达，看看 Tessmora 如何连接这些片段。</p>
               <div className="atlas-hero-actions">
                 <button type="button" className="atlas-button atlas-button-primary" onClick={() => handleNavigate('flow-lab')}>探索检索过程 <ArrowDown size={16} aria-hidden="true" /></button>
                 <button type="button" className="atlas-button atlas-button-text" onClick={() => handleNavigate('system-architecture')}>查看完整架构 <ArrowRight size={16} aria-hidden="true" /></button>
               </div>
-              <p className="atlas-hero-footnote">原生多模态 <i /> 共享检索底座 <i /> 可追溯引用</p>
             </div>
-            <EvidenceCircuit />
           </div>
+          <EvidenceCircuit />
           <div className="atlas-summary-strip">
             <p><span>输入</span> 四种模态，保留各自语义</p><ArrowRight aria-hidden="true" size={15} />
             <p><span>推理</span> Direct / Agent，按需取证</p><ArrowRight aria-hidden="true" size={15} />

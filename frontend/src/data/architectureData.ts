@@ -59,7 +59,7 @@ export interface TechStackItem {
 export const architectureSections: ArchitectureSection[] = [
   {
     id: 'overview',
-    title: '系统契约',
+    title: '设计原则',
     subtitle: '边界、原则与两种执行路径',
   },
   {
@@ -84,7 +84,7 @@ export const architectureSections: ArchitectureSection[] = [
   },
   {
     id: 'data-flow',
-    title: '双向数据流',
+    title: '数据流转',
     subtitle: '离线入库与在线问答共用数据面',
   },
   {
@@ -141,7 +141,7 @@ export const requestFlowSteps: RequestFlowStep[] = [
     short: 'one pass retrieval',
     lane: 'direct',
     description:
-      '一次 RetrievalService 调用完成 One-Pass 意图、知识库画像路由、Dense / Sparse / Visual / Audio / Video 召回、加权 RRF 与 Cross-Encoder 精排。',
+      '一次 RetrievalService 调用完成意图识别、查询改写与知识库画像路由，按需启用 Dense / Sparse / Visual / Audio / Video 通道，再做加权 RRF 融合与默认 Cross-Encoder 精排。',
     backendEntry: 'backend/app/modules/retrieval/service.py::RetrievalService',
     keyTechnologies: ['One-Pass Intent', 'KB Routing', 'Hybrid Retrieval', 'Rerank'],
   },
@@ -152,7 +152,7 @@ export const requestFlowSteps: RequestFlowStep[] = [
     short: 'plan → search → observe',
     lane: 'agent',
     description:
-      'Planner 生成互补子查询并并发调用同一个只读多模态检索工具；证据账本跨轮去重、记录重复命中与最佳名次，在证据充分、无新增证据或预算耗尽时停止。',
+      '先检索原问题建立证据锚点，再由 Planner 规划互补子查询，并发调用同一个只读检索器。证据账本跨轮去重，在证据充分、无新增证据或预算耗尽时停止。',
     backendEntry: 'backend/app/modules/agent/service.py::AgenticRetrievalService',
     keyTechnologies: ['Planner', 'Read-only Tool', 'Evidence Ledger', 'Hard Budgets'],
   },
@@ -209,7 +209,7 @@ export const coreModules: ModuleInfo[] = [
     delivers: '知识库画像、候选范围与生命周期状态',
     highlights: [
       '知识库 CRUD、文件统计、画像生成与重建',
-      '从文档、图片、音频和视频 Shot 采样，K-Means 聚类后生成主题摘要',
+      '从文档、图片、音频与视频 Scene 采样，K-Means 聚类后生成主题摘要',
       'refined_query 与多视角查询分别召回画像，再按原始分数差决定单库、多库或全库',
     ],
     codeRefs: [
@@ -226,7 +226,7 @@ export const coreModules: ModuleInfo[] = [
     receives: '问题、会话上下文与 KB / File 范围',
     delivers: '统一 RetrievalResult 与排序后的多模态证据',
     highlights: [
-      'One-Pass 输出查询改写、关键词、多视角查询与三类模态意图',
+      '意图识别判断模态需求，查询改写生成关键词与多视角表达',
       '文档 Dense + BGE-M3 Sparse；图片 text_vec + CLIP；音频 text_vec + CLAP；视频 Shot caption/ASR 四路',
       '加权 RRF 解决跨通道分数不可比，Cross-Encoder 对统一候选精排',
       '公开 /api/v1/retrieval/search 返回紧凑证据合同，不暴露内部 Qdrant payload',
@@ -246,9 +246,9 @@ export const coreModules: ModuleInfo[] = [
     delivers: '去重、收敛且带停止理由的证据池',
     highlights: [
       '三态入口：自动、直接检索、Agent 深研',
-      'Planner 每轮产生 search / final 决策，子查询并发调用现有多模态检索',
+      '先检索原问题建立锚点，Planner 再产生 search / final 决策，子查询并发复用只读检索器',
       'Evidence Ledger 按 content_type + point_id 去重并对重复命中做有限增益',
-      '默认最多 3 轮、每轮 3 条查询、总计 6 条查询、保留 30 条证据',
+      '默认最多 3 轮、每轮 3 条补查、总计 6 条补查子查询，保留 30 条证据',
     ],
     codeRefs: [
       { label: 'Mode Router', path: 'backend/app/modules/agent/mode_router.py' },
