@@ -1,0 +1,82 @@
+.conversation-sidebar-row-icon {
+  --glyph-ink: #7c8ea4;
+  --glyph-back: #b0bdca;
+  --glyph-fold: #9aaabd;
+  --glyph-accent: #8f9faf;
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+}
+.conversation-sidebar-row:hover .conversation-sidebar-row-icon { --glyph-ink: #4e687f; --glyph-accent: #4f8682; }
+.conversation-sidebar-row .conversation-sidebar-row-icon[data-active="true"] { --glyph-ink: #24364b; --glyph-back: #9aaccc; --glyph-fold: #5375b5; --glyph-accent: #2e817d; }
+.dark .conversation-sidebar-row-icon { --glyph-ink: #a2b2c6; --glyph-back: #596b81; --glyph-fold: #7a91ac; --glyph-accent: #8ca5b5; }
+.dark .conversation-sidebar-row:hover .conversation-sidebar-row-icon { --glyph-ink: #c2d1e2; --glyph-accent: #8bbab5; }
+.dark .conversation-sidebar-row .conversation-sidebar-row-icon[data-active="true"] { --glyph-ink: #d6e1ef; --glyph-back: #7186ad; --glyph-fold: #9eb7e5; --glyph-accent: #88c9bf; }
+.conversation-glyph path { transition: stroke .15s; }
+.conversation-glyph-back { stroke: var(--glyph-back); }
+.conversation-glyph-outline { stroke: var(--glyph-ink); }
+.conversation-glyph-fold { stroke: var(--glyph-fold); }
+.conversation-glyph-lines { stroke: var(--glyph-accent); }
+.conversation-glyph-dot { fill: var(--glyph-accent); }
+
+.conversation-delete-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: #0b172f66;
+  backdrop-filter: blur(3px);
+}
+.conversation-delete-dialog {
+  --delete-surface: #fff;
+  --delete-subtle: #f7f9fc;
+  --delete-ink: #243449;
+  --delete-muted: #65758a;
+  --delete-line: #e3e9f1;
+  --delete-accent: #4e6fc6;
+  --delete-danger: #a7434c;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 90;
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 24px;
+  overflow-y: auto;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--delete-line);
+  border-radius: 18px;
+  outline: none;
+  background: var(--delete-surface);
+  color: var(--delete-ink);
+  box-shadow: 0 24px 80px -24px #0f1e4280;
+}
+.dark .conversation-delete-dialog {
+  --delete-surface: #14202f;
+  --delete-subtle: #101b29;
+  --delete-ink: #e0e9f4;
+  --delete-muted: #9aadc3;
+  --delete-line: #28374a;
+  --delete-accent: #a5bbf3;
+  --delete-danger: #d7818b;
+}
+.conversation-delete-heading { display: flex; align-items: center; gap: 12px; }
+.conversation-delete-heading h2 { font-size: 18px; line-height: 26px; font-weight: 600; letter-spacing: -.01em; }
+.conversation-delete-symbol { display: grid; flex-shrink: 0; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: #f9edef; color: var(--delete-danger); }
+.dark .conversation-delete-symbol { background: #35232e; }
+.conversation-delete-description { margin-top: 16px; color: var(--delete-muted); font-size: 13px; line-height: 22px; }
+.conversation-delete-target { display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; padding: 12px; border: 1px solid var(--delete-line); border-radius: 9px; background: var(--delete-subtle); }
+.conversation-delete-target > svg { flex-shrink: 0; margin-top: 2px; color: var(--delete-accent); }
+.conversation-delete-target > span { min-width: 0; overflow-wrap: anywhere; font-size: 13px; line-height: 21px; }
+.conversation-delete-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.conversation-delete-actions button { min-height: 38px; padding: 8px 16px; border: 1px solid transparent; border-radius: 8px; font-size: 13px; line-height: 20px; font-weight: 500; transition: background-color .15s, border-color .15s; }
+.conversation-delete-actions button:focus-visible { outline: 2px solid var(--delete-accent); outline-offset: 3px; }
+.conversation-delete-actions .conversation-delete-cancel { border-color: var(--delete-line); background: var(--delete-surface); color: var(--delete-ink); }
+.conversation-delete-actions .conversation-delete-cancel:hover { background: var(--delete-subtle); border-color: #c6d1df; }
+.conversation-delete-confirm { background: #a7434c; color: #fff; }
+.conversation-delete-confirm:hover { background: #913640; }
+.dark .conversation-delete-confirm { background: #ab4b57; }
+.dark .conversation-delete-confirm:hover { background: #bc5965; }
+@media (max-width: 480px) { .conversation-delete-dialog { width: calc(100vw - 24px); padding: 20px; border-radius: 14px; } }
+@media (prefers-reduced-motion: reduce) { .conversation-glyph path, .conversation-delete-actions button { transition: none; } }

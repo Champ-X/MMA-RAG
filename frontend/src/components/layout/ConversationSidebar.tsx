@@ -27,7 +27,9 @@ import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import type { ChatSession } from '@/store/useChatStore'
 import { getConversationSearchAction } from './conversationSearchKeyboard'
+import { ConversationGlyph } from './ConversationGlyph'
 import './conversationSearch.css'
+import './conversationSidebar.css'
 
 export type SidebarView = 'chat' | 'knowledge' | 'architecture' | 'settings'
 
@@ -205,8 +207,14 @@ export function ConversationSidebar({
   const searchTriggerRef = useRef<HTMLButtonElement>(null)
   const searchReturnFocusRef = useRef<HTMLElement | null>(null)
   const searchResultsRef = useRef<HTMLDivElement>(null)
+  const newConversationRef = useRef<HTMLButtonElement>(null)
+  const deleteCancelRef = useRef<HTMLButtonElement>(null)
+  const deleteReturnFocusRef = useRef<HTMLButtonElement | null>(null)
+  const deleteConfirmedRef = useRef(false)
   const searchId = useId()
+  const deleteDialogId = useId()
   const [searchOpen, setSearchOpen] = useState(false)
+  const [pendingDeletion, setPendingDeletion] = useState<{ id: string; title: string } | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeSearchResult, setActiveSearchResult] = useState<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(getInitialSidebarWidth)
@@ -273,6 +281,7 @@ export function ConversationSidebar({
     const handleShortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'k') {
         event.preventDefault()
+        if (pendingDeletion) return
         if (searchInputRef.current) {
           searchInputRef.current.focus()
           return
@@ -285,7 +294,7 @@ export function ConversationSidebar({
 
     window.addEventListener('keydown', handleShortcut)
     return () => window.removeEventListener('keydown', handleShortcut)
-  }, [])
+  }, [pendingDeletion])
 
   useEffect(() => {
     if (!searchOpen) return
@@ -326,6 +335,18 @@ export function ConversationSidebar({
     setSearchOpen(false)
     setSearchQuery('')
     setActiveSearchResult(null)
+  }
+
+  const confirmConversationDeletion = () => {
+    if (!pendingDeletion || deleteConfirmedRef.current) return
+    // The list can change while confirmation is open. Never delete a stale target.
+    if (!sessions.some((session) => session.id === pendingDeletion.id)) {
+      setPendingDeletion(null)
+      return
+    }
+    deleteConfirmedRef.current = true
+    onDeleteConversation(pendingDeletion.id)
+    setPendingDeletion(null)
   }
 
   const handleSearchOpenChange = (open: boolean) => {
@@ -468,6 +489,7 @@ export function ConversationSidebar({
 
       <div className={cn('shrink-0', collapsed ? 'px-0' : 'px-3', 'max-[640px]:px-2')}>
         <button
+          ref={newConversationRef}
           type="button"
           onClick={onNewConversation}
           title="新建对话"
@@ -568,24 +590,28 @@ export function ConversationSidebar({
                   ref={active ? activeSessionRef : null}
                   role="listitem"
                   className={cn(
-                    'group relative flex min-w-0 items-center rounded-[10px]',
+                    'conversation-sidebar-row group relative flex min-w-0 items-center rounded-[10px]',
                     railTransition,
                     active ? theme.selected : theme.hover
                   )}
                 >
                   <button
                     type="button"
+                    data-conversation-select
                     onClick={() => onSelectConversation(session.id)}
                     title={title}
                     aria-label={`${active ? '当前会话：' : '打开会话：'}${title}`}
                     aria-current={active ? 'true' : undefined}
                     className={cn(
-                      'flex min-w-0 flex-1 items-center text-left transition-[padding] duration-150 ease-out motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset',
+                      'flex min-w-0 flex-1 items-center gap-2 text-left transition-[padding] duration-150 ease-out motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset',
                       theme.focus,
                       collapsed ? 'justify-center px-1.5 py-2' : 'px-3 py-1.5 group-hover:pr-11 group-focus-within:pr-11',
                       'max-[640px]:justify-center max-[640px]:px-1.5 max-[640px]:py-2'
                     )}
                   >
+                    <span className="conversation-sidebar-row-icon" data-active={active} aria-hidden>
+                      <ConversationGlyph sessionId={session.id} />
+                    </span>
                     <span
                       className={cn(
                         'min-w-0 flex-1 truncate text-[14px] leading-5 tracking-[-0.01em]',
@@ -601,10 +627,14 @@ export function ConversationSidebar({
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation()
-                        onDeleteConversation(session.id)
+                        deleteReturnFocusRef.current = event.currentTarget
+                        deleteConfirmedRef.current = false
+                        setPendingDeletion({ id: session.id, title })
                       }}
                       title="删除会话"
                       aria-label={`删除会话：${title}`}
+                      aria-haspopup="dialog"
+                      aria-controls={pendingDeletion?.id === session.id ? deleteDialogId : undefined}
                       className={cn(
                         'pointer-events-none absolute right-1.5 top-1/2 z-10 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg opacity-0',
                         theme.muted,
@@ -756,6 +786,49 @@ export function ConversationSidebar({
           />
         </div>
       )}
+
+      <Dialog.Root open={pendingDeletion !== null} onOpenChange={(open) => { if (!open) setPendingDeletion(null) }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="conversation-delete-overlay" />
+          <Dialog.Content
+            id={deleteDialogId}
+            role="alertdialog"
+            className="conversation-delete-dialog"
+            onOpenAutoFocus={(event) => { event.preventDefault(); deleteCancelRef.current?.focus() }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault()
+              const trigger = deleteReturnFocusRef.current
+              if (trigger?.isConnected) trigger.focus()
+              else {
+                const remainingConversation = activeSessionRef.current?.querySelector<HTMLButtonElement>('[data-conversation-select]')
+                  ?? sidebarRef.current?.querySelector<HTMLButtonElement>('[data-conversation-select]')
+                const focusTarget = remainingConversation ?? newConversationRef.current
+                focusTarget?.focus()
+              }
+            }}
+          >
+            <div className="conversation-delete-heading">
+              <span className="conversation-delete-symbol" aria-hidden><Trash2 size={19} strokeWidth={1.65} /></span>
+              <Dialog.Title>删除会话</Dialog.Title>
+            </div>
+            <Dialog.Description asChild>
+              <div>
+                <p className="conversation-delete-description">将移除此会话及其消息记录，此操作无法撤销。</p>
+                <div className="conversation-delete-target">
+                  <MessageSquare size={16} strokeWidth={1.6} aria-hidden />
+                  <span>{pendingDeletion?.title}</span>
+                </div>
+              </div>
+            </Dialog.Description>
+            <div className="conversation-delete-actions">
+              <Dialog.Close asChild>
+                <button ref={deleteCancelRef} type="button" className="conversation-delete-cancel">取消</button>
+              </Dialog.Close>
+              <button type="button" className="conversation-delete-confirm" onClick={confirmConversationDeletion}>删除会话</button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <Dialog.Root open={searchOpen} onOpenChange={handleSearchOpenChange}>
         <Dialog.Portal>
