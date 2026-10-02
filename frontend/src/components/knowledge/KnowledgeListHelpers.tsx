@@ -1,5 +1,5 @@
 import { useId, useState, useEffect } from 'react'
-import { X, CheckCircle, Loader2, AlertCircle, Image as ImageIcon, FileText, FileCode, Presentation, FileSpreadsheet, Database, Sparkles, Type, Pencil, Check, Music, Video } from 'lucide-react'
+import { X, CheckCircle, Loader2, AlertCircle, Image as ImageIcon, FileText, FileCode, Presentation, FileSpreadsheet, Database, Sparkles, Type, Pencil, Check, Music, Video, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type StatusBadgeProps = {
@@ -9,6 +9,7 @@ type StatusBadgeProps = {
   message?: string
   error?: string
   updatedAt?: string
+  variant?: 'badge' | 'subtle'
 }
 
 const PROCESSING_STAGE_LABELS: Record<string, string> = {
@@ -50,7 +51,7 @@ function formatUpdatedAt(updatedAt?: string): string | undefined {
 }
 
 // 状态徽章。后台任务的阶段、进度和失败原因保持紧凑展示，完整内容放在 title 中。
-export function StatusBadge({ status, stage, progress, message, error, updatedAt }: StatusBadgeProps) {
+export function StatusBadge({ status, stage, progress, message, error, updatedAt, variant = 'badge' }: StatusBadgeProps) {
   const normalizedStatus = String(status || '').toLowerCase()
   const normalizedProgress = typeof progress === 'number' && Number.isFinite(progress)
     ? Math.max(0, Math.min(100, Math.round(progress)))
@@ -65,6 +66,30 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
   const title = [message, error, updatedAtText ? `最后更新：${updatedAtText}` : undefined]
     .filter(Boolean)
     .join('\n') || undefined
+
+  if (variant === 'subtle') {
+    const labels: Record<string, string> = {
+      ready: '就绪', processing: '处理中', queued: '排队中', failed: '解析失败', unindexed: '未完成解析',
+    }
+    const label = labels[normalizedStatus] || '未知状态'
+    const busy = normalizedStatus === 'processing' || normalizedStatus === 'queued'
+    const showDetail = busy || normalizedStatus === 'failed'
+    const visibleDetail = showDetail ? detail : undefined
+    return (
+      <span
+        className="file-status-subtle"
+        data-status={normalizedStatus}
+        role={busy ? 'status' : undefined}
+        aria-label={`文件状态：${label}${visibleDetail ? `，${visibleDetail}` : ''}`}
+        title={[label, visibleDetail, title].filter(Boolean).join('\n')}
+      >
+        {busy ? <Loader2 size={12} className="file-status-subtle__spinner" aria-hidden />
+          : normalizedStatus === 'failed' || normalizedStatus === 'unindexed' ? <AlertCircle size={12} aria-hidden />
+            : <span className="file-status-subtle__dot" aria-hidden />}
+        <span>{label}{visibleDetail ? ` · ${visibleDetail}` : ''}</span>
+      </span>
+    )
+  }
 
   if (normalizedStatus === 'ready') {
     return (
@@ -205,23 +230,21 @@ export interface KnowledgeFileView {
 }
 
 export function FileThumb({ file }: { file: KnowledgeFileView }) {
-  const isImg = isImageType(file?.type)
-  if (isImg && file?.previewUrl) {
-    return (
-      <img
-        src={file.previewUrl}
-        alt={file.name}
-        className="w-10 h-10 rounded-lg object-cover border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
-        loading="lazy"
-      />
-    )
-  }
+  const [failedSrc, setFailedSrc] = useState<string>()
+  const kind = isImageType(file.type) ? 'image' : isVideoType(file.type) ? 'video' : isAudioType(file.type) ? 'audio' : 'document'
+  const src = kind === 'image' ? file.previewUrl : kind === 'video' ? file.coverUrl : undefined
+  const showImage = Boolean(src && failedSrc !== src)
+  const extension = String(file.type || 'file').split('/').pop()?.toUpperCase() || 'FILE'
   return (
-    <span
-      className="w-10 h-10 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-center text-slate-500"
-      aria-label={`文件类型：${String(file?.type || 'file').toUpperCase()}`}
-    >
-      <FileIcon type={file?.type} />
+    <span className="file-list-thumb" data-kind={kind} aria-hidden="true">
+      {showImage ? (
+        <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFailedSrc(src)} />
+      ) : kind === 'audio' ? (
+        <span className="file-list-thumb__record"><span /></span>
+      ) : kind === 'document' ? (
+        <span className="file-list-thumb__paper"><FileText size={18} strokeWidth={1.4} /><small>{extension.slice(0, 5)}</small></span>
+      ) : <FileIcon type={file.type} size={20} />}
+      {kind === 'video' && showImage && <span className="file-list-thumb__play"><Play size={10} fill="currentColor" strokeWidth={1} /></span>}
     </span>
   )
 }

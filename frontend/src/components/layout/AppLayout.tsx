@@ -217,7 +217,6 @@ export function AppLayout() {
             <Suspense fallback={<RoutePanelLoading label="正在载入知识库工作台…" />}>
               <KnowledgeList
                 routeKnowledgeBaseId={routeKnowledgeBaseId}
-                isKnowledgePageActive={isKnowledgeActive}
                 onRouteChange={(knowledgeBaseId) => {
                   navigate(
                     knowledgeBaseId

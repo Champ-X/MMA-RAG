@@ -16,21 +16,15 @@ const defaultMeasure: MeasureText = (text, fontSize) => Array.from(text).reduce(
   return width + fontSize * factor
 }, 0)
 
-function hashString(value: string) {
-  let hash = 2166136261
-  for (const char of value) hash = Math.imul(hash ^ char.codePointAt(0)!, 16777619)
-  return hash >>> 0
-}
-
 function intersects(a: Bounds, b: Bounds) {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
 }
 
-/** Center-based SVG text placements; render with textAnchor="middle" and dominantBaseline="central". */
+/** Horizontal, center-based SVG text; use textAnchor="middle" and dominantBaseline="central". */
 export function layoutPortraitWords(
   keywords: string[],
   diameter: number,
-  seed: string,
+  _seed: string,
   measureText: MeasureText = defaultMeasure,
 ): PortraitWord[] {
   if (!Number.isFinite(diameter) || diameter < 32) return []
@@ -47,90 +41,100 @@ export function layoutPortraitWords(
   const radius = center - 6
   const spacing = diameter < 48 ? 0 : 2
   const occupied: Bounds[] = []
-  // The UI omits the count below 48px. Keep the full label slot free otherwise.
+  // Match the count label's actual footprint; the UI omits it below 48px.
   if (diameter >= 48) {
     const halfWidth = Math.min(diameter * 0.55, 80) / 2
     occupied.push({ left: center - halfWidth, right: center + halfWidth, top: diameter * 0.8 - 9, bottom: diameter * 0.8 + 9 })
   }
   const result: PortraitWord[] = []
-  const usedLabels = new Set<string>()
   const measuredWidths = new Map<string, number>()
-  const seedHash = hashString(seed)
 
-  function fit(word: PortraitWord) {
-    const measureKey = `${word.fontSize}:${word.weight}:${word.text}`
-    let width = measuredWidths.get(measureKey)
-    if (width === undefined) {
-      const measured = measureText(word.text, word.fontSize, word.weight)
-      width = Number.isFinite(measured) && measured > 0 ? measured : defaultMeasure(word.text, word.fontSize, word.weight)
-      measuredWidths.set(measureKey, width)
-    }
-    const halfWidth = width / 2 + spacing
-    const halfHeight = word.fontSize * 0.6 + spacing / 2
-    const angle = word.rotation * Math.PI / 180
-    const cos = Math.cos(angle)
-    const sin = Math.sin(angle)
-    const corners = [[-halfWidth, -halfHeight], [halfWidth, -halfHeight], [halfWidth, halfHeight], [-halfWidth, halfHeight]]
-      .map(([x, y]) => ({ x: word.x + x * cos - y * sin, y: word.y + x * sin + y * cos }))
-    if (corners.some(point => Math.hypot(point.x - center, point.y - center) > radius)) return null
-    const bounds = {
-      left: Math.min(...corners.map(point => point.x)),
-      right: Math.max(...corners.map(point => point.x)),
-      top: Math.min(...corners.map(point => point.y)),
-      bottom: Math.max(...corners.map(point => point.y)),
-    }
-    return occupied.some(other => intersects(bounds, other)) ? null : bounds
+  function width(text: string, fontSize: number, weight: number) {
+    const key = fontSize + ':' + weight + ':' + text
+    const cached = measuredWidths.get(key)
+    if (cached !== undefined) return cached
+    const measured = measureText(text, fontSize, weight)
+    const value = Number.isFinite(measured) && measured > 0 ? measured : defaultMeasure(text, fontSize, weight)
+    measuredWidths.set(key, value)
+    return value
   }
 
-  function place(text: string, primary: boolean, index: number) {
-    const baseSize = primary ? Math.max(12, Math.min(28, Math.round(diameter * (diameter < 120 ? 0.16 : 0.18)))) : Math.max(10, Math.min(14, Math.round(diameter * 0.065) - index % 2))
-    const minSize = primary && diameter >= 48 ? 12 : 10
-    const baseRotation = primary
-      ? diameter >= 80 ? [0, -6, 6][seedHash % 3] : 0
-      : [-16, 16, -28, 28, 0, 90, 16, -16][index % 8]
-    const rotations = baseRotation === 90 && diameter < 140 ? [-28, 0] : [baseRotation, 0].filter((value, i, all) => all.indexOf(value) === i)
-    const anchors = [[0.5, 0.22], [0.28, 0.55], [0.72, 0.54], [0.43, 0.65], [0.7, 0.29], [0.18, 0.43], [0.62, 0.65], [0.35, 0.29]]
-    const anchor = anchors[index % anchors.length]
-    const positions = primary
-      ? [0.43, 0.44, 0.4, 0.46, 0.5].map(y => ({ x: center, y: diameter * y }))
-      : [
-        // Compact charts have a narrow usable strip above the count label.
-        // Explicit anchors keep that strip reachable without dense sampling.
-        ...(diameter < 128 ? [[0.5, 0.2], [0.34, 0.635], [0.66, 0.635], [0.5, 0.635]].map(([x, y]) => ({ x: diameter * x, y: diameter * y })) : []),
-        ...Array.from({ length: 181 }, (_, step) => {
-          const distance = step === 0 ? 0 : Math.sqrt(step / 180) * diameter * 0.55
-          const angle = step * 2.3999632297 + (seedHash % 360) * Math.PI / 180
-          return { x: anchor[0] * diameter + Math.cos(angle) * distance, y: anchor[1] * diameter + Math.sin(angle) * distance }
-        }),
-      ]
-    const chars = Array.from(text)
-    const variants = [text]
-    // Prefer every complete word at a smaller size before shortening it.
-    for (let length = chars.length - 1; length >= 1; length -= 1) variants.push(`${chars.slice(0, length).join('')}…`)
-    // On a 32px dot a single real character may fit while its ellipsis cannot.
-    if (primary && diameter < 48 && chars.length > 1) variants.push(chars[0])
+  function halfHeight(fontSize: number) {
+    return fontSize * 0.6 + spacing / 2
+  }
 
-    for (const label of variants) {
-      if (usedLabels.has(label)) continue
-      for (let fontSize = baseSize; fontSize >= minSize; fontSize -= 1) {
-        for (const rotation of rotations) {
-          for (const point of positions) {
-            const word: PortraitWord = { text: label, ...point, fontSize, rotation, weight: primary ? 650 : 500, primary }
-            const bounds = fit(word)
-            if (!bounds) continue
-            occupied.push(bounds)
-            usedLabels.add(label)
-            result.push(word)
-            return
-          }
-        }
+  function rowWidth(y: number, fontSize: number) {
+    const verticalExtent = Math.abs(y - center) + halfHeight(fontSize)
+    return verticalExtent >= radius ? 0 : 2 * Math.sqrt(radius * radius - verticalExtent * verticalExtent)
+  }
+
+  function place(text: string, x: number, y: number, fontSize: number, primary: boolean) {
+    const weight = primary ? 650 : 500
+    const halfWidth = width(text, fontSize, weight) / 2 + spacing
+    const box = { left: x - halfWidth, right: x + halfWidth, top: y - halfHeight(fontSize), bottom: y + halfHeight(fontSize) }
+    const corners = [[box.left, box.top], [box.right, box.top], [box.right, box.bottom], [box.left, box.bottom]]
+    if (corners.some(([px, py]) => Math.hypot(px - center, py - center) > radius + 1e-8)) return false
+    if (occupied.some(other => intersects(box, other))) return false
+    occupied.push(box)
+    result.push({ text, x, y, fontSize, rotation: 0, weight, primary })
+    return true
+  }
+
+  const secondarySize = Math.max(10, Math.min(14, Math.floor(diameter * 0.065)))
+  const primaryY = diameter < 48 ? diameter * 0.47 : diameter < 80 ? diameter * 0.44 : diameter * 0.34
+  const primarySize = diameter < 80
+    ? Math.max(10, Math.min(18, Math.floor(diameter * 0.22)))
+    : Math.max(14, Math.min(32, Math.floor(diameter * 0.14)))
+  const primaryMinimum = diameter < 80 ? 10 : Math.max(14, secondarySize + 2)
+  const chars = Array.from(words[0])
+  const titles = [words[0]]
+  // Keep the complete title whenever it fits at a readable size.
+  for (let length = chars.length - 1; length >= 1; length -= 1) titles.push(chars.slice(0, length).join('') + '…')
+  if (diameter < 48 && chars.length > 1) titles.push(chars[0])
+  for (const title of titles) {
+    for (let size = primarySize; size >= primaryMinimum; size -= 1) {
+      if (!place(title, center, primaryY, size, true)) continue
+      break
+    }
+    if (result.length) break
+  }
+  if (!result.length || diameter < 80 || words.length === 1) return result
+
+  const roomy = diameter >= 160
+  const gap = Math.max(6, Math.min(10, diameter * 0.035))
+  const rows = roomy ? [diameter * 0.53, diameter * 0.64] : [
+    Math.min(diameter * 0.6, diameter * 0.8 - 9 - halfHeight(secondarySize) - 3),
+  ]
+  const secondaryLimit = roomy ? 6 : 2
+  const firstRowLimit = roomy ? Math.min(3, Math.ceil(Math.min(words.length - 1, secondaryLimit) / 2)) : 2
+  let pending = words.slice(1)
+  let displayed = 0
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    const y = rows[rowIndex]
+    const availableWidth = rowWidth(y, secondarySize)
+    const limit = rowIndex === 0 ? firstRowLimit : 3
+    const row: { text: string; width: number }[] = []
+    const deferred: string[] = []
+    let cursor = 0
+    let totalWidth = 0
+    while (cursor < pending.length && row.length < limit && displayed + row.length < secondaryLimit) {
+      const text = pending[cursor++]
+      const paddedWidth = width(text, secondarySize, 500) + spacing * 2
+      const nextWidth = totalWidth + (row.length ? gap : 0) + paddedWidth
+      // Secondary words stay complete; overflow is available in the detail panel.
+      if (nextWidth > availableWidth) {
+        deferred.push(text)
+        continue
       }
+      row.push({ text, width: paddedWidth })
+      totalWidth = nextWidth
+    }
+    pending = [...deferred, ...pending.slice(cursor)]
+    let left = center - totalWidth / 2
+    for (const word of row) {
+      if (place(word.text, left + word.width / 2, y, secondarySize, false)) displayed += 1
+      left += word.width + gap
     }
   }
-
-  place(words[0], true, 0)
-  if (diameter < 80 || result.length === 0) return result
-  const secondaryLimit = Math.min(8, Math.max(3, Math.floor(diameter / 26)))
-  words.slice(1, secondaryLimit + 1).forEach((word, index) => place(word, false, index))
   return result
 }

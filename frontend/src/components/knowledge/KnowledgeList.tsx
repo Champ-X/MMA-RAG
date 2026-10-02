@@ -1,9 +1,10 @@
 import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, HardDrive, Calendar, Activity, MoreHorizontal, ChevronDown, AlertCircle, RotateCcw } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, ChevronDown, AlertCircle, RotateCcw } from 'lucide-react'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { KnowledgeLibraryHeader } from './KnowledgeLibraryHeader'
 import { VideoFileCover } from './VideoFileCover'
+import './knowledgeFileList.css'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import {
   knowledgeApi,
@@ -44,17 +45,6 @@ const DEFAULT_KNOWLEDGE_COVERS = [
   '/knowledge/knowledge-library-default-06.jpg',
 ] as const
 
-const KNOWLEDGE_HEADER_BACKGROUNDS = [
-  '/knowledge/knowledge-library-banner-01.jpg',
-  '/knowledge/knowledge-library-banner-02.jpg',
-  '/knowledge/knowledge-library-banner-03.jpg',
-  '/knowledge/knowledge-library-banner-04.jpg',
-  '/knowledge/knowledge-library-banner-05.jpg',
-  '/knowledge/knowledge-library-banner-06.jpg',
-  '/knowledge/knowledge-library-banner-07.jpg',
-  '/knowledge/knowledge-library-banner-08.jpg',
-] as const
-
 // 固定的洗牌顺序：同一知识库刷新时不换图，前六个默认空间也不会重复。
 const DEFAULT_KNOWLEDGE_COVER_ORDER = [4, 1, 5, 0, 3, 2] as const
 
@@ -75,13 +65,6 @@ function getKnowledgeBaseCoverSeed(knowledgeBaseId: string) {
     hash = Math.imul(hash, 16777619)
   }
   return hash >>> 0
-}
-
-function pickKnowledgeHeaderBackground(previous?: string) {
-  const candidates = previous && KNOWLEDGE_HEADER_BACKGROUNDS.length > 1
-    ? KNOWLEDGE_HEADER_BACKGROUNDS.filter((background) => background !== previous)
-    : KNOWLEDGE_HEADER_BACKGROUNDS
-  return candidates[Math.floor(Math.random() * candidates.length)] ?? KNOWLEDGE_HEADER_BACKGROUNDS[0]
 }
 
 /** 预览区 / 分块区加载占位：居中、旋转指示与骨架，避免大片空白只有一行字 */
@@ -2316,15 +2299,12 @@ function ImportSearchModal({
 interface KnowledgeListProps {
   /** 由应用路由提供；为空时显示知识库总览。 */
   routeKnowledgeBaseId?: string
-  /** 总览重新可见时抽取一张新的横幅背景。 */
-  isKnowledgePageActive: boolean
   /** 让详情选择与浏览器前进/后退保持同一份状态。 */
   onRouteChange?: (knowledgeBaseId?: string) => void
 }
 
 const KnowledgeList: React.FC<KnowledgeListProps> = ({
   routeKnowledgeBaseId,
-  isKnowledgePageActive,
   onRouteChange,
 }) => {
   const [viewState, setViewState] = useState<'list' | 'detail'>('list')
@@ -2332,8 +2312,6 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
   const activeKbIdRef = useRef<string | null>(null)
   const fileRequestVersionRef = useRef(0)
   const statsRequestVersionRef = useRef(0)
-  const wasKnowledgePageActiveRef = useRef(isKnowledgePageActive)
-  const [knowledgeHeaderBackground, setKnowledgeHeaderBackground] = useState(() => pickKnowledgeHeaderBackground())
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [fileQuery, setFileQuery] = useState('')
   const [fileView, setFileView] = useState<'grid' | 'table'>('grid')
@@ -2442,14 +2420,6 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
   useEffect(() => {
     activeKbIdRef.current = activeKbId
   }, [activeKbId])
-
-  // 知识库页本身常驻挂载，不能依赖组件重挂来换图；仅在从其他页面进入时刷新横幅。
-  useEffect(() => {
-    if (isKnowledgePageActive && !wasKnowledgePageActiveRef.current) {
-      setKnowledgeHeaderBackground((previous) => pickKnowledgeHeaderBackground(previous))
-    }
-    wasKnowledgePageActiveRef.current = isKnowledgePageActive
-  }, [isKnowledgePageActive])
 
   const [menuOpenKbId, setMenuOpenKbId] = useState<string | null>(null)
   const [editKb, setEditKb] = useState<{ id: string; name: string; description: string } | null>(null)
@@ -3211,7 +3181,6 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
       <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative">
         <KnowledgeLibraryHeader
           knowledgeBases={knowledgeBases}
-          background={knowledgeHeaderBackground}
           loading={loading && knowledgeBases.length === 0}
           unavailable={Boolean(listFetchError) && knowledgeBases.length === 0}
           onCreate={() => setShowCreateModal(true)}
@@ -3743,23 +3712,17 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
             </UploadPipeline>
 
             {/* File List */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
-              <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
-                <div className="min-w-0 shrink-0">
-                  <h3 className="flex items-center gap-3 font-semibold tracking-tight text-slate-800 dark:text-slate-100">
-                    <Layers
-                      className="h-5 w-5 shrink-0 text-indigo-600 opacity-90 drop-shadow-[0_1px_2px_rgba(99,102,241,0.15)] dark:text-indigo-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
-                      strokeWidth={2.25}
-                      aria-hidden
-                    />
-                    <span>
-                      文件列表
-                      <span className="ml-1.5 text-sm font-normal text-slate-500 dark:text-slate-400 tabular-nums">（{files.length}）</span>
-                    </span>
+            <div className="resource-files">
+              <div className="resource-files__toolbar">
+                <div className="resource-files__heading">
+                  <h3>
+                    <span className="resource-files__heading-icon"><Layers size={16} strokeWidth={1.7} aria-hidden /></span>
+                    文件列表
+                    <span className="resource-files__count">{filesLoading ? '—' : files.length}</span>
                   </h3>
                   <p
                     id={fileResultsStatusId}
-                    className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400"
+                    className={cn('resource-files__summary', !trimmedFileQuery && !filesLoading && fileListRetryDelaySeconds == null && 'sr-only')}
                     role="status"
                     aria-live="polite"
                     aria-atomic="true"
@@ -3767,9 +3730,9 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                     {fileResultStatusText}
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                <div className="resource-files__controls">
                   <div
-                    className="hidden sm:inline-flex items-center gap-0.5 rounded-xl bg-slate-200/50 dark:bg-slate-800/90 p-1 ring-1 ring-inset ring-slate-300/40 dark:ring-slate-700/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                    className="resource-files__view-switch"
                     role="tablist"
                     aria-label="文件视图"
                     aria-describedby={fileResultsStatusId}
@@ -3786,17 +3749,11 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                       aria-label={`切换到画廊视图，${filteredFiles.length} 个结果`}
                       tabIndex={fileView === 'grid' ? 0 : -1}
                       onKeyDown={handleFileViewTabKeyDown}
-                      className={cn(
-                        'flex items-center gap-1.5 rounded-[0.65rem] px-3 py-2 text-xs font-semibold transition-all duration-200 ease-out',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-slate-900',
-                        fileView === 'grid'
-                          ? 'bg-white dark:bg-slate-950 text-indigo-700 dark:text-indigo-300 shadow-md shadow-slate-300/25 dark:shadow-black/40 ring-1 ring-slate-200/90 dark:ring-slate-600/80'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/75 dark:hover:bg-slate-700/45 active:scale-[0.98]'
-                      )}
+                      className="resource-files__view-tab"
                       type="button"
                       title="画廊视图"
                     >
-                      <LayoutGrid className="h-3.5 w-3.5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
+                      <LayoutGrid size={14} strokeWidth={1.7} aria-hidden />
                       画廊
                     </button>
                     <button
@@ -3811,33 +3768,26 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                       aria-label={`切换到列表视图，${filteredFiles.length} 个结果`}
                       tabIndex={fileView === 'table' ? 0 : -1}
                       onKeyDown={handleFileViewTabKeyDown}
-                      className={cn(
-                        'flex items-center gap-1.5 rounded-[0.65rem] px-3 py-2 text-xs font-semibold transition-all duration-200 ease-out',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-slate-900',
-                        fileView === 'table'
-                          ? 'bg-white dark:bg-slate-950 text-indigo-700 dark:text-indigo-300 shadow-md shadow-slate-300/25 dark:shadow-black/40 ring-1 ring-slate-200/90 dark:ring-slate-600/80'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/75 dark:hover:bg-slate-700/45 active:scale-[0.98]'
-                      )}
+                      className="resource-files__view-tab"
                       type="button"
                       title="列表视图"
                     >
-                      <List className="h-3.5 w-3.5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
+                      <List size={14} strokeWidth={1.7} aria-hidden />
                       列表
                     </button>
                   </div>
-                  <label className="flex min-w-0 flex-1 sm:flex-initial sm:min-w-[11rem] items-center gap-2 rounded-xl border border-slate-200/95 bg-white px-3 py-2 shadow-sm shadow-slate-200/40 ring-slate-200/80 transition-shadow dark:border-slate-600 dark:bg-slate-800/90 dark:shadow-black/20 dark:ring-slate-600/40 focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-500/35 dark:focus-within:border-indigo-500/50">
-                    <Search className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" strokeWidth={2.25} aria-hidden />
+                  <label className="resource-files__search">
+                    <Search size={15} strokeWidth={1.7} aria-hidden />
                     <input
                       id={fileSearchInputId}
                       value={fileQuery}
                       onChange={(e) => setFileQuery(e.target.value)}
                       type="search"
-                      placeholder="搜索文件..."
+                      placeholder="搜索文件名称"
                       autoComplete="off"
                       aria-label="搜索文件"
                       aria-describedby={fileResultsStatusId}
                       aria-controls={activeFilePanelId}
-                      className="min-w-0 flex-1 bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
                     />
                   </label>
                 </div>
@@ -3845,71 +3795,31 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
 
               {fileView === 'table' ? (
                 <div
-                  className="overflow-x-auto"
+                  className="resource-files__table-panel"
                   id={activeFilePanelId}
                   role="tabpanel"
                   aria-labelledby={fileTableTabId}
                   aria-describedby={fileResultsStatusId}
                 >
-                  <table className="w-full min-w-[720px] text-sm text-left border-collapse">
+                  <table className="resource-files__table" role="table">
                     <caption className="sr-only">{fileResultStatusText}</caption>
-                    <thead>
-                      <tr
-                        className={cn(
-                          'border-b-2 border-indigo-200/50 dark:border-indigo-900/40',
-                          'bg-gradient-to-r from-slate-100/95 via-indigo-50/25 to-slate-50/95',
-                          'dark:from-slate-800 dark:via-indigo-950/35 dark:to-slate-950',
-                          'shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
-                        )}
-                      >
-                        <th
-                          scope="col"
-                          className="px-6 py-3.5 text-left text-xs font-semibold tracking-wide text-slate-700 dark:text-slate-200 whitespace-nowrap"
-                        >
-                          <span className="inline-flex items-center gap-2">
-                            <FileText className="h-3.5 w-3.5 shrink-0 text-indigo-500 dark:text-indigo-400 opacity-90" strokeWidth={2.25} aria-hidden />
-                            文件名
-                          </span>
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3.5 text-left text-xs font-semibold tracking-wide text-slate-700 dark:text-slate-200 whitespace-nowrap border-l border-slate-200/80 dark:border-slate-700/90"
-                        >
-                          <span className="inline-flex items-center gap-2">
-                            <HardDrive className="h-3.5 w-3.5 shrink-0 text-indigo-500 dark:text-indigo-400 opacity-90" strokeWidth={2.25} aria-hidden />
-                            大小
-                          </span>
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3.5 text-left text-xs font-semibold tracking-wide text-slate-700 dark:text-slate-200 whitespace-nowrap border-l border-slate-200/80 dark:border-slate-700/90"
-                        >
-                          <span className="inline-flex items-center gap-2">
-                            <Activity className="h-3.5 w-3.5 shrink-0 text-indigo-500 dark:text-indigo-400 opacity-90" strokeWidth={2.25} aria-hidden />
-                            状态
-                          </span>
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3.5 text-left text-xs font-semibold tracking-wide text-slate-700 dark:text-slate-200 whitespace-nowrap border-l border-slate-200/80 dark:border-slate-700/90"
-                        >
-                          <span className="inline-flex items-center gap-2">
-                            <Calendar className="h-3.5 w-3.5 shrink-0 text-indigo-500 dark:text-indigo-400 opacity-90" strokeWidth={2.25} aria-hidden />
-                            日期
-                          </span>
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3.5 text-right text-xs font-semibold tracking-wide text-slate-700 dark:text-slate-200 whitespace-nowrap border-l border-slate-200/80 dark:border-slate-700/90"
-                        >
-                          <span className="inline-flex w-full items-center justify-end gap-2">
-                            <MoreHorizontal className="h-3.5 w-3.5 shrink-0 text-indigo-500 dark:text-indigo-400 opacity-90" strokeWidth={2.25} aria-hidden />
-                            操作
-                          </span>
-                        </th>
+                    <colgroup>
+                      <col className="resource-files__col-name" />
+                      <col className="resource-files__col-size" />
+                      <col className="resource-files__col-status" />
+                      <col className="resource-files__col-date" />
+                      <col className="resource-files__col-actions" />
+                    </colgroup>
+                    <thead role="rowgroup">
+                      <tr role="row">
+                        <th scope="col">文件名</th>
+                        <th scope="col" className="resource-files__size">大小</th>
+                        <th scope="col" className="resource-files__status">状态</th>
+                        <th scope="col" className="resource-files__date">日期</th>
+                        <th scope="col" className="resource-files__actions"><span className="sr-only">操作</span></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/90">
+                    <tbody role="rowgroup">
                       {filesLoading ? (
                         <tr>
                           <td colSpan={5} className="px-6 py-6">
@@ -3933,33 +3843,40 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                           </td>
                         </tr>
                       ) : (
-                        filteredFiles.map((file, rowIdx) => (
+                        filteredFiles.map((file) => (
                           <tr
                             key={file.id}
-                            className={cn(
-                              'transition-colors duration-200',
-                              rowIdx % 2 === 1 ? 'bg-slate-50/40 dark:bg-slate-900/40' : 'bg-white dark:bg-slate-900',
-                              'hover:bg-indigo-50/50 dark:hover:bg-indigo-950/25'
-                            )}
+                            className="resource-files__row"
+                            role="row"
                           >
-                            <td className="px-6 py-3.5 font-medium text-slate-700 dark:text-slate-200 align-middle">
+                            <th scope="row" className="resource-files__name-cell" role="rowheader">
                               <button
                                 onClick={() => setPreviewFile(file)}
-                                className="group/fn flex w-full min-w-0 items-center gap-3 rounded-lg py-0.5 -mx-1 px-1 text-left transition-colors hover:bg-indigo-100/60 dark:hover:bg-indigo-950/40"
+                                className="resource-files__open"
                                 type="button"
-                                title="预览"
+                                title={file.name}
                                 aria-label={`预览文件：${file.name}`}
                               >
                                 <FileThumb file={file} />
-                                <span className="truncate max-w-[420px] group-hover/fn:text-indigo-700 dark:group-hover/fn:text-indigo-300">
-                                  {file.name}
+                                <span className="resource-files__file-copy">
+                                  <span className="resource-files__file-name">{file.name}</span>
+                                  <span className="resource-files__file-meta">
+                                    <span className="resource-files__format">{String(file.type || 'FILE').split('/').pop()?.toUpperCase()}</span>
+                                  </span>
                                 </span>
                               </button>
-                            </td>
-                            <td className="px-6 py-3.5 text-slate-600 dark:text-slate-400 tabular-nums align-middle border-l border-slate-100 dark:border-slate-800/90">
+                              <div className="resource-files__mobile-meta">
+                                <span><span className="sr-only">大小：</span>{file.size}</span>
+                                <span><span className="sr-only">日期：</span>{file.date}</span>
+                                <span className="resource-files__inline-status">
+                                  <StatusBadge status={file.status} stage={file.stage} progress={file.progress} message={file.message} error={file.error} updatedAt={file.updatedAt} variant="subtle" />
+                                </span>
+                              </div>
+                            </th>
+                            <td className="resource-files__size" role="cell">
                               {file.size}
                             </td>
-                            <td className="px-6 py-3.5 align-middle border-l border-slate-100 dark:border-slate-800/90">
+                            <td className="resource-files__status" role="cell">
                               <StatusBadge
                                 status={file.status}
                                 stage={file.stage}
@@ -3967,15 +3884,16 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                 message={file.message}
                                 error={file.error}
                                 updatedAt={file.updatedAt}
+                                variant="subtle"
                               />
                             </td>
-                            <td className="px-6 py-3.5 text-slate-600 dark:text-slate-400 tabular-nums align-middle border-l border-slate-100 dark:border-slate-800/90">
+                            <td className="resource-files__date" role="cell">
                               {file.date}
                             </td>
-                            <td className="px-6 py-3.5 text-right align-middle border-l border-slate-100 dark:border-slate-800/90">
+                            <td className="resource-files__actions" role="cell">
                               <button
                                 onClick={() => handleDeleteFile(file.id)}
-                                className="inline-flex items-center justify-center rounded-lg p-2 text-slate-400 transition-all duration-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                                className="resource-files__delete"
                                 title="删除文件"
                                 type="button"
                                 aria-label={`删除文件：${file.name}`}

@@ -6,10 +6,11 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ScatterChart, FileText, Image, Music, Video, RefreshCw, LayoutList } from 'lucide-react'
+import { ScatterChart, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { knowledgeApi } from '@/services/api_client'
 import { TopicAtlas } from './TopicAtlas'
+import { PortraitStatistics } from './PortraitStatistics'
 
 export interface PortraitCluster {
   cluster_id: string
@@ -23,9 +24,9 @@ interface PortraitGraphProps {
   knowledgeBaseId: string
   /** 文档类文件个数（有 text_chunk 的文件数） */
   documentCount?: number
-  /** 文本块条数（chunk 数），用于比例条 */
+  /** 文本块条数（chunk 数），用于样本构成 */
   textCount?: number
-  /** 图片条数，用于比例条 */
+  /** 图片条数，用于样本构成 */
   imageCount?: number
   /** 音频条数（参与画像与数据量判断） */
   audioCount?: number
@@ -261,14 +262,6 @@ export function PortraitGraph({
     }
   }
 
-  const total = textCount + imageCount + audioCount + videoShotCount
-  const textPct = total ? (textCount / total) * 100 : 25
-  const imagePct = total ? (imageCount / total) * 100 : 25
-  const audioPct = total ? (audioCount / total) * 100 : 25
-  const videoPct = total ? (videoShotCount / total) * 100 : 25
-  const sourceRatioLabel = total
-    ? `画像样本比例：文本 ${textPct.toFixed(0)}%，图片 ${imagePct.toFixed(0)}%，音频 ${audioPct.toFixed(0)}%，视频 Shot ${videoPct.toFixed(0)}%`
-    : '暂无数据源比例'
   const selectedCluster = clusters.find((cluster) => cluster.cluster_id === selectedId) ?? null
   const portraitSummaryText = generating
     ? '主题画像正在生成中'
@@ -294,52 +287,36 @@ export function PortraitGraph({
       <span id={chartSummaryId} className="sr-only" aria-live="polite">
         {portraitSummaryText}
       </span>
-      <Card className="overflow-hidden rounded-2xl border-slate-200/80 shadow-[0_20px_55px_-44px_rgba(15,57,74,0.46)] dark:border-slate-700/80">
-        <CardHeader className="space-y-0 border-b border-slate-100/90 bg-[linear-gradient(110deg,rgba(247,252,251,0.96),rgba(255,255,255,0.98)_52%,rgba(238,248,247,0.92))] pb-4 pt-4 dark:border-slate-800/90 dark:bg-[linear-gradient(110deg,rgba(13,31,43,0.94),rgba(15,23,42,0.98)_52%,rgba(19,45,54,0.92))]">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-cyan-100 bg-[linear-gradient(145deg,#ecfeff,#eef2ff)] shadow-[0_10px_24px_-16px_rgba(6,148,162,0.9)] dark:border-cyan-400/20 dark:bg-cyan-400/10">
-                <ScatterChart className="h-5 w-5 text-[#177e9b] dark:text-cyan-200" strokeWidth={2.15} aria-hidden />
-                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#e9c46a] dark:border-slate-900" />
-              </span>
-              <div className="min-w-0">
-                <CardTitle className="text-base font-semibold tracking-tight text-slate-900 dark:text-slate-50">主题星图</CardTitle>
-                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">从内容分布中发现主题，探索摘要与关键词</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {clusters.length > 0 && (
-                <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#b9d8d8] bg-white/80 px-3 text-xs font-semibold text-[#246276] shadow-sm dark:border-cyan-400/20 dark:bg-slate-900/60 dark:text-cyan-100">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#1e9e9b]" />
-                  {clusters.length} 个主题
-                </span>
-              )}
-              {clusters.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRegenerate}
-                  disabled={generating}
-                  aria-label={generating ? '主题画像生成中' : '重新生成主题画像'}
-                  className="group h-8 shrink-0 gap-2 rounded-full border-[#b9d8d8] bg-white/90 px-3 text-xs font-semibold text-[#246276] shadow-sm transition-all duration-200 hover:border-[#79b9c8] hover:bg-[#effafa] hover:text-[#0f4f65] hover:shadow-md dark:border-cyan-400/25 dark:bg-slate-900/70 dark:text-cyan-100 dark:hover:border-cyan-300/45 dark:hover:bg-cyan-950/35 dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {generating ? (
-                    <>
-                      <RefreshCw className="h-3.5 w-3.5 shrink-0 motion-safe:animate-spin" aria-hidden />
-                      <span>生成中…</span>
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-3.5 w-3.5 shrink-0 transition-transform duration-300 group-hover:rotate-180" aria-hidden />
-                      <span>重新生成</span>
-                    </>
-                  )}
-                </Button>
-              )}
+      <Card className="portrait-atlas-card">
+        <CardHeader className="portrait-atlas-header">
+          <div className="portrait-atlas-heading">
+            <span className="portrait-atlas-mark" aria-hidden="true">
+              <svg viewBox="0 0 36 36" fill="none">
+                <circle cx="14" cy="20" r="10" fill="#cce5de" stroke="#51978c" strokeWidth="1.2" />
+                <circle cx="28" cy="10" r="5" fill="#dce6f7" stroke="#7193c7" strokeWidth="1.2" />
+                <circle cx="29" cy="28" r="3.5" fill="#f0e2c6" stroke="#bca16a" strokeWidth="1.1" />
+                <circle cx="14" cy="20" r="2" fill="#378478" />
+              </svg>
+            </span>
+            <div>
+              <CardTitle className="portrait-atlas-title">主题星图</CardTitle>
+              <p>从内容分布，发现主题与线索</p>
             </div>
           </div>
+          {clusters.length > 0 && (
+            <button
+              type="button"
+              className="portrait-atlas-regenerate"
+              onClick={handleRegenerate}
+              disabled={generating}
+              aria-label={generating ? '主题画像生成中' : '重新生成主题画像'}
+            >
+              <span aria-hidden="true"><RefreshCw size={14} strokeWidth={1.7} className={generating ? 'motion-safe:animate-spin' : undefined} /></span>
+              <span>{generating ? '生成中…' : '重新生成'}</span>
+            </button>
+          )}
         </CardHeader>
-        <CardContent className="space-y-4 px-4 pb-4 pt-4 sm:px-5 sm:pb-5">
+        <CardContent className="portrait-atlas-content space-y-4">
           {loading ? (
             <div className="flex h-80 items-center justify-center" role="status" aria-live="polite" aria-label="正在加载知识库主题画像">
               <div className="text-center">
@@ -428,146 +405,15 @@ export function PortraitGraph({
         </CardContent>
       </Card>
 
-      {/* 数据源比例条：仅显示占比 > 0 的类型 */}
-      <Card className="overflow-hidden border-slate-200/60 dark:border-slate-700/60">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold text-slate-800 dark:text-slate-100">数据源比例</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex h-10 overflow-hidden rounded-xl bg-slate-100/90 dark:bg-slate-800/50 shadow-inner" role="img" aria-label={sourceRatioLabel}>
-            {textCount > 0 && (
-              <div
-                className={cn(
-                  "flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-400 via-indigo-500 to-indigo-600 text-white shadow-sm transition-all duration-300 min-w-0",
-                  imageCount === 0 && audioCount === 0 && videoShotCount === 0 && "rounded-r-xl",
-                  "rounded-l-xl"
-                )}
-                style={{ width: `${textPct}%` }}
-              >
-                <FileText className="h-4 w-4 flex-shrink-0 opacity-95" aria-hidden />
-                <span className="text-sm font-medium truncate">Text</span>
-              </div>
-            )}
-            {imageCount > 0 && (
-              <div
-                className={cn(
-                  "flex items-center justify-center gap-2 bg-gradient-to-r from-fuchsia-400 via-fuchsia-500 to-fuchsia-600 text-white shadow-sm transition-all duration-300 min-w-0",
-                  textCount === 0 && "rounded-l-xl",
-                  audioCount === 0 && videoShotCount === 0 && "rounded-r-xl"
-                )}
-                style={{ width: `${imagePct}%` }}
-              >
-                <Image className="h-4 w-4 flex-shrink-0 opacity-95" aria-hidden />
-                <span className="text-sm font-medium truncate">Image</span>
-              </div>
-            )}
-            {audioCount > 0 && (
-              <div
-                className={cn(
-                  "flex items-center justify-center gap-2 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 text-white shadow-sm transition-all duration-300 min-w-0",
-                  textCount === 0 && imageCount === 0 && "rounded-l-xl",
-                  videoShotCount === 0 && "rounded-r-xl"
-                )}
-                style={{ width: `${audioPct}%` }}
-              >
-                <Music className="h-4 w-4 flex-shrink-0 opacity-95" aria-hidden />
-                <span className="text-sm font-medium truncate">Audio</span>
-              </div>
-            )}
-            {videoShotCount > 0 && (
-              <div
-                className={cn(
-                  "flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600 text-white shadow-sm transition-all duration-300 min-w-0 rounded-r-xl",
-                  textCount === 0 && imageCount === 0 && audioCount === 0 && "rounded-l-xl"
-                )}
-                style={{ width: `${videoPct}%` }}
-              >
-                <Video className="h-4 w-4 flex-shrink-0 opacity-95" aria-hidden />
-                <span className="text-sm font-medium truncate">Video Shot</span>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
-            {textCount > 0 && (
-              <span className="font-medium">Text {textCount} <span className="text-slate-400 dark:text-slate-500">({textPct.toFixed(0)}%)</span></span>
-            )}
-            {imageCount > 0 && (
-              <span className="font-medium">Image {imageCount} <span className="text-slate-400 dark:text-slate-500">({imagePct.toFixed(0)}%)</span></span>
-            )}
-            {audioCount > 0 && (
-              <span className="font-medium">Audio {audioCount} <span className="text-slate-400 dark:text-slate-500">({audioPct.toFixed(0)}%)</span></span>
-            )}
-            {videoShotCount > 0 && (
-              <span className="font-medium">Video Shot {videoShotCount} <span className="text-slate-400 dark:text-slate-500">({videoPct.toFixed(0)}%)</span></span>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* 主题统计 */}
-      <Card className="overflow-hidden border-slate-200/60 dark:border-slate-700/60">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold text-slate-800 dark:text-slate-100">主题统计</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" role="list" aria-label="主题画像统计">
-            <div className="rounded-xl bg-gradient-to-br from-indigo-50/90 to-indigo-100/50 dark:from-indigo-950/40 dark:to-indigo-900/20 border border-indigo-100/80 dark:border-indigo-800/40 px-4 py-3 text-center" role="listitem">
-              <div className="text-2xl font-bold tabular-nums text-indigo-600 dark:text-indigo-400">
-                {clusters.length}
-              </div>
-              <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-indigo-700/80 dark:text-indigo-300/90">
-                <ScatterChart className="h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden />
-                <span>主题数</span>
-              </div>
-            </div>
-            <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 px-4 py-3 text-center" role="listitem">
-              <div className="text-2xl font-bold tabular-nums text-slate-600 dark:text-slate-300">
-                {documentCount}
-              </div>
-              <div className="mt-1 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                <FileText className="h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden />
-                <span>文档数</span>
-              </div>
-            </div>
-            <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 px-4 py-3 text-center" role="listitem">
-              <div className="text-2xl font-bold tabular-nums text-slate-600 dark:text-slate-300">
-                {textCount}
-              </div>
-              <div className="mt-1 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                <LayoutList className="h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden />
-                <span>文本块</span>
-              </div>
-            </div>
-            <div className="rounded-xl bg-gradient-to-br from-fuchsia-50/90 to-fuchsia-100/50 dark:from-fuchsia-950/40 dark:to-fuchsia-900/20 border border-fuchsia-100/80 dark:border-fuchsia-800/40 px-4 py-3 text-center" role="listitem">
-              <div className="text-2xl font-bold tabular-nums text-fuchsia-600 dark:text-fuchsia-400">
-                {imageCount}
-              </div>
-              <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-fuchsia-700/80 dark:text-fuchsia-300/90">
-                <Image className="h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden />
-                <span>图片</span>
-              </div>
-            </div>
-            <div className="rounded-xl bg-gradient-to-br from-amber-50/90 to-amber-100/50 dark:from-amber-950/40 dark:to-amber-900/20 border border-amber-100/80 dark:border-amber-800/40 px-4 py-3 text-center" role="listitem">
-              <div className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
-                {audioCount}
-              </div>
-              <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-amber-700/80 dark:text-amber-300/90">
-                <Music className="h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden />
-                <span>音频</span>
-              </div>
-            </div>
-            <div className="rounded-xl bg-gradient-to-br from-emerald-50/90 to-emerald-100/50 dark:from-emerald-950/40 dark:to-emerald-900/20 border border-emerald-100/80 dark:border-emerald-800/40 px-4 py-3 text-center" role="listitem">
-              <div className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                {videoShotCount}
-              </div>
-              <div className="mt-1 flex items-center justify-center gap-2 text-sm font-medium text-emerald-700/80 dark:text-emerald-300/90">
-                <Video className="h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden />
-                <span>视频 Shot</span>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <PortraitStatistics
+        key={knowledgeBaseId}
+        topicCount={loading ? undefined : clusters.length}
+        documentCount={documentCount}
+        textCount={textCount}
+        imageCount={imageCount}
+        audioCount={audioCount}
+        videoShotCount={videoShotCount}
+      />
 
     </div>
   )

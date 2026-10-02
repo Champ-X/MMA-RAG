@@ -43,6 +43,25 @@ test('the six-topic screenshot data stays within the chart at desktop and narrow
   }
 })
 
+test('four topics use a wide viewport without changing area ratios or consuming the margin', () => {
+  const input = clusters([18, 6, 6, 5])
+  for (const [width, height, minimumDiameter] of [[600, 320, 190], [740, 340, 240]]) {
+    const nodes = layoutPortraitClusters(input, width, height)
+    assertContainedAndSeparate(nodes, width, height, 20)
+    assert.ok(nodes[0].r * 2 >= minimumDiameter, 'a circular envelope must not unnecessarily shrink this wide layout')
+    const left = Math.min(...nodes.map(node => node.x - node.r))
+    const right = Math.max(...nodes.map(node => node.x + node.r))
+    assert.ok(right - left >= (width - 40) * 0.98, 'the four-topic layout should use the available horizontal span')
+    assert.ok(Math.abs((left + right) / 2 - width / 2) < 1e-7)
+    for (let i = 0; i < nodes.length; i += 1) {
+      assert.ok(Math.abs((nodes[i].r / nodes[0].r) ** 2 - input[i].cluster_size / input[0].cluster_size) < 1e-10)
+      for (const next of nodes.slice(i + 1)) {
+        assert.ok(Math.hypot(nodes[i].x - next.x, nodes[i].y - next.y) - nodes[i].r - next.r >= 14 - 1e-7)
+      }
+    }
+  }
+})
+
 test('circle area ratios match positive sample counts, including large disparities', () => {
   const input = clusters([1, 2, 7, 20, 1e12])
   const nodes = layoutPortraitClusters(input, 680, 420)
@@ -70,6 +89,12 @@ test('extreme finite positive counts do not underflow radii to zero', () => {
   assertContainedAndSeparate(nodes, 680, 420, 20)
   const scales = input.map(cluster => nodes.find(node => node.id === cluster.cluster_id)!.r / Math.sqrt(cluster.cluster_size))
   for (const scale of scales) assert.ok(Math.abs(scale / scales[2] - 1) < 1e-8)
+})
+
+test('uniformly subnormal positive counts retain finite equally scaled circles', () => {
+  const nodes = layoutPortraitClusters(clusters([Number.MIN_VALUE, Number.MIN_VALUE, Number.MIN_VALUE]), 600, 320)
+  assertContainedAndSeparate(nodes, 600, 320, 20)
+  assert.ok(nodes.every(node => node.r === nodes[0].r))
 })
 
 test('ordering and placement are stable when the API returns the same topics in another order', () => {
