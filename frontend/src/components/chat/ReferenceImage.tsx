@@ -10,7 +10,7 @@ export function ReferenceImage({
   kbId?: string
   filePath?: string
   label: string
-  onOpen: (rect: DOMRect) => void
+  onOpen: (rect: DOMRect, triggerElement: HTMLButtonElement) => void
 }) {
   const [src, setSrc] = useState<string>()
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading')
@@ -75,7 +75,7 @@ export function ReferenceImage({
         <p className="max-w-sm break-all text-xs text-slate-500">{label}</p>
         <div className="flex gap-3">
           <button type="button" className="min-h-11 text-indigo-600 dark:text-indigo-300" onClick={() => setAttempt((n) => n + 1)}>重试加载</button>
-          <button type="button" className="min-h-11 text-indigo-600 dark:text-indigo-300" onClick={(e) => onOpen(e.currentTarget.getBoundingClientRect())}>查看引用</button>
+          <button type="button" className="min-h-11 text-indigo-600 dark:text-indigo-300" onClick={(e) => onOpen(e.currentTarget.getBoundingClientRect(), e.currentTarget)}>查看引用</button>
         </div>
       </div>
     )
@@ -84,7 +84,7 @@ export function ReferenceImage({
   return (
     <button
       type="button"
-      onClick={(e) => onOpen(e.currentTarget.getBoundingClientRect())}
+      onClick={(e) => onOpen(e.currentTarget.getBoundingClientRect(), e.currentTarget)}
       className={`relative max-w-full overflow-hidden rounded-lg p-0 hover:ring-2 ring-primary/40 ${status === 'loading' ? 'min-h-32 min-w-48 bg-slate-100 dark:bg-slate-800' : ''}`}
       aria-label={`查看图片引用：${label}`}
     >

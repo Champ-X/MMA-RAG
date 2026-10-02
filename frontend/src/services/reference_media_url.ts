@@ -7,8 +7,18 @@ type CachedUrl = {
   expiresAt: number
 }
 
-const videoUrlCache = new Map<string, CachedUrl>()
-const pendingVideoUrls = new Map<string, Promise<string>>()
+export type ReferenceMediaType = 'image' | 'audio' | 'video'
+
+type ReferenceMediaUrlOptions = {
+  type: ReferenceMediaType
+  kbId: string
+  filePath: string
+  currentUrl?: string | null
+  force?: boolean
+}
+
+const mediaUrlCache = new Map<string, CachedUrl>()
+const pendingMediaUrls = new Map<string, Promise<string>>()
 
 function getPresignedExpiry(url: string): number | null {
   try {
@@ -33,46 +43,54 @@ function getPresignedExpiry(url: string): number | null {
 }
 
 export function isReferenceMediaUrlFresh(url?: string | null, minTtlMs = MIN_FRESH_TTL_MS): boolean {
-  if (!url) return false
+  if (!url?.trim()) return false
   const expiresAt = getPresignedExpiry(url)
   // 非预签名地址无法从查询参数判断有效期，交给浏览器正常加载。
   return expiresAt == null || expiresAt > Date.now() + minTtlMs
 }
 
-export async function getFreshReferenceVideoUrl({
+/** Resolve an original media URL without changing or reprocessing the source. */
+export async function getFreshReferenceMediaUrl({
+  type,
   kbId,
   filePath,
   currentUrl,
   force = false,
-}: {
-  kbId: string
-  filePath: string
-  currentUrl?: string | null
-  force?: boolean
-}): Promise<string> {
+}: ReferenceMediaUrlOptions): Promise<string> {
   if (!force && isReferenceMediaUrlFresh(currentUrl)) return currentUrl!
 
-  const key = `${kbId.trim()}::${filePath.trim()}`
-  const cached = videoUrlCache.get(key)
+  const params = { kb_id: kbId.trim(), file_path: filePath.trim() }
+  if (!params.kb_id || !params.file_path) throw new Error('缺少知识库或文件路径，无法刷新媒体地址')
+  const key = JSON.stringify([type, params.kb_id, params.file_path])
+  const cached = mediaUrlCache.get(key)
   if (!force && cached && cached.expiresAt > Date.now() + MIN_FRESH_TTL_MS) {
     return cached.url
   }
 
-  const pending = pendingVideoUrls.get(key)
+  const pending = pendingMediaUrls.get(key)
   if (pending) return pending
 
-  const request = chatApi
-    .getReferenceVideoUrl({ kb_id: kbId, file_path: filePath })
-    .then((response) => {
-      if (!response?.video_url) throw new Error('视频播放地址为空')
-      const expiresAt = getPresignedExpiry(response.video_url) ?? Date.now() + 5 * 60_000
-      videoUrlCache.set(key, { url: response.video_url, expiresAt })
-      return response.video_url
+  const resolveUrl = async () => {
+    if (type === 'image') return (await chatApi.getReferenceImageUrl(params))?.img_url
+    if (type === 'audio') return (await chatApi.getReferenceAudioUrl(params))?.audio_url
+    return (await chatApi.getReferenceVideoUrl(params))?.video_url
+  }
+  const request = resolveUrl()
+    .then((url) => {
+      if (!url?.trim()) throw new Error('媒体播放或预览地址为空')
+      const expiresAt = getPresignedExpiry(url) ?? Date.now() + 5 * 60_000
+      mediaUrlCache.set(key, { url, expiresAt })
+      return url
     })
     .finally(() => {
-      pendingVideoUrls.delete(key)
+      pendingMediaUrls.delete(key)
     })
 
-  pendingVideoUrls.set(key, request)
+  pendingMediaUrls.set(key, request)
   return request
+}
+
+/** Compatibility wrapper for existing citation video players. */
+export function getFreshReferenceVideoUrl(options: Omit<ReferenceMediaUrlOptions, 'type'>): Promise<string> {
+  return getFreshReferenceMediaUrl({ ...options, type: 'video' })
 }

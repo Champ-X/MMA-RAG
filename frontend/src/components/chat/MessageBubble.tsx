@@ -102,7 +102,7 @@ interface MessageBubbleProps {
   /** 预加载的引用 id -> 完整对象 */
   citationMap?: Map<number | string, CitationReference>
   /** 点击引用时的回调；messageId 用于只从当前消息取引用，避免多条回答共用 [1][2] 时错用上一条的引用 */
-  onCiteClick?: (refId: number | string, event: React.MouseEvent, messageId?: string) => void
+  onCiteClick?: (refId: number | string, event: React.MouseEvent, messageId?: string, triggerElement?: HTMLElement) => void
   onRegenerate?: () => void
   regenerationDisabled?: boolean
 }
@@ -110,7 +110,7 @@ interface MessageBubbleProps {
 // 从文本中提取引用标记并转换为可点击按钮；originalIdToDisplayIndex 用于连续编号展示
 function injectCitations(
   children: React.ReactNode,
-  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void,
+  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string, triggerElement?: HTMLElement) => void,
   messageId?: string,
   originalIdToDisplayIndex?: Map<number | string, number>,
   citationMap?: Map<number | string, CitationReference>
@@ -266,7 +266,7 @@ function listItemHasParagraphChild(node: unknown): boolean {
 
 function splitTextWithCitations(
   text: string,
-  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void,
+  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string, triggerElement?: HTMLElement) => void,
   messageId?: string,
   originalIdToDisplayIndex?: Map<number | string, number>,
   citationMap?: Map<number | string, CitationReference>
@@ -287,7 +287,7 @@ function splitTextWithCitations(
         key={`c_${messageId}_${idx}_${match.n}`}
         n={typeof displayN === 'number' ? displayN : Number(displayN) || 0}
         available={!!citationMap?.get(match.n)?.type}
-        onClick={(rect) => onCiteClick?.(match.n, rect, messageId)}
+        onClick={(rect, triggerElement) => onCiteClick?.(match.n, rect, messageId, triggerElement)}
       />
     )
     last = match.end
@@ -347,7 +347,7 @@ function findCitationById(
   return null
 }
 
-function CitationInlineButton({ n, available, onClick }: { n: number; available: boolean; onClick?: (rect: DOMRect) => void }) {
+function CitationInlineButton({ n, available, onClick }: { n: number; available: boolean; onClick?: (rect: DOMRect, triggerElement: HTMLButtonElement) => void }) {
   return (
     <button
       type="button"
@@ -356,7 +356,7 @@ function CitationInlineButton({ n, available, onClick }: { n: number; available:
         e.preventDefault()
         e.stopPropagation()
         const rect = e.currentTarget.getBoundingClientRect()
-        onClick?.(rect)
+        onClick?.(rect, e.currentTarget)
       }}
       className="inline-flex items-center justify-center mx-0.5 text-[9px] font-semibold rounded-[5px] transition-all border align-text-top min-w-[1rem] h-4 px-1 text-indigo-700 dark:text-indigo-200 bg-gradient-to-br from-indigo-50 via-purple-50 to-fuchsia-50 dark:from-indigo-600/30 dark:via-purple-600/20 dark:to-fuchsia-600/30 hover:from-indigo-100 hover:via-purple-100 hover:to-fuchsia-100 dark:hover:from-indigo-600/40 dark:hover:via-purple-600/30 dark:hover:to-fuchsia-600/40 border-indigo-300/60 dark:border-indigo-700/60 shadow-sm hover:shadow active:scale-95"
       title={available ? `点击查看引用 ${n}` : `引用 ${n} 的来源数据不可用`}
@@ -369,14 +369,14 @@ function CitationInlineButton({ n, available, onClick }: { n: number; available:
 
 // 创建 onCiteClick 回调的辅助函数
 function createCiteClickHandler(
-  onCiteClick?: (refId: number | string, event: React.MouseEvent, messageId?: string) => void,
+  onCiteClick?: (refId: number | string, event: React.MouseEvent, messageId?: string, triggerElement?: HTMLElement) => void,
   messageId?: string
 ) {
-  return (id: number | string, rect: DOMRect, msgId?: string) => {
+  return (id: number | string, rect: DOMRect, msgId?: string, triggerElement?: HTMLElement) => {
     const mockEvent = {
       currentTarget: { getBoundingClientRect: () => rect }
     } as React.MouseEvent
-    onCiteClick?.(id, mockEvent, msgId ?? messageId)
+    onCiteClick?.(id, mockEvent, msgId ?? messageId, triggerElement)
   }
 }
 
@@ -388,7 +388,7 @@ function ParagraphImageDisplay({
   fallbackKbId,
 }: {
   citations: CitationReference[]
-  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void
+  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string, triggerElement?: HTMLElement) => void
   messageId?: string
   fallbackKbId?: string
 }) {
@@ -406,7 +406,7 @@ function ParagraphImageDisplay({
           kbId={citation.debug_info?.kb_id || fallbackKbId}
           filePath={citation.file_path || citation.file_name}
           label={citation.file_name || `引用 ${citation.id}`}
-          onOpen={(rect) => onCiteClick?.(citation.id, rect, messageId)}
+          onOpen={(rect, triggerElement) => onCiteClick?.(citation.id, rect, messageId, triggerElement)}
         />
       ))}
     </div>
@@ -601,7 +601,7 @@ function ParagraphAudioDisplay({
   fallbackKbId,
 }: {
   citations: CitationReference[]
-  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void
+  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string, triggerElement?: HTMLElement) => void
   messageId?: string
   displayIndexByRefId?: Map<number | string, number>
   fallbackKbId?: string
@@ -623,16 +623,17 @@ function ParagraphAudioDisplay({
         const handleOpenPopover = (e: React.MouseEvent) => {
           if (onCiteClick) {
             const rect = e.currentTarget.closest('.paragraph-audio-card')?.getBoundingClientRect() ?? (e.currentTarget as HTMLElement).getBoundingClientRect()
-            onCiteClick(citation.id, rect, messageId)
+            onCiteClick(citation.id, rect, messageId, e.currentTarget as HTMLElement)
           }
         }
 
-        const handleClickPlay = async () => {
+        const handleClickPlay = async (event: React.MouseEvent<HTMLButtonElement>) => {
+          const triggerElement = event.currentTarget
           if (hasAudioUrl) return
           const filePath = citation.file_path || citation.file_name
           const kbId = citation.debug_info?.kb_id || fallbackKbId
           if (!filePath && onCiteClick) {
-            onCiteClick(citation.id, new DOMRect(0, 0, 0, 0), messageId)
+            onCiteClick(citation.id, new DOMRect(0, 0, 0, 0), messageId, triggerElement)
             return
           }
           setLoadingRefId(citation.id)
@@ -647,7 +648,7 @@ function ParagraphAudioDisplay({
             if (onCiteClick) {
               const el = document.querySelector(`.paragraph-audio-card[data-audio-key="${key}"]`) as HTMLElement
               const rect = el?.getBoundingClientRect?.() ?? new DOMRect(0, 0, 0, 0)
-              onCiteClick(citation.id, rect, messageId)
+              onCiteClick(citation.id, rect, messageId, triggerElement)
             }
           } finally {
             setLoadingRefId(null)
@@ -847,7 +848,7 @@ function ParagraphVideoDisplay({
   fallbackKbId,
 }: {
   citations: CitationReference[]
-  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string) => void
+  onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string, triggerElement?: HTMLElement) => void
   messageId?: string
   displayIndexByRefId?: Map<number | string, number>
   fallbackKbId?: string
@@ -908,16 +909,17 @@ function ParagraphVideoDisplay({
         const handleOpenPopover = (e: React.MouseEvent) => {
           if (onCiteClick) {
             const rect = e.currentTarget.closest('.paragraph-video-card')?.getBoundingClientRect() ?? (e.currentTarget as HTMLElement).getBoundingClientRect()
-            onCiteClick(citation.id, rect, messageId)
+            onCiteClick(citation.id, rect, messageId, e.currentTarget as HTMLElement)
           }
         }
 
-        const handleClickPlay = async () => {
+        const handleClickPlay = async (event: React.MouseEvent<HTMLButtonElement>) => {
+          const triggerElement = event.currentTarget
           if (hasVideoUrl) return
           const filePath = citation.file_path || citation.file_name
           const kbId = citation.debug_info?.kb_id || fallbackKbId
           if (!filePath || !kbId) {
-            if (onCiteClick) onCiteClick(citation.id, new DOMRect(0, 0, 0, 0), messageId)
+            if (onCiteClick) onCiteClick(citation.id, new DOMRect(0, 0, 0, 0), messageId, triggerElement)
             return
           }
           setLoadingRefId(citation.id)
@@ -932,7 +934,7 @@ function ParagraphVideoDisplay({
             if (onCiteClick) {
               const el = document.querySelector(`.paragraph-video-card[data-video-key="${key}"]`) as HTMLElement
               const rect = el?.getBoundingClientRect?.() ?? new DOMRect(0, 0, 0, 0)
-              onCiteClick(citation.id, rect, messageId)
+              onCiteClick(citation.id, rect, messageId, triggerElement)
             }
           } finally {
             setLoadingRefId(null)

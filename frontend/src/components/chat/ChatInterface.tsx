@@ -189,6 +189,7 @@ export function ChatInterface() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const citePopoverRef = useRef<HTMLDivElement>(null)
+  const citationTriggerRef = useRef<HTMLElement | null>(null)
   const prevIsStreamingRef = useRef(false)
   const mentionStateRef = useRef<FileMentionState | null>(null)
   mentionStateRef.current = mentionState
@@ -571,7 +572,7 @@ export function ChatInterface() {
   }
 
   // 处理引用点击：必须从「当前被点击的那条消息」里取引用，避免多条回答共用 [1][2] 时取到上一条的引用
-  const handleCitationClick = useCallback((refId: number | string, event: React.MouseEvent, messageId?: string) => {
+  const handleCitationClick = useCallback((refId: number | string, event: React.MouseEvent, messageId?: string, triggerElement?: HTMLElement) => {
     if (!activeSession) return
 
     let citation: CitationReference | null = null
@@ -603,7 +604,10 @@ export function ChatInterface() {
 
     if (citation) {
       const rect = event?.currentTarget?.getBoundingClientRect?.()
-      if (rect) setCitePopover({ open: true, rect, item: citation })
+      if (rect) {
+        citationTriggerRef.current = triggerElement ?? (event.currentTarget instanceof HTMLElement ? event.currentTarget : null)
+        setCitePopover({ open: true, rect, item: citation })
+      }
     }
   }, [activeSession])
 
@@ -1136,6 +1140,7 @@ export function ChatInterface() {
               setInspectingItem(null)
             }}
             citations={inspectingItem ? [inspectingItem] : []}
+            returnFocusTarget={citationTriggerRef.current}
           />
         </Suspense>
       ) : null}

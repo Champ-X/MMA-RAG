@@ -346,9 +346,7 @@ export function InlineCitation({
                 onClick={(e) => {
                   if (useInternalPreview) setSelected(ref)
                   if (onCiteClick) {
-                    const rect = e.currentTarget.getBoundingClientRect()
-                    const mockEvent = { currentTarget: { getBoundingClientRect: () => rect } } as React.MouseEvent
-                    onCiteClick(id, mockEvent, messageId)
+                    onCiteClick(id, e, messageId)
                   }
                 }}
               >
@@ -368,9 +366,7 @@ export function InlineCitation({
               citation={ref}
               onLightboxClick={() => openLightbox(ref)}
               onCiteClick={onCiteClick ? (e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                const mockEvent = { currentTarget: { getBoundingClientRect: () => rect } } as React.MouseEvent
-                onCiteClick(ref.id, mockEvent, messageId)
+                onCiteClick(ref.id, e, messageId)
               } : undefined}
             />
           })}
@@ -404,9 +400,7 @@ export function InlineCitation({
                 onClick={(e) => {
                   if (useInternalPreview) setSelected(ref)
                   if (onCiteClick) {
-                    const rect = e.currentTarget.getBoundingClientRect()
-                    const mockEvent = { currentTarget: { getBoundingClientRect: () => rect } } as React.MouseEvent
-                    onCiteClick(ref.id, mockEvent, messageId)
+                    onCiteClick(ref.id, e, messageId)
                   }
                 }}
               >
