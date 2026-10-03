@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.core.llm.jev import JevRequiredError
 from app.core.llm.manager import llm_manager
 from app.core.logger import get_logger
+from app.core.score_details import merge_retrieval_scores
 from app.modules.agent.models import AgentDecision, AgentRunResult, AgentTraceStep
 from app.modules.agent.planner import AgentPlanner
 from app.modules.agent.tools import (
@@ -480,6 +481,9 @@ def _merge_retrieval_results(
                 continue
 
             hit_count = int(previous.get("_agent_hit_count", 1)) + 1
+            previous["retrieval_scores"] = merge_retrieval_scores(
+                previous.get("retrieval_scores"), item.get("retrieval_scores")
+            )
             previous["_agent_hit_count"] = hit_count
             previous["_agent_best_rank"] = min(
                 int(previous.get("_agent_best_rank", rank)),

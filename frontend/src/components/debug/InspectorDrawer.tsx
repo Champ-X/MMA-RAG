@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { ArrowDown, ArrowUp, ChevronDown, FileText, Image as ImageIcon, Music, RefreshCw, Video, X } from 'lucide-react'
 import type { CitationReference } from '@/types/sse'
+import { citationScoreDetails, citationScoreSummary } from '@/lib/citationScores'
 import { getFreshReferenceMediaUrl, isReferenceMediaUrlFresh, type ReferenceMediaType } from '@/services/reference_media_url'
 import './inspectorDrawer.css'
 
@@ -25,10 +26,6 @@ function displayFileName(fileName?: string) {
   const name = fileName?.split(/[\\/]/).pop() || '未命名来源'
   // 仅清理展示名；原始文件名和路径在来源详情中完整保留。
   return name.replace(/^(?:[a-f\d]{8}-(?:[a-f\d]{4}-){3}[a-f\d]{12})[_\s-]+/i, '') || name
-}
-
-function formatScore(score: unknown, digits = 3) {
-  return typeof score === 'number' && Number.isFinite(score) ? score.toFixed(digits) : null
 }
 
 function normalizeContextWindow(raw: unknown): { prev: string; next: string } | null {
@@ -170,6 +167,7 @@ function InspectorMedia({ item, type, name }: { item: CitationReference; type: R
 }
 
 function SourceMetadata({ item }: { item: CitationReference }) {
+  const scoreDetails = citationScoreDetails(item)
   const entries: Array<{ label: string; value: string | number | null | undefined; identifier?: boolean }> = [
     { label: '原始文件名', value: item.file_name },
     { label: '来源路径', value: item.file_path },
@@ -177,10 +175,7 @@ function SourceMetadata({ item }: { item: CitationReference }) {
     { label: '引用编号', value: item.id },
     { label: '片段标识', value: item.debug_info?.chunk_id, identifier: true },
     { label: '知识库标识', value: item.debug_info?.kb_id, identifier: true },
-    { label: '重排得分', value: formatScore(item.scores?.rerank) },
-    { label: '语义检索得分', value: formatScore(item.scores?.dense) },
-    { label: '关键词得分', value: formatScore(item.scores?.sparse) },
-    { label: '视觉检索得分', value: formatScore(item.scores?.visual) },
+    ...scoreDetails.entries,
   ]
 
   return (
@@ -193,6 +188,7 @@ function SourceMetadata({ item }: { item: CitationReference }) {
           </div>
         ))}
       </dl>
+      <p className="source-inspector-score-note">{scoreDetails.note}</p>
     </details>
   )
 }
@@ -203,7 +199,7 @@ export function InspectorDrawer({ isOpen, onClose, citations = [], returnFocusTa
   const Icon = source.icon
   const name = displayFileName(item?.file_name)
   const returnFocusRef = useRef<HTMLElement | null>(typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null)
-  const score = formatScore(item?.scores?.rerank) ?? formatScore(item?.scores?.dense)
+  const score = citationScoreSummary(item ?? undefined)
   const context = item?.type === 'doc' && item.debug_info?.chunk_id ? normalizeContextWindow(item.debug_info.context_window) : null
   const normalizedContent = (item?.content || '').replace(/\s+/g, ' ').trim()
   const previous = context?.prev && context.prev.replace(/\s+/g, ' ').trim() !== normalizedContent ? context.prev : ''
@@ -233,7 +229,7 @@ export function InspectorDrawer({ isOpen, onClose, citations = [], returnFocusTa
               <Dialog.Close className="source-inspector-close" aria-label="关闭检查器"><X size={18} aria-hidden /></Dialog.Close>
             </div>
             <Dialog.Description className="source-inspector-description">
-              {item ? <><span className="source-inspector-type">{source.label}</span><span>引用 {item.id}</span><span className="source-inspector-score" title="检索与重排的原始得分，不表示概率">检索得分 <b>{score ?? '未提供'}</b></span></> : '点击回答中的引用编号，阅读对应来源。'}
+              {item ? <><span className="source-inspector-type">{source.label}</span><span>引用 {item.id}</span><span className="source-inspector-score" title="排序得分不表示概率；各项含义见来源详情">{score.label} <b>{score.value}</b></span></> : '点击回答中的引用编号，阅读对应来源。'}
             </Dialog.Description>
           </header>
           <div className="source-inspector-scroll">

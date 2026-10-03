@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from app.core.logger import get_logger
 from app.modules.generation.templates.multimodal_fmt import MultiModalFormatter
 from app.modules.generation.citation_selection import ordered_citation_ids
+from app.core.score_details import citation_score_fields, result_score_metadata
 from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
 
 logger = get_logger(__name__)
@@ -257,6 +258,7 @@ class ContextBuilder:
                     "original_score": result.get("original_score"),
                     "cross_encoder_score": result.get("cross_encoder_score"),
                 }
+                metadata.update(result_score_metadata(result))
                 processed_result = {
                     "id": chunk_id,
                     "content_type": content_type,
@@ -342,6 +344,7 @@ class ContextBuilder:
                     content=doc["content"],
                     metadata={
                         "score": doc["score"],
+                        **citation_score_fields(doc["metadata"]),
                         "kb_id": doc["metadata"].get("kb_id"),
                         "file_type": doc["file_type"],
                         "chunk_id": doc.get("id"),  # 检索返回的 point id，直接用于 context_window 查询
@@ -383,6 +386,7 @@ class ContextBuilder:
                     content=image["content"],
                     metadata={
                         "score": image["score"],
+                        **citation_score_fields(image["metadata"]),
                         "kb_id": image["metadata"].get("kb_id"),
                         "file_type": image["file_type"],
                         "chunk_id": image.get("id"),  # 检索返回的 point id
@@ -427,6 +431,7 @@ class ContextBuilder:
                     content=audio["content"],
                     metadata={
                         "score": audio["score"],
+                        **citation_score_fields(audio["metadata"]),
                         "kb_id": audio["metadata"].get("kb_id") or fallback_kb_id,
                         "file_type": audio["file_type"],
                         "chunk_id": audio.get("id"),
@@ -464,6 +469,7 @@ class ContextBuilder:
                     content=video["content"],
                     metadata={
                         "score": video["score"],
+                        **citation_score_fields(video["metadata"]),
                         "kb_id": video["metadata"].get("kb_id") or fallback_kb_id,
                         "file_type": video["file_type"],
                         "chunk_id": video.get("id"),
@@ -811,7 +817,7 @@ class ContextBuilder:
                         "img_url": reference.presigned_url if reference.content_type == "image" else None,
                         "audio_url": reference.presigned_url if reference.content_type == "audio" else None,
                         "video_url": getattr(reference, "presigned_url", None) if reference.content_type == "video" else None,
-                        "scores": {"rerank": reference.metadata.get("score", 0.0)},
+                        **citation_score_fields(reference.metadata or {}),
                         "chunk_id": chunk_id,
                         "chunk_index": reference.metadata.get("chunk_index"),
                         "metadata": public_metadata

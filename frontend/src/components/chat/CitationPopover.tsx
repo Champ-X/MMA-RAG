@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useCallback, useState, useRef, useEffect, useId } from 'react'
 import type { SyntheticEvent } from 'react'
 import type { CitationReference } from '@/types/sse'
+import { citationScoreSummary } from '@/lib/citationScores'
 import { chatApi } from '@/services/api_client'
 import { getFreshReferenceVideoUrl, isReferenceMediaUrlFresh } from '@/services/reference_media_url'
 import { useChatStore } from '@/store/useChatStore'
@@ -370,6 +371,7 @@ export function CitationPopover({
           ? `至 ${formatTimeLabel(item.end_sec)} 结束`
           : null
   const sourceLabel = item.file_name ? shortenFileName(item.file_name, 32) : '未知路径'
+  const score = citationScoreSummary(item)
 
   return (
     <AnimatePresence>
@@ -398,7 +400,7 @@ export function CitationPopover({
                 {item.file_name || '未知文件'}
               </div>
               <div id={popoverDescriptionId} className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium">
-                Score: {item.scores?.rerank?.toFixed(2) || item.scores?.dense?.toFixed(2) || '0.00'}
+                {score.label}：{score.value}
               </div>
             </div>
             <button

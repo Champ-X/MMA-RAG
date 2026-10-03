@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from app.core.logger import get_logger
+from app.core.score_details import citation_score_fields
 
 logger = get_logger(__name__)
 
@@ -24,7 +25,6 @@ def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
         ref_id = int(k) if str(k).isdigit() else len(refs) + 1
         file_name = v.file_path.split("/")[-1] if "/" in v.file_path else (v.file_path or "")
         ref_type = v.content_type if v.content_type in ("doc", "image", "audio", "video") else ("doc" if v.content_type == "doc" else "image")
-        score = float(v.metadata.get("score", 0.0)) if v.metadata else 0.0
         item = {
             "id": ref_id,
             "type": ref_type,
@@ -34,7 +34,7 @@ def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
             "img_url": v.presigned_url if ref_type == "image" else None,
             "audio_url": getattr(v, "presigned_url", None) if ref_type == "audio" else None,
             "video_url": getattr(v, "presigned_url", None) if ref_type == "video" else None,
-            "scores": {"dense": 0, "sparse": 0, "visual": 0, "rerank": score},
+            **citation_score_fields(v.metadata or {}),
         }
         meta = v.metadata or {}
         if ref_type == "video":

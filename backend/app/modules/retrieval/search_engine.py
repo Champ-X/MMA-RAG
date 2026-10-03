@@ -773,6 +773,7 @@ class HybridSearchEngine:
                     result["search_type"] = "visual"
                     result["dual_rrf"] = False
                     result["text_vec_score"] = result.get("score", 0.0)
+                    result["retrieval_scores"] = {"dense": result["score"]} if "score" in result else {}
                     result["visual_intent"] = visual_intent
                 
                 # 统计分数分布（用于分析和优化阈值）
@@ -1164,6 +1165,7 @@ class HybridSearchEngine:
                     "file_id": payload.get("file_id"),
                     "file_path": payload.get("file_path"),
                     "score": result.get("score", 0.0),
+                    "retrieval_scores": dict(result.get("retrieval_scores") or {}),
                     "payload": payload,
                     "metadata": {
                         "duration": payload.get("duration", 0.0),
@@ -1290,6 +1292,18 @@ class HybridSearchEngine:
                             frame for frame in result["keyframe_matches"]
                             if isinstance(frame, dict) and frame.get("timestamp") not in existing_times
                         ]]
+                    # Shot routes already report their raw vector scores. Use
+                    # the best observed caption/ASR score within each channel;
+                    # the fused Shot score remains solely a ranking input.
+                    route_scores = result.get("route_scores") or {}
+                    retrieval_scores = {}
+                    for channel in ("dense", "sparse"):
+                        observed = [
+                            value for route, value in route_scores.items()
+                            if route.endswith(f"_{channel}")
+                        ]
+                        if observed:
+                            retrieval_scores[channel] = max(observed)
                     formatted_results.append({
                         "id": result.get("id"),
                         "content": "\n".join(content_parts) or caption or scene_summary,
@@ -1297,6 +1311,7 @@ class HybridSearchEngine:
                         "file_id": payload.get("file_id"),
                         "file_path": payload.get("file_path"),
                         "score": result.get("score", 0.0),
+                        "retrieval_scores": retrieval_scores,
                         "payload": payload,
                         "metadata": {
                             "duration": payload.get("duration", 0.0),

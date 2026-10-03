@@ -13,6 +13,7 @@ from app.core.llm.manager import llm_manager
 from app.core.llm.jev import JevError, JevRequiredError, get_jev_client
 from app.core.jev_settings import get_jev_config
 from app.core.logger import get_logger, audit_log
+from app.core.score_details import finite_score, merge_retrieval_scores
 
 logger = get_logger(__name__)
 
@@ -371,6 +372,14 @@ class Reranker:
                     # 标准化结果格式
                     source_score = result.get("score", 0.0)
                     scores = result.get("scores", {})
+                    # These are observed retrieval scores. Existing `scores`
+                    # can contain RRF contributions and must retain its ranking
+                    # meaning; never populate a missing channel with zero.
+                    retrieval_scores = merge_retrieval_scores(result.get("retrieval_scores"))
+                    if search_type in ("dense", "sparse"):
+                        raw_score = finite_score(result.get("score"))
+                        if raw_score is not None:
+                            retrieval_scores[search_type] = raw_score
                     
                     # 计算total_score：优先使用已有的total_score，否则使用source_score或scores的总和
                     total_score = result.get("total_score")
@@ -416,6 +425,7 @@ class Reranker:
                         "file_id": result.get("file_id") or payload.get("file_id"),
                         "file_path": result.get("file_path") or payload.get("file_path", ""),
                         "scores": scores,
+                        "retrieval_scores": retrieval_scores,
                         "search_type": search_type,
                         "source_score": source_score,
                         "total_score": total_score  # 确保有total_score字段
@@ -449,9 +459,16 @@ class Reranker:
                 if candidate_id not in unique_by_id:
                     unique_by_id[candidate_id] = candidate
                 else:
+                    previous = unique_by_id[candidate_id]
+                    retrieval_scores = merge_retrieval_scores(
+                        previous.get("retrieval_scores"), candidate.get("retrieval_scores")
+                    )
                     # 同一 id 已存在（通常先来自 visual 后来自 video），优先保留 video
                     if candidate.get("content_type") == "video":
                         unique_by_id[candidate_id] = candidate
+                    # Merge provenance only. Preserve the original candidate
+                    # winner and total_score so evidence ordering is unchanged.
+                    unique_by_id[candidate_id]["retrieval_scores"] = retrieval_scores
             return list(unique_by_id.values())
         except Exception as e:
             if strict:
@@ -879,6 +896,16 @@ class Reranker:
                     "file_path": candidate.get("file_path", ""),
                     "original_score": original_score,
                     "cross_encoder_score": cross_encoder_score,
+                    # Explicit zero is a measurement, so public provenance uses
+                    # presence/validity instead of the legacy ranking expression's
+                    # truthiness fallback. Do not change that ranking formula here.
+                    "rerank_score": next((
+                        measured
+                        for key in ("relevance_score", "score", "relevance", "rank_score")
+                        if (measured := finite_score((matched_score_data or {}).get(key))) is not None
+                    ), None),
+                    "retrieval_scores": dict(candidate.get("retrieval_scores") or {}),
+                    "scores": dict(candidate.get("scores") or {}),
                     "final_score": final_score,
                     "rank": i + 1,
                     "query": query

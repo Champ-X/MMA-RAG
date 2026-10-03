@@ -71,10 +71,11 @@ export interface ThoughtEvent {
 
 // ---------- 2. 引用预加载 (用于 Sidebar Inspector 和 Popover) ----------
 export interface CitationScore {
-  dense: number;
-  sparse: number;
-  visual?: number;
-  rerank: number;
+  dense?: number | null;
+  sparse?: number | null;
+  visual?: number | null;
+  rerank?: number | null;
+  final?: number | null;
 }
 
 export interface CitationDebugInfo {
@@ -109,7 +110,9 @@ export interface CitationReference {
     frame_image_path?: string;
     img_url?: string;
   }>;
-  scores: CitationScore;
+  /** v2 保留真实分路分数；旧版 rerank 实际保存的是综合排序分。 */
+  score_version?: number;
+  scores?: CitationScore;
   debug_info?: CitationDebugInfo;
 }
 

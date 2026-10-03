@@ -14,6 +14,38 @@ from app.modules.generation.stream_manager import StreamManager
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["direct", "agent"])
+async def test_nonstream_response_and_history_preserve_versioned_scores(monkeypatch, mode):
+    scores = {"dense": .75, "sparse": 0.0, "visual": None, "rerank": .9, "final": .855}
+    source = ReferenceMap("1", "doc", "documents/guide.pdf", "注册步骤", {
+        "kb_id": "kb", "score_version": 2, "scores": scores,
+    })
+    references = ContextBuilder.__new__(ContextBuilder).validate_references("结论 [1]。", {"1": source})
+    retrieval = SimpleNamespace(context=SimpleNamespace(intent_type="factual"), processing_time=.1)
+    monkeypatch.setattr(chat, "sessions", {})
+    monkeypatch.setattr(chat, "retrieval_service", SimpleNamespace(search=AsyncMock(return_value=retrieval)))
+    monkeypatch.setattr(chat, "agentic_retrieval_service", SimpleNamespace(search=AsyncMock(return_value=SimpleNamespace(
+        retrieval_result=retrieval, metadata=lambda: {"enabled": True},
+    ))))
+    monkeypatch.setattr(chat, "generation_service", SimpleNamespace(generate_response=AsyncMock(return_value={
+        "success": True, "answer": "结论 [1]。", "references_used": references,
+    })))
+    app = FastAPI()
+    app.include_router(chat.router, prefix="/api/chat")
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/chat/message", json={
+            "message": "证据", "sessionId": "nonstream-scores", "agentMode": mode,
+        })
+        assert response.status_code == 200
+        citation = response.json()["citations"][0]
+        assert citation["score_version"] == 2
+        assert citation["scores"] == scores
+        assert citation["score"] == .855
+        history = (await client.get("/api/chat/history", params={"sessionId": "nonstream-scores"})).json()
+        assert history["messages"][-1]["citations"][0] == citation
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["direct", "agent"])
 @pytest.mark.parametrize("interrupt", [False, True])
 @pytest.mark.parametrize("answer,used_ids", [
     ("注册步骤 [1]。如图 [2] 所示。", [1, 2]),
@@ -26,7 +58,9 @@ async def test_preloaded_candidates_are_finalized_before_completion_and_history(
     monkeypatch, mode, interrupt, answer, used_ids,
 ):
     source = ReferenceMap("1", "doc", "documents/guide.pdf", "注册步骤",
-                          {"kb_id": "kb-one", "chunk_id": "chunk-one"})
+                          {"kb_id": "kb-one", "chunk_id": "chunk-one", "score_version": 2,
+                           "scores": {"dense": .82, "sparse": 13.4, "visual": None,
+                                      "rerank": 0.0, "final": .246}})
     picture = ReferenceMap("2", "image", "images/login.jpg", "注册页面",
                            {"kb_id": "kb-one"}, "https://example.test/login.jpg")
     audio = ReferenceMap("3", "audio", "audio/guide.mp3", "语音说明",
@@ -82,6 +116,8 @@ async def test_preloaded_candidates_are_finalized_before_completion_and_history(
         refs = next(event["data"]["references"] for event in events if event["type"] == "citation")
         assert [ref["id"] for ref in refs] == [1, 2, 3, 4]
         assert refs[0]["debug_info"] == {"kb_id": "kb-one", "chunk_id": "chunk-one"}
+        assert refs[0]["score_version"] == 2
+        assert refs[0]["scores"] == source.metadata["scores"]
         assert refs[1]["img_url"] == picture.presigned_url
         assert refs[1]["file_path"] == "images/login.jpg"
         if interrupt:
@@ -97,6 +133,10 @@ async def test_preloaded_candidates_are_finalized_before_completion_and_history(
             history = (await client.get("/api/chat/history", params={"sessionId": "citation-contract"})).json()
             assert history["messages"][-1]["citations"] == final["references"]
             assert chat.sessions["citation-contract"]["messages"][-1]["citations"] == final["references"]
+            if 1 in used_ids:
+                saved_source = next(ref for ref in final["references"] if ref["id"] == 1)
+                assert saved_source["score_version"] == 2
+                assert saved_source["scores"] == source.metadata["scores"]
             if 4 in used_ids:
                 saved_video = next(ref for ref in final["references"] if ref["id"] == 4)
                 assert saved_video["start_sec"] == 12

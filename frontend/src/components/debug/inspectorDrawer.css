@@ -109,6 +109,7 @@
 .source-inspector-metadata dt { color: var(--inspector-muted); }
 .source-inspector-metadata dd { margin: 0; color: var(--inspector-ink); overflow-wrap: anywhere; }
 .source-inspector-metadata dd[data-identifier='true'] { font-family: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace; font-size: 10px; }
+.source-inspector-score-note { margin: 0 0 20px; padding: 10px 12px; border-radius: 8px; background: var(--inspector-soft); color: var(--inspector-muted); font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
 .source-inspector :where(button, summary, audio, video):focus-visible { outline: 2px solid var(--inspector-accent); outline-offset: 3px; }
 .source-inspector-close:focus-visible { outline-offset: 0; }
 @keyframes source-inspector-enter { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }

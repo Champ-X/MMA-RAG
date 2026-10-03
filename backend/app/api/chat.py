@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core.jev_settings import get_jev_config
 from app.core.llm.jev import JevRequiredError
 from app.core.stage_timing import StageTimings
+from app.core.score_details import citation_score_fields
 from app.core.llm.manager import llm_manager
 from app.core.llm import TASK_MODEL_TYPES
 from app.core.llm.models_catalog import ensure_llm_catalog_fresh, get_llm_catalog_status
@@ -459,7 +460,8 @@ async def chat_message(request: Request):
                     "type": ref.get("type", "doc"),
                     "file_name": ref.get("file_name", ""),
                     "content": ref.get("content", ""),
-                    "score": ref.get("score", 0.0),
+                    "score": ref.get("score", (ref.get("scores") or {}).get("final")),
+                    **citation_score_fields(ref),
                     "metadata": ref.get("metadata", {})
                 })
         

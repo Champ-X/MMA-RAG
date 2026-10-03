@@ -1440,6 +1440,10 @@ class VectorStore:
                             "id": result_id,
                             "score": score,
                             "payload": payload,
+                            "retrieval_scores": {
+                                **({"dense": text_scores[result_id]} if result_id in text_scores else {}),
+                                **({"visual": clip_scores[result_id]} if result_id in clip_scores else {}),
+                            },
                             "scores": {
                                 "text_vec": text_scores.get(result_id, 0.0),
                                 "clip_vec": clip_scores.get(result_id, 0.0),
@@ -1461,12 +1465,15 @@ class VectorStore:
             logger.error(f"双路RRF图片向量搜索失败: {str(e)}", exc_info=True)
             # 如果双路RRF失败，回退到单路文本查询
             logger.warning("回退到单路文本语义查询")
-            return await self.search_image_vectors(
+            fallback_results = await self.search_image_vectors(
                 query_vector=text_query_vector,
                 kb_ids=kb_ids,
                 limit=limit,
                 score_threshold=score_threshold
             )
+            for result in fallback_results:
+                result["retrieval_scores"] = {"dense": result["score"]} if "score" in result else {}
+            return fallback_results
     
     async def _query_single_vector(
         self,
@@ -2186,6 +2193,12 @@ class VectorStore:
                     results.append({
                         "id": str(point.id),
                         "score": float(point.score) if hasattr(point, 'score') else 0.0,
+                        # A plain text-vector result is an actual cosine score.
+                        # Qdrant RRF does not return its constituent measurements.
+                        "retrieval_scores": (
+                            {"dense": float(point.score)}
+                            if not sparse_vector and hasattr(point, "score") else {}
+                        ),
                         "payload": point.payload or {}
                     })
             
