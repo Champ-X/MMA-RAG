@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
 import type { LucideIcon } from 'lucide-react'
 import {
-  ArrowRight,
   AudioLines,
   Boxes,
   BrainCircuit,
@@ -22,6 +21,7 @@ import {
   Video,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ConnectorLayer, type ConnectionSpec } from './ConnectorLayer'
 import './InteractiveFlowStudio.css'
 
 type JourneyId = 'ingestion' | 'retrieval'
@@ -53,15 +53,15 @@ const journeys: Record<JourneyId, Journey> = {
     label: '多模态数据解析',
     eyebrow: 'WRITE PATH · MODAL-NATIVE INGESTION',
     title: '每种素材先按自己的语言被理解',
-    description: '从文件进入，到对象与索引落盘；文档、图片、音频和视频不会被强行压成同一种文本。',
+    description: '从文件进入，到对象与索引落盘；按模态保留原始素材、文字描述与专用检索表示。',
     steps: [
       {
         id: 'receive',
         marker: '01',
         title: '接入来源',
         short: '文件进入工作台',
-        description: '上传、URL、文件夹或外部内容先被固化成可追溯原始对象，保留文件名、来源与媒体类型。',
-        signal: 'source manifest',
+        description: '接收上传、URL、文件夹或外部内容，记录文件名、来源与类型，再交给相应解析器处理。',
+        signal: 'source metadata',
         detail: 'Document · Image · Audio · Video',
         tone: 'coral',
         icon: Boxes,
@@ -91,10 +91,10 @@ const journeys: Record<JourneyId, Journey> = {
       {
         id: 'encode',
         marker: '04',
-        title: '并行编码索引',
+        title: '分模态建立索引',
         short: '语义与专用向量',
-        description: '文本 Dense / Sparse 与图片、音频、视频的专用向量并行计算，让每种检索通道各自保有最合适的表示。',
-        signal: 'parallel vectors',
+        description: '文档建立语义与稀疏索引，图片补充 CLIP、音频补充 CLAP，视频保存镜头描述与转写的检索表示。',
+        signal: 'multimodal vectors',
         detail: 'Dense · Sparse · CLIP · CLAP · Shot',
         tone: 'violet',
         icon: Layers3,
@@ -104,7 +104,7 @@ const journeys: Record<JourneyId, Journey> = {
         marker: '05',
         title: '落盘并可检索',
         short: '对象层 + 索引层',
-        description: '原始对象、关键帧与 manifest 写入 MinIO；命名向量和稀疏索引进入 Qdrant，等待下一次问题读取。',
+        description: '原文件、关键帧与视频解析清单保存在 MinIO；文本、元数据及向量索引进入 Qdrant。',
         signal: 'retrieval ready',
         detail: 'MinIO objects + Qdrant collections',
         tone: 'green',
@@ -115,15 +115,15 @@ const journeys: Record<JourneyId, Journey> = {
   retrieval: {
     label: '多模态检索全链路',
     eyebrow: 'READ PATH · EVIDENCE FIRST',
-    title: '一个问题，多个通道，同时寻找同一份证据',
-    description: '从问题与范围进入，到引用答案离开；并行召回、融合排序与引用映射始终围绕可核验的证据合同。',
+    title: '一个问题，从不同通道汇集证据',
+    description: '先明确问题与范围，再按需召回、融合排序，并把实际采用的来源关联到回答。',
     steps: [
       {
         id: 'question',
         marker: '01',
         title: '接收问题与范围',
         short: '问题不会脱离上下文',
-        description: '会话历史、知识库范围、指定文件与附件一起进入；范围约束会原样透传到后续每条子查询。',
+        description: '会话历史、知识库范围、指定文件与附件摘要参与本轮请求；Agent 补查继续沿用同一范围约束。',
         signal: 'query envelope',
         detail: 'Question · Session · KB / File scope',
         tone: 'coral',
@@ -156,7 +156,7 @@ const journeys: Record<JourneyId, Journey> = {
         marker: '04',
         title: '融合与精排',
         short: 'RRF → Cross-Encoder',
-        description: '加权 RRF 先让不可比的通道分数进入同一候选池，再由 Cross-Encoder 根据问题与证据的匹配度排序。',
+        description: '加权 RRF 根据各通道的候选排名融合结果，再默认由 Cross-Encoder 按问题与材料的匹配度精排。',
         signal: 'ranked evidence',
         detail: 'Weighted RRF · Cross-Encoder',
         tone: 'green',
@@ -165,10 +165,10 @@ const journeys: Record<JourneyId, Journey> = {
       {
         id: 'contract',
         marker: '05',
-        title: '组装证据合同',
-        short: 'RetrievalResult',
-        description: '排好序的内容、来源、媒体 URL、页码或时间范围被统一封装；Direct 与 Agent 都在这里交会。',
-        signal: 'evidence contract',
+        title: '组织材料与引用',
+        short: '预算与来源映射',
+        description: 'Direct 与 Agent 都输出 RetrievalResult。ContextBuilder 按预算选择材料并建立引用编号；流式发送前补全文档相邻段落，以及可用的媒体定位。',
+        signal: 'reference map',
         detail: 'RetrievalResult · ReferenceMap',
         tone: 'cyan',
         icon: Boxes,
@@ -176,11 +176,11 @@ const journeys: Record<JourneyId, Journey> = {
       {
         id: 'answer',
         marker: '06',
-        title: '带引用送达',
-        short: 'thought → citation → message',
-        description: '生成器只消费已排序证据，随后通过 SSE 依次交付思考摘要、引用与正文；来源从一开始就可回看。',
+        title: '生成并收束引用',
+        short: '候选 → 正文 → 最终引用',
+        description: '候选来源先通过 SSE 预载，正文随后流式到达。完成时按正文实际引用的编号替换来源列表；未使用引用则清空，编号筛选不代表事实核验。',
         signal: 'cited answer',
-        detail: 'Context budget · Citation · SSE',
+        detail: 'SSE · Citation replacement',
         tone: 'coral',
         icon: Send,
       },
@@ -188,31 +188,11 @@ const journeys: Record<JourneyId, Journey> = {
   },
 }
 
-const toneStyles: Record<FlowTone, { dot: string; badge: string; node: string; icon: string }> = {
-  cyan: {
-    dot: 'bg-[#2f7f93]',
-    badge: 'border-[#9ec7cf] bg-[#e4f3f4] text-[#236d7e] dark:border-[#326875] dark:bg-[#2f7f93]/15 dark:text-[#8cd2dc]',
-    node: 'border-[#9bc6cd] bg-[#e4f0f1] dark:border-[#35606b] dark:bg-[#2f7f93]/12',
-    icon: 'text-[#2f7f93] dark:text-[#8ad1db]',
-  },
-  green: {
-    dot: 'bg-[#5f8e72]',
-    badge: 'border-[#b3cdb9] bg-[#e8f2e8] text-[#4c7a60] dark:border-[#3f664d] dark:bg-[#5f8e72]/15 dark:text-[#99c9a7]',
-    node: 'border-[#abc8b4] bg-[#e8f0e8] dark:border-[#3c624a] dark:bg-[#5f8e72]/12',
-    icon: 'text-[#5f8e72] dark:text-[#9bcaab]',
-  },
-  violet: {
-    dot: 'bg-[#765c95]',
-    badge: 'border-[#c7b9d5] bg-[#f0ebf4] text-[#765c95] dark:border-[#614d79] dark:bg-[#765c95]/15 dark:text-[#c8b4df]',
-    node: 'border-[#c7b9d5] bg-[#eee9f2] dark:border-[#604d75] dark:bg-[#765c95]/12',
-    icon: 'text-[#765c95] dark:text-[#c7b4de]',
-  },
-  coral: {
-    dot: 'bg-[#e47b4e]',
-    badge: 'border-[#ebbeaa] bg-[#f9ede5] text-[#c8633b] dark:border-[#794d38] dark:bg-[#e47b4e]/15 dark:text-[#f1ae8d]',
-    node: 'border-[#e5b49c] bg-[#f6e7dd] dark:border-[#764a37] dark:bg-[#e47b4e]/12',
-    icon: 'text-[#d66d41] dark:text-[#efad8c]',
-  },
+const toneStyles: Record<FlowTone, { dot: string; badge: string }> = {
+  cyan: { dot: 'flow-tone-dot flow-tone-cyan', badge: 'flow-tone-badge flow-tone-cyan' },
+  green: { dot: 'flow-tone-dot flow-tone-green', badge: 'flow-tone-badge flow-tone-green' },
+  violet: { dot: 'flow-tone-dot flow-tone-violet', badge: 'flow-tone-badge flow-tone-violet' },
+  coral: { dot: 'flow-tone-dot flow-tone-coral', badge: 'flow-tone-badge flow-tone-coral' },
 }
 
 export function InteractiveFlowStudio() {
@@ -220,9 +200,20 @@ export function InteractiveFlowStudio() {
   const [activeStepIndex, setActiveStepIndex] = useState(0)
   const [autoPlaying, setAutoPlaying] = useState(false)
   const studioRef = useRef<HTMLElement>(null)
+  const timelineRef = useRef<HTMLOListElement>(null)
   const journey = journeys[journeyId]
   const activeStep = journey.steps[activeStepIndex]
   const isLastStep = activeStepIndex === journey.steps.length - 1
+
+  useEffect(() => {
+    const rail = timelineRef.current
+    const step = rail?.children[activeStepIndex] as HTMLElement | undefined
+    if (!rail || !step || rail.scrollWidth <= rail.clientWidth) return
+    const offset = step.getBoundingClientRect().left - rail.getBoundingClientRect().left
+    if (offset < 0 || offset + step.offsetWidth > rail.clientWidth) {
+      rail.scrollTo({ left: rail.scrollLeft + offset - (rail.clientWidth - step.offsetWidth) / 2, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+    }
+  }, [activeStepIndex, journeyId])
 
   useEffect(() => {
     if (!autoPlaying || isLastStep) return
@@ -270,8 +261,8 @@ export function InteractiveFlowStudio() {
     <section ref={studioRef} id="flow-lab" className="flow-studio scroll-mt-24" data-playing={autoPlaying}>
       <div className="flow-studio-section-heading">
         <div>
-          <p className="flow-studio-eyebrow">INTERACTIVE EXPLORER</p>
-          <h2 className="architecture-display">沿着证据，走一遍系统。</h2>
+          <p className="flow-studio-eyebrow">交互演示 / Follow the evidence</p>
+          <h2 className="architecture-display">看见每一次转换。</h2>
         </div>
         <p className="flow-studio-section-intro">
           从原始素材到可引用的回答，逐步观察每个环节接收什么、产出什么。
@@ -296,7 +287,6 @@ export function InteractiveFlowStudio() {
         <Tabs.Content value={journeyId} className="flow-studio-content">
           <div className="flow-studio-journey-heading">
             <div>
-              <p className="flow-studio-eyebrow">{journey.eyebrow}</p>
               <h3 className="architecture-display">{journey.title}</h3>
               <p className="flow-studio-journey-description">{journey.description}</p>
             </div>
@@ -337,7 +327,7 @@ export function InteractiveFlowStudio() {
             </div>
           </div>
 
-          <ol className="flow-studio-timeline" role="list" data-steps={journey.steps.length} aria-label={`${journey.label}步骤`}>
+          <ol ref={timelineRef} className="flow-studio-timeline" role="list" data-steps={journey.steps.length} aria-label={`${journey.label}步骤`}>
             {journey.steps.map((step, index) => (
               <li key={step.id}>
                 <TimelineStep
@@ -352,7 +342,21 @@ export function InteractiveFlowStudio() {
             ))}
           </ol>
 
+          <div className="flow-studio-detail" data-tone={activeStep.tone}>
+            <div className="flow-studio-detail-copy">
+              <span className="flow-studio-detail-marker" aria-hidden="true">{activeStep.marker}</span>
+              <div>
+                <p className="sr-only">{activeStep.title}</p>
+                <p>{activeStep.description}</p>
+              </div>
+            </div>
+          </div>
+
           <div className="flow-studio-stage-container">
+            <div className="flow-studio-canvas-heading">
+              <div><span className="flow-studio-canvas-mark" aria-hidden="true"><Layers3 size={15} /></span><span>{journeyId === 'ingestion' ? '多模态解析工作台' : '多通道证据工作台'}</span><small lang="en">{journeyId === 'ingestion' ? 'INGESTION MAP' : 'RETRIEVAL MAP'}</small></div>
+              <div className="flow-studio-state-legend" role="group" aria-label="节点状态图例"><span data-status="complete">前序阶段</span><span data-status="active">当前阶段</span><span data-status="upcoming">待探索</span></div>
+            </div>
             {journeyId === 'ingestion' ? (
               <IngestionStage activeStepIndex={activeStepIndex} activeStep={activeStep} />
             ) : (
@@ -360,16 +364,6 @@ export function InteractiveFlowStudio() {
             )}
           </div>
 
-          <div className="flow-studio-detail">
-            <div className="flow-studio-detail-copy">
-              <span className="flow-studio-detail-marker" aria-hidden="true">{activeStep.marker}</span>
-              <div>
-                <p className="flow-studio-detail-title">{activeStep.title}</p>
-                <p>{activeStep.description}</p>
-              </div>
-            </div>
-            <FlowNarrator step={activeStep} stepIndex={activeStepIndex} total={journey.steps.length} />
-          </div>
           <p className="sr-only" aria-live="polite" aria-atomic="true">
             {journey.label}，第 {activeStepIndex + 1} 步，共 {journey.steps.length} 步：{activeStep.title}
           </p>
@@ -402,87 +396,72 @@ function TimelineStep({ step, status, onSelect }: { step: FlowStep; status: Step
   )
 }
 
-function FlowNarrator({ step, stepIndex, total }: { step: FlowStep; stepIndex: number; total: number }) {
-  return (
-    <div className="flow-studio-narrator">
-      <p className="flow-studio-eyebrow">STEP {String(stepIndex + 1).padStart(2, '0')} / {String(total).padStart(2, '0')}</p>
-      <p className="flow-studio-narrator-signal">{step.signal}</p>
-      <p>{step.detail}</p>
-    </div>
-  )
-}
-
 function IngestionStage({ activeStepIndex, activeStep }: { activeStepIndex: number; activeStep: FlowStep }) {
   const sourceModes = [
-    { label: '文档', detail: '结构', icon: FileText, tone: 'coral' as FlowTone },
-    { label: '图片', detail: '视觉', icon: Image, tone: 'cyan' as FlowTone },
-    { label: '音频', detail: '转写', icon: AudioLines, tone: 'violet' as FlowTone },
-    { label: '视频', detail: '镜头', icon: Video, tone: 'green' as FlowTone },
+    { id: 'document', label: '文档', detail: '结构', icon: FileText },
+    { id: 'image', label: '图片', detail: '视觉', icon: Image },
+    { id: 'audio', label: '音频', detail: '转写', icon: AudioLines },
+    { id: 'video', label: '视频', detail: '镜头', icon: Video },
   ]
   const parserStatus = stageStatus(activeStepIndex, 1)
   const unitStatus = stageStatus(activeStepIndex, 2)
   const vectorStatus = stageStatus(activeStepIndex, 3)
   const storageStatus = stageStatus(activeStepIndex, 4)
+  const connections: ConnectionSpec[] = [
+    { id: 'source-parse', from: 'source', to: 'parse', tone: 'amber', status: connectorStatus(activeStepIndex, 0) },
+    { id: 'parse-unit', fromAnchor: 'bottom', toAnchor: 'top', from: 'parse', to: 'unit', tone: 'teal', status: connectorStatus(activeStepIndex, 1) },
+    { id: 'unit-vector', from: 'unit', to: 'vector', tone: 'accent', status: connectorStatus(activeStepIndex, 2) },
+    { id: 'vector-storage', fromAnchor: 'bottom', toAnchor: 'top', from: 'vector', to: 'storage', tone: 'teal', status: connectorStatus(activeStepIndex, 3) },
+  ]
 
   return (
     <div className="flow-lab-stage flow-lab-stage--ingestion" role="group" aria-label="多模态数据解析示意">
       <div className="flow-studio-diagram">
-        <StagePanel eyebrow="01 · source deck" title="原始素材" status={stageStatus(activeStepIndex, 0)} tone="coral">
-          <div className="grid grid-cols-2 gap-2">
+        <ConnectorLayer connections={connections} />
+        <StagePanel nodeId="source" eyebrow="01 · source deck" title="原始素材" status={stageStatus(activeStepIndex, 0)} tone="coral">
+          <div className="flow-studio-source-grid">
             {sourceModes.map((source, index) => {
               const Icon = source.icon
               const energized = activeStepIndex === 0 || activeStepIndex > index / 2
               return (
-                <div key={source.label} className={cn('flow-lab-source-card', energized && 'is-energized')}>
-                  <span className={cn('flex h-7 w-7 items-center justify-center rounded-lg border bg-white/65 dark:bg-white/[0.06]', toneStyles[source.tone].badge, toneStyles[source.tone].icon)}>
-                    <Icon className="h-3.5 w-3.5" />
-                  </span>
-                  <span className="mt-3 block text-[11px] font-semibold text-[#244957] dark:text-[#dfece8]">{source.label}</span>
-                  <span className="mt-0.5 block font-mono text-[11px] text-[#72888a] dark:text-[#88a2a3]">{source.detail}</span>
+                <div key={source.id} data-source={source.id} className={cn('flow-lab-source-card', energized && 'is-energized')}>
+                  <span className="flow-studio-source-icon"><Icon size={19} strokeWidth={1.7} aria-hidden="true" /></span>
+                  <strong>{source.label}</strong>
+                  <span className="flow-studio-source-detail">{source.detail}</span>
                 </div>
               )
             })}
           </div>
-          <p className="mt-3 font-mono text-[11px] tracking-[0.06em] text-[#768c8e] dark:text-[#8ca4a5]">source manifest → original object</p>
+          <p className="flow-studio-source-note">source metadata → modal parser</p>
         </StagePanel>
 
-        <FlowConnector tone="coral" status={connectorStatus(activeStepIndex, 0)} />
-
-        <div className="grid gap-3">
-          <StagePanel eyebrow="02 · modal parser" title="解析舱" status={parserStatus} tone="cyan" compact>
-            <div className="flex items-center gap-3">
-              <span className={cn('flow-lab-pulse-orb', parserStatus === 'active' && 'is-active', toneStyles.cyan.dot)} aria-hidden />
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-[#244957] dark:text-[#e5f0ed]">各模态在自己的轨道上解析</p>
-                <p className="mt-1 text-[11px] leading-5 text-[#657d80] dark:text-[#9eb4b5]">目录 · VLM · ASR · Scene / Shot</p>
+        <div className="flow-studio-stage-column">
+          <StagePanel nodeId="parse" eyebrow="02 · modal parser" title="解析舱" status={parserStatus} tone="cyan">
+            <div className="flow-studio-parser-summary">
+              <span className={cn('flow-lab-pulse-orb', parserStatus === 'active' && 'is-active', toneStyles.cyan.dot)} aria-hidden="true" />
+              <div>
+                <p className="flow-studio-panel-emphasis">各模态在自己的轨道上解析</p>
+                <p className="flow-studio-panel-note">目录 · VLM · ASR · Scene / Shot</p>
               </div>
             </div>
           </StagePanel>
-          <FlowConnector tone="green" status={connectorStatus(activeStepIndex, 1)} inside />
-          <StagePanel eyebrow="03 · semantic manifest" title="可定位语义单元" status={unitStatus} tone="green" compact>
-            <div className="grid grid-cols-2 gap-1.5 text-[11px] font-medium text-[#516f72] dark:text-[#b2c5c5]">
-              {['段落 Chunk', '图像 Caption', '音频转写', 'Video Shot'].map((unit) => (
-                <span key={unit} className={cn('rounded-lg border px-2 py-1.5', unitStatus === 'upcoming' ? 'border-[#d5e0db] bg-white/30 dark:border-[#2c4c57] dark:bg-white/[0.02]' : 'border-[#b5d0bd] bg-white/60 dark:border-[#3d614a] dark:bg-[#5f8e72]/10')}>
-                  {unit}
-                </span>
-              ))}
+          <StagePanel nodeId="unit" eyebrow="03 · semantic manifest" title="可定位语义单元" status={unitStatus} tone="green">
+            <div className="flow-studio-unit-grid">
+              {['段落 Chunk', '图像 Caption', '音频转写', 'Video Shot'].map((unit) => <span key={unit}>{unit}</span>)}
             </div>
           </StagePanel>
         </div>
 
-        <FlowConnector tone="violet" status={connectorStatus(activeStepIndex, 2)} />
-
-        <div className="grid gap-3">
-          <StagePanel eyebrow="04 · encode lanes" title="并行索引" status={vectorStatus} tone="violet" compact>
-            <div className="grid grid-cols-2 gap-1.5">
+        <div className="flow-studio-stage-column">
+          <StagePanel nodeId="vector" eyebrow="04 · encode lanes" title="多路索引" status={vectorStatus} tone="violet">
+            <div className="flow-studio-unit-grid flow-studio-vector-grid">
               {['Dense', 'Sparse', 'CLIP', 'CLAP', 'Shot'].map((lane, index) => (
                 <span key={lane} className={cn('flow-lab-vector-lane', vectorStatus === 'active' && `is-active flow-lab-vector-lane-${index % 4}`)}>{lane}</span>
               ))}
             </div>
           </StagePanel>
-          <FlowConnector tone="green" status={connectorStatus(activeStepIndex, 3)} inside />
-          <StagePanel eyebrow="05 · persist" title="检索就绪" status={storageStatus} tone="green" compact>
-            <div className="grid grid-cols-2 gap-2">
+          <StagePanel nodeId="storage" eyebrow="05 · persist" title="检索就绪" status={storageStatus} tone="green">
+            <div className="flow-studio-storage-grid">
               <StorageChip label="MinIO" detail="objects" status={storageStatus} />
               <StorageChip label="Qdrant" detail="vectors" status={storageStatus} />
             </div>
@@ -501,74 +480,63 @@ function RetrievalStage({ activeStepIndex, activeStep }: { activeStepIndex: numb
   const contractStatus = stageStatus(activeStepIndex, 4)
   const answerStatus = stageStatus(activeStepIndex, 5)
   const recallLanes = ['Dense', 'Sparse', 'Visual', 'Audio', 'Video']
+  const connections: ConnectionSpec[] = [
+    { id: 'question-understand', fromAnchor: 'bottom', toAnchor: 'top', from: 'question', to: 'understand', tone: 'blue', status: connectorStatus(activeStepIndex, 0) },
+    { id: 'understand-recall', from: 'understand', to: 'recall', tone: 'accent', status: connectorStatus(activeStepIndex, 1) },
+    { id: 'recall-rank', fromAnchor: 'bottom', toAnchor: 'top', from: 'recall', to: 'rank', tone: 'teal', status: connectorStatus(activeStepIndex, 2) },
+    { id: 'rank-contract', from: 'rank', to: 'contract', tone: 'blue', status: connectorStatus(activeStepIndex, 3) },
+    { id: 'contract-answer', fromAnchor: 'bottom', toAnchor: 'top', from: 'contract', to: 'answer', tone: 'amber', status: connectorStatus(activeStepIndex, 4) },
+  ]
 
   return (
     <div className="flow-lab-stage flow-lab-stage--retrieval" role="group" aria-label="多模态检索全链路示意">
       <div className="flow-studio-diagram">
-        <div className="grid gap-3">
-          <StagePanel eyebrow="01 · query envelope" title="问题与范围" status={stageStatus(activeStepIndex, 0)} tone="coral" compact>
-            <div className="rounded-xl border border-[#e5b49c] bg-white/60 p-3 dark:border-[#754a37] dark:bg-white/[0.03]">
-              <div className="flex items-center gap-2 text-[#c8643c] dark:text-[#f0ad8d]">
-                <Search className="h-3.5 w-3.5" />
-                <span className="font-mono text-[11px] font-bold uppercase tracking-[0.1em]">question</span>
-              </div>
-              <p className="mt-2 text-xs font-semibold text-[#264a58] dark:text-[#e4efeb]">“找出音乐中的暗黑摇滚线索”</p>
-              <p className="mt-2 text-[11px] text-[#6b8284] dark:text-[#a2b8b9]">KB · 文件范围 · 会话历史</p>
+        <ConnectorLayer connections={connections} />
+        <div className="flow-studio-stage-column">
+          <StagePanel nodeId="question" eyebrow="01 · query envelope" title="问题与范围" status={stageStatus(activeStepIndex, 0)} tone="coral">
+            <div className="flow-studio-query-card">
+              <div className="flow-studio-query-label"><Search size={17} aria-hidden="true" /><span>Question</span></div>
+              <p className="flow-studio-question">“找出音乐中的暗黑摇滚线索”</p>
+              <p className="flow-studio-panel-note">KB · 文件范围 · 会话历史</p>
             </div>
           </StagePanel>
-          <FlowConnector tone="cyan" status={connectorStatus(activeStepIndex, 0)} inside />
-          <StagePanel eyebrow="02 · understand" title="检索计划" status={routingStatus} tone="cyan" compact>
-            <div className="flex flex-wrap gap-1.5">
-              {['query rewrite', 'modal intent', 'KB portrait'].map((item) => (
-                <span key={item} className={cn('rounded-full border px-2 py-1 font-mono text-[11px]', routingStatus === 'upcoming' ? 'border-[#d3e0db] text-[#829797] dark:border-[#2c4d58] dark:text-[#7d9799]' : 'border-[#9ec8cf] bg-white/65 text-[#367484] dark:border-[#35606a] dark:bg-[#2f7f93]/10 dark:text-[#9ad8e0]')}>
-                  {item}
-                </span>
-              ))}
+          <StagePanel nodeId="understand" eyebrow="02 · understand" title="检索计划" status={routingStatus} tone="cyan">
+            <div className="flow-studio-plan-tags">
+              {['query rewrite', 'modal intent', 'KB portrait'].map((item) => <span key={item}>{item}</span>)}
             </div>
           </StagePanel>
         </div>
 
-        <FlowConnector tone="violet" status={connectorStatus(activeStepIndex, 1)} />
-
-        <div className="grid gap-3">
-          <StagePanel eyebrow="03 · concurrent recall" title="五路按需取证" status={recallStatus} tone="violet" compact>
-            <div className="space-y-1.5">
+        <div className="flow-studio-stage-column">
+          <StagePanel nodeId="recall" eyebrow="03 · concurrent recall" title="五路按需取证" status={recallStatus} tone="violet">
+            <div className="flow-studio-recall-list">
               {recallLanes.map((lane, index) => (
                 <div key={lane} className={cn('flow-lab-recall-lane', recallStatus === 'active' && `is-active flow-lab-recall-lane-${index % 5}`)}>
-                  <span className="font-mono text-[11px] font-semibold">{lane}</span>
+                  <span className="flow-studio-recall-name">{lane}</span>
                   <span className="flow-lab-recall-track"><i /></span>
-                  <span className="font-mono text-[11px] text-[#73898b] dark:text-[#91aaab]">候选</span>
+                  <span className="flow-studio-recall-count">候选</span>
                 </div>
               ))}
             </div>
           </StagePanel>
-          <FlowConnector tone="green" status={connectorStatus(activeStepIndex, 2)} inside />
-          <StagePanel eyebrow="04 · fuse + rerank" title="合并成一条证据队列" status={rankStatus} tone="green" compact>
-            <div className="flex items-center gap-2">
-              <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-white/55 dark:bg-white/[0.05]', toneStyles.green.badge)}><Sparkles className="h-3.5 w-3.5" /></span>
-              <p className="text-[11px] leading-5 text-[#5a7477] dark:text-[#a9c0c0]">Weighted RRF 合并通道，Cross-Encoder 依问题重新排序。</p>
+          <StagePanel nodeId="rank" eyebrow="04 · fuse + rerank" title="合并成一条证据队列" status={rankStatus} tone="green">
+            <div className="flow-studio-rank-summary">
+              <span className={cn('flow-studio-rank-icon', toneStyles.green.badge)}><Sparkles size={19} aria-hidden="true" /></span>
+              <p>RRF 按候选排名融合，默认由 Cross-Encoder 依问题精排。</p>
             </div>
           </StagePanel>
         </div>
 
-        <FlowConnector tone="cyan" status={connectorStatus(activeStepIndex, 3)} />
-
-        <div className="grid gap-3">
-          <StagePanel eyebrow="05 · contract" title="RetrievalResult" status={contractStatus} tone="cyan" compact>
-            <div className="space-y-1.5">
-              {['来源与编号', '页码 / 时间范围', '媒体 URL'].map((item, index) => (
-                <span key={item} className={cn('flex items-center gap-2 rounded-lg border px-2 py-1.5 text-[11px]', contractStatus === 'upcoming' ? 'border-[#d5e0db] bg-white/30 text-[#829596] dark:border-[#2c4d58] dark:bg-white/[0.02]' : 'border-[#a5cbd0] bg-white/65 text-[#426e75] dark:border-[#355f69] dark:bg-[#2f7f93]/10 dark:text-[#aad9de]')}>
-                  <i className={cn('h-1.5 w-1.5 rounded-full', index === 0 ? 'bg-[#2f7f93]' : index === 1 ? 'bg-[#765c95]' : 'bg-[#e47b4e]')} />
-                  {item}
-                </span>
-              ))}
+        <div className="flow-studio-stage-column">
+          <StagePanel nodeId="contract" eyebrow="05 · contract" title="ReferenceMap" status={contractStatus} tone="cyan">
+            <div className="flow-studio-reference-list">
+              {['文件与内容编号', '文档相邻段落', '媒体与可用时间范围'].map((item, index) => <span key={item}><i data-reference-tone={index} aria-hidden="true" />{item}</span>)}
             </div>
           </StagePanel>
-          <FlowConnector tone="coral" status={connectorStatus(activeStepIndex, 4)} inside />
-          <StagePanel eyebrow="06 · delivery" title="带引用回答" status={answerStatus} tone="coral" compact>
-            <div className={cn('rounded-xl border bg-white/65 p-2.5 dark:bg-white/[0.04]', answerStatus === 'active' ? 'border-[#e6ad91]' : 'border-[#d7e0dc] dark:border-[#2d4e58]')}>
-              <p className="text-[11px] leading-5 text-[#4f6b70] dark:text-[#bfd0d0]">暗黑摇滚线索集中在… <span className="font-semibold text-[#c8643c] dark:text-[#f0ad8d]">[1] [2]</span></p>
-              <span className={cn('mt-2 block h-1.5 rounded-full bg-[#d7e2dd] dark:bg-[#2a4c57]', answerStatus === 'active' && 'flow-lab-answer-line')} />
+          <StagePanel nodeId="answer" eyebrow="06 · delivery" title="带引用回答" status={answerStatus} tone="coral">
+            <div className="flow-studio-answer-card">
+              <p>暗黑摇滚线索集中在… <span>[1] [2]</span></p>
+              <span className={cn('flow-studio-answer-track', answerStatus === 'active' && 'flow-lab-answer-line')} />
             </div>
           </StagePanel>
         </div>
@@ -578,60 +546,24 @@ function RetrievalStage({ activeStepIndex, activeStep }: { activeStepIndex: numb
   )
 }
 
-function StagePanel({ eyebrow, title, status, tone, compact = false, children }: { eyebrow: string; title: string; status: StepStatus; tone: FlowTone; compact?: boolean; children: React.ReactNode }) {
+function StagePanel({ nodeId, eyebrow, title, status, tone, children }: { nodeId: string; eyebrow: string; title: string; status: StepStatus; tone: FlowTone; children: React.ReactNode }) {
   return (
-    <section className={cn(
-      'flow-studio-stage-panel relative overflow-hidden rounded-xl border p-3 transition-colors duration-300 sm:p-4',
-      status === 'active'
-        ? cn('shadow-[0_14px_28px_-24px_rgba(16,45,66,0.85)]', toneStyles[tone].node, 'flow-lab-panel-active')
-        : status === 'complete'
-          ? 'border-[#b9cec6] bg-[#f6faf6]/80 dark:border-[#34545c] dark:bg-white/[0.035]'
-          : 'border-[#d4dfe2] bg-white/75 dark:border-[#294954] dark:bg-white/[0.018]'
-    )}>
-      {status === 'active' ? <span className={cn('flow-lab-panel-beacon', toneStyles[tone].dot)} aria-hidden /> : null}
-      <div className="relative flex items-start justify-between gap-3">
-        <div>
-          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-[#74898b] dark:text-[#8da6a8]">{eyebrow}</p>
-          <h4 className={cn('mt-1 text-[13px] font-semibold', status === 'upcoming' ? 'text-[#72878a] dark:text-[#8ca4a6]' : 'text-[#1e4554] dark:text-[#e4efeb]')}>{title}</h4>
-        </div>
-        {status === 'complete' ? <Check className="h-4 w-4 shrink-0 text-[#5f8e72] dark:text-[#9bcaab]" /> : null}
+    <section className={cn('flow-studio-stage-panel', status === 'active' && 'flow-lab-panel-active')} data-connection-node={nodeId} data-status={status} data-tone={tone}>
+      <div className="flow-studio-panel-heading">
+        <div><p className="flow-studio-panel-eyebrow">{eyebrow}</p><h4>{title}</h4></div>
+        <span className="flow-studio-panel-state" role="img" aria-label={status === 'complete' ? '前序阶段' : status === 'active' ? '当前阶段' : '待探索'}>{status === 'complete' ? <Check size={14} aria-hidden="true" /> : <span aria-hidden="true" />}</span>
       </div>
-      <div className={cn('relative mt-3', compact && 'mt-2.5')}>{children}</div>
+      <div className="flow-studio-panel-body">{children}</div>
     </section>
   )
 }
 
-function FlowConnector({ tone, status, inside = false }: { tone: FlowTone; status: StepStatus; inside?: boolean }) {
-  return (
-    <div className={cn('flow-lab-connector', inside && 'flow-lab-connector-inside', `flow-lab-connector-${status}`, `flow-lab-connector-${tone}`)} aria-hidden>
-      <span className="flow-lab-connector-line" />
-      <span className="flow-lab-connector-packet" />
-      <ArrowRight className="flow-lab-connector-arrow h-3.5 w-3.5" />
-    </div>
-  )
-}
-
 function StorageChip({ label, detail, status }: { label: string; detail: string; status: StepStatus }) {
-  return (
-    <div className={cn('rounded-xl border p-2.5', status === 'upcoming' ? 'border-[#d8e2dd] bg-white/30 dark:border-[#2c4d58] dark:bg-white/[0.02]' : 'border-[#aac9b4] bg-white/65 dark:border-[#3c624a] dark:bg-[#5f8e72]/10')}>
-      <p className="text-[11px] font-semibold text-[#244b57] dark:text-[#e0ece8]">{label}</p>
-      <p className="mt-0.5 font-mono text-[11px] text-[#73898a] dark:text-[#94adae]">{detail}</p>
-    </div>
-  )
+  return <div className="flow-studio-storage-chip" data-status={status}><strong>{label}</strong><span>{detail}</span></div>
 }
 
 function StageCaption({ tone, title, detail }: { tone: FlowTone; title: string; detail: string }) {
-  return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-[#c9d8d2] pt-3 dark:border-[#294b56]">
-      <span className={cn('inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.1em]', toneStyles[tone].icon)}>
-        <span className={cn('h-1.5 w-1.5 rounded-full', toneStyles[tone].dot)} />
-        selected signal
-      </span>
-      <span className="font-mono text-[11px] text-[#587479] dark:text-[#abc0c1]">{title}</span>
-      <span className="hidden h-1 w-1 rounded-full bg-[#a9bcb7] sm:inline" />
-      <span className="text-[11px] text-[#788e90] dark:text-[#8fa7a8]">{detail}</span>
-    </div>
-  )
+  return <div className="flow-studio-stage-caption" data-tone={tone}><span className="flow-studio-caption-label"><span className={toneStyles[tone].dot} aria-hidden="true" />当前输出</span><span className="flow-studio-caption-title">{title}</span><span className="flow-studio-caption-detail">{detail}</span></div>
 }
 
 function stageStatus(activeStepIndex: number, stageIndex: number): StepStatus {

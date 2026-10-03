@@ -1,0 +1,33 @@
+.atlas-connector-layer { position: absolute; inset: 0; display: block; inline-size: 100%; block-size: 100%; overflow: visible; pointer-events: none; z-index: 2; }
+.atlas-connection { color: var(--atlas-accent); transition: opacity 220ms ease; }
+.atlas-connection[data-tone='teal'] { color: var(--atlas-teal); }
+.atlas-connection[data-tone='blue'] { color: var(--atlas-blue); }
+.atlas-connection[data-tone='amber'] { color: var(--atlas-amber); }
+.atlas-connection[data-end-tone='accent'] { --ribbon-destination: var(--atlas-accent); }
+.atlas-connection[data-end-tone='teal'] { --ribbon-destination: var(--atlas-teal); }
+.atlas-connection[data-end-tone='blue'] { --ribbon-destination: var(--atlas-blue); }
+.atlas-connection[data-end-tone='amber'] { --ribbon-destination: var(--atlas-amber); }
+.atlas-ribbon-destination { stop-color: var(--ribbon-destination, currentColor); }
+.atlas-connection[data-status='upcoming'] { opacity: .45; }
+.atlas-connector-ribbon { stroke: none; }
+.atlas-connector-track, .atlas-connector-packet { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+.atlas-connector-track { stroke-width: .85; opacity: .5; }
+.atlas-connection[data-status='active'] .atlas-connector-track { opacity: .85; }
+.atlas-connection[data-dashed] .atlas-connector-track { stroke-width: 1.1; stroke-dasharray: 2 6; }
+.atlas-connection[data-dashed] .atlas-connector-ribbon { opacity: .45; }
+.atlas-connector-label rect { fill: var(--atlas-connector-surface, var(--atlas-surface)); opacity: .92; }
+.atlas-connector-label text { fill: currentColor; font: 500 12px var(--atlas-body); letter-spacing: .015em; }
+.atlas-connector-packet { opacity: 0; stroke: var(--atlas-surface); stroke-width: 1.7; stroke-dasharray: 7 93; }
+.flow-studio[data-playing='true'] .atlas-connection[data-status='active'] .atlas-connector-packet { opacity: .9; animation: atlas-connector-travel 1.8s ease-in-out both; }
+.atlas-flow-arrow { display: block; inline-size: 40px; block-size: 16px; flex: none; overflow: visible; stroke: none; }
+.atlas-flow-arrow-spine { stroke: currentColor; stroke-width: .75; opacity: .5; }
+.atlas-flow-arrow[data-vertical] { transform: rotate(90deg); }
+@keyframes atlas-connector-travel {
+  0% { stroke-dashoffset: 100; opacity: 0; }
+  15%, 75% { opacity: .9; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .atlas-connection { transition: none; }
+  .flow-studio[data-playing='true'] .atlas-connection[data-status='active'] .atlas-connector-packet { animation: none; opacity: 0; }
+}

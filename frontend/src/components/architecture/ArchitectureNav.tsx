@@ -4,8 +4,9 @@ import type { ArchitectureSection, ArchitectureSectionId } from '@/data/architec
 
 interface ArchitectureNavProps {
   sections: ArchitectureSection[]
-  activeId: ArchitectureSectionId
+  activeId: ArchitectureSectionId | null
   onNavigate: (id: ArchitectureSectionId) => void
+  onTop: () => void
 }
 
 const sectionIcons = {
@@ -18,7 +19,7 @@ const sectionIcons = {
   'tech-stack': ServerCog,
 }
 
-export function ArchitectureNav({ sections, activeId, onNavigate }: ArchitectureNavProps) {
+export function ArchitectureNav({ sections, activeId, onNavigate, onTop }: ArchitectureNavProps) {
   const activeLinkRef = useRef<HTMLAnchorElement>(null)
   const navScrollerRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -33,7 +34,7 @@ export function ArchitectureNav({ sections, activeId, onNavigate }: Architecture
   }, [activeId])
   return (
     <nav aria-label="架构页目录" className="atlas-nav">
-      <span className="atlas-nav-label"><Layers3 size={16} aria-hidden="true" />导览</span>
+      <button type="button" className="atlas-nav-label" onClick={onTop} aria-label="回到架构导览" aria-current={activeId === null ? 'location' : undefined}><Layers3 size={16} aria-hidden="true" />导览</button>
       <div ref={navScrollerRef} className="atlas-nav-scroller">
         {sections.map((section) => {
           const Icon = sectionIcons[section.id]
