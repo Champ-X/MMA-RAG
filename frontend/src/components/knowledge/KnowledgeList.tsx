@@ -1,8 +1,10 @@
 import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Box, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, ChevronDown, AlertCircle, RotateCcw } from 'lucide-react'
+import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, ChevronDown, AlertCircle, RotateCcw } from 'lucide-react'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { KnowledgeLibraryHeader } from './KnowledgeLibraryHeader'
+import { KnowledgeContentOverview } from './KnowledgeContentOverview'
 import { VideoFileCover } from './VideoFileCover'
 import './knowledgeFileList.css'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
@@ -2320,7 +2322,6 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
   const fileResultsStatusId = `${fileListDomId}-file-results-status`
   const fileGridTabId = `${fileListDomId}-file-grid-tab`
   const fileTableTabId = `${fileListDomId}-file-table-tab`
-  const statsHeadingId = `${fileListDomId}-stats-heading`
   const fileViewTabRefs = useRef<Record<'grid' | 'table', HTMLButtonElement | null>>({
     grid: null,
     table: null,
@@ -3555,7 +3556,6 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     const textChunkCount = kbStats?.chunks ?? activeKb.stats?.chunks ?? 0
     const imageCount = kbStats?.images ?? activeKb.stats?.images ?? 0
     const audioCount = kbStats?.audio ?? (activeKb.stats as { audio?: number })?.audio ?? 0
-    const videoCount = kbStats?.video ?? (activeKb.stats as { video?: number })?.video ?? 0
     const videoShotCount = kbStats?.video_shots ?? (activeKb.stats as { video_shots?: number })?.video_shots ?? 0
     const textVectorDim = kbStats?.text_vector_dim ?? 4096
     const imageVectorDim = kbStats?.image_vector_dim ?? 768
@@ -3564,7 +3564,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     return (
       <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative">
         {/* Header with Breadcrumb */}
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex items-center gap-4">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex items-center gap-3 sm:gap-4">
           <button
             type="button"
             onClick={() => returnToKnowledgeList()}
@@ -3574,7 +3574,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
           >
             <ArrowLeft size={20} aria-hidden />
           </button>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mb-1">
               <button
                 type="button"
@@ -3588,20 +3588,53 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
               <span>详情</span>
             </div>
             <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-3">
-              {activeKb.name}
+              <span className="truncate" title={activeKb.name}>{activeKb.name}</span>
               <span
-                className="text-xs font-normal px-2 py-0.5 bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-full border border-green-200 dark:border-green-800"
+                className="shrink-0 text-xs font-normal px-2 py-0.5 bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-full border border-green-200 dark:border-green-800"
                 aria-label="知识库状态：可用"
               >
                 可用
               </span>
             </h2>
           </div>
+          <DropdownMenu.Root key={activeKb.id}>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                aria-label={`更多操作：${activeKb.name}`}
+                className="ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100"
+              >
+                <MoreVertical size={18} aria-hidden />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="end"
+                sideOffset={6}
+                collisionPadding={12}
+                className="z-50 min-w-[160px] rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+              >
+                <DropdownMenu.Item
+                  onSelect={() => setEditKb({ id: activeKb.id, name: activeKb.name, description: activeKb.description ?? '' })}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-slate-700 outline-none focus:bg-slate-100 dark:text-slate-200 dark:focus:bg-slate-800"
+                >
+                  <Pencil size={14} aria-hidden />编辑知识库
+                </DropdownMenu.Item>
+                <DropdownMenu.Separator className="mx-2 my-1 h-px bg-slate-100 dark:bg-slate-800" />
+                <DropdownMenu.Item
+                  onSelect={() => void handleDeleteKb(activeKb.id)}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-red-600 outline-none focus:bg-red-50 dark:text-red-400 dark:focus:bg-red-950/40"
+                >
+                  <Trash2 size={14} aria-hidden />删除知识库
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
         </div>
 
         <div className="flex-1 flex overflow-hidden">
           {/* Main Area */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
             {/* 上传与导入：拖拽/选择上传与自动导入同框 */}
             <UploadPipeline
               onFileSelect={handleFileUpload}
@@ -3713,6 +3746,19 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
 
             {/* File List */}
             <div className="resource-files">
+              <KnowledgeContentOverview
+                key={activeKb.id}
+                files={files}
+                loading={filesLoading}
+                index={{
+                  documents: documentCount,
+                  chunks: textChunkCount,
+                  images: imageCount,
+                  audio: audioCount,
+                  videoShots: videoShotCount,
+                  dimensions: { text: textVectorDim, image: imageVectorDim, audio: audioVectorDim },
+                }}
+              />
               <div className="resource-files__toolbar">
                 <div className="resource-files__heading">
                   <h3>
@@ -4020,110 +4066,15 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
               />
             </Suspense>
           </div>
-
-          {/* Detail Sidebar (Stats，结合向量库数据) */}
-          <aside
-            className="w-72 border-l border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 p-6 hidden xl:block flex flex-col"
-            aria-label="知识库统计与管理操作"
-          >
-            <section
-              className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-100/80 dark:border-slate-800 dark:bg-slate-950 dark:ring-slate-800/60"
-              aria-labelledby={statsHeadingId}
-            >
-              <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50/90 via-white to-indigo-50/40 px-4 py-3 dark:border-slate-800 dark:from-slate-900/60 dark:via-slate-950 dark:to-indigo-950/25">
-                <div className="flex items-center gap-3">
-                  <Database
-                    className="h-5 w-5 shrink-0 text-indigo-600 opacity-90 drop-shadow-[0_1px_2px_rgba(99,102,241,0.15)] dark:text-indigo-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
-                    strokeWidth={2.25}
-                    aria-hidden
-                  />
-                  <h4 id={statsHeadingId} className="text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-50">知识库统计</h4>
-                </div>
-              </div>
-              <dl className="space-y-2 p-3" aria-label="知识库内容统计">
-                <div className="group flex items-center justify-between gap-2 rounded-xl border border-blue-100/80 bg-gradient-to-r from-blue-50/70 to-transparent px-3 py-2.5 transition-all hover:border-blue-200/90 hover:shadow-sm dark:border-blue-900/40 dark:from-blue-950/35 dark:to-transparent dark:hover:border-blue-800/50">
-                  <dt className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
-                    <FileText className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" strokeWidth={2.25} aria-hidden />
-                    文档数
-                  </dt>
-                  <dd className="text-sm font-semibold tabular-nums tracking-tight text-blue-700 dark:text-blue-300">
-                    {documentCount}
-                  </dd>
-                </div>
-                <div className="group flex items-center justify-between gap-2 rounded-xl border border-indigo-100/80 bg-gradient-to-r from-indigo-50/70 to-transparent px-3 py-2.5 transition-all hover:border-indigo-200/90 hover:shadow-sm dark:border-indigo-900/40 dark:from-indigo-950/35 dark:to-transparent dark:hover:border-indigo-800/50">
-                  <dt className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
-                    <Layers className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" strokeWidth={2.25} aria-hidden />
-                    文本块数
-                  </dt>
-                  <dd className="text-sm font-semibold tabular-nums tracking-tight text-indigo-700 dark:text-indigo-300">
-                    {textChunkCount}
-                  </dd>
-                </div>
-                <div className="group flex items-center justify-between gap-2 rounded-xl border border-fuchsia-100/80 bg-gradient-to-r from-fuchsia-50/70 to-transparent px-3 py-2.5 transition-all hover:border-fuchsia-200/90 hover:shadow-sm dark:border-fuchsia-900/40 dark:from-fuchsia-950/35 dark:to-transparent dark:hover:border-fuchsia-800/50">
-                  <dt className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
-                    <ImageIcon className="h-4 w-4 shrink-0 text-fuchsia-600 dark:text-fuchsia-400" strokeWidth={2.25} aria-hidden />
-                    图片数
-                  </dt>
-                  <dd className="text-sm font-semibold tabular-nums tracking-tight text-fuchsia-700 dark:text-fuchsia-300">
-                    {imageCount}
-                  </dd>
-                </div>
-                <div className="group flex items-center justify-between gap-2 rounded-xl border border-violet-100/80 bg-gradient-to-r from-violet-50/70 to-transparent px-3 py-2.5 transition-all hover:border-violet-200/90 hover:shadow-sm dark:border-violet-900/40 dark:from-violet-950/35 dark:to-transparent dark:hover:border-violet-800/50">
-                  <dt className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
-                    <Music className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" strokeWidth={2.25} aria-hidden />
-                    音频数
-                  </dt>
-                  <dd className="text-sm font-semibold tabular-nums tracking-tight text-violet-700 dark:text-violet-300">
-                    {audioCount}
-                  </dd>
-                </div>
-                <div className="group flex items-center justify-between gap-2 rounded-xl border border-emerald-100/80 bg-gradient-to-r from-emerald-50/70 to-transparent px-3 py-2.5 transition-all hover:border-emerald-200/90 hover:shadow-sm dark:border-emerald-900/40 dark:from-emerald-950/35 dark:to-transparent dark:hover:border-emerald-800/50">
-                  <dt className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
-                    <Video className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" strokeWidth={2.25} aria-hidden />
-                    视频数
-                  </dt>
-                  <dd className="text-sm font-semibold tabular-nums tracking-tight text-emerald-700 dark:text-emerald-300">
-                    {videoCount}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/90 bg-gradient-to-r from-slate-50/80 to-transparent px-3 py-2.5 dark:border-slate-700/80 dark:from-slate-900/50 dark:to-transparent">
-                  <dt className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
-                    <Box className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" strokeWidth={2.25} aria-hidden />
-                    向量维度
-                  </dt>
-                  <dd>
-                    <dl className="grid min-w-0 [grid-template-columns:auto_1fr] gap-x-2 gap-y-0.5 text-[11px] leading-tight tabular-nums" aria-label="向量维度详情">
-                      <dt className="text-right font-medium text-slate-500 dark:text-slate-400">文本</dt>
-                      <dd className="text-right font-semibold tracking-tight text-indigo-600 dark:text-indigo-400">
-                        {textVectorDim}
-                      </dd>
-                      <dt className="text-right font-medium text-slate-500 dark:text-slate-400">图片</dt>
-                      <dd className="text-right font-semibold tracking-tight text-fuchsia-600 dark:text-fuchsia-400">
-                        {imageVectorDim}
-                      </dd>
-                      <dt className="text-right font-medium text-slate-500 dark:text-slate-400">音频</dt>
-                      <dd className="text-right font-semibold tracking-tight text-violet-600 dark:text-violet-400">
-                        {audioVectorDim}
-                      </dd>
-                    </dl>
-                  </dd>
-                </div>
-              </dl>
-            </section>
-
-            <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
-              <button
-                type="button"
-                onClick={() => handleDeleteKb(activeKbId!)}
-                aria-label={`删除知识库：${activeKb.name}`}
-                className="w-full py-2.5 px-4 flex items-center justify-center gap-2 rounded-xl border border-red-200 dark:border-red-800/60 text-red-600 dark:text-red-400 bg-white dark:bg-slate-950 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm font-medium transition-all hover:border-red-300 dark:hover:border-red-700 shadow-sm"
-              >
-                <Trash2 size={16} aria-hidden />
-                删除知识库
-              </button>
-            </div>
-          </aside>
         </div>
+
+        {editKb && (
+          <EditKbModal
+            kb={editKb}
+            onClose={() => setEditKb(null)}
+            onSave={handleSaveEdit}
+          />
+        )}
 
         {/* 预览弹窗 */}
         {previewFile && (
