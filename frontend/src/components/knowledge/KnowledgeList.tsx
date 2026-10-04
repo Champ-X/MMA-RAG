@@ -1,12 +1,14 @@
 import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { flushSync } from 'react-dom'
-import { Plus, Upload, Search, MoreVertical, Trash2, ArrowLeft, ChevronRight, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, ChevronDown, AlertCircle, RotateCcw } from 'lucide-react'
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { Plus, Upload, Search, MoreVertical, Trash2, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, ChevronDown, AlertCircle, RotateCcw } from 'lucide-react'
 import { UploadPipeline, type UploadPipelineProgress } from './UploadPipeline'
 import { KnowledgeLibraryHeader } from './KnowledgeLibraryHeader'
+import { KnowledgeDetailHeader } from './KnowledgeDetailHeader'
 import { KnowledgeContentOverview } from './KnowledgeContentOverview'
 import { VideoFileCover } from './VideoFileCover'
 import './knowledgeFileList.css'
+import './importDialogs.css'
+import { WorkflowDialog } from '@/components/ui/WorkflowDialog'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import {
   knowledgeApi,
@@ -1227,8 +1229,6 @@ function ImportUrlModal({
   const filenameRef = useRef('')
   const lastSuggestedFilenameRef = useRef<string | null>(null)
   const modalDomId = React.useId().replace(/:/g, '')
-  const titleId = `${modalDomId}-url-import-title`
-  const descriptionId = `${modalDomId}-url-import-description`
   const advancedOptionsId = `${modalDomId}-url-import-advanced-options`
   const errorId = `${modalDomId}-url-import-error`
 
@@ -1335,9 +1335,6 @@ function ImportUrlModal({
     }
   }
 
-  const radioBase = 'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer'
-  const radioActive = 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-600'
-  const radioInactive = 'bg-slate-50/60 dark:bg-slate-800/40 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
   const trimmedUrl = url.trim()
   const suggestedMode =
     inspectResult?.recommended_mode === 'auto'
@@ -1349,215 +1346,103 @@ function ImportUrlModal({
       : inspectResult?.recommended_mode
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div
-        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 overflow-hidden"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-      >
-        <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20">
-          <h3 id={titleId} className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/15 dark:bg-blue-400/20 text-blue-600 dark:text-blue-400 shadow-sm">
-              <Link2 size={20} aria-hidden />
-            </span>
-            从 URL 导入
-          </h3>
-          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭 URL 导入弹窗">
-            <X size={18} aria-hidden />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          <p id={descriptionId} className="text-xs text-slate-500 dark:text-slate-400 -mt-1">
-            支持文件直链、网页正文与飞书文档；飞书会按 Block 解析图片、表格、画板和嵌入数据。
-          </p>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">URL <span className="text-red-500">*</span></label>
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="网页、文件直链或 https://example.feishu.cn/docx/..."
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400 dark:focus:ring-blue-400/20 dark:focus:border-blue-500 transition-shadow"
-            />
-            {(inspecting || inspectResult || inspectError) && (
-              <div
-                className="mt-3 rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-800/35 px-4 py-3"
-                role={inspectError ? 'alert' : 'status'}
-                aria-live="polite"
-                aria-atomic="true"
-              >
-                {inspecting ? (
-                  <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                    <Loader2 size={14} className="animate-spin text-blue-500" aria-hidden />
-                    正在识别链接类型、标题和建议文件名…
-                  </div>
-                ) : inspectResult ? (
-                  <div className="space-y-2.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex flex-wrap gap-2">
-                        <span className={cn(
-                          'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium',
-                          inspectResult.detected_kind === 'feishu_document'
-                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
-                            : inspectResult.detected_kind === 'webpage'
-                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                              : 'bg-slate-200/80 text-slate-700 dark:bg-slate-700/70 dark:text-slate-200'
-                        )}>
-                          {inspectResult.detected_kind === 'feishu_document'
-                            ? '已识别为飞书文档'
-                            : inspectResult.detected_kind === 'webpage'
-                              ? '已识别为网页'
-                              : '已识别为文件'}
-                        </span>
-                        {inspectResult.content_type ? (
-                          <span className="inline-flex items-center rounded-full bg-white/80 dark:bg-slate-900/70 px-2 py-0.5 text-[11px] text-slate-500 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700/80">
-                            {inspectResult.content_type}
-                          </span>
-                        ) : null}
-                        {formatContentLength(inspectResult.content_length) ? (
-                          <span className="inline-flex items-center rounded-full bg-white/80 dark:bg-slate-900/70 px-2 py-0.5 text-[11px] text-slate-500 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700/80">
-                            {formatContentLength(inspectResult.content_length)}
-                          </span>
-                        ) : null}
-                      </div>
-                      {suggestedMode && suggestedMode !== mode ? (
-                        <button
-                          type="button"
-                          onClick={() => setMode(suggestedMode)}
-                          className="shrink-0 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 transition-colors"
-                        >
-                          切换为建议模式
-                        </button>
-                      ) : null}
-                    </div>
-                    {inspectResult.title ? (
-                      <div className="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">
-                        {inspectResult.title}
-                      </div>
-                    ) : null}
-                    <div className="space-y-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-                      {inspectResult.site ? <div>站点：{inspectResult.site}</div> : null}
-                      <div>建议文件名：{inspectResult.suggested_filename}</div>
-                      {inspectResult.final_url && inspectResult.final_url !== trimmedUrl ? (
-                        <div className="break-all">跳转后 URL：{inspectResult.final_url}</div>
-                      ) : null}
-                    </div>
-                    {inspectResult.warning ? (
-                      <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
-                        {inspectResult.warning}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : inspectError ? (
-                  <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
-                    {inspectError}
-                  </p>
-                ) : null}
-              </div>
-            )}
+    <WorkflowDialog
+      open
+      onOpenChange={(open) => { if (!open) onClose() }}
+      eyebrow="素材导入"
+      title="从 URL 导入"
+      description="粘贴网页、文件或飞书文档链接，将内容汇入当前素材空间。"
+      icon={<Link2 size={20} />}
+      size="md"
+      className="import-dialog import-dialog--link"
+      busy={loading}
+      onSubmit={handleSubmit}
+      footer={(
+        <>
+          <span className="workflow-footer-summary">导入后可在上传列表查看进度</span>
+          <div className="workflow-footer-actions">
+            <button type="button" disabled={loading} onClick={onClose} aria-label="取消 URL 导入" className="workflow-button">取消</button>
+            <button type="submit" disabled={loading} aria-describedby={error ? errorId : undefined} aria-label={loading ? '正在导入 URL' : '导入 URL'} className="workflow-button workflow-button-primary">
+              {loading ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Link2 size={15} aria-hidden />}
+              {loading ? '正在导入…' : '导入链接'}
+            </button>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">文件名 <span className="text-slate-400 font-normal">(可选)</span></label>
-            <input
-              type="text"
-              value={filename}
-              onChange={(e) => setFilename(e.target.value)}
-              placeholder="留空：网页用标题、文件用 URL 末段"
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400 dark:focus:ring-blue-400/20 dark:focus:border-blue-500 transition-shadow"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">解析模式</label>
-            <div className="grid grid-cols-2 gap-2">
-              {([
-                { v: 'webpage', label: '网页解析' },
-                { v: 'feishu', label: '飞书文档' },
-                { v: 'auto', label: '自动' },
-                { v: 'file', label: '文件下载' },
-              ] as const).map((opt) => (
-                <label key={opt.v} className={cn(radioBase, mode === opt.v ? radioActive : radioInactive)}>
-                  <input
-                    type="radio"
-                    name="url-import-mode"
-                    value={opt.v}
-                    checked={mode === opt.v}
-                    onChange={() => setMode(opt.v)}
-                    className="sr-only"
-                  />
-                  {opt.label}
-                </label>
-              ))}
+        </>
+      )}
+    >
+      <fieldset className="import-form" disabled={loading}>
+        <div>
+          <label htmlFor={`${modalDomId}-url`} className="workflow-label">链接地址 <span className="import-required">*</span></label>
+          <input data-autofocus id={`${modalDomId}-url`} name="url" type="url" required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/article" className="workflow-field" autoComplete="url" aria-describedby={`${modalDomId}-url-help`} />
+          <p id={`${modalDomId}-url-help`} className="workflow-help">粘贴链接后，自动识别类型、标题和文件名。</p>
+          {(inspecting || inspectResult || inspectError) && (
+            <div className="import-link-preview" role={inspectError ? 'alert' : 'status'} aria-live="polite" aria-atomic="true">
+              {inspecting ? (
+                <div className="import-inline-status"><Loader2 size={15} className="animate-spin" aria-hidden />正在识别链接…</div>
+              ) : inspectResult ? (
+                <>
+                  <div className="import-preview-heading">
+                    <span className="import-tag">{inspectResult.detected_kind === 'feishu_document' ? '飞书文档' : inspectResult.detected_kind === 'webpage' ? '网页正文' : '文件直链'}</span>
+                    {formatContentLength(inspectResult.content_length) && <span className="workflow-help">{formatContentLength(inspectResult.content_length)}</span>}
+                    {suggestedMode && suggestedMode !== mode && <button type="button" onClick={() => setMode(suggestedMode)} className="import-inline-action">使用建议模式</button>}
+                  </div>
+                  {inspectResult.title && <p className="import-preview-title">{inspectResult.title}</p>}
+                  <div className="import-preview-meta">
+                    {inspectResult.site && <span>{inspectResult.site}</span>}
+                    {inspectResult.content_type && <span>{inspectResult.content_type}</span>}
+                  </div>
+                  <p className="workflow-help">建议文件名：{inspectResult.suggested_filename}</p>
+                  {inspectResult.final_url && inspectResult.final_url !== trimmedUrl && <p className="workflow-help import-wrap">跳转地址：{inspectResult.final_url}</p>}
+                  {inspectResult.warning && <p className="import-warning">{inspectResult.warning}</p>}
+                </>
+              ) : <p className="import-warning">{inspectError}</p>}
             </div>
-            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-              {mode === 'webpage' && '强制按网页抽取正文为 Markdown 入库（trafilatura → readability → Tavily 兜底）。'}
-              {mode === 'feishu' && '通过飞书开放平台读取 Docx/Wiki Block，并下钻图片、原生表格、画板、Sheet 与 Base。'}
-              {mode === 'auto' && '按 Content-Type 自动判别：HTML 走网页解析，其余走文件下载。'}
-              {mode === 'file' && '按文件直链下载原始字节，按扩展名走原有解析（PDF/DOCX/图片/音视频…）。'}
-            </p>
+          )}
+        </div>
+        <div>
+          <label htmlFor={`${modalDomId}-filename`} className="workflow-label">文件名 <span className="import-optional">可选</span></label>
+          <input id={`${modalDomId}-filename`} name="filename" type="text" value={filename} onChange={(e) => setFilename(e.target.value)} placeholder="留空时自动命名" className="workflow-field" />
+        </div>
+        <fieldset className="import-option-group">
+          <legend className="workflow-label">解析方式</legend>
+          <div className="import-mode-grid">
+            {([
+              { v: 'webpage', label: '网页正文', hint: '提取正文与图片', icon: FileText },
+              { v: 'feishu', label: '飞书文档', hint: '文档、表格与画板', icon: Layers },
+              { v: 'auto', label: '自动识别', hint: '根据链接类型选择', icon: Zap },
+              { v: 'file', label: '原始文件', hint: '下载并解析源文件', icon: FolderOpen },
+            ] as const).map((opt) => (
+              <label key={opt.v} className={cn('import-mode-option', mode === opt.v && 'is-selected')}>
+                <input type="radio" name="url-import-mode" value={opt.v} checked={mode === opt.v} onChange={() => setMode(opt.v)} className="sr-only" />
+                <opt.icon size={18} aria-hidden />
+                <span><strong>{opt.label}</strong><small>{opt.hint}</small></span>
+                <span className="import-radio-mark" aria-hidden />
+              </label>
+            ))}
           </div>
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowAdvanced((v) => !v)}
-              aria-expanded={showAdvanced}
-              aria-controls={advancedOptionsId}
-              className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
-            >
-              <ChevronDown size={14} className={cn('transition-transform', showAdvanced ? 'rotate-0' : '-rotate-90')} aria-hidden />
-              高级选项
-            </button>
-            {showAdvanced && (
-              <div id={advancedOptionsId} className="mt-3 space-y-2 rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-slate-50/40 dark:bg-slate-800/30 p-4">
-                <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={includeLinks}
-                    onChange={(e) => setIncludeLinks(e.target.checked)}
-                    disabled={mode === 'file'}
-                    className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 disabled:opacity-40"
-                  />
-                  保留正文中的链接
-                </label>
-                <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={includeImages}
-                    onChange={(e) => setIncludeImages(e.target.checked)}
-                    disabled={mode === 'file'}
-                    className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 disabled:opacity-40"
-                  />
-                  保留正文中的图片引用
-                </label>
-                <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={downloadImages && includeImages}
-                    onChange={(e) => setDownloadImages(e.target.checked)}
-                    disabled={mode === 'file' || !includeImages}
-                    className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 disabled:opacity-40"
-                  />
-                  {mode === 'feishu'
-                    ? '下载图片与画板缩略图到知识库（走多模态 VLM/CLIP）'
-                    : '下载图片到知识库（带 Referer/UA，走多模态 VLM/CLIP，可被检索）'}
-                </label>
-              </div>
-            )}
-          </div>
-          {error && <p id={errorId} className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl" role="alert">{error}</p>}
-          <div className="flex justify-end gap-3 pt-1">
-            <button type="button" onClick={onClose} aria-label="取消 URL 导入" className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
-              取消
-            </button>
-            <button type="submit" disabled={loading} aria-describedby={error ? errorId : undefined} aria-label={loading ? '正在导入 URL' : '导入 URL'} className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all">
-              {loading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : null}
-              导入
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          <p className="workflow-help">
+            {mode === 'webpage' && '提取网页主要内容，保存为 Markdown 文档。'}
+            {mode === 'feishu' && '读取飞书文档内容，包含图片、表格、画板与嵌入数据。'}
+            {mode === 'auto' && '自动识别网页或文件，并使用对应方式导入。'}
+            {mode === 'file' && '保留原始文件，支持文档、图片、音频与视频。'}
+          </p>
+        </fieldset>
+        <div className="import-disclosure">
+          <button type="button" onClick={() => setShowAdvanced((v) => !v)} aria-expanded={showAdvanced} aria-controls={advancedOptionsId} className="import-disclosure-trigger">
+            <span>内容选项</span><ChevronDown size={16} className={cn(showAdvanced && 'rotate-180')} aria-hidden />
+          </button>
+          {showAdvanced && (
+            <div id={advancedOptionsId} className="import-disclosure-body">
+              <label className="import-check-row"><input name="include-links" type="checkbox" checked={includeLinks} onChange={(e) => setIncludeLinks(e.target.checked)} disabled={mode === 'file'} /><span>保留正文中的链接</span></label>
+              <label className="import-check-row"><input name="include-images" type="checkbox" checked={includeImages} onChange={(e) => setIncludeImages(e.target.checked)} disabled={mode === 'file'} /><span>保留正文中的图片引用</span></label>
+              <label className="import-check-row"><input name="download-images" type="checkbox" checked={downloadImages && includeImages} onChange={(e) => setDownloadImages(e.target.checked)} disabled={mode === 'file' || !includeImages} /><span>{mode === 'feishu' ? '同时导入图片与画板缩略图' : '同时导入图片，供后续检索'}</span></label>
+              {mode === 'file' && <p className="workflow-help">原始文件模式无需配置正文选项。</p>}
+            </div>
+          )}
+        </div>
+      </fieldset>
+      {error && <p id={errorId} className="import-error" role="alert"><AlertCircle size={16} aria-hidden />{error}</p>}
+    </WorkflowDialog>
   )
 }
 
@@ -1581,8 +1466,6 @@ function ImportHotTopicsModal({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const modalDomId = React.useId().replace(/:/g, '')
-  const titleId = `${modalDomId}-hot-topics-title`
-  const descriptionId = `${modalDomId}-hot-topics-description`
   const errorId = `${modalDomId}-hot-topics-error`
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1617,88 +1500,65 @@ function ImportHotTopicsModal({
     }
   }
 
-  const inputClass =
-    'w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-400 dark:focus:ring-emerald-400/20 dark:focus:border-emerald-500 transition-shadow'
-  const selectClass = inputClass
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div
-        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 overflow-hidden"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-      >
-        <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-emerald-50/80 to-teal-50/60 dark:from-emerald-950/30 dark:to-teal-950/20">
-          <h3 id={titleId} className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 dark:bg-emerald-400/20 text-emerald-600 dark:text-emerald-400 shadow-sm">
-              <Newspaper size={20} aria-hidden />
-            </span>
-            热点资讯导入
-          </h3>
-          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭热点资讯导入弹窗">
-            <X size={18} aria-hidden />
-          </button>
+    <WorkflowDialog
+      open
+      onOpenChange={(open) => { if (!open) onClose() }}
+      eyebrow="素材导入"
+      title="热点资讯导入"
+      description="设置关注的话题与时间范围，将相关资讯收集到当前素材空间。"
+      icon={<Newspaper size={20} />}
+      size="md"
+      className="import-dialog import-dialog--news"
+      busy={loading}
+      onSubmit={handleSubmit}
+      footer={(
+        <>
+          <span className="workflow-footer-summary">最多导入 {Math.min(20, Math.max(1, maxResults))} 条资讯</span>
+          <div className="workflow-footer-actions">
+            <button type="button" disabled={loading} onClick={onClose} aria-label="取消热点资讯导入" className="workflow-button">取消</button>
+            <button type="submit" disabled={loading} aria-describedby={error ? errorId : undefined} aria-label={loading ? '正在导入热点资讯' : '导入热点资讯'} className="workflow-button workflow-button-primary">
+              {loading ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Newspaper size={15} aria-hidden />}
+              {loading ? '正在收集…' : '收集资讯'}
+            </button>
+          </div>
+        </>
+      )}
+    >
+      <fieldset className="import-form" disabled={loading}>
+        <div>
+          <label htmlFor={`${modalDomId}-query`} className="workflow-label">关注关键词 <span className="import-optional">可选</span></label>
+          <input data-autofocus id={`${modalDomId}-query`} name="query" type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="例如：人工智能、科技进展、今日要闻" className="workflow-field" aria-describedby={`${modalDomId}-query-help`} />
+          <p id={`${modalDomId}-query-help`} className="workflow-help">留空时收集默认热点资讯。</p>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          <p id={descriptionId} className="sr-only">
-            可按关键词、主题、时间范围和条数上限抓取热点资讯并导入当前知识库。
-          </p>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">关键词 <span className="text-slate-400 font-normal">(可选)</span></label>
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="如：科技热点 今日要闻、AI 大模型 融资"
-              className={inputClass}
-            />
+        <fieldset className="import-option-group">
+          <legend className="workflow-label">资讯主题</legend>
+          <div className="import-segmented">
+            {([{ value: '', label: '默认' }, { value: 'general', label: '综合' }, { value: 'news', label: '新闻' }, { value: 'finance', label: '财经' }] as const).map((item) => (
+              <label key={item.value} className={cn('import-segment', topic === item.value && 'is-selected')}>
+                <input type="radio" name="hot-topic" value={item.value} checked={topic === item.value} onChange={() => setTopic(item.value)} className="sr-only" />{item.label}
+              </label>
+            ))}
           </div>
+        </fieldset>
+        <div className="import-field-grid">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">主题 <span className="text-slate-400 font-normal">(可选)</span></label>
-            <select value={topic} onChange={(e) => setTopic(e.target.value as '' | 'general' | 'news' | 'finance')} className={selectClass}>
-              <option value="">使用默认</option>
-              <option value="general">综合 (general)</option>
-              <option value="news">新闻 (news)</option>
-              <option value="finance">财经 (finance)</option>
+            <label htmlFor={`${modalDomId}-time`} className="workflow-label">时间范围</label>
+            <select id={`${modalDomId}-time`} name="time_range" value={timeRange} onChange={(e) => setTimeRange(e.target.value as typeof timeRange)} className="workflow-field">
+              <option value="">默认范围</option><option value="day">近一天</option><option value="week">近一周</option><option value="month">近一月</option><option value="year">近一年</option>
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">时间范围 <span className="text-slate-400 font-normal">(可选)</span></label>
-            <select value={timeRange} onChange={(e) => setTimeRange(e.target.value as '' | 'day' | 'week' | 'month' | 'year')} className={selectClass}>
-              <option value="">使用默认</option>
-              <option value="day">近一天 (day)</option>
-              <option value="week">近一周 (week)</option>
-              <option value="month">近一月 (month)</option>
-              <option value="year">近一年 (year)</option>
-            </select>
+            <label htmlFor={`${modalDomId}-max`} className="workflow-label">资讯条数</label>
+            <input id={`${modalDomId}-max`} name="max_results" type="number" min={1} max={20} value={maxResults} onChange={(e) => setMaxResults(parseInt(e.target.value, 10) || 10)} className="workflow-field" aria-describedby={`${modalDomId}-max-help`} />
+            <p id={`${modalDomId}-max-help`} className="workflow-help">1–20 条，默认 10 条</p>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">条数上限</label>
-            <input
-              type="number"
-              min={1}
-              max={20}
-              value={maxResults}
-              onChange={(e) => setMaxResults(parseInt(e.target.value, 10) || 10)}
-              className={inputClass}
-            />
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">1–20 条，默认 10</p>
-          </div>
-          {error && <p id={errorId} className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl" role="alert">{error}</p>}
-          <div className="flex justify-end gap-3 pt-1">
-            <button type="button" onClick={onClose} aria-label="取消热点资讯导入" className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
-              取消
-            </button>
-            <button type="submit" disabled={loading} aria-describedby={error ? errorId : undefined} aria-label={loading ? '正在导入热点资讯' : '导入热点资讯'} className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-emerald-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all">
-              {loading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : null}
-              导入
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        </div>
+        <div className="workflow-note import-note"><Newspaper size={17} aria-hidden /><span>资讯将保存为文档，可在导入完成后查看和检索。</span></div>
+      </fieldset>
+      {error && <p id={errorId} className="import-error" role="alert"><AlertCircle size={16} aria-hidden />{error}</p>}
+    </WorkflowDialog>
   )
 }
 
@@ -1737,8 +1597,6 @@ function ImportFolderModal({
   const directoryPicker = getDirectoryPicker()
   const supportsFolderPicker = Boolean(directoryPicker)
   const modalDomId = React.useId().replace(/:/g, '')
-  const titleId = `${modalDomId}-folder-import-title`
-  const descriptionId = `${modalDomId}-folder-import-description`
   const errorId = `${modalDomId}-folder-import-error`
   const selectedFilesStatusId = `${modalDomId}-folder-selected-files`
   const resultId = `${modalDomId}-folder-import-result`
@@ -1901,148 +1759,84 @@ function ImportFolderModal({
         : '处理中…'
     : ''
 
-  const inputClass =
-    'w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/25 focus:border-amber-400 dark:focus:ring-amber-400/20 dark:focus:border-amber-500 transition-shadow'
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div
-        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 max-h-[90vh] overflow-y-auto"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-      >
-        <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-amber-50/80 to-orange-50/60 dark:from-amber-950/30 dark:to-orange-950/20 sticky top-0 z-10">
-          <h3 id={titleId} className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 dark:bg-amber-400/20 text-amber-600 dark:text-amber-400 shadow-sm">
-              <FolderOpen size={20} aria-hidden />
-            </span>
-            从文件夹导入
-          </h3>
-          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭文件夹导入弹窗">
-            <X size={18} aria-hidden />
+    <WorkflowDialog
+      open
+      onOpenChange={(open) => { if (!open) onClose() }}
+      eyebrow="素材导入"
+      title="从文件夹导入"
+      description="选择本机文件夹或填写服务端路径，批量汇入需要的素材。"
+      icon={<FolderOpen size={20} />}
+      size="md"
+      className="import-dialog import-dialog--folder"
+      busy={loading || pickingFolder}
+      onSubmit={(event) => { event.preventDefault(); void handleImport() }}
+      footer={(
+        <>
+          <span className="workflow-footer-summary">{selectedFiles?.length ? `已选 ${selectedFiles.length} 个本地文件` : folderPath.trim() ? '从服务端路径导入' : '选择来源后开始导入'}</span>
+          <div className="workflow-footer-actions">
+            <button type="button" disabled={loading || pickingFolder} onClick={onClose} aria-label="取消文件夹导入" className="workflow-button">{result ? '关闭' : '取消'}</button>
+            <button type="submit" disabled={!canImport || loading || pickingFolder} aria-describedby={error ? errorId : loading && folderProgress ? progressId : result ? resultId : undefined} aria-label={loading ? '正在导入文件夹' : '导入文件夹'} className="workflow-button workflow-button-primary">
+              {loading ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <FolderOpen size={15} aria-hidden />}{loading ? '正在导入…' : '开始导入'}
+            </button>
+          </div>
+        </>
+      )}
+    >
+      <fieldset className="import-form" disabled={loading || pickingFolder}>
+        <div>
+          <p className="workflow-label">本机文件夹</p>
+          <button type="button" data-autofocus onClick={handleSelectLocalFolder} disabled={pickingFolder || loading} aria-describedby={selectedFiles?.length ? selectedFilesStatusId : undefined} className={cn('import-folder-picker', Boolean(selectedFiles?.length) && 'has-selection')}>
+            <span className="import-folder-symbol">{pickingFolder ? <Loader2 size={23} className="animate-spin" aria-hidden /> : <FolderOpen size={23} aria-hidden />}</span>
+            <span><strong>{pickingFolder ? '正在读取文件夹…' : selectedFiles?.length ? `已选择 ${selectedFiles.length} 个文件` : '选择本地文件夹'}</strong><small>{selectedFiles?.length ? '点击重新选择文件夹' : '按下方筛选条件收集文件'}</small></span>
+            <Plus size={17} aria-hidden />
           </button>
+          {!supportsFolderPicker && <p className="workflow-help" role="note">当前浏览器不支持文件夹选择，请使用 Chrome / Edge，或填写下方路径。</p>}
+          {Boolean(selectedFiles?.length) && (
+            <div id={selectedFilesStatusId} className="import-selection-status" role="status">
+              <span>将导入已选本地文件，并在上传列表显示进度。</span>
+              <button type="button" onClick={() => setSelectedFiles(null)} className="import-inline-action">清除</button>
+            </div>
+          )}
         </div>
-        <div className="p-6 space-y-5">
-          <p id={descriptionId} className="sr-only">
-            可选择本机文件夹或输入服务端路径，并按筛选条件导入当前知识库。
-          </p>
-          {/* 筛选条件 */}
-          <div className="space-y-4 pb-5 border-b border-slate-200 dark:border-slate-700">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">筛选条件 <span className="text-slate-400 font-normal">（对下方两种方式均生效）</span></p>
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                id="folder-recursive"
-                checked={recursive}
-                onChange={(e) => setRecursive(e.target.checked)}
-                className="rounded border-slate-300 dark:border-slate-600 text-amber-600 focus:ring-amber-500/20"
-              />
-              <span className="text-sm text-slate-700 dark:text-slate-200">递归子目录</span>
-            </label>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">文件类型 <span className="text-slate-400 font-normal">(可选，逗号分隔)</span></label>
-              <input type="text" value={extensionsStr} onChange={(e) => setExtensionsStr(e.target.value)} placeholder=".pdf, .txt, .md" className={inputClass} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">排除模式 <span className="text-slate-400 font-normal">(可选，逗号分隔)</span></label>
-              <input type="text" value={excludeStr} onChange={(e) => setExcludeStr(e.target.value)} placeholder="__pycache__, .git, *.tmp" className={inputClass} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">最大文件数</label>
-              <input type="number" min={1} max={2000} value={maxFiles} onChange={(e) => setMaxFiles(Number(e.target.value) || 500)} className={inputClass} />
-            </div>
-          </div>
-
-          {/* 选择本地文件夹 */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">选择本机文件夹</label>
-            <button
-              type="button"
-              onClick={handleSelectLocalFolder}
-              disabled={pickingFolder || loading}
-              aria-describedby={selectedFiles != null && selectedFiles.length > 0 ? selectedFilesStatusId : undefined}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/30 text-slate-700 dark:text-slate-200 hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 transition-colors disabled:opacity-50"
-            >
-              {pickingFolder ? <Loader2 size={18} className="animate-spin" aria-hidden /> : <FolderOpen size={18} aria-hidden />}
-              {pickingFolder ? '正在打开…' : '选择本地文件夹'}
-            </button>
-            {!supportsFolderPicker && (
-              <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400" role="note">需使用 Chrome、Edge 等支持 File System Access 的浏览器</p>
-            )}
-            {selectedFiles != null && selectedFiles.length > 0 && (
-              <p id={selectedFilesStatusId} className="mt-2 text-sm text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/50 px-3 py-2 rounded-xl" role="status">已选择 {selectedFiles.length} 个文件，点击下方「导入」将关闭弹窗并在本页显示每文件处理进度。</p>
-            )}
-          </div>
-
-          {/* 或输入服务端路径 */}
-          <div className="border-t border-slate-200 dark:border-slate-700 pt-5">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">或输入服务端路径</label>
-            <input type="text" value={folderPath} onChange={(e) => setFolderPath(e.target.value)} placeholder="/data/docs 或白名单内的路径" className={inputClass} />
-          </div>
-
-          {/* 服务端路径导入进度 */}
-          {loading && folderProgress && (
-            <div
-              id={progressId}
-              className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20 p-4 space-y-2"
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                  {folderProgressLabel}
-                </span>
-                {folderProgressTotal > 0 && (
-                  <span className="text-sm tabular-nums text-slate-500 dark:text-slate-400">{folderProgressCurrent} / {folderProgressTotal}</span>
-                )}
+        <div className="import-source-divider"><span>或</span></div>
+        <div>
+          <label htmlFor={`${modalDomId}-path`} className="workflow-label">服务端文件夹路径</label>
+          <input id={`${modalDomId}-path`} name="folder_path" type="text" value={folderPath} onChange={(e) => setFolderPath(e.target.value)} placeholder="/data/docs" className="workflow-field" aria-describedby={`${modalDomId}-path-help`} />
+          <p id={`${modalDomId}-path-help`} className="workflow-help">使用服务可访问的文件夹路径。{selectedFiles?.length ? '当前将优先导入已选本地文件。' : ''}</p>
+        </div>
+        <details className="import-disclosure">
+          <summary className="import-disclosure-trigger"><span>文件筛选 <small>{recursive ? '包含子文件夹' : '仅当前文件夹'} · 最多 {maxFiles} 个</small></span><ChevronDown size={16} aria-hidden /></summary>
+          <div className="import-disclosure-body import-form">
+            <label className="import-check-row"><input id={`${modalDomId}-recursive`} name="recursive" type="checkbox" checked={recursive} onChange={(e) => setRecursive(e.target.checked)} /><span>包含子文件夹</span></label>
+            <div className="import-field-grid">
+              <div>
+                <label htmlFor={`${modalDomId}-extensions`} className="workflow-label">文件类型 <span className="import-optional">可选</span></label>
+                <input id={`${modalDomId}-extensions`} name="extensions" type="text" value={extensionsStr} onChange={(e) => setExtensionsStr(e.target.value)} placeholder=".pdf, .txt, .md" className="workflow-field" />
               </div>
-              {folderProgressTotal > 0 && (
-                <div
-                  className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"
-                  role="progressbar"
-                  aria-label={folderProgressLabel}
-                  aria-valuemin={0}
-                  aria-valuemax={folderProgressTotal}
-                  aria-valuenow={folderProgressCurrent}
-                >
-                  <div className="h-full bg-amber-500 dark:bg-amber-500 transition-all duration-300" style={{ width: `${Math.min(100, (folderProgressCurrent / folderProgressTotal) * 100)}%` }} />
-                </div>
-              )}
-              {folderProgress.message && folderProgress.stage === 'importing' && (
-                <p className="text-xs text-slate-500 dark:text-slate-400 truncate" title={folderProgress.message}>{folderProgress.message}</p>
-              )}
+              <div>
+                <label htmlFor={`${modalDomId}-max`} className="workflow-label">最大文件数</label>
+                <input id={`${modalDomId}-max`} name="max_files" type="number" min={1} max={2000} value={maxFiles} onChange={(e) => setMaxFiles(Number(e.target.value) || 500)} className="workflow-field" />
+              </div>
             </div>
-          )}
-
-          {/* 共用导入按钮 */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
-            <button type="button" onClick={onClose} aria-label="取消文件夹导入" className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
-              取消
-            </button>
-            <button
-              type="button"
-              onClick={handleImport}
-              disabled={!canImport || loading}
-              aria-describedby={error ? errorId : loading && folderProgress ? progressId : result ? resultId : undefined}
-              aria-label={loading ? '正在导入文件夹' : '导入文件夹'}
-              className="px-5 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-amber-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all"
-            >
-              {loading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : null}
-              导入
-            </button>
+            <div>
+              <label htmlFor={`${modalDomId}-exclude`} className="workflow-label">排除文件或目录 <span className="import-optional">可选</span></label>
+              <input id={`${modalDomId}-exclude`} name="exclude_patterns" type="text" value={excludeStr} onChange={(e) => setExcludeStr(e.target.value)} placeholder="__pycache__, .git, *.tmp" className="workflow-field" />
+            </div>
+            <p className="workflow-help">多项用逗号分隔；修改筛选后，请重新选择本地文件夹。</p>
           </div>
-
-          {result != null && (
-            <p id={resultId} className="text-sm text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/50 px-3 py-2 rounded-xl" role="status">
-              成功 {result.success_count}，失败 {result.failed_count}，共 {result.total} 个文件。
-            </p>
-          )}
-          {error && <p id={errorId} className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl" role="alert">{error}</p>}
+        </details>
+      </fieldset>
+      {loading && folderProgress && (
+        <div id={progressId} className="import-progress" role="status" aria-live="polite" aria-atomic="true">
+          <div className="import-progress-heading"><Loader2 size={15} className="animate-spin" aria-hidden /><strong>{folderProgressLabel}</strong>{folderProgressTotal > 0 && <span>{folderProgressCurrent} / {folderProgressTotal}</span>}</div>
+          {folderProgressTotal > 0 && <div className="import-progress-track" role="progressbar" aria-label={folderProgressLabel} aria-valuemin={0} aria-valuemax={folderProgressTotal} aria-valuenow={folderProgressCurrent}><div style={{ width: `${Math.min(100, (folderProgressCurrent / folderProgressTotal) * 100)}%` }} /></div>}
+          {folderProgress.message && folderProgress.stage === 'importing' && <p className="workflow-help import-wrap">{folderProgress.message}</p>}
         </div>
-      </div>
-    </div>
+      )}
+      {result && <p id={resultId} className="workflow-note" role="status">成功 {result.success_count}，失败 {result.failed_count}，共 {result.total} 个文件。</p>}
+      {error && <p id={errorId} className="import-error" role="alert"><AlertCircle size={16} aria-hidden />{error}</p>}
+    </WorkflowDialog>
   )
 }
 
@@ -2088,8 +1882,6 @@ function ImportSearchModal({
     message: string
   } | null>(null)
   const modalDomId = React.useId().replace(/:/g, '')
-  const titleId = `${modalDomId}-search-import-title`
-  const descriptionId = `${modalDomId}-search-import-description`
   const progressId = `${modalDomId}-search-import-progress`
   const errorId = `${modalDomId}-search-import-error`
   const resultId = `${modalDomId}-search-import-result`
@@ -2162,139 +1954,84 @@ function ImportSearchModal({
             ? progress.stage
             : ''
 
-  // 按阶段区分样式：搜索 / 下载 / 导入
-  const progressStageStyle =
-    progress?.stage === 'searching'
-      ? { border: 'border-l-4 border-l-slate-400', bg: 'bg-slate-50 dark:bg-slate-900', bar: 'bg-slate-500 dark:bg-slate-400', tag: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300', tagLabel: '搜索' }
-      : progress?.stage === 'downloading'
-        ? { border: 'border-l-4 border-l-blue-500', bg: 'bg-blue-50/50 dark:bg-blue-950/30', bar: 'bg-blue-500 dark:bg-blue-500', tag: 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300', tagLabel: '下载' }
-        : progress?.stage === 'importing'
-          ? { border: 'border-l-4 border-l-emerald-500', bg: 'bg-emerald-50/50 dark:bg-emerald-950/30', bar: 'bg-emerald-500 dark:bg-emerald-500', tag: 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300', tagLabel: '导入' }
-          : { border: '', bg: 'bg-slate-50 dark:bg-slate-900', bar: 'bg-indigo-500 dark:bg-indigo-600', tag: '', tagLabel: '' }
-
-  const inputClass =
-    'w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/25 focus:border-violet-400 dark:focus:ring-violet-400/20 dark:focus:border-violet-500 transition-shadow'
-  const selectClass = inputClass
   const progressCurrent = progress?.current ?? 0
   const progressTotal = progress?.total ?? 0
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div
-        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl shadow-slate-900/10 dark:shadow-black/30 border border-slate-200/80 dark:border-slate-700/80 overflow-hidden"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-      >
-        <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-violet-50/80 to-fuchsia-50/60 dark:from-violet-950/30 dark:to-fuchsia-950/20">
-          <h3 id={titleId} className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/15 dark:bg-violet-400/20 text-violet-600 dark:text-violet-400 shadow-sm">
-              <ImagePlus size={20} aria-hidden />
-            </span>
-            搜索图片导入
-          </h3>
-          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors" aria-label="关闭图片搜索导入弹窗">
-            <X size={18} aria-hidden />
-          </button>
+    <WorkflowDialog
+      open
+      onOpenChange={(open) => { if (!open) onClose() }}
+      eyebrow="素材导入"
+      title="搜索图片导入"
+      description="按关键词查找图片，直接导入当前素材空间。"
+      icon={<ImagePlus size={20} />}
+      size="md"
+      className="import-dialog import-dialog--images"
+      busy={loading}
+      onSubmit={handleSubmit}
+      footer={(
+        <>
+          <span className="workflow-footer-summary">最多导入 {Math.min(20, Math.max(1, quantity))} 张图片</span>
+          <div className="workflow-footer-actions">
+            <button type="button" disabled={loading} onClick={onClose} aria-label={result ? '关闭图片搜索导入弹窗' : '取消图片搜索导入'} className="workflow-button">{result ? '关闭' : '取消'}</button>
+            <button type="submit" disabled={loading} aria-describedby={error ? errorId : progress ? progressId : result ? resultId : undefined} aria-label={loading ? '正在导入图片搜索结果' : '开始导入图片搜索结果'} className="workflow-button workflow-button-primary">
+              {loading ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Search size={15} aria-hidden />}{loading ? '正在处理…' : '搜索并导入'}
+            </button>
+          </div>
+        </>
+      )}
+    >
+      <fieldset className="import-form" disabled={loading}>
+        <div>
+          <label htmlFor={`${modalDomId}-query`} className="workflow-label">搜索关键词 <span className="import-required">*</span></label>
+          <input data-autofocus id={`${modalDomId}-query`} name="query" type="text" required value={query} onChange={(e) => setQuery(e.target.value)} placeholder="例如：山间日出、建筑细节、猫" className="workflow-field" />
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          <p id={descriptionId} className="sr-only">
-            可按关键词、渠道、数量和随机性搜索图片并导入当前知识库。
-          </p>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">搜索关键词 <span className="text-red-500">*</span></label>
-            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="例如：猫、风景" className={inputClass} />
+        <fieldset className="import-option-group">
+          <legend className="workflow-label">图片来源</legend>
+          <div className="import-segmented import-source-options">
+            {([{ value: 'pixabay', label: 'Pixabay' }, { value: 'google_images', label: 'Google 图片' }, { value: 'internet_archive', label: 'Internet Archive' }] as const).map((item) => (
+              <label key={item.value} className={cn('import-segment', source === item.value && 'is-selected')}>
+                <input type="radio" name="image-source" value={item.value} checked={source === item.value} onChange={() => setSource(item.value)} className="sr-only" />{item.label}
+              </label>
+            ))}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">渠道</label>
-            <select value={source} onChange={(e) => setSource(e.target.value as typeof source)} className={selectClass}>
-              <option value="google_images">Google 图片 (SerpAPI)</option>
-              <option value="pixabay">Pixabay</option>
-              <option value="internet_archive">Internet Archive</option>
-            </select>
-          </div>
-          {source === 'pixabay' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Pixabay 图片类型</label>
-                <select value={pixabayImageType} onChange={(e) => setPixabayImageType(e.target.value)} className={selectClass}>
-                  <option value="all">全部</option>
-                  <option value="photo">照片</option>
-                  <option value="illustration">插画</option>
-                  <option value="vector">矢量</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Pixabay 排序</label>
-                <select value={pixabayOrder} onChange={(e) => setPixabayOrder(e.target.value)} className={selectClass}>
-                  <option value="popular">最受欢迎</option>
-                  <option value="latest">最新</option>
-                </select>
-              </div>
-            </>
-          )}
-          {source === 'internet_archive' && (
+        </fieldset>
+        {source === 'pixabay' && (
+          <div className="import-field-grid">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Archive 排序</label>
-              <select value={archiveSort} onChange={(e) => setArchiveSort(e.target.value)} className={selectClass}>
-                <option value="relevance">相关度</option>
-                <option value="popular">最受欢迎</option>
-                <option value="newest">最新</option>
-              </select>
+              <label htmlFor={`${modalDomId}-type`} className="workflow-label">图片类型</label>
+              <select id={`${modalDomId}-type`} name="pixabay_image_type" value={pixabayImageType} onChange={(e) => setPixabayImageType(e.target.value)} className="workflow-field"><option value="all">全部类型</option><option value="photo">照片</option><option value="illustration">插画</option><option value="vector">矢量图</option></select>
             </div>
-          )}
+            <div>
+              <label htmlFor={`${modalDomId}-order`} className="workflow-label">排序方式</label>
+              <select id={`${modalDomId}-order`} name="pixabay_order" value={pixabayOrder} onChange={(e) => setPixabayOrder(e.target.value)} className="workflow-field"><option value="popular">最受欢迎</option><option value="latest">最新发布</option></select>
+            </div>
+          </div>
+        )}
+        {source === 'internet_archive' && (
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">数量 (1–20)</label>
-            <input type="number" min={1} max={20} value={quantity} onChange={(e) => setQuantity(Number(e.target.value) || 5)} className={inputClass} />
+            <label htmlFor={`${modalDomId}-sort`} className="workflow-label">排序方式</label>
+            <select id={`${modalDomId}-sort`} name="archive_sort" value={archiveSort} onChange={(e) => setArchiveSort(e.target.value)} className="workflow-field"><option value="relevance">相关度</option><option value="popular">最受欢迎</option><option value="newest">最新发布</option></select>
           </div>
-          <label className="flex items-center gap-2.5 cursor-pointer">
-            <input type="checkbox" checked={randomize} onChange={(e) => setRandomize(e.target.checked)} className="rounded border-slate-300 dark:border-slate-600 text-violet-600 focus:ring-violet-500/20" />
-            <span className="text-sm text-slate-700 dark:text-slate-200">增加随机性（同关键词多次搜索得到不同图片）</span>
-          </label>
-          {progress && (
-            <div
-              id={progressId}
-              className={cn('rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-2', progressStageStyle.border, progressStageStyle.bg)}
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-            >
-              <div className="flex items-center justify-between gap-2">
-                {progressStageStyle.tagLabel && (
-                  <span className={cn('inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium', progressStageStyle.tag)}>{progressStageStyle.tagLabel}</span>
-                )}
-                <span className="text-sm text-slate-600 dark:text-slate-300 flex-1 truncate">{stageLabel}</span>
-                {progressTotal > 0 && <span className="text-sm font-medium text-slate-500 dark:text-slate-400 tabular-nums">{progressCurrent} / {progressTotal}</span>}
-              </div>
-              {progressTotal > 0 && (
-                <div
-                  className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"
-                  role="progressbar"
-                  aria-label={stageLabel}
-                  aria-valuemin={0}
-                  aria-valuemax={progressTotal}
-                  aria-valuenow={progressCurrent}
-                >
-                  <div className={cn('h-full transition-all duration-300', progressStageStyle.bar)} style={{ width: `${Math.min(100, (progressCurrent / progressTotal) * 100)}%` }} />
-                </div>
-              )}
-              {progress.message && <p className="text-xs text-slate-500 dark:text-slate-400 truncate" title={progress.message}>{progress.message}</p>}
-            </div>
-          )}
-          {error && <p id={errorId} className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-xl" role="alert">{error}</p>}
-          {result && <p id={resultId} className="text-sm text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/50 px-3 py-2 rounded-xl" role="status">{result.message}</p>}
-          <div className="flex justify-end gap-3 pt-1">
-            <button type="button" onClick={onClose} aria-label={result ? '关闭图片搜索导入弹窗' : '取消图片搜索导入'} className="px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors">
-              {result ? '关闭' : '取消'}
-            </button>
-            <button type="submit" disabled={loading} aria-describedby={error ? errorId : progress ? progressId : result ? resultId : undefined} aria-label={loading ? '正在导入图片搜索结果' : '开始导入图片搜索结果'} className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-violet-500/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2 transition-all">
-              {loading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : null}
-              {loading ? (progress ? '处理中…' : '连接中…') : '开始导入'}
-            </button>
+        )}
+        <div className="import-quantity-row">
+          <div>
+            <label htmlFor={`${modalDomId}-quantity`} className="workflow-label">导入数量</label>
+            <input id={`${modalDomId}-quantity`} name="quantity" type="number" min={1} max={20} value={quantity} onChange={(e) => setQuantity(Number(e.target.value) || 5)} className="workflow-field" aria-describedby={`${modalDomId}-quantity-help`} />
+            <p id={`${modalDomId}-quantity-help`} className="workflow-help">1–20 张</p>
           </div>
-        </form>
-      </div>
-    </div>
+          <label className="import-check-row import-randomize"><input name="randomize" type="checkbox" checked={randomize} onChange={(e) => setRandomize(e.target.checked)} /><span>增加结果随机性<small>相同关键词也能发现不同图片</small></span></label>
+        </div>
+      </fieldset>
+      {progress && (
+        <div id={progressId} className="import-progress" role="status" aria-live="polite" aria-atomic="true">
+          <div className="import-progress-heading"><Loader2 size={15} className="animate-spin" aria-hidden /><strong>{stageLabel}</strong>{progressTotal > 0 && <span>{progressCurrent} / {progressTotal}</span>}</div>
+          {progressTotal > 0 && <div className="import-progress-track" role="progressbar" aria-label={stageLabel} aria-valuemin={0} aria-valuemax={progressTotal} aria-valuenow={progressCurrent}><div style={{ width: `${Math.min(100, (progressCurrent / progressTotal) * 100)}%` }} /></div>}
+          {progress.message && <p className="workflow-help import-wrap">{progress.message}</p>}
+        </div>
+      )}
+      {error && <p id={errorId} className="import-error" role="alert"><AlertCircle size={16} aria-hidden />{error}</p>}
+      {result && <p id={resultId} className="workflow-note" role="status">{result.message}</p>}
+    </WorkflowDialog>
   )
 }
 
@@ -2946,6 +2683,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
       setShowCreateModal(false)
     } catch (error) {
       console.error('创建知识库失败:', error)
+      throw error
     }
   }
 
@@ -3563,74 +3301,14 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
 
     return (
       <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative">
-        {/* Header with Breadcrumb */}
-        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex items-center gap-3 sm:gap-4">
-          <button
-            type="button"
-            onClick={() => returnToKnowledgeList()}
-            title="返回知识库列表"
-            aria-label="返回知识库列表"
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full text-slate-500 dark:text-slate-300 transition-colors"
-          >
-            <ArrowLeft size={20} aria-hidden />
-          </button>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mb-1">
-              <button
-                type="button"
-                className="rounded-sm transition-colors hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
-                onClick={() => returnToKnowledgeList()}
-                aria-label="返回知识库列表"
-              >
-                知识库
-              </button>
-              <ChevronRight size={12} aria-hidden />
-              <span>详情</span>
-            </div>
-            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-3">
-              <span className="truncate" title={activeKb.name}>{activeKb.name}</span>
-              <span
-                className="shrink-0 text-xs font-normal px-2 py-0.5 bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-full border border-green-200 dark:border-green-800"
-                aria-label="知识库状态：可用"
-              >
-                可用
-              </span>
-            </h2>
-          </div>
-          <DropdownMenu.Root key={activeKb.id}>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                aria-label={`更多操作：${activeKb.name}`}
-                className="ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100"
-              >
-                <MoreVertical size={18} aria-hidden />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content
-                align="end"
-                sideOffset={6}
-                collisionPadding={12}
-                className="z-50 min-w-[160px] rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900"
-              >
-                <DropdownMenu.Item
-                  onSelect={() => setEditKb({ id: activeKb.id, name: activeKb.name, description: activeKb.description ?? '' })}
-                  className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-slate-700 outline-none focus:bg-slate-100 dark:text-slate-200 dark:focus:bg-slate-800"
-                >
-                  <Pencil size={14} aria-hidden />编辑知识库
-                </DropdownMenu.Item>
-                <DropdownMenu.Separator className="mx-2 my-1 h-px bg-slate-100 dark:bg-slate-800" />
-                <DropdownMenu.Item
-                  onSelect={() => void handleDeleteKb(activeKb.id)}
-                  className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-red-600 outline-none focus:bg-red-50 dark:text-red-400 dark:focus:bg-red-950/40"
-                >
-                  <Trash2 size={14} aria-hidden />删除知识库
-                </DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
-        </div>
+        <KnowledgeDetailHeader
+          key={activeKb.id}
+          name={activeKb.name}
+          description={activeKb.description}
+          onBack={returnToKnowledgeList}
+          onEdit={() => setEditKb({ id: activeKb.id, name: activeKb.name, description: activeKb.description ?? '' })}
+          onDelete={() => void handleDeleteKb(activeKb.id)}
+        />
 
         <div className="flex-1 flex overflow-hidden">
           {/* Main Area */}

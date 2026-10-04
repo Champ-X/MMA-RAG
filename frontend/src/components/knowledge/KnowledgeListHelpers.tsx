@@ -1,6 +1,8 @@
 import { useId, useState, useEffect } from 'react'
-import { X, CheckCircle, Loader2, AlertCircle, Image as ImageIcon, FileText, FileCode, Presentation, FileSpreadsheet, Database, Sparkles, Type, Pencil, Check, Music, Video, Play } from 'lucide-react'
+import { X, CheckCircle, Loader2, AlertCircle, Image as ImageIcon, FileText, FileCode, Presentation, FileSpreadsheet, FolderPlus, Type, Pencil, Check, Music, Video, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { WorkflowDialog } from '@/components/ui/WorkflowDialog'
+import './knowledgeCreateDialog.css'
 
 type StatusBadgeProps = {
   status: string
@@ -312,124 +314,76 @@ export function FileHero({ file }: { file: KnowledgeFileView }) {
 }
 
 // 创建素材空间模态框
-export function CreateKbModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, desc: string) => void }) {
+export function CreateKbModal({ onClose, onCreate }: {
+  onClose: () => void
+  onCreate: (name: string, desc: string) => void | Promise<void>
+}) {
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
-  const dialogId = useId().replace(/:/g, '')
-  const titleId = `${dialogId}-create-kb-title`
-  const descriptionId = `${dialogId}-create-kb-description`
-  const nameInputId = `${dialogId}-create-kb-name`
-  const descInputId = `${dialogId}-create-kb-description-input`
-  const nameHintId = `${dialogId}-create-kb-name-hint`
-  const formStatusId = `${dialogId}-create-kb-status`
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const dialogId = useId()
+  const nameInputId = `${dialogId}-name`
+  const descInputId = `${dialogId}-description`
+  const nameHintId = `${dialogId}-name-hint`
+  const errorId = `${dialogId}-error`
   const isNameValid = name.trim().length > 0
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" aria-hidden="false">
-      <div
-        className="bg-white dark:bg-slate-950 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200/80 dark:border-slate-800 animate-in zoom-in-95 duration-200"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-      >
-        {/* Header with gradient background */}
-        <div className="relative px-6 py-5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-indigo-50 via-white to-fuchsia-50 dark:from-indigo-950/30 dark:via-slate-950 dark:to-fuchsia-950/30 overflow-hidden">
-          <div className="absolute -top-8 -right-8 h-24 w-24 rounded-full bg-indigo-200/30 blur-2xl dark:bg-indigo-500/20" />
-          <div className="absolute -bottom-8 -left-8 h-24 w-24 rounded-full bg-fuchsia-200/30 blur-2xl dark:bg-fuchsia-500/20" />
-          <div className="relative flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-lg shadow-indigo-500/30">
-                <Database size={20} strokeWidth={2.5} aria-hidden />
-              </div>
-              <div>
-                <h3 id={titleId} className="text-lg font-bold text-slate-800 dark:text-slate-100">新建素材空间</h3>
-                <p id={descriptionId} className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">创建独立空间，开始汇集与检索多模态素材</p>
-              </div>
-            </div>
-            <button 
-              type="button"
-              onClick={onClose} 
-              aria-label="关闭新建素材空间弹窗"
-              className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-800/60 transition-colors"
-            >
-              <X size={20} aria-hidden />
-            </button>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="p-6 space-y-5 bg-white dark:bg-slate-950">
-          <span id={formStatusId} className="sr-only" role="status" aria-live="polite">
-            {isNameValid ? `将创建素材空间：${name.trim()}` : '请输入素材空间名称后再创建'}
-          </span>
-          <div className="space-y-2">
-            <label htmlFor={nameInputId} className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
-              <Type size={16} className="text-indigo-500" aria-hidden />
-              名称 <span className="text-red-500" aria-hidden>*</span>
-            </label>
-            <div className="relative">
-              <input
-                id={nameInputId}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full border-2 border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 dark:focus:border-indigo-500 outline-none transition-all shadow-sm hover:border-slate-300 dark:hover:border-slate-600"
-                placeholder="例如：产品资料"
-                autoFocus
-                required
-                aria-required="true"
-                aria-describedby={`${nameHintId} ${formStatusId}`}
-              />
-            </div>
-            <p id={nameHintId} className="text-xs text-slate-500 dark:text-slate-400">
-              必填，创建时会自动去除首尾空格。
-            </p>
-          </div>
-          <div className="space-y-2">
-            <label htmlFor={descInputId} className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
-              <FileText size={16} className="text-indigo-500" aria-hidden />
-              描述
-            </label>
-            <div className="relative">
-              <textarea
-                id={descInputId}
-                value={desc}
-                onChange={(e) => setDesc(e.target.value)}
-                className="w-full border-2 border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 h-28 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 dark:focus:border-indigo-500 outline-none resize-none transition-all shadow-sm hover:border-slate-300 dark:hover:border-slate-600"
-                placeholder="这个空间会包含哪些素材？"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-4 bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="取消新建素材空间"
-            className="px-5 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors"
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (name.trim()) onCreate(name.trim(), desc.trim())
-            }}
-            disabled={!isNameValid}
-            aria-label={isNameValid ? `创建素材空间：${name.trim()}` : '创建素材空间：请先输入名称'}
-            aria-describedby={formStatusId}
-            className={cn(
-              'px-5 py-2.5 bg-gradient-to-tr from-indigo-600 to-fuchsia-600 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/30 hover:from-indigo-500 hover:to-fuchsia-500 hover:shadow-xl hover:shadow-indigo-500/40 transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center gap-2',
-            )}
-          >
-            <Sparkles size={16} aria-hidden />
-            创建空间
+    <WorkflowDialog
+      open
+      onOpenChange={(open) => { if (!open) onClose() }}
+      eyebrow="素材空间"
+      title="新建素材空间"
+      description="把相关素材放在一起，方便整理、检索与对话。"
+      icon={<FolderPlus />}
+      size="sm"
+      busy={creating}
+      className="knowledge-create-dialog"
+      onSubmit={async (event) => {
+        event.preventDefault()
+        if (!isNameValid || creating) return
+        setCreating(true)
+        setError(null)
+        try {
+          await onCreate(name.trim(), desc.trim())
+        } catch (cause) {
+          setError(cause instanceof Error ? cause.message : '创建失败，请稍后重试。')
+        } finally {
+          setCreating(false)
+        }
+      }}
+      footer={<>
+        <span className="workflow-footer-summary">创建后即可添加素材</span>
+        <div className="workflow-footer-actions">
+          <button type="button" onClick={onClose} disabled={creating} className="workflow-button" aria-label="取消新建素材空间">取消</button>
+          <button type="submit" disabled={!isNameValid || creating} className="workflow-button-primary">
+            {creating ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <FolderPlus size={15} aria-hidden />}
+            {creating ? '创建中…' : '创建空间'}
           </button>
         </div>
+      </>}
+    >
+      <div className="knowledge-create-types" aria-label="可添加的素材类型">
+        <span><FileText aria-hidden />文档</span>
+        <span><ImageIcon aria-hidden />图片</span>
+        <span><Music aria-hidden />音频</span>
+        <span><Video aria-hidden />视频</span>
       </div>
-    </div>
+      <div className="knowledge-create-field">
+        <label htmlFor={nameInputId} className="workflow-label">空间名称 <span className="knowledge-create-required">必填</span></label>
+        <input id={nameInputId} value={name} onChange={(event) => { setName(event.target.value); setError(null) }}
+          className="workflow-field" placeholder="例如：产品资料、旅行见闻" data-autofocus required disabled={creating}
+          aria-describedby={error ? `${nameHintId} ${errorId}` : nameHintId} />
+        <p id={nameHintId} className="workflow-help">用主题或用途命名，之后更容易找到。</p>
+      </div>
+      <div className="knowledge-create-field">
+        <label htmlFor={descInputId} className="workflow-label">空间描述 <span className="knowledge-create-optional">选填</span></label>
+        <textarea id={descInputId} value={desc} onChange={(event) => setDesc(event.target.value)}
+          className="workflow-field" placeholder="简要介绍这里的素材内容或使用场景…" rows={3} disabled={creating} />
+      </div>
+      {error && <p id={errorId} role="alert" className="knowledge-create-error">{error}</p>}
+    </WorkflowDialog>
   )
 }
 

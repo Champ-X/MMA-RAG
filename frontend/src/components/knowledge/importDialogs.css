@@ -1,0 +1,177 @@
+/* Each source gets a material cue in the shared paper-stack header. */
+.import-dialog--images { --wf-sheet-back: #d8ece4; --wf-sheet: #e2dcf4; }
+.import-dialog--folder { --wf-sheet-back: #efe3ce; --wf-sheet: #e4dbf3; }
+.import-dialog--news { --wf-sheet-back: #d9e6f0; --wf-sheet: #e0dcf0; }
+.dark .import-dialog--images { --wf-sheet-back: #354e43; --wf-sheet: #514463; }
+.dark .import-dialog--folder { --wf-sheet-back: #554630; --wf-sheet: #504261; }
+.dark .import-dialog--news { --wf-sheet-back: #354859; --wf-sheet: #4c4665; }
+.import-dialog .import-form {
+  display: grid;
+  min-width: 0;
+  gap: 24px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.import-dialog .import-option-group { min-width: 0; padding: 0; margin: 0; border: 0; }
+.import-dialog .import-option-group > legend { padding: 0; }
+.import-dialog .import-optional { color: var(--wf-muted); font-size: 11px; font-weight: 400; margin-left: 5px; }
+.import-dialog .import-required { color: #b34f5c; font-weight: 500; }
+.import-dialog .workflow-help { line-height: 1.6; }
+.import-dialog .import-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.import-dialog .import-mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.import-dialog .import-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 78px;
+  padding: 14px;
+  border: 1px solid var(--wf-line);
+  border-radius: 13px;
+  background: var(--wf-surface);
+  color: var(--wf-muted);
+  cursor: pointer;
+  transition: border-color 140ms, background 140ms;
+}
+.import-dialog .import-mode-option:hover { border-color: var(--wf-focus); background: var(--wf-subtle); }
+.import-dialog .import-mode-option.is-selected { border-color: var(--wf-accent); background: var(--wf-tint); color: var(--wf-accent); box-shadow: inset 0 0 0 1px var(--wf-accent); }
+.import-dialog .import-mode-option > svg { flex: 0 0 auto; width: 19px; height: 19px; padding: 8px; box-sizing: content-box; border: 1px solid var(--wf-line); border-radius: 9px; background: var(--wf-surface); stroke-width: 1.6; }
+.import-dialog .import-mode-option > span:not(.import-radio-mark) { flex: 1; min-width: 0; }
+.import-dialog .import-mode-option strong { display: block; color: var(--wf-ink); font-size: 13px; font-weight: 600; }
+.import-dialog .import-mode-option small { display: block; color: var(--wf-muted); font-size: 11px; line-height: 1.45; margin-top: 3px; }
+.import-dialog .import-radio-mark { width: 13px; height: 13px; border: 1px solid var(--wf-line); border-radius: 50%; flex: 0 0 auto; }
+.import-dialog .is-selected .import-radio-mark { border: 4px solid var(--wf-accent); background: var(--wf-surface); }
+.import-dialog .import-mode-option:focus-within,
+.import-dialog .import-segment:focus-within { outline: 2px solid var(--wf-accent); outline-offset: 2px; }
+.import-dialog .import-segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--wf-line);
+  border-radius: 11px;
+  background: var(--wf-subtle);
+}
+.import-dialog .import-segment {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--wf-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: center;
+  cursor: pointer;
+  transition: color 140ms, background 140ms;
+}
+.import-dialog .import-segment:hover { color: var(--wf-ink); }
+.import-dialog .import-segment.is-selected { color: var(--wf-accent); background: var(--wf-surface); border-color: var(--wf-line); box-shadow: 0 2px 5px var(--wf-shadow); font-weight: 600; }
+.import-dialog .import-source-options { gap: 2px; }
+.import-dialog .import-source-options .import-segment { padding-inline: 6px; font-size: 12px; }
+.import-dialog .import-link-preview { margin-top: 12px; padding: 13px 15px; border-left: 2px solid var(--wf-accent); border-radius: 0 8px 8px 0; background: var(--wf-subtle); }
+.import-dialog .import-preview-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.import-dialog .import-preview-heading .workflow-help { margin: 0; }
+.import-dialog .import-tag { padding: 2px 7px; border-radius: 5px; background: var(--wf-tint); color: var(--wf-accent); font-size: 11px; font-weight: 600; }
+.import-dialog .import-preview-title { margin: 9px 0 4px; font-size: 14px; font-weight: 600; color: var(--wf-ink); overflow-wrap: anywhere; }
+.import-dialog .import-preview-meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--wf-muted); font-size: 11px; overflow-wrap: anywhere; }
+.import-dialog .import-inline-action { color: var(--wf-accent); background: none; border: 0; font-size: 12px; font-weight: 600; white-space: nowrap; padding: 3px 0; }
+.import-dialog .import-inline-action:hover { text-decoration: underline; text-underline-offset: 3px; }
+.import-dialog .import-inline-action:focus-visible { outline: 2px solid var(--wf-accent); outline-offset: 3px; border-radius: 2px; }
+.import-dialog .import-preview-heading .import-inline-action { margin-left: auto; }
+.import-dialog .import-inline-status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--wf-muted); }
+.import-dialog .import-warning { font-size: 12px; line-height: 1.6; color: #9b6a20; overflow-wrap: anywhere; margin: 7px 0 0; }
+.import-dialog .import-disclosure { padding: 0 15px; border: 1px solid var(--wf-line); border-radius: 12px; background: var(--wf-subtle); }
+.import-dialog .import-disclosure-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 46px;
+  padding: 13px 0;
+  background: none;
+  border: 0;
+  list-style: none;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--wf-ink);
+  cursor: pointer;
+}
+.import-dialog .import-disclosure-trigger::-webkit-details-marker { display: none; }
+.import-dialog .import-disclosure-trigger small { display: block; margin-top: 3px; font-size: 11px; font-weight: 400; color: var(--wf-muted); }
+.import-dialog .import-disclosure-trigger > svg { color: var(--wf-muted); transition: transform 160ms; flex: 0 0 auto; }
+.import-dialog details[open] > .import-disclosure-trigger > svg { transform: rotate(180deg); }
+.import-dialog .import-disclosure-trigger:focus-visible { outline: 2px solid var(--wf-accent); outline-offset: 3px; border-radius: 4px; }
+.import-dialog .import-disclosure-body { display: grid; gap: 10px; padding: 0 0 15px; }
+.import-dialog .import-disclosure-body.import-form { gap: 15px; }
+.import-dialog .import-check-row { display: flex; align-items: center; gap: 10px; min-height: 30px; color: var(--wf-ink); font-size: 13px; cursor: pointer; line-height: 1.6; }
+.import-dialog .import-check-row input { width: 15px; height: 15px; margin: 0; flex: 0 0 auto; accent-color: var(--wf-accent); cursor: pointer; }
+.import-dialog .import-check-row:has(input:disabled) { opacity: .5; cursor: default; }
+.import-dialog .import-check-row input:focus-visible { outline: 2px solid var(--wf-accent); outline-offset: 3px; }
+.import-dialog .import-note { display: flex; gap: 10px; align-items: flex-start; }
+.import-dialog .import-note > svg { flex: 0 0 auto; margin-top: 1px; color: var(--wf-accent); }
+.import-dialog .import-folder-picker { display: flex; align-items: center; width: 100%; gap: 13px; min-height: 126px; padding: 22px; border: 1px dashed var(--wf-focus); border-radius: 13px; background: var(--wf-subtle); color: var(--wf-ink); text-align: left; transition: border-color 140ms, background 140ms; }
+.import-dialog .import-folder-picker:hover { border-color: var(--wf-accent); background: var(--wf-tint); }
+.import-dialog .import-folder-picker.has-selection { border-style: solid; border-color: var(--wf-accent); background: var(--wf-tint); }
+.import-dialog .import-folder-picker:focus-visible { outline: 2px solid var(--wf-accent); outline-offset: 3px; }
+.import-dialog .import-folder-symbol { display: flex; align-items: center; justify-content: center; width: 52px; height: 58px; border: 1px solid var(--wf-line); border-radius: 11px; background: var(--wf-surface); color: var(--wf-accent); flex: 0 0 auto; }
+.import-dialog .import-folder-picker > span:not(.import-folder-symbol) { flex: 1; min-width: 0; }
+.import-dialog .import-folder-picker strong { font-size: 14px; font-weight: 600; display: block; }
+.import-dialog .import-folder-picker small { display: block; margin-top: 5px; font-size: 12px; color: var(--wf-muted); }
+.import-dialog .import-folder-picker > svg { flex: 0 0 auto; color: var(--wf-muted); }
+.import-dialog .import-source-divider { display: flex; align-items: center; gap: 14px; color: var(--wf-muted); font-size: 11px; margin-block: -5px; }
+.import-dialog .import-source-divider::before,
+.import-dialog .import-source-divider::after { content: ''; height: 1px; background: var(--wf-line); flex: 1; }
+.import-dialog .import-selection-status { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-top: 9px; color: var(--wf-muted); font-size: 12px; line-height: 1.5; }
+.import-dialog .import-quantity-row { display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 23px; }
+.import-dialog .import-randomize small { display: block; color: var(--wf-muted); font-size: 11px; margin-top: 2px; }
+.import-dialog .import-progress { margin-top: 18px; padding: 14px; border: 1px solid var(--wf-line); border-radius: 10px; background: var(--wf-subtle); }
+.import-dialog .import-progress-heading { display: flex; align-items: center; gap: 8px; color: var(--wf-accent); font-size: 12px; }
+.import-dialog .import-progress-heading strong { flex: 1; font-weight: 600; }
+.import-dialog .import-progress-heading > span { color: var(--wf-muted); font-variant-numeric: tabular-nums; }
+.import-dialog .import-progress-track { height: 5px; border-radius: 8px; background: var(--wf-line); overflow: hidden; margin-top: 12px; }
+.import-dialog .import-progress-track > div { height: 100%; background: var(--wf-accent); transition: width 200ms; }
+.import-dialog .import-error { display: flex; align-items: flex-start; gap: 8px; margin: 16px 0 0; padding: 11px 13px; border-radius: 9px; background: #fff0f0; color: #b1424f; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.import-dialog .import-error > svg { flex: 0 0 auto; margin-top: 2px; }
+.import-dialog .import-wrap { overflow-wrap: anywhere; }
+.import-dialog .import-form + .workflow-note { margin-top: 18px; }
+.dark .import-dialog .import-error { background: #361f2b; color: #f2a8ae; }
+.dark .import-dialog .import-warning { color: #e6bb79; }
+.import-dialog fieldset:disabled .import-mode-option,
+.import-dialog fieldset:disabled .import-segment,
+.import-dialog fieldset:disabled .import-check-row { cursor: default; opacity: .65; }
+@media (max-width: 540px) {
+  .import-dialog .import-form { gap: 17px; }
+  .import-dialog .import-field-grid { gap: 12px; }
+  .import-dialog .import-mode-option { padding: 10px; gap: 7px; }
+  .import-dialog .import-mode-option > svg { width: 16px; height: 16px; padding: 5px; }
+  .import-dialog .import-mode-option small { font-size: 10px; }
+  .import-dialog .import-radio-mark { display: none; }
+  .import-dialog .import-segment { min-height: 42px; }
+  .import-dialog .import-check-row { min-height: 38px; }
+  .import-dialog .import-quantity-row { grid-template-columns: 95px 1fr; gap: 17px; }
+  .workflow-dialog.import-dialog .workflow-field { font-size: 16px; }
+  .import-dialog .import-folder-picker { padding: 14px; }
+  .import-dialog .import-source-options .import-segment { font-size: 11px; padding-inline: 4px; }
+}
+@media (max-width: 360px) {
+  .import-dialog .import-mode-grid { grid-template-columns: 1fr; }
+  .import-dialog .import-field-grid { grid-template-columns: 1fr; }
+  .import-dialog .import-mode-option small { font-size: 11px; }
+  .import-dialog .import-radio-mark { display: block; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .import-dialog .import-mode-option,
+  .import-dialog .import-segment,
+  .import-dialog .import-folder-picker,
+  .import-dialog .import-disclosure-trigger > svg,
+  .import-dialog .import-progress-track > div { transition: none; }
+}

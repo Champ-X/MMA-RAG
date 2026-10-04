@@ -1,121 +1,23 @@
-.manual-input-md-editor .md-editor {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  border-radius: 24px;
-  overflow: hidden;
-}
-
-.manual-input-md-editor .md-editor-toolbar-wrapper {
-  border-bottom: 1px solid rgba(226, 232, 240, 0.95);
-  background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.08), transparent 24%),
-    linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.98));
-  padding: 10px 12px;
-  border-top-left-radius: 24px;
-  border-top-right-radius: 24px;
-}
-
-.manual-input-md-editor .md-editor-toolbar {
-  gap: 8px;
-}
-
-.manual-input-md-editor .md-editor-toolbar-item {
-  border-radius: 12px;
-  transition:
-    transform 0.18s ease,
-    background-color 0.18s ease,
-    box-shadow 0.18s ease,
-    color 0.18s ease;
-}
-
-.manual-input-md-editor .md-editor-toolbar-item:hover {
-  background: rgba(238, 242, 255, 0.95);
-  box-shadow: inset 0 0 0 1px rgba(165, 180, 252, 0.32);
-  transform: translateY(-1px);
-}
-
-.manual-input-md-editor .md-editor-toolbar-item.active {
-  background: linear-gradient(180deg, rgba(224, 231, 255, 0.95), rgba(238, 242, 255, 0.96));
-  color: rgb(67, 56, 202);
-  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.22);
-}
-
-.manual-input-md-editor .md-editor-content {
-  background:
-    linear-gradient(90deg, rgba(248, 250, 252, 0.72), rgba(255, 255, 255, 0) 12%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94));
-  border-bottom-left-radius: 24px;
-  border-bottom-right-radius: 24px;
-}
-
-.manual-input-md-editor .md-editor-input-wrapper,
-.manual-input-md-editor .md-editor-preview-wrapper,
-.manual-input-md-editor .md-editor-catalog {
-  padding-top: 8px;
-}
-
-.manual-input-md-editor .md-editor-input-wrapper {
-  border-right: 1px solid rgba(226, 232, 240, 0.92);
-}
-
-.manual-input-md-editor .cm-editor {
-  background: transparent;
-}
-
-.manual-input-md-editor .cm-scroller,
-.manual-input-md-editor .md-editor-preview {
-  font-size: 15px;
-  line-height: 1.8;
-}
-
-.manual-input-md-editor .md-editor-preview {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(248, 250, 252, 0.92));
-}
-
-.manual-input-md-editor .md-editor-footer {
-  border-top: 1px solid rgba(226, 232, 240, 0.95);
-  background: rgba(248, 250, 252, 0.92);
-  padding: 10px 12px;
-  border-bottom-left-radius: 24px;
-  border-bottom-right-radius: 24px;
-}
-
-.dark .manual-input-md-editor .md-editor-toolbar-wrapper {
-  border-bottom-color: rgba(51, 65, 85, 0.95);
-  background:
-    radial-gradient(circle at top right, rgba(129, 140, 248, 0.13), transparent 24%),
-    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
-}
-
-.dark .manual-input-md-editor .md-editor-toolbar-item:hover {
-  background: rgba(49, 46, 129, 0.24);
-  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.22);
-}
-
-.dark .manual-input-md-editor .md-editor-toolbar-item.active {
-  background: linear-gradient(180deg, rgba(49, 46, 129, 0.42), rgba(30, 41, 59, 0.92));
-  color: rgb(196, 181, 253);
-  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.26);
-}
-
-.dark .manual-input-md-editor .md-editor-content {
-  background:
-    linear-gradient(90deg, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.92) 14%, rgba(2, 6, 23, 0.92)),
-    linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(15, 23, 42, 0.96));
-}
-
-.dark .manual-input-md-editor .md-editor-input-wrapper {
-  border-right-color: rgba(51, 65, 85, 0.9);
-}
-
-.dark .manual-input-md-editor .md-editor-preview {
-  background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.96));
-}
-
-.dark .manual-input-md-editor .md-editor-footer {
-  border-top-color: rgba(51, 65, 85, 0.95);
-  background: rgba(15, 23, 42, 0.92);
+.manual-input-dialog .workflow-dialog-body { display: flex; flex-direction: column; gap: 18px; }
+.manual-input-name { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0 18px; flex-shrink: 0; }
+.manual-input-name .workflow-label { margin: 0; }
+.manual-input-name .workflow-help { grid-column: 2; }
+.manual-input-name .workflow-field { max-width: 520px; }
+.manual-input-md-editor { min-height: 300px; flex-shrink: 0; overflow: hidden; border: 1px solid var(--wf-line); border-radius: 14px; box-shadow: 0 3px 12px var(--wf-shadow); }
+.manual-input-md-editor .md-editor { height: clamp(300px, 48dvh, 580px); border: 0; border-radius: 0; background: var(--wf-surface); color: var(--wf-ink); box-shadow: none; }
+.manual-input-md-editor .md-editor-toolbar-wrapper { padding: 6px 10px; border-bottom: 1px solid var(--wf-line); background: var(--wf-subtle); }
+.manual-input-md-editor .md-editor-toolbar { gap: 4px; }
+.manual-input-md-editor .md-editor-toolbar-item { border-radius: 5px; color: var(--wf-muted); transition: background-color .15s, color .15s; }
+.manual-input-md-editor .md-editor-toolbar-item:hover, .manual-input-md-editor .md-editor-toolbar-item.active { background: var(--wf-tint); color: var(--wf-accent); }
+.manual-input-md-editor .md-editor-content, .manual-input-md-editor .md-editor-preview, .manual-input-md-editor .cm-editor { background: var(--wf-surface); }
+.manual-input-md-editor .md-editor-input-wrapper { border-right: 1px solid var(--wf-line); }
+.manual-input-md-editor .md-editor-input-wrapper, .manual-input-md-editor .md-editor-preview-wrapper, .manual-input-md-editor .md-editor-catalog { padding-top: 5px; }
+.manual-input-md-editor .cm-scroller, .manual-input-md-editor .md-editor-preview { font-size: 14px; line-height: 1.8; }
+.manual-input-md-editor .md-editor-footer { padding: 6px 10px; border-top: 1px solid var(--wf-line); background: var(--wf-subtle); color: var(--wf-muted); }
+.manual-input-error { padding: 10px 12px; border: 1px solid #ecc8cc; border-radius: 8px; background: #fff5f5; color: #a34450; font-size: 12px; }
+.dark .manual-input-error { border-color: #68404a; background: #34212a; color: #eda7af; }
+@media (max-width: 600px) {
+  .manual-input-name { display: block; }
+  .manual-input-name .workflow-label { margin-bottom: 9px; }
+  .manual-input-md-editor .md-editor-toolbar-wrapper { padding-inline: 4px; }
 }
