@@ -16,6 +16,10 @@ import {
   type Message,
 } from '@/store/useChatStore'
 import { fileScopeKey, formatScopedFileSize, useFileScopeOptions } from './useFileScopeOptions'
+import { buildFileMentionGroups, getFileMentionState, type FileMentionState } from './fileMentionGroups'
+import { FileScopeThumbnail, filePresentation } from './FileScopeThumbnail'
+import './fileMentionList.css'
+import './composerScopeFiles.css'
 import { ChatWelcome } from './ChatWelcome'
 
 const MAX_CHAT_ATTACHMENTS = 3
@@ -144,26 +148,6 @@ function buildCitationMapForMessage(
   return map
 }
 
-interface FileMentionState {
-  query: string
-  start: number
-  end: number
-}
-
-function getFileMentionState(value: string, caret: number | null | undefined): FileMentionState | null {
-  const safeCaret = typeof caret === 'number' ? caret : value.length
-  const beforeCaret = value.slice(0, safeCaret)
-  const match = beforeCaret.match(/(^|\s)@([^\s@]*)$/)
-  if (!match) return null
-  const triggerStart = safeCaret - match[2].length - 1
-  if (triggerStart < 0) return null
-  return {
-    query: match[2],
-    start: triggerStart,
-    end: safeCaret,
-  }
-}
-
 export function ChatInterface() {
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<
@@ -193,6 +177,7 @@ export function ChatInterface() {
   const prevIsStreamingRef = useRef(false)
   const mentionStateRef = useRef<FileMentionState | null>(null)
   mentionStateRef.current = mentionState
+  const mentionListRef = useRef<HTMLDivElement>(null)
   const mentionOptionRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   const {
@@ -215,9 +200,11 @@ export function ChatInterface() {
     knowledgeBases: scopeKnowledgeBases,
     filesByKb: scopeFilesByKb,
     loadingKbIds: scopeLoadingKbIds,
+    failedKbIds: scopeFailedKbIds,
     ensureAllKbFiles,
+    loadKbFiles: loadScopeKbFiles,
     hasLoadedFilesForKb,
-  } = useFileScopeOptions(Boolean(mentionState))
+  } = useFileScopeOptions(Boolean(mentionState) || selectedScopeFiles.length > 0)
 
   const activeSession = getActiveSession()
   const agentMode = normalizeAgentMode(activeSession?.agentMode)
@@ -342,6 +329,16 @@ export function ChatInterface() {
     void ensureAllKbFiles()
   }, [mentionState, ensureAllKbFiles])
 
+  // The file picker has its own catalog. Hydrate previews for its selections too,
+  // while keeping temporary media URLs out of persisted chat scope metadata.
+  useEffect(() => {
+    for (const kbId of new Set(selectedScopeFiles.map(file => file.kbId))) {
+      if (!hasLoadedFilesForKb(kbId) && !scopeFailedKbIds.includes(kbId)) {
+        void loadScopeKbFiles(kbId).catch(() => { /* Type icons remain available on failure. */ })
+      }
+    }
+  }, [selectedScopeFiles, hasLoadedFilesForKb, loadScopeKbFiles, scopeFailedKbIds])
+
   const selectedScopeKeySet = useMemo(
     () => new Set(selectedScopeFiles.map(file => fileScopeKey(file.kbId, file.fileId))),
     [selectedScopeFiles]
@@ -349,33 +346,15 @@ export function ChatInterface() {
 
   const mentionGroups = useMemo(() => {
     if (!mentionState) return []
-    const keyword = mentionState.query.trim().toLowerCase()
-    let renderedItems = 0
-    const maxItems = keyword ? 24 : 18
-
-    return scopeKnowledgeBases
-      .map(kb => {
-        const rawFiles = (scopeFilesByKb[kb.id] ?? []).filter(
-          file => !selectedScopeKeySet.has(fileScopeKey(kb.id, file.id))
-        )
-        const filteredFiles = !keyword
-          ? rawFiles
-          : rawFiles.filter(file => `${file.name} ${file.type}`.toLowerCase().includes(keyword))
-        const remaining = Math.max(maxItems - renderedItems, 0)
-        const limitedFiles = remaining > 0 ? filteredFiles.slice(0, Math.min(remaining, keyword ? 8 : 6)) : []
-        renderedItems += limitedFiles.length
-        return {
-          kbId: kb.id,
-          kbName: kb.name,
-          files: limitedFiles,
-          totalMatches: filteredFiles.length,
-          isLoading: scopeLoadingKbIds.includes(kb.id),
-          hasLoaded: hasLoadedFilesForKb(kb.id),
-        }
-      })
+    return buildFileMentionGroups(scopeKnowledgeBases, scopeFilesByKb, selectedScopeKeySet, mentionState.query)
+      .map(group => ({
+        ...group,
+        isLoading: scopeLoadingKbIds.includes(group.kbId),
+        hasLoaded: hasLoadedFilesForKb(group.kbId),
+        failed: scopeFailedKbIds.includes(group.kbId),
+      }))
       .filter(group => group.files.length > 0 || group.isLoading || !group.hasLoaded)
-      .slice(0, keyword ? 8 : 5)
-  }, [mentionState, scopeKnowledgeBases, scopeFilesByKb, scopeLoadingKbIds, selectedScopeKeySet, hasLoadedFilesForKb])
+  }, [mentionState, scopeKnowledgeBases, scopeFilesByKb, scopeLoadingKbIds, scopeFailedKbIds, selectedScopeKeySet, hasLoadedFilesForKb])
 
   const mentionOptions = useMemo(
     () =>
@@ -413,9 +392,17 @@ export function ChatInterface() {
   }, [mentionHighlightIndex, mentionOptions.length])
 
   useEffect(() => {
+    const list = mentionListRef.current
     const target = mentionOptionRefs.current[mentionHighlightIndex]
-    target?.scrollIntoView({ block: 'nearest' })
-  }, [mentionHighlightIndex])
+    if (!list || !target) return
+    if (mentionHighlightIndex === 0) { list.scrollTop = 0; return }
+    const viewport = list.getBoundingClientRect()
+    const option = target.getBoundingClientRect()
+    // Scroll only the candidates; never move the conversation or page behind them.
+    const headingSpace = 32
+    if (option.top < viewport.top + headingSpace) list.scrollTop += option.top - viewport.top - headingSpace
+    else if (option.bottom > viewport.bottom) list.scrollTop += option.bottom - viewport.bottom
+  }, [mentionHighlightIndex, mentionOptions])
 
   const syncMentionState = useCallback((nextValue: string, caret: number | null | undefined) => {
     const nextState = getFileMentionState(nextValue, caret)
@@ -756,25 +743,31 @@ export function ChatInterface() {
             {(selectedScopeFiles.length > 0 || attachments.length > 0) && (
               <div className="flex flex-col gap-3 border-b border-slate-100/90 bg-gradient-to-b from-slate-50/95 via-stone-50/70 to-white/40 px-4 py-3 dark:border-slate-700/60 dark:from-slate-950/40 dark:via-slate-900/40 dark:to-slate-900/10">
                 {selectedScopeFiles.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {selectedScopeFiles.map((file) => (
-                      <button
-                        key={`${file.kbId}::${file.fileId}`}
-                        type="button"
-                        title={`移除检索文件：${file.name}`}
-                        aria-label={`移除检索文件：${file.kbName ? `${file.kbName} / ${file.name}` : file.name}`}
-                        onClick={() => {
-                          setSelectedScopeFiles(prev =>
-                            prev.filter(item => !(item.kbId === file.kbId && item.fileId === file.fileId))
-                          )
-                        }}
-                        className="inline-flex max-w-full items-center gap-2 rounded-full border border-emerald-200/70 bg-white/90 px-3 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-50 dark:border-emerald-500/30 dark:bg-slate-950/70 dark:text-emerald-200"
-                      >
-                        <AtSign className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
-                        <span className="truncate">{file.kbName ? `${file.kbName} / ${file.name}` : file.name}</span>
-                        <X className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
-                      </button>
-                    ))}
+                  <div className="composer-scope-files" role="list" aria-label="已引用的文件">
+                    {selectedScopeFiles.map((file) => {
+                      const source = scopeFilesByKb[file.kbId]?.find(item => item.id === file.fileId)
+                        ?? { name: file.name, type: file.type || '' }
+                      return (
+                        <div key={`${file.kbId}::${file.fileId}`} className="composer-scope-card" role="listitem">
+                          <FileScopeThumbnail file={source} />
+                          <div className="composer-scope-copy">
+                            <span className="composer-scope-name" title={file.name}>{file.name}</span>
+                            <span className="composer-scope-origin" title={file.kbName}>
+                              <AtSign size={11} aria-hidden />
+                              <span>{file.kbName || '素材空间'}</span>
+                              <span aria-hidden>·</span>{filePresentation(source).label}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            title={`移除检索文件：${file.name}`}
+                            aria-label={`移除检索文件：${file.kbName ? `${file.kbName} / ${file.name}` : file.name}`}
+                            onClick={() => setSelectedScopeFiles(prev => prev.filter(item => !(item.kbId === file.kbId && item.fileId === file.fileId)))}
+                            className="composer-scope-remove"
+                          ><X size={14} aria-hidden /></button>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
                 {attachments.length > 0 && (
@@ -823,6 +816,7 @@ export function ChatInterface() {
                 })
               }}
               onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return
                 if (mentionState) {
                   if (e.key === 'ArrowDown' && mentionOptions.length > 0) {
                     e.preventDefault()
@@ -834,8 +828,8 @@ export function ChatInterface() {
                     setMentionHighlightIndex(prev => (prev - 1 + mentionOptions.length) % mentionOptions.length)
                     return
                   }
-                  if ((e.key === 'Enter' || e.key === 'Tab') && mentionOptions.length > 0) {
-                    e.preventDefault()
+                  if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
+                    if (e.key === 'Enter' || mentionOptions.length > 0) e.preventDefault()
                     const target = mentionOptions[Math.min(mentionHighlightIndex, mentionOptions.length - 1)]
                     if (target) insertMentionSelection(target)
                     return
@@ -862,7 +856,7 @@ export function ChatInterface() {
               aria-label="输入对话问题"
               aria-autocomplete="list"
               aria-controls={mentionState ? mentionListboxId : undefined}
-              aria-expanded={mentionState ? mentionOptions.length > 0 : undefined}
+              aria-expanded={Boolean(mentionState)}
               aria-activedescendant={mentionActiveOptionId}
               className="w-full resize-none border-0 bg-transparent px-6 py-4 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:ring-0 dark:text-slate-100 dark:placeholder:text-slate-500 disabled:opacity-50 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:hover:bg-slate-400 dark:[&::-webkit-scrollbar-thumb]:bg-slate-600 dark:[&::-webkit-scrollbar-thumb]:hover:bg-slate-500"
               style={{ minHeight: '56px', maxHeight: '192px' }}
@@ -870,84 +864,76 @@ export function ChatInterface() {
             />
 
             {mentionState && (
-              <div className="border-t border-slate-100/90 px-4 pb-2 dark:border-slate-700/60">
+              <section className="file-mention-panel" aria-label="引用素材文件">
+                <header className="file-mention-heading">
+                  <span className="file-mention-title"><AtSign size={15} aria-hidden />引用文件</span>
+                  <span className="file-mention-count" role="status">
+                    {mentionOptions.length} 个{mentionState.query ? '匹配文件' : '可选文件'}
+                    {scopeLoadingKbIds.length > 0 && ' · 加载中…'}
+                  </span>
+                </header>
+                {scopeFailedKbIds.length > 0 && (
+                  <div className="file-mention-error" role="status">
+                    <span>{scopeFailedKbIds.length} 个空间加载失败，结果暂不完整。</span>
+                    <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { void ensureAllKbFiles(true) }}>重试</button>
+                  </div>
+                )}
                 <div
                   id={mentionListboxId}
+                  ref={mentionListRef}
                   role="listbox"
                   aria-label="可添加的检索文件"
-                  className="max-h-72 overflow-y-auto rounded-2xl border border-slate-200/70 bg-white/95 p-2 shadow-lg shadow-slate-900/10 dark:border-slate-700/70 dark:bg-slate-900/95"
+                  aria-busy={scopeLoadingKbIds.length > 0}
+                  className="file-mention-list"
                 >
-                  {mentionOptions.length > 0 ? (
-                    <div className="space-y-3">
-                      {mentionGroups.map(group => (
-                        <div
-                          key={group.kbId}
-                          role="group"
-                          aria-label={`${group.kbName}，${group.totalMatches} 个匹配`}
-                          className="space-y-1"
-                        >
-                          <div className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            {group.kbName}
-                            <span className="ml-2 normal-case tracking-normal text-slate-400 dark:text-slate-500">
-                              {group.totalMatches} 个匹配
+                  {mentionGroups.map(group => (
+                    <div key={group.kbId} role="group" aria-label={`${group.kbName}，${group.totalMatches} 个匹配`} className="file-mention-group">
+                      <div className="file-mention-group-title">
+                        <span>{group.kbName}</span>
+                        <span>{group.failed ? '加载失败' : !group.hasLoaded ? '加载中…' : `${group.totalMatches} 个文件`}</span>
+                      </div>
+                      {group.files.map(file => {
+                        const optionIndex = mentionOptionIndexByKey.get(fileScopeKey(group.kbId, file.id)) ?? 0
+                        const isActive = optionIndex === mentionHighlightIndex
+                        return (
+                          <button
+                            key={`${group.kbId}::${file.id}`}
+                            id={`${mentionListboxId}-option-${optionIndex}`}
+                            ref={node => { mentionOptionRefs.current[optionIndex] = node }}
+                            type="button"
+                            role="option"
+                            aria-selected={isActive}
+                            tabIndex={-1}
+                            title={`${group.kbName} / ${file.name}`}
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={() => insertMentionSelection({ kbId: group.kbId, kbName: group.kbName, file })}
+                            className="file-mention-option"
+                          >
+                            <FileScopeThumbnail file={file} />
+                            <span className="file-mention-copy">
+                              <span className="file-mention-name">{file.name}</span>
+                              <span className="file-mention-meta">{filePresentation(file).label}<span aria-hidden>·</span>{formatScopedFileSize(file.size)}</span>
                             </span>
-                          </div>
-                          <div className="space-y-1">
-                            {group.files.map(file => {
-                              const optionIndex = mentionOptionIndexByKey.get(fileScopeKey(group.kbId, file.id)) ?? 0
-                              const isActive = optionIndex === mentionHighlightIndex
-                              return (
-                                <button
-                                  key={`${group.kbId}::${file.id}`}
-                                  id={`${mentionListboxId}-option-${optionIndex}`}
-                                  ref={node => {
-                                    mentionOptionRefs.current[optionIndex] = node
-                                  }}
-                                  type="button"
-                                  role="option"
-                                  aria-selected={isActive}
-                                  onMouseDown={e => {
-                                    e.preventDefault()
-                                    insertMentionSelection({ kbId: group.kbId, kbName: group.kbName, file })
-                                  }}
-                                  className={cn(
-                                    'flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors',
-                                    isActive
-                                      ? 'bg-emerald-500/10 text-emerald-900 ring-1 ring-emerald-500/20 dark:text-emerald-100'
-                                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/70'
-                                  )}
-                                >
-                                  <AtSign className={cn('h-4 w-4 flex-shrink-0', isActive ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-400')} aria-hidden />
-                                  <div className="min-w-0 flex-1">
-                                    <div className="truncate text-sm font-medium">{file.name}</div>
-                                    <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                                      <span>{String(file.type || 'file').toUpperCase()}</span>
-                                      <span>{formatScopedFileSize(file.size)}</span>
-                                    </div>
-                                  </div>
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      ))}
+                            {isActive && <span className="file-mention-enter" aria-hidden>↵</span>}
+                          </button>
+                        )
+                      })}
                     </div>
-                  ) : (
-                    <div
-                      className="px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
-                      role="status"
-                      aria-live="polite"
-                    >
-                      {scopeLoadingKbIds.length > 0 ? '正在加载文件列表...' : '没有匹配的文件。'}
-                    </div>
+                  ))}
+                  {mentionOptions.length === 0 && scopeLoadingKbIds.length === 0 && scopeFailedKbIds.length === 0 && (
+                    <p className="file-mention-empty" role="status">{mentionState.query ? '没有匹配文件，请检查知识库名称或文件关键词。' : '暂无可添加的文件；已选择的文件不会重复显示。'}</p>
                   )}
                 </div>
-              </div>
+                <footer className="file-mention-footer">
+                  <span>支持 @知识库名/文件名 · 滚动浏览</span>
+                  <span className="file-mention-keys">↑↓ 选择 · Enter 添加 · Esc 关闭</span>
+                </footer>
+              </section>
             )}
 
             {/* 底部功能栏 - 独立区域，与文字区物理分离 */}
-            <div className="flex flex-shrink-0 items-center justify-between bg-gradient-to-b from-transparent to-slate-50/60 px-4 py-2.5 dark:to-slate-950/25">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2 bg-gradient-to-b from-transparent to-slate-50/60 px-4 py-2.5 dark:to-slate-950/25">
+              <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setKbConfigPanelOpen(true)}
@@ -1024,21 +1010,26 @@ export function ChatInterface() {
                 </button>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="ml-auto flex shrink-0 items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setFileScopePickerOpen(true)}
                   title="指定检索文件"
                   aria-label={`打开指定检索文件选择器，当前已选 ${selectedScopeFiles.length} 个文件`}
-                  className={cn(
-                    'group inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm ring-1 transition-all duration-200 active:scale-95',
-                    selectedScopeFiles.length > 0
-                      ? 'border-emerald-300/80 bg-gradient-to-r from-emerald-50/90 to-teal-50/80 text-emerald-700 shadow-emerald-500/10 ring-emerald-200/50 hover:border-emerald-400/80 hover:from-emerald-100/90 hover:to-teal-100/90 dark:border-emerald-500/40 dark:from-emerald-900/30 dark:to-teal-900/20 dark:text-emerald-200'
-                      : 'border-slate-200/70 bg-white/70 text-slate-600 ring-slate-200/50 hover:border-slate-300/80 hover:bg-white/90 dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-300'
-                  )}
+                  aria-haspopup="dialog"
+                  aria-expanded={fileScopePickerOpen}
+                  data-selected={selectedScopeFiles.length > 0}
+                  className="composer-file-trigger"
                 >
-                  <AtSign className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110" aria-hidden />
-                  <span>{selectedScopeFiles.length > 0 ? `文件 ${selectedScopeFiles.length}` : '文件'}</span>
+                  <span className="composer-file-trigger__symbol" aria-hidden="true">
+                    <AtSign size={15} strokeWidth={1.8} />
+                  </span>
+                  <span>文件</span>
+                  {selectedScopeFiles.length > 0 && (
+                    <span className="composer-file-trigger__count" aria-hidden="true">
+                      {selectedScopeFiles.length}
+                    </span>
+                  )}
                 </button>
 
                 <button

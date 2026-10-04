@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, AlertCircle } from 'lucide-react'
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { Search, AlertCircle, Check, Cpu, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { getModelProvider, PROVIDER_LOGOS, type ProviderKey } from '@/lib/modelVendors'
@@ -28,8 +28,25 @@ function providerLabel(provider: string): string {
     deepseek: 'DeepSeek',
     openrouter: 'OpenRouter',
     aliyun_bailian: '阿里云百炼',
+    other: '其他来源',
   }
   return m[provider] ?? provider
+}
+
+/** Provider-level catalog descriptions are not model names. */
+export function getChatModelDisplayName(item: ChatCatalogItem): string {
+  const name = item.name?.trim() || ''
+  const normalize = (value: string) => value.toLocaleLowerCase().replace(/[\s_()（）:：·-]/g, '')
+  const providerName = normalize(name).replace(/目录同步$/, '').replace(/官方api$/, '')
+  const providerAliases = [item.provider, providerLabel(item.provider), getModelProvider(item.registry_id) || '']
+    .map(normalize)
+    .filter(Boolean)
+  if (name && providerName && !providerAliases.includes(providerName)) return name
+
+  const registryId = item.registry_id.trim()
+  const modelId = item.id?.trim()
+  if (modelId && modelId !== registryId) return modelId
+  return registryId.includes(':') ? registryId.slice(registryId.indexOf(':') + 1) : registryId
 }
 
 function CatalogRowIcon({ item }: { item: ChatCatalogItem }) {
@@ -51,9 +68,16 @@ interface UnifiedChatModelSearchProps {
   currentChatModel: string
   onSelect: (registryId: string) => void
   className?: string
+  variant?: 'default' | 'dialog'
 }
 
-export function UnifiedChatModelSearch({
+export function UnifiedChatModelSearch(props: UnifiedChatModelSearchProps) {
+  return props.variant === 'dialog'
+    ? <DialogModelDirectory {...props} />
+    : <LegacyChatModelSearch {...props} />
+}
+
+function LegacyChatModelSearch({
   catalog,
   loading,
   fetchError,
@@ -274,4 +298,130 @@ export function UnifiedChatModelSearch({
       )}
     </div>
   )
+}
+
+/** The dialog uses one searchable directory; other callers retain their existing layout. */
+function DialogModelDirectory({ catalog, loading, currentChatModel, onSelect, className }: UnifiedChatModelSearchProps) {
+  const [query, setQuery] = useState('')
+  const [provider, setProvider] = useState('all')
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const [visibleLimit, setVisibleLimit] = useState(LIST_LIMIT)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const listRef = useRef<HTMLUListElement>(null)
+  const id = useId()
+  const inputId = `${id}-model-search`
+  const listboxId = `${id}-model-results`
+  const providers = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const item of catalog) counts.set(item.provider, (counts.get(item.provider) || 0) + 1)
+    return Array.from(counts.entries())
+  }, [catalog])
+  const effectiveProvider = provider === 'all' || providers.some(([key]) => key === provider) ? provider : 'all'
+  const filtered = useMemo(() => {
+    const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
+    return catalog.filter(item => {
+      if (effectiveProvider !== 'all' && item.provider !== effectiveProvider) return false
+      const text = [item.registry_id, item.id, item.name, item.provider, providerLabel(item.provider)].join(' ').toLocaleLowerCase()
+      return words.every(word => text.includes(word))
+    })
+  }, [catalog, effectiveProvider, query])
+  const visible = filtered.slice(0, visibleLimit)
+  const boundedIndex = activeIndex < visible.length ? activeIndex : -1
+  const activeOptionId = boundedIndex >= 0 ? `${listboxId}-option-${boundedIndex}` : undefined
+
+  useEffect(() => {
+    setActiveIndex(-1)
+    setVisibleLimit(LIST_LIMIT)
+    if (listRef.current) listRef.current.scrollTop = 0
+  }, [query, effectiveProvider])
+
+  const focusResult = (index: number) => {
+    setActiveIndex(index)
+    requestAnimationFrame(() => optionRefs.current[index]?.scrollIntoView({ block: 'nearest' }))
+  }
+  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return
+    if (event.key === 'ArrowDown' && visible.length > 0) {
+      event.preventDefault()
+      focusResult((boundedIndex + 1) % visible.length)
+    } else if (event.key === 'ArrowUp' && visible.length > 0) {
+      event.preventDefault()
+      focusResult(boundedIndex <= 0 ? visible.length - 1 : boundedIndex - 1)
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      if (boundedIndex >= 0) onSelect(visible[boundedIndex].registry_id)
+    }
+  }
+
+  return <div className={cn('model-directory', className)}>
+    <label className="workflow-label" htmlFor={inputId}>选择模型</label>
+    <div className="workflow-search model-directory-search">
+      <Search size={17} aria-hidden />
+      <input
+        ref={inputRef}
+        id={inputId}
+        data-autofocus
+        role="combobox"
+        type="text"
+        autoComplete="off"
+        value={query}
+        onChange={event => setQuery(event.target.value)}
+        onKeyDown={handleSearchKeyDown}
+        placeholder="搜索模型名称或供应商…"
+        aria-expanded={catalog.length > 0}
+        aria-autocomplete="list"
+        aria-controls={listboxId}
+        aria-activedescendant={activeOptionId}
+        aria-describedby={`${id}-model-help`}
+      />
+      {query && <button type="button" className="model-directory-clear" aria-label="清空模型搜索" onClick={() => { setQuery(''); inputRef.current?.focus() }}><X size={15} aria-hidden /></button>}
+    </div>
+
+    {providers.length > 1 && <div className="model-provider-filters" role="group" aria-label="按供应商筛选">
+      <button type="button" aria-pressed={effectiveProvider === 'all'} onClick={() => setProvider('all')}>全部<span>{catalog.length}</span></button>
+      {providers.map(([key, count]) => <button key={key} type="button" aria-pressed={effectiveProvider === key} onClick={() => setProvider(key)}>{providerLabel(key)}<span>{count}</span></button>)}
+    </div>}
+
+    <div className="model-directory-heading">
+      <span>{loading ? '正在更新模型目录…' : `${filtered.length} 个模型`}</span>
+      <span id={`${id}-model-help`}>↑↓ 浏览 · Enter 选择</span>
+    </div>
+
+    <ul ref={listRef} id={listboxId} role="listbox" aria-label="对话模型" aria-busy={loading} className="model-directory-list">
+      {visible.map((item, index) => {
+        const selected = item.registry_id === currentChatModel
+        const modelName = getChatModelDisplayName(item)
+        return <li key={item.registry_id} role="presentation">
+          <button
+            ref={node => { optionRefs.current[index] = node }}
+            id={`${listboxId}-option-${index}`}
+            type="button"
+            role="option"
+            aria-selected={selected}
+            tabIndex={-1}
+            data-focused={boundedIndex === index}
+            className="model-directory-option"
+            onMouseDown={event => event.preventDefault()}
+            onMouseEnter={() => setActiveIndex(index)}
+            onClick={() => onSelect(item.registry_id)}
+          >
+            <span className="model-directory-icon">{item.provider === 'openrouter' || getModelProvider(item.registry_id) ? <CatalogRowIcon item={item} /> : <Cpu size={22} aria-hidden />}</span>
+            <span className="model-directory-copy">
+              <span className="model-directory-name">{modelName}</span>
+              <span className="model-directory-id">{item.registry_id}</span>
+              <span className="model-directory-meta">{providerLabel(item.provider)}{typeof item.context_length === 'number' && item.context_length > 0 && <> · {item.context_length.toLocaleString()} tokens 上下文</>}</span>
+            </span>
+            <span className="model-directory-selected">{selected ? <><Check size={15} aria-hidden /><span>当前</span></> : <span className="model-directory-radio" aria-hidden />}</span>
+          </button>
+        </li>
+      })}
+    </ul>
+    {visible.length === 0 && <div className="workflow-empty model-directory-empty" role="status">
+      <Cpu size={22} aria-hidden />
+      <p>{loading ? '正在获取可选模型' : catalog.length > 0 ? '没有找到匹配的模型' : '暂无可选模型'}</p>
+      <span>{loading ? '模型目录加载后会显示在这里。' : catalog.length > 0 ? '试试其他关键词，或切换到全部供应商。' : '请检查服务连接与供应商配置。'}</span>
+    </div>}
+    {visible.length < filtered.length && <button type="button" className="model-directory-more" onClick={() => setVisibleLimit(limit => limit + LIST_LIMIT)}>显示更多模型<span>已显示 {visible.length} / {filtered.length}</span></button>}
+  </div>
 }

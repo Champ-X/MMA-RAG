@@ -1,211 +1,162 @@
 import { useId, useState, useEffect } from 'react'
-import { Database, Route, List, CheckSquare } from 'lucide-react'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Check, Database, Layers, Route, Search, SlidersHorizontal } from 'lucide-react'
+import { WorkflowDialog } from '@/components/ui/WorkflowDialog'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import { useConfigStore } from '@/store/useConfigStore'
-import { useChatStore } from '@/store/useChatStore'
-import { cn } from '@/lib/utils'
-import type { KbMode } from '@/store/useChatStore'
+import { useChatStore, type KbMode } from '@/store/useChatStore'
+import './scopeDialogs.css'
 
 interface KnowledgeBaseConfigPanelProps {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
+const modes = [
+  { value: 'auto', label: '智能路由', detail: '根据问题选择', Icon: Route },
+  { value: 'all', label: '全部知识库', detail: '检索全部内容', Icon: Layers },
+  { value: 'manual', label: '手动指定', detail: '选择检索范围', Icon: SlidersHorizontal },
+] as const
+const contentKinds = [
+  { key: 'documents', label: '文档' },
+  { key: 'images', label: '图片' },
+  { key: 'audio', label: '音频' },
+  { key: 'video', label: '视频' },
+] as const
+
 export function KnowledgeBaseConfigPanel({ open, onOpenChange }: KnowledgeBaseConfigPanelProps) {
   const { knowledgeBases, fetchKnowledgeBases } = useKnowledgeStore()
   const { updateSystemConfig } = useConfigStore()
   const { getActiveSession, updateSessionKnowledgeBases } = useChatStore()
-
   const activeSession = getActiveSession()
   const [kbMode, setKbMode] = useState<KbMode>('auto')
   const [selectedKbIds, setSelectedKbIds] = useState<Set<string>>(new Set())
-  const dialogId = useId().replace(/:/g, '')
-  const dialogTitleId = `${dialogId}-knowledge-base-config-title`
-  const dialogDescriptionId = `${dialogId}-knowledge-base-config-description`
+  const [query, setQuery] = useState('')
+  const id = useId()
 
   useEffect(() => {
-    if (open) fetchKnowledgeBases({ silent: true })
+    if (open) void fetchKnowledgeBases({ silent: true })
   }, [open, fetchKnowledgeBases])
 
   useEffect(() => {
-    if (activeSession) {
-      setKbMode(activeSession.kbMode ?? 'auto')
-      setSelectedKbIds(new Set(activeSession.knowledgeBaseIds || []))
-    }
+    if (!open) return
+    setKbMode(activeSession?.kbMode ?? 'auto')
+    setSelectedKbIds(new Set(activeSession?.knowledgeBaseIds ?? []))
+    setQuery('')
   }, [activeSession?.id, activeSession?.knowledgeBaseIds, activeSession?.kbMode, open])
 
-  const toggleKb = (id: string) => {
-    setSelectedKbIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+  const toggleKb = (kbId: string) => {
+    setSelectedKbIds(previous => {
+      const next = new Set(previous)
+      if (next.has(kbId)) next.delete(kbId)
+      else next.add(kbId)
       return next
     })
   }
 
   const handleApply = () => {
     if (!activeSession) return
-    if (kbMode === 'auto') {
-      updateSessionKnowledgeBases(activeSession.id, [], 'auto')
-      updateSystemConfig({ defaultKnowledgeBaseIds: [] })
-    } else if (kbMode === 'all') {
-      const allIds = knowledgeBases.map(kb => kb.id)
-      updateSessionKnowledgeBases(activeSession.id, allIds, 'all')
-      updateSystemConfig({ defaultKnowledgeBaseIds: allIds })
-    } else {
-      const ids = Array.from(selectedKbIds)
-      updateSessionKnowledgeBases(activeSession.id, ids, 'manual')
-      updateSystemConfig({ defaultKnowledgeBaseIds: ids })
-    }
+    const ids = kbMode === 'auto' ? [] : kbMode === 'all' ? knowledgeBases.map(kb => kb.id) : [...selectedKbIds]
+    updateSessionKnowledgeBases(activeSession.id, ids, kbMode)
+    updateSystemConfig({ defaultKnowledgeBaseIds: ids })
     onOpenChange(false)
   }
 
+  const visibleKnowledgeBases = knowledgeBases.filter(kb =>
+    `${kb.name} ${kb.description ?? ''}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
+  )
+  const summary = kbMode === 'manual'
+    ? `已选 ${selectedKbIds.size} 个知识库`
+    : kbMode === 'all' ? `检索全部 ${knowledgeBases.length} 个知识库` : '根据问题自动选择知识库'
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        aria-labelledby={dialogTitleId}
-        aria-describedby={dialogDescriptionId}
-        className="max-w-md max-h-[90vh] flex flex-col rounded-3xl border border-slate-200/60 bg-white/85 shadow-2xl shadow-slate-900/20 backdrop-blur-xl dark:border-slate-700/50 dark:bg-slate-950/90"
-        onClick={e => e.stopPropagation()}
-      >
-        <DialogHeader className="flex-shrink-0 pb-3">
-          <DialogTitle id={dialogTitleId} className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/10 to-purple-500/10">
-              <Database className="h-5 w-5 text-indigo-600 dark:text-indigo-400" aria-hidden />
-            </div>
-            知识库范围
-          </DialogTitle>
-          <DialogDescription id={dialogDescriptionId} className="text-sm text-slate-500 dark:text-slate-400">
-            选择本轮对话的知识库检索范围；应用后仅影响当前会话的新问题。
-          </DialogDescription>
-        </DialogHeader>
-
-        <ScrollArea className="flex-1 min-h-0 overflow-y-auto">
-          <div className="py-1 pr-4 pb-2">
-            <div className="rounded-2xl border border-slate-200/50 bg-white/50 p-4 shadow-sm backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-900/50">
-              <div className="mb-3 flex items-center gap-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/40">
-                  <Database className="h-4 w-4 text-indigo-600 dark:text-indigo-400" aria-hidden />
-                </div>
-                检索模式
-              </div>
-              <div className="flex gap-2.5" role="radiogroup" aria-label="检索模式">
-                <button
-                  type="button"
-                  onClick={() => setKbMode('auto')}
-                  role="radio"
-                  aria-checked={kbMode === 'auto'}
-                  className={cn(
-                    'flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-200 shadow-sm backdrop-blur-sm whitespace-nowrap',
-                    kbMode === 'auto'
-                      ? 'border-indigo-400/50 bg-indigo-500/15 text-indigo-700 shadow-md shadow-indigo-500/15 dark:bg-indigo-500/20 dark:text-indigo-200'
-                      : 'border-slate-200/80 bg-white/60 text-slate-600 hover:bg-white/80 hover:border-slate-300/80 dark:border-slate-600/80 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/80'
-                  )}
-                >
-                  <Route className="h-4 w-4 flex-shrink-0" aria-hidden />
-                  <span>智能路由</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setKbMode('all')}
-                  role="radio"
-                  aria-checked={kbMode === 'all'}
-                  className={cn(
-                    'flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-200 shadow-sm backdrop-blur-sm whitespace-nowrap',
-                    kbMode === 'all'
-                      ? 'border-indigo-400/50 bg-indigo-500/15 text-indigo-700 shadow-md shadow-indigo-500/15 dark:bg-indigo-500/20 dark:text-indigo-200'
-                      : 'border-slate-200/80 bg-white/60 text-slate-600 hover:bg-white/80 hover:border-slate-300/80 dark:border-slate-600/80 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/80'
-                  )}
-                >
-                  <List className="h-4 w-4 flex-shrink-0" aria-hidden />
-                  <span>全部</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setKbMode('manual')}
-                  role="radio"
-                  aria-checked={kbMode === 'manual'}
-                  className={cn(
-                    'flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-200 shadow-sm backdrop-blur-sm whitespace-nowrap',
-                    kbMode === 'manual'
-                      ? 'border-indigo-400/50 bg-indigo-500/15 text-indigo-700 shadow-md shadow-indigo-500/15 dark:bg-indigo-500/20 dark:text-indigo-200'
-                      : 'border-slate-200/80 bg-white/60 text-slate-600 hover:bg-white/80 hover:border-slate-300/80 dark:border-slate-600/80 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/80'
-                  )}
-                >
-                  <CheckSquare className="h-4 w-4 flex-shrink-0" aria-hidden />
-                  <span>指定</span>
-                </button>
-              </div>
-              {kbMode === 'manual' && (
-                <div className="mt-4 flex flex-col min-h-0">
-                  <div
-                    aria-label="可指定的知识库"
-                    role="list"
-                    className="rounded-xl border border-slate-200/50 bg-white/40 backdrop-blur-sm dark:border-slate-700/50 dark:bg-slate-800/50 p-2.5 shadow-inner min-h-[120px] max-h-[320px] overflow-x-hidden overflow-y-auto"
-                    style={{ maxHeight: 'min(50vh, 320px)' }}
-                  >
-                    {knowledgeBases.length === 0 ? (
-                      <p className="py-4 text-center text-sm text-slate-500 dark:text-slate-400" role="status">
-                        暂无知识库，请先创建
-                      </p>
-                    ) : (
-                      <div className="space-y-1.5" role="presentation">
-                        {knowledgeBases.map(kb => (
-                          <label
-                            key={kb.id}
-                            className={cn(
-                              'flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition-all duration-200',
-                              'hover:bg-white/50 hover:shadow-sm dark:hover:bg-slate-700/50'
-                            )}
-                            role="listitem"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedKbIds.has(kb.id)}
-                              onChange={() => toggleKb(kb.id)}
-                              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-600"
-                            />
-                            <span className="flex-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">{kb.name}</span>
-                            <span className="text-xs text-slate-400 dark:text-slate-500">{kb.stats?.documents ?? 0} 文档</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">
-                {kbMode === 'auto' && '不传知识库，由后端智能路由选择'}
-                {kbMode === 'all' && '在所有知识库中检索'}
-                {kbMode === 'manual' && `仅在选中的知识库中检索，当前已选 ${selectedKbIds.size} 个`}
-              </p>
-            </div>
+    <WorkflowDialog
+      eyebrow="对话设置"
+      open={open}
+      onOpenChange={onOpenChange}
+      title="知识库范围"
+      description="选择回答时参考的知识库，应用后对当前会话的新问题生效。"
+      icon={<Database size={21} strokeWidth={1.7} aria-hidden />}
+      size="md"
+      className="scope-dialog"
+      footer={(
+        <>
+          <span className="workflow-footer-summary" aria-live="polite">{summary}</span>
+          <div className="workflow-footer-actions">
+            <button type="button" className="workflow-button" onClick={() => onOpenChange(false)}>取消</button>
+            <button
+              type="button"
+              className="workflow-button-primary"
+              onClick={handleApply}
+              disabled={!activeSession}
+              aria-label={`应用知识库范围：${kbMode === 'manual' ? `指定 ${selectedKbIds.size} 个知识库` : kbMode === 'all' ? '全部知识库' : '智能路由'}`}
+            >应用</button>
           </div>
-        </ScrollArea>
-
-        <div className="flex flex-shrink-0 justify-end gap-3 border-t border-slate-200/50 pt-4 mt-3 dark:border-slate-800/50">
-          <span className="mr-auto self-center text-xs text-slate-500 dark:text-slate-400" aria-live="polite">
-            {kbMode === 'manual' ? `已选 ${selectedKbIds.size} 个知识库` : kbMode === 'all' ? '将检索全部知识库' : '将使用智能路由'}
-          </span>
-          <Button 
-            variant="outline" 
-            onClick={() => onOpenChange(false)}
-            className="rounded-xl border-slate-200/80 bg-white/50 backdrop-blur-sm hover:bg-white/70 dark:border-slate-600/80 dark:bg-slate-800/50 dark:hover:bg-slate-700/70"
-          >
-            取消
-          </Button>
-          <Button 
-            onClick={handleApply}
-            aria-label={`应用知识库范围：${kbMode === 'manual' ? `指定 ${selectedKbIds.size} 个知识库` : kbMode === 'all' ? '全部知识库' : '智能路由'}`}
-            className="rounded-xl bg-indigo-500/90 backdrop-blur-sm text-white shadow-md shadow-indigo-500/25 hover:bg-indigo-500 hover:shadow-lg hover:shadow-indigo-500/30"
-          >
-            应用
-          </Button>
+        </>
+      )}
+    >
+      <fieldset className="scope-modes">
+        <legend className="workflow-label">检索方式</legend>
+        <div className="scope-modes__options">
+          {modes.map(({ value, label, detail, Icon }) => (
+            <label key={value} htmlFor={`${id}-${value}`} className="scope-mode" data-selected={kbMode === value}>
+              <input
+                id={`${id}-${value}`}
+                className="scope-mode__input"
+                type="radio"
+                name={`${id}-mode`}
+                value={value}
+                checked={kbMode === value}
+                onChange={() => setKbMode(value)}
+                data-autofocus={kbMode === value ? true : undefined}
+              />
+              <span className="scope-mode__content">
+                <span className="scope-mode__top"><Icon size={20} strokeWidth={1.7} aria-hidden /><span className="scope-mode__indicator"><Check size={10} strokeWidth={2.5} aria-hidden /></span></span>
+                <span className="scope-mode__label">{label}</span>
+                <span className="scope-mode__detail">{detail}</span>
+              </span>
+            </label>
+          ))}
         </div>
-      </DialogContent>
-    </Dialog>
+      </fieldset>
+
+      {kbMode === 'manual' ? (
+        <section className="scope-knowledge-list">
+          <div className="scope-section-heading"><h3>选择知识库</h3><span>可多选</span></div>
+          <div className="workflow-search">
+            <Search size={16} strokeWidth={1.7} aria-hidden />
+            <input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索知识库" aria-label="搜索知识库" type="search" />
+          </div>
+          {visibleKnowledgeBases.length === 0 ? (
+            <div className="workflow-empty" role="status">{knowledgeBases.length ? '没有匹配的知识库，试试其他关键词。' : '暂无知识库，创建素材空间并导入内容后即可选择。'}</div>
+          ) : (
+            <ul className="scope-knowledge-list__rows" role="list" aria-label="可指定的知识库">
+              {visibleKnowledgeBases.map(kb => {
+                // Index counts are not source file counts; show the actual indexed media kinds.
+                const kinds = contentKinds.filter(({ key }) => (kb.stats?.[key] ?? 0) > 0).map(({ label }) => label)
+                return (
+                  <li key={kb.id}>
+                    <label htmlFor={`${id}-kb-${kb.id}`} className="scope-knowledge-row" data-selected={selectedKbIds.has(kb.id)}>
+                      <input id={`${id}-kb-${kb.id}`} type="checkbox" className="scope-checkbox" checked={selectedKbIds.has(kb.id)} onChange={() => toggleKb(kb.id)} />
+                      <span className="scope-checkbox-fallback" aria-hidden />
+                      <span className="scope-knowledge-row__icon" aria-hidden><Database size={17} strokeWidth={1.6} /></span>
+                      <span className="scope-knowledge-row__name" title={kb.name}>{kb.name}</span>
+                      <span className="scope-knowledge-row__count">{kinds.length ? kinds.join(' · ') : '素材空间'}</span>
+                    </label>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+      ) : (
+        <div className="scope-explanation">
+          {kbMode === 'auto' ? <Route size={19} strokeWidth={1.7} aria-hidden /> : <Layers size={19} strokeWidth={1.7} aria-hidden />}
+          <div>
+            <h3>{kbMode === 'auto' ? '让问题找到合适的知识库' : '在全部知识库中查找答案'}</h3>
+            <p>{kbMode === 'auto' ? '自动判断问题涉及的内容，选择相关知识库进行检索。适合跨主题提问。' : '将当前所有知识库作为检索范围，适合需要综合多个主题的问题。'}</p>
+          </div>
+        </div>
+      )}
+    </WorkflowDialog>
   )
 }

@@ -1,0 +1,102 @@
+.composer-file-trigger {
+  --file-button-bg: #faf8fd;
+  --file-button-line: #e4dbef;
+  --file-button-ink: #70518f;
+  --file-button-symbol: #eee6f7;
+  --file-button-hover: #f1eaf9;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid var(--file-button-line);
+  border-radius: 10px;
+  background: var(--file-button-bg);
+  color: var(--file-button-ink);
+  box-shadow: 0 1px 2px #39224d06, inset 0 1px 0 #ffffff66;
+  font-size: .75rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+  white-space: nowrap;
+  transition: background-color .16s, border-color .16s, box-shadow .16s;
+}
+.composer-file-trigger__symbol {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--file-button-symbol);
+}
+.composer-file-trigger__count {
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 5px;
+  background: #7953a4;
+  color: #fff;
+  font-size: .625rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.composer-file-trigger[data-selected="true"] {
+  border-color: #c9b3e0;
+  background: var(--file-button-hover);
+  padding-right: 6px;
+}
+.composer-file-trigger:hover,
+.composer-file-trigger[aria-expanded="true"] {
+  border-color: #b89ad4;
+  background: var(--file-button-hover);
+  box-shadow: 0 2px 5px #39224d0c;
+}
+.composer-file-trigger:active { box-shadow: inset 0 1px 3px #39224d14; }
+.composer-file-trigger:focus-visible { outline: 2px solid #9874c0; outline-offset: 3px; }
+.dark .composer-file-trigger {
+  --file-button-bg: #292333;
+  --file-button-line: #493a5b;
+  --file-button-ink: #ddc8f1;
+  --file-button-symbol: #41304f;
+  --file-button-hover: #352a43;
+  box-shadow: inset 0 1px 0 #ffffff05;
+}
+.dark .composer-file-trigger[data-selected="true"] { border-color: #775893; }
+.dark .composer-file-trigger:hover,
+.dark .composer-file-trigger[aria-expanded="true"] { border-color: #a07cc2; }
+.dark .composer-file-trigger__count { background: #c9ace6; color: #2e1c41; }
+@media (prefers-reduced-motion: reduce) { .composer-file-trigger { transition: none; } }
+
+.composer-scope-files {
+  --wf-surface: #fff;
+  --wf-subtle: #f7f5fb;
+  --wf-line: #e5dfef;
+  --wf-muted: #857b93;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 118px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 3px;
+  margin: -3px;
+}
+.dark .composer-scope-files { --wf-surface: #22202e; --wf-subtle: #2a2635; --wf-line: #44394f; --wf-muted: #afa3c1; }
+.composer-scope-card { display: flex; align-items: center; gap: 6px; width: max-content; max-width: min(208px, 100%); min-width: 0; padding: 6px; border: 1px solid var(--wf-line); border-radius: 10px; background: var(--wf-surface); box-shadow: 0 2px 5px #36204905; }
+.composer-scope-card .scope-file-row__icon { width: 44px; height: 36px; border-radius: 6px; }
+.composer-scope-copy { flex: 1; min-width: 0; }
+.composer-scope-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #352d43; font-size: 12px; line-height: 20px; font-weight: 550; }
+.dark .composer-scope-name { color: #eae3f3; }
+.composer-scope-origin { display: flex; align-items: center; gap: 4px; margin-top: 2px; color: var(--wf-muted); font-size: 10px; line-height: 16px; white-space: nowrap; }
+.composer-scope-origin > span:first-of-type { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.composer-scope-origin > svg { flex-shrink: 0; }
+.composer-scope-remove { display: grid; place-items: center; flex-shrink: 0; width: 24px; height: 28px; border-radius: 6px; color: var(--wf-muted); transition: color .15s, background-color .15s; }
+.composer-scope-remove:hover { background: var(--wf-subtle); color: #8254b6; }
+.dark .composer-scope-remove:hover { color: #ccb0ef; }
+.composer-scope-remove:focus-visible { outline: 2px solid #ac97d4; outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { .composer-scope-remove { transition: none; } }

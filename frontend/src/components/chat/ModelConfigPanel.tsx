@@ -1,17 +1,28 @@
-import { useId, useState, useEffect, useMemo } from 'react'
-import { Zap } from 'lucide-react'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Check, Cpu, RefreshCw } from 'lucide-react'
+import { WorkflowDialog } from '@/components/ui/WorkflowDialog'
 import { useConfigStore } from '@/store/useConfigStore'
 import { systemApi } from '@/services/api_client'
-import { cn } from '@/lib/utils'
-import { groupChatModelsByVendor, getModelVendor, VENDOR_DISPLAY_NAMES, VENDOR_LOGOS } from '@/lib/modelVendors'
-import { VendorModelSelect } from './VendorModelSelect'
-import { UnifiedChatModelSearch, type ChatCatalogItem } from './UnifiedChatModelSearch'
+import { getModelProvider } from '@/lib/modelVendors'
+import { getChatModelDisplayName, UnifiedChatModelSearch, type ChatCatalogItem } from './UnifiedChatModelSearch'
+import './modelConfigPanel.css'
 
 interface ModelConfigPanelProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+}
+
+function fallbackCatalogItem(registryId: string): ChatCatalogItem {
+  const provider = getModelProvider(registryId)
+  const providerIds: Record<string, string> = {
+    OpenRouter: 'openrouter', AliyunBailian: 'aliyun_bailian',
+    SiliconFlow: 'siliconflow', DeepSeek: 'deepseek',
+  }
+  return {
+    registry_id: registryId,
+    provider: provider ? providerIds[provider] : (registryId.includes(':') ? registryId.split(':')[0] : 'other'),
+    id: registryId.includes(':') ? registryId.slice(registryId.indexOf(':') + 1) : registryId,
+  }
 }
 
 export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) {
@@ -19,204 +30,120 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
   const [chatModels, setChatModels] = useState<string[]>([])
   const [chatCatalog, setChatCatalog] = useState<ChatCatalogItem[]>([])
   const [catalogError, setCatalogError] = useState<string | null>(null)
-  const [currentChatModel, setCurrentChatModel] = useState<string>('')
+  const [currentChatModel, setCurrentChatModel] = useState('')
+  const [initialChatModel, setInitialChatModel] = useState('')
   const [modelsLoading, setModelsLoading] = useState(false)
-  const [_userSelectedModel, setUserSelectedModel] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const selectedDuringLoad = useRef(false)
 
-  // 仅打开弹窗时拉取列表；勿依赖 config.models，否则选模型会 updateModelConfig → 全屏「加载中」替换列表，滚动条被顶回顶部
   useEffect(() => {
-    if (!open) {
-      setUserSelectedModel(null)
-      return
-    }
+    if (open) setInitialChatModel(useConfigStore.getState().config.models.find(m => m.id === 'chat')?.model || '')
+  }, [open])
 
-    const savedChatModel = config.models.find(m => m.id === 'chat')?.model
-    if (savedChatModel) {
-      setCurrentChatModel(savedChatModel)
-      setUserSelectedModel(savedChatModel)
-    }
-
+  // Selection updates local config immediately; it must not refetch or reset the catalog.
+  useEffect(() => {
+    if (!open) return
+    const savedChatModel = useConfigStore.getState().config.models.find(m => m.id === 'chat')?.model || ''
+    setCurrentChatModel(savedChatModel)
+    selectedDuringLoad.current = false
     let cancelled = false
     setModelsLoading(true)
-    systemApi
-      .getModelConfig({ refreshCatalog: true })
-      .then(
-        (data: {
-          chat_models?: string[]
-          chat_catalog?: ChatCatalogItem[]
-          current_config?: { final_generation?: { model: string } }
-        }) => {
+    setCatalogError(null)
+    systemApi.getModelConfig({ refreshCatalog: true })
+      .then((data: {
+        chat_models?: string[]
+        chat_catalog?: ChatCatalogItem[]
+        current_config?: { final_generation?: { model: string } }
+      }) => {
         if (cancelled) return
-        setCatalogError(null)
         setChatModels(Array.isArray(data.chat_models) ? data.chat_models : [])
         setChatCatalog(Array.isArray(data.chat_catalog) ? data.chat_catalog : [])
-        if (!savedChatModel) {
-          const model = data.current_config?.final_generation?.model
-          setCurrentChatModel(model || config.models.find(m => m.id === 'chat')?.model || '')
+        const latestSavedModel = useConfigStore.getState().config.models.find(m => m.id === 'chat')?.model
+        if (latestSavedModel) {
+          setCurrentChatModel(latestSavedModel)
+        } else if (!selectedDuringLoad.current) {
+          setCurrentChatModel(data.current_config?.final_generation?.model || '')
         }
       })
-      .catch((e: unknown) => {
-        if (cancelled) return
-        setChatModels([])
-        setChatCatalog([])
-        setCatalogError(e instanceof Error ? e.message : '加载失败')
-        if (!savedChatModel) {
-          setCurrentChatModel(config.models.find(m => m.id === 'chat')?.model || '')
-        }
+      .catch((error: unknown) => {
+        if (!cancelled) setCatalogError(error instanceof Error ? error.message : '加载失败')
       })
-      .finally(() => {
-        if (!cancelled) setModelsLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅 open 时拉取；config 同步见下一 effect
-  }, [open])
+      .finally(() => { if (!cancelled) setModelsLoading(false) })
+    return () => { cancelled = true }
+  }, [open, refreshKey])
 
   useEffect(() => {
     if (!open) return
     const savedChatModel = config.models.find(m => m.id === 'chat')?.model
-    if (savedChatModel) {
-      setCurrentChatModel(savedChatModel)
-      setUserSelectedModel(savedChatModel)
-    }
+    if (savedChatModel) setCurrentChatModel(savedChatModel)
   }, [open, config.models])
+
+  const catalog = useMemo(() => {
+    const entries = new Map<string, ChatCatalogItem>()
+    for (const item of chatCatalog) {
+      if (item.registry_id) entries.set(item.registry_id, item)
+    }
+    // Older backends may only expose chat_models. Keep every fallback choice in the same directory.
+    for (const registryId of [...chatModels, initialChatModel, currentChatModel]) {
+      if (registryId && !entries.has(registryId)) entries.set(registryId, fallbackCatalogItem(registryId))
+    }
+    return Array.from(entries.values())
+  }, [chatCatalog, chatModels, initialChatModel, currentChatModel])
 
   const applyModel = (modelName: string) => {
     if (!modelName) return
+    selectedDuringLoad.current = true
     setCurrentChatModel(modelName)
-    setUserSelectedModel(modelName)
     updateModelConfig('chat', { model: modelName })
   }
-
-  const handleApply = () => {
-    onOpenChange(false)
-  }
-
-  const groupedByVendor = useMemo(() => groupChatModelsByVendor(chatModels), [chatModels])
-  const dialogId = useId().replace(/:/g, '')
-  const dialogTitleId = `${dialogId}-chat-model-config-title`
-  const dialogDescriptionId = `${dialogId}-chat-model-config-description`
-
-  const selectBaseClass =
-    'w-full min-h-[44px] rounded-xl border-2 flex items-center text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600'
+  const currentItem = catalog.find(item => item.registry_id === currentChatModel)
+  const currentName = currentItem ? getChatModelDisplayName(currentItem) : currentChatModel
+  const currentProvider = getModelProvider(currentChatModel)
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        aria-labelledby={dialogTitleId}
-        aria-describedby={dialogDescriptionId}
-        className={cn(
-          'max-w-lg max-h-[min(90dvh,820px)] flex flex-col gap-0 overflow-hidden rounded-3xl border border-slate-200/60 bg-white/95 p-5 shadow-2xl shadow-slate-900/15 backdrop-blur-xl sm:p-6',
-          'dark:border-slate-700/50 dark:bg-slate-950/95'
-        )}
-        onClick={e => e.stopPropagation()}
-      >
-        <DialogHeader className="flex-shrink-0 pb-3">
-          <DialogTitle id={dialogTitleId} className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/15 to-purple-500/15 ring-1 ring-indigo-500/20 dark:ring-indigo-400/30">
-              <Zap className="h-5 w-5 text-indigo-600 dark:text-indigo-400" aria-hidden />
-            </div>
-            对话模型
-          </DialogTitle>
-          <DialogDescription id={dialogDescriptionId} className="text-sm text-slate-500 dark:text-slate-400">
-            选择当前会话使用的回答生成模型；选择后会立即写入本地模型配置。
-          </DialogDescription>
-        </DialogHeader>
-
-        <div
-          className={cn(
-            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1',
-            '[scrollbar-width:thin] [scrollbar-color:rgba(148,163,184,0.6)_transparent]',
-            '[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full',
-            '[&::-webkit-scrollbar-thumb]:bg-slate-300/80 dark:[&::-webkit-scrollbar-thumb]:bg-slate-600'
-          )}
-        >
-          <div className="space-y-4 pb-2">
-            <UnifiedChatModelSearch
-              catalog={chatCatalog}
-              loading={modelsLoading}
-              fetchError={catalogError}
-              currentChatModel={currentChatModel}
-              onSelect={applyModel}
-            />
-            {modelsLoading ? (
-              <div
-                className={cn(selectBaseClass, 'flex items-center text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600')}
-                role="status"
-              >
-                加载厂商分组…
-              </div>
-            ) : groupedByVendor.length === 0 ? (
-              <div
-                className={cn(selectBaseClass, 'flex items-center text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600')}
-                role="status"
-              >
-                {config.models.find(m => m.id === 'chat')?.name || '暂无模型'}
-              </div>
-            ) : (
-              groupedByVendor.map(([vendor, list]) => {
-                const isCurrentVendor = currentChatModel && getModelVendor(currentChatModel) === vendor
-                const value = isCurrentVendor ? currentChatModel : ''
-                return (
-                  <div key={vendor} className="space-y-1.5">
-                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                      {VENDOR_LOGOS[vendor] && (
-                        <img
-                          src={VENDOR_LOGOS[vendor]}
-                          alt=""
-                          className="h-5 w-5 rounded object-contain"
-                          width={20}
-                          height={20}
-                        />
-                      )}
-                      <span>{VENDOR_DISPLAY_NAMES[vendor]}</span>
-                      {isCurrentVendor && (
-                        <span
-                          className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-normal text-indigo-600 dark:text-indigo-400"
-                          aria-label="当前正在使用此厂商"
-                        >
-                          当前使用
-                        </span>
-                      )}
-                    </label>
-                    <VendorModelSelect
-                      value={value}
-                      list={list}
-                      isActive={!!isCurrentVendor}
-                      onSelect={applyModel}
-                      ariaLabel={`选择 ${vendor} 模型`}
-                    />
-                  </div>
-                )
-              })
-            )}
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              当前使用后端 final_generation 配置，选择后将写入本地配置
-            </p>
-          </div>
+    <WorkflowDialog
+      eyebrow="对话设置"
+      open={open}
+      onOpenChange={onOpenChange}
+      title="对话模型"
+      description="选择用于生成回答的模型，选择后立即生效。"
+      icon={<Cpu size={20} aria-hidden />}
+      size="md"
+      className="model-config-dialog"
+      footer={<>
+        <span className="workflow-footer-summary">选择会自动保存到本地配置</span>
+        <div className="workflow-footer-actions">
+          <button type="button" className="workflow-button workflow-button-primary" onClick={() => onOpenChange(false)}>完成</button>
         </div>
-
-        <div className="mt-3 flex flex-shrink-0 justify-end gap-3 border-t border-slate-200/50 pt-4 dark:border-slate-800/50">
-          <span className="mr-auto min-w-0 self-center truncate text-xs text-slate-500 dark:text-slate-400" aria-live="polite">
-            当前模型：{currentChatModel || '未选择'}
-          </span>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="rounded-xl border-slate-200/80 hover:bg-slate-50 dark:border-slate-600/80 dark:hover:bg-slate-800/80"
-          >
-            取消
-          </Button>
-          <Button
-            onClick={handleApply}
-            aria-label={`应用对话模型配置，当前模型：${currentChatModel || '未选择'}`}
-            className="rounded-xl bg-indigo-500 text-white shadow-md hover:bg-indigo-600 hover:shadow-lg"
-          >
-            应用
-          </Button>
+      </>}
+    >
+      <div className="model-current" aria-live="polite" aria-atomic="true">
+        <span className="model-current-symbol" aria-hidden>{currentChatModel ? <Check size={18} /> : <Cpu size={18} />}</span>
+        <div className="model-current-copy">
+          <p className="model-current-label">当前模型{currentProvider && <span> · {currentProvider === 'AliyunBailian' ? '阿里云百炼' : currentProvider}</span>}</p>
+          <p className="model-current-name">{currentName || '尚未选择模型'}</p>
+          {currentChatModel && currentName !== currentChatModel && <p className="model-current-id">{currentChatModel}</p>}
         </div>
-      </DialogContent>
-    </Dialog>
+        <span className="model-current-state">{currentChatModel ? '使用中' : '待选择'}</span>
+      </div>
+
+      {catalogError && <div className="model-catalog-notice" role="status">
+        <div>
+          <p>模型目录暂时无法更新</p>
+          <span>{catalog.length > 0 ? '你仍可选择已加载的模型。' : '请检查连接后重试。'}</span>
+        </div>
+        <button type="button" className="workflow-button workflow-button-quiet" onClick={() => setRefreshKey(key => key + 1)} disabled={modelsLoading}>
+          <RefreshCw size={14} aria-hidden />重试
+        </button>
+      </div>}
+
+      <UnifiedChatModelSearch
+        variant="dialog"
+        catalog={catalog}
+        loading={modelsLoading}
+        currentChatModel={currentChatModel}
+        onSelect={applyModel}
+      />
+    </WorkflowDialog>
   )
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { knowledgeApi } from '@/services/api_client'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 
@@ -9,6 +9,8 @@ export interface KnowledgeBaseFileItem {
   date: string
   type: string
   status?: string
+  previewUrl?: string
+  coverUrl?: string
 }
 
 export function fileScopeKey(kbId: string, fileId: string) {
@@ -45,6 +47,8 @@ export function useFileScopeOptions(active = true) {
   const { knowledgeBases, fetchKnowledgeBases } = useKnowledgeStore()
   const [filesByKb, setFilesByKb] = useState<Record<string, KnowledgeBaseFileItem[]>>({})
   const [loadingKbIds, setLoadingKbIds] = useState<string[]>([])
+  const [failedKbIds, setFailedKbIds] = useState<string[]>([])
+  const inFlight = useRef(new Set<string>())
 
   useEffect(() => {
     if (!active) return
@@ -53,7 +57,9 @@ export function useFileScopeOptions(active = true) {
 
   const loadKbFiles = useCallback(async (kbId: string) => {
     if (!kbId) return
-    if (filesByKb[kbId]) return
+    if (filesByKb[kbId] || inFlight.current.has(kbId)) return
+    inFlight.current.add(kbId)
+    setFailedKbIds(prev => prev.filter(id => id !== kbId))
     setLoadingKbIds(prev => (prev.includes(kbId) ? prev : [...prev, kbId]))
     try {
       const res = await knowledgeApi.getKnowledgeBaseFiles(kbId)
@@ -67,23 +73,29 @@ export function useFileScopeOptions(active = true) {
             date: String(file.date ?? ''),
             type: String(file.type ?? ''),
             status: String(file.status ?? 'ready'),
+            previewUrl: file.preview_url || undefined,
+            coverUrl: file.cover_url || undefined,
           }))
           .filter(file => file.id && file.name)
           .filter(isSelectableFile)
       )
       setFilesByKb(prev => ({ ...prev, [kbId]: normalized }))
+    } catch (error) {
+      setFailedKbIds(prev => prev.includes(kbId) ? prev : [...prev, kbId])
+      throw error
     } finally {
+      inFlight.current.delete(kbId)
       setLoadingKbIds(prev => prev.filter(id => id !== kbId))
     }
   }, [filesByKb])
 
-  const ensureAllKbFiles = useCallback(async () => {
+  const ensureAllKbFiles = useCallback(async (retryFailed = false) => {
     const targets = knowledgeBases
       .map(kb => kb.id)
-      .filter(kbId => !filesByKb[kbId] && !loadingKbIds.includes(kbId))
+      .filter(kbId => !filesByKb[kbId] && !loadingKbIds.includes(kbId) && (retryFailed || !failedKbIds.includes(kbId)))
     if (targets.length === 0) return
-    await Promise.all(targets.map(kbId => loadKbFiles(kbId)))
-  }, [knowledgeBases, filesByKb, loadingKbIds, loadKbFiles])
+    await Promise.allSettled(targets.map(kbId => loadKbFiles(kbId)))
+  }, [knowledgeBases, filesByKb, loadingKbIds, failedKbIds, loadKbFiles])
 
   const allFiles = useMemo(() => {
     return knowledgeBases.flatMap(kb =>
@@ -104,6 +116,7 @@ export function useFileScopeOptions(active = true) {
     knowledgeBases,
     filesByKb,
     loadingKbIds,
+    failedKbIds,
     allFiles,
     loadKbFiles,
     ensureAllKbFiles,
