@@ -1,25 +1,72 @@
+.conversation-sidebar {
+  --sidebar-icon-ink: #53657b;
+  --sidebar-icon-accent: #657eae;
+  --sidebar-icon-active: #455f99;
+  --sidebar-icon-hover-surface: #ffffffb3;
+  --sidebar-icon-active-surface: #fff;
+  --sidebar-icon-active-line: #d5dfed;
+  --sidebar-conversation-ink: #718399;
+}
+
+.dark .conversation-sidebar {
+  --sidebar-icon-ink: #b5b9c2;
+  --sidebar-icon-accent: #9aaac9;
+  --sidebar-icon-active: #c2d0ee;
+  --sidebar-icon-hover-surface: #ffffff08;
+  --sidebar-icon-active-surface: #35383e;
+  --sidebar-icon-active-line: #515b6e;
+  --sidebar-conversation-ink: #969eac;
+}
+
+.sidebar-nav-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--sidebar-icon-ink);
+  transition: color .16s ease-out, background-color .16s ease-out, box-shadow .16s ease-out;
+}
+
+.sidebar-glyph { display: block; flex-shrink: 0; }
+.sidebar-glyph-wash { fill: currentColor; fill-opacity: .08; stroke: none; }
+.sidebar-glyph-accent { stroke: var(--sidebar-icon-accent, currentColor); }
+
+.sidebar-nav-button:is(:hover, :focus-visible) .sidebar-nav-icon {
+  color: var(--sidebar-icon-active);
+  background: var(--sidebar-icon-hover-surface);
+}
+
+.sidebar-nav-button[aria-current="page"] .sidebar-nav-icon {
+  --sidebar-icon-accent: var(--sidebar-icon-active);
+  color: var(--sidebar-icon-active);
+  background: var(--sidebar-icon-active-surface);
+  box-shadow: inset 0 0 0 1px var(--sidebar-icon-active-line), 0 1px 2px #14213808;
+}
+
+.sidebar-nav-button[aria-current="page"] { font-weight: 600; }
+.sidebar-utility-icon { color: var(--sidebar-icon-ink); transition: color .16s ease-out; }
+button:is(:hover, :focus-visible) > .sidebar-utility-icon { color: var(--sidebar-icon-active); }
+
 .conversation-sidebar-row-icon {
-  --glyph-ink: #7c8ea4;
-  --glyph-back: #b0bdca;
-  --glyph-fold: #9aaabd;
-  --glyph-accent: #8f9faf;
+  --glyph-ink: var(--sidebar-conversation-ink);
+  --glyph-fill: transparent;
   display: grid;
   flex-shrink: 0;
   place-items: center;
   width: 20px;
   height: 20px;
 }
-.conversation-sidebar-row:hover .conversation-sidebar-row-icon { --glyph-ink: #4e687f; --glyph-accent: #4f8682; }
-.conversation-sidebar-row .conversation-sidebar-row-icon[data-active="true"] { --glyph-ink: #24364b; --glyph-back: #9aaccc; --glyph-fold: #5375b5; --glyph-accent: #2e817d; }
-.dark .conversation-sidebar-row-icon { --glyph-ink: #a2b2c6; --glyph-back: #596b81; --glyph-fold: #7a91ac; --glyph-accent: #8ca5b5; }
-.dark .conversation-sidebar-row:hover .conversation-sidebar-row-icon { --glyph-ink: #c2d1e2; --glyph-accent: #8bbab5; }
-.dark .conversation-sidebar-row .conversation-sidebar-row-icon[data-active="true"] { --glyph-ink: #d6e1ef; --glyph-back: #7186ad; --glyph-fold: #9eb7e5; --glyph-accent: #88c9bf; }
-.conversation-glyph path { transition: stroke .15s; }
-.conversation-glyph-back { stroke: var(--glyph-back); }
-.conversation-glyph-outline { stroke: var(--glyph-ink); }
-.conversation-glyph-fold { stroke: var(--glyph-fold); }
-.conversation-glyph-lines { stroke: var(--glyph-accent); }
-.conversation-glyph-dot { fill: var(--glyph-accent); }
+.conversation-sidebar-row:is(:hover, :focus-within) .conversation-sidebar-row-icon { --glyph-ink: var(--sidebar-icon-ink); }
+.conversation-sidebar-row .conversation-sidebar-row-icon[data-active="true"] {
+  --glyph-ink: var(--sidebar-icon-active);
+  --glyph-fill: var(--sidebar-icon-active-surface);
+}
+.conversation-glyph { display: block; }
+.conversation-glyph path { transition: stroke .16s ease-out, fill .16s ease-out; }
+.conversation-glyph-outline { stroke: var(--glyph-ink); fill: var(--glyph-fill); }
+.conversation-glyph-lines { stroke: var(--glyph-ink); }
 
 .conversation-delete-overlay {
   position: fixed;
@@ -79,4 +126,6 @@
 .dark .conversation-delete-confirm { background: #ab4b57; }
 .dark .conversation-delete-confirm:hover { background: #bc5965; }
 @media (max-width: 480px) { .conversation-delete-dialog { width: calc(100vw - 24px); padding: 20px; border-radius: 14px; } }
-@media (prefers-reduced-motion: reduce) { .conversation-glyph path, .conversation-delete-actions button { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-nav-icon, .sidebar-utility-icon, .conversation-glyph path, .conversation-delete-actions button { transition: none; }
+}

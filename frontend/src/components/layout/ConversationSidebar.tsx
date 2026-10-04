@@ -11,13 +11,9 @@ import {
 import * as Dialog from '@radix-ui/react-dialog'
 import {
   CornerDownLeft,
-  Database,
   MessageSquare,
-  MessageSquarePlus,
   Moon,
-  Network,
   Search,
-  Settings,
   Sun,
   Trash2,
   User,
@@ -28,6 +24,7 @@ import { cn } from '@/lib/utils'
 import type { ChatSession } from '@/store/useChatStore'
 import { getConversationSearchAction } from './conversationSearchKeyboard'
 import { ConversationGlyph } from './ConversationGlyph'
+import { SidebarGlyph } from './SidebarGlyph'
 import './conversationSearch.css'
 import './conversationSidebar.css'
 
@@ -48,9 +45,9 @@ interface ConversationSidebarProps {
 }
 
 const navigationItems = [
-  { id: 'knowledge' as const, label: 'Space', description: '浏览与管理知识库', keywords: '知识空间 文档 文件', icon: Database },
-  { id: 'architecture' as const, label: '架构', description: '查看系统模块与处理流程', keywords: 'architecture', icon: Network },
-  { id: 'settings' as const, label: '设置', description: '调整模型与偏好设置', keywords: 'settings 配置', icon: Settings },
+  { id: 'knowledge' as const, label: 'Space', description: '浏览与管理知识库', keywords: '知识空间 文档 文件' },
+  { id: 'architecture' as const, label: '架构', description: '查看系统模块与处理流程', keywords: 'architecture' },
+  { id: 'settings' as const, label: '设置', description: '调整模型与偏好设置', keywords: 'settings 配置' },
 ]
 
 const railTransition =
@@ -443,7 +440,7 @@ export function ConversationSidebar({
       aria-label="主导航与会话"
       style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}
       className={cn(
-        'relative z-30 flex h-[100dvh] shrink-0 flex-col overflow-hidden border-r font-sans transition-[width] duration-200 ease-out motion-reduce:transition-none',
+        'conversation-sidebar relative z-30 flex h-[100dvh] shrink-0 flex-col overflow-hidden border-r font-sans transition-[width] duration-200 ease-out motion-reduce:transition-none',
         theme.rail,
         collapsed ? 'w-[80px]' : 'w-[var(--sidebar-width)]',
         isResizing && 'select-none',
@@ -495,21 +492,17 @@ export function ConversationSidebar({
           title="新建对话"
           aria-label="新建对话"
           className={cn(
-            'flex h-10 w-full items-center rounded-[10px] px-3 text-[14px] font-medium tracking-[-0.01em]',
+            'sidebar-nav-button flex h-10 w-full items-center rounded-[10px] px-[9px] text-[14px] font-medium tracking-[-0.01em]',
             theme.secondary,
             theme.hover,
             'active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
             theme.focus,
             railTransition,
-            collapsed ? 'mx-auto w-10 justify-center px-0' : 'gap-3',
+            collapsed ? 'mx-auto w-10 justify-center px-0' : 'gap-2.5',
             'max-[640px]:justify-center max-[640px]:px-0'
           )}
         >
-          <MessageSquarePlus
-            className={cn('shrink-0', collapsed ? 'h-5 w-5' : 'h-[22px] w-[22px]')}
-            strokeWidth={1.75}
-            aria-hidden
-          />
+          <span className="sidebar-nav-icon" aria-hidden><SidebarGlyph name="new-conversation" /></span>
           <span className={cn(collapsed && 'hidden', 'max-[640px]:hidden')}>新建对话</span>
         </button>
       </div>
@@ -517,7 +510,6 @@ export function ConversationSidebar({
       <nav aria-label="功能导航" className={cn('shrink-0 pt-0.5', collapsed ? 'px-0' : 'px-3', 'max-[640px]:px-2')}>
         <div className="space-y-0.5">
           {navigationItems.map((item) => {
-            const Icon = item.icon
             const active = activeView === item.id
 
             return (
@@ -529,20 +521,16 @@ export function ConversationSidebar({
                 aria-label={item.label}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'flex h-10 w-full items-center rounded-[10px] px-3 text-[14px] font-medium tracking-[-0.01em]',
+                  'sidebar-nav-button flex h-10 w-full items-center rounded-[10px] px-[9px] text-[14px] font-medium tracking-[-0.01em]',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
                   theme.focus,
                   railTransition,
-                  collapsed ? 'mx-auto w-10 justify-center px-0' : 'gap-3',
+                  collapsed ? 'mx-auto w-10 justify-center px-0' : 'gap-2.5',
                   active ? theme.selected : cn(theme.secondary, theme.hover),
                   'max-[640px]:justify-center max-[640px]:px-0'
                 )}
               >
-                <Icon
-                  className={cn('shrink-0', collapsed ? 'h-5 w-5' : 'h-[22px] w-[22px]')}
-                  strokeWidth={1.75}
-                  aria-hidden
-                />
+                <span className="sidebar-nav-icon" aria-hidden><SidebarGlyph name={item.id} /></span>
                 <span className={cn(collapsed && 'hidden', 'max-[640px]:hidden')}>{item.label}</span>
               </button>
             )
@@ -610,7 +598,7 @@ export function ConversationSidebar({
                     )}
                   >
                     <span className="conversation-sidebar-row-icon" data-active={active} aria-hidden>
-                      <ConversationGlyph sessionId={session.id} />
+                      <ConversationGlyph />
                     </span>
                     <span
                       className={cn(
@@ -724,11 +712,11 @@ export function ConversationSidebar({
             </kbd>
             <Search
               className={cn(
-                'h-4 w-4 shrink-0',
+                'sidebar-utility-icon h-4 w-4 shrink-0',
                 !collapsed && 'ml-auto',
                 'max-[640px]:ml-0'
               )}
-              strokeWidth={1.85}
+              strokeWidth={1.65}
               aria-hidden
             />
           </button>
@@ -751,9 +739,9 @@ export function ConversationSidebar({
             )}
           >
             {isDark ? (
-              <Sun className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} aria-hidden />
+              <Sun className="sidebar-utility-icon h-[18px] w-[18px] shrink-0" strokeWidth={1.65} aria-hidden />
             ) : (
-              <Moon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} aria-hidden />
+              <Moon className="sidebar-utility-icon h-[18px] w-[18px] shrink-0" strokeWidth={1.65} aria-hidden />
             )}
           </button>
         </div>
@@ -878,7 +866,6 @@ export function ConversationSidebar({
                 <div className="conversation-search-group" role="group" aria-labelledby={`${searchId}-navigation`}>
                   <div className="conversation-search-group-heading" id={`${searchId}-navigation`}>页面与功能 <span>{filteredNavigationItems.length}</span></div>
                   {filteredNavigationItems.map((item) => {
-                    const Icon = item.icon
                     const id = `page:${item.id}`
                     return (
                       <button
@@ -890,7 +877,7 @@ export function ConversationSidebar({
                         onClick={() => activateSearchResult(id)}
                         className="conversation-search-option"
                       >
-                        <span className="conversation-search-option-icon"><Icon size={17} strokeWidth={1.7} aria-hidden /></span>
+                        <span className="conversation-search-option-icon"><SidebarGlyph name={item.id} size={18} /></span>
                         <span className="conversation-search-option-copy">
                           <span className="conversation-search-option-title"><span><HighlightedSearchText text={item.label} query={normalizedSearchQuery} /></span>{activeView === item.id && <span className="conversation-search-result-tag">当前</span>}</span>
                           <span className="conversation-search-option-description"><HighlightedSearchText text={item.description} query={normalizedSearchQuery} /></span>
