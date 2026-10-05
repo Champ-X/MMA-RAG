@@ -216,3 +216,65 @@ test('Qwen HTTP null argument deltas and stop finish reason preserve the actual 
   assert.equal(usage[0].usage.totalTokens, 305);
   assert.equal(events.find(event => event.type === 'model.completed').data.stop_reason, 'stop');
 });
+
+test('registered requirements survive real Pi compaction, HTTP serialization and budget closing', { timeout: 15000 }, async t => {
+  const requirements = { version: 1, max_characters: 250, length_quote: '正文不超过250字',
+    required_points: ['比较两种方法并说明适用条件'],
+    length_origin: { kind: 'current_question', start: 3, end: 12 },
+    interpretation: 'Pi interpretation; meaning not independently verified.' };
+  const frames = (id, name, args) => [
+    { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id, type: 'function',
+      function: { name, arguments: JSON.stringify(args) } }] } }] },
+    { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+      usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 } },
+  ];
+  const { requests, baseUrl } = await sseEndpoint(t, [
+    frames('register', 'set_answer_requirements', { max_characters: 250, length_quote: requirements.length_quote,
+      required_points: requirements.required_points }),
+    ...[1, 2, 3, 4].map(n => frames(`search-${n}`, 'search', { query: `方法${n}` })),
+    frames('finish', 'submit_answer', { answer: '依据现有材料，条件不同。[4]' }),
+  ]);
+  const config = wireConfig(baseUrl);
+  config.answer_checks_enabled = true;
+  config.prompt = '比较两种方法，正文不超过250字。';
+  config.tools.unshift({ name: 'set_answer_requirements', description: 'Register requirements', parameters: Type.Object({
+    max_characters: Type.Number(), length_quote: Type.String(), required_points: Type.Array(Type.String()),
+  }) });
+  const events = [], calls = [];
+  const runtime = createRuntime(config, {
+    emit: (type, data) => events.push({ type, data }),
+    callHost: async (method, params) => {
+      if (method === 'model_request') return { allowed: true, max_output_tokens: 1000,
+        final_turn: requests.length === 5, allow_recall: false };
+      if (method === 'model_usage') return {};
+      calls.push(params);
+      if (params.name === 'set_answer_requirements') return {
+        content: [{ type: 'text', text: JSON.stringify({ status: 'recorded', answer_requirements: requirements }) }],
+        details: { artifact_id: 'requirements-result', evidence_ids: [], answer_requirements: requirements },
+      };
+      if (params.name === 'search') {
+        const id = Number(params.tool_call_id.split('-')[1]);
+        return { content: [{ type: 'text', text: JSON.stringify({ evidence: [{ id, content: '原文'.repeat(8000) }] }) }],
+          details: { artifact_id: `search-result-${id}`, evidence_ids: [id] } };
+      }
+      return { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed', answer: params.args.answer } };
+    },
+  });
+  t.after(() => runtime.abort());
+  assert.equal((await runtime.run()).terminal, 'completed');
+  assert.equal(requests.length, 6);
+  assert.deepEqual(calls.map(call => call.name), ['set_answer_requirements', 'search', 'search', 'search', 'search', 'submit_answer']);
+  for (const request of requests.slice(1)) {
+    const system = request.messages.filter(message => message.role === 'system');
+    assert.equal(system.length, 1);
+    assert.ok(system[0].content.includes(JSON.stringify(requirements)));
+    assert.ok(request.messages.some(message => message.role === 'user' &&
+      (typeof message.content === 'string' ? message.content : message.content.map(part => part.text || '').join('')) === config.prompt));
+  }
+  const closing = requests.at(-1);
+  assert.match(closing.messages[0].content, /宿主预算已进入收尾阶段/);
+  assert.deepEqual(closing.tools.map(tool => tool.function.name), ['submit_answer']);
+  assert.match(closing.messages.find(message => message.tool_call_id === 'register').content, /archived_result/);
+  assert.ok(events.some(event => event.type === 'context.compacted'));
+  assert.equal(calls.at(-1).args.max_characters, undefined, 'the final answer need not repeat the stored cap');
+});

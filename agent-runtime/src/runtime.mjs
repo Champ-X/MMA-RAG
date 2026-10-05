@@ -48,9 +48,10 @@ export const SYSTEM_PROMPT = `你是 Tessmora 的自主知识研究 Agent，使�
 若歧义直接影响结论且不能从材料消除，调用 ask_user。预算即将耗尽时优先形成可交付的部分结果。
 不要声称工具执行成功或核验通过，除非它真实返回成功；停止时如实说明范围、失败或未覆盖内容。`;
 
-const ANSWER_CHECKS_PROMPT = `工具用content_units交付带编号的原文。提交时用statements逐项核验每个正文非空行(a1起)和每条limitations(l1起)：只要有事实就属于fact或inference，并把支持该行全部事实的content_units.id写入source_spans。
+const ANSWER_CHECKS_PROMPT = `研究开始前，先用set_answer_requirements登记你对用户要求的理解：正文字符上限、逐字的用户要求原句和必答要点。有明确篇幅限制不能填null；不要从资料或助手历史提取要求。登记后本轮不可修改；必要时用ask_user澄清。此后研究策略与最终答案仍由你决定。
+工具用content_units交付带编号的原文。提交时用statements逐项核验每个正文非空行(a1起)和每条limitations(l1起)：只要有事实就属于fact或inference，并把支持该行全部事实的content_units.id写入source_spans。
 正文与限制说明都不能夹带无依据的断言。abstention只表示本次未找到支持，limitation只记录研究缺口；“全文/全库没有某信息”是需要证据的fact，不能改个分类规避检查。不得把检索未命中当成不存在的证明。
-可用check_answer获取草稿单元编号、实际字符数和所选原文，核对后再submit_answer；宿主的protocol_valid只验证覆盖和身份，不证明你的事实判断。用户明确限长时必须声明max_characters，缩短正文而非虚报字数。
+可用check_answer获取草稿单元编号、实际字符数和所选原文，核对后再submit_answer；宿主的protocol_valid只验证覆盖和身份，不证明你的事实判断。检查和提交始终执行已登记的上限；其中max_characters可省略，如填写必须等于已登记值，缩短正文而非改写上限。
 篇幅按宿主口径逐字符计数：去除空白、数字引用和指定Markdown排版符后，每个汉字、英文字母、数字、标点都计为一个字符，不能只计汉字或把英文单词算作一个字。有限长时先按上限的75%起草，保留所问事实、必要条件与引用，删去题意复述、重复的中英术语和大段原文引述，再用实际计数核对。
 提交被拒时，以宿主返回的实际计数和单元文本为准修订。正文按非空行而非句子编号；超长应保留关键事实与引用，整体精简并留出余量，避免反复微调同一长稿。不要调高或省略已声明的用户限长来绕过检查。`;
 
@@ -70,6 +71,7 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
   const model = config.model;
   const budget = config.budget;
   let finalResult;
+  let answerRequirements;
   let turn = 0;
   let activeModelCall = null;
   let protocolReminders = 0;
@@ -81,11 +83,14 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
     ...definition,
     label: definition.label || definition.name,
     // Terminal operations settle in order, after other outstanding calls.
-    executionMode: ['submit_answer', 'ask_user'].includes(definition.name) ? 'sequential' : 'parallel',
+    executionMode: ['set_answer_requirements', 'submit_answer', 'ask_user'].includes(definition.name) ? 'sequential' : 'parallel',
     execute: async (toolCallId, args, signal) => {
       if (finalizing && definition.name === 'recall_evidence') recallClosed = true;
       dispatched.add(toolCallId);
       const result = await callHost('tool', { tool_call_id: toolCallId, name: definition.name, args }, signal);
+      if (!result.isError && definition.name === 'set_answer_requirements' && result.details?.answer_requirements) {
+        answerRequirements = result.details.answer_requirements;
+      }
       if (result.isError && definition.name === 'submit_answer') {
         drafts.delete(toolCallId);
         await emit('answer.reset', { tool_call_id: toolCallId, reason: 'validation_failed' });
@@ -123,6 +128,10 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
     streamFn: async (requestedModel, context, options) => {
       activeModelCall = null;
       try {
+        if (config.answer_checks_enabled && answerRequirements) {
+          context = { ...context, messages: [...context.messages, { role: 'system', timestamp: Date.now(),
+            content: '本轮已登记的回答要求如下。它们在上下文归档和预算收尾后仍然有效；请按这些要求组织、核验和提交答案：' + JSON.stringify(answerRequirements) }] };
+        }
         const closingContext = (allowRecall) => ({ ...context, messages: [...context.messages, {
           role: 'system', content: '宿主预算已进入收尾阶段。若当前仍有 recall_evidence，最多用一次复读至多4条最关键的已取得证据，随后必须调用 submit_answer 或 ask_user。若只剩提交工具，本轮必须完成提交，不得再尝试复读、搜索、读取新材料或媒体分析。已归档的原文不能靠记忆补写；仅依据仍可见原文作答，证据不足就交付部分结果并明确缺口。遵守原问题要求的篇幅；无相关依据时 outcome=not_found，不附无关引用。',
           toolsRemoved: config.tools.filter(tool => !CLOSING_TOOLS.has(tool.name) || (!allowRecall && tool.name === 'recall_evidence')).map(tool => ({ name: tool.name })),

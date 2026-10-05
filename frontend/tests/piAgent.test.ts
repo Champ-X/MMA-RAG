@@ -87,6 +87,42 @@ test('cancellation preserves successful evidence and freezes outstanding work', 
   assert.deepEqual(trace.citations, [])
 })
 
+test('registered requirements replay once as context and remain visible in cancelled history', () => {
+  const requirements = { ...event(3, 'answer.requirements', {
+    max_characters: 250, length_quote: '正文不超过250字', required_points: ['比较两种方法', '说明适用条件'],
+  }), span_id: 'requirements', parent_span_id: 'tool:register' }
+  const events = [event(1, 'run.running'),
+    { ...event(2, 'tool.started', { name: 'set_answer_requirements' }), span_id: 'tool:register' },
+    requirements,
+    { ...event(4, 'tool.completed', { name: 'set_answer_requirements', duration_ms: 12 }), span_id: 'tool:register' },
+    event(5, 'run.cancelled', { message: '已取消' })]
+  let live = events.slice(0, 3).reduce(applyPiEvent, initialPiTrace(run))
+  assert.strictEqual(applyPiEvent(live, requirements), live)
+  const registered = live.steps[1]
+  assert.equal(registered.kind, 'context')
+  assert.equal(registered.parentId, 'tool:register')
+  assert.equal(registered.status, 'completed')
+  assert.match(registered.text!, /正文上限 250 字符/)
+  assert.match(registered.text!, /比较两种方法；说明适用条件/)
+  assert.match(registered.text!, /用户原句：正文不超过250字/)
+  assert.match(registered.text!, /Pi 对用户要求的理解/)
+  assert.equal(live.evidence.length, 0)
+  assert.equal(live.answer, undefined)
+  live = events.slice(3).reduce(applyPiEvent, live)
+  const history = restorePiMessages([], [{ ...run, status: 'cancelled' }])[1].pi!
+  assert.deepEqual(events.reduce(applyPiEvent, history), live)
+  assert.equal(live.steps[1].text, registered.text)
+  assert.strictEqual(applyPiEvent(live, { ...requirements, seq: 6 }), live)
+})
+
+test('absence of a registered cap is not presented as proof the user set no limit', () => {
+  const trace = applyPiEvent(initialPiTrace(run), event(1, 'answer.requirements', {
+    max_characters: null, length_quote: null, required_points: ['回答问题'],
+  }))
+  assert.match(trace.steps[0].text!, /未登记正文字符上限/)
+  assert.doesNotMatch(trace.steps[0].text!, /用户没有|已核实/)
+})
+
 test('source preparation and resource waiting replay as distinct context steps with real duration', () => {
   let trace = initialPiTrace(run)
   trace = applyPiEvent(trace, event(1, 'run.running'))

@@ -145,6 +145,23 @@ class RunStore:
                               (owner, session_id, min(max(limit, 1), 100))).fetchall()
             return [self._decode(row) for row in rows]
 
+    def record_answer_requirements(self, run_id: str, requirements: dict, *, parent_span_id=None):
+        """Register once, atomically with the event used by live UI and replay."""
+        with self._connection(write=True) as db:
+            row = self._row(db, run_id)
+            if row["status"] != "running":
+                raise RunConflict("任务不再运行，不能登记回答要求")
+            state = json.loads(row["state_json"])
+            if "answer_requirements" in state:
+                if state["answer_requirements"] != requirements:
+                    raise RunConflict("回答要求已登记，不能在本轮改写")
+                return state["answer_requirements"]
+            state["answer_requirements"] = requirements
+            db.execute("UPDATE pi_runs SET state_json=? WHERE id=?", (canonical(state), run_id))
+            self._append(db, run_id, "answer.requirements", requirements, span_id="requirements",
+                         parent_span_id=parent_span_id)
+            return json.loads(canonical(requirements))
+
     def _append(self, db, run_id, event_type, data, span_id=None, parent_span_id=None):
         row = self._row(db, run_id)
         seq, now = row["seq"] + 1, time.time()
@@ -235,10 +252,11 @@ class RunStore:
     def recover_interrupted(self) -> int:
         """Only call while holding the host's exclusive supervisor lock."""
         with self._connection(write=True) as db:
-            rows = db.execute("SELECT id,status FROM pi_runs WHERE status IN ('queued','running','cancelling')").fetchall()
+            rows = db.execute("SELECT id,status,state_json FROM pi_runs WHERE status IN ('queued','running','cancelling')").fetchall()
             for row in rows:
                 status = "cancelled" if row["status"] == "cancelling" else "failed"
                 detail = {"code": "host_restarted", "message": "服务重启，原任务已中断；已完成的行动和证据仍可查看。"}
-                db.execute("UPDATE pi_runs SET status=?,state_json=? WHERE id=?", (status, canonical(detail), row["id"]))
+                state = {**json.loads(row["state_json"]), **detail}
+                db.execute("UPDATE pi_runs SET status=?,state_json=? WHERE id=?", (status, canonical(state), row["id"]))
                 self._append(db, row["id"], f"run.{status}", {"status": status, **detail})
             return len(rows)

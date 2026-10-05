@@ -112,7 +112,7 @@ def test_source_anchor_schema_rejects_malformed_or_unbounded_identifiers(anchor)
 
 @pytest.mark.asyncio
 async def test_draft_check_is_nonterminal_and_submission_persists_exact_bindings(tmp_path):
-    tools, store, run, events = fixture_tools(tmp_path)
+    tools, store, run, events = fixture_tools(tmp_path, requirement_limit=4)
     read = await tools.execute("read", "read_source", {"source_id": source().id})
     body = json.loads(read["content"][0]["text"])
     unit = body["evidence"][0]["content_units"][0]
@@ -149,7 +149,7 @@ async def test_numbered_source_units_cannot_exceed_the_charged_output_size(tmp_p
 
 @pytest.mark.asyncio
 async def test_rejected_submission_returns_measured_units_and_rewrite_target(tmp_path):
-    tools, *_ = fixture_tools(tmp_path)
+    tools, *_ = fixture_tools(tmp_path, requirement_limit=10)
     await tools.execute("read", "read_source", {"source_id": source().id})
     answer = "一段中的第一句。第二句仍在同一行[1]。\n\n另一段[1]。"
     args = {"answer": answer, "evidence_ids": [1], "max_characters": 10, "statements": []}
@@ -171,6 +171,8 @@ async def test_rejected_experimental_contract_is_disabled_on_the_normal_pi_path(
     normal = {tool["name"]: tool for tool in definitions()}
     candidate = {tool["name"]: tool for tool in definitions(True)}
     assert "check_answer" not in normal and "check_answer" in candidate
+    assert "set_answer_requirements" not in normal and "set_answer_requirements" in candidate
+    assert len(normal) == 9
     assert "statements" not in normal["submit_answer"]["parameters"]["properties"]
     assert "statements" in candidate["submit_answer"]["parameters"]["properties"]
     tools, *_ = fixture_tools(tmp_path, answer_checks_enabled=False)

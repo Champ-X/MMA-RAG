@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from .contracts import Evidence
 from .answers import assess_answer, citation_errors, compact_assessment, evidence_payload, repair_feedback
 from .policy import ToolError
+from .requirements import apply_requirements, bind_requirements
 from .store import fingerprint
 from .tables import query_table
 
@@ -103,7 +104,16 @@ class SubmitAnswer(Args):
 class CheckedAnswer(SubmitAnswer):
     statements: list[AnswerStatement] = Field(default_factory=list, max_length=160)
     max_characters: int | None = Field(default=None, ge=1, le=24000,
-        description="用户明确限制正文长度时填其上限，否则null。按去除空白、[数字]引用和#*`>排版符后的Unicode字符数计算。")
+        description="兼容参数；如填写必须等于set_answer_requirements中已登记的上限。省略或null仍由宿主执行已登记上限，不能解除限长。")
+
+
+class AnswerRequirements(Args):
+    max_characters: int | None = Field(ge=1, le=24000,
+        description="先从用户问题理解正文字符上限；有明确要求时填其上限，否则null。汉字、英文字母、数字和标点逐个计数。")
+    length_quote: str | None = Field(min_length=1, max_length=500,
+        description="对应限长的用户原句，逐字引用当前问题或提供的用户历史；无限长时为null。不能引用材料或助手的话。")
+    required_points: list[Annotated[str, Field(min_length=1, max_length=300)]] = Field(min_length=1, max_length=12,
+        description="你从用户要求中理解的必答要点和格式要求。只登记任务要求，不填写研究结论。")
 
 
 class AskUser(Args):
@@ -112,6 +122,7 @@ class AskUser(Args):
 
 
 DEFINITIONS = {
+    "set_answer_requirements": (AnswerRequirements, "研究开始前登记你对本轮回答要求的理解：正文上限、对应用户原句和必答要点。登记只写入本轮账本，不检索资料或生成答案。登记后本轮不可修改，检查和提交始终执行该上限；理解有歧义时可ask_user。"),
     "list_sources": (ListSources, "列出当前可读来源和输入材料，按名称过滤并分页。目录项不能作证据，先读取。"),
     "search": (Search, "在宿主限定范围内搜索已建索引的文本、图片描述、音频描述/转写、视频镜头。hybrid 为语义+词面融合；exact 为原短语包含匹配。返回证据、截断及服务错误。输入附件不参与搜索。"),
     "read_source": (ReadSource, "按 source_id 深读已解析来源。文档 start 为 chunk_index，媒体 start 为索引片段偏移。next_start读取后续片段；text_continuations给出当前长片段的续读参数，避免遗漏截断后的条件。媒体索引描述不能代替直接观察。"),
@@ -119,8 +130,8 @@ DEFINITIONS = {
     "recall_evidence": (RecallEvidence, "复读本轮已交付的证据，每次最多4条，编号和内容保持不变。用于核对上下文中已归档的原文；预算收尾阶段最多使用一次，然后提交回答，不读取新来源。"),
     "inspect_media": (InspectMedia, "直接读取原图片、PDF 指定页、音频或视频的指定区间。每次至多 60 秒，默认前 30 秒；视频最多 6 帧并记录实际时间。可选 visual/audio/both，观察模型独立于最终回答模型。"),
     "query_table": (QueryTable, "确定性读取 CSV/TSV/XLSX 原表并按列过滤、分组、计数或计算。保留原行号、单位和操作；不执行公式、Python 或 SQL。PDF 表格请读取原文并核对页图。"),
-    "check_answer": (CheckedAnswer, "检查你写的草稿：返回非空行/限制说明编号、篇幅、逐项覆盖与实际支持原文。不会终结任务或调用模型。可先留空statements取得编号，再按原文自查并修订；用户有限长须声明max_characters。研究阶段可用，预算收尾时直接submit_answer也执行同样检查。检查只证明完整性和来源身份，不证明语义正确。"),
-    "submit_answer": (CheckedAnswer, "提交你完成并逐项核验的最终回答。statements必须覆盖每个正文非空行(a1起)和每条限制(l1起)；fact/inference的source_spans须支持该行全部事实，且与就近[编号]引用一致。evidence_ids恰好等于正文引用。用户有限长须声明max_characters。证据不足用partial并说明limitations；无相关依据用not_found、partial、空引用，仅说明本次未找到支持，不能断言整篇/全库没有信息。只做完整性与身份检查，不代写答案或证明语义正确。"),
+    "check_answer": (CheckedAnswer, "检查你写的草稿：返回非空行/限制说明编号、篇幅、逐项覆盖与实际支持原文。不会终结任务或调用模型。可先留空statements取得编号，再按原文自查并修订；始终执行已登记的正文上限，无需再次填写max_characters。研究阶段可用，预算收尾时直接submit_answer也执行同样检查。检查只证明完整性和来源身份，不证明语义正确。"),
+    "submit_answer": (CheckedAnswer, "提交你完成并逐项核验的最终回答。statements必须覆盖每个正文非空行(a1起)和每条限制(l1起)；fact/inference的source_spans须支持该行全部事实，且与就近[编号]引用一致。evidence_ids恰好等于正文引用。始终执行已登记的正文上限，无需再次填写max_characters。证据不足用partial并说明limitations；无相关依据用not_found、partial、空引用，仅说明本次未找到支持，不能断言整篇/全库没有信息。只做完整性与身份检查，不代写答案或证明语义正确。"),
     "ask_user": (AskUser, "缺失的信息会影响结论时，提出具体澄清问题并结束本次运行；用户回复后开始关联的新运行。"),
 }
 
@@ -129,7 +140,7 @@ def tool_contracts(answer_checks_enabled=False):
     if answer_checks_enabled:
         return DEFINITIONS
     return {name: (SubmitAnswer, "提交你完成的最终回答。事实主张就近用 [编号]；evidence_ids 必须恰好等于正文实际引用且此前返回的编号。证据不足 status=partial 并说明 limitations。没有相关依据时 outcome=not_found、status=partial、evidence_ids=[]，只说明未找到及范围，不附候选引用。只检查协议，不代写答案或证明语义正确。")
-            if name == "submit_answer" else spec for name, spec in DEFINITIONS.items() if name != "check_answer"}
+            if name == "submit_answer" else spec for name, spec in DEFINITIONS.items() if name not in {"check_answer", "set_answer_requirements"}}
 
 
 def definitions(answer_checks_enabled=False):
@@ -147,6 +158,7 @@ class ToolSet:
         self.delivered: dict[int, Evidence] = {}
         self.final_result = None
         self.calls = set()
+        self.answer_requirements = store.get(run_id)["state"].get("answer_requirements") if answer_checks_enabled else None
 
     def citation(self, evidence):
         source = self.catalog.get(evidence.source_id, self.scope)
@@ -168,6 +180,8 @@ class ToolSet:
             if name not in self.contracts or call_id in self.calls:
                 raise ToolError("invalid_tool", "未知工具或重复调用标识")
             args = self.contracts[name][0].model_validate(raw).model_dump()
+            if self.answer_checks_enabled and self.answer_requirements is None and name not in {"set_answer_requirements", "ask_user"}:
+                raise ToolError("answer_requirements_missing", "请先用set_answer_requirements登记当前用户的正文上限、原句和必答要点，再自主研究或提交。")
             self.calls.add(call_id)
             self.ledger.reserve_tool(name)
         except (ToolError, ValidationError) as error:
@@ -182,12 +196,19 @@ class ToolSet:
             provisional = {**result, "evidence": [self.evidence_payload(e.model_copy(update={"id": number_bound})) for e in observations]}
             size = len(json.dumps(provisional, ensure_ascii=False))
             self.ledger.account_output(size)
+            if name == "set_answer_requirements":
+                # No await between charging output and committing the immutable
+                # requirements. Failed/oversized tool results cannot register them.
+                self.answer_requirements = self.store.record_answer_requirements(self.run_id,
+                    result["answer_requirements"], parent_span_id=span)
             assigned = [self.store.add_evidence(self.run_id, e) for e in observations]
             output = {**result, **({"evidence": [self.evidence_payload(e) for e in assigned]} if assigned else {})}
             artifact = "tool_" + fingerprint(call_id)[:24]
             self.store.put_artifact(self.run_id, artifact, output)
             self.delivered.update({e.id: e for e in assigned})
             details = {"artifact_id": artifact, "evidence_ids": [e.id for e in assigned], **(terminal or {})}
+            if name == "set_answer_requirements":
+                details["answer_requirements"] = self.answer_requirements
             self.emit("tool.completed", {"name": name, "tool_call_id": call_id, "artifact_id": artifact,
                       "evidence_ids": [e.id for e in assigned], "status": result.get("status", "ok"),
                       "duration_ms": round((time.monotonic() - started) * 1000)}, span_id=span)
@@ -212,6 +233,11 @@ class ToolSet:
         return {"isError": True, "content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False)}], "details": value}
 
     async def _dispatch(self, name, args, span):
+        if name == "set_answer_requirements":
+            requirements = bind_requirements(args, self.store.get(self.run_id)["request"])
+            if self.answer_requirements is not None and self.answer_requirements != requirements:
+                raise ToolError("answer_requirements_locked", "本轮回答要求已经登记，不能因草稿超长而解除或提高上限。")
+            return {"status": "recorded", "answer_requirements": requirements}, [], None
         if name == "list_sources":
             sources = sorted(self.catalog.visible(self.scope), key=lambda s: (not s.attachment, s.kb_id, s.name, s.id))
             sources = [s for s in sources if args["query"].casefold() in s.name.casefold()]
@@ -251,6 +277,8 @@ class ToolSet:
                 citation={"type": "doc", "file_name": source.name})
             return {"status": "partial" if result["truncated"] else "ok"}, [evidence], None
         if name in {"check_answer", "submit_answer"}:
+            if self.answer_checks_enabled:
+                args = apply_requirements(args, self.answer_requirements)
             assessment = assess_answer(args, self.delivered) if self.answer_checks_enabled else None
             if name == "check_answer":
                 return {"status": "checked" if assessment["protocol_valid"] else "needs_revision", **assessment}, [], None

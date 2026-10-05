@@ -18,7 +18,7 @@ def source(kb="a", fid="file", **kw):
 
 
 def request(**kw):
-    return RunRequest(client_request_id="test-request", session_id="session", message="问题", **kw)
+    return RunRequest(**{"client_request_id": "test-request", "session_id": "session", "message": "问题", **kw})
 
 
 def test_catalog_binds_file_and_kb_and_rejects_duplicate_and_cross_parent():
@@ -70,11 +70,17 @@ async def test_index_outage_is_not_reported_as_no_results():
         await gateway.search(query="x", mode="exact", modalities=["doc"], knowledge_base_ids=[], limit=1, span_id="t")
 
 
-def fixture_tools(tmp_path, budget=None, *, answer_checks_enabled=True):
+def fixture_tools(tmp_path, budget=None, *, answer_checks_enabled=True, register_requirements=True,
+                  requirement_limit=None, req=None):
     store = RunStore(tmp_path / "run.db")
-    req = request()
+    req = req or request(message=f"问题，正文不超过{requirement_limit}字" if requirement_limit else "问题")
     run = store.create(owner="alice", request=req.model_dump(), config={})[0]
     store.transition(run["id"], "running")
+    if answer_checks_enabled and register_requirements:
+        from app.modules.pi_agent.requirements import bind_requirements
+        store.record_answer_requirements(run["id"], bind_requirements({"max_characters": requirement_limit,
+            "length_quote": f"正文不超过{requirement_limit}字" if requirement_limit else None,
+            "required_points": ["回答问题"]}, req.model_dump()))
     scope = AccessScope.from_request(req, {"a"})
     events = []
     async def blocking(fn, *args, **kwargs):

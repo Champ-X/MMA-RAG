@@ -32,6 +32,14 @@ export function applyPiEvent(previous: PiTrace, event: PiEvent): PiTrace {
     }
   } else if (event.type === 'answer.delta') next.draft += String(data.delta || '')
   else if (event.type === 'answer.reset') next.draft = ''
+  else if (event.type === 'answer.requirements') {
+    const limit = typeof data.max_characters === 'number' ? `正文上限 ${data.max_characters} 字符。` : '未登记正文字符上限。'
+    const points = Array.isArray(data.required_points) ? data.required_points.filter((point): point is string => typeof point === 'string') : []
+    const quote = typeof data.length_quote === 'string' ? `用户原句：${data.length_quote}` : ''
+    updateStep({ id: stepId, kind: 'context', label: '已登记回答要求', status: 'completed',
+      startedAt: event.timestamp * 1000, parentId: event.parent_span_id,
+      text: [limit, points.length ? `回答要点：${points.join('；')}` : '', quote, '以上为 Pi 对用户要求的理解。'].filter(Boolean).join('\n') })
+  }
   else if (event.type === 'evidence.added') next.evidence = [...previous.evidence, data as unknown as PiTrace['evidence'][number]]
   else if (event.type === 'action.delta') {
     const id = `action:${data.turn}`
