@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import { createAssistantMessageEventStream, getCurrentTools } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import { createRuntime } from '../src/runtime.mjs';
@@ -23,6 +24,46 @@ function response(content, stopReason = 'toolUse') {
 }
 const toolCall = (id, name, args) => ({ type: 'toolCall', id, name, arguments: args });
 const config = { run_id: 'test', model, budget: { output_tokens: 1000, wall_seconds: 30 }, tools, prompt: '查证后回答' };
+
+test('Pi thinking uses the provider protocol and accounts usage without exposing raw thinking', async (t) => {
+  const requests = [], events = [], settlements = [];
+  const server = createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    requests.push(JSON.parse(body));
+    response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    for (const frame of [
+      { choices: [{ index: 0, delta: { reasoning_content: 'private internal reasoning' } }] },
+      { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'finish', type: 'function',
+        function: { name: 'submit_answer', arguments: '{"answer":"结果"}' } }] } }] },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+        usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130,
+          completion_tokens_details: { reasoning_tokens: 17 } } },
+    ]) response.write(`data: ${JSON.stringify(frame)}\n\n`);
+    response.end('data: [DONE]\n\n');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }));
+  const runtime = createRuntime({ ...config, api_key: 'test-only', thinking_level: 'medium',
+    model: { ...model, id: 'deepseek-flash', provider: 'deepseek', reasoning: true,
+      baseUrl: `http://127.0.0.1:${server.address().port}`, compat: { thinkingFormat: 'deepseek',
+        supportsStore: false, supportsDeveloperRole: false, supportsReasoningEffort: false, maxTokensField: 'max_tokens' } } }, {
+    emit: (type, data) => events.push({ type, data }),
+    callHost: async (method, params) => {
+      if (method === 'model_request') return { allowed: true, max_output_tokens: 1000 };
+      if (method === 'model_usage') { settlements.push(params); return {}; }
+      return { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed' } };
+    },
+  });
+  assert.equal((await runtime.run()).terminal, 'completed');
+  assert.equal(requests.length, 1);
+  assert.deepEqual(requests[0].thinking, { type: 'enabled' });
+  assert.equal(requests[0].max_tokens, 1000);
+  assert.equal(settlements[0].usage.totalTokens, 130);
+  assert.equal(settlements[0].usage.reasoning, 17);
+  assert.equal(events.find(e => e.type === 'model.started').data.thinking_level, 'medium');
+  assert.ok(!JSON.stringify(events).includes('private internal reasoning'));
+});
 
 test('real Pi Agent closes the search → evidence → answer loop without a second generator', async () => {
   const calls = [], events = [];

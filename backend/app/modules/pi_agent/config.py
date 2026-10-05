@@ -16,6 +16,7 @@ class PiSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="PI_AGENT_", env_file=ROOT / "backend" / ".env", extra="ignore")
     enabled: bool = True
     model: str = "deepseek:deepseek-flash"
+    thinking_enabled: bool = False
     model_api_key: SecretStr | None = None
     model_base_url: str | None = None
     yield_to_legacy: bool = True
@@ -65,6 +66,8 @@ def resolve_model(registry, selected: str | None, settings: PiSettings) -> tuple
              "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
              "compat": {"supportsStore": False, "supportsDeveloperRole": False,
                         "maxTokensField": "max_tokens", "supportsReasoningEffort": False}}
+    if settings.thinking_enabled and not model["reasoning"]:
+        raise ValueError("该纯 Agent 模型尚未配置推理协议，请关闭 Pi 推理或选择已支持的模型")
     if provider_name == "deepseek":
         model["compat"]["thinkingFormat"] = "deepseek"
     elif provider_name == "aliyun_bailian":

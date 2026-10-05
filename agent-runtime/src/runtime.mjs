@@ -147,7 +147,8 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
         if (!admission.allowed) return errorStream(requestedModel, admission.message || '模型预算已用尽');
         finalizing ||= Boolean(admission.final_turn);
         recallClosed ||= admission.allow_recall === false;
-        await emit('model.started', { turn, model: requestedModel.id, provider: requestedModel.provider });
+        await emit('model.started', { turn, model: requestedModel.id, provider: requestedModel.provider,
+          thinking_level: config.thinking_level || 'off' });
         // Pi 1.x declares tools through system-message deltas in the transcript.
         const requestContext = fitted ? prepared : finalizing ? closingContext(!recallClosed) : context;
         activeModelCall = { turn, startedAt: performance.now() };

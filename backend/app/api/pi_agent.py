@@ -101,6 +101,7 @@ async def configuration(request: Request, response: Response, owner=Depends(owne
     # after checking tool support instead of silently sharing the legacy list.
     models = list(dict.fromkeys(settings.allowed_models or [settings.model]))
     return {"engine": "pi", "protocol_version": 1, "enabled": settings.enabled, "default_model": settings.model,
+            "thinking_enabled": settings.thinking_enabled,
             "models": models, "budget": settings.budget.model_dump(), "max_concurrent_runs": settings.max_concurrent_runs,
             "tools": ["list_sources", "search", "read_source", "expand_context", "recall_evidence", "inspect_media", "query_table", "submit_answer", "ask_user"]}
 

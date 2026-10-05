@@ -31,6 +31,20 @@ class Vectors:
         pass
 
 
+class ReasoningRegistry(Registry):
+    def get_model_config(self, name):
+        return {"type": "chat", "provider": "deepseek", "raw_model": "deepseek-flash"}
+
+
+def test_pi_thinking_configuration_cannot_silently_enable_an_unsupported_provider(tmp_path):
+    normal = PiSettings(data_dir=tmp_path, thinking_enabled=False)
+    assert resolve_model(Registry(), None, normal)[0]["reasoning"] is False
+    thinking = normal.model_copy(update={"thinking_enabled": True})
+    with pytest.raises(ValueError, match="尚未配置推理协议"):
+        resolve_model(Registry(), None, thinking)
+    assert resolve_model(ReasoningRegistry(), None, thinking)[0]["compat"]["thinkingFormat"] == "deepseek"
+
+
 def make_host(tmp_path, monkeypatch, *, script=None, **settings):
     monkeypatch.setattr(SourceCatalog, "load", lambda _, **kwargs: SourceCatalog([], {}))
     worker = tmp_path / "worker.mjs"
@@ -110,6 +124,31 @@ async def test_real_pi_unpaid_rejection_is_persisted_without_a_model_completion(
         assert model_events[0]["span_id"] == "model:1"
         assert model_events[0]["data"]["executed"] is False
         assert "无法容纳" in model_events[0]["data"]["message"]
+    finally:
+        await host.close()
+
+
+@pytest.mark.asyncio
+async def test_pi_thinking_is_recorded_and_forwarded_to_the_worker(tmp_path, monkeypatch):
+    script = """
+import {createInterface} from 'node:readline';
+createInterface({input:process.stdin}).on('line',line=>{
+ const m=JSON.parse(line);
+ if(m.type==='start') {
+  if(m.config.thinking_level!=='medium') process.exit(10);
+  console.log(JSON.stringify({type:'request',id:'ask',method:'tool',params:{tool_call_id:'ask',name:'ask_user',args:{question:'哪一份资料？'}}}));
+ } else if(m.type==='response') {
+  console.log(JSON.stringify({type:'settled',result:m.result.details}));process.exit();
+ }
+});
+"""
+    host = make_host(tmp_path, monkeypatch, thinking_enabled=True, script=script)
+    host.registry = ReasoningRegistry()
+    try:
+        run = await host.start(request(), "alice")
+        assert run["config"]["thinking_enabled"] is True
+        await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 2)
+        assert host.store.get(run["id"])["status"] == "needs_input"
     finally:
         await host.close()
 

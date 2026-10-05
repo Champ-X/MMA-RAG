@@ -119,6 +119,7 @@ class PiSupervisor:
             if self.settings.allowed_kb_ids is not None:
                 AccessScope.from_request(request, set(self.settings.allowed_kb_ids))
             public = {"engine": "pi", "protocol_version": 1, "model": model["name"], "provider": model["provider"],
+                      "thinking_enabled": self.settings.thinking_enabled,
                       "budget": self.settings.budget.model_dump(), "scope": None, "scope_ready": False,
                       "tool_models": {"embedding": self.settings.embedding_model, "vision": self.settings.vision_model, "audio": self.settings.audio_model}}
             run, created = self.store.create(owner=owner, request=request.model_dump(), config=public)
@@ -239,6 +240,7 @@ class PiSupervisor:
                         "history_for_context_only_not_evidence": history,
                         "budget": self.settings.budget.model_dump()}, ensure_ascii=False)
                     config = {"run_id": run_id, "model": model, "api_key": key, "budget": self.settings.budget.model_dump(),
+                              "thinking_level": "medium" if self.settings.thinking_enabled else "off",
                               "tools": definitions(), "prompt": prompt}
                     env = {name: value for name, value in os.environ.items() if name in {
                         "PATH", "LANG", "LC_ALL", "NODE_EXTRA_CA_CERTS", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"}}
