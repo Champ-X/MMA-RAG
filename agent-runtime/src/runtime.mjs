@@ -48,6 +48,11 @@ export const SYSTEM_PROMPT = `你是 Tessmora 的自主知识研究 Agent，使�
 若歧义直接影响结论且不能从材料消除，调用 ask_user。预算即将耗尽时优先形成可交付的部分结果。
 不要声称工具执行成功或核验通过，除非它真实返回成功；停止时如实说明范围、失败或未覆盖内容。`;
 
+const ANSWER_CHECKS_PROMPT = `工具用content_units交付带编号的原文。提交时用statements逐项核验每个正文非空行(a1起)和每条limitations(l1起)：只要有事实就属于fact或inference，并把支持该行全部事实的content_units.id写入source_spans。
+正文与限制说明都不能夹带无依据的断言。abstention只表示本次未找到支持，limitation只记录研究缺口；“全文/全库没有某信息”是需要证据的fact，不能改个分类规避检查。不得把检索未命中当成不存在的证明。
+可用check_answer获取草稿单元编号、实际字符数和所选原文，核对后再submit_answer；宿主的protocol_valid只验证覆盖和身份，不证明你的事实判断。用户明确限长时必须声明max_characters，缩短正文而非虚报字数。
+提交被拒时，以宿主返回的实际计数和单元文本为准修订。正文按非空行而非句子编号；超长应保留关键事实与引用，整体精简并留出余量，避免反复微调同一长稿。不要调高或省略已声明的用户限长来绕过检查。`;
+
 function errorStream(model, message, reason = 'error') {
   const stream = createAssistantMessageEventStream();
   stream.push({ type: 'error', reason, error: {
@@ -93,7 +98,7 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
   }));
 
   const agent = new Agent({
-    initialState: { model, systemPrompt: SYSTEM_PROMPT, tools, thinkingLevel: config.thinking_level || 'off' },
+    initialState: { model, systemPrompt: config.answer_checks_enabled ? SYSTEM_PROMPT + '\n' + ANSWER_CHECKS_PROMPT : SYSTEM_PROMPT, tools, thinkingLevel: config.thinking_level || 'off' },
     sessionId: config.run_id,
     toolExecution: 'parallel',
     transformContext: async (messages) => {

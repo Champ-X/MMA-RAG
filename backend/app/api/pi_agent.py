@@ -90,6 +90,7 @@ def translate(error):
 
 @router.get("/config")
 async def configuration(request: Request, response: Response, owner=Depends(owner_for)):
+    from app.modules.pi_agent.tools import definitions
     settings = get_pi_settings()
     if settings.api_token:
         # Same-origin media elements/new tabs cannot attach Authorization headers.
@@ -102,8 +103,9 @@ async def configuration(request: Request, response: Response, owner=Depends(owne
     models = list(dict.fromkeys(settings.allowed_models or [settings.model]))
     return {"engine": "pi", "protocol_version": 1, "enabled": settings.enabled, "default_model": settings.model,
             "thinking_enabled": settings.thinking_enabled,
+            "answer_checks_enabled": settings.answer_checks_enabled,
             "models": models, "budget": settings.budget.model_dump(), "max_concurrent_runs": settings.max_concurrent_runs,
-            "tools": ["list_sources", "search", "read_source", "expand_context", "recall_evidence", "inspect_media", "query_table", "submit_answer", "ask_user"]}
+            "tools": [tool["name"] for tool in definitions(settings.answer_checks_enabled)]}
 
 
 @router.post("/runs")

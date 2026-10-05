@@ -184,6 +184,11 @@ class RunStore:
                               (run_id, max(after, 0), min(max(limit, 1), 1000))).fetchall()
             return [json.loads(row[0]) for row in rows]
 
+    def next_evidence_id(self, run_id: str) -> int:
+        with self._connection() as db:
+            self._row(db, run_id)
+            return db.execute("SELECT COALESCE(MAX(id),0)+1 FROM pi_evidence WHERE run_id=?", (run_id,)).fetchone()[0]
+
     def add_evidence(self, run_id: str, evidence: Evidence) -> Evidence:
         value = evidence.model_dump(exclude={"id"})
         # Acquisition metadata can change; identity binds the actual returned observation.

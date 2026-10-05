@@ -17,6 +17,7 @@ class PiSettings(BaseSettings):
     enabled: bool = True
     model: str = "deepseek:deepseek-flash"
     thinking_enabled: bool = False
+    answer_checks_enabled: bool = False
     model_api_key: SecretStr | None = None
     model_base_url: str | None = None
     yield_to_legacy: bool = True

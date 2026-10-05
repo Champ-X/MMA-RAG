@@ -7,7 +7,7 @@ import './piAgent.css'
 
 const toolLabels: Record<string, string> = {
   list_sources: '发现来源', search: '检索材料', read_source: '阅读原文', expand_context: '核对上下文',
-  recall_evidence: '回看证据', inspect_media: '查看媒体', query_table: '读取与计算表格', submit_answer: '提交回答', ask_user: '请求补充信息',
+  recall_evidence: '回看证据', inspect_media: '查看媒体', query_table: '读取与计算表格', check_answer: '核对草稿', submit_answer: '提交回答', ask_user: '请求补充信息',
 }
 const observationLabels: Record<string, string> = { parsed_text: '解析原文', caption: '索引描述', transcript: '转写', media_observation: '媒体观察', calculation: '表格计算' }
 function EvidenceList({ trace }: { trace: PiTrace }) {

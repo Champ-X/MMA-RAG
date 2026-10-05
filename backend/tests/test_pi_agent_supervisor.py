@@ -72,6 +72,34 @@ async def wait_until(predicate):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_answer_contract_setting_is_bound_to_worker_and_saved_run(tmp_path, monkeypatch, enabled):
+    script = """
+import {createInterface} from 'node:readline';
+createInterface({input:process.stdin}).on('line',line=>{
+ const m=JSON.parse(line);
+ if(m.type==='start') {
+  const enabled=m.config.answer_checks_enabled, tools=m.config.tools;
+  if(tools.some(t=>t.name==='check_answer')!==enabled) process.exit(10);
+  const properties=tools.find(t=>t.name==='submit_answer').parameters.properties;
+  if(('statements' in properties)!==enabled) process.exit(11);
+  console.log(JSON.stringify({type:'request',id:'a',method:'tool',params:{tool_call_id:'a',name:'ask_user',args:{question:enabled?'检查契约已开启':'使用原回答契约'}}}));
+ } else if(m.type==='response') {console.log(JSON.stringify({type:'settled',result:m.result.details}));process.exit();}
+});
+"""
+    host = make_host(tmp_path, monkeypatch, script=script, answer_checks_enabled=enabled)
+    try:
+        run = await host.start(request(), "alice")
+        await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 2)
+        saved = host.store.get(run["id"])
+        assert saved["config"]["answer_checks_enabled"] is enabled
+        assert saved["status"] == "needs_input"
+        assert saved["state"]["answer"] == ("检查契约已开启" if enabled else "使用原回答契约")
+    finally:
+        await host.close()
+
+
+@pytest.mark.asyncio
 async def test_pipe_preserves_structured_budget_refusal_and_readmits_without_phantom_usage(tmp_path, monkeypatch):
     script = """
 import {createInterface} from 'node:readline';

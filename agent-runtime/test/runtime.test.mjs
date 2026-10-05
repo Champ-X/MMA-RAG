@@ -25,6 +25,23 @@ function response(content, stopReason = 'toolUse') {
 const toolCall = (id, name, args) => ({ type: 'toolCall', id, name, arguments: args });
 const config = { run_id: 'test', model, budget: { output_tokens: 1000, wall_seconds: 30 }, tools, prompt: '查证后回答' };
 
+test('experimental statement instructions require an explicit per-run setting', async () => {
+  for (const enabled of [false, true]) {
+    const runtime = createRuntime({ ...config, answer_checks_enabled: enabled }, {
+      emit: () => {},
+      providerStream: (_model, context) => {
+        const system = context.messages.filter(message => message.role === 'system').map(message => message.content).join('\n');
+        assert.equal(system.includes('content_units'), enabled);
+        assert.equal(system.includes('max_characters'), enabled);
+        return response([toolCall('finish', 'submit_answer', { answer: '结果' })]);
+      },
+      callHost: async method => method === 'model_request' ? { allowed: true, max_output_tokens: 1000 }
+        : method === 'model_usage' ? {} : { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed' } },
+    });
+    assert.equal((await runtime.run()).terminal, 'completed');
+  }
+});
+
 test('Pi thinking uses the provider protocol and accounts usage without exposing raw thinking', async (t) => {
   const requests = [], events = [], settlements = [];
   const server = createServer(async (request, response) => {

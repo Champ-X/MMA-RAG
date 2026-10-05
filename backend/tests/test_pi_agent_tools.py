@@ -70,7 +70,7 @@ async def test_index_outage_is_not_reported_as_no_results():
         await gateway.search(query="x", mode="exact", modalities=["doc"], knowledge_base_ids=[], limit=1, span_id="t")
 
 
-def fixture_tools(tmp_path, budget=None):
+def fixture_tools(tmp_path, budget=None, *, answer_checks_enabled=True):
     store = RunStore(tmp_path / "run.db")
     req = request()
     run = store.create(owner="alice", request=req.model_dump(), config={})[0]
@@ -84,7 +84,8 @@ def fixture_tools(tmp_path, budget=None):
             return [Evidence(source_id=s.id, modality="doc", file_name=s.name, content="实际原文", version="v1", observation="parsed_text",
                              citation={"type": "doc", "file_name": s.name})], {"status": "ok"}
     tools = ToolSet(run["id"], store, SourceCatalog([source()], {"a": "A"}), scope,
-        BudgetLedger(budget or RunBudget()), Gateway(), None, lambda name, data, **kw: events.append((name, data)), blocking)
+        BudgetLedger(budget or RunBudget()), Gateway(), None, lambda name, data, **kw: events.append((name, data)), blocking,
+        answer_checks_enabled=answer_checks_enabled)
     return tools, store, run["id"], events
 
 
@@ -100,7 +101,8 @@ async def test_only_delivered_evidence_can_be_cited_and_repair_keeps_id(tmp_path
     assert number == 2
     bad = await tools.execute("s2", "submit_answer", {"answer": "结论[2]", "evidence_ids": [1, 2]})
     assert bad["isError"]
-    accepted = await tools.execute("s3", "submit_answer", {"answer": "结论[2]", "evidence_ids": [2]})
+    accepted = await tools.execute("s3", "submit_answer", {"answer": "实际原文[2]", "evidence_ids": [2],
+        "statements": [{"unit_id": "a1", "kind": "fact", "source_spans": ["e2s1"]}]})
     assert accepted["details"]["terminal"] == "completed"
     assert accepted["details"]["citations"][0]["id"] == 2
     assert "api_key" not in str(events)
@@ -172,7 +174,9 @@ async def test_not_found_requires_partial_and_no_candidate_citations(tmp_path):
     spec = {"answer": f"未找到。来源是学术论文[{number}]", "evidence_ids": [number],
             "outcome": "not_found", "status": "partial", "limitations": ["未找到用户所需资料"]}
     assert (await tools.execute("bad", "submit_answer", spec))["isError"]
-    spec.update(answer="当前材料中未找到所需信息。", evidence_ids=[])
+    spec.update(answer="本次检索未找到所需信息的依据。", evidence_ids=[], statements=[
+        {"unit_id": "a1", "kind": "abstention", "source_spans": []},
+        {"unit_id": "l1", "kind": "limitation", "source_spans": []}])
     result = await tools.execute("fixed", "submit_answer", spec)
     assert result["details"]["terminal"] == "partial"
     assert result["details"]["citations"] == []

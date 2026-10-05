@@ -120,6 +120,7 @@ class PiSupervisor:
                 AccessScope.from_request(request, set(self.settings.allowed_kb_ids))
             public = {"engine": "pi", "protocol_version": 1, "model": model["name"], "provider": model["provider"],
                       "thinking_enabled": self.settings.thinking_enabled,
+                      "answer_checks_enabled": self.settings.answer_checks_enabled,
                       "budget": self.settings.budget.model_dump(), "scope": None, "scope_ready": False,
                       "tool_models": {"embedding": self.settings.embedding_model, "vision": self.settings.vision_model, "audio": self.settings.audio_model}}
             run, created = self.store.create(owner=owner, request=request.model_dump(), config=public)
@@ -230,7 +231,8 @@ class PiSupervisor:
                     transport = ModelTransport(self.registry, self.settings, ledger, emit)
                     gateway = KnowledgeGateway(catalog, scope, self.vectors, transport, self.search_gate)
                     media = MediaInspector(catalog, self.storage, transport, ledger, self.settings, self.blocking)
-                    toolset = ToolSet(run_id, self.store, catalog, scope, ledger, gateway, media, emit, self.blocking)
+                    toolset = ToolSet(run_id, self.store, catalog, scope, ledger, gateway, media, emit, self.blocking,
+                                      answer_checks_enabled=self.settings.answer_checks_enabled)
                     inputs = [s.public(scope) for s in catalog.visible(scope) if s.attachment or (s.kb_id, s.file_id) in scope.references]
                     history = [{"role": h.get("role"), "content": str(h.get("content", ""))[:2000]} for h in request.history
                                if h.get("role") in {"user", "assistant"}][-8:]
@@ -241,7 +243,8 @@ class PiSupervisor:
                         "budget": self.settings.budget.model_dump()}, ensure_ascii=False)
                     config = {"run_id": run_id, "model": model, "api_key": key, "budget": self.settings.budget.model_dump(),
                               "thinking_level": "medium" if self.settings.thinking_enabled else "off",
-                              "tools": definitions(), "prompt": prompt}
+                              "answer_checks_enabled": self.settings.answer_checks_enabled,
+                              "tools": definitions(self.settings.answer_checks_enabled), "prompt": prompt}
                     env = {name: value for name, value in os.environ.items() if name in {
                         "PATH", "LANG", "LC_ALL", "NODE_EXTRA_CA_CERTS", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"}}
                     if self.settings.yield_to_legacy:
