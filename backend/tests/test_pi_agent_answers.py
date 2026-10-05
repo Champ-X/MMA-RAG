@@ -67,6 +67,60 @@ def test_global_citation_identity_does_not_allow_crossed_statement_sources():
     assert {error["code"] for error in result["errors"]} == {"statement_citation_mismatch"}
 
 
+@pytest.mark.parametrize("markers,recognized,unavailable", [
+    ("[1,2]", [], []), ("[e1s1,e2s1]", [], []), ("[1][9]", [1, 9], [9]),
+])
+def test_rejected_citations_explain_syntax_and_actual_identity_without_rewriting(markers, recognized, unavailable):
+    args = CheckedAnswer(answer=f"两条记录{markers}。", evidence_ids=[1, 2], statements=[
+        {"unit_id": "a1", "kind": "fact", "source_spans": ["e1s1", "e2s1"]}]).model_dump()
+    original = copy.deepcopy(args)
+    delivered = {1: evidence(1), 2: evidence(2)}
+    report = assess_answer(args, delivered)
+    assert not report["protocol_valid"] and args == original
+    mismatch = next(error for error in report["errors"] if error["code"] == "citation_mismatch")
+    assert mismatch["recognized_evidence_ids"] == recognized
+    assert mismatch["declared_evidence_ids"] == [1, 2]
+    assert mismatch["unavailable_evidence_ids"] == unavailable
+    assert "[1][2]" in mismatch["message"] and "[1,2]" in mismatch["message"]
+    unit = next(error for error in report["errors"] if error["code"] == "statement_citation_mismatch")
+    assert unit["unit_id"] == "a1"
+    assert unit["recognized_evidence_ids"] == recognized
+    assert unit["selected_source_evidence_ids"] == [1, 2]
+    assert unit["citation_format_example"] == "[1][2]"
+    # Only the Agent's new submission changes the prose. Identity acceptance
+    # still does not establish semantic support for the selected sources.
+    revised = {**args, "answer": "两条记录[1][2]。"}
+    accepted = assess_answer(revised, delivered)
+    assert accepted["protocol_valid"] and args == original
+    assert "not independently verified" in accepted["semantic_support"]
+
+
+@pytest.mark.asyncio
+async def test_check_and_submit_return_actionable_citation_feedback_then_accept_agent_revision(tmp_path):
+    tools, store, run, events = fixture_tools(tmp_path)
+    await tools.execute("read", "read_source", {"source_id": source().id})
+    args = {"answer": "实际原文[e1s1]", "evidence_ids": [1], "statements": [
+        {"unit_id": "a1", "kind": "fact", "source_spans": ["e1s1"]}]}
+    original = copy.deepcopy(args)
+    checked = await tools.execute("check", "check_answer", args)
+    check_report = json.loads(checked["content"][0]["text"])
+    assert check_report["status"] == "needs_revision"
+    rejected = await tools.execute("submit-bad", "submit_answer", args)
+    assert rejected["isError"] and not tools.final_result
+    message = rejected["details"]["message"]
+    submit_report = json.loads(message[message.index("{"):])
+    assert submit_report["errors"] == check_report["errors"]
+    assert submit_report["errors"][0]["recognized_evidence_ids"] == []
+    assert submit_report["errors"][0]["declared_evidence_ids"] == [1]
+    assert "[1][2]" in submit_report["errors"][0]["message"]
+    final = await tools.execute("submit-revised", "submit_answer", {**args, "answer": "实际原文[1]"})
+    assert final["details"]["terminal"] == "completed"
+    assert final["details"]["answer"] == "实际原文[1]"
+    assert final["details"]["citations"][0]["content"] == "实际原文"
+    assert args == original and len(store.evidence(run)) == 1
+    assert any(kind == "tool.failed" and data["code"] == "citation_mismatch" for kind, data in events)
+
+
 def test_not_found_does_not_accept_unbacked_facts_or_hide_them_in_limitations():
     args = CheckedAnswer(answer="所有资料都不含公司财务信息。", outcome="not_found", status="partial",
         limitations=["所有资料都不含公司财务信息。"], statements=[

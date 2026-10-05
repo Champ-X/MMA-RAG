@@ -102,6 +102,8 @@ class SubmitAnswer(Args):
 
 
 class CheckedAnswer(SubmitAnswer):
+    answer: str = Field(min_length=1, max_length=24000,
+        description="你撰写的正文。引用每个数字单独加方括号，如[1][2]，不能写成[1,2]或[e1s1]；content_units.id只填在source_spans。编号须来自本轮实际返回且支持该行事实的证据。")
     statements: list[AnswerStatement] = Field(default_factory=list, max_length=160)
     max_characters: int | None = Field(default=None, ge=1, le=24000,
         description="兼容参数；如填写必须等于set_answer_requirements中已登记的上限。省略或null仍由宿主执行已登记上限，不能解除限长。")

@@ -65,6 +65,17 @@ def assess_answer(args, delivered):
     units = answer_units(args["answer"], args["limitations"])
     expected = {unit["id"]: unit for unit in units}
     statements, errors, resolved = args["statements"], citation_errors(args, delivered), []
+    # Keep the default Pi contract unchanged. The experimental checks expose
+    # what was actually parsed, rather than asking the Agent to guess why a
+    # grouped marker or source-span label failed numeric citation identity.
+    for error in errors:
+        if error["code"] == "citation_mismatch":
+            recognized = {int(n) for n in re.findall(r"\[(\d+)\]", args["answer"])}
+            declared = set(args["evidence_ids"])
+            error.update(
+                message="正文每个数字引用必须单独加方括号，例如[1][2]；[1,2]和[e1s1]都不是有效正文引用，e1s1只用于source_spans。evidence_ids须与正文实际识别的编号一致，且全部来自本轮已返回证据。请自行核对原文并修订，格式示例不证明语义支持。",
+                recognized_evidence_ids=sorted(recognized), declared_evidence_ids=sorted(declared),
+                unavailable_evidence_ids=sorted((recognized | declared) - delivered.keys()))
     if not any(uid.startswith("a") for uid in expected):
         errors.append({"code": "empty_answer", "message": "回答正文不能为空或只有空白。"})
     ids = [item["unit_id"] for item in statements]
@@ -103,8 +114,11 @@ def assess_answer(args, delivered):
             errors.append({"code": "nonfactual_citations", "unit_id": uid,
                            "message": "拒答、限制说明和纯标题不附来源候选；含来源事实的整行应归为fact或inference。"})
         if factual and markers != {source["evidence_id"] for source in sources}:
+            selected = sorted({source["evidence_id"] for source in sources})
             errors.append({"code": "statement_citation_mismatch", "unit_id": uid,
-                           "message": "每行就近引用的编号必须与该行source_spans的来源编号一致。"})
+                           "message": "该行实际识别的正文引用须与所选source_spans的来源编号一致，每个数字单独加方括号。示例只说明格式，仍须自行核对原文是否支持整行事实。",
+                           "recognized_evidence_ids": sorted(markers), "selected_source_evidence_ids": selected,
+                           "citation_format_example": "".join(f"[{number}]" for number in selected)})
         if args["outcome"] == "not_found" and factual:
             errors.append({"code": "not_found_factual_assertion", "unit_id": uid,
                            "message": "not_found只说明本次检索缺乏支持，不能断言整篇或全库没有某类信息。"})
