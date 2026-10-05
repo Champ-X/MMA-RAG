@@ -10,6 +10,7 @@ import type {
 } from '@/types/sse';
 import type { AgentMode, ChatScopeFile } from '@/store/useChatStore'
 import type { ChatMention } from '@/lib/chatReferences'
+import { referenceFilesFromMentions } from '@/lib/chatReferenceScope'
 
 export type { ThoughtEvent, CitationEvent, MessageEvent };
 
@@ -183,6 +184,8 @@ class SSEStreamManager {
     // Multipart string fields normalize LF to CRLF. JSON escapes preserve the
     // exact text against which UTF-16 mention offsets were calculated.
     form.append('messageJson', JSON.stringify(options.message || ''));
+    // Always send the independent field, including [], to disambiguate legacy clients.
+    form.append('referenceFiles', JSON.stringify(serializeSelectedFiles(referenceFilesFromMentions(options.mentions))));
     if (options.knowledgeBaseIds?.length) {
       form.append('knowledgeBaseIds', options.knowledgeBaseIds.join(','));
     }

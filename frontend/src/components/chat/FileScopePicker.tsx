@@ -103,7 +103,7 @@ export function FileScopePicker({ open, onOpenChange, value, onChange }: FileSco
       open={open}
       onOpenChange={onOpenChange}
       title="指定检索文件"
-      description="从素材空间中选择参考文件，本轮回答将在这些文件中检索。"
+      description="仅在选定文件中检索。输入框中的 @ 引用作为分析材料，不会自动限定搜索范围。"
       icon={<FolderTree size={21} strokeWidth={1.7} aria-hidden />}
       size="lg"
       className="scope-dialog scope-dialog--files"

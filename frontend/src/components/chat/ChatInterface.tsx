@@ -21,6 +21,7 @@ import type { MentionComposerHandle } from './MentionComposer'
 import { removeReferences, trimComposerValue, type ChatReference, type ComposerValue } from '@/lib/chatReferences'
 import { chatFileKind } from '@/lib/chatAttachmentFile'
 import { prepareQuestionEdit, type ChatComposerDraft, type ComposerAttachment } from '@/lib/chatQuestionEdit'
+import { explicitScopeFiles } from '@/lib/chatReferenceScope'
 import { FileScopeThumbnail, filePresentation } from './FileScopeThumbnail'
 import './fileMentionList.css'
 import './composerScopeFiles.css'
@@ -203,17 +204,7 @@ export function ChatInterface() {
   mentionStateRef.current = mentionState
   const mentionListRef = useRef<HTMLDivElement>(null)
   const mentionOptionRefs = useRef<Array<HTMLButtonElement | null>>([])
-  const requestScopeFiles = useMemo(() => {
-    const files = new Map(selectedScopeFiles.map(file => [fileScopeKey(file.kbId, file.fileId), file]))
-    for (const mention of draft.mentions) {
-      if (mention.source === 'knowledge' && mention.kbId && mention.fileId) {
-        files.set(fileScopeKey(mention.kbId, mention.fileId), {
-          kbId: mention.kbId, fileId: mention.fileId, kbName: mention.kbName, name: mention.name, type: mention.type,
-        })
-      }
-    }
-    return [...files.values()]
-  }, [selectedScopeFiles, draft.mentions])
+  const requestScopeFiles = selectedScopeFiles
 
   const {
     sessions,
@@ -559,7 +550,7 @@ export function ChatInterface() {
     if (!activeSessionId || isLoading || isStreaming) return
     setLoading(true)
     try {
-      const files = originalQuestion.scopeFiles ?? []
+      const files = explicitScopeFiles(originalQuestion)
       const kbIds = files.length
         ? [...new Set(files.map((file) => file.kbId))]
         : activeSession?.kbMode === 'manual' ? activeSession.knowledgeBaseIds : undefined
@@ -1207,13 +1198,7 @@ export function ChatInterface() {
             open={fileScopePickerOpen}
             onOpenChange={setFileScopePickerOpen}
             value={requestScopeFiles}
-            onChange={(files) => {
-              const keys = new Set(files.map(file => fileScopeKey(file.kbId, file.fileId)))
-              const inlineKeys = new Set(draft.mentions.filter(ref => ref.source === 'knowledge').map(ref => fileScopeKey(ref.kbId!, ref.fileId!)))
-              setDraft(prev => removeReferences(prev, ref => ref.source === 'knowledge' && !keys.has(fileScopeKey(ref.kbId!, ref.fileId!))))
-              setSelectedScopeFiles(files.filter(file => !inlineKeys.has(fileScopeKey(file.kbId, file.fileId))))
-              setEditorRevision(prev => prev + 1)
-            }}
+            onChange={setSelectedScopeFiles}
           />
         </Suspense>
       ) : null}

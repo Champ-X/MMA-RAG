@@ -97,6 +97,8 @@ export interface Message {
   timestamp: number;
   /** 用户本轮指定的检索文件范围 */
   scopeFiles?: ChatScopeFile[]
+  /** Version 2 stores only independently selected search restrictions. */
+  scopeVersion?: 2
   mentions?: ChatMention[]
   /** 回答元数据（如候选数量、处理耗时等），用于消息展示层，不参与提交契约 */
   metadata?: {
@@ -397,6 +399,7 @@ export const useChatStore = create<ChatStore>()(
               thinking?: ThoughtData;
               stage_timings?: StageTimings;
               selected_files?: Array<{ kb_id?: string; file_id?: string; name?: string; type?: string; kb_name?: string }>;
+              scope_version?: number;
               mentions?: ChatMention[];
               attachments?: ChatMessageAttachment[];
             }>;
@@ -409,6 +412,7 @@ export const useChatStore = create<ChatStore>()(
               timestamp: m.timestamp ? new Date(m.timestamp).getTime() : Date.now(),
               citations: m.citations as Message['citations'],
               mentions: m.mentions,
+              scopeVersion: m.scope_version === 2 ? 2 : undefined,
               attachments: m.attachments?.map(item => {
                 const previous = get().sessions.find(s => s.id === sessionId)?.messages
                   .flatMap(message => message.attachments ?? []).find(a => a.id === item.id)

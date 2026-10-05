@@ -25,6 +25,7 @@ from app.core.llm.manager import llm_manager
 from app.core.llm import TASK_MODEL_TYPES
 from app.core.llm.models_catalog import ensure_llm_catalog_fresh, get_llm_catalog_status
 from app.modules.retrieval.service import RetrievalService
+from app.modules.retrieval.reference_materials import split_reference_scope, reference_materials_context, include_reference_materials
 from app.modules.generation.service import GenerationService
 from app.modules.generation.citation_selection import select_answer_references
 from app.modules.agent.mode_router import resolve_agent_mode
@@ -346,9 +347,15 @@ async def chat_message(request: Request):
         message = data.get("message", "")
         knowledge_base_ids = data.get("knowledgeBaseIds", [])
         selected_files = _normalize_selected_files(data.get("selectedFiles"))
+        reference_files = _normalize_selected_files(data["referenceFiles"]) if "referenceFiles" in data else None
         mentions, resolved_query, reference_context = resolve_message_references(
-            message, data.get("mentions"), selected_files, []
+            message, data.get("mentions"), selected_files if reference_files is None else reference_files, []
         )
+        selected_files, reference_files, knowledge_base_ids = split_reference_scope(
+            selected_files, reference_files, mentions, knowledge_base_ids or []
+        )
+        reference_materials = await retrieval_service.load_reference_materials(reference_files) if reference_files else []
+        reference_context = "\n\n".join(filter(None, [reference_context, reference_materials_context(reference_materials)]))
         session_id = data.get("sessionId")
         agent_mode_request = data.get("agentMode", "direct")
         model = _clean_optional_str(data.get("model"))
@@ -390,11 +397,13 @@ async def chat_message(request: Request):
         effective_kb_ids = knowledge_base_ids or []
         if selected_files:
             effective_kb_ids = list(dict.fromkeys([item["kb_id"] for item in selected_files if item.get("kb_id")]))
-        if effective_kb_ids or selected_files:
+        if effective_kb_ids or selected_files or reference_files:
             kb_context = {
                 "kb_ids": effective_kb_ids,
                 "kb_names": [],  # 可以从知识库服务获取名称
                 "selected_files": selected_files,
+                "reference_files": reference_files,
+                "reference_materials": reference_materials,
             }
             if selected_files:
                 logger.info(
@@ -439,6 +448,7 @@ async def chat_message(request: Request):
                 attachment_context=reference_context or None,
             )
         
+        include_reference_materials(retrieval_result, reference_materials)
         # 2. 生成回答
         generation_result = await generation_service.generate_response(
             query=resolved_query,
@@ -480,6 +490,8 @@ async def chat_message(request: Request):
                 "role": "user",
                 "content": message,
                 "selected_files": selected_files,
+                "reference_files": reference_files,
+                "scope_version": 2,
                 "mentions": mentions,
                 "reference_query": resolved_query,
                 "reference_context": reference_context,
@@ -579,6 +591,7 @@ async def _iter_chat_sse_impl(
     include_connected: bool = True,
     mentions_raw: Any = None,
     attachment_files: Optional[List[Dict[str, Any]]] = None,
+    reference_files_raw: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """流式聊天 SSE 行迭代器（GET/POST 共用）。"""
     thinking: Dict[str, Any] = {}
@@ -597,9 +610,13 @@ async def _iter_chat_sse_impl(
     if knowledge_base_ids_csv:
         kb_ids = [kb_id.strip() for kb_id in knowledge_base_ids_csv.split(",") if kb_id.strip()]
     selected_files = _normalize_selected_files(selected_files_raw)
+    reference_files = _normalize_selected_files(reference_files_raw) if reference_files_raw is not None else None
     mentions, resolved_query, reference_context = resolve_message_references(
-        message, mentions_raw, selected_files, attachment_files or []
+        message, mentions_raw, selected_files if reference_files is None else reference_files, attachment_files or []
     )
+    selected_files, reference_files, kb_ids = split_reference_scope(selected_files, reference_files, mentions, kb_ids)
+    reference_materials = await retrieval_service.load_reference_materials(reference_files) if reference_files else []
+    reference_context = "\n\n".join(filter(None, [reference_context, reference_materials_context(reference_materials)]))
     media_context = attachment_context
     attachment_context = "\n\n".join(part for part in (reference_context, media_context) if part) or None
     if selected_files:
@@ -628,8 +645,9 @@ async def _iter_chat_sse_impl(
     session_context = _build_session_context(session)
 
     kb_context = None
-    if kb_ids or selected_files:
-        kb_context = {"kb_ids": kb_ids, "kb_names": [], "selected_files": selected_files}
+    if kb_ids or selected_files or reference_files:
+        kb_context = {"kb_ids": kb_ids, "kb_names": [], "selected_files": selected_files,
+                      "reference_files": reference_files, "reference_materials": reference_materials}
 
     if include_connected:
         yield f"data: {json.dumps({'type': 'connected', 'sessionId': current_session_id})}\n\n"
@@ -689,6 +707,7 @@ async def _iter_chat_sse_impl(
 
     if retrieval_result is None:
         raise RuntimeError("检索流未返回结果")
+    include_reference_materials(retrieval_result, reference_materials)
 
     stage_timer.start("generation")
     yield thought("generation", {"message": "正在准备生成回答...", "status": "preparing", "stage_status": "processing"})
@@ -753,6 +772,8 @@ async def _iter_chat_sse_impl(
             "role": "user",
             "content": message,
             "selected_files": selected_files,
+            "reference_files": reference_files,
+            "scope_version": 2,
             "mentions": mentions,
             "attachments": attachment_files or [],
             "reference_query": resolved_query,
@@ -786,6 +807,7 @@ async def stream_chat(
     message: str = Query(...),
     knowledgeBaseIds: Optional[str] = Query(None),
     selectedFiles: Optional[str] = Query(None),
+    referenceFiles: Optional[str] = Query(None),
     mentions: Optional[str] = Query(None),
     sessionId: Optional[str] = Query(None),
     model: Optional[str] = Query(None),
@@ -799,6 +821,7 @@ async def stream_chat(
                 message=message,
                 knowledge_base_ids_csv=knowledgeBaseIds,
                 selected_files_raw=selectedFiles,
+                reference_files_raw=referenceFiles,
                 mentions_raw=mentions,
                 session_id_opt=sessionId,
                 model=model,
@@ -822,6 +845,7 @@ async def stream_chat_multipart(
     messageJson: Optional[str] = Form(None),
     knowledgeBaseIds: Optional[str] = Form(None),
     selectedFiles: Optional[str] = Form(None),
+    referenceFiles: Optional[str] = Form(None),
     mentions: Optional[str] = Form(None),
     attachmentIds: Optional[str] = Form(None),
     sessionId: Optional[str] = Form(None),
@@ -847,7 +871,8 @@ async def stream_chat_multipart(
                     for i, uf in enumerate(named_uploads)
                 ]
                 message_text, _, summary_query, _ = resolve_multipart_references(
-                    message or "", messageJson, mentions, _normalize_selected_files(selectedFiles), attachment_files
+                    message or "", messageJson, mentions,
+                    _normalize_selected_files(referenceFiles if referenceFiles is not None else selectedFiles), attachment_files
                 )
             except ValueError as exc:
                 logger.info("聊天请求校验未通过: {}", exc)
@@ -912,6 +937,7 @@ async def stream_chat_multipart(
                 message=effective_message,
                 knowledge_base_ids_csv=knowledgeBaseIds,
                 selected_files_raw=selectedFiles,
+                reference_files_raw=referenceFiles,
                 mentions_raw=mentions,
                 attachment_files=attachment_files,
                 session_id_opt=current_sid,

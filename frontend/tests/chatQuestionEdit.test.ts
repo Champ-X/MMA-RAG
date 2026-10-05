@@ -60,6 +60,13 @@ test('deleting a restored inline reference releases its scope, while pinned file
   assert.deepEqual(restored.scope, [pinned])
 })
 
+test('new explicit scope survives editing even when it overlaps an inline source', async () => {
+  const file = { kbId: 'kb', fileId: 'image', name: '图.png' }
+  const restored = await prepareQuestionEdit({ content: '查看@图.png', scopeFiles: [file], scopeVersion: 2,
+    mentions: [{ ...file, source: 'knowledge', type: 'png', start: 2, end: 8 }] })
+  assert.deepEqual(restored.scope, [file])
+})
+
 test('missing original attachments fail atomically instead of sending thumbnails or partial inputs', async () => {
   await assert.rejects(prepareQuestionEdit({ content: '分析这两张图', attachments: [
     { id: 'available', kind: 'image', name: 'a.png', size: 1 },

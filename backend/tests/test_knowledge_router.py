@@ -322,7 +322,8 @@ async def test_combined_image_and_audio_query_covers_both_kb_inventories():
 
 
 @pytest.mark.asyncio
-async def test_explicit_kb_scope_ignores_agent_exploration_hints():
+@pytest.mark.parametrize("agent", [False, True])
+async def test_explicit_kb_scope_ignores_modality_expansion_and_agent_exploration(agent):
     class _KnowledgeServiceStub:
         async def get_knowledge_base_metadata(self, kb_id, *, refresh=False):
             return {"id": kb_id, "name": kb_id}
@@ -334,7 +335,7 @@ async def test_explicit_kb_scope_ignores_agent_exploration_hints():
         "主题曲",
         kb_context={"kb_ids": ["movies"]},
         routing_hints={
-            "agent_mode": True,
+            "agent_mode": agent,
             "agent_round": 3,
             "explored_kb_counts": {"movies": 2},
             "modality_intents": {"audio": "explicit_demand"},
@@ -343,3 +344,53 @@ async def test_explicit_kb_scope_ignores_agent_exploration_hints():
 
     assert result.routing_method == "explicit"
     assert result.target_kb_ids == ["movies"]
+
+
+@pytest.mark.asyncio
+async def test_direct_music_reference_routes_to_image_and_video_sources(monkeypatch):
+    router = _router_without_dependencies()
+    router.llm_manager = object()
+    router.vector_store = SimpleNamespace(search_kb_portraits_topn=AsyncMock(return_value=[
+        {"kb_id": "music", "score": .8}, {"kb_id": "landscape", "score": .48},
+        {"kb_id": "unrelated", "score": .3},
+    ]))
+    router.kb_service = SimpleNamespace(get_knowledge_base_metadata=AsyncMock(
+        side_effect=lambda kb_id, **kw: {"name": kb_id}))
+    router._get_modality_inventory = AsyncMock(return_value={
+        "music": {"audio": 10}, "landscape": {"image": 20, "video": 4},
+    })
+    monkeypatch.setattr("app.modules.knowledge.router.embed_queries", AsyncMock(
+        return_value=LLMCallResult(success=True, data=[[.1, .2]])))
+    result = await router.route_query("找出和这首曲子匹配的一张图片和一段视频", max_targets=3,
+        routing_hints={"modality_intents": {"image": "explicit_demand", "video": "explicit_demand"}})
+    assert result.target_kb_ids == ["music", "landscape"]
+    assert result.routing_method == "modality_coverage"
+    assert [kb["name"] for kb in result.target_kbs] == ["music", "landscape"]
+    assert result.confidence_scores["landscape"] == pytest.approx(.6)
+
+
+@pytest.mark.asyncio
+async def test_direct_media_coverage_reserves_a_bounded_slot_and_keeps_relevance_anchor():
+    router = _router_without_dependencies()
+    scores = {"music": .8, "doc-a": .79, "doc-b": .77, "scenery": .45, "remote": .05}
+    base = await router._apply_routing_strategy(scores, max_targets=3)
+    assert base.target_kb_ids == ["music", "doc-a", "doc-b"]
+    result = router._cover_requested_modalities(base, scores, max_targets=3,
+        modality_intents={"image": "explicit_demand", "video": "explicit_demand"},
+        inventory={"music": {"audio": 4}, "scenery": {"image": 10, "video": 2}})
+    assert result.target_kb_ids == ["music", "scenery", "doc-a"]
+    assert result.routing_details["modality_coverage_kb_ids"] == ["scenery"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["implicit", "covered", "unknown", "irrelevant", "budget"])
+async def test_direct_coverage_does_not_expand_without_a_relevant_missing_modality(kind):
+    router = _router_without_dependencies()
+    scores = {"music": .8, "landscape": .1 if kind == "irrelevant" else .48}
+    base = await router._apply_routing_strategy(scores, max_targets=2)
+    inventory = {} if kind == "unknown" else {"music": {"image": int(kind == "covered")}, "landscape": {"image": 5}}
+    result = router._cover_requested_modalities(base, scores, max_targets=1 if kind == "budget" else 2,
+        modality_intents={"image": "implicit_enrichment" if kind == "implicit" else "explicit_demand"},
+        inventory=inventory)
+    assert result.target_kb_ids == ["music"]
+    assert result.routing_method == "single_kb_dominant"

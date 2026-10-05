@@ -345,6 +345,11 @@ async def test_service_shares_one_embedding_batch_from_routing_through_all_modal
     }
     service._preprocess_query = AsyncMock(return_value=prepared)
     async def route(query, embedding_cache=None, **kwargs):
+        # Both Direct paths must tell the router which media the answer needs;
+        # otherwise a referenced song can route an image/video request to music.
+        assert kwargs["routing_hints"]["modality_intents"] == {
+            "image": "explicit_demand", "audio": "explicit_demand", "video": "explicit_demand",
+        }
         await embed_queries(manager, [query, *kwargs["query_variants"]], embedding_cache)
         return RoutingResult(["kb"], {"kb": 1.0}, "semantic", 1, 0.0)
     service.kb_router = SimpleNamespace(

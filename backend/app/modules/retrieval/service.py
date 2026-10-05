@@ -15,6 +15,7 @@ from .processors.intent import IntentProcessor
 from .processors.rewriter import QueryRewriter
 from .search_engine import HybridSearchEngine
 from .reranker import Reranker
+from .reference_materials import include_reference_materials
 from app.core.logger import get_logger, audit_log
 from app.core.llm.jev import JevRequiredError
 from app.core.jev_settings import get_jev_config
@@ -405,11 +406,11 @@ class RetrievalService:
                     preprocessing_result,
                     effective_routing_hints.get("agent_base_modality_intents"),
                 )
-                effective_routing_hints["modality_intents"] = {
-                    "image": preprocessing_result.get("visual_intent", "unnecessary"),
-                    "audio": preprocessing_result.get("audio_intent", "unnecessary"),
-                    "video": preprocessing_result.get("video_intent", "unnecessary"),
-                }
+            effective_routing_hints["modality_intents"] = {
+                "image": preprocessing_result.get("visual_intent", "unnecessary"),
+                "audio": preprocessing_result.get("audio_intent", "unnecessary"),
+                "video": preprocessing_result.get("video_intent", "unnecessary"),
+            }
             
             # 2. 知识库路由
             routing_result = await self._route_to_knowledge_bases(
@@ -528,13 +529,13 @@ class RetrievalService:
                 f"结果数={len(reranked_results.get('results', []))}"
             )
             
-            return RetrievalResult(
+            return include_reference_materials(RetrievalResult(
                 context=retrieval_context,
                 raw_results=search_results.get("raw_results", {}),
                 reranked_results=reranked_results.get("results", []),
                 processing_time=processing_time,
                 debug_info=debug_info
-            )
+            ), (kb_context or {}).get("reference_materials", []) if not preplanned else [])
             
         except Exception as e:
             logger.error(f"检索流程失败: {str(e)}")
@@ -700,6 +701,11 @@ class RetrievalService:
                 kb_context=kb_context,
                 query_variants=preprocessing_result["search_strategies"].get("multi_view_queries", []),
                 max_targets=3 if preprocessing_result.get("is_complex") else 2,
+                routing_hints={"modality_intents": {
+                    "image": preprocessing_result.get("visual_intent", "unnecessary"),
+                    "audio": preprocessing_result.get("audio_intent", "unnecessary"),
+                    "video": preprocessing_result.get("video_intent", "unnecessary"),
+                }},
                 embedding_cache=embedding_cache,
             )
             target_kb_ids = getattr(routing_result, "target_kb_ids", []) or []
@@ -988,6 +994,27 @@ class RetrievalService:
             "processing_time": 0.0,
         }
         
+    async def load_reference_materials(self, files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Read existing indexed evidence by KB/file identity before interpreting the question."""
+        semaphore = asyncio.Semaphore(4)
+
+        async def load(file):
+            async with semaphore:
+                kb_ids = await self.kb_router.resolve_to_qdrant_kb_ids([file["kb_id"]])
+                rows = await self.search_engine._selected_file_bootstrap_search([file], kb_ids)
+                if not rows:
+                    raise ValueError(f"无法读取引用文件「{file.get('name') or file['file_id']}」的解析内容，请确认文件已完成解析。")
+                for row in rows:
+                    # A bound source is loaded by identity, not ranked as a semantic hit.
+                    row.pop("score", None)
+                    row.pop("selected_file_boost", None)
+                    row["search_type"] = "reference"
+                    row["reference_name"] = file.get("name") or file["file_id"]
+                    row["metadata"] = {**row.get("metadata", {}), "user_reference": True}
+                return rows
+
+        return [item for group in await asyncio.gather(*(load(file) for file in files)) for item in group]
+
     async def _route_to_knowledge_bases(
         self,
         query: str,

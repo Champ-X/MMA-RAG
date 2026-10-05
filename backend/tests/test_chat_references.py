@@ -104,9 +104,11 @@ async def test_multipart_binding_reaches_retrieval_generation_and_history(monkey
         seen['generation'] = kwargs
         yield SimpleNamespace(type='message', data={'content': '有相似的平静氛围。'})
         yield SimpleNamespace(type='done', data={})
+    async def load_references(files):
+        return []  # This transport test isolates bindings from indexed media loading.
     monkeypatch.setattr(chat, 'sessions', {})
     monkeypatch.setattr(chat, 'summarize_chat_attachments', summarize)
-    monkeypatch.setattr(chat, 'retrieval_service', SimpleNamespace(search_stream=search))
+    monkeypatch.setattr(chat, 'retrieval_service', SimpleNamespace(search_stream=search, load_reference_materials=load_references))
     monkeypatch.setattr(chat, 'agentic_retrieval_service', SimpleNamespace(search_stream=search))
     monkeypatch.setattr(chat, 'generation_service', SimpleNamespace(stream_generate_response=generate))
     app = FastAPI(); app.include_router(chat.router, prefix='/chat')
@@ -124,7 +126,9 @@ async def test_multipart_binding_reaches_retrieval_generation_and_history(monkey
         assert '〈本机附件A1〉' in seen[phase]['query']
         assert 'image-id' in seen[phase]['attachment_context']
         assert '青绿色山水' in seen[phase]['attachment_context']
-        assert seen[phase]['kb_context']['selected_files'][0]['file_id'] == 'image-id'
+        assert seen[phase]['kb_context']['reference_files'][0]['file_id'] == 'image-id'
+        assert seen[phase]['kb_context']['selected_files'] == []
+        assert seen[phase]['kb_context']['kb_ids'] == []
     assert '〈本机附件A1〉' in seen['summary_query']
     saved = chat.sessions['bound']['messages'][0]
     assert saved['content'] == text and len(saved['mentions']) == 3

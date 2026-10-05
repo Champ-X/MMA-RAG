@@ -63,6 +63,9 @@ test('real multipart encoding preserves multiline Unicode text and every referen
     assert.deepEqual(refs, mentions)
     for (const ref of refs) assert.equal(exact.slice(ref.start, ref.end), `@${ref.name}`)
     assert.equal(received!.getAll('files').length, 2)
+    assert.equal(received!.get('selectedFiles'), null, 'inline mentions must not constrain discovery')
+    assert.equal(received!.get('knowledgeBaseIds'), null)
+    assert.deepEqual(JSON.parse(received!.get('referenceFiles') as string).map((file: { file_id: string }) => file.file_id), ['file-1', 'file-2'])
   } finally { globalThis.fetch = original }
 })
 

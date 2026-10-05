@@ -27,6 +27,7 @@ ROUTING_ALL_LOW_THRESHOLD = 0.08
 ROUTING_DOMINANT_ABSOLUTE_GAP = 0.04
 ROUTING_DOMINANT_RELATIVE_GAP = 0.12
 ROUTING_CANDIDATE_RATIO = 0.82
+ROUTING_MODALITY_CANDIDATE_RATIO = 0.35
 ROUTING_QUERY_WEIGHTS = (1.0, 0.72, 0.58, 0.48)
 
 @dataclass
@@ -198,6 +199,15 @@ class KnowledgeRouter:
                     kb_scores_raw,
                     max_targets=max_targets,
                 )
+                modality_intents = hints.get("modality_intents") or {}
+                if "explicit_demand" in modality_intents.values():
+                    routing_result = self._cover_requested_modalities(
+                        routing_result,
+                        kb_scores_raw,
+                        max_targets=max_targets,
+                        modality_intents=modality_intents,
+                        inventory=await self._get_modality_inventory(),
+                    )
             routing_result.query_count = len(query_vectors)
             
             # 5. 计算处理时间
@@ -225,6 +235,66 @@ class KnowledgeRouter:
         except Exception as e:
             logger.error(f"知识库路由失败: {str(e)}")
             return await self._default_routing()
+
+    def _cover_requested_modalities(
+        self, result: RoutingResult, scores: Dict[str, float], *, max_targets: int,
+        modality_intents: Dict[str, str], inventory: Dict[str, Dict[str, Any]],
+    ) -> RoutingResult:
+        """Reserve relevant media sources even when an input's topic dominates.
+
+        Direct retrieval gets one search, so a music-only semantic anchor must
+        not consume the route for a request to find matching images and videos.
+        Explicit KB/file scopes bypass this step in route_query.
+        """
+        requested = {m for m in ("image", "audio", "video")
+                     if modality_intents.get(m) == "explicit_demand"}
+        if not requested or not result.target_kb_ids or not inventory:
+            return result
+
+        def coverage(kb_id):
+            return {m for m in requested if int(inventory.get(kb_id, {}).get(m) or 0) > 0}
+
+        if requested <= set().union(*(coverage(kb_id) for kb_id in result.target_kb_ids)):
+            return result
+        # All-KB fallback must retain its original scope and presentation.
+        if result.routing_method not in {"single_kb_dominant", "single_kb", "dual_kb", "multi_kb"}:
+            return result
+        selected = result.target_kb_ids[:1]
+        missing = requested - coverage(selected[0])
+        limit = max(1, min(int(max_targets or 1), 3))
+        floor = max(ROUTING_ALL_LOW_THRESHOLD, max(scores.values(), default=0) * ROUTING_MODALITY_CANDIDATE_RATIO)
+        while missing and len(selected) < limit:
+            candidates = [kb_id for kb_id, score in scores.items()
+                          if kb_id not in selected and score >= floor and coverage(kb_id) & missing]
+            if not candidates:
+                break
+            # Prefer a relevant KB covering multiple missing media kinds; the
+            # raw semantic score breaks ties without fabricating confidence.
+            kb_id = max(candidates, key=lambda key: (len(coverage(key) & missing), scores[key]))
+            selected.append(kb_id)
+            missing -= coverage(kb_id)
+        for kb_id in result.target_kb_ids:
+            if len(selected) >= limit:
+                break
+            if kb_id not in selected:
+                selected.append(kb_id)
+        added = [kb_id for kb_id in selected if kb_id not in result.target_kb_ids]
+        if not added:
+            return result
+        confidence = self._normalize_scores(scores)
+        return RoutingResult(
+            target_kb_ids=selected,
+            confidence_scores={kb_id: confidence.get(kb_id, 0.0) for kb_id in selected},
+            routing_method="modality_coverage",
+            total_candidates=result.total_candidates,
+            processing_time=result.processing_time,
+            routing_details={
+                "base_routing_method": result.routing_method,
+                "anchor_kb_id": selected[0],
+                "modality_coverage_kb_ids": added,
+                "modality_intents": dict(modality_intents),
+            },
+        )
 
     async def _get_modality_inventory(self) -> Dict[str, Dict[str, Any]]:
         """Return a short-lived KB modality inventory for routing and retrieval."""

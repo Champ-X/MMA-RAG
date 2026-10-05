@@ -287,6 +287,7 @@ def _evidence_digest(
     ranked = sorted(
         evidence.values(),
         key=lambda item: (
+            bool((item.get("metadata") or {}).get("user_reference")),
             int(item.get("_agent_hit_count", 1)),
             float(item.get("_agent_score", item.get("final_score", 0.0)) or 0.0),
         ),
@@ -297,7 +298,7 @@ def _evidence_digest(
         content = " ".join(_result_content(item).split())[:max_chars_per_item]
         file_name = str(payload.get("file_path") or payload.get("file_name") or "")
         rows.append(
-            f"[E{index}] type={item.get('content_type') or 'doc'} "
+            f"[E{index}] role={'user_reference' if (item.get('metadata') or {}).get('user_reference') else 'discovered'} type={item.get('content_type') or 'doc'} "
             f"file={file_name or '-'} hits={item.get('_agent_hit_count', 1)} "
             f"content={content or '(no textual description)'}"
         )

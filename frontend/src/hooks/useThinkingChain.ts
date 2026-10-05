@@ -114,6 +114,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
       attachments,
       mentions: mentions?.length ? persistMentions(mentions) : undefined,
       scopeFiles: selectedFiles?.length ? selectedFiles : undefined,
+      scopeVersion: 2,
     })
     const savedMessages = getSessionById(session.id)?.messages
     const userMessageId = savedMessages?.[savedMessages.length - 1]?.id

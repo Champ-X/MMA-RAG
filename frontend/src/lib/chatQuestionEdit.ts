@@ -2,6 +2,7 @@ import type { ChatScopeFile, Message } from '@/store/useChatStore'
 import type { ComposerValue } from './chatReferences'
 import { getAttachmentBlob } from './chatAttachmentBlobStore'
 import { persistMentions, validMentions } from './chatReferences'
+import { explicitScopeFiles } from './chatReferenceScope'
 
 export interface ComposerAttachment {
   id: string
@@ -17,7 +18,7 @@ export interface ChatComposerDraft {
 
 /** Restore atomically: a missing original must never be replaced by a thumbnail or a summary. */
 export async function prepareQuestionEdit(
-  question: Pick<Message, 'content' | 'mentions' | 'attachments' | 'scopeFiles'>,
+  question: Pick<Message, 'content' | 'mentions' | 'attachments' | 'scopeFiles' | 'scopeVersion'>,
   readBlob = getAttachmentBlob,
 ): Promise<ChatComposerDraft> {
   const recovered = await Promise.all((question.attachments ?? []).map(async item => {
@@ -34,9 +35,7 @@ export async function prepareQuestionEdit(
       if (!attachmentId) throw new Error(`引用「${ref.name}」缺少原始附件，请重新添加原文件后提问。`)
       return { ...ref, attachmentId }
     })
-  // Inline files follow their atoms; restoring them as pinned files would keep searching a deleted reference.
-  const scope = (question.scopeFiles ?? []).filter(file => !mentions.some(ref =>
-    ref.source === 'knowledge' && ref.kbId === file.kbId && ref.fileId === file.fileId))
+  const scope = explicitScopeFiles(question)
   const attachmentOnly = recovered.length > 0 && !mentions.length
     && question.content === `（已上传 ${recovered.length} 个附件）`
   return {

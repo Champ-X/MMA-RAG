@@ -279,6 +279,7 @@ class ContextBuilder:
                     "cross_encoder_score": result.get("cross_encoder_score"),
                 }
                 metadata.update(result_score_metadata(result))
+                metadata["user_reference"] = bool((result.get("metadata") or {}).get("user_reference"))
                 processed_result = {
                     "id": chunk_id,
                     "content_type": content_type,
@@ -304,6 +305,7 @@ class ContextBuilder:
             # 标记，所以普通直接检索的排序行为完全保持不变。
             processed_results.sort(
                 key=lambda item: (
+                    bool(item.get("metadata", {}).get("user_reference")),
                     bool(item.get("agent_original_query_anchor")),
                     float(item.get("score", 0.0) or 0.0),
                 ),
@@ -566,6 +568,12 @@ class ContextBuilder:
             
             # 添加标题
             context_parts.append("参考材料列表：\n")
+            bound_ids = [ref_id for ref_id, ref in reference_map.items() if ref.metadata.get("user_reference")]
+            if bound_ids:
+                context_parts.append(
+                    "用户原句中 @ 指定的输入材料编号：" + "、".join(f"[{ref_id}]" for ref_id in bound_ids)
+                    + "。用于理解和比较指定对象；用户要求寻找其他匹配素材时，不得将这些输入材料冒充新检索结果。\n"
+                )
             
             # 按类型分组处理
             docs = [r for r in processed_results if r["content_type"] == "doc"]
