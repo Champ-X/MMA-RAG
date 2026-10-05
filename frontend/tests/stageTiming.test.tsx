@@ -114,3 +114,30 @@ test('cancelling an Agent round does not mark its queries or evidence as complet
   assert.match(withCompletedRound, /aria-label="Agent 第 2 轮，已停止"/)
   assert.equal((withCompletedRound.match(/本轮证据已汇总/g) ?? []).length, 1)
 })
+
+test('fallback routing summarizes distinct search scope without listing every KB or artificial scores', () => {
+  for (const route of [{ routing_method: 'default_all' }, { routing_method: 'no_portraits_default_all' }, { fallback_search: true }]) {
+    const html = renderToStaticMarkup(<ThinkingCapsule thoughtData={{ ...route, target_kbs: [
+      { id: 'one', name: '逐库列表不应出现', score: 1 },
+      { id: 'two', name: '重复显示的知识库', score: 1 },
+      { id: 'two', name: '同一知识库重复记录', score: 1 },
+    ] }} />)
+    assert.match(html, /已扩展至全库检索/)
+    assert.match(html, /覆盖 2 个知识库/)
+    assert.doesNotMatch(html, /逐库列表不应出现|重复显示的知识库|同一知识库重复记录|100%|兜底/)
+  }
+})
+
+test('fallback without scope metadata does not invent a knowledge base count', () => {
+  const html = renderToStaticMarkup(<ThinkingCapsule thoughtData={{ fallback_search: true }} />)
+  assert.match(html, /已扩展至全库检索/)
+  assert.doesNotMatch(html, /0 个知识库|覆盖/)
+})
+
+test('targeted routing retains selected knowledge bases and their relevance scores', () => {
+  const html = renderToStaticMarkup(<ThinkingCapsule thoughtData={{ routing_method: 'portrait',
+    target_kbs: [{ id: 'one', name: '相关知识库', score: 0.86 }] }} />)
+  assert.match(html, /相关知识库/)
+  assert.match(html, /86%/)
+  assert.doesNotMatch(html, /已扩展至全库检索/)
+})

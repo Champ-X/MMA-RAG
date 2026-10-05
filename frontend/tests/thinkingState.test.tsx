@@ -69,7 +69,7 @@ test('legacy generation statuses remain active until explicit completion', () =>
   assert.doesNotMatch(render(state), /thinking-spinner|thinking-activity-rail/)
 })
 
-test('legacy default routing resolves IDs against knowledge-base metadata and labels scope honestly', () => {
+test('legacy routing resolves IDs for targeted results and summarizes fallback scope', () => {
   // React's server renderer reads the initial snapshot instead of the live store.
   const snapshot = useKnowledgeStore.getInitialState()
   const previous = snapshot.knowledgeBases
@@ -77,16 +77,17 @@ test('legacy default routing resolves IDs against knowledge-base metadata and la
     snapshot.knowledgeBases = [
       { id: 'kb-old', name: '生物科普知识库', description: '' },
     ]
-    const html = renderToStaticMarkup(<ThinkingCapsule thoughtData={{
-      routing_method: 'default_all',
+    const data = {
       target_kbs: [{ id: 'kb-old', name: 'kb-old', score: 1 }],
       _generation_completed: true,
-    }} />)
+    }
+    const html = renderToStaticMarkup(<ThinkingCapsule thoughtData={data} />)
     assert.match(html, /生物科普知识库/)
     assert.doesNotMatch(html, />kb-old</)
-    assert.match(html, /兜底搜索全部知识库/)
-    assert.match(html, /搜索范围/)
-    assert.doesNotMatch(html, />100%</)
+    const fallback = renderToStaticMarkup(<ThinkingCapsule thoughtData={{ ...data, routing_method: 'default_all' }} />)
+    assert.match(fallback, /已扩展至全库检索/)
+    assert.match(fallback, /覆盖 1 个知识库/)
+    assert.doesNotMatch(fallback, /生物科普知识库|>kb-old<|>100%</)
   } finally {
     snapshot.knowledgeBases = previous
   }

@@ -101,7 +101,9 @@ export function ThinkingCapsule({
   }
 
   const routing = thoughtData?.target_kbs ?? (thoughtData?.fallback_search ? { strategy: 'fallback' as const } : undefined)
-  const isDefaultRouting = ['default_all', 'no_portraits_default_all'].includes(thoughtData?.routing_method ?? '')
+  const isDefaultRouting = thoughtData?.fallback_search === true
+    || ['default_all', 'no_portraits_default_all'].includes(thoughtData?.routing_method ?? '')
+  const broadSearchCount = new Set(thoughtData?.target_kbs?.map(kb => kb.id).filter(Boolean)).size
 
   const retrieval = {
     keywords: thoughtData?.sparse_keywords || [],
@@ -784,10 +786,21 @@ export function ThinkingCapsule({
               <StageDuration timing={timings?.routing} live={isWorking && stages?.routing === 'processing'} label="智能路由" />
             </div>
             <StageTimingDetails timing={timings?.routing} />
-            {isDefaultRouting && (
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">未确定相关知识库，已兜底搜索全部知识库。</p>
-            )}
-            <div className="ml-0.5 space-y-1 border-l border-slate-300/60 pl-2.5 dark:border-slate-600/50 sm:pl-3">
+            {isDefaultRouting ? (
+              <div className="flex items-center gap-3 rounded-xl border border-indigo-200/70 bg-white/70 px-3 py-2.5 dark:border-indigo-400/20 dark:bg-slate-900/40"
+                role="status" aria-label={`全库检索${broadSearchCount ? `，覆盖 ${broadSearchCount} 个知识库` : ''}`}>
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-indigo-200/80 bg-indigo-50 text-indigo-500 dark:border-indigo-400/25 dark:bg-indigo-400/10 dark:text-indigo-300" aria-hidden>
+                  <Search size={16} strokeWidth={1.7} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">已扩展至全库检索</p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">暂未定位到相关知识库，将在更大范围内查找线索。</p>
+                </div>
+                {broadSearchCount > 0 && <span className="shrink-0 rounded-md border border-indigo-100 bg-indigo-50/80 px-2 py-1 text-[10px] font-medium tabular-nums text-indigo-600 dark:border-indigo-400/20 dark:bg-indigo-400/10 dark:text-indigo-300">
+                  {broadSearchCount} 个知识库
+                </span>}
+              </div>
+            ) : <div className="ml-0.5 space-y-1 border-l border-slate-300/60 pl-2.5 dark:border-slate-600/50 sm:pl-3">
               {Array.isArray(routing) && routing.length > 0 ? (
                 routing.map((kb, idx) => {
                   const score = kb.score || 0
@@ -807,7 +820,7 @@ export function ThinkingCapsule({
                           </div>
                         </div>
                         <span className="w-10 shrink-0 text-right text-[10px] font-bold tabular-nums text-indigo-700 dark:text-indigo-300">
-                          {isDefaultRouting ? '搜索范围' : `${percentage}%`}
+                          {percentage}%
                         </span>
                       </div>
                     </div>
@@ -822,7 +835,7 @@ export function ThinkingCapsule({
                   </span>
                 </div>
               )}
-            </div>
+            </div>}
           </section>
           )}
 
