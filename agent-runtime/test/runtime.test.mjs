@@ -93,3 +93,28 @@ test('invalid model tool arguments never reach the host', async () => {
   assert.equal((await runtime.run()).terminal, 'partial');
   assert.equal(badExecuted, false);
 });
+
+test('long research archives tool bodies while preserving the question and tool-result pairing', async () => {
+  let requests = 0;
+  const events = [];
+  const runtime = createRuntime({ ...config, model: { ...model, contextWindow: 12000 } }, {
+    emit: (type, data) => events.push({ type, data }),
+    providerStream: (_model, context) => {
+      assert.ok(context.messages.some(message => message.role === 'user' && message.content.some(part => part.text?.includes('查证后回答'))));
+      if (++requests <= 8) return response([toolCall(`s${requests}`, 'search', { query: `资料 ${requests}` })]);
+      const results = context.messages.filter(message => message.role === 'toolResult');
+      assert.equal(results.length, 8);
+      assert.ok(results.some(message => message.content.some(part => part.text?.includes('archived_result'))));
+      assert.deepEqual(results.map(message => message.toolCallId), Array.from({ length: 8 }, (_, index) => `s${index + 1}`));
+      return response([toolCall('final', 'submit_answer', { answer: '证据[1]' })]);
+    },
+    callHost: async (method, params) => {
+      if (method === 'model_request') return { allowed: true, max_output_tokens: 1000 };
+      if (method === 'model_usage') return {};
+      return { content: [{ type: 'text', text: '原文'.repeat(1500) }], details: params.name === 'submit_answer'
+        ? { terminal: 'completed' } : { artifact_id: `artifact-${requests}`, evidence_ids: [requests] } };
+    },
+  });
+  assert.equal((await runtime.run()).terminal, 'completed');
+  assert.ok(events.some(event => event.type === 'context.compacted'));
+});

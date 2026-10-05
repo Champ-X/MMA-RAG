@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 import re
 import string
+import time
 
 from .policy import AccessScope, ToolError
 
@@ -162,10 +163,12 @@ class SourceCatalog:
             raise ToolError("source_changed", "原文件已更新，请重新开始任务以使用新版本")
         response = client.get_object(source.bucket, source.object_path,
                                      request_headers={"If-Match": source.version})
-        size = 0
+        size, started = 0, time.monotonic()
         try:
             with destination.open("wb") as target:
                 for block in response.stream(256 * 1024):
+                    if time.monotonic() - started > 90:
+                        raise ToolError("source_read_timeout", "原文件读取超过时间预算")
                     size += len(block)
                     if size > max_bytes:
                         raise ToolError("source_too_large", "原文件超过本次读取预算")

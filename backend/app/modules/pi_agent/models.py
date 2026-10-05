@@ -49,6 +49,9 @@ class ModelTransport:
         if query in self._embeddings:
             self.emit("model.cache_hit", {"purpose": "embedding"}, parent_span_id=parent)
             return self._embeddings[query]
+        if self.settings.yield_to_legacy:
+            from .admission import legacy_activity
+            await legacy_activity.wait(self.emit, parent_span_id=parent)
         config = model_endpoint(self.registry, self.settings.embedding_model, "embedding")
         call_id, span, started = self._begin(config, "embedding", len(query.encode()), 0, parent)
         usage, status = None, "error"
@@ -71,6 +74,9 @@ class ModelTransport:
             self._finish(config, "embedding", started, usage, call_id, span, parent, status)
 
     async def observe(self, parts: list[dict], *, kind: str, input_units: int, parent: str):
+        if self.settings.yield_to_legacy:
+            from .admission import legacy_activity
+            await legacy_activity.wait(self.emit, parent_span_id=parent)
         name = self.settings.audio_model if kind == "audio" else self.settings.vision_model
         config = model_endpoint(self.registry, name, "audio" if kind == "audio" else "vision")
         output_tokens = min(2000, self.ledger.limits.output_tokens)

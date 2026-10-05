@@ -80,6 +80,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(JevConfigMiddleware)
+from app.modules.pi_agent.admission import LegacyPriorityMiddleware
+app.add_middleware(LegacyPriorityMiddleware)
 
 # 导入路由模块
 from app.api import chat, knowledge, upload, debug, import_api, feishu, retrieval, jev

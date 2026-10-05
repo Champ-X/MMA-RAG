@@ -219,7 +219,7 @@ class RunStore:
             rows = db.execute("SELECT id,status FROM pi_runs WHERE status IN ('queued','running','cancelling')").fetchall()
             for row in rows:
                 status = "cancelled" if row["status"] == "cancelling" else "failed"
-                db.execute("UPDATE pi_runs SET status=? WHERE id=?", (status, row["id"]))
-                self._append(db, row["id"], f"run.{status}", {"status": status,
-                    "code": "host_restarted", "message": "服务重启，原任务已中断；已完成的行动和证据仍可查看。"})
+                detail = {"code": "host_restarted", "message": "服务重启，原任务已中断；已完成的行动和证据仍可查看。"}
+                db.execute("UPDATE pi_runs SET status=?,state_json=? WHERE id=?", (status, canonical(detail), row["id"]))
+                self._append(db, row["id"], f"run.{status}", {"status": status, **detail})
             return len(rows)

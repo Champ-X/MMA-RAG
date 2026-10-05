@@ -72,6 +72,8 @@ class PiSupervisor:
 
     def _redact(self, value):
         if isinstance(value, str):
+            if self.settings.model_api_key:
+                value = value.replace(self.settings.model_api_key.get_secret_value(), "[redacted]")
             for provider in self.registry.list_providers():
                 key = getattr(self.registry.get_provider(provider), "api_key", None)
                 if key:
@@ -159,11 +161,14 @@ class PiSupervisor:
                           "tools": definitions(), "prompt": prompt}
                 env = {name: value for name, value in os.environ.items() if name in {
                     "PATH", "LANG", "LC_ALL", "NODE_EXTRA_CA_CERTS", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"}}
-                process = await asyncio.create_subprocess_exec(self.settings.node_binary, str(self.worker),
-                    stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                    cwd=ROOT / "agent-runtime", env=env, limit=2 * 1024 * 1024)
-                self.processes[run_id] = process
                 async with asyncio.timeout(self.settings.budget.wall_seconds):
+                    if self.settings.yield_to_legacy:
+                        from .admission import legacy_activity
+                        await legacy_activity.wait(emit)
+                    process = await asyncio.create_subprocess_exec(self.settings.node_binary, str(self.worker),
+                        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                        cwd=ROOT / "agent-runtime", env=env, limit=2 * 1024 * 1024)
+                    self.processes[run_id] = process
                     result = await self._pipe(process, config, toolset, ledger, emit)
                 if self.store.get(run_id)["status"] == "cancelling":
                     raise asyncio.CancelledError
@@ -216,6 +221,9 @@ class PiSupervisor:
             method, params = message.get("method"), message.get("params") or {}
             try:
                 if method == "model_request":
+                    if self.settings.yield_to_legacy:
+                        from .admission import legacy_activity
+                        await legacy_activity.wait(emit)
                     result = ledger.reserve_model(params["turn"], params["input_bytes"], params["max_output_tokens"])
                     result["final_turn"] = ledger.model_requests >= ledger.limits.model_requests - 1
                 elif method == "model_usage":
@@ -223,6 +231,9 @@ class PiSupervisor:
                     result = {"ok": True, "remaining_model_requests": ledger.limits.model_requests - ledger.model_requests}
                 elif method == "tool":
                     async with tool_gate:
+                        if self.settings.yield_to_legacy:
+                            from .admission import legacy_activity
+                            await legacy_activity.wait(emit, parent_span_id=f"tool:{params['tool_call_id']}")
                         result = await toolset.execute(params["tool_call_id"], params["name"], params["args"])
                 else:
                     raise ToolError("invalid_protocol", "未知的 Pi 宿主请求")

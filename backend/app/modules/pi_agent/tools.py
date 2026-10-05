@@ -119,7 +119,7 @@ class ToolSet:
         source = self.catalog.get(evidence.source_id, self.scope)
         path = f"/api/pi/runs/{self.run_id}/sources/{source.id}/content"
         media_key = {"image": "img_url", "audio": "audio_url", "video": "video_url"}.get(source.modality)
-        return {**evidence.citation, "id": evidence.id, "source": evidence.source, "content": evidence.content,
+        return {**evidence.citation, "id": evidence.id, "source": evidence.source, "content": evidence.content, "pi_run_id": self.run_id,
                 "file_path": path, **({media_key: path} if media_key else {})}
 
     def _evidence(self, number):

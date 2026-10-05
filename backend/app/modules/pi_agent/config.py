@@ -16,6 +16,9 @@ class PiSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="PI_AGENT_", env_file=ROOT / "backend" / ".env", extra="ignore")
     enabled: bool = True
     model: str = "deepseek:deepseek-flash"
+    model_api_key: SecretStr | None = None
+    model_base_url: str | None = None
+    yield_to_legacy: bool = True
     embedding_model: str = "Qwen/Qwen3-Embedding-8B"
     vision_model: str = "aliyun_bailian:qwen3-vl-plus-2025-12-19"
     audio_model: str = "aliyun_bailian:qwen3-omni-flash"
@@ -40,17 +43,17 @@ def get_pi_settings() -> PiSettings:
 
 def resolve_model(registry, selected: str | None, settings: PiSettings) -> tuple[dict, str]:
     name = selected or settings.model
-    if settings.allowed_models and name not in settings.allowed_models:
+    if name not in (settings.allowed_models or [settings.model]):
         raise ValueError("所选模型不在纯 Agent 的可用模型范围内")
     configured = registry.get_model_config(name)
     if not configured or "chat" not in str(configured.get("type", "")).split(","):
         raise ValueError("纯 Agent 需要支持对话与工具调用的模型")
     provider_name = configured["provider"]
     provider = registry.get_provider(provider_name)
-    if provider is None or not getattr(provider, "api_key", None):
+    if provider is None or not (settings.model_api_key or getattr(provider, "api_key", None)):
         raise ValueError("所选模型的服务商尚未配置")
     raw = configured.get("raw_model") or (name.split(":", 1)[1] if ":" in name else name)
-    base_url = getattr(provider, "base_url", "")
+    base_url = settings.model_base_url or getattr(provider, "base_url", "")
     if not base_url:
         raise ValueError("该模型服务商没有可用的兼容接口")
     capabilities = str(configured.get("type", "")).split(",")
@@ -66,4 +69,4 @@ def resolve_model(registry, selected: str | None, settings: PiSettings) -> tuple
         model["compat"]["thinkingFormat"] = "deepseek"
     elif provider_name == "aliyun_bailian":
         model["compat"]["thinkingFormat"] = "qwen"
-    return model, provider.api_key
+    return model, settings.model_api_key.get_secret_value() if settings.model_api_key else provider.api_key

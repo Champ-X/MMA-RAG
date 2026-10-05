@@ -3,14 +3,17 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import hashlib
 import ipaddress
 import json
 import mimetypes
+import re
+import time
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
 from app.modules.pi_agent.config import get_pi_settings
@@ -22,13 +25,23 @@ router = APIRouter()
 _supervisor = None
 
 
+def media_cookie(settings, timestamp):
+    principal = settings.trusted_user_id or "configured-workspace"
+    signature = hmac.new(settings.api_token.get_secret_value().encode(), f"{principal}:{timestamp}".encode(), hashlib.sha256).hexdigest()
+    return f"{timestamp}.{signature}"
+
+
 def owner_for(request: Request):
     settings = get_pi_settings()
     if not settings.enabled:
         raise HTTPException(503, "纯 Agent 模式尚未启用")
     if settings.api_token:
         expected = "Bearer " + settings.api_token.get_secret_value()
-        if not hmac.compare_digest(request.headers.get("authorization", ""), expected):
+        bearer_ok = hmac.compare_digest(request.headers.get("authorization", ""), expected)
+        cookie = request.cookies.get("pi_workspace", "")
+        timestamp = cookie.split(".", 1)[0]
+        cookie_ok = bool(re.fullmatch(r"[0-9]{1,12}", timestamp)) and 0 <= time.time() - int(timestamp) < 6 * 3600 and hmac.compare_digest(cookie, media_cookie(settings, timestamp))
+        if not bearer_ok and not cookie_ok:
             raise HTTPException(401, "纯 Agent 服务需要已配置的访问凭证")
         return settings.trusted_user_id or "configured-workspace"
     try:
@@ -76,11 +89,17 @@ def translate(error):
 
 
 @router.get("/config")
-async def configuration(owner=Depends(owner_for)):
-    from app.core.llm.manager import llm_manager
+async def configuration(request: Request, response: Response, owner=Depends(owner_for)):
     settings = get_pi_settings()
-    models = [name for name in llm_manager.registry.list_models("chat")
-              if not settings.allowed_models or name in settings.allowed_models]
+    if settings.api_token:
+        # Same-origin media elements/new tabs cannot attach Authorization headers.
+        # Exchange an authenticated config read for a short-lived HttpOnly cookie.
+        response.set_cookie("pi_workspace", media_cookie(settings, str(int(time.time()))), max_age=6 * 3600,
+                            path="/api/pi", httponly=True, secure=request.url.scheme == "https", samesite="strict")
+    # A broad provider catalog contains chat-only/reasoning-only models. Expose
+    # only the explicitly configured Pi set; operators opt in additional models
+    # after checking tool support instead of silently sharing the legacy list.
+    models = list(dict.fromkeys(settings.allowed_models or [settings.model]))
     return {"engine": "pi", "protocol_version": 1, "enabled": settings.enabled, "default_model": settings.model,
             "models": models, "budget": settings.budget.model_dump(), "max_concurrent_runs": settings.max_concurrent_runs,
             "tools": ["list_sources", "search", "read_source", "expand_context", "recall_evidence", "inspect_media", "query_table", "submit_answer", "ask_user"]}
@@ -89,6 +108,16 @@ async def configuration(owner=Depends(owner_for)):
 @router.post("/runs")
 async def create_run(request: Request, owner=Depends(owner_for)):
     supervisor = host()
+    # Bound the actual multipart body, not only each file after it has spooled.
+    original_receive, received = request._receive, 0
+    async def bounded_receive():
+        nonlocal received
+        message = await original_receive()
+        received += len(message.get("body", b""))
+        if received > 91 * 1024 * 1024:
+            raise HTTPException(413, "本轮附件总量超过上传预算")
+        return message
+    request._receive = bounded_receive
     try:
         if request.headers.get("content-type", "").startswith("multipart/form-data"):
             form = await request.form(max_files=3, max_fields=10)
@@ -122,6 +151,8 @@ async def create_run(request: Request, owner=Depends(owner_for)):
                 if len(raw) > 256 * 1024:
                     raise HTTPException(413, "请求过大")
             spec = RunRequest.model_validate_json(raw)
+            if spec.attachments:
+                raise ToolError("invalid_attachment", "本机附件必须通过上传接口提交，不能自行声明文件版本或来源")
         return await supervisor.start(spec, owner)
     except (ValueError, ToolError, RunNotFound, RunConflict, ValidationError) as error:
         raise translate(error) from None
@@ -200,7 +231,7 @@ async def artifact(run_id: str, artifact_id: str, owner=Depends(owner_for)):
 
 
 @router.get("/runs/{run_id}/sources/{source_id}/content")
-async def source_content(run_id: str, source_id: str, owner=Depends(owner_for)):
+async def source_content(run_id: str, source_id: str, request: Request, owner=Depends(owner_for)):
     from app.modules.pi_agent.catalog import Source, SourceCatalog
     supervisor = host()
     try:
@@ -224,7 +255,43 @@ async def source_content(run_id: str, source_id: str, owner=Depends(owner_for)):
                 staging.replace(destination)
             finally:
                 staging.unlink(missing_ok=True)
-        return FileResponse(destination, media_type=mimetypes.guess_type(source.name)[0] or "application/octet-stream",
-                            filename=source.name, content_disposition_type="inline", headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"})
+        size = destination.stat().st_size
+        media_type = mimetypes.guess_type(source.name)[0] or "application/octet-stream"
+        # Source files are untrusted content, even when an authenticated user
+        # opens them. Never execute an HTML/SVG upload in the application's origin.
+        inline = media_type == "application/pdf" or media_type == "text/plain" or (
+            media_type.startswith(("image/", "audio/", "video/")) and media_type != "image/svg+xml")
+        response_headers = {"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff", "Accept-Ranges": "bytes",
+                            "Content-Security-Policy": "sandbox; default-src 'none'",
+                            "Content-Disposition": ("inline" if inline else "attachment") + "; filename*=UTF-8''" + quote(source.name)}
+        # Starlette 0.27 FileResponse has no Range support. Real media controls
+        # require 206 responses to seek to the evidence's absolute timestamp.
+        start, end, status = 0, size - 1, 200
+        if requested := request.headers.get("range"):
+            match = re.fullmatch(r"bytes=([0-9]{0,18})-([0-9]{0,18})", requested)
+            if not match or not any(match.groups()):
+                raise HTTPException(416, "不支持的媒体范围", headers={"Content-Range": f"bytes */{size}"})
+            left, right = match.groups()
+            if left:
+                start, end = int(left), min(int(right), size - 1) if right else size - 1
+            else:
+                start = max(0, size - int(right))
+            if not 0 <= start <= end < size:
+                raise HTTPException(416, "媒体范围越界", headers={"Content-Range": f"bytes */{size}"})
+            response_headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+            status = 206
+        response_headers["Content-Length"] = str(end - start + 1)
+        def chunks():
+            with destination.open("rb") as original:
+                original.seek(start)
+                remaining = end - start + 1
+                while remaining:
+                    block = original.read(min(256 * 1024, remaining))
+                    if not block:
+                        break
+                    remaining -= len(block)
+                    yield block
+        return StreamingResponse(chunks(), status_code=status,
+            media_type=media_type, headers=response_headers)
     except (RunNotFound, ToolError) as error:
         raise translate(error) from None
