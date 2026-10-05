@@ -71,6 +71,53 @@ def test_response_schema_is_bound_to_actual_fact_count_and_available_ids():
     assert schema["$defs"]["UnitAssessment"]["properties"]["source_spans"]["maxItems"] == 0
 
 
+def split_receipt(job, value):
+    return {"requests": {stage: {"http_status": 200, "request_sha256": review.v1.sha(request),
+        "response": {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps({
+            "answer_id": value["answer_id"], "complete": value["complete"],
+            **({"facts": value["facts"]} if stage == "facts" else {"units": value["units"]})})}}]}}
+        for stage, request in review.review_requests(job).items()}}
+
+
+def test_fact_and_citation_review_have_independent_context_and_schema():
+    job, value = sample()
+    job["reference_sources"] = [{"content": "PRIVATE REFERENCE ONLY"}]
+    requests = review.review_requests(job)
+    assert "actual_citations" not in requests["facts"]["input"]
+    assert "reference_facts" not in requests["support"]["input"]
+    assert "PRIVATE REFERENCE ONLY" not in json.dumps(requests["support"])
+    assert "UnitAssessment" not in review.response_schema(job, "facts")["$defs"]
+    assert "FactAssessment" not in review.response_schema(job, "support")["$defs"]
+    value["units"][1].update(support="unsupported", source_spans=[])
+    result = review.validate_receipt(job, split_receipt(job, value))
+    # The answer can cover the reference fact while lacking citation support.
+    score = review.v1.answer_score(review.score_view(result))
+    assert score["facts"] == ["covered"] and not score["supported"]
+    job["reference_facts"] = []
+    assert set(review.review_requests(job)) == {"support"}
+
+
+@pytest.mark.parametrize("change", ["missing_stage", "changed_input", "wrong_identity", "truncated", "failed_http", "cross_stage_fields"])
+def test_split_review_cannot_use_partial_or_mixed_judgments(change):
+    job, value = sample()
+    receipt = split_receipt(job, value)
+    saved = receipt["requests"]["support"]
+    choice = saved["response"]["choices"][0]
+    if change == "missing_stage": receipt["requests"].pop("facts")
+    elif change == "changed_input": saved["request_sha256"] = "wrong"
+    elif change == "wrong_identity":
+        body = json.loads(choice["message"]["content"])
+        body["answer_id"] = "another"
+        choice["message"]["content"] = json.dumps(body)
+    elif change == "truncated": choice["finish_reason"] = "length"
+    elif change == "failed_http": saved["http_status"] = 503
+    else:
+        body = json.loads(choice["message"]["content"])
+        body["facts"] = value["facts"]
+        choice["message"]["content"] = json.dumps(body)
+    with pytest.raises(ValueError): review.validate_receipt(job, receipt)
+
+
 def test_calibration_hides_gold_and_refuses_overwrite_or_failed_gate(tmp_path):
     fixture = Path(__file__).parent / "fixtures/pi_span_review_calibration.json"
     out = tmp_path / "calibration"
