@@ -57,6 +57,20 @@ def test_score_keeps_negative_and_uncertain_findings_and_missing_facts():
     assert review.v1.answer_score(review.score_view(review.validate(job, value)))["uncertain"]
 
 
+def test_response_schema_is_bound_to_actual_fact_count_and_available_ids():
+    job, _ = sample()
+    schema = review.response_schema(job)
+    assert schema["properties"]["answer_id"]["const"] == "blind"
+    assert schema["properties"]["facts"]["minItems"] == schema["properties"]["facts"]["maxItems"] == 1
+    assert schema["$defs"]["FactAssessment"]["properties"]["index"]["enum"] == [1]
+    assert schema["$defs"]["UnitAssessment"]["properties"]["unit_id"]["enum"] == ["u1", "u2"]
+    assert schema["$defs"]["UnitAssessment"]["properties"]["source_spans"]["items"]["enum"] == ["c1s1"]
+    job.update(reference_facts=[], actual_citations=[])
+    schema = review.response_schema(job)
+    assert schema["properties"]["facts"]["maxItems"] == 0
+    assert schema["$defs"]["UnitAssessment"]["properties"]["source_spans"]["maxItems"] == 0
+
+
 def test_calibration_hides_gold_and_refuses_overwrite_or_failed_gate(tmp_path):
     fixture = Path(__file__).parent / "fixtures/pi_span_review_calibration.json"
     out = tmp_path / "calibration"
@@ -78,4 +92,6 @@ def test_calibration_requires_semantic_expectation_and_kind_not_just_valid_schem
     assert not review.calibration_report(expected, {"blind": assessed})["pass"]
     expected["blind"]["supported"] = True
     assert review.calibration_report(expected, {"blind": assessed})["pass"]
+    expected["blind"]["unit_support"] = {"u2": "unsupported"}
+    assert not review.calibration_report(expected, {"blind": assessed})["pass"]
     assert not review.calibration_report(expected, {})["pass"]
