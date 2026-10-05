@@ -101,6 +101,23 @@ cd ../frontend && npm test && npm run build
 
 `scripts/serve-pi-diagnostics.py` 使用独立进程和账本记录请求级模型、规划及检索耗时，不记录模型凭证或提示正文；禁用应用生命周期任务以避免重复启动监听器。`scripts/verify-pi-quality.py --cases <冻结用例清单> --output <新目录>` 保存三个旧模式的无负载/两路 Pi 负载回答，以及 Pi 自身的回答和实际证据。它先确认 Pi 模型已发起，再启动旧请求；语义结论必须另行对照来源审阅，脚本不会把引用编号合法当作正确性评分。
 
+`scripts/verify-pi-replay.py` 在模型 HTTP、Qdrant HTTP 和 MinIO HTTP 边界录制实际响应，再交给独立的基线/候选进程。旧输入校验、附件分析、查询改写、本地编码、检索/重排、Agent 规划、生成、SSE 和历史逻辑仍实际执行。请求按端点、完整 JSON/请求体、读取参数和超时匹配；每次响应只能消费一次，未记录请求和剩余响应都会导致验证失败。回放禁止旧请求访问真实网络，录制与回放均拒绝知识库写入。
+
+此工具使用 ASGI HTTP 边界，不运行后台生命周期任务；一般响应不重放网络延迟，外层 deadline 引发的取消仍由原调用方的超时逻辑触发。协议 v2 要求在启动 Python 前固定 `PYTHONHASHSEED=0`，并逐次录制/回放目录缓存的时钟读取，保留真实 60 秒缓存失效决策；不改变 asyncio 超时和 Pi 预算时钟。因此它验证相同外部输入下的行为一致性，不产生新的实时性能结论，也不把基线错误认定为正确答案。`--pi-load` 为候选回放另启真实 Pi 任务，并保存其账本；Pi 使用真实外部服务，旧流程仍只消费录制响应。
+
+录制包含提示和来源正文，必须放在本机忽略目录，不能提交。请求不保存 Authorization 等凭证头；对预签名地址只比较对象身份及非签名参数。输出目录和响应记录均拒绝覆盖。基线和候选需使用相同环境配置、模型路由文件、固定问题及附件哈希。典型调用如下（路径应为实际独立检出与固定清单）：
+
+```bash
+PYTHONHASHSEED=0 .venv/bin/python scripts/verify-pi-replay.py --mode record \
+  --checkout /tmp/tessmora-pi-baseline-bf9627b --cases <manifest.json> \
+  --tape data/pi-agent-verification/replay-tape --output data/pi-agent-verification/replay-record
+PYTHONHASHSEED=0 .venv/bin/python scripts/verify-pi-replay.py --mode replay \
+  --checkout /tmp/tessmora-pi-baseline-bf9627b --cases <manifest.json> \
+  --tape data/pi-agent-verification/replay-tape --expected data/pi-agent-verification/replay-record \
+  --output data/pi-agent-verification/replay-baseline
+# 再用 --checkout . 运行候选对照，并用另一个输出目录加 --pi-load 运行候选负载。
+```
+
 验收记录应保留失败候选，并同时报告未通过的门槛。浏览器验收包含原编辑器身份、草稿/引用/附件保留、浅色/深色、窄屏、减弱动态效果、真实任务过程、取消与刷新回放。不要把协议测试中的模拟供应商结果当作真实模型验证。
 
 本次结果及尚未通过的门槛见 [PI_AGENT_VERIFICATION.md](PI_AGENT_VERIFICATION.md)。
