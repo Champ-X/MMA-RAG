@@ -138,3 +138,17 @@ def test_table_computation_reports_scope_and_refuses_formulas(tmp_path):
     path.write_text("组,数量\nA,=1+2\n", encoding="utf8")
     with pytest.raises(ToolError, match="非数值或公式"):
         query_table(path, args)
+
+
+@pytest.mark.asyncio
+async def test_not_found_requires_partial_and_no_candidate_citations(tmp_path):
+    tools, *_ = fixture_tools(tmp_path)
+    evidence = await tools.execute("read", "read_source", {"source_id": source().id})
+    number = evidence["details"]["evidence_ids"][0]
+    spec = {"answer": f"未找到。来源是学术论文[{number}]", "evidence_ids": [number],
+            "outcome": "not_found", "status": "partial", "limitations": ["未找到用户所需资料"]}
+    assert (await tools.execute("bad", "submit_answer", spec))["isError"]
+    spec.update(answer="当前材料中未找到所需信息。", evidence_ids=[])
+    result = await tools.execute("fixed", "submit_answer", spec)
+    assert result["details"]["terminal"] == "partial"
+    assert result["details"]["citations"] == []

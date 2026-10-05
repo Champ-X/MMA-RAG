@@ -41,6 +41,9 @@ export function applyPiEvent(previous: PiTrace, event: PiEvent): PiTrace {
   } else if (event.type === 'context.compacted') {
     updateStep({ id: stepId, kind: 'context', label: '已归档较早的工具结果', status: 'completed', startedAt: event.timestamp * 1000,
       text: `${data.archived_tool_results} 份结果保留在任务记录中，可继续读取原始证据。` })
+  } else if (event.type === 'budget.finalizing') {
+    updateStep({ id: stepId, kind: 'context', label: '正在收束已有证据', status: 'completed', startedAt: event.timestamp * 1000,
+      text: String(data.message || '') })
   } else if (event.type.startsWith('resource.')) {
     const old = previous.steps.find(s => s.id === stepId)
     updateStep({ id: stepId, kind: 'context', label: '等待服务资源', status: event.type === 'resource.waiting' ? 'running' : 'completed',

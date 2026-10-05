@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
+import { createAssistantMessageEventStream, getCurrentTools } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import { createRuntime } from '../src/runtime.mjs';
 
@@ -75,6 +75,29 @@ test('request admission rejects before any provider call', async () => {
   assert.equal(called, false);
   assert.equal(result.terminal, 'failed');
   assert.match(result.message, /budget_exhausted/);
+});
+
+test('host closing admission limits paid generation to a final answer with existing evidence', async () => {
+  let requests = 0;
+  const runtime = createRuntime(config, {
+    emit: () => {},
+    providerStream: (_model, context) => {
+      if (++requests === 1) return response([toolCall('s', 'search', { query: '事实' })]);
+      assert.deepEqual(getCurrentTools(context.messages).map(tool => tool.name), ['submit_answer']);
+      assert.ok(context.messages.some(message => message.role === 'toolResult'));
+      assert.match(context.messages.at(-1).content, /收尾阶段/);
+      return response([toolCall('a', 'submit_answer', { answer: '已查到的事实[1]' })]);
+    },
+    callHost: async (method, params) => {
+      if (method === 'model_request') return { allowed: true, max_output_tokens: 1000, final_turn: requests === 1 };
+      if (method === 'model_usage') return {};
+      return { content: [{ type: 'text', text: '事实[1]' }], details: params.name === 'submit_answer'
+        ? { terminal: 'completed', answer: params.args.answer } : { evidence_ids: [1] } };
+    },
+  });
+  const result = await runtime.run();
+  assert.equal(result.terminal, 'completed', result.message);
+  assert.equal(requests, 2);
 });
 
 test('invalid model tool arguments never reach the host', async () => {

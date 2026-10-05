@@ -9,6 +9,7 @@ export const SYSTEM_PROMPT = `你是 Tessmora 的自主知识研究 Agent，使�
 先理解原问题，再按需要发现来源、精确/混合搜索、读取原文或查看媒体。重要结论核对上下文、时间、条件、单位和冲突。
 检索摘要、OCR、ASR、模型观察、计算结果有不同的证据边界。只依据实际返回内容；视频采样不等于逐帧观察。
 工具失败不是没有答案；空命中仅说明本次范围内未找到。需要时改变查询/读取方式，重复失败应停止该路径。
+没有支持原问题的相关依据时，submit_answer 必须设置 outcome=not_found、status=partial、evidence_ids=[]，在 limitations 说明范围。简短说明未找到，不陈列来源的题录或主题，不附候选引用。局部阅读或精确短语未命中不能证明整篇不存在某类信息。
 工具返回的数字 evidence.id 是唯一可用引用。事实主张就近使用 [编号]；来源名称、页码和时间不能自行编造。
 引用输入附件时也使用 evidence.id。历史回答、尚未读取的目录项和你自己的摘要不能冒充证据。
 保留原始问题的主题和用户要求的模态；补查围绕具体证据缺口，避免无目的跨域搜索。
@@ -37,6 +38,7 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
   let turn = 0;
   let startedAt = 0;
   let protocolReminders = 0;
+  let finalizing = false;
   const drafts = new Map();
   const dispatched = new Set();
   const tools = config.tools.map((definition) => ({
@@ -85,16 +87,21 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
     },
     streamFn: async (requestedModel, context, options) => {
       try {
+        const closingMessage = { role: 'system', content: '宿主预算已进入收尾阶段。现在仅能调用 submit_answer 或 ask_user。请用当前已有证据提交回答；证据不足就提交部分结果并明确缺口，不得扩大研究。遵守原问题要求的篇幅；无相关依据时 outcome=not_found，不附无关引用。',
+          toolsRemoved: config.tools.filter(tool => !['submit_answer', 'ask_user'].includes(tool.name)).map(tool => ({ name: tool.name })), timestamp: Date.now() };
+        // Include the possible closing instruction in admission accounting.
+        const closingContext = { ...context, messages: [...context.messages, closingMessage] };
         // Admission happens before every paid request. The host shares this ledger with tools.
         const admission = await callHost('model_request', {
-          turn: ++turn, input_bytes: Buffer.byteLength(JSON.stringify(context), 'utf8'),
+          turn: ++turn, input_bytes: Buffer.byteLength(JSON.stringify(closingContext), 'utf8'),
           max_output_tokens: budget.output_tokens,
         }, options?.signal);
         if (!admission.allowed) return errorStream(requestedModel, admission.message || '模型预算已用尽');
+        finalizing ||= Boolean(admission.final_turn);
         startedAt = performance.now();
         await emit('model.started', { turn, model: requestedModel.id, provider: requestedModel.provider });
-        const requestContext = admission.final_turn ? { ...context, messages: [...context.messages,
-          { role: 'user', content: '本轮模型调用预算即将用尽。请使用 submit_answer 提交已有证据支持的结论；不足部分明确说明，不再扩大研究范围。', timestamp: Date.now() }] } : context;
+        // Pi 1.x declares tools through system-message deltas in the transcript.
+        const requestContext = finalizing ? closingContext : context;
         return providerStream(requestedModel, requestContext, {
           ...options, apiKey: config.api_key, maxTokens: admission.max_output_tokens,
           maxRetries: 0, timeoutMs: Math.min(90000, budget.wall_seconds * 1000),
@@ -105,7 +112,9 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
           options?.signal?.aborted ? 'aborted' : 'error');
       }
     },
-    beforeToolCall: async () => finalResult ? { block: true, reason: '任务结果已经提交', terminate: true } : undefined,
+    beforeToolCall: async ({ toolCall }) => finalResult ? { block: true, reason: '任务结果已经提交', terminate: true }
+      : finalizing && !['submit_answer', 'ask_user'].includes(toolCall.name)
+        ? { block: true, reason: '预算已进入收尾阶段，请提交已有证据支持的结果' } : undefined,
     finishTurn: async ({ message }) => {
       if (finalResult) return { action: 'end' };
       if (['error', 'aborted'].includes(message.stopReason)) return;

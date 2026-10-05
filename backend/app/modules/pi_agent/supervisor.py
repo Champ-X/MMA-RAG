@@ -224,8 +224,10 @@ class PiSupervisor:
                     if self.settings.yield_to_legacy:
                         from .admission import legacy_activity
                         await legacy_activity.wait(emit)
-                    result = ledger.reserve_model(params["turn"], params["input_bytes"], params["max_output_tokens"])
-                    result["final_turn"] = ledger.model_requests >= ledger.limits.model_requests - 1
+                    closing = ledger.finalizing
+                    result = ledger.reserve_model(params["turn"], params["input_bytes"], params["max_output_tokens"], main_loop=True)
+                    if ledger.finalizing and not closing:
+                        emit("budget.finalizing", {"message": "预算接近上限，Pi 将使用已有证据形成回答并说明缺口。"})
                 elif method == "model_usage":
                     ledger.settle_model(params["turn"], params.get("usage"))
                     result = {"ok": True, "remaining_model_requests": ledger.limits.model_requests - ledger.model_requests}

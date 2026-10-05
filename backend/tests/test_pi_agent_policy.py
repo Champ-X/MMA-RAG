@@ -75,3 +75,20 @@ def test_cancelled_or_long_running_calls_cannot_replenish_budget():
     ledger.started -= 11
     with pytest.raises(ToolError, match="时间"):
         ledger.reserve_tool("submit_answer")
+
+
+def test_token_headroom_closes_research_before_full_context_is_unaffordable():
+    ledger = BudgetLedger(RunBudget(model_tokens=2000, output_tokens=256))
+    assert not ledger.reserve_model(1, 300, 256, main_loop=True)["final_turn"]
+    ledger.settle_model(1, {"totalTokens": 400})
+    # This request fits (1256), but another full-context turn would not.
+    assert ledger.reserve_model(2, 1000, 256, main_loop=True)["final_turn"]
+    with pytest.raises(ToolError, match="收尾"):
+        ledger.reserve_tool("search")
+    with pytest.raises(ToolError, match="收尾"):
+        ledger.reserve_model(-1, 50, 0)
+    ledger.reserve_tool("submit_answer")
+    ledger.settle_model(2, {"totalTokens": 600})
+    # Actual usage refunds do not silently reopen research.
+    assert ledger.finalizing
+    assert ledger.reserve_model(3, 300, 256, main_loop=True)["final_turn"]

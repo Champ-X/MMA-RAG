@@ -70,6 +70,7 @@ class BudgetLedger:
     media_seconds: float = 0
     tool_output_chars: int = 0
     unknown_usage_requests: int = 0
+    finalizing: bool = False
     _reservations: dict[int, int] = field(default_factory=dict)
     _settled: set[int] = field(default_factory=set)
 
@@ -77,8 +78,10 @@ class BudgetLedger:
         if time.monotonic() - self.started >= self.limits.wall_seconds:
             raise ToolError("time_budget_exhausted", "本轮运行时间预算已用尽")
 
-    def reserve_model(self, turn: int, input_bytes: int, max_output_tokens: int):
+    def reserve_model(self, turn: int, input_bytes: int, max_output_tokens: int, *, main_loop=False):
         self.check_time()
+        if self.finalizing and not main_loop:
+            raise ToolError("research_budget_exhausted", "已进入预算收尾阶段，请提交已有结论并说明缺口")
         if turn in self._reservations or turn in self._settled:
             raise ToolError("duplicate_model_request", "重复的模型请求标识")
         if self.model_requests >= self.limits.model_requests:
@@ -91,7 +94,14 @@ class BudgetLedger:
             raise ToolError("token_budget_exhausted", "剩余 Token 预算不足以执行下一次模型请求")
         self.model_requests += 1
         self._reservations[turn] = reserve
-        return {"allowed": True, "max_output_tokens": output}
+        if main_loop:
+            # Enter closing mode while this full-context request still fits.
+            # Waiting until the next request is refused loses an otherwise
+            # answerable run. Count outstanding reservations, including media.
+            remaining = self.limits.model_tokens - self.model_tokens - sum(self._reservations.values())
+            self.finalizing |= (remaining < reserve or self.model_requests >= self.limits.model_requests - 1
+                                or self.tool_calls >= self.limits.tool_calls - 2)
+        return {"allowed": True, "max_output_tokens": output, "final_turn": self.finalizing}
 
     def settle_model(self, turn: int, usage: dict | None):
         if turn in self._settled:
@@ -109,6 +119,8 @@ class BudgetLedger:
 
     def reserve_tool(self, name: str):
         self.check_time()
+        if self.finalizing and name not in {"submit_answer", "ask_user"}:
+            raise ToolError("research_budget_exhausted", "已进入预算收尾阶段，请使用已有证据提交完整或部分回答")
         if self.tool_calls >= self.limits.tool_calls:
             raise ToolError("tool_budget_exhausted", "本轮工具调用预算已用尽")
         # Preserve admission slots for a final answer even when research is exhausted.

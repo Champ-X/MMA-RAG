@@ -80,6 +80,8 @@ class QueryTable(Args):
 class SubmitAnswer(Args):
     answer: str = Field(min_length=1, max_length=24000)
     evidence_ids: list[int] = Field(default_factory=list, max_length=100)
+    outcome: Literal["answer", "not_found"] = Field(default="answer",
+        description="没有回答用户问题的相关依据时必须用 not_found，不得引用只匹配主题或介绍来源的材料")
     status: Literal["completed", "partial"] = "completed"
     limitations: list[str] = Field(default_factory=list, max_length=20)
 
@@ -97,7 +99,7 @@ DEFINITIONS = {
     "recall_evidence": (RecallEvidence, "重新读取本轮已获得的证据。用于恢复上下文中已归档的工具结果，编号保持不变。"),
     "inspect_media": (InspectMedia, "直接读取原图片、PDF 指定页、音频或视频的指定区间。每次至多 60 秒，默认前 30 秒；视频最多 6 帧并记录实际时间。可选 visual/audio/both，观察模型独立于最终回答模型。"),
     "query_table": (QueryTable, "确定性读取 CSV/TSV/XLSX 原表并按列过滤、分组、计数或计算。保留原行号、单位和操作；不执行公式、Python 或 SQL。PDF 表格请读取原文并核对页图。"),
-    "submit_answer": (SubmitAnswer, "提交你完成的最终回答。事实主张就近用 [编号]；evidence_ids 必须恰好等于正文实际引用且此前返回的编号。证据不足 status=partial 并说明 limitations。只检查协议，不代写答案或证明语义正确。"),
+    "submit_answer": (SubmitAnswer, "提交你完成的最终回答。事实主张就近用 [编号]；evidence_ids 必须恰好等于正文实际引用且此前返回的编号。证据不足 status=partial 并说明 limitations。没有相关依据时 outcome=not_found、status=partial、evidence_ids=[]，只说明未找到及范围，不附候选引用。只检查协议，不代写答案或证明语义正确。"),
     "ask_user": (AskUser, "缺失的信息会影响结论时，提出具体澄清问题并结束本次运行；用户回复后开始关联的新运行。"),
 }
 
@@ -218,6 +220,8 @@ class ToolSet:
         if name == "submit_answer":
             used = {int(i) for i in re.findall(r"\[(\d+)\]", args["answer"])}
             declared = set(args["evidence_ids"])
+            if args["outcome"] == "not_found" and (used or declared or args["status"] != "partial"):
+                raise ToolError("unsupported_citations", "未找到相关依据时必须提交 partial，且不得附候选或来源介绍的引用")
             if used != declared or not used <= self.delivered.keys():
                 raise ToolError("citation_mismatch", "正文引用与 evidence_ids 不一致，或引用了本轮尚未返回的证据。请修正后重新提交。")
             if not used and (args["status"] != "partial" or not args["limitations"]):
@@ -226,7 +230,7 @@ class ToolSet:
                 raise ToolError("missing_limitations", "部分回答必须具体说明尚未覆盖的范围")
             if "知识库中未找到相关内容" in args["answer"] and used:
                 raise ToolError("unsupported_citations", "没有相关证据的回答不能保留候选引用")
-            terminal = {"terminal": args["status"], "answer": args["answer"], "limitations": args["limitations"],
+            terminal = {"terminal": args["status"], "outcome": args["outcome"], "answer": args["answer"], "limitations": args["limitations"],
                         "citations": [self.citation(self._evidence(i)) for i in sorted(used)]}
             return {"status": "accepted"}, [], terminal
         terminal = {"terminal": "needs_input", "answer": args["question"], "question": args["question"], "options": args["options"], "citations": []}
