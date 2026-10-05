@@ -71,6 +71,8 @@ class BudgetLedger:
     tool_output_chars: int = 0
     unknown_usage_requests: int = 0
     finalizing: bool = False
+    closing_reads: int = 0
+    must_submit: bool = False
     _reservations: dict[int, int] = field(default_factory=dict)
     _settled: set[int] = field(default_factory=set)
 
@@ -103,6 +105,21 @@ class BudgetLedger:
                                 or self.tool_calls >= self.limits.tool_calls - 2)
         return {"allowed": True, "max_output_tokens": output, "final_turn": self.finalizing}
 
+    def admit_main_model(self, turn: int, input_bytes: int, max_output_tokens: int):
+        try:
+            result = self.reserve_model(turn, input_bytes, max_output_tokens, main_loop=True)
+        except ToolError as error:
+            if error.code != "token_budget_exhausted":
+                raise
+            # No request was reserved or paid. Let the worker archive older
+            # tool bodies once, then re-admit the actual reduced context.
+            self.finalizing = self.must_submit = True
+            available = self.limits.model_tokens - self.model_tokens - sum(self._reservations.values())
+            output = min(max_output_tokens, self.limits.output_tokens)
+            return {"allowed": False, "final_turn": True, "allow_recall": False,
+                    "max_input_bytes": max(0, available - output), "message": str(error)}
+        return {**result, "allow_recall": not self.must_submit and self.closing_reads < 1}
+
     def settle_model(self, turn: int, usage: dict | None):
         if turn in self._settled:
             return
@@ -123,6 +140,8 @@ class BudgetLedger:
         # have archived its text, so keep this available without reopening I/O.
         if self.finalizing and name not in {"submit_answer", "ask_user", "recall_evidence"}:
             raise ToolError("research_budget_exhausted", "已进入预算收尾阶段，只能复读已取得的证据或提交回答")
+        if self.finalizing and name == "recall_evidence" and (self.must_submit or self.closing_reads >= 1):
+            raise ToolError("research_budget_exhausted", "收尾阶段只能复读一批关键证据，现在请提交回答并说明缺口")
         if self.tool_calls >= self.limits.tool_calls:
             raise ToolError("tool_budget_exhausted", "本轮工具调用预算已用尽")
         # Preserve admission slots for a final answer even when research is exhausted.
@@ -133,6 +152,7 @@ class BudgetLedger:
         if name == "inspect_media" and self.media_calls >= self.limits.media_calls:
             raise ToolError("media_budget_exhausted", "媒体分析预算已用尽")
         self.tool_calls += 1
+        self.closing_reads += int(self.finalizing and name == "recall_evidence")
         self.searches += int(name == "search")
         self.media_calls += int(name == "inspect_media")
 

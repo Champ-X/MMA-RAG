@@ -103,11 +103,36 @@ def test_closing_can_recall_delivered_evidence_without_reopening_research_or_lim
             ledger.reserve_tool(name)
     with pytest.raises(ToolError, match="收尾"):
         ledger.reserve_model(-1, 50, 0)
-    ledger.reserve_tool("recall_evidence")
-    # Cached reads still preserve the last two tool slots for completion/repair.
+    # Closing permits one cached batch, then requires a final submission.
     with pytest.raises(ToolError):
         ledger.reserve_tool("recall_evidence")
+    ledger.tool_calls = 2
     ledger.reserve_tool("submit_answer")
     ledger.reserve_tool("submit_answer")
     with pytest.raises(ToolError):
         ledger.reserve_tool("submit_answer")
+
+
+def test_unaffordable_main_context_gets_a_non_paid_final_compaction_allowance():
+    ledger = BudgetLedger(RunBudget(model_tokens=2000, output_tokens=256), model_tokens=1200)
+    result = ledger.admit_main_model(1, 1000, 256)
+    assert not result["allowed"] and result["max_input_bytes"] == 544
+    assert result["final_turn"] and not result["allow_recall"]
+    assert ledger.model_requests == 0 and not ledger._reservations
+    # The same unreserved turn can be admitted with its actual compacted size.
+    result = ledger.admit_main_model(1, 400, 256)
+    assert result["allowed"] and not result["allow_recall"]
+    assert ledger.model_requests == 1 and ledger._reservations == {1: 656}
+    with pytest.raises(ToolError):
+        ledger.reserve_tool("recall_evidence")
+    ledger.reserve_tool("submit_answer")
+
+
+def test_compaction_does_not_bypass_model_count_or_time_limits():
+    ledger = BudgetLedger(RunBudget(model_requests=2), model_requests=2)
+    with pytest.raises(ToolError):
+        ledger.admit_main_model(1, 100, 256)
+    ledger = BudgetLedger(RunBudget(wall_seconds=10))
+    ledger.started -= 11
+    with pytest.raises(ToolError):
+        ledger.admit_main_model(1, 100, 256)

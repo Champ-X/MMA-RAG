@@ -151,13 +151,14 @@ test('closing can recover archived evidence while rejecting fresh research', asy
     emit: () => {},
     providerStream: (_model, context) => {
       if (++requests <= 8) return response([toolCall(`s${requests}`, 'search', { query: `资料 ${requests}` })]);
-      assert.deepEqual(getCurrentTools(context.messages).map(tool => tool.name), ['submit_answer', 'recall_evidence']);
       if (requests === 9) {
+        assert.deepEqual(getCurrentTools(context.messages).map(tool => tool.name), ['submit_answer', 'recall_evidence']);
         assert.ok(context.messages.some(message => message.role === 'toolResult'
           && message.content.some(part => part.text?.includes('archived_result'))));
         return response([toolCall('blocked', 'search', { query: 'new research' }),
           toolCall('recall', 'recall_evidence', { evidence_ids: [1] })]);
       }
+      assert.deepEqual(getCurrentTools(context.messages).map(tool => tool.name), ['submit_answer']);
       assert.ok(context.messages.some(message => message.role === 'toolResult' && message.toolCallId === 'recall'
         && message.content.some(part => part.text === '已取得的原文[1]')));
       return response([toolCall('finish', 'submit_answer', { answer: '已取得的原文[1]' })]);
@@ -176,4 +177,57 @@ test('closing can recover archived evidence while rejecting fresh research', asy
   assert.equal(requests, 10);
   assert.deepEqual(calls.slice(8).map(call => call.name), ['recall_evidence', 'submit_answer']);
   assert.ok(!calls.some(call => call.tool_call_id === 'blocked'));
+});
+
+test('budget context rejection archives older evidence before one final paid request', async () => {
+  let requests = 0;
+  const admissions = [], events = [];
+  const runtime = createRuntime({ ...config, model: { ...model, contextWindow: 200000 } }, {
+    emit: (type, data) => events.push({ type, data }),
+    providerStream: (_model, context) => {
+      if (++requests <= 2) return response([toolCall(`s${requests}`, 'search', { query: '资料' })]);
+      assert.ok(Buffer.byteLength(JSON.stringify(context)) <= 60000);
+      assert.ok(context.messages.some(message => message.role === 'user' && message.content.some(part => part.text?.includes('查证后回答'))));
+      const results = context.messages.filter(message => message.role === 'toolResult');
+      assert.deepEqual(results.map(message => message.toolCallId), ['s1', 's2']);
+      assert.ok(results[0].content[0].text.includes('archived_result'));
+      assert.equal(results[1].content[0].text, '原文'.repeat(7500));
+      assert.deepEqual(getCurrentTools(context.messages).map(tool => tool.name), ['submit_answer']);
+      return response([toolCall('finish', 'submit_answer', { answer: '已核对原文[2]' })]);
+    },
+    callHost: async (method, params) => {
+      if (method === 'model_request') {
+        admissions.push(params);
+        if (requests === 2 && params.input_bytes > 60000) return { allowed: false, final_turn: true,
+          allow_recall: false, max_input_bytes: 60000, message: 'context exceeds remaining token budget' };
+        return { allowed: true, max_output_tokens: 1000, final_turn: requests === 2, allow_recall: false };
+      }
+      if (method === 'model_usage') return {};
+      return { content: [{ type: 'text', text: '原文'.repeat(7500) }], details: params.name === 'submit_answer'
+        ? { terminal: 'completed' } : { artifact_id: `artifact-${requests}`, evidence_ids: [requests] } };
+    },
+  });
+  const result = await runtime.run();
+  assert.equal(result.terminal, 'completed', result.message);
+  assert.equal(requests, 3);
+  assert.deepEqual(admissions.map(item => item.turn), [1, 2, 3, 3]);
+  assert.ok(events.some(event => event.type === 'context.compacted' && event.data.reason === 'remaining_budget'));
+});
+
+test('an input that cannot fit remains intact and does not trigger a paid retry', async () => {
+  let admissions = 0, providerCalls = 0;
+  const runtime = createRuntime(config, {
+    emit: () => {},
+    providerStream: () => { providerCalls++; throw new Error('must not call'); },
+    callHost: async (method) => {
+      if (method !== 'model_request') return {};
+      admissions++;
+      return { allowed: false, max_input_bytes: 10, final_turn: true, allow_recall: false };
+    },
+  });
+  const result = await runtime.run();
+  assert.equal(result.terminal, 'failed');
+  assert.match(result.message, /无法容纳问题与最后一组原文证据/);
+  assert.equal(providerCalls, 0);
+  assert.equal(admissions, 1);
 });

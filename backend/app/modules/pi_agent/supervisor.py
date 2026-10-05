@@ -304,7 +304,7 @@ class PiSupervisor:
                         from .admission import legacy_activity
                         await legacy_activity.wait(emit)
                     closing = ledger.finalizing
-                    result = ledger.reserve_model(params["turn"], params["input_bytes"], params["max_output_tokens"], main_loop=True)
+                    result = ledger.admit_main_model(params["turn"], params["input_bytes"], params["max_output_tokens"])
                     if ledger.finalizing and not closing:
                         emit("budget.finalizing", {"message": "预算接近上限，Pi 将使用已有证据形成回答并说明缺口。"})
                 elif method == "model_usage":

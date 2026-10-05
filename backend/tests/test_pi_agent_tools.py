@@ -120,24 +120,27 @@ async def test_oversized_result_is_not_available_for_citation(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_closing_recall_reads_only_delivered_evidence_and_keeps_output_budget(tmp_path):
+@pytest.mark.parametrize("exhausted", [False, True])
+async def test_closing_recall_reads_only_delivered_evidence_and_keeps_output_budget(tmp_path, exhausted):
     tools, store, run, _ = fixture_tools(tmp_path)
     original = await tools.execute("read", "read_source", {"source_id": source().id})
     number = original["details"]["evidence_ids"][0]
+    unknown = await tools.execute("unknown", "recall_evidence", {"evidence_ids": [number + 1]})
+    assert unknown["isError"] and unknown["details"]["code"] == "invalid_evidence"
     tools.ledger.finalizing = True
     async def forbidden(*args, **kwargs):
         pytest.fail("Closing recall must not fetch new source content")
     tools.gateway.read = forbidden
+    if exhausted:
+        tools.ledger.tool_output_chars = tools.ledger.limits.total_tool_output_chars
     result = await tools.execute("recall", "recall_evidence", {"evidence_ids": [number]})
+    if exhausted:
+        assert result["isError"] and result["details"]["code"] == "tool_output_budget_exhausted"
+        return
     assert not result.get("isError")
     assert result["details"]["evidence_ids"] == [number]
     assert result["content"][0]["text"].count("实际原文") == 1
     assert len(store.evidence(run)) == 1
-    unknown = await tools.execute("unknown", "recall_evidence", {"evidence_ids": [number + 1]})
-    assert unknown["isError"] and unknown["details"]["code"] == "invalid_evidence"
-    tools.ledger.tool_output_chars = tools.ledger.limits.total_tool_output_chars
-    exhausted = await tools.execute("exhausted", "recall_evidence", {"evidence_ids": [number]})
-    assert exhausted["isError"] and exhausted["details"]["code"] == "tool_output_budget_exhausted"
 
 
 @pytest.mark.asyncio

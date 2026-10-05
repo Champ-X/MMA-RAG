@@ -57,6 +57,43 @@ async def wait_until(predicate):
             await asyncio.sleep(.005)
 
 
+@pytest.mark.asyncio
+async def test_pipe_preserves_structured_budget_refusal_and_readmits_without_phantom_usage(tmp_path, monkeypatch):
+    script = """
+import {createInterface} from 'node:readline';
+const send=(id,method,params)=>console.log(JSON.stringify({type:'request',id,method,params}));
+createInterface({input:process.stdin}).on('line',line=>{
+ const m=JSON.parse(line), r=m.result;
+ if(m.type==='start') send('full','model_request',{turn:1,input_bytes:999999,max_output_tokens:256});
+ else if(m.id==='full') {
+  if(r?.allowed!==false || !Number.isInteger(r.max_input_bytes) || r.allow_recall!==false) process.exit(10);
+  send('short','model_request',{turn:1,input_bytes:1000,max_output_tokens:256});
+ } else if(m.id==='short') {
+  if(!r?.allowed || !r.final_turn || r.allow_recall!==false) process.exit(11);
+  send('usage','model_usage',{turn:1,usage:{totalTokens:256}});
+ } else if(m.id==='usage') send('recall','tool',{tool_call_id:'r',name:'recall_evidence',args:{evidence_ids:[1]}});
+ else if(m.id==='recall') {
+  if(!r?.isError || r.details.code!=='research_budget_exhausted') process.exit(12);
+  send('finish','tool',{tool_call_id:'a',name:'ask_user',args:{question:'需要补充哪份资料？'}});
+ } else if(m.id==='finish') {
+  console.log(JSON.stringify({type:'settled',result:r.details})); process.exit();
+ }
+});
+"""
+    host = make_host(tmp_path, monkeypatch, script=script)
+    try:
+        run = await host.start(request(), "alice")
+        await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 2)
+        result = host.store.get(run["id"])
+        assert result["status"] == "needs_input"
+        assert result["state"]["usage"]["model_requests"] == 1
+        assert result["state"]["usage"]["model_tokens"] == 256
+        assert result["state"]["usage"]["unknown_usage_requests"] == 0
+        assert any(event["type"] == "budget.finalizing" for event in host.store.events(run["id"]))
+    finally:
+        await host.close()
+
+
 class PausedCatalogStorage:
     """Pause one native read; subsequent iterator pages must be admitted again."""
     def __init__(self):
