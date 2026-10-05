@@ -1,0 +1,128 @@
+{
+  "description": "Synthetic controls for span-addressed semantic review. Gold labels are withheld from the reviewer. These controls do not establish broad reviewer accuracy.",
+  "cases": [
+    {
+      "id": "percentage-points-supported",
+      "question": "pass@1 增加了多少个百分点？",
+      "reference_facts": ["增加7.3个百分点"],
+      "answer": "**结果**\n增加了 **7.3 个百分点** [1]。",
+      "citations": [{"id": 1, "content": "Pass@1 rises from 69.7% to 77.0%."}],
+      "expected": {"supported": true, "facts": ["covered"], "unit_kinds": {"u1": "formatting", "u2": "factual"}}
+    },
+    {
+      "id": "relative-percentage-is-not-points",
+      "question": "pass@1 增加了多少个百分点？",
+      "reference_facts": ["增加7.3个百分点"],
+      "answer": "增加7.3个百分点这一说法不成立；相对提升比例恰好为7.3%，也就是乘以1.073 [1]。",
+      "citations": [{"id": 1, "content": "Pass@1 rises from 69.7% to 77.0%."}],
+      "expected": {"supported": false, "facts": ["contradicted"], "unit_kinds": {"u1": "factual"}}
+    },
+    {
+      "id": "bounded-condition-supported",
+      "question": "这份测试记录证明了什么？",
+      "answer": "在本次测试的六个请求中，负载与对照延迟的中位数比为 1.08 [1]。",
+      "citations": [{"id": 1, "content": "For the six requests in this experiment, the loaded/control median latency ratio was 1.08. Other workloads were not evaluated."}],
+      "expected": {"supported": true, "facts": []}
+    },
+    {
+      "id": "universal-condition-unsupported",
+      "question": "这份测试记录证明了什么？",
+      "answer": "任何问题和任何并发负载下，延迟比都必定是 1.08 [1]。",
+      "citations": [{"id": 1, "content": "For the six requests in this experiment, the loaded/control median latency ratio was 1.08. Other workloads were not evaluated."}],
+      "expected": {"supported": false, "facts": [], "unit_kinds": {"u1": "factual"}}
+    },
+    {
+      "id": "missing-facet-is-not-contradiction",
+      "question": "组件是否显式文件化，能否回滚？",
+      "reference_facts": ["可编辑组件显式文件化", "组件可回滚"],
+      "answer": "可编辑组件采用显式文件级表示 [1]。",
+      "citations": [{"id": 1, "content": "Every editable component has an explicit file-level representation and is revertible."}],
+      "expected": {"supported": true, "facts": ["covered", "missing"]}
+    },
+    {
+      "id": "retraining-contradiction",
+      "question": "改进是否来自重新训练基础模型？",
+      "reference_facts": ["基础模型权重没有重新训练"],
+      "answer": "提升来自基础模型权重的重新训练 [1]。",
+      "citations": [{"id": 1, "content": "The base model weights remain frozen. Improvements come only from harness edits, without model retraining."}],
+      "expected": {"supported": false, "facts": ["contradicted"]}
+    },
+    {
+      "id": "wrong-subject",
+      "question": "乙公司的营收是多少？",
+      "answer": "乙公司在2025年的营收为100万元 [1]。",
+      "citations": [{"id": 1, "content": "甲公司在2025年的营收为100万元。这里没有乙公司的数据。"}],
+      "expected": {"supported": false, "facts": []}
+    },
+    {
+      "id": "wrong-year",
+      "question": "甲公司在2030年的营收是多少？",
+      "answer": "甲公司在2030年的营收为100万元 [1]。",
+      "citations": [{"id": 1, "content": "甲公司在2025年的营收为100万元。本表只覆盖2025年。"}],
+      "expected": {"supported": false, "facts": []}
+    },
+    {
+      "id": "local-abstention",
+      "question": "请给出指定材料中的财务数据；找不到就说明。",
+      "reference_facts": ["说明本次在指定材料中未检索到所需依据"],
+      "answer": "本次在指定材料中未检索到足以回答该问题的依据。",
+      "citations": [],
+      "expected": {"supported": true, "facts": ["covered"], "unit_kinds": {"u1": "abstention"}}
+    },
+    {
+      "id": "global-absence-is-a-fact",
+      "question": "请给出指定材料中的财务数据；找不到就说明。",
+      "answer": "这两篇论文的全文绝不包含任何企业财务数据。",
+      "citations": [],
+      "expected": {"supported": false, "facts": [], "unit_kinds": {"u1": "factual"}}
+    },
+    {
+      "id": "reference-excerpt-cannot-repair-citation",
+      "question": "pass@1 从多少变成多少？",
+      "reference_facts": ["从69.7%变为77.0%"],
+      "reference_sources": [{"file_name": "研究.pdf", "content": "Pass@1 rises from 69.7% to 77.0%."}],
+      "answer": "pass@1 从69.7%变为77.0% [1]。",
+      "citations": [{"id": 1, "file_name": "研究.pdf", "content": "Title: Agentic Harness Engineering. Authors: Research Group."}],
+      "expected": {"supported": false, "facts": ["covered"]}
+    },
+    {
+      "id": "joint-cited-arithmetic",
+      "question": "从起点到终点，增加了多少个百分点？",
+      "reference_facts": ["增加7.3个百分点"],
+      "answer": "起点到终点增加了7.3个百分点 [1][2]。",
+      "citations": [{"id": 1, "content": "The starting pass@1 is 69.7%."}, {"id": 2, "content": "The final pass@1 is 77.0%."}],
+      "expected": {"supported": true, "facts": ["covered"]}
+    },
+    {
+      "id": "supported-paraphrase",
+      "question": "运行时的集成有什么代价？",
+      "reference_facts": ["能力覆盖广，但镜像更大、启动更慢且耦合更紧"],
+      "answer": "集成运行时提供更多开箱可用能力，但付出更大的镜像、更长的启动时间以及更紧的框架耦合 [1]。",
+      "citations": [{"id": 1, "content": "Bundled runtimes prioritize out-of-the-box capability coverage at the cost of larger images, slower startup, and tighter coupling to one framework."}],
+      "expected": {"supported": true, "facts": ["covered"]}
+    },
+    {
+      "id": "extra-unsupported-claim-in-unit",
+      "question": "运行时的集成有什么代价？",
+      "answer": "集成运行时镜像更大、启动更慢；但它保证每次请求都恰好在2毫秒内完成 [1]。",
+      "citations": [{"id": 1, "content": "Bundled runtimes have larger images and slower startup. Request latency was not measured."}],
+      "expected": {"supported": false, "facts": [], "unit_kinds": {"u1": "factual"}}
+    },
+    {
+      "id": "trace-boundary-supported",
+      "question": "有执行轨迹就证明答案正确吗？",
+      "reference_facts": ["记录轨迹本身不能证明答案正确"],
+      "answer": "不能。记录轨迹属于观察，判断正确性还需要单独的验证 [1]。",
+      "citations": [{"id": 1, "content": "Observability records what happened. Verification separately evaluates whether the result meets the specified success criteria. A complete trace alone does not establish correctness."}],
+      "expected": {"supported": true, "facts": ["covered"]}
+    },
+    {
+      "id": "trace-proof-contradiction",
+      "question": "有执行轨迹就证明答案正确吗？",
+      "reference_facts": ["记录轨迹本身不能证明答案正确"],
+      "answer": "只要完整记录了执行轨迹，就已经证明答案正确，无需再验证 [1]。",
+      "citations": [{"id": 1, "content": "Observability records what happened. Verification separately evaluates whether the result meets the specified success criteria. A complete trace alone does not establish correctness."}],
+      "expected": {"supported": false, "facts": ["contradicted"]}
+    }
+  ]
+}
