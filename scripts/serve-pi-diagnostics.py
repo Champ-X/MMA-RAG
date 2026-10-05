@@ -135,7 +135,7 @@ async def serve(args):
         "source_sha256": {path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for path in paths},
         "port": args.port, "pi_model": settings.model, "pi_budget": settings.budget.model_dump(),
         "yield_to_legacy": settings.yield_to_legacy, "lifespan": "off",
-        "predeclared_next_check": "verify-pi-isolation.py v3; 6 samples/condition/mode; retain the 1.25 median threshold"}
+        "predeclared_next_check": args.check_label}
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=args.port, lifespan="off", access_log=False))
     try:
@@ -148,4 +148,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8002)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--check-label", default="verify-pi-isolation.py v3; 6 samples/condition/mode; retain the 1.25 median threshold")
     asyncio.run(serve(parser.parse_args()))
