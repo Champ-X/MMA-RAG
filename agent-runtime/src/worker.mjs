@@ -7,6 +7,8 @@ let counter = 0;
 let runtime;
 let launched = false;
 let output = Promise.resolve();
+let buffered;
+let flushTimer;
 
 function write(value) {
   // Honor pipe backpressure and preserve events even when the browser is disconnected.
@@ -14,6 +16,28 @@ function write(value) {
     process.stdout.write(JSON.stringify(value) + '\n', (error) => error ? reject(error) : resolve());
   }));
   return output;
+}
+
+function flushDelta() {
+  clearTimeout(flushTimer);
+  flushTimer = undefined;
+  if (!buffered) return output;
+  const value = buffered;
+  buffered = undefined;
+  return write(value);
+}
+
+async function emit(eventType, data) {
+  if (eventType.endsWith('.delta')) {
+    if (buffered && (buffered.event_type !== eventType || buffered.data.turn !== data.turn || buffered.data.tool_call_id !== data.tool_call_id)) await flushDelta();
+    if (buffered) buffered.data.delta += data.delta;
+    else buffered = { type: 'event', event_type: eventType, data: { ...data } };
+    if (buffered.data.delta.length >= 100) await flushDelta();
+    else if (!flushTimer) flushTimer = setTimeout(() => { flushDelta().catch(() => runtime?.abort()); }, 70);
+    return;
+  }
+  await flushDelta();
+  await write({ type: 'event', event_type: eventType, data });
 }
 
 function callHost(method, params, signal) {
@@ -49,13 +73,15 @@ lines.on('line', (line) => {
     } else if (message.type === 'start' && !launched) {
       launched = true;
       runtime = createRuntime(message.config, {
-        callHost, emit: (eventType, data) => write({ type: 'event', event_type: eventType, data }),
+        callHost, emit,
       });
       runtime.run().then(async (result) => {
+        await flushDelta();
         await write({ type: 'settled', result });
         lines.close();
         process.stdin.destroy();
       }).catch(async (error) => {
+        await flushDelta();
         await write({ type: 'settled', result: { terminal: 'failed', code: 'worker_error', message: String(error.message).slice(0, 2000) } });
         lines.close();
         process.stdin.destroy();

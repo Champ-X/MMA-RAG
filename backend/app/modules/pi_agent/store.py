@@ -120,6 +120,11 @@ class RunStore:
         with self._connection() as db:
             return self._decode(self._row(db, run_id, owner))
 
+    def find_request(self, owner: str, key: str):
+        with self._connection() as db:
+            row = db.execute("SELECT * FROM pi_runs WHERE owner=? AND request_key=?", (owner, key)).fetchone()
+            return self._decode(row) if row else None
+
     def list_runs(self, owner: str, session_id: str, *, limit: int = 100) -> list[dict]:
         with self._connection() as db:
             rows = db.execute("SELECT * FROM pi_runs WHERE owner=? AND session_id=? ORDER BY created_at DESC LIMIT ?",

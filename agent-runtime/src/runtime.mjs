@@ -14,7 +14,7 @@ export const SYSTEM_PROMPT = `你是 Tessmora 的自主知识研究 Agent，使�
 保留原始问题的主题和用户要求的模态；补查围绕具体证据缺口，避免无目的跨域搜索。
 普通 assistant 文本仅用于简短工作说明，请不要输出内部思维链。
 最终回答必须调用 submit_answer。该工具只做格式、权限、证据身份检查，不替你推理或写答案。
-答案用用户语言，清楚区分结论、证据和不确定性。证据不足时交付有依据的部分并标明缺口；不要堆砌未用来源。
+答案用用户语言，严格遵守用户要求的篇幅和格式，不要擅自增加固定模板、补充资料或冗长佐证。清楚区分结论、证据和不确定性。证据不足时交付有依据的部分并标明缺口；不要堆砌未用来源。
 若歧义直接影响结论且不能从材料消除，调用 ask_user。预算即将耗尽时优先形成可交付的部分结果。
 不要声称工具执行成功或核验通过，除非它真实返回成功；停止时如实说明范围、失败或未覆盖内容。`;
 
@@ -63,6 +63,26 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
     initialState: { model, systemPrompt: SYSTEM_PROMPT, tools, thinkingLevel: config.thinking_level || 'off' },
     sessionId: config.run_id,
     toolExecution: 'parallel',
+    transformContext: async (messages) => {
+      const threshold = Math.min(100000, Math.floor(model.contextWindow * 0.65));
+      let bytes = Buffer.byteLength(JSON.stringify(messages), 'utf8');
+      if (bytes < threshold) return messages;
+      let archived = 0;
+      const compacted = messages.map((message, index) => {
+        if (bytes < threshold || index >= messages.length - 6 || message.role !== 'toolResult' || !message.details?.artifact_id) return message;
+        const content = [{ type: 'text', text: JSON.stringify({ archived_result: message.details.artifact_id,
+          evidence_ids: message.details.evidence_ids || [],
+          instruction: '工具结果已保存。需要核验原文时使用 recall_evidence；不能将此摘要当作证据。' }) }];
+        const next = { ...message, content };
+        const saved = Buffer.byteLength(JSON.stringify(message)) - Buffer.byteLength(JSON.stringify(next));
+        if (saved <= 0) return message;
+        bytes -= saved;
+        archived += 1;
+        return next;
+      });
+      if (archived) await emit('context.compacted', { archived_tool_results: archived, remaining_bytes: bytes });
+      return compacted;
+    },
     streamFn: async (requestedModel, context, options) => {
       try {
         // Admission happens before every paid request. The host shares this ledger with tools.
@@ -73,7 +93,9 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
         if (!admission.allowed) return errorStream(requestedModel, admission.message || '模型预算已用尽');
         startedAt = performance.now();
         await emit('model.started', { turn, model: requestedModel.id, provider: requestedModel.provider });
-        return providerStream(requestedModel, context, {
+        const requestContext = admission.final_turn ? { ...context, messages: [...context.messages,
+          { role: 'user', content: '本轮模型调用预算即将用尽。请使用 submit_answer 提交已有证据支持的结论；不足部分明确说明，不再扩大研究范围。', timestamp: Date.now() }] } : context;
+        return providerStream(requestedModel, requestContext, {
           ...options, apiKey: config.api_key, maxTokens: admission.max_output_tokens,
           maxRetries: 0, timeoutMs: Math.min(90000, budget.wall_seconds * 1000),
           temperature: 0.2,

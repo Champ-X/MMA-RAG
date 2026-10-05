@@ -33,6 +33,7 @@ class RunRequest(BaseModel):
     mentions: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     history: list[dict[str, str]] = Field(default_factory=list, max_length=24)
     parent_run_id: str | None = None
+    attachments: list[dict[str, Any]] = Field(default_factory=list, max_length=3)
 
 
 class RunBudget(BaseModel):
@@ -47,6 +48,8 @@ class RunBudget(BaseModel):
     tool_output_chars: int = Field(default=20000, ge=1000, le=100000)
     total_tool_output_chars: int = Field(default=240000, ge=1000, le=2000000)
     media_calls: int = Field(default=6, ge=0, le=20)
+    media_input_bytes: int = Field(default=20 * 1024 * 1024, ge=1024, le=100 * 1024 * 1024)
+    media_seconds: int = Field(default=180, ge=1, le=600)
 
 
 class RunEvent(BaseModel):
