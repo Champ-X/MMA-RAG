@@ -25,17 +25,19 @@ const UserMentionText = React.lazy(() => import('./UserMentionText').then(module
 type CitationStub = { id: number | string }
 type CitationLike = CitationReference | CitationStub
 type ReactNodeChildrenProps = { children?: React.ReactNode }
-type MarkdownBlockProps = ReactNodeChildrenProps & ExtraProps
-type MarkdownBlockRenderers = Record<'p' | 'li', (props: MarkdownBlockProps) => React.ReactNode>
+type MarkdownBlockTag = 'p' | 'li' | 'table' | 'th' | 'td' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
+type MarkdownBlockProps = React.HTMLAttributes<HTMLElement> & ExtraProps
+type MarkdownBlockRenderers = Record<MarkdownBlockTag, (props: MarkdownBlockProps) => React.ReactNode>
 
 // Stable component types preserve image loading/retry state while streaming changes the text.
 const MarkdownBlockContext = React.createContext<MarkdownBlockRenderers | null>(null)
-function CitationParagraph(props: MarkdownBlockProps) {
-  return React.useContext(MarkdownBlockContext)?.p(props)
-}
-function CitationListItem(props: MarkdownBlockProps) {
-  return React.useContext(MarkdownBlockContext)?.li(props)
-}
+const citationBlockTags: MarkdownBlockTag[] = ['p', 'li', 'table', 'th', 'td', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']
+const citationBlockComponents = Object.fromEntries(citationBlockTags.map(tag => {
+  function CitationBlock(props: MarkdownBlockProps) {
+    return React.useContext(MarkdownBlockContext)?.[tag](props)
+  }
+  return [tag, CitationBlock]
+})) as Record<MarkdownBlockTag, (props: MarkdownBlockProps) => React.ReactNode>
 
 let katexCssLoadPromise: Promise<unknown> | null = null
 
@@ -126,12 +128,15 @@ function injectCitations(
   }
   if (Array.isArray(children)) {
     return children.map((child, idx) => (
-      <span key={`cnode_${messageId ?? 'm'}_${idx}`}>
+      <React.Fragment key={`cnode_${messageId ?? 'm'}_${idx}`}>
         {injectCitations(child, onCiteClick, messageId, originalIdToDisplayIndex, citationMap)}
-      </span>
+      </React.Fragment>
     ))
   }
-  if (!React.isValidElement<ReactNodeChildrenProps>(children)) return children
+  if (!React.isValidElement<ReactNodeChildrenProps & ExtraProps>(children)) return children
+  // Code/links are not citations; nested blocks process their own text exactly once.
+  if (['code', 'pre', 'a'].includes(children.props.node?.tagName || String(children.type))
+    || Object.values(citationBlockComponents).includes(children.type as typeof citationBlockComponents.p)) return children
   if (children.props.children) {
     return React.cloneElement(children, {
       ...children.props,
@@ -257,17 +262,19 @@ function deduplicateMediaCitations(citations: CitationReference[]): CitationRefe
   })
 }
 
-/** react-markdown 传给 components 的是 HAST：子段落为 element/tagName=p。
- * 同时兼容直接使用 remark AST 时的 paragraph，避免 li 和其内 p 各自插入一次媒体。 */
-function listItemHasParagraphChild(node: unknown): boolean {
+/** Nested paragraphs/lists/headings own their media; table cells defer to the table. */
+function childBlockOwnsCitation(node: unknown, match: CitationMatch): boolean {
   if (!node || typeof node !== 'object') return false
   const children = (node as { children?: unknown }).children
   if (!Array.isArray(children)) return false
 
   return children.some((child) => {
     if (!child || typeof child !== 'object') return false
-    const item = child as { type?: string; tagName?: string }
-    return item.type === 'paragraph' || item.tagName === 'p'
+    const item = child as { tagName?: MarkdownBlockTag; position?: { start: { offset?: number }; end: { offset?: number } } }
+    const start = item.position?.start.offset, end = item.position?.end.offset
+    if (item.tagName && citationBlockTags.includes(item.tagName) && !['th', 'td'].includes(item.tagName)
+      && typeof start === 'number' && typeof end === 'number' && match.start >= start && match.end <= end) return true
+    return childBlockOwnsCitation(child, match)
   })
 }
 
@@ -1075,7 +1082,7 @@ export function MessageBubble({
   )
   const originalIdToDisplayIndex = React.useMemo(() => {
     const m = new Map<number | string, number>()
-    orderedRefIds.forEach((id, i) => m.set(id, i + 1))
+    orderedRefIds.forEach((id, i) => { m.set(id, i + 1); m.set(String(id), i + 1) })
     return m
   }, [orderedRefIds])
   const hasMissingReferences = !isUser && !isStreaming && orderedRefIds.some((id) => !citationMap.has(id))
@@ -1128,23 +1135,20 @@ export function MessageBubble({
   const markdownRendering = React.useMemo(() => {
     const handleCiteClick = createCiteClickHandler(onCiteClick, message.id)
 
-    const createComponent = (tag: 'p' | 'li', className: string) => {
-      return (props: { children?: React.ReactNode } & ExtraProps) => {
-        const { children, node } = props
+    const createComponent = (tag: MarkdownBlockTag, className: string) => {
+      return (props: MarkdownBlockProps) => {
+        const { children, node, ...elementProps } = props
         if (!children) return null
         const Tag = tag
 
         if (!showCitations) {
-          return <Tag className={className}>{children}</Tag>
+          return <Tag {...elementProps} className={className}>{children}</Tag>
         }
 
-        // 列表项在 GFM 中多为 li > p：媒体只能由内层 p 负责；否则 li 和 p 会各插一次。
-        // react-markdown 此处传入 HAST（tagName=p），而不是 MDAST 的 type=paragraph。
-        const liDefersMediaToChildParagraph = tag === 'li' && listItemHasParagraphChild(node)
-
-        if (liDefersMediaToChildParagraph) {
+        // Cells render inline citations. Media belongs below the complete table.
+        if (tag === 'th' || tag === 'td') {
           return (
-            <Tag className={className}>
+            <Tag {...elementProps} scope={tag === 'th' ? 'col' : undefined} className={className}>
               {injectCitations(children, handleCiteClick, message.id, originalIdToDisplayIndex, citationMap)}
             </Tag>
           )
@@ -1153,10 +1157,11 @@ export function MessageBubble({
         const textContent = extractTextFromNode(children)
         const blockStart = node?.position?.start?.offset
         const blockEnd = node?.position?.end?.offset
-        const blockMatches =
+        const blockMatches = (
           typeof blockStart === 'number' && typeof blockEnd === 'number'
             ? allCitationMatches.filter((match) => match.start >= blockStart && match.end <= blockEnd)
             : findAllCitationMatches(textContent)
+        ).filter(match => !childBlockOwnsCitation(node, match))
 
         const newImageRefs = collectFirstMediaRefsForBlock(
           blockMatches,
@@ -1181,11 +1186,7 @@ export function MessageBubble({
           refs
         )
 
-        return (
-          <>
-            <Tag className={className}>
-              {injectCitations(children, handleCiteClick, message.id, originalIdToDisplayIndex, citationMap)}
-            </Tag>
+        const media = <>
             {newImageRefs.length > 0 && (
               <ParagraphImageDisplay
                 citations={newImageRefs}
@@ -1214,7 +1215,10 @@ export function MessageBubble({
               />
             )}
           </>
-        )
+        const content = tag === 'table' ? children
+          : injectCitations(children, handleCiteClick, message.id, originalIdToDisplayIndex, citationMap)
+        if (tag === 'li') return <li {...elementProps} className={className}>{content}{media}</li>
+        return <><Tag {...elementProps} className={className}>{content}</Tag>{media}</>
       }
     }
 
@@ -1290,13 +1294,11 @@ export function MessageBubble({
     ImageComponent.displayName = 'MarkdownImage'
 
     return {
-      blocks: {
-        p: createComponent('p', 'mb-2 leading-relaxed'),
-        li: createComponent('li', 'mb-0'),
-      },
+      blocks: Object.fromEntries(citationBlockTags.map(tag => [tag,
+        createComponent(tag, tag === 'p' ? 'mb-2 leading-relaxed' : tag === 'li' ? 'mb-0' : ''),
+      ])) as MarkdownBlockRenderers,
       components: {
-        p: CitationParagraph,
-        li: CitationListItem,
+        ...citationBlockComponents,
         img: ImageComponent,
       } satisfies Components,
     }
