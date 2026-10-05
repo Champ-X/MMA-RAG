@@ -65,7 +65,7 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
   const budget = config.budget;
   let finalResult;
   let turn = 0;
-  let startedAt = 0;
+  let activeModelCall = null;
   let protocolReminders = 0;
   let finalizing = false;
   let recallClosed = false;
@@ -115,6 +115,7 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
       return compacted;
     },
     streamFn: async (requestedModel, context, options) => {
+      activeModelCall = null;
       try {
         const closingContext = (allowRecall) => ({ ...context, messages: [...context.messages, {
           role: 'system', content: '宿主预算已进入收尾阶段。若当前仍有 recall_evidence，最多用一次复读至多4条最关键的已取得证据，随后必须调用 submit_answer 或 ask_user。若只剩提交工具，本轮必须完成提交，不得再尝试复读、搜索、读取新材料或媒体分析。已归档的原文不能靠记忆补写；仅依据仍可见原文作答，证据不足就交付部分结果并明确缺口。遵守原问题要求的篇幅；无相关依据时 outcome=not_found，不附无关引用。',
@@ -146,10 +147,10 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
         if (!admission.allowed) return errorStream(requestedModel, admission.message || '模型预算已用尽');
         finalizing ||= Boolean(admission.final_turn);
         recallClosed ||= admission.allow_recall === false;
-        startedAt = performance.now();
         await emit('model.started', { turn, model: requestedModel.id, provider: requestedModel.provider });
         // Pi 1.x declares tools through system-message deltas in the transcript.
         const requestContext = fitted ? prepared : finalizing ? closingContext(!recallClosed) : context;
+        activeModelCall = { turn, startedAt: performance.now() };
         return providerStream(requestedModel, requestContext, {
           ...options, apiKey: config.api_key, maxTokens: admission.max_output_tokens,
           maxRetries: 0, timeoutMs: Math.min(90000, budget.wall_seconds * 1000),
@@ -197,10 +198,22 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
           || '工具参数或调用状态未通过检查', executed: false });
     } else if (event.type === 'message_end' && event.message.role === 'assistant') {
       const message = event.message;
+      const call = activeModelCall;
+      activeModelCall = null;
+      // Admission errors are local Pi messages, not completed provider calls.
+      // Keep them visible without inventing usage or a provider duration.
+      if (!call) {
+        await emit(message.stopReason === 'aborted' ? 'model.cancelled' : 'model.rejected', {
+          turn, model: model.id, provider: model.provider, executed: false,
+          message: message.errorMessage?.slice(0, 2000) || '模型请求未执行',
+        });
+        return;
+      }
       const usage = message.usage;
-      await callHost('model_usage', { turn, usage, stop_reason: message.stopReason });
-      await emit('model.completed', { turn, model: model.id, provider: model.provider,
-        duration_ms: Math.round(performance.now() - startedAt), usage,
+      const duration = Math.round(performance.now() - call.startedAt);
+      await callHost('model_usage', { turn: call.turn, usage, stop_reason: message.stopReason });
+      await emit('model.completed', { turn: call.turn, model: model.id, provider: model.provider,
+        duration_ms: duration, usage,
         // No configured price is treated as a known zero-dollar bill.
         cost_known: Boolean(config.cost_known), stop_reason: message.stopReason,
         ...(message.errorMessage ? { error: message.errorMessage.slice(0, 2000) } : {}),

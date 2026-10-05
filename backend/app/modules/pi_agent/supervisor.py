@@ -23,7 +23,8 @@ from .store import RunStore, RunConflict
 from .tools import ToolSet, definitions
 
 WORKER = ROOT / "agent-runtime" / "src" / "worker.mjs"
-WORKER_EVENTS = {"model.started", "model.completed", "action.delta", "answer.delta", "answer.reset", "tool.rejected", "context.compacted"}
+WORKER_EVENTS = {"model.started", "model.completed", "model.rejected", "model.cancelled",
+                 "action.delta", "answer.delta", "answer.reset", "tool.rejected", "context.compacted"}
 
 
 class PiSupervisor:

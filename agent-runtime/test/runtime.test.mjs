@@ -67,14 +67,65 @@ test('host citation rejection goes back to Pi for repair and cannot complete the
 
 test('request admission rejects before any provider call', async () => {
   let called = false;
+  const events = [], calls = [];
   const runtime = createRuntime(config, {
-    emit: () => {}, providerStream: () => { called = true; throw new Error('must not call'); },
-    callHost: async (method) => method === 'model_request' ? { allowed: false, message: 'budget_exhausted' } : {},
+    emit: (type, data) => events.push({ type, data }),
+    providerStream: () => { called = true; throw new Error('must not call'); },
+    callHost: async (method) => {
+      calls.push(method);
+      return method === 'model_request' ? { allowed: false, message: 'budget_exhausted' } : {};
+    },
   });
   const result = await runtime.run();
   assert.equal(called, false);
   assert.equal(result.terminal, 'failed');
   assert.match(result.message, /budget_exhausted/);
+  assert.deepEqual(calls, ['model_request']);
+  assert.deepEqual(events.map(event => event.type), ['model.rejected']);
+  assert.equal(events[0].data.executed, false);
+  assert.match(events[0].data.message, /budget_exhausted/);
+});
+
+test('a dispatched provider error still settles its reserved request', async () => {
+  const events = [], calls = [];
+  const runtime = createRuntime(config, {
+    emit: (type, data) => events.push({ type, data }),
+    providerStream: () => { throw new Error('provider transport failed'); },
+    callHost: async (method) => {
+      calls.push(method);
+      return method === 'model_request' ? { allowed: true, max_output_tokens: 1000 } : {};
+    },
+  });
+  assert.equal((await runtime.run()).terminal, 'failed');
+  assert.deepEqual(calls, ['model_request', 'model_usage']);
+  assert.deepEqual(events.map(event => event.type), ['model.started', 'model.completed']);
+  assert.equal(events[1].data.stop_reason, 'error');
+  assert.match(events[1].data.error, /provider transport failed/);
+});
+
+test('cancelling while waiting for admission does not invent a provider call', async () => {
+  const events = [], calls = [];
+  let admissionReady;
+  const ready = new Promise(resolve => { admissionReady = resolve; });
+  const runtime = createRuntime(config, {
+    emit: (type, data) => events.push({ type, data }),
+    providerStream: () => { throw new Error('must not call provider'); },
+    callHost: (method, _params, signal) => {
+      calls.push(method);
+      if (method !== 'model_request') return {};
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('cancelled before admission')), { once: true });
+        admissionReady();
+      });
+    },
+  });
+  const running = runtime.run();
+  await ready;
+  runtime.abort();
+  assert.equal((await running).terminal, 'cancelled');
+  assert.deepEqual(calls, ['model_request']);
+  assert.deepEqual(events.map(event => event.type), ['model.cancelled']);
+  assert.equal(events[0].data.executed, false);
 });
 
 test('host closing admission limits paid generation to a final answer with existing evidence', async () => {

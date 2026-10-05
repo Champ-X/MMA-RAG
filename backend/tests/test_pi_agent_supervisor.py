@@ -12,7 +12,7 @@ from app.modules.pi_agent.config import PiSettings, resolve_model
 from app.modules.pi_agent.contracts import RunBudget, RunRequest, SourceFile
 from app.modules.pi_agent.policy import ToolError
 from app.modules.pi_agent.store import RunNotFound
-from app.modules.pi_agent.supervisor import PiSupervisor
+from app.modules.pi_agent.supervisor import PiSupervisor, WORKER
 
 
 class Registry:
@@ -90,6 +90,26 @@ createInterface({input:process.stdin}).on('line',line=>{
         assert result["state"]["usage"]["model_tokens"] == 256
         assert result["state"]["usage"]["unknown_usage_requests"] == 0
         assert any(event["type"] == "budget.finalizing" for event in host.store.events(run["id"]))
+    finally:
+        await host.close()
+
+
+@pytest.mark.asyncio
+async def test_real_pi_unpaid_rejection_is_persisted_without_a_model_completion(tmp_path, monkeypatch):
+    host = make_host(tmp_path, monkeypatch, budget=RunBudget(model_tokens=1000))
+    host.worker = WORKER
+    try:
+        run = await host.start(request(), "alice")
+        await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 5)
+        saved = host.store.get(run["id"])
+        assert saved["status"] == "failed"
+        assert saved["state"]["usage"]["model_requests"] == 0
+        assert saved["state"]["usage"]["model_tokens"] == 0
+        model_events = [e for e in host.store.events(run["id"]) if e["type"].startswith("model.")]
+        assert [e["type"] for e in model_events] == ["model.rejected"]
+        assert model_events[0]["span_id"] == "model:1"
+        assert model_events[0]["data"]["executed"] is False
+        assert "无法容纳" in model_events[0]["data"]["message"]
     finally:
         await host.close()
 
