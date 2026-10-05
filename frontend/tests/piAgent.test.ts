@@ -7,12 +7,26 @@ import { useChatStore } from '../src/store/useChatStore'
 import type { Message } from '../src/store/useChatStore'
 import { mixedModeContext } from '../src/lib/mixedModeContext'
 import { restorePiMessages } from '../src/lib/piHistory'
+import { activePiRun } from '../src/lib/piSession'
 import type { CitationReference } from '../src/types/sse'
 
 const run: PiRun = { id: 'run-1', status: 'queued', seq: 1, session_id: 's', created_at: 1, config: { model: 'pi-model' },
   request: { client_request_id: 'request-1', message: '问题' }, state: {} }
 const event = (seq: number, type: string, data: Record<string, unknown> = {}): PiEvent => ({ protocol_version: 1,
   run_id: 'run-1', event_id: `run-1:${seq}`, seq, type, timestamp: seq, data })
+
+test('background Pi work cannot disable another session or become its cancellation target', () => {
+  const message: Message = { id: 'message-a', role: 'assistant', content: '', timestamp: 1, pi: initialPiTrace(run) }
+  const sessions = [{ id: 'a', messages: [message] }, { id: 'b', messages: [] as Message[] }]
+  assert.equal(activePiRun(sessions, 'b'), undefined)
+  assert.equal(activePiRun(sessions, null), undefined)
+  sessions[1].messages.push({ ...message, id: 'message-b', pi: { ...message.pi!, runId: 'run-b' } })
+  assert.equal(activePiRun(sessions, 'b')?.pi.runId, 'run-b')
+  assert.equal(activePiRun(sessions, 'a')?.pi.runId, 'run-1')
+  sessions[1].messages[0].pi!.status = 'completed'
+  assert.equal(activePiRun(sessions, 'b'), undefined)
+  assert.equal(activePiRun(sessions, 'a')?.pi.runId, 'run-1')
+})
 
 test('mixed context carries completed Pi turns but leaves legacy-only requests unchanged', () => {
   const old: Message = { id: 'old', role: 'user', content: '先前问题', timestamp: 0 }

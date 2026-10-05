@@ -8,14 +8,14 @@ import { applyPiEvent, initialPiTrace } from '@/lib/piTrace'
 import { piApi, watchPiRun } from '@/services/piAgent'
 import { piTerminal } from '@/types/pi'
 import { restorePiMessages } from '@/lib/piHistory'
+import { activePiRun } from '@/lib/piSession'
 
 export function usePiAgent() {
   const sessions = useChatStore(state => state.sessions)
   const activeSessionId = useChatStore(state => state.activeSessionId)
   const watchers = useRef(new Map<string, AbortController>())
-  const [error, setError] = useState<string | null>(null)
-  const active = sessions.flatMap(session => session.messages.filter(message => message.pi && !piTerminal(message.pi.status))
-    .map(message => ({ sessionId: session.id, messageId: message.id, pi: message.pi! })))[0]
+  const [failure, setFailure] = useState<{ sessionId: string; message: string } | null>(null)
+  const active = activePiRun(sessions, activeSessionId)
 
   useEffect(() => {
     if (!activeSessionId) return
@@ -62,7 +62,7 @@ export function usePiAgent() {
     const store = useChatStore.getState()
     const session = sessionId ? store.getSessionById(sessionId) : store.getActiveSession()
     if (!session) throw new Error('没有活跃的会话')
-    setError(null)
+    setFailure(null)
     const ids = files?.map((_, i) => attachmentIds?.[i] || `att_${crypto.randomUUID()}`)
     let attachments: ChatMessageAttachment[] | undefined
     if (files?.length) attachments = await Promise.all(files.map(async (file, i) => {
@@ -89,8 +89,10 @@ export function usePiAgent() {
       const store = useChatStore.getState(), message = store.getSessionById(active.sessionId)?.messages.find(m => m.id === active.messageId)
       if (message?.pi && !piTerminal(message.pi.status)) store.updateMessage(active.sessionId, active.messageId, {
         pi: { ...message.pi, status: 'cancelling', connectionError: undefined } })
-    } catch (cause) { setError(cause instanceof Error ? cause.message : '取消请求失败，请重试') }
+    } catch (cause) { setFailure({ sessionId: active.sessionId,
+      message: cause instanceof Error ? cause.message : '取消请求失败，请重试' }) }
   }, [active])
 
-  return { sendMessage, cancel, isStreaming: Boolean(active), active, error }
+  return { sendMessage, cancel, isStreaming: Boolean(active), active,
+    error: failure?.sessionId === activeSessionId ? failure.message : null }
 }
