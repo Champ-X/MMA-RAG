@@ -87,6 +87,39 @@ test('cancellation preserves successful evidence and freezes outstanding work', 
   assert.deepEqual(trace.citations, [])
 })
 
+test('source preparation and resource waiting replay as distinct context steps with real duration', () => {
+  let trace = initialPiTrace(run)
+  trace = applyPiEvent(trace, event(1, 'run.running'))
+  trace = applyPiEvent(trace, { ...event(2, 'sources.started', { message: '正在确认来源' }), span_id: 'sources' })
+  trace = applyPiEvent(trace, { ...event(3, 'resource.waiting', { message: '等待检索资源' }), span_id: 'wait-1', parent_span_id: 'sources' })
+  assert.deepEqual(trace.steps.map(step => [step.id, step.kind, step.status]), [
+    ['sources', 'context', 'running'], ['wait-1', 'context', 'running'],
+  ])
+  assert.equal(trace.steps[1].parentId, 'sources')
+  trace = applyPiEvent(trace, { ...event(4, 'resource.resumed', { duration_ms: 1234 }), span_id: 'wait-1', parent_span_id: 'sources' })
+  trace = applyPiEvent(trace, { ...event(5, 'sources.completed', { message: '来源范围已确认，可读取 2 项资料。', duration_ms: 2345 }), span_id: 'sources' })
+  assert.equal(trace.steps.length, 2)
+  assert.equal(trace.steps[0].label, '准备检索资料')
+  assert.equal(trace.steps[0].status, 'completed')
+  assert.equal(trace.steps[0].startedAt, 2000)
+  assert.equal(trace.steps[0].durationMs, 2345)
+  assert.equal(trace.steps[1].durationMs, 1234)
+  assert.equal(trace.answer, undefined)
+})
+
+test('cancellation during preparation preserves its trace without publishing an answer', () => {
+  let trace = initialPiTrace(run)
+  trace = applyPiEvent(trace, event(1, 'run.running'))
+  trace = applyPiEvent(trace, { ...event(2, 'sources.started'), span_id: 'sources' })
+  trace = applyPiEvent(trace, { ...event(3, 'resource.waiting'), span_id: 'wait-1', parent_span_id: 'sources' })
+  trace = applyPiEvent(trace, event(4, 'run.cancelled', { message: '已取消' }))
+  assert.equal(trace.status, 'cancelled')
+  assert.deepEqual(trace.steps.map(step => step.status), ['cancelled', 'cancelled'])
+  assert.equal(trace.answer, undefined)
+  assert.deepEqual(trace.citations, [])
+  assert.strictEqual(applyPiEvent(trace, { ...event(5, 'sources.completed'), span_id: 'sources' }), trace)
+})
+
 test('Pi toggle and model configuration leave existing mode and messages intact', () => {
   const store = useChatStore.getState()
   const id = store.createSession()

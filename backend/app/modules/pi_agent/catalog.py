@@ -71,19 +71,31 @@ class SourceCatalog:
                 self.by_file.setdefault(source.file_id, []).append(source)
 
     @classmethod
-    def load(cls, client):
+    def load(cls, client, *, checkpoint=lambda: None):
         sources, bases = [], {}
+        def checked(items):
+            iterator = iter(items)
+            while True:
+                # MinIO pagination performs I/O inside next(), so check before
+                # advancing, including the first page and every later page.
+                checkpoint()
+                try:
+                    item = next(iterator)
+                except StopIteration:
+                    return
+                yield item
         # Catalog the file identities in every bucket, including inaccessible KBs,
         # so a duplicate file ID can never be mistaken for an accessible source.
         # Only identities in the host's AccessScope are exposed to the Agent.
-        for bucket in client.list_buckets():
+        checkpoint()
+        for bucket in checked(client.list_buckets()):
             if not bucket.name.startswith("kb-") or bucket.name == "kb-default":
                 continue
             kb_id = bucket.name[3:]
             bases[kb_id] = kb_id
-            objects = list(client.list_objects(bucket.name, recursive=True))
-            for obj in objects:
+            for obj in checked(client.list_objects(bucket.name, recursive=True)):
                 if obj.object_name == ".kb_meta.json":
+                    checkpoint()
                     response = client.get_object(bucket.name, obj.object_name)
                     try:
                         if obj.size <= 65536:
@@ -99,8 +111,8 @@ class SourceCatalog:
                 prefix, fid, name = match.groups()
                 sources.append(Source(source_id(kb_id, fid), kb_id, fid, name, KINDS[prefix],
                                       obj.etag or "", obj.size, bucket.name, obj.object_name))
-        if len(sources) > 20000:
-            raise ToolError("catalog_limit", "来源目录超过本实例预算，请配置较小的知识库集合")
+                if len(sources) > 20000:
+                    raise ToolError("catalog_limit", "来源目录超过本实例预算，请缩小本实例的数据集合")
         return cls(sources, bases)
 
     def get(self, identity: str, scope: AccessScope, *, search=False) -> Source:

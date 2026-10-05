@@ -30,11 +30,13 @@ function EvidenceList({ trace }: { trace: PiTrace }) {
 }
 function Step({ step, runId }: { step: PiStep; runId: string }) {
   const [result, setResult] = useState<string>(), [loading, setLoading] = useState(false)
+  const duration = step.durationMs != null ? `${(step.durationMs / 1000).toFixed(1)}s` : ''
+  const status = step.status === 'running' ? '进行中' : step.status === 'cancelled' ? '已取消' : step.status === 'failed' ? '未完成' : ''
   return <li className={`pi-step pi-step--${step.status}`}>
     <span className="pi-step-icon" aria-hidden>{step.status === 'running' ? <Loader2 size={13} className="pi-spin" /> : step.status === 'failed' ? <AlertCircle size={13} /> : step.status === 'completed' ? <Check size={13} /> : <Circle size={12} />}</span>
     <div className="min-w-0 flex-1">
       <div className="pi-step-heading"><span>{toolLabels[step.label] || (step.kind === 'model' ? `模型 · ${step.label}` : step.label)}</span>
-        <span className="pi-step-duration">{step.durationMs != null ? `${(step.durationMs / 1000).toFixed(1)}s` : step.status === 'running' ? '进行中' : ''}</span></div>
+        <span className="pi-step-duration">{[status, duration].filter(Boolean).join(' · ')}</span></div>
       {step.text && <p className="pi-step-text">{step.text}</p>}
       {step.args && <details className="pi-step-details"><summary>调用参数</summary><pre>{JSON.stringify(step.args, null, 2)}</pre></details>}
       {!!step.evidenceIds?.length && <p className="pi-evidence-ids">已返回证据 {step.evidenceIds.map(id => `[${id}]`).join(' ')}</p>}

@@ -44,10 +44,15 @@ export function applyPiEvent(previous: PiTrace, event: PiEvent): PiTrace {
   } else if (event.type === 'budget.finalizing') {
     updateStep({ id: stepId, kind: 'context', label: '正在收束已有证据', status: 'completed', startedAt: event.timestamp * 1000,
       text: String(data.message || '') })
+  } else if (event.type === 'sources.started' || event.type === 'sources.completed') {
+    const old = previous.steps.find(s => s.id === stepId)
+    updateStep({ id: stepId, kind: 'context', label: '准备检索资料', status: event.type === 'sources.started' ? 'running' : 'completed',
+      startedAt: old?.startedAt ?? event.timestamp * 1000, durationMs: data.duration_ms as number | undefined,
+      text: String(data.message || '') })
   } else if (event.type.startsWith('resource.')) {
     const old = previous.steps.find(s => s.id === stepId)
     updateStep({ id: stepId, kind: 'context', label: '等待服务资源', status: event.type === 'resource.waiting' ? 'running' : 'completed',
-      startedAt: old?.startedAt || event.timestamp * 1000, durationMs: data.duration_ms as number | undefined,
+      startedAt: old?.startedAt || event.timestamp * 1000, durationMs: data.duration_ms as number | undefined, parentId: event.parent_span_id,
       text: String(data.message || '') })
   } else if (/^(tool|model)\.(started|completed|failed|rejected|cancelled)$/.test(event.type)) {
     const kind = event.type.startsWith('tool.') ? 'tool' : 'model'

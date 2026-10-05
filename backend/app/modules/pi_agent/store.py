@@ -125,6 +125,20 @@ class RunStore:
             row = db.execute("SELECT * FROM pi_runs WHERE owner=? AND request_key=?", (owner, key)).fetchone()
             return self._decode(row) if row else None
 
+    def finish_preparation(self, run_id: str, *, scope: dict, sources: list[dict], duration_ms: int):
+        """Publish validated scope and its immutable private source map together."""
+        with self._connection(write=True) as db:
+            row = self._row(db, run_id)
+            config = json.loads(row["config_json"])
+            if row["status"] != "running" or config.get("scope_ready") is not False:
+                raise RunConflict("来源准备已结束或任务不再运行")
+            config.update(scope=scope, scope_ready=True)
+            db.execute("INSERT INTO pi_artifacts VALUES (?,?,?)", (run_id, "_sources", canonical(sources)))
+            db.execute("UPDATE pi_runs SET config_json=? WHERE id=?", (canonical(config), run_id))
+            return self._append(db, run_id, "sources.completed", {
+                "message": f"来源范围已确认，可读取 {len(sources)} 项资料。", "scope": scope,
+                "source_count": len(sources), "duration_ms": duration_ms}, span_id="sources")
+
     def list_runs(self, owner: str, session_id: str, *, limit: int = 100) -> list[dict]:
         with self._connection() as db:
             rows = db.execute("SELECT * FROM pi_runs WHERE owner=? AND session_id=? ORDER BY created_at DESC LIMIT ?",

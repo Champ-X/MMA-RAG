@@ -1,5 +1,7 @@
 import asyncio
 from pathlib import Path
+import threading
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -7,8 +9,9 @@ from fastapi import FastAPI
 
 from app.modules.pi_agent.catalog import SourceCatalog
 from app.modules.pi_agent.config import PiSettings, resolve_model
-from app.modules.pi_agent.contracts import RunRequest
+from app.modules.pi_agent.contracts import RunBudget, RunRequest, SourceFile
 from app.modules.pi_agent.policy import ToolError
+from app.modules.pi_agent.store import RunNotFound
 from app.modules.pi_agent.supervisor import PiSupervisor
 
 
@@ -29,7 +32,7 @@ class Vectors:
 
 
 def make_host(tmp_path, monkeypatch, *, script=None, **settings):
-    monkeypatch.setattr(SourceCatalog, "load", lambda _: SourceCatalog([], {}))
+    monkeypatch.setattr(SourceCatalog, "load", lambda _, **kwargs: SourceCatalog([], {}))
     worker = tmp_path / "worker.mjs"
     worker.write_text(script or """
 import {createInterface} from 'node:readline';
@@ -46,6 +49,194 @@ lines.on('line',line=>{
 
 def request(key="request-key"):
     return RunRequest(client_request_id=key, session_id="session", message="比较结果")
+
+
+async def wait_until(predicate):
+    async with asyncio.timeout(2):
+        while not predicate():
+            await asyncio.sleep(.005)
+
+
+class PausedCatalogStorage:
+    """Pause one native read; subsequent iterator pages must be admitted again."""
+    def __init__(self):
+        self.started, self.release = threading.Event(), threading.Event()
+        self.reads = []
+
+    def list_buckets(self):
+        self.reads.append("buckets")
+        return [SimpleNamespace(name="kb-one")]
+
+    def list_objects(self, bucket, **kwargs):
+        self.reads.append("page-1")
+        self.started.set()
+        assert self.release.wait(3), "Test did not release its native read"
+        yield SimpleNamespace(object_name="documents/11111111-1111-1111-1111-111111111111_one.txt", etag="v1", size=3)
+        self.reads.append("page-2")
+        yield SimpleNamespace(object_name="documents/22222222-2222-2222-2222-222222222222_two.txt", etag="v2", size=3)
+
+
+@pytest.mark.asyncio
+async def test_source_preparation_is_durable_cancellable_and_yields_to_legacy(tmp_path, monkeypatch):
+    from app.modules.pi_agent import admission
+    activity = admission.LegacyActivity()
+    monkeypatch.setattr(admission, "legacy_activity", activity)
+    host = make_host(tmp_path, monkeypatch)
+    reads = []
+    def catalog(*args, **kwargs):
+        reads.append("storage")
+        return SourceCatalog([], {})
+    monkeypatch.setattr(SourceCatalog, "load", catalog)
+    activity.enter()
+    try:
+        run = await asyncio.wait_for(host.start(request(), "alice"), .5)
+        await asyncio.sleep(.02)
+        assert not reads, "Source preparation must also yield while legacy retrieval is active"
+        assert host.store.get(run["id"])["status"] in {"queued", "running"}
+        assert any(event["type"] == "resource.waiting" for event in host.store.events(run["id"]))
+        await host.cancel(run["id"], "alice")
+        await asyncio.wait_for(asyncio.gather(*host.jobs.values(), return_exceptions=True), .5)
+        assert host.store.get(run["id"])["status"] == "cancelled"
+        assert not reads and not host.processes
+    finally:
+        activity.leave()
+        await host.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_catalog_pagination_yields_if_legacy_enters_mid_scan(tmp_path, monkeypatch, cancel):
+    from app.modules.pi_agent import admission
+    load_catalog = SourceCatalog.load
+    activity = admission.LegacyActivity()
+    monkeypatch.setattr(admission, "legacy_activity", activity)
+    host = make_host(tmp_path, monkeypatch)
+    monkeypatch.setattr(SourceCatalog, "load", load_catalog)
+    storage = host.storage = PausedCatalogStorage()
+    try:
+        run = await host.start(request(), "alice")
+        assert run["config"]["scope_ready"] is False and run["config"]["scope"] is None
+        await wait_until(storage.started.is_set)
+        activity.enter()
+        storage.release.set()
+        await wait_until(lambda: any(e["type"] == "resource.waiting" for e in host.store.events(run["id"])))
+        assert storage.reads == ["buckets", "page-1"]
+        assert not host.processes
+        with pytest.raises(RunNotFound):
+            host.store.artifact(run["id"], "_sources")
+        if cancel:
+            await host.cancel(run["id"], "alice")
+        else:
+            activity.leave()
+        await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 2)
+        result = host.store.get(run["id"])
+        if cancel:
+            assert result["status"] == "cancelled" and not result["config"]["scope_ready"]
+            assert storage.reads == ["buckets", "page-1"]
+        else:
+            assert result["status"] == "needs_input" and result["config"]["scope_ready"]
+            assert storage.reads == ["buckets", "page-1", "page-2"]
+            assert len(host.store.artifact(run["id"], "_sources")) == 2
+            events = host.store.events(run["id"])
+            waiting = next(e for e in events if e["type"] == "resource.waiting")
+            resumed = next(e for e in events if e["type"] == "resource.resumed")
+            prepared = next(e for e in events if e["type"] == "sources.completed")
+            tool = next(e for e in events if e["type"] == "tool.started")
+            assert waiting["parent_span_id"] == resumed["parent_span_id"] == "sources"
+            assert waiting["seq"] < resumed["seq"] < prepared["seq"] < tool["seq"]
+    finally:
+        storage.release.set()
+        if activity.active:
+            activity.leave()
+        await host.close()
+
+
+@pytest.mark.asyncio
+async def test_repeated_cancellation_retains_slot_until_native_read_settles(tmp_path, monkeypatch):
+    load_catalog = SourceCatalog.load
+    host = make_host(tmp_path, monkeypatch, max_concurrent_runs=1, max_queued_runs=0)
+    monkeypatch.setattr(SourceCatalog, "load", load_catalog)
+    storage = host.storage = PausedCatalogStorage()
+    try:
+        run = await host.start(request(), "alice")
+        await wait_until(storage.started.is_set)
+        task = host.jobs[run["id"]]
+        await host.cancel(run["id"], "alice")
+        await asyncio.sleep(.01)
+        # A shutdown or timeout can cancel the same task while it drains I/O.
+        task.cancel()
+        await asyncio.sleep(.01)
+        assert not task.done(), "Repeated cancellation must not release an in-flight native read"
+        assert host.store.get(run["id"])["status"] == "cancelling"
+        with pytest.raises(ToolError, match="队列已满"):
+            await host.start(request("next-request"), "alice")
+        storage.release.set()
+        await asyncio.wait_for(task, 2)
+        assert storage.reads == ["buckets", "page-1"]
+        assert host.store.get(run["id"])["status"] == "cancelled"
+        assert not host.processes and not host.jobs
+    finally:
+        storage.release.set()
+        await host.close()
+
+
+@pytest.mark.asyncio
+async def test_source_preparation_consumes_wall_budget_without_starting_worker(tmp_path, monkeypatch):
+    # Shorten only the test's clock budget; production validation requires >=10s.
+    budget = RunBudget().model_copy(update={"wall_seconds": .08})
+    host = make_host(tmp_path, monkeypatch, budget=budget)
+    stopped = threading.Event()
+    def catalog(_, *, checkpoint):
+        try:
+            while True:
+                checkpoint()
+                threading.Event().wait(.005)
+        finally:
+            stopped.set()
+    monkeypatch.setattr(SourceCatalog, "load", catalog)
+    try:
+        run = await host.start(request(), "alice")
+        await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 2)
+        result = host.store.get(run["id"])
+        assert result["status"] == "failed" and result["state"]["code"] == "time_budget_exhausted"
+        assert result["state"]["usage"]["model_requests"] == 0
+        assert not result["config"]["scope_ready"] and stopped.is_set()
+        assert not host.processes
+    finally:
+        await host.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["catalog_unavailable", "source_unavailable", "invalid_reference"])
+async def test_preparation_failure_is_durable_and_never_reaches_model(tmp_path, monkeypatch, failure):
+    from app.modules.pi_agent.catalog import Source, source_id
+    host = make_host(tmp_path, monkeypatch)
+    source = Source(source_id("one", "file"), "one", "file", "原文.txt", "doc", "v1", 3)
+    spec = request()
+    def catalog(*args, **kwargs):
+        if failure == "catalog_unavailable":
+            raise OSError("private-storage-location provider-secret-value")
+        return SourceCatalog([source], {"one": "资料库"})
+    monkeypatch.setattr(SourceCatalog, "load", catalog)
+    if failure == "source_unavailable":
+        spec.selected_files = [SourceFile(kb_id="one", file_id="missing")]
+    elif failure == "invalid_reference":
+        spec.message = "@假名.txt"
+        spec.reference_files = [SourceFile(kb_id="one", file_id="file")]
+        spec.mentions = [{"source": "knowledge", "kbId": "one", "fileId": "file", "name": "假名.txt", "type": "doc", "start": 0, "end": 7}]
+    try:
+        run = await host.start(spec, "alice")
+        await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 2)
+        result = host.store.get(run["id"])
+        assert result["status"] == "failed" and result["state"]["code"] == failure
+        assert not result["config"]["scope_ready"] and result["state"]["usage"]["model_requests"] == 0
+        events = host.store.events(run["id"])
+        assert not any(e["type"].startswith(("model.", "tool.")) for e in events)
+        assert "private-storage-location" not in str(events) and "provider-secret-value" not in str(events)
+        with pytest.raises(RunNotFound):
+            host.store.artifact(run["id"], "_sources")
+    finally:
+        await host.close()
 
 
 def test_pi_model_selection_defaults_to_its_own_configured_set():

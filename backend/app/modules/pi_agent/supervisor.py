@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import asdict
 import fcntl
 from functools import partial
@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import time
+import threading
 
 from .catalog import SourceCatalog, Source, source_id
 from .config import ROOT, resolve_model
@@ -58,6 +59,20 @@ class PiSupervisor:
                 limits=__import__("httpx").Limits(max_connections=4, max_keepalive_connections=2))
         self.storage, self.vectors = storage, vector_client
 
+    @staticmethod
+    async def _settle_io(future):
+        # A timeout, explicit stop and host shutdown may cancel the same task.
+        # None can release capacity or source files while native I/O still runs.
+        while not future.done():
+            try:
+                await asyncio.shield(future)
+            except asyncio.CancelledError:
+                continue
+            except Exception:
+                break
+        if not future.cancelled():
+            future.exception()  # Consume a late read failure during cancellation.
+
     async def blocking(self, function, *args, **kwargs):
         future = asyncio.get_running_loop().run_in_executor(self.io_pool, partial(function, *args, **kwargs))
         try:
@@ -65,10 +80,8 @@ class PiSupervisor:
         except asyncio.CancelledError:
             # Keep the run's slot and temporary files until bounded physical I/O
             # actually settles; a cancelled browser cannot create orphan reads.
-            try:
-                await asyncio.shield(future)
-            finally:
-                raise
+            await self._settle_io(future)
+            raise
 
     def _redact(self, value):
         if isinstance(value, str):
@@ -99,33 +112,17 @@ class PiSupervisor:
                 if parent["session_id"] != request.session_id:
                     raise ToolError("invalid_parent", "关联任务不属于当前会话")
             model, key = resolve_model(self.registry, request.model, self.settings)
-            catalog = await self.blocking(SourceCatalog.load, self.storage)
-            allowed = set(catalog.knowledge_bases)
+            # Reject an explicitly forbidden scope without reading any storage.
+            # Source existence and canonical identities are validated by the
+            # durable preparation phase before tools or model calls can begin.
             if self.settings.allowed_kb_ids is not None:
-                allowed &= set(self.settings.allowed_kb_ids)
-            scope = AccessScope.from_request(request, allowed)
-            for reference in request.selected_files + request.reference_files:
-                catalog.get(source_id(reference.kb_id, reference.file_id), scope)
-            # Attachment descriptors are created/verified by the HTTP upload path.
-            attachments = []
-            for item in request.attachments:
-                from .uploads import attachment_source
-                attachments.append(attachment_source(item, owner, self.settings))
-            catalog = SourceCatalog([*catalog.sources.values(), *attachments], catalog.knowledge_bases)
-            from app.modules.chat.references import resolve_message_references
-            refs = [catalog.get(source_id(f.kb_id, f.file_id), scope) for f in request.reference_files]
-            _, annotated, bindings = resolve_message_references(request.message, request.mentions,
-                [{"kb_id": s.kb_id, "file_id": s.file_id, "name": s.name, "type": s.modality,
-                  "kb_name": catalog.knowledge_bases.get(s.kb_id, "")} for s in refs],
-                [{"id": s.attachment_id, "name": s.name, "type": s.modality, "index": i + 1} for i, s in enumerate(attachments)])
+                AccessScope.from_request(request, set(self.settings.allowed_kb_ids))
             public = {"engine": "pi", "protocol_version": 1, "model": model["name"], "provider": model["provider"],
-                      "budget": self.settings.budget.model_dump(), "scope": scope.public(),
+                      "budget": self.settings.budget.model_dump(), "scope": None, "scope_ready": False,
                       "tool_models": {"embedding": self.settings.embedding_model, "vision": self.settings.vision_model, "audio": self.settings.audio_model}}
             run, created = self.store.create(owner=owner, request=request.model_dump(), config=public)
             if created:
-                # Private mapping is never returned through the generic artifacts API.
-                self.store.put_artifact(run["id"], "_sources", [asdict(s) for s in catalog.visible(scope)])
-                task = asyncio.create_task(self._run(run["id"], request, catalog, scope, model, key, annotated, bindings))
+                task = asyncio.create_task(self._run(run["id"], request, owner, model, key))
                 self.jobs[run["id"]] = task
                 def settled(done):
                     # asyncio can cancel a queued task before its coroutine starts.
@@ -135,7 +132,88 @@ class PiSupervisor:
                 task.add_done_callback(settled)
             return run
 
-    async def _run(self, run_id, request, catalog, scope, model, key, annotated, bindings):
+    async def _admit_preparation(self, ledger, emit):
+        ledger.check_time()
+        if self.settings.yield_to_legacy:
+            from .admission import legacy_activity
+            await legacy_activity.wait(emit, parent_span_id="sources")
+        ledger.check_time()
+
+    async def _load_catalog(self, ledger, emit):
+        await self._admit_preparation(ledger, emit)
+        loop, stopped = asyncio.get_running_loop(), threading.Event()
+        def checkpoint():
+            if stopped.is_set():
+                raise ToolError("cancelled", "来源准备已取消")
+            ledger.check_time()
+            if not self.settings.yield_to_legacy:
+                return
+            from .admission import legacy_activity
+            if not legacy_activity.active:
+                return
+            # The synchronous MinIO iterator can reach another page after an
+            # old request starts. Admit each subsequent read through the loop,
+            # while retaining a cooperative stop path for this worker thread.
+            waiting = asyncio.run_coroutine_threadsafe(self._admit_preparation(ledger, emit), loop)
+            try:
+                while True:
+                    if stopped.is_set():
+                        raise ToolError("cancelled", "来源准备已取消")
+                    ledger.check_time()
+                    try:
+                        waiting.result(timeout=.05)
+                        return
+                    except FutureTimeout:
+                        pass
+            finally:
+                if not waiting.done():
+                    waiting.cancel()
+        future = loop.run_in_executor(self.io_pool, partial(SourceCatalog.load, self.storage, checkpoint=checkpoint))
+        try:
+            return await asyncio.shield(future)
+        except asyncio.CancelledError:
+            # Stop before another page/metadata request; an already-issued read
+            # keeps its bounded I/O slot until it settles, never an orphan scan.
+            stopped.set()
+            await self._settle_io(future)
+            raise
+
+    async def _prepare(self, run_id, request, owner, ledger, emit):
+        started = time.monotonic()
+        emit("sources.started", {"message": "正在准备可读取的来源与检索范围。"}, span_id="sources")
+        try:
+            catalog = await self._load_catalog(ledger, emit)
+        except ToolError:
+            raise
+        except Exception:
+            raise ToolError("catalog_unavailable", "无法读取来源目录，请检查知识库服务后重试。") from None
+        allowed = set(catalog.knowledge_bases)
+        if self.settings.allowed_kb_ids is not None:
+            allowed &= set(self.settings.allowed_kb_ids)
+        scope = AccessScope.from_request(request, allowed)
+        for reference in request.selected_files + request.reference_files:
+            catalog.get(source_id(reference.kb_id, reference.file_id), scope)
+        from .uploads import attachment_source
+        attachments = []
+        for item in request.attachments:
+            await self._admit_preparation(ledger, emit)
+            attachments.append(await self.blocking(attachment_source, item, owner, self.settings))
+        catalog = SourceCatalog([*catalog.sources.values(), *attachments], catalog.knowledge_bases)
+        from app.modules.chat.references import resolve_message_references
+        refs = [catalog.get(source_id(f.kb_id, f.file_id), scope) for f in request.reference_files]
+        try:
+            _, annotated, bindings = resolve_message_references(request.message, request.mentions,
+                [{"kb_id": s.kb_id, "file_id": s.file_id, "name": s.name, "type": s.modality,
+                  "kb_name": catalog.knowledge_bases.get(s.kb_id, "")} for s in refs],
+                [{"id": s.attachment_id, "name": s.name, "type": s.modality, "index": i + 1} for i, s in enumerate(attachments)])
+        except ValueError as error:
+            raise ToolError("invalid_reference", str(error)) from None
+        ledger.check_time()
+        self.store.finish_preparation(run_id, scope=scope.public(), sources=[asdict(s) for s in catalog.visible(scope)],
+                                      duration_ms=round((time.monotonic() - started) * 1000))
+        return catalog, scope, annotated, bindings
+
+    async def _run(self, run_id, request, owner, model, key):
         ledger, transport, process = None, None, None
         try:
             async with self.run_gate:
@@ -145,23 +223,24 @@ class PiSupervisor:
                 self.store.transition(run_id, "running", data={"model": model["name"]})
                 def emit(event, data, **spans):
                     return self.store.append(run_id, event, self._redact(data), **spans)
-                transport = ModelTransport(self.registry, self.settings, ledger, emit)
-                gateway = KnowledgeGateway(catalog, scope, self.vectors, transport, self.search_gate)
-                media = MediaInspector(catalog, self.storage, transport, ledger, self.settings, self.blocking)
-                toolset = ToolSet(run_id, self.store, catalog, scope, ledger, gateway, media, emit, self.blocking)
-                inputs = [s.public(scope) for s in catalog.visible(scope) if s.attachment or (s.kb_id, s.file_id) in scope.references]
-                history = [{"role": h.get("role"), "content": str(h.get("content", ""))[:2000]} for h in request.history
-                           if h.get("role") in {"user", "assistant"}][-8:]
-                prompt = json.dumps({"current_question": annotated, "reference_bindings": bindings,
-                    "input_materials": inputs, "search_scope": scope.public(),
-                    "accessible_knowledge_bases": [{"id": k, "name": v} for k, v in catalog.knowledge_bases.items() if k in scope.allowed_kbs],
-                    "history_for_context_only_not_evidence": history,
-                    "budget": self.settings.budget.model_dump()}, ensure_ascii=False)
-                config = {"run_id": run_id, "model": model, "api_key": key, "budget": self.settings.budget.model_dump(),
-                          "tools": definitions(), "prompt": prompt}
-                env = {name: value for name, value in os.environ.items() if name in {
-                    "PATH", "LANG", "LC_ALL", "NODE_EXTRA_CA_CERTS", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"}}
                 async with asyncio.timeout(self.settings.budget.wall_seconds):
+                    catalog, scope, annotated, bindings = await self._prepare(run_id, request, owner, ledger, emit)
+                    transport = ModelTransport(self.registry, self.settings, ledger, emit)
+                    gateway = KnowledgeGateway(catalog, scope, self.vectors, transport, self.search_gate)
+                    media = MediaInspector(catalog, self.storage, transport, ledger, self.settings, self.blocking)
+                    toolset = ToolSet(run_id, self.store, catalog, scope, ledger, gateway, media, emit, self.blocking)
+                    inputs = [s.public(scope) for s in catalog.visible(scope) if s.attachment or (s.kb_id, s.file_id) in scope.references]
+                    history = [{"role": h.get("role"), "content": str(h.get("content", ""))[:2000]} for h in request.history
+                               if h.get("role") in {"user", "assistant"}][-8:]
+                    prompt = json.dumps({"current_question": annotated, "reference_bindings": bindings,
+                        "input_materials": inputs, "search_scope": scope.public(),
+                        "accessible_knowledge_bases": [{"id": k, "name": v} for k, v in catalog.knowledge_bases.items() if k in scope.allowed_kbs],
+                        "history_for_context_only_not_evidence": history,
+                        "budget": self.settings.budget.model_dump()}, ensure_ascii=False)
+                    config = {"run_id": run_id, "model": model, "api_key": key, "budget": self.settings.budget.model_dump(),
+                              "tools": definitions(), "prompt": prompt}
+                    env = {name: value for name, value in os.environ.items() if name in {
+                        "PATH", "LANG", "LC_ALL", "NODE_EXTRA_CA_CERTS", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"}}
                     if self.settings.yield_to_legacy:
                         from .admission import legacy_activity
                         await legacy_activity.wait(emit)
