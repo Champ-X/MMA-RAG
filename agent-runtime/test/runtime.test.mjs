@@ -141,3 +141,39 @@ test('long research archives tool bodies while preserving the question and tool-
   assert.equal((await runtime.run()).terminal, 'completed');
   assert.ok(events.some(event => event.type === 'context.compacted'));
 });
+
+test('closing can recover archived evidence while rejecting fresh research', async () => {
+  let requests = 0;
+  const calls = [];
+  const recall = { name: 'recall_evidence', description: 'Read delivered evidence',
+    parameters: Type.Object({ evidence_ids: Type.Array(Type.Number()) }) };
+  const runtime = createRuntime({ ...config, tools: [...tools, recall], model: { ...model, contextWindow: 12000 } }, {
+    emit: () => {},
+    providerStream: (_model, context) => {
+      if (++requests <= 8) return response([toolCall(`s${requests}`, 'search', { query: `资料 ${requests}` })]);
+      assert.deepEqual(getCurrentTools(context.messages).map(tool => tool.name), ['submit_answer', 'recall_evidence']);
+      if (requests === 9) {
+        assert.ok(context.messages.some(message => message.role === 'toolResult'
+          && message.content.some(part => part.text?.includes('archived_result'))));
+        return response([toolCall('blocked', 'search', { query: 'new research' }),
+          toolCall('recall', 'recall_evidence', { evidence_ids: [1] })]);
+      }
+      assert.ok(context.messages.some(message => message.role === 'toolResult' && message.toolCallId === 'recall'
+        && message.content.some(part => part.text === '已取得的原文[1]')));
+      return response([toolCall('finish', 'submit_answer', { answer: '已取得的原文[1]' })]);
+    },
+    callHost: async (method, params) => {
+      if (method === 'model_request') return { allowed: true, max_output_tokens: 1000, final_turn: requests >= 8 };
+      if (method === 'model_usage') return {};
+      calls.push(params);
+      if (params.name === 'submit_answer') return { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed' } };
+      return { content: [{ type: 'text', text: params.name === 'recall_evidence' ? '已取得的原文[1]' : '原文'.repeat(1500) }],
+        details: { artifact_id: `artifact-${requests}`, evidence_ids: [params.name === 'recall_evidence' ? 1 : requests] } };
+    },
+  });
+  const result = await runtime.run();
+  assert.equal(result.terminal, 'completed', result.message);
+  assert.equal(requests, 10);
+  assert.deepEqual(calls.slice(8).map(call => call.name), ['recall_evidence', 'submit_answer']);
+  assert.ok(!calls.some(call => call.tool_call_id === 'blocked'));
+});

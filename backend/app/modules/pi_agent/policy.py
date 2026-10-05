@@ -119,8 +119,10 @@ class BudgetLedger:
 
     def reserve_tool(self, name: str):
         self.check_time()
-        if self.finalizing and name not in {"submit_answer", "ask_user"}:
-            raise ToolError("research_budget_exhausted", "已进入预算收尾阶段，请使用已有证据提交完整或部分回答")
+        # Re-reading delivered evidence is local to the run. Compaction may
+        # have archived its text, so keep this available without reopening I/O.
+        if self.finalizing and name not in {"submit_answer", "ask_user", "recall_evidence"}:
+            raise ToolError("research_budget_exhausted", "已进入预算收尾阶段，只能复读已取得的证据或提交回答")
         if self.tool_calls >= self.limits.tool_calls:
             raise ToolError("tool_budget_exhausted", "本轮工具调用预算已用尽")
         # Preserve admission slots for a final answer even when research is exhausted.

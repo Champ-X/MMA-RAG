@@ -92,3 +92,22 @@ def test_token_headroom_closes_research_before_full_context_is_unaffordable():
     # Actual usage refunds do not silently reopen research.
     assert ledger.finalizing
     assert ledger.reserve_model(3, 300, 256, main_loop=True)["final_turn"]
+
+
+def test_closing_can_recall_delivered_evidence_without_reopening_research_or_limits():
+    ledger = BudgetLedger(RunBudget(tool_calls=4), finalizing=True)
+    ledger.reserve_tool("recall_evidence")
+    assert ledger.tool_calls == 1
+    for name in ("search", "read_source", "expand_context", "inspect_media", "query_table", "list_sources"):
+        with pytest.raises(ToolError, match="收尾"):
+            ledger.reserve_tool(name)
+    with pytest.raises(ToolError, match="收尾"):
+        ledger.reserve_model(-1, 50, 0)
+    ledger.reserve_tool("recall_evidence")
+    # Cached reads still preserve the last two tool slots for completion/repair.
+    with pytest.raises(ToolError):
+        ledger.reserve_tool("recall_evidence")
+    ledger.reserve_tool("submit_answer")
+    ledger.reserve_tool("submit_answer")
+    with pytest.raises(ToolError):
+        ledger.reserve_tool("submit_answer")

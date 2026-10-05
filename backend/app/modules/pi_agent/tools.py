@@ -96,7 +96,7 @@ DEFINITIONS = {
     "search": (Search, "在宿主限定范围内搜索已建索引的文本、图片描述、音频描述/转写、视频镜头。hybrid 为语义+词面融合；exact 为原短语包含匹配。返回证据、截断及服务错误。输入附件不参与搜索。"),
     "read_source": (ReadSource, "按 source_id 深读已解析来源。文档 start 为 chunk_index，媒体 start 为索引片段偏移；根据 next_start 翻页。媒体索引描述不能代替直接观察。"),
     "expand_context": (ExpandContext, "读取已返回文档证据的前后相邻 chunk，核对条件、指代和上下文。"),
-    "recall_evidence": (RecallEvidence, "重新读取本轮已获得的证据。用于恢复上下文中已归档的工具结果，编号保持不变。"),
+    "recall_evidence": (RecallEvidence, "复读本轮已交付的证据，每次最多4条，编号和内容保持不变。用于核对上下文中已归档的原文；预算收尾阶段仍可用，不读取新来源。"),
     "inspect_media": (InspectMedia, "直接读取原图片、PDF 指定页、音频或视频的指定区间。每次至多 60 秒，默认前 30 秒；视频最多 6 帧并记录实际时间。可选 visual/audio/both，观察模型独立于最终回答模型。"),
     "query_table": (QueryTable, "确定性读取 CSV/TSV/XLSX 原表并按列过滤、分组、计数或计算。保留原行号、单位和操作；不执行公式、Python 或 SQL。PDF 表格请读取原文并核对页图。"),
     "submit_answer": (SubmitAnswer, "提交你完成的最终回答。事实主张就近用 [编号]；evidence_ids 必须恰好等于正文实际引用且此前返回的编号。证据不足 status=partial 并说明 limitations。没有相关依据时 outcome=not_found、status=partial、evidence_ids=[]，只说明未找到及范围，不附候选引用。只检查协议，不代写答案或证明语义正确。"),
