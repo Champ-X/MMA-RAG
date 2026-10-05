@@ -42,7 +42,7 @@ def lexical_terms(query):
                 else [token, *(token[i:i + 2] for i in range(len(token) - 1))]))
 
 
-def evidence_for(source: Source, modality: str, point, *, max_chars=6000) -> Evidence:
+def evidence_for(source: Source, modality: str, point, *, max_chars=6000, text_offset=0) -> Evidence:
     payload = point.payload or {}
     metadata = payload.get("metadata") or {}
     if isinstance(metadata, str):
@@ -64,14 +64,19 @@ def evidence_for(source: Source, modality: str, point, *, max_chars=6000) -> Evi
         for key in ("source_start", "source_end"):
             if key in chunking:
                 locator[key] = chunking[key]
-    locator["returned_chars"] = min(len(text), max_chars)
+    record_version = fingerprint({"object": source.version, "text": text, "locator": locator})
+    content = text[text_offset:text_offset + max_chars]
+    locator["returned_chars"] = len(content)
     locator["total_chars"] = len(text)
+    locator["text_start"] = text_offset
+    locator["text_end"] = text_offset + len(content)
     observation = "parsed_text" if modality == "doc" else "transcript" if modality == "audio" else "caption"
-    return Evidence(source_id=source.id, modality=modality, file_name=source.name, content=text[:max_chars],
+    return Evidence(source_id=source.id, modality=modality, file_name=source.name, content=content,
                     version=fingerprint({"object": source.version, "text": text, "locator": locator}),
                     observation=observation, locator=locator,
                     provenance={"kb_id": source.kb_id, "file_id": source.file_id, "source_version": source.version,
-                                "index_kb_id": payload.get("kb_id"), "truncated": len(text) > max_chars},
+                                "index_kb_id": payload.get("kb_id"), "record_version": record_version,
+                                "truncated": text_offset > 0 or len(content) < len(text)},
                     citation={"type": source.modality, "file_name": source.name,
                               "debug_info": {"kb_id": source.kb_id, "chunk_id": str(point.id)},
                               **({"start_sec": payload["shot_start_time"]} if "shot_start_time" in payload else {}),
@@ -173,7 +178,10 @@ class KnowledgeGateway:
                           "errors": errors, "truncated": truncated, "scanned_point_limit_per_modality": 2000,
                           "scope": self.scope.public()}
 
-    async def read(self, source: Source, *, start: int, limit: int, modality: str | None = None):
+    async def read(self, source: Source, *, start: int, limit: int, modality: str | None = None,
+                   text_offset: int = 0, expected_record_version: str | None = None):
+        if (text_offset or expected_record_version) and limit != 1:
+            raise ToolError("ambiguous_text_offset", "续读单个索引片段时必须设置 limit=1")
         if source.attachment:
             raise ToolError("use_media_tool", "请使用 inspect_media 读取本机媒体附件")
         kind = modality or source.modality
@@ -194,8 +202,21 @@ class KnowledgeGateway:
             selected = points[start:start + limit]
             total = len(points)
             has_more = start + limit < total or clipped
-        return [evidence_for(source, kind, p, max_chars=max(1000, 12000 // max(1, limit))) for p in selected], {
+        if text_offset and selected and text_offset >= len(point_text(selected[0].payload or {}, kind)):
+            raise ToolError("text_offset_out_of_range", "续读位置超出当前索引片段，请从 text_offset=0 重新读取并核对来源版本")
+        observations = [evidence_for(source, kind, p, max_chars=max(1000, 12000 // max(1, limit)),
+                                     text_offset=text_offset) for p in selected]
+        if expected_record_version and observations and observations[0].provenance["record_version"] != expected_record_version:
+            raise ToolError("index_record_changed", "索引片段版本已改变，请从头读取，不能将不同版本的文字拼接为同一原文")
+        continuations = [{"source_id": source.id,
+                          "start": evidence.locator["chunk_index"] if kind == "doc" else start + index,
+                          "limit": 1, "text_offset": evidence.locator["text_end"],
+                          "expected_record_version": evidence.provenance["record_version"]}
+                         for index, evidence in enumerate(observations)
+                         if evidence.locator["text_end"] < evidence.locator["total_chars"]]
+        return observations, {
             "source": source.public(self.scope), "total_index_records": total,
             "next_start": start + limit if has_more else None, "truncated": clipped,
+            "text_continuations": continuations,
             "status": "ok" if selected else "no_index_content",
         }

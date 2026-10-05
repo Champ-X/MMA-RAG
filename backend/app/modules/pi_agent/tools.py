@@ -40,6 +40,10 @@ class ReadSource(Args):
     source_id: str = Field(min_length=1, max_length=100)
     start: int = Field(default=0, ge=0, le=100000)
     limit: int = Field(default=3, ge=1, le=4)
+    text_offset: int = Field(default=0, ge=0, le=2000000,
+        description="单个索引片段内的Unicode字符位置，默认从头读取。续读使用返回的text_continuations参数，且limit必须为1。")
+    expected_record_version: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$",
+        description="续读时原样传入text_continuations中的版本，防止将已变化的索引片段拼接到旧文字。")
 
 
 class ExpandContext(Args):
@@ -110,7 +114,7 @@ class AskUser(Args):
 DEFINITIONS = {
     "list_sources": (ListSources, "列出当前可读来源和输入材料，按名称过滤并分页。目录项不能作证据，先读取。"),
     "search": (Search, "在宿主限定范围内搜索已建索引的文本、图片描述、音频描述/转写、视频镜头。hybrid 为语义+词面融合；exact 为原短语包含匹配。返回证据、截断及服务错误。输入附件不参与搜索。"),
-    "read_source": (ReadSource, "按 source_id 深读已解析来源。文档 start 为 chunk_index，媒体 start 为索引片段偏移；根据 next_start 翻页。媒体索引描述不能代替直接观察。"),
+    "read_source": (ReadSource, "按 source_id 深读已解析来源。文档 start 为 chunk_index，媒体 start 为索引片段偏移。next_start读取后续片段；text_continuations给出当前长片段的续读参数，避免遗漏截断后的条件。媒体索引描述不能代替直接观察。"),
     "expand_context": (ExpandContext, "读取已返回文档证据的前后相邻 chunk，核对条件、指代和上下文。"),
     "recall_evidence": (RecallEvidence, "复读本轮已交付的证据，每次最多4条，编号和内容保持不变。用于核对上下文中已归档的原文；预算收尾阶段最多使用一次，然后提交回答，不读取新来源。"),
     "inspect_media": (InspectMedia, "直接读取原图片、PDF 指定页、音频或视频的指定区间。每次至多 60 秒，默认前 30 秒；视频最多 6 帧并记录实际时间。可选 visual/audio/both，观察模型独立于最终回答模型。"),
