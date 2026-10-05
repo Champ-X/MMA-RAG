@@ -278,3 +278,36 @@ test('registered requirements survive real Pi compaction, HTTP serialization and
   assert.ok(events.some(event => event.type === 'context.compacted'));
   assert.equal(calls.at(-1).args.max_characters, undefined, 'the final answer need not repeat the stored cap');
 });
+
+test('removed tools report closure before malformed argument errors consume a final model turn', { timeout: 15000 }, async t => {
+  const frames = (id, name, args) => [
+    { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id, type: 'function',
+      function: { name, arguments: JSON.stringify(args) } }] } }] },
+    { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+      usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 } },
+  ];
+  const { requests, baseUrl } = await sseEndpoint(t, [
+    frames('unavailable', 'search', { query: ['wrong type'], modalities: '["doc"]', limit: '6' }),
+    frames('finish', 'submit_answer', { answer: '本次检索未找到所需信息的依据。' }),
+  ]);
+  const events = [], calls = [];
+  const runtime = createRuntime(wireConfig(baseUrl), {
+    emit: (type, data) => events.push({ type, data }),
+    callHost: async (method, params) => {
+      if (method === 'model_request') return { allowed: true, max_output_tokens: 1000, final_turn: true, allow_recall: false };
+      if (method === 'model_usage') return {};
+      calls.push(params.name);
+      return { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'partial', answer: params.args.answer } };
+    },
+  });
+  t.after(() => runtime.abort());
+  assert.equal((await runtime.run()).terminal, 'partial');
+  assert.deepEqual(calls, ['submit_answer']);
+  assert.equal(requests.length, 2);
+  const error = requests[1].messages.find(message => message.tool_call_id === 'unavailable').content;
+  assert.match(error, /预算已进入收尾阶段/);
+  assert.doesNotMatch(error, /Validation failed|must be|Received arguments/);
+  const rejection = events.find(event => event.type === 'tool.rejected');
+  assert.equal(rejection.data.executed, false);
+  assert.equal(rejection.data.message, error);
+});

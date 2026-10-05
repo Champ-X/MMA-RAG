@@ -84,6 +84,15 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
     label: definition.label || definition.name,
     // Terminal operations settle in order, after other outstanding calls.
     executionMode: ['set_answer_requirements', 'submit_answer', 'ask_user'].includes(definition.name) ? 'sequential' : 'parallel',
+    prepareArguments: (args) => {
+      // Pi validates arguments before beforeToolCall. A removed tool must get
+      // closure feedback even if its arguments are malformed, so the model
+      // does not spend its final calls repairing an unavailable search.
+      if (finalizing && (!CLOSING_TOOLS.has(definition.name) || (recallClosed && definition.name === 'recall_evidence'))) {
+        throw new Error('预算已进入收尾阶段，只能复读已取得的证据或提交回答');
+      }
+      return args;
+    },
     execute: async (toolCallId, args, signal) => {
       if (finalizing && definition.name === 'recall_evidence') recallClosed = true;
       dispatched.add(toolCallId);
