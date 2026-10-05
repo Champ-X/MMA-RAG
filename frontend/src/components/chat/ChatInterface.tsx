@@ -5,6 +5,9 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useChatStore } from '@/store/useChatStore'
 import { useConfigStore } from '@/store/useConfigStore'
 import { useThinkingChain } from '@/hooks/useThinkingChain'
+import { usePiAgent } from '@/hooks/usePiAgent'
+import { piApi } from '@/services/piAgent'
+import { piStatusLabel, type PiConfig } from '@/types/pi'
 import { cn } from '@/lib/utils'
 import { getModelVendor, VENDOR_LOGOS } from '@/lib/modelVendors'
 import type { CitationReference } from '@/types/sse'
@@ -25,6 +28,7 @@ import { explicitScopeFiles } from '@/lib/chatReferenceScope'
 import { FileScopeThumbnail, filePresentation } from './FileScopeThumbnail'
 import './fileMentionList.css'
 import './composerScopeFiles.css'
+import './piAgent.css'
 import { ChatWelcome } from './ChatWelcome'
 
 const MAX_CHAT_ATTACHMENTS = 3
@@ -218,9 +222,16 @@ export function ChatInterface() {
     addMessage,
     updateMessage,
     updateSessionAgentMode,
+    updateSessionPiMode,
+    updateSessionPiModel,
   } = useChatStore()
 
-  const { sendMessage, stopStreaming, isStreaming, error } = useThinkingChain()
+  const legacyChain = useThinkingChain()
+  const pi = usePiAgent()
+  const isStreaming = legacyChain.isStreaming || pi.isStreaming
+  const error = pi.error || legacyChain.error
+  const [piConfig, setPiConfig] = useState<PiConfig | null>(null)
+  const [piConfigError, setPiConfigError] = useState('')
   const { config } = useConfigStore()
   const {
     knowledgeBases: scopeKnowledgeBases,
@@ -233,6 +244,16 @@ export function ChatInterface() {
   } = useFileScopeOptions(Boolean(mentionState) || requestScopeFiles.length > 0)
 
   const activeSession = getActiveSession()
+  const piEnabled = activeSession?.executionEngine === 'pi'
+  const sendMessage = piEnabled ? pi.sendMessage : legacyChain.sendMessage
+  const piState = pi.active?.sessionId === activeSessionId ? pi.active.pi.status : 'ready'
+  useEffect(() => {
+    if (!piEnabled || piConfig) return
+    let cancelled = false
+    void piApi.config().then(value => { if (!cancelled) { setPiConfig(value); setPiConfigError('') } })
+      .catch(cause => { if (!cancelled) setPiConfigError(cause instanceof Error ? cause.message : 'Pi 配置暂不可用') })
+    return () => { cancelled = true }
+  }, [piEnabled, piConfig])
   const agentMode = normalizeAgentMode(activeSession?.agentMode)
   const messages = useMemo(() => activeSession?.messages ?? [], [activeSession?.messages])
   const precedingQuestions = useMemo(() => {
@@ -562,9 +583,10 @@ export function ChatInterface() {
 
   const handleStop = () => {
     if (!activeSessionId || !isStreaming) return
+    if (pi.isStreaming) { void pi.cancel(); return }
 
     // 获取用户原始查询
-    const userQuery = stopStreaming()
+    const userQuery = legacyChain.stopStreaming()
 
     // 添加终止提示消息
     const lastMessage = activeSession?.messages[activeSession.messages.length - 1]
@@ -763,7 +785,7 @@ export function ChatInterface() {
             {messages.map((m, i) => {
               const originalQuestion = precedingQuestions[i]
               const isLastMessage = m.role === 'assistant' && i === messages.length - 1
-              const isThisTabStreaming = isStreaming && activeSessionId === streamingSessionId
+              const isThisTabStreaming = isStreaming && activeSessionId === (pi.active?.sessionId ?? streamingSessionId)
               const isLastAndStreaming = isLastMessage && isThisTabStreaming
               const messageCitationMap =
                 citationMapsByMessageId.get(m.id) ?? buildCitationMapForMessage(m.citations)
@@ -781,11 +803,12 @@ export function ChatInterface() {
                       citations: m.citations,
                       metadata: m.metadata,
                       thinking: m.thinking,
+                      pi: m.pi,
                       error: m.error,
                     }}
                     isStreaming={isLastAndStreaming}
                     liveThinking={
-                      isLastAndStreaming
+                      isLastAndStreaming && !m.pi
                         ? {
                           thoughtData: thinking.thoughtData,
                           stages: thinking.stages,
@@ -824,7 +847,15 @@ export function ChatInterface() {
       <div className="relative px-4 pb-4 sm:px-6">
         <div className="mx-auto max-w-4xl relative">
           {/* 一体化输入框：flex 布局，textarea 与按钮区分离；focus 时极细 indigo/fuchsia 环与品牌一致 */}
-          <div className="flex flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/75 bg-white/90 shadow-[0_22px_52px_-36px_rgba(15,23,42,0.72),0_1px_0_rgba(255,255,255,0.9)_inset] ring-1 ring-white/70 backdrop-blur-xl transition-[box-shadow,border-color] duration-200 focus-within:border-indigo-300/80 focus-within:ring-indigo-200/80 dark:border-slate-700/70 dark:bg-slate-900/80 dark:shadow-[0_24px_62px_-42px_rgba(0,0,0,0.95)] dark:ring-white/[0.05] dark:focus-within:border-indigo-400/40 dark:focus-within:ring-indigo-400/20">
+          <div data-pi-state={piEnabled ? piState : undefined} className={cn("flex flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/75 bg-white/90 shadow-[0_22px_52px_-36px_rgba(15,23,42,0.72),0_1px_0_rgba(255,255,255,0.9)_inset] ring-1 ring-white/70 backdrop-blur-xl transition-[box-shadow,border-color] duration-200 focus-within:border-indigo-300/80 focus-within:ring-indigo-200/80 dark:border-slate-700/70 dark:bg-slate-900/80 dark:shadow-[0_24px_62px_-42px_rgba(0,0,0,0.95)] dark:ring-white/[0.05] dark:focus-within:border-indigo-400/40 dark:focus-within:ring-indigo-400/20", piEnabled && 'pi-composer')}>
+            {piEnabled && <div className="pi-composer-banner" role="status">
+              <strong>Pi · 纯 Agent</strong><span>{piState === 'ready' ? '自主检索、深读与作答' : piStatusLabel[piState]}</span>
+              <select aria-label="纯 Agent 独立模型" disabled={isLoading || !piConfig} value={activeSession?.piModel || piConfig?.default_model || ''}
+                onChange={event => activeSessionId && updateSessionPiModel(activeSessionId, event.target.value)}>
+                {!piConfig ? <option value="">读取模型…</option> : piConfig.models.map(model => <option key={model} value={model}>{model}</option>)}
+              </select>
+              {piConfigError && <span role="alert">{piConfigError}</span>}
+            </div>}
             {questionEdit && (
               <div className="flex items-center gap-2 border-b border-indigo-100/80 bg-indigo-50/60 px-5 py-2 text-xs dark:border-indigo-500/20 dark:bg-indigo-950/30">
                 <Pencil size={13} className="text-indigo-500 dark:text-indigo-300" aria-hidden />
@@ -1032,11 +1063,11 @@ export function ChatInterface() {
                       ? '全部'
                       : activeSession?.kbMode === 'manual'
                         ? `指定 ${activeSession?.knowledgeBaseIds?.length ?? 0} 个`
-                        : '智能路由'}
+                        : piEnabled ? '自主选库' : '智能路由'}
                   </span>
                 </button>
 
-                <button
+                {!piEnabled && <button
                   type="button"
                   onClick={cycleAgentMode}
                   disabled={isLoading || !activeSessionId}
@@ -1059,9 +1090,17 @@ export function ChatInterface() {
                     <Search className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110" aria-hidden />
                   )}
                   <span className="hidden sm:inline">{agentModeShortLabel}</span>
+                </button>}
+
+                <button type="button" className="pi-toggle" aria-pressed={piEnabled}
+                  aria-label={piEnabled ? '关闭纯 Agent 模式，恢复原回答方式' : '开启 Pi 纯 Agent 模式'}
+                  title={piEnabled ? '关闭后恢复原回答方式，草稿与材料保持不变' : 'Pi 自主决定检索、阅读与回答步骤'}
+                  disabled={isLoading || !activeSessionId} onMouseDown={event => event.preventDefault()}
+                  onClick={() => { if (activeSessionId) updateSessionPiMode(activeSessionId, !piEnabled) }}>
+                  <span className="pi-toggle-symbol" aria-hidden>π</span><span>Agent</span>
                 </button>
 
-                <button
+                {!piEnabled && <button
                   type="button"
                   onClick={() => setModelConfigPanelOpen(true)}
                   title="对话模型选择"
@@ -1092,7 +1131,7 @@ export function ChatInterface() {
                     <Zap className="h-3.5 w-3.5 flex-shrink-0 text-purple-600 dark:text-purple-300 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-12" aria-hidden />
                   )}
                   <span className="hidden max-w-[120px] truncate sm:inline">{currentModel}</span>
-                </button>
+                </button>}
               </div>
 
               <div className="ml-auto flex shrink-0 items-center gap-2">

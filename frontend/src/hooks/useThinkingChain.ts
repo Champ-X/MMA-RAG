@@ -15,6 +15,7 @@ import { mergeCitationReferences } from '@/lib/citations'
 import { normalizeAgentMode, type ChatMessageAttachment, type ChatScopeFile, type ThoughtData } from '@/store/useChatStore'
 import { persistMentions, type ChatMention } from '@/lib/chatReferences'
 import { chatFileKind } from '@/lib/chatAttachmentFile'
+import { mixedModeContext } from '@/lib/mixedModeContext'
 
 interface UseThinkingChainOptions {
   onThought?: (e: ThoughtEvent) => void
@@ -276,6 +277,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
           mentions: mentions?.length ? persistMentions(mentions) : undefined,
           attachmentIds: attachments?.map(item => item.id),
           agentMode: requestedAgentMode,
+          conversationContext: mixedModeContext(session.messages),
         }
       )
     } catch (err) {

@@ -38,6 +38,7 @@ export interface StreamChatOptions {
   mentions?: ChatMention[];
   attachmentIds?: string[];
   agentMode?: AgentMode;
+  conversationContext?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
 function serializeSelectedFiles(selectedFiles: ChatScopeFile[]) {
@@ -113,7 +114,7 @@ class SSEStreamManager {
   ): { close: () => void; get isClosed(): boolean } {
     this.close();
 
-    if (options.files?.length || options.selectedFiles?.length || options.mentions?.length) {
+    if (options.files?.length || options.selectedFiles?.length || options.mentions?.length || options.conversationContext) {
       return this._streamChatMultipart(options, callbacks);
     }
 
@@ -184,6 +185,7 @@ class SSEStreamManager {
     // Multipart string fields normalize LF to CRLF. JSON escapes preserve the
     // exact text against which UTF-16 mention offsets were calculated.
     form.append('messageJson', JSON.stringify(options.message || ''));
+    if (options.conversationContext) form.append('conversationContext', JSON.stringify(options.conversationContext));
     // Always send the independent field, including [], to disambiguate legacy clients.
     form.append('referenceFiles', JSON.stringify(serializeSelectedFiles(referenceFilesFromMentions(options.mentions))));
     if (options.knowledgeBaseIds?.length) {
@@ -302,7 +304,7 @@ export const sseStreamManager = new SSEStreamManager();
 export function createChatStream(
   message: string,
   callbacks: StreamChatCallbacks,
-  opts?: { knowledgeBaseIds?: string[]; sessionId?: string; model?: string; files?: File[]; selectedFiles?: ChatScopeFile[]; agentMode?: AgentMode; mentions?: ChatMention[]; attachmentIds?: string[] }
+  opts?: Omit<StreamChatOptions, 'message'>
 ) {
   return sseStreamManager.streamChat(
     {
@@ -315,6 +317,7 @@ export function createChatStream(
       agentMode: opts?.agentMode,
       mentions: opts?.mentions,
       attachmentIds: opts?.attachmentIds,
+      conversationContext: opts?.conversationContext,
     },
     callbacks
   );
