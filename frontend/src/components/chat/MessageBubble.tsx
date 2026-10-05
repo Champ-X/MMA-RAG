@@ -19,6 +19,7 @@ import {
 import { useConfigStore } from '@/store/useConfigStore'
 import { UserMessageAttachmentStrip } from './ChatAttachmentPreview'
 import { UserMessageActions } from './UserMessageActions'
+import { AttachmentEvidence } from './AttachmentEvidence'
 const UserMentionText = React.lazy(() => import('./UserMentionText').then(module => ({ default: module.UserMentionText })))
 
 type CitationStub = { id: number | string }
@@ -148,6 +149,7 @@ function injectCitations(
  * 预签名 URL 的 query 会变化，仅在没有文件路径时才把去掉 query 的 URL 作为回退。
  */
 function getMediaSourceKey(citation: CitationReference): string {
+  if (citation.source === 'attachment') return `attachment:${citation.attachment_id ?? citation.id}`
   const kbId = citation.debug_info?.kb_id?.trim() || 'unknown-kb'
   const filePath = citation.file_path?.trim()
   if (filePath) return `kb:${kbId}:path:${filePath.replace(/\\+/g, '/')}`
@@ -292,6 +294,7 @@ function splitTextWithCitations(
         key={`c_${messageId}_${idx}_${match.n}`}
         n={typeof displayN === 'number' ? displayN : Number(displayN) || 0}
         available={!!citationMap?.get(match.n)?.type}
+        local={citationMap?.get(match.n)?.source === 'attachment'}
         onClick={(rect, triggerElement) => onCiteClick?.(match.n, rect, messageId, triggerElement)}
       />
     )
@@ -352,7 +355,7 @@ function findCitationById(
   return null
 }
 
-function CitationInlineButton({ n, available, onClick }: { n: number; available: boolean; onClick?: (rect: DOMRect, triggerElement: HTMLButtonElement) => void }) {
+function CitationInlineButton({ n, available, local, onClick }: { n: number; available: boolean; local?: boolean; onClick?: (rect: DOMRect, triggerElement: HTMLButtonElement) => void }) {
   return (
     <button
       type="button"
@@ -364,7 +367,9 @@ function CitationInlineButton({ n, available, onClick }: { n: number; available:
         onClick?.(rect, e.currentTarget)
       }}
       className="inline-flex items-center justify-center mx-0.5 text-[9px] font-semibold rounded-[5px] transition-all border align-text-top min-w-[1rem] h-4 px-1 text-indigo-700 dark:text-indigo-200 bg-gradient-to-br from-indigo-50 via-purple-50 to-fuchsia-50 dark:from-indigo-600/30 dark:via-purple-600/20 dark:to-fuchsia-600/30 hover:from-indigo-100 hover:via-purple-100 hover:to-fuchsia-100 dark:hover:from-indigo-600/40 dark:hover:via-purple-600/30 dark:hover:to-fuchsia-600/40 border-indigo-300/60 dark:border-indigo-700/60 shadow-sm hover:shadow active:scale-95"
-      title={available ? `点击查看引用 ${n}` : `引用 ${n} 的来源数据不可用`}
+      data-source={local ? 'attachment' : 'knowledge'}
+      style={local ? { borderStyle: 'dashed', color: 'var(--attachment-cite-text, #0f766e)', background: 'var(--attachment-cite-bg, #f0fdfa)' } : undefined}
+      title={available ? `点击查看${local ? '本机附件' : ''}引用 ${n}` : `引用 ${n} 的来源数据不可用`}
       aria-label={available ? `查看引用 ${n}` : `引用 ${n} 的来源数据不可用`}
     >
       {n}
@@ -391,11 +396,13 @@ function ParagraphImageDisplay({
   onCiteClick,
   messageId,
   fallbackKbId,
+  displayIndexByRefId,
 }: {
   citations: CitationReference[]
   onCiteClick?: (id: number | string, rect: DOMRect, messageId?: string, triggerElement?: HTMLElement) => void
   messageId?: string
   fallbackKbId?: string
+  displayIndexByRefId?: Map<number | string, number>
 }) {
   const images = deduplicateMediaCitations(
     citations.filter((citation) => citation.type === 'image' && !isVideoKeyframeCitation(citation))
@@ -405,6 +412,8 @@ function ParagraphImageDisplay({
   return (
     <div className="flex flex-wrap justify-center gap-3 mt-3 mb-0">
       {images.map((citation) => (
+        citation.source === 'attachment' ? <AttachmentEvidence key={getCitationIdentityKey(citation)} reference={citation} displayNumber={displayIndexByRefId?.get(citation.id) ?? citation.id}
+          onOpen={(rect, target) => onCiteClick?.(citation.id, rect, messageId, target)} /> :
         <ReferenceImage
           key={getCitationIdentityKey(citation)}
           url={citation.img_url}
@@ -621,6 +630,8 @@ function ParagraphAudioDisplay({
     <div className="mx-auto mt-3 w-full min-w-0 max-w-[42rem] space-y-3">
       {uniqueCitations.map((citation) => {
         const displayNum = displayIndexByRefId?.get(citation.id) ?? citation.id
+        if (citation.source === 'attachment') return <AttachmentEvidence key={getCitationIdentityKey(citation)} reference={citation}
+          displayNumber={displayNum} onOpen={(rect, target) => onCiteClick?.(citation.id, rect, messageId, target)} />
         const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
         const resolvedUrl = citation.type === 'audio' && (fetchedAudioUrls[key] || citation.audio_url)
         const hasAudioUrl = !!resolvedUrl
@@ -845,6 +856,7 @@ function ParagraphVideoDisplay({
     let cancelled = false
 
     for (const citation of uniqueCitations) {
+      if (citation.source === 'attachment') continue
       if (citation.type !== 'video' || isReferenceMediaUrlFresh(citation.video_url)) continue
       const filePath = citation.file_path || citation.file_name
       const kbId = citation.debug_info?.kb_id || fallbackKbId
@@ -878,6 +890,8 @@ function ParagraphVideoDisplay({
         const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
         const resolvedUrl = citation.type === 'video' && (fetchedVideoUrls[key] || citation.video_url)
         const hasVideoUrl = !!resolvedUrl
+        if (citation.source === 'attachment') return <AttachmentEvidence key={getCitationIdentityKey(citation)} reference={citation}
+          displayNumber={displayNum} onOpen={(rect, target) => onCiteClick?.(citation.id, rect, messageId, target)} />
         const startSec = citation.start_sec != null ? Number(citation.start_sec) : null
         const endSec = citation.end_sec != null ? Number(citation.end_sec) : null
         const segmentLabel =
@@ -1175,6 +1189,7 @@ export function MessageBubble({
             {newImageRefs.length > 0 && (
               <ParagraphImageDisplay
                 citations={newImageRefs}
+                displayIndexByRefId={originalIdToDisplayIndex}
                 onCiteClick={handleCiteClick}
                 messageId={message.id}
                 fallbackKbId={fallbackKbId}

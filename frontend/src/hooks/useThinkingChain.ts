@@ -92,7 +92,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
         files.map(async (f, i) => {
           const id = attachmentIds?.[i] ?? `att_${baseId}_${i}_${Math.random().toString(36).slice(2, 9)}`
           await putAttachmentBlob(id, f)
-          const kind = chatFileKind(f) === 'image' ? 'image' : 'audio'
+          const kind = chatFileKind(f) ?? 'image'
           const base: ChatMessageAttachment = { id, kind, name: f.name, size: f.size }
           if (kind === 'image') {
             const { imageFileToPersistedThumb } = await import('@/lib/chatAttachmentThumb')

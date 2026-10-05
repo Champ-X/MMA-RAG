@@ -900,3 +900,8 @@ img[data-error="true"] {
 img[style*="display: none"] {
   display: none !important;
 }
+/* Local attachment citations keep their origin distinct in both themes. */
+[data-theme='dark'] button[data-source='attachment'] {
+  --attachment-cite-text: #99f6e4;
+  --attachment-cite-bg: #134e4a;
+}

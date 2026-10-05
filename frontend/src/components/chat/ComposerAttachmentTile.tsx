@@ -13,7 +13,7 @@ export function ComposerAttachmentTile({ item, onRemove, onReference, disabled =
     <FileScopeThumbnail file={{ name: item.name, type: item.kind, previewUrl: item.previewUrl || item.thumbDataUrl }} />
     <div className="composer-scope-copy">
       <span className="composer-scope-name" title={item.name}>{item.name}</span>
-      <span className="composer-scope-origin">本机 · {item.kind === 'image' ? '图片' : '音频'} · {formatAttachmentSize(item.size)}</span>
+      <span className="composer-scope-origin">本机 · {item.kind === 'image' ? '图片' : item.kind === 'audio' ? '音频' : '视频'} · {formatAttachmentSize(item.size)}</span>
     </div>
     <button type="button" disabled={disabled} className="composer-scope-remove disabled:cursor-not-allowed disabled:opacity-40" onMouseDown={e => e.preventDefault()}
       onClick={onReference} title="在光标处引用" aria-label={`引用本机附件：${item.name}`}><AtSign size={15} aria-hidden /></button>

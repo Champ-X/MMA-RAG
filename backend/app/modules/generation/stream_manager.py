@@ -23,6 +23,12 @@ def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
     refs = []
     for k, v in sorted(reference_map.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0):
         ref_id = int(k) if str(k).isdigit() else len(refs) + 1
+        if (v.metadata or {}).get("source") == "attachment":
+            refs.append({"id": ref_id, "type": v.content_type, "source": "attachment",
+                         "attachment_id": v.metadata["attachment_id"],
+                         "file_name": v.metadata["file_name"], "content": v.content,
+                         "media_info": v.metadata.get("media_info", {})})
+            continue
         file_name = v.file_path.split("/")[-1] if "/" in v.file_path else (v.file_path or "")
         ref_type = v.content_type if v.content_type in ("doc", "image", "audio", "video") else ("doc" if v.content_type == "doc" else "image")
         item = {

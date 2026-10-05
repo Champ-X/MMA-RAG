@@ -7,6 +7,7 @@ import { citationScoreSummary } from '@/lib/citationScores'
 import { chatApi } from '@/services/api_client'
 import { getFreshReferenceVideoUrl, isReferenceMediaUrlFresh } from '@/services/reference_media_url'
 import { useChatStore } from '@/store/useChatStore'
+import { AttachmentCitationPopover } from './AttachmentEvidence'
 
 function formatTimeLabel(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '0:00'
@@ -213,7 +214,14 @@ function ImageDisplayWithErrorHandler({
   )
 }
 
-export function CitationPopover({
+export function CitationPopover(props: CitationPopoverProps) {
+  if (props.item?.source === 'attachment') {
+    return props.open && props.rect ? <AttachmentCitationPopover item={props.item} rect={props.rect} onClose={props.onClose} /> : null
+  }
+  return <KnowledgeCitationPopover {...props} />
+}
+
+function KnowledgeCitationPopover({
   open,
   rect,
   item,

@@ -3,6 +3,20 @@ import { test } from 'node:test'
 import { prepareQuestionEdit } from '../src/lib/chatQuestionEdit'
 import { removeReferences, validMentions } from '../src/lib/chatReferences'
 import type { Message } from '../src/store/useChatStore'
+import { chatFileKind } from '../src/lib/chatAttachmentFile'
+
+test('video attachments preserve their modality through edit and differ from audio containers', async () => {
+  assert.equal(chatFileKind({ name: 'clip.webm', type: 'video/webm' }), 'video')
+  assert.equal(chatFileKind({ name: 'music.webm', type: 'audio/webm' }), 'audio')
+  assert.equal(chatFileKind({ name: 'clip.mp4', type: '' }), 'video')
+  assert.equal(chatFileKind({ name: 'file.exe', type: '' }), null)
+  const restored = await prepareQuestionEdit({ content: '解释@clip.mp4', attachments: [
+    { id: 'video', name: 'clip.mp4', kind: 'video', size: 5 },
+  ], mentions: [{ source: 'attachment', attachmentId: 'video', name: 'clip.mp4', type: 'video/mp4', start: 2, end: 11 }] },
+  async () => new Blob(['video'], { type: 'video/mp4' }))
+  assert.equal(chatFileKind(restored.files[0].file), 'video')
+  assert.equal(restored.value.mentions[0].attachmentId, restored.files[0].id)
+})
 
 test('edit restores exact multiline text, remaps repeated local references, and separates same-name files', async () => {
   const content = '🖼️对比@同名.png与@同名.png\n再看@同名.png。'

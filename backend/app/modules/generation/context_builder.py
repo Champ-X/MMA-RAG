@@ -6,6 +6,7 @@
 from typing import Dict, List, Any, Optional, Tuple
 import uuid
 import asyncio
+import json
 from datetime import datetime
 from dataclasses import dataclass
 
@@ -56,6 +57,7 @@ class ContextBuilder:
         query: str,
         kb_context: Optional[Dict[str, Any]] = None,
         attachment_context: Optional[str] = None,
+        attachment_files: Optional[List[Dict[str, Any]]] = None,
     ) -> ContextBuildResult:
         """
         构建LLM上下文
@@ -86,6 +88,24 @@ class ContextBuilder:
             
             # 2b. 为音频（及视频）引用生成 presigned_url，便于前端展示播放器
             await self._enrich_audio_video_presigned_urls(reference_map)
+
+            # Local originals live in the browser. Only successful observations become
+            # citable evidence; no MinIO path, retrieval score or guessed URL is assigned.
+            for attachment in attachment_files or []:
+                if attachment.get("status") != "ready" or not attachment.get("summary"):
+                    continue
+                if not attachment.get("id") or attachment.get("kind") not in {"image", "audio", "video"}:
+                    continue
+                if any(ref.metadata.get("attachment_id") == attachment["id"] for ref in reference_map.values()):
+                    continue
+                ref_id = str(len(reference_map) + 1)
+                reference_map[ref_id] = ReferenceMap(
+                    id=ref_id, content_type=attachment["kind"], file_path="",
+                    content=attachment["summary"],
+                    metadata={"source": "attachment", "attachment_id": attachment["id"],
+                              "file_name": attachment["name"], "attachment_index": attachment["index"],
+                              "media_info": attachment.get("media_info", {})},
+                )
             
             # 3. 构建上下文字符串（含本轮用户上传媒体的摘要，非知识库引用）
             context_string = await self._build_context_string(
@@ -623,6 +643,19 @@ class ContextBuilder:
                 context_parts.append("")  # 空行分隔
                 current_index += 1
             
+            for ref_id, reference in reference_map.items():
+                meta = reference.metadata
+                if meta.get("source") != "attachment":
+                    continue
+                label = {"image": "图片", "audio": "音频", "video": "视频"}[reference.content_type]
+                context_parts.append(
+                    f"【材料 {ref_id}】 (类型: {label} | 来源: 本机附件A{meta['attachment_index']} | "
+                    f"文件: {json.dumps(meta['file_name'], ensure_ascii=False)})\n"
+                    f"实测信息：{json.dumps(meta['media_info'], ensure_ascii=False)}\n"
+                    f"模型解析（并非完整原件）：{reference.content}\n"
+                    f"回答采用此附件内容时标注 [{ref_id}]；系统将据此提供原附件预览。\n"
+                )
+
             # 添加用户问题
             context_parts.append(f"用户问题：{query}")
             
@@ -653,6 +686,14 @@ class ContextBuilder:
             optimized_parts = [prefix if marker else "", "参考材料列表：\n"]
             
             for ref_id, reference in reference_map.items():
+                if getattr(reference, "metadata", {}).get("source") == "attachment":
+                    meta = reference.metadata
+                    optimized_parts.append(
+                        f"【材料 {ref_id}】 (类型: {reference.content_type} | 来源: 本机附件A{meta['attachment_index']} | "
+                        f"文件: {json.dumps(meta['file_name'], ensure_ascii=False)})\n"
+                        f"实测信息：{json.dumps(meta['media_info'], ensure_ascii=False)}\n{reference.content}\n"
+                    )
+                    continue
                 # 截断内容
                 max_content_length = max(100, self.max_context_length // len(reference_map))
                 content = reference.content[:max_content_length]

@@ -30,7 +30,7 @@ from app.modules.generation.citation_selection import select_answer_references
 from app.modules.agent.mode_router import resolve_agent_mode
 from app.modules.agent.service import AgenticRetrievalService
 from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
-from app.modules.chat.attachment_summarizer import MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_AUDIO_BYTES, summarize_chat_attachments
+from app.modules.chat.attachment_summarizer import MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_AUDIO_BYTES, MAX_VIDEO_BYTES, summarize_chat_attachments
 from app.modules.chat.references import normalize_attachment_ids, resolve_message_references, resolve_multipart_references
 from app.modules.chat.context_manager import build_conversation_context, trim_stored_messages
 
@@ -705,6 +705,7 @@ async def _iter_chat_sse_impl(
         model=model,
         attachment_context=attachment_context,
         session_context=session_context,
+        attachment_files=attachment_files,
     ):
         event_type = event.type.value if hasattr(event.type, "value") else str(event.type)
 
@@ -854,9 +855,11 @@ async def stream_chat_multipart(
                 return
             raw_files: List[Tuple[str, str, bytes]] = []
             for i, uf in enumerate(named_uploads):
-                body = await uf.read(max(MAX_IMAGE_BYTES, MAX_AUDIO_BYTES) + 1)
-                if len(body) > max(MAX_IMAGE_BYTES, MAX_AUDIO_BYTES):
-                    raise ValueError(f"附件超过 10MB：{uf.filename}")
+                video_upload = (uf.content_type or "").startswith("video/") or (uf.filename or "").lower().endswith((".mp4", ".webm", ".mov"))
+                limit = MAX_VIDEO_BYTES if video_upload else max(MAX_IMAGE_BYTES, MAX_AUDIO_BYTES)
+                body = await uf.read(limit + 1)
+                if len(body) > limit:
+                    raise ValueError(f"附件超过 {limit // 1024 // 1024}MB：{uf.filename}")
                 raw_files.append((uf.filename, uf.content_type or "", body))
                 attachment_files[i]["size"] = len(body)
 
@@ -897,11 +900,12 @@ async def stream_chat_multipart(
                 note = f"{failed} 个附件解析失败；回答会明确说明缺失内容" if failed else "附件解析已完成"
                 yield f"data: {_thought_event_payload('attachment', {'message': note, 'status': 'completed', 'count': len(raw_files), 'items': parsed_items})}\n\n"
                 if failed == len(parsed_items):
-                    yield f"data: {json.dumps({'type': 'error', 'stage': 'attachment', 'message': '所有附件均解析失败，请检查文件或模型配置后重试。'}, ensure_ascii=False)}\n\n"
+                    details = " ".join(f"{item.get('filename') or '附件'}：{item['summary']}" for item in parsed_items)
+                    yield f"data: {json.dumps({'type': 'error', 'stage': 'attachment', 'message': '所有附件均解析失败，请检查文件或模型配置后重试。' + details}, ensure_ascii=False)}\n\n"
                     return
 
             effective_message = (
-                message_text if message_text.strip() else "请结合我上传的图片/音频内容回答。"
+                message_text if message_text.strip() else "请结合我上传的附件内容回答。"
             )
 
             async for line in _iter_chat_sse(

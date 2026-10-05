@@ -90,6 +90,10 @@ export interface CitationDebugInfo {
 
 export interface CitationReference {
   id: number;
+  /** Omitted on older knowledge-base citations. Local originals resolve only by attachment_id. */
+  source?: 'knowledge' | 'attachment';
+  attachment_id?: string;
+  media_info?: { duration_seconds?: number; width?: number; height?: number; sampled_seconds?: number[]; audio_status?: string };
   type: 'doc' | 'image' | 'audio' | 'video';
   file_name: string;
   file_path?: string;

@@ -14,7 +14,7 @@ export function UserMessageAttachmentTile({ item }: { item: ChatMessageAttachmen
   const restoreStatusId = `${attachmentId}-restore-status`
   const attachmentName = item.name || '未命名附件'
   const attachmentSize = formatAttachmentSize(item.size)
-  const attachmentLabel = `${item.kind === 'image' ? '图片' : '音频'}附件：${attachmentName}，${attachmentSize}`
+  const attachmentLabel = `${item.kind === 'image' ? '图片' : item.kind === 'audio' ? '音频' : '视频'}附件：${attachmentName}，${attachmentSize}`
   const restoreStatusText =
     restoreStatus === 'ready'
       ? '已恢复原始附件数据'
@@ -76,6 +76,13 @@ export function UserMessageAttachmentTile({ item }: { item: ChatMessageAttachmen
       </div>
     )
   }
+
+  if (item.kind === 'video') return (
+    <div role="group" aria-label={attachmentLabel} className="w-56 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-900">
+      {blobUrl ? <video src={blobUrl} controls playsInline preload="metadata" aria-label={`播放视频附件：${attachmentName}`} className="aspect-video w-full bg-black" />
+        : <p role="status" className="p-3 text-xs text-slate-500">{attachmentName} · {restoreStatus === 'loading' ? '正在恢复…' : '原视频已清理'}</p>}
+    </div>
+  )
 
   return (
     <div

@@ -24,12 +24,21 @@ def inspect_attachment_media(data: bytes, kind: str) -> dict:
         path.write_bytes(data)
         result = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries",
-             "format=duration:stream=codec_type,duration,sample_rate,channels", "-of", "json", str(path)],
+             "format=duration:stream=codec_type,duration,sample_rate,channels,width,height", "-of", "json", str(path)],
             capture_output=True, timeout=10, check=True,
         )
         info = json.loads(result.stdout)
     streams = info.get("streams") or []
     audio = next((stream for stream in streams if stream.get("codec_type") == "audio"), None)
+    if kind == "video":
+        video = next((stream for stream in streams if stream.get("codec_type") == "video"), None)
+        if not video:
+            raise ValueError("附件中没有可解析的视频画面")
+        duration = float(video.get("duration") or info.get("format", {}).get("duration") or 0)
+        if not math.isfinite(duration) or duration <= 0 or duration > 60:
+            raise ValueError("本机视频需在 60 秒以内，较长视频请加入知识库后引用")
+        return {"duration_seconds": round(duration, 3), "width": int(video.get("width") or 0),
+                "height": int(video.get("height") or 0), "has_audio": bool(audio), "source": "local_probe"}
     if not audio:
         raise ValueError("附件中没有可解析的音轨")
     duration = float(audio.get("duration") or info.get("format", {}).get("duration") or 0)
@@ -37,6 +46,34 @@ def inspect_attachment_media(data: bytes, kind: str) -> dict:
         raise ValueError("无法核验音频时长")
     return {"duration_seconds": round(duration, 3), "sample_rate": int(audio.get("sample_rate") or 0),
             "channels": int(audio.get("channels") or 0), "source": "local_probe"}
+
+
+def sample_video(data: bytes, media_info: dict) -> tuple[list[tuple[float, bytes]], bytes | None]:
+    """Six timestamped frames plus a bounded mono audio track; originals are never ingested."""
+    duration = media_info["duration_seconds"]
+    frames = []
+    audio = None
+    with tempfile.TemporaryDirectory(prefix="chat-video-") as directory:
+        path = Path(directory) / "media"
+        path.write_bytes(data)
+        count = min(6, max(1, math.ceil(duration)))
+        for index in range(count):
+            # Sample within each interval, not at EOF (the final frame may precede duration).
+            second = round(duration * index / count, 3)
+            result = subprocess.run([
+                "ffmpeg", "-v", "error", "-ss", str(second), "-i", str(path), "-frames:v", "1",
+                "-vf", "scale=768:768:force_original_aspect_ratio=decrease", "-f", "image2pipe", "-vcodec", "mjpeg", "-",
+            ], capture_output=True, timeout=10, check=True)
+            if result.stdout:
+                frames.append((second, result.stdout))
+        if not frames:
+            raise ValueError("无法提取视频画面")
+        if media_info.get("has_audio"):
+            audio_path = Path(directory) / "audio.wav"
+            subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", "16000",
+                            "-t", "60", str(audio_path)], capture_output=True, timeout=15, check=True)
+            audio = audio_path.read_bytes()
+    return frames, audio
 
 
 def audio_input_format(data: bytes) -> str:

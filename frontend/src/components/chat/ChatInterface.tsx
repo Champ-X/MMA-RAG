@@ -29,6 +29,7 @@ import { ChatWelcome } from './ChatWelcome'
 const MAX_CHAT_ATTACHMENTS = 3
 const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_CHAT_AUDIO_BYTES = 10 * 1024 * 1024
+const MAX_CHAT_VIDEO_BYTES = 30 * 1024 * 1024
 interface QuestionEdit {
   messageId: string
   previous: ChatComposerDraft
@@ -145,7 +146,7 @@ function SuggestedQuestionsLoading() {
 }
 
 function maxBytesForChatFile(f: File): number {
-  return chatFileKind(f) === 'image' ? MAX_CHAT_IMAGE_BYTES : MAX_CHAT_AUDIO_BYTES
+  return chatFileKind(f) === 'video' ? MAX_CHAT_VIDEO_BYTES : chatFileKind(f) === 'image' ? MAX_CHAT_IMAGE_BYTES : MAX_CHAT_AUDIO_BYTES
 }
 
 /** 每条助手消息内的引用 id → 对象；禁止跨消息合并，否则多轮对话共用 [1][2] 时会互相覆盖 */
@@ -620,8 +621,9 @@ export function ChatInterface() {
     for (const f of picked) {
       const isImage = chatFileKind(f) === 'image'
       const isAudio = chatFileKind(f) === 'audio'
-      if (!isImage && !isAudio) {
-        errors.push(`不支持的格式：${f.name}。请添加 JPG、PNG、WebP、GIF 或常见音频。`)
+      const isVideo = chatFileKind(f) === 'video'
+      if (!isImage && !isAudio && !isVideo) {
+        errors.push(`不支持的格式：${f.name}。请添加图片、音频或 MP4、WebM、MOV 视频。`)
         continue
       }
       const limit = maxBytesForChatFile(f)
@@ -688,6 +690,7 @@ export function ChatInterface() {
   // 关闭引用悬浮卡片
   const closeCitePopover = useCallback(() => {
     setCitePopover({ open: false, rect: null, item: null })
+    citationTriggerRef.current?.focus({ preventScroll: true })
   }, [])
 
   // 打开检查器
@@ -878,10 +881,9 @@ export function ChatInterface() {
                     <div className="local-attachment-heading"><span>本机附件 · {attachments.length} / {MAX_CHAT_ATTACHMENTS}</span><span>输入 @ 引用 · 本轮使用</span></div>
                     <div className="flex flex-wrap items-center gap-2">
                     {attachments.map((a) => {
-                      const isImage = chatFileKind(a.file) === 'image'
                       const item: ChatMessageAttachment = {
                         id: a.id,
-                        kind: isImage ? 'image' : 'audio',
+                        kind: chatFileKind(a.file) ?? 'image',
                         name: a.file.name,
                         size: a.file.size,
                         previewUrl: a.previewUrl,
@@ -1129,8 +1131,8 @@ export function ChatInterface() {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isLoading || !activeSessionId}
-                  title="添加附件"
-                  aria-label="添加图片或音频附件"
+                  title="添加附件：图片/音频 10MB，视频 30MB 且 60 秒以内"
+                  aria-label="添加图片、音频或视频附件"
                   className="flex h-8 w-8 items-center justify-center text-slate-700 transition-all duration-200 hover:text-slate-900 hover:scale-110 active:scale-95 dark:text-slate-300 dark:hover:text-slate-100"
                 >
                   <Paperclip className="h-5 w-5" strokeWidth={2} aria-hidden />
@@ -1171,7 +1173,7 @@ export function ChatInterface() {
           ref={fileInputRef}
           type="file"
           multiple
-          accept="image/jpeg,image/png,image/webp,image/gif,audio/*"
+          accept="image/jpeg,image/png,image/webp,image/gif,audio/*,video/mp4,video/webm,video/quicktime"
           className="hidden"
           aria-label="选择图片或音频附件"
           onChange={handleFileSelect}

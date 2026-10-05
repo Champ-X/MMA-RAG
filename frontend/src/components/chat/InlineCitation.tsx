@@ -351,7 +351,7 @@ export function InlineCitation({
                 }}
               >
                 <Icon className={cn('mr-1 h-3 w-3', iconColor)} />
-                [{displayNum}]
+                [{displayNum}]{ref.source === 'attachment' && <span className="ml-1 font-sans text-teal-700 dark:text-teal-300">本机</span>}
               </Button>
             )
           })}

@@ -167,6 +167,7 @@ class GenerationService:
         model: Optional[str] = None,
         attachment_context: Optional[str] = None,
         session_context: Optional[List[Dict[str, str]]] = None,
+        attachment_files: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncGenerator[StreamEvent, None]:
         """
         流式生成回答
@@ -201,6 +202,7 @@ class GenerationService:
                 query=query,
                 kb_context=kb_context,
                 attachment_context=attachment_context,
+                attachment_files=attachment_files,
             )
             
             # 发送"准备提示词"事件

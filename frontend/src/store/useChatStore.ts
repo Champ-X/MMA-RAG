@@ -8,7 +8,7 @@ import type { ChatMention } from '@/lib/chatReferences';
 /** 用户消息携带的附件展示信息；previewUrl 为内存 Object URL，仅当前页有效；thumbDataUrl 为小图 JPEG data URL，可随会话持久化 */
 export interface ChatMessageAttachment {
   id: string
-  kind: 'image' | 'audio'
+  kind: 'image' | 'audio' | 'video'
   name: string
   size: number
   previewUrl?: string
