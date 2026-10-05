@@ -51,6 +51,59 @@ def citation_identity(answer, citations):
             "unknown_markers": sorted(markers - ids), "unused_citations": sorted(ids - markers)}
 
 
+async def preflight(client):
+    """Do not create a measurement cohort before both required APIs are ready."""
+    receipt = {"started_at": time.time(), "ready": False}
+    try:
+        health = await client.get("/health")
+        health.raise_for_status()
+        if health.json().get("status") != "healthy":
+            raise ValueError("Service is not healthy")
+        config = await client.get("/api/pi/config")
+        config.raise_for_status()
+        public = config.json()
+        if public.get("engine") != "pi" or not public.get("enabled") or public.get("protocol_version") != 1:
+            raise ValueError("Pi protocol is not ready")
+        receipt.update(ready=True, pi_config=public)
+    except Exception as error:
+        receipt["error_type"] = type(error).__name__
+    receipt["ended_at"] = time.time()
+    return receipt
+
+
+def collection_status(cases, receipts):
+    errors, successful_legacy, successful_pi = [], 0, 0
+    by_case = {item["case_id"]: item for item in receipts}
+    for case in cases:
+        receipt = by_case.get(case["id"], {})
+        for loaded in (False, True):
+            groups = [group for group in receipt.get("conditions", []) if group.get("loaded") is loaded]
+            if len(groups) != 1 or groups[0].get("error_type"):
+                errors.append({"case_id": case["id"], "loaded": loaded, "error": "condition_incomplete"})
+                continue
+            if loaded:
+                admitted = groups[0].get("load_admission", [])
+                load = groups[0].get("pi_load", [])
+                run_ids = {row.get("run_id") for row in admitted}
+                if len(admitted) != 2 or len(run_ids) != 2 or None in run_ids or not all(row.get("model_started") for row in admitted):
+                    errors.append({"case_id": case["id"], "loaded": True, "error": "pi_load_not_admitted"})
+                if len(load) != 2 or {row.get("run_id") for row in load} != run_ids or any(row.get("status") not in TERMINAL or row.get("error_type") for row in load):
+                    errors.append({"case_id": case["id"], "loaded": True, "error": "pi_load_cleanup_incomplete"})
+            for mode in MODES:
+                rows = [row for row in groups[0].get("legacy", []) if row.get("mode") == mode]
+                if len(rows) != 1 or not rows[0].get("complete") or not rows[0].get("answer") or rows[0].get("errors"):
+                    errors.append({"case_id": case["id"], "loaded": loaded, "mode": mode, "error": "legacy_response_incomplete"})
+                else:
+                    successful_legacy += 1
+        pi = receipt.get("pi", {})
+        if pi.get("status") not in {"completed", "partial"} or not pi.get("state", {}).get("answer"):
+            errors.append({"case_id": case["id"], "error": "pi_response_incomplete"})
+        else:
+            successful_pi += 1
+    return {"transport_and_execution_complete": not errors, "successful_legacy": successful_legacy,
+            "successful_pi": successful_pi, "errors": errors, "semantic_review": "pending"}
+
+
 async def legacy(client, case, mode, kb):
     sid = "pi-control-quality-" + uuid.uuid4().hex
     params = {"message": case["question"], "knowledgeBaseIds": kb,
@@ -69,7 +122,8 @@ async def legacy(client, case, mode, kb):
     result = extract_legacy(events)
     if error:
         result["errors"].append(error)
-    result.update(mode=mode, session_id=sid, started_at=started, ended_at=time.time())
+    result.update(mode=mode, session_id=sid, started_at=started, ended_at=time.time(),
+                  request=params, events=events)
     result["citation_identity"] = citation_identity(result["answer"], result["citations"])
     return result
 
@@ -126,6 +180,8 @@ async def condition(client, case, kb, loaded):
                 async with asyncio.timeout(45):
                     events = await pi_events(client, rid, first_model=True)
                 admitted.append({"run_id": rid, "model_started": any(e["type"] == "model.started" for e in events)})
+                if not admitted[-1]["model_started"]:
+                    raise RuntimeError("Pi ended before model admission; no loaded measurement started")
         result["legacy"] = await asyncio.gather(*(legacy(client, case, mode, kb) for mode in MODES))
     except Exception as error:
         result["error_type"] = type(error).__name__
@@ -145,15 +201,21 @@ async def condition(client, case, kb, loaded):
 
 async def main(args):
     output = Path(args.output)
-    output.mkdir(parents=True, exist_ok=False)
+    output.mkdir(parents=True, exist_ok=False, mode=0o700)
     manifest_bytes = Path(args.cases).read_bytes()
     manifest = json.loads(manifest_bytes)
     save(output / "manifest.json", {"cases": manifest, "cases_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
         "git_head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "protocol": "v1; alternating paired conditions; one sample/mode/case/condition; two Pi runs admitted before legacy; separate Pi answers",
+        "telemetry_version": 2,
         "semantic_review": "pending; citation identity is not semantic entailment; no statistical SLA claim"})
     async with httpx.AsyncClient(base_url=args.base, timeout=420, trust_env=False) as client:
+        readiness = await preflight(client)
+        save(output / "preflight.json", readiness)
+        if not readiness["ready"]:
+            raise SystemExit("Required services are not ready; no measurement requests were started.")
+        receipts = []
         for index, case in enumerate(manifest["cases"]):
             receipt = {"case_id": case["id"], "conditions": []}
             path = output / (case["id"] + ".json")
@@ -179,6 +241,11 @@ async def main(args):
                     await client.post(f"/api/pi/runs/{rid}/cancel")
             save(path, receipt)
             print(case["id"], receipt["pi"].get("status", "error"), flush=True)
+            receipts.append(receipt)
+        summary = collection_status(manifest["cases"], receipts)
+        save(output / "collection.json", summary)
+        if not summary["transport_and_execution_complete"]:
+            raise SystemExit("Collection contains failed or incomplete responses; receipts preserved.")
 
 
 if __name__ == "__main__":
