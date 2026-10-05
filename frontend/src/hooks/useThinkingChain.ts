@@ -12,7 +12,9 @@ import { advanceThinking } from '@/lib/thinkingState'
 import { freezeStageTimings, mergeStageTimings } from '@/lib/stageTiming'
 import { putAttachmentBlob } from '@/lib/chatAttachmentBlobStore'
 import { mergeCitationReferences } from '@/lib/citations'
-import { normalizeAgentMode, type ChatMessageAttachment, type ChatScopeFile } from '@/store/useChatStore'
+import { normalizeAgentMode, type ChatMessageAttachment, type ChatScopeFile, type ThoughtData } from '@/store/useChatStore'
+import { persistMentions, type ChatMention } from '@/lib/chatReferences'
+import { chatFileKind } from '@/lib/chatAttachmentFile'
 
 interface UseThinkingChainOptions {
   onThought?: (e: ThoughtEvent) => void
@@ -72,13 +74,15 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     knowledgeBaseIds?: string[],
     sessionId?: string,
     files?: File[],
-    selectedFiles?: ChatScopeFile[]
+    selectedFiles?: ChatScopeFile[],
+    mentions?: ChatMention[],
+    attachmentIds?: string[],
   ) => {
-    const session = getActiveSession()
+    const session = sessionId ? getSessionById(sessionId) : getActiveSession()
     if (!session) throw new Error('没有活跃的会话')
 
     const displayContent =
-      content.trim() ||
+      (content.trim() ? content : '') ||
       (files?.length ? `（已上传 ${files.length} 个附件）` : '')
 
     const baseId = Date.now()
@@ -86,9 +90,9 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     if (files?.length) {
       attachments = await Promise.all(
         files.map(async (f, i) => {
-          const id = `att_${baseId}_${i}_${Math.random().toString(36).slice(2, 9)}`
+          const id = attachmentIds?.[i] ?? `att_${baseId}_${i}_${Math.random().toString(36).slice(2, 9)}`
           await putAttachmentBlob(id, f)
-          const kind = (f.type.startsWith('image/') ? 'image' : 'audio') as 'image' | 'audio'
+          const kind = chatFileKind(f) === 'image' ? 'image' : 'audio'
           const base: ChatMessageAttachment = { id, kind, name: f.name, size: f.size }
           if (kind === 'image') {
             const { imageFileToPersistedThumb } = await import('@/lib/chatAttachmentThumb')
@@ -108,19 +112,22 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
       role: 'user',
       content: displayContent,
       attachments,
+      mentions: mentions?.length ? persistMentions(mentions) : undefined,
       scopeFiles: selectedFiles?.length ? selectedFiles : undefined,
     })
+    const savedMessages = getSessionById(session.id)?.messages
+    const userMessageId = savedMessages?.[savedMessages.length - 1]?.id
     addMessage(session.id, {
       role: 'assistant',
       content: '',
       citations: [],
     })
 
-    const after = getActiveSession()
+    const after = getSessionById(session.id)
     const last = after?.messages[after.messages.length - 1]
     currentMessageIdRef.current = last?.id ?? null
     streamingSessionIdRef.current = session.id
-    currentUserQueryRef.current = content.trim() || displayContent
+    currentUserQueryRef.current = content.trim() ? content : displayContent
 
     contentBufferRef.current = ''
     setIsStreaming(true)
@@ -145,13 +152,20 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
 
     try {
       streamRef.current = createChatStream(
-        content.trim(),
+        content,
         {
           onThought: (e) => {
             const ev = e as { type?: string; data?: Record<string, unknown> & { data?: Record<string, unknown> } }
             const phase = ev.type as ThoughtPhase
             const inner = ev.data?.data ?? ev.data
             const payload = (typeof inner === 'object' && inner !== null ? inner : {}) as Record<string, unknown>
+            if (phase === 'attachment' && userMessageId && Array.isArray(payload.items)) {
+              const items = payload.items as Array<{ index: number; status: 'ready' | 'failed'; summary: string }>
+              updateMessage(session.id, userMessageId, { attachments: attachments?.map((item, index) => {
+                const parsed = items.find(result => result.index === index + 1)
+                return parsed ? { ...item, status: parsed.status, summary: parsed.summary } : item
+              }) })
+            }
             setThinking(advanceThinking(useChatStore.getState().thinking, phase, payload))
             options.onThought?.(e as ThoughtEvent)
           },
@@ -227,8 +241,9 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
           onError: (err) => {
             const msg = getChatErrorMessage(err)
             setError(msg)
+            const stage = err && typeof err === 'object' && 'stage' in err ? err.stage : undefined
             const thinking = useChatStore.getState().thinking
-            const failedThinking = {
+            const failedThinking: ThoughtData = stage === 'validation' || stage === 'attachment' ? { failure_stage: stage } : {
               ...(thinking.thoughtData ?? {}),
               stage_timings: freezeStageTimings(mergeStageTimings(
                 thinking.thoughtData?.stage_timings,
@@ -257,6 +272,8 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
           model: config.models.find(m => m.id === 'chat')?.model,
           files: files?.length ? files : undefined,
           selectedFiles: selectedFiles?.length ? selectedFiles : undefined,
+          mentions: mentions?.length ? persistMentions(mentions) : undefined,
+          attachmentIds: attachments?.map(item => item.id),
           agentMode: requestedAgentMode,
         }
       )

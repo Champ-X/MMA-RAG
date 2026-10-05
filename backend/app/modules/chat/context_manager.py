@@ -47,7 +47,13 @@ def _normalize_messages(
         role = str(raw.get("role") or "").strip().lower()
         if role not in ALLOWED_ROLES:
             continue
-        content = _truncate_middle(str(raw.get("content") or ""), max_message_chars)
+        content = str(raw.get("content") or "")
+        if role == "user":
+            content = str(raw.get("reference_query") or content)
+            source_context = "\n".join(str(raw.get(key) or "") for key in ("reference_context", "attachment_context")).strip()
+            if source_context:
+                content += "\n【该历史轮次的引用与附件记录；不是本轮新上传】\n" + source_context
+        content = _truncate_middle(content, max_message_chars)
         if not content:
             continue
         normalized.append({"role": role, "content": content})

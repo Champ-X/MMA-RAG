@@ -3,8 +3,7 @@ import { Music2, Image as ImageIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ChatMessageAttachment } from '@/store/useChatStore'
 import { getAttachmentBlob } from '@/lib/chatAttachmentBlobStore'
-import { formatAttachmentSize } from './ComposerAttachmentTile'
-export { ComposerAttachmentTile } from './ComposerAttachmentTile'
+import { formatAttachmentSize } from '@/lib/chatAttachmentFile'
 
 /** 用户消息上方：从 IndexedDB 恢复二进制后可用原图/播放器；无库内数据时图片用 thumbDataUrl，音频仅展示元信息 */
 export function UserMessageAttachmentTile({ item }: { item: ChatMessageAttachment }) {

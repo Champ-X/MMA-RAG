@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { chatApi } from '@/services/api_client';
 import { collectUserAttachmentIds, deleteAttachmentBlobs } from '@/lib/chatAttachmentBlobStore';
 import type { AgentRoundTrace, CitationReference, StageTimings } from '@/types/sse';
+import type { ChatMention } from '@/lib/chatReferences';
 
 /** 用户消息携带的附件展示信息；previewUrl 为内存 Object URL，仅当前页有效；thumbDataUrl 为小图 JPEG data URL，可随会话持久化 */
 export interface ChatMessageAttachment {
@@ -13,6 +14,8 @@ export interface ChatMessageAttachment {
   previewUrl?: string
   /** 持久化缩略图（data:image/jpeg;base64,...），用于刷新/重启后仍显示用户上传图 */
   thumbDataUrl?: string
+  status?: 'ready' | 'failed'
+  summary?: string
 }
 
 /** 本轮消息临时指定的检索文件范围 */
@@ -75,6 +78,8 @@ export interface ThoughtData {
   _generation_cancelled?: boolean;
   /** 面向用户的生成失败原因。 */
   generation_error?: string;
+  /** 请求校验或附件解析失败时，还未进入回答生成。 */
+  failure_stage?: 'validation' | 'attachment';
 }
 
 export interface ThoughtStep {
@@ -92,6 +97,7 @@ export interface Message {
   timestamp: number;
   /** 用户本轮指定的检索文件范围 */
   scopeFiles?: ChatScopeFile[]
+  mentions?: ChatMention[]
   /** 回答元数据（如候选数量、处理耗时等），用于消息展示层，不参与提交契约 */
   metadata?: {
     chunks_count?: number
@@ -391,6 +397,8 @@ export const useChatStore = create<ChatStore>()(
               thinking?: ThoughtData;
               stage_timings?: StageTimings;
               selected_files?: Array<{ kb_id?: string; file_id?: string; name?: string; type?: string; kb_name?: string }>;
+              mentions?: ChatMention[];
+              attachments?: ChatMessageAttachment[];
             }>;
           };
           if (res?.success && Array.isArray(res.messages)) {
@@ -400,6 +408,12 @@ export const useChatStore = create<ChatStore>()(
               content: m.content || '',
               timestamp: m.timestamp ? new Date(m.timestamp).getTime() : Date.now(),
               citations: m.citations as Message['citations'],
+              mentions: m.mentions,
+              attachments: m.attachments?.map(item => {
+                const previous = get().sessions.find(s => s.id === sessionId)?.messages
+                  .flatMap(message => message.attachments ?? []).find(a => a.id === item.id)
+                return { ...previous, ...item }
+              }),
               thinking: m.role === 'assistant' && (m.thinking || m.stage_timings)
                 ? { ...m.thinking, stage_timings: m.stage_timings ?? m.thinking?.stage_timings }
                 : undefined,
@@ -417,7 +431,8 @@ export const useChatStore = create<ChatStore>()(
             }));
             set((state) => {
               const prev = state.sessions.find((s) => s.id === sessionId)
-              cleanupMessageAttachments(prev?.messages)
+              const keptIds = new Set(messages.flatMap(m => m.attachments ?? []).map(a => a.id))
+              cleanupMessageAttachments(prev?.messages.map(m => ({ ...m, attachments: m.attachments?.filter(a => !keptIds.has(a.id)) })))
               return {
                 sessions: state.sessions.map(s =>
                   s.id === sessionId ? { ...s, messages, updatedAt: Date.now() } : s

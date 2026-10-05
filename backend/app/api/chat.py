@@ -30,7 +30,8 @@ from app.modules.generation.citation_selection import select_answer_references
 from app.modules.agent.mode_router import resolve_agent_mode
 from app.modules.agent.service import AgenticRetrievalService
 from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
-from app.modules.chat.attachment_summarizer import MAX_ATTACHMENTS, summarize_chat_attachments
+from app.modules.chat.attachment_summarizer import MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_AUDIO_BYTES, summarize_chat_attachments
+from app.modules.chat.references import normalize_attachment_ids, resolve_message_references, resolve_multipart_references
 from app.modules.chat.context_manager import build_conversation_context, trim_stored_messages
 
 router = APIRouter()
@@ -342,14 +343,17 @@ async def chat_message(request: Request):
     """非流式聊天对话接口"""
     try:
         data = await request.json()
-        message = data.get("message", "").strip()
+        message = data.get("message", "")
         knowledge_base_ids = data.get("knowledgeBaseIds", [])
         selected_files = _normalize_selected_files(data.get("selectedFiles"))
+        mentions, resolved_query, reference_context = resolve_message_references(
+            message, data.get("mentions"), selected_files, []
+        )
         session_id = data.get("sessionId")
         agent_mode_request = data.get("agentMode", "direct")
         model = _clean_optional_str(data.get("model"))
 
-        if not message:
+        if not message.strip():
             raise HTTPException(status_code=400, detail="消息内容不能为空")
         
         logger.info(
@@ -401,8 +405,9 @@ async def chat_message(request: Request):
 
         mode_resolution = resolve_agent_mode(
             agent_mode_request,
-            query=message,
+            query=resolved_query,
             selected_files=selected_files,
+            attachment_context=reference_context or None,
         )
         agent_mode = mode_resolution.enabled
         logger.info(
@@ -418,26 +423,29 @@ async def chat_message(request: Request):
         agent_result = None
         if agent_mode:
             agent_result = await agentic_retrieval_service.search(
-                query=message,
+                query=resolved_query,
                 kb_context=kb_context,
                 session_context=session_context,
+                attachment_context=reference_context or None,
                 model=model,
             )
             retrieval_result = agent_result.retrieval_result
         else:
             retrieval_result = await retrieval_service.search(
                 allow_smalltalk=True,
-                query=message,
+                query=resolved_query,
                 kb_context=kb_context,
                 session_context=session_context,
+                attachment_context=reference_context or None,
             )
         
         # 2. 生成回答
         generation_result = await generation_service.generate_response(
-            query=message,
+            query=resolved_query,
             retrieval_result=retrieval_result,
             kb_context=kb_context,
             session_context=session_context,
+            attachment_context=reference_context or None,
         )
         
         if not generation_result.get("success"):
@@ -472,6 +480,9 @@ async def chat_message(request: Request):
                 "role": "user",
                 "content": message,
                 "selected_files": selected_files,
+                "mentions": mentions,
+                "reference_query": resolved_query,
+                "reference_context": reference_context,
                 "timestamp": datetime.utcnow().isoformat(),
             },
             assistant_message={
@@ -514,6 +525,8 @@ async def chat_message(request: Request):
         
     except JevRequiredError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
     except HTTPException:
         raise
     except Exception as e:
@@ -564,6 +577,8 @@ async def _iter_chat_sse_impl(
     attachment_context: Optional[str],
     stage_timer: StageTimings,
     include_connected: bool = True,
+    mentions_raw: Any = None,
+    attachment_files: Optional[List[Dict[str, Any]]] = None,
 ) -> AsyncGenerator[str, None]:
     """流式聊天 SSE 行迭代器（GET/POST 共用）。"""
     thinking: Dict[str, Any] = {}
@@ -582,6 +597,11 @@ async def _iter_chat_sse_impl(
     if knowledge_base_ids_csv:
         kb_ids = [kb_id.strip() for kb_id in knowledge_base_ids_csv.split(",") if kb_id.strip()]
     selected_files = _normalize_selected_files(selected_files_raw)
+    mentions, resolved_query, reference_context = resolve_message_references(
+        message, mentions_raw, selected_files, attachment_files or []
+    )
+    media_context = attachment_context
+    attachment_context = "\n\n".join(part for part in (reference_context, media_context) if part) or None
     if selected_files:
         kb_ids = list(dict.fromkeys([item["kb_id"] for item in selected_files if item.get("kb_id")]))
         logger.info(
@@ -616,7 +636,7 @@ async def _iter_chat_sse_impl(
 
     mode_resolution = resolve_agent_mode(
         agent_mode,
-        query=message,
+        query=resolved_query,
         selected_files=selected_files,
         attachment_context=attachment_context,
     )
@@ -642,7 +662,7 @@ async def _iter_chat_sse_impl(
     agent_result = None
     if mode_resolution.enabled:
         async for stage, payload in agentic_retrieval_service.search_stream(
-            query=message,
+            query=resolved_query,
             kb_context=kb_context,
             session_context=session_context,
             attachment_context=attachment_context,
@@ -656,7 +676,7 @@ async def _iter_chat_sse_impl(
     else:
         async for stage, payload in retrieval_service.search_stream(
             allow_smalltalk=True,
-            query=message,
+            query=resolved_query,
             kb_context=kb_context,
             session_context=session_context,
             attachment_context=attachment_context,
@@ -678,7 +698,7 @@ async def _iter_chat_sse_impl(
     citation_audit = None
     generation_done = False
     async for event in generation_service.stream_generate_response(
-        query=message,
+        query=resolved_query,
         retrieval_result=retrieval_result,
         session_id=current_session_id,
         kb_context=kb_context,
@@ -732,6 +752,11 @@ async def _iter_chat_sse_impl(
             "role": "user",
             "content": message,
             "selected_files": selected_files,
+            "mentions": mentions,
+            "attachments": attachment_files or [],
+            "reference_query": resolved_query,
+            "reference_context": reference_context,
+            "attachment_context": media_context,
             "timestamp": datetime.utcnow().isoformat(),
         },
         assistant_message={
@@ -760,6 +785,7 @@ async def stream_chat(
     message: str = Query(...),
     knowledgeBaseIds: Optional[str] = Query(None),
     selectedFiles: Optional[str] = Query(None),
+    mentions: Optional[str] = Query(None),
     sessionId: Optional[str] = Query(None),
     model: Optional[str] = Query(None),
     agentMode: str = Query("direct"),
@@ -772,6 +798,7 @@ async def stream_chat(
                 message=message,
                 knowledge_base_ids_csv=knowledgeBaseIds,
                 selected_files_raw=selectedFiles,
+                mentions_raw=mentions,
                 session_id_opt=sessionId,
                 model=model,
                 agent_mode=agentMode,
@@ -791,8 +818,11 @@ async def stream_chat(
 @router.post("/stream")
 async def stream_chat_multipart(
     message: str = Form(""),
+    messageJson: Optional[str] = Form(None),
     knowledgeBaseIds: Optional[str] = Form(None),
     selectedFiles: Optional[str] = Form(None),
+    mentions: Optional[str] = Form(None),
+    attachmentIds: Optional[str] = Form(None),
     sessionId: Optional[str] = Form(None),
     model: Optional[str] = Form(None),
     agentMode: str = Form("direct"),
@@ -807,16 +837,30 @@ async def stream_chat_multipart(
             detail=f"附件最多 {MAX_ATTACHMENTS} 个",
         )
 
-    msg_stripped = (message or "").strip()
-
     async def generate():
         try:
+            try:
+                ids = normalize_attachment_ids(attachmentIds, len(named_uploads))
+                attachment_files = [
+                    {"id": ids[i], "index": i + 1, "name": uf.filename, "type": uf.content_type or ""}
+                    for i, uf in enumerate(named_uploads)
+                ]
+                message_text, _, summary_query, _ = resolve_multipart_references(
+                    message or "", messageJson, mentions, _normalize_selected_files(selectedFiles), attachment_files
+                )
+            except ValueError as exc:
+                logger.info("聊天请求校验未通过: {}", exc)
+                yield f"data: {json.dumps({'type': 'error', 'stage': 'validation', 'code': 'invalid_chat_input', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+                return
             raw_files: List[Tuple[str, str, bytes]] = []
-            for uf in named_uploads:
-                body = await uf.read()
+            for i, uf in enumerate(named_uploads):
+                body = await uf.read(max(MAX_IMAGE_BYTES, MAX_AUDIO_BYTES) + 1)
+                if len(body) > max(MAX_IMAGE_BYTES, MAX_AUDIO_BYTES):
+                    raise ValueError(f"附件超过 10MB：{uf.filename}")
                 raw_files.append((uf.filename, uf.content_type or "", body))
+                attachment_files[i]["size"] = len(body)
 
-            if not msg_stripped and not raw_files:
+            if not message_text.strip() and not raw_files:
                 yield f"data: {json.dumps({'type': 'error', 'message': '请输入消息或上传附件'})}\n\n"
                 return
 
@@ -840,23 +884,32 @@ async def stream_chat_multipart(
             if raw_files:
                 yield f"data: {_thought_event_payload('attachment', {'message': '正在分析附件…', 'status': 'processing', 'count': len(raw_files)})}\n\n"
                 try:
-                    block, _meta = await summarize_chat_attachments(
-                        user_message=msg_stripped, files=raw_files
+                    block, parsed_items = await summarize_chat_attachments(
+                        user_message=summary_query, files=raw_files
                     )
                     attachment_context = block.strip() or None
                 except ValueError as e:
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+                    yield f"data: {json.dumps({'type': 'error', 'stage': 'attachment', 'message': str(e)})}\n\n"
                     return
-                yield f"data: {_thought_event_payload('attachment', {'message': '附件摘要已完成', 'status': 'completed', 'count': len(raw_files)})}\n\n"
+                for file, parsed in zip(attachment_files, parsed_items):
+                    file.update(kind=parsed["modality"], status=parsed["status"], summary=parsed["summary"], media_info=parsed.get("media_info", {}))
+                failed = sum(item["status"] == "failed" for item in parsed_items)
+                note = f"{failed} 个附件解析失败；回答会明确说明缺失内容" if failed else "附件解析已完成"
+                yield f"data: {_thought_event_payload('attachment', {'message': note, 'status': 'completed', 'count': len(raw_files), 'items': parsed_items})}\n\n"
+                if failed == len(parsed_items):
+                    yield f"data: {json.dumps({'type': 'error', 'stage': 'attachment', 'message': '所有附件均解析失败，请检查文件或模型配置后重试。'}, ensure_ascii=False)}\n\n"
+                    return
 
             effective_message = (
-                msg_stripped if msg_stripped else "请结合我上传的图片/音频内容回答。"
+                message_text if message_text.strip() else "请结合我上传的图片/音频内容回答。"
             )
 
             async for line in _iter_chat_sse(
                 message=effective_message,
                 knowledge_base_ids_csv=knowledgeBaseIds,
                 selected_files_raw=selectedFiles,
+                mentions_raw=mentions,
+                attachment_files=attachment_files,
                 session_id_opt=current_sid,
                 model=model,
                 agent_mode=agentMode,
@@ -870,6 +923,9 @@ async def stream_chat_multipart(
         except Exception as e:
             logger.error(f"流式聊天(附件)失败: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        finally:
+            for uf in files:
+                await uf.close()
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 

@@ -48,7 +48,7 @@ export function useFileScopeOptions(active = true) {
   const [filesByKb, setFilesByKb] = useState<Record<string, KnowledgeBaseFileItem[]>>({})
   const [loadingKbIds, setLoadingKbIds] = useState<string[]>([])
   const [failedKbIds, setFailedKbIds] = useState<string[]>([])
-  const inFlight = useRef(new Set<string>())
+  const inFlight = useRef(new Map<string, Promise<KnowledgeBaseFileItem[]>>())
 
   useEffect(() => {
     if (!active) return
@@ -56,13 +56,13 @@ export function useFileScopeOptions(active = true) {
   }, [active, fetchKnowledgeBases])
 
   const loadKbFiles = useCallback(async (kbId: string) => {
-    if (!kbId) return
-    if (filesByKb[kbId] || inFlight.current.has(kbId)) return
-    inFlight.current.add(kbId)
+    if (!kbId) return []
+    if (filesByKb[kbId]) return filesByKb[kbId]
+    const pending = inFlight.current.get(kbId)
+    if (pending) return pending
     setFailedKbIds(prev => prev.filter(id => id !== kbId))
     setLoadingKbIds(prev => (prev.includes(kbId) ? prev : [...prev, kbId]))
-    try {
-      const res = await knowledgeApi.getKnowledgeBaseFiles(kbId)
+    const request = knowledgeApi.getKnowledgeBaseFiles(kbId).then(res => {
       const list = Array.isArray(res?.files) ? res.files : []
       const normalized = sortFiles(
         list
@@ -80,13 +80,16 @@ export function useFileScopeOptions(active = true) {
           .filter(isSelectableFile)
       )
       setFilesByKb(prev => ({ ...prev, [kbId]: normalized }))
-    } catch (error) {
+      return normalized
+    }).catch(error => {
       setFailedKbIds(prev => prev.includes(kbId) ? prev : [...prev, kbId])
       throw error
-    } finally {
+    }).finally(() => {
       inFlight.current.delete(kbId)
       setLoadingKbIds(prev => prev.filter(id => id !== kbId))
-    }
+    })
+    inFlight.current.set(kbId, request)
+    return request
   }, [filesByKb])
 
   const ensureAllKbFiles = useCallback(async (retryFailed = false) => {

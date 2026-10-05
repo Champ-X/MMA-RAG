@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react'
-import { ChevronDown, FileText, Music, Pause, Play, Video } from 'lucide-react'
+import { ChevronDown, Music, Pause, Play, Video } from 'lucide-react'
 import { InlineCitation } from './InlineCitation'
 import { ReferenceImage } from './ReferenceImage'
 import type { Components, ExtraProps } from 'react-markdown'
@@ -18,6 +18,8 @@ import {
 } from '@/store/useChatStore'
 import { useConfigStore } from '@/store/useConfigStore'
 import { UserMessageAttachmentStrip } from './ChatAttachmentPreview'
+import { UserMessageActions } from './UserMessageActions'
+const UserMentionText = React.lazy(() => import('./UserMentionText').then(module => ({ default: module.UserMentionText })))
 
 type CitationStub = { id: number | string }
 type CitationLike = CitationReference | CitationStub
@@ -91,6 +93,7 @@ export interface MessageBubbleMessage {
   error?: string
   attachments?: ChatMessageAttachment[]
   scopeFiles?: ChatScopeFile[]
+  mentions?: Message['mentions']
 }
 
 interface MessageBubbleProps {
@@ -104,6 +107,8 @@ interface MessageBubbleProps {
   /** 点击引用时的回调；messageId 用于只从当前消息取引用，避免多条回答共用 [1][2] 时错用上一条的引用 */
   onCiteClick?: (refId: number | string, event: React.MouseEvent, messageId?: string, triggerElement?: HTMLElement) => void
   onRegenerate?: () => void
+  onEditRetry?: () => void
+  onEdit?: () => void
   regenerationDisabled?: boolean
 }
 
@@ -818,27 +823,6 @@ function shortenFileName(fileName: string, maxLen = 24): string {
   return base.slice(0, Math.max(0, maxLen - ext.length - 1)) + '…' + ext
 }
 
-function UserScopedFileStrip({ files, className }: { files: ChatScopeFile[]; className?: string }) {
-  if (!files.length) return null
-
-  return (
-    <div className={cn('flex flex-wrap justify-end gap-2', className)}>
-      {files.map((file) => (
-        <div
-          key={`${file.kbId}::${file.fileId}`}
-          className="inline-flex max-w-full items-center gap-2 rounded-full border border-emerald-200/70 bg-emerald-50/90 px-3 py-1 text-xs text-emerald-800 shadow-sm dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200"
-          title={file.kbName ? `${file.kbName} / ${file.name}` : file.name}
-        >
-          <FileText className="h-3.5 w-3.5 flex-shrink-0" />
-          <span className="truncate max-w-[22rem]">
-            {file.kbName ? `${file.kbName} / ${file.name}` : file.name}
-          </span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 // 段落下方展示的视频引用卡片（图标 + 标签 + 可点击播放，不打开弹层）
 function ParagraphVideoDisplay({
   citations,
@@ -1042,13 +1026,14 @@ export function MessageBubble({
   citationMap: preloadedCitationMap,
   onCiteClick,
   onRegenerate,
+  onEditRetry,
+  onEdit,
   regenerationDisabled = false,
 }: MessageBubbleProps) {
   const activeSession = useChatStore((s) => s.getActiveSession())
   const uiConfig = useConfigStore((s) => s.config)
   const fallbackKbId = activeSession?.knowledgeBaseIds?.[0]
   const isUser = message.type === 'user'
-  const showThinking = uiConfig.enableThinking && !isUser && (message.thinking || (isStreaming && liveThinking))
   const showCitations = uiConfig.enableCitations
   const isStoppedHint = !isUser && message.error === 'stopped_hint' // 终止提示消息
   const thoughtData = isStreaming && liveThinking
@@ -1056,6 +1041,8 @@ export function MessageBubble({
     : Array.isArray(message.thinking)
       ? (message.thinking[0]?.data as ThoughtData) ?? null
       : (message.thinking as ThoughtData) ?? null
+  const showThinking = uiConfig.enableThinking && !isUser && !thoughtData?.failure_stage
+    && (message.thinking || (isStreaming && liveThinking))
   const refs = React.useMemo(() => message.citations ?? [], [message.citations])
   const citationMap = React.useMemo(() => {
     const map = new Map<number | string, CitationReference>()
@@ -1350,7 +1337,9 @@ export function MessageBubble({
           )}
 
           {isUser ? (
-            <div className="break-words">{message.content}</div>
+            <Suspense fallback={<div className="whitespace-pre-wrap break-words">{message.content}</div>}>
+              <UserMentionText text={message.content} mentions={message.mentions} attachments={message.attachments} />
+            </Suspense>
           ) : (
             <div
               className={cn(
@@ -1358,19 +1347,28 @@ export function MessageBubble({
                 showThinking && 'mt-5 border-t border-slate-200/80 pt-5 dark:border-slate-700/70'
               )}
             >
-              <Suspense fallback={<MarkdownRendererFallback streaming={isStreaming} />}>
+              {message.content && <Suspense fallback={<MarkdownRendererFallback streaming={isStreaming} />}>
                 <MarkdownBlockContext.Provider value={markdownRendering.blocks}>
                   <MarkdownRenderer content={message.content} components={markdownRendering.components} />
                 </MarkdownBlockContext.Provider>
-              </Suspense>
+              </Suspense>}
 
-              {message.error && !thoughtData?._generation_failed && message.error !== 'stopped' && message.error !== 'stopped_hint' && (
+              {message.error && (!showThinking || !thoughtData?._generation_failed) && message.error !== 'stopped' && message.error !== 'stopped_hint' && (
                 <div
                   className="mt-3 rounded-lg border border-rose-200/80 bg-rose-50/90 px-3 py-2 text-xs leading-relaxed text-rose-800 dark:border-rose-800/60 dark:bg-rose-950/35 dark:text-rose-200"
                   role="alert"
                 >
+                  {thoughtData?.failure_stage && <p className="mb-1 font-semibold">
+                    {thoughtData.failure_stage === 'validation' ? '引用校验未通过' : '附件解析未完成'}
+                  </p>}
                   {message.error}
                 </div>
+              )}
+              {onEditRetry && message.error && message.error !== 'stopped' && message.error !== 'stopped_hint' && (
+                <button type="button" onClick={onEditRetry} disabled={regenerationDisabled}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 transition-colors hover:bg-indigo-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:opacity-50 dark:border-indigo-500/40 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:bg-indigo-900/50">
+                  编辑后重试
+                </button>
               )}
 
               {isStreaming && message.content && (
@@ -1410,19 +1408,18 @@ export function MessageBubble({
   return (
     <div className="w-full">
       {isUser ? (
-        <div className="flex min-w-0 flex-1 flex-col items-end gap-2">
+        <div className="group/user-message flex min-w-0 flex-1 flex-col items-end gap-1.5">
           {(message.attachments?.length ?? 0) > 0 && (
             <UserMessageAttachmentStrip
               attachments={message.attachments!}
               className="w-full"
             />
           )}
-          {(message.scopeFiles?.length ?? 0) > 0 && (
-            <UserScopedFileStrip files={message.scopeFiles!} className="w-full" />
-          )}
-          <div className="flex w-full items-start justify-end">
+          <div id={`user-message-${message.id}`} className="flex w-full items-start justify-end">
             {bubbleEl}
           </div>
+          <UserMessageActions content={message.content} contentId={`user-message-${message.id}`}
+            onEdit={onEdit} disabled={regenerationDisabled} />
         </div>
       ) : isStoppedHint ? (
         // 终止提示不显示头像，居中显示

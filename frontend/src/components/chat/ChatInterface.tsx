@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { Send, Zap, Paperclip, Database, Square, AtSign, X, Sparkles, Search, BrainCircuit } from 'lucide-react'
+import { Send, Zap, Paperclip, Database, Square, AtSign, X, Sparkles, Search, BrainCircuit, Pencil } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useChatStore } from '@/store/useChatStore'
@@ -16,7 +16,11 @@ import {
   type Message,
 } from '@/store/useChatStore'
 import { fileScopeKey, formatScopedFileSize, useFileScopeOptions } from './useFileScopeOptions'
-import { buildFileMentionGroups, getFileMentionState, type FileMentionState } from './fileMentionGroups'
+import { buildFileMentionGroups, type FileMentionState } from './fileMentionGroups'
+import type { MentionComposerHandle } from './MentionComposer'
+import { removeReferences, trimComposerValue, type ChatReference, type ComposerValue } from '@/lib/chatReferences'
+import { chatFileKind } from '@/lib/chatAttachmentFile'
+import { prepareQuestionEdit, type ChatComposerDraft, type ComposerAttachment } from '@/lib/chatQuestionEdit'
 import { FileScopeThumbnail, filePresentation } from './FileScopeThumbnail'
 import './fileMentionList.css'
 import './composerScopeFiles.css'
@@ -25,6 +29,16 @@ import { ChatWelcome } from './ChatWelcome'
 const MAX_CHAT_ATTACHMENTS = 3
 const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_CHAT_AUDIO_BYTES = 10 * 1024 * 1024
+interface QuestionEdit {
+  messageId: string
+  previous: ChatComposerDraft
+}
+
+function releaseAttachmentPreviews(files: ComposerAttachment[]) {
+  files.forEach(file => { if (file.previewUrl) URL.revokeObjectURL(file.previewUrl) })
+}
+
+const MentionComposer = lazy(() => import('./MentionComposer').then(module => ({ default: module.MentionComposer })))
 const NEXT_AGENT_MODE: Record<AgentMode, AgentMode> = {
   auto: 'direct',
   direct: 'agent',
@@ -131,7 +145,7 @@ function SuggestedQuestionsLoading() {
 }
 
 function maxBytesForChatFile(f: File): number {
-  return f.type.startsWith('image/') ? MAX_CHAT_IMAGE_BYTES : MAX_CHAT_AUDIO_BYTES
+  return chatFileKind(f) === 'image' ? MAX_CHAT_IMAGE_BYTES : MAX_CHAT_AUDIO_BYTES
 }
 
 /** 每条助手消息内的引用 id → 对象；禁止跨消息合并，否则多轮对话共用 [1][2] 时会互相覆盖 */
@@ -149,12 +163,21 @@ function buildCitationMapForMessage(
 }
 
 export function ChatInterface() {
-  const [input, setInput] = useState('')
-  const [attachments, setAttachments] = useState<
-    Array<{ id: string; file: File; previewUrl?: string }>
-  >([])
+  const [draft, setDraft] = useState<ComposerValue>({ text: '', mentions: [] })
+  const input = draft.text
+  const setInput = (text: string) => setDraft({ text, mentions: [] })
+  const [attachmentError, setAttachmentError] = useState('')
+  const [isPreparing, setIsPreparing] = useState(false)
+  const preparingRef = useRef(false)
+  const [editorRevision, setEditorRevision] = useState(0)
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
   const attachmentsRef = useRef(attachments)
   attachmentsRef.current = attachments
+  const [questionEdit, setQuestionEdit] = useState<QuestionEdit | null>(null)
+  const questionEditRef = useRef(questionEdit)
+  questionEditRef.current = questionEdit
+  const composerEpoch = useRef(0)
+  const submittedDraftRef = useRef<(ChatComposerDraft & { editing: QuestionEdit | null }) | null>(null)
   const [citePopover, setCitePopover] = useState<{
     open: boolean
     rect: DOMRect | null
@@ -170,7 +193,7 @@ export function ChatInterface() {
   const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const inputRef = useRef<MentionComposerHandle>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const citePopoverRef = useRef<HTMLDivElement>(null)
   const citationTriggerRef = useRef<HTMLElement | null>(null)
@@ -179,6 +202,17 @@ export function ChatInterface() {
   mentionStateRef.current = mentionState
   const mentionListRef = useRef<HTMLDivElement>(null)
   const mentionOptionRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const requestScopeFiles = useMemo(() => {
+    const files = new Map(selectedScopeFiles.map(file => [fileScopeKey(file.kbId, file.fileId), file]))
+    for (const mention of draft.mentions) {
+      if (mention.source === 'knowledge' && mention.kbId && mention.fileId) {
+        files.set(fileScopeKey(mention.kbId, mention.fileId), {
+          kbId: mention.kbId, fileId: mention.fileId, kbName: mention.kbName, name: mention.name, type: mention.type,
+        })
+      }
+    }
+    return [...files.values()]
+  }, [selectedScopeFiles, draft.mentions])
 
   const {
     sessions,
@@ -204,7 +238,7 @@ export function ChatInterface() {
     ensureAllKbFiles,
     loadKbFiles: loadScopeKbFiles,
     hasLoadedFilesForKb,
-  } = useFileScopeOptions(Boolean(mentionState) || selectedScopeFiles.length > 0)
+  } = useFileScopeOptions(Boolean(mentionState) || requestScopeFiles.length > 0)
 
   const activeSession = getActiveSession()
   const agentMode = normalizeAgentMode(activeSession?.agentMode)
@@ -217,7 +251,7 @@ export function ChatInterface() {
       return preceding
     })
   }, [messages])
-  const isLoading = isStreaming
+  const isLoading = isStreaming || isPreparing
 
   const cycleAgentMode = () => {
     if (!activeSessionId || isLoading) return
@@ -294,34 +328,26 @@ export function ChatInterface() {
     }
   }, [activeSessionId, sessions.length, createSession, createSessionFromApi])
 
-  // 自动调整输入框高度
-  useEffect(() => {
-    const el = inputRef.current
-    if (!el) return
-    // 重置高度以获取准确的 scrollHeight
-    el.style.height = 'auto'
-    // 强制重排以获取准确的 scrollHeight
-    const scrollHeight = el.scrollHeight
-    // 最大高度约 8 行（8 * 24px ≈ 192px），最小高度 56px
-    const minHeight = 56
-    const maxHeight = 192
-    const newHeight = Math.max(minHeight, Math.min(scrollHeight, maxHeight))
-    el.style.height = `${newHeight}px`
-    // 当内容超过最大高度时，显示滚动条
-    el.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden'
-  }, [input])
-
   useEffect(() => {
     return () => {
-      attachmentsRef.current.forEach((a) => {
-        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
-      })
+      composerEpoch.current += 1
+      releaseAttachmentPreviews(attachmentsRef.current)
+      if (questionEditRef.current) releaseAttachmentPreviews(questionEditRef.current.previous.files)
     }
   }, [])
 
   useEffect(() => {
+    composerEpoch.current += 1
+    if (questionEditRef.current) releaseAttachmentPreviews(questionEditRef.current.previous.files)
+    setQuestionEdit(null)
     setSelectedScopeFiles([])
     setMentionState(null)
+    setDraft({ text: '', mentions: [] })
+    setEditorRevision(prev => prev + 1)
+    releaseAttachmentPreviews(attachmentsRef.current)
+    setAttachments([])
+    setAttachmentError('')
+    submittedDraftRef.current = null
   }, [activeSessionId])
 
   useEffect(() => {
@@ -332,21 +358,24 @@ export function ChatInterface() {
   // The file picker has its own catalog. Hydrate previews for its selections too,
   // while keeping temporary media URLs out of persisted chat scope metadata.
   useEffect(() => {
-    for (const kbId of new Set(selectedScopeFiles.map(file => file.kbId))) {
+    for (const kbId of new Set(requestScopeFiles.map(file => file.kbId))) {
       if (!hasLoadedFilesForKb(kbId) && !scopeFailedKbIds.includes(kbId)) {
         void loadScopeKbFiles(kbId).catch(() => { /* Type icons remain available on failure. */ })
       }
     }
-  }, [selectedScopeFiles, hasLoadedFilesForKb, loadScopeKbFiles, scopeFailedKbIds])
+  }, [requestScopeFiles, hasLoadedFilesForKb, loadScopeKbFiles, scopeFailedKbIds])
 
-  const selectedScopeKeySet = useMemo(
-    () => new Set(selectedScopeFiles.map(file => fileScopeKey(file.kbId, file.fileId))),
-    [selectedScopeFiles]
-  )
+  const localMentionOptions = useMemo(() => {
+    if (!mentionState) return []
+    const query = mentionState.query.trim().toLowerCase().replace(/^(本机|附件)\//, '')
+    return attachments.filter(a => !query || `${a.file.name} 本机 附件`.toLowerCase().includes(query))
+      .map(a => ({ source: 'attachment' as const, attachmentId: a.id, name: a.file.name,
+        type: a.file.type, previewUrl: a.previewUrl }))
+  }, [mentionState, attachments])
 
   const mentionGroups = useMemo(() => {
     if (!mentionState) return []
-    return buildFileMentionGroups(scopeKnowledgeBases, scopeFilesByKb, selectedScopeKeySet, mentionState.query)
+    return buildFileMentionGroups(scopeKnowledgeBases, scopeFilesByKb, new Set(), mentionState.query)
       .map(group => ({
         ...group,
         isLoading: scopeLoadingKbIds.includes(group.kbId),
@@ -354,18 +383,14 @@ export function ChatInterface() {
         failed: scopeFailedKbIds.includes(group.kbId),
       }))
       .filter(group => group.files.length > 0 || group.isLoading || !group.hasLoaded)
-  }, [mentionState, scopeKnowledgeBases, scopeFilesByKb, scopeLoadingKbIds, scopeFailedKbIds, selectedScopeKeySet, hasLoadedFilesForKb])
+  }, [mentionState, scopeKnowledgeBases, scopeFilesByKb, scopeLoadingKbIds, scopeFailedKbIds, hasLoadedFilesForKb])
 
-  const mentionOptions = useMemo(
-    () =>
-      mentionGroups.flatMap(group =>
-        group.files.map(file => ({
-          kbId: group.kbId,
-          kbName: group.kbName,
-          file,
-        }))
-      ),
-    [mentionGroups]
+  const mentionOptions = useMemo<ChatReference[]>(
+    () => [...localMentionOptions, ...mentionGroups.flatMap(group => group.files.map(file => ({
+      source: 'knowledge' as const, kbId: group.kbId, kbName: group.kbName,
+      fileId: file.id, name: file.name, type: file.type, previewUrl: file.previewUrl, coverUrl: file.coverUrl,
+    })))],
+    [mentionGroups, localMentionOptions]
   )
   const mentionListboxId = 'chat-file-mention-listbox'
   const mentionActiveOptionId =
@@ -376,7 +401,7 @@ export function ChatInterface() {
   const mentionOptionIndexByKey = useMemo(() => {
     const map = new Map<string, number>()
     mentionOptions.forEach((option, index) => {
-      map.set(fileScopeKey(option.kbId, option.file.id), index)
+      if (option.kbId && option.fileId) map.set(fileScopeKey(option.kbId, option.fileId), index)
     })
     return map
   }, [mentionOptions])
@@ -404,59 +429,29 @@ export function ChatInterface() {
     else if (option.bottom > viewport.bottom) list.scrollTop += option.bottom - viewport.bottom
   }, [mentionHighlightIndex, mentionOptions])
 
-  const syncMentionState = useCallback((nextValue: string, caret: number | null | undefined) => {
-    const nextState = getFileMentionState(nextValue, caret)
-    setMentionState(nextState)
+  const insertMentionSelection = useCallback((reference: ChatReference) => {
+    inputRef.current?.insertReference(reference, mentionStateRef.current)
+    setMentionState(null)
   }, [])
 
-  const insertMentionSelection = useCallback((selection: { kbId: string; kbName: string; file: { id: string; name: string; type: string } }) => {
-    const currentMention = mentionStateRef.current
-    setSelectedScopeFiles(prev => {
-      const key = fileScopeKey(selection.kbId, selection.file.id)
-      if (prev.some(item => fileScopeKey(item.kbId, item.fileId) === key)) return prev
-      return [
-        ...prev,
-        {
-          kbId: selection.kbId,
-          kbName: selection.kbName,
-          fileId: selection.file.id,
-          name: selection.file.name,
-          type: selection.file.type,
-        },
-      ]
-    })
-
-    if (!currentMention) return
-    const before = input.slice(0, currentMention.start)
-    const after = input.slice(currentMention.end)
-    let nextInput = `${before}${after}`
-    if (before && !/\s$/.test(before) && after && !/^\s/.test(after)) {
-      nextInput = `${before} ${after}`
-    }
-    nextInput = nextInput.replace(/[ \t]{2,}/g, ' ')
-    setInput(nextInput)
-    setMentionState(null)
-    requestAnimationFrame(() => {
-      const caretPos = Math.min(before.length, nextInput.length)
-      inputRef.current?.focus()
-      inputRef.current?.setSelectionRange(caretPos, caretPos)
-    })
-  }, [input])
-
   const submitMessage = useCallback(async (nextInput?: string) => {
-    const text = (nextInput ?? input).trim()
-    if ((!text && attachments.length === 0) || isLoading || !activeSessionId) return
+    const submission = trimComposerValue(nextInput === undefined ? draft : { text: nextInput, mentions: [] })
+    const text = submission.text
+    if ((!text && attachments.length === 0) || isLoading || preparingRef.current || !activeSessionId) return
+    preparingRef.current = true
+    setIsPreparing(true)
+    setAttachmentError('')
     const files = attachments.map((a) => a.file)
-    attachments.forEach((a) => {
-      if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
-    })
+    const epoch = composerEpoch.current
+    submittedDraftRef.current = { value: submission, files: attachments, scope: selectedScopeFiles, editing: questionEdit }
     setInput('')
+    setEditorRevision(prev => prev + 1)
     setAttachments([])
     setMentionState(null)
     setLoading(true)
 
     try {
-      const scopedKbIds = Array.from(new Set(selectedScopeFiles.map(file => file.kbId))).filter(Boolean)
+      const scopedKbIds = Array.from(new Set(requestScopeFiles.map(file => file.kbId))).filter(Boolean)
       const kbMode = activeSession?.kbMode ?? 'auto'
       const kbIds = activeSession?.knowledgeBaseIds ?? []
       const toSend = scopedKbIds.length > 0
@@ -471,19 +466,93 @@ export function ChatInterface() {
         toSend,
         activeSessionId,
         files.length ? files : undefined,
-        selectedScopeFiles.length ? selectedScopeFiles : undefined
+        requestScopeFiles.length ? requestScopeFiles : undefined,
+        submission.mentions,
+        attachments.map(a => a.id)
       )
-      setSelectedScopeFiles([])
+      releaseAttachmentPreviews(attachments)
+      if (epoch !== composerEpoch.current) return
+      setQuestionEdit(null)
+      setSelectedScopeFiles(questionEdit?.previous.scope ?? [])
+      if (questionEdit) {
+        setDraft(questionEdit.previous.value)
+        setAttachments(questionEdit.previous.files)
+        setEditorRevision(prev => prev + 1)
+      }
     } catch (e) {
       console.error('发送失败', e)
+      if (epoch === composerEpoch.current) {
+        setDraft(submission)
+        setAttachments(attachments)
+        setAttachmentError(`未能发送，请重试。${e instanceof Error ? e.message : ''}`)
+      } else releaseAttachmentPreviews(attachments)
     } finally {
+      preparingRef.current = false
+      setIsPreparing(false)
       setLoading(false)
     }
-  }, [input, attachments, isLoading, activeSessionId, setLoading, selectedScopeFiles, activeSession, sendMessage])
+  }, [draft, attachments, questionEdit, isLoading, activeSessionId, setLoading, requestScopeFiles, selectedScopeFiles, activeSession, sendMessage])
 
   const handleSend = useCallback(() => {
     void submitMessage()
   }, [submitMessage])
+
+  const editQuestion = async (question: Message) => {
+    if (!activeSessionId || isLoading || preparingRef.current) return
+    if (questionEdit?.messageId === question.id) {
+      inputRef.current?.focus()
+      return
+    }
+    preparingRef.current = true
+    setIsPreparing(true)
+    const sessionId = activeSessionId
+    const epoch = composerEpoch.current
+    try {
+      const recovered = await prepareQuestionEdit(question)
+      const kbIds = [...new Set(recovered.value.mentions.flatMap(ref => ref.kbId ? [ref.kbId] : []))]
+      const catalogs = await Promise.allSettled(kbIds.map(loadScopeKbFiles))
+      if (epoch !== composerEpoch.current || useChatStore.getState().activeSessionId !== sessionId) return
+      const restored = recovered.files.map(item => ({ ...item,
+        previewUrl: chatFileKind(item.file) === 'image' ? URL.createObjectURL(item.file) : undefined,
+      }))
+      // Preserve the original draft when moving between older questions, until cancel or submit.
+      if (questionEdit) releaseAttachmentPreviews(attachments)
+      setQuestionEdit({ messageId: question.id, previous: questionEdit?.previous
+        ?? { value: draft, files: attachments, scope: selectedScopeFiles } })
+      setAttachments(restored)
+      setSelectedScopeFiles(recovered.scope)
+      setDraft({ ...recovered.value, mentions: recovered.value.mentions.map(ref => {
+        const local = restored.find(item => item.id === ref.attachmentId)
+        const catalog = catalogs[kbIds.indexOf(ref.kbId ?? '')]
+        const kbFile = catalog?.status === 'fulfilled' ? catalog.value.find(file => file.id === ref.fileId) : undefined
+        return { ...ref, previewUrl: local?.previewUrl ?? kbFile?.previewUrl, coverUrl: kbFile?.coverUrl }
+      }) })
+      setMentionState(null)
+      setAttachmentError('')
+      setEditorRevision(prev => prev + 1)
+      requestAnimationFrame(() => inputRef.current?.focus())
+    } catch (error) {
+      if (epoch === composerEpoch.current && useChatStore.getState().activeSessionId === sessionId) {
+        setAttachmentError(error instanceof Error ? error.message : '恢复问题失败，请重试。')
+      }
+    } finally {
+      preparingRef.current = false
+      setIsPreparing(false)
+    }
+  }
+
+  const cancelQuestionEdit = () => {
+    if (!questionEdit || isLoading || preparingRef.current) return
+    releaseAttachmentPreviews(attachments)
+    setDraft(questionEdit.previous.value)
+    setAttachments(questionEdit.previous.files)
+    setSelectedScopeFiles(questionEdit.previous.scope)
+    setQuestionEdit(null)
+    setAttachmentError('')
+    setMentionState(null)
+    setEditorRevision(prev => prev + 1)
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }
 
   const regenerateAnswer = useCallback(async (originalQuestion: Message) => {
     if (!activeSessionId || isLoading || isStreaming) return
@@ -493,7 +562,7 @@ export function ChatInterface() {
       const kbIds = files.length
         ? [...new Set(files.map((file) => file.kbId))]
         : activeSession?.kbMode === 'manual' ? activeSession.knowledgeBaseIds : undefined
-      await sendMessage(originalQuestion.content, kbIds, activeSessionId, undefined, files)
+      await sendMessage(originalQuestion.content, kbIds, activeSessionId, undefined, files, originalQuestion.mentions)
     } finally {
       setLoading(false)
     }
@@ -523,7 +592,18 @@ export function ChatInterface() {
 
     // 将用户原始查询填充到输入框
     if (userQuery) {
-      setInput(userQuery)
+      const saved = submittedDraftRef.current
+      if (saved) {
+        setQuestionEdit(saved.editing)
+        const restored = saved.files.map(item => ({ ...item,
+          previewUrl: chatFileKind(item.file) === 'image' ? URL.createObjectURL(item.file) : undefined,
+        }))
+        setAttachments(restored)
+        setSelectedScopeFiles(saved.scope)
+        setDraft({ ...saved.value, mentions: saved.value.mentions.map(ref => ref.source === 'attachment'
+          ? { ...ref, previewUrl: restored.find(item => item.id === ref.attachmentId)?.previewUrl } : ref) })
+      } else setInput(userQuery)
+      setEditorRevision(prev => prev + 1)
       // 聚焦输入框
       setTimeout(() => {
         inputRef.current?.focus()
@@ -532,21 +612,27 @@ export function ChatInterface() {
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isLoading) { e.target.value = ''; return }
     const picked = Array.from(e.target.files || [])
     if (picked.length === 0) return
     const next: Array<{ id: string; file: File; previewUrl?: string }> = []
+    const errors: string[] = []
     for (const f of picked) {
-      const isImage = f.type.startsWith('image/')
-      const isAudio = f.type.startsWith('audio/')
+      const isImage = chatFileKind(f) === 'image'
+      const isAudio = chatFileKind(f) === 'audio'
       if (!isImage && !isAudio) {
-        console.warn('仅支持图片与音频：', f.name)
+        errors.push(`不支持的格式：${f.name}。请添加 JPG、PNG、WebP、GIF 或常见音频。`)
         continue
       }
       const limit = maxBytesForChatFile(f)
-      if (f.size > limit) {
+      if (!f.size || f.size > limit) {
         const mb = Math.round(limit / (1024 * 1024))
-        console.warn(`文件过大（图片/音频均≤${mb}MB）：${f.name}`)
+        errors.push(`无法添加 ${f.name}：文件需非空且不超过 ${mb}MB。`)
         continue
+      }
+      if (attachmentsRef.current.length + next.length >= MAX_CHAT_ATTACHMENTS) {
+        errors.push(`每轮最多添加 ${MAX_CHAT_ATTACHMENTS} 个附件。`)
+        break
       }
       next.push({
         id: `a-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -554,7 +640,8 @@ export function ChatInterface() {
         ...(isImage ? { previewUrl: URL.createObjectURL(f) } : {}),
       })
     }
-    setAttachments((prev) => [...prev, ...next].slice(0, MAX_CHAT_ATTACHMENTS))
+    setAttachments((prev) => [...prev, ...next])
+    setAttachmentError([...new Set(errors)].join(' '))
     if (e.target) e.target.value = ''
   }
 
@@ -695,6 +782,7 @@ export function ChatInterface() {
                       content: m.content,
                       timestamp: new Date(m.timestamp).toISOString(),
                       attachments: m.attachments as ChatMessageAttachment[] | undefined,
+                      mentions: m.mentions,
                       scopeFiles: m.scopeFiles,
                       citations: m.citations,
                       metadata: m.metadata,
@@ -717,12 +805,15 @@ export function ChatInterface() {
                       ? () => { void regenerateAnswer(originalQuestion) }
                       : undefined}
                     regenerationDisabled={isLoading || isStreaming}
+                    onEdit={m.role === 'user' ? () => { void editQuestion(m) } : undefined}
+                    onEditRetry={originalQuestion && m.role === 'assistant' && m.error
+                      ? () => { void editQuestion(originalQuestion) } : undefined}
                   />
                 </Suspense>
               )
             })}
 
-            {error && (
+            {error && !messages.some(message => message.role === 'assistant' && message.error === error) && (
               <Card className="border-destructive/50 bg-destructive/5" role="alert">
                 <CardContent className="py-3 text-sm text-destructive">
                   {error}
@@ -740,6 +831,17 @@ export function ChatInterface() {
         <div className="mx-auto max-w-4xl relative">
           {/* 一体化输入框：flex 布局，textarea 与按钮区分离；focus 时极细 indigo/fuchsia 环与品牌一致 */}
           <div className="flex flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/75 bg-white/90 shadow-[0_22px_52px_-36px_rgba(15,23,42,0.72),0_1px_0_rgba(255,255,255,0.9)_inset] ring-1 ring-white/70 backdrop-blur-xl transition-[box-shadow,border-color] duration-200 focus-within:border-indigo-300/80 focus-within:ring-indigo-200/80 dark:border-slate-700/70 dark:bg-slate-900/80 dark:shadow-[0_24px_62px_-42px_rgba(0,0,0,0.95)] dark:ring-white/[0.05] dark:focus-within:border-indigo-400/40 dark:focus-within:ring-indigo-400/20">
+            {questionEdit && (
+              <div className="flex items-center gap-2 border-b border-indigo-100/80 bg-indigo-50/60 px-5 py-2 text-xs dark:border-indigo-500/20 dark:bg-indigo-950/30">
+                <Pencil size={13} className="text-indigo-500 dark:text-indigo-300" aria-hidden />
+                <span className="font-medium text-indigo-700 dark:text-indigo-200">编辑问题</span>
+                <span className="text-slate-500 dark:text-slate-400">发送后重新检索，原对话保留</span>
+                <button type="button" onClick={cancelQuestionEdit} disabled={isLoading}
+                  className="ml-auto rounded-md px-2 py-1 text-slate-600 transition-colors hover:bg-indigo-100/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-indigo-900/50">
+                  取消编辑
+                </button>
+              </div>
+            )}
             {(selectedScopeFiles.length > 0 || attachments.length > 0) && (
               <div className="flex flex-col gap-3 border-b border-slate-100/90 bg-gradient-to-b from-slate-50/95 via-stone-50/70 to-white/40 px-4 py-3 dark:border-slate-700/60 dark:from-slate-950/40 dark:via-slate-900/40 dark:to-slate-900/10">
                 {selectedScopeFiles.length > 0 && (
@@ -761,6 +863,7 @@ export function ChatInterface() {
                           <button
                             type="button"
                             title={`移除检索文件：${file.name}`}
+                            disabled={isLoading}
                             aria-label={`移除检索文件：${file.kbName ? `${file.kbName} / ${file.name}` : file.name}`}
                             onClick={() => setSelectedScopeFiles(prev => prev.filter(item => !(item.kbId === file.kbId && item.fileId === file.fileId)))}
                             className="composer-scope-remove"
@@ -771,9 +874,11 @@ export function ChatInterface() {
                   </div>
                 )}
                 {attachments.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="space-y-2">
+                    <div className="local-attachment-heading"><span>本机附件 · {attachments.length} / {MAX_CHAT_ATTACHMENTS}</span><span>输入 @ 引用 · 本轮使用</span></div>
+                    <div className="flex flex-wrap items-center gap-2">
                     {attachments.map((a) => {
-                      const isImage = a.file.type.startsWith('image/')
+                      const isImage = chatFileKind(a.file) === 'image'
                       const item: ChatMessageAttachment = {
                         id: a.id,
                         kind: isImage ? 'image' : 'audio',
@@ -785,83 +890,53 @@ export function ChatInterface() {
                         <Suspense key={a.id} fallback={<ComposerAttachmentTileFallback />}>
                           <ComposerAttachmentTile
                             item={item}
+                            disabled={isLoading}
+                            onReference={() => { inputRef.current?.insertReference({ source: 'attachment', attachmentId: a.id, name: a.file.name, type: a.file.type, previewUrl: a.previewUrl }) }}
                             onRemove={() => {
+                              if (isLoading) return
                               if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
+                              setDraft(prev => removeReferences(prev, ref => ref.attachmentId === a.id))
+                              setEditorRevision(prev => prev + 1)
                               setAttachments((prev) => prev.filter((x) => x.id !== a.id))
                             }}
                           />
                         </Suspense>
                       )
                     })}
+                    </div>
                   </div>
                 )}
               </div>
             )}
-            <textarea
+            <Suspense fallback={<div className="min-h-[72px] px-6 py-5 text-sm text-slate-400" role="status">正在准备输入框…</div>}>
+            <MentionComposer
+              key={`${activeSessionId}-${editorRevision}`}
               ref={inputRef}
-              value={input}
-              onChange={(e) => {
-                const nextValue = e.target.value
-                setInput(nextValue)
-                syncMentionState(nextValue, e.target.selectionStart)
-              }}
-              onSelect={(e) => {
-                syncMentionState(e.currentTarget.value, e.currentTarget.selectionStart)
-              }}
-              onBlur={() => {
-                requestAnimationFrame(() => {
-                  if (document.activeElement !== inputRef.current) {
-                    setMentionState(null)
-                  }
-                })
-              }}
+              value={draft}
+              onChange={setDraft}
+              onMentionChange={setMentionState}
+              disabled={isLoading || !activeSessionId}
+              listboxId={mentionState ? mentionListboxId : undefined}
+              activeOptionId={mentionActiveOptionId}
               onKeyDown={(e) => {
-                if (e.nativeEvent.isComposing || e.keyCode === 229) return
                 if (mentionState) {
-                  if (e.key === 'ArrowDown' && mentionOptions.length > 0) {
-                    e.preventDefault()
-                    setMentionHighlightIndex(prev => (prev + 1) % mentionOptions.length)
-                    return
-                  }
-                  if (e.key === 'ArrowUp' && mentionOptions.length > 0) {
-                    e.preventDefault()
-                    setMentionHighlightIndex(prev => (prev - 1 + mentionOptions.length) % mentionOptions.length)
-                    return
+                  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && mentionOptions.length) {
+                    setMentionHighlightIndex(prev => (prev + (e.key === 'ArrowDown' ? 1 : -1) + mentionOptions.length) % mentionOptions.length)
+                    return true
                   }
                   if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
-                    if (e.key === 'Enter' || mentionOptions.length > 0) e.preventDefault()
                     const target = mentionOptions[Math.min(mentionHighlightIndex, mentionOptions.length - 1)]
                     if (target) insertMentionSelection(target)
-                    return
+                    return e.key === 'Enter' || Boolean(target)
                   }
-                  if (e.key === 'Escape') {
-                    e.preventDefault()
-                    setMentionState(null)
-                    return
-                  }
+                  if (e.key === 'Escape') { setMentionState(null); return true }
                 }
-                // Enter 发送，Shift + Enter 换行
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSend()
-                }
-                // Cmd/Ctrl + Enter 也可以发送（保留原有功能）
-                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                  e.preventDefault()
-                  handleSend()
-                }
+                if (e.key === 'Enter' && (!e.shiftKey || e.metaKey || e.ctrlKey)) { handleSend(); return true }
+                return false
               }}
-              placeholder="输入你的问题"
-              rows={1}
-              aria-label="输入对话问题"
-              aria-autocomplete="list"
-              aria-controls={mentionState ? mentionListboxId : undefined}
-              aria-expanded={Boolean(mentionState)}
-              aria-activedescendant={mentionActiveOptionId}
-              className="w-full resize-none border-0 bg-transparent px-6 py-4 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:ring-0 dark:text-slate-100 dark:placeholder:text-slate-500 disabled:opacity-50 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:hover:bg-slate-400 dark:[&::-webkit-scrollbar-thumb]:bg-slate-600 dark:[&::-webkit-scrollbar-thumb]:hover:bg-slate-500"
-              style={{ minHeight: '56px', maxHeight: '192px' }}
-              disabled={isLoading || !activeSessionId}
             />
+            </Suspense>
+            {attachmentError && <p className="composer-attachment-error" role="alert">{attachmentError}</p>}
 
             {mentionState && (
               <section className="file-mention-panel" aria-label="引用素材文件">
@@ -886,6 +961,23 @@ export function ChatInterface() {
                   aria-busy={scopeLoadingKbIds.length > 0}
                   className="file-mention-list"
                 >
+                  {localMentionOptions.length > 0 && (
+                    <div role="group" aria-label="本机附件，仅用于当前对话" className="file-mention-group" data-source="attachment">
+                      <div className="file-mention-group-title"><span>本机附件</span><span>本轮使用 · 未入库</span></div>
+                      {localMentionOptions.map((option, index) => (
+                        <button key={option.attachmentId} id={`${mentionListboxId}-option-${index}`}
+                          ref={node => { mentionOptionRefs.current[index] = node }} type="button" role="option"
+                          aria-selected={index === mentionHighlightIndex} tabIndex={-1}
+                          onMouseDown={e => e.preventDefault()} onClick={() => insertMentionSelection(option)}
+                          className="file-mention-option">
+                          <FileScopeThumbnail file={option} />
+                          <span className="file-mention-copy"><span className="file-mention-name">{option.name}</span>
+                            <span className="file-mention-meta">本机附件<span aria-hidden>·</span>{filePresentation(option).label}</span></span>
+                          {index === mentionHighlightIndex && <span className="file-mention-enter" aria-hidden>↵</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {mentionGroups.map(group => (
                     <div key={group.kbId} role="group" aria-label={`${group.kbName}，${group.totalMatches} 个匹配`} className="file-mention-group">
                       <div className="file-mention-group-title">
@@ -906,7 +998,7 @@ export function ChatInterface() {
                             tabIndex={-1}
                             title={`${group.kbName} / ${file.name}`}
                             onMouseDown={e => e.preventDefault()}
-                            onClick={() => insertMentionSelection({ kbId: group.kbId, kbName: group.kbName, file })}
+                            onClick={() => insertMentionSelection(mentionOptions[optionIndex])}
                             className="file-mention-option"
                           >
                             <FileScopeThumbnail file={file} />
@@ -921,11 +1013,11 @@ export function ChatInterface() {
                     </div>
                   ))}
                   {mentionOptions.length === 0 && scopeLoadingKbIds.length === 0 && scopeFailedKbIds.length === 0 && (
-                    <p className="file-mention-empty" role="status">{mentionState.query ? '没有匹配文件，请检查知识库名称或文件关键词。' : '暂无可添加的文件；已选择的文件不会重复显示。'}</p>
+                    <p className="file-mention-empty" role="status">{mentionState.query ? '没有匹配文件，请检查知识库名称或文件关键词。' : '暂无可引用的文件，可先添加本机图片或音频。'}</p>
                   )}
                 </div>
                 <footer className="file-mention-footer">
-                  <span>支持 @知识库名/文件名 · 滚动浏览</span>
+                  <span>@知识库/文件 · @本机/附件</span>
                   <span className="file-mention-keys">↑↓ 选择 · Enter 添加 · Esc 关闭</span>
                 </footer>
               </section>
@@ -1014,20 +1106,21 @@ export function ChatInterface() {
                 <button
                   type="button"
                   onClick={() => setFileScopePickerOpen(true)}
+                  disabled={isLoading || !activeSessionId}
                   title="指定检索文件"
-                  aria-label={`打开指定检索文件选择器，当前已选 ${selectedScopeFiles.length} 个文件`}
+                  aria-label={`打开指定检索文件选择器，当前已选 ${requestScopeFiles.length} 个文件`}
                   aria-haspopup="dialog"
                   aria-expanded={fileScopePickerOpen}
-                  data-selected={selectedScopeFiles.length > 0}
+                  data-selected={requestScopeFiles.length > 0}
                   className="composer-file-trigger"
                 >
                   <span className="composer-file-trigger__symbol" aria-hidden="true">
                     <AtSign size={15} strokeWidth={1.8} />
                   </span>
                   <span>文件</span>
-                  {selectedScopeFiles.length > 0 && (
+                  {requestScopeFiles.length > 0 && (
                     <span className="composer-file-trigger__count" aria-hidden="true">
-                      {selectedScopeFiles.length}
+                      {requestScopeFiles.length}
                     </span>
                   )}
                 </button>
@@ -1035,6 +1128,7 @@ export function ChatInterface() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
+                  disabled={isLoading || !activeSessionId}
                   title="添加附件"
                   aria-label="添加图片或音频附件"
                   className="flex h-8 w-8 items-center justify-center text-slate-700 transition-all duration-200 hover:text-slate-900 hover:scale-110 active:scale-95 dark:text-slate-300 dark:hover:text-slate-100"
@@ -1058,8 +1152,8 @@ export function ChatInterface() {
                   <button
                     type="button"
                     onClick={handleSend}
-                    title="发送"
-                    aria-label="发送消息"
+                    title={questionEdit ? '重新检索生成' : '发送'}
+                    aria-label={questionEdit ? '重新检索生成' : '发送消息'}
                     className={cn(
                       "flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-purple-600 text-white shadow-md shadow-purple-500/30 transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/40 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
                     )}
@@ -1110,8 +1204,14 @@ export function ChatInterface() {
           <FileScopePicker
             open={fileScopePickerOpen}
             onOpenChange={setFileScopePickerOpen}
-            value={selectedScopeFiles}
-            onChange={setSelectedScopeFiles}
+            value={requestScopeFiles}
+            onChange={(files) => {
+              const keys = new Set(files.map(file => fileScopeKey(file.kbId, file.fileId)))
+              const inlineKeys = new Set(draft.mentions.filter(ref => ref.source === 'knowledge').map(ref => fileScopeKey(ref.kbId!, ref.fileId!)))
+              setDraft(prev => removeReferences(prev, ref => ref.source === 'knowledge' && !keys.has(fileScopeKey(ref.kbId!, ref.fileId!))))
+              setSelectedScopeFiles(files.filter(file => !inlineKeys.has(fileScopeKey(file.kbId, file.fileId))))
+              setEditorRevision(prev => prev + 1)
+            }}
           />
         </Suspense>
       ) : null}

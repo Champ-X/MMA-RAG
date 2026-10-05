@@ -9,6 +9,7 @@ import type {
   CompleteEvent,
 } from '@/types/sse';
 import type { AgentMode, ChatScopeFile } from '@/store/useChatStore'
+import type { ChatMention } from '@/lib/chatReferences'
 
 export type { ThoughtEvent, CitationEvent, MessageEvent };
 
@@ -33,6 +34,8 @@ export interface StreamChatOptions {
   model?: string;
   files?: File[];
   selectedFiles?: ChatScopeFile[];
+  mentions?: ChatMention[];
+  attachmentIds?: string[];
   agentMode?: AgentMode;
 }
 
@@ -109,7 +112,7 @@ class SSEStreamManager {
   ): { close: () => void; get isClosed(): boolean } {
     this.close();
 
-    if ((options.files && options.files.length > 0) || (options.selectedFiles && options.selectedFiles.length > 0)) {
+    if (options.files?.length || options.selectedFiles?.length || options.mentions?.length) {
       return this._streamChatMultipart(options, callbacks);
     }
 
@@ -177,6 +180,9 @@ class SSEStreamManager {
 
     const form = new FormData();
     form.append('message', options.message || '');
+    // Multipart string fields normalize LF to CRLF. JSON escapes preserve the
+    // exact text against which UTF-16 mention offsets were calculated.
+    form.append('messageJson', JSON.stringify(options.message || ''));
     if (options.knowledgeBaseIds?.length) {
       form.append('knowledgeBaseIds', options.knowledgeBaseIds.join(','));
     }
@@ -195,8 +201,11 @@ class SSEStreamManager {
     for (const f of options.files ?? []) {
       form.append('files', f);
     }
+    if (options.mentions?.length) form.append('mentions', JSON.stringify(options.mentions));
+    if (options.attachmentIds?.length) form.append('attachmentIds', JSON.stringify(options.attachmentIds));
 
     const run = async () => {
+      let terminalReceived = false;
       try {
         const headers: HeadersInit = {};
         const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null;
@@ -235,12 +244,16 @@ class SSEStreamManager {
               try {
                 const raw = JSON.parse(jsonStr) as Record<string, unknown>;
                 if (raw.type === 'connected') continue;
+                if (['complete', 'done', 'error'].includes(String(raw.type ?? raw.event))) terminalReceived = true;
                 dispatchSseJsonPayload(raw, callbacks);
               } catch (e) {
                 console.error('SSE chunk parse error', e, jsonStr);
               }
             }
           }
+        }
+        if (!terminalReceived && !ac.signal.aborted) {
+          callbacks.onError?.(new Error('连接在回答完成前中断，请重试。'));
         }
       } catch (e) {
         if (e instanceof Error && e.name === 'AbortError') return;
@@ -286,7 +299,7 @@ export const sseStreamManager = new SSEStreamManager();
 export function createChatStream(
   message: string,
   callbacks: StreamChatCallbacks,
-  opts?: { knowledgeBaseIds?: string[]; sessionId?: string; model?: string; files?: File[]; selectedFiles?: ChatScopeFile[]; agentMode?: AgentMode }
+  opts?: { knowledgeBaseIds?: string[]; sessionId?: string; model?: string; files?: File[]; selectedFiles?: ChatScopeFile[]; agentMode?: AgentMode; mentions?: ChatMention[]; attachmentIds?: string[] }
 ) {
   return sseStreamManager.streamChat(
     {
@@ -297,6 +310,8 @@ export function createChatStream(
       files: opts?.files,
       selectedFiles: opts?.selectedFiles,
       agentMode: opts?.agentMode,
+      mentions: opts?.mentions,
+      attachmentIds: opts?.attachmentIds,
     },
     callbacks
   );

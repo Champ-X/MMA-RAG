@@ -11,7 +11,7 @@ export function getFileMentionState(value: string, caret: number | null | undefi
   const beforeCaret = value.slice(0, safeCaret)
   if (beforeCaret.endsWith('\n') || beforeCaret.endsWith('\r')) return null
   // Spaces are valid in knowledge-base and file names; a newline ends the mention.
-  const match = beforeCaret.match(/(^|\s)@([^\r\n@]*)$/)
+  const match = beforeCaret.match(/(^|[^\w@])@([^\r\n@\ufffc]*)$/u)
   if (!match) return null
   return { query: match[2], start: safeCaret - match[2].length - 1, end: safeCaret }
 }
