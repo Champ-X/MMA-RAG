@@ -31,7 +31,7 @@ def receipt_for(value, *, kinds=None, entails=None, contradicts=None):
               "contradicts": contradicts or ["no"] * count}
     receipt = {"requests": {}}
     for stage, request in review.review_requests(value).items():
-        result = {"answer_id": value["answer_id"], "complete": True}
+        result = {"answer_id": review.RESPONSE_ANSWER_ID, "complete": True}
         if stage == "facts":
             result["facts"] = [{"index": i + 1, "status": "covered", "answer_units": ["u1"], "reason": "test"}
                                for i in range(len(value["reference_facts"]))]
@@ -303,6 +303,41 @@ def test_thinking_is_frozen_bounded_and_does_not_change_prompts_or_labels(tmp_pa
         review.prepare_calibration(cases, tmp_path / "heldout", model=THINKING_MODEL,
             kind="heldout", development=plain, thinking=True)
     assert not (tmp_path / "heldout").exists()
+
+
+def test_local_answer_alias_keeps_global_identity_in_host_and_raw_receipts():
+    value = job(facts=["结果为5"])
+    value["answer_id"] = "answer-opaque-long-identity"
+    config = review.reviewer_config(THINKING_MODEL, thinking=True)
+    requests = review.review_requests(value)
+    for stage, request in requests.items():
+        assert request["input"]["answer_id"] == review.RESPONSE_ANSWER_ID
+        assert review.response_schema(value, stage)["properties"]["answer_id"]["const"] == review.RESPONSE_ANSWER_ID
+        assert value["answer_id"] not in json.dumps(request)
+        assert request["input"]["answer"] == value["answer"]
+    receipt = receipt_for(value)
+    add_wire_fields(value, receipt, config, "qwen3.5-plus")
+    before = review.v1.encoded(receipt)
+    assessed = review.validate_receipt(value, receipt, config=config, raw_model="qwen3.5-plus")
+    assert assessed.answer_id == value["answer_id"]
+    assert review.v1.encoded(receipt) == before
+    other = {**value, "answer_id": "another-real-answer"}
+    with pytest.raises(ValueError, match="receipt input"):
+        review.validate_receipt(other, receipt, config=config, raw_model="qwen3.5-plus")
+    other = {**value, "question": "另一个问题"}
+    receipt["input_sha256"] = review.v1.sha(other)
+    with pytest.raises(ValueError, match="input changed"):
+        review.validate_receipt(other, receipt, config=config, raw_model="qwen3.5-plus")
+
+
+def test_local_alias_does_not_accept_or_repair_wrong_provider_identity():
+    value = job()
+    receipt = receipt_for(value)
+    mutate_body(receipt, "kind", lambda body: body.update(answer_id=value["answer_id"]))
+    original = review.v1.encoded(receipt)
+    with pytest.raises(ValueError, match="identity changed"):
+        review.validate_receipt(value, receipt)
+    assert review.v1.encoded(receipt) == original
 
 
 @pytest.mark.parametrize("change", ["thinking", "limit", "options", "hash"])
