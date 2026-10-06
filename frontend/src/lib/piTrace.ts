@@ -1,5 +1,33 @@
 import { piTerminal, type PiEvent, type PiRun, type PiStep, type PiTrace } from '../types/pi'
 
+export function submissionFeedback(step: Pick<PiStep, 'kind' | 'label' | 'status' | 'text'>): { summary: string; detail: string } | undefined {
+  if (step.kind !== 'tool' || step.label !== 'submit_answer' || step.status !== 'failed'
+    || !step.text?.startsWith('逐项检查未通过')) return undefined
+  const fallback = { summary: '本次草稿未通过校验。', detail: step.text }
+  try {
+    const start = step.text.indexOf('{')
+    if (start < 0) return fallback
+    const report: unknown = JSON.parse(step.text.slice(start))
+    if (!report || typeof report !== 'object' || Array.isArray(report)) return fallback
+    const { body_characters: actual, declared_max_characters: maximum, errors } = report as Record<string, unknown>
+    const codes = new Set(Array.isArray(errors) ? errors.flatMap(error => error && typeof error === 'object'
+      && typeof error.code === 'string' ? [error.code] : []) : [])
+    const parts: string[] = []
+    if (codes.has('answer_too_long') && typeof actual === 'number' && Number.isSafeInteger(actual)
+      && typeof maximum === 'number' && Number.isSafeInteger(maximum) && maximum > 0 && actual > maximum) {
+      parts.push(`草稿 ${actual} 字符，超过 ${maximum} 字符上限。`)
+    }
+    if (codes.has('incomplete_statements')) parts.push('逐项核验记录尚未完整对应正文。')
+    if (['citation_mismatch', 'statement_citation_mismatch', 'unavailable_support', 'unsupported_citations', 'missing_support']
+      .some(code => codes.has(code))) parts.push('引用标记或来源记录需要修正。')
+    return { summary: parts.join('') || fallback.summary, detail: step.text }
+  } catch {
+    // Truncated and older records remain inspectable, without guessing counts
+    // or turning a protocol failure into a semantic verdict.
+    return fallback
+  }
+}
+
 export function initialPiTrace(run: PiRun): PiTrace {
   return { runId: run.id, requestId: run.request.client_request_id, status: 'queued',
     seq: 0, startedAt: run.created_at * 1000, model: run.config.model, steps: [], evidence: [], draft: '' }

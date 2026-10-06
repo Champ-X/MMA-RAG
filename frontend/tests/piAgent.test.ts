@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { applyPiEvent, initialPiTrace } from '../src/lib/piTrace'
+import { applyPiEvent, initialPiTrace, submissionFeedback } from '../src/lib/piTrace'
 import type { PiEvent, PiRun } from '../src/types/pi'
 import { piApi, piOriginalUrl, watchPiRun } from '../src/services/piAgent'
 import { useChatStore } from '../src/store/useChatStore'
@@ -14,6 +14,43 @@ const run: PiRun = { id: 'run-1', status: 'queued', seq: 1, session_id: 's', cre
   request: { client_request_id: 'request-1', message: '问题' }, state: {} }
 const event = (seq: number, type: string, data: Record<string, unknown> = {}): PiEvent => ({ protocol_version: 1,
   run_id: 'run-1', event_id: `run-1:${seq}`, seq, type, timestamp: seq, data })
+
+test('submission failure summary exposes measured limits and keeps the exact original diagnostics', () => {
+  const text = '逐项检查未通过，请修订：' + JSON.stringify({ body_characters: 294, declared_max_characters: 250,
+    errors: [{ code: 'answer_too_long' }, { code: 'incomplete_statements' }, { code: 'statement_citation_mismatch' }],
+    units: [{ text: '原始草稿🔎，保留引号"和换行\n' }] })
+  const step = { kind: 'tool', label: 'submit_answer', status: 'failed', text } as const
+  const result = submissionFeedback(step)!
+  assert.match(result.summary, /294 字符，超过 250 字符上限/)
+  assert.match(result.summary, /核验记录/)
+  assert.match(result.summary, /引用标记或来源记录/)
+  assert.doesNotMatch(result.summary, /事实错误|已核实|修正完成/)
+  assert.equal(result.detail, text)
+  assert.equal(step.text, text)
+})
+
+test('truncated validation feedback stays available without invented measurements', () => {
+  const text = '逐项检查未通过：{"body_characters": 294, "declared_max_characters": 250…（反馈已截断）'
+  assert.deepEqual(submissionFeedback({ kind: 'tool', label: 'submit_answer', status: 'failed', text }),
+    { summary: '本次草稿未通过校验。', detail: text })
+})
+
+test('ordinary tool messages and model failures are not reinterpreted as submission checks', () => {
+  const base = { kind: 'tool', label: 'submit_answer', status: 'failed', text: '逐项检查未通过：{}' } as const
+  for (const step of [{ ...base, kind: 'model' as const }, { ...base, label: 'search' },
+    { ...base, status: 'completed' as const }, { ...base, text: '模型请求超时，尚未生成答案。' }]) {
+    assert.equal(submissionFeedback(step), undefined)
+  }
+})
+
+test('invalid or contradictory character measurements do not become confident UI counts', () => {
+  for (const [actual, maximum] of [[200, 250], [255, 0], [255.5, 250], ['255', 250]]) {
+    const text = '逐项检查未通过：' + JSON.stringify({ body_characters: actual, declared_max_characters: maximum,
+      errors: [{ code: 'answer_too_long' }] })
+    assert.deepEqual(submissionFeedback({ kind: 'tool', label: 'submit_answer', status: 'failed', text }),
+      { summary: '本次草稿未通过校验。', detail: text })
+  }
+})
 
 test('background Pi work cannot disable another session or become its cancellation target', () => {
   const message: Message = { id: 'message-a', role: 'assistant', content: '', timestamp: 1, pi: initialPiTrace(run) }
