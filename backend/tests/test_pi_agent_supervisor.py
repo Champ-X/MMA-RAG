@@ -1,4 +1,6 @@
 import asyncio
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
 from pathlib import Path
 import threading
 from types import SimpleNamespace
@@ -154,6 +156,62 @@ async def test_real_pi_unpaid_rejection_is_persisted_without_a_model_completion(
         assert "无法容纳" in model_events[0]["data"]["message"]
     finally:
         await host.close()
+
+
+@pytest.mark.asyncio
+async def test_real_pi_repeated_invalid_calls_persist_failure_before_budget_exhaustion(tmp_path, monkeypatch):
+    requests = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_POST(self):
+            requests.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            frames = [
+                {"choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0,
+                    "id": f"empty-{len(requests)}", "type": "function", "function": {
+                        "name": "set_answer_requirements", "arguments": "{}"}}]}}]},
+                {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+                    "usage": {"prompt_tokens": 100, "completion_tokens": 30, "total_tokens": 130}},
+            ]
+            self.wfile.write(("".join("data: " + json.dumps(f) + "\n\n" for f in frames)
+                + "data: [DONE]\n\n").encode())
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    class LocalRegistry(Registry):
+        def get_provider(self, name):
+            return SimpleNamespace(api_key="local-test-only", base_url=f"http://127.0.0.1:{server.server_port}")
+
+    host = make_host(tmp_path, monkeypatch, answer_checks_enabled=True, yield_to_legacy=False)
+    host.registry, host.worker = LocalRegistry(), WORKER
+    try:
+        run = await host.start(request(), "alice")
+        await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 8)
+        saved = host.store.get(run["id"])
+        assert saved["status"] == "failed"
+        assert saved["state"]["code"] == "repeated_tool_failure"
+        assert "连续3轮" in saved["state"]["message"]
+        assert "answer" not in saved["state"] and "answer_requirements" not in saved["state"]
+        assert len(requests) == saved["state"]["usage"]["model_requests"] == 3
+        assert saved["state"]["usage"]["model_tokens"] == 390
+        assert saved["state"]["usage"]["tool_calls"] == 0
+        events = host.store.events(run["id"])
+        rejections = [e for e in events if e["type"] == "tool.rejected"]
+        assert len(rejections) == 3 and all(e["data"]["executed"] is False for e in rejections)
+        assert not any(e["type"] in {"tool.started", "answer.accepted", "budget.finalizing"} for e in events)
+        assert events[-1]["type"] == "run.failed" and events[-1]["data"]["code"] == "repeated_tool_failure"
+    finally:
+        await host.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 @pytest.mark.asyncio

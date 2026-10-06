@@ -4,6 +4,29 @@ import { collapseSystemMessages, createAssistantMessageEventStream } from '@eare
 
 const CLOSING_TOOLS = new Set(['submit_answer', 'ask_user', 'recall_evidence']);
 
+function stableJson(value) {
+  return JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
+}
+
+function failedTurnKey(message, results) {
+  const calls = message.content.filter(part => part.type === 'toolCall');
+  if (!calls.length || calls.length !== results.length || results.some(result => !result.isError)) return null;
+  const byId = new Map(results.map(result => [result.toolCallId, result]));
+  if (byId.size !== calls.length || new Set(calls.map(call => call.id)).size !== calls.length) return null;
+  const keys = calls.map(call => {
+    const result = byId.get(call.id);
+    if (!result) return null;
+    // SDK errors append the original arguments with their original key order.
+    // Compare that input separately and canonically; IDs/order within a batch
+    // are not progress. Changed feedback, inputs or any successful result are.
+    const feedback = result.content.filter(part => part.type === 'text').map(part => part.text).join('\n')
+      .split('\n\nReceived arguments:\n')[0];
+    return stableJson({ name: call.name, args: call.arguments, code: result.details?.code, feedback });
+  });
+  return keys.includes(null) ? null : JSON.stringify([...new Set(keys)].sort());
+}
+
 function archiveSupersededAnswers(messages, rejectedAnswers) {
   const latest = messages.findLastIndex(message => message.role === 'assistant'
     && message.content.some(part => part.type === 'toolCall' && rejectedAnswers.has(part.id)));
@@ -110,6 +133,9 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
   let turn = 0;
   let activeModelCall = null;
   let protocolReminders = 0;
+  let previousFailedTurn = null;
+  let repeatedFailedTurns = 0;
+  let stalled;
   let finalizing = false;
   let recallClosed = false;
   const drafts = new Map();
@@ -249,9 +275,18 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
     beforeToolCall: async ({ toolCall }) => finalResult ? { block: true, reason: '任务结果已经提交', terminate: true }
       : finalizing && (!CLOSING_TOOLS.has(toolCall.name) || (recallClosed && toolCall.name === 'recall_evidence'))
         ? { block: true, reason: '预算已进入收尾阶段，只能复读已取得的证据或提交回答' } : undefined,
-    finishTurn: async ({ message }) => {
+    finishTurn: async ({ message, toolResults }) => {
       if (finalResult) return { action: 'end' };
       if (['error', 'aborted'].includes(message.stopReason)) return;
+      const failure = failedTurnKey(message, toolResults);
+      repeatedFailedTurns = failure === null ? 0 : failure === previousFailedTurn ? repeatedFailedTurns + 1 : 1;
+      previousFailedTurn = failure;
+      if (repeatedFailedTurns >= 3) {
+        const names = [...new Set(message.content.filter(part => part.type === 'toolCall').map(part => part.name))];
+        stalled = { terminal: 'failed', code: 'repeated_tool_failure',
+          message: `Agent 连续3轮重复相同的失败工具调用（${names.join('、').slice(0, 200)}），本轮已停止。原始工具反馈与已取得的证据保留在过程记录中。` };
+        return { action: 'end' };
+      }
       if (!message.content.some((part) => part.type === 'toolCall')) {
         if (protocolReminders++ >= 2) return { action: 'end' };
         agent.state.messages.push({ role: 'user', timestamp: Date.now(),
@@ -313,6 +348,7 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
     async run() {
       await agent.prompt(config.prompt);
       if (finalResult) return { ...finalResult, model: model.id, provider: model.provider, turns: turn };
+      if (stalled) return { ...stalled, turns: turn };
       const last = [...agent.state.messages].reverse().find((message) => message.role === 'assistant');
       return { terminal: last?.stopReason === 'aborted' ? 'cancelled' : 'failed',
         code: last?.stopReason === 'length' ? 'model_output_truncated' : 'no_final_answer',

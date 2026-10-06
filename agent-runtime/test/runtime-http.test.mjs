@@ -495,3 +495,111 @@ test('removed tools report closure before malformed argument errors consume a fi
   assert.equal(rejection.data.executed, false);
   assert.equal(rejection.data.message, error);
 });
+
+function callFrames(calls, turn) {
+  return [
+    { choices: [{ index: 0, delta: { tool_calls: calls.map(([name, args], index) => ({
+      index, id: `call-${turn + 1}-${index}`, type: 'function',
+      function: { name, arguments: JSON.stringify(args) },
+    })) } }] },
+    { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+      usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 } },
+  ];
+}
+
+async function failureScenario(t, batches, hostTool = async () => ({
+  content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed' },
+})) {
+  const { requests, baseUrl } = await sseEndpoint(t, batches.map(callFrames));
+  const calls = [], settlements = [], events = [];
+  const config = wireConfig(baseUrl, 'aliyun_bailian');
+  // Match the nullable required fields used by the actual Pydantic contract.
+  config.tools.push({ name: 'set_answer_requirements', description: 'Register requirements', parameters: {
+    type: 'object', additionalProperties: false, required: ['max_characters', 'length_quote', 'required_points'],
+    properties: { max_characters: { anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }] },
+      length_quote: { anyOf: [{ type: 'string', minLength: 1 }, { type: 'null' }] },
+      required_points: { type: 'array', minItems: 1, items: { type: 'string' } } },
+  } });
+  const runtime = createRuntime(config, {
+    emit: (type, data) => events.push({ type, data }),
+    callHost: async (method, params) => {
+      if (method === 'model_request') return requests.length >= batches.length
+        ? { allowed: false, message: 'fixture request ceiling' } : { allowed: true, max_output_tokens: 1000 };
+      if (method === 'model_usage') { settlements.push(params); return {}; }
+      calls.push(params);
+      return hostTool(params);
+    },
+  });
+  t.after(() => runtime.abort());
+  return { result: await runtime.run(), requests, calls, settlements, events };
+}
+
+test('repeated failed empty calls stop before a fourth paid request without inventing an answer', async t => {
+  const run = await failureScenario(t, Array.from({ length: 5 }, () => [['set_answer_requirements', {}]]));
+  assert.equal(run.result.terminal, 'failed');
+  assert.equal(run.result.code, 'repeated_tool_failure');
+  assert.match(run.result.message, /连续3轮/);
+  assert.match(run.result.message, /set_answer_requirements/);
+  assert.equal(run.result.answer, undefined);
+  assert.equal(run.requests.length, 3);
+  assert.equal(run.settlements.length, 3);
+  assert.equal(run.calls.length, 0);
+  const rejections = run.events.filter(e => e.type === 'tool.rejected');
+  assert.equal(rejections.length, 3);
+  assert.ok(rejections.every(e => e.data.executed === false && /Received arguments:\n\{\}/.test(e.data.message)));
+});
+
+test('repairing failed nullable registration arguments still reaches the host unchanged', async t => {
+  const args = { max_characters: null, length_quote: null, required_points: ['说明本次是否找到支持'] };
+  const run = await failureScenario(t, [
+    [['set_answer_requirements', {}]], [['set_answer_requirements', {}]], [['set_answer_requirements', args]],
+  ]);
+  assert.equal(run.result.terminal, 'completed');
+  assert.equal(run.requests.length, 3);
+  assert.equal(run.calls.length, 1);
+  assert.deepEqual(run.calls[0].args, args);
+  assert.ok(run.requests[2].messages.some(m => m.role === 'tool' && /Validation failed/.test(m.content)));
+});
+
+test('repeated failed host calls stop with original feedback and settled usage', async t => {
+  const run = await failureScenario(t, Array.from({ length: 5 }, () => [['search', { query: 'same' }]]),
+    async () => ({ isError: true, content: [{ type: 'text', text: 'query backend unavailable' }],
+      details: { code: 'tool_failed', retryable: true } }));
+  assert.equal(run.result.code, 'repeated_tool_failure');
+  assert.equal(run.requests.length, 3);
+  assert.equal(run.calls.length, 3);
+  assert.equal(run.settlements.length, 3);
+  assert.ok(run.requests[2].messages.some(m => m.role === 'tool' && m.content === 'query backend unavailable'));
+  assert.equal(run.events.filter(e => e.type === 'tool.rejected').length, 0, 'Dispatched calls use the host trace');
+});
+
+test('repairing failed calls is measured per round and ignores object key order', async t => {
+  const run = await failureScenario(t, [
+    [['search', { a: 1, b: 2 }], ['search', { b: 2, a: 1 }], ['search', { a: 1, b: 2 }]],
+    [['search', { b: 2, a: 1 }]],
+    [['submit_answer', { answer: 'repaired' }]],
+  ]);
+  assert.equal(run.result.terminal, 'completed', 'Three errors in one batch are not three failed rounds');
+  assert.equal(run.requests.length, 3);
+  const repeated = await failureScenario(t, [
+    [['search', { a: 1, b: 2 }]], [['search', { b: 2, a: 1 }]], [['search', { a: 1, b: 2 }]],
+    [['submit_answer', { answer: 'should not run' }]],
+  ]);
+  assert.equal(repeated.result.code, 'repeated_tool_failure');
+  assert.equal(repeated.requests.length, 3);
+});
+
+test('successful tool progress or changed arguments allow further repairs', async t => {
+  const failure = [['search', {}]];
+  const run = await failureScenario(t, [failure, failure,
+    [...failure, ['search', { query: 'real progress' }]], failure, failure,
+    [['search', { wrong: 'changed' }]], failure, failure,
+    [['submit_answer', { answer: 'accepted' }]],
+  ], async params => params.name === 'submit_answer'
+    ? { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed' } }
+    : { content: [{ type: 'text', text: 'source received' }], details: { evidence_ids: [1] } });
+  assert.equal(run.result.terminal, 'completed');
+  assert.equal(run.requests.length, 9);
+  assert.deepEqual(run.calls.map(call => call.name), ['search', 'submit_answer']);
+  assert.equal(run.settlements.length, 9);
+});
