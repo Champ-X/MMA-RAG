@@ -118,6 +118,7 @@ export function SuggestedQuestions({
                   className="suggestion-card"
                   data-note={['honey', 'sage', 'lavender'][index % 3]}
                 >
+                  <span className="suggestion-paper" aria-hidden />
                   <span className="suggestion-question">{item.text}</span>
                   <span className="suggestion-footer">
                     <span className="suggestion-source" title={item.kbName}>

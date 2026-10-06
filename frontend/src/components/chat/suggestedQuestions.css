@@ -29,10 +29,52 @@
 .dark .suggestion-card[data-note="honey"], [data-theme="dark"] .suggestion-card[data-note="honey"] { --note-paper: #373326; --note-edge: #514a33; --note-fold: #5d5132; --note-ink: #eee1bc; --note-muted: #c0b18c; }
 .dark .suggestion-card[data-note="sage"], [data-theme="dark"] .suggestion-card[data-note="sage"] { --note-paper: #283a32; --note-edge: #3d5143; --note-fold: #4b604b; --note-ink: #d5e5cf; --note-muted: #a8bea0; }
 .dark .suggestion-card[data-note="lavender"], [data-theme="dark"] .suggestion-card[data-note="lavender"] { --note-paper: #343044; --note-edge: #4b435d; --note-fold: #5a4e70; --note-ink: #e3dcf1; --note-muted: #b7a9cd; }
-.suggestion-card { position: relative; isolation: isolate; display: flex; width: 100%; flex-direction: column; gap: 16px; padding: 25px 20px 16px; border: 1px solid var(--note-edge); border-radius: 3px 4px 2px 4px; background: linear-gradient(165deg, #ffffff2b, transparent 60%), var(--note-paper); text-align: left; box-shadow: 1px 6px 10px -7px #2637464a, 0 1px 2px #2637460a; translate: 0 0; rotate: 0deg; transition: translate .2s ease, rotate .2s ease, box-shadow .2s; }
+.suggestion-card { --note-fold-size: 24px; position: relative; isolation: isolate; display: flex; width: 100%; flex-direction: column; gap: 16px; padding: 25px 20px 16px; border: 1px solid transparent; border-radius: 3px 4px 2px 4px; background: transparent; text-align: left; translate: 0 0; rotate: 0deg; transition: translate .2s ease, rotate .2s ease; }
+/* Clip only the paper so the tape and keyboard focus ring remain visible. */
+.suggestion-paper {
+  --note-fold-tip: color-mix(in oklab, var(--note-paper), white 65%);
+  --note-fold-light: color-mix(in oklab, var(--note-paper), white 28%);
+  position: absolute;
+  z-index: -1;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1px #26374612) drop-shadow(1px 4px 3px #26374618);
+  transition: filter .2s ease;
+}
+.suggestion-paper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--note-edge);
+  border-radius: inherit;
+  background: linear-gradient(165deg, #ffffff2b, transparent 60%), var(--note-paper);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--note-fold-size)), calc(100% - var(--note-fold-size)) 100%, 0 100%);
+}
+/* The turned-back triangle catches light at its lifted tip and darkens at the crease.
+   A transparent gradient cuts its diagonal without clipping the cast shadow. */
+.suggestion-paper::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--note-fold-size);
+  height: var(--note-fold-size);
+  border-top-left-radius: 3px;
+  background: linear-gradient(135deg in oklab,
+    var(--note-fold-tip) 0%,
+    var(--note-fold-light) 22%,
+    var(--note-fold) 43%,
+    var(--note-edge) 49%,
+    transparent 50%);
+  filter: drop-shadow(-1px -1px 1px #26374630);
+}
+.dark .suggestion-paper, [data-theme="dark"] .suggestion-paper {
+  --note-fold-tip: color-mix(in oklab, var(--note-paper), white 20%);
+  --note-fold-light: color-mix(in oklab, var(--note-paper), white 10%);
+}
 /* A translucent strip pins the note; the folded corner stays clear of its content. */
 .suggestion-card::before { content: ''; position: absolute; z-index: 1; top: -7px; left: calc(50% - 28px); width: 56px; height: 15px; border: 1px solid #ffffff66; background: #ffffff80; box-shadow: 0 1px 1px #394e5910; rotate: -4deg; pointer-events: none; }
-.suggestion-card::after { content: ''; position: absolute; right: -1px; bottom: -1px; width: 17px; height: 17px; background: linear-gradient(135deg, #ffffff66, var(--note-fold)); clip-path: polygon(0 0, 100% 100%, 0 100%); pointer-events: none; }
 .dark .suggestion-card::before, [data-theme="dark"] .suggestion-card::before { background: #b9c6bb21; border-color: #c4ccbd24; }
 .suggestion-question { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; overflow-wrap: anywhere; color: var(--note-ink); font-family: 'Kaiti SC', 'STKaiti', 'KaiTi', 'PingFang SC', serif; font-size: 1.1875rem; font-weight: 500; line-height: 1.6; letter-spacing: .015em; }
 .suggestion-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 11px; border-top: 1px dashed var(--note-edge); }
@@ -44,9 +86,11 @@
 .suggestion-card:focus-visible, .suggestions-refresh:focus-visible { outline: 2px solid var(--suggestion-accent); outline-offset: 4px; }
 .suggestion-card:focus-visible .suggestion-action { background: #ffffff50; color: var(--note-ink); }
 .suggestion-card:disabled { cursor: not-allowed; opacity: .5; }
-.suggestion-card:not(:disabled):active { translate: 0 0; box-shadow: 0 1px 3px #26374624; }
+.suggestion-card:not(:disabled):active { translate: 0 0; }
+.suggestion-card:not(:disabled):active .suggestion-paper { filter: drop-shadow(0 1px 1px #26374624); }
 @media (hover: hover) {
-  .suggestion-card:not(:disabled):hover { translate: 0 -3px; rotate: 0deg; box-shadow: 2px 12px 18px -10px #26374642, 0 2px 3px #2637460a; }
+  .suggestion-card:not(:disabled):hover { translate: 0 -3px; rotate: 0deg; }
+  .suggestion-card:not(:disabled):hover:not(:active) .suggestion-paper { filter: drop-shadow(0 2px 1px #26374612) drop-shadow(2px 7px 5px #26374620); }
   .suggestion-card:not(:disabled):hover .suggestion-action { background: #ffffff55; color: var(--note-ink); }
   .suggestion-card:not(:disabled):hover .suggestion-action > svg { translate: 1px -1px; }
   .suggestion-card:not(:disabled):active { translate: 0 0; }
@@ -58,6 +102,6 @@
   .suggestion-card:not(:disabled):hover { rotate: 0deg; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .suggested-questions *, .suggested-questions *::before { transition: none !important; animation: none !important; }
+  .suggested-questions *, .suggested-questions *::before, .suggested-questions *::after { transition: none !important; animation: none !important; }
   .suggestion-card, .suggestion-card:not(:disabled):hover, .suggestion-action > svg { translate: 0 0 !important; rotate: 0deg !important; }
 }
