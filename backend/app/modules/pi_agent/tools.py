@@ -232,7 +232,12 @@ class ToolSet:
         value = {"code": code, "message": message, "retryable": getattr(error, "retryable", False)}
         self.emit("tool.failed" if executed else "tool.rejected", {"name": name, **value, "executed": executed,
                   "duration_ms": round((time.monotonic() - started) * 1000)}, span_id=span)
-        return {"isError": True, "content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False)}], "details": value}
+        # A completed emit follows the persisted tool.started arguments. The
+        # worker may archive a superseded draft only with this host attestation;
+        # schema/budget rejections before execution do not have a saved draft.
+        details = {**value, **({"rejected_answer_span_id": span}
+            if self.answer_checks_enabled and executed and name == "submit_answer" else {})}
+        return {"isError": True, "content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False)}], "details": details}
 
     async def _dispatch(self, name, args, span):
         if name == "set_answer_requirements":

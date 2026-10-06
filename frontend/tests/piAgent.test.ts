@@ -123,6 +123,30 @@ test('absence of a registered cap is not presented as proof the user set no limi
   assert.doesNotMatch(trace.steps[0].text!, /用户没有|已核实/)
 })
 
+test('archiving superseded drafts preserves failed attempts and replays without publishing an answer', () => {
+  const events = [event(1, 'run.running'),
+    { ...event(2, 'tool.started', { name: 'submit_answer', args: { answer: '原始被拒草稿[99]' } }), span_id: 'tool:old' },
+    { ...event(3, 'tool.failed', { name: 'submit_answer', message: '引用不一致' }), span_id: 'tool:old' },
+    event(4, 'context.compacted', { archived_tool_results: 0, archived_answer_attempts: 1, archived_answer_spans: ['tool:old'] }),
+    event(5, 'run.failed', { message: '未提交有效回答' })]
+  let live = events.slice(0, 3).reduce(applyPiEvent, initialPiTrace(run))
+  const failed = live.steps[0]
+  live = applyPiEvent(live, events[3])
+  assert.strictEqual(live.steps[0], failed)
+  assert.deepEqual(failed.args, { answer: '原始被拒草稿[99]' })
+  assert.equal(failed.status, 'failed')
+  assert.equal(failed.text, '引用不一致')
+  assert.match(live.steps[1].text!, /1 次被拒草稿/)
+  assert.match(live.steps[1].text!, /最新草稿和反馈/)
+  assert.doesNotMatch(live.steps[1].text!, /已核实|可继续读取原始证据/)
+  assert.strictEqual(applyPiEvent(live, events[3]), live)
+  live = applyPiEvent(live, events[4])
+  const history = restorePiMessages([], [{ ...run, status: 'failed' }])[1].pi!
+  assert.deepEqual(events.reduce(applyPiEvent, history), live)
+  assert.equal(live.answer, undefined)
+  assert.deepEqual(live.citations, [])
+})
+
 test('source preparation and resource waiting replay as distinct context steps with real duration', () => {
   let trace = initialPiTrace(run)
   trace = applyPiEvent(trace, event(1, 'run.running'))

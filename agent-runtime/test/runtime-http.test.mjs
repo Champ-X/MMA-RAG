@@ -39,6 +39,101 @@ function wireConfig(baseUrl, provider = 'deepseek') {
         thinkingFormat: provider === 'deepseek' ? 'deepseek' : 'qwen', maxTokensField: 'max_tokens' } } };
 }
 
+for (const scenario of [
+  { enabled: true, proof: 'valid', mixed: false },
+  { enabled: true, proof: 'valid', mixed: false, invalidLatest: true },
+  { enabled: false, proof: 'valid', mixed: false },
+  { enabled: true, proof: 'missing', mixed: false },
+  { enabled: true, proof: 'wrong-span', mixed: false },
+  { enabled: true, proof: 'valid', mixed: true },
+]) {
+  test(`superseded draft archival preserves the latest pair and real HTTP contract ${JSON.stringify(scenario)}`,
+    { timeout: 15000 }, async t => {
+      const shouldArchive = scenario.enabled && scenario.proof === 'valid' && !scenario.mixed;
+      const oldAnswer = '旧稿'.repeat(4000), latestAnswer = '最新'.repeat(4000);
+      const requirements = { max_characters: 250, length_quote: '正文不超过250字', required_points: ['说明来源中的数值'] };
+      const call = (id, name, args) => ({ id, type: 'function', function: { name, arguments: JSON.stringify(args) } });
+      const frames = calls => [
+        { choices: [{ index: 0, delta: { tool_calls: calls.map((item, index) => ({ index, ...item })) } }] },
+        { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+          usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 } },
+      ];
+      const { requests, baseUrl } = await sseEndpoint(t, [
+        frames([call('register', 'set_answer_requirements', requirements)]),
+        frames([call('source', 'search', { query: '数值' })]),
+        frames([call('old', 'submit_answer', { answer: oldAnswer }),
+          ...(scenario.mixed ? [call('other-source', 'search', { query: '其他来源' })] : [])]),
+        frames([call('latest', 'submit_answer', { answer: latestAnswer })]),
+        ...(scenario.invalidLatest ? [frames([call('invalid', 'submit_answer', { answer: ['malformed draft'] })])] : []),
+        frames([call('final', 'submit_answer', { answer: '数值为17。[1]' })]),
+      ]);
+      const events = [], hostCalls = [], admissions = [];
+      const source = JSON.stringify({ evidence: [{ id: 1, content: '实际来源：数值为17。' }] });
+      const feedback = id => JSON.stringify({ code: 'answer_too_long', message: `${id}草稿超限，请按250字符要求重新组织答案。` });
+      const base = wireConfig(baseUrl);
+      const runtime = createRuntime({ ...base, answer_checks_enabled: scenario.enabled,
+        model: { ...base.model, contextWindow: 200000 }, prompt: '原问题🔎，正文不超过250字。',
+        tools: [...base.tools, { name: 'set_answer_requirements', description: 'Register',
+          parameters: Type.Object({ max_characters: Type.Number(), length_quote: Type.String(), required_points: Type.Array(Type.String()) }) }],
+      }, {
+        emit: (type, data) => events.push({ type, data }),
+        callHost: async (method, params) => {
+          if (method === 'model_request') {
+            admissions.push(params);
+            // The last request fits only after discarding the superseded pair.
+            if (shouldArchive && requests.length >= 4 && params.input_bytes > 45000)
+              return { allowed: false, max_input_bytes: 45000, final_turn: true, allow_recall: false };
+            return { allowed: true, max_output_tokens: 1000, final_turn: requests.length >= 3, allow_recall: false };
+          }
+          if (method === 'model_usage') return {};
+          hostCalls.push(params);
+          if (params.name === 'set_answer_requirements') return { content: [{ type: 'text', text: 'recorded' }],
+            details: { answer_requirements: requirements } };
+          if (params.name === 'search') return { content: [{ type: 'text', text: source }],
+            details: { evidence_ids: [1], artifact_id: params.tool_call_id } };
+          if (params.tool_call_id !== 'final') return { isError: true, content: [{ type: 'text', text: feedback(params.tool_call_id) }],
+            details: { code: 'answer_too_long', ...(scenario.proof === 'missing' ? {} :
+              { rejected_answer_span_id: `tool:${scenario.proof === 'valid' ? params.tool_call_id : 'unrelated'}` }) } };
+          return { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed', answer: params.args.answer } };
+        },
+      });
+      t.after(() => runtime.abort());
+      const result = await runtime.run();
+      assert.equal(result.terminal, 'completed', result.message);
+      assert.equal(requests.length, scenario.invalidLatest ? 6 : 5);
+      assert.equal(admissions.length, requests.length, 'Archival is not an extra model call or provider retry');
+      const last = requests.at(-1);
+      const old = last.messages.find(message => message.tool_calls?.some(item => item.id === 'old'));
+      assert.equal(Boolean(old), !shouldArchive);
+      assert.equal(Boolean(last.messages.find(message => message.tool_call_id === 'old')), !shouldArchive);
+      const latest = last.messages.find(message => message.tool_calls?.some(item => item.id === 'latest'));
+      assert.equal(JSON.parse(latest.tool_calls[0].function.arguments).answer, latestAnswer);
+      assert.equal(last.messages.find(message => message.tool_call_id === 'latest').content, feedback('latest'));
+      assert.equal(last.messages.find(message => message.tool_call_id === 'source').content, source);
+      assert.equal(hostCalls.find(item => item.tool_call_id === 'old').args.answer, oldAnswer);
+      assert.equal(hostCalls.find(item => item.tool_call_id === 'latest').args.answer, latestAnswer);
+      assert.ok(!hostCalls.some(item => item.tool_call_id === 'invalid'));
+      const text = message => typeof message.content === 'string' ? message.content : message.content.map(part => part.text || '').join('');
+      assert.ok(last.messages.some(message => message.role === 'user' && text(message) === '原问题🔎，正文不超过250字。'));
+      if (scenario.enabled) assert.match(last.messages[0].content, /本轮已登记的回答要求/);
+      for (const request of requests) {
+        const pending = new Set();
+        for (const message of request.messages) {
+          for (const item of message.tool_calls || []) pending.add(item.id);
+          if (message.role === 'tool') assert.ok(pending.delete(message.tool_call_id));
+        }
+        assert.equal(pending.size, 0, 'Every surviving HTTP call retains its result');
+      }
+      const archived = events.filter(event => event.type === 'context.compacted' && event.data.archived_answer_attempts);
+      assert.equal(archived.length, shouldArchive ? 1 : 0);
+      if (shouldArchive) {
+        assert.deepEqual(archived[0].data.archived_answer_spans, ['tool:old']);
+        assert.match(last.messages[0].content, /已归档.*被拒草稿/);
+        assert.ok(!JSON.stringify(last).includes(oldAnswer));
+      }
+    });
+}
+
 // Keep the real Agent loop AND Pi's OpenAI serializer. Only the remote HTTP
 // endpoint and host are controlled, so a mocked provider cannot hide dropped
 // tool feedback, broken call/result pairing, or overwritten system messages.

@@ -47,8 +47,12 @@ export function applyPiEvent(previous: PiTrace, event: PiEvent): PiTrace {
     updateStep({ id, kind: 'action', label: '行动说明', status: 'completed', startedAt: event.timestamp * 1000,
       text: (old?.text || '') + String(data.delta || '') })
   } else if (event.type === 'context.compacted') {
-    updateStep({ id: stepId, kind: 'context', label: '已归档较早的工具结果', status: 'completed', startedAt: event.timestamp * 1000,
-      text: `${data.archived_tool_results} 份结果保留在任务记录中，可继续读取原始证据。` })
+    const drafts = typeof data.archived_answer_attempts === 'number' ? data.archived_answer_attempts : 0
+    const results = typeof data.archived_tool_results === 'number' ? data.archived_tool_results : 0
+    updateStep({ id: stepId, kind: 'context', label: drafts ? '已归档较早的被拒草稿' : '已归档较早的工具结果',
+      status: 'completed', startedAt: event.timestamp * 1000,
+      text: [results ? `${results} 份工具结果保留在任务记录中。` : '', drafts
+        ? `${drafts} 次被拒草稿的完整内容与失败原因保留在任务记录中；模型继续使用最新草稿和反馈。` : '原始证据与完整过程仍可查看。'].filter(Boolean).join('\n') })
   } else if (event.type === 'budget.finalizing') {
     updateStep({ id: stepId, kind: 'context', label: '正在收束已有证据', status: 'completed', startedAt: event.timestamp * 1000,
       text: String(data.message || '') })

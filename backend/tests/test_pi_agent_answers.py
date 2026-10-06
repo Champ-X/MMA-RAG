@@ -121,6 +121,27 @@ async def test_check_and_submit_return_actionable_citation_feedback_then_accept_
     assert any(kind == "tool.failed" and data["code"] == "citation_mismatch" for kind, data in events)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("before_execution", [False, True])
+async def test_only_persisted_executed_experimental_rejections_can_be_archived(tmp_path, enabled, before_execution):
+    tools, store, run, _ = fixture_tools(tmp_path, answer_checks_enabled=enabled)
+    tools.emit = lambda kind, data, **kw: store.append(run, kind, data, **kw)
+    if before_execution:
+        tools.ledger.tool_calls = tools.ledger.limits.tool_calls
+    args = {"answer": "原草稿引用未返回的来源[99]。", "evidence_ids": [99]}
+    rejected = await tools.execute("bad-draft", "submit_answer", args)
+    assert rejected["isError"] and not tools.final_result
+    expected = "tool:bad-draft" if enabled and not before_execution else None
+    assert rejected["details"].get("rejected_answer_span_id") == expected
+    if expected:
+        events = [e for e in store.events(run) if e["span_id"] == expected]
+        assert [e["type"] for e in events] == ["tool.started", "tool.failed"]
+        assert events[0]["data"]["args"]["answer"] == args["answer"]
+        assert events[1]["data"]["code"] == rejected["details"]["code"]
+    assert not store.evidence(run)
+
+
 def test_not_found_does_not_accept_unbacked_facts_or_hide_them_in_limitations():
     args = CheckedAnswer(answer="所有资料都不含公司财务信息。", outcome="not_found", status="partial",
         limitations=["所有资料都不含公司财务信息。"], statements=[

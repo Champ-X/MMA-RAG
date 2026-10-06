@@ -4,6 +4,39 @@ import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 
 const CLOSING_TOOLS = new Set(['submit_answer', 'ask_user', 'recall_evidence']);
 
+function archiveSupersededAnswers(messages, rejectedAnswers) {
+  const latest = messages.findLastIndex(message => message.role === 'assistant'
+    && message.content.some(part => part.type === 'toolCall' && rejectedAnswers.has(part.id)));
+  const results = new Map();
+  messages.forEach((message, index) => {
+    if (message.role === 'toolResult') results.set(message.toolCallId, [...(results.get(message.toolCallId) || []), index]);
+  });
+  const replacements = new Map(), removed = new Set(), archived = [];
+  for (let index = 0; index < latest; index++) {
+    const message = messages[index];
+    if (message.role !== 'assistant') continue;
+    const calls = message.content.filter(part => part.type === 'toolCall');
+    // Never split a mixed research/answer batch or guess whether an unpaired
+    // call failed. Only the host can attest that its full draft and rejection
+    // are already durable under the referenced tool span.
+    if (!calls.length || new Set(calls.map(call => call.id)).size !== calls.length
+      || calls.some(call => call.name !== 'submit_answer' || !rejectedAnswers.has(call.id))) continue;
+    const indices = calls.map(call => results.get(call.id) || []);
+    if (indices.some(items => items.length !== 1 || items[0] <= index || items[0] >= latest
+      || !messages[items[0]].isError)) continue;
+    const refs = calls.map(call => rejectedAnswers.get(call.id));
+    const marker = { role: 'system', timestamp: message.timestamp,
+      content: '已归档较早的被拒草稿及其反馈，完整内容仍在任务记录中。以下仅为失败记录，不是来源证据。最新草稿和最新反馈保留原文，请据此重新组织并提交答案：' + JSON.stringify(refs) };
+    const originalBytes = Buffer.byteLength(JSON.stringify(message))
+      + indices.reduce((total, [at]) => total + Buffer.byteLength(JSON.stringify(messages[at])), 0);
+    if (Buffer.byteLength(JSON.stringify(marker)) >= originalBytes) continue;
+    replacements.set(index, marker);
+    indices.forEach(([at]) => removed.add(at));
+    archived.push(...refs);
+  }
+  return { messages: messages.flatMap((message, index) => removed.has(index) ? [] : [replacements.get(index) || message]), archived };
+}
+
 function archivedToolResult(message) {
   if (message.role !== 'toolResult' || !message.details?.artifact_id) return null;
   const next = { ...message, content: [{ type: 'text', text: JSON.stringify({
@@ -79,6 +112,8 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
   let recallClosed = false;
   const drafts = new Map();
   const dispatched = new Set();
+  const rejectedAnswers = new Map();
+  const reportedArchives = new Set();
   const tools = config.tools.map((definition) => ({
     ...definition,
     label: definition.label || definition.name,
@@ -101,6 +136,9 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
         answerRequirements = result.details.answer_requirements;
       }
       if (result.isError && definition.name === 'submit_answer') {
+        if (config.answer_checks_enabled && result.details?.rejected_answer_span_id === `tool:${toolCallId}`) {
+          rejectedAnswers.set(toolCallId, { tool_span_id: result.details.rejected_answer_span_id, code: result.details.code });
+        }
         drafts.delete(toolCallId);
         await emit('answer.reset', { tool_call_id: toolCallId, reason: 'validation_failed' });
       }
@@ -117,6 +155,17 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
     sessionId: config.run_id,
     toolExecution: 'parallel',
     transformContext: async (messages) => {
+      if (config.answer_checks_enabled && rejectedAnswers.size > 1) {
+        const projected = archiveSupersededAnswers(messages, rejectedAnswers);
+        messages = projected.messages;
+        const fresh = projected.archived.filter(item => !reportedArchives.has(item.tool_span_id));
+        if (fresh.length) {
+          fresh.forEach(item => reportedArchives.add(item.tool_span_id));
+          await emit('context.compacted', { reason: 'superseded_answers', archived_tool_results: 0,
+            archived_answer_attempts: fresh.length, archived_answer_spans: fresh.map(item => item.tool_span_id),
+            remaining_bytes: Buffer.byteLength(JSON.stringify(messages)) });
+        }
+      }
       const threshold = Math.min(100000, Math.floor(model.contextWindow * 0.65));
       let bytes = Buffer.byteLength(JSON.stringify(messages), 'utf8');
       if (bytes < threshold) return messages;
