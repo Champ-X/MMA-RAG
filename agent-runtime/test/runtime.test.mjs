@@ -42,7 +42,7 @@ test('experimental statement instructions require an explicit per-run setting', 
   }
 });
 
-test('Pi thinking uses the provider protocol and accounts usage without exposing raw thinking', async (t) => {
+async function checkThinkingProtocol(t, provider) {
   const requests = [], events = [], settlements = [];
   const server = createServer(async (request, response) => {
     const chunks = [];
@@ -62,8 +62,8 @@ test('Pi thinking uses the provider protocol and accounts usage without exposing
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }));
   const runtime = createRuntime({ ...config, api_key: 'test-only', thinking_level: 'medium',
-    model: { ...model, id: 'deepseek-flash', provider: 'deepseek', reasoning: true,
-      baseUrl: `http://127.0.0.1:${server.address().port}`, compat: { thinkingFormat: 'deepseek',
+    model: { ...model, id: provider === 'deepseek' ? 'deepseek-flash' : 'qwen3.5-plus', provider, reasoning: true,
+      baseUrl: `http://127.0.0.1:${server.address().port}`, compat: { thinkingFormat: provider === 'deepseek' ? 'deepseek' : 'qwen',
         supportsStore: false, supportsDeveloperRole: false, supportsReasoningEffort: false, maxTokensField: 'max_tokens' } } }, {
     emit: (type, data) => events.push({ type, data }),
     callHost: async (method, params) => {
@@ -74,13 +74,18 @@ test('Pi thinking uses the provider protocol and accounts usage without exposing
   });
   assert.equal((await runtime.run()).terminal, 'completed');
   assert.equal(requests.length, 1);
-  assert.deepEqual(requests[0].thinking, { type: 'enabled' });
+  if (provider === 'deepseek') assert.deepEqual(requests[0].thinking, { type: 'enabled' });
+  else assert.equal(requests[0].enable_thinking, true);
   assert.equal(requests[0].max_tokens, 1000);
   assert.equal(settlements[0].usage.totalTokens, 130);
   assert.equal(settlements[0].usage.reasoning, 17);
   assert.equal(events.find(e => e.type === 'model.started').data.thinking_level, 'medium');
   assert.ok(!JSON.stringify(events).includes('private internal reasoning'));
-});
+}
+
+for (const provider of ['deepseek', 'aliyun_bailian']) {
+  test(`Pi thinking accounts usage without exposing raw thinking (${provider})`, t => checkThinkingProtocol(t, provider));
+}
 
 test('real Pi Agent closes the search → evidence → answer loop without a second generator', async () => {
   const calls = [], events = [];
