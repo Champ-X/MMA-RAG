@@ -161,6 +161,27 @@ class SourceCatalog:
                 continue
         return None
 
+    def parent_document(self, payload: dict, scope: AccessScope) -> Source | None:
+        """Navigate an indexed image's explicit relationship, without granting access.
+
+        A filename is never a relationship. The point must pass the same bucket,
+        KB and unambiguous-file checks used to deliver evidence, and the document
+        must be independently readable in the original run scope.
+        """
+        parent_id = payload.get("source_file_id")
+        if not isinstance(parent_id, str) or not parent_id or parent_id == payload.get("file_id"):
+            return None
+        parents = self.by_file.get(parent_id, [])
+        if len(parents) != 1 or parents[0].modality != "doc":
+            return None
+        bound = self.bind_point(payload, scope)
+        if bound is None or bound.kb_id != parents[0].kb_id:
+            return None
+        try:
+            return self.get(parents[0].id, scope)
+        except ToolError:
+            return None
+
     def download(self, client, source: Source, destination: Path, *, max_bytes: int):
         if source.size > max_bytes:
             raise ToolError("source_too_large", "原文件超过本次读取预算，请读取索引片段或缩小媒体范围")

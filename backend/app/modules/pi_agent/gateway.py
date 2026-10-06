@@ -89,6 +89,28 @@ class KnowledgeGateway:
         self.catalog, self.scope, self.client = catalog, scope, client
         self.models, self.search_gate = model_transport, search_gate
 
+    def _evidence(self, source: Source, modality: str, point, **kwargs) -> Evidence:
+        parent = self.catalog.parent_document(point.payload or {}, self.scope) if modality == "image" else None
+        link = parent.public(self.scope) if parent else None
+        if link:
+            # Navigation shares the existing excerpt allowance. Otherwise eight
+            # long image hits can overflow a tool result that previously fitted.
+            navigation_chars = len(json.dumps({"parent_document": link}, ensure_ascii=False))
+            allowance = kwargs.get("max_chars", 6000)
+            if navigation_chars < allowance:
+                kwargs["max_chars"] = allowance - navigation_chars
+            else:
+                link = None  # Oversized display metadata is optional navigation.
+        evidence = evidence_for(source, modality, point, **kwargs)
+        if link:
+            evidence.provenance["parent_document"] = link
+            # Keep the image observation intact. A changed navigation binding
+            # must not be merged with old evidence or spliced into a continuation.
+            evidence.version = fingerprint({"observation": evidence.version, "parent_document": link})
+            evidence.provenance["record_version"] = fingerprint({
+                "record": evidence.provenance["record_version"], "parent_document": link})
+        return evidence
+
     def _filter(self, sources: list[Source], *, extra=None):
         # Empty MatchAny is never used as a wildcard. Callers short-circuit it.
         ids = sorted({s.file_id for s in sources if len(self.catalog.by_file.get(s.file_id, [])) == 1})
@@ -180,7 +202,7 @@ class KnowledgeGateway:
             for rank, key in enumerate(ranking):
                 scores[key] += 1 / (60 + rank + 1)
         keys = sorted(scores, key=lambda key: (-scores[key], key))[:limit]
-        evidence = [evidence_for(records[k][0], k[0], records[k][1], max_chars=1400) for k in keys]
+        evidence = [self._evidence(records[k][0], k[0], records[k][1], max_chars=1400) for k in keys]
         if not evidence and errors and not rankings:
             raise ToolError("search_unavailable", "搜索服务未能完成查询，请稍后重试；这不代表没有相关内容", retryable=True)
         return evidence, {"status": "partial" if errors or truncated else "ok" if evidence else "no_hits",
@@ -214,7 +236,7 @@ class KnowledgeGateway:
             has_more = start + limit < total or clipped
         if text_offset and selected and text_offset >= len(point_text(selected[0].payload or {}, kind)):
             raise ToolError("text_offset_out_of_range", "续读位置超出当前索引片段，请从 text_offset=0 重新读取并核对来源版本")
-        observations = [evidence_for(source, kind, p, max_chars=max(1000, 12000 // max(1, limit)),
+        observations = [self._evidence(source, kind, p, max_chars=max(1000, 12000 // max(1, limit)),
                                      text_offset=text_offset) for p in selected]
         if expected_record_version and observations and observations[0].provenance["record_version"] != expected_record_version:
             raise ToolError("index_record_changed", "索引片段版本已改变，请从头读取，不能将不同版本的文字拼接为同一原文")

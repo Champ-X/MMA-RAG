@@ -25,6 +25,8 @@ class Args(BaseModel):
 
 class ListSources(Args):
     query: str = Field(default="", max_length=200)
+    modalities: list[Literal["doc", "image", "audio", "video"]] = Field(default_factory=list, max_length=4,
+        description="可选：在分页前按来源模态筛选。查找文档可只选doc；省略或空列表列出所有可读模态，不扩大原任务范围。")
     offset: int = Field(default=0, ge=0, le=20000)
     limit: int = Field(default=20, ge=1, le=30)
 
@@ -127,9 +129,9 @@ class AskUser(Args):
 
 DEFINITIONS = {
     "set_answer_requirements": (AnswerRequirements, "研究开始前登记你对本轮回答要求的理解：正文上限、对应用户原句和必答要点。登记只写入本轮账本，不检索资料或生成答案。登记后本轮不可修改，检查和提交始终执行该上限；理解有歧义时可ask_user。"),
-    "list_sources": (ListSources, "列出当前可读来源和输入材料，按名称过滤并分页。目录项不能作证据，先读取。"),
-    "search": (Search, "在宿主限定范围内搜索已建索引的文本、图片描述、音频描述/转写、视频镜头。hybrid 为语义+词面融合；exact 为原短语包含匹配。可用source_ids将本次查询收窄到已发现的具体来源，用modalities选择文档原文或媒体索引。返回证据、截断及服务错误。输入附件不参与搜索。"),
-    "read_source": (ReadSource, "按 source_id 深读已解析来源。文档 start 为 chunk_index，媒体 start 为索引片段偏移。next_start读取后续片段；text_continuations给出当前长片段的续读参数，避免遗漏截断后的条件。媒体索引描述不能代替直接观察。"),
+    "list_sources": (ListSources, "列出当前可读来源和输入材料，在分页前按名称及可选modalities过滤。查找文档可让modalities只选doc，避免被抽取图片占满目录页。目录项不能作证据，先读取。"),
+    "search": (Search, "在宿主限定范围内搜索已建索引的文本、图片描述、音频描述/转写、视频镜头。hybrid 为语义+词面融合；exact 为原短语包含匹配。可用source_ids将本次查询收窄到已发现的具体来源，用modalities选择文档原文或媒体索引。图片证据如带provenance.parent_document，可用其source_id继续读取所属文档；该链接只是导航，尚未取得文档正文。返回证据、截断及服务错误。输入附件不参与搜索。"),
+    "read_source": (ReadSource, "按 source_id 深读已解析来源。文档 start 为 chunk_index，媒体 start 为索引片段偏移。next_start读取后续片段；text_continuations给出当前长片段的续读参数，避免遗漏截断后的条件。图片证据如带provenance.parent_document，可用其source_id继续读取所属文档；导航链接不代表已读取该文档。媒体索引描述不能代替直接观察。"),
     "expand_context": (ExpandContext, "读取已返回文档证据的前后相邻 chunk，核对条件、指代和上下文。"),
     "recall_evidence": (RecallEvidence, "复读本轮已交付的证据，每次最多4条，编号和内容保持不变。用于核对上下文中已归档的原文；预算收尾阶段最多使用一次，然后提交回答，不读取新来源。"),
     "inspect_media": (InspectMedia, "直接读取原图片、PDF 指定页、音频或视频的指定区间。每次至多 60 秒，默认前 30 秒；视频最多 6 帧并记录实际时间。可选 visual/audio/both，观察模型独立于最终回答模型。"),
@@ -249,7 +251,8 @@ class ToolSet:
             return {"status": "recorded", "answer_requirements": requirements}, [], None
         if name == "list_sources":
             sources = sorted(self.catalog.visible(self.scope), key=lambda s: (not s.attachment, s.kb_id, s.name, s.id))
-            sources = [s for s in sources if args["query"].casefold() in s.name.casefold()]
+            sources = [s for s in sources if args["query"].casefold() in s.name.casefold()
+                       and (not args["modalities"] or s.modality in args["modalities"])]
             end = args["offset"] + args["limit"]
             return {"sources": [s.public(self.scope) for s in sources[args["offset"]:end]], "total": len(sources),
                     "next_offset": end if end < len(sources) else None, "scope": self.scope.public()}, [], None
