@@ -39,6 +39,94 @@ function wireConfig(baseUrl, provider = 'deepseek') {
         thinkingFormat: provider === 'deepseek' ? 'deepseek' : 'qwen', maxTokensField: 'max_tokens' } } };
 }
 
+for (const provider of ['deepseek', 'aliyun_bailian']) {
+  test(`closing admission measures resolved tool declarations without changing the HTTP request (${provider})`,
+    { timeout: 15000 }, async t => {
+      const requirements = { max_characters: 250, length_quote: '正文不超过250字', required_points: ['原文中的数值'] };
+      const source = JSON.stringify({ evidence: [{ id: 1, content: '实际原文🔎：测量值为17。' }] });
+      const draft = '最近草稿需要精简。'.repeat(30);
+      const feedback = '实际字数超限，请保留来源中的数值和条件，重新组织正文。';
+      const call = (id, name, args) => [
+        { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id, type: 'function',
+          function: { name, arguments: JSON.stringify(args) } }] } }] },
+        { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+          usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 } },
+      ];
+      async function run({ bounded, enabled = true, midConversation = false, limit = 18000 }) {
+        const { requests, baseUrl } = await sseEndpoint(t, [
+          call('register', 'set_answer_requirements', requirements),
+          call('read', 'search', { query: '数值' }),
+          call('draft', 'submit_answer', { answer: draft }),
+          call('finish', 'submit_answer', { answer: '测量值为17。[1]' }),
+        ]);
+        const admissions = [], events = [], settled = [];
+        const base = wireConfig(baseUrl, provider);
+        const runtime = createRuntime({ ...base, answer_checks_enabled: enabled,
+          prompt: '原问题🔎，正文不超过250字。',
+          model: { ...base.model, contextWindow: 200000,
+            compat: { ...base.model.compat, supportsMidConvoSystemMessages: midConversation } },
+          tools: [...base.tools.map(tool => tool.name === 'search'
+            ? { ...tool, description: 'READ_ONLY_SEARCH_SCHEMA_'.repeat(1500) } : tool),
+          { name: 'set_answer_requirements', description: 'Register', parameters: Type.Object({
+            max_characters: Type.Number(), length_quote: Type.String(), required_points: Type.Array(Type.String()),
+          }) }],
+        }, {
+          emit: (type, data) => events.push({ type, data }),
+          callHost: async (method, params) => {
+            if (method === 'model_request') {
+              admissions.push(params);
+              if (bounded && requests.length === 3 && params.input_bytes > limit) {
+                return { allowed: false, max_input_bytes: limit, final_turn: true, allow_recall: false };
+              }
+              return { allowed: true, max_output_tokens: 1000, final_turn: requests.length >= 2, allow_recall: false };
+            }
+            if (method === 'model_usage') { settled.push(params); return {}; }
+            if (params.name === 'set_answer_requirements') return { content: [{ type: 'text', text: 'recorded' }],
+              details: { answer_requirements: requirements } };
+            if (params.name === 'search') return { content: [{ type: 'text', text: source }],
+              details: { evidence_ids: [1], artifact_id: 'source-artifact' } };
+            if (params.tool_call_id === 'draft') return { isError: true, content: [{ type: 'text', text: feedback }],
+              details: { code: 'answer_too_long', rejected_answer_span_id: 'tool:draft' } };
+            return { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed', answer: params.args.answer } };
+          },
+        });
+        t.after(() => runtime.abort());
+        return { result: await runtime.run(), requests, admissions, events, settled };
+      }
+      // The unbounded control uses the same experimental prompt and the same
+      // provider serializer. Only host admission differs, not model responses.
+      const control = await run({ bounded: false });
+      const bounded = await run({ bounded: true });
+      assert.equal(control.result.terminal, 'completed');
+      assert.equal(bounded.result.terminal, 'completed', bounded.result.message);
+      assert.deepEqual(bounded.requests, control.requests, 'The paid HTTP bodies must be identical');
+      assert.equal(bounded.requests.length, 4);
+      assert.deepEqual(bounded.admissions.map(item => item.turn), [1, 2, 3, 4, 4]);
+      assert.equal(bounded.settled.length, 4, 'No extra provider request or usage settlement');
+      assert.ok(bounded.admissions.at(-2).input_bytes > 18000);
+      assert.ok(bounded.admissions.at(-1).input_bytes <= 18000);
+      const last = bounded.requests.at(-1);
+      assert.ok(bounded.admissions.at(-1).input_bytes >= Buffer.byteLength(JSON.stringify(last)));
+      assert.deepEqual(last.tools.map(tool => tool.function.name), ['submit_answer']);
+      assert.equal(last.messages.find(message => message.tool_call_id === 'read').content, source);
+      assert.equal(last.messages.find(message => message.tool_call_id === 'draft').content, feedback);
+      const draftCall = last.messages.flatMap(message => message.tool_calls || []).find(item => item.id === 'draft');
+      assert.equal(JSON.parse(draftCall.function.arguments).answer, draft);
+      assert.match(last.messages[0].content, /本轮已登记的回答要求/);
+      assert.ok(JSON.stringify(last.messages).includes('原问题🔎，正文不超过250字。'));
+      assert.ok(!bounded.events.some(event => event.type === 'context.compacted'), 'No source body was archived');
+      // Do not change default admission, rewrite a transcript using mid-turn
+      // system messages, or let a genuinely oversized required input through.
+      for (const options of [{ enabled: false }, { midConversation: true }, { limit: 10 }]) {
+        const blocked = await run({ bounded: true, ...options });
+        assert.equal(blocked.result.terminal, 'failed');
+        assert.equal(blocked.requests.length, 3);
+        assert.equal(blocked.settled.length, 3);
+        assert.match(blocked.result.message, /无法容纳问题与最后一组原文证据/);
+      }
+    });
+}
+
 for (const scenario of [
   { enabled: true, proof: 'valid', mixed: false },
   { enabled: true, proof: 'valid', mixed: false, invalidLatest: true },

@@ -1,6 +1,6 @@
 import { Agent } from '@earendil-works/pi-agent-core';
 import { streamSimple } from '@earendil-works/pi-ai/api/openai-completions';
-import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
+import { collapseSystemMessages, createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 
 const CLOSING_TOOLS = new Set(['submit_answer', 'ask_user', 'recall_evidence']);
 
@@ -208,6 +208,15 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
         let fitted = false;
         if (!admission.allowed && Number.isSafeInteger(admission.max_input_bytes) && admission.max_input_bytes >= 0) {
           finalizing = recallClosed = true;
+          // Pi 1.0.3 already performs this exact projection before sending
+          // OpenAI-completions requests without mid-conversation system support.
+          // Resolve removed tool declarations before measuring the closing
+          // transcript, rather than reserving tokens for unsent research schemas.
+          // Keep the default route and providers with anchored system updates intact.
+          if (config.answer_checks_enabled && requestedModel.api === 'openai-completions'
+            && !requestedModel.compat?.supportsMidConvoSystemMessages) {
+            prepared = collapseSystemMessages(prepared);
+          }
           const compacted = fitFinalContext(prepared, admission.max_input_bytes);
           if (compacted.archived) await emit('context.compacted', { archived_tool_results: compacted.archived,
             remaining_bytes: compacted.bytes, reason: 'remaining_budget' });
