@@ -14,6 +14,7 @@ review = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = review
 spec.loader.exec_module(review)
 MODEL = "test:reviewer"
+THINKING_MODEL = "aliyun_bailian:qwen3.5-plus"
 
 
 def job(answer="结果为5[1]。", *, cited=True, facts=None):
@@ -176,7 +177,7 @@ def freeze(tmp_path, name="development", **kwargs):
         {"id": "wrong", "question": "结果？", "answer": "结果为6[1]。", "citations": [{"id": 1, "content": "结果为5。"}],
          "expected": {"supported": False, "facts": [], "unit_support": {"u1": "contradicted"}}}]}))
     output = tmp_path / name
-    manifest = review.prepare_calibration(cases, output, model=MODEL, **kwargs)
+    manifest = review.prepare_calibration(cases, output, model=kwargs.pop("model", MODEL), **kwargs)
     return output, cases, manifest
 
 
@@ -215,18 +216,23 @@ def test_heldout_cannot_run_without_development_evidence(tmp_path):
 
 
 def test_development_gate_recomputes_gold_and_checks_raw_receipts(tmp_path):
-    output, _, _ = freeze(tmp_path)
+    output, _, manifest = freeze(tmp_path)
     _, private, jobs = review.load_sealed(output, MODEL)
+    config = manifest["reviewer_config"]
+    attempt = {"model": MODEL, "raw_model": "reviewer", "reviewer_config": config,
+               "manifest_sha256": review.v1.sha(manifest)}
+    review.v1.write_new(output / "review-attempt.json", attempt)
     (output / "reviews").mkdir()
     assessments, hashes = {}, {}
     for jid, value in jobs.items():
         correct = "为5" in value["answer"]
         receipt = receipt_for(value, entails=["yes" if correct else "no"], contradicts=["no" if correct else "yes"])
+        add_wire_fields(value, receipt, config, "reviewer")
         review.v1.write_new(output / "reviews" / f"{jid}.json", receipt)
         hashes[jid] = review.v1.sha(receipt)
         assessments[value["answer_id"]] = review.validate_receipt(value, receipt)
     report = review.previous.calibration_report(private["gold"], assessments)
-    report.update(model=MODEL, review_receipt_sha256=hashes)
+    report.update(model=MODEL, review_receipt_sha256=hashes, review_attempt_sha256=review.v1.sha(attempt))
     review.v1.write_new(output / "report.json", report)
     assert review.check_development(output, MODEL)
     first = output / "reviews" / f"{next(iter(jobs))}.json"
@@ -254,3 +260,164 @@ def test_unavailable_or_incomplete_provider_stops_without_retry_and_preserves_re
     assert json.loads(saved["response_text"]) == response
     with pytest.raises(FileExistsError): asyncio.run(review.run_review(output, MODEL))
     assert len(calls) == 1
+
+
+def add_wire_fields(value, receipt, config, raw_model):
+    receipt.update(input_sha256=review.v1.sha(value), reviewer_config_sha256=review.v1.sha(config))
+    for stage, request in review.review_requests(value).items():
+        saved = receipt["requests"][stage]
+        body = review.request_body(request, raw_model, config)
+        if config["thinking"]:
+            add_thinking_usage(saved["response"])
+        saved.update(request_body=body, request_body_sha256=review.v1.sha(body),
+                     response_text=json.dumps(saved["response"]))
+
+
+def add_thinking_usage(response):
+    response["choices"][0]["message"]["reasoning_content"] = "private controlled response"
+    response["usage"] = {"prompt_tokens": 100, "completion_tokens": 200, "total_tokens": 300,
+                         "completion_tokens_details": {"reasoning_tokens": 150}}
+
+
+def test_thinking_is_frozen_bounded_and_does_not_change_prompts_or_labels(tmp_path):
+    plain, cases, plain_manifest = freeze(tmp_path, model=THINKING_MODEL)
+    thinking = tmp_path / "thinking"
+    manifest = review.prepare_calibration(cases, thinking, model=THINKING_MODEL, thinking=True)
+    plain_jobs = review.load_sealed(plain, THINKING_MODEL)[2]
+    thinking_jobs = review.load_sealed(thinking, THINKING_MODEL)[2]
+    assert plain_jobs == thinking_jobs
+    assert manifest["private_sha256"] == plain_manifest["private_sha256"]
+    assert manifest["rubric_sha256"] == plain_manifest["rubric_sha256"]
+    assert manifest["expected_requests"] == plain_manifest["expected_requests"] == 6
+    default = plain_manifest["reviewer_config"]["request_options"]
+    options = manifest["reviewer_config"]["request_options"]
+    assert default == {"temperature": 0, "max_tokens": 8000, "response_format": {"type": "json_object"},
+                       "stream": False, "enable_thinking": False}
+    assert options == {"temperature": 0, "max_completion_tokens": 7990, "thinking_budget": 4000,
+                       "response_format": {"type": "json_object"}, "stream": False, "enable_thinking": True}
+    assert options["max_completion_tokens"] + 10 == manifest["reviewer_config"]["output_token_limit"] == 8000
+    with pytest.raises(ValueError, match="configured"):
+        review.prepare_calibration(cases, tmp_path / "unsupported", model=MODEL, thinking=True)
+    assert not (tmp_path / "unsupported").exists()
+    with pytest.raises(ValueError, match="configuration differs"):
+        review.prepare_calibration(cases, tmp_path / "heldout", model=THINKING_MODEL,
+            kind="heldout", development=plain, thinking=True)
+    assert not (tmp_path / "heldout").exists()
+
+
+@pytest.mark.parametrize("change", ["thinking", "limit", "options", "hash"])
+def test_changed_frozen_request_configuration_fails_before_calls(tmp_path, change):
+    output, _, manifest = freeze(tmp_path, model=THINKING_MODEL, thinking=True)
+    config = manifest["reviewer_config"]
+    if change == "thinking": config["thinking"] = False
+    elif change == "limit": config["output_token_limit"] = 16000
+    elif change == "options": config["request_options"]["max_completion_tokens"] = 16000
+    else: manifest["reviewer_config_sha256"] = "other"
+    (output / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="configuration changed"):
+        asyncio.run(review.run_review(output, THINKING_MODEL))
+    assert not (output / "review-attempt.json").exists()
+
+
+@pytest.mark.parametrize("change", ["input", "config", "body", "body_hash", "raw_text", "budget"])
+def test_receipt_binds_actual_wire_request_response_and_thinking_usage(change):
+    value = job()
+    config = review.reviewer_config(THINKING_MODEL, thinking=True)
+    receipt = receipt_for(value)
+    add_wire_fields(value, receipt, config, "qwen3.5-plus")
+    review.validate_receipt(value, receipt, config=config, raw_model="qwen3.5-plus")
+    saved = receipt["requests"]["kind"]
+    if change == "input": receipt["input_sha256"] = "changed"
+    elif change == "config": receipt["reviewer_config_sha256"] = "changed"
+    elif change == "body": saved["request_body"]["enable_thinking"] = False
+    elif change == "body_hash": saved["request_body_sha256"] = "changed"
+    elif change == "raw_text": saved["response_text"] = "{}"
+    else:
+        saved["response"]["usage"].update(completion_tokens=8001, total_tokens=8101)
+        saved["response_text"] = json.dumps(saved["response"])
+    with pytest.raises(ValueError):
+        review.validate_receipt(value, receipt, config=config, raw_model="qwen3.5-plus")
+
+
+@pytest.mark.parametrize("change", ["missing_usage", "unknown_usage", "negative", "boolean", "sum", "over_budget",
+                                   "missing_reasoning_usage", "no_thinking", "missing_reasoning", "inconsistent_reasoning",
+                                   "non_json", "invalid_schema"])
+def test_thinking_protocol_failure_stops_once_and_preserves_raw_receipt(tmp_path, monkeypatch, change):
+    from app.modules.pi_agent import models
+    output, _, _ = freeze(tmp_path, model=THINKING_MODEL, thinking=True)
+    monkeypatch.setattr(models, "model_endpoint", lambda *args: {"provider": "aliyun_bailian", "model": "qwen3.5-plus",
+        "key": "DO_NOT_SAVE_CREDENTIAL", "base_url": "https://example.test"})
+    response = {"choices": [{"finish_reason": "stop", "message": {"content": "{}"}}]}
+    add_thinking_usage(response)
+    usage = response["usage"]
+    if change == "missing_usage": response.pop("usage")
+    elif change == "unknown_usage": usage["completion_tokens"] = None
+    elif change == "negative": usage["prompt_tokens"] = -1
+    elif change == "boolean": usage["completion_tokens"] = True
+    elif change == "sum": usage["total_tokens"] += 1
+    elif change == "over_budget": usage.update(completion_tokens=8001, total_tokens=8101)
+    elif change == "missing_reasoning_usage": usage.pop("completion_tokens_details")
+    elif change == "no_thinking": usage["completion_tokens_details"]["reasoning_tokens"] = 0
+    elif change == "missing_reasoning": response["choices"][0]["message"].pop("reasoning_content")
+    elif change == "inconsistent_reasoning": usage["completion_tokens_details"]["reasoning_tokens"] = 201
+    elif change == "non_json": response["choices"][0]["message"]["content"] = "```json\n{}\n```"
+    calls = []
+    def handler(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(200, json=response)
+    client = httpx.AsyncClient
+    monkeypatch.setattr(review.httpx, "AsyncClient", lambda **kwargs: client(transport=httpx.MockTransport(handler), **kwargs))
+    result = asyncio.run(review.run_review(output, THINKING_MODEL))
+    assert len(calls) == 1 and not result["pass"] and result["validated_answers"] == 0
+    receipts = list((output / "reviews").glob("*.json"))
+    assert len(receipts) == 1
+    saved = next(iter(json.loads(receipts[0].read_text())["requests"].values()))
+    assert saved["request_body"] == calls[0] and saved["error_type"] in {"ValueError", "ValidationError"}
+    assert json.loads(saved["response_text"]) == response
+    assert all("DO_NOT_SAVE_CREDENTIAL" not in path.read_text() for path in output.rglob("*.json"))
+    with pytest.raises(FileExistsError): asyncio.run(review.run_review(output, THINKING_MODEL))
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("thinking", [False, True])
+def test_heldout_requires_same_configuration_endpoint_and_reproducible_raw_receipts(tmp_path, monkeypatch, thinking):
+    from app.modules.pi_agent import models
+    output, cases, _ = freeze(tmp_path, model=THINKING_MODEL, thinking=thinking)
+    _, _, jobs = review.load_sealed(output, THINKING_MODEL)
+    expected = {}
+    for value in jobs.values():
+        correct = "为5" in value["answer"]
+        receipt = receipt_for(value, entails=["yes" if correct else "no"], contradicts=["no" if correct else "yes"])
+        for stage, request in review.review_requests(value).items():
+            response = receipt["requests"][stage]["response"]
+            if thinking: add_thinking_usage(response)
+            expected[request["system"], review.v1.encoded(request["input"]) ] = response
+    endpoint = {"provider": "aliyun_bailian", "model": "qwen3.5-plus", "key": "test", "base_url": "https://example.test"}
+    monkeypatch.setattr(models, "model_endpoint", lambda *args: endpoint)
+    calls = []
+    def handler(request):
+        body = json.loads(request.content)
+        calls.append(body)
+        return httpx.Response(200, json=expected[tuple(message["content"] for message in body["messages"])])
+    client = httpx.AsyncClient
+    monkeypatch.setattr(review.httpx, "AsyncClient", lambda **kwargs: client(transport=httpx.MockTransport(handler), **kwargs))
+    assert asyncio.run(review.run_review(output, THINKING_MODEL))["pass"]
+    assert len(calls) == 6
+    assert review.check_development(output, THINKING_MODEL)
+    with pytest.raises(ValueError, match="configuration differs"):
+        review.check_development(output, THINKING_MODEL,
+            expected_config=review.reviewer_config(THINKING_MODEL, thinking=not thinking))
+    heldout = tmp_path / "heldout"
+    review.prepare_calibration(cases, heldout, model=THINKING_MODEL, kind="heldout", development=output, thinking=thinking)
+    endpoint["base_url"] = "https://changed.test"
+    with pytest.raises(ValueError, match="endpoint differs"):
+        asyncio.run(review.run_review(heldout, THINKING_MODEL))
+    assert len(calls) == 6 and not (heldout / "review-attempt.json").exists()
+    endpoint["base_url"] = "https://example.test"
+    assert asyncio.run(review.run_review(heldout, THINKING_MODEL))["pass"]
+    assert len(calls) == 12
+    attempt = json.loads((output / "review-attempt.json").read_text())
+    attempt["reviewer_config"]["thinking"] = not thinking
+    (output / "review-attempt.json").write_text(json.dumps(attempt))
+    with pytest.raises(ValueError, match="execution configuration changed"):
+        review.check_development(output, THINKING_MODEL)
