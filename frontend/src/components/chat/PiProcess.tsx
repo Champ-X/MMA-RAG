@@ -48,15 +48,16 @@ function EvidenceList({ trace, selection, onSelect }: {
   return <div className="pi-evidence-body">
     <div className="pi-evidence-sources">{trace.evidence.map(evidence => {
       const EvidenceIcon = modalityIcons[evidence.modality] || FileText
-      return <button type="button" key={evidence.id}
+      return <button type="button" key={evidence.id} data-modality={evidence.modality}
+      aria-label={'查看' + (modalityLabels[evidence.modality] || '') + '证据 ' + evidence.id + '：' + evidence.file_name}
       aria-pressed={selection?.id === evidence.id} onClick={() => onSelect(evidence.id)}>
-      <span className="pi-evidence-number"><EvidenceIcon size={12} aria-hidden />{evidence.id}</span>
+      <span className="pi-evidence-number"><EvidenceIcon size={14} strokeWidth={1.75} aria-hidden />{evidence.id}</span>
       <span className="pi-evidence-source-name"><span>{evidence.file_name}</span>
         <small>{modalityLabels[evidence.modality] || '资料'} · {observationLabels[evidence.observation] || evidence.observation}</small></span>
       <ChevronRight size={13} aria-hidden />
     </button>})}</div>
     {selection && <div className="pi-evidence-content" aria-busy={selection.loading}>
-      <div className="pi-evidence-content-heading"><strong>证据 [{selection.id}]</strong><span>{selected?.file_name}</span>
+      <div className="pi-evidence-content-heading" data-modality={selected?.modality}><strong>证据 [{selection.id}]</strong><span>{selected?.file_name}</span>
         {selection.sourceId && <a href={piApi.sourceUrl(trace.runId, selection.sourceId)} target="_blank" rel="noreferrer">
           原文件 <ArrowUpRight size={12} aria-hidden /></a>}</div>
       {selection.loading ? <p role="status">读取原始记录…</p>
@@ -109,7 +110,7 @@ function Step({ step, runId, evidence, selectedEvidenceId, onEvidenceSelect }: {
           return <button type="button" key={id} data-modality={source?.modality}
             aria-label={'查看' + (source ? modalityLabels[source.modality] || '' : '') + '证据 ' + id + (source ? '：' + source.file_name : '')}
             aria-pressed={selectedEvidenceId === id} onClick={() => onEvidenceSelect(id)}>
-            <EvidenceIcon size={11} aria-hidden /><span>[{id}]</span></button>
+            <span className="pi-evidence-icon"><EvidenceIcon size={13} strokeWidth={1.75} aria-hidden /></span><span>[{id}]</span></button>
         })}</div>}
       {(step.args || step.artifactId) && <details className="pi-step-details">
         <summary><ChevronRight size={12} aria-hidden /><Braces size={12} aria-hidden />调用详情</summary>
@@ -160,17 +161,17 @@ export function PiProcess({ trace }: { trace: PiTrace }) {
       if (message?.pi) store.updateMessage(session.id, message.id, { pi: { ...message.pi, connectionError: undefined } })
     }
   }
-  return <section className="pi-process" data-status={trace.status} aria-label="Pi Agent 研究过程">
+  return <section className="pi-process" data-status={trace.status} data-expanded={open} aria-label="Agent Mode 研究过程">
     <button type="button" className="pi-process-header" aria-expanded={open} aria-controls={bodyId}
-      aria-label={'Pi Agent 研究过程，' + piStatusLabel[trace.status] + '，' + tools.length + ' 次工具，' + trace.evidence.length + ' 条证据'
+      aria-label={'Agent Mode 研究过程，' + piStatusLabel[trace.status] + '，' + tools.length + ' 次工具，' + trace.evidence.length + ' 条证据'
         + (duration != null ? '，耗时 ' + (duration / 1000).toFixed(1) + ' 秒' : '')} onClick={() => setOpen(!open)}>
       <span className="pi-mark" aria-hidden>π</span>
-      <span className="pi-process-identity"><strong>Pi Agent</strong></span>
+      <span className="pi-process-identity"><strong>Agent Mode</strong></span>
       <span className="pi-run-status" role="status"><span className="pi-run-status-dot" aria-hidden />{piStatusLabel[trace.status]}</span>
       <span className="pi-process-count"><span><Braces size={13} aria-hidden /><b>{tools.length}</b> 次工具</span>
         <span><Files size={13} aria-hidden /><b>{trace.evidence.length}</b> 条证据</span>
         {duration != null && <span><Clock3 size={13} aria-hidden /><b>{(duration / 1000).toFixed(1)}</b>s</span>}</span>
-      <ChevronDown size={15} className="pi-process-chevron" aria-hidden />
+      <span className="pi-process-toggle" aria-hidden><ChevronDown size={14} className="pi-process-chevron" /></span>
     </button>
     {trace.connectionError && <div className="pi-connection-error" role="alert"><AlertCircle size={14} aria-hidden />
       连接中断，任务状态待同步。<button type="button" onClick={reconnect}><RotateCcw size={12} aria-hidden />重新连接</button></div>}
@@ -187,8 +188,14 @@ export function PiProcess({ trace }: { trace: PiTrace }) {
           : activeStep ? stepLabel(activeStep) : '正在同步任务记录'}
       </div>}
       {visibleSteps.length > 0 && <div className="pi-trace-hint">
-        <span>{visibleSteps.length} 个步骤{!showModels && hiddenModels > 0 ? ' · ' + hiddenModels + ' 次完成的模型调用已收起' : ''}</span>
-        <div className="pi-timeline-jumps">
+        <div className="pi-trace-summary">
+          <span className="pi-trace-step-count"><ListChecks size={12} aria-hidden /><b>{visibleSteps.length}</b> 个步骤</span>
+          {!showModels && hiddenModels > 0 && <button type="button" className="pi-trace-folded"
+            title="显示完整记录，包含已完成的模型调用" onClick={() => setShowModels(true)}>
+            <Cpu size={12} aria-hidden /><b>{hiddenModels}</b> 次模型调用已折叠<ChevronRight size={11} aria-hidden />
+          </button>}
+        </div>
+        <div className="pi-timeline-jumps" role="group" aria-label="时间线位置">
           <button type="button" aria-label="跳到时间线第一步" onClick={() => timelineRef.current?.scrollTo({ top: 0 })}>
             <ArrowUp size={11} aria-hidden />开头</button>
           <button type="button" aria-label="跳到时间线最后一步" onClick={() => {
@@ -210,8 +217,12 @@ export function PiProcess({ trace }: { trace: PiTrace }) {
       {trace.usage && <div className="pi-usage"><span><Cpu size={12} aria-hidden />模型调用 {trace.usage.model_requests ?? '未知'} 次</span>
         <span>Token {trace.usage.model_tokens?.toLocaleString() ?? '未知'}{trace.usage.unknown_usage_requests ? '（含保守估算）' : ''}</span></div>}
       {trace.message && <p className="pi-process-message">{trace.message}</p>}
-      {!!trace.limitations?.length && <div className="pi-limitations"><AlertCircle size={15} aria-hidden /><div>
-        <strong>尚未覆盖</strong><ul>{trace.limitations.map((item, i) => <li key={i}>{item}</li>)}</ul></div></div>}
+      {!!trace.limitations?.length && <details className="pi-limitations">
+        <summary><AlertCircle size={14} aria-hidden /><strong>尚未覆盖</strong>
+          <span className="pi-limitations-count">{trace.limitations.length} 项</span>
+          <ChevronDown size={13} className="pi-limitations-chevron" aria-hidden /></summary>
+        <ul>{trace.limitations.map((item, i) => <li key={i}>{item}</li>)}</ul>
+      </details>}
       {!!trace.options?.length && <p className="pi-process-message">可补充：{trace.options.join(' / ')}</p>}
     </div>}
     {trace.draft && !piTerminal(trace.status) && <details className="pi-draft"><summary><ChevronRight size={13} aria-hidden />

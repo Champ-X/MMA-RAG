@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
+import { lazy, Suspense, useState, useRef, useId, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
 import { Send, Zap, Paperclip, Database, Square, AtSign, X, Sparkles, Search, BrainCircuit, Pencil, ChevronDown } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -214,6 +214,7 @@ export function ChatInterface() {
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const chatWorkspaceRef = useRef<HTMLDivElement>(null)
   const composerDockRef = useRef<HTMLDivElement>(null)
+  const piComposerGradientId = useId()
   const inputRef = useRef<MentionComposerHandle>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const citePopoverRef = useRef<HTMLDivElement>(null)
@@ -265,16 +266,15 @@ export function ChatInterface() {
   const piModelId = activeSession?.piModel || piConfig?.default_model || ''
   const piModelLogo = piModelId ? VENDOR_LOGOS[getModelVendor(piModelId)] : undefined
   useLayoutEffect(() => {
-    if (!piEnabled) return
     const workspace = chatWorkspaceRef.current
     const dock = composerDockRef.current
     if (!workspace || !dock) return
-    const reserveComposerSpace = () => workspace.style.setProperty('--pi-dock-height', `${Math.ceil(dock.getBoundingClientRect().height)}px`)
+    const reserveComposerSpace = () => workspace.style.setProperty('--chat-dock-height', `${Math.ceil(dock.getBoundingClientRect().height)}px`)
     reserveComposerSpace()
     const observer = new ResizeObserver(reserveComposerSpace)
     observer.observe(dock)
-    return () => { observer.disconnect(); workspace.style.removeProperty('--pi-dock-height') }
-  }, [piEnabled])
+    return () => { observer.disconnect(); workspace.style.removeProperty('--chat-dock-height') }
+  }, [])
   useEffect(() => {
     if (!piEnabled || piConfig) return
     let cancelled = false
@@ -778,16 +778,15 @@ export function ChatInterface() {
   }, [messages])
 
   return (
-    <div ref={chatWorkspaceRef} className={cn('h-full min-h-0 overflow-hidden bg-transparent', piEnabled ? 'pi-chat-workspace' : 'flex flex-col')}>
+    <div ref={chatWorkspaceRef} className="chat-workspace h-full min-h-0 overflow-hidden bg-transparent">
       {/* 消息区 */}
-      <ScrollArea ref={scrollAreaRef} className={cn('min-h-0 flex-1', piEnabled && 'pi-chat-messages')}>
+      <ScrollArea ref={scrollAreaRef} className="chat-messages min-h-0">
         <div className={cn(
-          'px-4 pb-1 pt-5 sm:px-8 sm:pt-7',
-          piEnabled && 'pi-chat-message-content',
+          'chat-message-content px-4 pt-5 sm:px-8 sm:pt-7',
           messages.length === 0 && 'flex min-h-full flex-col justify-center'
         )}>
           <div
-            className="mx-auto flex w-full max-w-4xl flex-col gap-6"
+            className="mx-auto flex w-[calc(100%_-_3rem)] max-w-4xl flex-col gap-6"
             role={messages.length > 0 ? 'log' : undefined}
             aria-label={messages.length > 0 ? '对话消息' : undefined}
             aria-live={messages.length > 0 ? 'polite' : undefined}
@@ -873,15 +872,24 @@ export function ChatInterface() {
       </ScrollArea>
 
       {/* 输入区 - Gemini 风格悬浮框 */}
-      <div ref={composerDockRef} className={cn('relative px-4 pb-4 sm:px-6', piEnabled && 'pi-composer-dock')}>
-        <div data-pi-state={piEnabled ? piState : undefined} className={cn('mx-auto max-w-4xl relative', piEnabled && 'pi-composer-frame')}>
+      <div ref={composerDockRef} className="chat-composer-dock relative px-4 pb-4 sm:px-6">
+        <div data-pi-state={piEnabled ? piState : undefined} className={cn('chat-composer-frame mx-auto max-w-[62rem] relative', piEnabled && 'pi-composer-frame')}>
           {piEnabled && <svg className="pi-composer-trails" width="100%" height="100%" aria-hidden="true" focusable="false">
+            <defs>
+              <linearGradient id={piComposerGradientId} x1="0%" y1="0%" x2="100%" y2="25%">
+                <stop offset="0%" stopColor="var(--pi-cyan)" />
+                <stop offset="25%" stopColor="var(--pi-blue)" />
+                <stop offset="60%" stopColor="var(--pi-violet)" />
+                <stop offset="100%" stopColor="var(--pi-pink)" />
+              </linearGradient>
+            </defs>
+            <rect className="pi-composer-edge" x="1" y="1" width="100%" height="100%" rx="27" stroke={`url(#${piComposerGradientId})`} />
             {['cyan', 'pink'].map(color => <g key={color} className={`pi-composer-trail pi-composer-trail--${color}`}>
               {PI_COMPOSER_TRAIL_LAYERS.map((layer, index) => <rect key={index} x="1" y="1" width="100%" height="100%" rx="27" pathLength="100" strokeDasharray={layer.dashArray} opacity={layer.opacity} />)}
             </g>)}
           </svg>}
           {/* 一体化输入框：flex 布局，textarea 与按钮区分离；focus 时极细 indigo/fuchsia 环与品牌一致 */}
-          <div data-pi-state={piEnabled ? piState : undefined} className={cn("flex flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/75 bg-white/90 shadow-[0_22px_52px_-36px_rgba(15,23,42,0.72),0_1px_0_rgba(255,255,255,0.9)_inset] ring-1 ring-white/70 backdrop-blur-xl transition-[box-shadow,border-color] duration-200 focus-within:border-indigo-300/80 focus-within:ring-indigo-200/80 dark:border-slate-700/70 dark:bg-slate-900/80 dark:shadow-[0_24px_62px_-42px_rgba(0,0,0,0.95)] dark:ring-white/[0.05] dark:focus-within:border-indigo-400/40 dark:focus-within:ring-indigo-400/20", piEnabled && 'pi-composer')}>
+          <div data-pi-state={piEnabled ? piState : undefined} className={cn("chat-composer flex flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/75 bg-white/90 shadow-[0_22px_52px_-36px_rgba(15,23,42,0.72),0_1px_0_rgba(255,255,255,0.9)_inset] ring-1 ring-white/70 backdrop-blur-xl transition-[box-shadow,border-color] duration-200 focus-within:border-indigo-300/80 focus-within:ring-indigo-200/80 dark:border-slate-700/70 dark:bg-slate-900/80 dark:shadow-[0_24px_62px_-42px_rgba(0,0,0,0.95)] dark:ring-white/[0.05] dark:focus-within:border-indigo-400/40 dark:focus-within:ring-indigo-400/20", piEnabled && 'pi-composer')}>
             {questionEdit && (
               <div className="flex items-center gap-2 border-b border-indigo-100/80 bg-indigo-50/60 px-5 py-2 text-xs dark:border-indigo-500/20 dark:bg-indigo-950/30">
                 <Pencil size={13} className="text-indigo-500 dark:text-indigo-300" aria-hidden />
@@ -1077,12 +1085,20 @@ export function ChatInterface() {
             {/* 底部功能栏 - 独立区域，与文字区物理分离 */}
             <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2 bg-gradient-to-b from-transparent to-slate-50/60 px-4 py-2.5 dark:to-slate-950/25">
               <div className={cn('flex shrink-0 items-center gap-2', piEnabled && 'pi-composer-controls')}>
+                <button type="button" className="pi-toggle" aria-pressed={piEnabled}
+                  aria-label={piEnabled ? '关闭纯 Agent 模式，恢复原回答方式' : '开启 Pi 纯 Agent 模式'}
+                  title={piEnabled ? '关闭后恢复原回答方式，草稿与材料保持不变' : 'Pi 自主决定检索、阅读与回答步骤'}
+                  disabled={isLoading || !activeSessionId} onMouseDown={event => event.preventDefault()}
+                  onClick={() => { if (activeSessionId) updateSessionPiMode(activeSessionId, !piEnabled) }}>
+                  <span className="pi-toggle-symbol" aria-hidden>π</span>
+                </button>
+
                 {!piEnabled && <button
                   type="button"
                   onClick={() => setKbConfigPanelOpen(true)}
                   title="知识库范围配置"
                   aria-label="打开知识库范围配置"
-                  className="group flex items-center gap-1.5 rounded-full border border-blue-200/60 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-blue-700 shadow-sm shadow-blue-500/10 ring-1 ring-blue-200/30 transition-all duration-200 hover:border-blue-300/80 hover:from-blue-100/90 hover:to-indigo-100/90 hover:shadow-md hover:shadow-blue-500/20 hover:ring-blue-300/50 active:scale-95 dark:border-blue-500/40 dark:from-blue-900/30 dark:to-indigo-900/30 dark:text-blue-200 dark:ring-blue-500/20 dark:hover:border-blue-400/60 dark:hover:from-blue-800/40 dark:hover:to-indigo-800/40"
+                  className="group flex h-8 items-center gap-1.5 rounded-full border border-blue-200/60 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-blue-700 shadow-sm shadow-blue-500/10 ring-1 ring-blue-200/30 transition-all duration-200 hover:border-blue-300/80 hover:from-blue-100/90 hover:to-indigo-100/90 hover:shadow-md hover:shadow-blue-500/20 hover:ring-blue-300/50 active:scale-95 dark:border-blue-500/40 dark:from-blue-900/30 dark:to-indigo-900/30 dark:text-blue-200 dark:ring-blue-500/20 dark:hover:border-blue-400/60 dark:hover:from-blue-800/40 dark:hover:to-indigo-800/40"
                 >
                   <Database className="h-3.5 w-3.5 text-blue-600 dark:text-blue-300 transition-transform duration-200 group-hover:scale-110" aria-hidden />
                   <span>
@@ -1119,14 +1135,6 @@ export function ChatInterface() {
                   <span className="hidden sm:inline">{agentModeShortLabel}</span>
                 </button>}
 
-                <button type="button" className="pi-toggle" aria-pressed={piEnabled}
-                  aria-label={piEnabled ? '关闭纯 Agent 模式，恢复原回答方式' : '开启 Pi 纯 Agent 模式'}
-                  title={piEnabled ? '关闭后恢复原回答方式，草稿与材料保持不变' : 'Pi 自主决定检索、阅读与回答步骤'}
-                  disabled={isLoading || !activeSessionId} onMouseDown={event => event.preventDefault()}
-                  onClick={() => { if (activeSessionId) updateSessionPiMode(activeSessionId, !piEnabled) }}>
-                  <span className="pi-toggle-symbol" aria-hidden>π</span><span>Agent</span>
-                </button>
-
                 {piEnabled && <label className="pi-model-picker" title={piModelId ? `Pi 模型：${piModelId}` : '读取 Pi 模型配置'}>
                   {piModelLogo ? <img src={piModelLogo} alt="" width={16} height={16} /> : <Zap size={15} aria-hidden />}
                   <select aria-label="纯 Agent 独立模型" disabled={isLoading || !piConfig} value={piModelId}
@@ -1145,7 +1153,7 @@ export function ChatInterface() {
                   onClick={() => setModelConfigPanelOpen(true)}
                   title="对话模型选择"
                   aria-label={`打开对话模型选择，当前模型：${currentModel}`}
-                  className="group flex items-center gap-1.5 rounded-full border border-purple-200/60 bg-gradient-to-r from-purple-50/80 to-pink-50/80 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-purple-700 shadow-sm shadow-purple-500/10 ring-1 ring-purple-200/30 transition-all duration-200 hover:border-purple-300/80 hover:from-purple-100/90 hover:to-pink-100/90 hover:shadow-md hover:shadow-purple-500/20 hover:ring-purple-300/50 active:scale-95 dark:border-purple-500/40 dark:from-purple-900/30 dark:to-pink-900/30 dark:text-purple-200 dark:ring-purple-500/20 dark:hover:border-purple-400/60 dark:hover:from-purple-800/40 dark:hover:to-pink-800/40"
+                  className="group flex h-8 items-center gap-1.5 rounded-full border border-purple-200/60 bg-gradient-to-r from-purple-50/80 to-pink-50/80 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-purple-700 shadow-sm shadow-purple-500/10 ring-1 ring-purple-200/30 transition-all duration-200 hover:border-purple-300/80 hover:from-purple-100/90 hover:to-pink-100/90 hover:shadow-md hover:shadow-purple-500/20 hover:ring-purple-300/50 active:scale-95 dark:border-purple-500/40 dark:from-purple-900/30 dark:to-pink-900/30 dark:text-purple-200 dark:ring-purple-500/20 dark:hover:border-purple-400/60 dark:hover:from-purple-800/40 dark:hover:to-pink-800/40"
                 >
                   {openRouterModelRaw ? (
                     <Suspense
