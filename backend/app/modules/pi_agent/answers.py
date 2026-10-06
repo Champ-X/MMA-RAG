@@ -75,6 +75,20 @@ def citation_errors(args, delivered):
     return errors
 
 
+def source_notices(statements):
+    """Describe selected origins, without inferring the answer's meaning."""
+    notices = []
+    for statement in statements:
+        generated = [source for source in statement["source_spans"]
+                     if source.get("origin") == "generated_caption"]
+        if generated:
+            notices.append({"code": "generated_caption_selected", "unit_id": statement["unit_id"],
+                "evidence_ids": sorted({source["evidence_id"] for source in generated}),
+                "source_spans": sorted({source["span_id"] for source in generated}),
+                "message": "这些选中片段按既有标记识别为生成图注，不能仅凭parsed_text类型当作作者正文。回答作者的定义、机制或结论时，请核对相关正文；若使用图像描述，应明确其观察性质与局限。是否支持当前主张仍须由你判断，本提示不作语义裁决。"})
+    return notices
+
+
 def assess_answer(args, delivered):
     """Require complete self-assessment and resolve its actual source anchors."""
     units = answer_units(args["answer"], args["limitations"])
@@ -147,8 +161,10 @@ def assess_answer(args, delivered):
         errors.append({"code": "answer_too_long", "actual": size, "maximum": limit,
                        "over_by": size - limit,
                        "message": "正文超出所声明的用户篇幅要求，请由Pi缩短后重新检查或提交。"})
+    notices = source_notices(resolved)
     return {"protocol_valid": not errors, "errors": errors, "answer_units": units,
             "body_characters": size, "declared_max_characters": limit, "statements": resolved,
+            **({"source_notices": notices} if notices else {}),
             "semantic_support": "Agent self-assessment; coverage and source identity checked, entailment not independently verified."}
 
 
@@ -156,9 +172,17 @@ def repair_feedback(report):
     """Expose measured units so Pi can repair prose without guessing line counts."""
     size, limit = report["body_characters"], report["declared_max_characters"]
     over_by = max(0, size - limit) if limit is not None else 0
+    notices = report.get("source_notices", [])
+    preview = [{**notice, **({"source_spans": notice["source_spans"][:6],
+        "source_span_count": len(notice["source_spans"]),
+        "source_spans_truncated": True} if len(notice["source_spans"]) > 6 else {})}
+        for notice in notices[:4]]
     return {"body_characters": size, "declared_max_characters": limit, "over_by": over_by,
             "suggested_body_characters": max(1, int(limit * 0.85)) if over_by else None,
             "instruction": "正文单元按非空行而非句子编号；整行全部事实共用该单元的来源列表。超长时保留用户所问事实与引用，整体精简到建议字数留出余量，不要只反复删少数字符，也不要调高或省略已声明的上限。",
+            **({"source_notices": preview, "source_notice_count": len(notices),
+                "source_notices_truncated": len(preview) < len(notices) or any(
+                    notice.get("source_spans_truncated", False) for notice in preview)} if notices else {}),
             "units": [{"unit_id": unit["id"], "characters": character_count(unit["text"]),
                        "text_prefix": unit["text"][:100]} for unit in report["answer_units"][:12]],
             "units_truncated": len(report["answer_units"]) > 12, "errors": report["errors"][:8]}
@@ -168,5 +192,6 @@ def compact_assessment(report):
     return {"version": 1, "body_characters": report["body_characters"],
             "declared_max_characters": report["declared_max_characters"],
             "semantic_support": report["semantic_support"],
+            **({"source_notices": report["source_notices"]} if report.get("source_notices") else {}),
             "statements": [{**item, "source_spans": [{key: value for key, value in source.items() if key != "text"}
                              for source in item["source_spans"]]} for item in report["statements"]]}

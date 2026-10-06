@@ -136,7 +136,7 @@ DEFINITIONS = {
     "recall_evidence": (RecallEvidence, "复读本轮已交付的证据，每次最多4条，编号和内容保持不变。用于核对上下文中已归档的原文；预算收尾阶段最多使用一次，然后提交回答，不读取新来源。"),
     "inspect_media": (InspectMedia, "直接读取原图片、PDF 指定页、音频或视频的指定区间。每次至多 60 秒，默认前 30 秒；视频最多 6 帧并记录实际时间。可选 visual/audio/both，观察模型独立于最终回答模型。"),
     "query_table": (QueryTable, "确定性读取 CSV/TSV/XLSX 原表并按列过滤、分组、计数或计算。保留原行号、单位和操作；不执行公式、Python 或 SQL。PDF 表格请读取原文并核对页图。"),
-    "check_answer": (CheckedAnswer, "检查你写的草稿：返回非空行/限制说明编号、篇幅、逐项覆盖与实际支持原文。不会终结任务或调用模型。可先留空statements取得编号，再按原文自查并修订；始终执行已登记的正文上限，无需再次填写max_characters。研究阶段可用，预算收尾时直接submit_answer也执行同样检查。检查只证明完整性和来源身份，不证明语义正确。"),
+    "check_answer": (CheckedAnswer, "检查你写的草稿：返回非空行/限制说明编号、篇幅、逐项覆盖与实际选中的证据片段；选择生成图注时返回来源提示。不会终结任务或调用模型。可先留空statements取得编号，再核对证据自查并修订；始终执行已登记的正文上限，无需再次填写max_characters。研究阶段可用，预算收尾时直接submit_answer也执行同样检查。检查只证明完整性和来源身份，不证明语义正确。"),
     "submit_answer": (CheckedAnswer, "提交你完成并逐项核验的最终回答。statements必须覆盖每个正文非空行(a1起)和每条限制(l1起)；fact/inference的source_spans须支持该行全部事实，且与就近[编号]引用一致。evidence_ids恰好等于正文引用。始终执行已登记的正文上限，无需再次填写max_characters。证据不足用partial并说明limitations；无相关依据用not_found、partial、空引用，仅说明本次未找到支持，不能断言整篇/全库没有信息。只做完整性与身份检查，不代写答案或证明语义正确。"),
     "ask_user": (AskUser, "缺失的信息会影响结论时，提出具体澄清问题并结束本次运行；用户回复后开始关联的新运行。"),
 }
