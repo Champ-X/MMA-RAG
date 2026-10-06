@@ -243,6 +243,10 @@ class ToolSet:
             self.emit("tool.completed", {"name": name, "tool_call_id": call_id, "artifact_id": artifact,
                       "evidence_ids": [e.id for e in assigned], "status": result.get("status", "ok"),
                       "duration_ms": round((time.monotonic() - started) * 1000)}, span_id=span)
+            if self.answer_checks_enabled and name == "check_answer":
+                # Both the full input and exact assessment are durable now.
+                # This attests storage, not semantic correctness or acceptance.
+                details["checked_answer_span_id"] = span
             if terminal:
                 self.final_result = terminal
                 self.emit("answer.accepted" if name == "submit_answer" else "question.accepted", terminal, span_id=span)

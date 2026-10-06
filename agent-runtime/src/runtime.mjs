@@ -27,9 +27,15 @@ function failedTurnKey(message, results) {
   return keys.includes(null) ? null : JSON.stringify([...new Set(keys)].sort());
 }
 
-function archiveSupersededAnswers(messages, rejectedAnswers) {
+function latestDraftCallIds(messages, recordedDrafts) {
+  const latest = messages.findLast(message => message.role === 'assistant'
+    && message.content.some(part => part.type === 'toolCall' && recordedDrafts.has(part.id)));
+  return new Set(latest?.content.filter(part => part.type === 'toolCall' && recordedDrafts.has(part.id)).map(part => part.id));
+}
+
+function archiveSupersededAnswers(messages, recordedDrafts) {
   const latest = messages.findLastIndex(message => message.role === 'assistant'
-    && message.content.some(part => part.type === 'toolCall' && rejectedAnswers.has(part.id)));
+    && message.content.some(part => part.type === 'toolCall' && recordedDrafts.has(part.id)));
   const results = new Map();
   messages.forEach((message, index) => {
     if (message.role === 'toolResult') results.set(message.toolCallId, [...(results.get(message.toolCallId) || []), index]);
@@ -39,17 +45,17 @@ function archiveSupersededAnswers(messages, rejectedAnswers) {
     const message = messages[index];
     if (message.role !== 'assistant') continue;
     const calls = message.content.filter(part => part.type === 'toolCall');
-    // Never split a mixed research/answer batch or guess whether an unpaired
-    // call failed. Only the host can attest that its full draft and rejection
-    // are already durable under the referenced tool span.
+    // Never split a mixed research/draft batch or guess at missing records.
+    // The host attests both a saved input and a completed check or rejection.
     if (!calls.length || new Set(calls.map(call => call.id)).size !== calls.length
-      || calls.some(call => call.name !== 'submit_answer' || !rejectedAnswers.has(call.id))) continue;
+      || calls.some(call => recordedDrafts.get(call.id)?.tool_name !== call.name)) continue;
+    const refs = calls.map(call => recordedDrafts.get(call.id));
     const indices = calls.map(call => results.get(call.id) || []);
-    if (indices.some(items => items.length !== 1 || items[0] <= index || items[0] >= latest
-      || !messages[items[0]].isError)) continue;
-    const refs = calls.map(call => rejectedAnswers.get(call.id));
+    if (indices.some((items, at) => items.length !== 1 || items[0] <= index || items[0] >= latest
+      || Boolean(messages[items[0]].isError) !== (refs[at].tool_name === 'submit_answer')
+      || (refs[at].tool_name === 'check_answer' && messages[items[0]].details?.artifact_id !== refs[at].artifact_id))) continue;
     const marker = { role: 'system', timestamp: message.timestamp,
-      content: '已归档较早的被拒草稿及其反馈，完整内容仍在任务记录中。以下仅为失败记录，不是来源证据。最新草稿和最新反馈保留原文，请据此重新组织并提交答案：' + JSON.stringify(refs) };
+      content: '已归档较早的检查草稿或被拒草稿及其反馈，完整内容仍在任务记录中。以下仅为草稿记录，不是来源证据，也不表示答案已被接受。最新草稿和最新反馈保留原文，请据此重新组织并提交答案：' + JSON.stringify(refs) };
     const originalBytes = Buffer.byteLength(JSON.stringify(message))
       + indices.reduce((total, [at]) => total + Buffer.byteLength(JSON.stringify(messages[at])), 0);
     if (Buffer.byteLength(JSON.stringify(marker)) >= originalBytes) continue;
@@ -69,7 +75,7 @@ function archivedToolResult(message) {
   return Buffer.byteLength(JSON.stringify(next)) < Buffer.byteLength(JSON.stringify(message)) ? next : null;
 }
 
-function fitFinalContext(context, maximum) {
+function fitFinalContext(context, maximum, protectedDrafts) {
   const messages = [...context.messages];
   // Preserve the newest delivered evidence verbatim, as well as all user
   // messages and call/result pairings. Do not invent a condensed source.
@@ -77,7 +83,7 @@ function fitFinalContext(context, maximum) {
   const next = { ...context, messages };
   let bytes = Buffer.byteLength(JSON.stringify(next)), archived = 0;
   for (let index = 0; index < messages.length && bytes > maximum; index++) {
-    if (index === newest) continue;
+    if (index === newest || (messages[index].role === 'toolResult' && protectedDrafts.has(messages[index].toolCallId))) continue;
     const replacement = archivedToolResult(messages[index]);
     if (!replacement) continue;
     messages[index] = replacement;
@@ -141,7 +147,7 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
   let recallClosed = false;
   const drafts = new Map();
   const dispatched = new Set();
-  const rejectedAnswers = new Map();
+  const recordedDrafts = new Map();
   const reportedArchives = new Set();
   const tools = config.tools.map((definition) => ({
     ...definition,
@@ -164,9 +170,16 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
       if (!result.isError && definition.name === 'set_answer_requirements' && result.details?.answer_requirements) {
         answerRequirements = result.details.answer_requirements;
       }
+      if (config.answer_checks_enabled && !result.isError && definition.name === 'check_answer'
+        && result.details?.checked_answer_span_id === `tool:${toolCallId}`
+        && typeof result.details.artifact_id === 'string' && result.details.artifact_id) {
+        recordedDrafts.set(toolCallId, { tool_span_id: result.details.checked_answer_span_id,
+          tool_name: 'check_answer', artifact_id: result.details.artifact_id });
+      }
       if (result.isError && definition.name === 'submit_answer') {
         if (config.answer_checks_enabled && result.details?.rejected_answer_span_id === `tool:${toolCallId}`) {
-          rejectedAnswers.set(toolCallId, { tool_span_id: result.details.rejected_answer_span_id, code: result.details.code });
+          recordedDrafts.set(toolCallId, { tool_span_id: result.details.rejected_answer_span_id,
+            tool_name: 'submit_answer', code: result.details.code });
         }
         drafts.delete(toolCallId);
         await emit('answer.reset', { tool_call_id: toolCallId, reason: 'validation_failed' });
@@ -184,14 +197,18 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
     sessionId: config.run_id,
     toolExecution: 'parallel',
     transformContext: async (messages) => {
-      if (config.answer_checks_enabled && rejectedAnswers.size > 1) {
-        const projected = archiveSupersededAnswers(messages, rejectedAnswers);
+      if (config.answer_checks_enabled && recordedDrafts.size > 1) {
+        const projected = archiveSupersededAnswers(messages, recordedDrafts);
         messages = projected.messages;
         const fresh = projected.archived.filter(item => !reportedArchives.has(item.tool_span_id));
         if (fresh.length) {
           fresh.forEach(item => reportedArchives.add(item.tool_span_id));
-          await emit('context.compacted', { reason: 'superseded_answers', archived_tool_results: 0,
-            archived_answer_attempts: fresh.length, archived_answer_spans: fresh.map(item => item.tool_span_id),
+          const rejected = fresh.filter(item => item.tool_name === 'submit_answer');
+          const checked = fresh.filter(item => item.tool_name === 'check_answer');
+          await emit('context.compacted', { reason: 'superseded_answers', archived_tool_results: checked.length,
+            archived_answer_attempts: rejected.length, archived_answer_spans: rejected.map(item => item.tool_span_id),
+            ...(checked.length ? { archived_check_attempts: checked.length,
+              archived_check_spans: checked.map(item => item.tool_span_id) } : {}),
             remaining_bytes: Buffer.byteLength(JSON.stringify(messages)) });
         }
       }
@@ -199,8 +216,10 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
       let bytes = Buffer.byteLength(JSON.stringify(messages), 'utf8');
       if (bytes < threshold) return messages;
       let archived = 0;
+      const protectedDrafts = latestDraftCallIds(messages, recordedDrafts);
       const compacted = messages.map((message, index) => {
-        if (bytes < threshold || index >= messages.length - 6 || message.role !== 'toolResult' || !message.details?.artifact_id) return message;
+        if (bytes < threshold || index >= messages.length - 6 || message.role !== 'toolResult'
+          || protectedDrafts.has(message.toolCallId) || !message.details?.artifact_id) return message;
         const next = archivedToolResult(message);
         if (!next) return message;
         const saved = Buffer.byteLength(JSON.stringify(message)) - Buffer.byteLength(JSON.stringify(next));
@@ -246,7 +265,7 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
             && !requestedModel.compat?.supportsMidConvoSystemMessages) {
             prepared = collapseSystemMessages(prepared);
           }
-          const compacted = fitFinalContext(prepared, admission.max_input_bytes);
+          const compacted = fitFinalContext(prepared, admission.max_input_bytes, latestDraftCallIds(prepared.messages, recordedDrafts));
           if (compacted.archived) await emit('context.compacted', { archived_tool_results: compacted.archived,
             remaining_bytes: compacted.bytes, reason: 'remaining_budget' });
           if (compacted.bytes > admission.max_input_bytes) return errorStream(requestedModel, '剩余预算无法容纳问题与最后一组原文证据');

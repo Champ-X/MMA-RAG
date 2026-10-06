@@ -26,6 +26,144 @@ async function sseEndpoint(t, responses) {
   return { requests, baseUrl: `http://127.0.0.1:${server.address().port}` };
 }
 
+const draftFrames = (calls, reasoning = '') => [
+  ...(reasoning ? [{ choices: [{ index: 0, delta: { reasoning_content: reasoning } }] }] : []),
+  { choices: [{ index: 0, delta: { tool_calls: calls.map((call, index) => ({ index, id: call.id, type: 'function',
+    function: { name: call.name, arguments: JSON.stringify(call.args) } })) } }] },
+  { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+    usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 } },
+];
+
+for (const scenario of [
+  { oldKind: 'check_answer', latestKind: 'submit_answer' },
+  { oldKind: 'check_answer', latestKind: 'check_answer', valid: true, provider: 'aliyun_bailian' },
+  { oldKind: 'submit_answer', latestKind: 'check_answer' },
+  { oldKind: 'check_answer', latestKind: 'submit_answer', invalidLatest: true },
+  ...['missing', 'wrong', 'no-artifact', 'error'].map(proof => ({ oldKind: 'check_answer', latestKind: 'submit_answer', proof })),
+  { oldKind: 'check_answer', latestKind: 'submit_answer', enabled: false },
+  { oldKind: 'check_answer', latestKind: 'submit_answer', mixed: true },
+]) {
+  test(`checked draft archival retains real HTTP source and latest feedback ${JSON.stringify(scenario)}`, async t => {
+    const enabled = scenario.enabled !== false;
+    const shouldArchive = enabled && !scenario.proof && !scenario.mixed;
+    const oldAnswer = '较早检查的原稿。'.repeat(450), latestAnswer = '最新草稿必须完整保留。'.repeat(100);
+    const source = '来源原文：数值为17，限于本次样本。';
+    const checkReport = { protocol_valid: !!scenario.valid, errors: scenario.valid ? [] : [{ code: 'answer_too_long' }],
+      body_character_counts: { total: 501, ascii_letters: 0, other_characters: 501 } };
+    const checkFeedback = JSON.stringify(checkReport), rejection = '最新原稿超限，请保留数值与条件后重述。';
+    const call = (id, name, args) => ({ id, name, args });
+    const { requests, baseUrl } = await sseEndpoint(t, [
+      draftFrames([call('source', 'search', { query: '数值' })]),
+      draftFrames([call('old', scenario.oldKind, { answer: oldAnswer }),
+        ...(scenario.mixed ? [call('second-source', 'search', { query: '条件' })] : [])], 'older internal planning'),
+      draftFrames([call('latest', scenario.latestKind, { answer: latestAnswer })], 'latest internal planning'),
+      ...(scenario.invalidLatest ? [draftFrames([call('invalid', 'check_answer', { answer: ['invalid draft'] })])] : []),
+      draftFrames([call('final', 'submit_answer', { answer: '数值为17，仅限本次样本。[1]' })]),
+    ]);
+    const base = wireConfig(baseUrl, scenario.provider);
+    const events = [], hostCalls = [], admissions = [];
+    const runtime = createRuntime({ ...base, answer_checks_enabled: enabled,
+      model: { ...base.model, contextWindow: 200000 },
+      tools: [...base.tools, { name: 'check_answer', description: 'Check draft', parameters: Type.Object({ answer: Type.String() }) }],
+    }, {
+      emit: (type, data) => events.push({ type, data }),
+      callHost: async (method, params) => {
+        if (method === 'model_request') { admissions.push(params); return { allowed: true, max_output_tokens: 1000 }; }
+        if (method === 'model_usage') return {};
+        hostCalls.push(params);
+        if (params.name === 'search') return { content: [{ type: 'text', text: source }],
+          details: { evidence_ids: [1], artifact_id: params.tool_call_id } };
+        if (params.tool_call_id === 'final') return { content: [{ type: 'text', text: 'accepted' }],
+          details: { terminal: 'completed', answer: params.args.answer } };
+        if (params.name === 'check_answer') return { isError: scenario.proof === 'error',
+          content: [{ type: 'text', text: checkFeedback }], details: {
+            ...(scenario.proof === 'no-artifact' ? {} : { artifact_id: `artifact:${params.tool_call_id}` }),
+            ...(scenario.proof === 'missing' ? {} : { checked_answer_span_id: `tool:${scenario.proof === 'wrong' ? 'unrelated' : params.tool_call_id}` }),
+          } };
+        return { isError: true, content: [{ type: 'text', text: rejection }],
+          details: { rejected_answer_span_id: `tool:${params.tool_call_id}`, code: 'answer_too_long' } };
+      },
+    });
+    t.after(() => runtime.abort());
+    assert.equal((await runtime.run()).terminal, 'completed');
+    assert.equal(admissions.length, requests.length, 'Archival makes no extra provider call');
+    const last = requests.at(-1);
+    const old = last.messages.find(m => m.tool_calls?.some(c => c.id === 'old'));
+    assert.equal(Boolean(old), !shouldArchive);
+    assert.equal(Boolean(last.messages.find(m => m.tool_call_id === 'old')), !shouldArchive);
+    const latest = last.messages.find(m => m.tool_calls?.some(c => c.id === 'latest'));
+    assert.equal(JSON.parse(latest.tool_calls[0].function.arguments).answer, latestAnswer);
+    assert.equal(latest.reasoning_content, 'latest internal planning');
+    assert.equal(last.messages.find(m => m.tool_call_id === 'latest').content,
+      scenario.latestKind === 'check_answer' ? checkFeedback : rejection);
+    assert.equal(last.messages.find(m => m.tool_call_id === 'source').content, source);
+    assert.equal(hostCalls.find(c => c.tool_call_id === 'old').args.answer, oldAnswer);
+    assert.ok(!hostCalls.some(c => c.tool_call_id === 'invalid'));
+    for (const request of requests) {
+      const pending = new Set();
+      for (const message of request.messages) {
+        for (const c of message.tool_calls || []) pending.add(c.id);
+        if (message.role === 'tool') assert.ok(pending.delete(message.tool_call_id));
+      }
+      assert.equal(pending.size, 0);
+    }
+    const archives = events.filter(e => e.type === 'context.compacted'
+      && (e.data.archived_answer_attempts || e.data.archived_check_attempts));
+    assert.equal(archives.length, shouldArchive ? 1 : 0);
+    if (shouldArchive) {
+      const key = scenario.oldKind === 'check_answer' ? 'archived_check_spans' : 'archived_answer_spans';
+      assert.deepEqual(archives[0].data[key], ['tool:old']);
+      assert.match(last.messages[0].content, /不是来源证据/);
+      assert.ok(!JSON.stringify(last).includes(oldAnswer));
+      assert.ok(!JSON.stringify(last).includes('older internal planning'));
+    }
+  });
+}
+
+for (const mode of ['ordinary-compaction', 'budget-admission']) {
+  test(`latest completed check remains verbatim under ${mode}`, async t => {
+    const feedback = JSON.stringify({ protocol_valid: false, detail: '最新检查完整反馈。'.repeat(1500) });
+    const call = (id, name, args) => ({ id, name, args });
+    const invalids = mode === 'ordinary-compaction' ? Array.from({ length: 4 }, (_, i) =>
+      draftFrames([call(`invalid-${i}`, 'submit_answer', { answer: [i] })])) : [];
+    const { requests, baseUrl } = await sseEndpoint(t, [
+      draftFrames([call('check', 'check_answer', { answer: '最新检查草稿[1]' })]),
+      ...invalids,
+      draftFrames([call('final', 'submit_answer', { answer: '结果[1]' })]),
+    ]);
+    const base = wireConfig(baseUrl);
+    let bound;
+    const runtime = createRuntime({ ...base, answer_checks_enabled: true,
+      model: { ...base.model, contextWindow: mode === 'ordinary-compaction' ? 32000 : 200000 },
+      tools: [...base.tools, { name: 'check_answer', description: 'Check draft', parameters: Type.Object({ answer: Type.String() }) }],
+    }, {
+      emit: () => {},
+      callHost: async (method, params) => {
+        if (method === 'model_request') {
+          if (mode === 'budget-admission' && requests.length) {
+            bound ??= Math.floor(params.input_bytes / 2);
+            if (params.input_bytes > bound) return { allowed: false, max_input_bytes: bound, final_turn: true, allow_recall: false };
+          }
+          return { allowed: true, max_output_tokens: 1000 };
+        }
+        if (method === 'model_usage') return {};
+        if (params.name === 'check_answer') return { content: [{ type: 'text', text: feedback }],
+          details: { artifact_id: 'check-artifact', checked_answer_span_id: 'tool:check' } };
+        return { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed' } };
+      },
+    });
+    t.after(() => runtime.abort());
+    const result = await runtime.run();
+    if (mode === 'budget-admission') {
+      assert.equal(result.terminal, 'failed', 'Do not discard the only current check to fit another request');
+      assert.equal(requests.length, 1);
+    } else {
+      assert.equal(result.terminal, 'completed');
+      assert.equal(requests.at(-1).messages.find(m => m.tool_call_id === 'check').content, feedback);
+    }
+  });
+}
+
 function wireConfig(baseUrl, provider = 'deepseek') {
   return { run_id: 'http-protocol', api_key: 'test-only', prompt: '查证后提交结果',
     budget: { output_tokens: 1000, wall_seconds: 10 },
