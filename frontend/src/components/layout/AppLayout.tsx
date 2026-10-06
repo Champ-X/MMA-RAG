@@ -57,6 +57,8 @@ export function AppLayout() {
     createSessionFromApi,
     switchSession,
     deleteSession,
+    updateSessionTitle,
+    toggleSessionPinned,
   } = useChatStore()
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -189,6 +191,8 @@ export function AppLayout() {
         onNewConversation={handleNewConversation}
         onSelectConversation={handleSelectConversation}
         onDeleteConversation={handleDeleteConversation}
+        onRenameConversation={updateSessionTitle}
+        onTogglePinnedConversation={toggleSessionPinned}
         onNavigate={handleNavigate}
       />
 

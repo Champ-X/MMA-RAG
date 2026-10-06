@@ -5,14 +5,20 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type Ref,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import {
   CornerDownLeft,
   MessageSquare,
   Moon,
+  MoreHorizontal,
+  Pencil,
+  Pin,
+  PinOff,
   Search,
   Sun,
   Trash2,
@@ -22,6 +28,7 @@ import {
 import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import type { ChatSession } from '@/store/useChatStore'
+import { getConversationTitle, sortConversationSessions } from '@/lib/conversationList'
 import { getConversationSearchAction } from './conversationSearchKeyboard'
 import { ConversationGlyph } from './ConversationGlyph'
 import { SidebarGlyph } from './SidebarGlyph'
@@ -41,6 +48,8 @@ interface ConversationSidebarProps {
   onNewConversation: () => void
   onSelectConversation: (sessionId: string) => void
   onDeleteConversation: (sessionId: string) => void
+  onRenameConversation: (sessionId: string, title: string) => void
+  onTogglePinnedConversation: (sessionId: string) => void
   onNavigate: (view: Exclude<SidebarView, 'chat'>) => void
 }
 
@@ -77,12 +86,6 @@ function getInitialSidebarWidth() {
 const brandWordmarkStyle = {
   fontFamily: '"Snell Roundhand", "Segoe Script", "Brush Script MT", cursive',
 } as const
-
-function getConversationTitle(session: ChatSession) {
-  const firstUserMessage = session.messages.find((message) => message.role === 'user')
-  const title = (firstUserMessage?.content || session.title || '').replace(/\s+/g, ' ').trim()
-  return title || '未命名会话'
-}
 
 interface MessageSearchMatch {
   id: string
@@ -182,6 +185,68 @@ function HighlightedSearchText({ text, query }: { text: string; query: string })
   return <>{parts}</>
 }
 
+interface HistorySessionRowProps {
+  session: ChatSession
+  active: boolean
+  activeRef?: Ref<HTMLDivElement>
+  theme: { selected: string; hover: string; secondary: string; focus: string }
+  onSelect: (id: string) => void
+  onTogglePinned: (id: string) => void
+  onRename: (session: ChatSession, trigger: HTMLButtonElement | null) => void
+  onDelete: (session: ChatSession, trigger: HTMLButtonElement | null) => void
+}
+
+function HistorySessionRow({ session, active, activeRef, theme, onSelect, onTogglePinned, onRename, onDelete }: HistorySessionRowProps) {
+  const title = getConversationTitle(session)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const openingDialogRef = useRef(false)
+
+  return <div ref={activeRef} role="listitem" data-active={active} data-menu-open={menuOpen}
+    className={cn('conversation-sidebar-row group relative flex min-w-0 items-center rounded-[10px]',
+      railTransition, active ? theme.selected : theme.hover)}>
+    <button type="button" data-conversation-select onClick={() => onSelect(session.id)} title={title}
+      aria-label={`${active ? '当前会话：' : '打开会话：'}${title}${session.isPinned ? '，已置顶' : ''}`}
+      aria-current={active ? 'true' : undefined}
+      className={cn('flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-3 pr-10 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset', theme.focus)}>
+      <span className="conversation-sidebar-row-icon" data-active={active} aria-hidden><ConversationGlyph /></span>
+      <span className={cn('min-w-0 flex-1 truncate text-[14px] leading-5 tracking-[-0.01em]',
+        active ? 'font-semibold' : 'font-normal', theme.secondary)}>{title}</span>
+      {session.isPinned && <Pin size={12} strokeWidth={1.7} className="conversation-sidebar-pin" aria-hidden />}
+    </button>
+    <DropdownMenu.Root open={menuOpen} modal={false} onOpenChange={(open) => {
+      if (open) openingDialogRef.current = false
+      setMenuOpen(open)
+    }}>
+      <DropdownMenu.Trigger asChild>
+        <button ref={triggerRef} type="button" className="conversation-actions-trigger"
+          aria-label={`会话操作：${title}`} title="会话操作"><MoreHorizontal size={18} strokeWidth={1.8} aria-hidden /></button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="conversation-actions-menu" align="end" sideOffset={5} collisionPadding={10}
+          aria-label="会话操作" onCloseAutoFocus={(event) => {
+            // A dialog owns focus after rename/delete; the closing menu must not steal it.
+            if (openingDialogRef.current) event.preventDefault()
+          }}>
+          <DropdownMenu.Item className="conversation-actions-item" onSelect={() => {
+            openingDialogRef.current = true
+            onRename(session, triggerRef.current)
+          }}><Pencil size={16} strokeWidth={1.7} aria-hidden />重命名</DropdownMenu.Item>
+          <DropdownMenu.Item className="conversation-actions-item" onSelect={() => onTogglePinned(session.id)}>
+            {session.isPinned ? <PinOff size={16} strokeWidth={1.7} aria-hidden /> : <Pin size={16} strokeWidth={1.7} aria-hidden />}
+            {session.isPinned ? '取消置顶' : '置顶'}
+          </DropdownMenu.Item>
+          <DropdownMenu.Separator className="conversation-actions-separator" />
+          <DropdownMenu.Item className="conversation-actions-item conversation-actions-item--danger" onSelect={() => {
+            openingDialogRef.current = true
+            onDelete(session, triggerRef.current)
+          }}><Trash2 size={16} strokeWidth={1.7} aria-hidden />删除</DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  </div>
+}
+
 export function ConversationSidebar({
   sessions,
   activeSessionId,
@@ -193,6 +258,8 @@ export function ConversationSidebar({
   onNewConversation,
   onSelectConversation,
   onDeleteConversation,
+  onRenameConversation,
+  onTogglePinnedConversation,
   onNavigate,
 }: ConversationSidebarProps) {
   const sidebarRef = useRef<HTMLElement | null>(null)
@@ -208,24 +275,29 @@ export function ConversationSidebar({
   const deleteCancelRef = useRef<HTMLButtonElement>(null)
   const deleteReturnFocusRef = useRef<HTMLButtonElement | null>(null)
   const deleteConfirmedRef = useRef(false)
+  const renameInputRef = useRef<HTMLInputElement>(null)
+  const renameReturnFocusRef = useRef<HTMLButtonElement | null>(null)
   const searchId = useId()
   const deleteDialogId = useId()
   const [searchOpen, setSearchOpen] = useState(false)
   const [pendingDeletion, setPendingDeletion] = useState<{ id: string; title: string } | null>(null)
+  const [pendingRename, setPendingRename] = useState<string | null>(null)
+  const [renameTitle, setRenameTitle] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [activeSearchResult, setActiveSearchResult] = useState<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(getInitialSidebarWidth)
   const [isResizing, setIsResizing] = useState(false)
   const normalizedSearchQuery = normalizeSearchText(searchQuery)
+  const orderedSessions = useMemo(() => sortConversationSessions(sessions), [sessions])
   const filteredNavigationItems = navigationItems.filter((item) =>
     normalizeSearchText(`${item.label} ${item.description} ${item.keywords}`).includes(normalizedSearchQuery)
   )
   const matchingSessions = useMemo(
     () =>
-      sessions
+      orderedSessions
         .map((session) => getSessionSearchResult(session, normalizedSearchQuery))
         .filter((result): result is SessionSearchResult => result !== null),
-    [normalizedSearchQuery, sessions]
+    [normalizedSearchQuery, orderedSessions]
   )
   const filteredSessions = matchingSessions.slice(0, 8)
   const searchResultIds = [
@@ -247,7 +319,6 @@ export function ConversationSidebar({
         selected: 'bg-[#2B2B28] text-[#F0EFEA]',
         focus: 'focus-visible:ring-[#C8C7BE] focus-visible:ring-offset-[#1D1D1B]',
         avatar: 'bg-[#33332F] text-[#EAE9E3] ring-[#4B4B45]',
-        delete: 'hover:bg-[#3A2729] hover:text-[#FFC2C6] focus-visible:ring-[#FFC2C6]/70',
       }
     : {
         rail: 'border-[#E4EAF2] bg-[#F8FAFC] text-[#0B0F16] shadow-[12px_0_28px_-24px_rgba(30,41,59,0.18)]',
@@ -260,7 +331,6 @@ export function ConversationSidebar({
         selected: 'bg-[#EAF0F6] text-[#0B0F16]',
         focus: 'focus-visible:ring-[#60748C] focus-visible:ring-offset-[#F8FAFC]',
         avatar: 'bg-[#E6EEF7] text-[#0B0F16] ring-[#D5E0EC]',
-        delete: 'hover:bg-[#F3E3E3] hover:text-[#B2434B] focus-visible:ring-[#B2434B]/60',
       }
 
   useEffect(() => {
@@ -278,7 +348,7 @@ export function ConversationSidebar({
     const handleShortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'k') {
         event.preventDefault()
-        if (pendingDeletion) return
+        if (pendingDeletion || pendingRename) return
         if (searchInputRef.current) {
           searchInputRef.current.focus()
           return
@@ -291,7 +361,7 @@ export function ConversationSidebar({
 
     window.addEventListener('keydown', handleShortcut)
     return () => window.removeEventListener('keydown', handleShortcut)
-  }, [pendingDeletion])
+  }, [pendingDeletion, pendingRename])
 
   useEffect(() => {
     if (!searchOpen) return
@@ -344,6 +414,18 @@ export function ConversationSidebar({
     deleteConfirmedRef.current = true
     onDeleteConversation(pendingDeletion.id)
     setPendingDeletion(null)
+  }
+
+  const requestConversationRename = (session: ChatSession, trigger: HTMLButtonElement | null) => {
+    renameReturnFocusRef.current = trigger
+    setRenameTitle(getConversationTitle(session))
+    setPendingRename(session.id)
+  }
+
+  const requestConversationDeletion = (session: ChatSession, trigger: HTMLButtonElement | null) => {
+    deleteReturnFocusRef.current = trigger
+    deleteConfirmedRef.current = false
+    setPendingDeletion({ id: session.id, title: getConversationTitle(session) })
   }
 
   const handleSearchOpenChange = (open: boolean) => {
@@ -568,76 +650,12 @@ export function ConversationSidebar({
               还没有对话
             </p>
           ) : (
-            sessions.map((session) => {
-              const title = getConversationTitle(session)
+            orderedSessions.map((session) => {
               const active = activeView === 'chat' && session.id === activeSessionId
-
-              return (
-                <div
-                  key={session.id}
-                  ref={active ? activeSessionRef : null}
-                  role="listitem"
-                  className={cn(
-                    'conversation-sidebar-row group relative flex min-w-0 items-center rounded-[10px]',
-                    railTransition,
-                    active ? theme.selected : theme.hover
-                  )}
-                >
-                  <button
-                    type="button"
-                    data-conversation-select
-                    onClick={() => onSelectConversation(session.id)}
-                    title={title}
-                    aria-label={`${active ? '当前会话：' : '打开会话：'}${title}`}
-                    aria-current={active ? 'true' : undefined}
-                    className={cn(
-                      'flex min-w-0 flex-1 items-center gap-2 text-left transition-[padding] duration-150 ease-out motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset',
-                      theme.focus,
-                      collapsed ? 'justify-center px-1.5 py-2' : 'px-3 py-1.5 group-hover:pr-11 group-focus-within:pr-11',
-                      'max-[640px]:justify-center max-[640px]:px-1.5 max-[640px]:py-2'
-                    )}
-                  >
-                    <span className="conversation-sidebar-row-icon" data-active={active} aria-hidden>
-                      <ConversationGlyph />
-                    </span>
-                    <span
-                      className={cn(
-                        'min-w-0 flex-1 truncate text-[14px] leading-5 tracking-[-0.01em]',
-                        active ? 'font-semibold' : 'font-normal',
-                        theme.secondary
-                      )}
-                    >
-                      {title}
-                    </span>
-                  </button>
-                  {sessions.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        deleteReturnFocusRef.current = event.currentTarget
-                        deleteConfirmedRef.current = false
-                        setPendingDeletion({ id: session.id, title })
-                      }}
-                      title="删除会话"
-                      aria-label={`删除会话：${title}`}
-                      aria-haspopup="dialog"
-                      aria-controls={pendingDeletion?.id === session.id ? deleteDialogId : undefined}
-                      className={cn(
-                        'pointer-events-none absolute right-1.5 top-1/2 z-10 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg opacity-0',
-                        theme.muted,
-                        theme.delete,
-                        'focus:pointer-events-auto focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 group-hover:pointer-events-auto group-hover:opacity-100',
-                        railTransition,
-                        collapsed && 'hidden',
-                        'max-[640px]:hidden'
-                      )}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />
-                    </button>
-                  )}
-                </div>
-              )
+              return <HistorySessionRow key={session.id} session={session} active={active}
+                activeRef={active ? activeSessionRef : undefined} theme={theme}
+                onSelect={onSelectConversation} onTogglePinned={onTogglePinnedConversation}
+                onRename={requestConversationRename} onDelete={requestConversationDeletion} />
             })
           )}
         </div>
@@ -774,6 +792,49 @@ export function ConversationSidebar({
           />
         </div>
       )}
+
+      <Dialog.Root open={pendingRename !== null} onOpenChange={(open) => { if (!open) setPendingRename(null) }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="conversation-delete-overlay" />
+          <Dialog.Content className="conversation-rename-dialog"
+            onOpenAutoFocus={(event) => {
+              event.preventDefault()
+              renameInputRef.current?.focus()
+              renameInputRef.current?.select()
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault()
+              const trigger = renameReturnFocusRef.current
+              if (trigger?.isConnected) trigger.focus()
+              else newConversationRef.current?.focus()
+            }}>
+            <form onSubmit={(event) => {
+              event.preventDefault()
+              if (!pendingRename || !renameTitle.trim()) return
+              if (sessions.some(session => session.id === pendingRename)) {
+                onRenameConversation(pendingRename, renameTitle.trim())
+              }
+              setPendingRename(null)
+            }}>
+              <div className="conversation-rename-heading">
+                <span aria-hidden><Pencil size={18} strokeWidth={1.7} /></span>
+                <Dialog.Title>重命名会话</Dialog.Title>
+              </div>
+              <Dialog.Description>设置一个方便查找的会话名称。</Dialog.Description>
+              <label className="sr-only" htmlFor={`${searchId}-rename`}>会话名称</label>
+              <input id={`${searchId}-rename`} ref={renameInputRef} value={renameTitle} autoComplete="off"
+                onChange={(event) => setRenameTitle(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault()
+                }} />
+              <div className="conversation-rename-actions">
+                <Dialog.Close asChild><button type="button">取消</button></Dialog.Close>
+                <button type="submit" disabled={!renameTitle.trim()}>保存</button>
+              </div>
+            </form>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <Dialog.Root open={pendingDeletion !== null} onOpenChange={(open) => { if (!open) setPendingDeletion(null) }}>
         <Dialog.Portal>

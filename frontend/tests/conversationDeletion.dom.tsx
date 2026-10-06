@@ -49,6 +49,10 @@ function Harness() {
       collapsed={false} isDark={false} onToggleCollapsed={() => {}} onToggleTheme={() => {}}
       onNewConversation={() => {}} onNavigate={() => {}}
       onSelectConversation={(id) => setSelected((previous) => [...previous, id])}
+      onRenameConversation={(id, title) => setSessions(previous => previous.map(session =>
+        session.id === id ? { ...session, title, titleEdited: true } : session))}
+      onTogglePinnedConversation={(id) => setSessions(previous => previous.map(session =>
+        session.id === id ? { ...session, isPinned: !session.isPinned } : session))}
       onDeleteConversation={(id) => {
         setDeleted((previous) => [...previous, id])
         setSessions((previous) => previous.filter((session) => session.id !== id))
@@ -61,15 +65,35 @@ function Harness() {
 
 const callbackIds = (id: string) => JSON.parse(document.getElementById(id)?.textContent ?? '[]')
 const dialog = () => document.querySelector<HTMLElement>('[role="alertdialog"]')
-const deletionTrigger = () => {
-  const button = document.querySelector<HTMLButtonElement>('button[aria-label="删除会话：麝香甜瓜的起源"]')
+const menuTrigger = () => {
+  const button = document.querySelector<HTMLButtonElement>('button[aria-label="会话操作：麝香甜瓜的起源"]')
   assert.ok(button)
   return button
 }
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
-const click = async (button: HTMLButtonElement) => {
+const click = async (button: HTMLElement) => {
   await act(async () => { button.click(); await settle() })
   await settle()
+}
+
+const openMenu = async () => {
+  const trigger = menuTrigger()
+  await act(async () => {
+    trigger.focus()
+    trigger.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    await settle()
+  })
+  await settle()
+  assert.ok(document.querySelector('[role="menu"]'))
+  return trigger
+}
+
+const openDeletion = async () => {
+  const trigger = await openMenu()
+  const item = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(item => item.textContent === '删除')
+  assert.ok(item)
+  await click(item)
+  return trigger
 }
 
 beforeEach(async () => {
@@ -89,8 +113,7 @@ afterEach(async () => {
 })
 
 test('opening confirmation preserves messages and names the target; cancel receives default focus', async () => {
-  const trigger = deletionTrigger()
-  await click(trigger)
+  const trigger = await openDeletion()
   assert.ok(dialog())
   assert.match(dialog()!.textContent ?? '', /麝香甜瓜的起源/)
   const description = document.getElementById(dialog()!.getAttribute('aria-describedby')!)
@@ -108,8 +131,7 @@ test('opening confirmation preserves messages and names the target; cancel recei
 })
 
 test('Escape dismisses confirmation without deletion and returns focus to its trigger', async () => {
-  const trigger = deletionTrigger()
-  await click(trigger)
+  const trigger = await openDeletion()
   await act(async () => {
     document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     await settle()
@@ -122,8 +144,7 @@ test('Escape dismisses confirmation without deletion and returns focus to its tr
 })
 
 test('dismissing the backdrop is cancellation and never calls deletion', async () => {
-  const trigger = deletionTrigger()
-  await click(trigger)
+  const trigger = await openDeletion()
   const backdrop = document.querySelector<HTMLElement>('.conversation-delete-overlay')!
   await act(async () => {
     backdrop.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, button: 0 }))
@@ -137,7 +158,7 @@ test('dismissing the backdrop is cancellation and never calls deletion', async (
 })
 
 test('explicit confirmation deletes exactly once and focuses the remaining active conversation', async () => {
-  await click(deletionTrigger())
+  await openDeletion()
   const confirm = dialog()!.querySelector<HTMLButtonElement>('.conversation-delete-confirm')!
   await act(async () => { confirm.click(); confirm.click(); await settle() })
   await settle()

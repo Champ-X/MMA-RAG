@@ -143,6 +143,9 @@ export function normalizeAgentMode(value: AgentMode | boolean | undefined): Agen
 export interface ChatSession {
   id: string;
   title: string;
+  /** 用户重命名后优先展示标题，否则沿用首条提问作为会话名称。 */
+  titleEdited?: boolean;
+  isPinned?: boolean;
   messages: Message[];
   knowledgeBaseIds: string[];
   /** 检索模式：智能路由 / 全部知识库 / 指定知识库 */
@@ -195,6 +198,7 @@ interface ChatStore {
   deleteSession: (sessionId: string) => void;
   
   updateSessionTitle: (sessionId: string, title: string) => void;
+  toggleSessionPinned: (sessionId: string) => void;
 
   updateSessionKnowledgeBases: (sessionId: string, knowledgeBaseIds: string[], kbMode?: KbMode) => void;
 
@@ -365,9 +369,19 @@ export const useChatStore = create<ChatStore>()(
 
       // 更新会话标题
       updateSessionTitle: (sessionId, title) => {
+        const trimmedTitle = title.trim();
+        if (!trimmedTitle) return;
         set((state) => ({
           sessions: state.sessions.map(s =>
-            s.id === sessionId ? { ...s, title, updatedAt: Date.now() } : s
+            s.id === sessionId ? { ...s, title: trimmedTitle, titleEdited: true, updatedAt: Date.now() } : s
+          ),
+        }));
+      },
+
+      toggleSessionPinned: (sessionId) => {
+        set((state) => ({
+          sessions: state.sessions.map(s =>
+            s.id === sessionId ? { ...s, isPinned: !s.isPinned } : s
           ),
         }));
       },
