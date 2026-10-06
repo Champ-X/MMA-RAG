@@ -5,6 +5,7 @@ import asyncio
 import json
 import re
 from collections import defaultdict
+from dataclasses import replace
 
 from qdrant_client.http import models as qm
 
@@ -107,11 +108,20 @@ class KnowledgeGateway:
         return points, cursor is not None
 
     async def search(self, *, query: str, mode: str, modalities: list[str], knowledge_base_ids: list[str],
-                     limit: int, span_id: str):
+                     limit: int, span_id: str, source_ids: list[str] | None = None):
         kbs = self.scope.narrow_kbs(knowledge_base_ids)
-        sources = [s for s in self.catalog.visible(self.scope, search=True) if s.kb_id in kbs]
+        query_scope = self.scope
+        if source_ids:
+            # Validate the entire selection before storage or embedding I/O.
+            # A source readable as input is not necessarily searchable.
+            chosen = [self.catalog.get(identity, self.scope, search=True) for identity in dict.fromkeys(source_ids)]
+            if any(source.kb_id not in kbs for source in chosen):
+                raise ToolError("scope_conflict", "指定来源与本次查询的知识库范围冲突")
+            query_scope = replace(self.scope, search_kbs=frozenset(s.kb_id for s in chosen),
+                                  search_files=frozenset((s.kb_id, s.file_id) for s in chosen))
+        sources = [s for s in self.catalog.visible(query_scope, search=True) if s.kb_id in kbs]
         if not sources:
-            return [], {"status": "no_hits", "scope": self.scope.public(), "methods": [], "truncated": False}
+            return [], {"status": "no_hits", "scope": query_scope.public(), "methods": [], "truncated": False}
         errors, truncated, rankings, records = [], False, [], {}
         async with self.search_gate:
             vector = None
@@ -133,7 +143,7 @@ class KnowledgeGateway:
                     ranked = []
                     terms = lexical_terms(query)
                     for point in points:
-                        source = self.catalog.bind_point(point.payload or {}, self.scope, search=True)
+                        source = self.catalog.bind_point(point.payload or {}, query_scope, search=True)
                         if not source or source.kb_id not in kbs:
                             continue
                         text = (source.name + "\n" + point_text(point.payload or {}, modality)).casefold()
@@ -156,7 +166,7 @@ class KnowledgeGateway:
                                 query_filter=filt, limit=limit * 3, with_payload=True, with_vectors=False)
                             ranking = []
                             for point in result.points:
-                                source = self.catalog.bind_point(point.payload or {}, self.scope, search=True)
+                                source = self.catalog.bind_point(point.payload or {}, query_scope, search=True)
                                 if source and source.kb_id in kbs:
                                     key = (modality, str(point.id))
                                     records[key] = (source, point)
@@ -176,7 +186,7 @@ class KnowledgeGateway:
         return evidence, {"status": "partial" if errors or truncated else "ok" if evidence else "no_hits",
                           "methods": ["exact" if mode == "exact" else "lexical", *(["dense"] if vector is not None else [])],
                           "errors": errors, "truncated": truncated, "scanned_point_limit_per_modality": 2000,
-                          "scope": self.scope.public()}
+                          "scope": query_scope.public()}
 
     async def read(self, source: Source, *, start: int, limit: int, modality: str | None = None,
                    text_offset: int = 0, expected_record_version: str | None = None):

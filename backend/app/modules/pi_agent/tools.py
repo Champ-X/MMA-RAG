@@ -34,6 +34,8 @@ class Search(Args):
     mode: Literal["hybrid", "exact"] = "hybrid"
     modalities: list[Literal["doc", "image", "audio", "video"]] = Field(default_factory=lambda: ["doc", "image", "audio", "video"], min_length=1, max_length=4)
     knowledge_base_ids: list[str] = Field(default_factory=list, max_length=100)
+    source_ids: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(default_factory=list, max_length=32,
+        description="可选：仅搜索已发现的这些source_id，可来自list_sources或此前返回的证据。空列表沿用本轮检索范围；只能缩小范围，不能搜索只读引用或输入附件。")
     limit: int = Field(default=6, ge=1, le=8)
 
 
@@ -126,7 +128,7 @@ class AskUser(Args):
 DEFINITIONS = {
     "set_answer_requirements": (AnswerRequirements, "研究开始前登记你对本轮回答要求的理解：正文上限、对应用户原句和必答要点。登记只写入本轮账本，不检索资料或生成答案。登记后本轮不可修改，检查和提交始终执行该上限；理解有歧义时可ask_user。"),
     "list_sources": (ListSources, "列出当前可读来源和输入材料，按名称过滤并分页。目录项不能作证据，先读取。"),
-    "search": (Search, "在宿主限定范围内搜索已建索引的文本、图片描述、音频描述/转写、视频镜头。hybrid 为语义+词面融合；exact 为原短语包含匹配。返回证据、截断及服务错误。输入附件不参与搜索。"),
+    "search": (Search, "在宿主限定范围内搜索已建索引的文本、图片描述、音频描述/转写、视频镜头。hybrid 为语义+词面融合；exact 为原短语包含匹配。可用source_ids将本次查询收窄到已发现的具体来源，用modalities选择文档原文或媒体索引。返回证据、截断及服务错误。输入附件不参与搜索。"),
     "read_source": (ReadSource, "按 source_id 深读已解析来源。文档 start 为 chunk_index，媒体 start 为索引片段偏移。next_start读取后续片段；text_continuations给出当前长片段的续读参数，避免遗漏截断后的条件。媒体索引描述不能代替直接观察。"),
     "expand_context": (ExpandContext, "读取已返回文档证据的前后相邻 chunk，核对条件、指代和上下文。"),
     "recall_evidence": (RecallEvidence, "复读本轮已交付的证据，每次最多4条，编号和内容保持不变。用于核对上下文中已归档的原文；预算收尾阶段最多使用一次，然后提交回答，不读取新来源。"),
