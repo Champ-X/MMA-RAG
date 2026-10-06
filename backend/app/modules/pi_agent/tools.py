@@ -178,6 +178,32 @@ class ToolSet:
             raise ToolError("invalid_evidence", "只能使用本轮工具实际返回的证据编号")
         return self.delivered[number]
 
+    def _output_size(self, result, observations, first_number):
+        # Every source unit repeats the evidence ID. Bound its width using the
+        # largest possible new ID, including when prior observations deduplicate.
+        number_bound = first_number + len(observations) - 1 if observations else 0
+        provisional = {**result, "evidence": [
+            self.evidence_payload(e.model_copy(update={"id": number_bound})) for e in observations]}
+        return len(json.dumps(provisional, ensure_ascii=False))
+
+    def _fit_search_output(self, result, observations, first_number, size):
+        if size <= self.ledger.limits.tool_output_chars:
+            return result, observations, size
+        # Keep a ranked prefix of whole observations. Omitted candidates receive
+        # no citation IDs; nothing is rewritten, fetched again or called a no-hit.
+        for count in range(len(observations) - 1, 0, -1):
+            partial = {**result, "status": "partial", "truncated": True,
+                "output_truncation": {"reason": "per_call_output_limit", "candidate_count": len(observations),
+                    "returned_count": count, "omitted_count": len(observations) - count,
+                    "message": "本次候选仅交付排序靠前且能容纳的证据片段，片段文字及位置不变；可按来源收窄搜索或深读已返回材料。未交付候选不代表无关或未命中。"}}
+            selected = observations[:count]
+            partial_size = self._output_size(partial, selected, first_number)
+            if partial_size <= self.ledger.limits.tool_output_chars:
+                return partial, selected, partial_size
+        # Even the first candidate cannot fit. Preserve the original error and
+        # never skip it to manufacture an empty or differently ranked result.
+        return result, observations, size
+
     async def execute(self, call_id, name, raw):
         span, started = f"tool:{call_id}", time.monotonic()
         try:
@@ -195,12 +221,11 @@ class ToolSet:
         self.emit("tool.started", {"name": name, "args": args, "tool_call_id": call_id}, span_id=span)
         try:
             result, observations, terminal = await asyncio.wait_for(self._dispatch(name, args, span), self.ledger.limits.tool_seconds)
-            # Every numbered source unit repeats its evidence ID. Bound the ID's
-            # width before registration; a fixed margin undercounts many short lines.
-            # No await occurs between this read and registration in the single host.
-            number_bound = self.store.next_evidence_id(self.run_id) + len(observations) - 1 if observations else 0
-            provisional = {**result, "evidence": [self.evidence_payload(e.model_copy(update={"id": number_bound})) for e in observations]}
-            size = len(json.dumps(provisional, ensure_ascii=False))
+            # No await between measuring prospective IDs and registration.
+            first_number = self.store.next_evidence_id(self.run_id) if observations else 0
+            size = self._output_size(result, observations, first_number)
+            if name == "search":
+                result, observations, size = self._fit_search_output(result, observations, first_number, size)
             self.ledger.account_output(size)
             if name == "set_answer_requirements":
                 # No await between charging output and committing the immutable
