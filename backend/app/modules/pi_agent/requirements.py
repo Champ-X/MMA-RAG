@@ -5,7 +5,27 @@ the declared requirement remains Pi's semantic judgment, not a regex parser.
 """
 from __future__ import annotations
 
+import json
+
 from .policy import ToolError
+
+
+def _whitespace_quote_hint(quote: str, texts: list[tuple]) -> dict | None:
+    """Suggest a bounded exact span, never silently accept a normalized quote."""
+    compact_quote = "".join(quote.split())
+    for kind, index, text in texts:
+        positions = [offset for offset, char in enumerate(text) if not char.isspace()]
+        compact_text = "".join(text[offset] for offset in positions)
+        match = compact_text.find(compact_quote)
+        while match >= 0:
+            start, end = positions[match], positions[match + len(compact_quote) - 1] + 1
+            # Keep the candidate within the existing length_quote schema. Long
+            # whitespace gaps must not amplify error output or yield invalid args.
+            if end - start <= 500:
+                return {"length_quote": text[start:end], "length_origin": {
+                    "kind": kind, "history_index": index, "start": start, "end": end}}
+            match = compact_text.find(compact_quote, match + 1)
+    return None
 
 
 def bind_requirements(args: dict, request: dict) -> dict:
@@ -32,7 +52,13 @@ def bind_requirements(args: dict, request: dict) -> dict:
                 origin = {"kind": kind, "history_index": index, "start": start, "end": start + len(quote)}
                 break
         if origin is None:
-            raise ToolError("unknown_requirement_quote", "篇幅原句必须逐字来自当前问题或已提供的用户历史，不能来自资料或助手回答。")
+            message = "篇幅原句必须逐字来自当前问题或已提供的用户历史，不能来自资料或助手回答。"
+            hint = _whitespace_quote_hint(quote, texts)
+            if hint is not None:
+                message += ("本次未登记。发现仅空白字符不同的用户文本；请核对后逐字重新提交，勿原样重试。"
+                            "空白差异候选：" + json.dumps(hint, ensure_ascii=False)
+                            + "。候选仅说明文字接近，仍须由你确认它是否表达所声明的篇幅要求。")
+            raise ToolError("unknown_requirement_quote", message)
     return {"version": 1, "max_characters": limit, "length_quote": quote, "length_origin": origin,
             "required_points": points,
             "interpretation": "Pi interpretation; literal user quote identity checked, meaning not independently verified."}
