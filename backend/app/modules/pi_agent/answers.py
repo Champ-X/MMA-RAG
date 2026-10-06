@@ -54,8 +54,15 @@ def answer_units(answer, limitations):
     return units
 
 
+def character_counts(answer):
+    counted = re.sub(r"\[\d+\]|[\s#*`>]", "", answer)
+    ascii_letters = len(re.findall(r"[A-Za-z]", counted))
+    return {"total": len(counted), "ascii_letters": ascii_letters,
+            "other_characters": len(counted) - ascii_letters}
+
+
 def character_count(answer):
-    return len(re.sub(r"\[\d+\]|[\s#*`>]", "", answer))
+    return character_counts(answer)["total"]
 
 
 def citation_errors(args, delivered):
@@ -156,7 +163,8 @@ def assess_answer(args, delivered):
             errors.append({"code": "empty_statement", "unit_id": uid})
         resolved.append({"unit_id": uid, "kind": kind, "start": unit["start"], "end": unit["end"],
                          "source_spans": sources})
-    size, limit = character_count(args["answer"]), args.get("max_characters")
+    counts, limit = character_counts(args["answer"]), args.get("max_characters")
+    size = counts["total"]
     if limit is not None and size > limit:
         errors.append({"code": "answer_too_long", "actual": size, "maximum": limit,
                        "over_by": size - limit,
@@ -164,6 +172,7 @@ def assess_answer(args, delivered):
     notices = source_notices(resolved)
     return {"protocol_valid": not errors, "errors": errors, "answer_units": units,
             "body_characters": size, "declared_max_characters": limit, "statements": resolved,
+            "body_character_counts": counts,
             **({"source_notices": notices} if notices else {}),
             "semantic_support": "Agent self-assessment; coverage and source identity checked, entailment not independently verified."}
 
@@ -179,7 +188,8 @@ def repair_feedback(report):
         for notice in notices[:4]]
     return {"body_characters": size, "declared_max_characters": limit, "over_by": over_by,
             "suggested_body_characters": max(1, int(limit * 0.85)) if over_by else None,
-            "instruction": "正文单元按非空行而非句子编号；整行全部事实共用该单元的来源列表。超长时保留用户所问事实与引用，整体精简到建议字数留出余量，不要只反复删少数字符，也不要调高或省略已声明的上限。",
+            "instruction": "正文单元按非空行而非句子编号；整行全部事实共用该单元的来源列表。超长时保留用户所问事实与引用，整体精简到建议字数留出余量，不要只反复删少数字符，也不要调高或省略已声明的上限。ascii_letters是正文中A-Z/a-z所占字符，不是词数，也不表示这些内容可以删除。中文答复可把一般术语准确译为中文，必要英文专名保留一次；优先重述措辞、去掉重复名称和背景，不要靠删除关键事实、条件或比较维度来满足限长。",
+            **({"body_character_counts": report["body_character_counts"]} if "body_character_counts" in report else {}),
             **({"source_notices": preview, "source_notice_count": len(notices),
                 "source_notices_truncated": len(preview) < len(notices) or any(
                     notice.get("source_spans_truncated", False) for notice in preview)} if notices else {}),
@@ -191,6 +201,7 @@ def repair_feedback(report):
 def compact_assessment(report):
     return {"version": 1, "body_characters": report["body_characters"],
             "declared_max_characters": report["declared_max_characters"],
+            **({"body_character_counts": report["body_character_counts"]} if "body_character_counts" in report else {}),
             "semantic_support": report["semantic_support"],
             **({"source_notices": report["source_notices"]} if report.get("source_notices") else {}),
             "statements": [{**item, "source_spans": [{key: value for key, value in source.items() if key != "text"}
