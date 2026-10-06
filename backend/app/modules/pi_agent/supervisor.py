@@ -222,7 +222,7 @@ class PiSupervisor:
             async with self.run_gate:
                 if self.store.get(run_id)["status"] == "cancelling":
                     raise asyncio.CancelledError
-                ledger = BudgetLedger(self.settings.budget)
+                ledger = BudgetLedger(self.settings.budget, answer_checks_enabled=self.settings.answer_checks_enabled)
                 self.store.transition(run_id, "running", data={"model": model["name"]})
                 def emit(event, data, **spans):
                     return self.store.append(run_id, event, self._redact(data), **spans)

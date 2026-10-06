@@ -204,6 +204,13 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
   let stalled;
   let finalizing = false;
   let recallClosed = false;
+  let closingCheckAllowed = false;
+  const closingAllowed = name => name === 'check_answer'
+    ? config.answer_checks_enabled && closingCheckAllowed && !recallClosed
+    : CLOSING_TOOLS.has(name) && !(recallClosed && name === 'recall_evidence');
+  const closingRejection = config.answer_checks_enabled
+    ? '预算已进入收尾阶段；只可在宿主允许时任选一次证据复读或草稿检查，随后提交回答'
+    : '预算已进入收尾阶段，只能复读已取得的证据或提交回答';
   const drafts = new Map();
   const dispatched = new Set();
   const recordedDrafts = new Map();
@@ -217,13 +224,18 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
       // Pi validates arguments before beforeToolCall. A removed tool must get
       // closure feedback even if its arguments are malformed, so the model
       // does not spend its final calls repairing an unavailable search.
-      if (finalizing && (!CLOSING_TOOLS.has(definition.name) || (recallClosed && definition.name === 'recall_evidence'))) {
-        throw new Error('预算已进入收尾阶段，只能复读已取得的证据或提交回答');
+      if (finalizing && !closingAllowed(definition.name)) {
+        throw new Error(closingRejection);
       }
       return args;
     },
     execute: async (toolCallId, args, signal) => {
-      if (finalizing && definition.name === 'recall_evidence') recallClosed = true;
+      if (finalizing && (definition.name === 'recall_evidence' || definition.name === 'check_answer')) {
+        // Parallel calls in one model response must not both consume the
+        // shared closing allowance. The host independently enforces it too.
+        if (config.answer_checks_enabled && !closingAllowed(definition.name)) throw new Error(closingRejection);
+        recallClosed = true;
+      }
       dispatched.add(toolCallId);
       const result = await callHost('tool', { tool_call_id: toolCallId, name: definition.name, args }, signal);
       if (!result.isError && definition.name === 'set_answer_requirements' && result.details?.answer_requirements) {
@@ -301,9 +313,12 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
           context = { ...context, messages: [...context.messages, { role: 'system', timestamp: Date.now(),
             content: '本轮已登记的回答要求如下。它们在上下文归档和预算收尾后仍然有效；请按这些要求组织、核验和提交答案：' + JSON.stringify(answerRequirements) }] };
         }
-        const closingContext = (allowRecall) => ({ ...context, messages: [...context.messages, {
-          role: 'system', content: '宿主预算已进入收尾阶段。若当前仍有 recall_evidence，最多用一次复读至多4条最关键的已取得证据，随后必须调用 submit_answer 或 ask_user。若只剩提交工具，本轮必须完成提交，不得再尝试复读、搜索、读取新材料或媒体分析。已归档的原文不能靠记忆补写；仅依据仍可见原文作答，证据不足就交付部分结果并明确缺口。遵守原问题要求的篇幅；无相关依据时 outcome=not_found，不附无关引用。',
-          toolsRemoved: config.tools.filter(tool => !CLOSING_TOOLS.has(tool.name) || (!allowRecall && tool.name === 'recall_evidence')).map(tool => ({ name: tool.name })),
+        const closingContext = (allowRecall, allowCheck = false) => ({ ...context, messages: [...context.messages, {
+          role: 'system', content: config.answer_checks_enabled
+            ? '宿主预算已进入收尾阶段。若仍提供 recall_evidence 或 check_answer，可任选其中一个使用一次：复读至多4条关键的已取得证据，或核对草稿的实际字符数、正文单元与选中的原文。两者共享一次额度，之后必须 submit_answer 或 ask_user，不可连续检查与复读。检查只证明协议和身份，仍须自行判断所选片段是否支持每项事实。若只剩提交工具，本轮直接提交；不得搜索、读取新材料或媒体分析。已归档原文不能靠记忆补写；仅依据仍可见原文作答，证据不足交付部分结果并明确缺口。遵守原问题篇幅；无相关依据时 outcome=not_found，不附无关引用。'
+            : '宿主预算已进入收尾阶段。若当前仍有 recall_evidence，最多用一次复读至多4条最关键的已取得证据，随后必须调用 submit_answer 或 ask_user。若只剩提交工具，本轮必须完成提交，不得再尝试复读、搜索、读取新材料或媒体分析。已归档的原文不能靠记忆补写；仅依据仍可见原文作答，证据不足就交付部分结果并明确缺口。遵守原问题要求的篇幅；无相关依据时 outcome=not_found，不附无关引用。',
+          toolsRemoved: config.tools.filter(tool => tool.name === 'check_answer' ? !allowCheck
+            : !CLOSING_TOOLS.has(tool.name) || (!allowRecall && tool.name === 'recall_evidence')).map(tool => ({ name: tool.name })),
           timestamp: Date.now(),
         }] });
         // Reserve the largest possible closing instruction (including removal
@@ -319,6 +334,7 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
         let fitted = false;
         if (!admission.allowed && Number.isSafeInteger(admission.max_input_bytes) && admission.max_input_bytes >= 0) {
           finalizing = recallClosed = true;
+          closingCheckAllowed = false;
           // Pi 1.0.3 already performs this exact projection before sending
           // OpenAI-completions requests without mid-conversation system support.
           // Resolve removed tool declarations before measuring the closing
@@ -341,10 +357,11 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
         if (!admission.allowed) return errorStream(requestedModel, admission.message || '模型预算已用尽');
         finalizing ||= Boolean(admission.final_turn);
         recallClosed ||= admission.allow_recall === false;
+        closingCheckAllowed = Boolean(config.answer_checks_enabled && admission.allow_check_answer === true && !recallClosed);
         await emit('model.started', { turn, model: requestedModel.id, provider: requestedModel.provider,
           thinking_level: config.thinking_level || 'off' });
         // Pi 1.x declares tools through system-message deltas in the transcript.
-        const requestContext = fitted ? prepared : finalizing ? closingContext(!recallClosed) : context;
+        const requestContext = fitted ? prepared : finalizing ? closingContext(!recallClosed, closingCheckAllowed) : context;
         activeModelCall = { turn, startedAt: performance.now() };
         return providerStream(requestedModel, requestContext, {
           ...options, apiKey: config.api_key, maxTokens: admission.max_output_tokens,
@@ -357,8 +374,8 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
       }
     },
     beforeToolCall: async ({ toolCall }) => finalResult ? { block: true, reason: '任务结果已经提交', terminate: true }
-      : finalizing && (!CLOSING_TOOLS.has(toolCall.name) || (recallClosed && toolCall.name === 'recall_evidence'))
-        ? { block: true, reason: '预算已进入收尾阶段，只能复读已取得的证据或提交回答' } : undefined,
+      : finalizing && !closingAllowed(toolCall.name)
+        ? { block: true, reason: closingRejection } : undefined,
     finishTurn: async ({ message, toolResults }) => {
       if (finalResult) return { action: 'end' };
       if (['error', 'aborted'].includes(message.stopReason)) return;

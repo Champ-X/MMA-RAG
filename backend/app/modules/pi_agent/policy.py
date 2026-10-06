@@ -73,6 +73,7 @@ class BudgetLedger:
     finalizing: bool = False
     closing_reads: int = 0
     must_submit: bool = False
+    answer_checks_enabled: bool = False
     _reservations: dict[int, int] = field(default_factory=dict)
     _settled: set[int] = field(default_factory=set)
 
@@ -117,8 +118,17 @@ class BudgetLedger:
             available = self.limits.model_tokens - self.model_tokens - sum(self._reservations.values())
             output = min(max_output_tokens, self.limits.output_tokens)
             return {"allowed": False, "final_turn": True, "allow_recall": False,
+                    **({"allow_check_answer": False} if self.answer_checks_enabled else {}),
                     "max_input_bytes": max(0, available - output), "message": str(error)}
-        return {**result, "allow_recall": not self.must_submit and self.closing_reads < 1}
+        return {**result, "allow_recall": not self.must_submit and self.closing_reads < 1,
+                **({"allow_check_answer": self.closing_check_available()} if self.answer_checks_enabled else {})}
+
+    def closing_check_available(self):
+        # A check shares the existing one-read closing allowance. It still
+        # needs a following model turn and the original reserved submit slots.
+        return (self.answer_checks_enabled and not self.must_submit and self.closing_reads < 1
+                and self.model_requests < self.limits.model_requests
+                and self.tool_calls < self.limits.tool_calls - 2)
 
     def settle_model(self, turn: int, usage: dict | None):
         if turn in self._settled:
@@ -136,10 +146,13 @@ class BudgetLedger:
 
     def reserve_tool(self, name: str):
         self.check_time()
-        # Re-reading delivered evidence is local to the run. Compaction may
-        # have archived its text, so keep this available without reopening I/O.
-        if self.finalizing and name not in {"submit_answer", "ask_user", "recall_evidence"}:
+        # Both operations use only already delivered evidence. Experimental
+        # checking is an alternative to the one closing read, not another slot.
+        closing_review = name == "recall_evidence" or (self.answer_checks_enabled and name == "check_answer")
+        if self.finalizing and name not in {"submit_answer", "ask_user"} and not closing_review:
             raise ToolError("research_budget_exhausted", "已进入预算收尾阶段，只能复读已取得的证据或提交回答")
+        if self.finalizing and name == "check_answer" and not self.closing_check_available():
+            raise ToolError("research_budget_exhausted", "收尾阶段的复读或草稿检查额度已用尽，或没有后续模型/工具名额；请直接提交回答并说明缺口")
         if self.finalizing and name == "recall_evidence" and (self.must_submit or self.closing_reads >= 1):
             raise ToolError("research_budget_exhausted", "收尾阶段只能复读一批关键证据，现在请提交回答并说明缺口")
         if self.tool_calls >= self.limits.tool_calls:
@@ -152,7 +165,7 @@ class BudgetLedger:
         if name == "inspect_media" and self.media_calls >= self.limits.media_calls:
             raise ToolError("media_budget_exhausted", "媒体分析预算已用尽")
         self.tool_calls += 1
-        self.closing_reads += int(self.finalizing and name == "recall_evidence")
+        self.closing_reads += int(self.finalizing and closing_review)
         self.searches += int(name == "search")
         self.media_calls += int(name == "inspect_media")
 
