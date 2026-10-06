@@ -66,31 +66,90 @@ function archiveSupersededAnswers(messages, recordedDrafts) {
   return { messages: messages.flatMap((message, index) => removed.has(index) ? [] : [replacements.get(index) || message]), archived };
 }
 
-function archivedToolResult(message) {
-  if (message.role !== 'toolResult' || !message.details?.artifact_id) return null;
-  const next = { ...message, content: [{ type: 'text', text: JSON.stringify({
-    archived_result: message.details.artifact_id, evidence_ids: message.details.evidence_ids || [],
-    instruction: '原文已归档，编号仅用于定位，不能作为证据。工具仍可用且预算允许时可复读；否则说明未核对的缺口。',
-  }) }] };
-  return Buffer.byteLength(JSON.stringify(next)) < Buffer.byteLength(JSON.stringify(message)) ? next : null;
+function evidenceNavigation(message, body) {
+  // Derive navigation only from this already-delivered tool result. No model
+  // summary, new evidence, cross-call source lookup or source reclassification.
+  const ids = new Set((message.details?.evidence_ids || []).filter(id => Number.isSafeInteger(id) && id > 0));
+  if (!ids.size || message.isError || message.content.length !== 1 || message.content[0].type !== 'text') return null;
+  if (!Array.isArray(body?.evidence)) return null;
+  const navigation = { preview_only: true, entries: [], omitted_evidence_count: ids.size };
+  const included = new Set();
+  for (const source of body.evidence) {
+    if (!source || !ids.has(source.id) || included.has(source.id) || typeof source.source_id !== 'string'
+      || source.source_id.length > 256 || typeof source.file_name !== 'string' || typeof source.observation !== 'string'
+      || source.observation.length > 64 || !Array.isArray(source.content_units)) continue;
+    const name = [...source.file_name];
+    const entry = { evidence_id: source.id, source_id: source.source_id, file_name: name.slice(0, 128).join(''),
+      ...(name.length > 128 ? { file_name_truncated: true } : {}), observation: source.observation, locator: {}, excerpts: [] };
+    if (typeof source.version === 'string' && source.version.length <= 256) entry.version = source.version;
+    for (const key of ['chunk_index', 'page', 'page_number', 'text_start', 'text_end', 'start_sec', 'end_sec', 'shot_start_time', 'shot_end_time']) {
+      const value = source.locator?.[key];
+      if ((typeof value === 'number' && Number.isFinite(value)) || (typeof value === 'string' && value.length <= 128)) entry.locator[key] = value;
+    }
+    let remaining = 160;
+    for (const unit of source.content_units) {
+      if (!remaining || entry.excerpts.length >= 3) break;
+      if (!unit || typeof unit.id !== 'string' || !new RegExp(`^e${source.id}s[1-9][0-9]*$`).test(unit.id)
+        || typeof unit.text !== 'string' || !Number.isSafeInteger(unit.start) || unit.start < 0
+        || !Number.isSafeInteger(unit.end)) continue;
+      const characters = [...unit.text];
+      if (!characters.length || unit.end - unit.start !== characters.length) continue;
+      const text = characters.slice(0, remaining).join('');
+      const length = Math.min(remaining, characters.length);
+      entry.excerpts.push({ span_id: unit.id, start: unit.start, end: unit.start + length, text,
+        ...(['generated_caption', 'unmarked_parsed_text'].includes(unit.origin) ? { origin: unit.origin } : {}) });
+      remaining -= length;
+    }
+    if (!entry.excerpts.length) continue;
+    const next = { ...navigation, entries: [...navigation.entries, entry], omitted_evidence_count: ids.size - included.size - 1 };
+    if (Buffer.byteLength(JSON.stringify(next)) > 4096) break;
+    navigation.entries.push(entry);
+    included.add(source.id);
+    navigation.omitted_evidence_count = ids.size - included.size;
+  }
+  return navigation.entries.length ? navigation : null;
 }
 
-function fitFinalContext(context, maximum, protectedDrafts) {
+function archivedToolResult(message, includeNavigation = false) {
+  if (message.role !== 'toolResult' || !message.details?.artifact_id) return null;
+  let body;
+  if (includeNavigation && message.content.length === 1 && message.content[0].type === 'text') {
+    try { body = JSON.parse(message.content[0].text); } catch { /* Historical/non-JSON result: keep the existing marker. */ }
+    // Budget fitting can follow ordinary compaction in the same request. Do
+    // not strip the navigation from a marker that is already compacted.
+    if (body?.archived_result === message.details.artifact_id && body?.evidence_navigation?.preview_only === true) return null;
+  }
+  const navigation = includeNavigation ? evidenceNavigation(message, body) : null;
+  const next = { ...message, content: [{ type: 'text', text: JSON.stringify({
+    archived_result: message.details.artifact_id, evidence_ids: message.details.evidence_ids || [],
+    ...(navigation ? { evidence_navigation: navigation } : {}),
+    instruction: navigation
+      ? '完整工具结果已归档。以下来源、位置和逐字摘录只用于定位复读材料，不是完整证据或已核验结论；省略项不表示无关。依据原问题选择复读编号，复读后核对上下文与来源类型再引用；无法复读时说明缺口，不要把已交付但已归档的材料说成从未取得。'
+      : '原文已归档，编号仅用于定位，不能作为证据。工具仍可用且预算允许时可复读；否则说明未核对的缺口。',
+  }) }] };
+  return Buffer.byteLength(JSON.stringify(next)) < Buffer.byteLength(JSON.stringify(message))
+    ? { message: next, ...(navigation ? { navigationRef: { artifact_id: message.details.artifact_id,
+      evidence_ids: navigation.entries.map(entry => entry.evidence_id), omitted_evidence_count: navigation.omitted_evidence_count } } : {}) } : null;
+}
+
+function fitFinalContext(context, maximum, protectedDrafts, includeNavigation) {
   const messages = [...context.messages];
   // Preserve the newest delivered evidence verbatim, as well as all user
   // messages and call/result pairings. Do not invent a condensed source.
   const newest = messages.findLastIndex(message => message.role === 'toolResult' && message.details?.evidence_ids?.length);
   const next = { ...context, messages };
   let bytes = Buffer.byteLength(JSON.stringify(next)), archived = 0;
+  const indexes = [];
   for (let index = 0; index < messages.length && bytes > maximum; index++) {
     if (index === newest || (messages[index].role === 'toolResult' && protectedDrafts.has(messages[index].toolCallId))) continue;
-    const replacement = archivedToolResult(messages[index]);
+    const replacement = archivedToolResult(messages[index], includeNavigation);
     if (!replacement) continue;
-    messages[index] = replacement;
+    messages[index] = replacement.message;
+    if (replacement.navigationRef) indexes.push(replacement.navigationRef);
     archived += 1;
     bytes = Buffer.byteLength(JSON.stringify(next));
   }
-  return { context: next, bytes, archived };
+  return { context: next, bytes, archived, indexes };
 }
 
 export const SYSTEM_PROMPT = `你是 Tessmora 的自主知识研究 Agent，使用 Pi 完成理解、检索、阅读、核验和最终回答。
@@ -216,19 +275,23 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
       let bytes = Buffer.byteLength(JSON.stringify(messages), 'utf8');
       if (bytes < threshold) return messages;
       let archived = 0;
+      const indexes = [];
       const protectedDrafts = latestDraftCallIds(messages, recordedDrafts);
       const compacted = messages.map((message, index) => {
         if (bytes < threshold || index >= messages.length - 6 || message.role !== 'toolResult'
           || protectedDrafts.has(message.toolCallId) || !message.details?.artifact_id) return message;
-        const next = archivedToolResult(message);
-        if (!next) return message;
+        const replacement = archivedToolResult(message, config.answer_checks_enabled);
+        if (!replacement) return message;
+        const next = replacement.message;
         const saved = Buffer.byteLength(JSON.stringify(message)) - Buffer.byteLength(JSON.stringify(next));
         if (saved <= 0) return message;
         bytes -= saved;
         archived += 1;
+        if (replacement.navigationRef) indexes.push(replacement.navigationRef);
         return next;
       });
-      if (archived) await emit('context.compacted', { archived_tool_results: archived, remaining_bytes: bytes });
+      if (archived) await emit('context.compacted', { archived_tool_results: archived, remaining_bytes: bytes,
+        ...(indexes.length ? { archived_evidence_indexes: indexes } : {}) });
       return compacted;
     },
     streamFn: async (requestedModel, context, options) => {
@@ -265,9 +328,10 @@ export function createRuntime(config, { callHost, emit, providerStream = streamS
             && !requestedModel.compat?.supportsMidConvoSystemMessages) {
             prepared = collapseSystemMessages(prepared);
           }
-          const compacted = fitFinalContext(prepared, admission.max_input_bytes, latestDraftCallIds(prepared.messages, recordedDrafts));
+          const compacted = fitFinalContext(prepared, admission.max_input_bytes, latestDraftCallIds(prepared.messages, recordedDrafts), config.answer_checks_enabled);
           if (compacted.archived) await emit('context.compacted', { archived_tool_results: compacted.archived,
-            remaining_bytes: compacted.bytes, reason: 'remaining_budget' });
+            remaining_bytes: compacted.bytes, reason: 'remaining_budget',
+            ...(compacted.indexes.length ? { archived_evidence_indexes: compacted.indexes } : {}) });
           if (compacted.bytes > admission.max_input_bytes) return errorStream(requestedModel, '剩余预算无法容纳问题与最后一组原文证据');
           prepared = compacted.context;
           fitted = true;
