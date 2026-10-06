@@ -28,6 +28,7 @@ export function KnowledgeBaseConfigPanel({ open, onOpenChange }: KnowledgeBaseCo
   const { updateSystemConfig } = useConfigStore()
   const { getActiveSession, updateSessionKnowledgeBases } = useChatStore()
   const activeSession = getActiveSession()
+  const piMode = activeSession?.executionEngine === 'pi'
   const [kbMode, setKbMode] = useState<KbMode>('auto')
   const [selectedKbIds, setSelectedKbIds] = useState<Set<string>>(new Set())
   const [query, setQuery] = useState('')
@@ -66,7 +67,11 @@ export function KnowledgeBaseConfigPanel({ open, onOpenChange }: KnowledgeBaseCo
   )
   const summary = kbMode === 'manual'
     ? `已选 ${selectedKbIds.size} 个知识库`
-    : kbMode === 'all' ? `检索全部 ${knowledgeBases.length} 个知识库` : '根据问题自动选择知识库'
+    : kbMode === 'all' || piMode ? `检索全部 ${knowledgeBases.length} 个知识库` : '根据问题自动选择知识库'
+  const visibleModes = piMode
+    ? [{ value: 'auto' as const, label: '全部知识库', detail: '由 Agent 自主检索', Icon: Layers }, modes[2]]
+    : modes
+  const visibleMode = piMode && kbMode === 'all' ? 'auto' : kbMode
 
   return (
     <WorkflowDialog
@@ -88,7 +93,7 @@ export function KnowledgeBaseConfigPanel({ open, onOpenChange }: KnowledgeBaseCo
               className="workflow-button-primary"
               onClick={handleApply}
               disabled={!activeSession}
-              aria-label={`应用知识库范围：${kbMode === 'manual' ? `指定 ${selectedKbIds.size} 个知识库` : kbMode === 'all' ? '全部知识库' : '智能路由'}`}
+              aria-label={`应用知识库范围：${kbMode === 'manual' ? `指定 ${selectedKbIds.size} 个知识库` : kbMode === 'all' || piMode ? '全部知识库' : '智能路由'}`}
             >应用</button>
           </div>
         </>
@@ -96,18 +101,18 @@ export function KnowledgeBaseConfigPanel({ open, onOpenChange }: KnowledgeBaseCo
     >
       <fieldset className="scope-modes">
         <legend className="workflow-label">检索方式</legend>
-        <div className="scope-modes__options">
-          {modes.map(({ value, label, detail, Icon }) => (
-            <label key={value} htmlFor={`${id}-${value}`} className="scope-mode" data-selected={kbMode === value}>
+        <div className="scope-modes__options" data-pi={piMode || undefined}>
+          {visibleModes.map(({ value, label, detail, Icon }) => (
+            <label key={value} htmlFor={`${id}-${value}`} className="scope-mode" data-selected={visibleMode === value}>
               <input
                 id={`${id}-${value}`}
                 className="scope-mode__input"
                 type="radio"
                 name={`${id}-mode`}
                 value={value}
-                checked={kbMode === value}
+                checked={visibleMode === value}
                 onChange={() => setKbMode(value)}
-                data-autofocus={kbMode === value ? true : undefined}
+                data-autofocus={visibleMode === value ? true : undefined}
               />
               <span className="scope-mode__content">
                 <span className="scope-mode__top"><Icon size={20} strokeWidth={1.7} aria-hidden /><span className="scope-mode__indicator"><Check size={10} strokeWidth={2.5} aria-hidden /></span></span>
@@ -150,10 +155,10 @@ export function KnowledgeBaseConfigPanel({ open, onOpenChange }: KnowledgeBaseCo
         </section>
       ) : (
         <div className="scope-explanation">
-          {kbMode === 'auto' ? <Route size={19} strokeWidth={1.7} aria-hidden /> : <Layers size={19} strokeWidth={1.7} aria-hidden />}
+          {kbMode === 'auto' && !piMode ? <Route size={19} strokeWidth={1.7} aria-hidden /> : <Layers size={19} strokeWidth={1.7} aria-hidden />}
           <div>
-            <h3>{kbMode === 'auto' ? '让问题找到合适的知识库' : '在全部知识库中查找答案'}</h3>
-            <p>{kbMode === 'auto' ? '自动判断问题涉及的内容，选择相关知识库进行检索。适合跨主题提问。' : '将当前所有知识库作为检索范围，适合需要综合多个主题的问题。'}</p>
+            <h3>{piMode ? '由 Agent 自主查找资料' : kbMode === 'auto' ? '让问题找到合适的知识库' : '在全部知识库中查找答案'}</h3>
+            <p>{piMode ? 'Agent 在可访问的知识库中自主检索和阅读资料。需要限定范围时，可以手动指定知识库或文件。' : kbMode === 'auto' ? '自动判断问题涉及的内容，选择相关知识库进行检索。适合跨主题提问。' : '将当前所有知识库作为检索范围，适合需要综合多个主题的问题。'}</p>
           </div>
         </div>
       )}

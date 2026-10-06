@@ -1,5 +1,5 @@
-import { lazy, Suspense, useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { Send, Zap, Paperclip, Database, Square, AtSign, X, Sparkles, Search, BrainCircuit, Pencil } from 'lucide-react'
+import { lazy, Suspense, useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
+import { Send, Zap, Paperclip, Database, Square, AtSign, X, Sparkles, Search, BrainCircuit, Pencil, ChevronDown } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useChatStore } from '@/store/useChatStore'
@@ -8,6 +8,7 @@ import { useThinkingChain } from '@/hooks/useThinkingChain'
 import { usePiAgent } from '@/hooks/usePiAgent'
 import { piApi } from '@/services/piAgent'
 import { piStatusLabel, type PiConfig } from '@/types/pi'
+import { piModelDisplayName } from '@/lib/piTraceView'
 import { cn } from '@/lib/utils'
 import { getModelVendor, VENDOR_LOGOS } from '@/lib/modelVendors'
 import type { CitationReference } from '@/types/sse'
@@ -35,6 +36,18 @@ const MAX_CHAT_ATTACHMENTS = 3
 const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_CHAT_AUDIO_BYTES = 10 * 1024 * 1024
 const MAX_CHAT_VIDEO_BYTES = 30 * 1024 * 1024
+// Nested spans form a smooth brightness envelope along the rounded perimeter.
+// Animate each color as a group so every layer travels at the same speed.
+const PI_COMPOSER_TRAIL_LAYERS = Array.from({ length: 20 }, (_, index) => {
+  const brightness = .86 * Math.sin((index + 1) / 20 * Math.PI / 2) ** 2
+  const previousBrightness = .86 * Math.sin(index / 20 * Math.PI / 2) ** 2
+  const span = 14 * (1 - index / 20)
+  const start = (14 - span) / 2
+  return {
+    dashArray: `0 ${start} ${span} ${100 - start - span}`,
+    opacity: (brightness - previousBrightness) / (1 - previousBrightness),
+  }
+})
 interface QuestionEdit {
   messageId: string
   previous: ChatComposerDraft
@@ -199,6 +212,8 @@ export function ChatInterface() {
   const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const chatWorkspaceRef = useRef<HTMLDivElement>(null)
+  const composerDockRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<MentionComposerHandle>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const citePopoverRef = useRef<HTMLDivElement>(null)
@@ -247,6 +262,19 @@ export function ChatInterface() {
   const piEnabled = activeSession?.executionEngine === 'pi'
   const sendMessage = piEnabled ? pi.sendMessage : legacyChain.sendMessage
   const piState = pi.active?.sessionId === activeSessionId ? pi.active.pi.status : 'ready'
+  const piModelId = activeSession?.piModel || piConfig?.default_model || ''
+  const piModelLogo = piModelId ? VENDOR_LOGOS[getModelVendor(piModelId)] : undefined
+  useLayoutEffect(() => {
+    if (!piEnabled) return
+    const workspace = chatWorkspaceRef.current
+    const dock = composerDockRef.current
+    if (!workspace || !dock) return
+    const reserveComposerSpace = () => workspace.style.setProperty('--pi-dock-height', `${Math.ceil(dock.getBoundingClientRect().height)}px`)
+    reserveComposerSpace()
+    const observer = new ResizeObserver(reserveComposerSpace)
+    observer.observe(dock)
+    return () => { observer.disconnect(); workspace.style.removeProperty('--pi-dock-height') }
+  }, [piEnabled])
   useEffect(() => {
     if (!piEnabled || piConfig) return
     let cancelled = false
@@ -750,11 +778,12 @@ export function ChatInterface() {
   }, [messages])
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-transparent">
+    <div ref={chatWorkspaceRef} className={cn('h-full min-h-0 overflow-hidden bg-transparent', piEnabled ? 'pi-chat-workspace' : 'flex flex-col')}>
       {/* 消息区 */}
-      <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
+      <ScrollArea ref={scrollAreaRef} className={cn('min-h-0 flex-1', piEnabled && 'pi-chat-messages')}>
         <div className={cn(
           'px-4 pb-1 pt-5 sm:px-8 sm:pt-7',
+          piEnabled && 'pi-chat-message-content',
           messages.length === 0 && 'flex min-h-full flex-col justify-center'
         )}>
           <div
@@ -844,18 +873,15 @@ export function ChatInterface() {
       </ScrollArea>
 
       {/* 输入区 - Gemini 风格悬浮框 */}
-      <div className="relative px-4 pb-4 sm:px-6">
-        <div className="mx-auto max-w-4xl relative">
+      <div ref={composerDockRef} className={cn('relative px-4 pb-4 sm:px-6', piEnabled && 'pi-composer-dock')}>
+        <div data-pi-state={piEnabled ? piState : undefined} className={cn('mx-auto max-w-4xl relative', piEnabled && 'pi-composer-frame')}>
+          {piEnabled && <svg className="pi-composer-trails" width="100%" height="100%" aria-hidden="true" focusable="false">
+            {['cyan', 'pink'].map(color => <g key={color} className={`pi-composer-trail pi-composer-trail--${color}`}>
+              {PI_COMPOSER_TRAIL_LAYERS.map((layer, index) => <rect key={index} x="1" y="1" width="100%" height="100%" rx="27" pathLength="100" strokeDasharray={layer.dashArray} opacity={layer.opacity} />)}
+            </g>)}
+          </svg>}
           {/* 一体化输入框：flex 布局，textarea 与按钮区分离；focus 时极细 indigo/fuchsia 环与品牌一致 */}
           <div data-pi-state={piEnabled ? piState : undefined} className={cn("flex flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/75 bg-white/90 shadow-[0_22px_52px_-36px_rgba(15,23,42,0.72),0_1px_0_rgba(255,255,255,0.9)_inset] ring-1 ring-white/70 backdrop-blur-xl transition-[box-shadow,border-color] duration-200 focus-within:border-indigo-300/80 focus-within:ring-indigo-200/80 dark:border-slate-700/70 dark:bg-slate-900/80 dark:shadow-[0_24px_62px_-42px_rgba(0,0,0,0.95)] dark:ring-white/[0.05] dark:focus-within:border-indigo-400/40 dark:focus-within:ring-indigo-400/20", piEnabled && 'pi-composer')}>
-            {piEnabled && <div className="pi-composer-banner" role="status">
-              <strong>Pi · 纯 Agent</strong><span>{piState === 'ready' ? '自主检索、深读与作答' : piStatusLabel[piState]}</span>
-              <select aria-label="纯 Agent 独立模型" disabled={isLoading || !piConfig} value={activeSession?.piModel || piConfig?.default_model || ''}
-                onChange={event => activeSessionId && updateSessionPiModel(activeSessionId, event.target.value)}>
-                {!piConfig ? <option value="">读取模型…</option> : piConfig.models.map(model => <option key={model} value={model}>{model}</option>)}
-              </select>
-              {piConfigError && <span role="alert">{piConfigError}</span>}
-            </div>}
             {questionEdit && (
               <div className="flex items-center gap-2 border-b border-indigo-100/80 bg-indigo-50/60 px-5 py-2 text-xs dark:border-indigo-500/20 dark:bg-indigo-950/30">
                 <Pencil size={13} className="text-indigo-500 dark:text-indigo-300" aria-hidden />
@@ -961,6 +987,7 @@ export function ChatInterface() {
             />
             </Suspense>
             {attachmentError && <p className="composer-attachment-error" role="alert">{attachmentError}</p>}
+            {piEnabled && piConfigError && <p className="pi-composer-config-error" role="alert">{piConfigError}</p>}
 
             {mentionState && (
               <section className="file-mention-panel" aria-label="引用素材文件">
@@ -1049,8 +1076,8 @@ export function ChatInterface() {
 
             {/* 底部功能栏 - 独立区域，与文字区物理分离 */}
             <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2 bg-gradient-to-b from-transparent to-slate-50/60 px-4 py-2.5 dark:to-slate-950/25">
-              <div className="flex shrink-0 items-center gap-2">
-                <button
+              <div className={cn('flex shrink-0 items-center gap-2', piEnabled && 'pi-composer-controls')}>
+                {!piEnabled && <button
                   type="button"
                   onClick={() => setKbConfigPanelOpen(true)}
                   title="知识库范围配置"
@@ -1063,9 +1090,9 @@ export function ChatInterface() {
                       ? '全部'
                       : activeSession?.kbMode === 'manual'
                         ? `指定 ${activeSession?.knowledgeBaseIds?.length ?? 0} 个`
-                        : piEnabled ? '自主选库' : '智能路由'}
+                        : '智能路由'}
                   </span>
-                </button>
+                </button>}
 
                 {!piEnabled && <button
                   type="button"
@@ -1099,6 +1126,19 @@ export function ChatInterface() {
                   onClick={() => { if (activeSessionId) updateSessionPiMode(activeSessionId, !piEnabled) }}>
                   <span className="pi-toggle-symbol" aria-hidden>π</span><span>Agent</span>
                 </button>
+
+                {piEnabled && <label className="pi-model-picker" title={piModelId ? `Pi 模型：${piModelId}` : '读取 Pi 模型配置'}>
+                  {piModelLogo ? <img src={piModelLogo} alt="" width={16} height={16} /> : <Zap size={15} aria-hidden />}
+                  <select aria-label="纯 Agent 独立模型" disabled={isLoading || !piConfig} value={piModelId}
+                    onChange={event => activeSessionId && updateSessionPiModel(activeSessionId, event.target.value)}>
+                    {!piConfig ? <option value="">读取模型…</option> : piConfig.models.map(model => <option key={model} value={model}>{piModelDisplayName(model)}</option>)}
+                  </select>
+                  <ChevronDown size={13} aria-hidden />
+                </label>}
+                {piEnabled && <span className={cn('pi-composer-status', piState === 'ready' && 'sr-only')} role="status">
+                  {piState !== 'ready' && <span className="pi-status-dot" aria-hidden />}
+                  {piState === 'ready' ? '纯 Agent 模式已开启' : piStatusLabel[piState]}
+                </span>}
 
                 {!piEnabled && <button
                   type="button"
@@ -1135,6 +1175,13 @@ export function ChatInterface() {
               </div>
 
               <div className="ml-auto flex shrink-0 items-center gap-2">
+                {piEnabled && <button type="button" className="pi-scope-trigger"
+                  onClick={() => setKbConfigPanelOpen(true)} disabled={isLoading || !activeSessionId}
+                  title={activeSession?.kbMode === 'manual' ? `检索范围：指定 ${activeSession.knowledgeBaseIds.length} 个知识库` : '检索范围：全部可访问的知识库'}
+                  aria-label="打开知识库范围配置" aria-haspopup="dialog" aria-expanded={kbConfigPanelOpen}>
+                  <Database size={15} strokeWidth={1.7} aria-hidden />
+                  {activeSession?.kbMode === 'manual' && <span>{activeSession.knowledgeBaseIds.length}</span>}
+                </button>}
                 <button
                   type="button"
                   onClick={() => setFileScopePickerOpen(true)}
