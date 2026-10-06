@@ -23,7 +23,22 @@ def text_units(text, prefix, *, maximum=None):
 
 
 def evidence_units(evidence):
-    return text_units(evidence.content, f"e{evidence.id}s", maximum=1200)
+    units = text_units(evidence.content, f"e{evidence.id}s", maximum=1200)
+    origin = evidence.provenance.get("text_origin")
+    if not origin or origin.get("version") != 1:
+        # Historical evidence keeps its original unit IDs and exact offsets.
+        return units
+    spans, annotated = origin["generated_spans"], []
+    for unit in units:
+        boundaries = sorted({unit["start"], unit["end"], *(position for span in spans
+            for position in (span["start"], span["end"]) if unit["start"] < position < unit["end"])})
+        for start, end in zip(boundaries, boundaries[1:]):
+            text = evidence.content[start:end]
+            if text.strip():
+                generated = any(span["start"] <= start and end <= span["end"] for span in spans)
+                annotated.append({"id": f"e{evidence.id}s{len(annotated) + 1}", "start": start, "end": end,
+                                  "text": text, "origin": "generated_caption" if generated else "unmarked_parsed_text"})
+    return annotated
 
 
 def evidence_payload(evidence):
@@ -102,6 +117,7 @@ def assess_answer(args, delivered):
             evidence, support = found
             sources.append({"span_id": anchor, "evidence_id": evidence.id, "source_id": evidence.source_id,
                             "version": evidence.version, "observation": evidence.observation,
+                            **({"origin": support["origin"]} if "origin" in support else {}),
                             "start": support["start"], "end": support["end"], "text": support["text"]})
         factual = kind in {"fact", "inference"}
         if factual and not anchors:

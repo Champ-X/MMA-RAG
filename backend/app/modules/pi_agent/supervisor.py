@@ -229,7 +229,8 @@ class PiSupervisor:
                 async with asyncio.timeout(self.settings.budget.wall_seconds):
                     catalog, scope, annotated, bindings = await self._prepare(run_id, request, owner, ledger, emit)
                     transport = ModelTransport(self.registry, self.settings, ledger, emit)
-                    gateway = KnowledgeGateway(catalog, scope, self.vectors, transport, self.search_gate)
+                    gateway = KnowledgeGateway(catalog, scope, self.vectors, transport, self.search_gate,
+                        annotate_text_origins=self.settings.answer_checks_enabled)
                     media = MediaInspector(catalog, self.storage, transport, ledger, self.settings, self.blocking)
                     toolset = ToolSet(run_id, self.store, catalog, scope, ledger, gateway, media, emit, self.blocking,
                                       answer_checks_enabled=self.settings.answer_checks_enabled)

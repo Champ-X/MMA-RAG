@@ -13,6 +13,7 @@ from .catalog import SourceCatalog, Source
 from .contracts import Evidence
 from .policy import AccessScope, ToolError
 from .store import fingerprint
+from .text_origins import document_text_origin, TEXT_ORIGIN_VERSION
 
 COLLECTIONS = {
     "doc": ("text_chunks_agentic", ["dense"]),
@@ -43,7 +44,8 @@ def lexical_terms(query):
                 else [token, *(token[i:i + 2] for i in range(len(token) - 1))]))
 
 
-def evidence_for(source: Source, modality: str, point, *, max_chars=6000, text_offset=0) -> Evidence:
+def evidence_for(source: Source, modality: str, point, *, max_chars=6000, text_offset=0,
+                 annotate_text_origins=False) -> Evidence:
     payload = point.payload or {}
     metadata = payload.get("metadata") or {}
     if isinstance(metadata, str):
@@ -65,19 +67,21 @@ def evidence_for(source: Source, modality: str, point, *, max_chars=6000, text_o
         for key in ("source_start", "source_end"):
             if key in chunking:
                 locator[key] = chunking[key]
-    record_version = fingerprint({"object": source.version, "text": text, "locator": locator})
+    origin_version = {"text_origin_version": TEXT_ORIGIN_VERSION} if annotate_text_origins and modality == "doc" else {}
+    record_version = fingerprint({"object": source.version, "text": text, "locator": locator, **origin_version})
     content = text[text_offset:text_offset + max_chars]
+    origin = {"text_origin": document_text_origin(text, text_offset, len(content))} if origin_version else {}
     locator["returned_chars"] = len(content)
     locator["total_chars"] = len(text)
     locator["text_start"] = text_offset
     locator["text_end"] = text_offset + len(content)
     observation = "parsed_text" if modality == "doc" else "transcript" if modality == "audio" else "caption"
     return Evidence(source_id=source.id, modality=modality, file_name=source.name, content=content,
-                    version=fingerprint({"object": source.version, "text": text, "locator": locator}),
+                    version=fingerprint({"object": source.version, "text": text, "locator": locator, **origin_version}),
                     observation=observation, locator=locator,
                     provenance={"kb_id": source.kb_id, "file_id": source.file_id, "source_version": source.version,
                                 "index_kb_id": payload.get("kb_id"), "record_version": record_version,
-                                "truncated": text_offset > 0 or len(content) < len(text)},
+                                "truncated": text_offset > 0 or len(content) < len(text), **origin},
                     citation={"type": source.modality, "file_name": source.name,
                               "debug_info": {"kb_id": source.kb_id, "chunk_id": str(point.id)},
                               **({"start_sec": payload["shot_start_time"]} if "shot_start_time" in payload else {}),
@@ -85,9 +89,11 @@ def evidence_for(source: Source, modality: str, point, *, max_chars=6000, text_o
 
 
 class KnowledgeGateway:
-    def __init__(self, catalog: SourceCatalog, scope: AccessScope, client, model_transport, search_gate):
+    def __init__(self, catalog: SourceCatalog, scope: AccessScope, client, model_transport, search_gate, *,
+                 annotate_text_origins=False):
         self.catalog, self.scope, self.client = catalog, scope, client
         self.models, self.search_gate = model_transport, search_gate
+        self.annotate_text_origins = annotate_text_origins
 
     def _evidence(self, source: Source, modality: str, point, **kwargs) -> Evidence:
         parent = self.catalog.parent_document(point.payload or {}, self.scope) if modality == "image" else None
@@ -101,7 +107,7 @@ class KnowledgeGateway:
                 kwargs["max_chars"] = allowance - navigation_chars
             else:
                 link = None  # Oversized display metadata is optional navigation.
-        evidence = evidence_for(source, modality, point, **kwargs)
+        evidence = evidence_for(source, modality, point, annotate_text_origins=self.annotate_text_origins, **kwargs)
         if link:
             evidence.provenance["parent_document"] = link
             # Keep the image observation intact. A changed navigation binding
