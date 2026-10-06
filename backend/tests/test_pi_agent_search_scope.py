@@ -138,4 +138,3 @@ async def test_scoped_search_is_host_validated_budgeted_and_persisted(tmp_path, 
 def test_source_filter_schema_is_bounded(value):
     with pytest.raises(ValidationError):
         Search.model_validate({"query": "指标", "source_ids": value})
-
