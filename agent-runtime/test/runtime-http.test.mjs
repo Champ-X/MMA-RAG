@@ -7,9 +7,10 @@ import { createRuntime, SYSTEM_PROMPT } from '../src/runtime.mjs';
 async function sseEndpoint(t, responses) {
   const requests = [];
   const server = createServer(async (request, response) => {
-    let body = '';
-    for await (const chunk of request) body += chunk;
-    requests.push(JSON.parse(body));
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    // Socket boundaries can split a UTF-8 code point in a long draft.
+    requests.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
     const frames = responses[requests.length - 1];
     if (!frames) {
       response.writeHead(400, { 'Content-Type': 'application/json' });
@@ -246,9 +247,9 @@ for (const answerChecks of [false, true]) {
           { id: 'accepted-1', name: 'submit_answer', arguments: { answer: '数值为17，模型权重固定。[1]' } },
         ];
         const server = createServer(async (request, response) => {
-          let body = '';
-          for await (const chunk of request) body += chunk;
-          requests.push({ path: request.url, body: JSON.parse(body) });
+          const chunks = [];
+          for await (const chunk of request) chunks.push(chunk);
+          requests.push({ path: request.url, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) });
           const call = script[requests.length - 1];
           if (!call) {
             response.writeHead(400, { 'Content-Type': 'application/json' });

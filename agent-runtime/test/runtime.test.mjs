@@ -45,9 +45,9 @@ test('experimental statement instructions require an explicit per-run setting', 
 test('Pi thinking uses the provider protocol and accounts usage without exposing raw thinking', async (t) => {
   const requests = [], events = [], settlements = [];
   const server = createServer(async (request, response) => {
-    let body = '';
-    for await (const chunk of request) body += chunk;
-    requests.push(JSON.parse(body));
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    requests.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
     response.writeHead(200, { 'Content-Type': 'text/event-stream' });
     for (const frame of [
       { choices: [{ index: 0, delta: { reasoning_content: 'private internal reasoning' } }] },
