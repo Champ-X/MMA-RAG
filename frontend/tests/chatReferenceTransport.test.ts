@@ -28,6 +28,25 @@ test('multipart keeps positional references, upload IDs and explicit knowledge s
     assert.deepEqual(JSON.parse(body!.get('selectedFiles') as string)[0], { kb_id: 'kb', file_id: 'f', name: 'same.png' })
     assert.equal(JSON.parse(body!.get('mentions') as string)[0].start, 2)
     assert.equal((body!.get('files') as File).name, 'same.png')
+    assert.equal(body!.get('conversationContext'), null, 'legacy requests have no context override')
+  } finally { globalThis.fetch = original }
+})
+
+test('mixed conversation context uses POST and preserves Chinese history without files', async () => {
+  const original = globalThis.fetch
+  let received: FormData | undefined
+  globalThis.fetch = async (_url, init) => {
+    assert.equal(init?.method, 'POST')
+    received = init!.body as FormData
+    return new Response('data: {"type":"complete"}\n\n')
+  }
+  try {
+    const context = [{ role: 'assistant' as const, content: 'Pi 已确认的定义。' }]
+    await new Promise<void>((resolve, reject) => {
+      createChatStream('对此展开说明', { onComplete: () => resolve(), onError: reject }, { conversationContext: context, agentMode: 'direct' })
+    })
+    assert.deepEqual(JSON.parse(String(received!.get('conversationContext'))), context)
+    assert.equal(received!.getAll('files').length, 0)
   } finally { globalThis.fetch = original }
 })
 

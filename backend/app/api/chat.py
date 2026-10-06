@@ -592,6 +592,7 @@ async def _iter_chat_sse_impl(
     mentions_raw: Any = None,
     attachment_files: Optional[List[Dict[str, Any]]] = None,
     reference_files_raw: Optional[str] = None,
+    conversation_context: Optional[List[Dict[str, str]]] = None,
 ) -> AsyncGenerator[str, None]:
     """流式聊天 SSE 行迭代器（GET/POST 共用）。"""
     thinking: Dict[str, Any] = {}
@@ -642,7 +643,7 @@ async def _iter_chat_sse_impl(
         }
         sessions[current_session_id] = session
 
-    session_context = _build_session_context(session)
+    session_context = _build_session_context(session if conversation_context is None else {"messages": conversation_context})
 
     kb_context = None
     if kb_ids or selected_files or reference_files:
@@ -848,6 +849,7 @@ async def stream_chat_multipart(
     referenceFiles: Optional[str] = Form(None),
     mentions: Optional[str] = Form(None),
     attachmentIds: Optional[str] = Form(None),
+    conversationContext: Optional[str] = Form(None),
     sessionId: Optional[str] = Form(None),
     model: Optional[str] = Form(None),
     agentMode: str = Form("direct"),
@@ -865,6 +867,17 @@ async def stream_chat_multipart(
     async def generate():
         try:
             try:
+                conversation_context = None
+                if conversationContext is not None:
+                    if len(conversationContext) > 64000:
+                        raise ValueError("会话上下文过长")
+                    conversation_context = json.loads(conversationContext)
+                    if not isinstance(conversation_context, list) or len(conversation_context) > 24 or any(
+                        not isinstance(item, dict) or set(item) != {"role", "content"} or
+                        not isinstance(item["role"], str) or item["role"] not in {"user", "assistant"} or not isinstance(item["content"], str)
+                        for item in conversation_context
+                    ):
+                        raise ValueError("会话上下文仅允许有界的用户与助手消息")
                 ids = normalize_attachment_ids(attachmentIds, len(named_uploads))
                 attachment_files = [
                     {"id": ids[i], "index": i + 1, "name": uf.filename, "type": uf.content_type or ""}
@@ -945,6 +958,7 @@ async def stream_chat_multipart(
                 agent_mode=agentMode,
                 attachment_context=attachment_context,
                 include_connected=False,
+                conversation_context=conversation_context,
             ):
                 yield line
         except JevRequiredError as exc:

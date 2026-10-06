@@ -1,0 +1,17 @@
+{
+  "name": "tessmora-pi-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Isolated Pi workers for Tessmora's autonomous retrieval mode",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node src/worker.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "1.0.3",
+    "@earendil-works/pi-ai": "1.0.3",
+    "typebox": "1.1.3"
+  }
+}

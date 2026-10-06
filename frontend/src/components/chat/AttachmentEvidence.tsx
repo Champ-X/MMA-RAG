@@ -4,6 +4,7 @@ import type { CitationReference } from '@/types/sse'
 import { getAttachmentBlob } from '@/lib/chatAttachmentBlobStore'
 import { useChatStore } from '@/store/useChatStore'
 import { cn } from '@/lib/utils'
+import { piOriginalUrl } from '@/services/piAgent'
 
 /** Resolve by stable identity within this conversation; never guess by filename or contact KB endpoints. */
 export function AttachmentEvidence({ reference, displayNumber, onOpen, preview = false }: {
@@ -31,7 +32,8 @@ export function AttachmentEvidence({ reference, displayNumber, onOpen, preview =
     return () => { cancelled = true; if (url) URL.revokeObjectURL(url) }
   }, [reference.attachment_id])
   const current = media.id === reference.attachment_id ? media : { loaded: false, url: undefined }
-  const src = current.url || (reference.type === 'image' ? attachment?.thumbDataUrl : undefined)
+  const savedOriginal = piOriginalUrl(reference)
+  const src = current.url || savedOriginal || (reference.type === 'image' ? attachment?.thumbDataUrl : undefined)
   const label = `本机${reference.type === 'image' ? '图片' : reference.type === 'audio' ? '音频' : '视频'}：${reference.file_name}`
   const Icon = reference.type === 'image' ? ImageIcon : reference.type === 'audio' ? Music : Video
   const header = <><Icon size={15} className="shrink-0 text-teal-600 dark:text-teal-300" aria-hidden />
@@ -56,7 +58,7 @@ export function AttachmentEvidence({ reference, displayNumber, onOpen, preview =
       ) : <p role="status" className="px-3 pb-3 text-xs text-slate-500 dark:text-slate-400">
         {!current.loaded ? '正在恢复附件…' : failed ? '当前浏览器无法预览此附件。' : '本机原文件已清理，无法预览。引用的解析内容仍保留。'}
       </p>}
-      {src && !current.url && current.loaded && <p className="px-3 py-2 text-xs text-slate-500">原文件已清理，当前仅展示保存的缩略图。</p>}
+      {src && !current.url && !savedOriginal && current.loaded && <p className="px-3 py-2 text-xs text-slate-500">原文件已清理，当前仅展示保存的缩略图。</p>}
     </figure>
   )
 }

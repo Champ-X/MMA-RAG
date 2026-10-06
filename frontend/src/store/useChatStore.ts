@@ -4,6 +4,7 @@ import { chatApi } from '@/services/api_client';
 import { collectUserAttachmentIds, deleteAttachmentBlobs } from '@/lib/chatAttachmentBlobStore';
 import type { AgentRoundTrace, CitationReference, StageTimings } from '@/types/sse';
 import type { ChatMention } from '@/lib/chatReferences';
+import type { PiTrace } from '@/types/pi';
 
 /** 用户消息携带的附件展示信息；previewUrl 为内存 Object URL，仅当前页有效；thumbDataUrl 为小图 JPEG data URL，可随会话持久化 */
 export interface ChatMessageAttachment {
@@ -114,6 +115,8 @@ export interface Message {
   attachments?: ChatMessageAttachment[]
   citations?: CitationReference[];
   error?: string;
+  pi?: PiTrace;
+  executionEngine?: 'existing' | 'pi';
 }
 
 /** 释放 blob: 预览 URL，并删除 IndexedDB 中的附件二进制（删会话 / 覆盖历史时用） */
@@ -146,6 +149,8 @@ export interface ChatSession {
   kbMode?: KbMode;
   /** 自动选择 / 直接检索 / Agent 深研；boolean 仅用于兼容旧版持久化会话。 */
   agentMode?: AgentMode | boolean;
+  executionEngine?: 'existing' | 'pi';
+  piModel?: string;
   createdAt: number;
   updatedAt: number;
   isActive: boolean;
@@ -194,6 +199,8 @@ interface ChatStore {
   updateSessionKnowledgeBases: (sessionId: string, knowledgeBaseIds: string[], kbMode?: KbMode) => void;
 
   updateSessionAgentMode: (sessionId: string, mode: AgentMode) => void;
+  updateSessionPiMode: (sessionId: string, enabled: boolean) => void;
+  updateSessionPiModel: (sessionId: string, model: string) => void;
 
   loadSessionHistory: (sessionId: string) => Promise<void>;
 
@@ -386,6 +393,14 @@ export const useChatStore = create<ChatStore>()(
         }))
       },
 
+      updateSessionPiMode: (sessionId, enabled) => {
+        set(state => ({ sessions: state.sessions.map(s => s.id === sessionId
+          ? { ...s, executionEngine: enabled ? 'pi' : 'existing', updatedAt: Date.now() } : s) }))
+      },
+      updateSessionPiModel: (sessionId, piModel) => {
+        set(state => ({ sessions: state.sessions.map(s => s.id === sessionId ? { ...s, piModel, updatedAt: Date.now() } : s) }))
+      },
+
       // 从后端加载会话历史
       loadSessionHistory: async (sessionId) => {
         try {
@@ -405,6 +420,9 @@ export const useChatStore = create<ChatStore>()(
             }>;
           };
           if (res?.success && Array.isArray(res.messages)) {
+            // The Pi ledger is separate. An old API history response must not
+            // overwrite locally persisted Pi turns or their attachments.
+            if (get().sessions.find(s => s.id === sessionId)?.messages.some(m => m.executionEngine === 'pi' || m.pi)) return;
             const messages: Message[] = res.messages.map((m, i) => ({
               id: `msg_loaded_${sessionId}_${i}`,
               role: m.role as 'user' | 'assistant',

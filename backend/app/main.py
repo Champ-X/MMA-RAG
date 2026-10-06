@@ -57,6 +57,8 @@ async def _app_lifespan(app: FastAPI):
         await asyncio.gather(catalog_task, return_exceptions=True)
         from app.modules.knowledge.suggested_questions import stop_suggestion_background_tasks
         await stop_suggestion_background_tasks()
+        from app.api.pi_agent import stop_pi_supervisor
+        await stop_pi_supervisor()
 
 
 # 创建 FastAPI 应用实例
@@ -78,9 +80,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(JevConfigMiddleware)
+from app.modules.pi_agent.admission import LegacyPriorityMiddleware
+app.add_middleware(LegacyPriorityMiddleware)
 
 # 导入路由模块
 from app.api import chat, knowledge, upload, debug, import_api, feishu, retrieval, jev
+from app.api import pi_agent
 from app.core.logger import setup_logger
 
 # 设置日志
@@ -98,6 +103,7 @@ app.include_router(debug.router, prefix="/api/debug", tags=["debug"])
 app.include_router(import_api.router, prefix="/api/import", tags=["import"])
 app.include_router(feishu.router, prefix="/api/feishu", tags=["feishu"])
 app.include_router(retrieval.router, prefix="/api/v1/retrieval", tags=["retrieval"])
+app.include_router(pi_agent.router, prefix="/api/pi", tags=["pi-agent"])
 
 # 全局异常处理
 @app.exception_handler(Exception)

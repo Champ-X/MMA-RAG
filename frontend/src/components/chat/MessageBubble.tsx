@@ -44,6 +44,7 @@ let katexCssLoadPromise: Promise<unknown> | null = null
 const ThinkingCapsule = React.lazy(() =>
   import('./ThinkingCapsule').then((module) => ({ default: module.ThinkingCapsule }))
 )
+const PiProcess = React.lazy(() => import('./PiProcess').then(module => ({ default: module.PiProcess })))
 
 const MarkdownRenderer = React.lazy(() =>
   import('./MarkdownRenderer').then((module) => ({ default: module.MarkdownRenderer }))
@@ -93,6 +94,7 @@ export interface MessageBubbleMessage {
     processing_time?: number
   }
   thinking?: Message['thinking'] | null
+  pi?: Message['pi']
   error?: string
   attachments?: ChatMessageAttachment[]
   scopeFiles?: ChatScopeFile[]
@@ -1341,7 +1343,8 @@ export function MessageBubble({
             />
           )}
 
-          {showThinking && (
+          {message.pi && <div className="relative z-[1] mb-5"><Suspense fallback={<ThinkingCapsuleFallback />}><PiProcess trace={message.pi} /></Suspense></div>}
+          {showThinking && !message.pi && (
             <div className="relative z-[1]">
               <Suspense fallback={<ThinkingCapsuleFallback />}>
                 <ThinkingCapsule
