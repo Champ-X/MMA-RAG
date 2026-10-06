@@ -6,6 +6,8 @@ Pi 使用 [`earendil-works/pi`](https://github.com/earendil-works/pi) 的实际 
 
 默认主模型与后续测试主模型均为 `deepseek:deepseek-flash`，推理与实验检查默认关闭。当前模式可完成真实检索与带来源的回答，仍可能遗漏比较要点，或将精确搜索未命中过度概括为全文不存在。独立执行链路和关键回归已有验证，不承诺随机生成答案完全相同或任意共享负载下性能不变。
 
+核心功能已完成本地交付：输入框独立切换、受范围约束的工具、真实过程展示、取消与历史恢复均有验证记录。最新前端 135 项测试和类型检查通过，旧流程完整回放及并发证据保持适用；具体记录及本轮浏览器复查未完成的边界见 [核心功能交付审计](PI_AGENT_VERIFICATION.md#核心功能交付审计2026-10-06)。
+
 ## 使用
 
 1. 在 `agent-runtime` 执行 `npm ci`，使用 Node.js 22 或更高版本。
@@ -194,4 +196,4 @@ PYTHONHASHSEED=0 .venv/bin/python scripts/verify-pi-replay.py --mode replay \
 
 验收记录应保留失败候选，并同时报告未通过的门槛。浏览器验收包含原编辑器身份、草稿/引用/附件保留、浅色/深色、窄屏、减弱动态效果、真实任务过程、取消与刷新回放。不要把协议测试中的模拟供应商结果当作真实模型验证。
 
-本次结果及尚未通过的门槛见 [PI_AGENT_VERIFICATION.md](PI_AGENT_VERIFICATION.md)。
+功能交付证据、历史严格评测及已知质量问题见 [PI_AGENT_VERIFICATION.md](PI_AGENT_VERIFICATION.md)。
