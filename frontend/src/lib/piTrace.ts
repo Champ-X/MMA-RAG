@@ -68,6 +68,19 @@ export function applyPiEvent(previous: PiTrace, event: PiEvent): PiTrace {
       startedAt: event.timestamp * 1000, parentId: event.parent_span_id,
       text: [limit, points.length ? `回答要点：${points.join('；')}` : '', quote, '以上为 Pi 对用户要求的理解。'].filter(Boolean).join('\n') })
   }
+  else if (event.type === 'answer.plan') {
+    const items = Array.isArray(data.items) ? data.items.filter((item): item is Record<string, unknown> =>
+      !!item && typeof item === 'object' && !Array.isArray(item)) : []
+    const labels: Record<string, string> = { pending: '待补充', ready: '已就绪', incomplete: '仍有缺项', unavailable: '缺少依据' }
+    updateStep({ id: stepId, kind: 'context', label: '任务进度与依据', status: 'completed',
+      startedAt: event.timestamp * 1000, parentId: event.parent_span_id,
+      evidenceIds: [...new Set(items.flatMap(item => [item.evidence_ids, item.supporting_evidence_ids]
+        .flatMap(ids => Array.isArray(ids) ? ids.filter((id): id is number => Number.isSafeInteger(id) && id > 0) : [])))],
+      text: items.map(item => `${labels[String(item.status)] || '待补充'} · ${String(item.requirement || '')}`
+        + (item.basis === 'user_input' ? '（依据用户输入）' : '')
+        + (['incomplete', 'unavailable'].includes(String(item.status)) && typeof item.gap === 'string' ? `：${item.gap}` : '')).join('\n')
+        + '\n以上为 Agent 的任务理解与选择，未独立验证语义支持。' })
+  }
   else if (event.type === 'evidence.added') next.evidence = [...previous.evidence, data as unknown as PiTrace['evidence'][number]]
   else if (event.type === 'action.delta') {
     const id = `action:${data.turn}`

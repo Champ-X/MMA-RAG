@@ -11,12 +11,14 @@ import './piAgent.css'
 import './piProcess.css'
 
 const toolLabels: Record<string, string> = {
+  update_answer_plan: '整理任务与依据',
   set_answer_requirements: '登记回答要求',
   list_sources: '发现来源', search: '检索材料', read_source: '阅读材料', expand_context: '核对上下文',
   recall_evidence: '回看证据', inspect_media: '查看媒体', query_table: '读取与计算表格',
   check_answer: '核对草稿', submit_answer: '提交回答', ask_user: '请求补充信息',
 }
 const toolIcons: Record<string, LucideIcon> = {
+  update_answer_plan: ListChecks,
   list_sources: Files, search: Search, read_source: FileText, expand_context: Layers,
   recall_evidence: Archive, inspect_media: ScanEye, query_table: Table2,
   set_answer_requirements: ListChecks, check_answer: ListChecks, submit_answer: Check, ask_user: MessageCircle,
@@ -215,17 +217,25 @@ export function PiProcess({ trace }: { trace: PiTrace }) {
         <EvidenceList trace={trace} selection={selection} onSelect={readEvidence} />
       </details>}
       {trace.usage && <div className="pi-usage"><span><Cpu size={12} aria-hidden />模型调用 {trace.usage.model_requests ?? '未知'} 次</span>
-        <span>Token {trace.usage.model_tokens?.toLocaleString() ?? '未知'}{trace.usage.unknown_usage_requests ? '（含保守估算）' : ''}</span></div>}
+        <span>Token {trace.usage.model_tokens?.toLocaleString() ?? '未知'}{trace.usage.unknown_usage_requests ? '（部分调用用量未知）' : ''}</span></div>}
       {trace.message && <p className="pi-process-message">{trace.message}</p>}
-      {!!trace.limitations?.length && <details className="pi-limitations">
-        <summary><AlertCircle size={14} aria-hidden /><strong>尚未覆盖</strong>
-          <span className="pi-limitations-count">{trace.limitations.length} 项</span>
-          <ChevronDown size={13} className="pi-limitations-chevron" aria-hidden /></summary>
-        <ul>{trace.limitations.map((item, i) => <li key={i}>{item}</li>)}</ul>
-      </details>}
       {!!trace.options?.length && <p className="pi-process-message">可补充：{trace.options.join(' / ')}</p>}
     </div>}
     {trace.draft && !piTerminal(trace.status) && <details className="pi-draft"><summary><ChevronRight size={13} aria-hidden />
       正在形成回答 · 引用待确认</summary><p>{trace.draft}</p></details>}
   </section>
+}
+
+// Kept after the answer, including for historical runs whose limitations mixed
+// delivery gaps with source notes. Render the recorded text without classifying it.
+export function PiAnswerNotes({ limitations }: { limitations?: string[] }) {
+  if (!limitations?.length) return null
+  return <details data-pi-answer-notes className="group relative z-[1] mt-4 border-t border-slate-200/70 pt-3 text-xs leading-relaxed text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
+    <summary className="flex cursor-pointer list-none items-center gap-2 rounded py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 [&::-webkit-details-marker]:hidden">
+      <FileText size={14} aria-hidden /><span>任务说明</span>
+      <span className="ml-auto text-[11px]">{limitations.length} 项</span>
+      <ChevronDown size={13} className="transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
+    </summary>
+    <ul className="mt-2 list-disc space-y-1 pl-5 [overflow-wrap:anywhere]">{limitations.map((item, i) => <li key={i}>{item}</li>)}</ul>
+  </details>
 }

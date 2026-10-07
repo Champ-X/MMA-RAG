@@ -668,12 +668,12 @@ export function ChatInterface() {
         continue
       }
       const limit = maxBytesForChatFile(f)
-      if (!f.size || f.size > limit) {
+      if (!f.size || (!piEnabled && f.size > limit)) {
         const mb = Math.round(limit / (1024 * 1024))
-        errors.push(`无法添加 ${f.name}：文件需非空且不超过 ${mb}MB。`)
+        errors.push(piEnabled ? `无法添加 ${f.name}：文件不能为空。` : `无法添加 ${f.name}：文件需非空且不超过 ${mb}MB。`)
         continue
       }
-      if (attachmentsRef.current.length + next.length >= MAX_CHAT_ATTACHMENTS) {
+      if (!piEnabled && attachmentsRef.current.length + next.length >= MAX_CHAT_ATTACHMENTS) {
         errors.push(`每轮最多添加 ${MAX_CHAT_ATTACHMENTS} 个附件。`)
         break
       }
@@ -934,7 +934,7 @@ export function ChatInterface() {
                 )}
                 {attachments.length > 0 && (
                   <div className="space-y-2">
-                    <div className="local-attachment-heading"><span>本机附件 · {attachments.length} / {MAX_CHAT_ATTACHMENTS}</span><span>输入 @ 引用 · 本轮使用</span></div>
+                    <div className="local-attachment-heading"><span>本机附件 · {attachments.length}{!piEnabled && ` / ${MAX_CHAT_ATTACHMENTS}`}</span><span>输入 @ 引用 · 本轮使用</span></div>
                     <div className="flex flex-wrap items-center gap-2">
                     {attachments.map((a) => {
                       const item: ChatMessageAttachment = {
@@ -1216,7 +1216,7 @@ export function ChatInterface() {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isLoading || !activeSessionId}
-                  title="添加附件：图片/音频 10MB，视频 30MB 且 60 秒以内"
+                  title={piEnabled ? '添加图片、音频或视频附件' : '添加附件：图片/音频 10MB，视频 30MB 且 60 秒以内'}
                   aria-label="添加图片、音频或视频附件"
                   className="flex h-8 w-8 items-center justify-center text-slate-700 transition-all duration-200 hover:text-slate-900 hover:scale-110 active:scale-95 dark:text-slate-300 dark:hover:text-slate-100"
                 >

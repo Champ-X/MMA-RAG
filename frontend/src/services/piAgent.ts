@@ -25,11 +25,14 @@ function headers(): Record<string, string> {
   const token = localStorage.getItem('auth_token')
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
+class PiApiError extends Error {
+  constructor(message: string, readonly status: number) { super(message) }
+}
 async function checked(response: Response) {
   if (response.ok) return response
   const body = await response.json().catch(() => ({}))
   const detail = body.detail
-  throw new Error(typeof detail === 'string' ? detail : detail?.message || `Agent 服务返回 ${response.status}`)
+  throw new PiApiError(typeof detail === 'string' ? detail : detail?.message || `Agent 服务返回 ${response.status}`, response.status)
 }
 const serializeFiles = (files: ChatScopeFile[]) => files.map(file => ({ kb_id: file.kbId, file_id: file.fileId,
   name: file.name, type: file.type || '', kb_name: file.kbName || '' }))
@@ -40,7 +43,7 @@ export const piApi = {
       { headers: headers(), signal: AbortSignal.timeout(5000) }))).json()
   },
   async config(): Promise<PiConfig> { return (await checked(await fetch(`${base()}/config`, { headers: headers() }))).json() },
-  async get(runId: string): Promise<PiRun> { return (await checked(await fetch(`${base()}/runs/${runId}`, { headers: headers() }))).json() },
+  async get(runId: string, signal?: AbortSignal): Promise<PiRun> { return (await checked(await fetch(`${base()}/runs/${runId}`, { headers: headers(), signal }))).json() },
   async cancel(runId: string): Promise<PiRun> { return (await checked(await fetch(`${base()}/runs/${runId}/cancel`, { method: 'POST', headers: headers() }))).json() },
   async artifact(runId: string, id: string): Promise<unknown> { return (await checked(await fetch(`${base()}/runs/${runId}/artifacts/${id}`, { headers: headers() }))).json() },
   async evidence(runId: string): Promise<{ evidence: Array<{ id: number; content: string; source_id: string; version: string }> }> {
@@ -104,12 +107,14 @@ export async function watchPiRun(runId: string, after: () => number, onEvent: (e
         }
       } finally { await reader.cancel().catch(() => {}); reader.releaseLock() }
       // A completed run can have no newer events if another tab already saved them.
-      const run = await piApi.get(runId)
+      const run = await piApi.get(runId, signal)
       if (['completed', 'partial', 'needs_input', 'cancelled', 'failed'].includes(run.status) && after() >= run.seq) return
       throw new Error('Agent 过程连接中断')
     } catch (error) {
       if (signal.aborted) return
-      if (++retries > 4) throw error
+      if (error instanceof PiApiError && error.status >= 400 && error.status < 500
+        && ![408, 429].includes(error.status)) throw error
+      retries = Math.min(retries + 1, 4)
       await new Promise<void>(resolve => {
         const timer = setTimeout(done, Math.min(500 * 2 ** retries, 8000))
         function done() { clearTimeout(timer); signal.removeEventListener('abort', done); resolve() }

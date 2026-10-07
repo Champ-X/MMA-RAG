@@ -74,7 +74,7 @@ export function usePiAgent() {
     const previous = [...session.messages].reverse().find(m => m.pi)?.pi
     const run = await piApi.create({ requestId: crypto.randomUUID(), sessionId: session.id, message: content,
       knowledgeBaseIds, model: session.piModel, selectedFiles, mentions, files, attachmentIds: ids,
-      history: session.messages.filter(m => !m.error).slice(-12).map(m => ({ role: m.role, content: m.content })),
+      history: session.messages.filter(m => !m.error).map(m => ({ role: m.role, content: m.content })),
       parentRunId: previous?.runId })
     if (useChatStore.getState().getSessionById(session.id)?.messages.some(message => message.pi?.runId === run.id)) return
     store.addMessage(session.id, { role: 'user', content: content || `（已上传 ${files?.length || 0} 个附件）`,

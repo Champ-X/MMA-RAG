@@ -54,7 +54,7 @@ export interface PiRun {
   request: { client_request_id: string; message: string; mentions?: ChatMention[];
     selected_files?: Array<{ kb_id: string; file_id: string; name: string; type?: string; kb_name?: string }>;
     attachments?: Array<{ id: string; name: string; modality: 'image' | 'audio' | 'video'; size: number }> }
-  state: { answer?: string; citations?: CitationReference[]; limitations?: string[]; options?: string[]; message?: string; usage?: Record<string, number> }
+  state: { answer?: string; citations?: CitationReference[]; limitations?: string[]; options?: string[]; message?: string; usage?: Record<string, number>; answer_plan?: unknown }
 }
 export interface PiConfig {
   enabled: boolean

@@ -99,6 +99,30 @@ test('durable Pi attachment previews require a source URL bound to the cited run
   assert.equal(piOriginalUrl({ ...reference, file_path: 'https://untrusted.test/file.png' }), undefined)
 })
 
+test('answer plan replay preserves selected media and gaps without claiming semantic verification', () => {
+  const trace = applyPiEvent(initialPiTrace(run), event(1, 'answer.plan', { items: [
+    { requirement: '选封面', status: 'ready', evidence_ids: [2], supporting_evidence_ids: [23] },
+    { requirement: '选主题曲', status: 'unavailable', gap: '范围内未取得音乐依据。', evidence_ids: [] },
+    { requirement: '比较地区收入', status: 'incomplete', gap: '缺少丙地区收入。', evidence_ids: [4] },
+  ] }))
+  assert.deepEqual(trace.steps[0].evidenceIds, [2, 23, 4])
+  assert.match(trace.steps[0].text || '', /已就绪 · 选封面/)
+  assert.match(trace.steps[0].text || '', /缺少依据 · 选主题曲：范围内未取得音乐依据。/)
+  assert.match(trace.steps[0].text || '', /仍有缺项 · 比较地区收入：缺少丙地区收入。/)
+  assert.match(trace.steps[0].text || '', /未独立验证语义支持/)
+  assert.equal(trace.answer, undefined)
+})
+
+test('task progress replay distinguishes user input from source-backed research', () => {
+  const trace = applyPiEvent(initialPiTrace(run), event(1, 'answer.plan', { items: [
+    { requirement: '改写通知', status: 'ready', basis: 'user_input', evidence_ids: [], input_quotes: ['明日开会'] },
+    { requirement: '比较研究结果', status: 'ready', basis: 'sources', evidence_ids: [1, 2, 3, 4, 5, 6, 7, 8, 9] },
+  ] }))
+  assert.equal(trace.steps[0].label, '任务进度与依据')
+  assert.match(trace.steps[0].text || '', /改写通知（依据用户输入）/)
+  assert.equal(trace.steps[0].evidenceIds?.length, 9)
+})
+
 test('Pi event replay deduplicates, detects gaps and never publishes a provisional answer', () => {
   let trace = initialPiTrace(run)
   trace = applyPiEvent(trace, event(1, 'run.running', { status: 'running' }))
@@ -282,6 +306,56 @@ test('separate Pi transport reconstructs fragmented Unicode events without legac
     assert.equal(events[1].data.answer, '答案')
   } finally {
     globalThis.fetch = originalFetch
+    if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage)
+    else Reflect.deleteProperty(globalThis, 'localStorage')
+  }
+})
+
+test('Pi reconnects after more than four transient failures and resumes the persisted event cursor', { timeout: 5000 }, async t => {
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => null } })
+  const realTimeout = globalThis.setTimeout
+  t.mock.method(globalThis, 'setTimeout', ((callback: () => void) => realTimeout(callback, 0)) as typeof setTimeout)
+  let requests = 0
+  const cursors: number[] = [], received: PiEvent[] = []
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    const parsed = new URL(url, 'http://localhost')
+    if (!parsed.pathname.endsWith('/events')) return Response.json({ ...run, status: 'running', seq: 1 })
+    cursors.push(Number(parsed.searchParams.get('after')))
+    requests++
+    if (requests > 1 && requests < 7) throw new TypeError('temporary network failure')
+    const value = requests === 1 ? event(1, 'action.delta', { delta: 'working' }) : event(2, 'run.completed', { answer: 'done' })
+    return new Response(`data: ${JSON.stringify(value)}\n\n`)
+  })
+  try {
+    await watchPiRun('run-1', () => received.at(-1)?.seq || 0, value => received.push(value), new AbortController().signal)
+    assert.equal(requests, 7)
+    assert.deepEqual(cursors, [0, 1, 1, 1, 1, 1, 1])
+    assert.deepEqual(received.map(value => value.seq), [1, 2])
+  } finally {
+    if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage)
+    else Reflect.deleteProperty(globalThis, 'localStorage')
+  }
+})
+
+test('Pi watcher cancellation also aborts its completion-status request', { timeout: 5000 }, async t => {
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => null } })
+  const controller = new AbortController()
+  let started!: () => void
+  const statusStarted = new Promise<void>(resolve => { started = resolve })
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+    if (url.includes('/events?')) return new Response('')
+    assert.equal(init.signal, controller.signal)
+    started()
+    return new Promise((_resolve, reject) => init.signal!.addEventListener('abort', () => reject(new Error('aborted')), { once: true }))
+  })
+  try {
+    const watching = watchPiRun('run-1', () => 0, () => {}, controller.signal)
+    await statusStarted
+    controller.abort()
+    await watching
+  } finally {
     if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage)
     else Reflect.deleteProperty(globalThis, 'localStorage')
   }

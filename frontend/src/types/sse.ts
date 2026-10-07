@@ -95,6 +95,8 @@ export interface CitationReference {
   attachment_id?: string;
   /** Pi originals are durable and owner-checked, independent of browser blobs. */
   pi_run_id?: string;
+  /** Original identity within the Pi run; multiple evidence IDs may share it. */
+  source_id?: string;
   media_info?: { duration_seconds?: number; width?: number; height?: number; sampled_seconds?: number[]; audio_status?: string };
   type: 'doc' | 'image' | 'audio' | 'video';
   file_name: string;

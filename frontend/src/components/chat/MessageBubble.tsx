@@ -5,6 +5,7 @@ import { ReferenceImage } from './ReferenceImage'
 import type { Components, ExtraProps } from 'react-markdown'
 import { cn } from '@/lib/utils'
 import { findAllCitationMatches, getOrderedRefIdsFromContent, type CitationMatch } from '@/lib/citations'
+import { getCitationIdentityKey } from '@/lib/mediaIdentity'
 import { chatApi } from '@/services/api_client'
 import { getFreshReferenceVideoUrl, isReferenceMediaUrlFresh } from '@/services/reference_media_url'
 import type { CitationReference } from '@/types/sse'
@@ -45,6 +46,7 @@ const ThinkingCapsule = React.lazy(() =>
   import('./ThinkingCapsule').then((module) => ({ default: module.ThinkingCapsule }))
 )
 const PiProcess = React.lazy(() => import('./PiProcess').then(module => ({ default: module.PiProcess })))
+const PiAnswerNotes = React.lazy(() => import('./PiProcess').then(module => ({ default: module.PiAnswerNotes })))
 
 const MarkdownRenderer = React.lazy(() =>
   import('./MarkdownRenderer').then((module) => ({ default: module.MarkdownRenderer }))
@@ -146,53 +148,6 @@ function injectCitations(
     })
   }
   return children
-}
-
-/**
- * 生成稳定的媒体资源标识。
- *
- * 引用编号只代表本次回答里的证据编号：同一图片/音频/视频可能因检索到不同 chunk 或
- * 不同段落而对应多个编号。因此展示层不能用 id 判重，应优先使用知识库 + 原始文件路径。
- * 预签名 URL 的 query 会变化，仅在没有文件路径时才把去掉 query 的 URL 作为回退。
- */
-function getMediaSourceKey(citation: CitationReference): string {
-  if (citation.source === 'attachment') return `attachment:${citation.attachment_id ?? citation.id}`
-  const kbId = citation.debug_info?.kb_id?.trim() || 'unknown-kb'
-  const filePath = citation.file_path?.trim()
-  if (filePath) return `kb:${kbId}:path:${filePath.replace(/\\+/g, '/')}`
-
-  const mediaUrl = citation.img_url || citation.audio_url || citation.video_url
-  if (mediaUrl) {
-    try {
-      const parsed = new URL(mediaUrl)
-      return `kb:${kbId}:url:${parsed.origin}${parsed.pathname}`
-    } catch {
-      return `kb:${kbId}:url:${mediaUrl.split(/[?#]/, 1)[0]}`
-    }
-  }
-
-  const fileName = citation.file_name?.trim()
-  if (fileName) return `kb:${kbId}:name:${fileName}`
-  return `kb:${kbId}:ref:${String(citation.id)}`
-}
-
-function getVideoSegmentKey(citation: CitationReference): string {
-  // 后端时间戳可能因序列化有极小差异；0.1 秒精度足以识别同一 Shot，
-  // 又不会把同一视频的不同片段合并成一张卡片。
-  const formatTime = (value: number | undefined) => {
-    const time = Number(value)
-    return Number.isFinite(time) ? (Math.round(time * 10) / 10).toFixed(1) : 'whole'
-  }
-  return `${formatTime(citation.start_sec)}-${formatTime(citation.end_sec)}`
-}
-
-function getCitationIdentityKey(citation: CitationReference): string {
-  const sourceKey = getMediaSourceKey(citation)
-  // 视频的同一文件可以有多个有效 Shot；只有文件和时间片段都相同才视为重复。
-  if (citation.type === 'video') {
-    return `video:${sourceKey}:segment:${getVideoSegmentKey(citation)}`
-  }
-  return `${citation.type}:${sourceKey}`
 }
 
 /**
@@ -1420,6 +1375,9 @@ export function MessageBubble({
               />
             </div>
           )}
+          {!isUser && !!message.pi?.limitations?.length && <Suspense fallback={null}>
+            <PiAnswerNotes limitations={message.pi.limitations} />
+          </Suspense>}
         </>
       )}
     </div>
