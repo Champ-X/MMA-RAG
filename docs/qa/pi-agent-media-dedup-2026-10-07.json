@@ -1,0 +1,157 @@
+{
+  "verified_at": "2026-10-07T15:05:29.014704+08:00",
+  "cwd": "/Users/champ/Projects/MMA-RAG",
+  "branch": "main",
+  "base_head": "0cfb0096fc6ca06736c4dedfd42d6889c0d965e5",
+  "committed": false,
+  "pushed": false,
+  "conversation_url": "http://localhost:3001/chat/3808de11-955b-4d0f-8e95-b56662ff6a9d",
+  "run_id": "cd8c3e03-749f-40ea-b129-ce69b372830e",
+  "cause": "Optional debug_info.kb_id split one Pi run/source into different media display keys for index captions and direct observations.",
+  "identity_replay": {
+    "image_evidence_count": 4,
+    "old_media_group_count": 4,
+    "new_media_group_count": 2,
+    "final_citation_count": 11,
+    "rows": [
+      {
+        "evidence_id": 5,
+        "file_name": "汤米.png",
+        "old_key": "image:kb:faba-ee-ee-eae-cbeab:path:/api/pi/runs/cd8c3e03-749f-40ea-b129-ce69b372830e/sources/src_7d9fb79aacf45410b38ea5ad/content",
+        "new_key": "image:[\"pi\",\"cd8c3e03-749f-40ea-b129-ce69b372830e\",\"src_7d9fb79aacf45410b38ea5ad\"]"
+      },
+      {
+        "evidence_id": 7,
+        "file_name": "peaky.png",
+        "old_key": "image:kb:faba-ee-ee-eae-cbeab:path:/api/pi/runs/cd8c3e03-749f-40ea-b129-ce69b372830e/sources/src_1764ec2ab6bbcd55e5c0388e/content",
+        "new_key": "image:[\"pi\",\"cd8c3e03-749f-40ea-b129-ce69b372830e\",\"src_1764ec2ab6bbcd55e5c0388e\"]"
+      },
+      {
+        "evidence_id": 25,
+        "file_name": "汤米.png",
+        "old_key": "image:kb:unknown-kb:path:/api/pi/runs/cd8c3e03-749f-40ea-b129-ce69b372830e/sources/src_7d9fb79aacf45410b38ea5ad/content",
+        "new_key": "image:[\"pi\",\"cd8c3e03-749f-40ea-b129-ce69b372830e\",\"src_7d9fb79aacf45410b38ea5ad\"]"
+      },
+      {
+        "evidence_id": 26,
+        "file_name": "peaky.png",
+        "old_key": "image:kb:unknown-kb:path:/api/pi/runs/cd8c3e03-749f-40ea-b129-ce69b372830e/sources/src_1764ec2ab6bbcd55e5c0388e/content",
+        "new_key": "image:[\"pi\",\"cd8c3e03-749f-40ea-b129-ce69b372830e\",\"src_1764ec2ab6bbcd55e5c0388e\"]"
+      }
+    ]
+  },
+  "browser_verification": {
+    "surface": "native Google Chrome via cua_repl",
+    "before_image_buttons": {
+      "汤米.png": 2,
+      "peaky.png": 2
+    },
+    "after_image_buttons": {
+      "汤米.png": 1,
+      "peaky.png": 1
+    },
+    "after_reload_image_buttons": {
+      "汤米.png": 1,
+      "peaky.png": 1
+    },
+    "footer_citations": 11,
+    "display_9": {
+      "evidence_id": 26,
+      "source_id": "src_1764ec2ab6bbcd55e5c0388e",
+      "preview": "same original with direct observation description"
+    },
+    "display_10": {
+      "evidence_id": 7,
+      "source_id": "src_1764ec2ab6bbcd55e5c0388e",
+      "preview": "same original with index description"
+    },
+    "separate_verification_window_closed": true,
+    "screenshots": "Returned in tool session; not saved as standalone files"
+  },
+  "tests": {
+    "frontend": {
+      "command": "npm test",
+      "passed": 147,
+      "failed": 0
+    },
+    "frontend_build": {
+      "command": "npm run build",
+      "passed": true,
+      "existing_warning": "chunk size"
+    },
+    "pi_backend": {
+      "command": "../.venv/bin/python -m pytest tests/test_pi_agent_*.py -q --disable-warnings",
+      "passed": 299,
+      "failed": 0,
+      "warnings": 442
+    },
+    "git_diff_check": {
+      "passed": true
+    }
+  },
+  "restart": {
+    "old_pid": 58953,
+    "new_pid": 857,
+    "active_pi_runs_before_restart": 0,
+    "command": "python -m uvicorn app.main:app --host 127.0.0.1 --port 8000"
+  },
+  "runtime_checks": {
+    "/health": {
+      "status": 200,
+      "body": {
+        "status": "healthy",
+        "service": "Tessmora",
+        "version": "1.0.0",
+        "evaluation_mode": false
+      }
+    },
+    "/api/pi/config": {
+      "status": 200,
+      "enabled": true,
+      "model": null,
+      "answer_plan_enabled": true
+    },
+    "/api/pi/runs/cd8c3e03-749f-40ea-b129-ce69b372830e": {
+      "status": 200,
+      "state_unchanged": true,
+      "state_sha256": "6c362cbfb077dec7d7ddbc8f4d212ce3d7408f28314ef0fb6357baa93b82ea8f"
+    },
+    "/api/pi/runs/cd8c3e03-749f-40ea-b129-ce69b372830e/evidence": {
+      "status": 200,
+      "evidence_unchanged": true,
+      "count": 26
+    }
+  },
+  "source_sha256": {
+    "frontend/src/lib/mediaIdentity.ts": "04ba5162dc303b2b12702f93b4110e03f647761e5701b9ecdb85487268be453a",
+    "frontend/src/components/chat/MessageBubble.tsx": "ba3eb6f2487af1cf23f098254dad44a4335af16fa043bddea9de7582b9955e95",
+    "frontend/src/types/sse.ts": "c8b9e9984b983634597c955189386308a3a9da37afd17d4e65ec90ac407fc8fd",
+    "frontend/tests/mediaIdentity.test.ts": "7cdc2a46f7b3cc6952aa1c8cca3cc3b72139549f5806d702742f793ade14e569",
+    "frontend/tests/citationBlocks.test.tsx": "73cae23061b59f6ac39f5b14dd4e6e93d024c9e342e7c244136e9dc8285d2134",
+    "backend/app/modules/pi_agent/tools.py": "fb362b9e775097a8992cf3f3b6f1ba760adef9b3bde16a6ee1da579955726670",
+    "backend/tests/test_pi_agent_tools.py": "9fd6a4273fef9999eaebb57f0a37452f51f0968e1f257f628295dbda1a899fbc",
+    "docs/PI_AGENT_MODE.md": "01f84efb7b84ecf427586bad967fbe93772158bb65a171b52bd0d0a3a9cf986d",
+    "docs/qa/pi-agent-media-dedup-2026-10-07.md": "f70513959e64c4615aed673b14ce217aa0083ee91342466994067af204477e08"
+  },
+  "raw_artifacts": {
+    "/tmp/tessmora-media-dedup-20261007/actual-citation-identity-replay.json": "ce9fdf31573e91a9174968281f447b9fc2f51760995f85caae6c060cc478f890",
+    "/tmp/tessmora-media-dedup-20261007/backend-invalid-command.log": "2539fa257dc4a37a8cb82fcb07ccf9628a82ed392865a17447c07a382c299217",
+    "/tmp/tessmora-media-dedup-20261007/backend-restart.json": "30c851d0205f7aecaaad3d5fbf01fd1ee0400caee7dd6362ee8267fdcd0d77fa",
+    "/tmp/tessmora-media-dedup-20261007/backend-tests.log": "dcd6273bb9de028f199b82d67ac58ee27dc7322ce158c9cfeedb3b3434e2be61",
+    "/tmp/tessmora-media-dedup-20261007/cd8c3e03-749f-40ea-b129-ce69b372830e-evidence.json": "22636af4895c40f521c1778f9c8a9d5cd0de231bd5051ec620e3f93bf95677b2",
+    "/tmp/tessmora-media-dedup-20261007/cd8c3e03-749f-40ea-b129-ce69b372830e-run.json": "74b5ae1a260af3168e735e51bc3d199cf52daa6100ee5dc5af2a14d1837e0516",
+    "/tmp/tessmora-media-dedup-20261007/citation-block-tests.log": "33035f5302f4638e950430cfc80bfa8b20713eadd39dfe286000470801164288",
+    "/tmp/tessmora-media-dedup-20261007/frontend-build.log": "53e8cdcb24cf54c0f9e7f6c5bd9f5be0d20483fe051451559372e38a97242070",
+    "/tmp/tessmora-media-dedup-20261007/frontend-tests.log": "c0ea89f8aa79c163ef746df11d3f08b05a8019025759d1f48b4b6d260285b9e9",
+    "/tmp/tessmora-media-dedup-20261007/runtime-verification.json": "dc5129e4b3133391aaf572195aa32e0ac8d5238adc3e2a50e286deab27f79e8e",
+    "/tmp/tessmora-media-dedup-20261007/web-guides.txt": "f89cef663dd3d854dac1634af5981996cb5fae8802e930cbca07e0b848b262a4"
+  },
+  "scope": {
+    "historical_answer_and_evidence_unchanged": true,
+    "model_runs_added": 0,
+    "ingestion_or_index_changes": false,
+    "previous_frozen_qa_records_edited": false,
+    "runtime_suite_rerun": false,
+    "semantic_accuracy_reassessed": false
+  }
+}

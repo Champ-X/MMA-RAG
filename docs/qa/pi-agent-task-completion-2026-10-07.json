@@ -1,0 +1,319 @@
+{
+  "created_at": "2026-10-07T10:07:29.137210+00:00",
+  "candidate": "task-relative-completion-v2",
+  "production_hashes_verified": 181,
+  "source_hash_mismatches": [],
+  "baseline_run": "8f9f9c4e-6401-4e0f-ac3c-e75b0b87cff1",
+  "results": [
+    {
+      "case": "selection-api",
+      "request": "结合《浴血黑帮》这部电影剧情，为其挑选合适的海报封面和主题曲。",
+      "run_id": "6ab29a3c-7cde-494f-99b4-8ced61bb8259",
+      "session_id": "da2b09f0-31b2-469f-8dcf-3d96617ddb62",
+      "status": "completed",
+      "expected_status": "completed",
+      "status_expectation_met": true,
+      "limitations": [],
+      "usage": {
+        "duration_ms": 89642,
+        "media_calls": 2,
+        "media_input_bytes": 395381,
+        "media_seconds": 0,
+        "model_requests": 15,
+        "model_tokens": 273718,
+        "searches": 5,
+        "tool_calls": 13,
+        "tool_output_chars": 90400,
+        "unknown_usage_requests": 0
+      },
+      "plan": [
+        {
+          "id": "plot_basis",
+          "requirement": "《浴血黑帮》剧情要点梳理（作为选海报与主题曲的判断依据）",
+          "status": "ready",
+          "gap": ""
+        },
+        {
+          "id": "poster",
+          "requirement": "为《浴血黑帮》挑选合适的海报封面（给出具体素材及理由）",
+          "status": "ready",
+          "gap": ""
+        },
+        {
+          "id": "theme_song",
+          "requirement": "为《浴血黑帮》挑选合适的主题曲（给出具体曲目及理由）",
+          "status": "ready",
+          "gap": ""
+        }
+      ],
+      "citation_ids": [
+        6,
+        8,
+        20,
+        29,
+        30,
+        31,
+        33
+      ],
+      "cited_files": [
+        "Red Right Hand.mp3",
+        "peaky.png",
+        "汤米.png",
+        "浴血黑帮-在一个寒冷阴郁的冬天.mp4"
+      ],
+      "tool_failures": [],
+      "artifact_dir": "/tmp/tessmora-task-completion-20261007/v2/selection-api"
+    },
+    {
+      "case": "selection-ui",
+      "request": "结合《浴血黑帮》这部电影剧情，为其挑选合适的海报封面和主题曲。",
+      "run_id": "5b230fc3-a528-406f-bae0-11875f6b071a",
+      "session_id": "dc6d3954-2c7c-4542-aefd-37fd98552fd7",
+      "status": "completed",
+      "expected_status": "completed",
+      "status_expectation_met": true,
+      "limitations": [],
+      "usage": {
+        "duration_ms": 79079,
+        "media_calls": 3,
+        "media_input_bytes": 2315773,
+        "media_seconds": 60.0,
+        "model_requests": 16,
+        "model_tokens": 238770,
+        "searches": 5,
+        "tool_calls": 12,
+        "tool_output_chars": 88550,
+        "unknown_usage_requests": 0
+      },
+      "plan": [
+        {
+          "id": "plot_basis",
+          "requirement": "《浴血黑帮》剧情要点（用于匹配海报与主题曲的依据）",
+          "status": "ready",
+          "gap": ""
+        },
+        {
+          "id": "poster",
+          "requirement": "为《浴血黑帮》挑选的合适海报封面（含推荐理由）",
+          "status": "ready",
+          "gap": ""
+        },
+        {
+          "id": "theme_song",
+          "requirement": "为《浴血黑帮》挑选的合适主题曲（含推荐理由）",
+          "status": "ready",
+          "gap": ""
+        }
+      ],
+      "citation_ids": [
+        1,
+        6,
+        9,
+        19,
+        29,
+        30,
+        31,
+        34
+      ],
+      "cited_files": [
+        "Red Right Hand.mp3",
+        "peaky.png",
+        "汤米.png",
+        "浴血黑帮-在一个寒冷阴郁的冬天.mp4",
+        "浴血黑帮不朽传奇.mp4"
+      ],
+      "tool_failures": [],
+      "artifact_dir": "/tmp/tessmora-task-completion-20261007/v2/selection-ui"
+    },
+    {
+      "case": "record-recommendation",
+      "request": "只根据以下场地记录，为30人的交流会选一个预算不超过2000元的室内场地，给出结果和简短理由。记录：A为室内，容量40人，费用1800元；B为室内，容量35人，费用1900元。记录仅包含这些信息。",
+      "run_id": "b69d124c-e5c3-4fb0-9c2e-15b050f741c3",
+      "session_id": "61561dd6-2c82-499e-9379-cb7f4200c7d5",
+      "status": "completed",
+      "expected_status": "completed",
+      "status_expectation_met": true,
+      "limitations": [],
+      "usage": {
+        "duration_ms": 3692,
+        "media_calls": 0,
+        "media_input_bytes": 0,
+        "media_seconds": 0,
+        "model_requests": 2,
+        "model_tokens": 14747,
+        "searches": 0,
+        "tool_calls": 2,
+        "tool_output_chars": 593,
+        "unknown_usage_requests": 0
+      },
+      "plan": [
+        {
+          "id": "venue_choice",
+          "requirement": "根据给定场地记录，为30人交流会选出预算≤2000元的室内场地，并给出简短理由",
+          "status": "ready",
+          "gap": ""
+        }
+      ],
+      "citation_ids": [],
+      "cited_files": [],
+      "tool_failures": [],
+      "artifact_dir": "/tmp/tessmora-task-completion-20261007/v2/record-recommendation"
+    },
+    {
+      "case": "explicit-condition",
+      "request": "只根据以下场地记录，为30人的交流会选一个预算不超过2000元的室内场地；必须确认配备实时字幕设备并提供设备型号，不得推测或省略这项要求。记录：A为室内，容量40人，费用1800元；B为室内，容量35人，费用1900元。记录仅包含这些信息。",
+      "run_id": "71f53ef7-d24a-4bc8-aac0-16adc7689386",
+      "session_id": "0d93e183-1867-492d-8220-e13630f94e33",
+      "status": "partial",
+      "expected_status": "partial",
+      "status_expectation_met": true,
+      "limitations": [
+        "给定记录中没有任何关于实时字幕设备或设备型号的信息，因此无法确认任一候选场地满足“配备实时字幕设备并提供设备型号”这一硬性要求，无法交付符合全部条件的场地选择。"
+      ],
+      "usage": {
+        "duration_ms": 7995,
+        "media_calls": 0,
+        "media_input_bytes": 0,
+        "media_seconds": 0,
+        "model_requests": 4,
+        "model_tokens": 32550,
+        "searches": 0,
+        "tool_calls": 4,
+        "tool_output_chars": 1371,
+        "unknown_usage_requests": 0
+      },
+      "plan": [
+        {
+          "id": "venue_selection",
+          "requirement": "仅依据给定场地记录，为30人交流会选出预算≤2000元的室内场地，并确认其配备实时字幕设备且给出设备型号；若记录无法确认则如实说明该要求未满足，不得推测或省略",
+          "status": "incomplete",
+          "gap": "给定记录中没有任何关于实时字幕设备或设备型号的信息，因此无法确认任一候选场地满足“配备实时字幕设备并提供设备型号”这一硬性要求，无法交付符合全部条件的场地选择。"
+        }
+      ],
+      "citation_ids": [],
+      "cited_files": [],
+      "tool_failures": [
+        {
+          "code": "answer_delivery_gap",
+          "message": "limitations须恰好对应incomplete/unavailable项的gap，不得添加一般来源说明；必要说明由你写在正文末尾。"
+        }
+      ],
+      "artifact_dir": "/tmp/tessmora-task-completion-20261007/v2/explicit-condition"
+    },
+    {
+      "case": "partial-data",
+      "request": "只根据以下记录，分别给出甲、乙、丙三地本月销售额的确切数值，单位万元。记录：甲120，乙80。不要估算缺少的数值。",
+      "run_id": "52a09d90-d295-47e1-ab38-cb33ebc80490",
+      "session_id": "14237e57-ea85-4613-84df-44861e54a532",
+      "status": "completed",
+      "expected_status": "partial",
+      "status_expectation_met": false,
+      "limitations": [],
+      "usage": {
+        "duration_ms": 3820,
+        "media_calls": 0,
+        "media_input_bytes": 0,
+        "media_seconds": 0,
+        "model_requests": 2,
+        "model_tokens": 14688,
+        "searches": 0,
+        "tool_calls": 2,
+        "tool_output_chars": 609,
+        "unknown_usage_requests": 0
+      },
+      "plan": [
+        {
+          "id": "sales_values",
+          "requirement": "根据给定记录给出甲、乙、丙三地本月销售额的确切数值（万元），缺失的不估算",
+          "status": "ready",
+          "gap": ""
+        }
+      ],
+      "citation_ids": [],
+      "cited_files": [],
+      "tool_failures": [],
+      "artifact_dir": "/tmp/tessmora-task-completion-20261007/v2/partial-data"
+    },
+    {
+      "case": "missing-data-audit",
+      "request": "只检查以下记录中哪些地区缺少本月销售额，不需要补齐或推测数值。应有地区：甲、乙、丙。现有记录：甲120万元，乙80万元。",
+      "run_id": "f7eae66b-f9c9-4c18-845e-bdc02e6b9768",
+      "session_id": "a5bd0b75-af77-4c9c-87f0-6c3b26dc1007",
+      "status": "completed",
+      "expected_status": "completed",
+      "status_expectation_met": true,
+      "limitations": [],
+      "usage": {
+        "duration_ms": 2867,
+        "media_calls": 0,
+        "media_input_bytes": 0,
+        "media_seconds": 0,
+        "model_requests": 2,
+        "model_tokens": 14692,
+        "searches": 0,
+        "tool_calls": 2,
+        "tool_output_chars": 613,
+        "unknown_usage_requests": 0
+      },
+      "plan": [
+        {
+          "id": "missing_regions",
+          "requirement": "指出记录中缺少本月销售额的地区（仅检查缺失，不补齐或推测数值）",
+          "status": "ready",
+          "gap": ""
+        }
+      ],
+      "citation_ids": [],
+      "cited_files": [],
+      "tool_failures": [],
+      "artifact_dir": "/tmp/tessmora-task-completion-20261007/v2/missing-data-audit"
+    }
+  ],
+  "tests": {
+    "backend": {
+      "passed": 310,
+      "log": "/tmp/tessmora-task-completion-20261007/backend-tests.log"
+    },
+    "runtime": {
+      "passed": 58,
+      "log": "/tmp/tessmora-task-completion-20261007/v2/runtime-tests.log"
+    },
+    "frontend": {
+      "passed": 151,
+      "log": "/tmp/tessmora-task-completion-20261007/frontend-tests.log"
+    },
+    "final_prompt_contract": {
+      "passed": 8,
+      "log": "/tmp/tessmora-task-completion-20261007/v2/completion-tests.log"
+    },
+    "frontend_typecheck_build": {
+      "passed": true,
+      "log": "/tmp/tessmora-task-completion-20261007/frontend-build.log",
+      "known_warning": "Vite large chunks"
+    }
+  },
+  "browser": {
+    "session_id": "dc6d3954-2c7c-4542-aefd-37fd98552fd7",
+    "status_completed_after_reload": true,
+    "main_and_backup_images_loaded": true,
+    "audio_player_present": true,
+    "legacy_notes_at_answer_end": true,
+    "legacy_notes_mouse_and_keyboard_toggle": true,
+    "legacy_status_not_reclassified": true,
+    "visual_mode": "light",
+    "screenshots": "CUA tool receipts"
+  },
+  "limitations": [
+    "partial-data returned completed in v1 and v2 despite frozen partial expectation; completion semantics remain Agent interpreted.",
+    "selection-ui still includes a separate plot-basis section; brief optional notes are not always minimal.",
+    "No independent factual or citation entailment acceptance; broad task stability is not established."
+  ],
+  "final_health": {
+    "status": "healthy",
+    "service": "Tessmora",
+    "version": "1.0.0",
+    "evaluation_mode": false
+  },
+  "active_runs": [],
+  "committed": false
+}
