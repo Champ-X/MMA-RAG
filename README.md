@@ -1,132 +1,103 @@
 <p align="center">
-  <img src="frontend/public/tessmora-logo.png" alt="Tessmora" height="120" />
+  <img src="frontend/public/tessmora-logo.png" alt="Tessmora" height="88" />
 </p>
 
-<p align="center"><strong>简体中文 | <a href="README-en.md">English</a></strong></p>
+<h1 align="center">Tessmora</h1>
 
-# Tessmora — An Omni-Modal Agentic Retrieval Platform
-
-<h3 align="center"><em>Every fragment finds its place.</em></h3>
+<p align="center"><strong>多模态检索，自主研究，答案有据可查。</strong></p>
+<p align="center">Every fragment finds its place.</p>
 
 <p align="center">
-  <img src="docs/images/tessmora-omni-banner.png" alt="Tessmora 将文档、图片、音频与视频汇入同一 Agentic Retrieval 链路" width="100%" />
+  <strong>简体中文</strong> · <a href="README-en.md">English</a>
 </p>
 
-Tessmora 是可私有化部署的全模态 Agentic Retrieval 平台。文档、图片、音频与视频保留各自合适的解析单元和专用向量，再通过知识库画像路由、混合检索、两阶段排序和有界 Agent 汇入同一套可追溯回答链路。
+<p align="center">
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#agent-mode">Agent Mode</a> ·
+  <a href="#文档">文档</a> ·
+  <a href="#参与贡献">参与贡献</a> ·
+  <a href="https://github.com/Champ-X/MMA-RAG/issues">反馈问题</a>
+</p>
 
-它解决三个核心问题：
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?logo=python&amp;logoColor=white" alt="Python 3.11 或 3.12" />
+  <img src="https://img.shields.io/badge/Node.js-%E2%89%A522.19-5FA04E?logo=nodedotjs&amp;logoColor=white" alt="Node.js 22.19 或更高版本" />
+  <a href="https://github.com/Champ-X/MMA-RAG/issues"><img src="https://img.shields.io/github/issues/Champ-X/MMA-RAG" alt="GitHub Issues" /></a>
+</p>
 
-- **内容怎么进入系统**：普通文档用无损 Agentic Chunker；图片用 VLM + CLIP；音频用 ASR + CLAP；视频用 Scene → Shot → Key Frame。
-- **问题怎么找到证据**：One-Pass 意图、KB 画像路由、Dense / Sparse / Visual / Audio / Video 召回、加权 RRF 与 Cross-Encoder 精排。
-- **复杂问题怎么继续补查**：自动、直接检索、Agent 深研三态可选；Agent 只调用现有只读检索工具，并受轮数、查询数和证据池预算约束。
+**Tessmora 是可自托管的多模态 RAG 与 Agent 研究工作台。** 将文档、表格、图片、音频和视频放入知识库，用自然语言搜索、比较和提问，再通过原文、图片预览或媒体时间片段核对回答。代码仓库与 CLI 沿用 `MMA-RAG` / `mma-rag` 名称。
 
-## 为什么是 Tessmora
+你可以用它阅读一组研究资料、在素材库中寻找图片与音乐，或让 Agent 围绕复杂问题逐步检索、深读和整理证据。
 
-| 能力 | 当前实现 |
-|---|---|
-| **全模态数据面** | 文档、图片、音频、视频分别建模，不把所有内容降维为纯文本 |
-| **智能检索范围** | 未指定 KB 时，以主题画像和多视角查询决定单库、多库或全库 |
-| **跨通道融合** | Dense + BGE-M3 Sparse + Visual 为主干，音频与视频使用专用向量与意图权重 |
-| **Agentic Evidence Loop** | Planner 规划互补子查询，并发检索，跨轮证据去重与有限置信增强 |
-| **预算化多轮上下文** | 按完整对话轮次、消息数和字符预算选取历史，贯通检索与生成 |
-| **可验证输出** | SSE 推送阶段摘要、引用与正文；引用保留来源、媒体 URL、时间范围与 `context_window` |
-| **多入口** | Web 为完整交互入口；可选飞书 IM 与 Docx/Wiki 导入；内置 Codex Skill/CLI |
+![文档、图片、音频与视频汇入同一知识工作台](docs/images/tessmora-omni-banner.png)
 
-## 架构速览
+## 核心能力
 
-![Tessmora 系统架构：接入与分流、共享检索、Agent 证据循环、离线数据面和模型路由](docs/images/tessmora-system-architecture.png)
-
-图中 Direct 与 Agent 复用同一个 Retrieval Core；Qdrant 提供在线检索向量，MinIO 为引用上下文补充原始媒体。项目启动后可通过 [http://localhost:3000/architecture](http://localhost:3000/architecture) 查看可交互架构页；代码级设计见 [MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md)。
-
-## 核心模块
-
-| 模块 | 职责 | 主要入口 |
-|---|---|---|
-| **Ingestion** | 多来源解析、Agentic 分块、全模态向量化、MinIO/Qdrant 写入 | `backend/app/modules/ingestion/` |
-| **Knowledge** | KB 生命周期、全模态画像与跨库路由 | `backend/app/modules/knowledge/` |
-| **Retrieval** | One-Pass 意图、五路召回、RRF、Cross-Encoder | `backend/app/modules/retrieval/` |
-| **Agent Runtime** | 三态分流、规划、只读工具调用与证据收敛 | `backend/app/modules/agent/` |
-| **Generation** | 多模态上下文、ReferenceMap、流式生成 | `backend/app/modules/generation/` |
-| **LLM Manager** | `task_type` 到模型/Provider 的统一路由 | `backend/app/core/llm/` |
-
-### 文档与表格分块
-
-- PDF、DOCX、PPTX、TXT、Markdown 等普通文档进入生产版 Agentic Chunker。
-- Chunker 先把原文固化为标题、段落、列表、表格、代码等不可变单元；LLM 只规划连续单元范围，不生成或改写原文。
-- 服务端校验无损覆盖、无重叠与 600 estimated-token 硬上限；规划失败时使用确定性结构分块兜底。
-- Excel/CSV 不走通用 Agentic Chunker，继续使用 Sheet 摘要、带表头行块和列画像策略。
-
-### 多模态索引
-
-| 模态 | 主语义单元 | Qdrant |
-|---|---|---|
-| 文档 | Agentic Chunk | `text_chunks_agentic`：Dense + BGE-M3 Sparse |
-| 图片 | 单图 | `image_vectors`：`text_vec` + `clip_vec` |
-| 音频 | 单文件/整段 | `audio_vectors`：`text_vec` + `clap_vec` + 可选 Sparse |
-| 视频 | Semantic Shot | `video_shot_vectors`：caption/ASR Dense+Sparse；`video_keyframe_vectors`：`frame_vec` + `clip_vec` |
-| KB 画像 | 聚类主题摘要 | `kb_portraits` |
-
-视频 Scene–Shot–ASR 的字段、长视频分窗和关键帧策略见 [多模态技术说明](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)。
-
-## 对话与检索示例
+| 你想做什么 | Tessmora 如何支持 |
+| --- | --- |
+| **统一检索多种资料** | 文档采用保留原文的 Agentic Chunking；表格保留表头与行块；图片、音频和视频建立各自的语义与向量索引 |
+| **找到关键词之外的内容** | 常规检索结合 Dense、BGE-M3 Sparse、CLIP、CLAP 等通道，按问题意图融合召回并重排；未指定知识库时可按主题画像路由 |
+| **围绕复杂问题持续研究** | 独立的 Pi Agent Mode 自主选择搜索、深读原文、扩展上下文、查看媒体或计算表格，再提交带引用的回答 |
+| **回到来源检查结论** | 引用关联原文件、文本上下文、图片及音视频时间范围；Agent 过程展示实际工具调用、证据、耗时和异常 |
+| **明确材料与检索范围** | `@` 引用知识库文件或本机附件作为分析材料；通过知识库与文件选择器限定搜索范围 |
+| **接入已有工作流** | Web UI、检索与对话 API、仓库自带 CLI / Codex Skill，以及可选的飞书 IM 与 Docx/Wiki 导入 |
 
 <details>
-<summary>展开 Web 与飞书示例</summary>
+<summary><strong>查看产品截图：文档、图片、音频、视频与跨模态问答</strong></summary>
 
-### 文档检索
+以下为已有 Web / 飞书交互示例，展示检索结果与媒体引用；Pi Agent Mode 的行为见下方独立说明。
 
-Query：`介绍 DeepSeek OCR2 在训练过程各阶段的设计方案。`
+### 文档问答
 
-![对话示例：文档检索](docs/images/chat-document.png)
+“介绍 DeepSeek OCR2 在训练过程各阶段的设计方案。”
+
+![文档问答与来源引用](docs/images/chat-document.png)
 
 ### 图片检索
 
-Query：`分别找一张符合粗犷、婉约、惬意的风景图。`
+“分别找一张符合粗犷、婉约、惬意的风景图。”
 
-![对话示例：图片检索](docs/images/chat-image.png)
+![按语义检索图片](docs/images/chat-image.png)
 
 ### 音频检索
 
-Query：`查找和该音频使用相同乐器的曲子。`
+“查找和该音频使用相同乐器的曲子。”
 
-![对话示例：音频检索](docs/images/chat-audio.png)
+![音频检索与播放](docs/images/chat-audio.png)
 
-### 视频检索
+### 视频问答
 
-Query：`《让子弹飞》中汤师爷的人物性格是怎样的？`
+“《让子弹飞》中汤师爷的人物性格是怎样的？”
 
-![对话示例：视频检索](docs/images/chat-video.png)
+![视频问答与时间片段引用](docs/images/chat-video.png)
 
-### 跨模态混合
+### 跨模态选材
 
-Query：`为《浴血黑帮》挑选合适的海报封面和主题曲。`
+“为《浴血黑帮》挑选合适的海报封面和主题曲。”
 
-![对话示例：跨模态检索](docs/images/chat-mix.png)
+![图片、音频与视频共同支持回答](docs/images/chat-mix.png)
 
-### 飞书 IM（可选）
+### 飞书 IM
 
-![对话示例：飞书 IM](docs/images/chat-feishu.png)
+![飞书中的问答与媒体引用](docs/images/chat-feishu.png)
 
 </details>
 
 ## 快速开始
 
-本机已迁移数据的启动入口：在项目根目录运行 `./scripts/start-restored.sh`，访问
-[http://localhost:3001](http://localhost:3001)。该入口复用项目内的 MinIO/Qdrant
-存储，不执行上传、解析或重新向量化，也不启动 Celery worker。
-迁移清单、验证结果和回滚说明见 [本机数据迁移记录](docs/local-data-migration.md)。
+推荐使用 **本机运行前后端 + Docker 运行存储服务** 的开发方式。以下命令面向 macOS / Linux；Windows 可使用 WSL2。当前 Compose 未包含前端和 Pi Node 运行时，不能单独启动完整产品。
 
-### 环境要求
+### 1. 准备环境
 
-| 依赖 | 说明 |
-|---|---|
-| Docker 与 Docker Compose | 启动 MinIO、Qdrant、Redis |
-| Node.js ≥ 18 | 前端；推荐 Node 20 LTS |
-| Python ≥ 3.11 | Docker 镜像使用 3.11；本地开发推荐 3.12 |
-| FFmpeg / ffprobe | 音视频探测、分段与关键帧 |
-| LibreOffice | DOCX/PPTX 转 PDF 与页内预览 |
+| 依赖 | 要求与用途 |
+| --- | --- |
+| Python | **3.11 或 3.12**；下方以 3.12 为例 |
+| Node.js / npm | **Node.js ≥ 22.19**，同时满足 Vite 与 Pi SDK 的依赖要求 |
+| Docker + Compose | Docker 已启动，用于 MinIO、Qdrant、Redis |
+| FFmpeg / ffprobe | 音视频探测、转码与帧提取 |
+| LibreOffice | DOCX/PPTX 转 PDF 与预览；Linux 中文文档建议安装 `fonts-noto-cjk` |
 
-### 1. 克隆与配置
+### 2. 克隆并配置模型服务
 
 ```bash
 git clone https://github.com/Champ-X/MMA-RAG.git
@@ -134,122 +105,180 @@ cd MMA-RAG
 cp backend/.env.example backend/.env
 ```
 
-默认模型注册至少要求：
+编辑 `backend/.env`，按需填写真实凭证，**清空未使用服务的 `your_...` 占位值**。当前默认路由需要：
 
-| 变量 | 要求 |
-|---|---|
-| `SILICONFLOW_API_KEY` | **必填**：默认 LLM、Embedding、Rerank 等任务 |
-| `OPENROUTER_API_KEY` | 选填：使用 OpenRouter 模型时配置 |
-| `ALIYUN_BAILIAN_API_KEY` | 选填：使用阿里云百炼模型、Omni 视频解析或飞书相关模型配置时配置 |
-| `DEEPSEEK_API_KEY` | 选填：任务路由到 DeepSeek 时配置 |
-| `MINERU_TOKEN` | 选填：优先使用 MinerU 云解析；缺失时按本地/其它解析链降级 |
-| `PADDLEOCR_API_URL` / `PADDLEOCR_TOKEN` | 选填：启用 PaddleOCR 解析分支 |
-| `FEISHU_*` | 选填：飞书 IM 或飞书文档导入，详见 [FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md) |
+| 配置项 | 默认用途 |
+| --- | --- |
+| `SILICONFLOW_API_KEY` | 文本向量化与重排：Qwen3 Embedding / Reranker |
+| `DEEPSEEK_API_KEY` | 文本问答、意图识别、文档分块与 Pi 主模型：`deepseek-flash` |
+| `ALIYUN_BAILIAN_API_KEY` | 默认图片理解、音频转写、视频解析，以及 Pi 的媒体观察工具 |
+| `MINERU_TOKEN` | 可选，启用 MinerU 云端文档解析；本地与其他解析路径取决于文件类型和已安装依赖 |
+| `OPENROUTER_API_KEY` | 可选，使用 OpenRouter 模型时填写 |
 
-完整变量与默认值以 [`backend/.env.example`](backend/.env.example) 为准。不要提交真实密钥，部署边界见 [SECURITY](SECURITY.md)。
+先体验 Markdown / TXT 文档问答时，可从 SiliconFlow 与 DeepSeek 开始；使用默认媒体能力时再配置百炼。其他解析、导入和飞书配置见 [环境变量示例](backend/.env.example)。常规模型路由可在页面设置中调整；Pi 使用 [独立配置](docs/PI_AGENT_MODE.md)。
 
-### 2. 安装后端依赖
+**自托管不等于离线推理。** 原文件与索引由本地 MinIO / Qdrant 保存，默认解析和模型调用仍可能将内容发送给你配置的服务商，并产生 API 费用。
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -r backend/requirements.txt
-```
+### 3. 安装依赖并启动
 
-### 3. 启动开发环境
+在仓库根目录执行；如果使用 Python 3.11，将第一行替换为 `python3.11 -m venv .venv`。
 
 ```bash
+python3.12 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r backend/requirements.txt
+npm --prefix frontend ci
+npm --prefix agent-runtime ci
 ./start-dev.sh
 ```
 
-`start-dev.sh` 会：
+启动脚本会检查或尝试安装 FFmpeg / LibreOffice，启动三个存储服务，再启动 FastAPI 和 Vite。Celery worker / Flower 不在默认启动路径中。首次使用会下载 BGE-M3、CLIP、CLAP 等本地模型；示例配置开启了启动预加载，请预留下载时间、磁盘与内存。
 
-1. 检查 `backend/.env`；
-2. 检查或尝试安装 FFmpeg 与 LibreOffice；
-3. 通过 Docker Compose 启动 MinIO、Qdrant、Redis；
-4. 在本机启动 FastAPI 与 Vite。
+| 入口 | 默认地址 |
+| --- | --- |
+| Web UI | [localhost:3000](http://localhost:3000) |
+| API 文档 | [localhost:8000/docs](http://localhost:8000/docs) |
+| 服务健康检查 | [localhost:8000/health](http://localhost:8000/health) |
+| MinIO Console | [localhost:9001](http://localhost:9001) |
+| Qdrant Dashboard | [localhost:6333/dashboard](http://localhost:6333/dashboard) |
 
-Compose 还定义了可选的 `celery_worker` / `celery_flower`，开发脚本默认不启动它们。
+### 4. 完成第一次有引用的问答
 
-### 4. 访问
+1. 打开 Web UI，创建一个知识库。
+2. 上传自有文档，或使用仓库内的合成示例 [`ops-rollback.md`](evals/baseline_v1/corpus/ops-rollback.md)，等待处理完成。
+3. 选择该知识库，以“直接检索”提问：**“什么情况下必须回滚？回滚后如何验证？”**
+4. 打开回答引用，核对原文中的触发条件、三次 `/ready` 检查与 15 分钟观察期。
+5. 开启输入框左侧的 `π`，体验 Agent Mode，并展开过程查看它实际使用的来源与工具。
 
-下表是 `start-dev.sh` 的默认端口；本机迁移入口 `scripts/start-restored.sh` 默认使用 Web 端口 3001。
+`/health` 成功只说明 API 已启动；上传、检索与引用均完成，才说明所用链路可用。
 
-| 服务 | 地址 |
-|---|---|
-| Web UI | [http://localhost:3000](http://localhost:3000) |
-| 架构页 | [http://localhost:3000/architecture](http://localhost:3000/architecture) |
-| 后端 API | [http://localhost:8000](http://localhost:8000) |
-| OpenAPI | [http://localhost:8000/docs](http://localhost:8000/docs) |
-| MinIO Console | [http://localhost:9001](http://localhost:9001) |
-| Qdrant Dashboard | [http://localhost:6333/dashboard](http://localhost:6333/dashboard) |
+<details>
+<summary>启动排查与已有数据恢复</summary>
 
-### 在页面配置 Jev
+- **页面打不开**：查看终端中的 Vite 地址；3000 被占用时可能顺延到其他端口。API 默认使用 8000。
+- **模型或工具调用失败**：检查对应服务商凭证、余额及模型权限。Pi 还需要 `agent-runtime` 依赖和满足版本要求的 Node.js。
+- **首次启动很慢**：检查模型下载日志与 `HF_ENDPOINT`。将 `PRELOAD_LOCAL_MODELS_ON_STARTUP=false` 可推迟下载到首次实际使用，不会消除模型依赖。
+- **媒体预览失败**：确认 `MINIO_PUBLIC_ENDPOINT` 是浏览器可访问的主机与端口，不能使用仅容器内部可解析的 `minio:9000`。
+- **恢复已迁移的本机数据**：仅在已有对应 MinIO/Qdrant 存储目录时使用 `./scripts/start-restored.sh`，默认 Web 端口为 3001；该脚本不触发重新入库。详见 [本机数据迁移记录](docs/local-data-migration.md)。
 
-进入「设置 → Jev 语义判断」，可分别开启简单问题意图快路径、选择重排模式，以及开启逐条或批量引用诊断。点击「保存 Jev 设置」后，对当前服务的后续请求生效；正在处理的请求（包括流式回答）沿用开始时的配置。
+</details>
 
-需要对照测试时，可以分别选择意图识别或重排的“强制 Jev（不回退）”，也可点击“一键强制测试”后保存。强制阶段失败会停止请求；查询改写和最终回答仍使用原模型。详情见 [Jev 强制模式](docs/qa/jev-force-mode.md)。
+## Agent Mode
 
-首次使用需在服务端 `backend/.env` 配置 `TYPESAFE_API_KEY` 并重启后端。页面只显示是否已配置，不读取或保存密钥。模式通过 `GET/PUT /api/jev/settings` 保存至被 Git 忽略的 `backend/data/jev_settings.json`，重启保留，并优先于环境变量；删除该本地配置文件可恢复环境变量默认值。此配置与已有模型路由设置一样作用于整个服务，不是单个浏览器的偏好。
+Tessmora 提供两条独立的问答路径，可在同一会话切换：
 
-默认仍全部关闭；重排建议保留原模型，引用诊断不自动修改或认证答案。配置开关不会重置 Jev 的 worker 额度。多 worker 共享同一个配置文件时会在新请求读取最新值；多副本部署需共享该文件所在目录。验证记录见 [Jev 页面配置](docs/research/jev-ui/README.md)。
+| 路径 | 行为 | 入口 |
+| --- | --- | --- |
+| **常规检索** | `direct` 单轮检索；`agent` 在轮数、查询数和证据预算内多轮补查；`auto` 自动选择两者 | Web、`/api/chat/*`、`mma-rag ask` |
+| **Pi Agent Mode** | 使用 [Pi Agent SDK](https://github.com/earendil-works/pi) 自主规划、选择工具与生成回答，独立于常规检索编排 | Web 输入框 `π`、`/api/pi/*` |
 
-独立评测入口 `jev_eval_server.py`、`evaluate_jev_system.py` 和 `verify_jev_generation.py` 使用隔离的只读环境配置，忽略页面保存值，也不会覆盖日常服务配置。它们只用于单独启动的评测进程。
+Pi 可以列出来源、精确或混合搜索、分页深读、扩展邻近上下文、恢复已读证据、观察图片/PDF 页/音视频片段，以及对 CSV/TSV/XLSX 做确定性的筛选、分组和计算。来源访问工具为只读，不提供任意 Shell 或代码执行。
 
-## API 与 Codex Skill
+`@` 材料用于阅读与比较，**不会自动扩大搜索范围**。运行事件、证据和附件保存在本地账本中，支持取消、断线后的事件续接与历史恢复；服务重启会将未完成任务标为中断，不会自动重新执行。
 
-后端提供稳定的只读证据接口：
+当前 Pi **没有应用层单任务时长、Token 或工具调用总量上限**；长任务受模型上下文、服务商和机器资源限制，可由用户停止。引用检查校验证据身份与编号，答案是否完整、结论是否由来源支持，仍需核对。配置、工具合同与已知限制见 [Pi 模式文档](docs/PI_AGENT_MODE.md)。
 
-```text
-POST /api/v1/retrieval/search
+## 架构
+
+```mermaid
+flowchart TB
+    Files[文档 · 表格 · 图片 · 音频 · 视频] --> Ingest[解析 · 分块 · 多模态索引]
+    Ingest --> Storage[(MinIO 原文件 + Qdrant 索引)]
+    Web[Web UI] --> API[FastAPI]
+    Integrations[CLI · 飞书 · API 客户端] --> API
+    API --> Classic[常规检索与生成]
+    API --> Host[Pi 宿主与运行账本]
+    Host <--> Pi[Pi Agent · Node.js]
+    Classic --> Storage
+    Host --> Tools[来源读取 · 搜索 · 媒体观察 · 表格计算]
+    Tools --> Storage
+    Classic --> Answer[回答与来源引用]
+    Host --> Answer
 ```
 
-它返回紧凑的 `doc | image | audio | video` 证据合同，不直接暴露内部 Qdrant payload。对话与 Agent 模式继续使用 `/api/chat/message` 或 `/api/chat/stream`。
+前端使用 React / TypeScript，后端使用 FastAPI / Python；Pi SDK 运行在独立 Node 进程中。两条问答路径复用已有知识数据，保留各自的编排与检索逻辑。
 
-仓库自带 Tessmora Codex Skill，CLI 名称保留为 `mma-rag`：
+| 源码目录 | 职责 |
+| --- | --- |
+| [`frontend/`](frontend/) | 知识库、对话、媒体引用与 Agent 过程界面 |
+| [`backend/app/modules/ingestion/`](backend/app/modules/ingestion/) | 解析、保留原文的分块与多模态向量化 |
+| [`backend/app/modules/retrieval/`](backend/app/modules/retrieval/) · [`agent/`](backend/app/modules/agent/) | 常规混合检索、重排与有界多轮 Agent |
+| [`backend/app/modules/pi_agent/`](backend/app/modules/pi_agent/) · [`agent-runtime/`](agent-runtime/) | Pi 宿主、来源工具、持久化账本与 Agent 循环 |
+| [`backend/app/modules/generation/`](backend/app/modules/generation/) · [`core/llm/`](backend/app/core/llm/) | 常规回答生成、模型服务商与任务路由 |
+
+## API 与集成
+
+通过只读检索 API 获取 `doc | image | audio | video` 证据。将 `KB_ID` 替换为实际知识库 ID：
 
 ```bash
-./scripts/install-codex-skill.sh
-skills/mma-rag/scripts/mma-rag health
-skills/mma-rag/scripts/mma-rag kb list
-skills/mma-rag/scripts/mma-rag search --query "部署失败后如何回滚？" --kb-id KB_ID
-skills/mma-rag/scripts/mma-rag ask --query "总结部署流程" --kb-id KB_ID --agent-mode auto
+curl -X POST http://localhost:8000/api/v1/retrieval/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"什么情况下必须回滚？","knowledge_base_ids":["KB_ID"],"top_k":5}'
 ```
 
-安装脚本会在 `${CODEX_HOME:-$HOME/.codex}/skills/mma-rag` 创建指向仓库 Skill 的符号链接，不覆盖已有同名目录。完整命令、安全上传根目录与退出码见 [CLI reference](skills/mma-rag/references/cli-reference.md)。
+常规对话使用 `/api/chat/message` 或 `/api/chat/stream`；Pi 使用 `/api/pi/runs` 创建任务，并通过事件接口订阅过程。请求结构可在启动后的 [OpenAPI](http://localhost:8000/docs) 中查看。
 
-仓库还提供隔离的合成 RAG 评测集与 `rag-eval` runner，覆盖 Recall@K、nDCG、MRR、Faithfulness、Answer Relevance 和 Context Precision；使用方式和指标口径见 [RAG 评测基线](docs/RAG_EVALUATION.md)。
+仓库自带的 CLI 可以直接使用；也可运行 `./scripts/install-codex-skill.sh` 安装 Codex Skill：
 
-## 当前边界
+```bash
+skills/mma-rag/scripts/mma-rag health
+skills/mma-rag/scripts/mma-rag kb list
+skills/mma-rag/scripts/mma-rag search --query "什么情况下必须回滚？" --kb-id KB_ID
+skills/mma-rag/scripts/mma-rag ask --query "总结回滚流程" --kb-id KB_ID --agent-mode auto
+```
 
-- 应用 API **没有内置用户鉴权**，开发配置中的 CORS 允许任意来源；请只在可信网络使用，公网部署前必须在反向代理或 API Gateway 增加认证、TLS、来源限制、限流与上传大小控制。
-- Chat session 和部分统计仍是进程内状态，不适合直接做无状态多副本部署。
-- Agent 当前只有只读 `multimodal_knowledge_search` 工具；没有写工具、审批流、MCP、长期记忆或沙箱。
-- 飞书聊天当前走直接检索路径；Web Chat API 与 `mma-rag ask` 支持三态 Agent 模式。
-- 检索权重和部分阈值仍在代码中，尚未全部迁入配置中心。
+CLI 的 `--agent-mode` 对应常规 `direct / auto / agent`，不启用 Pi。飞书 IM 当前使用直接检索；配置见 [CLI 参考](skills/mma-rag/references/cli-reference.md) 与 [飞书接入指南](docs/FEISHU_BOT_SETUP.md)。
 
-更完整的现状与演进状态见 [架构文档](docs/MMA_ARCHITECTURE.md) 和 [路线图](docs/mira-plan.md)。
+## 验证与评测
 
-## 文档索引
+仓库提供自动测试、隔离的 RAG 评测入口及带候选记录的 Pi 实测报告。现有公开基线包含 **7 份合成文档、8 个问题**，适合检索与生成回归，不代表通用多模态准确率或生产性能承诺。
 
-| 文档 | 定位 |
-|---|---|
-| [MMA_ARCHITECTURE](docs/MMA_ARCHITECTURE.md) | 当前实现：模块边界、入库与问答链路、数据面、Agent 与 API |
-| [MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 图片、音频、视频的字段、向量与检索细节 |
-| [AGENTIC_UPGRADE_WEKNORA_RESEARCH](docs/AGENTIC_UPGRADE_WEKNORA_RESEARCH.md) | Agent 调研基线、已落地能力与风险原则 |
-| [mira-plan](docs/mira-plan.md) | 按“已完成 / 部分完成 / 待规划”维护的演进路线 |
-| [FEISHU_BOT_SETUP](docs/FEISHU_BOT_SETUP.md) | 飞书 IM 与 Docx/Wiki 权限、变量、验证 |
-| [CLI reference](skills/mma-rag/references/cli-reference.md) | 本地 Skill/CLI 命令与安全边界 |
-| [RAG_EVALUATION](docs/RAG_EVALUATION.md) | 合成评测集、隔离运行方式、六类指标与回归门禁 |
-| [Jev 调研与重排实验](docs/research/jev/README.md) | 真实 API 配对评测、实验开关、费用与采用结论 |
-| [Jev 扩展评估与意图快路径](docs/research/jev-v2/README.md) | 社区实践、独立大样本、复杂系统验证与接入说明 |
-| [Jev 引用支持诊断](docs/research/jev-v3/README.md) | 冻结语义边界样本、真实答案重放与两种诊断方案 |
-| [Jev 跨轮采用结论](docs/research/JEV-DECISIONS.md) | 九类方案比较、可选批量引用诊断与验证边界 |
-| [SECURITY](SECURITY.md) | 当前安全姿态与生产部署清单 |
-| [CHANGELOG](CHANGELOG.md) | 近期功能与文档变更 |
+激活后端虚拟环境后，在仓库根目录运行以下基础检查：
 
----
+```bash
+npm --prefix frontend test
+npm --prefix frontend run build
+npm --prefix agent-runtime test
+./scripts/rag-eval validate
+```
 
-**快速体验**：`./start-dev.sh` → 打开 [http://localhost:3000](http://localhost:3000) → 创建知识库并上传内容 → 选择自动、直接或 Agent 深研 → 检查回答引用。
+后端测试按改动模块选择；[近期回归记录](docs/qa/pi-agent-publication-2026-10-07.md) 提供实际命令与覆盖范围，部分测试需要存储服务。检索指标、独立 judge、数据隔离和报告对比见 [RAG 评测指南](docs/RAG_EVALUATION.md)；Pi 的功能验证与未通过项见 [Pi 验证记录](docs/PI_AGENT_VERIFICATION.md)。
+
+## 部署边界
+
+- **面向本机单用户与可信网络。** 应用尚无完整的用户鉴权、租户隔离和知识库 ACL，常规 API 的 CORS 允许任意来源。公网接入前需要认证网关、TLS、来源限制及限流，详见 [SECURITY.md](SECURITY.md)。
+- **Pi 的访问控制有独立范围。** 默认仅本机访问，可配置服务端访问令牌与知识库允许列表；它们不替代整个应用的用户权限体系。
+- **持久化能力因路径而异。** Pi 使用本地 SQLite 账本，单数据目录仅一个宿主持锁；常规后端会话与部分统计仍在进程内，不宜直接横向扩容为无状态多副本。
+- **检索和媒体理解可能出错。** 引用可追溯不等于语义已验证；视频采样不等于逐帧观察。请结合原文件判断关键结论。
+
+## 文档
+
+| 文档 | 内容 |
+| --- | --- |
+| [Pi Agent Mode](docs/PI_AGENT_MODE.md) | 自主研究、来源工具、配置与运行语义 |
+| [架构说明](docs/MMA_ARCHITECTURE.md) | 入库、常规检索与生成链路；Pi 以独立文档为准 |
+| [多模态技术说明](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 图片、音频、视频的解析单元、字段与索引 |
+| [行内引用与附件](docs/chat-inline-references.md) | `@` 材料、编辑与引用预览 |
+| [模型调用可靠性](docs/MODEL_CALL_RELIABILITY.md) | 模型路由、健康状态与回退策略 |
+| [CLI 参考](skills/mma-rag/references/cli-reference.md) · [飞书接入](docs/FEISHU_BOT_SETUP.md) | 外部工作流与配置 |
+| [RAG 评测](docs/RAG_EVALUATION.md) · [Pi 验证](docs/PI_AGENT_VERIFICATION.md) | 复现方式、覆盖范围与结果边界 |
+| [Jev 实验结论](docs/research/JEV-DECISIONS.md) | 可选语义判断与引用诊断实验；默认关闭 |
+| [安全说明](SECURITY.md) · [历史变更](CHANGELOG.md) | 部署要求与已有变更记录 |
+
+## 参与贡献
+
+欢迎通过 [Issues](https://github.com/Champ-X/MMA-RAG/issues) 报告问题或提出改进，通过 [Pull Requests](https://github.com/Champ-X/MMA-RAG/pulls) 提交修改。中文和英文均可。
+
+- **报告问题**：提供提交 SHA、操作系统、运行时版本、所用模式、最小复现步骤与脱敏日志；注明预期与实际结果。
+- **提交修改**：聚焦一个问题，说明改动目的、验证命令与结果；界面变更附截图，模型或检索变更附可复现的输入与来源。
+- **改进文档**：保持中英文 README 的功能与安装说明一致；不要将实验候选写成已交付能力。
+- **保护数据**：不提交 API Key、`.env`、用户知识库或未脱敏运行产物。安全问题按 [安全报告说明](SECURITY.md#reporting) 私下报告。
+
+## 许可证
+
+当前仓库尚未提供 `LICENSE` 文件，未声明开源许可证。使用、修改或分发的授权范围请先与维护者确认。
+
+## 致谢
+
+Tessmora 基于 [Pi](https://github.com/earendil-works/pi)、[Qdrant](https://github.com/qdrant/qdrant)、[MinIO](https://github.com/minio/minio)、[FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding)、[CLIP](https://github.com/openai/CLIP)、[CLAP](https://github.com/LAION-AI/CLAP)、[FastAPI](https://github.com/fastapi/fastapi) 与 [React](https://github.com/facebook/react) 等项目构建，感谢其维护者与贡献者。
