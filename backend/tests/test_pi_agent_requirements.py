@@ -5,7 +5,6 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from pydantic import ValidationError
 
-from app.modules.pi_agent.contracts import RunBudget
 from app.modules.pi_agent.policy import ToolError
 from app.modules.pi_agent.requirements import apply_requirements, bind_requirements
 from app.modules.pi_agent.store import RunConflict, RunStore
@@ -62,7 +61,7 @@ def test_no_limit_is_an_explicit_interpretation_without_a_fabricated_quote():
 
 
 @pytest.mark.parametrize("update", [{"max_characters": True}, {"max_characters": 0},
-    {"max_characters": 24001}, {"required_points": []}, {"required_points": ["x"] * 13}])
+    {"max_characters": -1}, {"required_points": []}, {"required_points": [None]}])
 def test_schema_bounds_requirement_inputs(update):
     with pytest.raises(ValidationError):
         AnswerRequirements.model_validate({**declaration(), **update})
@@ -138,14 +137,14 @@ async def test_submissions_cannot_replace_registered_limit(tmp_path, cap):
 
 
 @pytest.mark.asyncio
-async def test_oversized_requirement_result_cannot_register_or_publish_success(tmp_path):
-    tools, store, run, events = fixture_tools(tmp_path, RunBudget(tool_output_chars=1000), register_requirements=False)
+async def test_large_requirement_record_is_not_rejected_by_an_output_allowance(tmp_path):
+    tools, store, run, events = fixture_tools(tmp_path, register_requirements=False)
     result = await tools.execute("big", "set_answer_requirements",
         declaration(None, None, [str(i) + "要" * 299 for i in range(4)]))
-    assert result["isError"] and result["details"]["code"] == "tool_output_too_large"
-    assert tools.answer_requirements is None and "answer_requirements" not in store.get(run)["state"]
-    assert not any(e["type"] == "answer.requirements" for e in store.events(run))
-    assert not any(kind == "tool.completed" for kind, _ in events)
+    assert not result.get("isError")
+    assert tools.answer_requirements == store.get(run)["state"]["answer_requirements"]
+    assert any(e["type"] == "answer.requirements" for e in store.events(run))
+    assert any(kind == "tool.completed" for kind, _ in events)
 
 
 def test_registration_state_and_event_roll_back_together(tmp_path, monkeypatch):

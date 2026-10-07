@@ -139,10 +139,10 @@ class RunStore:
                 "message": f"来源范围已确认，可读取 {len(sources)} 项资料。", "scope": scope,
                 "source_count": len(sources), "duration_ms": duration_ms}, span_id="sources")
 
-    def list_runs(self, owner: str, session_id: str, *, limit: int = 100) -> list[dict]:
+    def list_runs(self, owner: str, session_id: str) -> list[dict]:
         with self._connection() as db:
-            rows = db.execute("SELECT * FROM pi_runs WHERE owner=? AND session_id=? ORDER BY created_at DESC LIMIT ?",
-                              (owner, session_id, min(max(limit, 1), 100))).fetchall()
+            rows = db.execute("SELECT * FROM pi_runs WHERE owner=? AND session_id=? ORDER BY created_at DESC",
+                              (owner, session_id)).fetchall()
             return [self._decode(row) for row in rows]
 
     def record_answer_requirements(self, run_id: str, requirements: dict, *, parent_span_id=None):
@@ -161,6 +161,18 @@ class RunStore:
             self._append(db, run_id, "answer.requirements", requirements, span_id="requirements",
                          parent_span_id=parent_span_id)
             return json.loads(canonical(requirements))
+
+    def record_answer_plan(self, run_id: str, plan: dict, *, parent_span_id=None):
+        """Commit a validated Agent selection and its replay event together."""
+        with self._connection(write=True) as db:
+            row = self._row(db, run_id)
+            if row["status"] != "running":
+                raise RunConflict("任务不再运行，不能更新回答要点")
+            state = json.loads(row["state_json"])
+            state["answer_plan"] = plan
+            db.execute("UPDATE pi_runs SET state_json=? WHERE id=?", (canonical(state), run_id))
+            self._append(db, run_id, "answer.plan", plan, span_id="answer-plan", parent_span_id=parent_span_id)
+            return json.loads(canonical(plan))
 
     def _append(self, db, run_id, event_type, data, span_id=None, parent_span_id=None):
         row = self._row(db, run_id)

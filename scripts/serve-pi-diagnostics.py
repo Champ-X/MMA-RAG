@@ -133,7 +133,7 @@ async def serve(args):
              "scripts/verify-pi-isolation.py", "scripts/serve-pi-diagnostics.py"]
     manifest = {"git_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "source_sha256": {path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for path in paths},
-        "port": args.port, "pi_model": settings.model, "pi_budget": settings.budget.model_dump(),
+        "port": args.port, "pi_model": settings.model, "pi_execution_policy": "until_complete_or_cancelled",
         "pi_thinking_enabled": settings.thinking_enabled,
         "yield_to_legacy": settings.yield_to_legacy, "lifespan": "off",
         "predeclared_next_check": args.check_label}

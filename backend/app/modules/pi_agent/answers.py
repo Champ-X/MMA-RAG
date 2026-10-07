@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import re
 
+import markdown
+from markdown.treeprocessors import Treeprocessor
+
 
 def text_units(text, prefix, *, maximum=None):
     units, offset = [], 0
@@ -65,7 +68,7 @@ def character_count(answer):
     return character_counts(answer)["total"]
 
 
-def citation_errors(args, delivered):
+def citation_errors(args, delivered, *, allow_uncited=False):
     """The original Pi citation checks, shared with the experimental contract."""
     errors = []
     used, declared = {int(n) for n in re.findall(r"\[(\d+)\]", args["answer"])}, set(args["evidence_ids"])
@@ -73,13 +76,47 @@ def citation_errors(args, delivered):
         errors.append({"code": "unsupported_citations", "message": "未找到相关依据时必须提交 partial，且不得附候选或来源介绍的引用"})
     if used != declared or not used <= delivered.keys():
         errors.append({"code": "citation_mismatch", "message": "正文引用与 evidence_ids 不一致，或引用了本轮尚未返回的证据。请修正后重新提交。"})
-    if not used and (args["status"] != "partial" or not args["limitations"]):
+    if not used and not allow_uncited and (args["status"] != "partial" or not args["limitations"]):
         errors.append({"code": "missing_evidence", "message": "无来源支撑时请提交 partial，并说明证据缺口；不能当作已核验的回答。"})
     if args["status"] == "partial" and not args["limitations"]:
-        errors.append({"code": "missing_limitations", "message": "部分回答必须具体说明尚未覆盖的范围"})
+        errors.append({"code": "missing_limitations", "message": "部分回答必须具体说明哪些用户要求尚未交付"})
+    if args["status"] == "completed" and args["limitations"]:
+        errors.append({"code": "answer_status_mismatch", "message": "completed的limitations须为空；一般来源说明必要时写在正文末尾，确有用户要求未交付才用partial。"})
     if "知识库中未找到相关内容" in args["answer"] and used:
         errors.append({"code": "unsupported_citations", "message": "没有相关证据的回答不能保留候选引用"})
     return errors
+
+
+def markdown_image_targets(text):
+    """Collect rendered images, leaving code, escapes and raw HTML as data."""
+    targets = []
+
+    class CollectImages(Treeprocessor):
+        def run(self, root):
+            targets.extend(node.get("src", "") for node in root.iter("img"))
+
+    parser = markdown.Markdown(extensions=["fenced_code"])
+    parser.treeprocessors.register(CollectImages(parser), "source_images", 5)
+    parser.convert(text)
+    return targets
+
+
+def media_target_errors(answer, image_targets, *, preserved_inputs=()):
+    """Resolve images to selected sources or actual user-input transformations.
+
+    Numeric citations remain the normal source presentation contract. A mixed
+    research/transformation task may also preserve Markdown from user input.
+    """
+    image_targets = set(image_targets)
+    for text in preserved_inputs:
+        image_targets.update(markdown_image_targets(text))
+    targets = markdown_image_targets(answer)
+    invalid = list(dict.fromkeys(target for target in targets if target not in image_targets))
+    if not invalid:
+        return []
+    return [{"code": "invalid_media_target",
+             "message": "正文图片地址未对应本次选中并交付的图片来源。使用该来源的数字[编号]即可展示媒体；不要把来源身份、文件名或未取得的地址当作图片链接。",
+             "invalid_targets": [target[:160] for target in invalid[:4]]}]
 
 
 def source_notices(statements):
@@ -96,11 +133,11 @@ def source_notices(statements):
     return notices
 
 
-def assess_answer(args, delivered):
+def assess_answer(args, delivered, *, allow_uncited=False):
     """Require complete self-assessment and resolve its actual source anchors."""
     units = answer_units(args["answer"], args["limitations"])
     expected = {unit["id"]: unit for unit in units}
-    statements, errors, resolved = args["statements"], citation_errors(args, delivered), []
+    statements, errors, resolved = args["statements"], citation_errors(args, delivered, allow_uncited=allow_uncited), []
     # Keep the default Pi contract unchanged. The experimental checks expose
     # what was actually parsed, rather than asking the Agent to guess why a
     # grouped marker or source-span label failed numeric citation identity.
@@ -141,7 +178,7 @@ def assess_answer(args, delivered):
                             **({"origin": support["origin"]} if "origin" in support else {}),
                             "start": support["start"], "end": support["end"], "text": support["text"]})
         factual = kind in {"fact", "inference"}
-        if factual and not anchors:
+        if factual and not anchors and not allow_uncited:
             errors.append({"code": "missing_support", "unit_id": uid,
                            "message": "事实或推断必须关联已返回的原文片段；缺乏依据时删除该断言或改为本次未找到支持。"})
         if factual and uid.startswith("l"):
@@ -174,7 +211,8 @@ def assess_answer(args, delivered):
             "body_characters": size, "declared_max_characters": limit, "statements": resolved,
             "body_character_counts": counts,
             **({"source_notices": notices} if notices else {}),
-            "semantic_support": "Agent self-assessment; coverage and source identity checked, entailment not independently verified."}
+            "semantic_support": "Agent self-assessment; coverage and source identity checked, entailment not independently verified.",
+            **({"basis": "user_input"} if allow_uncited else {})}
 
 
 def repair_feedback(report):
@@ -200,6 +238,7 @@ def repair_feedback(report):
 
 def compact_assessment(report):
     return {"version": 1, "body_characters": report["body_characters"],
+            **({"basis": report["basis"]} if "basis" in report else {}),
             "declared_max_characters": report["declared_max_characters"],
             **({"body_character_counts": report["body_character_counts"]} if "body_character_counts" in report else {}),
             "semantic_support": report["semantic_support"],

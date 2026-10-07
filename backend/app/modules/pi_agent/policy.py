@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import time
 
-from .contracts import RunBudget, RunRequest
+from .contracts import RunRequest
 
 
 class ToolError(ValueError):
@@ -58,8 +58,12 @@ class AccessScope:
 
 
 @dataclass
-class BudgetLedger:
-    limits: RunBudget
+class UsageLedger:
+    """Measure work without imposing an execution deadline or allowance.
+
+    Missing provider usage is recorded as unknown, never guessed from UTF-8
+    bytes or charged as if the maximum possible output had been generated.
+    """
     started: float = field(default_factory=time.monotonic)
     model_requests: int = 0
     model_tokens: int = 0
@@ -70,116 +74,36 @@ class BudgetLedger:
     media_seconds: float = 0
     tool_output_chars: int = 0
     unknown_usage_requests: int = 0
-    finalizing: bool = False
-    closing_reads: int = 0
-    must_submit: bool = False
-    answer_checks_enabled: bool = False
-    _reservations: dict[int, int] = field(default_factory=dict)
+    _pending: set[int] = field(default_factory=set)
     _settled: set[int] = field(default_factory=set)
 
-    def check_time(self):
-        if time.monotonic() - self.started >= self.limits.wall_seconds:
-            raise ToolError("time_budget_exhausted", "本轮运行时间预算已用尽")
-
-    def reserve_model(self, turn: int, input_bytes: int, max_output_tokens: int, *, main_loop=False):
-        self.check_time()
-        if self.finalizing and not main_loop:
-            raise ToolError("research_budget_exhausted", "已进入预算收尾阶段，请提交已有结论并说明缺口")
-        if turn in self._reservations or turn in self._settled:
+    def start_model(self, turn: int):
+        if turn in self._pending or turn in self._settled:
             raise ToolError("duplicate_model_request", "重复的模型请求标识")
-        if self.model_requests >= self.limits.model_requests:
-            raise ToolError("model_request_budget_exhausted", "本轮模型调用预算已用尽")
-        # UTF-8 bytes are a conservative text-token allowance; actual usage reconciles it.
-        # Images carried as base64 are conservatively charged by serialized bytes too.
-        output = min(max_output_tokens, self.limits.output_tokens)
-        reserve = max(0, input_bytes) + output
-        if self.model_tokens + sum(self._reservations.values()) + reserve > self.limits.model_tokens:
-            raise ToolError("token_budget_exhausted", "剩余 Token 预算不足以执行下一次模型请求")
         self.model_requests += 1
-        self._reservations[turn] = reserve
-        if main_loop:
-            # Enter closing mode while this full-context request still fits.
-            # Waiting until the next request is refused loses an otherwise
-            # answerable run. Count outstanding reservations, including media.
-            remaining = self.limits.model_tokens - self.model_tokens - sum(self._reservations.values())
-            self.finalizing |= (remaining < reserve or self.model_requests >= self.limits.model_requests - 1
-                                or self.tool_calls >= self.limits.tool_calls - 2)
-        return {"allowed": True, "max_output_tokens": output, "final_turn": self.finalizing}
-
-    def admit_main_model(self, turn: int, input_bytes: int, max_output_tokens: int):
-        try:
-            result = self.reserve_model(turn, input_bytes, max_output_tokens, main_loop=True)
-        except ToolError as error:
-            if error.code != "token_budget_exhausted":
-                raise
-            # No request was reserved or paid. Let the worker archive older
-            # tool bodies once, then re-admit the actual reduced context.
-            self.finalizing = self.must_submit = True
-            available = self.limits.model_tokens - self.model_tokens - sum(self._reservations.values())
-            output = min(max_output_tokens, self.limits.output_tokens)
-            return {"allowed": False, "final_turn": True, "allow_recall": False,
-                    **({"allow_check_answer": False} if self.answer_checks_enabled else {}),
-                    "max_input_bytes": max(0, available - output), "message": str(error)}
-        return {**result, "allow_recall": not self.must_submit and self.closing_reads < 1,
-                **({"allow_check_answer": self.closing_check_available()} if self.answer_checks_enabled else {})}
-
-    def closing_check_available(self):
-        # A check shares the existing one-read closing allowance. It still
-        # needs a following model turn and the original reserved submit slots.
-        return (self.answer_checks_enabled and not self.must_submit and self.closing_reads < 1
-                and self.model_requests < self.limits.model_requests
-                and self.tool_calls < self.limits.tool_calls - 2)
+        self._pending.add(turn)
+        return {"allowed": True}
 
     def settle_model(self, turn: int, usage: dict | None):
-        if turn in self._settled:
+        if turn not in self._pending:
             return
-        reserved = self._reservations.pop(turn, None)
-        if reserved is None:
-            return  # A rejected request can still produce Pi's terminal error event.
+        self._pending.remove(turn)
         self._settled.add(turn)
         total = (usage or {}).get("totalTokens")
         if not isinstance(total, (int, float)) or total <= 0:
             self.unknown_usage_requests += 1
-            self.model_tokens += reserved
         else:
             self.model_tokens += int(total)
 
-    def reserve_tool(self, name: str):
-        self.check_time()
-        # Both operations use only already delivered evidence. Experimental
-        # checking is an alternative to the one closing read, not another slot.
-        closing_review = name == "recall_evidence" or (self.answer_checks_enabled and name == "check_answer")
-        if self.finalizing and name not in {"submit_answer", "ask_user"} and not closing_review:
-            raise ToolError("research_budget_exhausted", "已进入预算收尾阶段，只能复读已取得的证据或提交回答")
-        if self.finalizing and name == "check_answer" and not self.closing_check_available():
-            raise ToolError("research_budget_exhausted", "收尾阶段的复读或草稿检查额度已用尽，或没有后续模型/工具名额；请直接提交回答并说明缺口")
-        if self.finalizing and name == "recall_evidence" and (self.must_submit or self.closing_reads >= 1):
-            raise ToolError("research_budget_exhausted", "收尾阶段只能复读一批关键证据，现在请提交回答并说明缺口")
-        if self.tool_calls >= self.limits.tool_calls:
-            raise ToolError("tool_budget_exhausted", "本轮工具调用预算已用尽")
-        # Preserve admission slots for a final answer even when research is exhausted.
-        if name not in {"submit_answer", "ask_user"} and self.tool_calls >= self.limits.tool_calls - 2:
-            raise ToolError("research_budget_exhausted", "研究预算即将用尽，请提交已有结论并说明缺口")
-        if name == "search" and self.searches >= self.limits.searches:
-            raise ToolError("search_budget_exhausted", "搜索预算已用尽，可以读取已有证据或提交回答")
-        if name == "inspect_media" and self.media_calls >= self.limits.media_calls:
-            raise ToolError("media_budget_exhausted", "媒体分析预算已用尽")
+    def record_tool(self, name: str):
         self.tool_calls += 1
-        self.closing_reads += int(self.finalizing and closing_review)
         self.searches += int(name == "search")
         self.media_calls += int(name == "inspect_media")
 
     def account_output(self, chars: int):
-        if chars > self.limits.tool_output_chars:
-            raise ToolError("tool_output_too_large", "工具结果超过单次预算，请缩小范围或分页读取")
-        if self.tool_output_chars + chars > self.limits.total_tool_output_chars:
-            raise ToolError("tool_output_budget_exhausted", "工具输出预算已用尽，请根据已有证据回答")
         self.tool_output_chars += chars
 
-    def reserve_media(self, size: int, seconds: float):
-        self.check_time()
-        if self.media_input_bytes + size > self.limits.media_input_bytes or self.media_seconds + seconds > self.limits.media_seconds:
-            raise ToolError("media_input_budget_exhausted", "媒体输入预算已用尽，请根据已有证据回答")
+    def record_media(self, size: int, seconds: float):
         self.media_input_bytes += size
         self.media_seconds += seconds
 

@@ -60,7 +60,6 @@ function callHost(method, params, signal) {
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
 lines.on('line', (line) => {
   try {
-    if (line.length > 16 * 1024 * 1024) throw new Error('host_message_too_large');
     const message = JSON.parse(line);
     if (message.type === 'response') {
       const request = pending.get(message.id);

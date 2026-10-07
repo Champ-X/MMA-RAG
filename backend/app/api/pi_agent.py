@@ -104,26 +104,17 @@ async def configuration(request: Request, response: Response, owner=Depends(owne
     return {"engine": "pi", "protocol_version": 1, "enabled": settings.enabled, "default_model": settings.model,
             "thinking_enabled": settings.thinking_enabled,
             "answer_checks_enabled": settings.answer_checks_enabled,
-            "models": models, "budget": settings.budget.model_dump(), "max_concurrent_runs": settings.max_concurrent_runs,
-            "tools": [tool["name"] for tool in definitions(settings.answer_checks_enabled)]}
+            "answer_plan_enabled": settings.answer_plan_enabled,
+            "models": models, "execution_policy": "until_complete_or_cancelled", "max_concurrent_runs": settings.max_concurrent_runs,
+            "tools": [tool["name"] for tool in definitions(settings.answer_checks_enabled, settings.answer_plan_enabled)]}
 
 
 @router.post("/runs")
 async def create_run(request: Request, owner=Depends(owner_for)):
     supervisor = host()
-    # Bound the actual multipart body, not only each file after it has spooled.
-    original_receive, received = request._receive, 0
-    async def bounded_receive():
-        nonlocal received
-        message = await original_receive()
-        received += len(message.get("body", b""))
-        if received > 91 * 1024 * 1024:
-            raise HTTPException(413, "本轮附件总量超过上传预算")
-        return message
-    request._receive = bounded_receive
     try:
         if request.headers.get("content-type", "").startswith("multipart/form-data"):
-            form = await request.form(max_files=3, max_fields=10)
+            form = await request.form(max_files=float("inf"), max_fields=float("inf"))
             spec = RunRequest.model_validate_json(str(form.get("request") or ""))
             if spec.attachments:
                 raise ToolError("invalid_attachment", "上传请求中的附件应由服务端生成描述")
@@ -135,24 +126,20 @@ async def create_run(request: Request, owner=Depends(owner_for)):
             identities = normalize_attachment_ids(form.get("attachment_ids"), len(files))
             descriptors = []
             for identity, upload in zip(identities, files):
-                raw = await upload.read(30 * 1024 * 1024 + 1)
+                raw = await upload.read()
                 await upload.close()
-                if not raw or len(raw) > 30 * 1024 * 1024:
-                    raise ToolError("attachment_too_large", "每个本机附件最多 30 MB")
-                kind = _classify_attachment(upload.filename or "attachment", upload.content_type or "", raw)
-                if kind != "video" and len(raw) > 10 * 1024 * 1024:
-                    raise ToolError("attachment_too_large", "本机图片或音频最多 10 MB")
-                await supervisor.blocking(inspect_attachment_media, raw, kind)
+                if not raw:
+                    raise ToolError("empty_attachment", "附件不能为空")
+                kind = _classify_attachment(upload.filename or "attachment", upload.content_type or "", raw,
+                                            enforce_size_limits=False)
+                await supervisor.blocking(inspect_attachment_media, raw, kind, max_video_seconds=None, probe_timeout=None)
                 descriptors.append(await supervisor.blocking(save_attachment, raw, owner=owner, identity=identity,
                     name=upload.filename or "attachment", kind=kind, settings=supervisor.settings))
             spec = spec.model_copy(update={"attachments": descriptors})
         else:
-            # Keep non-multipart requests bounded before JSON decoding.
             raw = bytearray()
             async for part in request.stream():
                 raw.extend(part)
-                if len(raw) > 256 * 1024:
-                    raise HTTPException(413, "请求过大")
             spec = RunRequest.model_validate_json(raw)
             if spec.attachments:
                 raise ToolError("invalid_attachment", "本机附件必须通过上传接口提交，不能自行声明文件版本或来源")
@@ -253,8 +240,7 @@ async def source_content(run_id: str, source_id: str, request: Request, owner=De
             import uuid
             staging = destination.with_name(source_id + "." + uuid.uuid4().hex)
             try:
-                await supervisor.blocking(SourceCatalog([source], {}).download, supervisor.storage, source, staging,
-                                          max_bytes=supervisor.settings.max_source_bytes)
+                await supervisor.blocking(SourceCatalog([source], {}).download, supervisor.storage, source, staging)
                 staging.replace(destination)
             finally:
                 staging.unlink(missing_ok=True)

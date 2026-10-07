@@ -5,9 +5,9 @@ from types import SimpleNamespace
 import pytest
 
 from app.modules.pi_agent.catalog import Source, SourceCatalog, source_id, index_kb_matches
-from app.modules.pi_agent.contracts import Evidence, RunRequest, RunBudget, SourceFile
+from app.modules.pi_agent.contracts import Evidence, RunRequest, SourceFile
 from app.modules.pi_agent.gateway import KnowledgeGateway
-from app.modules.pi_agent.policy import AccessScope, BudgetLedger, ToolError
+from app.modules.pi_agent.policy import AccessScope, UsageLedger, ToolError
 from app.modules.pi_agent.store import RunStore
 from app.modules.pi_agent.tools import ToolSet
 from app.modules.pi_agent.tables import query_table
@@ -70,8 +70,8 @@ async def test_index_outage_is_not_reported_as_no_results():
         await gateway.search(query="x", mode="exact", modalities=["doc"], knowledge_base_ids=[], limit=1, span_id="t")
 
 
-def fixture_tools(tmp_path, budget=None, *, answer_checks_enabled=True, register_requirements=True,
-                  requirement_limit=None, req=None):
+def fixture_tools(tmp_path, *, answer_checks_enabled=True, register_requirements=True,
+                  requirement_limit=None, req=None, answer_plan_enabled=False):
     store = RunStore(tmp_path / "run.db")
     req = req or request(message=f"问题，正文不超过{requirement_limit}字" if requirement_limit else "问题")
     run = store.create(owner="alice", request=req.model_dump(), config={})[0]
@@ -90,9 +90,27 @@ def fixture_tools(tmp_path, budget=None, *, answer_checks_enabled=True, register
             return [Evidence(source_id=s.id, modality="doc", file_name=s.name, content="实际原文", version="v1", observation="parsed_text",
                              citation={"type": "doc", "file_name": s.name})], {"status": "ok"}
     tools = ToolSet(run["id"], store, SourceCatalog([source()], {"a": "A"}), scope,
-        BudgetLedger(budget or RunBudget()), Gateway(), None, lambda name, data, **kw: events.append((name, data)), blocking,
-        answer_checks_enabled=answer_checks_enabled)
+        UsageLedger(), Gateway(), None, lambda name, data, **kw: events.append((name, data)), blocking,
+        answer_checks_enabled=answer_checks_enabled, answer_plan_enabled=answer_plan_enabled)
     return tools, store, run["id"], events
+
+
+@pytest.mark.parametrize("modality", ["doc", "image", "audio", "video"])
+def test_citations_separate_source_identity_from_observation_identity(tmp_path, modality):
+    tools, _, run_id, _ = fixture_tools(tmp_path)
+    original = replace(source(), modality=modality)
+    tools.catalog = SourceCatalog([original], {"a": "A"})
+    index = Evidence(id=1, source_id=original.id, modality=modality, file_name=original.name,
+        content="索引描述", version="index-v1", observation="caption",
+        citation={"type": modality, "source_id": "untrusted-metadata", "debug_info": {"kb_id": "a"}})
+    observed = index.model_copy(update={"id": 2, "content": "直接观察", "version": "observation-v1",
+        "observation": "media_observation", "citation": {"type": modality}})
+    first, second = tools.citation(index), tools.citation(observed)
+    assert first["source_id"] == second["source_id"] == original.id
+    assert first["pi_run_id"] == second["pi_run_id"] == run_id
+    assert first["file_path"] == second["file_path"]
+    assert first["id"] != second["id"] and first["content"] != second["content"]
+    assert "debug_info" in first and "debug_info" not in second
 
 
 @pytest.mark.asyncio
@@ -115,36 +133,32 @@ async def test_only_delivered_evidence_can_be_cited_and_repair_keeps_id(tmp_path
 
 
 @pytest.mark.asyncio
-async def test_oversized_result_is_not_available_for_citation(tmp_path):
-    tools, store, run, _ = fixture_tools(tmp_path, RunBudget(tool_output_chars=1000))
+async def test_large_result_is_delivered_without_an_output_allowance(tmp_path):
+    tools, store, run, _ = fixture_tools(tmp_path)
     original = tools.gateway.read
     async def large(*a, **kw):
         evidence, result = await original(*a, **kw)
-        evidence[0].content = "大" * 2000
+        evidence[0].content = "大" * 100000
         return evidence, result
     tools.gateway.read = large
     result = await tools.execute("r", "read_source", {"source_id": source().id})
-    assert result["isError"] and not tools.delivered and not store.evidence(run)
+    assert not result.get("isError")
+    assert store.evidence(run)[0].content == "大" * 100000
+    assert tools.delivered[1].content == store.evidence(run)[0].content
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("exhausted", [False, True])
-async def test_closing_recall_reads_only_delivered_evidence_and_keeps_output_budget(tmp_path, exhausted):
+async def test_recall_reads_only_delivered_evidence_after_large_usage(tmp_path):
     tools, store, run, _ = fixture_tools(tmp_path)
     original = await tools.execute("read", "read_source", {"source_id": source().id})
     number = original["details"]["evidence_ids"][0]
     unknown = await tools.execute("unknown", "recall_evidence", {"evidence_ids": [number + 1]})
     assert unknown["isError"] and unknown["details"]["code"] == "invalid_evidence"
-    tools.ledger.finalizing = True
+    tools.ledger.tool_output_chars = 10000000
     async def forbidden(*args, **kwargs):
-        pytest.fail("Closing recall must not fetch new source content")
+        pytest.fail("Recall must not fetch new source content")
     tools.gateway.read = forbidden
-    if exhausted:
-        tools.ledger.tool_output_chars = tools.ledger.limits.total_tool_output_chars
     result = await tools.execute("recall", "recall_evidence", {"evidence_ids": [number]})
-    if exhausted:
-        assert result["isError"] and result["details"]["code"] == "tool_output_budget_exhausted"
-        return
     assert not result.get("isError")
     assert result["details"]["evidence_ids"] == [number]
     assert result["content"][0]["text"].count("实际原文") == 1

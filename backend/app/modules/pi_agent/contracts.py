@@ -1,4 +1,4 @@
-"""Versioned host contracts. The model never supplies identity or run budgets."""
+"""Versioned host contracts. The model never supplies trusted identity."""
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -13,43 +13,27 @@ Modality = Literal["doc", "image", "audio", "video"]
 
 class SourceFile(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    kb_id: str = Field(min_length=1, max_length=200)
-    file_id: str = Field(min_length=1, max_length=1000)
-    name: str = Field(default="", max_length=1000)
-    type: str = Field(default="", max_length=100)
-    kb_name: str = Field(default="", max_length=300)
+    kb_id: str = Field(min_length=1)
+    file_id: str = Field(min_length=1)
+    name: str = Field(default="")
+    type: str = Field(default="")
+    kb_name: str = Field(default="")
 
 
 class RunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     protocol_version: Literal[1] = 1
-    client_request_id: str = Field(min_length=8, max_length=100)
-    session_id: str = Field(min_length=1, max_length=100)
-    message: str = Field(min_length=1, max_length=40000)
-    model: str | None = Field(default=None, max_length=200)
-    knowledge_base_ids: list[str] = Field(default_factory=list, max_length=100)
-    selected_files: list[SourceFile] = Field(default_factory=list, max_length=100)
-    reference_files: list[SourceFile] = Field(default_factory=list, max_length=100)
-    mentions: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
-    history: list[dict[str, str]] = Field(default_factory=list, max_length=24)
+    client_request_id: str = Field(min_length=8)
+    session_id: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    model: str | None = Field(default=None)
+    knowledge_base_ids: list[str] = Field(default_factory=list)
+    selected_files: list[SourceFile] = Field(default_factory=list)
+    reference_files: list[SourceFile] = Field(default_factory=list)
+    mentions: list[dict[str, Any]] = Field(default_factory=list)
+    history: list[dict[str, str]] = Field(default_factory=list)
     parent_run_id: str | None = None
-    attachments: list[dict[str, Any]] = Field(default_factory=list, max_length=3)
-
-
-class RunBudget(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    wall_seconds: int = Field(default=300, ge=10, le=1800)
-    model_requests: int = Field(default=24, ge=2, le=100)
-    model_tokens: int = Field(default=240000, ge=1000, le=2000000)
-    output_tokens: int = Field(default=6000, ge=256, le=16000)
-    tool_calls: int = Field(default=40, ge=2, le=200)
-    searches: int = Field(default=8, ge=1, le=30)
-    tool_seconds: int = Field(default=90, ge=1, le=180)
-    tool_output_chars: int = Field(default=20000, ge=1000, le=100000)
-    total_tool_output_chars: int = Field(default=240000, ge=1000, le=2000000)
-    media_calls: int = Field(default=6, ge=0, le=20)
-    media_input_bytes: int = Field(default=20 * 1024 * 1024, ge=1024, le=100 * 1024 * 1024)
-    media_seconds: int = Field(default=180, ge=1, le=600)
+    attachments: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class RunEvent(BaseModel):

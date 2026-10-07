@@ -134,7 +134,7 @@ async def test_scoped_search_is_host_validated_budgeted_and_persisted(tmp_path, 
     assert tools.scope.search_files == frozenset()
 
 
-@pytest.mark.parametrize("value", [[""], ["x" * 101], ["x"] * 33, "src_not_an_array"])
+@pytest.mark.parametrize("value", [[""], [None], [True], "src_not_an_array"])
 def test_source_filter_schema_is_bounded(value):
     with pytest.raises(ValidationError):
         Search.model_validate({"query": "指标", "source_ids": value})

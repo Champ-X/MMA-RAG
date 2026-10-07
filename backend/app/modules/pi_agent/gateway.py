@@ -125,11 +125,11 @@ class KnowledgeGateway:
             qm.FieldCondition(key="source_file_id", match=qm.MatchAny(any=ids)),
         ]), *(extra or [])])
 
-    async def _scroll(self, collection, filt, *, maximum=2000):
+    async def _scroll(self, collection, filt):
         points, cursor = [], None
-        while len(points) < maximum:
+        while True:
             page, cursor = await self.client.scroll(collection, scroll_filter=filt, offset=cursor,
-                limit=min(128, maximum - len(points)), with_payload=True, with_vectors=False)
+                limit=128, with_payload=True, with_vectors=False)
             points.extend(page)
             if cursor is None:
                 break
@@ -213,7 +213,7 @@ class KnowledgeGateway:
             raise ToolError("search_unavailable", "搜索服务未能完成查询，请稍后重试；这不代表没有相关内容", retryable=True)
         return evidence, {"status": "partial" if errors or truncated else "ok" if evidence else "no_hits",
                           "methods": ["exact" if mode == "exact" else "lexical", *(["dense"] if vector is not None else [])],
-                          "errors": errors, "truncated": truncated, "scanned_point_limit_per_modality": 2000,
+                          "errors": errors, "truncated": truncated,
                           "scope": query_scope.public()}
 
     async def read(self, source: Source, *, start: int, limit: int, modality: str | None = None,
@@ -224,7 +224,7 @@ class KnowledgeGateway:
             raise ToolError("use_media_tool", "请使用 inspect_media 读取本机媒体附件")
         kind = modality or source.modality
         extra = [qm.FieldCondition(key="chunk_index", range=qm.Range(gte=start, lt=start + limit))] if kind == "doc" else []
-        points, clipped = await self._scroll(COLLECTIONS[kind][0], self._filter([source], extra=extra), maximum=1000)
+        points, clipped = await self._scroll(COLLECTIONS[kind][0], self._filter([source], extra=extra))
         points = [p for p in points if self.catalog.bind_point(p.payload or {}, self.scope) == source]
         if kind == "doc":
             points.sort(key=lambda p: (p.payload or {}).get("chunk_index", 0))

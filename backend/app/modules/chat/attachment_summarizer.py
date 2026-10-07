@@ -250,7 +250,7 @@ def _try_parse_summary_json(content: str) -> Optional[str]:
     return None
 
 
-def _classify_attachment(filename: str, content_type: str, data: bytes) -> str:
+def _classify_attachment(filename: str, content_type: str, data: bytes, *, enforce_size_limits: bool = True) -> str:
     if not data:
         raise ValueError(f"文件为空：{filename}")
     ct = _normalize_declared_ct(content_type)
@@ -267,11 +267,11 @@ def _classify_attachment(filename: str, content_type: str, data: bytes) -> str:
             raise ValueError(f"文件内容与声明类型不一致或非允许的音频类型：{filename}")
         if kind == "video" and ct not in ALLOWED_VIDEO_CT:
             raise ValueError(f"文件内容与声明的视频类型不一致：{filename}")
-    if kind == "image" and len(data) > MAX_IMAGE_BYTES:
+    if enforce_size_limits and kind == "image" and len(data) > MAX_IMAGE_BYTES:
         raise ValueError(f"图片超过 {MAX_IMAGE_BYTES // 1024 // 1024}MB：{filename}")
-    if kind == "audio" and len(data) > MAX_AUDIO_BYTES:
+    if enforce_size_limits and kind == "audio" and len(data) > MAX_AUDIO_BYTES:
         raise ValueError(f"音频超过 {MAX_AUDIO_BYTES // 1024 // 1024}MB：{filename}")
-    if kind == "video" and len(data) > MAX_VIDEO_BYTES:
+    if enforce_size_limits and kind == "video" and len(data) > MAX_VIDEO_BYTES:
         raise ValueError(f"视频超过 {MAX_VIDEO_BYTES // 1024 // 1024}MB：{filename}")
     return kind
 

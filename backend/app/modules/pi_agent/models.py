@@ -6,7 +6,7 @@ import time
 
 import httpx
 
-from .policy import BudgetLedger, ToolError
+from .policy import UsageLedger, ToolError
 
 
 def model_endpoint(registry, name: str, capability: str):
@@ -21,19 +21,17 @@ def model_endpoint(registry, name: str, capability: str):
 
 
 class ModelTransport:
-    def __init__(self, registry, settings, ledger: BudgetLedger, emit, *, client=None):
+    def __init__(self, registry, settings, ledger: UsageLedger, emit, *, client=None):
         self.registry, self.settings, self.ledger, self.emit = registry, settings, ledger, emit
-        self.client = client or httpx.AsyncClient(timeout=httpx.Timeout(75, connect=8),
+        self.client = client or httpx.AsyncClient(timeout=httpx.Timeout(None, connect=8),
                                                  limits=httpx.Limits(max_connections=2, max_keepalive_connections=2))
         self._call_id = 0
         self._embeddings = {}
 
     def _begin(self, config, kind, input_units, output, parent):
-        if self.ledger.model_requests >= self.ledger.limits.model_requests - 1:
-            raise ToolError("research_model_budget_exhausted", "工具模型预算即将用尽，请保留最后一次调用提交回答")
         self._call_id -= 1  # Disjoint from positive Pi reasoning turn IDs.
         call_id = self._call_id
-        self.ledger.reserve_model(call_id, input_units, output)
+        self.ledger.start_model(call_id)
         span = f"model:{call_id}"
         self.emit("model.started", {"turn": call_id, "model": config["model"], "provider": config["provider"],
                   "purpose": kind}, span_id=span, parent_span_id=parent)
@@ -58,7 +56,7 @@ class ModelTransport:
         try:
             response = await self.client.post(config["base_url"] + "/embeddings",
                 headers={"Authorization": f"Bearer {config['key']}"},
-                json={"model": config["model"], "input": [query]}, timeout=12)
+                json={"model": config["model"], "input": [query]})
             response.raise_for_status()
             value = response.json()
             usage = value.get("usage")
@@ -79,11 +77,10 @@ class ModelTransport:
             await legacy_activity.wait(self.emit, parent_span_id=parent)
         name = self.settings.audio_model if kind == "audio" else self.settings.vision_model
         config = model_endpoint(self.registry, name, "audio" if kind == "audio" else "vision")
-        output_tokens = min(2000, self.ledger.limits.output_tokens)
-        call_id, span, started = self._begin(config, kind, input_units, output_tokens, parent)
+        call_id, span, started = self._begin(config, kind, input_units, 0, parent)
         usage, status, answer = None, "error", ""
         body = {"model": config["model"], "messages": [{"role": "user", "content": parts}],
-                "stream": True, "stream_options": {"include_usage": True}, "max_tokens": output_tokens,
+                "stream": True, "stream_options": {"include_usage": True},
                 "temperature": .2}
         if config["provider"] == "aliyun_bailian":
             body["enable_thinking"] = False
@@ -103,8 +100,6 @@ class ModelTransport:
                     for choice in value.get("choices") or []:
                         answer += choice.get("delta", {}).get("content") or ""
                         status = choice.get("finish_reason") or status
-                    if len(answer) > 16000:
-                        raise ValueError("observation_too_large")
             if not answer.strip() or status not in {"stop", "end_turn"}:
                 raise ValueError("incomplete_observation")
             return answer.strip(), {"model": name, "usage": usage or {}, "input_allowance": input_units}

@@ -23,7 +23,7 @@ function response(content, stopReason = 'toolUse') {
   return stream;
 }
 const toolCall = (id, name, args) => ({ type: 'toolCall', id, name, arguments: args });
-const config = { run_id: 'test', model, budget: { output_tokens: 1000, wall_seconds: 30 }, tools, prompt: '查证后回答' };
+const config = { run_id: 'test', model,  tools, prompt: '查证后回答' };
 
 test('experimental statement instructions require an explicit per-run setting', async () => {
   for (const enabled of [false, true]) {
@@ -191,29 +191,6 @@ test('cancelling while waiting for admission does not invent a provider call', a
   assert.equal(events[0].data.executed, false);
 });
 
-test('host closing admission limits paid generation to a final answer with existing evidence', async () => {
-  let requests = 0;
-  const runtime = createRuntime(config, {
-    emit: () => {},
-    providerStream: (_model, context) => {
-      if (++requests === 1) return response([toolCall('s', 'search', { query: '事实' })]);
-      assert.deepEqual(getCurrentTools(context.messages).map(tool => tool.name), ['submit_answer']);
-      assert.ok(context.messages.some(message => message.role === 'toolResult'));
-      assert.match(context.messages.at(-1).content, /收尾阶段/);
-      return response([toolCall('a', 'submit_answer', { answer: '已查到的事实[1]' })]);
-    },
-    callHost: async (method, params) => {
-      if (method === 'model_request') return { allowed: true, max_output_tokens: 1000, final_turn: requests === 1 };
-      if (method === 'model_usage') return {};
-      return { content: [{ type: 'text', text: '事实[1]' }], details: params.name === 'submit_answer'
-        ? { terminal: 'completed', answer: params.args.answer } : { evidence_ids: [1] } };
-    },
-  });
-  const result = await runtime.run();
-  assert.equal(result.terminal, 'completed', result.message);
-  assert.equal(requests, 2);
-});
-
 test('invalid model tool arguments never reach the host', async () => {
   let requests = 0, badExecuted = false;
   const runtime = createRuntime(config, {
@@ -234,7 +211,7 @@ test('invalid model tool arguments never reach the host', async () => {
 test('long research archives tool bodies while preserving the question and tool-result pairing', async () => {
   let requests = 0;
   const events = [];
-  const runtime = createRuntime({ ...config, model: { ...model, contextWindow: 12000 } }, {
+  const runtime = createRuntime({ ...config, model: { ...model, contextWindow: 8000 } }, {
     emit: (type, data) => events.push({ type, data }),
     providerStream: (_model, context) => {
       assert.ok(context.messages.some(message => message.role === 'user' && message.content.some(part => part.text?.includes('查证后回答'))));
@@ -254,94 +231,4 @@ test('long research archives tool bodies while preserving the question and tool-
   });
   assert.equal((await runtime.run()).terminal, 'completed');
   assert.ok(events.some(event => event.type === 'context.compacted'));
-});
-
-test('closing can recover archived evidence while rejecting fresh research', async () => {
-  let requests = 0;
-  const calls = [];
-  const recall = { name: 'recall_evidence', description: 'Read delivered evidence',
-    parameters: Type.Object({ evidence_ids: Type.Array(Type.Number()) }) };
-  const runtime = createRuntime({ ...config, tools: [...tools, recall], model: { ...model, contextWindow: 12000 } }, {
-    emit: () => {},
-    providerStream: (_model, context) => {
-      if (++requests <= 8) return response([toolCall(`s${requests}`, 'search', { query: `资料 ${requests}` })]);
-      if (requests === 9) {
-        assert.deepEqual(getCurrentTools(context.messages).map(tool => tool.name), ['submit_answer', 'recall_evidence']);
-        assert.ok(context.messages.some(message => message.role === 'toolResult'
-          && message.content.some(part => part.text?.includes('archived_result'))));
-        return response([toolCall('blocked', 'search', { query: 'new research' }),
-          toolCall('recall', 'recall_evidence', { evidence_ids: [1] })]);
-      }
-      assert.deepEqual(getCurrentTools(context.messages).map(tool => tool.name), ['submit_answer']);
-      assert.ok(context.messages.some(message => message.role === 'toolResult' && message.toolCallId === 'recall'
-        && message.content.some(part => part.text === '已取得的原文[1]')));
-      return response([toolCall('finish', 'submit_answer', { answer: '已取得的原文[1]' })]);
-    },
-    callHost: async (method, params) => {
-      if (method === 'model_request') return { allowed: true, max_output_tokens: 1000, final_turn: requests >= 8 };
-      if (method === 'model_usage') return {};
-      calls.push(params);
-      if (params.name === 'submit_answer') return { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed' } };
-      return { content: [{ type: 'text', text: params.name === 'recall_evidence' ? '已取得的原文[1]' : '原文'.repeat(1500) }],
-        details: { artifact_id: `artifact-${requests}`, evidence_ids: [params.name === 'recall_evidence' ? 1 : requests] } };
-    },
-  });
-  const result = await runtime.run();
-  assert.equal(result.terminal, 'completed', result.message);
-  assert.equal(requests, 10);
-  assert.deepEqual(calls.slice(8).map(call => call.name), ['recall_evidence', 'submit_answer']);
-  assert.ok(!calls.some(call => call.tool_call_id === 'blocked'));
-});
-
-test('budget context rejection archives older evidence before one final paid request', async () => {
-  let requests = 0;
-  const admissions = [], events = [];
-  const runtime = createRuntime({ ...config, model: { ...model, contextWindow: 200000 } }, {
-    emit: (type, data) => events.push({ type, data }),
-    providerStream: (_model, context) => {
-      if (++requests <= 2) return response([toolCall(`s${requests}`, 'search', { query: '资料' })]);
-      assert.ok(Buffer.byteLength(JSON.stringify(context)) <= 60000);
-      assert.ok(context.messages.some(message => message.role === 'user' && message.content.some(part => part.text?.includes('查证后回答'))));
-      const results = context.messages.filter(message => message.role === 'toolResult');
-      assert.deepEqual(results.map(message => message.toolCallId), ['s1', 's2']);
-      assert.ok(results[0].content[0].text.includes('archived_result'));
-      assert.equal(results[1].content[0].text, '原文'.repeat(7500));
-      assert.deepEqual(getCurrentTools(context.messages).map(tool => tool.name), ['submit_answer']);
-      return response([toolCall('finish', 'submit_answer', { answer: '已核对原文[2]' })]);
-    },
-    callHost: async (method, params) => {
-      if (method === 'model_request') {
-        admissions.push(params);
-        if (requests === 2 && params.input_bytes > 60000) return { allowed: false, final_turn: true,
-          allow_recall: false, max_input_bytes: 60000, message: 'context exceeds remaining token budget' };
-        return { allowed: true, max_output_tokens: 1000, final_turn: requests === 2, allow_recall: false };
-      }
-      if (method === 'model_usage') return {};
-      return { content: [{ type: 'text', text: '原文'.repeat(7500) }], details: params.name === 'submit_answer'
-        ? { terminal: 'completed' } : { artifact_id: `artifact-${requests}`, evidence_ids: [requests] } };
-    },
-  });
-  const result = await runtime.run();
-  assert.equal(result.terminal, 'completed', result.message);
-  assert.equal(requests, 3);
-  assert.deepEqual(admissions.map(item => item.turn), [1, 2, 3, 3]);
-  assert.ok(events.some(event => event.type === 'context.compacted' && event.data.reason === 'remaining_budget'));
-});
-
-test('an input that cannot fit remains intact and does not trigger a paid retry', async () => {
-  let admissions = 0, providerCalls = 0;
-  const runtime = createRuntime(config, {
-    emit: () => {},
-    providerStream: () => { providerCalls++; throw new Error('must not call'); },
-    callHost: async (method) => {
-      if (method !== 'model_request') return {};
-      admissions++;
-      return { allowed: false, max_input_bytes: 10, final_turn: true, allow_recall: false };
-    },
-  });
-  const result = await runtime.run();
-  assert.equal(result.terminal, 'failed');
-  assert.match(result.message, /无法容纳问题与最后一组原文证据/);
-  assert.equal(providerCalls, 0);
-  assert.equal(admissions, 1);
 });

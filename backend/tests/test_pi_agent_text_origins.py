@@ -136,7 +136,7 @@ def test_document_annotation_does_not_reclassify_other_observations(modality, fi
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["exact", "hybrid"])
-async def test_scoped_search_annotations_fit_the_original_output_budget(tmp_path, mode):
+async def test_scoped_search_annotations_preserve_all_results_and_account_for_output(tmp_path, mode):
     tools, store, run, _ = fixture_tools(tmp_path)
     item, other = source(), source(fid="excluded")
     tools.catalog = SourceCatalog([item, other], {"a": "A"})
@@ -153,7 +153,7 @@ async def test_scoped_search_annotations_fit_the_original_output_budget(tmp_path
     assert payload["scope"]["selected_files"] == [{"kb_id": "a", "file_id": "file"}]
     assert all(e.content == text for e in store.evidence(run))
     assert all(any(u["origin"] == "generated_caption" for u in e["content_units"]) for e in payload["evidence"])
-    assert len(result["content"][0]["text"]) <= tools.ledger.tool_output_chars <= 20000
+    assert len(result["content"][0]["text"]) <= tools.ledger.tool_output_chars
     assert tools.ledger.searches == tools.ledger.tool_calls == 1
     assert tools.ledger.model_requests == 0
 

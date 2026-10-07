@@ -61,7 +61,7 @@ async def test_filtered_listing_keeps_attachment_and_reference_authority(tmp_pat
     assert listed["sources"][0]["input_material"] is True and listed["sources"][0]["searchable"] is False
 
 
-@pytest.mark.parametrize("value", ["doc", ["pdf"], ["doc"] * 5, [None]])
+@pytest.mark.parametrize("value", ["doc", ["pdf"], [True], [None]])
 def test_discovery_modality_filter_is_typed_and_bounded(value):
     with pytest.raises(ValidationError):
         ListSources.model_validate({"modalities": value})

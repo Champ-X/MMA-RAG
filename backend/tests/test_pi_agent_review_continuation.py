@@ -7,82 +7,16 @@ from types import SimpleNamespace
 import pytest
 
 from app.modules.pi_agent.catalog import SourceCatalog
-from app.modules.pi_agent.contracts import Evidence, RunBudget
+from app.modules.pi_agent.contracts import Evidence
 from app.modules.pi_agent.gateway import KnowledgeGateway
-from app.modules.pi_agent.policy import BudgetLedger, ToolError
 from app.modules.pi_agent.supervisor import WORKER
 from test_pi_agent_supervisor import ReasoningRegistry, make_host, request
 from test_pi_agent_tools import fixture_tools, source
 
 
-@pytest.mark.parametrize("first,second", [
-    ("check_answer", "check_answer"), ("check_answer", "recall_evidence"),
-    ("recall_evidence", "check_answer"),
-])
-def test_closing_check_shares_the_single_recall_allowance(first, second):
-    ledger = BudgetLedger(RunBudget(), answer_checks_enabled=True, finalizing=True)
-    assert ledger.admit_main_model(1, 100, 256)["allow_check_answer"]
-    ledger.reserve_tool(first)
-    with pytest.raises(ToolError, match="收尾"):
-        ledger.reserve_tool(second)
-    assert ledger.closing_reads == ledger.tool_calls == 1
-    admission = ledger.admit_main_model(2, 100, 256)
-    assert not admission["allow_check_answer"] and not admission["allow_recall"]
-    for tool in ("search", "read_source", "expand_context", "inspect_media"):
-        with pytest.raises(ToolError):
-            ledger.reserve_tool(tool)
-    ledger.reserve_tool("submit_answer")
-    assert ledger.tool_calls == 2
-
-
-def test_default_closing_policy_and_admission_shape_are_unchanged():
-    ledger = BudgetLedger(RunBudget(), finalizing=True)
-    assert set(ledger.admit_main_model(1, 100, 256)) == {
-        "allowed", "max_output_tokens", "final_turn", "allow_recall"}
-    with pytest.raises(ToolError):
-        ledger.reserve_tool("check_answer")
-    ledger.reserve_tool("recall_evidence")
-    ledger.reserve_tool("submit_answer")
-
-
-@pytest.mark.parametrize("case", ["tokens", "model_slots", "tool_slots"])
-def test_check_is_unavailable_when_no_closing_work_can_be_admitted(case):
-    ledger = BudgetLedger(RunBudget(model_tokens=2000, output_tokens=256,
-        model_requests=2, tool_calls=4), answer_checks_enabled=True, finalizing=True)
-    if case == "tokens":
-        ledger.model_tokens = 1200
-        result = ledger.admit_main_model(1, 1000, 256)
-        assert not result["allowed"] and ledger.model_requests == 0
-    elif case == "model_slots":
-        ledger.model_requests = 1
-        result = ledger.admit_main_model(2, 100, 256)
-    else:
-        ledger.tool_calls = 2
-        result = ledger.admit_main_model(1, 100, 256)
-    assert not result["allow_check_answer"]
-    with pytest.raises(ToolError):
-        ledger.reserve_tool("check_answer")
-
-
-@pytest.mark.asyncio
-async def test_oversized_closing_check_consumes_its_slot_without_publishing_a_draft(tmp_path):
-    tools, _, _, events = fixture_tools(tmp_path, RunBudget(tool_output_chars=1000))
-    tools.ledger.answer_checks_enabled = True
-    tools.ledger.finalizing = True
-    result = await tools.execute("large", "check_answer", {"answer": "草稿" * 600,
-        "status": "partial", "limitations": ["尚未找到支持"], "statements": [
-            {"unit_id": "a1", "kind": "abstention"}, {"unit_id": "l1", "kind": "limitation"}]})
-    assert result["isError"] and result["details"]["code"] == "tool_output_too_large"
-    assert "checked_answer_span_id" not in result["details"] and tools.final_result is None
-    assert tools.ledger.closing_reads == 1
-    assert not any(kind == "tool.completed" for kind, _ in events)
-    denied = await tools.execute("again", "check_answer", {"answer": "本次未找到支持"})
-    assert denied["isError"] and denied["details"]["code"] == "research_budget_exhausted"
-
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize("choice", ["check_answer", "recall_evidence", "same_batch", "same_batch_reverse"])
-async def test_real_pi_closing_choice_returns_feedback_and_preserves_submission(tmp_path, monkeypatch, choice):
+async def test_real_pi_check_and_recall_can_both_complete_without_closing_allowances(tmp_path, monkeypatch, choice):
     requests = []
     answer = {"answer": "来源数值为17，仅限样本甲。[1]", "evidence_ids": [1],
         "statements": [{"unit_id": "a1", "kind": "fact", "source_spans": ["e1s1"]}]}
@@ -127,8 +61,7 @@ async def test_real_pi_closing_choice_returns_feedback_and_preserves_submission(
         def get_provider(self, name):
             return SimpleNamespace(api_key="local-fixture-only", base_url=f"http://127.0.0.1:{server.server_port}")
 
-    host = make_host(tmp_path, monkeypatch, answer_checks_enabled=True, yield_to_legacy=False,
-        budget=RunBudget(model_requests=4))
+    host = make_host(tmp_path, monkeypatch, answer_checks_enabled=True, yield_to_legacy=False)
     monkeypatch.setattr(SourceCatalog, "load", lambda _, **kwargs: SourceCatalog([source()], {"a": "A"}))
 
     async def read(_gateway, _source, **_kwargs):
@@ -147,14 +80,12 @@ async def test_real_pi_closing_choice_returns_feedback_and_preserves_submission(
         assert saved["status"] == "completed" and saved["state"]["answer"] == answer["answer"]
         assert len(requests) == saved["state"]["usage"]["model_requests"] == 4
         assert saved["state"]["usage"]["model_tokens"] == 520
-        assert saved["state"]["usage"]["tool_calls"] == 4
+        assert saved["state"]["usage"]["tool_calls"] == (5 if choice.startswith("same_batch") else 4)
         available = lambda request: {t["function"]["name"] for t in request["tools"]}
-        assert available(requests[2]) == {"check_answer", "recall_evidence", "submit_answer", "ask_user"}
-        assert available(requests[3]) == {"submit_answer", "ask_user"}
-        closing = next(e for e in events if e["type"] == "budget.finalizing")
-        executed = [e for e in events if e["type"] == "tool.started" and e["seq"] > closing["seq"]]
+        assert available(requests[2]) == available(requests[3])
+        assert {"check_answer", "recall_evidence", "search", "read_source"} <= available(requests[3])
+        assert not any(e["type"] == "budget.finalizing" for e in events)
         selected = "recall_evidence" if choice in {"recall_evidence", "same_batch_reverse"} else "check_answer"
-        assert [e["data"]["name"] for e in executed] == [selected, "submit_answer"]
         payload = next(m["content"] for m in requests[3]["messages"] if m.get("tool_call_id") == "closing-3-0")
         report = json.loads(payload)
         completion = next(e for e in events if e["type"] == "tool.completed" and e["span_id"] == "tool:closing-3-0")
@@ -165,9 +96,7 @@ async def test_real_pi_closing_choice_returns_feedback_and_preserves_submission(
         else:
             assert report["evidence"][0]["id"] == 1
             assert report["evidence"][0]["content_units"][0]["text"] == "来源数值为17，仅限样本甲。"
-        if choice in {"same_batch", "same_batch_reverse"}:
-            refused = "recall_evidence" if choice == "same_batch" else "check_answer"
-            assert any(e["type"] == "tool.rejected" and e["data"]["name"] == refused for e in events)
+        assert not any(e["type"] == "tool.rejected" for e in events)
     finally:
         await host.close()
         server.shutdown()

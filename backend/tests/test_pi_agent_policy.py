@@ -1,7 +1,7 @@
 import pytest
 
-from app.modules.pi_agent.contracts import RunBudget, RunRequest, SourceFile
-from app.modules.pi_agent.policy import AccessScope, BudgetLedger, ToolError
+from app.modules.pi_agent.contracts import RunRequest, SourceFile
+from app.modules.pi_agent.policy import AccessScope, UsageLedger, ToolError
 
 
 def request(**kwargs):
@@ -43,96 +43,43 @@ def test_conflicting_explicit_scope_is_rejected():
             selected_files=[SourceFile(kb_id="b", file_id="x")]), {"a", "b"})
 
 
-def test_unknown_token_usage_is_charged_and_duplicate_usage_is_not_counted_twice():
-    ledger = BudgetLedger(RunBudget(model_tokens=1000, output_tokens=256))
-    ledger.reserve_model(1, 500, 256)
+def test_missing_usage_is_unknown_and_duplicate_settlement_does_not_invent_tokens():
+    ledger = UsageLedger()
+    ledger.start_model(1)
     ledger.settle_model(1, {"totalTokens": 0})
     ledger.settle_model(1, {"totalTokens": 100})
-    assert ledger.model_tokens == 756
-    assert ledger.unknown_usage_requests == 1
-    with pytest.raises(ToolError):
-        ledger.reserve_model(2, 100, 256)
+    assert ledger.model_tokens == 0 and ledger.unknown_usage_requests == 1
+    with pytest.raises(ToolError, match="重复"):
+        ledger.start_model(1)
+    ledger.start_model(2)
+    ledger.settle_model(2, {"totalTokens": 1234})
+    ledger.settle_model(2, {"totalTokens": 1234})
+    assert ledger.model_tokens == 1234
 
 
-def test_parallel_reservations_cannot_overspend_and_completion_slots_remain():
-    ledger = BudgetLedger(RunBudget(model_tokens=1000, output_tokens=256, tool_calls=4, searches=1))
-    ledger.reserve_model(1, 500, 256)
-    with pytest.raises(ToolError):
-        ledger.reserve_model(2, 100, 256)
-    ledger.settle_model(1, {"totalTokens": 120})
-    ledger.reserve_model(2, 100, 256)
-    ledger.reserve_tool("search")
-    with pytest.raises(ToolError):
-        ledger.reserve_tool("search")
-    ledger.reserve_tool("read_source")
-    with pytest.raises(ToolError):
-        ledger.reserve_tool("read_source")
-    ledger.reserve_tool("submit_answer")
+def test_work_continues_past_all_former_cumulative_allowances():
+    ledger = UsageLedger()
+    ledger.started -= 3600
+    for turn in range(1, 101):
+        assert ledger.start_model(turn) == {"allowed": True}
+        ledger.settle_model(turn, {"totalTokens": 20000})
+        for name in ("search", "inspect_media", "read_source", "recall_evidence", "check_answer"):
+            ledger.record_tool(name)
+        ledger.record_media(10 * 1024 * 1024, 300)
+        ledger.account_output(100000)
+    ledger.record_tool("submit_answer")
+    used = ledger.snapshot()
+    assert used["duration_ms"] >= 3600000
+    assert used["model_requests"] == 100 and used["model_tokens"] == 2000000
+    assert used["tool_calls"] == 501 and used["searches"] == used["media_calls"] == 100
+    assert used["media_input_bytes"] == 1000 * 1024 * 1024 and used["media_seconds"] == 30000
+    assert used["tool_output_chars"] == 10000000
 
 
-def test_cancelled_or_long_running_calls_cannot_replenish_budget():
-    ledger = BudgetLedger(RunBudget(wall_seconds=10))
-    ledger.started -= 11
-    with pytest.raises(ToolError, match="时间"):
-        ledger.reserve_tool("submit_answer")
-
-
-def test_token_headroom_closes_research_before_full_context_is_unaffordable():
-    ledger = BudgetLedger(RunBudget(model_tokens=2000, output_tokens=256))
-    assert not ledger.reserve_model(1, 300, 256, main_loop=True)["final_turn"]
-    ledger.settle_model(1, {"totalTokens": 400})
-    # This request fits (1256), but another full-context turn would not.
-    assert ledger.reserve_model(2, 1000, 256, main_loop=True)["final_turn"]
-    with pytest.raises(ToolError, match="收尾"):
-        ledger.reserve_tool("search")
-    with pytest.raises(ToolError, match="收尾"):
-        ledger.reserve_model(-1, 50, 0)
-    ledger.reserve_tool("submit_answer")
-    ledger.settle_model(2, {"totalTokens": 600})
-    # Actual usage refunds do not silently reopen research.
-    assert ledger.finalizing
-    assert ledger.reserve_model(3, 300, 256, main_loop=True)["final_turn"]
-
-
-def test_closing_can_recall_delivered_evidence_without_reopening_research_or_limits():
-    ledger = BudgetLedger(RunBudget(tool_calls=4), finalizing=True)
-    ledger.reserve_tool("recall_evidence")
-    assert ledger.tool_calls == 1
-    for name in ("search", "read_source", "expand_context", "inspect_media", "query_table", "list_sources"):
-        with pytest.raises(ToolError, match="收尾"):
-            ledger.reserve_tool(name)
-    with pytest.raises(ToolError, match="收尾"):
-        ledger.reserve_model(-1, 50, 0)
-    # Closing permits one cached batch, then requires a final submission.
-    with pytest.raises(ToolError):
-        ledger.reserve_tool("recall_evidence")
-    ledger.tool_calls = 2
-    ledger.reserve_tool("submit_answer")
-    ledger.reserve_tool("submit_answer")
-    with pytest.raises(ToolError):
-        ledger.reserve_tool("submit_answer")
-
-
-def test_unaffordable_main_context_gets_a_non_paid_final_compaction_allowance():
-    ledger = BudgetLedger(RunBudget(model_tokens=2000, output_tokens=256), model_tokens=1200)
-    result = ledger.admit_main_model(1, 1000, 256)
-    assert not result["allowed"] and result["max_input_bytes"] == 544
-    assert result["final_turn"] and not result["allow_recall"]
-    assert ledger.model_requests == 0 and not ledger._reservations
-    # The same unreserved turn can be admitted with its actual compacted size.
-    result = ledger.admit_main_model(1, 400, 256)
-    assert result["allowed"] and not result["allow_recall"]
-    assert ledger.model_requests == 1 and ledger._reservations == {1: 656}
-    with pytest.raises(ToolError):
-        ledger.reserve_tool("recall_evidence")
-    ledger.reserve_tool("submit_answer")
-
-
-def test_compaction_does_not_bypass_model_count_or_time_limits():
-    ledger = BudgetLedger(RunBudget(model_requests=2), model_requests=2)
-    with pytest.raises(ToolError):
-        ledger.admit_main_model(1, 100, 256)
-    ledger = BudgetLedger(RunBudget(wall_seconds=10))
-    ledger.started -= 11
-    with pytest.raises(ToolError):
-        ledger.admit_main_model(1, 100, 256)
+def test_parallel_model_calls_have_independent_idempotent_accounting():
+    ledger = UsageLedger()
+    for turn in range(-100, 100):
+        ledger.start_model(turn)
+    for turn in reversed(range(-100, 100)):
+        ledger.settle_model(turn, {"totalTokens": 5000})
+    assert not ledger._pending and ledger.model_tokens == 1000000

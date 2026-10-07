@@ -11,7 +11,7 @@ from fastapi import FastAPI
 
 from app.modules.pi_agent.catalog import SourceCatalog
 from app.modules.pi_agent.config import PiSettings, resolve_model
-from app.modules.pi_agent.contracts import RunBudget, RunRequest, SourceFile
+from app.modules.pi_agent.contracts import RunRequest, SourceFile
 from app.modules.pi_agent.policy import ToolError
 from app.modules.pi_agent.store import RunNotFound
 from app.modules.pi_agent.supervisor import PiSupervisor, WORKER
@@ -48,6 +48,9 @@ def test_pi_thinking_configuration_cannot_silently_enable_an_unsupported_provide
 
 
 def make_host(tmp_path, monkeypatch, *, script=None, **settings):
+    # Existing fixture providers exercise the pre-plan protocol. New plan
+    # tests opt in explicitly; production PiSettings enables it by default.
+    settings.setdefault("answer_plan_enabled", False)
     monkeypatch.setattr(SourceCatalog, "load", lambda _, **kwargs: SourceCatalog([], {}))
     worker = tmp_path / "worker.mjs"
     worker.write_text(script or """
@@ -65,6 +68,30 @@ lines.on('line',line=>{
 
 def request(key="request-key"):
     return RunRequest(client_request_id=key, session_id="session", message="比较结果")
+
+
+@pytest.mark.asyncio
+async def test_answer_plan_is_default_and_is_bound_to_worker_and_run(tmp_path, monkeypatch):
+    assert PiSettings().answer_plan_enabled is True
+    script = """
+import {createInterface} from 'node:readline';
+createInterface({input:process.stdin}).on('line',line=>{
+ const m=JSON.parse(line);
+ if(m.type==='start') {
+  if(!m.config.answer_plan_enabled || !m.config.tools.some(t=>t.name==='update_answer_plan')) process.exit(10);
+  console.log(JSON.stringify({type:'request',id:'a',method:'tool',params:{tool_call_id:'a',name:'ask_user',args:{question:'需要哪份资料？'}}}));
+ } else if(m.type==='response') {console.log(JSON.stringify({type:'settled',result:m.result.details}));process.exit();}
+});
+"""
+    host = make_host(tmp_path, monkeypatch, script=script, answer_plan_enabled=True)
+    try:
+        run = await host.start(request(), "alice")
+        await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 2)
+        saved = host.store.get(run["id"])
+        assert saved["config"]["answer_plan_enabled"] is True
+        assert saved["status"] == "needs_input"
+    finally:
+        await host.close()
 
 
 async def wait_until(predicate):
@@ -101,65 +128,12 @@ createInterface({input:process.stdin}).on('line',line=>{
         await host.close()
 
 
-@pytest.mark.asyncio
-async def test_pipe_preserves_structured_budget_refusal_and_readmits_without_phantom_usage(tmp_path, monkeypatch):
-    script = """
-import {createInterface} from 'node:readline';
-const send=(id,method,params)=>console.log(JSON.stringify({type:'request',id,method,params}));
-createInterface({input:process.stdin}).on('line',line=>{
- const m=JSON.parse(line), r=m.result;
- if(m.type==='start') send('full','model_request',{turn:1,input_bytes:999999,max_output_tokens:256});
- else if(m.id==='full') {
-  if(r?.allowed!==false || !Number.isInteger(r.max_input_bytes) || r.allow_recall!==false) process.exit(10);
-  send('short','model_request',{turn:1,input_bytes:1000,max_output_tokens:256});
- } else if(m.id==='short') {
-  if(!r?.allowed || !r.final_turn || r.allow_recall!==false) process.exit(11);
-  send('usage','model_usage',{turn:1,usage:{totalTokens:256}});
- } else if(m.id==='usage') send('recall','tool',{tool_call_id:'r',name:'recall_evidence',args:{evidence_ids:[1]}});
- else if(m.id==='recall') {
-  if(!r?.isError || r.details.code!=='research_budget_exhausted') process.exit(12);
-  send('finish','tool',{tool_call_id:'a',name:'ask_user',args:{question:'需要补充哪份资料？'}});
- } else if(m.id==='finish') {
-  console.log(JSON.stringify({type:'settled',result:r.details})); process.exit();
- }
-});
-"""
-    host = make_host(tmp_path, monkeypatch, script=script)
-    try:
-        run = await host.start(request(), "alice")
-        await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 2)
-        result = host.store.get(run["id"])
-        assert result["status"] == "needs_input"
-        assert result["state"]["usage"]["model_requests"] == 1
-        assert result["state"]["usage"]["model_tokens"] == 256
-        assert result["state"]["usage"]["unknown_usage_requests"] == 0
-        assert any(event["type"] == "budget.finalizing" for event in host.store.events(run["id"]))
-    finally:
-        await host.close()
+
+
 
 
 @pytest.mark.asyncio
-async def test_real_pi_unpaid_rejection_is_persisted_without_a_model_completion(tmp_path, monkeypatch):
-    host = make_host(tmp_path, monkeypatch, budget=RunBudget(model_tokens=1000))
-    host.worker = WORKER
-    try:
-        run = await host.start(request(), "alice")
-        await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 5)
-        saved = host.store.get(run["id"])
-        assert saved["status"] == "failed"
-        assert saved["state"]["usage"]["model_requests"] == 0
-        assert saved["state"]["usage"]["model_tokens"] == 0
-        model_events = [e for e in host.store.events(run["id"]) if e["type"].startswith("model.")]
-        assert [e["type"] for e in model_events] == ["model.rejected"]
-        assert model_events[0]["span_id"] == "model:1"
-        assert model_events[0]["data"]["executed"] is False
-        assert "无法容纳" in model_events[0]["data"]["message"]
-    finally:
-        await host.close()
-
-
-@pytest.mark.asyncio
-async def test_real_pi_repeated_invalid_calls_persist_failure_before_budget_exhaustion(tmp_path, monkeypatch):
+async def test_real_pi_recovers_after_more_than_three_identical_invalid_calls(tmp_path, monkeypatch):
     requests = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -174,7 +148,8 @@ async def test_real_pi_repeated_invalid_calls_persist_failure_before_budget_exha
             frames = [
                 {"choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0,
                     "id": f"empty-{len(requests)}", "type": "function", "function": {
-                        "name": "set_answer_requirements", "arguments": "{}"}}]}}]},
+                        "name": "set_answer_requirements" if len(requests) <= 5 else "ask_user",
+                        "arguments": "{}" if len(requests) <= 5 else json.dumps({"question": "需要哪份资料？"})}}]}}]},
                 {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
                     "usage": {"prompt_tokens": 100, "completion_tokens": 30, "total_tokens": 130}},
             ]
@@ -195,18 +170,14 @@ async def test_real_pi_repeated_invalid_calls_persist_failure_before_budget_exha
         run = await host.start(request(), "alice")
         await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 8)
         saved = host.store.get(run["id"])
-        assert saved["status"] == "failed"
-        assert saved["state"]["code"] == "repeated_tool_failure"
-        assert "连续3轮" in saved["state"]["message"]
-        assert "answer" not in saved["state"] and "answer_requirements" not in saved["state"]
-        assert len(requests) == saved["state"]["usage"]["model_requests"] == 3
-        assert saved["state"]["usage"]["model_tokens"] == 390
-        assert saved["state"]["usage"]["tool_calls"] == 0
+        assert saved["status"] == "needs_input"
+        assert saved["state"]["answer"] == "需要哪份资料？"
+        assert len(requests) == saved["state"]["usage"]["model_requests"] == 6
+        assert saved["state"]["usage"]["model_tokens"] == 780
         events = host.store.events(run["id"])
         rejections = [e for e in events if e["type"] == "tool.rejected"]
-        assert len(rejections) == 3 and all(e["data"]["executed"] is False for e in rejections)
-        assert not any(e["type"] in {"tool.started", "answer.accepted", "budget.finalizing"} for e in events)
-        assert events[-1]["type"] == "run.failed" and events[-1]["data"]["code"] == "repeated_tool_failure"
+        assert len(rejections) == 5 and all(e["data"]["executed"] is False for e in rejections)
+        assert not any(e["type"] == "budget.finalizing" for e in events)
     finally:
         await host.close()
         server.shutdown()
@@ -336,7 +307,7 @@ async def test_catalog_pagination_yields_if_legacy_enters_mid_scan(tmp_path, mon
 @pytest.mark.asyncio
 async def test_repeated_cancellation_retains_slot_until_native_read_settles(tmp_path, monkeypatch):
     load_catalog = SourceCatalog.load
-    host = make_host(tmp_path, monkeypatch, max_concurrent_runs=1, max_queued_runs=0)
+    host = make_host(tmp_path, monkeypatch, max_concurrent_runs=1)
     monkeypatch.setattr(SourceCatalog, "load", load_catalog)
     storage = host.storage = PausedCatalogStorage()
     try:
@@ -350,8 +321,10 @@ async def test_repeated_cancellation_retains_slot_until_native_read_settles(tmp_
         await asyncio.sleep(.01)
         assert not task.done(), "Repeated cancellation must not release an in-flight native read"
         assert host.store.get(run["id"])["status"] == "cancelling"
-        with pytest.raises(ToolError, match="队列已满"):
-            await host.start(request("next-request"), "alice")
+        queued = await host.start(request("next-request"), "alice")
+        assert queued["status"] == "queued"
+        await host.cancel(queued["id"], "alice")
+        await asyncio.sleep(0)
         storage.release.set()
         await asyncio.wait_for(task, 2)
         assert storage.reads == ["buckets", "page-1"]
@@ -363,10 +336,8 @@ async def test_repeated_cancellation_retains_slot_until_native_read_settles(tmp_
 
 
 @pytest.mark.asyncio
-async def test_source_preparation_consumes_wall_budget_without_starting_worker(tmp_path, monkeypatch):
-    # Shorten only the test's clock budget; production validation requires >=10s.
-    budget = RunBudget().model_copy(update={"wall_seconds": .08})
-    host = make_host(tmp_path, monkeypatch, budget=budget)
+async def test_source_preparation_waits_until_explicit_cancellation(tmp_path, monkeypatch):
+    host = make_host(tmp_path, monkeypatch)
     stopped = threading.Event()
     def catalog(_, *, checkpoint):
         try:
@@ -378,9 +349,12 @@ async def test_source_preparation_consumes_wall_budget_without_starting_worker(t
     monkeypatch.setattr(SourceCatalog, "load", catalog)
     try:
         run = await host.start(request(), "alice")
+        await asyncio.sleep(.12)
+        assert host.store.get(run["id"])["status"] == "running"
+        await host.cancel(run["id"], "alice")
         await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 2)
         result = host.store.get(run["id"])
-        assert result["status"] == "failed" and result["state"]["code"] == "time_budget_exhausted"
+        assert result["status"] == "cancelled" and result["state"]["code"] == "cancelled"
         assert result["state"]["usage"]["model_requests"] == 0
         assert not result["config"]["scope_ready"] and stopped.is_set()
         assert not host.processes
@@ -465,7 +439,7 @@ async def test_cancel_before_coroutine_start_does_not_leave_zombie_queue(tmp_pat
 
 @pytest.mark.asyncio
 async def test_running_worker_cancellation_releases_capacity_and_kills_child(tmp_path, monkeypatch):
-    host = make_host(tmp_path, monkeypatch, script="process.stdin.resume(); setInterval(()=>{},10000);", max_concurrent_runs=1, max_queued_runs=0)
+    host = make_host(tmp_path, monkeypatch, script="process.stdin.resume(); setInterval(()=>{},10000);", max_concurrent_runs=1)
     try:
         run = await host.start(request(), "alice")
         for _ in range(100):
@@ -473,8 +447,9 @@ async def test_running_worker_cancellation_releases_capacity_and_kills_child(tmp
                 break
             await asyncio.sleep(.01)
         child = host.processes[run["id"]]
-        with pytest.raises(ToolError, match="队列已满"):
-            await host.start(request("request-next"), "alice")
+        queued = await host.start(request("request-next"), "alice")
+        assert queued["status"] == "queued"
+        await host.cancel(queued["id"], "alice")
         await host.cancel(run["id"], "alice")
         await asyncio.wait_for(asyncio.gather(*host.jobs.values(), return_exceptions=True), 5)
         assert child.returncode is not None

@@ -12,7 +12,6 @@ import json
 from pathlib import Path
 import re
 import string
-import time
 
 from .policy import AccessScope, ToolError
 
@@ -111,8 +110,6 @@ class SourceCatalog:
                 prefix, fid, name = match.groups()
                 sources.append(Source(source_id(kb_id, fid), kb_id, fid, name, KINDS[prefix],
                                       obj.etag or "", obj.size, bucket.name, obj.object_name))
-                if len(sources) > 20000:
-                    raise ToolError("catalog_limit", "来源目录超过本实例预算，请缩小本实例的数据集合")
         return cls(sources, bases)
 
     def get(self, identity: str, scope: AccessScope, *, search=False) -> Source:
@@ -182,29 +179,30 @@ class SourceCatalog:
         except ToolError:
             return None
 
-    def download(self, client, source: Source, destination: Path, *, max_bytes: int):
-        if source.size > max_bytes:
-            raise ToolError("source_too_large", "原文件超过本次读取预算，请读取索引片段或缩小媒体范围")
+    def download(self, client, source: Source, destination: Path, *, checkpoint=lambda: None):
+        checkpoint()
         if source.attachment:
-            raw = Path(source.local_path).read_bytes()
-            if len(raw) > max_bytes or hashlib.sha256(raw).hexdigest() != source.version:
+            digest = hashlib.sha256()
+            with Path(source.local_path).open("rb") as original, destination.open("wb") as target:
+                while block := original.read(256 * 1024):
+                    checkpoint()
+                    digest.update(block)
+                    target.write(block)
+            if digest.hexdigest() != source.version:
                 raise ToolError("source_changed", "附件已变化，请重新上传")
-            destination.write_bytes(raw)
             return
         current = client.stat_object(source.bucket, source.object_path)
         if current.etag != source.version or current.size != source.size:
             raise ToolError("source_changed", "原文件已更新，请重新开始任务以使用新版本")
+        checkpoint()
         response = client.get_object(source.bucket, source.object_path,
                                      request_headers={"If-Match": source.version})
-        size, started = 0, time.monotonic()
+        size = 0
         try:
             with destination.open("wb") as target:
                 for block in response.stream(256 * 1024):
-                    if time.monotonic() - started > 90:
-                        raise ToolError("source_read_timeout", "原文件读取超过时间预算")
+                    checkpoint()
                     size += len(block)
-                    if size > max_bytes:
-                        raise ToolError("source_too_large", "原文件超过本次读取预算")
                     target.write(block)
         finally:
             response.close()

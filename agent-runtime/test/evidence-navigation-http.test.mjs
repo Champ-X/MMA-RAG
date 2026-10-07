@@ -33,7 +33,7 @@ async function exercise(t, scenario) {
     ['old', 'search', { query: '预算' }], ['latest', 'search', { query: '方法' }],
     ...Array.from({ length: scenario.mixed ? 2 : 3 }, (_, i) => [`invalid-${i}`, 'submit_answer', { answer: [i] }]),
     ...(scenario.mixed ? [['notes', 'search', { query: '附属记录' }]] : []),
-    ...(scenario.budget ? [] : [['recall', 'recall_evidence', { evidence_ids: [105] }]]),
+    ['recall', 'recall_evidence', { evidence_ids: [105] }],
     ['final', 'submit_answer', { answer: '完成本次有据说明。[105]' }],
   ];
   const server = createServer(async (request, response) => {
@@ -52,16 +52,15 @@ async function exercise(t, scenario) {
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }));
-  let admissionBound;
   const runtime = createRuntime({ run_id: 'navigation-http', api_key: 'test-only', prompt: '核对两个来源后回答',
-    answer_checks_enabled: scenario.enabled !== false, budget: { output_tokens: 1000, wall_seconds: 10 },
+    answer_checks_enabled: scenario.enabled !== false,
     tools: [
       { name: 'search', description: 'Search', parameters: Type.Object({ query: Type.String() }) },
       { name: 'recall_evidence', description: 'Recall', parameters: Type.Object({ evidence_ids: Type.Array(Type.Number()) }) },
       { name: 'submit_answer', description: 'Finish', parameters: Type.Object({ answer: Type.String() }) },
     ], model: { id: 'fixture', name: 'fixture', api: 'openai-completions', provider: 'deepseek',
       baseUrl: `http://127.0.0.1:${server.address().port}`, reasoning: false, input: ['text'],
-      contextWindow: scenario.budget && !scenario.mixed ? 200000 : 32000, maxTokens: 1000,
+      contextWindow: 16000, maxTokens: 1000,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       compat: { supportsStore: false, supportsDeveloperRole: false, supportsReasoningEffort: false, maxTokensField: 'max_tokens' } },
   }, {
@@ -69,12 +68,7 @@ async function exercise(t, scenario) {
     callHost: async (method, params) => {
       if (method === 'model_request') {
         admissions.push(params);
-        if (scenario.budget && requests.length >= 5) {
-          admissionBound ??= scenario.mixed ? params.input_bytes - 6000 : 50000;
-          if (params.input_bytes > admissionBound)
-            return { allowed: false, max_input_bytes: admissionBound, final_turn: true, allow_recall: false };
-        }
-        return { allowed: true, max_output_tokens: 1000, final_turn: requests.length >= 5, allow_recall: true };
+        return { allowed: true };
       }
       if (method === 'model_usage') return {};
       hostCalls.push(params);
@@ -99,10 +93,10 @@ async function exercise(t, scenario) {
     }
     assert.equal(pending.size, 0, 'Actual provider requests keep tool/result pairings');
   }
-  return { requests, admissions, admissionBound, events, hostCalls, oldRows, oldIds, oldText, latestRows, latestText };
+  return { requests, admissions, events, hostCalls, oldRows, oldIds, oldText, latestRows, latestText };
 }
 
-for (const scenario of [{}, { budget: true }, { budget: true, mixed: true }, { enabled: false }, { malformed: true },
+for (const scenario of [{}, { mixed: true }, { enabled: false }, { malformed: true },
   { forged: true }, { many: true }, { origins: true }, { tiny: true }]) {
   test(`archived evidence navigation reaches actual Pi HTTP ${JSON.stringify(scenario)}`, { timeout: 15000 }, async t => {
     const run = await exercise(t, scenario);
@@ -148,19 +142,10 @@ for (const scenario of [{}, { budget: true }, { budget: true, mixed: true }, { e
     assert.ok(run.events.some(event => event.type === 'context.compacted'
       && event.data.archived_evidence_indexes?.some(index => index.artifact_id === 'old-artifact'
         && index.evidence_ids.includes(1))));
-    if (scenario.budget) {
-      if (!scenario.mixed) assert.equal(request.messages.find(message => message.tool_call_id === 'latest').content, run.latestText,
-        'Budget fitting still retains the newest complete source');
-      assert.ok(run.admissions.at(-1).input_bytes <= run.admissionBound, 'Navigation consumes the existing admission budget');
-      if (scenario.mixed) {
-        assert.ok(run.admissions.length > run.requests.length, 'Ordinary compaction is followed by budget fitting');
-        assert.ok(JSON.parse(request.messages.find(message => message.tool_call_id === 'notes').content).archived_result);
-      }
-    } else {
       const latest = JSON.parse(request.messages.find(message => message.tool_call_id === 'latest').content);
-      assert.equal(latest.evidence_navigation.entries[0].evidence_id, 105);
+      if (latest.archived_result) assert.equal(latest.evidence_navigation.entries[0].evidence_id, 105);
+      else assert.deepEqual(latest.evidence, run.latestRows);
       assert.deepEqual(run.hostCalls.find(call => call.name === 'recall_evidence').args.evidence_ids, [105]);
       assert.equal(run.requests.at(-1).messages.find(message => message.tool_call_id === 'recall').content, run.latestText);
-    }
   });
 }

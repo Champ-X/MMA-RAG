@@ -58,11 +58,12 @@ def resolve_multipart_references(message: str, message_json: str | None, raw: An
     return message, *resolved
 
 
-def resolve_message_references(message: str, raw: Any, selected_files: list[dict], attachments: list[dict]):
+def resolve_message_references(message: str, raw: Any, selected_files: list[dict], attachments: list[dict],
+                               *, max_mentions: int | None = MAX_MENTIONS):
     """Return canonical metadata, annotated query and a source map. Never infer by name alone."""
     refs = _array(raw, "行内引用")
-    if len(refs) > MAX_MENTIONS:
-        raise ValueError(f"每条消息最多引用 {MAX_MENTIONS} 处文件。")
+    if max_mentions is not None and len(refs) > max_mentions:
+        raise ValueError(f"每条消息最多引用 {max_mentions} 处文件。")
     kb_files = {(f.get("kb_id"), f.get("file_id")): f for f in selected_files}
     local_files = {a["id"]: a for a in attachments}
     utf16 = message.encode("utf-16-le")

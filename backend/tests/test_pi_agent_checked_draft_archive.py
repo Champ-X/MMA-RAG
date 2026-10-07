@@ -29,7 +29,7 @@ async def test_completed_check_attests_saved_arguments_and_exact_result(tmp_path
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", ["disabled", "arguments", "budget", "output", "artifact", "event"])
+@pytest.mark.parametrize("failure", ["disabled", "arguments", "artifact", "event"])
 async def test_rejected_or_unpersisted_checks_never_attest_archival(tmp_path, monkeypatch, failure):
     tools, store, run, _ = fixture_tools(tmp_path, answer_checks_enabled=failure != "disabled")
     def emit(kind, data, **kw):
@@ -43,12 +43,6 @@ async def test_rejected_or_unpersisted_checks_never_attest_archival(tmp_path, mo
                 {"unit_id": "l1", "kind": "limitation", "source_spans": []}]}
     if failure == "arguments":
         args["answer"] = []
-    elif failure == "budget":
-        tools.ledger.tool_calls = tools.ledger.limits.tool_calls
-    elif failure == "output":
-        def reject_output(_size):
-            raise ToolError("tool_output_too_large", "oversized result")
-        monkeypatch.setattr(tools.ledger, "account_output", reject_output)
     elif failure == "artifact":
         def reject_artifact(*_args):
             raise RuntimeError("artifact was not persisted")

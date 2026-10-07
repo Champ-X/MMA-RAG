@@ -1,4 +1,4 @@
-"""Bounded deterministic table queries; no Python/SQL execution supplied by models."""
+"""Deterministic table queries; no Python/SQL execution supplied by models."""
 from __future__ import annotations
 
 import csv
@@ -20,11 +20,6 @@ def load_table(path: Path, sheet: str | None):
         rows = list(csv.reader(io.StringIO(text), delimiter="\t" if path.suffix.lower() == ".tsv" else ","))
     elif path.suffix.lower() == ".xlsx":
         import openpyxl
-        # Reject zip expansion before openpyxl opens an uploaded workbook.
-        from zipfile import ZipFile
-        with ZipFile(path) as archive:
-            if sum(item.file_size for item in archive.infolist()) > 64 * 1024 * 1024:
-                raise ToolError("table_too_large", "表格展开后超过读取预算")
         with path.open("rb") as handle:
             book = openpyxl.load_workbook(handle, read_only=True, data_only=False)
             try:
@@ -33,16 +28,14 @@ def load_table(path: Path, sheet: str | None):
                 selected = book[sheet] if sheet else book[book.sheetnames[0]]
                 rows = []
                 for row in selected.iter_rows(values_only=True):
-                    if len(rows) >= 20002:
-                        raise ToolError("table_too_large", "单表超过 20000 行，请先拆分来源")
                     rows.append(list(row))
                 sheet = selected.title
             finally:
                 book.close()
     else:
         raise ToolError("unsupported_table", "query_table 支持 CSV、TSV、XLSX 原文件；PDF 表格请读取原文并检查对应页")
-    if not rows or len(rows) > 20001 or max(map(len, rows), default=0) > 200:
-        raise ToolError("table_too_large", "表格为空或超过 20000 行 / 200 列的预算")
+    if not rows:
+        raise ToolError("empty_table", "表格为空")
     headers = [str(value or "").strip() for value in rows[0]]
     if len(set(headers)) != len(headers) or any(not h for h in headers):
         raise ToolError("ambiguous_table_header", "表头存在重复或空白，不能可靠按列计算")
@@ -91,8 +84,6 @@ def query_table(path: Path, args: dict):
         groups = {}
         for row in selected:
             groups.setdefault(str(row[group_by]) if group_by else "all", []).append(row)
-        if len(groups) > 50:
-            raise ToolError("too_many_groups", "分组超过 50 个，请增加过滤条件")
         result, more = [], False
         if not groups and operation == "count":
             result.append({"group": "all", "value": "0", "rows": 0})

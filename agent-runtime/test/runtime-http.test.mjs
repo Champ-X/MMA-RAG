@@ -120,7 +120,7 @@ for (const scenario of [
   });
 }
 
-for (const mode of ['ordinary-compaction', 'budget-admission']) {
+for (const mode of ['ordinary-compaction']) {
   test(`latest completed check remains verbatim under ${mode}`, async t => {
     const feedback = JSON.stringify({ protocol_valid: false, detail: '最新检查完整反馈。'.repeat(1500) });
     const call = (id, name, args) => ({ id, name, args });
@@ -166,7 +166,7 @@ for (const mode of ['ordinary-compaction', 'budget-admission']) {
 
 function wireConfig(baseUrl, provider = 'deepseek') {
   return { run_id: 'http-protocol', api_key: 'test-only', prompt: '查证后提交结果',
-    budget: { output_tokens: 1000, wall_seconds: 10 },
+
     tools: [
       { name: 'search', description: 'Search', parameters: Type.Object({ query: Type.String() }) },
       { name: 'submit_answer', description: 'Finish', parameters: Type.Object({ answer: Type.String() }) },
@@ -178,105 +178,20 @@ function wireConfig(baseUrl, provider = 'deepseek') {
         thinkingFormat: provider === 'deepseek' ? 'deepseek' : 'qwen', maxTokensField: 'max_tokens' } } };
 }
 
-for (const provider of ['deepseek', 'aliyun_bailian']) {
-  test(`closing admission measures resolved tool declarations without changing the HTTP request (${provider})`,
-    { timeout: 15000 }, async t => {
-      const requirements = { max_characters: 250, length_quote: '正文不超过250字', required_points: ['原文中的数值'] };
-      const source = JSON.stringify({ evidence: [{ id: 1, content: '实际原文🔎：测量值为17。' }] });
-      const draft = '最近草稿需要精简。'.repeat(30);
-      const feedback = '实际字数超限，请保留来源中的数值和条件，重新组织正文。';
-      const call = (id, name, args) => [
-        { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id, type: 'function',
-          function: { name, arguments: JSON.stringify(args) } }] } }] },
-        { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
-          usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 } },
-      ];
-      async function run({ bounded, enabled = true, midConversation = false, limit = 18000 }) {
-        const { requests, baseUrl } = await sseEndpoint(t, [
-          call('register', 'set_answer_requirements', requirements),
-          call('read', 'search', { query: '数值' }),
-          call('draft', 'submit_answer', { answer: draft }),
-          call('finish', 'submit_answer', { answer: '测量值为17。[1]' }),
-        ]);
-        const admissions = [], events = [], settled = [];
-        const base = wireConfig(baseUrl, provider);
-        const runtime = createRuntime({ ...base, answer_checks_enabled: enabled,
-          prompt: '原问题🔎，正文不超过250字。',
-          model: { ...base.model, contextWindow: 200000,
-            compat: { ...base.model.compat, supportsMidConvoSystemMessages: midConversation } },
-          tools: [...base.tools.map(tool => tool.name === 'search'
-            ? { ...tool, description: 'READ_ONLY_SEARCH_SCHEMA_'.repeat(1500) } : tool),
-          { name: 'set_answer_requirements', description: 'Register', parameters: Type.Object({
-            max_characters: Type.Number(), length_quote: Type.String(), required_points: Type.Array(Type.String()),
-          }) }],
-        }, {
-          emit: (type, data) => events.push({ type, data }),
-          callHost: async (method, params) => {
-            if (method === 'model_request') {
-              admissions.push(params);
-              if (bounded && requests.length === 3 && params.input_bytes > limit) {
-                return { allowed: false, max_input_bytes: limit, final_turn: true, allow_recall: false };
-              }
-              return { allowed: true, max_output_tokens: 1000, final_turn: requests.length >= 2, allow_recall: false };
-            }
-            if (method === 'model_usage') { settled.push(params); return {}; }
-            if (params.name === 'set_answer_requirements') return { content: [{ type: 'text', text: 'recorded' }],
-              details: { answer_requirements: requirements } };
-            if (params.name === 'search') return { content: [{ type: 'text', text: source }],
-              details: { evidence_ids: [1], artifact_id: 'source-artifact' } };
-            if (params.tool_call_id === 'draft') return { isError: true, content: [{ type: 'text', text: feedback }],
-              details: { code: 'answer_too_long', rejected_answer_span_id: 'tool:draft' } };
-            return { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed', answer: params.args.answer } };
-          },
-        });
-        t.after(() => runtime.abort());
-        return { result: await runtime.run(), requests, admissions, events, settled };
-      }
-      // The unbounded control uses the same experimental prompt and the same
-      // provider serializer. Only host admission differs, not model responses.
-      const control = await run({ bounded: false });
-      const bounded = await run({ bounded: true });
-      assert.equal(control.result.terminal, 'completed');
-      assert.equal(bounded.result.terminal, 'completed', bounded.result.message);
-      assert.deepEqual(bounded.requests, control.requests, 'The paid HTTP bodies must be identical');
-      assert.equal(bounded.requests.length, 4);
-      assert.deepEqual(bounded.admissions.map(item => item.turn), [1, 2, 3, 4, 4]);
-      assert.equal(bounded.settled.length, 4, 'No extra provider request or usage settlement');
-      assert.ok(bounded.admissions.at(-2).input_bytes > 18000);
-      assert.ok(bounded.admissions.at(-1).input_bytes <= 18000);
-      const last = bounded.requests.at(-1);
-      assert.ok(bounded.admissions.at(-1).input_bytes >= Buffer.byteLength(JSON.stringify(last)));
-      assert.deepEqual(last.tools.map(tool => tool.function.name), ['submit_answer']);
-      assert.equal(last.messages.find(message => message.tool_call_id === 'read').content, source);
-      assert.equal(last.messages.find(message => message.tool_call_id === 'draft').content, feedback);
-      const draftCall = last.messages.flatMap(message => message.tool_calls || []).find(item => item.id === 'draft');
-      assert.equal(JSON.parse(draftCall.function.arguments).answer, draft);
-      assert.match(last.messages[0].content, /本轮已登记的回答要求/);
-      assert.ok(JSON.stringify(last.messages).includes('原问题🔎，正文不超过250字。'));
-      assert.ok(!bounded.events.some(event => event.type === 'context.compacted'), 'No source body was archived');
-      // Do not change default admission, rewrite a transcript using mid-turn
-      // system messages, or let a genuinely oversized required input through.
-      for (const options of [{ enabled: false }, { midConversation: true }, { limit: 10 }]) {
-        const blocked = await run({ bounded: true, ...options });
-        assert.equal(blocked.result.terminal, 'failed');
-        assert.equal(blocked.requests.length, 3);
-        assert.equal(blocked.settled.length, 3);
-        assert.match(blocked.result.message, /无法容纳问题与最后一组原文证据/);
-      }
-    });
-}
+
 
 for (const scenario of [
   { enabled: true, proof: 'valid', mixed: false },
   { enabled: true, proof: 'valid', mixed: false, invalidLatest: true },
   { enabled: false, proof: 'valid', mixed: false },
+  { enabled: false, planEnabled: true, proof: 'valid', mixed: false },
   { enabled: true, proof: 'missing', mixed: false },
   { enabled: true, proof: 'wrong-span', mixed: false },
   { enabled: true, proof: 'valid', mixed: true },
 ]) {
   test(`superseded draft archival preserves the latest pair and real HTTP contract ${JSON.stringify(scenario)}`,
     { timeout: 15000 }, async t => {
-      const shouldArchive = scenario.enabled && scenario.proof === 'valid' && !scenario.mixed;
+      const shouldArchive = (scenario.enabled || scenario.planEnabled) && scenario.proof === 'valid' && !scenario.mixed;
       const oldAnswer = '旧稿'.repeat(4000), latestAnswer = '最新'.repeat(4000);
       const requirements = { max_characters: 250, length_quote: '正文不超过250字', required_points: ['说明来源中的数值'] };
       const call = (id, name, args) => ({ id, type: 'function', function: { name, arguments: JSON.stringify(args) } });
@@ -299,6 +214,7 @@ for (const scenario of [
       const feedback = id => JSON.stringify({ code: 'answer_too_long', message: `${id}草稿超限，请按250字符要求重新组织答案。` });
       const base = wireConfig(baseUrl);
       const runtime = createRuntime({ ...base, answer_checks_enabled: scenario.enabled,
+        answer_plan_enabled: scenario.planEnabled,
         model: { ...base.model, contextWindow: 200000 }, prompt: '原问题🔎，正文不超过250字。',
         tools: [...base.tools, { name: 'set_answer_requirements', description: 'Register',
           parameters: Type.Object({ max_characters: Type.Number(), length_quote: Type.String(), required_points: Type.Array(Type.String()) }) }],
@@ -365,7 +281,7 @@ for (const scenario of [
 // endpoint and host are controlled, so a mocked provider cannot hide dropped
 // tool feedback, broken call/result pairing, or overwritten system messages.
 for (const answerChecks of [false, true]) {
-  for (const closing of [false, true]) {
+  for (const closing of [false]) {
     test(`HTTP repair preserves host feedback (checks=${answerChecks}, closing=${closing})`,
       { timeout: 15000 }, async (t) => {
         const requests = [], events = [], hostCalls = [];
@@ -414,7 +330,7 @@ for (const answerChecks of [false, true]) {
         ];
         const runtime = createRuntime({ run_id: 'http-repair', api_key: 'test-only', prompt,
           answer_checks_enabled: answerChecks, tools: definitions,
-          budget: { output_tokens: 1000, wall_seconds: 10 },
+
           model: { id: 'deepseek-flash', name: 'local-fixture', api: 'openai-completions', provider: 'deepseek',
             baseUrl: `http://127.0.0.1:${server.address().port}`, reasoning: false, input: ['text'],
             contextWindow: 64000, maxTokens: 1000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -474,39 +390,6 @@ for (const answerChecks of [false, true]) {
   }
 }
 
-test('HTTP tool calls remain host-restricted when the provider ignores removed tools', { timeout: 15000 }, async t => {
-  const frames = (id, name, args) => [
-    { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id, type: 'function',
-      function: { name, arguments: JSON.stringify(args) } }] } }] },
-    { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
-      usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 } },
-  ];
-  const { requests, baseUrl } = await sseEndpoint(t, [
-    frames('blocked', 'search', { query: 'new research' }),
-    frames('finish', 'submit_answer', { answer: '现有依据不足，尚未进一步搜索。' }),
-  ]);
-  const calls = [], events = [];
-  const runtime = createRuntime(wireConfig(baseUrl), {
-    emit: (type, data) => events.push({ type, data }),
-    callHost: async (method, params) => {
-      if (method === 'model_request') return { allowed: true, max_output_tokens: 1000, final_turn: true, allow_recall: false };
-      if (method === 'model_usage') return {};
-      calls.push(params);
-      return { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'partial', answer: params.args.answer } };
-    },
-  });
-  t.after(() => runtime.abort());
-  assert.equal((await runtime.run()).terminal, 'partial');
-  assert.equal(requests.length, 2);
-  assert.deepEqual(requests[0].tools.map(tool => tool.function.name), ['submit_answer']);
-  assert.deepEqual(calls.map(call => call.name), ['submit_answer']);
-  const rejection = requests[1].messages.find(message => message.role === 'tool' && message.tool_call_id === 'blocked');
-  assert.match(rejection.content, /预算已进入收尾阶段/);
-  const event = events.find(event => event.type === 'tool.rejected');
-  assert.equal(event.data.name, 'search');
-  assert.equal(event.data.executed, false);
-});
-
 test('Qwen HTTP null argument deltas and stop finish reason preserve the actual tool call', { timeout: 15000 }, async t => {
   // The compatible endpoint can finish a complete named tool call with "stop"
   // and send null argument deltas. Neither means a tool-free text response.
@@ -539,7 +422,7 @@ test('Qwen HTTP null argument deltas and stop finish reason preserve the actual 
   assert.equal(events.find(event => event.type === 'model.completed').data.stop_reason, 'stop');
 });
 
-test('registered requirements survive real Pi compaction, HTTP serialization and budget closing', { timeout: 15000 }, async t => {
+test('registered requirements survive compaction while research tools stay available', { timeout: 15000 }, async t => {
   const requirements = { version: 1, max_characters: 250, length_quote: '正文不超过250字',
     required_points: ['比较两种方法并说明适用条件'],
     length_origin: { kind: 'current_question', start: 3, end: 12 },
@@ -576,7 +459,7 @@ test('registered requirements survive real Pi compaction, HTTP serialization and
       };
       if (params.name === 'search') {
         const id = Number(params.tool_call_id.split('-')[1]);
-        return { content: [{ type: 'text', text: JSON.stringify({ evidence: [{ id, content: '原文'.repeat(8000) }] }) }],
+        return { content: [{ type: 'text', text: JSON.stringify({ evidence: [{ id, content: '原文'.repeat(24000) }] }) }],
           details: { artifact_id: `search-result-${id}`, evidence_ids: [id] } };
       }
       return { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed', answer: params.args.answer } };
@@ -594,44 +477,11 @@ test('registered requirements survive real Pi compaction, HTTP serialization and
       (typeof message.content === 'string' ? message.content : message.content.map(part => part.text || '').join('')) === config.prompt));
   }
   const closing = requests.at(-1);
-  assert.match(closing.messages[0].content, /宿主预算已进入收尾阶段/);
-  assert.deepEqual(closing.tools.map(tool => tool.function.name), ['submit_answer']);
+  assert.doesNotMatch(closing.messages[0].content, /宿主预算已进入收尾阶段/);
+  assert.ok(closing.tools.some(tool => tool.function.name === 'search'));
   assert.match(closing.messages.find(message => message.tool_call_id === 'register').content, /archived_result/);
   assert.ok(events.some(event => event.type === 'context.compacted'));
   assert.equal(calls.at(-1).args.max_characters, undefined, 'the final answer need not repeat the stored cap');
-});
-
-test('removed tools report closure before malformed argument errors consume a final model turn', { timeout: 15000 }, async t => {
-  const frames = (id, name, args) => [
-    { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id, type: 'function',
-      function: { name, arguments: JSON.stringify(args) } }] } }] },
-    { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
-      usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 } },
-  ];
-  const { requests, baseUrl } = await sseEndpoint(t, [
-    frames('unavailable', 'search', { query: ['wrong type'], modalities: '["doc"]', limit: '6' }),
-    frames('finish', 'submit_answer', { answer: '本次检索未找到所需信息的依据。' }),
-  ]);
-  const events = [], calls = [];
-  const runtime = createRuntime(wireConfig(baseUrl), {
-    emit: (type, data) => events.push({ type, data }),
-    callHost: async (method, params) => {
-      if (method === 'model_request') return { allowed: true, max_output_tokens: 1000, final_turn: true, allow_recall: false };
-      if (method === 'model_usage') return {};
-      calls.push(params.name);
-      return { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'partial', answer: params.args.answer } };
-    },
-  });
-  t.after(() => runtime.abort());
-  assert.equal((await runtime.run()).terminal, 'partial');
-  assert.deepEqual(calls, ['submit_answer']);
-  assert.equal(requests.length, 2);
-  const error = requests[1].messages.find(message => message.tool_call_id === 'unavailable').content;
-  assert.match(error, /预算已进入收尾阶段/);
-  assert.doesNotMatch(error, /Validation failed|must be|Received arguments/);
-  const rejection = events.find(event => event.type === 'tool.rejected');
-  assert.equal(rejection.data.executed, false);
-  assert.equal(rejection.data.message, error);
 });
 
 function callFrames(calls, turn) {
@@ -672,18 +522,15 @@ async function failureScenario(t, batches, hostTool = async () => ({
   return { result: await runtime.run(), requests, calls, settlements, events };
 }
 
-test('repeated failed empty calls stop before a fourth paid request without inventing an answer', async t => {
-  const run = await failureScenario(t, Array.from({ length: 5 }, () => [['set_answer_requirements', {}]]));
-  assert.equal(run.result.terminal, 'failed');
-  assert.equal(run.result.code, 'repeated_tool_failure');
-  assert.match(run.result.message, /连续3轮/);
-  assert.match(run.result.message, /set_answer_requirements/);
+test('five identical invalid calls can be repaired on a later model turn', async t => {
+  const run = await failureScenario(t, [...Array.from({ length: 5 }, () => [['set_answer_requirements', {}]]), [['submit_answer', { answer: 'repaired' }]]]);
+  assert.equal(run.result.terminal, 'completed');
   assert.equal(run.result.answer, undefined);
-  assert.equal(run.requests.length, 3);
-  assert.equal(run.settlements.length, 3);
-  assert.equal(run.calls.length, 0);
+  assert.equal(run.requests.length, 6);
+  assert.equal(run.settlements.length, 6);
+  assert.equal(run.calls.length, 1);
   const rejections = run.events.filter(e => e.type === 'tool.rejected');
-  assert.equal(rejections.length, 3);
+  assert.equal(rejections.length, 5);
   assert.ok(rejections.every(e => e.data.executed === false && /Received arguments:\n\{\}/.test(e.data.message)));
 });
 
@@ -699,14 +546,14 @@ test('repairing failed nullable registration arguments still reaches the host un
   assert.ok(run.requests[2].messages.some(m => m.role === 'tool' && /Validation failed/.test(m.content)));
 });
 
-test('repeated failed host calls stop with original feedback and settled usage', async t => {
-  const run = await failureScenario(t, Array.from({ length: 5 }, () => [['search', { query: 'same' }]]),
-    async () => ({ isError: true, content: [{ type: 'text', text: 'query backend unavailable' }],
+test('five host failures keep feedback and allow a subsequent successful call', async t => {
+  const run = await failureScenario(t, [...Array.from({ length: 5 }, () => [['search', { query: 'same' }]]), [['submit_answer', { answer: 'repaired' }]]],
+    async params => params.name === 'submit_answer' ? { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed' } } : ({ isError: true, content: [{ type: 'text', text: 'query backend unavailable' }],
       details: { code: 'tool_failed', retryable: true } }));
-  assert.equal(run.result.code, 'repeated_tool_failure');
-  assert.equal(run.requests.length, 3);
-  assert.equal(run.calls.length, 3);
-  assert.equal(run.settlements.length, 3);
+  assert.equal(run.result.terminal, 'completed');
+  assert.equal(run.requests.length, 6);
+  assert.equal(run.calls.length, 6);
+  assert.equal(run.settlements.length, 6);
   assert.ok(run.requests[2].messages.some(m => m.role === 'tool' && m.content === 'query backend unavailable'));
   assert.equal(run.events.filter(e => e.type === 'tool.rejected').length, 0, 'Dispatched calls use the host trace');
 });
@@ -723,8 +570,8 @@ test('repairing failed calls is measured per round and ignores object key order'
     [['search', { a: 1, b: 2 }]], [['search', { b: 2, a: 1 }]], [['search', { a: 1, b: 2 }]],
     [['submit_answer', { answer: 'should not run' }]],
   ]);
-  assert.equal(repeated.result.code, 'repeated_tool_failure');
-  assert.equal(repeated.requests.length, 3);
+  assert.equal(repeated.result.terminal, 'completed');
+  assert.equal(repeated.requests.length, 4);
 });
 
 test('successful tool progress or changed arguments allow further repairs', async t => {

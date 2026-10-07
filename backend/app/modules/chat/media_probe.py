@@ -12,7 +12,8 @@ from pathlib import Path
 from PIL import Image
 
 
-def inspect_attachment_media(data: bytes, kind: str) -> dict:
+def inspect_attachment_media(data: bytes, kind: str, *, max_video_seconds: float | None = 60,
+                             probe_timeout: float | None = 10) -> dict:
     if kind == "image":
         with Image.open(io.BytesIO(data)) as image:
             width, height = image.size
@@ -25,7 +26,7 @@ def inspect_attachment_media(data: bytes, kind: str) -> dict:
         result = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries",
              "format=duration:stream=codec_type,duration,sample_rate,channels,width,height", "-of", "json", str(path)],
-            capture_output=True, timeout=10, check=True,
+            capture_output=True, timeout=probe_timeout, check=True,
         )
         info = json.loads(result.stdout)
     streams = info.get("streams") or []
@@ -35,8 +36,10 @@ def inspect_attachment_media(data: bytes, kind: str) -> dict:
         if not video:
             raise ValueError("附件中没有可解析的视频画面")
         duration = float(video.get("duration") or info.get("format", {}).get("duration") or 0)
-        if not math.isfinite(duration) or duration <= 0 or duration > 60:
-            raise ValueError("本机视频需在 60 秒以内，较长视频请加入知识库后引用")
+        if not math.isfinite(duration) or duration <= 0:
+            raise ValueError("无法核验视频时长")
+        if max_video_seconds is not None and duration > max_video_seconds:
+            raise ValueError(f"本机视频需在 {max_video_seconds:g} 秒以内，较长视频请加入知识库后引用")
         return {"duration_seconds": round(duration, 3), "width": int(video.get("width") or 0),
                 "height": int(video.get("height") or 0), "has_audio": bool(audio), "source": "local_probe"}
     if not audio:

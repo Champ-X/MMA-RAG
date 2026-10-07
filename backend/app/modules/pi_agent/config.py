@@ -7,8 +7,6 @@ from pathlib import Path
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .contracts import RunBudget
-
 ROOT = Path(__file__).resolve().parents[4]
 
 
@@ -18,6 +16,7 @@ class PiSettings(BaseSettings):
     model: str = "deepseek:deepseek-flash"
     thinking_enabled: bool = False
     answer_checks_enabled: bool = False
+    answer_plan_enabled: bool = True
     model_api_key: SecretStr | None = None
     model_base_url: str | None = None
     yield_to_legacy: bool = True
@@ -31,11 +30,9 @@ class PiSettings(BaseSettings):
     trusted_user_id: str | None = None
     data_dir: Path = ROOT / "data" / "pi-agent"
     node_binary: str = "node"
-    max_concurrent_runs: int = Field(default=2, ge=1, le=8)
-    max_concurrent_searches: int = Field(default=1, ge=1, le=4)
-    max_queued_runs: int = Field(default=8, ge=0, le=32)
-    max_source_bytes: int = Field(default=256 * 1024 * 1024, ge=1024, le=512 * 1024 * 1024)
-    budget: RunBudget = Field(default_factory=RunBudget)
+    # Scheduling capacity, not run limits: excess work waits and remains cancellable.
+    max_concurrent_runs: int = Field(default=2, ge=1)
+    max_concurrent_searches: int = Field(default=1, ge=1)
 
 
 @lru_cache
@@ -62,8 +59,10 @@ def resolve_model(registry, selected: str | None, settings: PiSettings) -> tuple
     model = {"id": raw, "name": name, "api": "openai-completions", "provider": provider_name,
              "baseUrl": base_url, "reasoning": provider_name in {"deepseek", "aliyun_bailian"},
              "input": ["text", "image"] if "vision" in capabilities else ["text"],
-             "contextWindow": int(configured.get("context_length") or 64000),
-             "maxTokens": settings.budget.output_tokens,
+             # Zero means unknown; the worker consults provider metadata or lets
+             # the provider choose. Never substitute an application output cap.
+             "contextWindow": int(configured.get("context_length") or 0),
+             "maxTokens": int(configured.get("max_output_tokens") or 0),
              "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
              "compat": {"supportsStore": False, "supportsDeveloperRole": False,
                         "maxTokensField": "max_tokens", "supportsReasoningEffort": False}}
