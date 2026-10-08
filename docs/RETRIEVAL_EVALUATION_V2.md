@@ -6,6 +6,8 @@ v1 的 7 份合成文档、8 道题继续用于快速回归。v2 增加公开全
 
 已执行结果见 [2026-10-08 评估报告](RETRIEVAL_EVALUATION_20261008.md)。汇总的初版和修订版均保留，修订版将未暴露的请求计数标为未知，并展示 Pi 自身的请求台账，检索分数未改变。
 
+另有独立保存的[事后标注与分层复核](RETRIEVAL_REVIEW_20261008.md)，修订缺失的等价证据并区分 Pi 研究观察与最终引用。它使用同一批历史回执，不替换原实验，也不作为未接触过的保留集成绩。
+
 ## 数据与适用范围
 
 | 数据 | 本次范围 | 标签来源与限制 |
@@ -104,6 +106,76 @@ Pi 按首次取得证据的顺序评分，去掉完全重复的观察；这不�
 
 比较只允许显式列出的配置变化，不会自动宣布候选上线。各题的集群身份与指标有效分母必须一致。
 
+## 标注修订与分层复核
+
+新增的 `revise-labels` 只接受 `retrieval-label-review-1`：必须提供 `parent_fingerprint`、评审者 `identity / method / reviewed_at / blind`、总体理由，以及按 `case_id / group_id` 列出的 `add_alternatives` 和原因。每个替代方案仍是来源版本绑定的锚点数组。旧标签必须完整保留，查询、范围、来源与失败记录均不能改变。修订被显式标为事后开发诊断。
+
+下面使用本机已保存的私有评审回执，所有派生产物写入新目录。公开仓库不包含这些私有标注与问题；其他数据可按相同 schema 创建自己的评审文件。
+
+```bash
+EVAL_ROOT=data/retrieval-evaluation-20261008
+REVIEW_OUT=data/my-retrieval-review
+
+.venv/bin/python scripts/rag-eval retrieval revise-labels \
+  --dataset "$EVAL_ROOT/local-v2/manifest.json" \
+  --review "$EVAL_ROOT/review-v1/label-review.json" \
+  --output "$REVIEW_OUT/local-v3"
+
+for mode in direct legacy-agent pi; do
+  .venv/bin/python scripts/rag-eval retrieval replay-labels \
+    --parent "$EVAL_ROOT/local-v2/manifest.json" \
+    --dataset "$REVIEW_OUT/local-v3/manifest.json" \
+    --original "$EVAL_ROOT/local-$mode-resolved-v1" \
+    --output "$REVIEW_OUT/local-$mode-revised"
+done
+
+.venv/bin/python scripts/rag-eval retrieval audit-pi \
+  --dataset "$REVIEW_OUT/local-v3/manifest.json" \
+  --predictions "$REVIEW_OUT/local-pi-revised/predictions.jsonl" \
+  --native "$EVAL_ROOT/local-pi-v1/pi-attempts" \
+  --media-review "$EVAL_ROOT/review-v1/media-review.json" \
+  --output "$REVIEW_OUT/pi-stages"
+```
+
+`audit-pi` 核对原始文件的字节 SHA-256、任务/问题/终态及已记录索引证据。`report.json` 与 `answer-review-packets.jsonl` 包含私有问题和答案，应保存在忽略目录；只有显式选取汇总字段的 `aggregate.json` 用于公开。
+
+研究观察与最终引用分开统计 @5、@50 和完整集合。引用阶段按答案正文中 `[N]` 首次出现的顺序，检查编号、来源、内容和所属任务；附带而未引用的证据不算最终引用。未核验媒体与无效引用保留真实位置，不能先过滤再占用更靠前的名次。证据覆盖仍是对已标注锚点的保守统计，不等于答案语义正确性。
+
+可选 `--media-review` 使用 `retrieval-media-review-1`，记录评审者以及逐个观察的任务摘要哈希、观察哈希、来源、原始资源路径/字节哈希/版本回执、锚点哈希、理由和 `supports / does_not_support / unknown`。v1 仅对内容版本可校验的原始静态图片授予正向信用，并限定到单个已复核锚点；音视频新观察保留未知，后续需绑定时间段与抽帧证据。其他来源、未映射的位置与被改动的原始资源不能借用这份判定。
+
+可选 `--answer-review` 使用 `retrieval-answer-review-1`：顶层包含 `dataset_fingerprint`、`reviewer`、`rubric_version`、`judgments`；逐题提供 `case_id`、`answer_sha256`、`native_receipt_sha256`、`reason` 及三个 0～1 或 `null` 的值：
+
+- `answer_correctness`：对照题目和来源，回答是否正确、完整。
+- `citation_support`：引用是否支持回答中的具体结论；仅编号合法不够。
+- `abstention_correctness`：只适用于标注为无答案的题，是否正确表达证据不足。
+
+未提供的语义判定不会被任务的 `completed` 状态补齐。整体分数在有未知题时保持 `null`，另列已评审/失败/未知数量及部分已知均值；部分均值不能作为全量成绩。失败在相应操作性任务指标中计零。历史 Direct/常规 Agent 未记录最终答案，对应阶段不能凭空生成。
+
+同预算对照可先检查条件：
+
+```bash
+.venv/bin/python scripts/rag-eval retrieval comparison-readiness \
+  --baseline "$REVIEW_OUT/local-legacy-agent-revised/report.json" \
+  --candidate "$REVIEW_OUT/local-pi-revised/report.json" \
+  --output "$REVIEW_OUT/comparison-readiness.json"
+```
+
+历史实验应返回退出码 1 并保存不满足条件的原因。`compare --require-matched` 会拒绝输出不满足条件的比较；普通 `compare` 仍可输出带检查结果的描述性比较。`score` 和 `compare` 输出也禁止覆盖已存在的文件。
+
+通过门禁需要配置中的 `comparison_contract` 明确且相同：`stage`、`ordering`、`retrieval_tools_sha256`、`model_stack`、`concurrency`、`budget`。预算必须同时给出正数 `wall_seconds / model_tokens / tool_calls / evidence_units`；每题的 `budget_receipt` 必须绑定题目、数据指纹与契约哈希，记录 `enforced: true` 及四项有限、未超限的实际用量。当前采集器没有实施这套全维度预算，不能给旧回执补写字段冒充受控实验。门禁检查记录的控制条件，不证明因果增益。
+
+本轮的公开复核汇总可从已验证产物再次生成到新目录：
+
+```bash
+.venv/bin/python scripts/summarize-retrieval-review.py \
+  --root data/retrieval-evaluation-20261008 \
+  --review data/retrieval-evaluation-20261008/review-v1 \
+  --stages data/retrieval-evaluation-20261008/review-v1/pi-stages-verified-v1 \
+  --output data/retrieval-review-export-check
+```
+
+该导出器先检查原始文件哈希并精确复算三种模式及 Pi 分层报告，然后输出不含私有正文的汇总。评测代码或复核内容变化后，须另存新审计版本，不能覆盖历史报告。
+
 ## 中断、故障与审计
 
 运行目录有进程锁、冻结协议、每题 pending 和追加写入的 JSONL。重启同一命令会跳过完成记录；未确认的付费尝试保留为中断失败，不自动重试。Embedding 缓存保存输入指纹、向量校验和、实际模型和服务回执；未确认/已失败批次要求显式检查，不能悄悄覆盖。
@@ -116,7 +188,7 @@ Pi 按首次取得证据的顺序评分，去掉完全重复的观察；这不�
 
 ```bash
 cd backend
-../.venv/bin/python -m pytest tests/test_rag_evaluation.py tests/test_retrieval_evaluation_v2.py -q
+../.venv/bin/python -m pytest tests/test_rag_evaluation.py tests/test_retrieval_evaluation_v2.py tests/test_retrieval_review.py tests/test_retrieval_api.py -q
 ```
 
 下一阶段的数据建设应优先增加独立知识来源、真实用户问题、人工复核证据和原始媒体核验，再扩大同一来源上的改写题。预留从未参与调参的持续保留集，按真实失败归因追加回归样本，并把候选池覆盖、重排前后变化、引用正确性和最终回答质量分层评估。

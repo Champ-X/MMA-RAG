@@ -106,19 +106,20 @@ This component experiment uses Qwen3-Embedding-8B, Qwen3-Reranker-8B, and BM25 u
 
 ### Local multimodal corpus: multi-round search covers more required evidence
 
-Read-only evaluation on the existing knowledge base covers text, images, audio, video, cross-modal questions, and scoped unanswerable questions. **Complete-evidence rate** is the fraction of the 76 evidence-annotated queries for which all required evidence is retrieved; failures score zero.
+Read-only evaluation on the existing knowledge base covers text, images, audio, video, cross-modal questions, and scoped unanswerable questions. Using the latest source-verified labels, **complete-evidence rate** is the fraction of the 76 evidence-annotated queries for which all required evidence is retrieved; failures score zero.
 
-| Mode | Complete evidence in top 5 | Complete evidence in delivered set (@50) |
-| --- | ---: | ---: |
-| Direct, single round | 80.26% | 80.26% |
-| Standard multi-round Agent (legacy-agent) | **89.47%** | **97.37%** |
-| Pi Agent | 85.53% | 93.42% |
+| Mode | Evidence stage | Complete evidence in top 5 | Complete evidence in set (@50) |
+| --- | --- | ---: | ---: |
+| Direct, single round | Retrieval results | 81.58% | 81.58% |
+| Standard multi-round Agent (legacy-agent) | Retrieval results | 92.11% | **100.00%** |
+| Pi Agent | Research observations, including verified media anchors | 88.16% | 97.37% |
+| Pi Agent | Final-answer citations | **96.05%** | **97.37%** |
 
-The standard multi-round Agent delivers complete evidence for **74/76 queries**, Pi for **71/76**, and Direct for **61/76**. Direct, the standard Agent, and Pi deliver at most 10, 30, and 35 evidence units respectively and use different execution budgets. Pi is scored in first-observation order, not final citation order. Both Agent top-5 gain intervals cross zero, and the document slice shows regressions; these results help identify where to optimize next.
+The standard multi-round Agent's retrieval set covers all required evidence for **76/76 queries**, compared with **62/76** for Direct. Pi's first five final-answer citations cover **73/76 queries**, and all citations cover **74/76**. Pi citations are scored in order of first appearance in the answer; unreviewed media retain their positions without receiving evidence credit. Execution budgets differ across modes, and final citations include evidence selection during generation, so each stage should be interpreted separately.
 
-The 80 local queries form 35 source-connected clusters, with only 3 text documents. Labels were authored and checked against frozen index content, without independent blinded human annotation or comprehensive original-media verification. These are retrieval-evidence metrics; final-answer correctness, citation support, and correct abstention still require separate evaluation.
+The 80 local queries form 35 source-connected clusters, with only 3 text documents. Labels were checked by an agent against their sources, without independent blinded human annotation or comprehensive original-media verification. These are evidence-coverage metrics on a development set; final-answer correctness, citation support, and correct abstention still require separate evaluation.
 
-[Full results and modality breakdown](docs/RETRIEVAL_EVALUATION_20261008.md) · [Protocol and reproduction commands](docs/RETRIEVAL_EVALUATION_V2.md) · [Machine-readable summary](evals/retrieval_v2/results-20261008-v2/summary.json)
+[Full results and scoring details](docs/RETRIEVAL_REVIEW_20261008.md) · [Public-corpus results](docs/RETRIEVAL_EVALUATION_20261008.md) · [Protocol and reproduction commands](docs/RETRIEVAL_EVALUATION_V2.md) · [Latest machine-readable summary](evals/retrieval_v2/review-20261008/summary.json)
 
 ## Quick start
 
