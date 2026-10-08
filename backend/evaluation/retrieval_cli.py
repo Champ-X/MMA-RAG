@@ -11,6 +11,7 @@ from .retrieval_data import prepare_scifact, snapshot_local
 from .retrieval_metrics import compare_runs, score_run
 from .retrieval_runner import BM25Retriever, run_retrieval
 from .retrieval_schema import RetrievalDataset, read_jsonl
+from .retrieval_review import comparison_readiness, replay_labels, revise_labels, sha, write_json
 
 
 def main(argv=None) -> int:
@@ -53,7 +54,29 @@ def main(argv=None) -> int:
     compare.add_argument("--baseline", type=Path, required=True)
     compare.add_argument("--candidate", type=Path, required=True)
     compare.add_argument("--allow-change", action="append", default=[])
+    compare.add_argument("--require-matched", action="store_true", help="Require matched controls and per-case budget receipts")
     compare.add_argument("--output", type=Path, required=True)
+    readiness = commands.add_parser("comparison-readiness")
+    readiness.add_argument("--baseline", type=Path, required=True)
+    readiness.add_argument("--candidate", type=Path, required=True)
+    readiness.add_argument("--output", type=Path, required=True)
+    revise = commands.add_parser("revise-labels")
+    revise.add_argument("--dataset", type=Path, required=True)
+    revise.add_argument("--review", type=Path, required=True)
+    revise.add_argument("--output", type=Path, required=True)
+    replay = commands.add_parser("replay-labels")
+    replay.add_argument("--parent", type=Path, required=True)
+    replay.add_argument("--dataset", type=Path, required=True)
+    replay.add_argument("--original", type=Path, required=True)
+    replay.add_argument("--output", type=Path, required=True)
+    audit = commands.add_parser("audit-pi")
+    audit.add_argument("--dataset", type=Path, required=True)
+    audit.add_argument("--predictions", type=Path, required=True)
+    audit.add_argument("--native", type=Path, required=True, help="Frozen pi-attempts directory")
+    audit.add_argument("--media-review", type=Path)
+    audit.add_argument("--answer-review", type=Path)
+    audit.add_argument("--split", choices=("dev", "test", "regression", "all"), default="test")
+    audit.add_argument("--output", type=Path, required=True, help="New private output directory; contains questions and answers")
     args = parser.parse_args(argv)
     try:
         if args.command == "prepare-scifact":
@@ -74,11 +97,48 @@ def main(argv=None) -> int:
             summary = asyncio.run(prepare_dense(dataset, args.output, batch_size=args.batch_size, concurrency=args.concurrency,
                                                 progress=lambda message: print(message, file=sys.stderr, flush=True)))
             result = {"ok": True, "output": str(args.output / "manifest.json"), "usage": summary["usage"]}
-        elif args.command == "compare":
-            result = compare_runs(json.loads(args.baseline.read_text()), json.loads(args.candidate.read_text()), allowed_changes=tuple(args.allow_change))
-            args.output.parent.mkdir(parents=True, exist_ok=True)
-            args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
-            result = {"ok": True, "output": str(args.output)}
+        elif args.command in {"compare", "comparison-readiness"}:
+            baseline, candidate = json.loads(args.baseline.read_text()), json.loads(args.candidate.read_text())
+            gate = comparison_readiness(baseline, candidate)
+            if args.command == "comparison-readiness":
+                write_json(args.output, gate)
+                result = {"ok": gate["matched_comparison_ready"], "output": str(args.output), "reasons": gate["reasons"]}
+            else:
+                if args.require_matched and not gate["matched_comparison_ready"]:
+                    raise ValueError("matched comparison rejected: " + ", ".join(gate["reasons"]))
+                report = compare_runs(baseline, candidate, allowed_changes=tuple(args.allow_change))
+                report["comparison_readiness"] = gate
+                write_json(args.output, report)
+                result = {"ok": True, "output": str(args.output), "matched_comparison_ready": gate["matched_comparison_ready"]}
+        elif args.command == "revise-labels":
+            dataset = revise_labels(RetrievalDataset.load(args.dataset), json.loads(args.review.read_text()), args.output)
+            result = {"ok": True, "manifest": str(dataset.manifest_path), "fingerprint": dataset.fingerprint}
+        elif args.command == "replay-labels":
+            audit = replay_labels(RetrievalDataset.load(args.parent), RetrievalDataset.load(args.dataset), args.original, args.output)
+            result = {"ok": True, "output": str(args.output), "changed_metric_cases": len(audit["changed_metric_cases"])}
+        elif args.command == "audit-pi":
+            from .retrieval_schema import digest, require, write_jsonl
+            from .retrieval_stages import audit_pi_stages, load_native_receipts
+            from .retrieval_runner import source_fingerprint
+            require(not args.output.exists(), "stage audit output already exists; preserve it")
+            dataset = RetrievalDataset.load(args.dataset)
+            records = read_jsonl(args.predictions)
+            native = load_native_receipts(records, args.native)
+            report, packets = audit_pi_stages(dataset, records, native, split=args.split,
+                media_review=json.loads(args.media_review.read_text()) if args.media_review else None,
+                media_root=args.media_review.parent if args.media_review else None,
+                answer_review=json.loads(args.answer_review.read_text()) if args.answer_review else None)
+            report["provenance"] = {"predictions_sha256": sha(args.predictions),
+                "native_receipts_sha256": digest(native), "evaluation_source": source_fingerprint(), "new_provider_calls": 0}
+            args.output.mkdir(parents=True, exist_ok=False)
+            write_json(args.output / "report.json", report)
+            write_jsonl(args.output / "answer-review-packets.jsonl", packets)
+            # An explicit allowlist keeps private questions, source IDs, per-case
+            # outcomes and answer text out of the publishable aggregate.
+            public = {k: report[k] for k in ("schema_version", "dataset_fingerprint", "split", "media_review_sha256",
+                "answer_review_sha256", "stages", "semantic_quality", "diagnostics", "limits", "provenance")}
+            write_json(args.output / "aggregate.json", public)
+            result = {"ok": True, "output": str(args.output), "cases": len(report["cases"])}
         else:
             dataset = RetrievalDataset.load(args.dataset)
             if args.command == "validate":
@@ -87,8 +147,7 @@ def main(argv=None) -> int:
                           "splits": {split: sum(c["split"] == split for c in dataset.cases) for split in ("dev", "test", "regression")}}
             elif args.command == "score":
                 report = score_run(dataset, read_jsonl(args.predictions), split=args.split, ks=tuple(args.k))
-                args.output.parent.mkdir(parents=True, exist_ok=True)
-                args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
+                write_json(args.output, report)
                 result = {"ok": True, "output": str(args.output)}
             else:
                 if args.profile == "bm25":

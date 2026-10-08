@@ -170,6 +170,11 @@ def score_run(dataset: RetrievalDataset, records: list[dict], *, split: str = "t
     configurations = {r["configuration_fingerprint"] for r in records}
     require(len(configurations) == 1, "mixed run configurations")
     rows = {cid: score_case(cases[cid], predictions[cid], ks) for cid in cases}
+    # Optional future collector receipts pass through without fabricating controls
+    # for historical runs; the matched-comparison gate validates their contract.
+    for cid, record in predictions.items():
+        if "budget_receipt" in record:
+            rows[cid]["budget_receipt"] = record["budget_receipt"]
     slices = {tag: aggregate([r for r in rows.values() if tag in r["tags"]]) for tag in sorted({tag for c in cases.values() for tag in c["tags"]})}
     usages = [r.get("usage", {}) for r in records]
     return {"schema_version": "retrieval-report-2", "metric_version": METRIC_VERSION,
