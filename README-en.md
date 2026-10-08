@@ -14,6 +14,7 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#agent-mode">Agent Mode</a> ·
+  <a href="#retrieval-results">Retrieval results</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="#contributing">Contributing</a> ·
   <a href="https://github.com/Champ-X/MMA-RAG/issues">Report an issue</a>
@@ -82,6 +83,42 @@ These existing Web / Feishu examples show retrieval results and media citations.
 ![Answers and media citations in Feishu](docs/images/chat-feishu.png)
 
 </details>
+
+## Retrieval results
+
+On 2026-10-08, we evaluated **300 public queries + 80 local multimodal queries**, preserving **1,740 task records**. The evaluation measures target-document recall and required-evidence coverage separately, keeps failures in the denominator, and records dataset, configuration, and receipt hashes.
+
+### Public corpus: semantic retrieval improves target-document recall
+
+The experiment uses all **5,183 SciFact abstracts**, split into 17,031 three-sentence units. Document Recall@5 covers 300 queries; evidence-group Recall@5 covers the 188 queries with human sentence rationales. Both metrics score the first 5 delivered evidence units.
+
+| Method | Successful tasks | Document Recall@5 | Evidence-group Recall@5 |
+| --- | ---: | ---: | ---: |
+| BM25 | 300/300 | 63.44% | 77.13% |
+| Dense | 300/300 | 76.83% | 89.89% |
+| Hybrid, fixed RRF | 300/300 | 75.89% | 87.77% |
+| Hybrid + reranking, original run | 225/300 | 59.11% | 64.89% |
+| Hybrid + reranking, availability-control run | 300/300 | **80.40%** | **90.43%** |
+
+**Dense improves document Recall@5 over BM25 by 13.38 percentage points**, with a paired 95% interval of +7.13 to +19.12 points. The controlled reranking run has the highest observed scores; its evidence-group recall gain over Dense has an interval that crosses zero and needs further validation.
+
+This component experiment uses Qwen3-Embedding-8B, Qwen3-Reranker-8B, and BM25 under a custom SciFact protocol. It differs from the production BGE-M3 sparse pipeline and official BEIR leaderboard scoring. All 75 failures in the original reranking run are retained. The separate control run covers all 300 queries and waits for health cooldown before starting subsequent queries, without retrying failed queries. Service-state variation also affects the comparison.
+
+### Local multimodal corpus: multi-round search covers more required evidence
+
+Read-only evaluation on the existing knowledge base covers text, images, audio, video, cross-modal questions, and scoped unanswerable questions. **Complete-evidence rate** is the fraction of the 76 evidence-annotated queries for which all required evidence is retrieved; failures score zero.
+
+| Mode | Complete evidence in top 5 | Complete evidence in delivered set (@50) |
+| --- | ---: | ---: |
+| Direct, single round | 80.26% | 80.26% |
+| Standard multi-round Agent (legacy-agent) | **89.47%** | **97.37%** |
+| Pi Agent | 85.53% | 93.42% |
+
+The standard multi-round Agent delivers complete evidence for **74/76 queries**, Pi for **71/76**, and Direct for **61/76**. Direct, the standard Agent, and Pi deliver at most 10, 30, and 35 evidence units respectively and use different execution budgets. Pi is scored in first-observation order, not final citation order. Both Agent top-5 gain intervals cross zero, and the document slice shows regressions; these results help identify where to optimize next.
+
+The 80 local queries form 35 source-connected clusters, with only 3 text documents. Labels were authored and checked against frozen index content, without independent blinded human annotation or comprehensive original-media verification. These are retrieval-evidence metrics; final-answer correctness, citation support, and correct abstention still require separate evaluation.
+
+[Full results and modality breakdown](docs/RETRIEVAL_EVALUATION_20261008.md) · [Protocol and reproduction commands](docs/RETRIEVAL_EVALUATION_V2.md) · [Machine-readable summary](evals/retrieval_v2/results-20261008-v2/summary.json)
 
 ## Quick start
 
@@ -232,7 +269,7 @@ The CLI's `--agent-mode` selects standard `direct / auto / agent` behavior, not 
 
 ## Verification and evaluation
 
-The repository includes automated tests, an isolated RAG evaluation runner, and Pi verification reports that preserve candidate results. The public baseline contains **7 synthetic documents and 8 questions**. It supports retrieval and generation regression checks, rather than establishing general multimodal accuracy or production performance guarantees.
+The repository includes automated tests, an isolated RAG evaluation runner, and Pi verification reports that preserve candidate results. [Retrieval evaluation v2](docs/RETRIEVAL_EVALUATION_V2.md) supports public and local comparisons, evidence-level scoring, per-query failure receipts, and paired intervals. All 8 reports and 1,740 task records passed the [offline recomputation audit](evals/retrieval_v2/completion-audit-20261008.json). The original v1 baseline of **7 synthetic documents and 8 questions** remains available for quick regression checks.
 
 With the backend virtual environment activated, run these basic checks from the repository root:
 
@@ -265,6 +302,7 @@ Most detailed guides are currently in Chinese; the CLI reference and security po
 | [Model-call reliability](docs/MODEL_CALL_RELIABILITY.md) | Model routing, health, and fallback behavior |
 | [CLI reference](skills/mma-rag/references/cli-reference.md) · [Feishu setup](docs/FEISHU_BOT_SETUP.md) | External workflows and configuration |
 | [RAG evaluation](docs/RAG_EVALUATION.md) · [Pi verification](docs/PI_AGENT_VERIFICATION.md) | Reproduction, coverage, and result boundaries |
+| [Retrieval results](docs/RETRIEVAL_EVALUATION_20261008.md) · [Retrieval evaluation v2](docs/RETRIEVAL_EVALUATION_V2.md) | Public and local multimodal comparisons, evidence coverage, paired intervals, and reproduction commands |
 | [Jev experiment decisions](docs/research/JEV-DECISIONS.md) | Optional semantic judgment and citation diagnostics; disabled by default |
 | [Security](SECURITY.md) · [Historical changelog](CHANGELOG.md) | Deployment requirements and recorded changes |
 
