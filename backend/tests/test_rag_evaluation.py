@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 import math
 from pathlib import Path
 from types import SimpleNamespace
@@ -302,3 +303,25 @@ def test_report_compare_detects_regression_and_rejects_other_dataset():
         compare_reports(
             configured_baseline, configured_candidate, max_regression=0.03
         )
+
+
+def test_report_compare_rejects_lost_judge_coverage_despite_higher_mean():
+    baseline = json.loads((REPO_ROOT / "evals/baselines/direct-generation-qwen35-20260420-v1.json").read_text())
+    candidate = deepcopy(baseline)
+    candidate["aggregate"]["generation"]["faithfulness"].update(value=1.0, evaluated_cases=1)
+    result, passed = compare_reports(baseline, candidate, max_regression=0.03)
+    assert not passed
+    assert result["metrics"]["generation.faithfulness"]["status"] == "coverage_regression"
+
+
+def test_report_compare_checks_model_stack_and_finite_values():
+    baseline = json.loads((REPO_ROOT / "evals/baselines/direct-hybrid-retrieval-v1.json").read_text())
+    candidate = deepcopy(baseline)
+    candidate["configuration"]["model_stack"]["reranking"] = "another-reranker"
+    with pytest.raises(ValueError, match="model_stack"):
+        compare_reports(baseline, candidate, max_regression=0.03)
+    for value in (float("nan"), float("inf"), True):
+        candidate = deepcopy(baseline)
+        candidate["aggregate"]["retrieval"]["recall@5"]["value"] = value
+        with pytest.raises(ValueError, match="non-numeric"):
+            compare_reports(baseline, candidate, max_regression=0.03)

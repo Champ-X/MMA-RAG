@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
@@ -193,7 +194,10 @@ def _metric_values(report: Mapping[str, Any]) -> Dict[str, Optional[float]]:
             if not isinstance(raw, Mapping):
                 continue
             value = raw.get("value")
-            if value is not None and not isinstance(value, (int, float)):
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+            ):
                 raise ValueError(f"metric {family}.{name} has a non-numeric value")
             values[f"{family}.{name}"] = None if value is None else float(value)
     return values
@@ -205,14 +209,18 @@ def compare_reports(
     *,
     max_regression: float,
 ) -> Tuple[Dict[str, Any], bool]:
-    if max_regression < 0:
+    if not math.isfinite(max_regression) or max_regression < 0:
         raise ValueError("max_regression must be non-negative")
     baseline_dataset = baseline.get("dataset")
     candidate_dataset = candidate.get("dataset")
     if not isinstance(baseline_dataset, Mapping) or not isinstance(candidate_dataset, Mapping):
         raise ValueError("both reports must contain dataset metadata")
-    if baseline_dataset.get("fingerprint") != candidate_dataset.get("fingerprint"):
+    if not baseline_dataset.get("fingerprint") or baseline_dataset.get("fingerprint") != candidate_dataset.get("fingerprint"):
         raise ValueError("cannot compare reports from different dataset fingerprints")
+    if baseline.get("schema_version") != candidate.get("schema_version"):
+        raise ValueError("cannot compare reports from different schema versions")
+    if baseline_dataset.get("cases") != candidate_dataset.get("cases"):
+        raise ValueError("cannot compare reports with different dataset case counts")
     baseline_configuration = baseline.get("configuration")
     candidate_configuration = candidate.get("configuration")
     if isinstance(baseline_configuration, Mapping):
@@ -225,6 +233,10 @@ def compare_reports(
             "retrieval_only",
             "generation_models",
             "judge",
+            "model_stack",
+            "retrieval_config",
+            "corpus_snapshot",
+            "metric_version",
         ):
             if key not in baseline_configuration:
                 continue
@@ -238,6 +250,25 @@ def compare_reports(
     passed = True
     for metric, baseline_value in baseline_values.items():
         candidate_value = candidate_values.get(metric)
+        family, name = metric.split(".", 1)
+        baseline_metric = baseline["aggregate"][family][name]
+        candidate_metric = candidate["aggregate"][family].get(name, {})
+        coverage_ok = True
+        for count_key in ("evaluated_cases", "total_cases"):
+            if count_key not in baseline_metric:
+                continue  # Legacy hand-authored reports have no coverage counts.
+            old_count, new_count = baseline_metric[count_key], candidate_metric.get(count_key)
+            if (isinstance(old_count, bool) or not isinstance(old_count, int) or old_count < 0
+                    or isinstance(new_count, bool) or not isinstance(new_count, int) or new_count < 0):
+                coverage_ok = False
+            elif count_key == "total_cases":
+                coverage_ok = coverage_ok and new_count == old_count
+            else:
+                coverage_ok = coverage_ok and new_count >= old_count
+        if (isinstance(candidate_metric.get("evaluated_cases"), int)
+                and isinstance(candidate_metric.get("total_cases"), int)
+                and candidate_metric["evaluated_cases"] > candidate_metric["total_cases"]):
+            coverage_ok = False
         if baseline_value is None:
             status = "not_baselined"
             delta = None
@@ -249,11 +280,16 @@ def compare_reports(
             delta = candidate_value - baseline_value
             status = "pass" if delta >= -max_regression else "regression"
             passed = passed and status == "pass"
+        if not coverage_ok:
+            status = "coverage_regression"
+            passed = False
         rows[metric] = {
             "baseline": baseline_value,
             "candidate": candidate_value,
             "delta": None if delta is None else round(delta, 6),
             "status": status,
+            "baseline_evaluated_cases": baseline_metric.get("evaluated_cases"),
+            "candidate_evaluated_cases": candidate_metric.get("evaluated_cases"),
         }
     return {
         "passed": passed,
@@ -396,6 +432,10 @@ def execute(args: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    actual_args = list(argv) if argv is not None else sys.argv[1:]
+    if actual_args and actual_args[0] == "retrieval":
+        from .retrieval_cli import main as retrieval_main
+        return retrieval_main(actual_args[1:])
     try:
         return execute(build_parser().parse_args(argv))
     except (EvaluationDataError, LiveEvaluationError, JudgeError, ValueError) as error:
