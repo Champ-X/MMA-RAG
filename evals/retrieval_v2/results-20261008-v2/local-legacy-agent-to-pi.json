@@ -1,0 +1,351 @@
+{
+  "schema_version": "retrieval-comparison-2",
+  "dataset": {
+    "name": "tessmora-local-multimodal-retrieval",
+    "fingerprint": "48ffccb148a3a6a4143a540c046b0a6cc47bb4c7c26af228aca60a136ff85a20",
+    "split": "test",
+    "cases": 80,
+    "sources": 87
+  },
+  "configuration_changes": [
+    "api",
+    "backend",
+    "deadline_seconds",
+    "evidence_order",
+    "limits",
+    "pi_config",
+    "pi_models",
+    "profile",
+    "retrieval_settings",
+    "timing_scope"
+  ],
+  "bootstrap": {
+    "samples": 2000,
+    "seed": 20261008,
+    "unit": "query_cluster"
+  },
+  "metrics": {
+    "all_evidence_groups_hit@1": {
+      "delta": -0.11842105263157894,
+      "ci95": [
+        -0.1882516339869281,
+        -0.019230769230769232
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "all_evidence_groups_hit@10": {
+      "delta": 0.013157894736842105,
+      "ci95": [
+        -0.07938095238095237,
+        0.08572196620583714
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "all_evidence_groups_hit@5": {
+      "delta": -0.039473684210526314,
+      "ci95": [
+        -0.10992063492063492,
+        0.019092261904761664
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "all_evidence_groups_hit@50": {
+      "delta": -0.039473684210526314,
+      "ci95": [
+        -0.09090909090909091,
+        0.0
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "document_mrr@1": {
+      "delta": -0.10526315789473684,
+      "ci95": [
+        -0.2564102564102564,
+        0.0
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "document_mrr@10": {
+      "delta": -0.06644736842105263,
+      "ci95": [
+        -0.1644578313253012,
+        0.0
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "document_mrr@5": {
+      "delta": -0.06644736842105263,
+      "ci95": [
+        -0.16381901544401542,
+        0.0
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "document_mrr@50": {
+      "delta": -0.06644736842105263,
+      "ci95": [
+        -0.17215923734770383,
+        0.0
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "document_ndcg@1": {
+      "delta": -0.10526315789473684,
+      "ci95": [
+        -0.25,
+        0.0
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "document_ndcg@10": {
+      "delta": -0.05913377762976765,
+      "ci95": [
+        -0.14228819680773983,
+        -0.0034798841141316333
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "document_ndcg@5": {
+      "delta": -0.06156240521897251,
+      "ci95": [
+        -0.1435960914183695,
+        -0.008441044887903076
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "document_ndcg@50": {
+      "delta": -0.05913377762976765,
+      "ci95": [
+        -0.14056264223337023,
+        -0.006433417700474662
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "document_recall@1": {
+      "delta": -0.10526315789473684,
+      "ci95": [
+        -0.25341025641025644,
+        0.0
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "document_recall@10": {
+      "delta": -0.019736842105263157,
+      "ci95": [
+        -0.05303433268858801,
+        0.011771793054571187
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "document_recall@5": {
+      "delta": -0.02631578947368421,
+      "ci95": [
+        -0.05421686746987952,
+        0.0
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "document_recall@50": {
+      "delta": -0.019736842105263157,
+      "ci95": [
+        -0.0472972972972973,
+        0.0
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "evidence_group_recall@1": {
+      "delta": -0.1118421052631579,
+      "ci95": [
+        -0.18817362428842505,
+        -0.011884920634920743
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "evidence_group_recall@10": {
+      "delta": 0.02631578947368421,
+      "ci95": [
+        -0.03750589622641509,
+        0.08139534883720931
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "evidence_group_recall@5": {
+      "delta": -0.019736842105263157,
+      "ci95": [
+        -0.0661764705882353,
+        0.02381524725274722
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "evidence_group_recall@50": {
+      "delta": -0.03289473684210526,
+      "ci95": [
+        -0.08333333333333333,
+        0.0
+      ],
+      "paired_cases": 76,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "failure_rate": {
+      "delta": 0.0125,
+      "ci95": [
+        0.0,
+        0.0375
+      ],
+      "paired_cases": 80,
+      "independent_clusters": 35,
+      "direction": "lower_is_better"
+    },
+    "judged_fraction@1": {
+      "delta": -0.1,
+      "ci95": [
+        -0.24138878363016295,
+        0.0
+      ],
+      "paired_cases": 80,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "judged_fraction@10": {
+      "delta": -0.03010416666666667,
+      "ci95": [
+        -0.11507581148564296,
+        0.051618159203980093
+      ],
+      "paired_cases": 80,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "judged_fraction@5": {
+      "delta": -0.075,
+      "ci95": [
+        -0.1875617886178862,
+        0.042328042328042326
+      ],
+      "paired_cases": 80,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "judged_fraction@50": {
+      "delta": -0.005213854198365911,
+      "ci95": [
+        -0.07981068822487,
+        0.0735370756122567
+      ],
+      "paired_cases": 80,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "judged_precision@1": {
+      "delta": -0.1,
+      "ci95": [
+        -0.24140543364681297,
+        0.0
+      ],
+      "paired_cases": 80,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "judged_precision@10": {
+      "delta": -0.0125,
+      "ci95": [
+        -0.037037037037037035,
+        0.0
+      ],
+      "paired_cases": 80,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "judged_precision@5": {
+      "delta": -0.00625,
+      "ci95": [
+        -0.031914893617021274,
+        0.020010204081632597
+      ],
+      "paired_cases": 80,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "judged_precision@50": {
+      "delta": -0.0125,
+      "ci95": [
+        -0.0375,
+        0.0
+      ],
+      "paired_cases": 80,
+      "independent_clusters": 35,
+      "direction": "higher_is_better"
+    },
+    "no_answer_empty_success_rate": {
+      "delta": 0.0,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "paired_cases": 4,
+      "independent_clusters": 4,
+      "direction": "higher_is_better"
+    },
+    "no_answer_result_rate": {
+      "delta": 0.0,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "paired_cases": 4,
+      "independent_clusters": 4,
+      "direction": "lower_is_better"
+    },
+    "scope_violation_rate": {
+      "delta": 0.0,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "paired_cases": 80,
+      "independent_clusters": 35,
+      "direction": "lower_is_better"
+    }
+  },
+  "automatic_promotion": false,
+  "limits": "Intervals describe sampled query clusters, not repeated-run or provider variability. Inspect coverage, slices and failures before adoption."
+}

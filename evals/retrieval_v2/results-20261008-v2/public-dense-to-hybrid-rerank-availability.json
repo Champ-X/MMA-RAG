@@ -1,0 +1,326 @@
+{
+  "schema_version": "retrieval-comparison-2",
+  "dataset": {
+    "name": "scifact-full-corpus-sentence-retrieval",
+    "fingerprint": "1b21ca9d07b4e41a7ce99a31e78f935930bd4de3b95939223cbbcccee6b37395",
+    "split": "test",
+    "cases": 300,
+    "sources": 5183
+  },
+  "configuration_changes": [
+    "availability_control",
+    "concurrency",
+    "fusion",
+    "model_stack",
+    "profile"
+  ],
+  "bootstrap": {
+    "samples": 2000,
+    "seed": 20261008,
+    "unit": "query_cluster"
+  },
+  "metrics": {
+    "all_evidence_groups_hit@1": {
+      "delta": 0.11170212765957446,
+      "ci95": [
+        0.03804347826086957,
+        0.17647058823529413
+      ],
+      "paired_cases": 188,
+      "independent_clusters": 164,
+      "direction": "higher_is_better"
+    },
+    "all_evidence_groups_hit@10": {
+      "delta": -0.015957446808510637,
+      "ci95": [
+        -0.041666666666666664,
+        0.005319860052338146
+      ],
+      "paired_cases": 188,
+      "independent_clusters": 164,
+      "direction": "higher_is_better"
+    },
+    "all_evidence_groups_hit@5": {
+      "delta": 0.005319148936170213,
+      "ci95": [
+        -0.03225806451612903,
+        0.04395604395604396
+      ],
+      "paired_cases": 188,
+      "independent_clusters": 164,
+      "direction": "higher_is_better"
+    },
+    "all_evidence_groups_hit@50": {
+      "delta": 0.0,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "paired_cases": 188,
+      "independent_clusters": 164,
+      "direction": "higher_is_better"
+    },
+    "document_mrr@1": {
+      "delta": 0.043333333333333335,
+      "ci95": [
+        -0.006557916307161346,
+        0.09241689069569203
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "document_mrr@10": {
+      "delta": 0.037609788359788364,
+      "ci95": [
+        0.0017431249612812675,
+        0.07338772903797532
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "document_mrr@5": {
+      "delta": 0.041277777777777774,
+      "ci95": [
+        0.004229979720037592,
+        0.08109344173585976
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "document_mrr@50": {
+      "delta": 0.03741815900663028,
+      "ci95": [
+        0.0016669235392261666,
+        0.07449262043908383
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "document_ndcg@1": {
+      "delta": 0.043333333333333335,
+      "ci95": [
+        -0.006578947368421052,
+        0.09459901077548134
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "document_ndcg@10": {
+      "delta": 0.032247293045151504,
+      "ci95": [
+        0.003563708594215463,
+        0.06441606561792511
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "document_ndcg@5": {
+      "delta": 0.039887611639485336,
+      "ci95": [
+        0.005574281427214286,
+        0.0740863183577955
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "document_ndcg@50": {
+      "delta": 0.030800814703555068,
+      "ci95": [
+        0.0031182083958835446,
+        0.06020748054462752
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "document_recall@1": {
+      "delta": 0.046,
+      "ci95": [
+        -0.0038860755410766697,
+        0.09640910324611868
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "document_recall@10": {
+      "delta": 0.012222222222222221,
+      "ci95": [
+        -0.013613575268817204,
+        0.03751495888365556
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "document_recall@5": {
+      "delta": 0.035722222222222225,
+      "ci95": [
+        0.0014424863387978136,
+        0.07206197947406387
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "document_recall@50": {
+      "delta": 0.008333333333333333,
+      "ci95": [
+        -0.01642668100739595,
+        0.03691898693996006
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "evidence_group_recall@1": {
+      "delta": 0.11170212765957446,
+      "ci95": [
+        0.042328042328042326,
+        0.1836762272476558
+      ],
+      "paired_cases": 188,
+      "independent_clusters": 164,
+      "direction": "higher_is_better"
+    },
+    "evidence_group_recall@10": {
+      "delta": -0.015957446808510637,
+      "ci95": [
+        -0.041666666666666664,
+        0.005377070619006099
+      ],
+      "paired_cases": 188,
+      "independent_clusters": 164,
+      "direction": "higher_is_better"
+    },
+    "evidence_group_recall@5": {
+      "delta": 0.005319148936170213,
+      "ci95": [
+        -0.03260869565217391,
+        0.04124245499706209
+      ],
+      "paired_cases": 188,
+      "independent_clusters": 164,
+      "direction": "higher_is_better"
+    },
+    "evidence_group_recall@50": {
+      "delta": 0.0,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "paired_cases": 188,
+      "independent_clusters": 164,
+      "direction": "higher_is_better"
+    },
+    "failure_rate": {
+      "delta": 0.0,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "lower_is_better"
+    },
+    "judged_fraction@1": {
+      "delta": 0.043333333333333335,
+      "ci95": [
+        -0.006873444720938499,
+        0.09459901077548134
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "judged_fraction@10": {
+      "delta": -0.007333333333333332,
+      "ci95": [
+        -0.017610917899087766,
+        0.0021063950198075792
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "judged_fraction@5": {
+      "delta": -0.010666666666666665,
+      "ci95": [
+        -0.03114298281625711,
+        0.008365728405183199
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "judged_fraction@50": {
+      "delta": -0.0007333333333333333,
+      "ci95": [
+        -0.001569965870307167,
+        6.711974329423998e-05
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "judged_precision@1": {
+      "delta": 0.043333333333333335,
+      "ci95": [
+        -0.00660120647826372,
+        0.09427609427609428
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "judged_precision@10": {
+      "delta": 0.01,
+      "ci95": [
+        -0.016778523489932886,
+        0.038194997346072186
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "judged_precision@5": {
+      "delta": 0.03666666666666667,
+      "ci95": [
+        0.0,
+        0.07534415001122838
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "judged_precision@50": {
+      "delta": 0.01,
+      "ci95": [
+        -0.016289314892935332,
+        0.03859988880652333
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "higher_is_better"
+    },
+    "scope_violation_rate": {
+      "delta": 0.0,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "paired_cases": 300,
+      "independent_clusters": 247,
+      "direction": "lower_is_better"
+    }
+  },
+  "automatic_promotion": false,
+  "limits": "Intervals describe sampled query clusters, not repeated-run or provider variability. Inspect coverage, slices and failures before adoption."
+}
