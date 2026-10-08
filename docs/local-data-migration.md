@@ -12,7 +12,7 @@ cd /Users/champ/orca/workspaces/MMA-RAG/feat-jev-optm-2
 
 - 网页：<http://localhost:3001>；API：<http://localhost:8000/docs>。
 - MinIO：<http://localhost:9001>；Qdrant：<http://localhost:6333/dashboard>。
-- 已运行时直接访问网页。再次执行脚本会在端口检查时退出，避免启动重复实例。
+- 当前启动入口已统一到 `start-dev.sh`。已由新脚本启动时，再次启动会验证并复用该实例；`./scripts/start-restored.sh restart --background` 一键重启并后台运行。`status`、`logs`、`stop` 和 `doctor` 同样可用，详见 [本地启动说明](LOCAL_STARTUP.md)。
 - `Ctrl+C` 关闭该脚本启动的前后端，存储容器继续运行。
 - 后端聊天历史仍存放在进程内存中；普通启动脚本不会自动加载本次验收时手工导出、恢复的会话快照。需要保留服务端历史时，应在停止进程前另外导出并安排恢复。MinIO/Qdrant 的持久化不等同于聊天历史持久化。
 - 后端日志：`logs/restored-backend.log`；前端日志：`logs/restored-frontend.log`。
@@ -21,7 +21,7 @@ cd /Users/champ/orca/workspaces/MMA-RAG/feat-jev-optm-2
 
 本机 `.venv` 是指向已有 `feat-agentic/.venv` 的忽略跟踪链接，用于复用已安装的 Python 3.12 依赖；它不是数据存储位置。不要移除该环境，或通过 `MMA_PYTHON=/path/to/venv/bin/python ./scripts/start-restored.sh` 指定另一个完整后端环境。前端复用当前项目的 `frontend/node_modules`。
 
-脚本显式指定 Compose 文件和项目名，避免继承本机旧的 `COMPOSE_FILE` 配置。只启动 MinIO、Qdrant、Redis、后端和前端，不启动解析 worker、上传任务、重新解析或重新向量化。Qdrant 固定 v1.16.2，MinIO 固定 RELEASE.2025-09-07T16-13-09Z。
+脚本优先复用三个现有存储容器，保留原有数据挂载，因此从当前主仓库运行也可访问仍存放在恢复工作区的数据。首次创建容器时显式指定 Compose 文件和项目名，避免继承本机旧的 `COMPOSE_FILE` 配置；恢复入口要求已有数据，拒绝创建空库。只启动 MinIO、Qdrant、Redis、后端和前端，不启动解析 worker、上传任务、重新解析或重新向量化。Compose 中 Qdrant 固定 v1.16.2，MinIO 固定 RELEASE.2025-09-07T16-13-09Z；复用已有容器不升级其镜像。
 
 Docker context 默认选择已经存在的 `colima-mma-rag`，不存在时使用当前 context；可通过 `MMA_DOCKER_CONTEXT=<本地context名称> ./scripts/start-restored.sh` 显式指定。所有 Compose、容器状态和 Redis 检查使用同一 context，脚本不切换全局 Docker context。只有选中 `colima-mma-rag` 且该 daemon 不可用时，脚本才尝试 `colima start --profile mma-rag --activate=false`；其他 context 需自行启动。此入口使用本机数据目录和 localhost 健康检查，仅接受本地 Unix socket context，不适用于远端 Docker daemon。
 

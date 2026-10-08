@@ -171,11 +171,22 @@ npm --prefix agent-runtime ci
 ./start-dev.sh
 ```
 
-The script checks or attempts to install FFmpeg / LibreOffice, starts the three storage services, then starts FastAPI and Vite. It does not start Celery workers or Flower by default. First use downloads local models such as BGE-M3, CLIP, and CLAP; the example configuration enables startup preloading, so allow time, disk space, and memory for model loading.
+The script uses the repository `.venv` (or `MMA_PYTHON`), checks Python, Node.js and Pi dependencies, and runs `npm ci` if frontend or Pi dependencies are missing. Missing FFmpeg / LibreOffice tools produce installation guidance. It reuses existing storage containers and waits for MinIO / Qdrant / Redis, API health and the frontend API proxy. It automatically starts the selected `colima-mma-rag` profile when needed. Celery workers and Flower are excluded from the default path. First use downloads local models such as BGE-M3, CLIP, and CLAP; the example configuration enables startup preloading, so allow time, disk space, and memory for model loading.
+
+```bash
+./start-dev.sh                       # foreground; Ctrl+C stops both app services
+./start-dev.sh restart --background  # restart and keep running after terminal exit
+./start-dev.sh status                # processes, API health and frontend proxy
+./start-dev.sh logs                  # recent logs
+./start-dev.sh stop                  # stop app services; retain storage containers
+./start-dev.sh doctor                # check prerequisites without installing or starting
+```
+
+The Web port defaults to **3001**, with the API fixed at **8000**. Add `--reload` for backend development. See the [local startup guide](docs/LOCAL_STARTUP.md) for ports and timeouts.
 
 | Entry point | Default URL |
 | --- | --- |
-| Web UI | [localhost:3000](http://localhost:3000) |
+| Web UI | [localhost:3001](http://localhost:3001) |
 | API documentation | [localhost:8000/docs](http://localhost:8000/docs) |
 | Service health | [localhost:8000/health](http://localhost:8000/health) |
 | MinIO Console | [localhost:9001](http://localhost:9001) |
@@ -194,11 +205,11 @@ A successful `/health` response only confirms that the API has started. Complete
 <details>
 <summary>Startup troubleshooting and restored data</summary>
 
-- **The page does not open:** check the Vite URL in your terminal; it may select another port if 3000 is busy. The API defaults to 8000.
+- **The page does not open:** run `./start-dev.sh status` and `./start-dev.sh logs`. Port 3001 is fixed by default; an occupied port fails explicitly. Override the frontend port with `--port` or `FRONTEND_PORT`.
 - **A model or tool call fails:** check provider credentials, account balance, and model access. Pi also requires the `agent-runtime` dependencies and a supported Node.js version.
 - **The first startup is slow:** inspect model download logs and `HF_ENDPOINT`. Setting `PRELOAD_LOCAL_MODELS_ON_STARTUP=false` defers loading until first use; it does not remove the model dependencies.
 - **Media previews fail:** make sure `MINIO_PUBLIC_ENDPOINT` is reachable from the browser, rather than a container-only address such as `minio:9000`.
-- **Restoring an existing local dataset:** use `./scripts/start-restored.sh` only with the corresponding restored MinIO/Qdrant storage directories. Its default Web port is 3001, and startup does not trigger re-ingestion. See the [local migration notes](docs/local-data-migration.md).
+- **Restoring an existing local dataset:** `./scripts/start-restored.sh` shares the same start/restart/stop/status management. It requires existing MinIO/Qdrant directories or all three storage containers and preserves the containers' original mounts, including data in another checkout. It never initializes an empty dataset or triggers re-ingestion. See the [local migration notes](docs/local-data-migration.md).
 
 </details>
 

@@ -171,11 +171,22 @@ npm --prefix agent-runtime ci
 ./start-dev.sh
 ```
 
-启动脚本会检查或尝试安装 FFmpeg / LibreOffice，启动三个存储服务，再启动 FastAPI 和 Vite。Celery worker / Flower 不在默认启动路径中。首次使用会下载 BGE-M3、CLIP、CLAP 等本地模型；示例配置开启了启动预加载，请预留下载时间、磁盘与内存。
+启动脚本优先使用仓库 `.venv`（可通过 `MMA_PYTHON` 指定），检查 Python、Node.js 和 Pi 依赖，缺少前端或 Pi 依赖时执行 `npm ci`。脚本检查 FFmpeg / LibreOffice，缺失时提示手动安装；随后复用已有存储容器，等待 MinIO / Qdrant / Redis、API 和前端代理就绪。选中的 `colima-mma-rag` 未运行时会自动启动该 profile。Celery worker / Flower 不在默认启动路径中。首次使用会下载 BGE-M3、CLIP、CLAP 等本地模型；示例配置开启了启动预加载，请预留下载时间、磁盘与内存。
+
+```bash
+./start-dev.sh                       # 前台启动，Ctrl+C 停止前后端
+./start-dev.sh restart --background  # 一键重启并后台运行
+./start-dev.sh status                # 进程、API 和前端代理状态
+./start-dev.sh logs                  # 最近日志
+./start-dev.sh stop                  # 停止前后端，保留存储容器
+./start-dev.sh doctor                # 检查环境，不安装或启动服务
+```
+
+默认 Web 端口固定为 **3001**，API 固定为 **8000**。开发后端时可加 `--reload`；端口与等待时间等选项见 [本地启动说明](docs/LOCAL_STARTUP.md)。
 
 | 入口 | 默认地址 |
 | --- | --- |
-| Web UI | [localhost:3000](http://localhost:3000) |
+| Web UI | [localhost:3001](http://localhost:3001) |
 | API 文档 | [localhost:8000/docs](http://localhost:8000/docs) |
 | 服务健康检查 | [localhost:8000/health](http://localhost:8000/health) |
 | MinIO Console | [localhost:9001](http://localhost:9001) |
@@ -194,11 +205,11 @@ npm --prefix agent-runtime ci
 <details>
 <summary>启动排查与已有数据恢复</summary>
 
-- **页面打不开**：查看终端中的 Vite 地址；3000 被占用时可能顺延到其他端口。API 默认使用 8000。
+- **页面打不开**：执行 `./start-dev.sh status` 和 `./start-dev.sh logs`。默认使用 3001，端口被占用时会报错，不会悄悄顺延；可用 `--port` 或 `FRONTEND_PORT` 指定其他前端端口。
 - **模型或工具调用失败**：检查对应服务商凭证、余额及模型权限。Pi 还需要 `agent-runtime` 依赖和满足版本要求的 Node.js。
 - **首次启动很慢**：检查模型下载日志与 `HF_ENDPOINT`。将 `PRELOAD_LOCAL_MODELS_ON_STARTUP=false` 可推迟下载到首次实际使用，不会消除模型依赖。
 - **媒体预览失败**：确认 `MINIO_PUBLIC_ENDPOINT` 是浏览器可访问的主机与端口，不能使用仅容器内部可解析的 `minio:9000`。
-- **恢复已迁移的本机数据**：仅在已有对应 MinIO/Qdrant 存储目录时使用 `./scripts/start-restored.sh`，默认 Web 端口为 3001；该脚本不触发重新入库。详见 [本机数据迁移记录](docs/local-data-migration.md)。
+- **恢复已迁移的本机数据**：使用 `./scripts/start-restored.sh`，与普通入口共享启动、重启、停止和状态管理。它要求已有 MinIO/Qdrant 数据目录或完整存储容器，并保留容器原有挂载，适用于数据仍在其他工作区的情况；不初始化空数据或触发重新入库。详见 [本机数据迁移记录](docs/local-data-migration.md)。
 
 </details>
 
