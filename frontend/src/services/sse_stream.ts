@@ -104,9 +104,6 @@ function dispatchSseJsonPayload(raw: Record<string, unknown>, callbacks: StreamC
 
 class SSEStreamManager {
   private eventSource: EventSource | null = null;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 3;
-  private reconnectDelay = 1000;
 
   streamChat(
     options: StreamChatOptions,
@@ -132,41 +129,49 @@ class SSEStreamManager {
     }
 
     const url = `${getBaseURL()}/chat/stream?${params}`;
-    this.eventSource = new EventSource(url);
-
-    this.eventSource.onopen = () => {
-      this.reconnectAttempts = 0;
+    const source = new EventSource(url);
+    this.eventSource = source;
+    let closed = false;
+    const isCurrent = () => !closed && this.eventSource === source;
+    const closeSource = () => {
+      if (closed) return;
+      closed = true;
+      source.onmessage = null;
+      source.onerror = null;
+      source.close();
+      if (this.eventSource === source) this.eventSource = null;
+    };
+    const fail = (error: unknown) => {
+      if (!isCurrent()) return;
+      closeSource();
+      callbacks.onError?.(error);
     };
 
-    this.eventSource.onmessage = (ev: { data: string }) => {
+    source.onmessage = (ev: { data: string }) => {
+      if (!isCurrent()) return;
+      let raw: Record<string, unknown>;
       try {
-        const raw = JSON.parse(ev.data) as Record<string, unknown>;
-        dispatchSseJsonPayload(raw, callbacks);
+        const parsed = JSON.parse(ev.data) as unknown;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('无效的 SSE 响应');
+        raw = parsed as Record<string, unknown>;
       } catch (err) {
-        console.error('SSE parse error:', err, ev.data);
-        callbacks.onError?.(err);
+        fail(err);
+        return;
       }
+      if (['complete', 'done', 'error'].includes(String(raw.event ?? raw.type))) closeSource();
+      dispatchSseJsonPayload(raw, callbacks);
     };
 
-    this.eventSource.onerror = () => {
-      if (this.eventSource?.readyState === EventSource.CLOSED) {
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-          this.reconnectAttempts++;
-          const delay =
-            this.reconnectDelay *
-            Math.pow(2, this.reconnectAttempts - 1);
-          setTimeout(() => this.streamChat(options, callbacks), delay);
-        } else {
-          callbacks.onError?.(new Error('SSE 连接失败，已达最大重试次数'));
-        }
-      }
+    source.onerror = () => {
+      // This endpoint starts a new chat operation and has no event-resume
+      // protocol. Native automatic reconnection would repeat the whole query.
+      fail(new Error('连接在回答完成前中断，请重试。'));
     };
 
-    const self = this;
     return {
-      close: () => self.close(),
+      close: closeSource,
       get isClosed() {
-        return !self.eventSource || self.eventSource.readyState === EventSource.CLOSED;
+        return closed || source.readyState === EventSource.CLOSED;
       },
     };
   }
@@ -288,6 +293,8 @@ class SSEStreamManager {
 
   close(): void {
     if (this.eventSource) {
+      this.eventSource.onmessage = null;
+      this.eventSource.onerror = null;
       this.eventSource.close();
       this.eventSource = null;
     }
@@ -295,7 +302,6 @@ class SSEStreamManager {
       this._multipartAbort.abort();
       this._multipartAbort = null;
     }
-    this.reconnectAttempts = 0;
   }
 }
 

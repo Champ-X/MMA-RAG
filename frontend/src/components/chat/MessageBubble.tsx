@@ -42,15 +42,17 @@ const citationBlockComponents = Object.fromEntries(citationBlockTags.map(tag => 
 
 let katexCssLoadPromise: Promise<unknown> | null = null
 
-const ThinkingCapsule = React.lazy(() =>
+const ThinkingCapsule = React.memo(React.lazy(() =>
   import('./ThinkingCapsule').then((module) => ({ default: module.ThinkingCapsule }))
-)
+))
 const PiProcess = React.lazy(() => import('./PiProcess').then(module => ({ default: module.PiProcess })))
 const PiAnswerNotes = React.lazy(() => import('./PiProcess').then(module => ({ default: module.PiAnswerNotes })))
 
-const MarkdownRenderer = React.lazy(() =>
-  import('./MarkdownRenderer').then((module) => ({ default: module.MarkdownRenderer }))
-)
+let markdownLoad: Promise<typeof import('./MarkdownRenderer')> | undefined
+const loadMarkdownRenderer = () => markdownLoad ??= import('./MarkdownRenderer')
+const MarkdownRenderer = React.memo(React.lazy(() =>
+  loadMarkdownRenderer().then((module) => ({ default: module.MarkdownRenderer }))
+))
 
 function ensureKatexCssLoaded() {
   if (!katexCssLoadPromise) {
@@ -74,10 +76,10 @@ function ThinkingCapsuleFallback() {
   )
 }
 
-function MarkdownRendererFallback({ streaming }: { streaming?: boolean }) {
+function MarkdownRendererFallback({ content }: { content: string }) {
   return (
     <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-      {streaming ? '正在准备渲染回答…' : '正在载入 Markdown 渲染器…'}
+      {content}
     </div>
   )
 }
@@ -997,6 +999,79 @@ function ParagraphVideoDisplay({
   )
 }
 
+// 自定义 img 组件，防止显示破损图片图标
+const MarkdownImage = React.memo(({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
+  const [imageError, setImageError] = React.useState(false)
+  const [imageLoaded, setImageLoaded] = React.useState(false)
+  const imgRef = React.useRef<HTMLImageElement>(null)
+
+  const handleError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setImageError(true)
+    setImageLoaded(false)
+
+    // 立即隐藏图片元素，防止显示破损图标
+    const img = e.currentTarget
+    img.setAttribute('data-error', 'true')
+    img.style.display = 'none'
+    img.style.visibility = 'hidden'
+    img.style.opacity = '0'
+  }
+
+  const handleLoad = () => {
+    setImageLoaded(true)
+    setImageError(false)
+  }
+
+  React.useEffect(() => {
+    setImageError(false)
+    setImageLoaded(false)
+    const img = imgRef.current
+    if (img) {
+      // 加载开始时隐藏，防止显示破损图标
+      if (!img.complete) {
+        img.style.visibility = 'hidden'
+        img.style.opacity = '0'
+      } else if (img.naturalHeight !== 0) {
+        // 图片已从缓存加载
+        setImageLoaded(true)
+      }
+    }
+  }, [src])
+
+  if (imageError) {
+    return null
+  }
+
+  return (
+    <img
+      ref={imgRef}
+      src={src}
+      alt={alt}
+      {...props}
+      style={{
+        ...props.style,
+        opacity: imageLoaded ? 1 : 0,
+        transition: imageLoaded ? 'opacity 0.2s' : 'none',
+        visibility: imageLoaded ? 'visible' : 'hidden',
+      }}
+      onError={handleError}
+      onLoad={handleLoad}
+      onAbort={handleError}
+      onLoadStart={() => {
+        const img = imgRef.current
+        if (img && !imageLoaded) {
+          img.style.visibility = 'hidden'
+          img.style.opacity = '0'
+        }
+      }}
+      className={cn('max-w-full h-auto rounded border border-slate-200 dark:border-slate-700', props.className)}
+    />
+  )
+})
+MarkdownImage.displayName = 'MarkdownImage'
+
 export function MessageBubble({
   message,
   isStreaming = false,
@@ -1008,10 +1083,13 @@ export function MessageBubble({
   onEdit,
   regenerationDisabled = false,
 }: MessageBubbleProps) {
-  const activeSession = useChatStore((s) => s.getActiveSession())
+  const fallbackKbId = useChatStore((s) => s.getActiveSession()?.knowledgeBaseIds?.[0])
   const uiConfig = useConfigStore((s) => s.config)
-  const fallbackKbId = activeSession?.knowledgeBaseIds?.[0]
   const isUser = message.type === 'user'
+  // Load the renderer during retrieval, while keeping received text visible if it is still loading.
+  React.useEffect(() => {
+    if (!isUser) void loadMarkdownRenderer().catch(() => { /* React.lazy owns the load error. */ })
+  }, [isUser])
   const showCitations = uiConfig.enableCitations
   const isStoppedHint = !isUser && message.error === 'stopped_hint' // 终止提示消息
   const thoughtData = isStreaming && liveThinking
@@ -1179,84 +1257,13 @@ export function MessageBubble({
       }
     }
 
-    // 自定义 img 组件，防止显示破损图片图标
-    const ImageComponent = React.memo(({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
-      const [imageError, setImageError] = React.useState(false)
-      const [imageLoaded, setImageLoaded] = React.useState(false)
-      const imgRef = React.useRef<HTMLImageElement>(null)
-
-      const handleError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-        e.preventDefault()
-        e.stopPropagation()
-        setImageError(true)
-        setImageLoaded(false)
-
-        // 立即隐藏图片元素，防止显示破损图标
-        const img = e.currentTarget
-        img.setAttribute('data-error', 'true')
-        img.style.display = 'none'
-        img.style.visibility = 'hidden'
-        img.style.opacity = '0'
-      }
-
-      const handleLoad = () => {
-        setImageLoaded(true)
-        setImageError(false)
-      }
-
-      React.useEffect(() => {
-        const img = imgRef.current
-        if (img) {
-          // 加载开始时隐藏，防止显示破损图标
-          if (!img.complete) {
-            img.style.visibility = 'hidden'
-            img.style.opacity = '0'
-          } else if (img.naturalHeight !== 0) {
-            // 图片已从缓存加载
-            setImageLoaded(true)
-          }
-        }
-      }, [src])
-
-      if (imageError) {
-        return null
-      }
-
-      return (
-        <img
-          ref={imgRef}
-          src={src}
-          alt={alt}
-          {...props}
-          style={{
-            ...props.style,
-            opacity: imageLoaded ? 1 : 0,
-            transition: imageLoaded ? 'opacity 0.2s' : 'none',
-            visibility: imageLoaded ? 'visible' : 'hidden',
-          }}
-          onError={handleError}
-          onLoad={handleLoad}
-          onAbort={handleError}
-          onLoadStart={() => {
-            const img = imgRef.current
-            if (img && !imageLoaded) {
-              img.style.visibility = 'hidden'
-              img.style.opacity = '0'
-            }
-          }}
-          className={cn('max-w-full h-auto rounded border border-slate-200 dark:border-slate-700', props.className)}
-        />
-      )
-    })
-    ImageComponent.displayName = 'MarkdownImage'
-
     return {
       blocks: Object.fromEntries(citationBlockTags.map(tag => [tag,
         createComponent(tag, tag === 'p' ? 'mb-2 leading-relaxed' : tag === 'li' ? 'mb-0' : ''),
       ])) as MarkdownBlockRenderers,
       components: {
         ...citationBlockComponents,
-        img: ImageComponent,
+        img: MarkdownImage,
       } satisfies Components,
     }
   }, [
@@ -1322,7 +1329,7 @@ export function MessageBubble({
                 showThinking && 'mt-5 border-t border-slate-200/80 pt-5 dark:border-slate-700/70'
               )}
             >
-              {message.content && <Suspense fallback={<MarkdownRendererFallback streaming={isStreaming} />}>
+              {message.content && <Suspense fallback={<MarkdownRendererFallback content={message.content} />}>
                 <MarkdownBlockContext.Provider value={markdownRendering.blocks}>
                   <MarkdownRenderer content={message.content} components={markdownRendering.components} />
                 </MarkdownBlockContext.Provider>

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { chatApi } from '@/services/api_client';
 import { collectUserAttachmentIds, deleteAttachmentBlobs } from '@/lib/chatAttachmentBlobStore';
+import { createChatPersistence } from '@/lib/chatPersistence';
 import type { AgentRoundTrace, CitationReference, StageTimings } from '@/types/sse';
 import type { ChatMention } from '@/lib/chatReferences';
 import type { PiTrace } from '@/types/pi';
@@ -243,6 +244,30 @@ const initialThinking: ThinkingState = {
   progress: 0,
   currentMessage: undefined,
 };
+
+type PersistedChatState = Pick<ChatStore, 'sessions' | 'activeSessionId'>
+let isChatStreaming = false
+const chatPersistence = createChatPersistence<PersistedChatState>({
+  isStreaming: () => isChatStreaming,
+  equals: (left, right) => left.sessions === right.sessions && left.activeSessionId === right.activeSessionId,
+  serialize: (value) => JSON.stringify({
+    ...value,
+    state: {
+      ...value.state,
+      sessions: value.state.sessions.map((session) => ({
+        ...session,
+        messages: session.messages.map((message) => ({
+          ...message,
+          attachments: message.attachments?.map(({ previewUrl: _preview, ...attachment }) => attachment),
+        })),
+      })),
+    },
+  }),
+})
+
+export const flushChatPersistence = chatPersistence.flush
+
+if (import.meta.hot) import.meta.hot.dispose(() => chatPersistence.dispose())
 
 export const useChatStore = create<ChatStore>()(
   persist(
@@ -571,16 +596,12 @@ export const useChatStore = create<ChatStore>()(
     }),
     {
       name: 'chat-store',
-      partialize: (state) => ({
-        sessions: state.sessions.map((s) => ({
-          ...s,
-          messages: s.messages.map((m) => ({
-            ...m,
-            attachments: m.attachments?.map(({ previewUrl: _p, ...rest }) => rest),
-          })),
-        })),
-        activeSessionId: state.activeSessionId,
-      }),
+      storage: chatPersistence.storage,
+      partialize: (state) => {
+        // Transient stream state controls checkpointing but is never restored.
+        isChatStreaming = state.streamingSessionId !== null
+        return { sessions: state.sessions, activeSessionId: state.activeSessionId }
+      },
     }
   )
 );

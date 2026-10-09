@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useChatStore } from '@/store/useChatStore'
 import { useConfigStore } from '@/store/useConfigStore'
 import { useThinkingChain } from '@/hooks/useThinkingChain'
+import { useChatScrollFollow } from '@/hooks/useChatScrollFollow'
 import { usePiAgent } from '@/hooks/usePiAgent'
 import { piApi } from '@/services/piAgent'
 import { piStatusLabel, type PiConfig } from '@/types/pi'
@@ -167,20 +168,6 @@ function maxBytesForChatFile(f: File): number {
   return chatFileKind(f) === 'video' ? MAX_CHAT_VIDEO_BYTES : chatFileKind(f) === 'image' ? MAX_CHAT_IMAGE_BYTES : MAX_CHAT_AUDIO_BYTES
 }
 
-/** 每条助手消息内的引用 id → 对象；禁止跨消息合并，否则多轮对话共用 [1][2] 时会互相覆盖 */
-function buildCitationMapForMessage(
-  citations: Message['citations'] | undefined
-): Map<number | string, CitationReference> {
-  const map = new Map<number | string, CitationReference>()
-  if (!citations) return map
-  for (const cite of citations) {
-    if (typeof cite === 'object' && cite != null && 'id' in cite) {
-      map.set(cite.id, cite as CitationReference)
-    }
-  }
-  return map
-}
-
 export function ChatInterface() {
   const [draft, setDraft] = useState<ComposerValue>({ text: '', mentions: [] })
   const input = draft.text
@@ -210,7 +197,7 @@ export function ChatInterface() {
   const [selectedScopeFiles, setSelectedScopeFiles] = useState<ChatScopeFile[]>([])
   const [mentionState, setMentionState] = useState<FileMentionState | null>(null)
   const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messageContentRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const chatWorkspaceRef = useRef<HTMLDivElement>(null)
   const composerDockRef = useRef<HTMLDivElement>(null)
@@ -219,7 +206,6 @@ export function ChatInterface() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const citePopoverRef = useRef<HTMLDivElement>(null)
   const citationTriggerRef = useRef<HTMLElement | null>(null)
-  const prevIsStreamingRef = useRef(false)
   const mentionStateRef = useRef<FileMentionState | null>(null)
   mentionStateRef.current = mentionState
   const mentionListRef = useRef<HTMLDivElement>(null)
@@ -284,6 +270,7 @@ export function ChatInterface() {
   }, [piEnabled, piConfig])
   const agentMode = normalizeAgentMode(activeSession?.agentMode)
   const messages = useMemo(() => activeSession?.messages ?? [], [activeSession?.messages])
+  const followLatestMessage = useChatScrollFollow(scrollAreaRef, messageContentRef, activeSessionId)
   const precedingQuestions = useMemo(() => {
     let question: Message | undefined
     return messages.map((message) => {
@@ -337,31 +324,6 @@ export function ChatInterface() {
     return chatFullModelId.slice('openrouter:'.length).trim()
   }, [chatFullModelId])
 
-
-  const scrollToBottom = useCallback(() => {
-    const run = () => {
-      const viewport = scrollAreaRef.current?.firstElementChild as HTMLElement | null
-      if (viewport && viewport.scrollHeight > viewport.clientHeight) {
-        viewport.scrollTop = viewport.scrollHeight
-        return
-      }
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-    }
-    requestAnimationFrame(() => requestAnimationFrame(run))
-  }, [])
-
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages.length, thinking.currentStage, scrollToBottom])
-
-  useEffect(() => {
-    const wasStreaming = prevIsStreamingRef.current
-    prevIsStreamingRef.current = isStreaming
-    if (wasStreaming && !isStreaming) {
-      const t = setTimeout(scrollToBottom, 120)
-      return () => clearTimeout(t)
-    }
-  }, [isStreaming, scrollToBottom])
 
   useEffect(() => {
     if (!activeSessionId && sessions.length === 0) {
@@ -479,6 +441,7 @@ export function ChatInterface() {
     const submission = trimComposerValue(nextInput === undefined ? draft : { text: nextInput, mentions: [] })
     const text = submission.text
     if ((!text && attachments.length === 0) || isLoading || preparingRef.current || !activeSessionId) return
+    followLatestMessage()
     preparingRef.current = true
     setIsPreparing(true)
     setAttachmentError('')
@@ -532,7 +495,7 @@ export function ChatInterface() {
       setIsPreparing(false)
       setLoading(false)
     }
-  }, [draft, attachments, questionEdit, isLoading, activeSessionId, setLoading, requestScopeFiles, selectedScopeFiles, activeSession, sendMessage])
+  }, [draft, attachments, questionEdit, isLoading, activeSessionId, setLoading, requestScopeFiles, selectedScopeFiles, activeSession, sendMessage, followLatestMessage])
 
   const handleSend = useCallback(() => {
     void submitMessage()
@@ -597,6 +560,7 @@ export function ChatInterface() {
 
   const regenerateAnswer = useCallback(async (originalQuestion: Message) => {
     if (!activeSessionId || isLoading || isStreaming) return
+    followLatestMessage()
     setLoading(true)
     try {
       const files = explicitScopeFiles(originalQuestion)
@@ -607,7 +571,7 @@ export function ChatInterface() {
     } finally {
       setLoading(false)
     }
-  }, [activeSessionId, activeSession, isLoading, isStreaming, sendMessage, setLoading])
+  }, [activeSessionId, activeSession, isLoading, isStreaming, sendMessage, setLoading, followLatestMessage])
 
   const handleStop = () => {
     if (!activeSessionId || !isStreaming) return
@@ -690,6 +654,7 @@ export function ChatInterface() {
 
   // 处理引用点击：必须从「当前被点击的那条消息」里取引用，避免多条回答共用 [1][2] 时取到上一条的引用
   const handleCitationClick = useCallback((refId: number | string, event: React.MouseEvent, messageId?: string, triggerElement?: HTMLElement) => {
+    const activeSession = useChatStore.getState().getActiveSession()
     if (!activeSession) return
 
     let citation: CitationReference | null = null
@@ -726,7 +691,7 @@ export function ChatInterface() {
         setCitePopover({ open: true, rect, item: citation })
       }
     }
-  }, [activeSession])
+  }, [])
 
   // 关闭引用悬浮卡片
   const closeCitePopover = useCallback(() => {
@@ -768,20 +733,11 @@ export function ChatInterface() {
     }
   }, [citePopover.open, closeCitePopover])
 
-  // 按消息维度构建引用映射（同一 id 在不同轮次指向不同材料，不可混在一个 Map 里）
-  const citationMapsByMessageId = useMemo(() => {
-    const byId = new Map<string, Map<number | string, CitationReference>>()
-    for (const msg of messages) {
-      byId.set(msg.id, buildCitationMapForMessage(msg.citations))
-    }
-    return byId
-  }, [messages])
-
   return (
     <div ref={chatWorkspaceRef} className="chat-workspace h-full min-h-0 overflow-hidden bg-transparent">
       {/* 消息区 */}
       <ScrollArea ref={scrollAreaRef} className="chat-messages min-h-0">
-        <div className={cn(
+        <div ref={messageContentRef} className={cn(
           'chat-message-content px-4 pt-5 sm:px-8 sm:pt-7',
           messages.length === 0 && 'flex min-h-full flex-col justify-center'
         )}>
@@ -815,8 +771,6 @@ export function ChatInterface() {
               const isLastMessage = m.role === 'assistant' && i === messages.length - 1
               const isThisTabStreaming = isStreaming && activeSessionId === (pi.active?.sessionId ?? streamingSessionId)
               const isLastAndStreaming = isLastMessage && isThisTabStreaming
-              const messageCitationMap =
-                citationMapsByMessageId.get(m.id) ?? buildCitationMapForMessage(m.citations)
               return (
                 <Suspense key={m.id ?? i} fallback={<MessageBubbleLoading role={m.role} />}>
                   <MessageBubble
@@ -844,7 +798,6 @@ export function ChatInterface() {
                         }
                         : undefined
                     }
-                    citationMap={messageCitationMap}
                     onCiteClick={handleCitationClick}
                     onRegenerate={originalQuestion && !originalQuestion.attachments?.length
                       ? () => { void regenerateAnswer(originalQuestion) }
@@ -866,7 +819,7 @@ export function ChatInterface() {
               </Card>
             )}
 
-            <div ref={messagesEndRef} />
+            <div aria-hidden />
           </div>
         </div>
       </ScrollArea>

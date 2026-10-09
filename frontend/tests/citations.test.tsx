@@ -14,6 +14,12 @@ const message: MessageBubbleMessage = {
 const render = (value: MessageBubbleMessage, isStreaming = false) =>
   renderToStaticMarkup(<MessageBubble message={value} isStreaming={isStreaming} />)
 
+test('first streamed text is visible while the lazy Markdown renderer loads', () => {
+  const html = render({ ...message, content: '首批已收到的文字 🖼️', citations: [] }, true)
+  assert.match(html, /首批已收到的文字 🖼️/)
+  assert.doesNotMatch(html, /正在准备渲染回答|正在载入 Markdown/)
+})
+
 test('year in the reported answer is not a citation and does not trigger a warning', () => {
   assert.deepEqual(getOrderedRefIdsFromContent(message.content), [4, 9])
   assert.doesNotMatch(render(message), warning)

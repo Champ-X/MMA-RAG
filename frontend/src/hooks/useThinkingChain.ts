@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useChatStore } from '@/store/useChatStore'
+import { flushChatPersistence, useChatStore } from '@/store/useChatStore'
 import { useConfigStore } from '@/store/useConfigStore'
 import {
   createChatStream,
@@ -16,6 +16,7 @@ import { normalizeAgentMode, type ChatMessageAttachment, type ChatScopeFile, typ
 import { persistMentions, type ChatMention } from '@/lib/chatReferences'
 import { chatFileKind } from '@/lib/chatAttachmentFile'
 import { mixedModeContext } from '@/lib/mixedModeContext'
+import { createStreamTextBuffer, subscribeStreamTextLifecycle, type StreamTextBuffer } from '@/lib/streamTextBuffer'
 
 interface UseThinkingChainOptions {
   onThought?: (e: ThoughtEvent) => void
@@ -36,35 +37,44 @@ function getChatErrorMessage(err: unknown): string {
 }
 
 export function useThinkingChain(options: UseThinkingChainOptions = {}) {
-  const {
-    addMessage,
-    updateMessage,
-    setThinking,
-    clearThinking,
-    setStreamingSessionId,
-    getActiveSession,
-    getSessionById,
-  } = useChatStore()
-  const { config } = useConfigStore()
+  const addMessage = useChatStore((state) => state.addMessage)
+  const updateMessage = useChatStore((state) => state.updateMessage)
+  const setThinking = useChatStore((state) => state.setThinking)
+  const clearThinking = useChatStore((state) => state.clearThinking)
+  const setStreamingSessionId = useChatStore((state) => state.setStreamingSessionId)
+  const getActiveSession = useChatStore((state) => state.getActiveSession)
+  const getSessionById = useChatStore((state) => state.getSessionById)
+  const config = useConfigStore((state) => state.config)
 
   const [isStreaming, setIsStreaming] = useState(false)
   const [currentResponse, setCurrentResponse] = useState('')
   const streamRef = useRef<{ close: () => void; isClosed: boolean } | null>(null)
   const currentMessageIdRef = useRef<string | null>(null)
   const streamingSessionIdRef = useRef<string | null>(null)
-  const contentBufferRef = useRef('')
+  const textBufferRef = useRef<StreamTextBuffer | null>(null)
+  const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const streamEpochRef = useRef(0)
   const currentUserQueryRef = useRef<string | null>(null) // 保存当前用户查询
   const [error, setError] = useState<string | null>(null)
 
   const cleanup = useCallback(({ preserveError = false }: { preserveError?: boolean } = {}) => {
+    // Persist the final received text before clearing the message/session identity.
+    textBufferRef.current?.close()
+    textBufferRef.current = null
+    if (completionTimerRef.current !== null) {
+      clearTimeout(completionTimerRef.current)
+      completionTimerRef.current = null
+    }
+    streamEpochRef.current += 1
     streamRef.current?.close()
     streamRef.current = null
     setIsStreaming(false)
     setStreamingSessionId(null)
     streamingSessionIdRef.current = null
+    currentMessageIdRef.current = null
+    currentUserQueryRef.current = null
     clearThinking()
     setCurrentResponse('')
-    contentBufferRef.current = ''
     if (!preserveError) {
       setError(null)
     }
@@ -81,6 +91,12 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
   ) => {
     const session = sessionId ? getSessionById(sessionId) : getActiveSession()
     if (!session) throw new Error('没有活跃的会话')
+
+    // A previous completion delay or cancelled request must not affect this turn.
+    cleanup()
+    const streamEpoch = streamEpochRef.current
+    const isCurrentStream = () => streamEpochRef.current === streamEpoch
+    let terminalReceived = false
 
     const displayContent =
       (content.trim() ? content : '') ||
@@ -108,6 +124,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
         })
       )
     }
+    if (!isCurrentStream()) return
 
     addMessage(session.id, {
       role: 'user',
@@ -131,7 +148,13 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     streamingSessionIdRef.current = session.id
     currentUserQueryRef.current = content.trim() ? content : displayContent
 
-    contentBufferRef.current = ''
+    const messageId = currentMessageIdRef.current
+    const textBuffer = createStreamTextBuffer((text) => {
+      if (!isCurrentStream()) return
+      setCurrentResponse(text)
+      if (messageId) updateMessage(session.id, messageId, { content: text })
+    })
+    textBufferRef.current = textBuffer
     setIsStreaming(true)
     setError(null)
     setCurrentResponse('')
@@ -157,6 +180,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
         content,
         {
           onThought: (e) => {
+            if (!isCurrentStream() || terminalReceived) return
             const ev = e as { type?: string; data?: Record<string, unknown> & { data?: Record<string, unknown> } }
             const phase = ev.type as ThoughtPhase
             const inner = ev.data?.data ?? ev.data
@@ -172,6 +196,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             options.onThought?.(e as ThoughtEvent)
           },
           onCitation: (ev) => {
+            if (!isCurrentStream() || terminalReceived) return
             const sid = streamingSessionIdRef.current
             const s = sid ? getSessionById(sid) : null
             const last = s?.messages[s?.messages.length - 1]
@@ -183,18 +208,16 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             options.onCitation?.(ev)
           },
           onMessage: (ev) => {
-            if (typeof ev.delta !== 'string') return
-            contentBufferRef.current += ev.delta
-            setCurrentResponse(contentBufferRef.current)
-            const sid = streamingSessionIdRef.current
-            const s = sid ? getSessionById(sid) : null
-            const last = s?.messages[s?.messages.length - 1]
-            if (s && last && last.id === currentMessageIdRef.current) {
-              updateMessage(s.id, last.id, { content: contentBufferRef.current })
-            }
+            if (!isCurrentStream() || terminalReceived || typeof ev.delta !== 'string') return
+            textBuffer.append(ev.delta)
             options.onMessage?.(ev)
           },
           onComplete: (event) => {
+            if (!isCurrentStream() || terminalReceived) return
+            terminalReceived = true
+            textBuffer.close()
+            streamRef.current?.close()
+            streamRef.current = null
             const thoughtData = useChatStore.getState().thinking.thoughtData
             // 清除生成阶段的状态信息，避免显示旧的动效
             const cleanedThoughtData = { ...thoughtData,
@@ -234,13 +257,17 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
             currentUserQueryRef.current = null // 清除保存的查询
             
             // 延迟清理，确保状态更新完成后再清理
-            setTimeout(() => {
-              cleanup()
+            completionTimerRef.current = setTimeout(() => {
+              completionTimerRef.current = null
+              if (isCurrentStream()) cleanup()
             }, 100)
             
             options.onComplete?.()
           },
           onError: (err) => {
+            if (!isCurrentStream() || terminalReceived) return
+            terminalReceived = true
+            textBuffer.close()
             const msg = getChatErrorMessage(err)
             setError(msg)
             const stage = err && typeof err === 'object' && 'stage' in err ? err.stage : undefined
@@ -281,14 +308,21 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
         }
       )
     } catch (err) {
+      if (!isCurrentStream()) return
       setError(err instanceof Error ? err.message : '发送失败')
-      cleanup()
+      cleanup({ preserveError: true })
       throw err
     }
   }
 
   const stopStreaming = () => {
     const userQuery = currentUserQueryRef.current // 获取用户原始查询
+    if (completionTimerRef.current !== null) {
+      // The completed answer remains visible for 100 ms; stop must not relabel it.
+      cleanup()
+      return userQuery
+    }
+    textBufferRef.current?.close()
     const sid = streamingSessionIdRef.current
     const messageId = currentMessageIdRef.current
     if (sid && messageId) {
@@ -304,7 +338,11 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
   }
 
   useEffect(() => {
-    return () => cleanup()
+    const unsubscribe = subscribeStreamTextLifecycle(
+      () => textBufferRef.current?.flush(),
+      flushChatPersistence,
+    )
+    return () => { unsubscribe(); cleanup() }
   }, [cleanup])
 
   const thinking = useChatStore((state) => state.thinking)
