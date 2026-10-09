@@ -3,8 +3,9 @@
 协调文件上传、解析、向量化、存储的完整流程
 """
 
-from typing import Dict, List, Any, Optional, TYPE_CHECKING, Tuple
+from typing import Dict, List, Any, Optional, Tuple
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import json
 import re
 import uuid
@@ -32,9 +33,6 @@ warnings.filterwarnings("ignore", message=".*overriden.*")
 # 设置环境变量抑制 transformers 警告
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 
-if TYPE_CHECKING:
-    from transformers import CLIPModel, CLIPProcessor, ClapModel, ClapProcessor
-
 from .parsers.factory import ParserFactory, FileType, normalize_text_newlines
 from .storage.minio_adapter import MinIOAdapter
 from .storage.vector_store import (
@@ -57,8 +55,10 @@ from app.core.llm.manager import llm_manager
 from app.core.llm.prompt_engine import prompt_engine
 from app.core.sparse_encoder import get_sparse_encoder
 from app.core.logger import get_logger, audit_log
+from app.core.local_models import get_local_model_runtime
 
 logger = get_logger(__name__)
+_clap_query_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="clap-query")
 
 PROCESSING_STATUS_KEY_PREFIX = "ingestion:processing:task:"
 PROCESSING_STATUS_KB_KEY_PREFIX = "ingestion:processing:kb:"
@@ -85,10 +85,7 @@ class IngestionService:
         self.llm_manager = llm_manager
         self.agentic_document_chunker = AgenticDocumentChunker(self.llm_manager)
         self.sparse_encoder = get_sparse_encoder()  # BGE-M3 稀疏向量编码器
-        self._clip_model: Optional["CLIPModel"] = None
-        self._clip_processor: Optional["CLIPProcessor"] = None
-        self._clap_model: Optional["ClapModel"] = None
-        self._clap_processor: Optional["ClapProcessor"] = None
+        self.local_models = get_local_model_runtime()
         
         # 处理状态存储（生产环境应使用Redis或数据库）
         self._processing_status: Dict[str, Dict[str, Any]] = {}
@@ -3324,88 +3321,15 @@ class IngestionService:
             }
     
     def _load_clip_model(self):
-        """懒加载CLIP模型和处理器"""
-        if self._clip_model is None or self._clip_processor is None:
-            try:
-                import torch
-                
-                # 在导入 transformers 之前设置警告过滤器
-                # 这些警告来自 transformers 库的内部实现，不影响功能
-                import sys
-                import logging
-                
-                # 临时重定向 stderr 以捕获警告
-                original_stderr = sys.stderr
-                
-                model_name = "openai/clip-vit-large-patch14"
-                logger.info(f"正在加载CLIP模型: {model_name}")
-                
-                # 使用上下文管理器抑制所有警告
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    warnings.filterwarnings("ignore", category=FutureWarning)
-                    warnings.filterwarnings("ignore", category=UserWarning)
-                    warnings.filterwarnings("ignore", category=DeprecationWarning)
-                    
-                    # 临时禁用 transformers 的警告输出
-                    transformers_logger = logging.getLogger("transformers")
-                    original_level = transformers_logger.level
-                    transformers_logger.setLevel(logging.ERROR)
-                    
-                    try:
-                        from transformers import CLIPProcessor, CLIPModel
-                        
-                        # 加载模型和处理器
-                        # 使用类型忽略注释，因为 transformers 库的类型定义可能不完整
-                        loaded_model = CLIPModel.from_pretrained(model_name)  # type: ignore
-                        loaded_processor = CLIPProcessor.from_pretrained(model_name)  # type: ignore
-                    finally:
-                        # 恢复日志级别
-                        transformers_logger.setLevel(original_level)
-                
-                # 设置为评估模式
-                loaded_model.eval()  # type: ignore
-                
-                # 如果可用，使用GPU
-                if torch.cuda.is_available():
-                    device = torch.device("cuda")
-                    loaded_model = loaded_model.to(device)  # type: ignore
-                    logger.info("CLIP模型已加载到GPU")
-                else:
-                    logger.info("CLIP模型已加载到CPU")
-                
-                # 赋值给实例变量
-                self._clip_model = loaded_model  # type: ignore
-                self._clip_processor = loaded_processor  # type: ignore
-                    
-            except Exception as e:
-                logger.error(f"CLIP模型加载失败: {str(e)}")
-                raise
-    
+        """兼容调用入口；所有服务共享同一份线程安全模型。"""
+        with self.local_models.clip_session():
+            pass
+
     def _load_clap_model(self):
-        """懒加载 CLAP 模型和处理器（laion/clap-htsat-fused），用于提取音频声学特征。"""
-        if self._clap_model is None or self._clap_processor is None:
-            try:
-                import torch
-                model_name = "laion/clap-htsat-fused"
-                logger.info("正在加载 CLAP 模型: {}", model_name)
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    from transformers import ClapModel, ClapProcessor
-                    loaded_model = ClapModel.from_pretrained(model_name)
-                    loaded_processor = ClapProcessor.from_pretrained(model_name)
-                loaded_model.eval()
-                if torch.cuda.is_available():
-                    loaded_model.to(torch.device("cuda"))  # type: ignore[call-arg]
-                    logger.info("CLAP 模型已加载到 GPU")
-                else:
-                    logger.info("CLAP 模型已加载到 CPU")
-                self._clap_model = loaded_model
-                self._clap_processor = loaded_processor
-            except Exception as e:
-                logger.error("CLAP 模型加载失败: {}", e)
-                raise
-    
+        """兼容调用入口；所有服务共享同一份线程安全模型。"""
+        with self.local_models.clap_session():
+            pass
+
     def _extract_audio_clap_features(
         self,
         audio_bytes: bytes,
@@ -3414,9 +3338,6 @@ class IngestionService:
         """从音频字节中提取 CLAP 声学特征向量（512 维），用于与 text_vec 同点存储。"""
         import torch
         import numpy as np
-        self._load_clap_model()
-        if self._clap_model is None or self._clap_processor is None:
-            raise RuntimeError("CLAP 模型未加载")
         # 将字节解码为波形：librosa 支持从 bytes，并统一到 48kHz（CLAP 期望）
         try:
             import librosa
@@ -3430,65 +3351,40 @@ class IngestionService:
             import librosa
             waveform = librosa.resample(data.astype(np.float32), orig_sr=sr, target_sr=48000)
             sr = 48000
-        # 直接调用 feature_extractor（ClapProcessor 继承自 ProcessorMixin），避免对 __call__ kwargs 的类型误报
-        extractor = getattr(self._clap_processor, "feature_extractor")
-        inputs = extractor(
-            [waveform],
-            sampling_rate=48000,
-            return_tensors="pt",
-        )
-        device = next(self._clap_model.parameters()).device
-        inputs = {k: v.to(device) if hasattr(v, "to") else v for k, v in inputs.items()}
-        with torch.no_grad():
-            audio_features = self._clap_model.get_audio_features(**inputs)
-        if audio_features is None:
-            raise ValueError("CLAP get_audio_features 返回空")
-        # 归一化（与 CLIP 一致，便于相似度计算）
-        audio_features = audio_features / audio_features.norm(dim=-1, keepdim=True)
-        vec = audio_features.cpu().numpy()[0].tolist()
-        # laion/clap-htsat-fused 输出 512 维
-        if len(vec) != 512:
-            logger.warning("CLAP 输出维度为 {}，将截断或补零至 512", len(vec))
-            vec = (vec + [0.0] * 512)[:512]
-        return vec
-    
+        with self.local_models.clap_session() as (model, processor):
+            # 直接调用 feature_extractor（ClapProcessor 继承自 ProcessorMixin），避免对 __call__ kwargs 的类型误报
+            extractor = getattr(processor, "feature_extractor")
+            inputs = extractor(
+                [waveform],
+                sampling_rate=48000,
+                return_tensors="pt",
+            )
+            device = next(model.parameters()).device
+            inputs = {k: v.to(device) if hasattr(v, "to") else v for k, v in inputs.items()}
+            with torch.no_grad():
+                audio_features = model.get_audio_features(**inputs)
+            if audio_features is None:
+                raise ValueError("CLAP get_audio_features 返回空")
+            # 归一化（与 CLIP 一致，便于相似度计算）
+            audio_features = audio_features / audio_features.norm(dim=-1, keepdim=True)
+            vec = audio_features.cpu().numpy()[0].tolist()
+            # laion/clap-htsat-fused 输出 512 维
+            if len(vec) != 512:
+                logger.warning("CLAP 输出维度为 {}，将截断或补零至 512", len(vec))
+                vec = (vec + [0.0] * 512)[:512]
+            return vec
+
     def _get_clap_text_vector(self, text: str) -> List[float]:
-        """用 CLAP 文本编码器将查询文本编码为 512 维向量，用于与 audio_vectors 的 clap_vec 做相似度检索。"""
-        import torch
-        import numpy as np
-        self._load_clap_model()
-        if self._clap_model is None or self._clap_processor is None:
-            raise RuntimeError("CLAP 模型未加载")
-        inputs = self._clap_processor(text=[text])
-        device = next(self._clap_model.parameters()).device
+        """与启动预热复用同一个 CLAP 文本编码器。"""
+        return self.local_models.encode_clap_text(text)
 
-        def _to_device_tensor(v: Any) -> Any:
-            if hasattr(v, "to"):
-                return v.to(device)
-            if isinstance(v, list):
-                return torch.tensor(v, device=device)
-            if isinstance(v, np.ndarray):
-                return torch.tensor(v, device=device)
-            return v
-
-        inputs = {k: _to_device_tensor(v) for k, v in inputs.items()}
-        with torch.no_grad():
-            text_features = self._clap_model.get_text_features(**inputs)
-        if text_features is None:
-            raise ValueError("CLAP get_text_features 返回空")
-        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
-        vec = text_features.cpu().numpy()[0].tolist()
-        if len(vec) != 512:
-            vec = (vec + [0.0] * 512)[:512]
-        return vec
-    
     async def get_clap_text_vector_for_query(self, text: str) -> Optional[List[float]]:
         """异步封装：在 executor 中生成查询文本的 CLAP 向量，供检索双路 RRF 使用。"""
         if not text or not text.strip():
             return None
         try:
             loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, lambda: self._get_clap_text_vector(text.strip()))
+            return await loop.run_in_executor(_clap_query_executor, self._get_clap_text_vector, text.strip())
         except Exception as e:
             logger.warning("CLAP 文本向量生成失败: {}", str(e))
             return None
@@ -3511,40 +3407,37 @@ class IngestionService:
         """同步 CLIP 批量推理；调用方必须通过线程执行，不能占住 API 事件循环。"""
         if not images:
             return []
-        self._load_clip_model()
-        if self._clip_model is None or self._clip_processor is None:
-            raise RuntimeError("CLIP模型未加载")
+        with self.local_models.clip_session() as (model, processor):
+            import numpy as np
+            import torch
 
-        import numpy as np
-        import torch
+            # transformers 的类型定义在部分版本中遗漏了 return_tensors；运行时均支持。
+            try:
+                inputs = processor(images=images, return_tensors="pt")
+            except TypeError:
+                inputs = processor(images=images)
+            pixel_values = inputs.get("pixel_values")
+            if pixel_values is None:
+                raise ValueError("CLIP处理器未返回pixel_values")
+            if not isinstance(pixel_values, torch.Tensor):
+                # 不要直接 torch.tensor(list_of_ndarray)：它会逐元素复制并产生严重性能警告。
+                pixel_values = torch.from_numpy(np.asarray(pixel_values))
+            if torch.cuda.is_available():
+                pixel_values = pixel_values.to(torch.device("cuda"))
 
-        # transformers 的类型定义在部分版本中遗漏了 return_tensors；运行时均支持。
-        try:
-            inputs = self._clip_processor(images=images, return_tensors="pt")
-        except TypeError:
-            inputs = self._clip_processor(images=images)
-        pixel_values = inputs.get("pixel_values")
-        if pixel_values is None:
-            raise ValueError("CLIP处理器未返回pixel_values")
-        if not isinstance(pixel_values, torch.Tensor):
-            # 不要直接 torch.tensor(list_of_ndarray)：它会逐元素复制并产生严重性能警告。
-            pixel_values = torch.from_numpy(np.asarray(pixel_values))
-        if torch.cuda.is_available():
-            pixel_values = pixel_values.to(torch.device("cuda"))
+            with torch.inference_mode():
+                image_features = model.get_image_features(pixel_values=pixel_values)  # type: ignore
+                if image_features is None:
+                    raise ValueError("CLIP get_image_features 返回空")
+                image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+                vectors = image_features.detach().cpu().numpy().tolist()
 
-        with torch.inference_mode():
-            image_features = self._clip_model.get_image_features(pixel_values=pixel_values)  # type: ignore
-            if image_features is None:
-                raise ValueError("CLIP get_image_features 返回空")
-            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-            vectors = image_features.detach().cpu().numpy().tolist()
-
-        if len(vectors) != len(images):
-            raise ValueError(f"CLIP输出数量错误: 期望{len(images)}，实际{len(vectors)}")
-        for vector in vectors:
-            if len(vector) != 768:
-                raise ValueError(f"CLIP向量维度错误: 期望768，实际{len(vector)}")
-        return vectors
+            if len(vectors) != len(images):
+                raise ValueError(f"CLIP输出数量错误: 期望{len(images)}，实际{len(vectors)}")
+            for vector in vectors:
+                if len(vector) != 768:
+                    raise ValueError(f"CLIP向量维度错误: 期望768，实际{len(vector)}")
+            return vectors
 
     def _vectorize_clip_image_data_sync(self, image_data: Dict[str, Any]) -> List[float]:
         return self._vectorize_clip_images_sync([self._image_from_clip_input(image_data)])[0]

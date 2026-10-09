@@ -13,6 +13,7 @@ from app.core.llm.manager import llm_manager
 from app.core.llm.query_embeddings import QueryEmbeddingCache, embed_queries
 from app.core.sparse_encoder import get_sparse_encoder
 from app.core.logger import get_logger, audit_log
+from app.core.local_models import get_local_model_runtime
 from app.modules.ingestion.storage.vector_store import TEXT_CHUNK_COLLECTION, VectorStore
 from app.modules.ingestion.service import IngestionService
 from app.modules.knowledge.service import KnowledgeBaseService
@@ -21,6 +22,8 @@ logger = get_logger(__name__)
 
 # Local query inference stays serial, but never blocks SSE or remote I/O.
 _sparse_query_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sparse-query")
+# Keep lazy CLIP loading and inference serial without delaying remote I/O or SSE.
+_clip_query_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="clip-query")
 
 
 async def _encode_sparse_query(encoder, query):
@@ -35,7 +38,8 @@ class HybridSearchEngine:
         self.vector_store = VectorStore()
         self.llm_manager = llm_manager
         self.sparse_encoder = get_sparse_encoder()  # BGE-M3 稀疏向量编码器
-        self.ingestion_service = IngestionService()  # 用于CLIP文本向量化
+        self.local_models = get_local_model_runtime()
+        self.ingestion_service = IngestionService()  # 状态独立，底层本地模型共享
         self.knowledge_service = KnowledgeBaseService()
         
         # RRF融合权重
@@ -809,57 +813,15 @@ class HybridSearchEngine:
             return []
     
     async def _generate_clip_text_vector(self, query_text: str) -> List[float]:
-        """使用CLIP生成文本查询向量
-        
-        Args:
-            query_text: 查询文本（建议翻译成英文效果更好）
-            
-        Returns:
-            CLIP文本向量（768维）
-        """
-        try:
-            # 懒加载CLIP模型
-            self.ingestion_service._load_clip_model()
-            
-            if self.ingestion_service._clip_model is None or self.ingestion_service._clip_processor is None:
-                raise RuntimeError("CLIP模型未加载")
-            
-            import torch
-            
-            # 使用CLIP处理器的tokenizer处理文本
-            inputs = self.ingestion_service._clip_processor.tokenizer(  # type: ignore
-                query_text,
-                return_tensors="pt",
-                padding=True,
-                truncation=True
-            )
-            
-            # 移动到正确的设备
-            if torch.cuda.is_available():
-                device = torch.device("cuda")
-                inputs = {k: v.to(device) if hasattr(v, 'to') else v for k, v in inputs.items()}
-            else:
-                device = torch.device("cpu")
-            
-            # 生成文本向量
-            with torch.no_grad():
-                text_features = self.ingestion_service._clip_model.get_text_features(**inputs)  # type: ignore
-                # 归一化向量
-                text_features = text_features / text_features.norm(dim=-1, keepdim=True)  # type: ignore
-                # 转换为numpy数组并提取向量
-                clip_text_vector = text_features.cpu().numpy()[0].tolist()
-            
-            # clip-vit-large-patch14 的向量维度是 768
-            assert len(clip_text_vector) == 768, f"CLIP文本向量维度错误: 期望768，实际{len(clip_text_vector)}"
-            
-            logger.debug(f"CLIP文本向量生成成功: 查询='{query_text}...', 维度={len(clip_text_vector)}")
-            
-            return clip_text_vector
-            
-        except Exception as e:
-            logger.error(f"CLIP文本向量化失败: {str(e)}")
-            raise
-    
+        """Run CLIP loading and query inference outside the event loop."""
+        return await asyncio.get_running_loop().run_in_executor(
+            _clip_query_executor, self._generate_clip_text_vector_sync, query_text
+        )
+
+    def _generate_clip_text_vector_sync(self, query_text: str) -> List[float]:
+        """预热与查询共享 CLIP，保持原有分词、投影和归一化逻辑。"""
+        return self.local_models.encode_clip_text(query_text)
+
     def _fuse_visual_results_rrf(
         self,
         all_search_results: List[Dict[str, Any]]

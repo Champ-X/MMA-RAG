@@ -43,7 +43,7 @@ async def _app_lifespan(app: FastAPI):
 
     if settings.preload_local_models_on_startup:
         # 模型加载为同步阻塞 + 可能长时间下载，放到线程池避免卡住事件循环
-        await asyncio.to_thread(preload_local_inference_models_sync)
+        app.state.local_model_preload = await asyncio.to_thread(preload_local_inference_models_sync)
 
     feishu_state.main_loop = asyncio.get_running_loop()
     start_feishu_ws_thread()
@@ -119,12 +119,15 @@ async def global_exception_handler(request, exc):
 async def health_check():
     """健康检查端点"""
     from app.core.config import settings
+    from app.core.local_models import get_local_model_runtime
 
     return {
         "status": "healthy",
         "service": "Tessmora",
         "version": "1.0.0",
         "evaluation_mode": settings.evaluation_mode,
+        "local_models": get_local_model_runtime().snapshot(),
+        "local_model_preload_enabled": settings.preload_local_models_on_startup,
     }
 
 # 根路径

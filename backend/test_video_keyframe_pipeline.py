@@ -1,9 +1,11 @@
 """视频关键帧预算与 CLIP 批处理的轻量回归测试。"""
 
 import asyncio
+from contextlib import nullcontext
 from io import BytesIO
 import json
 import tempfile
+from types import SimpleNamespace
 
 import torch
 from PIL import Image
@@ -71,13 +73,13 @@ def _jpeg_bytes(color: tuple[int, int, int]) -> bytes:
 
 def test_video_clip_batches_keep_event_loop_friendly_vector_count():
     service = IngestionService.__new__(IngestionService)
-    service._clip_model = _FakeClipModel()
-    service._clip_processor = _FakeClipProcessor()
+    service.local_models = SimpleNamespace(
+        clip_session=lambda: nullcontext((_FakeClipModel(), _FakeClipProcessor())),
+    )
     service._processing_status = {
         "task-1": {"processing_id": "task-1", "status": "processing"},
     }
     service._processing_status_redis_client = None
-    service._load_clip_model = lambda: None
     service._persist_processing_status = lambda _status: None
 
     vectors = asyncio.run(
