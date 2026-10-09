@@ -394,9 +394,11 @@ class KnowledgeBaseService:
         self,
         user_id: Optional[str] = None,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
+        *,
+        include_statistics: bool = True,
     ) -> List[Dict[str, Any]]:
-        """列出知识库（使用内存缓存，避免每次从 MinIO 重载覆盖本进程内已更新的标题/描述）"""
+        """列出知识库；检索路由可省略统计，列表页默认保留完整统计。"""
         try:
             # 仅首次或未加载时从 MinIO 拉取；后续列表用内存，保证本进程内编辑后刷新不丢
             if not self._kb_storage:
@@ -418,7 +420,7 @@ class KnowledgeBaseService:
 
             stat_results = await asyncio.gather(
                 *[_stats_for_list(kb_id) for kb_id, _ in pairs]
-            )
+            ) if include_statistics else [None] * len(pairs)
             kbs: List[Dict[str, Any]] = []
             for (kb_id, kb), stats in zip(pairs, stat_results):
                 kbs.append(
@@ -428,7 +430,7 @@ class KnowledgeBaseService:
                         "description": kb.description,
                         "created_at": kb.created_at,
                         "updated_at": kb.updated_at,
-                        "statistics": stats,
+                        **({"statistics": stats} if include_statistics else {}),
                     }
                 )
 

@@ -745,8 +745,10 @@ class KnowledgeRouter:
     async def _default_routing(self, routing_method: str = "default_all") -> RoutingResult:
         """默认路由策略"""
         try:
-            # 获取所有知识库
-            kbs = await self.kb_service.list_knowledge_bases(limit=100)
+            # 路由只需知识库身份；不要等待列表页的文件/向量全量统计。
+            kbs = await self.kb_service.list_knowledge_bases(
+                limit=100, include_statistics=False,
+            )
             
             if kbs:
                 target_kb_ids = [kb["id"] for kb in kbs]
