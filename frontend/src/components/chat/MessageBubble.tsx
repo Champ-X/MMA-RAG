@@ -21,6 +21,7 @@ import { useConfigStore } from '@/store/useConfigStore'
 import { UserMessageAttachmentStrip } from './ChatAttachmentPreview'
 import { UserMessageActions } from './UserMessageActions'
 import { AttachmentEvidence } from './AttachmentEvidence'
+import { DecisionRecord } from './DecisionRecord'
 const UserMentionText = React.lazy(() => import('./UserMentionText').then(module => ({ default: module.UserMentionText })))
 
 type CitationStub = { id: number | string }
@@ -98,6 +99,7 @@ export interface MessageBubbleMessage {
     processing_time?: number
   }
   thinking?: Message['thinking'] | null
+  diagnostics?: Message['diagnostics']
   pi?: Message['pi']
   error?: string
   attachments?: ChatMessageAttachment[]
@@ -1385,6 +1387,7 @@ export function MessageBubble({
           {!isUser && !!message.pi?.limitations?.length && <Suspense fallback={null}>
             <PiAnswerNotes limitations={message.pi.limitations} />
           </Suspense>}
+          {!isUser && !message.pi && !isStreaming && <DecisionRecord diagnostics={message.diagnostics} answer={message.content} />}
         </>
       )}
     </div>

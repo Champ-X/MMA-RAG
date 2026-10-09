@@ -18,6 +18,7 @@ const PROVIDER_ASSETS: Record<string, string> = {
   siliconflow: '/vendor-logos/siliconcloud.png',
   siliconcloud: '/vendor-logos/siliconcloud.png',
   aliyunbailian: '/vendor-logos/bailian.png',
+  bailian: '/vendor-logos/bailian.png',
 }
 
 const MODEL_BRAND_ASSETS: Record<string, string> = {
@@ -38,6 +39,7 @@ const DARK_ASSETS: Record<string, string> = {
 function iconSources(provider?: string, modelId?: string): string[] {
   const providerKey = provider?.toLowerCase().replace(/[_\s-]/g, '') ?? ''
   if (!modelId) return PROVIDER_ASSETS[providerKey] ? [PROVIDER_ASSETS[providerKey]] : []
+  if (providerKey === 'bailian' && modelId === 'decision-model-preview') return [PROVIDER_ASSETS.bailian]
   const model = modelId.replace(/^(openrouter|deepseek|aliyun_bailian|siliconflow|siliconcloud):/, '')
   const organization = model.split('/')[0].toLowerCase()
   if (model.toLowerCase().startsWith('jev-')) return [MODEL_BRAND_ASSETS.typesafe]

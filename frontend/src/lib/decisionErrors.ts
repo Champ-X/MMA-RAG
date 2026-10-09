@@ -12,6 +12,7 @@ export function decisionTestErrorMessage(reason?: string): string {
     missing_key: '所选服务商尚未配置 API 密钥，请在服务端配置并重启后重试。',
     model_mismatch: '服务返回的模型与所选模型不一致，无法验证当前选择。请检查服务商路由配置。',
     invalid_probabilities: '模型返回的概率或置信度不符合 Decision 格式，当前模型未通过验证。',
+    invalid_endpoint: 'Decision 接入地址无效，请检查服务端配置的官方地域与接口地址。',
     circuit_open: '服务暂时不可用，请稍后重试。',
   }
   if (reason && messages[reason]) return messages[reason]

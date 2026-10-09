@@ -784,6 +784,7 @@ export function ChatInterface() {
                       scopeFiles: m.scopeFiles,
                       citations: m.citations,
                       metadata: m.metadata,
+                      diagnostics: m.diagnostics,
                       thinking: m.thinking,
                       pi: m.pi,
                       error: m.error,

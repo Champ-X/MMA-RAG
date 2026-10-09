@@ -147,6 +147,19 @@ test('application error and malformed native frames close and report exactly onc
   }
 })
 
+test('terminal complete and strict error events retain their Decision diagnostics', context => {
+  const sources = eventSourceFixture(context)
+  const diagnostics = { retrieval: { jev_config: { intent_mode: 'adaptive' }, runs: [{ jev_decision: { accepted: true } }] } }
+  let received: unknown
+  createChatStream('query', { onComplete: event => { received = event.diagnostics } })
+  sources[0].emit({ type: 'complete', diagnostics })
+  assert.deepEqual(received, diagnostics)
+  const failure = { code: 'jev_required_failed', stage: 'intent', reason: 'timeout', fallback_used: false, ...diagnostics }
+  createChatStream('query', { onError: event => { received = event } })
+  sources[1].emit({ type: 'error', message: 'strict failure', diagnostics: failure })
+  assert.deepEqual((received as { diagnostics: unknown }).diagnostics, failure)
+})
+
 test('explicit stop is silent and an old native handle cannot abort a newer multipart stream', async context => {
   const sources = eventSourceFixture(context)
   let errors = 0

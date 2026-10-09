@@ -3,6 +3,8 @@
  * 对应后端 One-Pass 意图识别、动态路由、两阶段重排等能力
  */
 
+import type { DecisionDiagnostics } from './decision'
+
 // ---------- 1. 思考阶段事件 (用于更新 ThinkingCapsule) ----------
 export type ThoughtPhase = 'intent' | 'routing' | 'retrieval' | 'generation' | 'attachment';
 
@@ -20,6 +22,7 @@ export type StageTimings = Partial<Record<ThoughtPhase, StageTiming>>;
 export interface CompleteEvent {
   stage_timings?: StageTimings;
   thinking?: Record<string, unknown>;
+  diagnostics?: DecisionDiagnostics;
 }
 
 export interface AgentRoundTrace {

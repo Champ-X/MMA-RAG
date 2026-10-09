@@ -16,6 +16,7 @@ import { normalizeAgentMode, type ChatMessageAttachment, type ChatScopeFile, typ
 import { persistMentions, type ChatMention } from '@/lib/chatReferences'
 import { chatFileKind } from '@/lib/chatAttachmentFile'
 import { mixedModeContext } from '@/lib/mixedModeContext'
+import { readDecisionDiagnostics } from '@/lib/decisionDiagnostics'
 import { createStreamTextBuffer, subscribeStreamTextLifecycle, type StreamTextBuffer } from '@/lib/streamTextBuffer'
 
 interface UseThinkingChainOptions {
@@ -251,7 +252,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
                 ...cleanedThoughtData,
                 _generation_completed: true, // 标记生成已完成
               }
-              updateMessage(s.id, last.id, { thinking: thinkingWithStatus })
+              updateMessage(s.id, last.id, { thinking: thinkingWithStatus, diagnostics: readDecisionDiagnostics(event) })
             }
             
             currentUserQueryRef.current = null // 清除保存的查询
@@ -288,6 +289,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
               updateMessage(s.id, last.id, {
                 error: msg,
                 thinking: failedThinking,
+                diagnostics: readDecisionDiagnostics(err),
               })
             }
             currentUserQueryRef.current = null // 清除保存的查询

@@ -6,6 +6,8 @@ import { createChatPersistence } from '@/lib/chatPersistence';
 import type { AgentRoundTrace, CitationReference, StageTimings } from '@/types/sse';
 import type { ChatMention } from '@/lib/chatReferences';
 import type { PiTrace } from '@/types/pi';
+import type { DecisionDiagnostics } from '@/types/decision';
+import { readDecisionDiagnostics } from '@/lib/decisionDiagnostics';
 
 /** 用户消息携带的附件展示信息；previewUrl 为内存 Object URL，仅当前页有效；thumbDataUrl 为小图 JPEG data URL，可随会话持久化 */
 export interface ChatMessageAttachment {
@@ -115,6 +117,7 @@ export interface Message {
   /** 用户上传的附件（用于气泡上方预览；回答过程中仍显示） */
   attachments?: ChatMessageAttachment[]
   citations?: CitationReference[];
+  diagnostics?: DecisionDiagnostics;
   error?: string;
   pi?: PiTrace;
   executionEngine?: 'existing' | 'pi';
@@ -450,6 +453,10 @@ export const useChatStore = create<ChatStore>()(
               content: string;
               timestamp?: string;
               citations?: unknown[];
+              diagnostics?: DecisionDiagnostics;
+              retrieval_diagnostics?: DecisionDiagnostics['retrieval'];
+              jev_citation_audit?: DecisionDiagnostics['jev_citation_audit'];
+              metadata?: Message['metadata'] & { retrieval_diagnostics?: DecisionDiagnostics['retrieval']; jev_citation_audit?: DecisionDiagnostics['jev_citation_audit'] };
               thinking?: ThoughtData;
               stage_timings?: StageTimings;
               selected_files?: Array<{ kb_id?: string; file_id?: string; name?: string; type?: string; kb_name?: string }>;
@@ -468,6 +475,7 @@ export const useChatStore = create<ChatStore>()(
               content: m.content || '',
               timestamp: m.timestamp ? new Date(m.timestamp).getTime() : Date.now(),
               citations: m.citations as Message['citations'],
+              diagnostics: readDecisionDiagnostics(m),
               mentions: m.mentions,
               scopeVersion: m.scope_version === 2 ? 2 : undefined,
               attachments: m.attachments?.map(item => {

@@ -256,6 +256,36 @@ afterEach(async () => {
   dom.window.Storage.prototype.setItem = originalSetItem
 })
 
+test('Decision complete diagnostics travel through real SSE hook, store, persistence and answer DOM', async () => {
+  await mount()
+  const diagnostics = { retrieval: { jev_config: { provider: 'openrouter', model: 'liquid/d1', intent_mode: 'adaptive', rerank_mode: 'assist', citation_mode: 'off' },
+    final_added_ids: ['additional'], runs: [{ jev_decision: { mode: 'adaptive', accepted: true, route: 'openrouter', model: 'liquid/d1-20260930' },
+      reranking_scorer: { mode: 'assist', status: 'ok', reason: 'added_evidence', added_ids: ['additional'] } }] } }
+  network!.emit([{ type: 'message', data: { delta: '这是一条有执行记录的回答。' } }, { type: 'complete', diagnostics }])
+  await until(() => metrics.terminalAt !== null && useStore.getState().streamingSessionId === null)
+  await until(() => !!container.querySelector('.decision-record'))
+  assert.deepEqual(lastAssistant().diagnostics, diagnostics)
+  assert.deepEqual(persistedAssistant().diagnostics, diagnostics)
+  const record = container.querySelector<HTMLDetailsElement>('.decision-record')!
+  assert.equal(record.open, false)
+  assert.match(record.querySelector('summary')!.textContent!, /意图已接管.*补充 1 条证据/)
+  record.querySelector('summary')!.click()
+  assert.equal(record.open, true)
+  assert.match(record.textContent!, /liquid\/d1-20260930/)
+  assert.doesNotMatch(record.textContent!, /此环节未完成/)
+})
+
+test('Decision strict error diagnostics survive terminal cleanup and render the failure boundary', async () => {
+  await mount()
+  const diagnostics = { code: 'jev_required_failed', stage: 'intent', reason: 'timeout', fallback_used: false }
+  network!.emit([{ type: 'error', message: '严格判断超时', diagnostics }])
+  await until(() => useStore.getState().streamingSessionId === null && !!container.querySelector('.decision-record'))
+  assert.deepEqual(lastAssistant().diagnostics, diagnostics)
+  assert.deepEqual(persistedAssistant().diagnostics, diagnostics)
+  assert.match(container.querySelector('.decision-record')!.textContent!, /未回退到其他模型/)
+  assert.equal(lastAssistant().content, '')
+})
+
 test('862 small SSE deltas progressively update the real Markdown DOM before complete', async () => {
   await mount()
   const points = Array.from(answer)
