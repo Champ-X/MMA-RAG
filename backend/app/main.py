@@ -41,6 +41,12 @@ async def _app_lifespan(app: FastAPI):
     from app.integrations import feishu_state
     from app.integrations.feishu_ws import start_feishu_ws_thread
 
+    snapshot = os.environ.pop('MMA_CHAT_RESTORE_SNAPSHOT', None)
+    if snapshot:
+        from app.modules.chat.session_snapshot import restore_session_snapshot
+        session_count, message_count = restore_session_snapshot(chat.sessions, snapshot)
+        logger.info('已从显式本地快照恢复会话: sessions={} messages={}', session_count, message_count)
+
     if settings.preload_local_models_on_startup:
         # 模型加载为同步阻塞 + 可能长时间下载，放到线程池避免卡住事件循环
         app.state.local_model_preload = await asyncio.to_thread(preload_local_inference_models_sync)
