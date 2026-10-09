@@ -24,6 +24,7 @@ from app.core.score_details import citation_score_fields
 from app.core.llm.manager import llm_manager
 from app.core.llm import TASK_MODEL_TYPES
 from app.core.llm.models_catalog import ensure_llm_catalog_fresh, get_llm_catalog_status
+from app.api.model_probe import router as model_probe_router
 from app.modules.retrieval.service import RetrievalService
 from app.modules.retrieval.reference_materials import split_reference_scope, reference_materials_context, include_reference_materials
 from app.modules.generation.service import GenerationService
@@ -36,6 +37,7 @@ from app.modules.chat.references import normalize_attachment_ids, resolve_messag
 from app.modules.chat.context_manager import build_conversation_context, trim_stored_messages
 
 router = APIRouter()
+router.include_router(model_probe_router)
 logger = get_logger(__name__)
 
 # 创建服务实例

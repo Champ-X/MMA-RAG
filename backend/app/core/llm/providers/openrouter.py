@@ -89,6 +89,8 @@ class OpenRouterProvider(BaseLLMProvider):
             payload["frequency_penalty"] = kwargs["frequency_penalty"]
         if "presence_penalty" in kwargs:
             payload["presence_penalty"] = kwargs["presence_penalty"]
+        if "provider" in kwargs:
+            payload["provider"] = kwargs["provider"]
 
         timeout = float(kwargs.get("timeout", 90.0))
         start = time.time()

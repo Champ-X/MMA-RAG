@@ -671,7 +671,7 @@ class AliyunBailianProvider(BaseLLMProvider):
             logger.error(f"阿里云百炼 embed_texts 错误 [{model}]: {e}")
             raise
 
-    async def rerank(self, query: str, documents: List[str], model: str) -> List[Dict[str, Any]]:
+    async def rerank(self, query: str, documents: List[str], model: str, *, strict_response: bool = False) -> List[Dict[str, Any]]:
         """文档重排序
         - qwen3-rerank: 使用兼容OpenAI的接口
         - qwen3-vl-rerank: 使用DashScope原生API（不支持兼容模式）
@@ -728,8 +728,8 @@ class AliyunBailianProvider(BaseLLMProvider):
                     for item in results:
                         formatted_results.append({
                             "document": item.get("document", {}).get("text", ""),
-                            "score": item.get("relevance_score", 0.0),
-                            "index": item.get("index", 0),
+                            "score": item.get("relevance_score", None if strict_response else 0.0),
+                            "index": item.get("index", None if strict_response else 0),
                         })
                 else:
                     # OpenAI兼容格式：返回results列表
@@ -738,8 +738,8 @@ class AliyunBailianProvider(BaseLLMProvider):
                     for item in results:
                         formatted_results.append({
                             "document": item.get("document", ""),
-                            "score": item.get("relevance_score", item.get("score", 0.0)),
-                            "index": item.get("index", 0),
+                            "score": item.get("relevance_score", item.get("score", None if strict_response else 0.0)),
+                            "index": item.get("index", None if strict_response else 0),
                         })
                 
                 return formatted_results
