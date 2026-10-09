@@ -9,58 +9,50 @@ import hashlib
 import time
 
 from app.core.llm.jev import JevClient, JevError
-from .jev_answer_audit import EXTRACTOR_VERSION, extract_citation_units
+from .jev_answer_audit import LEGACY_EXTRACTOR_VERSION, extract_citation_units
 from .jev_citations import SUPPORT_THRESHOLD, citation_questions
+from .decision_citation_sources import (
+    LEGACY_SOURCE_POLICY, SOURCE_POLICY, SOURCE_SCOPE_RULE, prepare_citation_unit,
+)
 
 
 PROMPT_VERSION = 'citation-batch-choice-v5-frozen1-isolated'
+TEXT_PROXY_PROMPT_VERSION = 'citation-batch-choice-v7-reference-text-isolated'
+# Native Bailian requires a nonempty state. Keep evidence inside each question,
+# with no answer-wide background that could leak support between claims. This
+# explicit production prompt revision leaves the frozen legacy v5 untouched.
+TEXT_PROXY_CONTEXT = 'No shared evidence. Each question contains its own claim and cited sources.'
 MAX_BATCH_UNITS = 8
 
 
 def _prepare_unit(unit, reference_map):
     """Validate one complete evidence set without truncating or borrowing text."""
-    claim = unit['claim']
-    ids = unit['citation_ids']
-    if not isinstance(claim, str) or not claim.strip() or len(claim) > 4000:
-        return None, {'status': 'not_evaluated', 'reason': 'invalid_claim'}
-    if not ids or len(ids) > 10 or any(not isinstance(i, str) for i in ids):
-        return None, {'status': 'not_evaluated', 'reason': 'invalid_citation_ids'}
-    ids = list(dict.fromkeys(ids))
-    missing = [i for i in ids if i not in reference_map]
-    if missing:
-        return None, {'status': 'not_evaluated', 'reason': 'missing_reference',
-                      'missing_ids': missing}
-    sources = {}
-    for ref_id in ids:
-        ref = reference_map[ref_id]
-        kind = ref.get('content_type') if isinstance(ref, dict) else getattr(ref, 'content_type', None)
-        content = ref.get('content') if isinstance(ref, dict) else getattr(ref, 'content', None)
-        if kind != 'doc':
-            return None, {'status': 'not_evaluated', 'reason': 'non_text_source'}
-        if not isinstance(content, str) or not content.strip():
-            return None, {'status': 'not_evaluated', 'reason': 'empty_source'}
-        sources[ref_id] = content
-    if sum(len(content) for content in sources.values()) > 12000:
-        return None, {'status': 'not_evaluated', 'reason': 'source_too_large'}
-    return {'claim': claim, 'cited_sources': sources}, None
+    data, _, error = prepare_citation_unit(unit, reference_map)
+    return data, error
 
 
 def _build_questions(units):
-    # Identical to the frozen v5 isolated candidate. Each question contains only
-    # its own claim and sources; the shared state is empty and has no background.
+    # Each question contains only its own claim and sources. The frozen v5
+    # shared state stays empty; production adds only a fixed isolation notice.
     questions = {}
     for index, unit in enumerate(units):
         question = citation_questions()['relation']
+        if 'source_context' in unit:
+            question['instructions'] += SOURCE_SCOPE_RULE
         question['instructions'] = {
             'rule': question['instructions'],
             'claim': unit['claim'],
             'cited_sources': unit['cited_sources'],
         }
+        if 'source_context' in unit:
+            question['instructions']['source_context'] = unit['source_context']
         questions[f'u{index}'] = question
     return questions
 
 
-async def audit_answer_batch(client: JevClient, answer, reference_map, *, timeout_s=3.0, max_units=8):
+async def audit_answer_batch(client: JevClient, answer, reference_map, *, timeout_s=3.0, max_units=8,
+                             extractor_version=LEGACY_EXTRACTOR_VERSION,
+                             source_policy=LEGACY_SOURCE_POLICY):
     """Audit eligible units in one bounded request; cancellation propagates.
 
     Invalid units retain their own deterministic result. Any batch failure leaves
@@ -69,7 +61,7 @@ async def audit_answer_batch(client: JevClient, answer, reference_map, *, timeou
     caller cancellation; the shared client retains unknown billing reservations.
     """
     started = time.perf_counter()
-    parsed = extract_citation_units(answer)
+    parsed = extract_citation_units(answer, version=extractor_version)
     records, eligible, prepared = [], [], []
     unit_limit = max(0, min(max_units, MAX_BATCH_UNITS))
     for index, unit in enumerate(parsed['units']):
@@ -79,7 +71,8 @@ async def audit_answer_batch(client: JevClient, answer, reference_map, *, timeou
         if index >= unit_limit:
             record['result'] = {'status': 'not_evaluated', 'reason': 'unit_limit'}
             continue
-        data, error = _prepare_unit(unit, reference_map)
+        data, provenance, error = prepare_citation_unit(unit, reference_map, source_policy=source_policy)
+        record.update(provenance)
         if error is not None:
             record['result'] = error
             continue
@@ -91,8 +84,10 @@ async def audit_answer_batch(client: JevClient, answer, reference_map, *, timeou
         try:
             questions = _build_questions(prepared)
             remaining = max(0.0, timeout_s - (time.perf_counter() - started))
+            state = {'context': TEXT_PROXY_CONTEXT} if source_policy == SOURCE_POLICY else {}
             decision = await asyncio.wait_for(
-                client.evaluate({}, questions, prompt_version=PROMPT_VERSION),
+                client.evaluate(state, questions, prompt_version=(TEXT_PROXY_PROMPT_VERSION
+                                if source_policy == SOURCE_POLICY else PROMPT_VERSION)),
                 timeout=remaining,
             )
             # JevClient validates the complete response before returning it. Build
@@ -126,7 +121,8 @@ async def audit_answer_batch(client: JevClient, answer, reference_map, *, timeou
     evaluated = sum(record['result']['status'] == 'evaluated' for record in records)
     result = {
         'mode': 'shadow', 'diagnostic_only': True, 'strategy': 'batch_choice',
-        'extractor_version': EXTRACTOR_VERSION, 'duration_s': time.perf_counter() - started,
+        'extractor_version': extractor_version, 'source_policy': source_policy,
+        'duration_s': time.perf_counter() - started,
         'units': records, 'gaps': parsed['gaps'],
         'coverage': {
             'cited_units': len(records), 'evaluated_units': evaluated,

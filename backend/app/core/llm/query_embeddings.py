@@ -44,6 +44,15 @@ class QueryEmbeddingCache:
         self._timed_out_signatures = set()
         self._lock = asyncio.Lock()
         self.reused_vectors = 0
+        self.failures = []
+
+    def _observe(self, result):
+        if not result.success:
+            receipt = {"reason": "query_timeout" if result.error_category == "query_timeout" else "embedding_failed",
+                       "model": result.model_used}
+            if receipt not in self.failures:
+                self.failures.append(receipt)
+        return result
 
     def _lookup(self, manager, texts):
         registry = getattr(manager, "registry", None)
@@ -76,7 +85,7 @@ class QueryEmbeddingCache:
             if cached is not None:
                 return cached
             if signature is None:
-                return await _embed_query_batch(manager, texts)
+                return self._observe(await _embed_query_batch(manager, texts))
             # Include configuration so switching provider/dimensions/model in
             # the middle of a request cannot reuse an incompatible vector.
             model = signature[1]
@@ -87,7 +96,7 @@ class QueryEmbeddingCache:
                     error="Query embedding deadline already exceeded for this request",
                 )
 
-            result = await _embed_query_batch(manager, texts)
+            result = self._observe(await _embed_query_batch(manager, texts))
             if result.error_category == "query_timeout":
                 self._timed_out_signatures.add(signature)
             if (

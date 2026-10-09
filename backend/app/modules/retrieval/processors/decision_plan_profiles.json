@@ -1,0 +1,226 @@
+{
+  "version": "source-action-profiles-v1",
+  "selection_algorithm": "Grid 0.50..1.00 step 0.05; choice=verified; require zero FP, TP>0 and positive recall>=0.50; maximize TP then largest threshold. Otherwise observe only.",
+  "holdout_admission": "Per purpose: 6 positives, 6 negatives, zero FP and at least 4 TP. No retuning.",
+  "profiles": [
+    {
+      "id": "typesafe-source-require-v1",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "purpose": "source_require",
+      "verifier_sha256": "ec329eda6ed1c2dda190b699c2e883eda0d86d81b0cabd8aced859468a90e64f",
+      "threshold": 0.5,
+      "status": "admitted",
+      "reason": "holdout_gate_passed",
+      "development": {
+        "receipt_sha256": "4d603792810c91de284da7430f1ccb10b87ed5fc82ebf1d95c45c7c01f73ca53",
+        "path": "ops/decision-plan-v1/native-v1",
+        "positive_count": 4,
+        "negative_count": 4
+      },
+      "holdout": {
+        "positive_count": 6,
+        "negative_count": 6,
+        "true_positive": 6,
+        "false_positive": 0,
+        "false_negative": 0,
+        "raw_verified_true_positive": 6,
+        "raw_verified_false_positive": 0,
+        "failed_cases": [],
+        "wrong_action_cases": [],
+        "passed": true,
+        "receipts_sha256": "3014551e1d8f7d97283808f52a69c2c511eb08c44bb3908fb4954aeeb1232314",
+        "protocol_sha256": "fe7a79ec49f090d5aa01ad7bf21411ea5f81063d7d4c4c02adf145a107c51f70",
+        "path": "ops/decision-plan-v2/holdout-v1"
+      }
+    },
+    {
+      "id": "typesafe-source-forbid-v1",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "purpose": "source_forbid",
+      "verifier_sha256": "ec329eda6ed1c2dda190b699c2e883eda0d86d81b0cabd8aced859468a90e64f",
+      "threshold": 0.7,
+      "status": "admitted",
+      "reason": "holdout_gate_passed",
+      "development": {
+        "receipt_sha256": "4d603792810c91de284da7430f1ccb10b87ed5fc82ebf1d95c45c7c01f73ca53",
+        "path": "ops/decision-plan-v1/native-v1",
+        "positive_count": 5,
+        "negative_count": 5
+      },
+      "holdout": {
+        "positive_count": 6,
+        "negative_count": 6,
+        "true_positive": 5,
+        "false_positive": 0,
+        "false_negative": 1,
+        "raw_verified_true_positive": 6,
+        "raw_verified_false_positive": 0,
+        "failed_cases": [],
+        "wrong_action_cases": [
+          "f-pos-written-only"
+        ],
+        "passed": true,
+        "receipts_sha256": "3014551e1d8f7d97283808f52a69c2c511eb08c44bb3908fb4954aeeb1232314",
+        "protocol_sha256": "fe7a79ec49f090d5aa01ad7bf21411ea5f81063d7d4c4c02adf145a107c51f70",
+        "path": "ops/decision-plan-v2/holdout-v1"
+      }
+    },
+    {
+      "id": "openrouter-source-require-v1",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "purpose": "source_require",
+      "verifier_sha256": "ec329eda6ed1c2dda190b699c2e883eda0d86d81b0cabd8aced859468a90e64f",
+      "threshold": 0.55,
+      "status": "admitted",
+      "reason": "holdout_gate_passed",
+      "development": {
+        "receipt_sha256": "4d603792810c91de284da7430f1ccb10b87ed5fc82ebf1d95c45c7c01f73ca53",
+        "path": "ops/decision-plan-v1/native-v1",
+        "positive_count": 4,
+        "negative_count": 4
+      },
+      "holdout": {
+        "positive_count": 6,
+        "negative_count": 6,
+        "true_positive": 5,
+        "false_positive": 0,
+        "false_negative": 1,
+        "raw_verified_true_positive": 6,
+        "raw_verified_false_positive": 0,
+        "failed_cases": [],
+        "wrong_action_cases": [
+          "r-pos-diagram"
+        ],
+        "passed": true,
+        "receipts_sha256": "3014551e1d8f7d97283808f52a69c2c511eb08c44bb3908fb4954aeeb1232314",
+        "protocol_sha256": "fe7a79ec49f090d5aa01ad7bf21411ea5f81063d7d4c4c02adf145a107c51f70",
+        "path": "ops/decision-plan-v2/holdout-v1"
+      }
+    },
+    {
+      "id": "openrouter-source-forbid-v1",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "purpose": "source_forbid",
+      "verifier_sha256": "ec329eda6ed1c2dda190b699c2e883eda0d86d81b0cabd8aced859468a90e64f",
+      "threshold": 0.5,
+      "status": "admitted",
+      "reason": "holdout_gate_passed",
+      "development": {
+        "receipt_sha256": "4d603792810c91de284da7430f1ccb10b87ed5fc82ebf1d95c45c7c01f73ca53",
+        "path": "ops/decision-plan-v1/native-v1",
+        "positive_count": 5,
+        "negative_count": 5
+      },
+      "holdout": {
+        "positive_count": 6,
+        "negative_count": 6,
+        "true_positive": 4,
+        "false_positive": 0,
+        "false_negative": 2,
+        "raw_verified_true_positive": 4,
+        "raw_verified_false_positive": 0,
+        "failed_cases": [],
+        "wrong_action_cases": [
+          "f-pos-video",
+          "f-pos-written-only"
+        ],
+        "passed": true,
+        "receipts_sha256": "3014551e1d8f7d97283808f52a69c2c511eb08c44bb3908fb4954aeeb1232314",
+        "protocol_sha256": "fe7a79ec49f090d5aa01ad7bf21411ea5f81063d7d4c4c02adf145a107c51f70",
+        "path": "ops/decision-plan-v2/holdout-v1"
+      }
+    },
+    {
+      "id": "bailian-source-require-v1",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "purpose": "source_require",
+      "verifier_sha256": "ec329eda6ed1c2dda190b699c2e883eda0d86d81b0cabd8aced859468a90e64f",
+      "threshold": null,
+      "status": "rejected",
+      "reason": "holdout_or_development_gate_failed",
+      "development": {
+        "receipt_sha256": "4d603792810c91de284da7430f1ccb10b87ed5fc82ebf1d95c45c7c01f73ca53",
+        "path": "ops/decision-plan-v1/native-v1",
+        "positive_count": 4,
+        "negative_count": 4
+      },
+      "holdout": {
+        "positive_count": 6,
+        "negative_count": 6,
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 6,
+        "raw_verified_true_positive": 6,
+        "raw_verified_false_positive": 5,
+        "failed_cases": [],
+        "wrong_action_cases": [
+          "r-pos-photo",
+          "r-pos-speech",
+          "r-pos-demo",
+          "r-pos-diagram",
+          "r-pos-archive",
+          "r-pos-footage"
+        ],
+        "passed": false,
+        "receipts_sha256": "3014551e1d8f7d97283808f52a69c2c511eb08c44bb3908fb4954aeeb1232314",
+        "protocol_sha256": "fe7a79ec49f090d5aa01ad7bf21411ea5f81063d7d4c4c02adf145a107c51f70",
+        "path": "ops/decision-plan-v2/holdout-v1"
+      }
+    },
+    {
+      "id": "bailian-source-forbid-v1",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "purpose": "source_forbid",
+      "verifier_sha256": "ec329eda6ed1c2dda190b699c2e883eda0d86d81b0cabd8aced859468a90e64f",
+      "threshold": null,
+      "status": "rejected",
+      "reason": "holdout_or_development_gate_failed",
+      "development": {
+        "receipt_sha256": "4d603792810c91de284da7430f1ccb10b87ed5fc82ebf1d95c45c7c01f73ca53",
+        "path": "ops/decision-plan-v1/native-v1",
+        "positive_count": 5,
+        "negative_count": 5
+      },
+      "holdout": {
+        "positive_count": 6,
+        "negative_count": 6,
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 6,
+        "raw_verified_true_positive": 6,
+        "raw_verified_false_positive": 6,
+        "failed_cases": [],
+        "wrong_action_cases": [
+          "f-pos-photo",
+          "f-pos-recording",
+          "f-pos-video",
+          "f-pos-written-only",
+          "f-pos-visual-types",
+          "f-pos-moving-media"
+        ],
+        "passed": false,
+        "receipts_sha256": "3014551e1d8f7d97283808f52a69c2c511eb08c44bb3908fb4954aeeb1232314",
+        "protocol_sha256": "fe7a79ec49f090d5aa01ad7bf21411ea5f81063d7d4c4c02adf145a107c51f70",
+        "path": "ops/decision-plan-v2/holdout-v1"
+      }
+    }
+  ],
+  "evidence": {
+    "evals/decision_plan_v2/development-signals.json": "d672c7830f47464cd770dada4badc4dc297a35ad9313bc21db81bee55a18f3c7",
+    "evals/decision_plan_v2/holdout-signals.json": "440a99d4bc37b18e4575d3aa1c546a0091ce9d8d7f2d5b9e6ff2c0c1a1af73d5",
+    "evals/decision_plan_v2/selection.json": "9993de63bb3a3c01eaf008b55df1f885d1d3ff5813b758a04d1322e6a26978bd",
+    "evals/decision_plan_v2/admission.json": "2fd29bf3fbbe7d68c6709091e987be612409e5be00c5e73da8983e931f16b540"
+  }
+}

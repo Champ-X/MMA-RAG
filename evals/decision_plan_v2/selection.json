@@ -1,0 +1,449 @@
+{
+  "algorithm": "Grid 0.50..1.00 step 0.05; choice=verified; require zero FP, TP>0 and positive recall>=0.50; maximize TP then largest threshold. Otherwise observe only.",
+  "rows": [
+    {
+      "profile_id": "typesafe-source-require-v1",
+      "provider": "typesafe",
+      "purpose": "source_require",
+      "threshold": 0.5,
+      "grid": [
+        {
+          "threshold": 0.5,
+          "true_positive": 4,
+          "false_positive": 0,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.55,
+          "true_positive": 3,
+          "false_positive": 0,
+          "false_negative": 1
+        },
+        {
+          "threshold": 0.6,
+          "true_positive": 3,
+          "false_positive": 0,
+          "false_negative": 1
+        },
+        {
+          "threshold": 0.65,
+          "true_positive": 3,
+          "false_positive": 0,
+          "false_negative": 1
+        },
+        {
+          "threshold": 0.7,
+          "true_positive": 3,
+          "false_positive": 0,
+          "false_negative": 1
+        },
+        {
+          "threshold": 0.75,
+          "true_positive": 2,
+          "false_positive": 0,
+          "false_negative": 2
+        },
+        {
+          "threshold": 0.8,
+          "true_positive": 2,
+          "false_positive": 0,
+          "false_negative": 2
+        },
+        {
+          "threshold": 0.85,
+          "true_positive": 1,
+          "false_positive": 0,
+          "false_negative": 3
+        },
+        {
+          "threshold": 0.9,
+          "true_positive": 1,
+          "false_positive": 0,
+          "false_negative": 3
+        },
+        {
+          "threshold": 0.95,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 4
+        },
+        {
+          "threshold": 1.0,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 4
+        }
+      ]
+    },
+    {
+      "profile_id": "typesafe-source-forbid-v1",
+      "provider": "typesafe",
+      "purpose": "source_forbid",
+      "threshold": 0.7,
+      "grid": [
+        {
+          "threshold": 0.5,
+          "true_positive": 5,
+          "false_positive": 0,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.55,
+          "true_positive": 5,
+          "false_positive": 0,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.6,
+          "true_positive": 5,
+          "false_positive": 0,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.65,
+          "true_positive": 5,
+          "false_positive": 0,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.7,
+          "true_positive": 5,
+          "false_positive": 0,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.75,
+          "true_positive": 3,
+          "false_positive": 0,
+          "false_negative": 2
+        },
+        {
+          "threshold": 0.8,
+          "true_positive": 2,
+          "false_positive": 0,
+          "false_negative": 3
+        },
+        {
+          "threshold": 0.85,
+          "true_positive": 1,
+          "false_positive": 0,
+          "false_negative": 4
+        },
+        {
+          "threshold": 0.9,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 5
+        },
+        {
+          "threshold": 0.95,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 5
+        },
+        {
+          "threshold": 1.0,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 5
+        }
+      ]
+    },
+    {
+      "profile_id": "openrouter-source-require-v1",
+      "provider": "openrouter",
+      "purpose": "source_require",
+      "threshold": 0.55,
+      "grid": [
+        {
+          "threshold": 0.5,
+          "true_positive": 3,
+          "false_positive": 0,
+          "false_negative": 1
+        },
+        {
+          "threshold": 0.55,
+          "true_positive": 3,
+          "false_positive": 0,
+          "false_negative": 1
+        },
+        {
+          "threshold": 0.6,
+          "true_positive": 2,
+          "false_positive": 0,
+          "false_negative": 2
+        },
+        {
+          "threshold": 0.65,
+          "true_positive": 1,
+          "false_positive": 0,
+          "false_negative": 3
+        },
+        {
+          "threshold": 0.7,
+          "true_positive": 1,
+          "false_positive": 0,
+          "false_negative": 3
+        },
+        {
+          "threshold": 0.75,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 4
+        },
+        {
+          "threshold": 0.8,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 4
+        },
+        {
+          "threshold": 0.85,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 4
+        },
+        {
+          "threshold": 0.9,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 4
+        },
+        {
+          "threshold": 0.95,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 4
+        },
+        {
+          "threshold": 1.0,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 4
+        }
+      ]
+    },
+    {
+      "profile_id": "openrouter-source-forbid-v1",
+      "provider": "openrouter",
+      "purpose": "source_forbid",
+      "threshold": 0.5,
+      "grid": [
+        {
+          "threshold": 0.5,
+          "true_positive": 5,
+          "false_positive": 0,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.55,
+          "true_positive": 4,
+          "false_positive": 0,
+          "false_negative": 1
+        },
+        {
+          "threshold": 0.6,
+          "true_positive": 3,
+          "false_positive": 0,
+          "false_negative": 2
+        },
+        {
+          "threshold": 0.65,
+          "true_positive": 3,
+          "false_positive": 0,
+          "false_negative": 2
+        },
+        {
+          "threshold": 0.7,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 5
+        },
+        {
+          "threshold": 0.75,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 5
+        },
+        {
+          "threshold": 0.8,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 5
+        },
+        {
+          "threshold": 0.85,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 5
+        },
+        {
+          "threshold": 0.9,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 5
+        },
+        {
+          "threshold": 0.95,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 5
+        },
+        {
+          "threshold": 1.0,
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 5
+        }
+      ]
+    },
+    {
+      "profile_id": "bailian-source-require-v1",
+      "provider": "bailian",
+      "purpose": "source_require",
+      "threshold": null,
+      "grid": [
+        {
+          "threshold": 0.5,
+          "true_positive": 4,
+          "false_positive": 3,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.55,
+          "true_positive": 4,
+          "false_positive": 3,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.6,
+          "true_positive": 4,
+          "false_positive": 3,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.65,
+          "true_positive": 4,
+          "false_positive": 3,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.7,
+          "true_positive": 4,
+          "false_positive": 3,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.75,
+          "true_positive": 4,
+          "false_positive": 3,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.8,
+          "true_positive": 4,
+          "false_positive": 3,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.85,
+          "true_positive": 4,
+          "false_positive": 3,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.9,
+          "true_positive": 4,
+          "false_positive": 3,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.95,
+          "true_positive": 4,
+          "false_positive": 2,
+          "false_negative": 0
+        },
+        {
+          "threshold": 1.0,
+          "true_positive": 1,
+          "false_positive": 1,
+          "false_negative": 3
+        }
+      ]
+    },
+    {
+      "profile_id": "bailian-source-forbid-v1",
+      "provider": "bailian",
+      "purpose": "source_forbid",
+      "threshold": null,
+      "grid": [
+        {
+          "threshold": 0.5,
+          "true_positive": 5,
+          "false_positive": 5,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.55,
+          "true_positive": 5,
+          "false_positive": 5,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.6,
+          "true_positive": 5,
+          "false_positive": 5,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.65,
+          "true_positive": 5,
+          "false_positive": 5,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.7,
+          "true_positive": 5,
+          "false_positive": 4,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.75,
+          "true_positive": 5,
+          "false_positive": 4,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.8,
+          "true_positive": 5,
+          "false_positive": 4,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.85,
+          "true_positive": 5,
+          "false_positive": 4,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.9,
+          "true_positive": 5,
+          "false_positive": 4,
+          "false_negative": 0
+        },
+        {
+          "threshold": 0.95,
+          "true_positive": 5,
+          "false_positive": 4,
+          "false_negative": 0
+        },
+        {
+          "threshold": 1.0,
+          "true_positive": 4,
+          "false_positive": 1,
+          "false_negative": 1
+        }
+      ]
+    }
+  ]
+}

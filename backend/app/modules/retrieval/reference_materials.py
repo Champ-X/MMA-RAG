@@ -52,6 +52,9 @@ def include_reference_materials(result, materials):
     for source in materials:
         item = copy.deepcopy(existing.pop(key(source), source))
         item["metadata"] = {**item.get("metadata", {}), "user_reference": True}
+        # An explicitly bound input is baseline evidence even if an optional
+        # Decision pass independently discovered the same chunk.
+        item["metadata"].pop("decision_assist", None)
         bound.append(item)
     result.reranked_results = bound + list(existing.values())
     return result

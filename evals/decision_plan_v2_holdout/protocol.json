@@ -1,0 +1,45 @@
+{
+  "id": "source-action-profile-holdout-v1",
+  "frozen_at": "2026-10-09T13:07:54.131441+00:00",
+  "cases_sha256": "452d9694459b8db0ce4098612d0e88f53c1a5d2ec186481c91c2ec44aa005cf2",
+  "source_sha256": {
+    "backend/app/modules/retrieval/processors/decision_plan.py": "42525eab5b6ff1b0b0cf5976c16baf6c87e299a8e6039f7ee3c9fc8fbe1b2e41",
+    "backend/app/modules/retrieval/processors/intent.py": "5f995d1caf98eabce0c42fa1a72d9d5a1587fb8b0269f9cb09f689a68e4e75b6",
+    "backend/scripts/evaluate_decision_plan_profiles.py": "4cd5b175c907bc4894f116a0e30a2dffc9f55a067d6ddaf298502435f3c230a2"
+  },
+  "verifier_sha256": "ec329eda6ed1c2dda190b699c2e883eda0d86d81b0cabd8aced859468a90e64f",
+  "proposal_instruction_sha256": "c9e1422ffc4bf5d9174dc83068588f5d5c1374d7e1618a628504701c25cff5f5",
+  "candidate_profiles_sha256": "1dca73d343f9b115bef53df5af1e4a0d106ba09354c74b558cdd4b6304c34062",
+  "models": [
+    {
+      "provider": "typesafe",
+      "model": "jev-1.13.0"
+    },
+    {
+      "provider": "openrouter",
+      "model": "openai/gpt-6-luna-decisions"
+    },
+    {
+      "provider": "bailian",
+      "model": "decision-model-preview"
+    }
+  ],
+  "transport": {
+    "timeout_s": 3,
+    "concurrency": 1,
+    "repetitions": 1,
+    "retries": 0
+  },
+  "admission": {
+    "per_purpose_positive_count": 6,
+    "per_purpose_negative_count": 6,
+    "max_false_positive": 0,
+    "min_true_positive": 4
+  },
+  "constraints": [
+    "No verifier semantic prompt change from v1.",
+    "No threshold tuning on this holdout.",
+    "Production pending/rejected profiles observe only; grade meets_profile_threshold separately.",
+    "No reissue or replacement of failures."
+  ]
+}

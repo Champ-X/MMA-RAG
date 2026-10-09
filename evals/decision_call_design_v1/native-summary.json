@@ -1,0 +1,308 @@
+{
+  "rows": [
+    {
+      "case_id": "movie-media",
+      "provider": "typesafe",
+      "diagnostic_completed": true,
+      "standalone_eligible": false,
+      "diagnostic_error": null,
+      "before_schedule_questions": 0,
+      "scheduled_questions": 0,
+      "chat_decision_requests": 0,
+      "status": "skipped",
+      "reason": "no_proposals",
+      "applied_ids": [],
+      "blockers": [
+        {
+          "field": "planning",
+          "reason": "uncertain"
+        },
+        {
+          "field": "image",
+          "reason": "uncertain"
+        },
+        {
+          "field": "audio",
+          "reason": "uncertain"
+        },
+        {
+          "field": "video",
+          "reason": "uncertain"
+        }
+      ]
+    },
+    {
+      "case_id": "movie-media",
+      "provider": "openrouter",
+      "diagnostic_completed": true,
+      "standalone_eligible": false,
+      "diagnostic_error": null,
+      "before_schedule_questions": 0,
+      "scheduled_questions": 0,
+      "chat_decision_requests": 0,
+      "status": "skipped",
+      "reason": "no_proposals",
+      "applied_ids": [],
+      "blockers": [
+        {
+          "field": "intent_type",
+          "reason": "task_uncertain",
+          "signal": 0.58,
+          "threshold": 0.75
+        },
+        {
+          "field": "planning",
+          "reason": "uncertain"
+        },
+        {
+          "field": "image",
+          "reason": "uncertain"
+        }
+      ]
+    },
+    {
+      "case_id": "movie-media",
+      "provider": "bailian",
+      "diagnostic_completed": true,
+      "standalone_eligible": false,
+      "diagnostic_error": null,
+      "before_schedule_questions": 0,
+      "scheduled_questions": 0,
+      "chat_decision_requests": 0,
+      "status": "skipped",
+      "reason": "no_proposals",
+      "applied_ids": [],
+      "blockers": [
+        {
+          "field": "intent_type",
+          "reason": "task_uncertain",
+          "signal": 0.71,
+          "threshold": 0.75
+        },
+        {
+          "field": "planning",
+          "reason": "uncertain"
+        },
+        {
+          "field": "audio",
+          "reason": "uncertain"
+        },
+        {
+          "field": "video",
+          "reason": "uncertain"
+        }
+      ]
+    },
+    {
+      "case_id": "source-exclusion",
+      "provider": "typesafe",
+      "diagnostic_completed": true,
+      "standalone_eligible": false,
+      "diagnostic_error": null,
+      "before_schedule_questions": 3,
+      "scheduled_questions": 3,
+      "chat_decision_requests": 1,
+      "status": "ok",
+      "reason": "verified_actions",
+      "applied_ids": [
+        "p1",
+        "p2",
+        "p3"
+      ],
+      "blockers": [
+        {
+          "field": "planning",
+          "reason": "unresolved_context"
+        }
+      ]
+    },
+    {
+      "case_id": "source-exclusion",
+      "provider": "openrouter",
+      "diagnostic_completed": true,
+      "standalone_eligible": false,
+      "diagnostic_error": null,
+      "before_schedule_questions": 3,
+      "scheduled_questions": 3,
+      "chat_decision_requests": 1,
+      "status": "ok",
+      "reason": "verified_actions",
+      "applied_ids": [
+        "p1",
+        "p2",
+        "p3"
+      ],
+      "blockers": [
+        {
+          "field": "intent_type",
+          "reason": "task_uncertain",
+          "signal": 0.45,
+          "threshold": 0.75
+        },
+        {
+          "field": "planning",
+          "reason": "needs_planning"
+        },
+        {
+          "field": "audio",
+          "reason": "uncertain"
+        },
+        {
+          "field": "video",
+          "reason": "uncertain"
+        }
+      ]
+    },
+    {
+      "case_id": "source-exclusion",
+      "provider": "bailian",
+      "diagnostic_completed": true,
+      "standalone_eligible": false,
+      "diagnostic_error": null,
+      "before_schedule_questions": 3,
+      "scheduled_questions": 0,
+      "chat_decision_requests": 0,
+      "status": "skipped",
+      "reason": "no_actionable_changes",
+      "applied_ids": [],
+      "blockers": [
+        {
+          "field": "audio",
+          "reason": "uncertain"
+        }
+      ]
+    },
+    {
+      "case_id": "audio-source",
+      "provider": "typesafe",
+      "diagnostic_completed": true,
+      "standalone_eligible": false,
+      "diagnostic_error": null,
+      "before_schedule_questions": 1,
+      "scheduled_questions": 0,
+      "chat_decision_requests": 0,
+      "status": "skipped",
+      "reason": "no_actionable_changes",
+      "applied_ids": [],
+      "blockers": [
+        {
+          "field": "planning",
+          "reason": "uncertain"
+        }
+      ]
+    },
+    {
+      "case_id": "audio-source",
+      "provider": "openrouter",
+      "diagnostic_completed": true,
+      "standalone_eligible": false,
+      "diagnostic_error": null,
+      "before_schedule_questions": 1,
+      "scheduled_questions": 0,
+      "chat_decision_requests": 0,
+      "status": "skipped",
+      "reason": "no_actionable_changes",
+      "applied_ids": [],
+      "blockers": [
+        {
+          "field": "intent_type",
+          "reason": "task_uncertain",
+          "signal": 0.53,
+          "threshold": 0.75
+        }
+      ]
+    },
+    {
+      "case_id": "audio-source",
+      "provider": "bailian",
+      "diagnostic_completed": true,
+      "standalone_eligible": true,
+      "diagnostic_error": null,
+      "before_schedule_questions": 1,
+      "scheduled_questions": 0,
+      "chat_decision_requests": 0,
+      "status": "skipped",
+      "reason": "no_actionable_changes",
+      "applied_ids": [],
+      "blockers": []
+    },
+    {
+      "case_id": "quoted-literal",
+      "provider": "typesafe",
+      "diagnostic_completed": true,
+      "standalone_eligible": false,
+      "diagnostic_error": null,
+      "before_schedule_questions": 0,
+      "scheduled_questions": 0,
+      "chat_decision_requests": 0,
+      "status": "skipped",
+      "reason": "no_proposals",
+      "applied_ids": [],
+      "blockers": [
+        {
+          "field": "planning",
+          "reason": "uncertain"
+        }
+      ]
+    },
+    {
+      "case_id": "quoted-literal",
+      "provider": "openrouter",
+      "diagnostic_completed": true,
+      "standalone_eligible": false,
+      "diagnostic_error": null,
+      "before_schedule_questions": 0,
+      "scheduled_questions": 0,
+      "chat_decision_requests": 0,
+      "status": "skipped",
+      "reason": "no_proposals",
+      "applied_ids": [],
+      "blockers": [
+        {
+          "field": "planning",
+          "reason": "uncertain"
+        },
+        {
+          "field": "image",
+          "reason": "uncertain"
+        },
+        {
+          "field": "audio",
+          "reason": "uncertain"
+        },
+        {
+          "field": "video",
+          "reason": "uncertain"
+        }
+      ]
+    },
+    {
+      "case_id": "quoted-literal",
+      "provider": "bailian",
+      "diagnostic_completed": true,
+      "standalone_eligible": false,
+      "diagnostic_error": null,
+      "before_schedule_questions": 0,
+      "scheduled_questions": 0,
+      "chat_decision_requests": 0,
+      "status": "skipped",
+      "reason": "no_proposals",
+      "applied_ids": [],
+      "blockers": [
+        {
+          "field": "audio",
+          "reason": "uncertain"
+        }
+      ]
+    }
+  ],
+  "saved_settings_unchanged": true,
+  "source_sha256": {
+    "backend/app/api/jev.py": "a367485d7074e3e0c3fb917ee44250b6be75bf8aa3d099fc9d29753325eb86f1",
+    "backend/app/modules/retrieval/processors/intent.py": "6ce4ee3adf4ed110956d2686248f945d7821ac36bee2c5a957b409cfd4a6bce2",
+    "backend/app/modules/retrieval/processors/decision_plan.py": "f7d3dc5d680800ea68931e82af4f76a665fa890c964d8b94cb827f08f9a162f7",
+    "backend/app/modules/retrieval/processors/jev_intent.py": "3a5efac2ae2610721a75914a8fd8a3c4c1ed18d5be3625718f8142c3510d9252",
+    "backend/app/modules/retrieval/processors/decision_plan_profiles.json": "26d9a665baf0b265be1ff580e20c0ca19daa7491e09404c91a12723478cf47e6"
+  },
+  "limitations": "No semantic accuracy/SLA claim; one stochastic planner sample per case. Runtime actions retain existing model-purpose admission."
+}

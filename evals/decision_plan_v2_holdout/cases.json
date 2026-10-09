@@ -1,0 +1,797 @@
+{
+  "label_provenance": "New single-author holdout; no native outputs seen. Explicit action labels fixed before calls. Not independently reviewed.",
+  "cases": [
+    {
+      "id": "r-pos-photo",
+      "query": "查找桥梁检修前后的照片，比较锈蚀范围。",
+      "purpose": "source_require",
+      "positive": true,
+      "expected_relation": "verified",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "查找桥梁检修前后的照片，比较锈蚀范围。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "image",
+              "scope": "global",
+              "description": "image source category"
+            },
+            "action": "require",
+            "source_span": "查找桥梁检修前后的照片",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "fa6380d680c6f071edb12daf62a71e054fc51ecc53a87349008c7a7bdd8f609c"
+    },
+    {
+      "id": "f-neg-controls",
+      "query": "回答中不要出现音频播放器控件，但可以参考录音转写。",
+      "purpose": "source_forbid",
+      "positive": false,
+      "expected_relation": "contradicted",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "回答中不要出现音频播放器控件，但可以参考录音转写。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "audio",
+              "scope": "global",
+              "description": "audio source category"
+            },
+            "action": "forbid",
+            "source_span": "不要出现音频播放器控件",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "c173a295bc006484bf72991ff4141351b96cc1fce84adb03f762ad083a0493cd"
+    },
+    {
+      "id": "f-pos-photo",
+      "query": "全部图片都不要检索，仅根据书面检修记录判断原因。",
+      "purpose": "source_forbid",
+      "positive": true,
+      "expected_relation": "verified",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "全部图片都不要检索，仅根据书面检修记录判断原因。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "image",
+              "scope": "global",
+              "description": "image source category"
+            },
+            "action": "forbid",
+            "source_span": "全部图片都不要检索",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "e155ca198d5917e62142cf266e9b4b6645c8cdf8978f88b46da5c8862c54a6d8"
+    },
+    {
+      "id": "r-neg-identifier",
+      "query": "解释变量 audio_recording_enabled 为什么设置为 false。",
+      "purpose": "source_require",
+      "positive": false,
+      "expected_relation": "contradicted",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "解释变量 audio_recording_enabled 为什么设置为 false。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "audio",
+              "scope": "global",
+              "description": "audio source category"
+            },
+            "action": "require",
+            "source_span": "audio_recording_enabled",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "52b1b746888954655050972f7c2689d8ced50aee9d50457cfebb4cac33fb7f10"
+    },
+    {
+      "id": "r-pos-speech",
+      "query": "提供本次庭审的原始录音以核对证词。",
+      "purpose": "source_require",
+      "positive": true,
+      "expected_relation": "verified",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "提供本次庭审的原始录音以核对证词。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "audio",
+              "scope": "global",
+              "description": "audio source category"
+            },
+            "action": "require",
+            "source_span": "提供本次庭审的原始录音",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "dde29e4cf5b894e85dbab4b58bb0c84b69ec1101b9a04f9b6d9bb61452a138d0"
+    },
+    {
+      "id": "f-neg-quote",
+      "query": "Translate the sentence \"Do not use photographs\" from the safety manual.",
+      "purpose": "source_forbid",
+      "positive": false,
+      "expected_relation": "contradicted",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "Translate the sentence \"Do not use photographs\" from the safety manual.",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "image",
+              "scope": "global",
+              "description": "image source category"
+            },
+            "action": "forbid",
+            "source_span": "Do not use photographs",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "c8c4ffb2e198a584239d492ffc9011f16e23a79388c51fa9a011dc79433d472f"
+    },
+    {
+      "id": "f-pos-recording",
+      "query": "这次核对一律排除音频来源，可以使用文字和视频。",
+      "purpose": "source_forbid",
+      "positive": true,
+      "expected_relation": "verified",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "这次核对一律排除音频来源，可以使用文字和视频。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "audio",
+              "scope": "global",
+              "description": "audio source category"
+            },
+            "action": "forbid",
+            "source_span": "一律排除音频来源",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "c0535d888c1da4d50a44f8da6dd31cba06567dabc53416a65084745913d5ae0d"
+    },
+    {
+      "id": "r-neg-creation",
+      "query": "请生成一个从未发布过的新动画视频，不要检索已有视频。",
+      "purpose": "source_require",
+      "positive": false,
+      "expected_relation": "contradicted",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "请生成一个从未发布过的新动画视频，不要检索已有视频。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "video",
+              "scope": "global",
+              "description": "video source category"
+            },
+            "action": "require",
+            "source_span": "生成一个从未发布过的新动画视频",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "50d6a59cf89c6f1bf301d9bff37f285bbbf2f1b88b6790a7154ed33261853fbf"
+    },
+    {
+      "id": "r-pos-demo",
+      "query": "Retrieve an existing video demonstrating the valve replacement procedure.",
+      "purpose": "source_require",
+      "positive": true,
+      "expected_relation": "verified",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "Retrieve an existing video demonstrating the valve replacement procedure.",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "video",
+              "scope": "global",
+              "description": "video source category"
+            },
+            "action": "require",
+            "source_span": "Retrieve an existing video demonstrating the valve replacement procedure",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "87d0dc9c4dc740fb70ccc3a02fcc12fb9d8336bf5d686e7394263d0e5b200005"
+    },
+    {
+      "id": "f-neg-subclass",
+      "query": "不要夜间拍摄的照片，白天照片仍可作为资料。",
+      "purpose": "source_forbid",
+      "positive": false,
+      "expected_relation": "contradicted",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "不要夜间拍摄的照片，白天照片仍可作为资料。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "image",
+              "scope": "global",
+              "description": "image source category"
+            },
+            "action": "forbid",
+            "source_span": "不要夜间拍摄的照片",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "d93c8710ba10c70e142d26ff7335c2bcc40d41705ea79208797fcd5482198b37"
+    },
+    {
+      "id": "f-pos-video",
+      "query": "All video sources are excluded from this search; use the written incident log.",
+      "purpose": "source_forbid",
+      "positive": true,
+      "expected_relation": "verified",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "All video sources are excluded from this search; use the written incident log.",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "video",
+              "scope": "global",
+              "description": "video source category"
+            },
+            "action": "forbid",
+            "source_span": "All video sources are excluded from this search",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "81fa834b542bb4527bec6791c5fc1618e98f2ea1947329b68ce48e7f5bb269b1"
+    },
+    {
+      "id": "r-neg-component",
+      "query": "分析所选视频文件中的音轨，不另外检索音频文件。",
+      "purpose": "source_require",
+      "positive": false,
+      "expected_relation": "contradicted",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "分析所选视频文件中的音轨，不另外检索音频文件。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "audio",
+              "scope": "global",
+              "description": "audio source category"
+            },
+            "action": "require",
+            "source_span": "视频文件中的音轨",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "f1a107310818dd55a9986788d6b5cbc5602fb41aa6db03e01d9e494ff041af2b"
+    },
+    {
+      "id": "r-pos-diagram",
+      "query": "Find the circuit diagrams for the archived amplifier and compare their grounding layouts.",
+      "purpose": "source_require",
+      "positive": true,
+      "expected_relation": "verified",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "Find the circuit diagrams for the archived amplifier and compare their grounding layouts.",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "image",
+              "scope": "global",
+              "description": "image source category"
+            },
+            "action": "require",
+            "source_span": "Find the circuit diagrams for the archived amplifier",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "1de37ff02db6c63083c4015dd99e21a0b947b3403512e31ea078ba7d68815452"
+    },
+    {
+      "id": "f-neg-exception",
+      "query": "不用视频作为证据，唯独保留消防演习录像这一项。",
+      "purpose": "source_forbid",
+      "positive": false,
+      "expected_relation": "contradicted",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "不用视频作为证据，唯独保留消防演习录像这一项。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "video",
+              "scope": "global",
+              "description": "video source category"
+            },
+            "action": "forbid",
+            "source_span": "不用视频作为证据",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "efc41dce2e6bd6c752d1b7cdaf0089e6a45338879d4d6973b30b5e96cdb9c4d2"
+    },
+    {
+      "id": "f-pos-written-only",
+      "query": "Search only written documents when answering this question.",
+      "purpose": "source_forbid",
+      "positive": true,
+      "expected_relation": "verified",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "Search only written documents when answering this question.",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "audio",
+              "scope": "global",
+              "description": "audio source category"
+            },
+            "action": "forbid",
+            "source_span": "Search only written documents",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "97b9085b8b50de6916fb37146df433341691344a0fbc5a5d41b0dcde470a5dd3"
+    },
+    {
+      "id": "r-neg-ellipsis",
+      "query": "照上一轮那一种来源给我找一个。",
+      "purpose": "source_require",
+      "positive": false,
+      "expected_relation": "unresolved",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "照上一轮那一种来源给我找一个。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "image",
+              "scope": "global",
+              "description": "image source category"
+            },
+            "action": "require",
+            "source_span": "照上一轮那一种来源给我找一个",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "548048da83d4c1ba56efdbc0be171f93446f1c796e0d6ea707d07222adb5025b"
+    },
+    {
+      "id": "r-pos-archive",
+      "query": "请检索档案馆保存的鸟鸣音频，挑选两段不同季节的记录。",
+      "purpose": "source_require",
+      "positive": true,
+      "expected_relation": "verified",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "请检索档案馆保存的鸟鸣音频，挑选两段不同季节的记录。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "audio",
+              "scope": "global",
+              "description": "audio source category"
+            },
+            "action": "require",
+            "source_span": "检索档案馆保存的鸟鸣音频",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "81992a27d0d5eb581403697309b25d5adfd7bf24dd6497fbbfa08b89224a702b"
+    },
+    {
+      "id": "f-neg-conditional",
+      "query": "核实书面记录以后，再决定是否排除录音资料。",
+      "purpose": "source_forbid",
+      "positive": false,
+      "expected_relation": "unresolved",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "核实书面记录以后，再决定是否排除录音资料。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "audio",
+              "scope": "global",
+              "description": "audio source category"
+            },
+            "action": "forbid",
+            "source_span": "再决定是否排除录音资料",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "6bf3bb25b88be6a1f264809d48d4305b9f12fcc59c2eeb0150b8a31264130414"
+    },
+    {
+      "id": "f-pos-visual-types",
+      "query": "不得用照片、插画或其他任何图像作为证据。",
+      "purpose": "source_forbid",
+      "positive": true,
+      "expected_relation": "verified",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "不得用照片、插画或其他任何图像作为证据。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "image",
+              "scope": "global",
+              "description": "image source category"
+            },
+            "action": "forbid",
+            "source_span": "不得用照片、插画或其他任何图像作为证据",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "b918c904ed2fdaebd62aef700199c184c27bd16b14c214548e8bbabac224278c"
+    },
+    {
+      "id": "r-neg-file-name",
+      "query": "Explain the naming convention behind the example filename family_photo.jpg.",
+      "purpose": "source_require",
+      "positive": false,
+      "expected_relation": "contradicted",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "Explain the naming convention behind the example filename family_photo.jpg.",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "image",
+              "scope": "global",
+              "description": "image source category"
+            },
+            "action": "require",
+            "source_span": "family_photo.jpg",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "77429c38d801e5a2b58b2ee0a814f70a695745cac1929b5cc1855fb44007385f"
+    },
+    {
+      "id": "r-pos-footage",
+      "query": "Locate the original footage of the launch and identify when the hatch opens.",
+      "purpose": "source_require",
+      "positive": true,
+      "expected_relation": "verified",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "Locate the original footage of the launch and identify when the hatch opens.",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "video",
+              "scope": "global",
+              "description": "video source category"
+            },
+            "action": "require",
+            "source_span": "Locate the original footage of the launch",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "d7b0b6b4273388052927a0696bbe4a696959bdd02ca2fef147b4648df955f319"
+    },
+    {
+      "id": "f-neg-ellipsis",
+      "query": "来源范围沿用刚才的限制。",
+      "purpose": "source_forbid",
+      "positive": false,
+      "expected_relation": "unresolved",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "来源范围沿用刚才的限制。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "video",
+              "scope": "global",
+              "description": "video source category"
+            },
+            "action": "forbid",
+            "source_span": "来源范围沿用刚才的限制",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "ee8a46548e107e522d09176d569756bbc6534020882621af3405c50c16084744"
+    },
+    {
+      "id": "f-pos-moving-media",
+      "query": "不用录像或视频剪辑作为资料，只检索文字报告。",
+      "purpose": "source_forbid",
+      "positive": true,
+      "expected_relation": "verified",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "不用录像或视频剪辑作为资料，只检索文字报告。",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "video",
+              "scope": "global",
+              "description": "video source category"
+            },
+            "action": "forbid",
+            "source_span": "不用录像或视频剪辑作为资料",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "bc5cddefc031a7112733b551a8a218e612c2109a9cdf2a12295d387434323923"
+    },
+    {
+      "id": "r-neg-menu",
+      "query": "Describe the menu item named \"Audio\" using a short paragraph; do not fetch recordings.",
+      "purpose": "source_require",
+      "positive": false,
+      "expected_relation": "contradicted",
+      "baseline": {
+        "intent_type": "analysis",
+        "is_complex": false,
+        "visual_intent": "explicit_demand",
+        "audio_intent": "implicit_enrichment",
+        "video_intent": "implicit_enrichment",
+        "search_strategies": {
+          "dense_query": "Describe the menu item named \"Audio\" using a short paragraph; do not fetch recordings.",
+          "multi_view_queries": []
+        },
+        "sub_queries": [],
+        "source_proposals": [
+          {
+            "id": "p1",
+            "target": {
+              "modality": "audio",
+              "scope": "global",
+              "description": "audio source category"
+            },
+            "action": "require",
+            "source_span": "Audio",
+            "provenance": "current_user"
+          }
+        ]
+      },
+      "input_sha256": "da637df701b194362878efa8c409e726dc366117aa501d76c6cf29b4b7ea5383"
+    }
+  ]
+}

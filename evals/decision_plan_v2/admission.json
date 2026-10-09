@@ -1,0 +1,154 @@
+{
+  "gates": "Per purpose: 6 positives, 6 negatives, zero FP and at least 4 TP. No retuning.",
+  "groups": {
+    "typesafe/source_require": {
+      "positive_count": 6,
+      "negative_count": 6,
+      "true_positive": 6,
+      "false_positive": 0,
+      "false_negative": 0,
+      "raw_verified_true_positive": 6,
+      "raw_verified_false_positive": 0,
+      "failed_cases": [],
+      "wrong_action_cases": [],
+      "passed": true
+    },
+    "openrouter/source_require": {
+      "positive_count": 6,
+      "negative_count": 6,
+      "true_positive": 5,
+      "false_positive": 0,
+      "false_negative": 1,
+      "raw_verified_true_positive": 6,
+      "raw_verified_false_positive": 0,
+      "failed_cases": [],
+      "wrong_action_cases": [
+        "r-pos-diagram"
+      ],
+      "passed": true
+    },
+    "bailian/source_require": {
+      "positive_count": 6,
+      "negative_count": 6,
+      "true_positive": 0,
+      "false_positive": 0,
+      "false_negative": 6,
+      "raw_verified_true_positive": 6,
+      "raw_verified_false_positive": 5,
+      "failed_cases": [],
+      "wrong_action_cases": [
+        "r-pos-photo",
+        "r-pos-speech",
+        "r-pos-demo",
+        "r-pos-diagram",
+        "r-pos-archive",
+        "r-pos-footage"
+      ],
+      "passed": false
+    },
+    "bailian/source_forbid": {
+      "positive_count": 6,
+      "negative_count": 6,
+      "true_positive": 0,
+      "false_positive": 0,
+      "false_negative": 6,
+      "raw_verified_true_positive": 6,
+      "raw_verified_false_positive": 6,
+      "failed_cases": [],
+      "wrong_action_cases": [
+        "f-pos-photo",
+        "f-pos-recording",
+        "f-pos-video",
+        "f-pos-written-only",
+        "f-pos-visual-types",
+        "f-pos-moving-media"
+      ],
+      "passed": false
+    },
+    "openrouter/source_forbid": {
+      "positive_count": 6,
+      "negative_count": 6,
+      "true_positive": 4,
+      "false_positive": 0,
+      "false_negative": 2,
+      "raw_verified_true_positive": 4,
+      "raw_verified_false_positive": 0,
+      "failed_cases": [],
+      "wrong_action_cases": [
+        "f-pos-video",
+        "f-pos-written-only"
+      ],
+      "passed": true
+    },
+    "typesafe/source_forbid": {
+      "positive_count": 6,
+      "negative_count": 6,
+      "true_positive": 5,
+      "false_positive": 0,
+      "false_negative": 1,
+      "raw_verified_true_positive": 6,
+      "raw_verified_false_positive": 0,
+      "failed_cases": [],
+      "wrong_action_cases": [
+        "f-pos-written-only"
+      ],
+      "passed": true
+    }
+  },
+  "profiles": [
+    {
+      "id": "typesafe-source-require-v1",
+      "purpose": "source_require",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "threshold": 0.5,
+      "status": "admitted"
+    },
+    {
+      "id": "typesafe-source-forbid-v1",
+      "purpose": "source_forbid",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "threshold": 0.7,
+      "status": "admitted"
+    },
+    {
+      "id": "openrouter-source-require-v1",
+      "purpose": "source_require",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "threshold": 0.55,
+      "status": "admitted"
+    },
+    {
+      "id": "openrouter-source-forbid-v1",
+      "purpose": "source_forbid",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "threshold": 0.5,
+      "status": "admitted"
+    },
+    {
+      "id": "bailian-source-require-v1",
+      "purpose": "source_require",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "threshold": null,
+      "status": "rejected"
+    },
+    {
+      "id": "bailian-source-forbid-v1",
+      "purpose": "source_forbid",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "threshold": null,
+      "status": "rejected"
+    }
+  ]
+}

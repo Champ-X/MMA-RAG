@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from app.modules.retrieval.decision_coverage import adopted_exclusions
+
 
 @dataclass(frozen=True)
 class ToolContext:
@@ -18,6 +20,9 @@ class ToolContext:
     # cannot accidentally turn an "include images" request into text-only
     # retrieval just by wording a sub-query differently.
     base_modality_intents: Optional[Dict[str, str]] = None
+    # Only adopted source prohibitions are projected to child searches. The
+    # original grounding/positive plan must not run again for every subquery.
+    decision_requirements: Optional[Dict[str, Any]] = None
 
 
 class MultimodalKnowledgeSearchTool:
@@ -37,20 +42,23 @@ class MultimodalKnowledgeSearchTool:
         clean_query = " ".join((query or "").split()).strip()
         if not clean_query:
             raise ValueError("query must not be empty")
+        hints = {
+            "agent_mode": True,
+            "agent_round": context.agent_round,
+            "explored_kb_counts": dict(context.explored_kb_counts or {}),
+            "agent_base_modality_intents": dict(context.base_modality_intents or {}),
+        }
+        excluded = adopted_exclusions(context.decision_requirements)
+        if excluded:
+            hints["agent_adopted_exclusions"] = sorted(excluded)
+            hints["agent_decision_policy_version"] = context.decision_requirements.get("policy_version")
         return await self.retrieval_service.search(
             query=clean_query,
             kb_context=context.kb_context,
             session_context=context.session_context,
             attachment_context=context.attachment_context,
             preplanned=True,
-            routing_hints={
-                "agent_mode": True,
-                "agent_round": context.agent_round,
-                "explored_kb_counts": dict(context.explored_kb_counts or {}),
-                "agent_base_modality_intents": dict(
-                    context.base_modality_intents or {}
-                ),
-            },
+            routing_hints=hints,
         )
 
 

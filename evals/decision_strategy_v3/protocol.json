@@ -1,0 +1,75 @@
+{
+  "version": "decision-strategy-v3-paired-1",
+  "frozen_before_live": true,
+  "scope": "Native Decision intent stage only. No generative baseline planner, retrieval, answer generation or saved configuration mutation.",
+  "cases_file": "cases.json",
+  "cases_sha256": "92fb5cd169dc5db0b5ba4f2cee9a3c186eb1192221f8fe27e9b9bb3d6bb64e4c",
+  "old": {
+    "commit": "69e227c246c3887767fdb299ed509fd0cb3074f9",
+    "source_path": "backend/app/modules/retrieval/processors/jev_intent.py",
+    "source_sha256": "d52ca9db3db5de7ad2ec2f767095003d3aa2dbb3b8b718607eefbe13f86a2f77",
+    "questions_file": "old-questions.json",
+    "questions_sha256": "8220b8918319cf63520e4fe2c8b52f80d31ebbb9728602d41262e0c8ab598d60",
+    "prompt_version": "query-decisions-v2-dev2",
+    "selected_probability_min": 0.75,
+    "complexity_max": 0.2,
+    "context_max": 0.2,
+    "force_policy": "unconditionally accepts successful valid decisions"
+  },
+  "new": {
+    "source_path": "backend/app/modules/retrieval/processors/jev_intent.py",
+    "source_sha256": "0b846b0a87b10bc2626113dec6cedc0a1582aaa9a6fa23e25061ec110c914a37",
+    "questions_file": "new-questions.json",
+    "questions_sha256": "634a8e8776d35aa0a19575f148a3e4bd042271e8c3b56b41c50115860e5c0b69",
+    "prompt_version": "query-requirements-v3",
+    "policy_version": "decision-intent-v3",
+    "selected_probability_min": 0.75,
+    "positive_signal": 0.85,
+    "negative_signal": 0.15,
+    "force_policy": "requires successful call and same complete semantic gate as adaptive; otherwise explicit uncertain_decision"
+  },
+  "models": [
+    {
+      "provider": "typesafe",
+      "model": "jev-1.13.0"
+    },
+    {
+      "provider": "bailian",
+      "model": "decision-model-preview"
+    }
+  ],
+  "transport": {
+    "timeout_s": 3.0,
+    "max_input_tokens_per_route": 400000,
+    "concurrency": 1,
+    "repetitions": 1,
+    "retries": 0,
+    "fallbacks": false
+  },
+  "order": "For each case and provider, alternate old/new and new/old by case index; reverse provider order on odd cases.",
+  "failure_policy": "Keep every failure; no retry, no replacement, no output overwrite. A failure does not count as an abstention or a correct decision.",
+  "metrics": [
+    "complete_adoption",
+    "correct_complete_adoption",
+    "unsafe_complete_adoption",
+    "planning_handoff",
+    "partial_required_eligible",
+    "requirement_misses_when_adopted",
+    "incorrect_required_when_adopted",
+    "incorrect_exclusions_when_adopted",
+    "explicit_exclusion_detection",
+    "abstention",
+    "conflict",
+    "failure",
+    "raw_required_precision_recall",
+    "duration_p50_p95",
+    "reported_usage_and_cost"
+  ],
+  "limits": [
+    "Human labels are a small diagnostic rubric, not independently adjudicated.",
+    "Provider previews may change. Latencies include transport and are one observation each.",
+    "Model signals are not correctness labels. No calibration or final RAG quality claim.",
+    "Partial eligibility is a counterfactual policy signal, not proof that a real planner needed an addition.",
+    "Old policy cannot explicitly represent forbidden; absent capability is reported, not fabricated from unnecessary."
+  ]
+}

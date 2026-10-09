@@ -58,7 +58,7 @@ async def test_catalog_and_route_persist_without_any_secrets(app):
         assert response.status_code == 200
         assert response.json()["config"] == wanted
         assert any(m["id"] == wanted["model"] for m in response.json()["models"])
-        assert {p["id"] for p in response.json()["providers"]} == {"typesafe", "openrouter"}
+        assert {p["id"] for p in response.json()["providers"]} == {"typesafe", "openrouter", "bailian"}
         assert "private-" not in response.text
     assert runtime.jev_config_store.read().model_dump() == wanted
     assert "private-" not in runtime.jev_config_store.path.read_text()

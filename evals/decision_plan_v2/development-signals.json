@@ -1,0 +1,1755 @@
+{
+  "source_receipts_sha256": "4d603792810c91de284da7430f1ccb10b87ed5fc82ebf1d95c45c7c01f73ca53",
+  "source_protocol_sha256": "f19f0c01fffa34f4f8ecfba9546516c8c32976fba1f01e469ad3bbd7f3eaadb7",
+  "rows": [
+    {
+      "case_id": "cn-global-exclusions",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "input_sha256": "a6476ee2546d746f7466afa8864c68e4f909975049fbfa7e97a387ac72ec6a84",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1",
+        "p2"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.59,
+          "probabilities": {
+            "verified": 0.73,
+            "contradicted": 0.24,
+            "unresolved": 0.03
+          }
+        },
+        "p1": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.79,
+          "probabilities": {
+            "verified": 0.86,
+            "contradicted": 0.13,
+            "unresolved": 0.01
+          }
+        }
+      }
+    },
+    {
+      "case_id": "cn-global-exclusions",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "input_sha256": "a6476ee2546d746f7466afa8864c68e4f909975049fbfa7e97a387ac72ec6a84",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1",
+        "p2"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "probabilities": {
+            "verified": 0.67,
+            "contradicted": 0.32,
+            "unresolved": 0.01
+          },
+          "confidence": 0.51
+        },
+        "p1": {
+          "type": "choice",
+          "choice": "verified",
+          "probabilities": {
+            "verified": 0.69,
+            "contradicted": 0.27,
+            "unresolved": 0.04
+          },
+          "confidence": 0.53
+        }
+      }
+    },
+    {
+      "case_id": "cn-global-exclusions",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "input_sha256": "a6476ee2546d746f7466afa8864c68e4f909975049fbfa7e97a387ac72ec6a84",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1",
+        "p2"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.99,
+          "probabilities": {
+            "verified": 1.0,
+            "contradicted": 0.0,
+            "unresolved": 0.0
+          }
+        },
+        "p1": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.98,
+          "probabilities": {
+            "verified": 0.99,
+            "contradicted": 0.01,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "cn-compound-sources",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "input_sha256": "c7325dd0aa642509d510b2f1a4ac3af2ce329b8f52c245a2787aca85f8518a5f",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1",
+        "p2"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "require",
+          "status": "evaluated",
+          "positive": true
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.99,
+          "probabilities": {
+            "verified": 0.99,
+            "contradicted": 0.0,
+            "unresolved": 0.0
+          }
+        },
+        "p1": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.99,
+          "probabilities": {
+            "verified": 0.99,
+            "contradicted": 0.01,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "cn-compound-sources",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "input_sha256": "c7325dd0aa642509d510b2f1a4ac3af2ce329b8f52c245a2787aca85f8518a5f",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1",
+        "p2"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "require",
+          "status": "evaluated",
+          "positive": true
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "probabilities": {
+            "verified": 0.72,
+            "contradicted": 0.22,
+            "unresolved": 0.06
+          },
+          "confidence": 0.58
+        },
+        "p1": {
+          "type": "choice",
+          "choice": "contradicted",
+          "probabilities": {
+            "verified": 0.36,
+            "contradicted": 0.62,
+            "unresolved": 0.02
+          },
+          "confidence": 0.43
+        }
+      }
+    },
+    {
+      "case_id": "cn-compound-sources",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "input_sha256": "c7325dd0aa642509d510b2f1a4ac3af2ce329b8f52c245a2787aca85f8518a5f",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1",
+        "p2"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "require",
+          "status": "evaluated",
+          "positive": true
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.7,
+          "probabilities": {
+            "verified": 0.8,
+            "contradicted": 0.08,
+            "unresolved": 0.12
+          }
+        },
+        "p1": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.55,
+          "probabilities": {
+            "verified": 0.7,
+            "contradicted": 0.17,
+            "unresolved": 0.13
+          }
+        }
+      }
+    },
+    {
+      "case_id": "en-answer-format",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "input_sha256": "33c7b8355d63d6070b544b30fc37734709b50472f132a6654937e32ac4cd0454",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "confidence": 1.0,
+          "probabilities": {
+            "verified": 0.0,
+            "contradicted": 1.0,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "en-answer-format",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "input_sha256": "33c7b8355d63d6070b544b30fc37734709b50472f132a6654937e32ac4cd0454",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "probabilities": {
+            "verified": 0.01,
+            "contradicted": 0.99,
+            "unresolved": 0
+          },
+          "confidence": 0.99
+        }
+      }
+    },
+    {
+      "case_id": "en-answer-format",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "input_sha256": "33c7b8355d63d6070b544b30fc37734709b50472f132a6654937e32ac4cd0454",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.5,
+          "probabilities": {
+            "verified": 0.67,
+            "contradicted": 0.32,
+            "unresolved": 0.01
+          }
+        }
+      }
+    },
+    {
+      "case_id": "cn-quoted-ban",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "input_sha256": "c0d18b3cecad93c7167f7f9ec92a2a77854f9303d24a7d5fe11c2dbaa2a6e1e2",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.98,
+          "probabilities": {
+            "verified": 0.99,
+            "contradicted": 0.01,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "cn-quoted-ban",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "input_sha256": "c0d18b3cecad93c7167f7f9ec92a2a77854f9303d24a7d5fe11c2dbaa2a6e1e2",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "probabilities": {
+            "verified": 0.14,
+            "contradicted": 0.85,
+            "unresolved": 0.01
+          },
+          "confidence": 0.77
+        }
+      }
+    },
+    {
+      "case_id": "cn-quoted-ban",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "input_sha256": "c0d18b3cecad93c7167f7f9ec92a2a77854f9303d24a7d5fe11c2dbaa2a6e1e2",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "confidence": 0.97,
+          "probabilities": {
+            "verified": 0.02,
+            "contradicted": 0.98,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "en-subclass-not-global",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "input_sha256": "7fdf63ed4074e18fdf6b154b0b5f1132ee3b08efc10769cbf25b594058547adf",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "confidence": 1.0,
+          "probabilities": {
+            "verified": 0.0,
+            "contradicted": 1.0,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "en-subclass-not-global",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "input_sha256": "7fdf63ed4074e18fdf6b154b0b5f1132ee3b08efc10769cbf25b594058547adf",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "probabilities": {
+            "verified": 0.01,
+            "contradicted": 0.98,
+            "unresolved": 0.01
+          },
+          "confidence": 0.97
+        }
+      }
+    },
+    {
+      "case_id": "en-subclass-not-global",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "input_sha256": "7fdf63ed4074e18fdf6b154b0b5f1132ee3b08efc10769cbf25b594058547adf",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.98,
+          "probabilities": {
+            "verified": 0.99,
+            "contradicted": 0.01,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "en-object-record",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": null,
+      "input_sha256": "d28a93374c66e9fba7a3552e3d049133467eea012155f4d550285f7f7f884a03",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "not_evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {}
+    },
+    {
+      "case_id": "en-object-record",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": null,
+      "input_sha256": "d28a93374c66e9fba7a3552e3d049133467eea012155f4d550285f7f7f884a03",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "not_evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {}
+    },
+    {
+      "case_id": "en-object-record",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": null,
+      "input_sha256": "d28a93374c66e9fba7a3552e3d049133467eea012155f4d550285f7f7f884a03",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "not_evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {}
+    },
+    {
+      "case_id": "cn-history-span",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": null,
+      "input_sha256": "040319dfa4f691c9779608ae7168fa5e8ea9e5c194b3fe50f9f64d34ef5d07c4",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "not_evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {}
+    },
+    {
+      "case_id": "cn-history-span",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": null,
+      "input_sha256": "040319dfa4f691c9779608ae7168fa5e8ea9e5c194b3fe50f9f64d34ef5d07c4",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "not_evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {}
+    },
+    {
+      "case_id": "cn-history-span",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": null,
+      "input_sha256": "040319dfa4f691c9779608ae7168fa5e8ea9e5c194b3fe50f9f64d34ef5d07c4",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "not_evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {}
+    },
+    {
+      "case_id": "cn-attachment-authority",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": null,
+      "input_sha256": "18468cd7ac3ff91fed67fe1b29e73bb1f3f619119105d0ce63da7f12f394a432",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "not_evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {}
+    },
+    {
+      "case_id": "cn-attachment-authority",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": null,
+      "input_sha256": "18468cd7ac3ff91fed67fe1b29e73bb1f3f619119105d0ce63da7f12f394a432",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "not_evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {}
+    },
+    {
+      "case_id": "cn-attachment-authority",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": null,
+      "input_sha256": "18468cd7ac3ff91fed67fe1b29e73bb1f3f619119105d0ce63da7f12f394a432",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "not_evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {}
+    },
+    {
+      "case_id": "en-no-proposals",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": null,
+      "input_sha256": "1e0750d842f664f3fd2d6979656845b2a00d7f690c6215749296c0c87a7b0abf",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [],
+      "answers": {}
+    },
+    {
+      "case_id": "en-no-proposals",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": null,
+      "input_sha256": "1e0750d842f664f3fd2d6979656845b2a00d7f690c6215749296c0c87a7b0abf",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [],
+      "answers": {}
+    },
+    {
+      "case_id": "en-no-proposals",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": null,
+      "input_sha256": "1e0750d842f664f3fd2d6979656845b2a00d7f690c6215749296c0c87a7b0abf",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [],
+      "answers": {}
+    },
+    {
+      "case_id": "en-quoted-mime",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "input_sha256": "5bc2b9720727bd719c2f295d78a8cd1d153edf45f843ca74d4e0af991c7764d6",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "confidence": 0.54,
+          "probabilities": {
+            "verified": 0.21,
+            "contradicted": 0.69,
+            "unresolved": 0.1
+          }
+        }
+      }
+    },
+    {
+      "case_id": "en-quoted-mime",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "input_sha256": "5bc2b9720727bd719c2f295d78a8cd1d153edf45f843ca74d4e0af991c7764d6",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "probabilities": {
+            "verified": 0.01,
+            "contradicted": 0.98,
+            "unresolved": 0.01
+          },
+          "confidence": 0.97
+        }
+      }
+    },
+    {
+      "case_id": "en-quoted-mime",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "input_sha256": "5bc2b9720727bd719c2f295d78a8cd1d153edf45f843ca74d4e0af991c7764d6",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "confidence": 1.0,
+          "probabilities": {
+            "verified": 0.0,
+            "contradicted": 1.0,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "cn-video-source",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "input_sha256": "4b8e458692c2e8d6f4ce5b05c090f53094ade875ad460f58085dcdce7b33df17",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": true
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.88,
+          "probabilities": {
+            "verified": 0.92,
+            "contradicted": 0.03,
+            "unresolved": 0.05
+          }
+        }
+      }
+    },
+    {
+      "case_id": "cn-video-source",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "input_sha256": "4b8e458692c2e8d6f4ce5b05c090f53094ade875ad460f58085dcdce7b33df17",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": true
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "probabilities": {
+            "verified": 0.59,
+            "contradicted": 0.26,
+            "unresolved": 0.15
+          },
+          "confidence": 0.38
+        }
+      }
+    },
+    {
+      "case_id": "cn-video-source",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "input_sha256": "4b8e458692c2e8d6f4ce5b05c090f53094ade875ad460f58085dcdce7b33df17",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": true
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 1.0,
+          "probabilities": {
+            "verified": 1.0,
+            "contradicted": 0.0,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "cn-text-only-sources",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "input_sha256": "94a27f1fd00a08028e40559788243da1bf7901f293a5f850a826526cc1c2e5c1",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1",
+        "p2",
+        "p3"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p3",
+          "index": 2,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 1.0,
+          "probabilities": {
+            "verified": 1.0,
+            "contradicted": 0.0,
+            "unresolved": 0.0
+          }
+        },
+        "p1": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 1.0,
+          "probabilities": {
+            "verified": 1.0,
+            "contradicted": 0.0,
+            "unresolved": 0.0
+          }
+        },
+        "p2": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.99,
+          "probabilities": {
+            "verified": 1.0,
+            "contradicted": 0.0,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "cn-text-only-sources",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "input_sha256": "94a27f1fd00a08028e40559788243da1bf7901f293a5f850a826526cc1c2e5c1",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1",
+        "p2",
+        "p3"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p3",
+          "index": 2,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "probabilities": {
+            "verified": 0.53,
+            "contradicted": 0.45,
+            "unresolved": 0.02
+          },
+          "confidence": 0.3
+        },
+        "p1": {
+          "type": "choice",
+          "choice": "verified",
+          "probabilities": {
+            "verified": 0.56,
+            "contradicted": 0.42,
+            "unresolved": 0.02
+          },
+          "confidence": 0.34
+        },
+        "p2": {
+          "type": "choice",
+          "choice": "verified",
+          "probabilities": {
+            "verified": 0.67,
+            "contradicted": 0.3,
+            "unresolved": 0.03
+          },
+          "confidence": 0.51
+        }
+      }
+    },
+    {
+      "case_id": "cn-text-only-sources",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "input_sha256": "94a27f1fd00a08028e40559788243da1bf7901f293a5f850a826526cc1c2e5c1",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1",
+        "p2",
+        "p3"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p3",
+          "index": 2,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": true
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.73,
+          "probabilities": {
+            "verified": 0.82,
+            "contradicted": 0.16,
+            "unresolved": 0.02
+          }
+        },
+        "p1": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.61,
+          "probabilities": {
+            "verified": 0.74,
+            "contradicted": 0.24,
+            "unresolved": 0.02
+          }
+        },
+        "p2": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.69,
+          "probabilities": {
+            "verified": 0.79,
+            "contradicted": 0.2,
+            "unresolved": 0.01
+          }
+        }
+      }
+    },
+    {
+      "case_id": "en-new-creation",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "input_sha256": "d766feda00753ef18605a1621109099925017cec617ac530389e7e8f9979df64",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "confidence": 1.0,
+          "probabilities": {
+            "verified": 0.0,
+            "contradicted": 1.0,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "en-new-creation",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "input_sha256": "d766feda00753ef18605a1621109099925017cec617ac530389e7e8f9979df64",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "probabilities": {
+            "verified": 0,
+            "contradicted": 0.99,
+            "unresolved": 0.01
+          },
+          "confidence": 0.99
+        }
+      }
+    },
+    {
+      "case_id": "en-new-creation",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "input_sha256": "d766feda00753ef18605a1621109099925017cec617ac530389e7e8f9979df64",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.96,
+          "probabilities": {
+            "verified": 0.98,
+            "contradicted": 0.02,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "en-missing-reference",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "input_sha256": "58260ba6cfee4f48b7e2c913909513ff8c3b4db1abdfe76ff13037c9555383c8",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 1.0,
+          "probabilities": {
+            "verified": 1.0,
+            "contradicted": 0.0,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "en-missing-reference",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "input_sha256": "58260ba6cfee4f48b7e2c913909513ff8c3b4db1abdfe76ff13037c9555383c8",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "unresolved",
+          "probabilities": {
+            "verified": 0.01,
+            "contradicted": 0.01,
+            "unresolved": 0.98
+          },
+          "confidence": 0.97
+        }
+      }
+    },
+    {
+      "case_id": "en-missing-reference",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "input_sha256": "58260ba6cfee4f48b7e2c913909513ff8c3b4db1abdfe76ff13037c9555383c8",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "unresolved",
+          "confidence": 0.88,
+          "probabilities": {
+            "verified": 0.0,
+            "contradicted": 0.08,
+            "unresolved": 0.92
+          }
+        }
+      }
+    },
+    {
+      "case_id": "cn-output-ban",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "input_sha256": "088267a33c21dd791c34dbe11a02284c1b207a4e63e09d4edfa4050d322f5e77",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "confidence": 0.98,
+          "probabilities": {
+            "verified": 0.01,
+            "contradicted": 0.99,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "cn-output-ban",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "input_sha256": "088267a33c21dd791c34dbe11a02284c1b207a4e63e09d4edfa4050d322f5e77",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "probabilities": {
+            "verified": 0.01,
+            "contradicted": 0.99,
+            "unresolved": 0
+          },
+          "confidence": 0.99
+        }
+      }
+    },
+    {
+      "case_id": "cn-output-ban",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "input_sha256": "088267a33c21dd791c34dbe11a02284c1b207a4e63e09d4edfa4050d322f5e77",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 1.0,
+          "probabilities": {
+            "verified": 1.0,
+            "contradicted": 0.0,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "cn-conflicting-proposals",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": null,
+      "input_sha256": "c52f1f0931df2e526487c8edf718287b3ee09f5aa90123ccd25a6522961f2034",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "not_evaluated",
+          "positive": false
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "forbid",
+          "status": "not_evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {}
+    },
+    {
+      "case_id": "cn-conflicting-proposals",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": null,
+      "input_sha256": "c52f1f0931df2e526487c8edf718287b3ee09f5aa90123ccd25a6522961f2034",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "not_evaluated",
+          "positive": false
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "forbid",
+          "status": "not_evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {}
+    },
+    {
+      "case_id": "cn-conflicting-proposals",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": null,
+      "input_sha256": "c52f1f0931df2e526487c8edf718287b3ee09f5aa90123ccd25a6522961f2034",
+      "status": "skipped",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "not_evaluated",
+          "positive": false
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "forbid",
+          "status": "not_evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {}
+    },
+    {
+      "case_id": "en-independent-decisions",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "input_sha256": "c4cb9d0624a08eec30e2198ceb6658115c8cbd15e578756afe345359e2de5ed7",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "require",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.3,
+          "probabilities": {
+            "verified": 0.53,
+            "contradicted": 0.21,
+            "unresolved": 0.26
+          }
+        },
+        "p1": {
+          "type": "choice",
+          "choice": "contradicted",
+          "confidence": 0.94,
+          "probabilities": {
+            "verified": 0.01,
+            "contradicted": 0.96,
+            "unresolved": 0.03
+          }
+        }
+      }
+    },
+    {
+      "case_id": "en-independent-decisions",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "input_sha256": "c4cb9d0624a08eec30e2198ceb6658115c8cbd15e578756afe345359e2de5ed7",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "require",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "probabilities": {
+            "verified": 0.6,
+            "contradicted": 0.31,
+            "unresolved": 0.09
+          },
+          "confidence": 0.4
+        },
+        "p1": {
+          "type": "choice",
+          "choice": "contradicted",
+          "probabilities": {
+            "verified": 0.01,
+            "contradicted": 0.97,
+            "unresolved": 0.02
+          },
+          "confidence": 0.96
+        }
+      }
+    },
+    {
+      "case_id": "en-independent-decisions",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "input_sha256": "c4cb9d0624a08eec30e2198ceb6658115c8cbd15e578756afe345359e2de5ed7",
+      "status": "ok",
+      "expected_applied_ids": [
+        "p1"
+      ],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "require",
+          "status": "evaluated",
+          "positive": true
+        },
+        {
+          "id": "p2",
+          "index": 1,
+          "action": "require",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.97,
+          "probabilities": {
+            "verified": 0.98,
+            "contradicted": 0.02,
+            "unresolved": 0.0
+          }
+        },
+        "p1": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.89,
+          "probabilities": {
+            "verified": 0.92,
+            "contradicted": 0.07,
+            "unresolved": 0.01
+          }
+        }
+      }
+    },
+    {
+      "case_id": "en-exception-not-global",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "input_sha256": "b2764e255288793492fa5f77f753867ac5732c81660b74100afd01466de843a2",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "verified",
+          "confidence": 0.98,
+          "probabilities": {
+            "verified": 0.99,
+            "contradicted": 0.01,
+            "unresolved": 0.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "en-exception-not-global",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "input_sha256": "b2764e255288793492fa5f77f753867ac5732c81660b74100afd01466de843a2",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "probabilities": {
+            "verified": 0.01,
+            "contradicted": 0.99,
+            "unresolved": 0
+          },
+          "confidence": 0.99
+        }
+      }
+    },
+    {
+      "case_id": "en-exception-not-global",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "input_sha256": "b2764e255288793492fa5f77f753867ac5732c81660b74100afd01466de843a2",
+      "status": "ok",
+      "expected_applied_ids": [],
+      "actions": [
+        {
+          "id": "p1",
+          "index": 0,
+          "action": "forbid",
+          "status": "evaluated",
+          "positive": false
+        }
+      ],
+      "answers": {
+        "p0": {
+          "type": "choice",
+          "choice": "contradicted",
+          "confidence": 0.98,
+          "probabilities": {
+            "verified": 0.01,
+            "contradicted": 0.99,
+            "unresolved": 0.0
+          }
+        }
+      }
+    }
+  ]
+}

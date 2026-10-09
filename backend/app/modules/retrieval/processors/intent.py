@@ -13,6 +13,7 @@ from app.modules.chat.context_manager import build_conversation_context
 from app.core.jev_settings import get_jev_config
 from app.core.llm.jev import JevError, JevRequiredError, get_jev_client
 from .jev_intent import classify_intent
+from .decision_plan import PROPOSAL_INSTRUCTION, verify_plan
 
 logger = get_logger(__name__)
 
@@ -59,27 +60,27 @@ class IntentProcessor:
                 # Never leak provider data or start a generative fallback in force mode.
                 raise JevRequiredError(stage="intent", reason="invalid_response_or_transport") from None
         if decision["mode"] == "adaptive":
-            if chat_history or (attachment_context_block or "").strip():
-                decision["reason"] = "context_requires_generative_handler"
-            elif not query.strip() or len(query) > 4000:
-                decision["reason"] = "query_outside_bounds"
-            else:
-                try:
-                    analysis, metadata = await classify_intent(get_jev_client(), query)
-                    decision.update(metadata)
-                    if metadata["accepted"]:
-                        # The legacy validator force-enables media on keywords,
-                        # undoing semantic handling of negation and quoted code.
-                        analysis["jev_decision"] = decision
-                        return analysis
-                    decision["reason"] = "uncertain_or_complex"
-                except JevError as exc:
-                    decision["reason"] = str(exc)
+            analysis = await self._process_generative(
+                query, chat_history, attachment_context_block, include_source_proposals=True,
+            )
+            try:
+                config = get_jev_config()
+                return await verify_plan(query, analysis, client_factory=get_jev_client,
+                                         selection=(config.provider, config.model))
+            except Exception:
+                # The optional local adapter can fail without starting another
+                # planner or discarding the already completed baseline plan.
+                analysis = dict(analysis)
+                analysis.pop("source_proposals", None)
+                analysis["jev_decision"] = {**decision, "strategy": "plan_first",
+                                            "status": "fallback", "reason": "unexpected_error"}
+                return analysis
         analysis = await self._process_generative(query, chat_history, attachment_context_block)
         analysis["jev_decision"] = decision
         return analysis
 
-    async def _process_generative(self, query, chat_history=None, attachment_context_block=None):
+    async def _process_generative(self, query, chat_history=None, attachment_context_block=None,
+                                  *, include_source_proposals=False):
         try:
             # 构建对话历史文本
             chat_history_text = self._format_chat_history(chat_history or [])
@@ -95,6 +96,8 @@ class IntentProcessor:
                 raw_query=query,
                 attachment_context_block=block,
             )
+            if include_source_proposals:
+                prompt += "\n\n" + PROPOSAL_INSTRUCTION
             
             # 调用LLM进行意图识别
             messages = [
@@ -126,6 +129,19 @@ class IntentProcessor:
             
             # 验证和补全分析结果
             validated_analysis = self._validate_intent_analysis(intent_analysis, query)
+            if include_source_proposals:
+                # In adaptive mode retain the planner's valid semantic enum.
+                # Legacy keyword correction remains the fallback for missing or
+                # malformed fields and remains unchanged when Decision is off.
+                for name in ("visual", "audio", "video"):
+                    field = name + "_intent"
+                    if intent_analysis.get(field) in ("explicit_demand", "implicit_enrichment", "unnecessary"):
+                        validated_analysis[field] = intent_analysis[field]
+                        validated_analysis[name + "_reasoning"] = intent_analysis.get(
+                            name + "_reasoning", "保留生成式规划的有效媒体意图，未做关键词覆盖")
+                # Keep proposals separate from the unchanged baseline validator;
+                # verification checks structure, provenance and actual semantics.
+                validated_analysis["source_proposals"] = intent_analysis.get("source_proposals", [])
             
             logger.info(f"意图识别完成: {validated_analysis['intent_type']}, 复杂度: {validated_analysis['is_complex']}")
             

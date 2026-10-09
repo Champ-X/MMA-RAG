@@ -1,0 +1,39 @@
+{
+  "version": "decision-plan-fixture-v1",
+  "policy_version": "decision-plan-v1",
+  "prompt_version": "grounded-source-actions-v1",
+  "threshold": 0.85,
+  "cases_file": "cases.json",
+  "cases_sha256": "fd32598648216bb0002bd793e84fd746f0e373022068eeb0f65a084fa7f469be",
+  "source_sha256": {
+    "backend/app/modules/retrieval/processors/decision_plan.py": "5ca835209b2ae493586560ffb2556cdae3b0d6cfb43a86af5982231deafdc43b",
+    "backend/app/modules/retrieval/processors/intent.py": "3eb84859be9fc5a9644837b9ce8c9c6748159608fe375fec8b7be7f3450c8a73",
+    "backend/scripts/evaluate_decision_plan.py": "efec5abf2344a0c2dbc5922620ddea3e1b3e7b2b59855a7cbf3ef5d5eefbf16d"
+  },
+  "models": [
+    {
+      "provider": "typesafe",
+      "model": "jev-1.13.0"
+    },
+    {
+      "provider": "openrouter",
+      "model": "openai/gpt-6-luna-decisions"
+    },
+    {
+      "provider": "bailian",
+      "model": "decision-model-preview"
+    }
+  ],
+  "transport": {
+    "concurrency": 1,
+    "repetitions": 1,
+    "retries": 0,
+    "timeout_s": 3
+  },
+  "limitations": [
+    "Prepared proposals do not prove generative planner coverage.",
+    "Exact span presence does not establish user instruction semantics.",
+    "Small single-author diagnostic set; not independent accuracy benchmark.",
+    "No changes to prompts or threshold after observing this run."
+  ]
+}

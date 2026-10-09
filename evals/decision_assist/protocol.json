@@ -1,0 +1,41 @@
+{
+  "protocol": "decision-assist-pilot-v1",
+  "scope": "Frozen public candidate pools + cached historical real Qwen scores + fresh Decision calls. No live KB recall or answer-quality evaluation.",
+  "selection": "First 12 test cases in frozen file order with >10 candidates and successful historical Qwen receipt. Selection does not inspect qrels or model predictions.",
+  "cases": [
+    "t2v2-3653",
+    "t2v2-1306",
+    "t2v2-2325",
+    "t2v2-6081",
+    "t2v2-1438",
+    "t2v2-5479",
+    "t2v2-1027",
+    "t2v2-3900",
+    "t2v2-0432",
+    "t2v2-5076",
+    "t2v2-3804",
+    "t2v2-6113"
+  ],
+  "dataset_sha256": "5c83894fba8081b5e4ffbfde2cd816b1093fa06bbde8efecf2f0ac84986dfced",
+  "baseline_receipts_sha256": "359c527a7b0acbb6854245e60bcd5047168276ff62d0eec6cf3206df6d8390dc",
+  "providers": [
+    {
+      "provider": "typesafe",
+      "model": "jev-1.13.0"
+    },
+    {
+      "provider": "openrouter",
+      "model": "inception/mercury-decide:free"
+    }
+  ],
+  "baseline_policy": "Same production coarse selection/fusion/top10 using cached Qwen response; no modification of original evidence or receipts.",
+  "candidate_policy": "Production assist: at most8 remaining text candidates, full bounded content, at most2 additions with >=0.85 Choice confidence/probability.",
+  "metrics": [
+    "baseline prefix unchanged",
+    "additional relevant documents",
+    "addition precision against existing qrels",
+    "recall before/after over same fixed pool",
+    "failures and skips included"
+  ],
+  "default_policy": "Remain opt-in; no default/config mutation; no quality claim solely from functional tests."
+}

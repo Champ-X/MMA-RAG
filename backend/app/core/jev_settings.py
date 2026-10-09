@@ -13,16 +13,16 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from app.core.config import settings
-from app.core.llm.decision_catalog import get_decision_model
+from app.core.llm.decision_catalog import DECISION_DEFAULT_MODELS, DecisionProvider, get_decision_model
 
 
 class JevConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    provider: Literal["typesafe", "openrouter"] = "typesafe"
+    provider: DecisionProvider = "typesafe"
     model: str = "jev-1.13.0"
     intent_mode: Literal["off", "adaptive", "force"]
-    rerank_mode: Literal["off", "shadow", "replace", "force"]
+    rerank_mode: Literal["off", "shadow", "assist", "replace", "force"]
     citation_mode: Literal["off", "shadow"]
     citation_strategy: Literal["per_unit", "batch_choice"]
 
@@ -57,9 +57,7 @@ class JevConfigStore:
         try:
             return JevConfig(
                 provider=settings.decision_provider,
-                model=settings.decision_model or (
-                    "jev-1.13.0" if settings.decision_provider == "typesafe" else "openai/gpt-6-luna-decisions"
-                ),
+                model=settings.decision_model or DECISION_DEFAULT_MODELS[settings.decision_provider],
                 intent_mode=settings.jev_intent_mode,
                 rerank_mode=settings.jev_rerank_mode,
                 citation_mode=settings.jev_citation_mode,

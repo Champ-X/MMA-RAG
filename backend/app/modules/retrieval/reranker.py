@@ -14,6 +14,7 @@ from app.core.llm.jev import JevError, JevRequiredError, get_jev_client
 from app.core.jev_settings import get_jev_config
 from app.core.logger import get_logger, audit_log
 from app.core.score_details import finite_score, merge_retrieval_scores
+from app.modules.retrieval.decision_evidence import POLICY_VERSION, evidence_summary, supplement_evidence
 
 logger = get_logger(__name__)
 
@@ -82,6 +83,24 @@ class Reranker:
             final_results = self._apply_final_ranking_with_modality_protection(
                 reranked_results, context, strict=scorer_info.get("mode") == "force"
             )
+            if scorer_info.get("mode") == "assist":
+                if hasattr(self, "decision_evidence_policy"):
+                    # Explicit replay of the frozen historical policies only.
+                    final_results, scorer_info = await supplement_evidence(
+                        query, final_results, coarse_ranking, reranked_results,
+                        client_factory=lambda: self.jev_client, modality=self._result_modality,
+                        policy_version=self.decision_evidence_policy,
+                    )
+                else:
+                    # The answer context, not full retrieval chunks, determines
+                    # what the generator has seen. Defer one bounded checkpoint
+                    # until after context compression (and final Agent merge).
+                    scorer_info = {
+                        "mode": "assist", "status": "deferred",
+                        "reason": "awaiting_final_context",
+                        "policy_version": "visible-evidence-checkpoint-v1",
+                        "baseline_preserved": True,
+                    }
             
             processing_time = (datetime.utcnow() - start_time).total_seconds()
             
@@ -102,6 +121,11 @@ class Reranker:
                 "final_ranking_count": len(final_results),
                 "strategy": "two_stage_reranking",
                 "scorer": scorer_info,
+                "decision_candidates": (
+                    [item for item in reranked_results if item not in final_results]
+                    + list(final_results)
+                    if scorer_info.get("status") == "deferred" else None
+                ),
             }
             
         except JevRequiredError:
@@ -120,6 +144,8 @@ class Reranker:
     
     async def _rank_with_optional_jev(self, query, candidates, context):
         mode = getattr(self, "jev_mode", None) or get_jev_config().rerank_mode
+        if mode == "assist":
+            return await self._apply_cross_encoder_reranking(query, candidates, context), {"mode": mode}
         if mode == "force":
             if not candidates:
                 return [], {"mode": mode, "status": "skipped", "reason": "no_candidates"}
@@ -155,15 +181,25 @@ class Reranker:
             except Exception:
                 if mode == "force":
                     raise JevRequiredError(stage="rerank", reason="unexpected_error") from None
-                raise
+                return None, {"mode": mode, "status": "fallback", "reason": "unexpected_error",
+                              "duration_s": time.perf_counter() - started}
 
         if mode == "shadow":
             baseline, (proposed, info) = await asyncio.gather(
                 self._apply_cross_encoder_reranking(query, candidates, context), jev_rank(),
             )
-            if proposed is not None:
-                # Metadata is request-local; no concurrent request overwrites it.
-                info["proposed_ids"] = [item.get("id") for item in self._apply_final_ranking_with_modality_protection(proposed, context)]
+            try:
+                baseline_final = self._apply_final_ranking_with_modality_protection(baseline, context)
+                proposed_final = (self._apply_final_ranking_with_modality_protection(proposed, context)
+                                  if proposed is not None else [])
+                info["baseline_ids"] = [item.get("id") for item in baseline_final]
+                if proposed is not None:
+                    info["proposed_ids"] = [item.get("id") for item in proposed_final]
+                info["comparison"] = {"baseline": evidence_summary(baseline_final),
+                                      "proposed": evidence_summary(proposed_final)}
+            except Exception:
+                # Optional diagnostics must not discard a successful baseline.
+                info.update(status="fallback", reason="unexpected_error")
             return baseline, info
         proposed, info = await jev_rank()
         if proposed is not None:

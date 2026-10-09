@@ -3,3 +3,5 @@
 docs/research/**/sources/** -text -whitespace
 docs/research/**/run-code/** -text -whitespace
 evals/jev_*/** -text
+evals/decision_*/** -text
+evals/decision_*/sources/** -whitespace

@@ -21,6 +21,7 @@ from app.modules.agent.tools import (
     ToolContext,
 )
 from app.modules.retrieval.service import RetrievalResult
+from app.modules.retrieval.decision_coverage import adopted_exclusions, modality as source_modality
 
 logger = get_logger(__name__)
 
@@ -317,7 +318,9 @@ def _seed_evidence_from_original_query_anchor(
     state and tends to fan out into unrelated meanings of an ambiguous term.
     """
     added = 0
-    for rank, raw_item in enumerate(retrieval.reranked_results or []):
+    baseline_items = [item for item in (retrieval.reranked_results or [])
+                      if isinstance(item, dict) and not (item.get("metadata") or {}).get("decision_assist")]
+    for rank, raw_item in enumerate(baseline_items):
         if not isinstance(raw_item, dict):
             continue
         key = _result_key(raw_item)
@@ -368,7 +371,11 @@ def _is_focused_original_query_anchor(retrieval: Optional[RetrievalResult]) -> b
     query, but it should not immediately spend the full budget on alternate
     meanings.  Broad or weak direct routes remain free to fan out normally.
     """
-    if retrieval is None or len(retrieval.reranked_results or []) < 3:
+    if retrieval is None:
+        return False
+    baseline_count = sum(not (item.get("metadata") or {}).get("decision_assist")
+                         for item in (retrieval.reranked_results or []))
+    if baseline_count < 3:
         return False
     target_ids = {
         str(kb_id).strip()
@@ -431,12 +438,17 @@ def _merge_retrieval_results(
     max_evidence: int,
     modality_requirements: Optional[Dict[str, str]] = None,
     original_query_anchor_count: int = 0,
+    decision_requirements: Optional[Dict[str, Any]] = None,
 ) -> RetrievalResult:
     results = list(retrieval_results)
     if not results:
         raise ValueError("Agent mode produced no retrieval result")
+    requirements = decision_requirements or next((getattr(result.context, "decision_requirements", None)
+                         for result in results if getattr(result.context, "decision_requirements", None)), None)
+    excluded = adopted_exclusions(requirements)
 
     evidence: Dict[str, Dict[str, Any]] = {}
+    decision_supplements: Dict[str, Dict[str, Any]] = {}
     raw_results: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     target_kb_ids: List[str] = []
     target_kbs_by_id: Dict[str, Dict[str, Any]] = {}
@@ -447,7 +459,8 @@ def _merge_retrieval_results(
         is_original_query_anchor = search_index < original_query_anchor_count
         total_processing_time += float(retrieval.processing_time or 0.0)
         for route, values in (retrieval.raw_results or {}).items():
-            raw_results[route].extend(values or [])
+            raw_results[route].extend([item for item in values or [] if source_modality(item) not in excluded]
+                                     if excluded else values or [])
         for kb_id in getattr(retrieval.context, "target_kb_ids", []) or []:
             if kb_id not in target_kb_ids:
                 target_kb_ids.append(kb_id)
@@ -461,14 +474,24 @@ def _merge_retrieval_results(
             ):
                 target_kbs_by_id[kb_id] = dict(target_kb)
         for modality in getattr(retrieval.context, "selected_file_modalities", []) or []:
-            if modality not in selected_modalities:
+            if modality not in excluded and modality not in selected_modalities:
                 selected_modalities.append(modality)
 
-        for rank, raw_item in enumerate(retrieval.reranked_results or []):
+        baseline_rank = 0
+        for raw_item in retrieval.reranked_results or []:
+            if excluded and source_modality(raw_item) in excluded:
+                continue
             item = copy.deepcopy(raw_item)
             key = _result_key(item)
             if key.endswith(":"):
                 continue
+            if (item.get("metadata") or {}).get("decision_assist"):
+                # Supplemental evidence has a separate, bounded allowance. It
+                # must not change baseline hit counts, anchor slots or scores.
+                decision_supplements.setdefault(key, item)
+                continue
+            rank = baseline_rank
+            baseline_rank += 1
             score = float(item.get("final_score", item.get("score", 0.0)) or 0.0)
             previous = evidence.get(key)
             if previous is None:
@@ -515,6 +538,8 @@ def _merge_retrieval_results(
                 effective_modality_requirements[modality],
                 _normalize_modality_intent(getattr(retrieval.context, field, "unnecessary")),
             )
+    for modality in excluded:
+        effective_modality_requirements[modality] = "unnecessary"
 
     ranked_items = sorted(
         evidence.values(),
@@ -564,7 +589,14 @@ def _merge_retrieval_results(
         )
         item["metadata"] = metadata
 
+    added_supplements = [
+        item for key, item in decision_supplements.items() if key not in evidence
+    ][:2] if merged_items else []
+    merged_items.extend(added_supplements)
+
     merged_context = copy.deepcopy(results[0].context)
+    if requirements:
+        merged_context.decision_requirements = copy.deepcopy(requirements)
     merged_context.original_query = original_query
     merged_context.refined_query = original_query
     merged_context.is_complex = len(executed_queries) > 1 or merged_context.is_complex
@@ -598,7 +630,7 @@ def _merge_retrieval_results(
         setattr(
             merged_context,
             field,
-            _stronger_intent(
+            "unnecessary" if modality in excluded else _stronger_intent(
                 str(getattr(merged_context, field, "unnecessary")),
                 effective_modality_requirements[modality],
             ),
@@ -628,12 +660,46 @@ def _merge_retrieval_results(
         "retrieval_runs": [retrieval.debug_info for retrieval in results],
         "total_time": total_processing_time,
     }
+    # Round-robin across retrieval runs so one exploratory query cannot occupy
+    # the entire final checkpoint. This pool never enters planner hit counts,
+    # baseline ranking or per-child Decision calls.
+    pools = [getattr(result, "decision_candidates", None) for result in results]
+    decision_candidates = None
+    if any(pool is not None for pool in pools):
+        decision_candidates = []
+        seen_candidates = set()
+        for rank in range(max((len(pool or []) for pool in pools), default=0)):
+            for pool in pools:
+                if not pool or rank >= len(pool):
+                    continue
+                item = pool[rank]
+                identity = (str((item.get("payload") or {}).get("kb_id", "")), _result_key(item))
+                if identity in seen_candidates or source_modality(item) in excluded:
+                    continue
+                seen_candidates.add(identity)
+                decision_candidates.append(item)
+        debug_info["reranking_scorer"] = {
+            "mode": "assist", "status": "deferred", "reason": "awaiting_final_context",
+            "policy_version": "visible-evidence-checkpoint-v1", "baseline_preserved": True,
+        }
+    if decision_supplements:
+        debug_info["decision_assist"] = {
+            "added_ids": [item.get("id") for item in added_supplements],
+            "baseline_preserved": True,
+        }
+    if requirements:
+        from app.modules.retrieval.decision_coverage import coverage_receipt
+        failures = [warning for result in results
+                    for warning in result.debug_info.get("decision_coverage", {}).get("warnings", [])]
+        debug_info["decision_coverage"] = coverage_receipt(merged_context, dict(raw_results), merged_items,
+                                                           embedding_failures=failures)
     return RetrievalResult(
         context=merged_context,
         raw_results=dict(raw_results),
         reranked_results=merged_items,
         processing_time=total_processing_time,
         debug_info=debug_info,
+        decision_candidates=decision_candidates,
     )
 
 
@@ -727,6 +793,7 @@ class AgenticRetrievalService:
             session_context=session_context,
             attachment_context=attachment_context,
         )
+        original_decision_requirements = copy.deepcopy((original_query_preprocessing or {}).get("decision_requirements"))
         original_query_anchor: Optional[RetrievalResult] = None
         if original_query_preprocessing is not None:
             modality_requirements = _normalize_modality_requirements(
@@ -748,6 +815,8 @@ class AgenticRetrievalService:
                 preprocessing_result=original_query_preprocessing,
             )
             if original_query_anchor is not None:
+                original_decision_requirements = original_decision_requirements or copy.deepcopy(
+                    getattr(original_query_anchor.context, "decision_requirements", None))
                 seeded = _seed_evidence_from_original_query_anchor(
                     evidence,
                     original_query_anchor,
@@ -763,6 +832,12 @@ class AgenticRetrievalService:
                 session_context=session_context,
                 attachment_context=attachment_context,
             )
+
+        original_exclusions = adopted_exclusions(original_decision_requirements)
+        if original_exclusions:
+            evidence = {key: item for key, item in evidence.items() if source_modality(item) not in original_exclusions}
+            for modality in original_exclusions:
+                modality_requirements[modality] = "unnecessary"
 
         for round_number in range(1, self.max_rounds + 1):
             remaining = self.max_total_queries - len(executed_queries)
@@ -912,6 +987,7 @@ class AgenticRetrievalService:
                 agent_round=round_number,
                 explored_kb_counts=dict(explored_kb_counts),
                 base_modality_intents=modality_requirements,
+                decision_requirements=copy.deepcopy(original_decision_requirements),
             )
             gathered = await asyncio.gather(
                 *(tool.execute(query=item, context=round_tool_context) for item in queries),
@@ -968,6 +1044,12 @@ class AgenticRetrievalService:
             for retrieval in successful:
                 retrieval_runs.append(retrieval)
                 for raw_item in retrieval.reranked_results or []:
+                    if original_exclusions and source_modality(raw_item) in original_exclusions:
+                        continue
+                    if (raw_item.get("metadata") or {}).get("decision_assist"):
+                        # Supplement final evidence without changing planning,
+                        # fanout limits or the original stagnation condition.
+                        continue
                     result_count += 1
                     key = _result_key(raw_item)
                     if not key.endswith(":") and key not in evidence:
@@ -1052,6 +1134,7 @@ class AgenticRetrievalService:
             max_evidence=self.max_evidence,
             modality_requirements=modality_requirements,
             original_query_anchor_count=1 if original_query_anchor is not None else 0,
+            decision_requirements=original_decision_requirements,
         )
         run_result = AgentRunResult(
             retrieval_result=merged,

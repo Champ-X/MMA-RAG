@@ -4,7 +4,7 @@
 """
 
 from fastapi import APIRouter, HTTPException, Request, Query, File, Form, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Dict, Any, List, Optional, Tuple, AsyncGenerator
 from pydantic import BaseModel, Field
 import json
@@ -18,6 +18,7 @@ from urllib.parse import unquote, urlparse
 from app.core.logger import get_logger
 from app.core.config import settings
 from app.core.jev_settings import get_jev_config
+from app.core.decision_diagnostics import chat_diagnostics, failure_diagnostics, retrieval_diagnostics
 from app.core.llm.jev import JevRequiredError
 from app.core.stage_timing import StageTimings
 from app.core.score_details import citation_score_fields
@@ -45,16 +46,9 @@ retrieval_service = RetrievalService()
 generation_service = GenerationService()
 agentic_retrieval_service = AgenticRetrievalService(retrieval_service)
 
-def _retrieval_diagnostics(result):
-    """Keep configured vs actually used Jev stages inspectable in history."""
-    debug = getattr(result, "debug_info", None) or {}
-    keys = ("jev_decision", "reranking_scorer", "target_modality_fallback",
-            "total_candidates", "total_time")
-    runs = debug.get("retrieval_runs") or [debug]
-    return {
-        "jev_config": get_jev_config().model_dump(),
-        "runs": [{key: run[key] for key in keys if key in run} for run in runs],
-    }
+def _retrieval_diagnostics(result, *, config=None, observed=None):
+    """Keep configured vs actually used Decision stages inspectable in history."""
+    return retrieval_diagnostics(result, config or get_jev_config(), observed=observed)
 
 
 # 简单的会话存储（生产环境应使用Redis或数据库）
@@ -344,6 +338,8 @@ async def _resolve_media_presigned_url(
 @router.post("/message")
 async def chat_message(request: Request):
     """非流式聊天对话接口"""
+    decision_config = get_jev_config()
+    retrieval_result = None
     try:
         data = await request.json()
         message = data.get("message", "")
@@ -461,13 +457,19 @@ async def chat_message(request: Request):
         )
         
         if not generation_result.get("success"):
-            raise HTTPException(
-                status_code=500, 
-                detail=generation_result.get("error", "生成回答失败")
-            )
+            return JSONResponse(status_code=500, content={
+                "detail": generation_result.get("error", "生成回答失败"),
+                "diagnostics": failure_diagnostics(
+                    _retrieval_diagnostics(retrieval_result, config=decision_config), decision_config),
+            })
         
         # 构建响应
         answer = generation_result.get("answer", "")
+        diagnostics = chat_diagnostics(
+            _retrieval_diagnostics(retrieval_result, config=decision_config),
+            citation_audit=generation_result.get("metadata", {}).get("jev_citation_audit"),
+            answer=answer,
+        )
         context_used = generation_result.get("context_used")
         references = generation_result.get("references_used", [])
         
@@ -505,7 +507,8 @@ async def chat_message(request: Request):
                 "citations": citations,
                 "agent": agent_result.metadata() if agent_result else None,
                 "agent_selection": mode_resolution.metadata(),
-                "retrieval_diagnostics": _retrieval_diagnostics(retrieval_result),
+                "retrieval_diagnostics": diagnostics["retrieval"],
+                "diagnostics": diagnostics,
                 "timestamp": datetime.utcnow().isoformat(),
             },
         )
@@ -517,6 +520,7 @@ async def chat_message(request: Request):
             "sessionId": session_id,
             "message": answer,
             "citations": citations,
+            "diagnostics": diagnostics,
             "metadata": {
                 "query": message,
                 "intent_type": retrieval_result.context.intent_type,
@@ -529,23 +533,32 @@ async def chat_message(request: Request):
                 "images_used": context_used.total_images if context_used else 0,
                 "tokens_used": generation_result.get("metadata", {}).get("tokens_used", 0),
                 "model_used": generation_result.get("metadata", {}).get("model_used", ""),
-                **({"jev_citation_audit": generation_result["metadata"]["jev_citation_audit"]}
-                   if "jev_citation_audit" in generation_result.get("metadata", {}) else {}),
+                **({"jev_citation_audit": diagnostics["jev_citation_audit"]}
+                   if "jev_citation_audit" in diagnostics else {}),
                 "agent": agent_result.metadata() if agent_result else {"enabled": False},
                 "agent_selection": mode_resolution.metadata(),
-                "retrieval_diagnostics": _retrieval_diagnostics(retrieval_result),
+                "retrieval_diagnostics": diagnostics["retrieval"],
             }
         }
         
     except JevRequiredError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from None
+        return JSONResponse(status_code=502, content={
+            "detail": str(exc),
+            "diagnostics": failure_diagnostics(
+                _retrieval_diagnostics(retrieval_result, config=decision_config),
+                decision_config, required_failure=exc),
+        })
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"聊天消息处理失败: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"处理聊天消息时发生错误: {str(e)}")
+        return JSONResponse(status_code=500, content={
+            "detail": f"处理聊天消息时发生错误: {str(e)}",
+            "diagnostics": failure_diagnostics(
+                _retrieval_diagnostics(retrieval_result, config=decision_config), decision_config),
+        })
 
 def _thought_event_payload(stage: str, payload: dict) -> str:
     """前端期望: type=thought, data={ type: <phase>, data: { ... } }"""
@@ -564,19 +577,41 @@ async def _iter_chat_sse(
 ) -> AsyncGenerator[str, None]:
     """Keep terminal timing diagnostics even when retrieval raises early."""
     timings = StageTimings()
+    decision_config = get_jev_config()
+    receipt = {"observed": {}, "retrieval": None}
     try:
-        async for line in _iter_chat_sse_impl(stage_timer=timings, **kwargs):
+        async for line in _iter_chat_sse_impl(
+            stage_timer=timings, decision_config=decision_config, decision_receipt=receipt, **kwargs
+        ):
             yield line
     except asyncio.CancelledError:
         timings.finish_active("cancelled")
         raise
     except Exception as exc:
         timings.finish_active("failed")
-        event = {"type": "error", "message": str(exc), "stage_timings": timings.snapshot()}
-        if isinstance(exc, JevRequiredError):
-            event["diagnostics"] = exc.diagnostics()
-        else:
+        # Context construction can complete a paid Decision checkpoint before
+        # generation raises. Retain that live receipt rather than its earlier
+        # pre-generation snapshot.
+        current_retrieval = (
+            _retrieval_diagnostics(receipt["result"], config=decision_config)
+            if receipt.get("result") is not None else receipt["retrieval"]
+        )
+        event = {
+            "type": "error", "message": str(exc), "stage_timings": timings.snapshot(),
+            "diagnostics": failure_diagnostics(
+                current_retrieval or _retrieval_diagnostics(
+                    None, config=decision_config, observed=receipt["observed"]),
+                decision_config, required_failure=exc if isinstance(exc, JevRequiredError) else None),
+        }
+        if not isinstance(exc, JevRequiredError):
             logger.error(f"流式聊天失败: {str(exc)}", exc_info=True)
+        else:
+            # Gate evidence is bounded, typed classifier metadata; do not log
+            # provider bodies, prompts, source text or credentials.
+            info = getattr(exc, "decision_info", {}) or {}
+            logger.warning("Decision 严格验证终止: session={} stage={} reason={} blockers={}",
+                           kwargs.get("session_id_opt"), exc.stage, exc.reason,
+                           json.dumps(info.get("blockers", []), ensure_ascii=False))
         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
@@ -590,6 +625,8 @@ async def _iter_chat_sse_impl(
     agent_mode: Any,
     attachment_context: Optional[str],
     stage_timer: StageTimings,
+    decision_config=None,
+    decision_receipt=None,
     include_connected: bool = True,
     mentions_raw: Any = None,
     attachment_files: Optional[List[Dict[str, Any]]] = None,
@@ -598,8 +635,13 @@ async def _iter_chat_sse_impl(
 ) -> AsyncGenerator[str, None]:
     """流式聊天 SSE 行迭代器（GET/POST 共用）。"""
     thinking: Dict[str, Any] = {}
+    decision_config = decision_config or get_jev_config()
+    decision_receipt = decision_receipt if decision_receipt is not None else {"observed": {}, "retrieval": None}
 
     def thought(stage: str, payload: dict) -> str:
+        for key in ("jev_decision", "reranking_scorer", "fast_path", "target_modality_fallback"):
+            if payload.get(key):
+                decision_receipt["observed"][key] = payload[key]
         enriched = stage_timer.attach(stage, payload)
         # The persisted shape matches the frontend's flattened ThoughtData.
         # Stage-specific clocks live in stage_timings, not the last event slot.
@@ -710,7 +752,9 @@ async def _iter_chat_sse_impl(
 
     if retrieval_result is None:
         raise RuntimeError("检索流未返回结果")
+    decision_receipt["result"] = retrieval_result
     include_reference_materials(retrieval_result, reference_materials)
+    decision_receipt["retrieval"] = _retrieval_diagnostics(retrieval_result, config=decision_config)
 
     stage_timer.start("generation")
     yield thought("generation", {"message": "正在准备生成回答...", "status": "preparing", "stage_status": "processing"})
@@ -753,7 +797,11 @@ async def _iter_chat_sse_impl(
             yield f"data: {json.dumps({'type': 'citation', 'data': citation_data}, ensure_ascii=False)}\n\n"
         elif event_type == "error":
             stage_timer.finish_active("failed")
-            yield f"data: {json.dumps({'type': 'error', 'message': event.data.get('error', '未知错误'), 'stage_timings': stage_timer.snapshot()}, ensure_ascii=False)}\n\n"
+            decision_receipt["retrieval"] = _retrieval_diagnostics(retrieval_result, config=decision_config)
+            failure = {'type': 'error', 'message': event.data.get('error', '未知错误'),
+                       'stage_timings': stage_timer.snapshot(),
+                       'diagnostics': failure_diagnostics(decision_receipt['retrieval'], decision_config)}
+            yield f"data: {json.dumps(failure, ensure_ascii=False)}\n\n"
             return
         elif event_type == "done":
             citation_audit = event.data.get("jev_citation_audit")
@@ -768,6 +816,9 @@ async def _iter_chat_sse_impl(
     final_timings = stage_timer.snapshot()
     thinking["stage_timings"] = final_timings
     full_answer = "".join(answer_chunks)
+    decision_receipt["retrieval"] = _retrieval_diagnostics(retrieval_result, config=decision_config)
+    diagnostics = chat_diagnostics(
+        decision_receipt["retrieval"], citation_audit=citation_audit, answer=full_answer)
     last_citations = select_answer_references(full_answer, last_citations)
     _append_session_turn(
         session,
@@ -790,7 +841,8 @@ async def _iter_chat_sse_impl(
             "citations": last_citations,
             "agent": agent_result.metadata() if agent_result else None,
             "agent_selection": mode_resolution.metadata(),
-            "retrieval_diagnostics": _retrieval_diagnostics(retrieval_result),
+            "retrieval_diagnostics": diagnostics["retrieval"],
+            "diagnostics": diagnostics,
             "thinking": thinking,
             "stage_timings": final_timings,
             "timestamp": datetime.utcnow().isoformat(),
@@ -799,9 +851,7 @@ async def _iter_chat_sse_impl(
 
     completion = {'type': 'complete', 'sessionId': current_session_id,
                   'stage_timings': final_timings, 'thinking': thinking,
-                  'diagnostics': {'retrieval': _retrieval_diagnostics(retrieval_result)}}
-    if citation_audit is not None:
-        completion['diagnostics']['jev_citation_audit'] = citation_audit
+                  'diagnostics': diagnostics}
     yield f"data: {json.dumps(completion)}\n\n"
 
 

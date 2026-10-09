@@ -1,0 +1,115 @@
+{
+  "version": "source-action-profiles-v1",
+  "selection_algorithm": "Grid 0.50..1.00 step 0.05; choice=verified; require zero FP, TP>0 and positive recall>=0.50; maximize TP then largest threshold. Otherwise observe only.",
+  "holdout_admission": "Per purpose: 6 positives, 6 negatives, zero FP and at least 4 TP. No retuning.",
+  "profiles": [
+    {
+      "id": "typesafe-source-require-v1",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "purpose": "source_require",
+      "verifier_sha256": "ec329eda6ed1c2dda190b699c2e883eda0d86d81b0cabd8aced859468a90e64f",
+      "threshold": 0.5,
+      "status": "holdout_pending",
+      "reason": "holdout_not_yet_evaluated",
+      "development": {
+        "receipt_sha256": "4d603792810c91de284da7430f1ccb10b87ed5fc82ebf1d95c45c7c01f73ca53",
+        "path": "ops/decision-plan-v1/native-v1",
+        "positive_count": 4,
+        "negative_count": 4
+      },
+      "holdout": null
+    },
+    {
+      "id": "typesafe-source-forbid-v1",
+      "provider": "typesafe",
+      "requested_model": "jev-1.13.0",
+      "actual_model": "jev-1.13.0",
+      "purpose": "source_forbid",
+      "verifier_sha256": "ec329eda6ed1c2dda190b699c2e883eda0d86d81b0cabd8aced859468a90e64f",
+      "threshold": 0.7,
+      "status": "holdout_pending",
+      "reason": "holdout_not_yet_evaluated",
+      "development": {
+        "receipt_sha256": "4d603792810c91de284da7430f1ccb10b87ed5fc82ebf1d95c45c7c01f73ca53",
+        "path": "ops/decision-plan-v1/native-v1",
+        "positive_count": 5,
+        "negative_count": 5
+      },
+      "holdout": null
+    },
+    {
+      "id": "openrouter-source-require-v1",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "purpose": "source_require",
+      "verifier_sha256": "ec329eda6ed1c2dda190b699c2e883eda0d86d81b0cabd8aced859468a90e64f",
+      "threshold": 0.55,
+      "status": "holdout_pending",
+      "reason": "holdout_not_yet_evaluated",
+      "development": {
+        "receipt_sha256": "4d603792810c91de284da7430f1ccb10b87ed5fc82ebf1d95c45c7c01f73ca53",
+        "path": "ops/decision-plan-v1/native-v1",
+        "positive_count": 4,
+        "negative_count": 4
+      },
+      "holdout": null
+    },
+    {
+      "id": "openrouter-source-forbid-v1",
+      "provider": "openrouter",
+      "requested_model": "openai/gpt-6-luna-decisions",
+      "actual_model": "openai/gpt-6-luna-decisions-20261006",
+      "purpose": "source_forbid",
+      "verifier_sha256": "ec329eda6ed1c2dda190b699c2e883eda0d86d81b0cabd8aced859468a90e64f",
+      "threshold": 0.5,
+      "status": "holdout_pending",
+      "reason": "holdout_not_yet_evaluated",
+      "development": {
+        "receipt_sha256": "4d603792810c91de284da7430f1ccb10b87ed5fc82ebf1d95c45c7c01f73ca53",
+        "path": "ops/decision-plan-v1/native-v1",
+        "positive_count": 5,
+        "negative_count": 5
+      },
+      "holdout": null
+    },
+    {
+      "id": "bailian-source-require-v1",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "purpose": "source_require",
+      "verifier_sha256": "ec329eda6ed1c2dda190b699c2e883eda0d86d81b0cabd8aced859468a90e64f",
+      "threshold": null,
+      "status": "rejected",
+      "reason": "no_zero_false_positive_development_threshold",
+      "development": {
+        "receipt_sha256": "4d603792810c91de284da7430f1ccb10b87ed5fc82ebf1d95c45c7c01f73ca53",
+        "path": "ops/decision-plan-v1/native-v1",
+        "positive_count": 4,
+        "negative_count": 4
+      },
+      "holdout": null
+    },
+    {
+      "id": "bailian-source-forbid-v1",
+      "provider": "bailian",
+      "requested_model": "decision-model-preview",
+      "actual_model": "decision-model-preview",
+      "purpose": "source_forbid",
+      "verifier_sha256": "ec329eda6ed1c2dda190b699c2e883eda0d86d81b0cabd8aced859468a90e64f",
+      "threshold": null,
+      "status": "rejected",
+      "reason": "no_zero_false_positive_development_threshold",
+      "development": {
+        "receipt_sha256": "4d603792810c91de284da7430f1ccb10b87ed5fc82ebf1d95c45c7c01f73ca53",
+        "path": "ops/decision-plan-v1/native-v1",
+        "positive_count": 5,
+        "negative_count": 5
+      },
+      "holdout": null
+    }
+  ]
+}

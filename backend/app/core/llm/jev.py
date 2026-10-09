@@ -1,4 +1,4 @@
-"""Bounded Decision scorer for TypeSafe and OpenRouter.
+"""Bounded native Decision scorer for TypeSafe, OpenRouter and Bailian.
 
 No retries, logging of state, or model fallback. Historic Jev imports remain
 compatible while request settings select the provider and model.
@@ -17,6 +17,9 @@ from typing import Any
 import httpx
 
 from app.core.llm.decision_catalog import DECISION_ENDPOINTS, get_decision_model
+from app.core.decision_providers import (
+    DECISION_CREDENTIALS, DECISION_QUESTION_LIMITS, validate_bailian_endpoint,
+)
 
 
 PROMPT_VERSION = "rag-relevance-v1"
@@ -39,7 +42,7 @@ class JevRequiredError(JevError):
             "budget_exhausted", "model_mismatch", "incomplete_answers", "invalid_usage",
             "timeout", "invalid_response_or_transport", "invalid_answer_type",
             "invalid_score", "invalid_probabilities", "invalid_choice",
-            "invalid_scores", "incomplete_scores", "unexpected_error", "unsupported_model",
+            "invalid_scores", "incomplete_scores", "unexpected_error", "unsupported_model", "invalid_endpoint", "uncertain_decision",
         }
         self.stage = stage if stage in {"intent", "rerank"} else "jev"
         self.reason = reason if reason in known or (
@@ -62,6 +65,7 @@ class JevScores:
     provider: str | None = "TypeSafe"
     route: str = "typesafe"
     requested_model: str | None = None
+    native_batch_sizes: tuple[int, ...] = ()
 
     def metadata(self):
         return {
@@ -81,6 +85,7 @@ class JevDecision:
     provider: str | None = "TypeSafe"
     route: str = "typesafe"
     requested_model: str | None = None
+    native_batch_sizes: tuple[int, ...] = ()
 
     def metadata(self):
         return {
@@ -88,6 +93,14 @@ class JevDecision:
             "prompt_version": self.prompt_version,
             **_routing_metadata(self),
         }
+
+
+@dataclass
+class _NativeResponse:
+    answers: dict[str, Any]
+    model: str
+    usage: dict[str, int | float]
+    provider: str | None
 
 
 def _routing_metadata(result: JevScores | JevDecision) -> dict:
@@ -101,6 +114,9 @@ def _routing_metadata(result: JevScores | JevDecision) -> dict:
         "reported_usd": reported, "estimated_usd": estimated,
         "cost_source": ("provider_reported" if reported is not None else
                         "typesafe_input_estimate" if estimated is not None else "unavailable"),
+        **({"native_request_count": len(result.native_batch_sizes),
+            "native_batch_sizes": list(result.native_batch_sizes)}
+           if len(result.native_batch_sizes) > 1 else {}),
     }
 
 
@@ -138,10 +154,11 @@ class JevClient:
     a cross-worker budget. Restarting a worker resets its allowance.
     """
     def __init__(self, api_key: str, *, provider="typesafe", model="jev-1.13.0", timeout_s=3.0,
-                 max_input_tokens=250_000, transport=None):
+                 max_input_tokens=250_000, transport=None, endpoint: str | None = None):
         self._api_key = api_key
         self.provider = provider
         self.model = model
+        self._endpoint = endpoint
         self.timeout_s = timeout_s
         self.max_input_tokens = max_input_tokens
         self.reserved_input_tokens = 0
@@ -163,7 +180,8 @@ class JevClient:
         scores = [{"index": i, "relevance_score": float(result.answers[f'd{i}']['noul'])}
                   for i in range(len(documents))]
         return JevScores(scores, result.model, result.usage, result.duration_s,
-                         result.provider, result.route, result.requested_model)
+                         result.provider, result.route, result.requested_model,
+                         result.native_batch_sizes)
 
     async def evaluate(self, state: Any, questions: dict, *, prompt_version: str) -> JevDecision:
         if not self._api_key:
@@ -171,6 +189,14 @@ class JevClient:
         selected_model = get_decision_model(self.provider, self.model)
         if selected_model is None:
             raise JevError("unsupported_model")
+        endpoint = self._endpoint or DECISION_ENDPOINTS[self.provider]
+        if self.provider == "bailian":
+            try:
+                validate_bailian_endpoint(endpoint)
+            except ValueError:
+                raise JevError("invalid_endpoint") from None
+        elif endpoint != DECISION_ENDPOINTS[self.provider]:
+            raise JevError("invalid_endpoint")
         if not isinstance(questions, dict) or not questions or len(questions) > 64:
             raise JevError("invalid_questions")
         for key, question in questions.items():
@@ -192,15 +218,23 @@ class JevClient:
         try:
             # The API supports native strings, objects and arrays. Do not quote
             # strings again or flatten structured state/question instructions.
-            payload = {'model': self.model, 'state': state, 'questions': questions}
-            if self.provider == "openrouter":
-                payload['provider'] = {'allow_fallbacks': False}
-            encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode()
+            limit = DECISION_QUESTION_LIMITS.get(self.provider, 64)
+            items = list(questions.items())
+            payloads = []
+            reservation = 0
+            for offset in range(0, len(items), limit):
+                payload = {'model': self.model, 'state': state,
+                           'questions': dict(items[offset:offset + limit])}
+                if self.provider == "openrouter":
+                    payload['provider'] = {'allow_fallbacks': False}
+                encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode()
+                reservation += len(encoded) + 1024 + 256 * len(payload['questions'])
+                payloads.append(payload)
         except (TypeError, ValueError, OverflowError):
             raise JevError("invalid_input") from None
         # UTF-8 bytes upper-bound ordinary text tokenization, with ample protocol
-        # overhead per question and per request. Reject oversized batches intact.
-        reservation = len(encoded) + 1024 + 256 * len(questions)
+        # overhead per question and per request, including repeated shared state.
+        # Reserve the entire operation before I/O; reject oversized calls intact.
         if reservation > 60_000:
             raise JevError("request_too_large")
         started = time.perf_counter()
@@ -212,45 +246,32 @@ class JevClient:
                 if self.reserved_input_tokens + reservation > self.max_input_tokens:
                     raise JevError("budget_exhausted")
                 self.reserved_input_tokens += reservation
+                parts = []
                 async with httpx.AsyncClient(timeout=self.timeout_s, transport=self._transport) as client:
-                    response = await client.post(
-                        DECISION_ENDPOINTS[self.provider],
-                        headers={"Authorization": "Bearer " + self._api_key}, json=payload,
-                    )
-                if response.status_code != 200:
-                    if response.status_code in {401, 402, 403, 429, 529}:
-                        self._cooldown_until = time.monotonic() + 60
-                    raise JevError(f"http_{response.status_code}")
-                data = response.json()
-                if not isinstance(data, dict):
-                    raise JevError("invalid_response_or_transport")
-                if not selected_model.accepts_response_model(data.get("model")):
-                    raise JevError("model_mismatch")
-                answers = data.get("answers")
-                if not isinstance(answers, dict) or set(answers) != set(payload["questions"]):
-                    raise JevError("incomplete_answers")
-                for key, question in questions.items():
-                    self._validate_answer(answers[key], question)
-                raw_usage = data.get("usage", {})
-                if (not isinstance(raw_usage, dict) or any(type(raw_usage.get(k)) is not int
-                        or raw_usage[k] < 0 for k in ("input_tokens", "output_tokens"))):
-                    raise JevError("invalid_usage")
-                usage = {k: raw_usage[k] for k in ("input_tokens", "output_tokens")}
-                if raw_usage.get("cost") is not None:
-                    cost = raw_usage['cost']
-                    if type(cost) not in {int, float} or not math.isfinite(cost) or cost < 0:
-                        raise JevError("invalid_usage")
-                    usage['cost'] = cost
-                provider = data.get("provider") if self.provider == "openrouter" else "TypeSafe"
-                if provider is not None and (not isinstance(provider, str) or len(provider) > 128):
-                    raise JevError("invalid_response_or_transport")
-                # Reconcile successful calls against provider-reported usage.
+                    # One overall deadline and semaphore slot. No retry, no
+                    # partial return, and no candidate truncation at the gateway
+                    # limit. Stop on the first invalid response or transport error.
+                    for payload in payloads:
+                        response = await client.post(
+                            endpoint,
+                            headers={"Authorization": "Bearer " + self._api_key}, json=payload,
+                        )
+                        part = self._parse_response(response, payload['questions'], selected_model)
+                        if parts and part.model != parts[0].model:
+                            raise JevError("model_mismatch")
+                        parts.append(part)
+                answers = {key: value for part in parts for key, value in part.answers.items()}
+                # Optional usage is known only when every native response has it.
+                fields = set.intersection(*(set(part.usage) for part in parts))
+                usage = {key: sum(part.usage[key] for part in parts) for key in fields}
                 self.reserved_input_tokens += usage["input_tokens"] - reservation
-                return JevDecision(answers, data["model"], usage, time.perf_counter() - started,
-                                   prompt_version, provider, self.provider, self.model)
+                return JevDecision(answers, parts[0].model, usage, time.perf_counter() - started,
+                                   prompt_version, parts[0].provider, self.provider, self.model,
+                                   tuple(len(payload['questions']) for payload in payloads))
 
         try:
-            # Includes semaphore wait; httpx timeout alone is per socket operation.
+            # Includes semaphore wait and every native batch; the deadline does
+            # not restart for the next batch. Errors retain the whole reservation.
             return await asyncio.wait_for(request(), timeout=self.timeout_s)
         except JevError:
             raise
@@ -259,6 +280,43 @@ class JevClient:
         except Exception:
             # Never surface response bodies, request headers, state or credentials.
             raise JevError("invalid_response_or_transport") from None
+
+    def _parse_response(self, response, questions, selected_model) -> _NativeResponse:
+        """Validate each native response before it can join an atomic result."""
+        if response.status_code != 200:
+            if response.status_code in {401, 402, 403, 429, 529}:
+                self._cooldown_until = time.monotonic() + 60
+            raise JevError(f"http_{response.status_code}")
+        data = response.json()
+        if not isinstance(data, dict):
+            raise JevError("invalid_response_or_transport")
+        if not selected_model.accepts_response_model(data.get("model")):
+            raise JevError("model_mismatch")
+        answers = data.get("answers")
+        if not isinstance(answers, dict) or set(answers) != set(questions):
+            raise JevError("incomplete_answers")
+        for key, question in questions.items():
+            self._validate_answer(answers[key], question)
+        raw_usage = data.get("usage", {})
+        # Bailian natively reports input_tokens only. Preserve absent metering
+        # fields; do not manufacture output usage or free cost.
+        required_usage = ("input_tokens",) if self.provider == "bailian" else ("input_tokens", "output_tokens")
+        if (not isinstance(raw_usage, dict) or any(type(raw_usage.get(k)) is not int
+                or raw_usage[k] < 0 for k in required_usage)):
+            raise JevError("invalid_usage")
+        usage = {k: raw_usage[k] for k in ("input_tokens", "output_tokens") if k in raw_usage}
+        if any(type(value) is not int or value < 0 for value in usage.values()):
+            raise JevError("invalid_usage")
+        if raw_usage.get("cost") is not None:
+            cost = raw_usage['cost']
+            if type(cost) not in {int, float} or not math.isfinite(cost) or cost < 0:
+                raise JevError("invalid_usage")
+            usage['cost'] = cost
+        provider = (data.get("provider") if self.provider == "openrouter" else
+                    "Alibaba Cloud Bailian" if self.provider == "bailian" else "TypeSafe")
+        if provider is not None and (not isinstance(provider, str) or len(provider) > 128):
+            raise JevError("invalid_response_or_transport")
+        return _NativeResponse(answers, data["model"], usage, provider)
 
     @staticmethod
     def _validate_answer(answer, question):
@@ -303,14 +361,15 @@ def get_decision_client(provider: str, model: str) -> JevClient:
 
     if get_decision_model(provider, model) is None:
         raise JevError("unsupported_model")
-    credential = (settings.openrouter_api_key if provider == "openrouter"
-                  else settings.typesafe_api_key) or ""
+    credential = getattr(settings, DECISION_CREDENTIALS[provider][0]) or ""
+    endpoint = (settings.bailian_decision_endpoint if provider == "bailian"
+                else DECISION_ENDPOINTS[provider])
     key = (provider, model, hashlib.sha256(credential.encode()).digest(),
-           settings.jev_timeout_s, settings.jev_max_input_tokens)
+           settings.jev_timeout_s, settings.jev_max_input_tokens, endpoint)
     if key not in _clients:
         _clients[key] = JevClient(credential, provider=provider, model=model,
                                  timeout_s=settings.jev_timeout_s,
-                                 max_input_tokens=settings.jev_max_input_tokens)
+                                 max_input_tokens=settings.jev_max_input_tokens, endpoint=endpoint)
     return _clients[key]
 
 

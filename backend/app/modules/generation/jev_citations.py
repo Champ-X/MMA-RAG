@@ -5,8 +5,10 @@ This module never retrieves sources, edits answers, or grants a verified status.
 It does not extract claims or associate prose with citations automatically.
 """
 from app.core.llm.jev import JevClient, JevError
+from .decision_citation_sources import SOURCE_SCOPE_RULE
 
 PROMPT_VERSION = "citation-relations-v3-frozen1"
+TEXT_PROXY_PROMPT_VERSION = "citation-relations-v4-reference-text"
 SUPPORT_THRESHOLD = .8
 CONFLICT_THRESHOLD = .2
 
@@ -32,7 +34,8 @@ def citation_questions():
     }
 
 
-async def audit_claim(client: JevClient, claim: str, citation_ids: list[str], references: dict[str, str]):
+async def audit_claim(client: JevClient, claim: str, citation_ids: list[str], references: dict[str, str],
+                      *, source_context=None):
     """Return review signals; even a high model score is not a correctness certificate."""
     if not isinstance(claim, str) or not claim.strip() or len(claim) > 4000:
         return {"status": "not_evaluated", "reason": "invalid_claim"}
@@ -48,9 +51,16 @@ async def audit_claim(client: JevClient, claim: str, citation_ids: list[str], re
     # Do not truncate and silently change the evidence under examination.
     if sum(len(s) for s in sources.values()) > 12000:
         return {"status": "not_evaluated", "reason": "source_too_large"}
+    state = {"claim": claim, "cited_sources": sources}
+    questions = citation_questions()
+    version = PROMPT_VERSION
+    if source_context is not None:
+        state['source_context'] = source_context
+        version = TEXT_PROXY_PROMPT_VERSION
+        for question in questions.values():
+            question['instructions'] += SOURCE_SCOPE_RULE
     try:
-        result = await client.evaluate({"claim": claim, "cited_sources": sources}, citation_questions(),
-                                       prompt_version=PROMPT_VERSION)
+        result = await client.evaluate(state, questions, prompt_version=version)
     except JevError as exc:
         return {"status": "not_evaluated", "reason": str(exc)}
     a = result.answers

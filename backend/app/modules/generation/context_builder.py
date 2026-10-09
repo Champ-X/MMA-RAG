@@ -9,8 +9,12 @@ import asyncio
 import json
 from datetime import datetime
 from dataclasses import dataclass
+from types import SimpleNamespace
+from hashlib import sha256
 
 from app.core.logger import get_logger
+from app.core.llm.jev import get_jev_client
+from app.modules.retrieval.decision_coverage import finalize_coverage
 from app.modules.generation.templates.multimodal_fmt import MultiModalFormatter
 from app.modules.generation.citation_selection import ordered_citation_ids
 from app.core.score_details import citation_score_fields, result_score_metadata
@@ -77,6 +81,8 @@ class ContextBuilder:
             
             # 1. 处理检索结果
             processed_results = await self._process_retrieval_results(retrieval_result)
+            supplements = [r for r in processed_results if r.get("metadata", {}).get("decision_assist")]
+            processed_results = [r for r in processed_results if not r.get("metadata", {}).get("decision_assist")]
             
             # 检索目标知识库 ID 列表，用于在 payload 无 kb_id 时（如历史视频数据）补全引用
             target_kb_ids = []
@@ -116,6 +122,52 @@ class ContextBuilder:
             optimized_context = await self._optimize_context_length(
                 context_string, reference_map
             )
+
+            # Optional assistance sees the exact compressed baseline that will
+            # be sent to generation. It runs once after all Agent runs merge.
+            supplements.extend(await self._context_checkpoint(
+                retrieval_result, query, optimized_context
+            ))
+
+            # Build and compress the baseline in isolation, including its media
+            # and attachment IDs. Optional evidence must not make original text
+            # shorter or shift existing citation numbers. It has a separate
+            # allowance of two complete text passages (4,000 characters each).
+            supplemental_parts = []
+            applied_supplements = []
+            for supplement in supplements[:2]:
+                try:
+                    if not isinstance(supplement.get("content"), str) or len(supplement["content"]) > 4000:
+                        continue
+                    mapping = await self._generate_reference_map([supplement], target_kb_ids=target_kb_ids)
+                    reference = mapping.get("1")
+                    if reference is None:
+                        continue
+                    ref_id = str(len(reference_map) + 1)
+                    # The ordinary formatter caps passages at 500 characters.
+                    # Keep the complete bounded passage that Decision checked;
+                    # the answer-bearing sentence can occur after that cap.
+                    formatted = (f"【材料 {ref_id}】 (类型: 文档 | 来源: {supplement['file_path']})\n"
+                                 f"内容片段：\n{supplement['content']}")
+                    reference.id = ref_id
+                    reference.metadata["decision_assist"] = supplement["metadata"]["decision_assist"]
+                    reference_map[ref_id] = reference
+                    processed_results.append(supplement)
+                    supplemental_parts.append(formatted)
+                    applied_supplements.append(supplement)
+                except Exception:
+                    logger.warning("Optional Decision evidence could not be formatted; baseline retained")
+            if supplemental_parts:
+                optimized_context += "\n\n补充参考材料（与原材料同等核对，存在矛盾时如实说明）：\n" + "\n\n".join(supplemental_parts)
+            checkpoint = (getattr(retrieval_result, "debug_info", {}) or {}).get("context_checkpoint")
+            if checkpoint is not None:
+                checkpoint["added_ids"] = [item["id"] for item in applied_supplements]
+                checkpoint["applied_count"] = len(applied_supplements)
+                if checkpoint.get("selected_ids") and not applied_supplements:
+                    checkpoint["reason"] = "selected_evidence_not_rendered"
+                checkpoint["reference_ids"] = [ref_id for ref_id, ref in reference_map.items()
+                                               if ref.metadata.get("decision_assist")]
+            optimized_context += finalize_coverage(retrieval_result, reference_map, context_string=optimized_context)
             
             # 5. 构建最终结果。关键帧仅作为视频 Shot 的内部证据，不计为回答图片。
             build_time = (datetime.utcnow() - start_time).total_seconds()
@@ -155,6 +207,55 @@ class ContextBuilder:
                 build_time=0.0
             )
     
+    async def _context_checkpoint(self, retrieval_result, query, visible_context):
+        """Select additions without changing the baseline retrieval list or text."""
+        candidates = getattr(retrieval_result, "decision_candidates", None)
+        if candidates is None:
+            return []
+        debug = retrieval_result.debug_info
+        context_hash = sha256(visible_context.encode()).hexdigest()
+        existing = debug.get("context_checkpoint")
+        if existing is not None:
+            # A rebuild may reuse an identical context but never silently make
+            # another paid call or apply a receipt to different evidence.
+            additions = (getattr(retrieval_result, "decision_context_additions", None) or []) \
+                if existing.get("baseline_context_sha256") == context_hash else []
+        else:
+            try:
+                from app.modules.retrieval.decision_evidence_checkpoint import select_context_evidence
+                additions, receipt = await select_context_evidence(
+                    get_jev_client(), query, candidates, visible_context,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                additions, receipt = [], {
+                    "mode": "assist", "status": "fallback", "reason": "unexpected_error",
+                    "policy_version": "visible-evidence-checkpoint-v1", "baseline_preserved": True,
+                }
+            receipt["baseline_context_sha256"] = context_hash
+            receipt["baseline_preserved"] = True
+            receipt["selected_ids"] = [item.get("id") for item in additions]
+            debug["context_checkpoint"] = receipt
+            retrieval_result.decision_context_additions = additions
+        # Processing separately allows a source already retained by baseline
+        # to supply an unseen original span under a new reference number.
+        try:
+            processed = await self._process_retrieval_results(SimpleNamespace(
+                context=retrieval_result.context, reranked_results=additions,
+            ))
+            # The ordinary formatter sorts by score. Preserve the checkpoint's
+            # already selected candidate order in this separate append-only lane.
+            def identity(item):
+                return (str(item.get("id")),
+                        (item.get("metadata") or {}).get("decision_assist", {}).get("span_sha256"))
+            selected_order = {identity(item): index for index, item in enumerate(additions)}
+            processed.sort(key=lambda item: selected_order.get(identity(item), len(selected_order)))
+            return processed
+        except Exception:
+            logger.warning("Decision additions unavailable; baseline context retained")
+            return []
+
     async def _process_retrieval_results(self, retrieval_result: Any) -> List[Dict[str, Any]]:
         """处理检索结果"""
         try:
@@ -263,6 +364,9 @@ class ContextBuilder:
                 else:  # doc
                     content = payload.get("text_content", "")
                     file_path = payload.get("file_path", "")
+                    if (result.get("metadata") or {}).get("decision_assist"):
+                        content = content or result.get("content", "")
+                        file_path = file_path or result.get("file_path", "")
                     file_type = payload.get("file_type", "unknown")
                     payload_meta = {
                         "kb_id": payload.get("kb_id"),
@@ -280,6 +384,8 @@ class ContextBuilder:
                 }
                 metadata.update(result_score_metadata(result))
                 metadata["user_reference"] = bool((result.get("metadata") or {}).get("user_reference"))
+                if (result.get("metadata") or {}).get("decision_assist"):
+                    metadata["decision_assist"] = result["metadata"]["decision_assist"]
                 processed_result = {
                     "id": chunk_id,
                     "content_type": content_type,
@@ -306,6 +412,7 @@ class ContextBuilder:
             processed_results.sort(
                 key=lambda item: (
                     bool(item.get("metadata", {}).get("user_reference")),
+                    not bool(item.get("metadata", {}).get("decision_assist")),
                     bool(item.get("agent_original_query_anchor")),
                     float(item.get("score", 0.0) or 0.0),
                 ),
@@ -316,8 +423,16 @@ class ContextBuilder:
             limited_results = []
             doc_count = 0
             image_count = 0
+            supplement_count = 0
             
             for result in processed_results:
+                if result["metadata"].get("decision_assist"):
+                    # Retain the ordinary text/media quotas. Decision can add
+                    # at most two text sources, never evict an existing source.
+                    if result["content_type"] == "doc" and supplement_count < 2:
+                        limited_results.append(result)
+                        supplement_count += 1
+                    continue
                 if result["content_type"] == "doc" and doc_count >= self.max_chunks:
                     continue
                 if result["content_type"] == "image" and image_count >= max_images:

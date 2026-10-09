@@ -16,6 +16,7 @@ from .processors.rewriter import QueryRewriter
 from .search_engine import HybridSearchEngine
 from .reranker import Reranker
 from .reference_materials import include_reference_materials
+from .decision_coverage import coverage_receipt, apply_grounding_fallback, sync_effective_requirements, adopted_exclusions, modality as evidence_modality
 from app.core.logger import get_logger, audit_log
 from app.core.llm.jev import JevRequiredError
 from app.core.jev_settings import get_jev_config
@@ -210,23 +211,24 @@ def _override_intents_for_selected_files(
 
     updated = dict(preprocessing_result)
     selected_modalities = _collect_selected_file_modalities(selected_files)
+    excluded = adopted_exclusions(preprocessing_result.get("decision_requirements"))
     is_deictic_query = _is_deictic_reference_query(query)
 
-    if "image" in selected_modalities:
+    if "image" in selected_modalities and "image" not in excluded:
         current = updated.get("visual_intent", "unnecessary")
         target = "explicit_demand" if is_deictic_query else "implicit_enrichment"
         if current == "unnecessary" or (is_deictic_query and current != "explicit_demand"):
             updated["visual_intent"] = target
             updated["visual_reasoning"] = "用户已指定图片文件，本轮需优先结合所选图片检索和理解"
 
-    if "audio" in selected_modalities:
+    if "audio" in selected_modalities and "audio" not in excluded:
         current = updated.get("audio_intent", "unnecessary")
         target = "explicit_demand" if is_deictic_query else "implicit_enrichment"
         if current == "unnecessary" or (is_deictic_query and current != "explicit_demand"):
             updated["audio_intent"] = target
             updated["audio_reasoning"] = "用户已指定音频文件，本轮需优先结合所选音频检索和理解"
 
-    if "video" in selected_modalities:
+    if "video" in selected_modalities and "video" not in excluded:
         current = updated.get("video_intent", "unnecessary")
         target = "explicit_demand" if is_deictic_query else "implicit_enrichment"
         if current == "unnecessary" or (is_deictic_query and current != "explicit_demand"):
@@ -256,6 +258,7 @@ class RetrievalContext:
     selected_file_modalities: List[str]
     confidence_scores: Dict[str, float]
     processing_time: float = 0.0
+    decision_requirements: Optional[Dict[str, Any]] = None
 
 @dataclass
 class RetrievalResult:
@@ -265,6 +268,10 @@ class RetrievalResult:
     reranked_results: List[Dict[str, Any]]
     processing_time: float
     debug_info: Dict[str, Any]
+    # Internal source pool for one final-context Decision checkpoint. Never
+    # serialize raw candidate bodies into SSE/history diagnostics.
+    decision_candidates: Optional[List[Dict[str, Any]]] = None
+    decision_context_additions: Optional[List[Dict[str, Any]]] = None
 
 class RetrievalService:
     """检索服务"""
@@ -394,23 +401,45 @@ class RetrievalService:
                         attachment_context=attachment_context,
                     )
                 )
+            effective_routing_hints = dict(routing_hints or {})
+            inherited_exclusions = set()
+            if preplanned and effective_routing_hints.get("agent_mode"):
+                inherited_exclusions = set(effective_routing_hints.get("agent_adopted_exclusions") or []) & {"image", "audio", "video"}
+                if inherited_exclusions:
+                    # Carry only the original request's adopted prohibitions.
+                    # No root grounding signal, new classifier or positive
+                    # requirement is introduced into the preplanned child.
+                    preprocessing_result["decision_requirements"] = {
+                        "policy_version": effective_routing_hints.get("agent_decision_policy_version"),
+                        "source": "agent_inherited_exclusions",
+                        "modalities": {kind: {"status": "forbidden", "action": "adopted",
+                            "effective_intent": "unnecessary", "inherited": True}
+                            for kind in inherited_exclusions},
+                    }
             selected_files = list((kb_context or {}).get("selected_files", []) or [])
             preprocessing_result, selected_file_modalities = _override_intents_for_selected_files(
                 query,
                 preprocessing_result,
                 selected_files,
             )
-            effective_routing_hints = dict(routing_hints or {})
             if effective_routing_hints.get("agent_mode"):
                 preprocessing_result = _apply_agent_base_modality_intents(
                     preprocessing_result,
                     effective_routing_hints.get("agent_base_modality_intents"),
                 )
+            for kind in inherited_exclusions:
+                field = {"image": "visual_intent", "audio": "audio_intent", "video": "video_intent"}[kind]
+                preprocessing_result[field] = "unnecessary"
+                preprocessing_result[field.replace("_intent", "_reasoning")] = "继承原问题已采用的来源排除；子查询不重新开启"
+            if inherited_exclusions:
+                selected_file_modalities = [kind for kind in selected_file_modalities if kind not in inherited_exclusions]
             effective_routing_hints["modality_intents"] = {
                 "image": preprocessing_result.get("visual_intent", "unnecessary"),
                 "audio": preprocessing_result.get("audio_intent", "unnecessary"),
                 "video": preprocessing_result.get("video_intent", "unnecessary"),
             }
+            if preprocessing_result.get("decision_requirements"):
+                effective_routing_hints["decision_requirements"] = preprocessing_result["decision_requirements"]
             
             # 2. 知识库路由
             routing_result = await self._route_to_knowledge_bases(
@@ -453,6 +482,7 @@ class RetrievalService:
                 selected_files=selected_files,
                 selected_file_modalities=selected_file_modalities,
                 confidence_scores=confidence_scores,
+                decision_requirements=preprocessing_result.get("decision_requirements"),
             )
             if retrieval_context.target_file_ids:
                 logger.info(
@@ -504,6 +534,12 @@ class RetrievalService:
                 "target_modality_fallback": target_modality_fallback,
                 "agent_target_modality_fallback": target_modality_fallback if effective_routing_hints.get("agent_mode") else {},
             }
+            coverage = coverage_receipt(retrieval_context, search_results.get("raw_results", {}),
+                                        reranked_results.get("results", []),
+                                        branch_names=search_results.get("branch_times", {}),
+                                        embedding_failures=embedding_cache.failures)
+            if coverage:
+                debug_info["decision_coverage"] = coverage
             
             # 更新检索统计信息
             self._update_retrieval_stats(
@@ -534,7 +570,8 @@ class RetrievalService:
                 raw_results=search_results.get("raw_results", {}),
                 reranked_results=reranked_results.get("results", []),
                 processing_time=processing_time,
-                debug_info=debug_info
+                debug_info=debug_info,
+                decision_candidates=reranked_results.get("decision_candidates"),
             ), (kb_context or {}).get("reference_materials", []) if not preplanned else [])
             
         except Exception as e:
@@ -701,7 +738,7 @@ class RetrievalService:
                 kb_context=kb_context,
                 query_variants=preprocessing_result["search_strategies"].get("multi_view_queries", []),
                 max_targets=3 if preprocessing_result.get("is_complex") else 2,
-                routing_hints={"modality_intents": {
+                routing_hints={"decision_requirements": preprocessing_result.get("decision_requirements"), "modality_intents": {
                     "image": preprocessing_result.get("visual_intent", "unnecessary"),
                     "audio": preprocessing_result.get("audio_intent", "unnecessary"),
                     "video": preprocessing_result.get("video_intent", "unnecessary"),
@@ -760,6 +797,7 @@ class RetrievalService:
                 selected_files=selected_files,
                 selected_file_modalities=selected_file_modalities,
                 confidence_scores=confidence_scores,
+                decision_requirements=preprocessing_result.get("decision_requirements"),
             )
             if retrieval_context.target_file_ids:
                 logger.info(
@@ -826,6 +864,11 @@ class RetrievalService:
                 ),
             }
             strategies = retrieval_context.search_strategies or {}
+            coverage = coverage_receipt(retrieval_context, search_results.get("raw_results", {}),
+                                        results_list, branch_names=search_results.get("branch_times", {}),
+                                        embedding_failures=embedding_cache.failures)
+            if coverage:
+                debug_info["decision_coverage"] = coverage
             sparse_keywords = list(strategies.get("sparse_keywords", []) or [])
             # 获取重排统计信息
             coarse_ranking_count = reranked_results.get("coarse_ranking_count", 0)
@@ -864,6 +907,7 @@ class RetrievalService:
                 reranked_results=results_list,
                 processing_time=processing_time,
                 debug_info=debug_info,
+                decision_candidates=reranked_results.get("decision_candidates"),
             )
             yield ("_result", retrieval_result)
 
@@ -933,6 +977,7 @@ class RetrievalService:
                 "processing_time": time.perf_counter() - started,
                 "stage_times": {"intent": intent_elapsed, "rewrite": rewrite_elapsed},
                 "jev_decision": intent_result.get("jev_decision", {"mode": "off", "accepted": False}),
+                "decision_requirements": intent_result.get("decision_requirements"),
             }
 
             return preprocessing_result
@@ -1050,24 +1095,41 @@ class RetrievalService:
         # Explicit file selection already determines its source modalities.
         # Do not interpret "text-only answer" as a restriction on source media;
         # explicit source exclusions, however, must not be overridden.
+        if selected_files:
+            return sync_effective_requirements(preprocessing, action="source_binding"), {}
+        preprocessing = sync_effective_requirements(preprocessing, action="source_binding")
+        policy = preprocessing.get("decision_requirements")
         query = str(preprocessing.get("original_query") or "")
-        if selected_files or re.search(
+        legacy_restricted = bool(re.search(
             r"(?:不要|不用|不搜|不检索|排除|忽略|不使用|不参考).{0,8}(?:视频|音频|图片)|"
             r"(?:只|仅).{0,6}(?:文档|文本资料)|"
             r"(?:no|exclude|ignore|without)\s+(?:videos?|audio|images?)|"
             r"(?:only\s+(?:documents?|text sources)|documents?\s+only)", query, re.I,
-        ):
+        ))
+        if legacy_restricted and not policy:
             return preprocessing, {}
         getter = getattr(self.kb_router, "get_modality_inventory", None)
         if not callable(getter):
             return preprocessing, {}
         try:
-            return _apply_target_modality_fallback(
-                preprocessing,
-                target_kb_ids=getattr(routing, "target_kb_ids", []) or [],
-                modality_inventory=await getter(),
-                routing_details=getattr(routing, "routing_details", None),
-            )
+            inventory = await getter()
+            target_kb_ids = getattr(routing, "target_kb_ids", []) or []
+            legacy_inventory = inventory
+            if policy:
+                # Preserve the existing fallback even when Decision abstains.
+                # A confidently adopted source prohibition remains binding.
+                forbidden = adopted_exclusions(policy)
+                legacy_inventory = {key: {**value, **{kind: 0 for kind in forbidden}}
+                                    for key, value in inventory.items()}
+            base, receipt = (preprocessing, {}) if legacy_restricted else _apply_target_modality_fallback(
+                preprocessing, target_kb_ids=target_kb_ids,
+                modality_inventory=legacy_inventory, routing_details=getattr(routing, "routing_details", None))
+            if not policy:
+                return base, receipt
+            updated, extra = apply_grounding_fallback(base, target_kb_ids=target_kb_ids, inventory=inventory)
+            if extra and receipt:
+                extra["baseline_fallback"] = receipt
+            return sync_effective_requirements(updated, action="source_grounding"), extra or receipt
         except Exception as exc:
             logger.debug("目标库模态检查失败，继续常规检索: {}", type(exc).__name__)
             return preprocessing, {}
@@ -1080,17 +1142,24 @@ class RetrievalService:
         """执行混合检索。仅使用 Qdrant 中的 kb_id，将指定知识库的 ID 解析为向量库实际存储的 kb_id 后再检索。"""
         try:
             qdrant_kb_ids = await self.kb_router.resolve_to_qdrant_kb_ids(context.target_kb_ids)
-            return await self.search_engine.search(
+            excluded = adopted_exclusions(getattr(context, "decision_requirements", None))
+            result = await self.search_engine.search(
                 query_strategies=context.search_strategies,
                 target_kb_ids=qdrant_kb_ids,
                 target_file_ids=context.target_file_ids,
-                selected_files=context.selected_files,
+                selected_files=[f for f in context.selected_files if _infer_selected_file_modality(f) not in excluded] if excluded else context.selected_files,
                 visual_intent=context.visual_intent,
                 audio_intent=context.audio_intent,
                 video_intent=context.video_intent,
                 intent_type=context.intent_type,
                 embedding_cache=embedding_cache,
             )
+            if excluded:
+                result["raw_results"] = {key: [item for item in items if evidence_modality(item) not in excluded]
+                                         for key, items in result.get("raw_results", {}).items()}
+                if "fused_results" in result:
+                    result["fused_results"] = [item for item in result["fused_results"] if evidence_modality(item) not in excluded]
+            return result
         except Exception as e:
             logger.error(f"混合检索失败: {str(e)}")
             return {

@@ -75,7 +75,10 @@ async def test_http_stream_reports_explicit_failure_without_saving_success(monke
         response = await c.post('/api/chat/stream', data=fields) if multipart else await c.get('/api/chat/stream', params=fields)
     events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith('data: ')]
     assert events[-1]['type'] == 'error'
-    assert events[-1]['diagnostics'] == {'code':'jev_required_failed', 'stage':'intent', 'reason':'budget_exhausted', 'fallback_used':False}
+    diagnostics = events[-1]['diagnostics']
+    assert {key: diagnostics[key] for key in ('code', 'stage', 'reason', 'fallback_used')} == {
+        'code':'jev_required_failed', 'stage':'intent', 'reason':'budget_exhausted', 'fallback_used':False}
+    assert diagnostics['retrieval']['runs'][-1]['jev_decision']['status'] == 'failed'
     assert '未回退' in events[-1]['message']
     assert not any(event['type'] in {'complete','message'} for event in events)
     assert chat.sessions['force-failure']['messages'] == []

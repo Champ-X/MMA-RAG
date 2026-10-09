@@ -1,0 +1,26 @@
+{
+  "verified_at": "2026-10-09T14:29:50.938666+00:00",
+  "health_status": 200,
+  "frontend_status": 200,
+  "knowledge_bases": 7,
+  "sessions_preserved": 1,
+  "messages_preserved": 2,
+  "config": {
+    "provider": "typesafe",
+    "model": "jev-1.13.0",
+    "intent_mode": "adaptive",
+    "rerank_mode": "shadow",
+    "citation_mode": "shadow",
+    "citation_strategy": "per_unit"
+  },
+  "settings_unchanged": true,
+  "bailian_contract_probe": {
+    "success": true,
+    "provider": "bailian",
+    "model": "decision-model-preview",
+    "requested_model": "decision-model-preview",
+    "duration_s": 0.19819408300099894
+  },
+  "current_model_diagnostic_success": true,
+  "current_model_standalone_eligible": false
+}

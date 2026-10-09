@@ -9,8 +9,12 @@ import re
 import time
 
 from .jev_citations import audit_claim
+from .decision_citation_sources import (
+    LEGACY_SOURCE_POLICY, SOURCE_POLICY, prepare_citation_unit,
+)
 
-EXTRACTOR_VERSION = 'trailing-citations-v2'
+LEGACY_EXTRACTOR_VERSION = 'trailing-citations-v2'
+EXTRACTOR_VERSION = 'sentence-citations-v3'
 GROUP = re.compile(r'\[\d+\](?:[ \t]*(?:[,，、][ \t]*)?\[\d+\])*')
 BOUNDARY = re.compile(r'[。！？!?]|\.(?=\s|$)')
 LIST_PREFIX = re.compile(r'^\s*(?:[-*+]\s+|\d+[.)]\s+)')
@@ -65,7 +69,7 @@ def _has_terminal_boundary(text):
     return bool(certain and certain[-1].end() == len(text))
 
 
-def extract_citation_units(answer):
+def _extract_legacy_citation_units(answer):
     units, gaps = [], []
     if not isinstance(answer, str) or len(answer) > 16000:
         return {'units': [], 'gaps': [{'reason': 'answer_too_large_or_invalid'}]}
@@ -135,34 +139,131 @@ def extract_citation_units(answer):
     return {'units': units, 'gaps': gaps}
 
 
-async def audit_answer(client, answer, reference_map, *, timeout_s=3.0, max_units=8):
+def _citation_prose_blocks(answer):
+    """Keep soft line wraps together so a qualifier cannot become a new claim."""
+    pending, start, offset, fence = [], 0, 0, None
+    for line in answer.splitlines(keepends=True):
+        reason = None
+        opening = re.match(r'^\s*(`{3,}|~{3,})', line)
+        if opening:
+            token = opening.group(1)
+            if fence is None:
+                fence = token
+            elif token[0] == fence[0] and len(token) >= len(fence):
+                fence = None
+            reason = 'code_fence'
+        elif fence or re.match(r'^\s*(?:#{1,6}\s|>|\|)', line) or ' | ' in line:
+            reason = 'unsupported_markdown'
+        if reason or not line.strip() or LIST_PREFIX.match(line):
+            if pending:
+                yield ''.join(pending), start, None
+                pending = []
+        if reason:
+            if line.strip():
+                yield line, offset, reason
+        elif line.strip():
+            if not pending:
+                start = offset
+            pending.append(line)
+        offset += len(line)
+    if pending:
+        yield ''.join(pending), start, None
+
+
+def _extract_sentence_citation_units(answer):
+    """A single citation group scopes the complete sentence, never half a claim.
+
+    Multiple nonadjacent groups in one sentence have ambiguous attribution and
+    remain gaps. Terminal citations after punctuation attach only to the prior
+    sentence. Offsets always refer to the original Unicode string.
+    """
+    if not isinstance(answer, str) or len(answer) > 16000:
+        return {'units': [], 'gaps': [{'reason': 'answer_too_large_or_invalid'}]}
+    units, gaps = [], []
+    for line, offset, block_reason in _citation_prose_blocks(answer):
+        if block_reason:
+            gaps.append({'start': offset, 'end': offset + len(line), 'reason': block_reason})
+            continue
+        masked = _mask_syntax(line)
+        boundaries, ambiguous = _sentence_boundaries(masked)
+        spans, cursor = [], 0
+        for boundary in boundaries:
+            if boundary.end() <= cursor:
+                continue
+            end = boundary.end()
+            # A citation immediately after terminal punctuation belongs to this
+            # sentence, not the following one. Whitespace is kept in offsets.
+            following = re.match(r'[ \t\r\n]*', masked[end:]).end() + end
+            trailing = GROUP.match(masked, following)
+            if trailing:
+                end = trailing.end()
+            spans.append((cursor, end))
+            cursor = end
+        if cursor < len(line):
+            spans.append((cursor, len(line)))
+        for start, end in spans:
+            segment = masked[start:end]
+            groups = list(GROUP.finditer(segment))
+            if not groups:
+                if segment.strip(' \t\r\n.。！？!?'):
+                    gaps.append({'start': offset + start, 'end': offset + end, 'reason': 'uncited_prose'})
+                continue
+            reason = None
+            if any(start <= boundary.start() < end for boundary in ambiguous):
+                reason = 'ambiguous_sentence_boundary'
+            elif len(groups) != 1:
+                reason = 'ambiguous_citation_position'
+            elif '\n' in segment.strip() or '\r' in segment.strip():
+                # A line wrap could continue a qualifier, or separate an
+                # uncited assertion. Neither half may borrow the other's cite.
+                reason = 'ambiguous_line_boundary'
+            if reason:
+                gaps.append({'start': offset + start, 'end': offset + end, 'reason': reason})
+                continue
+            group = groups[0]
+            original = line[start:end]
+            raw = original[:group.start()] + original[group.end():]
+            claim = LIST_PREFIX.sub('', raw).strip()
+            if not any(char.isalnum() for char in claim):
+                gaps.append({'start': offset + start, 'end': offset + end, 'reason': 'citation_without_claim'})
+                continue
+            units.append({'start': offset + start, 'end': offset + end, 'claim': claim,
+                          'citation_ids': list(dict.fromkeys(re.findall(r'\[(\d+)\]', group.group())))})
+    return {'units': units, 'gaps': gaps}
+
+
+def extract_citation_units(answer, *, version=LEGACY_EXTRACTOR_VERSION):
+    """Keep frozen evaluation callers reproducible; production opts into v3."""
+    if version == LEGACY_EXTRACTOR_VERSION:
+        return _extract_legacy_citation_units(answer)
+    if version == EXTRACTOR_VERSION:
+        return _extract_sentence_citation_units(answer)
+    raise ValueError('unknown_citation_extractor_version')
+
+
+async def audit_answer(client, answer, reference_map, *, timeout_s=3.0, max_units=8,
+                       extractor_version=LEGACY_EXTRACTOR_VERSION,
+                       source_policy=LEGACY_SOURCE_POLICY):
     """Finish within a total deadline; cancelled network work is always joined."""
     started = time.perf_counter()
-    parsed = extract_citation_units(answer)
+    parsed = extract_citation_units(answer, version=extractor_version)
     records = []
     tasks = {}
     for i, unit in enumerate(parsed['units']):
         record = {k: unit[k] for k in ['start', 'end', 'citation_ids']}
         record['claim_sha256'] = hashlib.sha256(unit['claim'].encode()).hexdigest()
         records.append(record)
-        if i >= max_units:
+        if i >= max(0, min(max_units, 8)):
             record['result'] = {'status': 'not_evaluated', 'reason': 'unit_limit'}
             continue
-        # ReferenceMap objects and serialized maps are both supported; only the
-        # current answer's cited document text can leave this process.
-        refs = {}
-        unsupported = False
-        for ref_id in unit['citation_ids']:
-            if ref_id not in reference_map: continue
-            ref = reference_map[ref_id]
-            kind = ref.get('content_type') if isinstance(ref, dict) else getattr(ref, 'content_type', None)
-            content = ref.get('content') if isinstance(ref, dict) else getattr(ref, 'content', None)
-            if kind != 'doc': unsupported = True; break
-            refs[ref_id] = content
-        if unsupported:
-            record['result'] = {'status': 'not_evaluated', 'reason': 'non_text_source'}
+        data, provenance, error = prepare_citation_unit(unit, reference_map, source_policy=source_policy)
+        record.update(provenance)
+        if error:
+            record['result'] = error
             continue
-        tasks[asyncio.create_task(audit_claim(client, unit['claim'], unit['citation_ids'], refs))] = record
+        options = {'source_context': data['source_context']} if 'source_context' in data else {}
+        tasks[asyncio.create_task(audit_claim(client, unit['claim'], unit['citation_ids'],
+                                            data['cited_sources'], **options))] = record
     try:
         if tasks:
             done, pending = await asyncio.wait(tasks, timeout=max(0, timeout_s-(time.perf_counter()-started)))
@@ -178,7 +279,8 @@ async def audit_answer(client, answer, reference_map, *, timeout_s=3.0, max_unit
             if not task.done(): task.cancel()
         if tasks: await asyncio.gather(*tasks, return_exceptions=True)
     evaluated = sum(r['result']['status']=='evaluated' for r in records)
-    return {'mode': 'shadow', 'diagnostic_only': True, 'extractor_version': EXTRACTOR_VERSION,
+    return {'mode': 'shadow', 'diagnostic_only': True, 'extractor_version': extractor_version,
+            'source_policy': source_policy,
             'duration_s': time.perf_counter()-started, 'units': records, 'gaps': parsed['gaps'],
             'coverage': {'cited_units': len(records), 'evaluated_units': evaluated,
                          'not_evaluated_units': len(records)-evaluated, 'unattributed_spans': len(parsed['gaps'])}}
@@ -196,7 +298,8 @@ async def maybe_audit_answer(answer, reference_map):
             from .jev_citation_batch import audit_answer_batch
             auditor = audit_answer_batch
         return await auditor(get_jev_client(), answer, reference_map,
-                             timeout_s=settings.jev_timeout_s)
+                             timeout_s=settings.jev_timeout_s,
+                             extractor_version=EXTRACTOR_VERSION, source_policy=SOURCE_POLICY)
     except Exception:
         # Diagnostics must never convert successful generation into a failure.
         # CancelledError is a BaseException and intentionally propagates.

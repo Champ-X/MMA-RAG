@@ -45,7 +45,11 @@ def upstream_reply(payload, actual_model, provider):
     answers = {}
     for name, question in payload["questions"].items():
         if question["type"] == "noul":
-            answers[name] = {"type": "noul", "noul": .05 if name in {
+            is_media_requirement = name in {
+                f"{modality}_{predicate}" for modality in ("image", "audio", "video")
+                for predicate in ("required", "forbidden", "helpful")
+            }
+            answers[name] = {"type": "noul", "noul": .05 if is_media_requirement or name in {
                 "is_complex", "needs_context", "contradicted",
             } else .95}
             continue
@@ -115,6 +119,8 @@ def assert_used_route(result, route, actual_model, strategy):
                     else audit["units"][0]["result"]["metadata"])
     assert all(item["route"] == route and item["model"] == actual_model for item in metadata)
     assert result["intent"]["jev_decision"]["accepted"]
+    assert all(record['status'] == 'not_needed' and record['action'] == 'adopted'
+               for record in result['intent']['decision_requirements']['modalities'].values())
     assert result["reranked"]["results"][0]["id"] == "evidence"
     assert audit["diagnostic_only"] is True
     assert audit["coverage"]["evaluated_units"] == 1
@@ -167,6 +173,10 @@ async def test_openrouter_failure_preserves_adaptive_replace_and_diagnostic_sema
     clients[selected]._transport = httpx.MockTransport(lambda _: httpx.Response(503))
     runtime.jev_config_store.write(config(*selected, intent_mode="adaptive", rerank_mode="replace"))
     app, processor, ranker = application()
+    processor._process_generative.return_value = {"intent_type": "baseline", "source_proposals": [{
+        "id": "limit", "target": {"modality": "image", "scope": "global", "description": "图像来源"},
+        "action": "require", "source_span": "每日限额是多少？", "provenance": "current_user",
+    }]}
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://local") as client:
         response = await client.get("/exercise")
     assert response.status_code == 200
@@ -202,6 +212,31 @@ async def test_openrouter_required_failure_stops_without_using_other_models(rout
     processor._process_generative.assert_not_awaited()
     ranker._apply_cross_encoder_reranking.assert_not_awaited()
     assert requests == []
+
+
+@pytest.mark.asyncio
+async def test_required_media_must_be_consistent_with_usefulness_in_native_response(routed_clients):
+    clients, _ = routed_clients
+    client = clients[ROUTES[0][:2]]
+    calls = []
+    def contradictory(request):
+        payload = json.loads(request.content)
+        reply = upstream_reply(payload, 'jev-1.13.0', 'TypeSafe')
+        reply['answers']['audio_required']['noul'] = .98
+        reply['answers']['audio_helpful']['noul'] = .02
+        calls.append(payload)
+        return httpx.Response(200, json=reply)
+    client._transport = httpx.MockTransport(contradictory)
+    runtime.jev_config_store.write(config())
+    processor = IntentProcessor()
+    processor._process_generative = AsyncMock()
+    with pytest.raises(jev.JevRequiredError) as failure:
+        await processor.process('每日限额是多少？')
+    assert failure.value.reason == 'uncertain_decision'
+    record = failure.value.decision_info['requirements']['modalities']['audio']
+    assert record['status'] == 'conflict' and record['action'] == 'abstained'
+    assert len(calls) == 1
+    processor._process_generative.assert_not_awaited()
 
 
 @pytest.mark.parametrize("legacy", [False, True])

@@ -11,6 +11,8 @@ import os
 import re
 from pathlib import Path
 
+from app.core.decision_providers import DECISION_ENDPOINTS, DecisionProvider, validate_bailian_endpoint
+
 # 仅从 backend 目录加载 .env（不使用项目根 .env）
 _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 _ENV_FILE = _BACKEND_DIR / ".env"
@@ -333,9 +335,18 @@ class Settings(BaseSettings):
     rerank_top_k: int = Field(default=10, validation_alias="RERANK_TOP_K")
 
     # Typed Decision providers. Existing JEV_* mode/limit variables stay compatible.
-    decision_provider: Literal["typesafe", "openrouter"] = Field(default="typesafe", validation_alias="DECISION_PROVIDER")
+    decision_provider: DecisionProvider = Field(default="typesafe", validation_alias="DECISION_PROVIDER")
     decision_model: Optional[str] = Field(default=None, validation_alias="DECISION_MODEL")
-    jev_rerank_mode: Literal["off", "shadow", "replace", "force"] = Field(default="off", validation_alias="JEV_RERANK_MODE")
+    # Separate from the existing Bailian chat credential and gateway.
+    bailian_decision_api_key: Optional[str] = Field(default=None, validation_alias="BAILIAN_DECISION_API_KEY")
+    bailian_decision_endpoint: str = Field(default=DECISION_ENDPOINTS["bailian"], validation_alias="BAILIAN_DECISION_ENDPOINT")
+
+    @field_validator("bailian_decision_endpoint")
+    @classmethod
+    def check_bailian_decision_endpoint(cls, value: str) -> str:
+        return validate_bailian_endpoint(value)
+
+    jev_rerank_mode: Literal["off", "shadow", "assist", "replace", "force"] = Field(default="off", validation_alias="JEV_RERANK_MODE")
     jev_intent_mode: Literal["off", "adaptive", "force"] = Field(default="off", validation_alias="JEV_INTENT_MODE")
     jev_citation_mode: Literal["off", "shadow"] = Field(default="off", validation_alias="JEV_CITATION_MODE")
     jev_citation_strategy: Literal["per_unit", "batch_choice"] = Field(default="per_unit", validation_alias="JEV_CITATION_STRATEGY")

@@ -265,5 +265,8 @@ async def test_opt_in_dispatch_uses_the_shared_client(monkeypatch):
     monkeypatch.setattr('app.core.llm.jev.get_jev_client', lambda: shared)
     monkeypatch.setattr('app.modules.generation.jev_citation_batch.audit_answer_batch', batch)
     result = await maybe_audit_answer('Claim[1]', {})
-    batch.assert_awaited_once_with(shared, 'Claim[1]', {}, timeout_s=settings.jev_timeout_s)
+    from app.modules.generation.jev_answer_audit import EXTRACTOR_VERSION
+    from app.modules.generation.decision_citation_sources import SOURCE_POLICY
+    batch.assert_awaited_once_with(shared, 'Claim[1]', {}, timeout_s=settings.jev_timeout_s,
+                                  extractor_version=EXTRACTOR_VERSION, source_policy=SOURCE_POLICY)
     assert result == {'strategy': 'batch_choice'}

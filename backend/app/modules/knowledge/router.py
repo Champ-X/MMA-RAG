@@ -207,6 +207,7 @@ class KnowledgeRouter:
                         max_targets=max_targets,
                         modality_intents=modality_intents,
                         inventory=await self._get_modality_inventory(),
+                        append_only=bool(hints.get("decision_requirements")),
                     )
             routing_result.query_count = len(query_vectors)
             
@@ -239,6 +240,7 @@ class KnowledgeRouter:
     def _cover_requested_modalities(
         self, result: RoutingResult, scores: Dict[str, float], *, max_targets: int,
         modality_intents: Dict[str, str], inventory: Dict[str, Dict[str, Any]],
+        append_only: bool = False,
     ) -> RoutingResult:
         """Reserve relevant media sources even when an input's topic dominates.
 
@@ -259,9 +261,11 @@ class KnowledgeRouter:
         # All-KB fallback must retain its original scope and presentation.
         if result.routing_method not in {"single_kb_dominant", "single_kb", "dual_kb", "multi_kb"}:
             return result
-        selected = result.target_kb_ids[:1]
-        missing = requested - coverage(selected[0])
-        limit = max(1, min(int(max_targets or 1), 3))
+        # Decision supplements source coverage without evicting the semantic
+        # routes. Bound the total to three KBs; unresolved needs stay visible.
+        selected = list(result.target_kb_ids) if append_only else result.target_kb_ids[:1]
+        missing = requested - set().union(*(coverage(kb_id) for kb_id in selected))
+        limit = 3 if append_only else max(1, min(int(max_targets or 1), 3))
         floor = max(ROUTING_ALL_LOW_THRESHOLD, max(scores.values(), default=0) * ROUTING_MODALITY_CANDIDATE_RATIO)
         while missing and len(selected) < limit:
             candidates = [kb_id for kb_id, score in scores.items()
@@ -285,7 +289,7 @@ class KnowledgeRouter:
         return RoutingResult(
             target_kb_ids=selected,
             confidence_scores={kb_id: confidence.get(kb_id, 0.0) for kb_id in selected},
-            routing_method="modality_coverage",
+            routing_method="decision_modality_coverage" if append_only else "modality_coverage",
             total_candidates=result.total_candidates,
             processing_time=result.processing_time,
             routing_details={
@@ -293,6 +297,8 @@ class KnowledgeRouter:
                 "anchor_kb_id": selected[0],
                 "modality_coverage_kb_ids": added,
                 "modality_intents": dict(modality_intents),
+                **({"base_kb_ids": list(result.target_kb_ids), "uncovered_modalities": sorted(missing),
+                    "append_only": True, "max_targets": 3} if append_only else {}),
             },
         )
 

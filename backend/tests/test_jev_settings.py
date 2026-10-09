@@ -25,7 +25,7 @@ def app(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("intent_mode,rerank_mode", [("adaptive", "shadow"), ("force", "force")])
+@pytest.mark.parametrize("intent_mode,rerank_mode", [("adaptive", "shadow"), ("force", "force"), ("off", "assist")])
 async def test_api_persists_complete_config_without_exposing_credentials(app, intent_mode, rerank_mode):
     wanted = dict(provider="typesafe", model="jev-1.13.0", intent_mode=intent_mode, rerank_mode=rerank_mode, citation_mode="shadow", citation_strategy="batch_choice")
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
@@ -166,6 +166,10 @@ async def test_existing_processors_follow_saved_modes_without_recreation(app, mo
     processor._process_generative = AsyncMock(return_value={"intent_type": "factual"})
     classify = AsyncMock(return_value=({"intent_type": "factual"}, {"accepted": True}))
     monkeypatch.setattr(intent, "classify_intent", classify)
+    verify = AsyncMock(return_value={"intent_type": "factual", "jev_decision": {
+        "strategy": "plan_first", "accepted": False,
+    }})
+    monkeypatch.setattr(intent, "verify_plan", verify)
     ranker = reranker.Reranker()
     shared_client = ranker.jev_client
     ranker._apply_cross_encoder_reranking = AsyncMock(return_value=[{"id": "original"}])
@@ -183,7 +187,7 @@ async def test_existing_processors_follow_saved_modes_without_recreation(app, mo
     classify.assert_not_awaited()
     score.assert_not_awaited()
     runtime.jev_config_store.write(runtime.JevConfig(intent_mode="adaptive", rerank_mode="replace", citation_mode="shadow", citation_strategy="batch_choice"))
-    assert (await processor.process("default limit"))["jev_decision"]["accepted"]
+    assert (await processor.process("default limit"))["jev_decision"]["strategy"] == "plan_first"
     assert (await ranker._rank_with_optional_jev("q", [{"id": "candidate"}], None))[0][0]["id"] == "jev"
     assert (await jev_answer_audit.maybe_audit_answer("claim[1]", {}))["strategy"] == "batch_choice"
     assert ranker.jev_client is shared_client  # Toggling never resets the worker budget.
@@ -191,6 +195,7 @@ async def test_existing_processors_follow_saved_modes_without_recreation(app, mo
     await processor.process("default limit")
     await ranker._rank_with_optional_jev("q", [{"id": "candidate"}], None)
     assert await jev_answer_audit.maybe_audit_answer("claim[1]", {}) is None
-    classify.assert_awaited_once()
+    classify.assert_not_awaited()
+    verify.assert_awaited_once()
     score.assert_awaited_once()
     batch.assert_awaited_once()
