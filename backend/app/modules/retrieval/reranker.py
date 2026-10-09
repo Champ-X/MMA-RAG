@@ -29,7 +29,23 @@ class Reranker:
         self.top_k = 20                # Cross-Encoder处理的候选数量（从20增加到30，提高重排质量）
         self.final_top_k = 10          # 最终返回结果数量（从10增加到15，提高图片丰富度）
         self.jev_mode = None
-        self.jev_client = get_jev_client()
+        self._jev_client_override = None
+
+    @property
+    def jev_client(self):
+        """Resolve the Decision route from this request's immutable settings.
+
+        Reranker instances outlive requests, while the selected provider/model
+        can change without a restart. The shared client factory retains each
+        route's budget and circuit state; explicit evaluation overrides remain
+        supported through the setter.
+        """
+        override = self._jev_client_override
+        return override if override is not None else get_jev_client()
+
+    @jev_client.setter
+    def jev_client(self, client):
+        self._jev_client_override = client
     
     async def rerank(
         self,

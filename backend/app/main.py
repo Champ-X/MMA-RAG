@@ -97,6 +97,7 @@ logging.getLogger("uvicorn.access").addFilter(_SuppressProgressPollAccessLog())
 # 注册路由
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(jev.router, prefix="/api/jev", tags=["jev"])
+app.include_router(jev.router, prefix="/api/decision", tags=["decision"])
 app.include_router(knowledge.router, prefix="/api/knowledge", tags=["knowledge"])
 app.include_router(upload.router, prefix="/api/upload", tags=["upload"])
 app.include_router(debug.router, prefix="/api/debug", tags=["debug"])

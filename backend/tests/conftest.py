@@ -10,3 +10,5 @@ def isolate_jev_runtime_settings(tmp_path, monkeypatch):
     for field in ("jev_intent_mode", "jev_rerank_mode", "jev_citation_mode"):
         monkeypatch.setattr(settings, field, "off")
     monkeypatch.setattr(settings, "jev_citation_strategy", "per_unit")
+    monkeypatch.setattr(settings, "decision_provider", "typesafe")
+    monkeypatch.setattr(settings, "decision_model", None)

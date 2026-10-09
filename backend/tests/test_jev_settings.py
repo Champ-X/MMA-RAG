@@ -27,7 +27,7 @@ def app(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("intent_mode,rerank_mode", [("adaptive", "shadow"), ("force", "force")])
 async def test_api_persists_complete_config_without_exposing_credentials(app, intent_mode, rerank_mode):
-    wanted = dict(intent_mode=intent_mode, rerank_mode=rerank_mode, citation_mode="shadow", citation_strategy="batch_choice")
+    wanted = dict(provider="typesafe", model="jev-1.13.0", intent_mode=intent_mode, rerank_mode=rerank_mode, citation_mode="shadow", citation_strategy="batch_choice")
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         initial = await client.get("/api/jev/settings")
         assert initial.json()["config"] == runtime.OFF_CONFIG.model_dump()
@@ -146,6 +146,7 @@ async def test_frozen_evaluation_ignores_ui_settings_and_rejects_writes(app, mon
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         config = (await client.get("/api/jev/settings")).json()["config"]
         assert config == {
+            "provider": "typesafe", "model": "jev-1.13.0",
             "intent_mode": "adaptive", "rerank_mode": "off",
             "citation_mode": "shadow", "citation_strategy": "batch_choice",
         }

@@ -1,4 +1,8 @@
-"""Persist non-secret Jev options and keep one immutable snapshot per request."""
+"""Persist non-secret Decision options and keep one immutable snapshot per request.
+
+The original file, Python names and JEV_* mode variables remain compatible.
+Legacy saved settings without a provider/model continue to select TypeSafe Jev.
+"""
 from contextvars import ContextVar
 import json
 import os
@@ -6,18 +10,27 @@ from pathlib import Path
 import tempfile
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from app.core.config import settings
+from app.core.llm.decision_catalog import get_decision_model
 
 
 class JevConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    provider: Literal["typesafe", "openrouter"] = "typesafe"
+    model: str = "jev-1.13.0"
     intent_mode: Literal["off", "adaptive", "force"]
     rerank_mode: Literal["off", "shadow", "replace", "force"]
     citation_mode: Literal["off", "shadow"]
     citation_strategy: Literal["per_unit", "batch_choice"]
+
+    @model_validator(mode="after")
+    def validate_model(self):
+        if get_decision_model(self.provider, self.model) is None:
+            raise ValueError("请选择该服务商支持的 Decision 模型。")
+        return self
 
     @property
     def enabled(self) -> bool:
@@ -41,12 +54,19 @@ class JevConfigStore:
 
     @staticmethod
     def environment_config() -> JevConfig:
-        return JevConfig(
-            intent_mode=settings.jev_intent_mode,
-            rerank_mode=settings.jev_rerank_mode,
-            citation_mode=settings.jev_citation_mode,
-            citation_strategy=settings.jev_citation_strategy,
-        )
+        try:
+            return JevConfig(
+                provider=settings.decision_provider,
+                model=settings.decision_model or (
+                    "jev-1.13.0" if settings.decision_provider == "typesafe" else "openai/gpt-6-luna-decisions"
+                ),
+                intent_mode=settings.jev_intent_mode,
+                rerank_mode=settings.jev_rerank_mode,
+                citation_mode=settings.jev_citation_mode,
+                citation_strategy=settings.jev_citation_strategy,
+            )
+        except ValidationError:
+            raise JevConfigUnavailable("Decision 环境配置无效，已暂停 Decision；请检查服务商与模型或重新保存配置。") from None
 
     def read(self) -> JevConfig:
         if self.path is None:
@@ -56,15 +76,15 @@ class JevConfigStore:
         except FileNotFoundError:
             return self.environment_config()
         except (OSError, UnicodeError):
-            raise JevConfigUnavailable("无法读取 Jev 配置，请检查服务端文件权限。") from None
+            raise JevConfigUnavailable("无法读取 Decision 配置，请检查服务端文件权限。") from None
         try:
             return JevConfig.model_validate_json(raw)
         except ValidationError:
-            raise JevConfigUnavailable("保存的 Jev 配置无效，已暂停 Jev；请重新保存配置。") from None
+            raise JevConfigUnavailable("保存的 Decision 配置无效，已暂停 Decision；请重新保存配置。") from None
 
     def write(self, config: JevConfig) -> None:
         if self.path is None:
-            raise JevConfigUnavailable("评测进程的 Jev 配置只读，请通过启动参数配置。")
+            raise JevConfigUnavailable("评测进程的 Decision 配置只读，请通过启动参数配置。")
         # Never persist credentials here or modify .env. Replace only after the
         # complete payload is durable, so readers/workers cannot see a partial file.
         self.path.parent.mkdir(parents=True, exist_ok=True)

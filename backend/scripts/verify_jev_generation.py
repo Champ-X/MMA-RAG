@@ -23,6 +23,7 @@ async def run(args):
     load_dotenv(args.provider_env,override=False)
     key=re.split(r'[:=：]',args.key_file.read_text().strip(),maxsplit=1)[-1].strip().strip("\"'")
     os.environ.update(JEV_CITATION_MODE='shadow',JEV_CITATION_STRATEGY=args.strategy,
+                      DECISION_PROVIDER='typesafe',DECISION_MODEL='jev-1.13.0',
                       TYPESAFE_API_KEY=key,JEV_TIMEOUT_S='3',JEV_MAX_INPUT_TOKENS='100000')
     from app.core.jev_settings import jev_config_store
     jev_config_store.path = None  # Frozen CLI configuration must win over saved UI settings.

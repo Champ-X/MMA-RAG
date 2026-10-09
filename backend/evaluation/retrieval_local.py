@@ -127,8 +127,19 @@ class LocalAPIRetriever:
         # Public API schemas differ across releases; preserve only task route fields.
         routes = model_response.get("current_config") or model_response.get("task_config") or model_response.get("current_task_config")
         require(isinstance(routes, dict), "task model routes unavailable; cannot freeze configuration")
+        decision_response = request_json(self.base_url + "/api/jev/settings")
+        decision = decision_response.get("config")
+        require(isinstance(decision, dict), "Decision settings unavailable; cannot freeze configuration")
+        # Keep only the public non-secret selection. Legacy servers omit these
+        # two fields and always use the TypeSafe Jev route.
+        decision = {key: decision[key] for key in (
+            "provider", "model", "intent_mode", "rerank_mode", "citation_mode", "citation_strategy",
+        ) if key in decision}
+        decision.setdefault("provider", "typesafe")
+        decision.setdefault("model", "jev-1.13.0")
         self.configuration = {"backend": "tessmora_http", "profile": "direct", "api": "/api/v1/retrieval/search",
-                              "model_stack": routes, "snapshot": dataset.manifest["provenance"]["snapshot_payload_sha256"],
+                              "model_stack": routes, "decision_config": decision,
+                              "snapshot": dataset.manifest["provenance"]["snapshot_payload_sha256"],
                               "service_version": health.get("version"), "timing_scope": "Actual complete retrieval HTTP request, including rewrite/routing/search/rerank",
                               "limits": "Native server candidate/final limits retained; requested top_k is an output ceiling, not a guarantee of 50 candidates"}
 

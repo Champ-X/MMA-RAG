@@ -115,7 +115,7 @@ async def classify_intent(client: JevClient, query: str, *, force=False,
     analysis = {
         **selected, 'original_query': query, 'refined_query': query,
         'is_complex': a['is_complex']['noul'] >= .5,
-        'reasoning': 'Jev 闭集意图判断；开放式改写由后续 QueryRewriter 执行',
+        'reasoning': 'Decision 模型识别检索意图，查询改写在后续阶段完成',
         'search_strategies': {'dense_query': query, 'sparse_keywords': [], 'multi_view_queries': []},
         'sub_queries': [],
     }

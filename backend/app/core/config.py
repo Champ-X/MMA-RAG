@@ -332,7 +332,9 @@ class Settings(BaseSettings):
     max_context_length: int = Field(default=4000, validation_alias="MAX_CONTEXT_LENGTH")
     rerank_top_k: int = Field(default=10, validation_alias="RERANK_TOP_K")
 
-    # Experimental semantic scorer. Disabled unless explicitly enabled.
+    # Typed Decision providers. Existing JEV_* mode/limit variables stay compatible.
+    decision_provider: Literal["typesafe", "openrouter"] = Field(default="typesafe", validation_alias="DECISION_PROVIDER")
+    decision_model: Optional[str] = Field(default=None, validation_alias="DECISION_MODEL")
     jev_rerank_mode: Literal["off", "shadow", "replace", "force"] = Field(default="off", validation_alias="JEV_RERANK_MODE")
     jev_intent_mode: Literal["off", "adaptive", "force"] = Field(default="off", validation_alias="JEV_INTENT_MODE")
     jev_citation_mode: Literal["off", "shadow"] = Field(default="off", validation_alias="JEV_CITATION_MODE")

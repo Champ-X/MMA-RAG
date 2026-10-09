@@ -53,7 +53,8 @@ def system_fingerprint() -> dict:
     files = [*backend.joinpath("app/modules/retrieval").rglob("*.py"),
              *backend.joinpath("app/modules/agent").rglob("*.py"),
              *backend.joinpath("app/modules/pi_agent").rglob("*.py"),
-             *backend.joinpath("app/core/llm").rglob("*.py"), backend / "app/core/config.py"]
+             *backend.joinpath("app/core/llm").rglob("*.py"), backend / "app/core/config.py",
+             backend / "app/core/jev_settings.py"]
     runtime = backend.parent / "agent-runtime"
     files += [p for p in runtime.joinpath("src").rglob("*") if p.is_file() and p.suffix in {".ts", ".js", ".mjs"}]
     files += [p for p in (runtime / "package.json", runtime / "package-lock.json") if p.exists()]
@@ -71,6 +72,7 @@ class LocalCoreRetriever(LocalAPIRetriever):
     def __init__(self, dataset, *, base_url, profile):
         super().__init__(dataset, base_url=base_url)
         from app.core.config import settings
+        from app.core.jev_settings import get_jev_config
         from app.core.llm.manager import llm_manager
         from app.modules.retrieval.service import RetrievalService
         from app.modules.agent.service import AgenticRetrievalService
@@ -84,7 +86,10 @@ class LocalCoreRetriever(LocalAPIRetriever):
                               "provider": llm_manager.registry.get_model_config(llm_manager.registry.get_task_model(task))["provider"]}
                         for task in self.configuration["model_stack"]}
         require(local_routes == self.configuration["model_stack"], "local task routes differ from live API configuration")
-        config_fields = [k for k in settings.model_fields if k.startswith(("agent_", "jev_")) or k in {"max_retrieval_results", "rerank_top_k", "min_relevance_score"}]
+        self.decision_config = get_jev_config()
+        require(self.decision_config.model_dump() == self.configuration["decision_config"],
+                "local Decision settings differ from live API configuration")
+        config_fields = [k for k in settings.model_fields if k.startswith(("agent_", "jev_", "decision_")) or k in {"max_retrieval_results", "rerank_top_k", "min_relevance_score"}]
         self.configuration.update(profile=profile, backend="tessmora_native_retrieval_core", api=None,
             system_source=system_fingerprint(), retrieval_settings={k: getattr(settings, k) for k in config_fields},
             timing_scope="Actual native retrieval service through final evidence selection; excludes answer generation and HTTP overhead",
@@ -92,9 +97,11 @@ class LocalCoreRetriever(LocalAPIRetriever):
 
     async def search(self, case, top_k):
         from .retrieval_models import _observations
+        from app.core.jev_settings import _request_config
         attempts, observations = [], []
         attempt_token = _native_attempts.set(attempts)
         observation_token = _observations.set(observations)
+        decision_token = _request_config.set(self.decision_config)
         result, error = None, None
         try:
             result = await self._search(case, top_k)
@@ -107,6 +114,7 @@ class LocalCoreRetriever(LocalAPIRetriever):
         finally:
             _native_attempts.reset(attempt_token)
             _observations.reset(observation_token)
+            _request_config.reset(decision_token)
         result["usage"] = native_usage(attempts, observations)
         result["diagnostics"].update(model_attempts=attempts, provider_receipts=observations)
         if error:

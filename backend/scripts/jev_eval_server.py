@@ -22,6 +22,7 @@ def configure(provider_env, key_file, intent_mode='off', rerank_mode='off'):
         'CELERY_RESULT_BACKEND':'redis://127.0.0.1:16379/0',
         'DATABASE_URL':'sqlite:///'+str(ROOT/'data/jev-v2/eval.db'),
         'JEV_INTENT_MODE':intent_mode,'JEV_RERANK_MODE':rerank_mode,
+        'DECISION_PROVIDER':'typesafe','DECISION_MODEL':'jev-1.13.0',
         'JEV_CITATION_MODE':'off','JEV_CITATION_STRATEGY':'per_unit',
         'JEV_MAX_INPUT_TOKENS':'600000','TYPESAFE_API_KEY':key,'JEV_TIMEOUT_S':'5',
         'HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1',
