@@ -7,24 +7,68 @@ from typing import Dict, List, Any, Optional
 import httpx
 import json
 import asyncio
+import time
 from .base import BaseLLMProvider
 from ..model_health import raise_for_stream_error
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+class _EmbeddingTransportTrace:
+    """Keep only timings from httpcore; trace info may contain private data."""
+
+    _PHASES = {
+        "connect_tcp": "dns_tcp",  # httpcore includes DNS in connect_tcp.
+        "start_tls": "tls",
+        "send_request_headers": "request_headers",
+        "send_request_body": "request_body",
+        "receive_response_headers": "response_headers",
+        "receive_response_body": "response_body",
+    }
+
+    def __init__(self):
+        self.started = time.perf_counter()
+        self.last_phase = "request"
+        self._active = {}
+        self._durations = {}
+
+    async def __call__(self, event_name: str, _info: dict) -> None:
+        operation, _, event = event_name.rpartition(".")
+        phase = self._PHASES.get(operation.rsplit(".", 1)[-1])
+        if phase is None:
+            return
+        now = time.perf_counter()
+        if event == "started":
+            self.last_phase = phase
+            self._active[operation] = (phase, now)
+        elif event in {"complete", "failed"}:
+            active = self._active.pop(operation, None)
+            if active is not None:
+                self._durations[phase] = self._durations.get(phase, 0.0) + now - active[1]
+
+    def snapshot(self):
+        now = time.perf_counter()
+        durations = dict(self._durations)
+        for phase, started in self._active.values():
+            durations[phase] = durations.get(phase, 0.0) + now - started
+        return now - self.started, {phase: round(value, 4) for phase, value in durations.items()}
+
+
 class SiliconFlowProvider(BaseLLMProvider):
     """SiliconFlow API提供商"""
     
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, *, embedding_trust_env: bool = True):
         self.api_key = api_key
         self.base_url = "https://api.siliconflow.cn/v1"
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
-        # 默认超时30秒，但会在调用时根据模型类型动态调整
-        self.client = httpx.AsyncClient(timeout=60.0)
+        # Only embedding uses this persistent client; other task transports keep
+        # their existing environment behavior and timeout settings.
+        self._embedding_trust_env = embedding_trust_env
+        self.client = httpx.AsyncClient(timeout=60.0, trust_env=embedding_trust_env)
 
     def set_registry(self, registry: Any) -> None:
         """设置 registry 引用（可选，与 DeepSeek 等提供商接口一致）"""
@@ -140,57 +184,47 @@ class SiliconFlowProvider(BaseLLMProvider):
         }
         
         try:
-            # 尝试使用现有的 client
-            response = await self.client.post(
-                f"{self.base_url}/embeddings",
-                headers=self.headers,
-                json=payload
-            )
-            response.raise_for_status()
-            result = response.json()
-            
-            # 提取嵌入向量
-            embeddings = []
-            for item in result.get("data", []):
-                embeddings.append(item.get("embedding", []))
-            
-            return embeddings
-            
-        except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP错误: {e.response.status_code} - {e.response.text}")
-            raise
+            return await self._embed_with_client(self.client, payload)
         except Exception as e:
             err_msg = str(e)
-            # 如果是事件循环相关的错误，使用新的 client 重试
-            # 不记录为ERROR，因为 manager 会处理重试
-            if "Event loop is closed" in err_msg or "event loop" in err_msg.lower():
-                # 只记录DEBUG级别，让 manager 处理重试逻辑
-                logger.debug(f"SiliconFlow embedding遇到事件循环问题，尝试使用新 client: {err_msg}")
-                try:
-                    # 创建新的 client 并重试
-                    async with httpx.AsyncClient(timeout=60.0) as client:
-                        response = await client.post(
-                            f"{self.base_url}/embeddings",
-                            headers=self.headers,
-                            json=payload
-                        )
-                        response.raise_for_status()
-                        result = response.json()
-                        
-                        embeddings = []
-                        for item in result.get("data", []):
-                            embeddings.append(item.get("embedding", []))
-                        
-                        logger.debug("SiliconFlow embedding使用新 client 重试成功")
-                        return embeddings
-                except Exception as e2:
-                    # 重试失败，抛出异常让 manager 处理
-                    # manager 会记录WARNING并尝试在新事件循环中重试
-                    raise e2
-            else:
-                # 非事件循环错误，记录ERROR并抛出
-                logger.error(f"SiliconFlow embedding错误: {err_msg}")
-                raise
+            # Preserve the existing event-loop recovery only. HTTP errors and
+            # query cancellation must never trigger another embedding request.
+            if isinstance(e, RuntimeError) and "event loop" in err_msg.lower():
+                async with httpx.AsyncClient(
+                    timeout=60.0, trust_env=self._embedding_trust_env
+                ) as client:
+                    return await self._embed_with_client(client, payload)
+            raise
+
+    async def _embed_with_client(self, client, payload):
+        trace = _EmbeddingTransportTrace()
+        outcome, error_type, status_code = "ok", None, None
+        try:
+            response = await client.post(
+                f"{self.base_url}/embeddings",
+                headers=self.headers,
+                json=payload,
+                extensions={"trace": trace},
+            )
+            status_code = response.status_code
+            response.raise_for_status()
+            return [item.get("embedding", []) for item in response.json().get("data", [])]
+        except asyncio.CancelledError:
+            outcome, error_type = "cancelled", "CancelledError"
+            raise
+        except Exception as exc:
+            outcome, error_type = "error", type(exc).__name__
+            raise
+        finally:
+            duration, phases = trace.snapshot()
+            level = "WARNING" if outcome != "ok" else "INFO" if duration >= 1.0 else "DEBUG"
+            logger.log(
+                level,
+                "SiliconFlow embedding transport: model={} batch_size={} status={} "
+                "duration={:.3f}s last_phase={} phase_durations={} error_type={} status_code={}",
+                payload["model"], len(payload["input"]), outcome, duration,
+                trace.last_phase, json.dumps(phases, sort_keys=True), error_type, status_code,
+            )
     
     async def rerank(
         self, 

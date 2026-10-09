@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     
     # SiliconFlow API 配置
     siliconflow_api_key: str = Field(..., validation_alias="SILICONFLOW_API_KEY")  # type: ignore[arg-type]
+    siliconflow_embedding_trust_env: bool = Field(
+        default=True, validation_alias="SILICONFLOW_EMBEDDING_TRUST_ENV"
+    )
     
     # DeepSeek API 配置（可选；任务统一使用 deepseek:deepseek-flash）
     deepseek_api_key: Optional[str] = Field(default=None, validation_alias="DEEPSEEK_API_KEY")

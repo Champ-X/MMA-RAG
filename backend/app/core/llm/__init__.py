@@ -49,7 +49,10 @@ class LLMRegistry:
     def _load_config(self):
         """加载模型配置"""
         # SiliconFlow 提供商（使用 providers.silicon_flow，含 stream_chat，参见 SiliconFlow 流式文档）
-        siliconflow_provider = SiliconFlowProvider(settings.siliconflow_api_key)
+        siliconflow_provider = SiliconFlowProvider(
+            settings.siliconflow_api_key,
+            embedding_trust_env=settings.siliconflow_embedding_trust_env,
+        )
         if hasattr(siliconflow_provider, "set_registry"):
             siliconflow_provider.set_registry(self)
         self._providers["siliconflow"] = siliconflow_provider

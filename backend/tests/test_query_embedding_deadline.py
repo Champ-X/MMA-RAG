@@ -134,6 +134,33 @@ async def test_concurrent_branches_share_one_timeout_and_keep_previous_good_vect
 
 
 @pytest.mark.asyncio
+async def test_cached_vector_is_available_while_an_unrelated_network_miss_waits():
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def encode(texts, model):
+        if texts == ["slow"]:
+            started.set()
+            await release.wait()
+        return [[1.0, 0.0] for _ in texts]
+
+    manager, provider, _ = make_manager(encode)
+    cache = QueryEmbeddingCache()
+    await cache.embed(manager, ["warm"])
+    slow = asyncio.create_task(cache.embed(manager, ["slow"]))
+    try:
+        await asyncio.wait_for(started.wait(), .5)
+        warm = await asyncio.wait_for(cache.embed(manager, ["warm", "warm"]), .1)
+        assert warm.success and warm.data == [[1.0, 0.0], [1.0, 0.0]]
+        assert not slow.done()
+        warm.data[0][0] = -1
+        assert (await cache.embed(manager, ["warm"])).data == [[1.0, 0.0]]
+        assert provider.embed_texts.await_count == 2
+    finally:
+        release.set()
+        await slow
+
+
+@pytest.mark.asyncio
 async def test_changed_model_configuration_can_retry_after_request_timeout(monkeypatch):
     monkeypatch.setattr(settings, "query_embedding_timeout_seconds", .02)
 
