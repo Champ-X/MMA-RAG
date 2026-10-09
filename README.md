@@ -309,11 +309,12 @@ npm --prefix agent-runtime test
 | [架构说明](docs/MMA_ARCHITECTURE.md) | 入库、常规检索与生成链路；Pi 以独立文档为准 |
 | [多模态技术说明](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 图片、音频、视频的解析单元、字段与索引 |
 | [行内引用与附件](docs/chat-inline-references.md) | `@` 材料、编辑与引用预览 |
-| [模型调用可靠性](docs/MODEL_CALL_RELIABILITY.md) | 模型路由、健康状态与回退策略 |
+| [模型连接测试与调用排查](docs/MODEL_CALL_RELIABILITY.md) | 路由逐项 / 批量测试、健康状态与回退策略 |
 | [CLI 参考](skills/mma-rag/references/cli-reference.md) · [飞书接入](docs/FEISHU_BOT_SETUP.md) | 外部工作流与配置 |
 | [RAG 评测](docs/RAG_EVALUATION.md) · [Pi 验证](docs/PI_AGENT_VERIFICATION.md) | 复现方式、覆盖范围与结果边界 |
 | [检索实测结果](docs/RETRIEVAL_EVALUATION_20261008.md) · [检索评测 v2](docs/RETRIEVAL_EVALUATION_V2.md) | 公开与本地多模态对照、证据覆盖、配对区间与复现命令 |
-| [Jev 实验结论](docs/research/JEV-DECISIONS.md) | 可选语义判断与引用诊断实验；默认关闭 |
+| [Decision 模型配置](docs/DECISION_MODELS.md) | TypeSafe / OpenRouter 判断模型、连接测试与高级诊断 |
+| [Jev 实验结论](docs/research/JEV-DECISIONS.md) | 历史 Jev 语义判断与引用诊断实验；默认关闭 |
 | [安全说明](SECURITY.md) · [历史变更](CHANGELOG.md) | 部署要求与已有变更记录 |
 
 ## 参与贡献

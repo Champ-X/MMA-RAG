@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useLocation } from 'react-router-dom'
 import type { TaskModelEntry } from '@/components/settings/ModelConfig'
-import { JevSettings } from '@/components/settings/JevSettings'
+import { DecisionSettings } from '@/components/settings/DecisionSettings'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useTheme } from '@/hooks/useTheme'
@@ -122,7 +122,7 @@ const THEME_OPTIONS: Array<{
 const SETTINGS_SECTIONS = [
   { id: 'interface', label: '界面与显示', icon: Palette },
   { id: 'models', label: '模型与路由', icon: Route },
-  { id: 'jev', label: 'Jev 语义判断', icon: Zap },
+  { id: 'decision', label: 'Decision 模型', icon: Zap },
 ] as const
 
 type SettingsSection = typeof SETTINGS_SECTIONS[number]['id']
@@ -224,7 +224,7 @@ export function SettingsPage() {
   const { theme, setTheme } = useTheme()
   const { showSuccess, showError } = useToastStore()
   const [modelSettingsHaveChanges, setModelSettingsHaveChanges] = useState(false)
-  const [jevSettingsHaveChanges, setJevSettingsHaveChanges] = useState(false)
+  const [decisionSettingsHaveChanges, setDecisionSettingsHaveChanges] = useState(false)
   const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false)
   const [activeSection, setActiveSection] = useState<SettingsSection>('interface')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -232,7 +232,7 @@ export function SettingsPage() {
   const [hasActivatedModelMatrix, setHasActivatedModelMatrix] = useState(
     () => location.pathname === '/settings'
   )
-  const pendingChanges = modelSettingsHaveChanges || jevSettingsHaveChanges
+  const pendingChanges = modelSettingsHaveChanges || decisionSettingsHaveChanges
   const isSettingsActive = location.pathname === '/settings'
 
   const activateSection = (section: SettingsSection) => {
@@ -341,7 +341,7 @@ export function SettingsPage() {
   const sectionDirty: Record<SettingsSection, boolean> = {
     interface: false,
     models: modelSettingsHaveChanges,
-    jev: jevSettingsHaveChanges,
+    decision: decisionSettingsHaveChanges,
   }
 
   return (
@@ -507,14 +507,14 @@ export function SettingsPage() {
         </div>
 
         <div
-          id="settings-panel-jev"
+          id="settings-panel-decision"
           role="tabpanel"
-          aria-labelledby="settings-tab-jev"
-          hidden={activeSection !== 'jev'}
+          aria-labelledby="settings-tab-decision"
+          hidden={activeSection !== 'decision'}
           tabIndex={0}
           className="settings-tabpanel"
         >
-          {hasActivatedModelMatrix && <JevSettings onHasChangesChange={setJevSettingsHaveChanges} />}
+          {hasActivatedModelMatrix && <DecisionSettings onHasChangesChange={setDecisionSettingsHaveChanges} />}
         </div>
       </div>
     </ScrollArea>

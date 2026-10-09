@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import type { ChatScopeFile } from '@/store/useChatStore'
-import type { JevConfig, JevSettingsResponse } from '@/types/jev'
+import type { DecisionConfig, DecisionSettingsResponse, DecisionTestResponse } from '@/types/decision'
+import type { ModelRouteSelection, ModelRouteTestResponse } from '@/types/modelRouteTest'
 
 /** 未设置 VITE_API_BASE_URL 时默认 /api：开发时由 Vite 代理到后端，避免浏览器直连 localhost:8000（WSL/端口转发下易失败或超时）；生产需同源反代或显式配置环境变量。 */
 function resolveDefaultApiBaseURL(): string {
@@ -986,8 +987,10 @@ export const debugApi = {
 
 // 系统相关API（模型配置来自 /api/chat/models）
 export const systemApi = {
-  getJevSettings: () => apiClient.get<JevSettingsResponse>('/jev/settings'),
-  updateJevSettings: (config: JevConfig) => apiClient.put<JevSettingsResponse>('/jev/settings', config),
+  getDecisionSettings: () => apiClient.get<DecisionSettingsResponse>('/decision/settings'),
+  updateDecisionSettings: (config: DecisionConfig) => apiClient.put<DecisionSettingsResponse>('/decision/settings', config),
+  testDecisionConnection: (selection: Pick<DecisionConfig, 'provider' | 'model'>) =>
+    apiClient.post<DecisionTestResponse>('/decision/test', selection, { timeout: 60000 }),
   // 获取系统状态（使用 debug/stats）
   getSystemStatus: () => apiClient.get('/debug/stats'),
   // 获取模型配置（来自 chat/models）
@@ -998,6 +1001,9 @@ export const systemApi = {
     }),
   // 更新模型配置（运行时立即生效，后端会持久化任务主模型覆盖）
   updateModelConfig: (config: any) => apiClient.put('/chat/models', config, { timeout: 120000 }),
+  // 对当前草稿执行能力匹配的探测，不修改模型路由配置。
+  testModelRoute: (selection: ModelRouteSelection) =>
+    apiClient.post<ModelRouteTestResponse>('/chat/models/test', selection, { timeout: 70000 }),
   // 获取系统指标
   getMetrics: () => apiClient.get('/debug/stats'),
 };

@@ -248,6 +248,26 @@
   .settings-page-heading p { max-width: 24em; }
   .settings-navigation-hint { display: none; }
 }
+@media (max-width: 640px) {
+  .settings-container { padding: 22px 12px 28px; }
+  .settings-page-header { flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .settings-page-heading { min-width: 0; align-items: flex-start; gap: 12px; }
+  .settings-page-heading > div { min-width: 0; }
+  .settings-page-heading h1 { font-size: 25px; }
+  .settings-page-heading p { font-size: 12px; }
+  .settings-page-emblem { width: 42px; height: 42px; border-radius: 12px; }
+  .settings-page-emblem::before { border-radius: 10px; }
+  .settings-sync-status { padding: 6px 9px; font-size: 11px; }
+  .settings-navigation { min-width: 0; margin-bottom: 16px; padding-block: 6px 10px; }
+  .settings-tabs { min-width: 0; max-width: 100%; overflow-x: auto; padding: 4px; scrollbar-width: thin; }
+  .settings-tab { flex-shrink: 0; min-height: 44px; gap: 6px; padding: 9px 12px; font-size: 12px; }
+  .settings-panel-header, .settings-interface-body, .settings-panel-footer { padding: 18px; }
+  .settings-theme-options { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .settings-preference { flex-wrap: wrap; gap: 10px; padding: 14px 12px; }
+  .settings-preference-state { display: none; }
+  .settings-preference-icon { width: 30px; height: 30px; }
+  .settings-panel-footer { flex-wrap: wrap; }
+}
 @media (prefers-reduced-motion: reduce) {
   .settings-page *, .settings-page *::before { transition: none !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }

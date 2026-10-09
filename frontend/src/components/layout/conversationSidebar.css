@@ -8,6 +8,17 @@
   --sidebar-conversation-ink: #718399;
 }
 
+/* The compact controls already activate at 640px; keep the rail itself compact
+   even when the saved desktop width is supplied through a CSS variable. */
+@media (max-width: 640px) {
+  .conversation-sidebar {
+    width: 72px;
+    min-width: 72px;
+    max-width: 72px;
+    flex-basis: 72px;
+  }
+}
+
 .dark .conversation-sidebar {
   --sidebar-icon-ink: #b5b9c2;
   --sidebar-icon-accent: #9aaac9;

@@ -1,0 +1,106 @@
+.brand-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  vertical-align: middle;
+  border-radius: 5px;
+}
+
+.brand-icon img { width: 100%; height: 100%; object-fit: contain; }
+.brand-icon-image--dark { display: none; }
+:is(.dark, [data-theme="dark"]) .brand-icon-image--light { display: none; }
+:is(.dark, [data-theme="dark"]) .brand-icon-image--dark { display: block; }
+.brand-icon--fallback { background: #eef0f6; color: #617087; font: 600 10px/1 'Manrope', sans-serif; }
+:is(.dark, [data-theme="dark"]) .brand-icon--fallback { background: #343b4c; color: #c4ccdb; }
+:is(.dark, [data-theme="dark"]) .brand-icon--monochrome img { filter: invert(1); }
+
+.brand-select, .brand-select-menu {
+  --brand-ink: #26334b;
+  --brand-muted: #627087;
+  --brand-border: #dfe4ef;
+  --brand-surface: #fff;
+  --brand-soft: #f5f6fb;
+  --brand-accent: #6a5bc2;
+  --brand-selected: #f1eefb;
+  color: var(--brand-ink);
+  font-family: 'Manrope', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+:is(.dark, [data-theme="dark"]) :is(.brand-select, .brand-select-menu) {
+  --brand-ink: #e1e6f0;
+  --brand-muted: #a5afc2;
+  --brand-border: #3b4355;
+  --brand-surface: #202634;
+  --brand-soft: #292f40;
+  --brand-accent: #b6a8f3;
+  --brand-selected: #35304a;
+}
+
+.brand-select { min-width: 0; }
+.brand-select-label { display: block; margin-bottom: 8px; font-size: 12px; font-weight: 600; }
+.brand-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid var(--brand-border);
+  border-radius: 11px;
+  background: var(--brand-surface);
+  color: var(--brand-ink);
+  font-size: 13px;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .16s, box-shadow .16s, background .16s;
+}
+.brand-select-trigger:hover:not(:disabled) { border-color: var(--brand-accent); background: var(--brand-soft); }
+.brand-select-trigger:focus-visible, .brand-select-trigger[data-state="open"] { outline: 2px solid var(--brand-accent); outline-offset: 2px; }
+.brand-select-trigger:disabled { opacity: .5; cursor: not-allowed; }
+.brand-select-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-select-chevron { flex: none; color: var(--brand-muted); transition: transform .16s; }
+.brand-select-trigger[data-state="open"] .brand-select-chevron { transform: rotate(180deg); }
+
+.brand-select-menu {
+  z-index: 1200;
+  width: max(220px, var(--radix-dropdown-menu-trigger-width));
+  max-width: calc(100vw - 24px);
+  max-height: min(320px, var(--radix-dropdown-menu-content-available-height));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  border: 1px solid var(--brand-border);
+  border-radius: 13px;
+  background: var(--brand-surface);
+  box-shadow: 0 8px 16px -8px rgb(31 39 66 / 16%), 0 18px 50px -15px rgb(31 39 66 / 24%);
+  scroll-padding-block: 6px;
+}
+.brand-select-option {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 46px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+.brand-select-option + .brand-select-option { margin-top: 3px; }
+.brand-select-option[data-highlighted] { background: var(--brand-soft); box-shadow: inset 0 0 0 1px var(--brand-border); }
+.brand-select-option[data-state="checked"] { color: var(--brand-accent); background: var(--brand-selected); }
+.brand-select-option[data-highlighted][data-state="checked"] { box-shadow: inset 0 0 0 1px var(--brand-accent); }
+.brand-select-option[data-disabled] { opacity: .45; cursor: not-allowed; }
+.brand-select-option-icon { display: grid; place-items: center; flex: none; width: 30px; height: 30px; }
+.brand-select-option-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+.brand-select-option-copy > span { overflow-wrap: anywhere; font-size: 13px; font-weight: 550; line-height: 1.45; }
+.brand-select-option[data-state="checked"] .brand-select-option-copy > span { font-weight: 650; }
+.brand-select-option-copy small { color: var(--brand-muted); overflow-wrap: anywhere; font-size: 11px; line-height: 1.5; }
+.brand-select-indicator { display: flex; flex: none; width: 16px; color: var(--brand-accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-select-trigger, .brand-select-chevron { transition: none; }
+}

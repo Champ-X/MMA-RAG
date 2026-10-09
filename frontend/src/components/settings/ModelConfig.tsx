@@ -1,13 +1,15 @@
 import { useState, useEffect, useId, useLayoutEffect, useRef, useMemo, type ComponentType } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Save, RotateCcw, AlertCircle, Brain, Image, MessageSquare, ArrowDownUp, Check, ChevronDown, Route, Mic, Film, BookText, Database, RefreshCw, Search } from 'lucide-react'
+import { Save, RotateCcw, AlertCircle, Brain, Image, MessageSquare, ArrowDownUp, Check, ChevronDown, Route, Mic, Film, BookText, Database, RefreshCw, Search, PlugZap, Square } from 'lucide-react'
 import { useToastStore } from '@/store/useToastStore'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useModelRouteTests } from '@/hooks/useModelRouteTests'
+import { modelRouteTestKey } from '@/lib/modelRouteTests'
+import type { ModelRouteSelection, ModelRouteTestState } from '@/types/modelRouteTest'
 import type { AvailableModels, AvailableModelType, ModelCatalogDetail } from '@/store/useConfigStore'
-import { getModelProvider, getModelVendor, PROVIDER_LOGOS, VENDOR_LOGOS } from '@/lib/modelVendors'
-import { OpenRouterModelBrandIcon } from '@/components/chat/OpenRouterModelBrandIcon'
+import { BrandIcon, BrandSelect } from './BrandSelect'
 import './modelSettings.css'
 
 export type TaskId =
@@ -207,32 +209,17 @@ function modelSummary(model: string, detail?: ModelCatalogDetail): string {
 }
 
 function ModelLogo({ modelId, provider, className }: { modelId: string; provider?: string; className?: string }) {
-  if (modelId.startsWith('openrouter:')) {
-    return (
-      <OpenRouterModelBrandIcon
-        modelId={modelId.slice('openrouter:'.length)}
-        size={24}
-        className={cn('rounded-[6px] bg-transparent p-0 ring-0 dark:bg-transparent dark:ring-0', className)}
-        ariaHidden
-      />
-    )
-  }
+  return <BrandIcon modelId={modelId} provider={provider} size={22} className={className} />
+}
 
-  const vendor = getModelVendor(modelId)
-  const vendorLogo = VENDOR_LOGOS[vendor]
-  const providerKey = getModelProvider(modelId)
-  const providerLogo = providerKey ? PROVIDER_LOGOS[providerKey] : undefined
-  const src = vendorLogo ?? providerLogo ?? (provider === 'aliyun_bailian' ? PROVIDER_LOGOS.AliyunBailian : undefined)
-
-  if (!src) {
-    return (
-      <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-slate-100 text-[10px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300', className)} aria-hidden>
-        AI
-      </span>
-    )
-  }
-
-  return <img src={src} alt="" className={cn('h-6 w-6 shrink-0 rounded-[6px] object-contain', className)} width={24} height={24} aria-hidden />
+function RouteTestFeedback({ id, state, label, capability }: { id: string; state?: ModelRouteTestState; label: string; capability: AvailableModelType }) {
+  const result = state?.result
+  return <div id={id} className={cn('settings-model-test-feedback', result && (result.success ? 'is-success' : 'is-failure'))}>
+    {state && <>
+      {result ? (result.success ? <Check size={14} aria-hidden /> : <AlertCircle size={14} aria-hidden />) : <RefreshCw size={14} className={state.status === 'running' ? 'animate-spin' : undefined} aria-hidden />}
+      <span><span className="sr-only">{label}：</span>{result ? <><strong>{result.success ? '连接通过' : '测试未通过'}</strong><span className="settings-model-test-duration">{(result.duration_ms / 1000).toFixed(2)} 秒</span><span className="settings-model-test-message">{result.success ? result.details || result.message : result.message}</span></> : state.status === 'queued' ? '等待测试…' : `正在测试${CAPABILITY_LABELS[capability]}…`}</span>
+    </>}
+  </div>
 }
 
 function LogoModelSelect({
@@ -558,6 +545,13 @@ export function ModelConfig({
   const syncedModelCount = Object.values(modelDetails).filter((detail) => detail.catalog_synced).length
   const totalModelCount = Object.keys(modelDetails).length
   const lastRefreshLabel = formatCatalogTime(catalogStatus?.last_refresh_finished_at)
+  const testSelections = useMemo<ModelRouteSelection[]>(() => [
+    ...matrix.map(task => ({ provider: task.provider, model: task.model, capability: task.category })),
+    { ...reranker, capability: 'reranker' },
+  ], [matrix, reranker])
+  const routeTests = useModelRouteTests(testSelections)
+  const batchActive = !!routeTests.batch && routeTests.batch.running + routeTests.batch.queued > 0
+  const testHelpId = useId()
   const configStatusId = useId().replace(/:/g, '') + '-model-config-status'
   const configStatusText = saving
     ? '正在保存模型配置'
@@ -757,6 +751,9 @@ export function ModelConfig({
     }
     const saved = isReranker ? savedConfigRef.current.reranker : savedConfigRef.current.taskMatrix.find((item) => item.taskId === taskId)
     const changed = saved?.provider !== task.provider || saved?.model !== task.model
+    const testSelection: ModelRouteSelection = { provider: task.provider, model: task.model, capability: task.category }
+    const testState = routeTests.routes[modelRouteTestKey(testSelection)]
+    const testPending = testState?.status === 'queued' || testState?.status === 'running'
     return (
       <div key={taskId} className={cn('settings-model-row', isPrimary && 'is-primary', changed && 'is-changed')}>
         <div className="settings-model-task">
@@ -770,34 +767,47 @@ export function ModelConfig({
             <p id={`model-task-help-${taskId}`}>{task.description}</p>
           </div>
         </div>
-        <div className="settings-model-route" role="group" aria-label={`${task.label}路由`} aria-describedby={`model-task-help-${taskId}`}>
-          <div className="settings-model-provider-wrap">
-            <select
-              name={`${taskId}-provider`}
-              value={task.provider}
-              onChange={(event) => updateSelection('provider', event.target.value)}
-              className="settings-model-control settings-model-provider"
-              aria-label={isReranker ? 'Reranker Provider' : `${task.label} Provider`}
-              title={`服务商：${PROVIDER_DISPLAY_NAMES[task.provider] ?? task.provider}`}
-              disabled={providers.length === 0 || saving}
-            >
-              {providers.length === 0 && <option value="">无可用服务商</option>}
-              {task.provider && !providers.includes(task.provider) && <option value={task.provider} disabled>{PROVIDER_DISPLAY_NAMES[task.provider] ?? task.provider}（不可用）</option>}
-              {providers.map((provider) => <option key={provider} value={provider}>{PROVIDER_DISPLAY_NAMES[provider] ?? provider}</option>)}
-            </select>
-            <ChevronDown className="settings-model-select-arrow h-3.5 w-3.5" aria-hidden />
+        <div className="settings-model-route-area">
+          <div className="settings-model-route-line">
+            <div className="settings-model-route" role="group" aria-label={`${task.label}路由`} aria-describedby={`model-task-help-${taskId}`}>
+              <div className="settings-model-provider-wrap">
+                <BrandSelect
+                  name={`${taskId}-provider`}
+                  value={task.provider}
+                  onChange={(value) => updateSelection('provider', value)}
+                  className="settings-model-provider"
+                  ariaLabel={isReranker ? 'Reranker Provider' : `${task.label} Provider`}
+                  disabled={providers.length === 0 || saving}
+                  options={[
+                    ...(task.provider && !providers.includes(task.provider)
+                      ? [{ value: task.provider, label: `${PROVIDER_DISPLAY_NAMES[task.provider] ?? task.provider}（不可用）`, provider: task.provider, disabled: true }]
+                      : []),
+                    ...providers.map((provider) => ({ value: provider, label: PROVIDER_DISPLAY_NAMES[provider] ?? provider, provider })),
+                  ]}
+                />
+              </div>
+              <LogoModelSelect
+                value={task.model}
+                list={models}
+                provider={task.provider}
+                details={modelDetails}
+                disabled={models.length === 0 || saving}
+                onChange={(value) => updateSelection('model', value)}
+                ariaLabel={`${isReranker ? 'Reranker 模型' : `${task.label}模型`}，当前模型：${modelDisplayName(task.model) || '无'}`}
+                isActive={isActive}
+                className="settings-model-selection"
+              />
+            </div>
+            <button type="button" className="settings-model-test-button"
+              aria-label={`${testState?.status === 'done' ? '重新测试' : '测试'}${task.label}连接`}
+              aria-describedby={`${testHelpId} model-route-test-${taskId}`}
+              disabled={testPending || !task.provider || !task.model}
+              onClick={() => routeTests.test(testSelection)}>
+              {testPending ? <RefreshCw size={14} className={testState?.status === 'running' ? 'animate-spin' : undefined} aria-hidden /> : <PlugZap size={14} aria-hidden />}
+              {testState?.status === 'running' ? '测试中' : testState?.status === 'queued' ? '排队中' : testState?.status === 'done' ? '重测' : '测试'}
+            </button>
           </div>
-          <LogoModelSelect
-            value={task.model}
-            list={models}
-            provider={task.provider}
-            details={modelDetails}
-            disabled={models.length === 0 || saving}
-            onChange={(value) => updateSelection('model', value)}
-            ariaLabel={`${isReranker ? 'Reranker 模型' : `${task.label}模型`}，当前模型：${modelDisplayName(task.model) || '无'}`}
-            isActive={isActive}
-            className="settings-model-selection"
-          />
+          <RouteTestFeedback id={`model-route-test-${taskId}`} state={testState} label={task.label} capability={task.category} />
         </div>
       </div>
     )
@@ -806,6 +816,7 @@ export function ModelConfig({
   return (
     <div className={cn('settings-model-config', className)}>
       <span id={configStatusId} className="sr-only" aria-live="polite">{configStatusText}</span>
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{routeTests.lastResult && `${modelDisplayName(routeTests.lastResult.model)}，${CAPABILITY_LABELS[routeTests.lastResult.capability]}：${routeTests.lastResult.success ? routeTests.lastResult.details || routeTests.lastResult.message : routeTests.lastResult.message}`}</span>
       <div className="settings-model-card">
         <header className="settings-model-header">
           <div className="settings-model-title-line">
@@ -832,6 +843,22 @@ export function ModelConfig({
             )}
           </div>
         </header>
+
+        <div className="settings-model-test-toolbar">
+          <div><p className="settings-model-test-heading">连通性检查</p><p id={testHelpId} className="settings-model-test-help">测试当前选择，不保存；会产生少量模型调用。相同服务商、模型和能力共用结果。</p></div>
+          <div className="settings-model-test-toolbar-actions">
+            {batchActive && <button type="button" className="settings-model-test-button" disabled={!routeTests.batch?.queued} onClick={routeTests.stopQueued}><Square size={12} aria-hidden />停止排队</button>}
+            <button type="button" className="settings-model-test-button is-batch" disabled={batchActive || !testSelections.some(route => route.provider && route.model)} onClick={routeTests.testAll}>
+              {batchActive ? <RefreshCw size={14} className="animate-spin" aria-hidden /> : <PlugZap size={14} aria-hidden />}{batchActive ? '正在测试' : '测试全部'}
+            </button>
+          </div>
+          <p className="settings-model-test-progress">{routeTests.batch && <>
+            已检测 {routeTests.batch.completed}/{routeTests.batch.total} 项 · {routeTests.batch.succeeded} 项通过 · {routeTests.batch.failed} 项未通过{routeTests.batch.cancelled > 0 ? ` · ${routeTests.batch.cancelled} 项已取消` : ''}
+            {routeTests.batch.running > 0 ? ` · ${routeTests.batch.running} 项进行中` : ''}
+            {routeTests.batch.queued > 0 ? ` · ${routeTests.batch.queued} 项排队中` : ''}
+            {routeTests.batch.stopped && routeTests.batch.running > 0 ? '。已停止排队，进行中的测试会继续。' : ''}
+          </>}</p>
+        </div>
 
         {(failedCatalogProviders.length > 0 || (hasChanges && invalidSelections.length > 0)) && (
           <div className="settings-model-notices" role="status">
