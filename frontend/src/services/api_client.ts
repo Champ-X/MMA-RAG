@@ -205,6 +205,7 @@ class ApiClient {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 0,
       onUploadProgress: (progressEvent) => {
         if (onProgress && progressEvent.total) {
           const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -332,6 +333,8 @@ export const knowledgeApi = {
   deleteKnowledgeBase: (id: string) => apiClient.delete(`/knowledge/${id}`),
   
   // 获取知识库详情
+  getKnowledgeBaseMetadata: (id: string) => apiClient.get<{ id: string; name: string; description: string }>(`/knowledge/${id}/metadata`),
+
   getKnowledgeBase: (id: string) => apiClient.get(`/knowledge/${id}`),
 
   // 获取知识库统计：video 是原始视频文件数，video_shots 是 Scene–Shot 画像/检索样本数。
@@ -396,6 +399,7 @@ export const knowledgeApi = {
         message?: string
         error?: string
         updated_at?: string
+        thumbnail_url?: string
         preview_url?: string
         cover_url?: string
         cover_timestamp?: number
@@ -464,7 +468,7 @@ export const knowledgeApi = {
   startBatchUpload: (
     kbId: string,
     files: File[],
-    options?: { sourceType?: string }
+    options?: { sourceType?: string; onProgress?: (progress: number) => void }
   ) => apiClient.uploadFiles<{
     kb_id: string
     total_files: number
@@ -481,7 +485,7 @@ export const knowledgeApi = {
   }>(
     `/upload/batch/start`,
     files,
-    undefined,
+    options?.onProgress,
     {
       kb_id: kbId,
       ...(options?.sourceType ? { source_type: options.sourceType } : {}),
@@ -546,6 +550,12 @@ export const knowledgeApi = {
       file_id?: string
       result?: { file_id?: string }
     }>(`/upload/progress/${taskId}`),
+
+  getUploadProgressBatch: (taskIds: string[]) =>
+    apiClient.post<{ statuses: Array<{
+      processing_id: string; status: string; stage?: string; progress?: number;
+      message?: string; error?: string; updated_at?: string; file_id?: string;
+    }> }>('/upload/progress/batch', { processing_ids: taskIds }),
 
   /** 对已落盘但失败的视频复用 MinIO 原文件重新入队，不要求浏览器重新选择上传文件。 */
   retryVideoUpload: (taskId: string) =>

@@ -96,7 +96,7 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
   if (normalizedStatus === 'ready') {
     return (
       <span
-        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800"
+        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-200 dark:bg-green-950/95 dark:text-green-300 dark:border-green-800"
         aria-label="文件状态：就绪"
       >
         <CheckCircle size={10} aria-hidden /> 就绪
@@ -106,7 +106,7 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
   if (normalizedStatus === 'processing') {
     return (
       <span
-        className="inline-flex max-w-full items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800"
+        className="inline-flex max-w-full items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-950/95 dark:text-amber-300 dark:border-amber-800"
         role="status"
         aria-label="文件状态：处理中"
         title={title}
@@ -119,7 +119,7 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
   if (normalizedStatus === 'queued') {
     return (
       <span
-        className="inline-flex max-w-full items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-700 border border-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:border-sky-800"
+        className="inline-flex max-w-full items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-700 border border-sky-200 dark:bg-sky-950/95 dark:text-sky-300 dark:border-sky-800"
         role="status"
         aria-label="文件状态：排队中"
         title={title}
@@ -132,7 +132,7 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
   if (normalizedStatus === 'failed') {
     return (
       <span
-        className="inline-flex max-w-full items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-700 border border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800"
+        className="inline-flex max-w-full items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-700 border border-rose-200 dark:bg-rose-950/95 dark:text-rose-300 dark:border-rose-800"
         aria-label="文件状态：解析失败"
         title={title}
       >
@@ -144,7 +144,7 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
   if (status === 'unindexed') {
     return (
       <span
-        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800"
+        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-950/95 dark:text-amber-300 dark:border-amber-800"
         aria-label="文件状态：未完成解析"
       >
         <AlertCircle size={10} aria-hidden /> 未完成解析
@@ -225,6 +225,7 @@ export interface KnowledgeFileView {
   message?: string
   error?: string
   updatedAt?: string
+  thumbnailUrl?: string
   previewUrl?: string
   coverUrl?: string
   coverTimestamp?: number
@@ -234,7 +235,7 @@ export interface KnowledgeFileView {
 export function FileThumb({ file }: { file: KnowledgeFileView }) {
   const [failedSrc, setFailedSrc] = useState<string>()
   const kind = isImageType(file.type) ? 'image' : isVideoType(file.type) ? 'video' : isAudioType(file.type) ? 'audio' : 'document'
-  const src = kind === 'image' ? file.previewUrl : kind === 'video' ? file.coverUrl : undefined
+  const src = kind === 'image' ? file.thumbnailUrl || file.previewUrl : kind === 'video' ? file.coverUrl : undefined
   const showImage = Boolean(src && failedSrc !== src)
   const extension = String(file.type || 'file').split('/').pop()?.toUpperCase() || 'FILE'
   return (
@@ -272,20 +273,92 @@ function getFileHeroIconBg(type: string): string {
   return 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
 }
 
+function DocumentCover({ file }: { file: KnowledgeFileView }) {
+  const extension = (file.name.match(/\.([^.]+)$/)?.[1] || file.type || 'FILE').toUpperCase()
+  const kind = ['XLS', 'XLSX', 'CSV', 'ODS'].includes(extension) ? 'table'
+    : ['PPT', 'PPTX', 'ODP'].includes(extension) ? 'slides'
+      : ['DOC', 'DOCX', 'ODT', 'RTF'].includes(extension) ? 'word'
+        : ['MD', 'MARKDOWN'].includes(extension) ? 'markdown'
+          : ['JSON', 'XML', 'HTML', 'HTM', 'YML', 'YAML'].includes(extension) ? 'code'
+            : extension === 'PDF' ? 'pdf' : 'text'
+
+  // These shapes identify the format; document content is shown in the actual preview.
+  return (
+    <div className="file-document-cover" data-kind={kind} role="img" aria-label={`${extension} 文件类型封面`}>
+      <div className="file-document-cover__sheet" aria-hidden="true">
+        <div className="file-document-cover__masthead">
+          <strong>{extension.slice(0, 8)}</strong>
+          <span className="file-document-cover__mark">{kind === 'markdown' ? '#' : kind === 'code' ? '</>' : <FileIcon type={extension} size={17} />}</span>
+        </div>
+        {kind === 'pdf' ? (
+          <div className="file-document-cover__editorial">
+            <div className="file-document-cover__headline"><i /><i /></div>
+            <div className="file-document-cover__abstract" />
+            <div className="file-document-cover__columns">
+              <div className="file-document-cover__rules"><i /><i /><i /><i /><i /></div>
+              <div className="file-document-cover__rules"><i /><i /><i /><i /><i /></div>
+            </div>
+          </div>
+        ) : kind === 'word' ? (
+          <div className="file-document-cover__manuscript">
+            <div className="file-document-cover__headline"><i /><i /></div>
+            <div className="file-document-cover__rules"><i /><i /><i /></div>
+            <div className="file-document-cover__quote"><i /><i /></div>
+            <div className="file-document-cover__rules"><i /><i /></div>
+          </div>
+        ) : kind === 'table' ? (
+          <>
+            <div className="file-document-cover__cells">
+              {Array.from({ length: 30 }, (_, i) => <i key={i} />)}
+            </div>
+            <div className="file-document-cover__tabs"><i /><i /><span>+</span></div>
+          </>
+        ) : kind === 'slides' ? (
+          <>
+            <div className="file-document-cover__presentation">
+              <div className="file-document-cover__slide-copy"><i /><i /><span /></div>
+              <div className="file-document-cover__slide-art"><i /><i /><i /></div>
+            </div>
+            <div className="file-document-cover__slide-progress"><i /><i /><i /></div>
+          </>
+        ) : kind === 'markdown' ? (
+          <div className="file-document-cover__markup">
+            <div className="file-document-cover__syntax"><b>#</b><i /></div>
+            <div className="file-document-cover__rules"><i /><i /></div>
+            <div className="file-document-cover__bullets"><i /><i /><i /></div>
+            <div className="file-document-cover__code-block"><span>```</span><i /><i /></div>
+          </div>
+        ) : kind === 'code' ? (
+          <div className="file-document-cover__source"><b>{'{'}</b><i /><i /><i /><i /><b>{'}'}</b></div>
+        ) : (
+          <div className="file-document-cover__plaintext"><i /><i /><i /><i /><i /><i /><i /></div>
+        )}
+        {kind !== 'table' && kind !== 'slides' && <span className="file-document-cover__folio" />}
+      </div>
+    </div>
+  )
+}
+
 // 文件主图（画廊视图）
 export function FileHero({ file }: { file: KnowledgeFileView }) {
+  const [failedThumbnail, setFailedThumbnail] = useState<string>()
   const isImg = isImageType(file?.type)
   const isAudio = isAudioType(file?.type)
   const isVideo = isVideoType(file?.type)
   if (isImg && file?.previewUrl) {
     return (
       <img
-        src={file.previewUrl}
+        src={file.thumbnailUrl && failedThumbnail !== file.thumbnailUrl ? file.thumbnailUrl : file.previewUrl}
+        onError={() => setFailedThumbnail(file.thumbnailUrl)}
+        decoding="async"
         alt={file.name}
         className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
         loading="lazy"
       />
     )
+  }
+  if (!isImg && !isAudio && !isVideo) {
+    return <DocumentCover file={file} />
   }
   return (
     <div className="flex flex-col items-center justify-center text-slate-400" role="img" aria-label={`文件类型：${isAudio ? '音频' : isVideo ? '视频' : String(file?.type || 'file').toUpperCase()}`}>

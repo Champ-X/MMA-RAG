@@ -1,0 +1,85 @@
+/* Source dialogs share a quiet workspace, with color identifying the material. */
+.workflow-dialog[data-source-theme] {
+  --wf-surface: #fff;
+  --wf-subtle: #f7f8fa;
+  --wf-ink: #263247;
+  --wf-muted: #687487;
+  --wf-line: #e2e7ed;
+  --wf-field-line: #cbd3dd;
+  --wf-shadow: #22344c0a;
+  --wf-button-ink: #fff;
+  --wf-focus: var(--wf-accent);
+  --wf-header: var(--wf-tint);
+  border-radius: 20px;
+  border-top: 3px solid var(--wf-accent);
+  box-shadow: 0 28px 90px -24px #17243852, 0 4px 16px #17243814;
+}
+.workflow-dialog[data-source-theme][data-size='md'] { width: min(640px, calc(100vw - 48px)); }
+.workflow-dialog[data-source-theme='document'] { --wf-accent: #7058b6; --wf-tint: #f5f2fb; --wf-button-hover: #5f479f; --wf-emphasis: #e9e1f7; }
+.workflow-dialog[data-source-theme='link'] { --wf-accent: #356b9f; --wf-tint: #f0f6fb; --wf-button-hover: #285984; --wf-emphasis: #dceaf7; }
+.workflow-dialog[data-source-theme='images'] { --wf-accent: #27796e; --wf-tint: #f0f8f5; --wf-button-hover: #1e645b; --wf-emphasis: #d7eee6; }
+.workflow-dialog[data-source-theme='folder'] { --wf-accent: #906323; --wf-tint: #fcf7ee; --wf-button-hover: #79501a; --wf-emphasis: #f2e4ca; }
+.workflow-dialog[data-source-theme='news'] { --wf-accent: #a1496e; --wf-tint: #fcf2f6; --wf-button-hover: #893c5c; --wf-emphasis: #f3dfe8; }
+.dark .workflow-dialog[data-source-theme] {
+  --wf-surface: #202630;
+  --wf-subtle: #262d38;
+  --wf-ink: #e9edf4;
+  --wf-muted: #adb7c7;
+  --wf-line: #3a4350;
+  --wf-field-line: #546173;
+  --wf-shadow: #0002;
+  --wf-button-ink: #17212c;
+  box-shadow: 0 28px 90px -24px #000a, 0 0 0 1px #ffffff08;
+}
+.dark .workflow-dialog[data-source-theme='document'] { --wf-accent: #c4afee; --wf-tint: #2c283c; --wf-button-hover: #d6c5f6; --wf-emphasis: #403452; }
+.dark .workflow-dialog[data-source-theme='link'] { --wf-accent: #96c3ed; --wf-tint: #242f3e; --wf-button-hover: #b5d8f7; --wf-emphasis: #314762; }
+.dark .workflow-dialog[data-source-theme='images'] { --wf-accent: #8ccdbd; --wf-tint: #223532; --wf-button-hover: #a9dfd1; --wf-emphasis: #304c45; }
+.dark .workflow-dialog[data-source-theme='folder'] { --wf-accent: #e1be7d; --wf-tint: #353026; --wf-button-hover: #f1d39a; --wf-emphasis: #504332; }
+.dark .workflow-dialog[data-source-theme='news'] { --wf-accent: #e7a7c1; --wf-tint: #372935; --wf-button-hover: #f4bfd5; --wf-emphasis: #54384a; }
+.workflow-dialog[data-source-theme] .workflow-dialog-header { min-height: 0; gap: 18px; padding: 25px 66px 25px 28px; }
+.workflow-dialog[data-source-theme] .workflow-dialog-eyebrow { margin-bottom: 5px; font-size: 11px; line-height: 18px; letter-spacing: .05em; }
+.workflow-dialog[data-source-theme] .workflow-dialog-eyebrow::before { display: none; }
+.workflow-dialog[data-source-theme] .workflow-dialog-heading h2 { font-size: 22px; line-height: 30px; letter-spacing: -.025em; }
+.workflow-dialog[data-source-theme] .workflow-dialog-description { margin-top: 7px; font-size: 12px; line-height: 1.7; }
+.workflow-dialog[data-source-theme] .workflow-dialog-art { order: -1; flex: 0 0 52px; height: 56px; margin: 0; }
+.workflow-dialog[data-source-theme] :is(.workflow-dialog-sheet, .workflow-dialog-icon-rule) { display: none; }
+.workflow-dialog[data-source-theme] .workflow-dialog-icon { inset: 0; width: 52px; height: 56px; border: 0; border-radius: 14px; background: var(--wf-emphasis); transform: none; box-shadow: inset 0 1px 0 #ffffff30; }
+.workflow-dialog[data-source-theme] .workflow-dialog-icon > svg { width: 26px; height: 26px; stroke-width: 1.65; }
+.workflow-dialog[data-source-theme] .workflow-dialog-close { top: 14px; right: 14px; width: 44px; height: 44px; border-radius: 12px; }
+.workflow-dialog[data-source-theme] .workflow-dialog-body { padding: 24px 28px; scroll-padding-block: 24px; }
+.workflow-dialog[data-source-theme] .workflow-dialog-footer { padding: 16px 28px; background: var(--wf-subtle); gap: 16px; }
+.workflow-dialog[data-source-theme] .workflow-footer-summary { font-size: 12px; }
+.workflow-dialog[data-source-theme] :is(.workflow-button, .workflow-button-primary) { min-height: 44px; border-radius: 9px; padding-inline: 18px; }
+.workflow-dialog[data-source-theme] .workflow-button-primary { border-color: var(--wf-accent); background: var(--wf-accent); color: var(--wf-button-ink); box-shadow: 0 2px 4px var(--wf-shadow); }
+.workflow-dialog[data-source-theme] .workflow-button-primary:hover { border-color: var(--wf-button-hover); background: var(--wf-button-hover); box-shadow: 0 3px 8px var(--wf-shadow); }
+.workflow-dialog[data-source-theme] .workflow-field { min-height: 48px; border-color: var(--wf-field-line); border-radius: 9px; background: var(--wf-surface); font-size: 14px; }
+.workflow-dialog[data-source-theme] .workflow-field:focus { border-color: var(--wf-accent); box-shadow: 0 0 0 3px var(--wf-emphasis); }
+.workflow-dialog[data-source-theme] .workflow-label { margin-bottom: 8px; }
+.workflow-dialog[data-source-theme] .workflow-help { font-size: 12px; }
+@media (max-width: 600px) {
+  .workflow-dialog[data-source-theme][data-size] { width: calc(100vw - 24px); }
+  .workflow-dialog[data-source-theme] .workflow-dialog-header { padding: 22px 54px 20px 20px; gap: 12px; align-items: flex-start; }
+  .workflow-dialog[data-source-theme] .workflow-dialog-art { flex-basis: 40px; height: 44px; margin-top: 4px; }
+  .workflow-dialog[data-source-theme] .workflow-dialog-icon { width: 40px; height: 44px; border-radius: 11px; }
+  .workflow-dialog[data-source-theme] .workflow-dialog-icon > svg { width: 22px; height: 22px; }
+  .workflow-dialog[data-source-theme] .workflow-dialog-heading h2 { font-size: 20px; line-height: 28px; }
+  .workflow-dialog[data-source-theme] .workflow-dialog-description { margin-left: -52px; margin-top: 13px; }
+  .workflow-dialog[data-source-theme] .workflow-dialog-close { top: 10px; right: 8px; }
+  .workflow-dialog[data-source-theme] .workflow-dialog-body { padding: 20px; }
+  .workflow-dialog[data-source-theme] .workflow-dialog-footer { padding: 14px 20px; gap: 8px; }
+  .workflow-dialog[data-source-theme] .workflow-footer-actions { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 10px; }
+  .workflow-dialog[data-source-theme] :is(.workflow-button, .workflow-button-primary) { min-height: 48px; }
+  .workflow-dialog[data-source-theme] .workflow-field { font-size: 16px; }
+}
+@media (max-width: 380px) {
+  .workflow-dialog[data-source-theme] .workflow-dialog-art { display: block; }
+  .workflow-dialog[data-source-theme] .workflow-dialog-header { padding-left: 16px; }
+  .workflow-dialog[data-source-theme] .workflow-dialog-body { padding: 18px 16px; }
+  .workflow-dialog[data-source-theme] .workflow-dialog-footer { padding-inline: 16px; }
+}
+@media (max-height: 620px) {
+  .workflow-dialog[data-source-theme] .workflow-dialog-header { padding-block: 15px; }
+  .workflow-dialog[data-source-theme] .workflow-dialog-art { display: none; }
+  .workflow-dialog[data-source-theme] .workflow-dialog-description { margin: 4px 0 0; }
+  .workflow-dialog[data-source-theme] .workflow-dialog-footer { padding-block: 10px; }
+}

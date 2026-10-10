@@ -3,6 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import './workflowDialog.css'
+import './sourceDialog.css'
 
 interface WorkflowDialogProps {
   open: boolean
@@ -12,6 +13,7 @@ interface WorkflowDialogProps {
   description?: ReactNode
   icon?: ReactNode
   size?: 'sm' | 'md' | 'lg' | 'xl'
+  sourceTheme?: 'document' | 'link' | 'images' | 'folder' | 'news'
   footer?: ReactNode
   children: ReactNode
   className?: string
@@ -22,7 +24,7 @@ interface WorkflowDialogProps {
 /** Shared, accessible frame for the material and conversation workflows. */
 export function WorkflowDialog({
   open, onOpenChange, title, eyebrow, description, icon, size = 'md', footer,
-  children, className, busy = false, onSubmit,
+  children, className, busy = false, onSubmit, sourceTheme,
 }: WorkflowDialogProps) {
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
@@ -41,6 +43,7 @@ export function WorkflowDialog({
           ref={contentRef}
           className={cn('workflow-dialog', className)}
           data-size={size}
+          data-source-theme={sourceTheme}
           {...(!description ? { 'aria-describedby': undefined } : {})}
           onOpenAutoFocus={(event) => {
             returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null

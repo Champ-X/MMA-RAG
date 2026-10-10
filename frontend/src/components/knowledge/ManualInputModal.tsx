@@ -150,6 +150,7 @@ export function ManualInputModal({
       description={helperText}
       icon={mode === 'create' ? <FileText /> : <Pencil />}
       size="xl"
+      sourceTheme="document"
       className="manual-input-dialog"
       busy={saving}
       onSubmit={handleSubmit}
@@ -168,33 +169,37 @@ export function ManualInputModal({
     >
       <div className="manual-input-name">
         <label htmlFor={filenameInputId} className="workflow-label">文档名称</label>
-        <input id={filenameInputId} value={filename} onChange={(event) => setFilename(event.target.value)}
+        <span className="manual-input-format">Markdown</span>
+        <input id={filenameInputId} name="filename" value={filename} onChange={(event) => setFilename(event.target.value)}
           placeholder="例如：会议纪要.md" disabled={saving} data-autofocus className="workflow-field"
           aria-describedby={filenameHintId} />
         <p id={filenameHintId} className="workflow-help">保存为 {normalizedFilename}</p>
       </div>
-      <section id={editorRegionId} className="manual-input-md-editor" aria-label="Markdown 文档内容编辑器">
-        <MdEditor
-          id={`manual-input-${mode}`}
-          modelValue={content}
-          onChange={(value) => setContent(value)}
-          className="manual-input-md-editor__inner"
-          theme={editorTheme}
-          language="zh-CN"
-          previewTheme="github"
-          codeTheme="github"
-          preview={!compactEditor}
-          autoFocus={false}
-          disabled={saving}
-          noUploadImg
-          noImgZoomIn
-          noPrettier
-          showCodeRowNumber
-          autoDetectCode
-          toolbars={toolbarItems}
-          footers={['markdownTotal', '=', 'scrollSwitch']}
-          placeholder={'# 标题\n\n在这里写下要保存的内容…'}
-        />
+      <section id={editorRegionId} className="manual-input-editor" aria-label="Markdown 文档内容编辑器">
+        <div className="manual-input-editor-heading"><h3>文档内容</h3><span>支持标题、列表、表格与代码</span></div>
+        <div className="manual-input-md-editor">
+          <MdEditor
+            id={`manual-input-${mode}`}
+            modelValue={content}
+            onChange={(value) => setContent(value)}
+            className="manual-input-md-editor__inner"
+            theme={editorTheme}
+            language="zh-CN"
+            previewTheme="github"
+            codeTheme="github"
+            preview={!compactEditor}
+            autoFocus={false}
+            disabled={saving}
+            noUploadImg
+            noImgZoomIn
+            noPrettier
+            showCodeRowNumber
+            autoDetectCode
+            toolbars={toolbarItems}
+            footers={['markdownTotal', '=', 'scrollSwitch']}
+            placeholder={'# 标题\n\n在这里写下要保存的内容…'}
+          />
+        </div>
       </section>
       {error && <p id={errorTextId} role="alert" className="manual-input-error">{error}</p>}
     </WorkflowDialog>
