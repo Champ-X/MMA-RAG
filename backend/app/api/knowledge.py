@@ -5,10 +5,11 @@
 
 import asyncio
 import time
+import hashlib
 from pathlib import Path
 from urllib.parse import quote, unquote
 import os
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
@@ -19,6 +20,10 @@ from app.modules.knowledge.portraits import PortraitGenerator
 from app.modules.knowledge.suggested_questions import (
     build_context_and_questions_payload,
 )
+
+from app.modules.knowledge.thumbnails import ThumbnailCache
+
+_thumbnail_cache = ThumbnailCache()
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -138,7 +143,7 @@ async def create_knowledge_base(data: Dict[str, Any]):
 async def get_knowledge_base_stats(kb_id: str):
     """获取知识库在向量库中的统计信息（供前端展示数据源比例、主题统计）"""
     try:
-        kb = await kb_service.get_knowledge_base(kb_id)
+        kb = await kb_service.get_knowledge_base_metadata(kb_id)
         if not kb:
             raise HTTPException(status_code=404, detail="知识库不存在")
         stats = await kb_service._get_kb_statistics(kb_id)
@@ -172,6 +177,37 @@ async def get_knowledge_base(kb_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{kb_id}/metadata")
+async def get_knowledge_base_metadata(kb_id: str):
+    kb = await kb_service.get_knowledge_base_metadata(kb_id)
+    if not kb:
+        raise HTTPException(status_code=404, detail="知识库不存在")
+    return {key: kb[key] for key in ("id", "name", "description", "created_at", "updated_at")}
+
+
+@router.get("/{kb_id}/thumbnail")
+async def get_image_thumbnail(kb_id: str, path: str, request: Request):
+    # Only original image objects, never arbitrary storage paths or local files.
+    parts = path.split("/")
+    if (len(parts) != 2 or parts[0] != "images" or "_" not in parts[1]
+            or ".." in parts or "\\" in path
+            or Path(parts[1]).suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".tif", ".tiff"}):
+        raise HTTPException(status_code=400, detail="无效的图片路径")
+    if not await kb_service.get_knowledge_base_metadata(kb_id):
+        raise HTTPException(status_code=404, detail="素材空间不存在")
+    etag = '"' + hashlib.sha256(f"thumbnail-v1:{kb_id}:{path}".encode()).hexdigest() + '"'
+    headers = {"Cache-Control": "private, max-age=86400", "ETag": etag}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    try:
+        content = await _thumbnail_cache.get(kb_service.minio_adapter,
+                                             await asyncio.to_thread(kb_service.minio_adapter.get_bucket_for_kb, kb_id), path)
+    except Exception as error:
+        logger.debug("缩略图生成失败: {}", error)
+        raise HTTPException(status_code=404, detail="缩略图暂不可用")
+    return Response(content, media_type="image/webp", headers=headers)
+
+
 @router.get("/{kb_id}/files")
 async def list_kb_files(kb_id: str):
     """获取知识库下的文件列表。
@@ -180,7 +216,7 @@ async def list_kb_files(kb_id: str):
     消息、错误和租约时间，供刷新后的页面恢复真实处理状态。
     """
     try:
-        kb = await kb_service.get_knowledge_base(kb_id)
+        kb = await kb_service.get_knowledge_base_metadata(kb_id)
         if not kb:
             raise HTTPException(status_code=404, detail="知识库不存在")
         files = await kb_service.list_kb_files(kb_id)
@@ -239,7 +275,7 @@ async def get_file_preview_asset(
 async def get_file_content(kb_id: str, file_id: str):
     """获取文本类文件（md/txt）的原始内容，用于预览（避免 iframe 触发下载）"""
     try:
-        kb = await kb_service.get_knowledge_base(kb_id)
+        kb = await kb_service.get_knowledge_base_metadata(kb_id)
         if not kb:
             raise HTTPException(status_code=404, detail="知识库不存在")
         content = await kb_service.get_file_text_content(kb_id, file_id)
@@ -261,7 +297,7 @@ async def replace_manual_file_content(
 ):
     """替换手动输入文档内容：新内容入库成功后删除旧文件；失败时自动回滚。"""
     try:
-        kb = await kb_service.get_knowledge_base(kb_id)
+        kb = await kb_service.get_knowledge_base_metadata(kb_id)
         if not kb:
             raise HTTPException(status_code=404, detail="知识库不存在")
         return await kb_service.replace_manual_file_content(
@@ -287,7 +323,7 @@ async def replace_manual_file_content(
 async def get_file_preview(kb_id: str, file_id: str):
     """获取文件预览详情：图片描述、文档分块、文本预览"""
     try:
-        kb = await kb_service.get_knowledge_base(kb_id)
+        kb = await kb_service.get_knowledge_base_metadata(kb_id)
         if not kb:
             raise HTTPException(status_code=404, detail="知识库不存在")
         details = await kb_service.get_file_preview_details(kb_id, file_id)
@@ -303,7 +339,7 @@ async def get_file_preview(kb_id: str, file_id: str):
 async def stream_file_for_preview(kb_id: str, file_id: str):
     """流式返回文件内容，用于页面内预览。PDF 直接返回；PPTX/DOCX 转为 PDF 后返回以便像 PDF 一样在页内阅读。"""
     try:
-        kb = await kb_service.get_knowledge_base(kb_id)
+        kb = await kb_service.get_knowledge_base_metadata(kb_id)
         if not kb:
             raise HTTPException(status_code=404, detail="知识库不存在")
         info = await kb_service.get_file_stream_info(kb_id, file_id)

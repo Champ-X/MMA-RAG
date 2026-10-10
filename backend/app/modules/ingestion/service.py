@@ -7,6 +7,8 @@ from typing import Dict, List, Any, Optional, Tuple
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import json
+import time
+import threading
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -65,14 +67,36 @@ PROCESSING_STATUS_KB_KEY_PREFIX = "ingestion:processing:kb:"
 PROCESSING_STATUS_FILE_KEY_PREFIX = "ingestion:processing:file:"
 
 _ingestion_service_instance: Optional["IngestionService"] = None
+_status_reader_instance: Optional["IngestionService"] = None
+_ingestion_service_lock = threading.Lock()
 
 
 def get_ingestion_service() -> "IngestionService":
-    """返回全局单例 IngestionService，保证 upload 与 import 等路由共用同一实例，轮询进度一致。"""
+    """One processing owner, including when status and upload arrive together."""
     global _ingestion_service_instance
     if _ingestion_service_instance is None:
-        _ingestion_service_instance = IngestionService()
+        with _ingestion_service_lock:
+            if _ingestion_service_instance is None:
+                _ingestion_service_instance = IngestionService()
     return _ingestion_service_instance
+
+
+def get_ingestion_status_reader() -> "IngestionService":
+    """Reading Redis progress must never initialize parsers or local models.
+
+    A cold process needs only the status registry. Mutating upload operations
+    still acquire the full service through get_ingestion_service().
+    """
+    global _status_reader_instance
+    if _ingestion_service_instance is not None:
+        return _ingestion_service_instance
+    if _status_reader_instance is None:
+        reader = IngestionService.__new__(IngestionService)
+        reader._processing_status = {}
+        reader._processing_status_redis_client = None
+        reader._background_upload_tasks = {}
+        _status_reader_instance = reader
+    return _status_reader_instance
 
 
 class IngestionService:
@@ -285,9 +309,11 @@ class IngestionService:
         except Exception as e:
             logger.debug("持久化上传状态失败 processing_id={}: {}", processing_id, e)
 
-    def _load_persisted_processing_status(self, processing_id: str) -> Optional[Dict[str, Any]]:
+    def _load_persisted_processing_status(self, processing_id: str, *, raise_on_error: bool = False) -> Optional[Dict[str, Any]]:
         client = self._get_processing_status_redis_client()
         if client is None or not processing_id:
+            if raise_on_error and processing_id:
+                raise ConnectionError("上传进度存储暂不可用")
             return None
         try:
             raw = client.get(self._processing_status_key(processing_id))
@@ -297,6 +323,8 @@ class IngestionService:
             return parsed if isinstance(parsed, dict) else None
         except Exception as e:
             logger.debug("读取持久化上传状态失败 processing_id={}: {}", processing_id, e)
+            if raise_on_error:
+                raise
             return None
 
     def _lease_expired_failure_status(self, status: Dict[str, Any]) -> Dict[str, Any]:
@@ -410,10 +438,20 @@ class IngestionService:
         if client is not None:
             try:
                 ids = client.smembers(self._processing_status_kb_key(str(kb_id))) or set()
-                for processing_id in ids:
-                    item = self._load_persisted_processing_status(str(processing_id))
-                    if item:
-                        statuses[str(processing_id)] = item
+                ids = [item.decode() if isinstance(item, bytes) else str(item) for item in ids]
+                # One Redis round trip for a batch, instead of one GET per file.
+                if hasattr(client, "mget"):
+                    rows = client.mget([self._processing_status_key(item) for item in ids]) if ids else []
+                    for processing_id, raw in zip(ids, rows):
+                        if raw:
+                            item = json.loads(raw)
+                            if isinstance(item, dict):
+                                statuses[processing_id] = item
+                else:
+                    for processing_id in ids:
+                        item = self._load_persisted_processing_status(processing_id)
+                        if item:
+                            statuses[processing_id] = item
             except Exception as e:
                 logger.debug("读取知识库上传任务集合失败 kb_id={}: {}", kb_id, e)
         recovered = [
@@ -433,7 +471,36 @@ class IngestionService:
             self._video_processing_semaphore = semaphore
         return semaphore
         
+    def _get_file_processing_semaphore(self) -> asyncio.Semaphore:
+        semaphore = getattr(self, "_file_processing_semaphore", None)
+        if semaphore is None:
+            semaphore = asyncio.Semaphore(4)
+            self._file_processing_semaphore = semaphore
+        return semaphore
+
     async def _get_actual_kb_id_for_upload(self, kb_id: str) -> str:
+        # Legacy ID discovery performs up to hundreds of synchronous vector
+        # lookups. Resolve once per batch and share the result with queued files.
+        if not hasattr(self, "_upload_kb_id_cache"):
+            self._upload_kb_id_cache = {}
+            self._upload_kb_id_tasks = {}
+        cached = self._upload_kb_id_cache.get(kb_id)
+        if cached and time.monotonic() - cached[0] < 300:
+            return cached[1]
+        task = self._upload_kb_id_tasks.get(kb_id)
+        if task is None:
+            async def resolve():
+                try:
+                    actual = await asyncio.to_thread(self._get_actual_kb_id_for_upload_sync, kb_id)
+                    self._upload_kb_id_cache[kb_id] = (time.monotonic(), actual)
+                    return actual
+                finally:
+                    self._upload_kb_id_tasks.pop(kb_id, None)
+            task = asyncio.create_task(resolve())
+            self._upload_kb_id_tasks[kb_id] = task
+        return await asyncio.shield(task)
+
+    def _get_actual_kb_id_for_upload_sync(self, kb_id: str) -> str:
         """
         获取上传文件时应使用的实际 kb_id（从 MinIO 桶反查 Qdrant 中实际存在的 kb_id）。
         如果桶内文件对应多个 kb_id，选择数据量最大的那个（解决历史数据迁移/ID变更问题）。
@@ -3627,15 +3694,20 @@ class IngestionService:
                 name=f"ingestion-upload-heartbeat-{processing_id}",
             )
             try:
-                return await self.process_file_upload(
-                    file_content=file_content,
-                    file_path=file_path,
-                    kb_id=kb_id,
-                    user_id=user_id,
-                    processing_id=processing_id,
-                    asset_map=asset_map,
-                    source_type=source_type,
-                )
+                is_video = file_path.rsplit(".", 1)[-1].lower() in {
+                    "mp4", "avi", "mov", "mkv", "webm", "flv", "wmv", "m4v",
+                }
+                semaphore = asyncio.Semaphore(1) if is_video else self._get_file_processing_semaphore()
+                async with semaphore:
+                    return await self.process_file_upload(
+                        file_content=file_content,
+                        file_path=file_path,
+                        kb_id=kb_id,
+                        user_id=user_id,
+                        processing_id=processing_id,
+                        asset_map=asset_map,
+                        source_type=source_type,
+                    )
             finally:
                 heartbeat_task.cancel()
                 try:
@@ -3925,6 +3997,9 @@ class IngestionService:
         self._update_processing_status(processing_id, updates)
     
     async def get_processing_status(self, processing_id: str) -> Dict[str, Any]:
+        return await asyncio.to_thread(self.get_processing_status_sync, processing_id)
+
+    def get_processing_status_sync(self, processing_id: str) -> Dict[str, Any]:
         """
         获取处理状态
         
@@ -3936,7 +4011,7 @@ class IngestionService:
         """
         try:
             if processing_id not in self._processing_status:
-                persisted = self._load_persisted_processing_status(processing_id)
+                persisted = self._load_persisted_processing_status(processing_id, raise_on_error=True)
                 if persisted:
                     self._processing_status[processing_id] = persisted
             if processing_id not in self._processing_status:

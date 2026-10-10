@@ -97,3 +97,37 @@ def test_delete_file_runs_sync_minio_delete_in_a_worker_thread():
     assert deleted is True
     assert adapter.client.remove_thread_id is not None
     assert adapter.client.remove_thread_id != event_loop_thread_id
+
+
+def test_list_files_consumes_lazy_iterator_in_worker_thread():
+    from types import SimpleNamespace
+    adapter = _adapter_with_fake_client()
+    observed_threads = []
+    def list_objects(*_args, **_kwargs):
+        observed_threads.append(threading.get_ident())
+        yield SimpleNamespace(object_name='images/a.png', size=10, last_modified=None, etag='etag')
+    adapter.client.list_objects = list_objects
+    result = asyncio.run(adapter.list_files('kb-test'))
+    assert result[0]['object_path'] == 'images/a.png'
+    assert observed_threads and observed_threads[0] != threading.get_ident()
+
+
+def test_list_failure_is_not_reported_as_empty_bucket():
+    import pytest
+    adapter = _adapter_with_fake_client()
+    def unavailable(*_args, **_kwargs):
+        raise ConnectionError('storage unavailable')
+    adapter.client.list_objects = unavailable
+    with pytest.raises(ConnectionError):
+        asyncio.run(adapter.list_files('kb-test'))
+
+
+def test_bucket_check_outage_is_not_reported_as_missing_bucket():
+    import pytest
+    from minio.error import S3Error
+    adapter = _adapter_with_fake_client()
+    def unavailable(_bucket):
+        raise S3Error('ServiceUnavailable', 'offline', '', '', '', None)
+    adapter.client.bucket_exists = unavailable
+    with pytest.raises(S3Error):
+        adapter.bucket_exists('kb-test')

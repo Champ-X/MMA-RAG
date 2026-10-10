@@ -50,7 +50,7 @@ def _sanitize_bucket_name(kb_id: str) -> str:
     """将 kb_id 转为合法的 S3 存储桶名（小写、数字、连字符，3-63 字符）"""
     # UUID 等已是合规格式，仅做小写与替换非法字符
     s = kb_id.lower().replace("_", "-")
-    return "".join(c for c in s if c in "abcdefghijklmnopqrstuvwxyz0-9-")[:63].strip("-") or "kb-default"
+    return "".join(c for c in s if c in "abcdefghijklmnopqrstuvwxyz0123456789-")[:60].strip("-") or "kb-default"
 
 
 class MinIOAdapter:
@@ -71,12 +71,22 @@ class MinIOAdapter:
         """
         if not kb_id:
             return "kb-default"
-        try:
-            if self.client.bucket_exists(kb_id):
-                return kb_id
-        except Exception:
-            pass
-        return self.bucket_name_for_kb(kb_id)
+        cache = getattr(self, "_resolved_buckets", None)
+        if cache is None:
+            cache = self._resolved_buckets = {}
+        if kb_id in cache:
+            return cache[kb_id]
+        canonical = self.bucket_name_for_kb(kb_id)
+        # Before October 2026 the character allowlist accidentally dropped 1-8.
+        # Existing buckets must keep their original paths; never migrate data on read.
+        legacy_id = "".join(c for c in kb_id.lower().replace("_", "-")
+                            if c in "abcdefghijklmnopqrstuvwxyz0-9-")[:63].strip("-") or "kb-default"
+        candidates = ([kb_id] if kb_id.startswith("kb-") else []) + [canonical, f"kb-{legacy_id}"]
+        for candidate in dict.fromkeys(candidates):
+            if self.client.bucket_exists(candidate):
+                cache[kb_id] = candidate
+                return candidate
+        return canonical
 
     def __init__(self):
         region = settings.minio_region or None
@@ -231,7 +241,8 @@ class MinIOAdapter:
     ) -> str:
         """获取预签名URL（使用 public 端点，便于浏览器加载；读写仍走内网 endpoint）"""
         try:
-            return self._presign_client.presigned_get_object(
+            return await asyncio.to_thread(
+                self._presign_client.presigned_get_object,
                 bucket_name=bucket,
                 object_name=object_path,
                 expires=timedelta(hours=expires_hours)
@@ -259,7 +270,7 @@ class MinIOAdapter:
             return self.client.bucket_exists(bucket)
         except S3Error as e:
             logger.warning(f"检查存储桶存在性失败 {bucket}: {e}")
-            return False
+            raise
 
     def list_bucket_names(self) -> List[str]:
         """列出所有存储桶名称"""
@@ -343,28 +354,21 @@ class MinIOAdapter:
         max_keys: int = 1000
     ) -> List[Dict[str, Any]]:
         """列出文件（recursive=True 确保获取所有嵌套对象）"""
-        try:
-            objects = self.client.list_objects(
-                bucket,
-                prefix=prefix if prefix else None,
-                recursive=True,
-            )
-            
-            files = []
-            for obj in objects:
-                files.append({
-                    "object_path": obj.object_name,
-                    "size": obj.size,
-                    "last_modified": obj.last_modified,
-                    "etag": obj.etag
-                })
-            
-            return files
-            
-        except S3Error as e:
-            logger.error(f"列出文件失败: {str(e)}")
-            return []
-    
+        def _list_sync():
+            # list_objects is lazy: iteration must also stay off the event loop.
+            return [{
+                "object_path": obj.object_name,
+                "size": obj.size,
+                "last_modified": obj.last_modified,
+                "etag": obj.etag,
+            } for obj in self.client.list_objects(
+                bucket, prefix=prefix or None, recursive=True,
+            )]
+
+        # A storage outage is not an empty bucket. Let the API return an error so
+        # clients retain their last successful list and can retry.
+        return await asyncio.to_thread(_list_sync)
+
     async def get_bucket_stats(self, bucket: str) -> Dict[str, Any]:
         """获取存储桶统计信息"""
         try:

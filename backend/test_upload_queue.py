@@ -275,7 +275,7 @@ def test_file_list_includes_queued_placeholder_before_minio_object_exists(monkey
 
     import app.modules.ingestion.service as ingestion_service_module
 
-    monkeypatch.setattr(ingestion_service_module, "get_ingestion_service", lambda: FakeRegistry())
+    monkeypatch.setattr(ingestion_service_module, "get_ingestion_status_reader", lambda: FakeRegistry())
     service = KnowledgeBaseService.__new__(KnowledgeBaseService)
     service.minio_adapter = FakeMinio()
     service._kb_id_candidates = lambda kb_id: [kb_id]
@@ -331,7 +331,7 @@ def test_file_list_merges_live_task_details_into_persisted_video(monkeypatch):
 
     import app.modules.ingestion.service as ingestion_service_module
 
-    monkeypatch.setattr(ingestion_service_module, "get_ingestion_service", lambda: FakeRegistry())
+    monkeypatch.setattr(ingestion_service_module, "get_ingestion_status_reader", lambda: FakeRegistry())
     service = KnowledgeBaseService.__new__(KnowledgeBaseService)
     service.minio_adapter = FakeMinio()
     service.vector_store = FakeVectorStore()
@@ -393,7 +393,7 @@ def test_file_list_marks_migrated_video_ready_by_file_id(monkeypatch):
     import app.modules.ingestion.service as ingestion_service_module
 
     vector_store = FakeVectorStore()
-    monkeypatch.setattr(ingestion_service_module, "get_ingestion_service", lambda: EmptyRegistry())
+    monkeypatch.setattr(ingestion_service_module, "get_ingestion_status_reader", lambda: EmptyRegistry())
     service = KnowledgeBaseService.__new__(KnowledgeBaseService)
     service.minio_adapter = FakeMinio()
     service.vector_store = vector_store
@@ -431,7 +431,7 @@ def test_file_list_returns_raw_files_when_task_state_source_times_out(monkeypatc
     import app.modules.ingestion.service as ingestion_service_module
     import app.modules.knowledge.service as knowledge_service_module
 
-    monkeypatch.setattr(ingestion_service_module, "get_ingestion_service", lambda: SlowRegistry())
+    monkeypatch.setattr(ingestion_service_module, "get_ingestion_status_reader", lambda: SlowRegistry())
     monkeypatch.setattr(knowledge_service_module, "_PROCESSING_STATUS_LOOKUP_TIMEOUT_SECONDS", 0.01)
     service = KnowledgeBaseService.__new__(KnowledgeBaseService)
     service.minio_adapter = FakeMinio()
@@ -479,3 +479,71 @@ def test_file_processing_status_prefers_the_most_recent_retry_state():
 
     assert status is not None
     assert status["processing_id"] == "new-processing"
+
+
+def test_non_video_batch_has_bounded_concurrency_and_queued_files_remain_visible():
+    async def run():
+        service = _queue_service(FakeRedis())
+        release = asyncio.Event()
+        entered = []
+        async def process(**kwargs):
+            entered.append(kwargs['processing_id'])
+            await release.wait()
+            return {'status': 'completed'}
+        service.process_file_upload = process
+        for i in range(12):
+            service.start_file_upload(file_content=b'image', file_path=f'{i}.png', kb_id='test')
+        tasks = list(service._background_upload_tasks.values())
+        await asyncio.sleep(.02)
+        assert len(entered) == 4
+        assert len(service.list_processing_statuses_for_kb('test')) == 12
+        release.set()
+        await asyncio.gather(*tasks)
+        assert len(entered) == 12
+    asyncio.run(run())
+
+
+def test_upload_id_resolution_is_shared_and_does_not_block_event_loop():
+    import threading
+    async def run():
+        service = _queue_service(FakeRedis())
+        calls = []
+        def discover(kb_id):
+            calls.append((kb_id, threading.get_ident()))
+            time.sleep(.03)
+            return 'legacy-id'
+        service._get_actual_kb_id_for_upload_sync = discover
+        tasks = [asyncio.create_task(service._get_actual_kb_id_for_upload('test')) for _ in range(12)]
+        await asyncio.sleep(.005)
+        assert not any(task.done() for task in tasks)
+        assert await asyncio.gather(*tasks) == ['legacy-id'] * 12
+        assert len(calls) == 1 and calls[0][1] != threading.get_ident()
+        assert await service._get_actual_kb_id_for_upload('test') == 'legacy-id'
+        assert len(calls) == 1
+    asyncio.run(run())
+
+
+def test_batch_progress_preserves_out_of_order_results_and_hides_lease(monkeypatch):
+    service = _queue_service(FakeRedis())
+    service._processing_status = {
+        'first': {'processing_id': 'first', 'status': 'processing', 'progress': 35, 'lease_id': 'private'},
+        'second': {'processing_id': 'second', 'status': 'completed', 'progress': 100},
+    }
+    monkeypatch.setattr(upload_api, 'get_ingestion_status_reader', lambda: service)
+    def unexpected_initialization():
+        raise AssertionError('progress must not initialize parsers or models')
+    monkeypatch.setattr(upload_api, '_ingestion', unexpected_initialization)
+    result = asyncio.run(upload_api.get_upload_progress_batch(
+        upload_api.UploadProgressBatchRequest(processing_ids=['second', 'first', 'missing'])))
+    assert [item['status'] for item in result['statuses']] == ['completed', 'processing', 'not_found']
+    assert 'lease_id' not in result['statuses'][1]
+
+
+def test_unavailable_progress_storage_is_retryable_not_a_missing_task():
+    class OfflineRedis(FakeRedis):
+        def get(self, key):
+            raise ConnectionError('offline')
+    service = _queue_service(OfflineRedis())
+    status = asyncio.run(service.get_processing_status('task-on-another-worker'))
+    assert status['status'] == 'error'
+    assert status['processing_id'] == 'task-on-another-worker'

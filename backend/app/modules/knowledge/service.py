@@ -12,6 +12,7 @@ import json
 import random
 import re
 import uuid
+from urllib.parse import quote
 from datetime import datetime
 from dataclasses import dataclass
 
@@ -200,6 +201,7 @@ def _kb_from_meta(bucket_name: str, meta: Dict[str, Any]) -> KnowledgeBase:
     kb_id = _kb_id_from_bucket_name(bucket_name)
     if not kb_id:
         raise ValueError(f"invalid kb bucket name: {bucket_name}")
+    kb_id = str(meta.get("id") or kb_id)
     now = datetime.utcnow().isoformat()
     return KnowledgeBase(
         id=kb_id,
@@ -251,6 +253,8 @@ class KnowledgeBaseService:
         else:
             tags = self.minio_adapter.get_bucket_tags(bucket_name)
             self._kb_storage[kb_id] = _tags_to_kb(bucket_name, tags)
+        kb = self._kb_storage[kb_id]
+        self._kb_storage[kb.id] = kb
         return True
 
     def _load_from_minio(self) -> None:
@@ -268,6 +272,8 @@ class KnowledgeBaseService:
                 else:
                     tags = self.minio_adapter.get_bucket_tags(bucket_name)
                     self._kb_storage[kb_id] = _tags_to_kb(bucket_name, tags)
+            for kb in list(self._kb_storage.values()):
+                self._kb_storage[kb.id] = kb
             logger.info(f"已从 MinIO 加载 {len(self._kb_storage)} 个知识库")
         except Exception as e:
             logger.warning(f"从 MinIO 加载知识库失败，将使用空列表: {e}")
@@ -310,6 +316,7 @@ class KnowledgeBaseService:
             bucket_name = self.minio_adapter.bucket_name_for_kb(kb_id)
             # 优先用 .kb_meta.json 持久化（任意 UTF-8），重启后可正确加载
             self.minio_adapter.put_kb_metadata(bucket_name, {
+                "id": kb.id,
                 "name": kb.name,
                 "description": kb.description,
                 "created_at": kb.created_at,
@@ -352,7 +359,7 @@ class KnowledgeBaseService:
             if refresh:
                 exists = await asyncio.to_thread(self._refresh_kb_in_cache, kb_id)
             else:
-                exists = self._ensure_kb_in_cache(kb_id)
+                exists = await asyncio.to_thread(self._ensure_kb_in_cache, kb_id)
             if not exists:
                 return None
             kb = self._kb_storage.get(kb_id)
@@ -404,7 +411,11 @@ class KnowledgeBaseService:
             if not self._kb_storage:
                 self._load_from_minio()
             pairs: List[Tuple[str, KnowledgeBase]] = []
-            for kb_id, kb in self._kb_storage.items():
+            seen_ids = set()
+            for kb_id, kb in list(self._kb_storage.items()):
+                if kb.id in seen_ids:
+                    continue
+                seen_ids.add(kb.id)
                 if user_id and kb.user_id != user_id:
                     continue
                 pairs.append((kb_id, kb))
@@ -466,6 +477,7 @@ class KnowledgeBaseService:
             bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
             # 用 .kb_meta.json 持久化名称/描述（任意 UTF-8），重启后可正确加载
             self.minio_adapter.put_kb_metadata(bucket_name, {
+                "id": kb.id,
                 "name": kb.name,
                 "description": kb.description,
                 "created_at": kb.created_at,
@@ -527,7 +539,9 @@ class KnowledgeBaseService:
                 logger.error(f"清理知识库数据时出错: {str(cleanup_error)}")
                 # 即使清理失败，也继续删除知识库记录
             
-            del self._kb_storage[kb_id]
+            for alias, cached in list(self._kb_storage.items()):
+                if alias == kb_id or cached.id == kb.id:
+                    self._kb_storage.pop(alias, None)
             try:
                 from app.modules.knowledge.suggested_questions import remove_kb_question_bank
                 remove_kb_question_bank(kb_id)
@@ -710,11 +724,11 @@ class KnowledgeBaseService:
         """
         loop = asyncio.get_event_loop()
         candidates = list(self._kb_id_candidates(kb_id))
-        bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
+        bucket_name = await asyncio.to_thread(self.minio_adapter.get_bucket_for_kb, kb_id)
         raw_files: List[Dict[str, Any]] = []
         total_size_bytes = 0
         try:
-            if bucket_name and self.minio_adapter.bucket_exists(bucket_name):
+            if bucket_name and await asyncio.to_thread(self.minio_adapter.bucket_exists, bucket_name):
                 raw_files = await self.minio_adapter.list_files(
                     bucket=bucket_name, prefix="", max_keys=10000
                 )
@@ -727,7 +741,7 @@ class KnowledgeBaseService:
         total_video_files = _count_raw_video_files(raw_files)
         total_size_mb = round(total_size_bytes / (1024 * 1024), 2)
 
-        if bucket_name and self.minio_adapter.bucket_exists(bucket_name):
+        if bucket_name and await asyncio.to_thread(self.minio_adapter.bucket_exists, bucket_name):
             discovered = await self._discover_kb_id_from_bucket_async(kb_id)
             if discovered and discovered not in candidates:
                 candidates.insert(0, discovered)
@@ -1498,9 +1512,9 @@ class KnowledgeBaseService:
             return []
 
         def _read_statuses() -> List[Dict[str, Any]]:
-            from app.modules.ingestion.service import get_ingestion_service
+            from app.modules.ingestion.service import get_ingestion_status_reader
 
-            statuses = get_ingestion_service().list_processing_statuses_for_kb(kb_id)
+            statuses = get_ingestion_status_reader().list_processing_statuses_for_kb(kb_id)
             return [dict(item) for item in (statuses or []) if isinstance(item, dict)]
 
         try:
@@ -1509,10 +1523,13 @@ class KnowledgeBaseService:
                 timeout=_PROCESSING_STATUS_LOOKUP_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
-            logger.debug("读取上传任务状态超时，跳过本次状态合并 kb_id={}", kb_id)
+            logger.warning("读取上传任务状态超时，跳过本次状态合并 kb_id={}", kb_id)
         except Exception as error:
-            logger.debug("读取上传任务状态失败，跳过本次状态合并 kb_id={}: {}", kb_id, error)
-        return []
+            logger.warning("读取上传任务状态失败，跳过本次状态合并 kb_id={}: {}", kb_id, error)
+        from app.modules.ingestion.service import get_ingestion_status_reader
+        reader = get_ingestion_status_reader()
+        return [dict(item) for item in list(getattr(reader, "_processing_status", {}).values())
+                if str(item.get("source_kb_id") or item.get("kb_id") or "") == kb_id]
 
     def _get_video_file_index_status(
         self,
@@ -1567,27 +1584,27 @@ class KnowledgeBaseService:
         若传入的 kb_id 对应桶不存在，则尝试候选 kb_id 的桶（兼容前端/API 传入的格式与 MinIO 实际桶名不一致）。"""
         raw_files: List[Dict[str, Any]] = []
         bucket_used: Optional[str] = None
-        bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
-        if self.minio_adapter.bucket_exists(bucket_name):
+        bucket_name = await asyncio.to_thread(self.minio_adapter.get_bucket_for_kb, kb_id)
+        if await asyncio.to_thread(self.minio_adapter.bucket_exists, bucket_name):
             try:
                 raw_files = await self.minio_adapter.list_files(bucket=bucket_name, prefix="", max_keys=1000)
                 bucket_used = bucket_name
             except Exception as e:
-                logger.debug(f"列出桶 {bucket_name} 失败: {e}")
-        if not raw_files:
+                raise RuntimeError(f"读取文件清单失败: {bucket_name}") from e
+        if bucket_used is None:
             for candidate in self._kb_id_candidates(kb_id):
                 if candidate == kb_id:
                     continue
                 try:
-                    cand_bucket = self.minio_adapter.get_bucket_for_kb(candidate)
-                    if self.minio_adapter.bucket_exists(cand_bucket):
+                    cand_bucket = await asyncio.to_thread(self.minio_adapter.get_bucket_for_kb, candidate)
+                    if await asyncio.to_thread(self.minio_adapter.bucket_exists, cand_bucket):
                         raw_files = await self.minio_adapter.list_files(bucket=cand_bucket, prefix="", max_keys=1000)
                         if raw_files:
                             bucket_used = cand_bucket
                             logger.debug(f"列出文件使用候选桶: kb_id={kb_id} -> candidate={candidate}, bucket={cand_bucket}")
                             break
                 except Exception as e:
-                    logger.debug(f"候选 kb_id={candidate} 列出文件失败: {e}")
+                    raise RuntimeError(f"读取文件清单失败: {candidate}") from e
         # 只读一次任务状态并复用到真实文件和占位项，避免每个视频分别访问 Redis。
         # 该调用带超时；即使 Redis/ingestion worker 暂不可用，文件列表仍可正常返回。
         task_statuses = await self._list_processing_statuses_for_kb_best_effort(kb_id)
@@ -1595,7 +1612,7 @@ class KnowledgeBaseService:
             task for task in task_statuses if self._is_visible_processing_task(task)
         ]
         task_by_file_id: Dict[str, Dict[str, Any]] = {}
-        for task in visible_task_statuses:
+        for task in task_statuses:
             task_file_id = str(task.get("file_id") or "")
             if not task_file_id:
                 continue
@@ -1638,10 +1655,12 @@ class KnowledgeBaseService:
                 # `status`，刷新页面无法得知它究竟卡在什么阶段、进度和失败原因。
                 if task_state:
                     item.update(self._public_upload_task_fields(task_state))
+                    if task_state.get("status") == "completed":
+                        item["status"] = "ready"
                 # 只对视频主文件检查 Scene–Shot 主索引；关键帧等派生物不在文件列表中。
                 if parts[0] == "videos" and len(parts) == 2:
-                    item["status"] = self._get_video_file_index_status(
-                        kb_id,
+                    item["status"] = await asyncio.to_thread(
+                        self._get_video_file_index_status, kb_id,
                         file_id,
                         task_state=task_state,
                         object_path=op,
@@ -1661,6 +1680,8 @@ class KnowledgeBaseService:
                             # A missing cover must not hide the original video or
                             # alter its stream/preview URL and processing status.
                             logger.debug(f"生成视频封面 URL 失败 {op}: {e}")
+                if parts[0] == "images" and len(parts) == 2 and ext in {"png", "jpg", "jpeg", "webp", "gif", "tif", "tiff"}:
+                    item["thumbnail_url"] = f"/api/knowledge/{quote(kb_id, safe='')}/thumbnail?path={quote(op, safe='')}"
                 if self._is_previewable_type(ext) and bucket_used:
                     try:
                         item["preview_url"] = await self.minio_adapter.get_presigned_url(
@@ -1700,7 +1721,7 @@ class KnowledgeBaseService:
             return files
         except Exception as e:
             logger.error(f"列出知识库文件失败: {str(e)}")
-            return []
+            raise
 
     async def get_file_stream_info(self, kb_id: str, file_id: str) -> Optional[tuple[str, str, str]]:
         """获取用于流式预览的文件信息，返回 (bucket_name, object_path, filename) 或 None。

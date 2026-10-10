@@ -9,8 +9,9 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse
 from typing import List, Optional
 import uuid
+from pydantic import BaseModel, Field
 from app.core.logger import get_logger
-from app.modules.ingestion.service import get_ingestion_service
+from app.modules.ingestion.service import get_ingestion_service, get_ingestion_status_reader
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -191,7 +192,7 @@ async def start_upload_batch(
     # 严格两阶段提交：在第一个后台任务可被调度前，先读取、校验并持久化登记
     # 所有有效文件。不能在循环内调用 start_file_upload；下一次 `await file.read()`
     # 会让已创建的第一个任务获得运行机会，进而可能被同步 MinIO I/O 阻塞。
-    ingestion = _ingestion()
+    ingestion = await asyncio.to_thread(_ingestion)
     results = []
     prepared_uploads = []
     for file in files:
@@ -328,10 +329,28 @@ async def upload_batch(
         "results": results
     }
 
+class UploadProgressBatchRequest(BaseModel):
+    processing_ids: List[str] = Field(..., min_length=1, max_length=1000)
+
+
+@router.post("/progress/batch")
+async def get_upload_progress_batch(body: UploadProgressBatchRequest):
+    """One bounded response per polling round, including per-file terminal states."""
+    ingestion = get_ingestion_status_reader()
+    statuses = await asyncio.to_thread(
+        lambda: [ingestion.get_processing_status_sync(task_id)
+                 for task_id in dict.fromkeys(body.processing_ids)]
+    )
+    fields = {"processing_id", "status", "stage", "progress", "message", "error",
+              "updated_at", "file_id", "file_path", "file_size"}
+    return {"statuses": [{key: value for key, value in status.items() if key in fields}
+                         for status in statuses]}
+
+
 @router.get("/progress/{task_id}")
 async def get_upload_progress(task_id: str):
     """获取上传处理进度（对接 ingestion 的 processing_status）"""
-    status = await _ingestion().get_processing_status(task_id)
+    status = await get_ingestion_status_reader().get_processing_status(task_id)
     if status.get("status") == "not_found":
         raise HTTPException(status_code=404, detail="未找到该任务或任务已过期")
     return status
