@@ -1,8 +1,0 @@
-{
-  "sha256": "3c0444a19598fcb973b4a4d92cdb222572969c1a9d880264a4f6f60aa6728af4",
-  "cases": 36,
-  "citation_units": 70,
-  "split_rule": "12 known v4 dev examples; 24 new cases in 8 distinct test families",
-  "labels": "Assistant authored; no independent annotation; variants within family correlated",
-  "decision": "No test prompt tuning. Do not adopt background if it adds false support. Batch adoption requires no observed quality loss plus measured latency/cost gain; sample evidence is not a production guarantee."
-}

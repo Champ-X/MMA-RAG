@@ -1,17 +1,19 @@
 {
   "include": [
-    "backend",
-    "tests"
+    "backend"
   ],
   "exclude": [
     "**/__pycache__",
     "**/node_modules",
     ".venv",
-    "venv"
+    "venv",
+    ".venv-*",
+    "ops",
+    "data"
   ],
   "extraPaths": [
     "backend"
   ],
-  "pythonVersion": "3.9",
+  "pythonVersion": "3.11",
   "typeCheckingMode": "basic"
 }

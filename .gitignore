@@ -63,14 +63,21 @@ coverage.xml
 *.cover
 .hypothesis/
 
-# RAG 评测临时运行产物；人工确认的 evals/baselines/ 可提交
-/evals/runs/
-/evals/reports/
+# Local experiments, QA receipts and retired build output
+/static/
+/docs/research/
+/docs/qa/
+/docs/verification/
+/backend/experiments/
 
-# Live experiment locks and billing/resume ledgers stay local; frozen receipts are versioned.
-/docs/research/**/results/*.lock
-/docs/research/**/results/*.pending.json
-/docs/research/**/results/*.execution.json
+# Evaluation data is opt-in: only maintained synthetic baselines and
+# evidence used by the production Decision admission regression belong in Git.
+/evals/*
+!/evals/README.md
+!/evals/baseline_v1/
+!/evals/baselines/
+!/evals/decision_plan_v2/
+!/evals/decision_plan_v2_holdout/
 
 # —— IDE / 编辑器 ——
 .idea/
@@ -90,14 +97,6 @@ celerybeat.pid
 *.tar.gz
 *.rar
 
-# —— 测试用 ——
-tests/
-!backend/tests/
-!backend/tests/test_conversation_context.py
-!backend/tests/test_feishu_document_source.py
-!backend/tests/test_knowledge_router.py
-!backend/tests/test_rag_evaluation.py
-
 # —— 密钥与环境（勿提交 backend/.env）——
 .env
 backend/.env
@@ -114,5 +113,11 @@ backend/.env
 personal/
 docs/superpowers/
 
-# Frontend regression tests and trace replays
-!frontend/tests/
+# Alternate local environments, local model routing and generated reports
+/.venv-*/
+/backend/data/llm_task_overrides.json
+/frontend/coverage/
+/frontend/playwright-report/
+/frontend/test-results/
+.env.*
+!.env.example

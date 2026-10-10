@@ -26,7 +26,7 @@ def provider_response(payload, *, input_tokens=1500):
 
 
 def frozen_candidate():
-    path = Path(__file__).resolve().parents[1] / 'scripts' / 'jev_batch_candidate.py'
+    path = Path(__file__).resolve().parent / 'fixtures' / 'jev_batch_candidate.py'
     spec = importlib.util.spec_from_file_location('jev_frozen_batch_contract', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

@@ -2,13 +2,13 @@
 
 本文档描述当前系统中**图片**、**音频**、**视频**三种模态从**解析处理**、**存储**到**检索**的完整技术细节，与 **[MMA_ARCHITECTURE.md](./MMA_ARCHITECTURE.md)** 中的 Ingestion / Retrieval 设计一致。
 
-> 同步基线：2026-07-26。Agent 模式不会替换本技术链；它规划多个子查询，而每个子查询仍复用本文所述的意图、路由、五路召回、RRF 与精排。
+> 本文描述入库与常规 Direct/Agent 检索。Pi 复用已有索引与原文件，但采用独立工具编排，见 [Pi 模式](PI_AGENT_MODE.md)。
 
 **项目侧要点（与其它「仅文本 RAG」的差异）**：
 
 - **统一文本嵌入空间**：图片描述、音频转写+描述、视频 Shot 的视觉 caption/ASR 与文档 chunk 共用同一 Dense 模型（如 Qwen3-Embedding），便于跨模态检索与路由。
 - **专用向量 + 双路/多路 RRF**：图片 `text_vec + clip_vec`；音频 `text_vec + clap_vec`（可选 sparse）；视频以 **Shot** 为主单元，`caption_dense + caption_sparse + asr_dense + asr_sparse` 四路加权 RRF，关键帧另存 `frame_vec + clip_vec` 作为可选视觉增强。
-- **意图驱动权重**：One-Pass 输出 `visual_intent` / `audio_intent` / `video_intent`；音频在 `unnecessary` 时**不检索**；视频检索**每次执行**，CLIP 侧是否参与由 **`visual_intent`** 与查询构造联动，`video_intent` 主要调节 RRF 中 video 路权重（见架构文档检索节）。
+- **意图驱动权重**：One-Pass 输出 `visual_intent` / `audio_intent` / `video_intent`；音频在 `unnecessary` 时**不检索**；视频仅在 `video_intent` 为显式需求或隐式补充时检索；CLIP 侧是否参与由 `visual_intent` 与查询构造联动，`video_intent` 还调节 RRF 中 video 路权重。
 
 ---
 

@@ -14,7 +14,6 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#agent-mode">Agent Mode</a> ·
-  <a href="#retrieval-results">Retrieval results</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="#contributing">Contributing</a> ·
   <a href="https://github.com/Champ-X/MMA-RAG/issues">Report an issue</a>
@@ -52,74 +51,37 @@ These existing Web / Feishu examples show retrieval results and media citations.
 
 “Summarize the design of each stage in DeepSeek OCR2 training.”
 
-![Document answers with source citations](docs/images/chat-document.png)
+![Document answers with source citations](docs/images/chat-document.jpg)
 
 ### Image search
 
 “Find one landscape image for each mood: rugged, delicate, and relaxed.”
 
-![Semantic image search](docs/images/chat-image.png)
+![Semantic image search](docs/images/chat-image.jpg)
 
 ### Audio search
 
 “Find music that uses the same instrument as this audio.”
 
-![Audio search and playback](docs/images/chat-audio.png)
+![Audio search and playback](docs/images/chat-audio.jpg)
 
 ### Video questions
 
 “What is Tang Shiye's personality in Let the Bullets Fly?”
 
-![Video answers with timestamped citations](docs/images/chat-video.png)
+![Video answers with timestamped citations](docs/images/chat-video.jpg)
 
 ### Cross-modal selection
 
 “Choose a suitable poster and theme song for Peaky Blinders.”
 
-![Images, audio, and video supporting one answer](docs/images/chat-mix.png)
+![Images, audio, and video supporting one answer](docs/images/chat-mix.jpg)
 
 ### Feishu IM
 
-![Answers and media citations in Feishu](docs/images/chat-feishu.png)
+![Answers and media citations in Feishu](docs/images/chat-feishu.jpg)
 
 </details>
-
-## Retrieval results
-
-On 2026-10-08, we evaluated **300 public queries + 80 local multimodal queries**, preserving **1,740 task records**. The evaluation measures target-document recall and required-evidence coverage separately, keeps failures in the denominator, and records dataset, configuration, and receipt hashes.
-
-### Public corpus: semantic retrieval improves target-document recall
-
-The experiment uses all **5,183 SciFact abstracts**, split into 17,031 three-sentence units. Document Recall@5 covers 300 queries; evidence-group Recall@5 covers the 188 queries with human sentence rationales. Both metrics score the first 5 delivered evidence units.
-
-| Method | Successful tasks | Document Recall@5 | Evidence-group Recall@5 |
-| --- | ---: | ---: | ---: |
-| BM25 | 300/300 | 63.44% | 77.13% |
-| Dense | 300/300 | 76.83% | 89.89% |
-| Hybrid, fixed RRF | 300/300 | 75.89% | 87.77% |
-| Hybrid + reranking, original run | 225/300 | 59.11% | 64.89% |
-| Hybrid + reranking, availability-control run | 300/300 | **80.40%** | **90.43%** |
-
-**Dense improves document Recall@5 over BM25 by 13.38 percentage points**, with a paired 95% interval of +7.13 to +19.12 points. The controlled reranking run has the highest observed scores; its evidence-group recall gain over Dense has an interval that crosses zero and needs further validation.
-
-This component experiment uses Qwen3-Embedding-8B, Qwen3-Reranker-8B, and BM25 under a custom SciFact protocol. It differs from the production BGE-M3 sparse pipeline and official BEIR leaderboard scoring. All 75 failures in the original reranking run are retained. The separate control run covers all 300 queries and waits for health cooldown before starting subsequent queries, without retrying failed queries. Service-state variation also affects the comparison.
-
-### Local multimodal corpus: multi-round search covers more required evidence
-
-Read-only evaluation on the existing knowledge base covers text, images, audio, video, cross-modal questions, and scoped unanswerable questions. Using the latest source-verified labels, **complete-evidence rate** is the fraction of the 76 evidence-annotated queries for which all required evidence is retrieved; failures score zero.
-
-| Mode | Evidence stage | Complete evidence in top 5 | Complete evidence in set (@50) |
-| --- | --- | ---: | ---: |
-| Direct, single round | Retrieval results | 81.58% | 81.58% |
-| Standard multi-round Agent (legacy-agent) | Retrieval results | 92.11% | **100.00%** |
-| Pi Agent | Research observations, including verified media anchors | 88.16% | 97.37% |
-| Pi Agent | Final-answer citations | **96.05%** | **97.37%** |
-
-The standard multi-round Agent's retrieval set covers all required evidence for **76/76 queries**, compared with **62/76** for Direct. Pi's first five final-answer citations cover **73/76 queries**, and all citations cover **74/76**. Pi citations are scored in order of first appearance in the answer; unreviewed media retain their positions without receiving evidence credit. Execution budgets differ across modes, and final citations include evidence selection during generation, so each stage should be interpreted separately.
-
-The 80 local queries form 35 source-connected clusters, with only 3 text documents. Labels were checked by an agent against their sources, without independent blinded human annotation or comprehensive original-media verification. These are evidence-coverage metrics on a development set; final-answer correctness, citation support, and correct abstention still require separate evaluation.
-
-[Full results and scoring details](docs/RETRIEVAL_REVIEW_20261008.md) · [Public-corpus results](docs/RETRIEVAL_EVALUATION_20261008.md) · [Protocol and reproduction commands](docs/RETRIEVAL_EVALUATION_V2.md) · [Latest machine-readable summary](evals/retrieval_v2/review-20261008/summary.json)
 
 ## Quick start
 
@@ -138,7 +100,7 @@ The recommended development setup runs **the frontend and backend locally, with 
 ### 2. Clone and configure providers
 
 ```bash
-git clone https://github.com/Champ-X/MMA-RAG.git
+git clone --depth 1 --single-branch https://github.com/Champ-X/MMA-RAG.git
 cd MMA-RAG
 cp backend/.env.example backend/.env
 ```
@@ -209,7 +171,7 @@ A successful `/health` response only confirms that the API has started. Complete
 - **A model or tool call fails:** check provider credentials, account balance, and model access. Pi also requires the `agent-runtime` dependencies and a supported Node.js version.
 - **The first startup is slow:** inspect model download logs and `HF_ENDPOINT`. Setting `PRELOAD_LOCAL_MODELS_ON_STARTUP=false` defers loading until first use; it does not remove the model dependencies.
 - **Media previews fail:** make sure `MINIO_PUBLIC_ENDPOINT` is reachable from the browser, rather than a container-only address such as `minio:9000`.
-- **Restoring an existing local dataset:** `./scripts/start-restored.sh` shares the same start/restart/stop/status management. It requires existing MinIO/Qdrant directories or all three storage containers and preserves the containers' original mounts, including data in another checkout. It never initializes an empty dataset or triggers re-ingestion. See the [local migration notes](docs/local-data-migration.md).
+- **Restoring an existing local dataset:** `./scripts/start-restored.sh` shares the same start/restart/stop/status management. It requires existing MinIO/Qdrant directories or all three storage containers and preserves the containers' original mounts, including data in another checkout. It never initializes an empty dataset or triggers re-ingestion. See the [data recovery guide](docs/LOCAL_STARTUP.md#数据与进程管理).
 
 </details>
 
@@ -281,18 +243,17 @@ The CLI's `--agent-mode` selects standard `direct / auto / agent` behavior, not 
 
 ## Verification and evaluation
 
-The repository includes automated tests, an isolated RAG evaluation runner, and Pi verification reports that preserve candidate results. [Retrieval evaluation v2](docs/RETRIEVAL_EVALUATION_V2.md) supports public and local comparisons, evidence-level scoring, per-query failure receipts, and paired intervals. All 8 reports and 1,740 task records passed the [offline recomputation audit](evals/retrieval_v2/completion-audit-20261008.json). The original v1 baseline of **7 synthetic documents and 8 questions** remains available for quick regression checks.
-
-With the backend virtual environment activated, run these basic checks from the repository root:
+The repository keeps product regression tests, a quick baseline of 7 synthetic documents and 8 questions, and evaluation tools for public corpora and your own knowledge bases. Run data, intermediate reports and experimental source snapshots stay outside the distributed source tree. Small regression datasets are not general quality benchmarks.
 
 ```bash
 npm --prefix frontend test
 npm --prefix frontend run build
 npm --prefix agent-runtime test
 ./scripts/rag-eval validate
+python3 scripts/test_dev.py
 ```
 
-Select backend tests for the modules you change. The [recent regression record](docs/qa/pi-agent-publication-2026-10-07.md) includes actual commands and coverage; some tests require storage services. See the [RAG evaluation guide](docs/RAG_EVALUATION.md) for metrics, independent judging, data isolation, and report comparison, and the [Pi verification record](docs/PI_AGENT_VERIFICATION.md) for functional checks and failed cases.
+See [Contributing](CONTRIBUTING.md) for backend checks and [Evaluation](docs/RAG_EVALUATION.md) for metrics and isolated runs. The shallow clone above downloads the current revision; run `git fetch --unshallow` when you need history. See [Repository maintenance](docs/REPOSITORY.md).
 
 ## Deployment boundaries
 
@@ -300,23 +261,14 @@ Select backend tests for the modules you change. The [recent regression record](
 - **Pi has separate access controls.** It defaults to local access and supports a server-side access token and knowledge-base allowlist. These do not replace application-wide user authorization.
 - **Persistence differs by path.** Pi uses a local SQLite ledger with one host holding the lock per data directory. Standard backend sessions and some statistics remain in process memory; the application is not ready for stateless horizontal scaling.
 - **Retrieval and media interpretation can be wrong.** Traceable citations do not prove semantic correctness, and sampled video frames are not exhaustive observation. Check important conclusions against original sources.
-
 ## Documentation
 
-Most detailed guides are currently in Chinese; the CLI reference and security policy are in English.
+Technical guides are currently maintained in Chinese; both READMEs cover the same setup and product scope.
 
-| Guide | Contents |
-| --- | --- |
-| [Pi Agent Mode](docs/PI_AGENT_MODE.md) | Autonomous research, source tools, configuration, and run semantics |
-| [Architecture](docs/MMA_ARCHITECTURE.md) | Ingestion and standard retrieval/generation; use the separate guide for Pi |
-| [Multimodal specification](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | Image, audio, and video parsing units, fields, and indexes |
-| [Inline references and attachments](docs/chat-inline-references.md) | `@` materials, editing, and citation previews |
-| [Model-call reliability](docs/MODEL_CALL_RELIABILITY.md) | Model routing, health, and fallback behavior |
-| [CLI reference](skills/mma-rag/references/cli-reference.md) · [Feishu setup](docs/FEISHU_BOT_SETUP.md) | External workflows and configuration |
-| [RAG evaluation](docs/RAG_EVALUATION.md) · [Pi verification](docs/PI_AGENT_VERIFICATION.md) | Reproduction, coverage, and result boundaries |
-| [Retrieval results](docs/RETRIEVAL_EVALUATION_20261008.md) · [Retrieval evaluation v2](docs/RETRIEVAL_EVALUATION_V2.md) | Public and local multimodal comparisons, evidence coverage, paired intervals, and reproduction commands |
-| [Jev experiment decisions](docs/research/JEV-DECISIONS.md) | Optional semantic judgment and citation diagnostics; disabled by default |
-| [Security](SECURITY.md) · [Historical changelog](CHANGELOG.md) | Deployment requirements and recorded changes |
+- [Documentation index](docs/README.md) and [Architecture](docs/MMA_ARCHITECTURE.md).
+- [Pi Agent](docs/PI_AGENT_MODE.md) and [Decision models](docs/DECISION_MODELS.md).
+- [Local startup](docs/LOCAL_STARTUP.md), [Model troubleshooting](docs/MODEL_CALL_RELIABILITY.md), and [Feishu](docs/FEISHU_BOT_SETUP.md).
+- [Contributing](CONTRIBUTING.md), [Security](SECURITY.md), and [Changelog](CHANGELOG.md).
 
 ## Contributing
 

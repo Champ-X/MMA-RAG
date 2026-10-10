@@ -14,7 +14,6 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> ·
   <a href="#agent-mode">Agent Mode</a> ·
-  <a href="#检索效果">检索效果</a> ·
   <a href="#文档">文档</a> ·
   <a href="#参与贡献">参与贡献</a> ·
   <a href="https://github.com/Champ-X/MMA-RAG/issues">反馈问题</a>
@@ -52,74 +51,37 @@
 
 “介绍 DeepSeek OCR2 在训练过程各阶段的设计方案。”
 
-![文档问答与来源引用](docs/images/chat-document.png)
+![文档问答与来源引用](docs/images/chat-document.jpg)
 
 ### 图片检索
 
 “分别找一张符合粗犷、婉约、惬意的风景图。”
 
-![按语义检索图片](docs/images/chat-image.png)
+![按语义检索图片](docs/images/chat-image.jpg)
 
 ### 音频检索
 
 “查找和该音频使用相同乐器的曲子。”
 
-![音频检索与播放](docs/images/chat-audio.png)
+![音频检索与播放](docs/images/chat-audio.jpg)
 
 ### 视频问答
 
 “《让子弹飞》中汤师爷的人物性格是怎样的？”
 
-![视频问答与时间片段引用](docs/images/chat-video.png)
+![视频问答与时间片段引用](docs/images/chat-video.jpg)
 
 ### 跨模态选材
 
 “为《浴血黑帮》挑选合适的海报封面和主题曲。”
 
-![图片、音频与视频共同支持回答](docs/images/chat-mix.png)
+![图片、音频与视频共同支持回答](docs/images/chat-mix.jpg)
 
 ### 飞书 IM
 
-![飞书中的问答与媒体引用](docs/images/chat-feishu.png)
+![飞书中的问答与媒体引用](docs/images/chat-feishu.jpg)
 
 </details>
-
-## 检索效果
-
-2026-10-08 完成 **300 道公开题 + 80 道本地多模态题**的实际对照，保存 **1,740 条任务记录**。评测分别衡量目标文档召回与必需证据覆盖，失败保留在分母；数据、配置和回执均有版本哈希。
-
-### 公开语料：语义检索提升目标文档召回
-
-使用 SciFact 全部 **5,183 篇摘要**、17,031 个三句片段。文档 Recall@5 在 300 道题上评分；证据组 Recall@5 在有人工句子证据的 188 道题上评分。两项指标均检查前 5 个交付片段。
-
-| 方案 | 成功任务 | 文档 Recall@5 | 证据组 Recall@5 |
-| --- | ---: | ---: | ---: |
-| BM25 | 300/300 | 63.44% | 77.13% |
-| Dense | 300/300 | 76.83% | 89.89% |
-| Hybrid，固定 RRF | 300/300 | 75.89% | 87.77% |
-| Hybrid + 重排，首轮 | 225/300 | 59.11% | 64.89% |
-| Hybrid + 重排，可用性控制轮 | 300/300 | **80.40%** | **90.43%** |
-
-**Dense 相对 BM25 的文档 Recall@5 提高 13.38 个百分点**，配对 95% 区间为 +7.13～+19.12 个百分点。重排控制轮取得本轮最高分；其证据组 Recall 相对 Dense 的增益区间跨零，仍需更多样本验证。
-
-该组件实验使用 Qwen3-Embedding-8B、Qwen3-Reranker-8B 和 BM25，是自定义 SciFact 协议，与生产 BGE-M3 稀疏通道及官方 BEIR 排行榜口径不同。首轮重排的 75 次失败全部保留；控制轮另跑完整 300 题，在后续题开始前等待健康冷却结束，不重试本题失败。两轮也受服务状态变化影响。
-
-### 本地多模态：多轮补查覆盖更多必需证据
-
-在现有知识库上只读评测文本、图片、音频、视频、跨模态与限定范围无答案题。采用最新的来源核验标注，**证据齐全率**表示找齐全部必需证据的题目比例，分母为 76 道有证据标注的题，失败按零计分。
-
-| 模式 | 证据阶段 | 前 5 条证据齐全率 | 集合证据齐全率（@50） |
-| --- | --- | ---: | ---: |
-| Direct 单轮检索 | 检索结果 | 81.58% | 81.58% |
-| 常规多轮 Agent（legacy-agent） | 检索结果 | 92.11% | **100.00%** |
-| Pi Agent | 研究观察，含已核验媒体锚点 | 88.16% | 97.37% |
-| Pi Agent | 最终答案引用 | **96.05%** | **97.37%** |
-
-常规多轮 Agent 的检索集合找齐 **76/76 题**的证据，Direct 为 **62/76 题**；Pi 在最终前 5 个引用中找齐 **73/76 题**，全部引用找齐 **74/76 题**。Pi 引用按答案正文首次出现的顺序计分，未核验媒体保留位置且不授予证据分。各模式执行预算不同，最终引用包含生成后的证据选择，应与检索结果分阶段解读。
-
-本地 80 题来自 35 个来源关联组，文本仅涉及 3 份文档；标注由 Agent 根据来源核验，尚非独立人工盲标，原始媒体也未全面核验。这些是开发集上的证据覆盖指标，最终回答正确性、引用支持度与正确拒答率仍待单独评测。
-
-[完整结果与评分说明](docs/RETRIEVAL_REVIEW_20261008.md) · [公开语料结果](docs/RETRIEVAL_EVALUATION_20261008.md) · [评测协议与复现命令](docs/RETRIEVAL_EVALUATION_V2.md) · [最新机器可读汇总](evals/retrieval_v2/review-20261008/summary.json)
 
 ## 快速开始
 
@@ -138,7 +100,7 @@
 ### 2. 克隆并配置模型服务
 
 ```bash
-git clone https://github.com/Champ-X/MMA-RAG.git
+git clone --depth 1 --single-branch https://github.com/Champ-X/MMA-RAG.git
 cd MMA-RAG
 cp backend/.env.example backend/.env
 ```
@@ -209,7 +171,7 @@ npm --prefix agent-runtime ci
 - **模型或工具调用失败**：检查对应服务商凭证、余额及模型权限。Pi 还需要 `agent-runtime` 依赖和满足版本要求的 Node.js。
 - **首次启动很慢**：检查模型下载日志与 `HF_ENDPOINT`。将 `PRELOAD_LOCAL_MODELS_ON_STARTUP=false` 可推迟下载到首次实际使用，不会消除模型依赖。
 - **媒体预览失败**：确认 `MINIO_PUBLIC_ENDPOINT` 是浏览器可访问的主机与端口，不能使用仅容器内部可解析的 `minio:9000`。
-- **恢复已迁移的本机数据**：使用 `./scripts/start-restored.sh`，与普通入口共享启动、重启、停止和状态管理。它要求已有 MinIO/Qdrant 数据目录或完整存储容器，并保留容器原有挂载，适用于数据仍在其他工作区的情况；不初始化空数据或触发重新入库。详见 [本机数据迁移记录](docs/local-data-migration.md)。
+- **恢复已迁移的本机数据**：使用 `./scripts/start-restored.sh`，与普通入口共享启动、重启、停止和状态管理。它要求已有 MinIO/Qdrant 数据目录或完整存储容器，并保留容器原有挂载，适用于数据仍在其他工作区的情况；不初始化空数据或触发重新入库。详见 [数据恢复说明](docs/LOCAL_STARTUP.md#数据与进程管理)。
 
 </details>
 
@@ -281,18 +243,17 @@ CLI 的 `--agent-mode` 对应常规 `direct / auto / agent`，不启用 Pi。飞
 
 ## 验证与评测
 
-仓库提供自动测试、隔离的 RAG 评测入口及带候选记录的 Pi 实测报告。[检索评测 v2](docs/RETRIEVAL_EVALUATION_V2.md) 支持公开基准与现有知识库对照、证据级评分、逐题失败回执和配对区间；本轮 8 份报告、1,740 条任务记录已通过[离线复算审计](evals/retrieval_v2/completion-audit-20261008.json)。原有 **7 份合成文档、8 个问题**的 v1 基线继续用于快速回归。
-
-激活后端虚拟环境后，在仓库根目录运行以下基础检查：
+项目保留产品回归测试、7 份合成文档 / 8 个问题的快速评测，以及公开语料和自有知识库的评测工具。运行数据、阶段性报告和实验代码快照留在本地，不随源码分发。小样本回归分数不代表通用检索质量。
 
 ```bash
 npm --prefix frontend test
 npm --prefix frontend run build
 npm --prefix agent-runtime test
 ./scripts/rag-eval validate
+python3 scripts/test_dev.py
 ```
 
-后端测试按改动模块选择；[近期回归记录](docs/qa/pi-agent-publication-2026-10-07.md) 提供实际命令与覆盖范围，部分测试需要存储服务。检索指标、独立 judge、数据隔离和报告对比见 [RAG 评测指南](docs/RAG_EVALUATION.md)；Pi 的功能验证与未通过项见 [Pi 验证记录](docs/PI_AGENT_VERIFICATION.md)。
+后端环境与检查命令见 [贡献指南](CONTRIBUTING.md)，指标、隔离环境及复现流程见 [评测指南](docs/RAG_EVALUATION.md)。首次浅克隆只获取当前版本；需要历史时执行 `git fetch --unshallow`，详见 [仓库维护](docs/REPOSITORY.md)。
 
 ## 部署边界
 
@@ -300,22 +261,13 @@ npm --prefix agent-runtime test
 - **Pi 的访问控制有独立范围。** 默认仅本机访问，可配置服务端访问令牌与知识库允许列表；它们不替代整个应用的用户权限体系。
 - **持久化能力因路径而异。** Pi 使用本地 SQLite 账本，单数据目录仅一个宿主持锁；常规后端会话与部分统计仍在进程内，不宜直接横向扩容为无状态多副本。
 - **检索和媒体理解可能出错。** 引用可追溯不等于语义已验证；视频采样不等于逐帧观察。请结合原文件判断关键结论。
-
 ## 文档
 
-| 文档 | 内容 |
-| --- | --- |
-| [Pi Agent Mode](docs/PI_AGENT_MODE.md) | 自主研究、来源工具、配置与运行语义 |
-| [架构说明](docs/MMA_ARCHITECTURE.md) | 入库、常规检索与生成链路；Pi 以独立文档为准 |
-| [多模态技术说明](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) | 图片、音频、视频的解析单元、字段与索引 |
-| [行内引用与附件](docs/chat-inline-references.md) | `@` 材料、编辑与引用预览 |
-| [模型连接测试与调用排查](docs/MODEL_CALL_RELIABILITY.md) | 路由逐项 / 批量测试、健康状态与回退策略 |
-| [CLI 参考](skills/mma-rag/references/cli-reference.md) · [飞书接入](docs/FEISHU_BOT_SETUP.md) | 外部工作流与配置 |
-| [RAG 评测](docs/RAG_EVALUATION.md) · [Pi 验证](docs/PI_AGENT_VERIFICATION.md) | 复现方式、覆盖范围与结果边界 |
-| [检索实测结果](docs/RETRIEVAL_EVALUATION_20261008.md) · [检索评测 v2](docs/RETRIEVAL_EVALUATION_V2.md) | 公开与本地多模态对照、证据覆盖、配对区间与复现命令 |
-| [Decision 模型配置](docs/DECISION_MODELS.md) | TypeSafe / OpenRouter 判断模型、连接测试与高级诊断 |
-| [Jev 实验结论](docs/research/JEV-DECISIONS.md) | 历史 Jev 语义判断与引用诊断实验；默认关闭 |
-| [安全说明](SECURITY.md) · [历史变更](CHANGELOG.md) | 部署要求与已有变更记录 |
+- [文档导航](docs/README.md)：按使用、开发和运维任务查阅。
+- [系统架构](docs/MMA_ARCHITECTURE.md)：入库、常规检索、Pi 与引用协议。
+- [Pi Agent](docs/PI_AGENT_MODE.md) · [Decision 模型](docs/DECISION_MODELS.md)：配置与执行边界。
+- [本地启动](docs/LOCAL_STARTUP.md) · [模型排查](docs/MODEL_CALL_RELIABILITY.md) · [飞书](docs/FEISHU_BOT_SETUP.md)。
+- [贡献指南](CONTRIBUTING.md) · [安全说明](SECURITY.md) · [变更记录](CHANGELOG.md)。
 
 ## 参与贡献
 

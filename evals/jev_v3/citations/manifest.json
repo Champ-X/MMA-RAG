@@ -1,7 +1,0 @@
-{
-  "sha256": "220081038284378bdfb2c009c46df6ca31d1d701fcc94d02bbe93868fb392b1c",
-  "count": 46,
-  "labels": "Assistant authored before calls; no independent human annotation",
-  "scope": "36 challenge claims, 6 prior live whole-answer replays, 4 structural failures",
-  "split_rule": "First four families dev, eight other families test; prompt frozen before all calls"
-}

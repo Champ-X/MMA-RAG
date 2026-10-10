@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Isolated Pi workers for Tessmora's autonomous retrieval mode",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22.19"
+  },
   "scripts": {
     "start": "node src/worker.mjs",
     "test": "node --test test/*.test.mjs"

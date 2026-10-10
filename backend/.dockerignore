@@ -1,0 +1,13 @@
+# Build only application inputs, never local credentials or experiments.
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv*
+logs/
+data/
+experiments/
+tests/
+test_*.py
