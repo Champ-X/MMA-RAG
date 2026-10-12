@@ -11,6 +11,7 @@ from FlagEmbedding import BGEM3FlagModel
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.runtime_paths import state_dir
 
 logger = get_logger(__name__)
 
@@ -58,8 +59,12 @@ class BGEM3SparseEncoder:
             logger.info(f"正在加载 BGE-M3 模型: {self.model_id}...")
             logger.info(f"  使用 Float16: {self.use_fp16} (模型大小: ~{'1.06GB' if self.use_fp16 else '2.27GB'})")
             try:
+                model_path = self.model_id
+                if state_dir() is not None:
+                    from app.core.bge_cache import managed_bge_snapshot
+                    model_path = managed_bge_snapshot(model_path)
                 self._model = BGEM3FlagModel(
-                    self.model_id,
+                    model_path,
                     use_fp16=self.use_fp16,
                 )
                 self._initialized = True

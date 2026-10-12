@@ -16,7 +16,8 @@ import os
 from dotenv import load_dotenv
 
 # 加载环境变量
-load_dotenv()
+if not os.environ.get("TESSMORA_STATE_DIR"):
+    load_dotenv()
 
 from app.core.jev_settings import JevConfigMiddleware
 
@@ -47,7 +48,8 @@ async def _app_lifespan(app: FastAPI):
         session_count, message_count = restore_session_snapshot(chat.sessions, snapshot)
         logger.info('已从显式本地快照恢复会话: sessions={} messages={}', session_count, message_count)
 
-    if settings.preload_local_models_on_startup:
+    # A clean install must expose setup before any key or model download.
+    if settings.preload_local_models_on_startup and settings.siliconflow_api_key:
         # 模型加载为同步阻塞 + 可能长时间下载，放到线程池避免卡住事件循环
         app.state.local_model_preload = await asyncio.to_thread(preload_local_inference_models_sync)
 
@@ -56,9 +58,12 @@ async def _app_lifespan(app: FastAPI):
     from app.core.llm.manager import llm_manager
     from app.core.llm.models_catalog import maintain_llm_catalog
     catalog_task = asyncio.create_task(maintain_llm_catalog(llm_manager.registry), name="llm-catalog")
+    from app.core.setup_service import get_setup_service
+    get_setup_service()  # Recover a persisted interrupted preparation immediately.
     try:
         yield
     finally:
+        await get_setup_service().shutdown()
         catalog_task.cancel()
         await asyncio.gather(catalog_task, return_exceptions=True)
         from app.modules.knowledge.suggested_questions import stop_suggestion_background_tasks
@@ -91,7 +96,7 @@ app.add_middleware(LegacyPriorityMiddleware)
 
 # 导入路由模块
 from app.api import chat, knowledge, upload, debug, import_api, feishu, retrieval, jev
-from app.api import pi_agent
+from app.api import pi_agent, setup
 from app.core.logger import setup_logger
 
 # 设置日志
@@ -111,6 +116,17 @@ app.include_router(import_api.router, prefix="/api/import", tags=["import"])
 app.include_router(feishu.router, prefix="/api/feishu", tags=["feishu"])
 app.include_router(retrieval.router, prefix="/api/v1/retrieval", tags=["retrieval"])
 app.include_router(pi_agent.router, prefix="/api/pi", tags=["pi-agent"])
+app.include_router(setup.router, prefix="/api/setup", tags=["setup"])
+
+# Validation errors normally include rejected inputs; setup carries credentials.
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
+
+@app.exception_handler(RequestValidationError)
+async def redact_setup_validation(request, exc):
+    if request.url.path.startswith("/api/setup/"):
+        return JSONResponse(status_code=422, content={"detail": "配置格式无效，请检查能力选项、模型名称与凭证格式。"})
+    return await request_validation_exception_handler(request, exc)
 
 # 全局异常处理
 @app.exception_handler(Exception)

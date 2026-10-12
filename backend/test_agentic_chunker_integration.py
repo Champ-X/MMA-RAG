@@ -134,6 +134,8 @@ def test_parse_source_prefers_markdown_and_preserves_page_ranges_when_needed():
 
 
 def test_vector_store_configures_the_agentic_text_collection(monkeypatch):
+    # Source installations initialize collections immediately; managed first-run setup defers it.
+    monkeypatch.delenv("TESSMORA_STATE_DIR", raising=False)
     created = []
     indexed = []
 

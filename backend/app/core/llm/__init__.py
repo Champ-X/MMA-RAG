@@ -38,16 +38,19 @@ TASK_MODEL_TYPES: Dict[str, str] = {
 class LLMRegistry:
     """模型注册表"""
     
-    def __init__(self):
+    def __init__(self, settings_override=None):
+        self.settings = settings_override or settings
         self._providers: Dict[str, BaseLLMProvider] = {}
         self._models: Dict[str, Dict[str, Any]] = {}
         self._task_routing: Dict[str, str] = {}
         self.model_health = ModelHealth()
-        self._task_overrides_path = Path(__file__).resolve().parents[3] / "data" / "llm_task_overrides.json"
+        from app.core.runtime_paths import backend_data_dir
+        self._task_overrides_path = backend_data_dir() / "llm_task_overrides.json"
         self._load_config()
     
     def _load_config(self):
         """加载模型配置"""
+        settings = self.settings
         # SiliconFlow 提供商（使用 providers.silicon_flow，含 stream_chat，参见 SiliconFlow 流式文档）
         siliconflow_provider = SiliconFlowProvider(
             settings.siliconflow_api_key,
@@ -482,6 +485,11 @@ class LLMRegistry:
         _apply(getattr(settings, "default_reranker_model", None), "reranking")
         _apply(getattr(settings, "default_video_parsing_model", None), "video_parsing")
         self._apply_saved_task_overrides()
+        # Managed onboarding routes are lower priority than explicit web task overrides.
+        from app.core.runtime_paths import read_managed_config
+        for task, model in read_managed_config().get("task_models", {}).items():
+            if task in self._task_config and task not in self._read_task_overrides():
+                self._task_config[task]["model"] = model
         self._normalize_task_models()
         self._task_routing = {k: v["model"] for k, v in self._task_config.items()}
 
@@ -537,10 +545,21 @@ class LLMRegistry:
     def _write_task_overrides(self, overrides: Dict[str, str]) -> None:
         payload = {task: model for task, model in sorted(overrides.items()) if model}
         self._task_overrides_path.parent.mkdir(parents=True, exist_ok=True)
-        self._task_overrides_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        import os
+        import tempfile
+        name = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self._task_overrides_path.parent, prefix=".llm-routes-", delete=False) as handle:
+                name = handle.name
+                os.chmod(name, 0o600)
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(name, self._task_overrides_path)
+        finally:
+            if name:
+                Path(name).unlink(missing_ok=True)
 
     def _apply_saved_task_overrides(self) -> None:
         saved = self._read_task_overrides()

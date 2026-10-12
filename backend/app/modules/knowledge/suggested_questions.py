@@ -30,7 +30,9 @@ from app.modules.knowledge.natural_questions import (
 logger = get_logger(__name__)
 
 # backend/data/suggestion_cache
-CACHE_DIR = Path(__file__).resolve().parents[3] / "data" / "suggestion_cache"
+from app.core.runtime_paths import backend_data_dir
+
+CACHE_DIR = backend_data_dir() / "suggestion_cache"
 PRECOMPUTED_DIR = CACHE_DIR / "precomputed_by_kb"
 BANK_DIR = CACHE_DIR / "question_bank_by_kb"
 CACHE_TTL_SECONDS_DEFAULT = 7 * 24 * 3600  # 7 天

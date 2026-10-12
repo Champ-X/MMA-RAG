@@ -100,7 +100,9 @@ class JevConfigStore:
                 os.unlink(name)
 
 
-jev_config_store = JevConfigStore(Path(__file__).resolve().parents[2] / "data" / "jev_settings.json")
+from app.core.runtime_paths import backend_data_dir
+
+jev_config_store = JevConfigStore(backend_data_dir() / "jev_settings.json")
 _request_config: ContextVar[JevConfig | None] = ContextVar("jev_request_config", default=None)
 
 

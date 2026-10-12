@@ -14,7 +14,7 @@ from app.core.llm.query_embeddings import QueryEmbeddingCache, embed_queries
 from app.core.sparse_encoder import get_sparse_encoder
 from app.core.logger import get_logger, audit_log
 from app.core.local_models import get_local_model_runtime
-from app.modules.ingestion.storage.vector_store import TEXT_CHUNK_COLLECTION, VectorStore
+from app.modules.ingestion.storage.vector_store import TEXT_CHUNK_COLLECTION, VIDEO_SHOT_COLLECTION, VectorStore
 from app.modules.ingestion.service import IngestionService
 from app.modules.knowledge.service import KnowledgeBaseService
 
@@ -646,6 +646,28 @@ class HybridSearchEngine:
             logger.error(f"Sparse检索失败: {str(e)}")
             return []
     
+    async def _managed_media_is_empty(self, kind: str, target_kb_ids: List[str], target_file_ids=None) -> bool:
+        """Do not download media models for a verified empty first-run branch.
+
+        Existing indexed media still takes the complete original path regardless
+        of the setup preset. Failed counts are unknown, never treated as empty.
+        """
+        from app.core.runtime_paths import state_dir
+        if not state_dir() or not target_kb_ids:
+            return False
+        collection = {"image": "image_vectors", "audio": "audio_vectors", "video": VIDEO_SHOT_COLLECTION}[kind]
+        try:
+            query_filter = self.vector_store._build_query_filter(
+                kb_ids=target_kb_ids, file_ids=target_file_ids,
+                file_fields=["file_id", "source_file_id"],
+            )
+            result = await asyncio.to_thread(self.vector_store.client.count,
+                collection_name=collection, count_filter=query_filter, exact=True)
+            return int(result.count) == 0
+        except Exception as exc:
+            logger.debug("Managed media inventory unavailable; retaining retrieval branch: {} {}", kind, type(exc).__name__)
+            return False
+
     async def _visual_search(
         self,
         query: str,
@@ -666,6 +688,8 @@ class HybridSearchEngine:
             visual_intent: 视觉意图（explicit_demand, implicit_enrichment）
         """
         try:
+            if await self._managed_media_is_empty("image", target_kb_ids, target_file_ids):
+                return []
             logger.info(f"Visual检索开始: 查询='{query}...', Visual Intent={visual_intent}")
             
             # 根据visual_intent设置检索参数
@@ -1069,6 +1093,8 @@ class HybridSearchEngine:
         try:
             if audio_intent == "unnecessary":
                 return []
+            if await self._managed_media_is_empty("audio", target_kb_ids, target_file_ids):
+                return []
             # 1. 文本向量化查询
             embed_result = await embed_queries(self.llm_manager, [query], embedding_cache)
             if not embed_result.success or not embed_result.data:
@@ -1153,6 +1179,8 @@ class HybridSearchEngine:
     ) -> List[Dict[str, Any]]:
         """以 Shot 为主检索单元的四路视频检索，关键帧只在需要视觉增强时参与。"""
         try:
+            if await self._managed_media_is_empty("video", target_kb_ids, target_file_ids):
+                return []
             # 1. 生成 dense 查询向量；caption 与 ASR 共享语义查询，但在向量库中独立召回、独立加权。
             embed_result = await embed_queries(self.llm_manager, [query], embedding_cache)
             if not embed_result.success or not embed_result.data:

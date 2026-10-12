@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0", validation_alias="REDIS_URL")
     
     # SiliconFlow API 配置
-    siliconflow_api_key: str = Field(..., validation_alias="SILICONFLOW_API_KEY")  # type: ignore[arg-type]
+    siliconflow_api_key: str = Field(default="", validation_alias="SILICONFLOW_API_KEY", repr=False)
     siliconflow_embedding_trust_env: bool = Field(
         default=True, validation_alias="SILICONFLOW_EMBEDDING_TRUST_ENV"
     )
@@ -555,7 +555,8 @@ class Settings(BaseSettings):
     def ensure_directories(self):
         """确保必要的目录存在"""
         # 获取backend目录
-        backend_dir = Path(__file__).parent.parent.parent
+        from app.core.runtime_paths import state_dir
+        backend_dir = state_dir() or Path(__file__).parent.parent.parent
         
         # 只需要在backend目录下创建必要的目录
         # minio_data 和 qdrant_storage 由 Docker Compose 在项目根目录管理，不需要在backend目录下创建
@@ -581,6 +582,9 @@ def apply_huggingface_env_from_settings(s: Settings) -> None:
 
 
 # 全局设置实例
-settings = Settings()  # type: ignore[call-arg]
+from app.core.runtime_paths import managed_settings_values, state_dir
+
+# Managed installs never inherit a checkout .env. Existing source runs retain it.
+settings = Settings(**managed_settings_values(), **({"_env_file": None} if state_dir() else {}))
 apply_huggingface_env_from_settings(settings)
 settings.ensure_directories()

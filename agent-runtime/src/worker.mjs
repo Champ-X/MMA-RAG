@@ -1,6 +1,9 @@
 /** One authenticated host pipe, one Pi run, no filesystem/shell/discovered tools. */
 import { createInterface } from 'node:readline';
 import { createRuntime } from './runtime.mjs';
+import { installProxyFromEnv } from './proxy.mjs';
+
+installProxyFromEnv();
 
 const pending = new Map();
 let counter = 0;

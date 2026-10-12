@@ -18,7 +18,7 @@ def setup_logger():
     
     # 创建日志目录
     log_dir = Path(settings.log_file).parent
-    log_dir.mkdir(exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
     
     # 控制台输出格式
     console_format = (
@@ -44,7 +44,7 @@ def setup_logger():
         level=settings.log_level,
         colorize=True,
         backtrace=True,
-        diagnose=True,
+        diagnose=False,
     )
     
     # 文件日志 - 按天轮转
@@ -56,26 +56,26 @@ def setup_logger():
         retention="30 days",
         compression="zip",
         backtrace=True,
-        diagnose=True,
+        diagnose=False,
         enqueue=True,
     )
     
     # 错误日志单独文件
     logger.add(
-        "logs/error.log",
+        str(log_dir / "error.log"),
         format=file_format,
         level="ERROR",
         rotation="00:00",
         retention="30 days",
         compression="zip",
         backtrace=True,
-        diagnose=True,
+        diagnose=False,
         enqueue=True,
     )
     
     # 审计日志 - 记录API调用
     logger.add(
-        "logs/audit.log",
+        str(log_dir / "audit.log"),
         format=file_format,
         level="INFO",
         rotation="1 week",

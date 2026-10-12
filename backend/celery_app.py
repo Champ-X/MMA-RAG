@@ -4,12 +4,14 @@ Celery 异步任务配置
 """
 
 from celery import Celery
+from celery.signals import task_prerun
 from celery.schedules import crontab
 from dotenv import load_dotenv
 import os
 
 # 加载环境变量
-load_dotenv()
+if not os.environ.get("TESSMORA_STATE_DIR"):
+    load_dotenv()
 
 # 创建 Celery 应用实例
 celery_app = Celery(
@@ -59,6 +61,13 @@ celery_app.conf.update(
     # 任务结果过期时间
     result_expires=3600,  # 1小时
 )
+
+@task_prerun.connect
+def refresh_managed_model_configuration(**_kwargs):
+    if os.environ.get("TESSMORA_STATE_DIR"):
+        from app.core.setup_service import get_setup_service
+        get_setup_service(recover_preparation=False).refresh_worker_config()
+
 
 # 自动发现任务
 celery_app.autodiscover_tasks()

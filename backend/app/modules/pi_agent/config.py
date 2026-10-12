@@ -6,12 +6,13 @@ from pathlib import Path
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from app.core.runtime_paths import state_dir
 
 ROOT = Path(__file__).resolve().parents[4]
 
 
 class PiSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="PI_AGENT_", env_file=ROOT / "backend" / ".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="PI_AGENT_", env_file=None if state_dir() else ROOT / "backend" / ".env", extra="ignore")
     enabled: bool = True
     model: str = "deepseek:deepseek-flash"
     thinking_enabled: bool = False
@@ -28,7 +29,7 @@ class PiSettings(BaseSettings):
     # Local workspace access is explicit; deployments can supply a trusted server token.
     api_token: SecretStr | None = None
     trusted_user_id: str | None = None
-    data_dir: Path = ROOT / "data" / "pi-agent"
+    data_dir: Path = (state_dir() / "pi-agent") if state_dir() else ROOT / "data" / "pi-agent"
     node_binary: str = "node"
     # Scheduling capacity, not run limits: excess work waits and remains cancellable.
     max_concurrent_runs: int = Field(default=2, ge=1)

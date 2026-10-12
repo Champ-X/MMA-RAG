@@ -45,11 +45,14 @@ class VectorStore:
     
     def __init__(self):
         # 使用 host 和 port 参数，确保使用 HTTP
+        from app.core.runtime_paths import state_dir
+        managed_setup = bool(state_dir()) and not settings.siliconflow_api_key
         self.client = QdrantClient(
             host=settings.qdrant_host,
             port=settings.qdrant_port,
             api_key=settings.qdrant_api_key if settings.qdrant_api_key else None,
-            https=False  # 明确禁用 HTTPS
+            https=False,  # 明确禁用 HTTPS
+            check_compatibility=not managed_setup
         )
         
         # 集合配置
@@ -206,7 +209,10 @@ class VectorStore:
             }
         }
         
-        self._ensure_collections()
+        from app.core.runtime_paths import state_dir
+        # The managed setup screen must start before credentials/storage are ready.
+        if not state_dir() or settings.siliconflow_api_key:
+            self._ensure_collections()
     
     def _ensure_collections(self):
         """确保必要的集合存在"""

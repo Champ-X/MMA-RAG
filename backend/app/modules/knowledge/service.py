@@ -289,7 +289,10 @@ class KnowledgeBaseService:
         self.vector_store = VectorStore()
         self.minio_adapter = MinIOAdapter()
         self._kb_storage: Dict[str, KnowledgeBase] = {}
-        self._load_from_minio()
+        from app.core.runtime_paths import state_dir
+        if not state_dir():
+            self._load_from_minio()
+        # Managed installs load the catalog on the first list/get request.
     
     async def create_knowledge_base(
         self,

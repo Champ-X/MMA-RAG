@@ -27,6 +27,14 @@ WORKER_EVENTS = {"model.started", "model.completed", "model.rejected", "model.ca
                  "action.delta", "answer.delta", "answer.reset", "tool.rejected", "context.compacted"}
 
 
+def _worker_environment():
+    # Credentials stay on the authenticated host pipe. Proxy settings are an
+    # explicit transport choice; both standard casings preserve NO_PROXY.
+    allowed = {"PATH", "LANG", "LC_ALL", "NODE_EXTRA_CA_CERTS", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY",
+               "https_proxy", "http_proxy", "no_proxy"}
+    return {name: value for name, value in os.environ.items() if name in allowed}
+
+
 class PiSupervisor:
     def __init__(self, settings, registry, *, storage=None, vector_client=None, worker=WORKER):
         self.settings, self.registry, self.worker = settings, registry, worker
@@ -247,8 +255,7 @@ class PiSupervisor:
                           "answer_checks_enabled": self.settings.answer_checks_enabled,
                           "answer_plan_enabled": self.settings.answer_plan_enabled,
                           "tools": definitions(self.settings.answer_checks_enabled, self.settings.answer_plan_enabled), "prompt": prompt}
-                env = {name: value for name, value in os.environ.items() if name in {
-                    "PATH", "LANG", "LC_ALL", "NODE_EXTRA_CA_CERTS", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"}}
+                env = _worker_environment()
                 if self.settings.yield_to_legacy:
                     from .admission import legacy_activity
                     await legacy_activity.wait(emit)
