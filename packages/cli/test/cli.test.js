@@ -106,15 +106,49 @@ test('unmanaged remote connection preserves server ready=false without forcing m
   assert.ok(!result.stderr.includes('远程服务尚未完成配置'));
 });
 
+test('doctor detects storage outages even when health and an empty knowledge list look healthy', async (t) => {
+  let storageReady = false;
+  const requests = [];
+  const server = createServer((req, res) => {
+    requests.push(req.url);
+    assert.equal(req.method, 'GET');
+    res.setHeader('Content-Type', 'application/json');
+    const body = req.url === '/health' ? { status: 'healthy' } : req.url === '/api/setup/status' ? { ready: true, setup_required: false } :
+      req.url === '/api/setup/storage' ? { success: storageReady, checks: [
+        { name: 'qdrant', success: storageReady, message: 'Qdrant HTTP 502', hint: '检查内部服务代理设置' }, { name: 'minio', success: true },
+      ] } : { knowledge_bases: [] };
+    res.end(JSON.stringify(body));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const home = await mkdtemp(join(tmpdir(), 'tessmora-storage-doctor-'));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  await saveState(locations({ home }), { mode: 'remote', url: `http://127.0.0.1:${server.address().port}`, step: 6 });
+  const failed = await cli(['doctor', '--home', home, '--json']);
+  assert.equal(failed.code, 1);
+  const storage = JSON.parse(failed.stdout).checks.find(row => row.name === 'knowledge_storage');
+  assert.equal(storage.success, false);
+  assert.equal(storage.code, 'STORAGE_UNAVAILABLE');
+  assert.match(storage.message, /Qdrant.*502/);
+  assert.ok(!requests.includes('/api/knowledge/'));
+  storageReady = true;
+  const recovered = await cli(['doctor', '--home', home, '--json']);
+  assert.equal(recovered.code, 0);
+  assert.equal(JSON.parse(recovered.stdout).success, true);
+});
+
 test('invalid credentials never persist; model download interruption resumes from saved checkpoint', async (t) => {
   const home = await mkdtemp(join(tmpdir(), 'tessmora-resume-'));
   t.after(() => rm(home, { recursive: true, force: true }));
-  let tests = 0, preparations = 0, configSaved = false, interrupted = true, ready = false;
+  let tests = 0, preparations = 0, configSaved = false, interrupted = true, ready = false, storageReady = false;
   const server = createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     let raw = ''; for await (const chunk of req) raw += chunk;
     const body = raw ? JSON.parse(raw) : {};
     if (req.url === '/health') return res.end('{"status":"healthy"}');
+    if (req.url === '/api/setup/storage') return res.end(JSON.stringify({ success: storageReady, checks: [
+      { name: 'qdrant', success: storageReady, message: 'Qdrant HTTP 502', hint: '检查代理绕过设置' }, { name: 'minio', success: true },
+    ] }));
     if (req.url === '/api/setup/status' || req.method === 'GET' && req.url === '/api/setup/config') return res.end(JSON.stringify({ ready, configured: configSaved, tested: configSaved, prepared: ready, providers: {}, capabilities: ['text'] }));
     if (req.url === '/api/setup/test') {
       tests++;
@@ -143,6 +177,11 @@ test('invalid credentials never persist; model download interruption resumes fro
   await saveState(paths, state); await ensureEnvironment(paths, state); await saveState(paths, { ...state, step: 3, stage: 'models' });
   const file = join(home, 'credentials.json'); await writeFile(file, '{"deepseek":"bad-secret","siliconflow":"private-key"}');
   const args = ['setup', '--home', home, '--yes', '--no-open', '--json', '--credential-file', file];
+  const storageFailure = await cli(args, env);
+  assert.equal(JSON.parse(storageFailure.stdout).error.code, 'STORAGE_UNAVAILABLE');
+  assert.equal(tests, 0, 'storage failure must precede paid model probes');
+  assert.equal(configSaved, false);
+  storageReady = true;
   const invalid = await cli(args, env);
   assert.equal(JSON.parse(invalid.stdout).error.code, 'MODEL_TEST_FAILED', invalid.stdout + invalid.stderr);
   assert.equal(configSaved, false);

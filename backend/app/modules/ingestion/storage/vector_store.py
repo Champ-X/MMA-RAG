@@ -24,6 +24,7 @@ from qdrant_client.http.models import (
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.storage_health import StorageSchemaMismatch
 
 logger = get_logger(__name__)
 
@@ -43,16 +44,13 @@ class VectorPoint:
 class VectorStore:
     """Qdrant向量数据库适配器"""
     
-    def __init__(self):
+    def __init__(self, *, initialize_collections: bool = True):
         # 使用 host 和 port 参数，确保使用 HTTP
         from app.core.runtime_paths import state_dir
-        managed_setup = bool(state_dir()) and not settings.siliconflow_api_key
+        managed_setup = bool(state_dir())
         self.client = QdrantClient(
-            host=settings.qdrant_host,
-            port=settings.qdrant_port,
-            api_key=settings.qdrant_api_key if settings.qdrant_api_key else None,
+            **settings.get_qdrant_config(),
             https=False,  # 明确禁用 HTTPS
-            check_compatibility=not managed_setup
         )
         
         # 集合配置
@@ -209,13 +207,13 @@ class VectorStore:
             }
         }
         
-        from app.core.runtime_paths import state_dir
-        # The managed setup screen must start before credentials/storage are ready.
-        if not state_dir() or settings.siliconflow_api_key:
+        # Managed installs initialize explicitly in setup, including after keys
+        # are saved. Constructing a reader must not mutate existing collections.
+        if initialize_collections and not managed_setup:
             self._ensure_collections()
     
-    def _ensure_collections(self):
-        """确保必要的集合存在"""
+    def _ensure_collections(self, *, strict: bool = False):
+        """确保必要的集合存在；安装准备遇到异常立即失败，不自动重建旧集合。"""
         for collection_name, config in self.collections.items():
             try:
                 # 检查是否为多向量集合
@@ -237,6 +235,8 @@ class VectorStore:
                         except Exception:
                             pass
                         if expected_vector_names and existing_vector_names != expected_vector_names:
+                            if strict:
+                                raise StorageSchemaMismatch("Existing vector names require an explicit collection migration")
                             logger.warning(
                                 f"集合 {collection_name} 的向量名与配置不一致: 现有={existing_vector_names}, 期望={expected_vector_names}。将删除并重新创建。"
                             )
@@ -253,7 +253,7 @@ class VectorStore:
                                 if config.get("sparse_vectors_config"):
                                     create_kwargs["sparse_vectors_config"] = config["sparse_vectors_config"]
                                 self.client.create_collection(**create_kwargs)
-                                self._setup_payload_schema(collection_name, config)
+                                self._setup_payload_schema(collection_name, config, strict=strict)
                                 logger.info(f"已重新创建集合: {collection_name} (多向量: {expected_vector_names})")
                             continue
                     
@@ -286,6 +286,8 @@ class VectorStore:
                         # 或者如果集合是单向量格式但我们需要使用 Named Vector 格式
                         if needs_sparse:
                             if not existing_has_sparse or not existing_is_named_vector:
+                                if strict:
+                                    raise StorageSchemaMismatch("Existing vector format requires an explicit collection migration")
                                 logger.warning(
                                     f"集合 {collection_name} 需要支持稀疏向量和 Named Vector 格式，"
                                     f"但现有集合不支持（sparse={existing_has_sparse}, named={existing_is_named_vector}）。"
@@ -316,11 +318,13 @@ class VectorStore:
                                 self.client.create_collection(**create_kwargs)
                                 logger.info(f"重新创建向量集合: {collection_name} (Named Vector格式，支持稀疏向量)")
                                 # 设置 payload schema
-                                self._setup_payload_schema(collection_name, config)
+                                self._setup_payload_schema(collection_name, config, strict=strict)
                                 continue
                             
                             # 如果集合支持稀疏向量，检查是否是 Named Vector 格式
                             if existing_has_sparse and not existing_is_named_vector:
+                                if strict:
+                                    raise StorageSchemaMismatch("Existing vector format requires an explicit collection migration")
                                 logger.warning(
                                     f"集合 {collection_name} 支持稀疏向量，但不是 Named Vector 格式。"
                                     f"将删除并重新创建为 Named Vector 格式。"
@@ -349,7 +353,7 @@ class VectorStore:
                                 self.client.create_collection(**create_kwargs)
                                 logger.info(f"重新创建向量集合: {collection_name} (Named Vector格式)")
                                 # 设置 payload schema
-                                self._setup_payload_schema(collection_name, config)
+                                self._setup_payload_schema(collection_name, config, strict=strict)
                                 continue
                         
                         # 检查单向量集合的维度是否匹配
@@ -384,6 +388,8 @@ class VectorStore:
                                 pass
                             
                             if existing_size is not None and existing_size != expected_size:
+                                if strict:
+                                    raise StorageSchemaMismatch("Existing vector dimensions require an explicit collection migration")
                                 logger.warning(
                                     f"集合 {collection_name} 的向量维度不匹配: "
                                     f"现有={existing_size}, 期望={expected_size}。"
@@ -419,11 +425,11 @@ class VectorStore:
                                 self.client.create_collection(**create_kwargs)
                                 logger.info(f"重新创建向量集合: {collection_name} (维度: {expected_size})")
                                 # 设置 payload schema
-                                self._setup_payload_schema(collection_name, config)
+                                self._setup_payload_schema(collection_name, config, strict=strict)
                             elif existing_size is not None:
                                 logger.debug(f"集合已存在且维度正确: {collection_name} (维度: {existing_size})")
                                 # 检查并设置 payload schema
-                                self._setup_payload_schema(collection_name, config)
+                                self._setup_payload_schema(collection_name, config, strict=strict)
                 except Exception as get_e:
                     # 集合不存在，创建它
                     error_msg = str(get_e)
@@ -461,17 +467,19 @@ class VectorStore:
                         
                         self.client.create_collection(**create_kwargs)
                         # 设置 payload schema
-                        self._setup_payload_schema(collection_name, config)
+                        self._setup_payload_schema(collection_name, config, strict=strict)
                     else:
                         raise
                 else:
                     # 集合已存在，检查并设置 payload schema
-                    self._setup_payload_schema(collection_name, config)
+                    self._setup_payload_schema(collection_name, config, strict=strict)
             except Exception as e:
                 error_msg = str(e)
                 # 忽略集合已存在的错误（409 Conflict）
                 if "409" in error_msg or "already exists" in error_msg.lower():
                     logger.debug(f"集合已存在: {collection_name}")
+                elif strict:
+                    raise
                 # 忽略 Pydantic 验证错误（集合已创建成功，只是响应解析失败）
                 elif "validation error" in error_msg.lower() or "ParsingModel" in error_msg:
                     logger.warning(
@@ -480,7 +488,7 @@ class VectorStore:
                 else:
                     logger.error(f"创建集合失败 {collection_name}: {str(e)}")
     
-    def _setup_payload_schema(self, collection_name: str, config: Dict[str, Any]):
+    def _setup_payload_schema(self, collection_name: str, config: Dict[str, Any], *, strict: bool = False):
         """
         为 collection 设置 payload schema
         
@@ -509,7 +517,8 @@ class VectorStore:
                             if name:
                                 existing_index_fields.add(name)
             except Exception:
-                pass
+                if strict:
+                    raise
 
             # 为每个字段创建 payload index；仅在实际新建时打 INFO，已存在则跳过不刷屏
             for field_name, field_type in payload_schema.items():
@@ -529,9 +538,13 @@ class VectorStore:
                     if "already exists" in error_msg.lower() or "409" in error_msg:
                         existing_index_fields.add(field_name)
                         logger.debug(f"字段 {field_name} 的索引已存在: {collection_name}")
+                    elif strict:
+                        raise
                     else:
                         logger.warning(f"为字段 {field_name} 创建索引失败: {str(idx_e)}")
         except Exception as e:
+            if strict:
+                raise
             logger.warning(f"设置 payload schema 失败 {collection_name}: {str(e)}")
     
     async def upsert_text_chunks(

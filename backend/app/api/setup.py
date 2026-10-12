@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.setup_service import get_setup_service
+from app.core.storage_health import check_storage
 
 router = APIRouter()
 Provider = Literal["deepseek", "siliconflow", "aliyun_bailian", "openrouter"]
@@ -58,6 +59,13 @@ def require_setup_token(x_tessmora_setup_token: str | None = Header(default=None
 @router.get("/status")
 async def setup_status():
     return get_setup_service().status()
+
+
+@router.get("/storage")
+def setup_storage():
+    # Public, read-only and credential-free, like /status. Sync handler keeps
+    # the bounded storage requests off the API event loop.
+    return check_storage()
 
 
 @router.get("/config", dependencies=[Depends(require_setup_token)])

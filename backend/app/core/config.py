@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     qdrant_host: str = Field(default="localhost", validation_alias="QDRANT_HOST")
     qdrant_port: int = Field(default=6333, validation_alias="QDRANT_PORT")
     qdrant_api_key: Optional[str] = Field(default=None, validation_alias="QDRANT_API_KEY")
+    # Storage traffic is direct by default; external model clients keep their proxies.
+    qdrant_use_env_proxy: bool = Field(default=False, validation_alias="QDRANT_USE_ENV_PROXY")
     
     # Redis 配置
     redis_url: str = Field(default="redis://localhost:6379/0", validation_alias="REDIS_URL")
@@ -547,6 +549,10 @@ class Settings(BaseSettings):
         config = {
             "host": self.qdrant_host,
             "port": self.qdrant_port,
+            "trust_env": self.qdrant_use_env_proxy,
+            # The SDK's separate version request ignores trust_env. Runtime
+            # versions are pinned; availability is checked with real SDK reads.
+            "check_compatibility": False,
         }
         if self.qdrant_api_key:
             config["api_key"] = self.qdrant_api_key

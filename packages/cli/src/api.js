@@ -30,6 +30,20 @@ export async function readiness(baseUrl) {
   return { health, setup };
 }
 
+export async function storageReadiness(baseUrl) {
+  const result = await request(baseUrl, '/api/setup/storage', { timeout: 20000 });
+  if (typeof result.success !== 'boolean' || !Array.isArray(result.checks) ||
+      !['qdrant', 'minio'].every(name => result.checks.some(row => row.name === name && typeof row.success === 'boolean'))) {
+    throw new TessmoraError('STORAGE_RESPONSE', '服务未提供完整的存储检查结果。', '请更新 Tessmora 后端，再运行 tessmora doctor。');
+  }
+  const failed = result.checks.filter(row => !row.success);
+  if (!result.success || failed.length) {
+    throw new TessmoraError('STORAGE_UNAVAILABLE', failed.map(row => row.message || `${row.name} 尚未就绪`).join('\n') || '存储尚未就绪。',
+      [...new Set(failed.map(row => row.hint).filter(Boolean))].join('\n') || '运行 tessmora doctor 检查存储服务。', { checks: result.checks });
+  }
+  return result;
+}
+
 export async function waitForService(baseUrl, { timeout = 180000, interval = 1500, onWait } = {}) {
   const deadline = Date.now() + timeout;
   let last;
@@ -48,6 +62,11 @@ export async function prepareModels(baseUrl, token, { onProgress, pollInterval =
     onProgress?.(progress);
     if (progress.state === 'ready') return progress;
     if (['error', 'interrupted'].includes(progress.state)) {
+      if (progress.error_code === 'STORAGE_UNAVAILABLE') {
+        throw new TessmoraError('STORAGE_UNAVAILABLE', progress.message || '存储初始化失败。',
+          progress.hint || '运行 tessmora doctor 检查；配置与下载缓存已保留，修复后重新运行 tessmora setup。',
+          { stage: 'storage', errorType: progress.error_type, storage: progress.storage });
+      }
       const failed = Object.entries(progress.models || {}).filter(([, model]) => ['error', 'interrupted'].includes(model.state)).map(([name, model]) => `${name}: ${model.message || model.error || model.state}`).join('; ');
       throw new TessmoraError('MODEL_PREPARE_FAILED', failed || progress.message || '模型准备中断。', '已完成的下载将保留；重新运行 tessmora setup 可继续。');
     }

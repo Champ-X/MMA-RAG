@@ -32,6 +32,8 @@ docker compose --env-file /path/to/private/runtime.env \
 
 终端向导的网络选项允许显式指定模型下载镜像和构建代理，无需手改 `.env`。代理地址必须能从 Docker 容器内访问；宿主机的 `127.0.0.1` 在容器内指向容器本身。构建代理只用于下载依赖；`--proxy` 运行代理用于容器内模型请求与下载，内部服务通信会绕过代理。代理不能替代模型服务的 API 凭证。
 
+运行配置同时覆盖大小写的 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` / `NO_PROXY`，避免 Docker 客户端注入的旧代理或小写 `no_proxy` 覆盖应用设置。所有 Qdrant 客户端默认直连，包括安装检查、普通检索与 Pi 检索；不会更改模型服务的代理设置。SDK 自带的版本探测会忽略连接代理选项，因此统一关闭这一独立请求，实际连接检查通过 SDK 读取集合完成。自定义远程 Qdrant 部署确实需要代理时，可显式设置后端环境变量 `QDRANT_USE_ENV_PROXY=true`。
+
 ### MinIO 分发来源
 
 2026-10-12 检查时，原 `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` 无法公开获取，Docker Hub 同版本不可用，官方历史二进制下载返回 410。[上游 README](https://github.com/minio/minio#source-only-distribution) 已说明社区版改为源码分发。登录 Docker 或重复拉取不能保证修复这一默认来源。
@@ -65,6 +67,8 @@ Nginx 代理 `/api/` 和 `/health`，支持流式输出及较长解析请求。`
 回环健康探针显式绕过代理：前端使用 BusyBox wget 的 `-Y off` 并执行 GET；后端与 MinIO 使用 curl 的 `--noproxy '*'`。不能仅依赖 `NO_PROXY`，Docker 客户端可能向容器注入小写代理变量。Compose 中也定义探针，更新 CLI 运行配置即可修正缓存镜像的探针。worker 保留 Celery ping 的退出码与原始输出；Redis 传输连接和读写超时为 5 秒，启动连接失败后继续重试，避免每次等待操作系统约两分钟的 TCP 超时。
 
 安装失败会采集当前 Compose 项目的状态、退出码 / OOM、最近探针与异常服务日志，后端 / worker 还会探测内部 DNS 与 TCP。诊断有超时与长度限制，不读取容器完整环境；沿用配置凭证脱敏。再次执行 setup 仅重启仍不健康的应用服务以重新等待检查，不重启健康服务或存储。
+
+`GET /api/setup/storage` 是只读存储检查，实际读取 Qdrant 集合和 MinIO 存储桶，分别返回结果；请求有超时限制，响应不包含凭证、地址、原始异常内容或存储清单。`doctor` 使用此接口，不再将空知识库列表视为存储健康。安装向导在模型测试前预检存储，第 5 步再次检查并初始化检索集合，存储失败会显示组件和 HTTP 状态等具体原因。托管安装只在准备步骤初始化集合；发现旧集合结构不兼容时保留数据并提示迁移，不自动删除重建。服务 `/health` 继续只表示 API 存活，不代表存储或模型已准备好。
 
 ## 数据与重启
 
@@ -104,7 +108,7 @@ python3 deploy/smoke.py --backend-image tessmora-backend:review --frontend-image
 
 脚本使用随机项目名、空数据目录、空模型配置和空闲端口，不操作已有安装。退出时默认停止且移除本次隔离容器，保留报告与数据，便于检查；不执行 `down -v`。报告不包含管理 token、存储密码或模型密钥。`--keep` 实例检查完毕后，使用输出目录内的 `runtime.env`、报告内 `project`，对同一 Compose 文件执行 `down`。
 
-Smoke 还会给前端注入一个不可用代理，验证旧探针失败而新探针与网页/API 均可用；通过 Redis 投递并执行真实 Celery 测试任务，并用不响应的 Redis 替身验证单次连接超时。代理覆盖文件保留在该次证据目录，便于复查。
+Smoke 还会给前端注入一个不可用代理，验证旧探针失败而新探针与网页/API 均可用；通过 Redis 投递并执行真实 Celery 测试任务，并用不响应的 Redis 替身验证单次连接超时。随后通过配置 API 保存合成凭证，在大小写代理绕过列表冲突时执行真实存储初始化，验证六个集合创建、同步/异步读取及外部请求仍使用代理。它还会暂时停止隔离 Qdrant，确认存储检查准确报告故障并能恢复。合成凭证不用于模型调用，不下载模型。代理覆盖文件保留在该次证据目录，便于复查。
 
 [Distribution images 工作流](../.github/workflows/distribution.yml)在原生 Linux amd64 / arm64 runner 上构建并执行此检查。该检查证明基础安装与重启；真实模型连接、下载恢复、资料入库、问答引用及浏览器视觉验收需要分别保留证据，不能用健康检查替代。
 

@@ -195,6 +195,47 @@ def test_model_requirements_keep_sparse_and_multimodal_contract():
     assert set(setup_service.required_local_models(["text", "video"])) == {"bge_m3", "clip", "clap"}
 
 
+@pytest.mark.asyncio
+async def test_storage_error_retains_specific_diagnosis_and_retry_skips_cached_models(managed, monkeypatch):
+    from app.core.storage_health import StorageUnavailable, storage_failure
+    from app.core.llm import connection_probe
+    from qdrant_client.http.exceptions import UnexpectedResponse
+    import httpx
+    artifact = managed.root / "cached.bin"
+    artifact.write_bytes(b"cached")
+    managed._progress["models"] = {"bge_m3": {"state": "ready", "artifacts": [{"path": str(artifact), "size": 6}]}}
+    async def success(source, **kwargs):
+        return {"success": True, **kwargs}
+    monkeypatch.setattr(connection_probe, "run_probe", success)
+    monkeypatch.setattr(setup_service, "_tool_probe", success)
+    draft = {"credentials": {"deepseek": "d", "siliconflow": "s"}}
+    receipt = (await managed.test(draft))["test_receipt"]
+    await managed.save({**draft, "test_receipt": receipt})
+    assert managed.status()["ready"]
+    monkeypatch.setattr(setup_service, "_warm_model", lambda _: pytest.fail("storage failure and cached models must not download"))
+
+    def fail():
+        raise StorageUnavailable(storage_failure("qdrant", UnexpectedResponse(502, "private-key", b"private-key", httpx.Headers())))
+
+    monkeypatch.setattr(setup_service, "_prepare_storage", fail)
+    await managed.prepare()
+    await managed._task
+    progress = managed.progress()
+    assert progress["stage"] == "storage"
+    assert progress["error_code"] == "STORAGE_UNAVAILABLE"
+    assert progress["storage"]["http_status"] == 502
+    assert not managed.status()["ready"] and managed.status()["setup_required"]
+    assert "Qdrant" in progress["message"] and "502" in progress["message"]
+    assert "private-key" not in (managed.root / "prepare.json").read_text()
+    monkeypatch.setattr(setup_service, "_prepare_storage", lambda: None)
+    await managed.prepare()
+    await managed._task
+    assert managed.progress()["state"] == "ready"
+    assert managed.progress()["completed"] == 1
+    assert managed.status()["ready"]
+    assert "storage" not in managed.progress() and "error_code" not in managed.progress()
+
+
 def test_worker_does_not_recover_api_owned_preparation(managed):
     setup_service.atomic_private_json(managed.root / "prepare.json", {"state": "running", "models": {"bge_m3": {"state": "running"}}, "completed": 0, "total": 1})
     worker = setup_service.SetupService(managed.root, recover_preparation=False)

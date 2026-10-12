@@ -15,6 +15,7 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import time
 import urllib.error
 import urllib.request
 
@@ -46,6 +47,56 @@ else:
     raise AssertionError('Unresponsive Redis was accepted')
 finally:
     server.close()
+"""
+
+# Exercise actual application clients after API credentials have been saved.
+# A local rejecting proxy reproduces WSL's lowercase bypass-list mismatch.
+STORAGE_PROXY_PROBE = """
+import asyncio, json, os, threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import httpx
+class Proxy(BaseHTTPRequestHandler):
+    calls = 0
+    def do_GET(self):
+        type(self).calls += 1
+        self.send_response(502)
+        self.end_headers()
+    def log_message(self, *args): pass
+proxy = ThreadingHTTPServer(('127.0.0.1', 0), Proxy)
+thread = threading.Thread(target=proxy.serve_forever, daemon=True)
+thread.start()
+for key in ('http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'all_proxy'):
+    os.environ[key] = f'http://127.0.0.1:{proxy.server_port}'
+os.environ['NO_PROXY'] = 'localhost,127.0.0.1,minio,qdrant,redis'
+os.environ['no_proxy'] = 'localhost,127.0.0.1'
+try:
+    assert httpx.get('http://qdrant:6333/collections', timeout=5).status_code == 502
+    assert httpx.get('http://qdrant:6333/collections', trust_env=False, timeout=5).status_code == 200
+    Proxy.calls = 0
+    from app.core.config import settings
+    from app.core.setup_service import _prepare_storage, _assert_embedding_change_safe
+    from app.core.storage_health import check_storage
+    from qdrant_client import AsyncQdrantClient
+    assert settings.siliconflow_api_key == 'synthetic-smoke-key'
+    assert check_storage()['success']
+    _assert_embedding_change_safe()
+    _prepare_storage()
+    async def check_async():
+        client = AsyncQdrantClient(**settings.get_qdrant_config())
+        try:
+            return sorted(row.name for row in (await client.get_collections()).collections)
+        finally:
+            await client.close()
+    collections = asyncio.run(check_async())
+    assert len(collections) == 6 and 'text_chunks_agentic' in collections
+    assert Proxy.calls == 0, 'Internal storage traffic reached the external proxy'
+    assert httpx.get('http://model-probe.invalid/', timeout=5).status_code == 502
+    assert Proxy.calls == 1, 'External provider transport lost its proxy'
+    print(json.dumps({'collections': collections, 'internal_proxy_requests': 0, 'external_proxy_requests': 1}))
+finally:
+    proxy.shutdown()
+    proxy.server_close()
+    thread.join(timeout=2)
 """
 
 
@@ -102,9 +153,10 @@ def main() -> None:
     def compose_run(*command: str) -> subprocess.CompletedProcess:
         return subprocess.run(cmd + list(command), check=True, text=True, capture_output=True, env=process_env)
 
-    def request(path: str, headers: dict | None = None):
-        req = urllib.request.Request(base + path, headers=headers or {})
-        with urllib.request.urlopen(req, timeout=15) as response:
+    def request(path: str, headers: dict | None = None, body: dict | None = None):
+        req = urllib.request.Request(base + path, headers={**(headers or {}), **({"Content-Type": "application/json"} if body is not None else {})},
+                                     data=json.dumps(body).encode() if body is not None else None)
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=20) as response:
             content = response.read()
             return json.loads(content) if "json" in response.headers.get("content-type", "") else content.decode()
 
@@ -144,6 +196,29 @@ def main() -> None:
         assert private_config["managed"] is True
         report["checks"]["setup_auth"] = True
         assert token not in json.dumps(report), "Public status leaked setup token"
+        report["checks"]["storage_preflight"] = request("/api/setup/storage")
+        assert report["checks"]["storage_preflight"]["success"]
+        saved = request("/api/setup/config", {"X-Tessmora-Setup-Token": token},
+                        {"credentials": {"deepseek": "synthetic-smoke-key", "siliconflow": "synthetic-smoke-key"}})
+        assert saved["configured"] and not saved["tested"]
+        storage_probe = compose_run("exec", "-T", "backend", "python", "-c", STORAGE_PROXY_PROBE)
+        report["checks"]["proxy_safe_storage_initialization"] = json.loads(storage_probe.stdout.strip().splitlines()[-1])
+        # Process liveness must not conceal a real storage outage.
+        compose_run("stop", "qdrant")
+        failed_storage = request("/api/setup/storage")
+        assert not failed_storage["success"]
+        failed_qdrant = next(row for row in failed_storage["checks"] if row["name"] == "qdrant")
+        assert not failed_qdrant["success"] and "Qdrant" in failed_qdrant["message"]
+        assert request("/health")["status"] == "healthy"
+        report["checks"]["storage_outage_diagnosis"] = failed_storage
+        compose_run("start", "qdrant")
+        for _ in range(20):
+            if request("/api/setup/storage")["success"]:
+                break
+            time.sleep(1)
+        else:
+            raise AssertionError("Storage preflight did not recover after Qdrant restart")
+        report["checks"]["storage_recovery"] = True
         tools = compose_run("exec", "-T", "backend", "sh", "-c",
                             "node --version && ffmpeg -version | head -1 && libreoffice --version && test ! -e /app/backend/.env && test -f /app/agent-runtime/src/worker.mjs")
         report["checks"]["runtime_tools"] = tools.stdout.strip().splitlines()

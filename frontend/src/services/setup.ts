@@ -5,6 +5,10 @@ export type Provider = 'deepseek' | 'siliconflow' | 'aliyun_bailian' | 'openrout
 export interface SetupCheck { provider: Provider; model: string; capability: string; task: string }
 export interface SetupProgress {
   state: 'idle' | 'running' | 'interrupted' | 'error' | 'ready'
+  stage?: 'storage' | 'models' | 'complete'
+  message?: string
+  hint?: string
+  error_code?: string
   models: Record<string, { state: string; message: string }>
   completed: number
   total: number

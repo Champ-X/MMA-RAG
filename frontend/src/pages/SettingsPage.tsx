@@ -12,6 +12,8 @@ import {
   AlertCircle,
   Brain,
   Check,
+  ChevronRight,
+  Compass,
   Monitor,
   Moon,
   Palette,
@@ -357,10 +359,16 @@ export function SettingsPage() {
               <p>调整外观、模型和检索行为，让工具更合你的习惯。</p>
             </div>
           </div>
-          <Link to="/setup" className="text-sm underline underline-offset-4">服务配置向导</Link>
-          <div className={cn('settings-sync-status', pendingChanges && 'has-changes')} role="status">
-            {pendingChanges ? <span className="settings-status-dot" aria-hidden /> : <Check size={15} aria-hidden />}
-            {pendingChanges ? '有未保存的更改' : '所有更改已保存'}
+          <div className="settings-page-actions">
+            <Link to="/setup" className="settings-setup-link">
+              <Compass size={17} aria-hidden />
+              <span>服务配置向导</span>
+              <ChevronRight size={15} aria-hidden />
+            </Link>
+            <div className={cn('settings-sync-status', pendingChanges && 'has-changes')} role="status">
+              {pendingChanges ? <span className="settings-status-dot" aria-hidden /> : <Check size={15} aria-hidden />}
+              {pendingChanges ? '有未保存的更改' : '所有更改已保存'}
+            </div>
           </div>
         </header>
 

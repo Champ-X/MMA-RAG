@@ -63,8 +63,7 @@ class PiSupervisor:
                 region=app_settings.minio_region or "us-east-1",
                 http_client=urllib3.PoolManager(num_pools=2, maxsize=2, block=True,
                     timeout=urllib3.Timeout(connect=5, read=15), retries=False))
-            vector_client = vector_client or AsyncQdrantClient(host=app_settings.qdrant_host, port=app_settings.qdrant_port,
-                api_key=app_settings.qdrant_api_key or None, timeout=12,
+            vector_client = vector_client or AsyncQdrantClient(**app_settings.get_qdrant_config(), timeout=12,
                 limits=__import__("httpx").Limits(max_connections=4, max_keepalive_connections=2))
         self.storage, self.vectors = storage, vector_client
 

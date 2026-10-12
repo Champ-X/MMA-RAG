@@ -4,7 +4,7 @@ import { readState, ensureEnvironment } from './config.js';
 import { compose, containers, openBrowser } from './docker.js';
 import { startRuntimeWithUI } from './runtime.js';
 import { prepareDocker, checkDockerWithGuidance } from './docker-guidance.js';
-import { readiness, request } from './api.js';
+import { readiness, storageReadiness } from './api.js';
 import { setup } from './wizard.js';
 import { TessmoraError, publicError } from './errors.js';
 import { collectRuntimeDiagnostics, diagnosticSummary, serviceReady, runtimeServices } from './runtime-diagnostics.js';
@@ -114,11 +114,7 @@ export async function execute(command, paths, options, ui) {
       if (result.setup.setup_required) throw new TessmoraError('SETUP_INCOMPLETE', '应用可访问，但模型配置或准备尚未完成。', '运行 tessmora setup 继续首次配置。');
       return { capabilities: result.setup.capabilities, ready: result.setup.ready, tested: result.setup.tested };
     });
-    await check('knowledge_storage', async () => {
-      const result = await request(state.url, '/api/knowledge/', { timeout: 15000 });
-      if (!Array.isArray(result.knowledge_bases)) throw new TessmoraError('STORAGE_RESPONSE', '知识库服务没有返回预期的数据结构。');
-      return { accessible: true, knowledgeBases: result.knowledge_bases.length };
-    });
+    await check('knowledge_storage', () => storageReadiness(state.url));
     const names = { docker: 'Docker 与 Compose', data_directory: '资料目录', private_environment: '配置访问权限', containers: '运行中的服务', application: '应用连接与配置状态', knowledge_storage: '知识库存储' };
     for (const row of checks) (row.success ? ui.success : ui.warn).call(ui, `${names[row.name] || row.name}: ${row.success ? '通过' : `${row.message}${row.hint ? `\n${row.hint}` : ''}`}`);
     const docker = checks.find((row) => row.name === 'docker')?.result;

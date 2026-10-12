@@ -16,6 +16,7 @@ from pathlib import Path
 from threading import RLock
 
 from app.core.runtime_paths import PROVIDER_FIELDS, state_dir
+from app.core.storage_health import StorageUnavailable, check_storage, storage_failure
 
 CAPABILITIES = ("text", "image", "audio", "video")
 REQUIRED_MODELS = {"text": ("bge_m3",), "image": ("bge_m3", "clip"), "audio": ("bge_m3", "clap"), "video": ("bge_m3", "clip", "clap")}
@@ -47,7 +48,7 @@ def _assert_embedding_change_safe() -> None:
     """Changing vector spaces requires a new empty store, even at equal dimensions."""
     from app.core.config import settings
     from qdrant_client import QdrantClient
-    client = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port, api_key=settings.qdrant_api_key, https=False, timeout=5, check_compatibility=False)
+    client = QdrantClient(**settings.get_qdrant_config(), https=False, timeout=5)
     try:
         for row in client.get_collections().collections:
             if (client.get_collection(row.name).points_count or 0) > 0:
@@ -61,15 +62,23 @@ def _assert_embedding_change_safe() -> None:
 
 
 def _prepare_storage() -> None:
-    from app.modules.ingestion.storage.vector_store import VectorStore, TEXT_CHUNK_COLLECTION
-    from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
-    store = VectorStore()
-    from app.core.config import settings
-    if not settings.siliconflow_api_key:
-        store._ensure_collections()
-    if TEXT_CHUNK_COLLECTION not in {row.name for row in store.client.get_collections().collections}:
-        raise RuntimeError("Text retrieval collection is unavailable")
-    MinIOAdapter().client.list_buckets()
+    for row in check_storage()["checks"]:
+        if not row["success"]:
+            raise StorageUnavailable(row)
+    from app.modules.ingestion.storage.vector_store import VectorStore
+    store = None
+    try:
+        # Run once, whether credentials were just saved or loaded on restart.
+        store = VectorStore(initialize_collections=False)
+        store._ensure_collections(strict=True)
+        present = {row.name for row in store.client.get_collections().collections}
+        if not set(store.collections).issubset(present):
+            raise RuntimeError("Required retrieval collections are unavailable")
+    except Exception as error:
+        raise StorageUnavailable(storage_failure("qdrant", error)) from None
+    finally:
+        if store is not None:
+            store.client.close()
 
 
 def _model_artifacts(name: str) -> list[dict]:
@@ -271,8 +280,9 @@ class SetupService:
         required = required_local_models(draft["capabilities"])
         progress = self.progress()
         prepared = all(_artifacts_ready(self._progress.get("models", {}).get(model, {})) for model in required)
-        ready = configured and tested and prepared
-        return {"managed": bool(self.root), "setup_required": bool(self.root) and (not saved.get("completed_at") or not configured or not prepared),
+        preparation_blocked = progress.get("state") in {"running", "error", "interrupted"}
+        ready = configured and tested and prepared and not preparation_blocked
+        return {"managed": bool(self.root), "setup_required": bool(self.root) and (not saved.get("completed_at") or not configured or not prepared or preparation_blocked),
                 "onboarding_complete": bool(saved.get("completed_at")),
                 "configured": configured, "tested": tested, "prepared": prepared, "ready": ready,
                 "capabilities": draft["capabilities"], "providers": providers, "task_models": draft["task_models"],
@@ -344,7 +354,7 @@ class SetupService:
         draft["configured_at"] = time.time()
         if tested:
             draft.update(tested_fingerprint=fingerprint, tested_at=time.time() if receipt else old.get("tested_at"))
-            if all(_artifacts_ready(self._progress.get("models", {}).get(name, {})) for name in required_local_models(draft["capabilities"])):
+            if self._progress.get("state") not in {"running", "error", "interrupted"} and all(_artifacts_ready(self._progress.get("models", {}).get(name, {})) for name in required_local_models(draft["capabilities"])):
                 draft["completed_at"] = draft.get("completed_at", time.time())
         atomic_private_json(self.root / "setup.json", draft)
         from app.core.config import settings
@@ -408,7 +418,7 @@ class SetupService:
         with self._lock:
             previous = self._progress.get("models", {})
             models = {name: previous[name] if _artifacts_ready(previous.get(name, {})) else {"state": "pending", "message": "等待准备"} for name in required}
-            self._progress = {"state": "running", "models": models, "completed": sum(row["state"] == "ready" for row in models.values()), "total": len(required), "started_at": time.time()}
+            self._progress = {"state": "running", "stage": "storage", "message": "检查 Qdrant 与 MinIO，准备检索集合", "models": models, "completed": sum(row["state"] == "ready" for row in models.values()), "total": len(required), "started_at": time.time()}
             self._persist_progress()
         self._task = asyncio.create_task(self._prepare(required), name="tessmora-model-setup")
         return self.progress()
@@ -419,9 +429,16 @@ class SetupService:
                 await asyncio.to_thread(_prepare_storage)
             except Exception as exc:
                 with self._lock:
-                    self._progress.update(state="error", error_type=type(exc).__name__, message="存储服务尚未就绪，请运行 tessmora doctor 并重试。")
+                    detail = exc.detail if isinstance(exc, StorageUnavailable) else None
+                    self._progress.update(state="error", error_code="STORAGE_UNAVAILABLE", error_type=type(exc).__name__,
+                                          message=detail["message"] if detail else "存储初始化失败，请运行 tessmora doctor 检查。")
+                    if detail:
+                        self._progress.update(storage=detail, hint=detail["hint"], error_type=detail["error_type"])
                     self._persist_progress()
                 return
+            with self._lock:
+                self._progress.update(stage="models", message="存储已就绪，开始准备本地模型")
+                self._persist_progress()
             for name in names:
                 if self._progress["models"][name]["state"] == "ready":
                     continue
@@ -441,7 +458,7 @@ class SetupService:
                     self._progress["completed"] += 1
                     self._persist_progress()
             with self._lock:
-                self._progress.update(state="ready", finished_at=time.time())
+                self._progress.update(state="ready", stage="complete", message="所选能力已就绪", finished_at=time.time())
                 self._persist_progress()
             if self.status()["ready"]:
                 saved = self._config()

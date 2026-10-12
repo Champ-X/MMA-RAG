@@ -54,8 +54,30 @@
   align-items: center;
 }
 
-.settings-page-header { justify-content: space-between; gap: 24px; margin-bottom: 28px; }
-.settings-page-heading { gap: 18px; }
+.settings-page-header { justify-content: space-between; flex-wrap: wrap; gap: 20px 24px; margin-bottom: 28px; }
+.settings-page-heading { min-width: 0; gap: 18px; }
+.settings-page-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin-inline-start: auto; }
+.settings-setup-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  gap: 8px;
+  padding: 10px 13px;
+  border: 1px solid var(--settings-border);
+  border-radius: 11px;
+  background: var(--settings-surface);
+  color: var(--settings-accent);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 150ms, border-color 150ms;
+}
+.settings-setup-link:hover { border-color: var(--settings-accent); background: var(--settings-accent-soft); }
+.settings-setup-link:focus-visible { outline: 2px solid var(--settings-accent); outline-offset: 3px; }
+.settings-setup-link > svg { flex-shrink: 0; }
 .settings-page-heading h1 {
   margin: 0;
   font-family: 'Noto Serif SC', 'Songti SC', serif;
@@ -251,6 +273,8 @@
 @media (max-width: 640px) {
   .settings-container { padding: 22px 12px 28px; }
   .settings-page-header { flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .settings-page-actions { width: 100%; margin-inline-start: 0; gap: 10px; }
+  .settings-setup-link { font-size: 12px; padding-inline: 10px; }
   .settings-page-heading { min-width: 0; align-items: flex-start; gap: 12px; }
   .settings-page-heading > div { min-width: 0; }
   .settings-page-heading h1 { font-size: 25px; }

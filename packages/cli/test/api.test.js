@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { request, readiness, prepareModels } from '../src/api.js';
+import { request, readiness, prepareModels, storageReadiness } from '../src/api.js';
 
 async function serve(t, handler) {
   const server = createServer(handler);
@@ -62,4 +62,40 @@ test('model preparation reports progress and resumes interrupted server task', a
 test('redirects cannot forward setup token to another origin', async (t) => {
   const base = await serve(t, (req, res) => { res.writeHead(302, { Location: 'http://127.0.0.1:1/' }); res.end(); });
   await assert.rejects(request(base, '/api/setup/config', { token: 'private' }), { code: 'SERVICE_UNREACHABLE' });
+});
+
+test('storage preflight checks both stores and rejects a misleading empty knowledge list', async (t) => {
+  let failed = true;
+  const base = await serve(t, (req, res) => {
+    assert.equal(req.url, '/api/setup/storage');
+    assert.equal(req.method, 'GET');
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ success: !failed, checks: [
+      { name: 'qdrant', success: !failed, message: 'Qdrant 返回 HTTP 502。', hint: '检查内部代理绕过设置。', http_status: 502 },
+      { name: 'minio', success: true },
+    ] }));
+  });
+  await assert.rejects(storageReadiness(base), error => {
+    assert.equal(error.code, 'STORAGE_UNAVAILABLE');
+    assert.match(error.message, /Qdrant.*502/);
+    assert.match(error.hint, /代理/);
+    return true;
+  });
+  failed = false;
+  assert.equal((await storageReadiness(base)).success, true);
+});
+
+test('storage failure during preparation stays a storage failure and retains its HTTP status', async (t) => {
+  const base = await serve(t, (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ state: 'error', stage: 'storage', error_code: 'STORAGE_UNAVAILABLE', error_type: 'UnexpectedResponse',
+      message: 'Qdrant 返回 HTTP 502。', hint: '检查容器网络与代理；配置已保存。', storage: { name: 'qdrant', http_status: 502 }, models: {} }));
+  });
+  await assert.rejects(prepareModels(base, 'token'), error => {
+    assert.equal(error.code, 'STORAGE_UNAVAILABLE');
+    assert.equal(error.details.storage.http_status, 502);
+    assert.match(error.message, /Qdrant/);
+    assert.match(error.hint, /配置已保存/);
+    return true;
+  });
 });

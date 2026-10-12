@@ -5,7 +5,7 @@ import { saveState, projectName, validateDataDir, normalizeUrl, ensureEnvironmen
 import { availablePort, detectSource, openBrowser, containers } from './docker.js';
 import { startRuntimeWithUI } from './runtime.js';
 import { prepareDocker } from './docker-guidance.js';
-import { readiness, request, prepareModels } from './api.js';
+import { readiness, request, prepareModels, storageReadiness } from './api.js';
 import { TessmoraError, redact } from './errors.js';
 import { BACK, backOption, labels, providerLabels } from './ui.js';
 
@@ -212,6 +212,15 @@ export async function setup(paths, initial, options, ui) {
       await persist(3, 'models');
     }
     if (step === 3) {
+      const storage = await retryable(ui, async () => {
+        const spin = ui.spinner('检查向量与文件存储');
+        try {
+          const result = await storageReadiness(state.url);
+          spin.stop('Qdrant 与 MinIO 连接正常');
+          return result;
+        } catch (error) { spin.error('存储连接尚未就绪'); throw error; }
+      }, { back: true });
+      if (storage === BACK) { step = 2; continue; }
       ui.step(4, '连接模型服务', '密钥遮罩输入，保存前进行真实调用。测试会产生少量服务商用量。');
       const env = await ensureEnvironment(paths, state);
       const current = await request(state.url, '/api/setup/config', { token: env.TESSMORA_SETUP_TOKEN });
@@ -257,17 +266,21 @@ export async function setup(paths, initial, options, ui) {
       ui.step(5, '准备所选能力', '只下载本次所需模型。缓存与任务进度会保留。');
       const env = await ensureEnvironment(paths, state);
       const prepared = await retryable(ui, async () => {
-        const spin = ui.spinner('检查本地模型缓存');
+        const spin = ui.spinner('检查存储并准备检索集合');
         try {
           const progress = await prepareModels(state.url, env.TESSMORA_SETUP_TOKEN, {
             onProgress: (value) => {
+              if (value.stage === 'storage') {
+                spin.message(`${value.message || '检查存储并准备检索集合'}${value.elapsed_seconds ? ` · ${Math.round(value.elapsed_seconds)} 秒` : ''}`);
+                return;
+              }
               const current = Object.entries(value.models || {}).find(([, model]) => ['running', 'downloading'].includes(model.state));
               spin.message(`${value.completed || 0}/${value.total || state.capabilities.length} 已就绪${current ? ` · ${current[0]} ${current[1].message || ''}` : ' · 正在检查模型'}${value.elapsed_seconds ? ` · ${Math.round(value.elapsed_seconds)} 秒` : ''}`);
             },
           });
           spin.stop('所选能力的本地模型已就绪');
           return progress;
-        } catch (error) { spin.error('模型准备尚未完成，已保留进度'); throw error; }
+        } catch (error) { spin.error(error.code === 'STORAGE_UNAVAILABLE' ? '存储准备尚未完成，配置已保留' : '模型准备尚未完成，已保留进度'); throw error; }
       }, { back: true });
       if (prepared === BACK) { step = 3; continue; }
       const verified = await readiness(state.url);

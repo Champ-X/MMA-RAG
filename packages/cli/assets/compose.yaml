@@ -18,7 +18,14 @@ x-app: &app
     HF_ENDPOINT: ${TESSMORA_HF_ENDPOINT:-https://huggingface.co}
     HTTP_PROXY: ${TESSMORA_PROXY:-}
     HTTPS_PROXY: ${TESSMORA_PROXY:-}
+    ALL_PROXY: ${TESSMORA_PROXY:-}
+    # Override both casings: Docker client defaults can inject lowercase values,
+    # and Python/HTTPX gives lowercase no_proxy precedence over NO_PROXY.
+    http_proxy: ${TESSMORA_PROXY:-}
+    https_proxy: ${TESSMORA_PROXY:-}
+    all_proxy: ${TESSMORA_PROXY:-}
     NO_PROXY: localhost,127.0.0.1,::1,minio,qdrant,redis,backend,frontend,worker
+    no_proxy: localhost,127.0.0.1,::1,minio,qdrant,redis,backend,frontend,worker
     MINIO_ENDPOINT: minio:9000
     MINIO_PUBLIC_ENDPOINT: localhost:${TESSMORA_STORAGE_PORT:-9000}
     MINIO_ACCESS_KEY: ${TESSMORA_MINIO_USER:-tessmora}

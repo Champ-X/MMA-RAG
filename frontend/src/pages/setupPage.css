@@ -68,6 +68,7 @@
 .setup-live { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--setup-teal); margin-top: 20px; line-height: 1.8; }
 .setup-live svg { flex-shrink: 0; }
 .setup-error { padding: 14px 16px; background: #fff1ef; border: 1px solid #efc6c1; color: #923845; font-size: 13px; line-height: 1.9; border-radius: 8px; margin-top: 20px; }
+.setup-check-group .setup-error { margin-block: 16px; }
 .setup-ready { display: flex; gap: 14px; align-items: center; background: #e5f3ef; padding: 22px; border-radius: 10px; margin-bottom: 22px; }
 .setup-ready > svg { flex-shrink: 0; color: var(--setup-teal); }
 .setup-ready strong { font-size: 15px; }
