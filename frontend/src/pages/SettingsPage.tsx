@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import type { TaskModelEntry } from '@/components/settings/ModelConfig'
 import { DecisionSettings } from '@/components/settings/DecisionSettings'
 import { Button } from '@/components/ui/button'
@@ -357,6 +357,7 @@ export function SettingsPage() {
               <p>调整外观、模型和检索行为，让工具更合你的习惯。</p>
             </div>
           </div>
+          <Link to="/setup" className="text-sm underline underline-offset-4">服务配置向导</Link>
           <div className={cn('settings-sync-status', pendingChanges && 'has-changes')} role="status">
             {pendingChanges ? <span className="settings-status-dot" aria-hidden /> : <Check size={15} aria-hidden />}
             {pendingChanges ? '有未保存的更改' : '所有更改已保存'}

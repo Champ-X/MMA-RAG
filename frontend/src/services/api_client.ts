@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import { getAuthToken, getSetupToken } from '@/lib/setupSession'
 import type { ChatScopeFile } from '@/store/useChatStore'
 import type { DecisionConfig, DecisionSettingsResponse, DecisionTestResponse, DecisionIntentTestResponse } from '@/types/decision'
 import type { ModelRouteSelection, ModelRouteTestResponse } from '@/types/modelRouteTest'
@@ -41,7 +42,7 @@ class ApiClient {
     this.instance.interceptors.request.use(
       (config) => {
         // 添加认证token（如果需要）
-        const token = localStorage.getItem('auth_token');
+        const token = getAuthToken();
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
@@ -65,7 +66,7 @@ class ApiClient {
         console.error('❌ 响应错误:', error.response?.data || error.message);
         
         // 处理常见错误
-        if (error.response?.status === 401) {
+        if (error.response?.status === 401 && !getSetupToken()) {
           // 未授权，清除token并跳转到登录页
           localStorage.removeItem('auth_token');
           window.location.href = '/login';
@@ -239,7 +240,7 @@ class ApiClient {
     formData.append('file', file);
 
     const baseURL = this.getBaseURL();
-    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    const token = getAuthToken();
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
 

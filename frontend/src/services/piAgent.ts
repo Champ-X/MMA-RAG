@@ -1,4 +1,5 @@
 import { apiClient } from './api_client'
+import { getAuthToken } from '@/lib/setupSession'
 import type { ChatScopeFile } from '@/store/useChatStore'
 import type { ChatMention } from '@/lib/chatReferences'
 import { persistMentions } from '@/lib/chatReferences'
@@ -22,7 +23,7 @@ function normalizeAssets(event: PiEvent): PiEvent {
   }) } }
 }
 function headers(): Record<string, string> {
-  const token = localStorage.getItem('auth_token')
+  const token = getAuthToken()
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 class PiApiError extends Error {
