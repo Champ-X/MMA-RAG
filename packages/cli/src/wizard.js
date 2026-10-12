@@ -2,7 +2,8 @@ import { readFile, mkdir, access, readdir } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { resolve } from 'node:path';
 import { saveState, projectName, validateDataDir, normalizeUrl, ensureEnvironment } from './config.js';
-import { availablePort, detectSource, dockerCheck, startRuntime, openBrowser, containers } from './docker.js';
+import { availablePort, detectSource, startRuntime, openBrowser, containers } from './docker.js';
+import { prepareDocker } from './docker-guidance.js';
 import { readiness, request, waitForService, prepareModels } from './api.js';
 import { TessmoraError, redact } from './errors.js';
 import { BACK, backOption, labels, providerLabels } from './ui.js';
@@ -93,6 +94,7 @@ export async function setup(paths, initial, options, ui) {
   const persist = async (nextStep, stage) => { state = await saveState(paths, { ...state, step: nextStep, stage }); step = nextStep; };
   if (state.mode === 'local' && step >= 3) {
     const resumed = await retryable(ui, async () => {
+      if (await prepareDocker(ui, { ...options, back: true }) === BACK) return BACK;
       const spin = ui.spinner('恢复已有运行环境');
       try {
         await startRuntime(paths, state, { onLine: (line) => spin.message(line.split('\n').at(-1).slice(0, 140)) });
@@ -153,7 +155,7 @@ export async function setup(paths, initial, options, ui) {
     }
     if (step === 2) {
       ui.step(3, '准备运行环境', '程序更新与用户资料分开存放。现有资料不会被清理。');
-      const docker = await retryable(ui, () => dockerCheck(), { back: true });
+      const docker = await prepareDocker(ui, { ...options, back: true });
       if (docker === BACK) { step = 1; continue; }
       ui.success(`Docker ${docker.version} · Compose ${docker.compose}${docker.memoryBytes ? ` · ${(docker.memoryBytes / 1024 ** 3).toFixed(1)} GiB / ${docker.cpus} CPU` : ''}`);
       if (docker.advisory) ui.warn(docker.advisory);

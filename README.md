@@ -89,7 +89,7 @@
 
 ### 引导安装（当前源码分发）
 
-准备 Node.js **22.19+** 和已启动的 Docker / Compose，然后执行：
+准备 Node.js **22.19+** 即可进入向导，宿主机无需预装 Python。向导会检查 Docker / Compose；尚未安装或启动时，会提供对应系统的安装步骤、官方入口和重新检测选项。
 
 ```bash
 git clone --depth 1 --single-branch https://github.com/Champ-X/MMA-RAG.git
@@ -99,6 +99,8 @@ node packages/cli/bin/tessmora.js setup --source .
 ```
 
 向导会构建并启动网页、后端、Pi 运行时及存储服务，遮罩输入 API Key，实际测试模型连接，再按需准备本地模型。下载或配置中断后，重新运行同一命令继续。已有开发环境正在使用默认端口时，请在向导中选择其他端口。
+
+完整本机运行仍需要 Docker 与 Compose 2.20+。系统安装和授权由用户完成；向导支持等待 Docker 就绪后自动继续，遇到权限或 Compose 版本问题时给出具体修复指引。
 
 安装器支持打包为 npm 包并在本机安装；**尚未发布公共 npm 包或预构建镜像**，不要直接假定 `npm install -g @tessmora/cli` 已可用。打包安装、`start/stop/status/logs/configure/doctor/open`、数据备份和远程连接见 [安装器说明](packages/cli/README.md) 与 [完整容器分发](docs/DISTRIBUTION.md)。
 

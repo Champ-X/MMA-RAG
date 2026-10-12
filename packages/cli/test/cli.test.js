@@ -40,6 +40,31 @@ test('an unfinished instance resumes setup and explicit start gives recovery gui
   assert.match(JSON.parse(started.stdout).error.hint, /tessmora setup/);
 });
 
+test('incomplete setup and doctor both explain Docker recovery in JSON without host mutations', async (t) => {
+  const home = await mkdtemp(join(tmpdir(), 'tessmora-docker-doctor-'));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const paths = locations({ home });
+  await saveState(paths, { mode: 'local', step: 2, stage: 'runtime', capabilities: ['text'] });
+  const fakeBin = join(home, 'bin'); await mkdir(fakeBin);
+  const fakeDocker = join(fakeBin, 'docker');
+  const callLog = join(home, 'calls.jsonl');
+  await writeFile(fakeDocker, `#!${process.execPath}\nimport { appendFileSync } from 'node:fs';\nconst args=process.argv.slice(2); appendFileSync(${JSON.stringify(callLog)},JSON.stringify(args)+'\\n');\nif(args[0]==='--version') console.log('Docker 29.0.0'); else if(args[0]==='context') console.log('default'); else { console.error('Cannot connect to the Docker daemon'); process.exitCode=1; }\n`);
+  await chmod(fakeDocker, 0o755);
+  const env = { PATH: `${fakeBin}:${process.env.PATH}`, DOCKER_HOST: '', DOCKER_CONTEXT: '' };
+  const setup = await cli(['setup', '--home', home, '--yes', '--json', '--no-open'], env);
+  assert.equal(setup.code, 1);
+  const error = JSON.parse(setup.stdout).error;
+  assert.equal(error.code, 'DOCKER_NOT_RUNNING');
+  assert.match(error.hint, /https:\/\/docs.docker.com\//);
+  assert.equal(JSON.parse(await readFile(paths.manifest, 'utf8')).step, 2);
+  const doctor = await cli(['doctor', '--home', home, '--json'], env);
+  assert.equal(doctor.code, 1);
+  const report = JSON.parse(doctor.stdout);
+  assert.equal(report.configured, false);
+  assert.equal(report.checks.find(check => check.name === 'docker').code, 'DOCKER_NOT_RUNNING');
+  assert.ok((await readFile(callLog, 'utf8')).trim().split('\n').map(JSON.parse).every(([command]) => ['--version', 'version', 'context'].includes(command)));
+});
+
 test('remote setup performs only read requests; stop cannot mutate remote service', async (t) => {
   const requests = [];
   const server = createServer((req, res) => {

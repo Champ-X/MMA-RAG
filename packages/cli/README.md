@@ -1,6 +1,6 @@
 # Tessmora CLI
 
-终端优先的首次配置与运行管理。Node.js **22.19+**；本机运行需要 Docker Engine / Docker Desktop 和 Compose v2，支持 `docker compose` 与独立 `docker-compose`。首版面向 macOS、Linux、Windows WSL2；原生 Windows 尚未验收。
+终端优先的首次配置与运行管理。进入向导只需 Node.js **22.19+** 与 npm；Python 和应用依赖由容器提供。本机运行需要 Docker Engine / Docker Desktop 和 Compose **2.20+**，支持 `docker compose` 与独立 `docker-compose`。尚未准备 Docker 时，可先进入向导按步骤安装。首版面向 macOS、Linux、Windows WSL2；原生 Windows 尚未验收。
 
 ## 当前分发状态
 
@@ -30,6 +30,19 @@ tessmora setup --source "$PWD"
 方向键选择，空格勾选，回车继续；各阶段提供返回入口。`Ctrl+C` 退出后重新执行 `tessmora` 或 `tessmora setup` 可继续。恢复时会检查服务的真实就绪状态；缺少模型缓存时继续准备，模型配置变化时重新验证。未通过测试的草稿凭证仅保留在当前进程内，退出后需要重新输入。
 
 应用可在没有模型凭证时启动。服务可访问、模型连接测试通过、模型准备完成是独立状态，`status` 和 `doctor` 会明确显示尚未完成的部分。
+
+### Docker 尚未准备好时
+
+向导分别识别 Docker 命令缺失、命令异常、引擎未连接、访问权限不足，以及 Compose 缺失或版本过低，并提供对应的步骤与官方链接：
+
+- macOS：区分 Apple silicon / Intel；Docker Desktop 已安装时，可以选择启动应用。新安装的常见 Docker CLI 路径会补充到当前向导进程的 PATH，无需修改 shell 配置。
+- Linux：识别常见发行版，给出官方 Engine / Compose 安装说明；服务未启动与当前用户权限不足分别处理。
+- Windows / WSL：引导启用 WSL2 和 Docker Desktop 的 WSL Integration；原生 Windows 用户建议进入 WSL2 后运行项目。WSL 会尝试通过 Windows 浏览器打开指南，失败时保留可复制链接。
+- 已有 Colima、自定义 context 或 `DOCKER_HOST`：沿用当前连接，显示对应检查步骤，不自动切换到另一个引擎。
+
+菜单提供“打开官方安装 / 修复指南”“已完成，重新检测”“等待 Docker 就绪，自动继续”，以及返回与保存退出。等待每轮结束后间隔 3 秒检查，约 3 分钟后回到选择菜单；检查通过自动进入下一步。系统安装、管理员操作和 Docker 首次授权在系统或 Docker 窗口中完成，向导不会静默执行安装脚本或提权命令。
+
+`--no-open` 隐藏浏览器打开选项；非交互模式失败时直接返回错误及系统对应的步骤，不启动桌面应用或等待交互。`doctor --json` 同样输出可操作的错误码与提示，并可在尚未完成运行环境配置时执行。
 
 ## 日常命令
 

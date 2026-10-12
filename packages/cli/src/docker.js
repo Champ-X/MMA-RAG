@@ -3,6 +3,8 @@ import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { createServer } from 'node:net';
+import { homedir, release } from 'node:os';
+import { constants } from 'node:fs';
 import { TessmoraError, redact } from './errors.js';
 import { ensureEnvironment, projectName } from './config.js';
 
@@ -13,14 +15,37 @@ process.once('exit', () => { for (const child of activeChildren) child.kill('SIG
 
 export async function resolveCompose() {
   if (composeCommand) return composeCommand;
-  try {
-    await run('docker', ['compose', 'version', '--short'], { timeout: 10000 });
-    composeCommand = ['docker', ['compose']];
-  } catch {
-    await run('docker-compose', ['version', '--short'], { timeout: 10000 });
-    composeCommand = ['docker-compose', []];
-  }
+  const found = await findCompose(run);
+  composeCommand = found.command;
   return composeCommand;
+}
+
+async function findCompose(runner) {
+  const versions = [];
+  for (const command of [['docker', ['compose']], ['docker-compose', []]]) {
+    let version;
+    try { version = await runner(command[0], [...command[1], 'version', '--short'], { timeout: 10000 }); }
+    catch { continue; }
+    const match = /^v?(\d+)\.(\d+)(?:\.|$)/.exec(version.trim());
+    if (match && (Number(match[1]) > 2 || Number(match[1]) === 2 && Number(match[2]) >= 20)) return { command, version: version.trim() };
+    versions.push(match ? `${match[1]}.${match[2]}` : '未知版本');
+  }
+  throw new TessmoraError(versions.length ? 'COMPOSE_OUTDATED' : 'COMPOSE_MISSING', versions.length ? `Compose 版本不满足要求（检测到 ${versions.join(' / ')}）。` : '尚未找到 Docker Compose。', '需要 Compose 2.20 或更新版本；Docker Desktop 用户可更新 Desktop，Linux 用户可安装 Compose 插件。');
+}
+
+// A Desktop installer may update shell startup files while this wizard is still open.
+// Extend only this process's PATH, preserving already discoverable user commands.
+export async function refreshDockerPath({ platform = process.platform, home = homedir(), env = process.env, accessible = (path) => access(path, constants.X_OK) } = {}) {
+  if (platform !== 'darwin') return false;
+  const candidates = [join(home, '.docker', 'bin'), '/usr/local/bin', '/Applications/Docker.app/Contents/Resources/bin', join(home, 'Applications/Docker.app/Contents/Resources/bin')];
+  for (const dir of candidates) {
+    try { await accessible(join(dir, 'docker')); }
+    catch { continue; }
+    if ((env.PATH || '').split(':').includes(dir)) continue;
+    env.PATH = [env.PATH, dir].filter(Boolean).join(':');
+    return true;
+  }
+  return false;
 }
 
 export async function run(command, args, { onLine, secrets = [], timeout = 0, env = process.env } = {}) {
@@ -60,18 +85,35 @@ export async function run(command, args, { onLine, secrets = [], timeout = 0, en
   });
 }
 
-export async function dockerCheck() {
-  try {
-    const version = await run('docker', ['version', '--format', '{{.Server.Version}}'], { timeout: 15000 });
-    const [command, prefix] = await resolveCompose();
-    const compose = await run(command, [...prefix, 'version', '--short'], { timeout: 10000 });
-    let resources = {};
-    try { resources = JSON.parse(await run('docker', ['info', '--format', '{"memoryBytes":{{.MemTotal}},"cpus":{{.NCPU}}}'], { timeout: 10000 })); } catch { /* Resource advisory must not block usable engines. */ }
-    return { version, compose, ...resources, ...(resources.memoryBytes && resources.memoryBytes < 8 * 1024 ** 3 ? { advisory: 'Docker 可用内存不足 8 GiB。文本模型准备与问答可能较慢；完整多模态建议分配更多内存。可在 Docker 设置中调整，此向导不会修改或重启现有引擎。' } : {}) };
-  } catch (error) {
-    if (error.code === 'COMMAND_MISSING') throw error;
-    throw new TessmoraError('DOCKER_UNAVAILABLE', 'Docker 尚未就绪。', '启动 Docker Desktop，等待引擎就绪后重新检测。Linux 请检查 Docker 服务和当前用户权限。');
+export async function dockerCheck({ runner = run } = {}) {
+  // Reset stale Compose selection after an in-wizard installation or upgrade.
+  if (runner === run) composeCommand = undefined;
+  try { await runner('docker', ['--version'], { timeout: 10000 }); }
+  catch (error) {
+    if (error.code !== 'COMMAND_MISSING') throw new TessmoraError('DOCKER_CLI_FAILED', 'Docker 命令无法正常运行。', '请检查 Docker 安装与终端 PATH，然后重新检测。');
+    if (runner === run && await refreshDockerPath()) return dockerCheck();
+    throw new TessmoraError('DOCKER_MISSING', '这台电脑尚未找到 Docker 命令。', '安装 Docker 并启动后，回到向导重新检测即可继续。');
   }
+  let context;
+  try {
+    const value = (await runner('docker', ['context', 'show'], { timeout: 5000 })).trim();
+    if (/^[a-zA-Z0-9_.-]{1,80}$/.test(value)) context = value;
+  } catch { /* Older clients may not expose a context; never change it automatically. */ }
+  let version;
+  try {
+    version = await runner('docker', ['version', '--format', '{{.Server.Version}}'], { timeout: 15000 });
+    if (!version.trim()) throw new Error('No server version');
+  } catch (error) {
+    const denied = /permission denied|access is denied|operation not permitted/i.test(`${error.message} ${error.hint || ''}`);
+    throw new TessmoraError(denied ? 'DOCKER_PERMISSION' : 'DOCKER_NOT_RUNNING', denied ? '当前用户没有访问 Docker 引擎的权限。' : 'Docker 已安装，但当前引擎尚未连接成功。', '检查当前 Docker 服务或连接设置后重新检测。', { context });
+  }
+  let found;
+  try { found = await findCompose(runner); }
+  catch (error) { error.details = { context }; throw error; }
+  if (runner === run) composeCommand = found.command;
+  let resources = {};
+  try { resources = JSON.parse(await runner('docker', ['info', '--format', '{"memoryBytes":{{.MemTotal}},"cpus":{{.NCPU}}}'], { timeout: 10000 })); } catch { /* Resource advisory must not block usable engines. */ }
+  return { version, compose: found.version, ...resources, ...(resources.memoryBytes && resources.memoryBytes < 8 * 1024 ** 3 ? { advisory: 'Docker 可用内存不足 8 GiB。文本模型准备与问答可能较慢；完整多模态建议分配更多内存。可在 Docker 设置中调整，此向导不会修改或重启现有引擎。' } : {}) };
 }
 
 export async function portAvailable(port, host = '127.0.0.1') {
@@ -168,7 +210,13 @@ export async function startRuntime(paths, state, { onLine, rebuild = false } = {
   await compose(paths, state, ['up', '-d', '--wait', '--wait-timeout', '240'], { onLine });
 }
 
-export async function openBrowser(url) {
-  const commands = process.platform === 'darwin' ? ['open', [url]] : process.platform === 'win32' ? ['rundll32.exe', ['url.dll,FileProtocolHandler', url]] : ['xdg-open', [url]];
-  try { await run(...commands, { timeout: 10000, secrets: [new URL(url).hash.slice(1)] }); return true; } catch { return false; }
+export async function openBrowser(url, { platform = process.platform, wsl = Boolean(process.env.WSL_DISTRO_NAME || /microsoft|wsl/i.test(release())), runner = run } = {}) {
+  const windows = ['rundll32.exe', ['url.dll,FileProtocolHandler', url]];
+  const commands = platform === 'darwin' ? [['open', [url]]] : platform === 'win32' ? [windows]
+    : wsl ? [['wslview', [url]], windows, ['xdg-open', [url]]] : [['xdg-open', [url]]];
+  for (const command of commands) {
+    try { await runner(...command, { timeout: 10000, secrets: [new URL(url).hash.slice(1)] }); return true; }
+    catch { /* Try a WSL-compatible opener before falling back to a copyable URL. */ }
+  }
+  return false;
 }

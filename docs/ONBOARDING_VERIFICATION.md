@@ -60,6 +60,17 @@
 
 实际 npm tarball 含 13 个文件，内置 Compose 与源码一致；安装到临时 npm prefix 后 `tessmora --help` 可用。没有打入测试数据、环境文件或 node_modules。本轮仍未验证 Windows / Linux amd64 实机，也未重复首次业务验收表中的真实问答与完整多模态流程。
 
+## 2026-10-12 Docker 准备引导
+
+向导按系统提供 Docker 安装、启动、权限与 Compose 修复步骤。支持打开官方说明、重新检测、等待就绪后自动继续；macOS 已安装的 Docker Desktop 可由用户选择启动。保留当前 Docker context / `DOCKER_HOST`，不执行系统安装、提权或引擎切换。
+
+- CLI **41 项测试通过**，覆盖不同平台与架构、WSL、Colima、自定义连接、Compose 最低版本、当前进程 PATH 恢复、等待超时与继续、返回及非交互错误提示。
+- 真实 PTY 中使用隔离 Docker 替身验证：选择等待后，引擎变为可用时自动进入目录与端口设置；Ctrl+C 退出码为 130，配置保留在第 2 阶段。记录的 11 次 Docker 调用均为版本、context、Compose 或资源读取，没有容器变更。
+- 本机 Colima 只读诊断通过：Node 24.19.0、Docker 29.5.2、Compose 5.5.0。原有 3001 页面返回 HTTP 200，三个 `mmrag_*` 存储容器持续运行。
+- 实际 `npm pack` 产物含 14 个文件，包括新的 Docker 引导模块，无环境文件、测试或 node_modules；安装到临时 npm prefix 后 `doctor --json` 通过，且安装前诊断未创建实例目录。
+
+跨平台步骤由确定性测试覆盖；本轮没有在全新系统实际安装 Docker，也没有执行 Docker Desktop 的首次授权。Windows / WSL2、Linux amd64 的完整安装验收仍待完成，不能将引导分支测试等同于这些平台的实机验收。
+
 ## 本地证据与发布状态
 
 证据保留于被 Git 忽略的目录，不包含在 npm 包、镜像构建上下文或提交内容中：

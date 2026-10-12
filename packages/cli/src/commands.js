@@ -1,7 +1,8 @@
 import { stat, access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { readState, ensureEnvironment } from './config.js';
-import { compose, containers, dockerCheck, startRuntime, openBrowser } from './docker.js';
+import { compose, containers, startRuntime, openBrowser } from './docker.js';
+import { prepareDocker, checkDockerWithGuidance } from './docker-guidance.js';
 import { readiness, waitForService, request } from './api.js';
 import { setup } from './wizard.js';
 import { TessmoraError, publicError } from './errors.js';
@@ -10,20 +11,22 @@ export async function execute(command, paths, options, ui) {
   const state = await readState(paths);
   if (command === 'setup' || command === 'configure' || (!command && (!state || (state.step ?? 0) < 6))) return setup(paths, state, { ...options, configure: command === 'configure' }, ui);
   command ||= 'start';
-  if (command === 'doctor' && !state) {
+  const runtimeConfigured = state?.url && ['local', 'remote'].includes(state.mode) && (state.mode !== 'local' || state.dataDir && state.port && state.storagePort);
+  if (command === 'doctor' && !runtimeConfigured) {
     const checks = [{ name: 'node', success: true, result: process.version }];
-    try { checks.push({ name: 'docker', success: true, result: await dockerCheck() }); }
+    try { checks.push({ name: 'docker', success: true, result: await checkDockerWithGuidance() }); }
     catch (error) { checks.push({ name: 'docker', success: false, ...publicError(error) }); }
-    ui.info('尚未创建实例。运行 tessmora setup 开始首次配置。');
+    ui.info(state ? '安装尚未完成。重新运行原来的 setup 命令继续。' : '尚未创建实例。运行 tessmora setup 开始首次配置。');
     if (!options.json) ui.card('安装前检查', checks.map((row) => `${row.success ? '✓' : '○'} ${row.name}: ${row.success ? '通过' : `${row.message}\n  ${row.hint || ''}`}`));
     return { success: checks.every((row) => row.success), configured: false, checks, next: 'tessmora setup' };
   }
   if (!state) throw new TessmoraError('NOT_CONFIGURED', '还没有配置 Tessmora。', '运行 tessmora setup 开始引导。');
-  if (!state.url || !['local', 'remote'].includes(state.mode) || (state.mode === 'local' && (!state.dataDir || !state.port || !state.storagePort))) {
+  if (!runtimeConfigured) {
     throw new TessmoraError('SETUP_INCOMPLETE', '实例的运行环境尚未配置完整。', '运行 tessmora setup 从上次进度继续。');
   }
   if (command === 'start') {
     if (state.mode === 'local') {
+      await prepareDocker(ui, options);
       const spin = ui.spinner('启动 Tessmora');
       try {
         await startRuntime(paths, state, { rebuild: options.rebuild, onLine: (line) => spin.message(line.split('\n').at(-1).slice(0, 140)) });
@@ -91,7 +94,7 @@ export async function execute(command, paths, options, ui) {
       catch (error) { checks.push({ name, success: false, ...publicError(error) }); }
     };
     if (state.mode === 'local') {
-      await check('docker', dockerCheck);
+      await check('docker', checkDockerWithGuidance);
       await check('data_directory', async () => { await access(state.dataDir, constants.W_OK); return state.dataDir; });
       await check('private_environment', async () => {
         const mode = (await stat(paths.env)).mode & 0o777;

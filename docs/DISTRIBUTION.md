@@ -6,7 +6,7 @@
 
 ## 本地构建与安装
 
-发布前可从源码构建，系统需安装 Node.js 22.19+、Docker Engine / Docker Desktop 和 Compose v2.20+（也支持独立的 `docker-compose`）。macOS 的 Colima 可作为 Docker 引擎。建议 Docker 分配至少 8 GiB 内存、4 个 CPU，并为镜像、模型与知识库保留至少 20 GiB 空间；实际需求随资料和启用模型变化。
+发布前可从源码构建。进入终端向导只需 Node.js 22.19+；完整运行需要 Docker Engine / Docker Desktop 和 Compose v2.20+（也支持独立的 `docker-compose`）。向导会检查并提供按系统分流的安装、启动与权限修复指引。macOS 的 Colima 可作为 Docker 引擎。建议 Docker 分配至少 8 GiB 内存、4 个 CPU，并为镜像、模型与知识库保留至少 20 GiB 空间；实际需求随资料和启用模型变化。
 
 ```bash
 # 在仓库根目录构建两个本地镜像；不会读取 backend/.env。

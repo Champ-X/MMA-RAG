@@ -85,7 +85,7 @@ These existing Web / Feishu examples show retrieval results and media citations.
 
 ## Quick start
 
-For a first installation, use the **terminal wizard and complete Docker runtime**. With Node.js 22.19+ and Docker / Compose running:
+For a first installation, use the **terminal wizard and complete Docker runtime**. Node.js 22.19+ is enough to enter the wizard; Python is provided inside the application container. If Docker is missing or unavailable, the wizard provides platform-specific instructions, official installation links, and recovery options:
 
 ```bash
 git clone --depth 1 --single-branch https://github.com/Champ-X/MMA-RAG.git
@@ -95,6 +95,8 @@ node packages/cli/bin/tessmora.js setup --source .
 ```
 
 The wizard builds the frontend, backend and Pi runtime, starts storage, collects masked credentials, tests real model calls and prepares only the selected local models. Terminal and `/setup` share configuration; the web page offers an optional sample document. Interrupted setup resumes on the next invocation. No manual `.env` edits are required for this path.
+
+Local operation requires Docker and Compose 2.20+. Complete system installation and authorization yourself, then retry or let the wizard wait for Docker and continue automatically. Permission failures and missing or outdated Compose receive separate recovery instructions.
 
 The npm package can be packed and installed locally. **Public npm packages and prebuilt images have not been published.** See the [CLI guide](packages/cli/README.md) and [distribution guide](docs/DISTRIBUTION.md) for packaging, lifecycle commands, remote connections and persistent data.
 
