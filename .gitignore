@@ -95,6 +95,7 @@ celerybeat.pid
 # —— 构建与打包 ——
 *.zip
 *.tar.gz
+*.tgz
 *.rar
 
 # —— 密钥与环境（勿提交 backend/.env）——

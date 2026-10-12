@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+FROM node:22.19.0-bookworm-slim AS pi
+WORKDIR /app/agent-runtime
+COPY agent-runtime/package.json agent-runtime/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+COPY agent-runtime/src ./src
+
+FROM python:3.11-slim-bookworm AS runtime
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app/backend \
+    HF_HOME=/cache/huggingface \
+    TOKENIZERS_PARALLELISM=false \
+    OMP_NUM_THREADS=2 \
+    PRELOAD_LOCAL_MODELS_ON_STARTUP=false
+ARG DEBIAN_MIRROR=https://deb.debian.org
+# LibreOffice handles legacy Office conversion; Noto preserves Chinese document rendering.
+RUN sed -i "s|http://deb.debian.org|${DEBIAN_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl ffmpeg libreoffice-writer libreoffice-calc libreoffice-impress \
+      fonts-noto-cjk fonts-noto-core libsndfile1 libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app/backend
+COPY backend/requirements.txt /tmp/requirements.txt
+COPY deploy/constraints.txt /tmp/constraints.txt
+# Install CPU wheels first so the dependency resolver does not pull CUDA into local installs.
+RUN pip install --no-cache-dir -c /tmp/constraints.txt torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 \
+      --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r /tmp/requirements.txt -c /tmp/constraints.txt \
+    && pip check
+# python-magic (Unstructured file detection) needs the system shared library.
+RUN apt-get update && apt-get install -y --no-install-recommends libmagic1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=pi /usr/local/bin/node /usr/local/bin/node
+COPY --from=pi /app/agent-runtime /app/agent-runtime
+# Explicit copies exclude backend/.env and all developer data.
+COPY backend/app ./app
+COPY backend/celery_app.py ./celery_app.py
+RUN mkdir -p /app/backend/data /app/backend/logs /app/backend/temp /app/backend/uploads \
+    /app/data/pi-agent /state /cache/huggingface \
+    && node --version && ffmpeg -version >/dev/null && libreoffice --version
+EXPOSE 8000
+HEALTHCHECK --interval=10s --timeout=5s --start-period=90s --retries=6 \
+    CMD curl --fail --silent http://127.0.0.1:8000/health >/dev/null || exit 1
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -27,8 +27,13 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             agent-runtime/package-lock.json
+            packages/cli/package-lock.json
       - run: npm --prefix frontend ci
       - run: npm --prefix frontend test
       - run: npm --prefix frontend run build
       - run: npm --prefix agent-runtime ci
       - run: npm --prefix agent-runtime test
+      - run: npm --prefix packages/cli ci
+      - run: npm --prefix packages/cli test
+      - run: npm pack --dry-run
+        working-directory: packages/cli

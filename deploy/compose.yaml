@@ -1,0 +1,93 @@
+# Standalone runtime asset bundled with the npm CLI. No source checkout is required.
+# CLI owns --project-name and a private --env-file; no fixed container names or shared volumes.
+x-app: &app
+  image: ${TESSMORA_BACKEND_IMAGE:-tessmora-backend:local}
+  restart: unless-stopped
+  init: true
+  environment: &app-environment
+    TESSMORA_STATE_DIR: /state
+    TESSMORA_SETUP_TOKEN: ${TESSMORA_SETUP_TOKEN:?Run tessmora setup to generate the private setup token}
+    PRELOAD_LOCAL_MODELS_ON_STARTUP: "false"
+    HF_HOME: /cache/huggingface
+    HF_ENDPOINT: ${TESSMORA_HF_ENDPOINT:-https://huggingface.co}
+    HTTP_PROXY: ${TESSMORA_PROXY:-}
+    HTTPS_PROXY: ${TESSMORA_PROXY:-}
+    NO_PROXY: localhost,127.0.0.1,::1,minio,qdrant,redis,backend,frontend,worker
+    MINIO_ENDPOINT: minio:9000
+    MINIO_PUBLIC_ENDPOINT: localhost:${TESSMORA_STORAGE_PORT:-9000}
+    MINIO_ACCESS_KEY: ${TESSMORA_MINIO_USER:-tessmora}
+    MINIO_SECRET_KEY: ${TESSMORA_MINIO_PASSWORD:?Run tessmora setup to generate the storage password}
+    MINIO_REGION: us-east-1
+    QDRANT_HOST: qdrant
+    QDRANT_PORT: "6333"
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: redis://redis:6379/0
+    CELERY_RESULT_BACKEND: redis://redis:6379/0
+    PI_AGENT_API_TOKEN: ${TESSMORA_SETUP_TOKEN}
+    PI_AGENT_DATA_DIR: /app/data/pi-agent
+  volumes:
+    - ${TESSMORA_DATA_DIR:?Choose a data directory with tessmora setup}/state:/state
+    - ${TESSMORA_DATA_DIR}/backend-data:/app/backend/data
+    - ${TESSMORA_DATA_DIR}/pi-agent:/app/data/pi-agent
+    - ${TESSMORA_DATA_DIR}/cache/huggingface:/cache/huggingface
+    - ${TESSMORA_DATA_DIR}/logs:/app/backend/logs
+  depends_on:
+    minio:
+      condition: service_healthy
+    qdrant:
+      condition: service_started
+    redis:
+      condition: service_healthy
+
+services:
+  backend:
+    <<: *app
+  worker:
+    <<: *app
+    command: [celery, -A, celery_app, worker, -Q, "knowledge,ingestion,retrieval,celery", --loglevel=info, --concurrency=1]
+    healthcheck:
+      test: [CMD-SHELL, "celery -A celery_app inspect ping --destination celery@$$HOSTNAME --timeout 5 | grep -q pong"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 6
+  frontend:
+    image: ${TESSMORA_FRONTEND_IMAGE:-tessmora-frontend:local}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${TESSMORA_PORT:-3001}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    restart: unless-stopped
+    command: [server, /data, --console-address, ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${TESSMORA_MINIO_USER:-tessmora}
+      MINIO_ROOT_PASSWORD: ${TESSMORA_MINIO_PASSWORD}
+    ports:
+      - "127.0.0.1:${TESSMORA_STORAGE_PORT:-9000}:9000"
+    volumes:
+      - ${TESSMORA_DATA_DIR}/minio:/data
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, http://127.0.0.1:9000/minio/health/live]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+  qdrant:
+    image: qdrant/qdrant:v1.16.2
+    restart: unless-stopped
+    volumes:
+      - ${TESSMORA_DATA_DIR}/qdrant:/qdrant/storage
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: [redis-server, --appendonly, "yes"]
+    volumes:
+      - ${TESSMORA_DATA_DIR}/redis:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 6

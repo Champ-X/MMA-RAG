@@ -85,7 +85,22 @@ These existing Web / Feishu examples show retrieval results and media citations.
 
 ## Quick start
 
-The recommended development setup runs **the frontend and backend locally, with storage services in Docker**. The commands below target macOS / Linux; Windows users can use WSL2. The current Compose file does not include the frontend or Pi Node runtime, so it does not start the full product on its own.
+For a first installation, use the **terminal wizard and complete Docker runtime**. With Node.js 22.19+ and Docker / Compose running:
+
+```bash
+git clone --depth 1 --single-branch https://github.com/Champ-X/MMA-RAG.git
+cd MMA-RAG
+npm --prefix packages/cli ci
+node packages/cli/bin/tessmora.js setup --source .
+```
+
+The wizard builds the frontend, backend and Pi runtime, starts storage, collects masked credentials, tests real model calls and prepares only the selected local models. Terminal and `/setup` share configuration; the web page offers an optional sample document. Interrupted setup resumes on the next invocation. No manual `.env` edits are required for this path.
+
+The npm package can be packed and installed locally. **Public npm packages and prebuilt images have not been published.** See the [CLI guide](packages/cli/README.md) and [distribution guide](docs/DISTRIBUTION.md) for packaging, lifecycle commands, remote connections and persistent data.
+
+### Source development
+
+For development, run **the frontend and backend locally, with storage services in Docker**. The commands below target macOS / Linux; Windows users can use WSL2. The root `docker-compose.yml` manages storage only; `deploy/compose.yaml` provides the separate complete installation.
 
 ### 1. Prerequisites
 
@@ -109,13 +124,13 @@ Edit `backend/.env` with the credentials you need. **Clear the `your_...` placeh
 
 | Setting | Default use |
 | --- | --- |
-| `SILICONFLOW_API_KEY` | Text embeddings and reranking: Qwen3 Embedding / Reranker |
+| `SILICONFLOW_API_KEY` | Text embeddings, reranking, and the default image-captioning model |
 | `DEEPSEEK_API_KEY` | Text answers, intent recognition, document chunking, and the Pi main model: `deepseek-flash` |
-| `ALIYUN_BAILIAN_API_KEY` | Default image understanding, audio transcription, video parsing, and Pi media inspection |
+| `ALIYUN_BAILIAN_API_KEY` | Default audio transcription, video parsing, and Pi media inspection |
 | `MINERU_TOKEN` | Optional MinerU cloud document parsing; local and alternative parsing paths depend on file type and installed dependencies |
 | `OPENROUTER_API_KEY` | Optional; required when selecting OpenRouter models |
 
-For a first Markdown / TXT document query, start with SiliconFlow and DeepSeek; add Bailian for the default media capabilities. See the [environment example](backend/.env.example) for other parsers, import sources, and Feishu settings. Standard model routes can be changed in the settings UI; Pi uses [separate configuration](docs/PI_AGENT_MODE.md).
+For a first Markdown / TXT document query, start with SiliconFlow and DeepSeek; add Bailian for default audio/video processing and Pi media inspection. The installation wizard determines the required providers from the selected capabilities and model routes. See the [environment example](backend/.env.example) for other parsers, import sources, and Feishu settings. Standard model routes can be changed in the settings UI; Pi uses [separate configuration](docs/PI_AGENT_MODE.md).
 
 **Self-hosted does not mean offline inference.** MinIO / Qdrant store your original files and indexes locally, while default parsing and model calls may send content to your configured providers and incur API charges.
 

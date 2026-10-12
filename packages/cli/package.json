@@ -1,0 +1,16 @@
+{
+  "name": "@tessmora/cli",
+  "version": "0.1.0",
+  "description": "A guided local home for your knowledge. Install, configure and run Tessmora.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=22.19" },
+  "bin": { "tessmora": "bin/tessmora.js" },
+  "files": ["bin", "src", "assets", "README.md"],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "prepare-assets": "node scripts/prepare-assets.js",
+    "prepack": "npm run prepare-assets"
+  },
+  "dependencies": { "@clack/prompts": "1.8.1", "picocolors": "1.1.1" }
+}

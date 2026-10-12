@@ -1,0 +1,37 @@
+name: Distribution images
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - deploy/**
+      - packages/cli/**
+      - backend/**
+      - frontend/**
+      - agent-runtime/**
+      - .dockerignore
+      - .github/workflows/distribution.yml
+permissions:
+  contents: read
+jobs:
+  build-and-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Build production frontend and CPU application runtime
+        run: sh deploy/build.sh
+      - name: Verify empty install and restart without model credentials
+        run: python3 deploy/smoke.py
+      - name: Retain isolated smoke reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-${{ matrix.runner }}
+          path: |
+            data/distribution-smoke/tessmora-smoke-*/report.json
+            data/distribution-smoke/tessmora-smoke-*/containers.log
+          if-no-files-found: ignore

@@ -1,0 +1,25 @@
+# Source-only overlay. Compose paths resolve relative to deploy/compose.yaml.
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+      args:
+        DEBIAN_MIRROR: ${TESSMORA_DEBIAN_MIRROR:-https://deb.debian.org}
+        HTTP_PROXY: ${TESSMORA_BUILD_PROXY:-}
+        HTTPS_PROXY: ${TESSMORA_BUILD_PROXY:-}
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+      args:
+        DEBIAN_MIRROR: ${TESSMORA_DEBIAN_MIRROR:-https://deb.debian.org}
+        HTTP_PROXY: ${TESSMORA_BUILD_PROXY:-}
+        HTTPS_PROXY: ${TESSMORA_BUILD_PROXY:-}
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+      args:
+        HTTP_PROXY: ${TESSMORA_BUILD_PROXY:-}
+        HTTPS_PROXY: ${TESSMORA_BUILD_PROXY:-}

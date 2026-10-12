@@ -25,7 +25,7 @@
   <a href="https://github.com/Champ-X/MMA-RAG/issues"><img src="https://img.shields.io/github/issues/Champ-X/MMA-RAG" alt="GitHub Issues" /></a>
 </p>
 
-**Tessmora 是可自托管的多模态 RAG 与 Agent 研究工作台。** 将文档、表格、图片、音频和视频放入知识库，用自然语言搜索、比较和提问，再通过原文、图片预览或媒体时间片段核对回答。代码仓库与 CLI 沿用 `MMA-RAG` / `mma-rag` 名称。
+**Tessmora 是可自托管的多模态 RAG 与 Agent 研究工作台。** 将文档、表格、图片、音频和视频放入知识库，用自然语言搜索、比较和提问，再通过原文、图片预览或媒体时间片段核对回答。仓库沿用 `MMA-RAG` 名称；安装与服务管理使用 `tessmora`，知识库操作 CLI 使用 `mma-rag`。
 
 你可以用它阅读一组研究资料、在素材库中寻找图片与音乐，或让 Agent 围绕复杂问题逐步检索、深读和整理证据。
 
@@ -85,7 +85,26 @@
 
 ## 快速开始
 
-推荐使用 **本机运行前后端 + Docker 运行存储服务** 的开发方式。以下命令面向 macOS / Linux；Windows 可使用 WSL2。当前 Compose 未包含前端和 Pi Node 运行时，不能单独启动完整产品。
+首次使用可通过 **终端向导 + 完整 Docker 安装**，依次选择能力、数据目录和模型服务。无需手动编辑 `.env`；网页 `/setup` 与终端共用配置，并提供可导入的示例文档。
+
+### 引导安装（当前源码分发）
+
+准备 Node.js **22.19+** 和已启动的 Docker / Compose，然后执行：
+
+```bash
+git clone --depth 1 --single-branch https://github.com/Champ-X/MMA-RAG.git
+cd MMA-RAG
+npm --prefix packages/cli ci
+node packages/cli/bin/tessmora.js setup --source .
+```
+
+向导会构建并启动网页、后端、Pi 运行时及存储服务，遮罩输入 API Key，实际测试模型连接，再按需准备本地模型。下载或配置中断后，重新运行同一命令继续。已有开发环境正在使用默认端口时，请在向导中选择其他端口。
+
+安装器支持打包为 npm 包并在本机安装；**尚未发布公共 npm 包或预构建镜像**，不要直接假定 `npm install -g @tessmora/cli` 已可用。打包安装、`start/stop/status/logs/configure/doctor/open`、数据备份和远程连接见 [安装器说明](packages/cli/README.md) 与 [完整容器分发](docs/DISTRIBUTION.md)。
+
+### 源码开发
+
+开发时可继续使用 **本机运行前后端 + Docker 运行存储服务**。以下命令面向 macOS / Linux；Windows 可使用 WSL2。根目录 `docker-compose.yml` 仅管理存储，完整安装使用独立的 `deploy/compose.yaml`。
 
 ### 1. 准备环境
 
@@ -109,13 +128,13 @@ cp backend/.env.example backend/.env
 
 | 配置项 | 默认用途 |
 | --- | --- |
-| `SILICONFLOW_API_KEY` | 文本向量化与重排：Qwen3 Embedding / Reranker |
+| `SILICONFLOW_API_KEY` | 文本向量化与重排：Qwen3 Embedding / Reranker，以及默认图片理解模型 |
 | `DEEPSEEK_API_KEY` | 文本问答、意图识别、文档分块与 Pi 主模型：`deepseek-flash` |
-| `ALIYUN_BAILIAN_API_KEY` | 默认图片理解、音频转写、视频解析，以及 Pi 的媒体观察工具 |
+| `ALIYUN_BAILIAN_API_KEY` | 默认音频转写、视频解析，以及 Pi 的媒体观察工具 |
 | `MINERU_TOKEN` | 可选，启用 MinerU 云端文档解析；本地与其他解析路径取决于文件类型和已安装依赖 |
 | `OPENROUTER_API_KEY` | 可选，使用 OpenRouter 模型时填写 |
 
-先体验 Markdown / TXT 文档问答时，可从 SiliconFlow 与 DeepSeek 开始；使用默认媒体能力时再配置百炼。其他解析、导入和飞书配置见 [环境变量示例](backend/.env.example)。常规模型路由可在页面设置中调整；Pi 使用 [独立配置](docs/PI_AGENT_MODE.md)。
+先体验 Markdown / TXT 文档问答时，可从 SiliconFlow 与 DeepSeek 开始；使用默认音频、视频或 Pi 媒体观察能力时再配置百炼。其他解析、导入和飞书配置见 [环境变量示例](backend/.env.example)。常规模型路由可在页面设置中调整；Pi 使用 [独立配置](docs/PI_AGENT_MODE.md)。
 
 **自托管不等于离线推理。** 原文件与索引由本地 MinIO / Qdrant 保存，默认解析和模型调用仍可能将内容发送给你配置的服务商，并产生 API 费用。
 
