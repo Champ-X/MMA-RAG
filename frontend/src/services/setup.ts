@@ -3,13 +3,27 @@ import { getSetupToken } from '@/lib/setupSession'
 export type Capability = 'text' | 'image' | 'audio' | 'video'
 export type Provider = 'deepseek' | 'siliconflow' | 'aliyun_bailian' | 'openrouter'
 export interface SetupCheck { provider: Provider; model: string; capability: string; task: string }
+export interface ModelPreparation {
+  state: string
+  message: string
+  phase?: string
+  hint?: string
+  error_code?: string
+  error_type?: string
+  downloaded_bytes?: number
+  total_bytes?: number
+  files_completed?: number
+  files_total?: number
+  elapsed_seconds?: number
+  idle_seconds?: number
+}
 export interface SetupProgress {
   state: 'idle' | 'running' | 'interrupted' | 'error' | 'ready'
   stage?: 'storage' | 'models' | 'complete'
   message?: string
   hint?: string
   error_code?: string
-  models: Record<string, { state: string; message: string }>
+  models: Record<string, ModelPreparation>
   completed: number
   total: number
   elapsed_seconds?: number

@@ -8,6 +8,8 @@ import { prepareDocker } from './docker-guidance.js';
 import { readiness, request, prepareModels, storageReadiness } from './api.js';
 import { TessmoraError, redact } from './errors.js';
 import { BACK, backOption, labels, providerLabels } from './ui.js';
+import { runtimeJournal } from './runtime-progress.js';
+import { modelReporter, chooseModelNetwork, canRepairModelNetwork } from './model-progress.js';
 
 export function parseCapabilities(value = 'text') {
   const selected = value.split(',').map((item) => item.trim()).filter(Boolean);
@@ -49,24 +51,36 @@ export function requiredProviders(capabilities, status = {}) {
   return [...new Set([...(base.length ? base : ['deepseek', 'siliconflow']), ...media])];
 }
 
-async function retryable(ui, action, { back = false } = {}) {
+async function retryable(ui, action, { back = false, repairNetwork } = {}) {
   while (true) {
     try { return await action(); } catch (error) {
       if (!ui.interactive || error.code === 'CANCELLED') throw error;
       ui.failure(error);
       const next = await ui.select('下一步', [
         { value: 'retry', label: '重新检测 / 重试', hint: '保留已经完成的步骤' },
+        ...(repairNetwork && canRepairModelNetwork(error) ? [{ value: 'network', label: '调整模型下载网络', hint: '修改下载源或代理，接着准备' }] : []),
         ...(back ? [backOption] : []),
         { value: 'exit', label: '保存进度，稍后继续' },
       ]);
       if (next === BACK) return BACK;
       if (next === 'exit') throw new TessmoraError('CANCELLED', '已保存进度，随时运行 tessmora setup 继续。');
+      if (next === 'network') await repairNetwork();
     }
   }
 }
 
 export async function setup(paths, initial, options, ui) {
   if (!ui.interactive && !options.yes) throw new TessmoraError('INTERACTIVE_REQUIRED', '首次配置需要交互式终端。', '在终端运行 tessmora setup；自动化可用 setup --yes --credential-file /安全路径/credentials.json --json。');
+  const journal = runtimeJournal(paths);
+  try { return await runSetup(paths, initial, { ...options, journal }, ui); }
+  catch (error) {
+    journal.write(`[${new Date().toISOString()}] ${error.code || 'ERROR'}: ${error.message}\n${error.hint || ''}`);
+    if (error.code !== 'CANCELLED' && !error.hint?.includes(journal.path)) error.hint = `${error.hint || ''}\n本次安装日志：${journal.path}`;
+    throw error;
+  } finally { journal.close(); }
+}
+
+async function runSetup(paths, initial, options, ui) {
   ui.intro();
   let state = initial || { schema: 1, project: projectName(paths), capabilities: ['text'], step: 0, stage: 'preferences' };
   if (initial?.mode === 'local' && initial.dataDir && !state.runtimeCreated) {
@@ -264,24 +278,34 @@ export async function setup(paths, initial, options, ui) {
         continue;
       }
       ui.step(5, '准备所选能力', '只下载本次所需模型。缓存与任务进度会保留。');
+      ui.card('本地模型 · 准备路线', [
+        '缓存 → 连接下载源 → 下载文件 → 载入 → 推理验证',
+        `下载源  ${state.modelEndpoint || 'https://huggingface.co'}`,
+        '下载完成后还需载入并验证；首次 CPU 推理可能需要几分钟。',
+        '', `本次安装日志：${options.journal.path}`,
+      ]);
       const env = await ensureEnvironment(paths, state);
       const prepared = await retryable(ui, async () => {
-        const spin = ui.spinner('检查存储并准备检索集合');
+        const reporter = modelReporter(ui, options.journal);
         try {
           const progress = await prepareModels(state.url, env.TESSMORA_SETUP_TOKEN, {
-            onProgress: (value) => {
-              if (value.stage === 'storage') {
-                spin.message(`${value.message || '检查存储并准备检索集合'}${value.elapsed_seconds ? ` · ${Math.round(value.elapsed_seconds)} 秒` : ''}`);
-                return;
-              }
-              const current = Object.entries(value.models || {}).find(([, model]) => ['running', 'downloading'].includes(model.state));
-              spin.message(`${value.completed || 0}/${value.total || state.capabilities.length} 已就绪${current ? ` · ${current[0]} ${current[1].message || ''}` : ' · 正在检查模型'}${value.elapsed_seconds ? ` · ${Math.round(value.elapsed_seconds)} 秒` : ''}`);
-            },
+            onProgress: value => reporter.event(value),
           });
-          spin.stop('所选能力的本地模型已就绪');
+          reporter.close();
           return progress;
-        } catch (error) { spin.error(error.code === 'STORAGE_UNAVAILABLE' ? '存储准备尚未完成，配置已保留' : '模型准备尚未完成，已保留进度'); throw error; }
-      }, { back: true });
+        } catch (error) {
+          reporter.close(error);
+          error.hint = `${error.hint || ''}\n本次安装日志：${options.journal.path}`;
+          throw error;
+        }
+      }, { back: true, repairNetwork: async () => {
+        const changes = await chooseModelNetwork(ui, state);
+        if (!changes) return;
+        state = await saveState(paths, { ...state, ...changes });
+        ui.info(`下载源：${state.modelEndpoint || 'https://huggingface.co'} · 正在应用网络设置，复用已有镜像与缓存。`);
+        options.journal.write(`[${new Date().toISOString()}] 应用模型下载网络设置 · 下载源 ${state.modelEndpoint || 'https://huggingface.co'}`);
+        await retryable(ui, () => startRuntimeWithUI(paths, state, { ...options, rebuild: false }, ui));
+      } });
       if (prepared === BACK) { step = 3; continue; }
       const verified = await readiness(state.url);
       if (!verified.setup.ready) throw new TessmoraError('NOT_READY', '模型准备结束，但服务尚未报告完整就绪。', '运行 tessmora doctor 检查，再执行 setup 继续。');

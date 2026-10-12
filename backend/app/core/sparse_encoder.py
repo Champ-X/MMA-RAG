@@ -12,6 +12,7 @@ from FlagEmbedding import BGEM3FlagModel
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.core.runtime_paths import state_dir
+from app.core.model_preparation import report_preparation, model_failure
 
 logger = get_logger(__name__)
 
@@ -63,6 +64,7 @@ class BGEM3SparseEncoder:
                 if state_dir() is not None:
                     from app.core.bge_cache import managed_bge_snapshot
                     model_path = managed_bge_snapshot(model_path)
+                report_preparation("load")
                 self._model = BGEM3FlagModel(
                     model_path,
                     use_fp16=self.use_fp16,
@@ -70,6 +72,13 @@ class BGEM3SparseEncoder:
                 self._initialized = True
                 logger.info("✓ BGE-M3 模型加载完成！")
             except Exception as e:
+                if state_dir() is not None:
+                    # Setup publishes safe phase-specific diagnostics. Avoid
+                    # logging signed Hub URLs or advice for unrelated .env files.
+                    detail = model_failure(e, "load")
+                    logger.error("BGE-M3 preparation failed: code={} error_type={} causes={}",
+                                 detail["error_code"], detail["error_type"], detail["causes"])
+                    raise
                 err = str(e)
                 if "huggingface.co" in err or "ConnectTimeout" in err or "timed out" in err.lower():
                     logger.error(
@@ -93,6 +102,7 @@ class BGEM3SparseEncoder:
             }
         """
         self._ensure_initialized()
+        report_preparation("inference")
         
         if self._model is None:
             raise RuntimeError("BGE-M3 模型未初始化")

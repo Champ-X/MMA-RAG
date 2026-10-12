@@ -1,4 +1,5 @@
 import { TessmoraError, redact } from './errors.js';
+import { modelNames, modelPhases } from './model-progress.js';
 
 export async function request(baseUrl, path, { token, body, timeout = 30000, method = body ? 'POST' : 'GET', fetchImpl = fetch } = {}) {
   let response;
@@ -67,8 +68,11 @@ export async function prepareModels(baseUrl, token, { onProgress, pollInterval =
           progress.hint || '运行 tessmora doctor 检查；配置与下载缓存已保留，修复后重新运行 tessmora setup。',
           { stage: 'storage', errorType: progress.error_type, storage: progress.storage });
       }
-      const failed = Object.entries(progress.models || {}).filter(([, model]) => ['error', 'interrupted'].includes(model.state)).map(([name, model]) => `${name}: ${model.message || model.error || model.state}`).join('; ');
-      throw new TessmoraError('MODEL_PREPARE_FAILED', failed || progress.message || '模型准备中断。', '已完成的下载将保留；重新运行 tessmora setup 可继续。');
+      const [name, model] = Object.entries(progress.models || {}).find(([, model]) => ['error', 'interrupted'].includes(model.state)) || [];
+      const failed = model && `${modelNames[name] || name}${model.phase ? ` · ${modelPhases[model.phase] || model.phase}` : ''}：${model.message || '准备中断'}`;
+      const diagnostic = model?.error_code ? `\n诊断：${model.error_code}${model.error_type ? ` / ${model.error_type}` : ''}` : '';
+      throw new TessmoraError('MODEL_PREPARE_FAILED', failed || progress.message || '模型准备中断。',
+        `${model?.hint || '已完成的下载将保留；重新运行 tessmora setup 可继续。'}${diagnostic}\n后端日志：tessmora logs --service backend --tail 160`, { model: model ? { name, ...model } : undefined });
     }
     if (Date.now() >= deadline) throw new TessmoraError('MODEL_PREPARE_TIMEOUT', '模型仍在准备中，已结束本次等待。', '后台任务和下载缓存已保留。运行 tessmora status 查看状态，setup 可继续。');
     await new Promise((resolve) => setTimeout(resolve, pollInterval));

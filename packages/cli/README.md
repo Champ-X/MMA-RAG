@@ -123,7 +123,9 @@ node packages/cli/bin/tessmora.js setup --rebuild
 
 沿用原来的 `--home` / `--instance`（如有）。`--rebuild` 会将后端连接超时等源码更新放入应用镜像，复用 Docker 缓存，保留模型与资料。Redis 自身健康不代表 worker 到 Redis 的网络可达；若诊断显示 `tcp_timeout` 或 `dns_failed`，需检查 Docker / WSL 网络与 VPN 路由。Redis 单次连接 / 读写等待限制为 5 秒，由 Celery 继续重试；这不会自动修改宿主网络。
 
-本地模型默认从 `https://huggingface.co` 下载。如果所在网络无法访问，向导的“调整目录和端口”中可填写可信模型镜像，也可执行 `tessmora setup --model-endpoint https://your-trusted-model-mirror.example` 更新地址并从当前阶段继续。CLI 不会自行切换镜像；此选项只改变模型下载源，不改变模型服务商 API 地址。已有缓存会保留。
+本地模型默认从 `https://huggingface.co` 下载。如果所在网络无法访问，在模型失败后的“调整模型下载网络”中选择官方源、HF-Mirror（第三方镜像）、其他可信地址或容器可达的运行代理，无需重新填写密钥。也可执行 `tessmora setup --model-endpoint https://your-trusted-model-mirror.example` 更新地址并从当前阶段继续。CLI 不会自行切换镜像；下载源选项不改变模型服务商 API 地址。已有缓存会保留。
+
+模型准备分别显示缓存、下载源连接、文件下载、校验、载入与真实推理阶段。BGE-M3 在有文件大小元数据时显示已缓存 / 下载字节及比例；下载完成还需通过实际推理才能进入工作台。CLIP / CLAP 显示下载与载入、推理验证状态，不显示估算百分比。模型阶段与失败诊断继续写入本次 `setup-*.log`，不再只记录 Docker 启动过程。网络、代理、证书、权限、磁盘和内存错误会给出各自建议；后端日志保留失败探针，过滤重复的健康 / 进度查询成功日志。
 
 源码构建遇到网络问题时可使用 `--build-proxy http://容器可达的代理地址:端口` 或 `--debian-mirror https://可信Debian镜像站`。代理地址不能使用容器内不可达的宿主 `127.0.0.1`，也不接受 URL 内嵌账号密码；CLI 不会自动复制宿主机的代理设置。构建代理通过临时 build args 传入，不写入应用镜像环境。
 

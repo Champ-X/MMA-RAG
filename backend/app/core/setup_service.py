@@ -17,6 +17,10 @@ from threading import RLock
 
 from app.core.runtime_paths import PROVIDER_FIELDS, state_dir
 from app.core.storage_health import StorageUnavailable, check_storage, storage_failure
+from app.core.model_preparation import observe_preparation, report_preparation, model_failure
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 CAPABILITIES = ("text", "image", "audio", "video")
 REQUIRED_MODELS = {"text": ("bge_m3",), "image": ("bge_m3", "clip"), "audio": ("bge_m3", "clap"), "video": ("bge_m3", "clip", "clap")}
@@ -109,6 +113,7 @@ def _warm_model(name: str) -> dict:
     import gc
     runtime = None
     try:
+        report_preparation("load")  # Includes first import of the model runtime.
         if name == "bge_m3":
             from app.core.config import settings
             from app.core.sparse_encoder import BGEM3SparseEncoder
@@ -120,10 +125,16 @@ def _warm_model(name: str) -> dict:
             from app.core.local_models import LocalModelRuntime
             runtime = LocalModelRuntime()
             getattr(runtime, f"warmup_{name}")()
+        report_preparation("artifacts")
         return {"artifacts": _model_artifacts(name)}
     finally:
         runtime = None
         gc.collect()
+
+
+def _warm_model_observed(name: str, callback) -> dict:
+    with observe_preparation(callback):
+        return _warm_model(name)
 
 
 async def _tool_probe(provider, *, provider_name: str, model: str, raw_model: str) -> dict:
@@ -184,6 +195,10 @@ class SetupService:
             result = json.loads(json.dumps(self._progress))
         for row in result.get("models", {}).values():
             row.pop("artifacts", None)
+            if row.get("started_at"):
+                row["elapsed_seconds"] = round(max(0, row.get("finished_at", time.time()) - row["started_at"]), 1)
+            if row.get("state") == "running" and row.get("updated_at"):
+                row["idle_seconds"] = round(max(0, time.time() - row["updated_at"]), 1)
         if result.get("state") == "running":
             result["elapsed_seconds"] = round(time.time() - result.get("started_at", time.time()), 1)
         return result
@@ -423,6 +438,20 @@ class SetupService:
         self._task = asyncio.create_task(self._prepare(required), name="tessmora-model-setup")
         return self.progress()
 
+    def _model_event(self, name: str, row: dict, event: dict) -> None:
+        with self._lock:
+            # A cancelled background thread must not update a later attempt.
+            if self._progress.get("state") != "running" or self._progress["models"].get(name) is not row or row["state"] != "running":
+                return
+            if all(row.get(key) == value for key, value in event.items()):
+                return
+            if row.get("phase") != event["phase"]:
+                for key in ("downloaded_bytes", "total_bytes", "files_completed", "files_total"):
+                    row.pop(key, None)
+                logger.info("Model preparation: model={} phase={}", name, event["phase"])
+            row.update(**event, updated_at=time.time())
+            self._persist_progress()
+
     async def _prepare(self, names: list[str]) -> None:
         try:
             try:
@@ -443,18 +472,23 @@ class SetupService:
                 if self._progress["models"][name]["state"] == "ready":
                     continue
                 with self._lock:
-                    self._progress["models"][name] = {"state": "running", "message": "下载或复用缓存，并验证模型推理；首次准备可能需要数分钟。", "started_at": time.time()}
+                    row = {"state": "running", "phase": "cache", "message": "检查本地模型缓存", "started_at": time.time(), "updated_at": time.time()}
+                    self._progress["models"][name] = row
                     self._persist_progress()
                 try:
-                    evidence = await asyncio.to_thread(_warm_model, name)
+                    evidence = await asyncio.to_thread(_warm_model_observed, name, lambda event: self._model_event(name, row, event))
                 except Exception as exc:
                     with self._lock:
-                        self._progress["models"][name].update(state="error", error_type=type(exc).__name__, message="模型准备失败。请检查网络和磁盘后重试；已下载缓存将保留。")
-                        self._progress["state"] = "error"
+                        detail = model_failure(exc, row.get("phase", "cache"))
+                        row.update(state="error", finished_at=time.time(), **detail)
+                        self._progress.update(state="error", message=detail["message"], error_code=detail["error_code"], hint=detail["hint"], finished_at=time.time())
+                        logger.error("Model preparation failed: model={} phase={} code={} error_type={} causes={} http_status={}",
+                                     name, detail["phase"], detail["error_code"], detail["error_type"], detail["causes"], detail.get("http_status"))
                         self._persist_progress()
                     return
                 with self._lock:
                     self._progress["models"][name].update(state="ready", message="模型已通过真实推理验证", finished_at=time.time(), **(evidence or {}))
+                    logger.info("Model preparation ready: model={}", name)
                     self._progress["completed"] += 1
                     self._persist_progress()
             with self._lock:

@@ -110,10 +110,10 @@ export async function startRuntime(paths, state, { rebuild = false, onProgress =
 }
 
 export async function startRuntimeWithUI(paths, state, options, ui) {
-  const journal = runtimeJournal(paths);
+  const journal = options.journal || runtimeJournal(paths);
   const reporter = runtimeReporter(ui, { logPath: journal.path, source: state.source });
   let failure;
   try { return await startRuntime(paths, state, { ...options, journal, onProgress: event => reporter.event(event) }); }
   catch (error) { failure = error; throw error; }
-  finally { journal.close(); reporter.close(failure); }
+  finally { if (!options.journal) journal.close(); reporter.close(failure); }
 }

@@ -12,6 +12,7 @@ from time import perf_counter
 from typing import Any, Dict, Iterator, List, Tuple
 
 from app.core.logger import get_logger
+from app.core.model_preparation import report_preparation
 
 
 logger = get_logger(__name__)
@@ -124,6 +125,7 @@ class LocalModelRuntime:
             slot.status.update(state="loading", error_type=None)
             slot.status["load_attempts"] += 1
         logger.info("正在加载本地模型: model={}", slot.status["model_id"])
+        report_preparation("load_download")
         try:
             loader = self._load_clip_pair if name == "clip" else self._load_clap_pair
             model, processor, cache_source = loader()
@@ -255,6 +257,7 @@ class LocalModelRuntime:
                 slot.status.update(state="warming", error_type=None)
                 slot.status["warmup_attempts"] += 1
             started = perf_counter()
+            report_preparation("inference")
             try:
                 if name == "clip":
                     self.encode_clip_text("a quiet scene")

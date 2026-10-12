@@ -180,6 +180,34 @@ async def test_prepare_only_selected_models_and_prevents_concurrent_jobs(managed
         await managed.prepare(["text", "video"])
 
 
+@pytest.mark.asyncio
+async def test_model_failure_keeps_phase_safe_causes_and_durable_progress(managed, monkeypatch):
+    from app.core.model_preparation import report_preparation
+    import errno
+    def warm(name):
+        report_preparation("metadata")
+        assert managed.progress()["models"][name]["phase"] == "metadata"
+        raise OSError(errno.ENETUNREACH, "https://secret:password@example.test/token-secret")
+    monkeypatch.setattr(setup_service, "_warm_model", warm)
+    await managed.prepare()
+    await managed._task
+    result = managed.progress()
+    model = result["models"]["bge_m3"]
+    assert result["state"] == "error" and result["error_code"] == "MODEL_NETWORK"
+    assert model["phase"] == "metadata" and model["error_type"] == "OSError"
+    assert "下载源" in model["message"] and "磁盘" not in model["message"]
+    assert "password" not in (managed.root / "prepare.json").read_text()
+    assert setup_service.SetupService(managed.root).progress()["models"]["bge_m3"]["error_code"] == "MODEL_NETWORK"
+
+
+def test_late_download_events_cannot_overwrite_recovered_or_retried_progress(managed):
+    stale = {"state": "running", "phase": "download"}
+    current = {"state": "running", "phase": "metadata"}
+    managed._progress = {"state": "running", "models": {"bge_m3": current}}
+    managed._model_event("bge_m3", stale, {"phase": "download", "message": "late"})
+    assert current["phase"] == "metadata"
+
+
 def test_worker_refreshes_saved_credentials_before_new_tasks(managed):
     from app.core.llm.manager import llm_manager
     setup_service.atomic_private_json(managed.root / "setup.json", {"version": 1, "capabilities": ["text"], "credentials": {"deepseek": "worker-synthetic", "siliconflow": "sf"}, "task_models": {}})

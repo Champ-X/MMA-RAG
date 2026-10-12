@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, Eye, EyeOff, FileText, Loader2, Terminal } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, AlertCircle, Eye, EyeOff, FileText, Loader2, Terminal } from 'lucide-react'
 import { getSetupToken, setSetupToken } from '@/lib/setupSession'
-import { SetupError, setupApi, type Capability, type Provider, type SetupDraft, type SetupStatus, type SetupTest } from '@/services/setup'
+import { SetupError, setupApi, type Capability, type ModelPreparation, type Provider, type SetupDraft, type SetupStatus, type SetupTest } from '@/services/setup'
 import { SetupSample } from '@/components/SetupSample'
 import './setupPage.css'
 
@@ -18,6 +18,28 @@ const providerLinks: Record<Provider, string> = { deepseek: 'https://platform.de
 const providerHints: Record<Provider, string> = { deepseek: '默认负责对话、文档理解和 Pi Agent。', siliconflow: '负责文本向量、重排及所选图片模型。', aliyun_bailian: '用于所选音频、视频或图片理解模型。', openrouter: '用于已选择的 OpenRouter 模型。' }
 const modelNames: Record<string, string> = { bge_m3: 'BGE-M3 · 文本稀疏检索', clip: 'CLIP · 图片检索', clap: 'CLAP · 音频检索' }
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : '操作未完成，请重试。'
+const modelPhases: Record<string, string> = { cache: '检查缓存', metadata: '连接下载源', download: '下载文件', verify: '校验文件', load: '载入模型', load_download: '下载与载入', inference: '推理验证', artifacts: '保存验证结果' }
+const bytes = (value: number) => value >= 1024 ** 3 ? `${(value / 1024 ** 3).toFixed(2)} GiB` : `${Math.round(value / 1024 ** 2)} MiB`
+
+function ModelProgress({ name, value }: { name: string; value: ModelPreparation }) {
+  const failed = ['error', 'interrupted'].includes(value.state)
+  const downloading = value.phase === 'download' && value.state === 'running'
+  const measurable = downloading && Number.isFinite(value.total_bytes) && Number(value.total_bytes) > 0 && Number.isFinite(value.downloaded_bytes)
+  const done = Math.min(value.downloaded_bytes || 0, value.total_bytes || 0)
+  return <li className={`setup-model ${failed ? 'has-error' : ''}`}>
+    <span className={failed ? 'setup-fail' : value.state === 'ready' ? 'setup-pass' : ''} aria-hidden>{value.state === 'ready' ? <CheckCircle2 size={18} /> : failed ? <AlertCircle size={18} /> : value.state === 'running' ? <Loader2 size={18} className="setup-spin" /> : '·'}</span>
+    <div className="setup-model-body">
+      <div className="setup-model-heading"><strong>{modelNames[name] || name}</strong><span>{value.state === 'ready' ? '已就绪' : modelPhases[value.phase || ''] || '等待准备'}</span></div>
+      <p role={failed ? 'alert' : 'status'}>{value.message}</p>
+      {measurable && <><progress className="setup-progress" aria-label={`${name} 文件下载进度`} max={value.total_bytes} value={done} /><div className="setup-model-metrics"><span>{bytes(done)} / {bytes(value.total_bytes!)}</span><span>{Math.floor(done / value.total_bytes! * 100)}%</span></div></>}
+      {downloading && !measurable && value.files_total !== undefined && <p>{value.files_completed || 0} / {value.files_total} 个文件已下载</p>}
+      {downloading && (value.idle_seconds || 0) >= 20 && <p>等待新的下载数据，已下载部分会保留。</p>}
+      {value.state === 'running' && ['load', 'load_download', 'inference'].includes(value.phase || '') && <p>首次载入与 CPU 推理可能需要几分钟。</p>}
+      {failed && value.hint && <p className="setup-model-help">{value.hint}</p>}
+      {failed && value.error_code && <details className="setup-model-diagnostic"><summary>查看诊断信息</summary><code>{value.error_code}{value.error_type && ` / ${value.error_type}`}</code><p>后端日志</p><code>tessmora logs --service backend --tail 160</code></details>}
+    </div>
+  </li>
+}
 
 export default function SetupPage() {
   const [status, setStatus] = useState<SetupStatus | null>(null)
@@ -174,7 +196,7 @@ export default function SetupPage() {
             <section className="setup-check-group"><h3><span>02</span> 存储与本地模型准备</h3><p>先检查存储并准备检索集合，再下载所需模型并验证推理。已有缓存会保留。</p>
               {status.progress.stage === 'storage' && status.progress.state === 'running' && <p className="setup-live" role="status"><Loader2 size={17} className="setup-spin" aria-hidden />{status.progress.message || '正在检查存储并准备检索集合…'}</p>}
               {status.progress.state === 'error' && status.progress.error_code === 'STORAGE_UNAVAILABLE' && status.progress.message && <div className="setup-error" role="alert"><strong>{status.progress.message}</strong>{status.progress.hint && <p>{status.progress.hint}</p>}</div>}
-              {status.progress.stage !== 'storage' && status.progress.total > 0 && <><progress className="setup-progress" aria-label="本地模型准备进度" max={status.progress.total} value={status.progress.completed} /><ul className="setup-checks">{Object.entries(status.progress.models).map(([model, value]) => <li key={model}><span className={value.state === 'ready' ? 'setup-pass' : ''}>{value.state === 'ready' ? <CheckCircle2 size={18} /> : value.state === 'running' ? <Loader2 size={18} className="setup-spin" /> : '·'}</span><div><strong>{modelNames[model] || model}</strong><p>{value.message}</p></div></li>)}</ul></>}
+              {status.progress.stage !== 'storage' && status.progress.total > 0 && <><div className="setup-model-overview"><span>本地模型</span><span>{status.progress.completed} / {status.progress.total} 已就绪</span></div><ul className="setup-checks setup-models">{Object.entries(status.progress.models).map(([model, value]) => <ModelProgress key={model} name={model} value={value} />)}</ul></>}
               <button className="setup-button primary" disabled={locked || !authorized || (!saved && !test?.success)} onClick={prepare}>{preparing ? '正在准备…' : status.progress.state === 'interrupted' || status.progress.state === 'error' ? '继续准备' : '保存并准备'}<ArrowRight size={17} /></button>
             </section>
             <div className="setup-actions"><button className="setup-button" disabled={locked} onClick={() => setStep(1)}><ArrowLeft size={17} />上一步</button>{status.ready && <button className="setup-button primary" onClick={() => setStep(3)}>完成 <ArrowRight size={17} /></button>}</div>

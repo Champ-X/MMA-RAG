@@ -16,6 +16,8 @@ x-app: &app
     PRELOAD_LOCAL_MODELS_ON_STARTUP: "false"
     HF_HOME: /cache/huggingface
     HF_ENDPOINT: ${TESSMORA_HF_ENDPOINT:-https://huggingface.co}
+    # HTTP downloads retain resumable partial bytes and observable byte counts.
+    HF_HUB_DISABLE_XET: "1"
     HTTP_PROXY: ${TESSMORA_PROXY:-}
     HTTPS_PROXY: ${TESSMORA_PROXY:-}
     ALL_PROXY: ${TESSMORA_PROXY:-}

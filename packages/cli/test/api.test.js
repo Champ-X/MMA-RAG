@@ -64,6 +64,20 @@ test('redirects cannot forward setup token to another origin', async (t) => {
   await assert.rejects(request(base, '/api/setup/config', { token: 'private' }), { code: 'SERVICE_UNREACHABLE' });
 });
 
+test('model preparation preserves actionable failure phase, code and recovery hint', async (t) => {
+  const base = await serve(t, (_req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ state: 'error', stage: 'models', models: { bge_m3: { state: 'error', phase: 'metadata', error_code: 'MODEL_NETWORK', error_type: 'ConnectionError', message: '下载源无法连接', hint: '检查 Docker 网络或调整下载源' } } }));
+  });
+  await assert.rejects(prepareModels(base, 'token'), error => {
+    assert.match(error.message, /BGE-M3 · 连接下载源/);
+    assert.match(error.hint, /MODEL_NETWORK.*ConnectionError/);
+    assert.match(error.hint, /Docker.*下载源/);
+    assert.equal(error.details.model.error_code, 'MODEL_NETWORK');
+    return true;
+  });
+});
+
 test('storage preflight checks both stores and rejects a misleading empty knowledge list', async (t) => {
   let failed = true;
   const base = await serve(t, (req, res) => {
