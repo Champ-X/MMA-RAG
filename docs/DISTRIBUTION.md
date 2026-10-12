@@ -9,7 +9,7 @@
 发布前可从源码构建。进入终端向导只需 Node.js 22.19+；完整运行需要 Docker Engine / Docker Desktop 和 Compose v2.20+（也支持独立的 `docker-compose`）。向导会检查并提供按系统分流的安装、启动与权限修复指引。macOS 的 Colima 可作为 Docker 引擎。建议 Docker 分配至少 8 GiB 内存、4 个 CPU，并为镜像、模型与知识库保留至少 20 GiB 空间；实际需求随资料和启用模型变化。
 
 ```bash
-# 在仓库根目录构建两个本地镜像；不会读取 backend/.env。
+# 在仓库根目录构建应用与固定版本 MinIO 镜像；不会读取 backend/.env。
 sh deploy/build.sh
 
 # 从源码运行安装器。以 CLI 的 --help 为准。
@@ -19,18 +19,26 @@ node packages/cli/bin/tessmora.js setup --source .
 
 镜像默认名为 `tessmora-backend:local` 和 `tessmora-frontend:local`，构建与运行均可通过 `TESSMORA_BACKEND_IMAGE`、`TESSMORA_FRONTEND_IMAGE` 指定版本。当前实现支持本地构建和 npm 打包；不能把尚未发布的 npm 包或镜像当作已上线版本。公开分发时需先构建、验证并发布对应平台镜像，再将准确版本写入 CLI 发布配置。
 
-无源码的安装只使用 Compose 运行文件，源码构建额外加载 [`deploy/compose.build.yaml`](../deploy/compose.build.yaml)。源码构建命令是：
+无源码的安装使用包内 Compose 运行文件；npm 包也包含 MinIO 的固定源码构建文件。应用源码构建额外加载 [`deploy/compose.build.yaml`](../deploy/compose.build.yaml)。应用源码构建命令是：
 
 ```bash
 docker compose --env-file /path/to/private/runtime.env \
   -p tessmora-example \
   -f /path/to/MMA-RAG/deploy/compose.yaml \
-  -f /path/to/MMA-RAG/deploy/compose.build.yaml build
+  -f /path/to/MMA-RAG/deploy/compose.build.yaml build backend frontend
 ```
 
 没有 `docker compose` 子命令时替换为 `docker-compose`。构建失败后可重试，Docker 会复用已完成的层。受网络环境影响时，可设置 `TESSMORA_DEBIAN_MIRROR=https://mirrors.ustc.edu.cn` 后构建，使用 Debian 镜像站；APT 仍验证发行版签名。构建不需要模型 API 凭证；模型权重也不内嵌在应用镜像中。
 
 终端向导的网络选项允许显式指定模型下载镜像和构建代理，无需手改 `.env`。代理地址必须能从 Docker 容器内访问；宿主机的 `127.0.0.1` 在容器内指向容器本身。构建代理只用于下载依赖；`--proxy` 运行代理用于容器内模型请求与下载，内部服务通信会绕过代理。代理不能替代模型服务的 API 凭证。
+
+### MinIO 分发来源
+
+2026-10-12 检查时，原 `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` 无法公开获取，Docker Hub 同版本不可用，官方历史二进制下载返回 410。[上游 README](https://github.com/minio/minio#source-only-distribution) 已说明社区版改为源码分发。登录 Docker 或重复拉取不能保证修复这一默认来源。
+
+新默认镜像为 `tessmora-minio:RELEASE.2025-09-07T16-13-09Z`。CLI 优先复用本机已存在的同版本旧官方镜像；没有缓存时，通过 [`Dockerfile.minio`](../deploy/Dockerfile.minio) 构建官方 commit `07c3a429bfed433e49018cb0f78a52145d4bedeb`。源码 archive 的 SHA256 固定为 `8819e3e7817e46b7b3798f8f200ead208562e571563c2e040352378031abe9f2`；镜像保留源码归档、LICENSE / CREDITS 和来源标签。构建使用容器内 Go 与 BuildKit 缓存；限制编译并行度，避免占满初次安装机器。
+
+首次构建需要访问 GitHub、Go 模块源和 Docker 基础镜像仓库。先准备 MinIO / Qdrant / Redis，再构建应用，可以尽早发现基础下载问题。`--minio-image` / `TESSMORA_MINIO_IMAGE` 可指定已有可信镜像；CLI 不会为自定义镜像私自更换来源或降级。原有开发 Compose 与存储数据不由此安装流程迁移。
 
 ## 安装器与 Compose 的约定
 
@@ -42,6 +50,7 @@ docker compose --env-file /path/to/private/runtime.env \
 | `TESSMORA_SETUP_TOKEN` | 本次安装的随机管理凭证，安装器生成，禁止写入公开日志 |
 | `TESSMORA_MINIO_USER` | 对象存储账号，默认 `tessmora` |
 | `TESSMORA_MINIO_PASSWORD` | 本次安装的随机对象存储密码，安装器生成 |
+| `TESSMORA_MINIO_IMAGE` | MinIO 镜像，默认固定版本本地构建；已有 CLI 实例可用 `setup --minio-image` 更新 |
 | `TESSMORA_BACKEND_IMAGE` | 后端、Pi 与 worker 使用的同一镜像版本 |
 | `TESSMORA_FRONTEND_IMAGE` | 已构建网页与 Nginx 镜像版本 |
 | `TESSMORA_HF_ENDPOINT` | 本地模型下载服务，默认官方 Hugging Face，可显式选择镜像 |

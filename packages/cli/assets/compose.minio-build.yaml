@@ -1,0 +1,9 @@
+# Build only the pinned storage dependency, including from an installed npm package.
+services:
+  minio:
+    build:
+      context: .
+      dockerfile: Dockerfile.minio
+      args:
+        HTTP_PROXY: ${TESSMORA_BUILD_PROXY:-}
+        HTTPS_PROXY: ${TESSMORA_BUILD_PROXY:-}

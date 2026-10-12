@@ -5,6 +5,7 @@ import { execute } from '../src/commands.js';
 import { createUI } from '../src/ui.js';
 import { brandBanner } from '../src/brand.js';
 import { publicError, TessmoraError } from '../src/errors.js';
+import { commandFormatter } from '../src/invocation.js';
 
 const HELP = `  用法  tessmora [命令] [选项]
 
@@ -28,6 +29,7 @@ const HELP = `  用法  tessmora [命令] [选项]
   --storage-port <端口>      文件存储端口，默认 9000
   --backend-image <镜像>     已发布后端镜像引用
   --frontend-image <镜像>    已发布前端镜像引用
+  --minio-image <镜像>       可信 MinIO 镜像；默认从固定官方源码构建
   --model-endpoint <URL>     本地模型下载地址，默认 https://huggingface.co
   --build-proxy <URL>        构建容器可访问的 HTTP(S) 代理
   --proxy <URL|off>          模型调用与下载的运行代理，默认关闭
@@ -48,29 +50,33 @@ const HELP = `  用法  tessmora [命令] [选项]
 `;
 
 let json = process.argv.includes('--json');
+let format = commandFormatter();
 try {
   const { values: options, positionals } = parseArgs({
     allowPositionals: true,
     options: {
       help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' }, json: { type: 'boolean' }, yes: { type: 'boolean', short: 'y' },
       'no-open': { type: 'boolean' }, rebuild: { type: 'boolean' }, follow: { type: 'boolean', short: 'f' },
-      ...Object.fromEntries(['instance', 'home', 'source', 'mode', 'url', 'capabilities', 'data-dir', 'port', 'storage-port', 'backend-image', 'frontend-image', 'model-endpoint', 'build-proxy', 'proxy', 'debian-mirror', 'credential-file', 'tail', 'service'].map((key) => [key, { type: 'string' }])),
+      ...Object.fromEntries(['instance', 'home', 'source', 'mode', 'url', 'capabilities', 'data-dir', 'port', 'storage-port', 'backend-image', 'frontend-image', 'minio-image', 'model-endpoint', 'build-proxy', 'proxy', 'debian-mirror', 'credential-file', 'tail', 'service'].map((key) => [key, { type: 'string' }])),
     },
   });
   json = Boolean(options.json);
+  format = commandFormatter(options);
   if (options.help) process.stdout.write(brandBanner() + HELP);
   else if (options.version) process.stdout.write(json ? '{"version":"0.1.0"}\n' : '0.1.0\n');
   else {
     if (positionals.length > 1) throw new TessmoraError('INVALID_ARGUMENTS', '每次只能运行一个命令。', '运行 tessmora --help 查看用法。');
     const command = positionals[0];
     if (command && !['setup', 'configure', 'start', 'stop', 'status', 'logs', 'doctor', 'open'].includes(command)) throw new TessmoraError('UNKNOWN_COMMAND', `未知命令 ${command}。`, '运行 tessmora --help 查看用法。');
-    const ui = createUI({ json });
+    const ui = createUI(options);
     const result = await execute(command, locations(options), options, ui);
     if (json) ui.result(result);
     if (result?.success === false) process.exitCode = 1;
   }
 } catch (error) {
   const result = publicError(error);
+  result.message = format(result.message);
+  if (result.hint) result.hint = format(result.hint);
   if (json) process.stdout.write(JSON.stringify({ success: false, error: result }) + '\n');
   else process.stderr.write(`\n${result.code === 'CANCELLED' ? '◇' : '✕'} ${result.message}${result.hint ? `\n  ${result.hint}` : ''}\n`);
   process.exitCode = error.code === 'CANCELLED' ? 130 : 1;

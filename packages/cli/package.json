@@ -12,5 +12,5 @@
     "prepare-assets": "node scripts/prepare-assets.js",
     "prepack": "npm run prepare-assets"
   },
-  "dependencies": { "@clack/prompts": "1.8.1", "picocolors": "1.1.1" }
+  "dependencies": { "@clack/prompts": "1.8.1", "fast-string-width": "3.0.2", "picocolors": "1.1.1" }
 }

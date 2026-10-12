@@ -1,9 +1,10 @@
 import { stat, access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { readState, ensureEnvironment } from './config.js';
-import { compose, containers, startRuntime, openBrowser } from './docker.js';
+import { compose, containers, openBrowser } from './docker.js';
+import { startRuntimeWithUI } from './runtime.js';
 import { prepareDocker, checkDockerWithGuidance } from './docker-guidance.js';
-import { readiness, waitForService, request } from './api.js';
+import { readiness, request } from './api.js';
 import { setup } from './wizard.js';
 import { TessmoraError, publicError } from './errors.js';
 
@@ -27,12 +28,7 @@ export async function execute(command, paths, options, ui) {
   if (command === 'start') {
     if (state.mode === 'local') {
       await prepareDocker(ui, options);
-      const spin = ui.spinner('启动 Tessmora');
-      try {
-        await startRuntime(paths, state, { rebuild: options.rebuild, onLine: (line) => spin.message(line.split('\n').at(-1).slice(0, 140)) });
-        await waitForService(state.url);
-        spin.stop('Tessmora 已启动');
-      } catch (error) { spin.error('启动未完成'); throw error; }
+      await startRuntimeWithUI(paths, state, options, ui);
     }
     const status = await readiness(state.url);
     if (state.mode === 'remote' && status.setup.managed === false) ui.info('已连接源码服务，模型配置由远端环境管理。');

@@ -14,6 +14,8 @@ export function redact(value, secrets = []) {
     text = text.split(secret).join('[redacted]');
   }
   return text
+    .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, '$1[redacted]@')
+    .replace(/([?&](?:token|access_token|api_key|signature)=)[^\s&#]+/gi, '$1[redacted]')
     .replace(/\b(?:sk|sk-or-v1)-[A-Za-z0-9_-]{8,}/g, '[redacted]')
     .replace(/((?:api[_-]?key|authorization|setup[_-]?token|password)["']?\s*[=:]\s*["']?(?:Bearer\s+)?)[^\s,;"'}]+/gi, '$1[redacted]');
 }

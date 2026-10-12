@@ -143,7 +143,7 @@ export async function detectSource(explicit) {
   }
 }
 
-export async function composeArgs(paths, state, { build = false } = {}) {
+export async function composeArgs(paths, state, { build = false, minioBuild = false } = {}) {
   let asset = join(packageRoot, 'assets', 'compose.yaml');
   if (build && state.source) asset = join(state.source, 'deploy', 'compose.yaml');
   try { await access(asset); } catch {
@@ -153,6 +153,7 @@ export async function composeArgs(paths, state, { build = false } = {}) {
   }
   const args = ['--env-file', paths.env, '--project-name', state.project || projectName(paths), '-f', asset];
   if (build) args.push('-f', join(state.source, 'deploy', 'compose.build.yaml'));
+  if (minioBuild) args.push('-f', join(dirname(asset), 'compose.minio-build.yaml'));
   return args;
 }
 
@@ -192,22 +193,6 @@ export async function claimDataDir(paths, state) {
   if ((await readdir(state.dataDir)).length) throw new TessmoraError('DATA_UNOWNED', '该目录已有资料，但不属于当前 CLI 实例。未修改目录内容。', '请选择空目录；复用旧安装时请恢复原 CLI 状态目录与存储凭证。');
   try { await writeFile(marker, JSON.stringify({ project: state.project, instance: paths.instance, schema: 1 }) + '\n', { flag: 'wx', mode: 0o600 }); }
   catch (error) { if (error.code === 'EEXIST') return claimDataDir(paths, state); throw error; }
-}
-
-export async function startRuntime(paths, state, { onLine, rebuild = false } = {}) {
-  await dockerCheck();
-  await claimDataDir(paths, state);
-  await validatePorts(paths, state);
-  if (state.source && (!state.runtimeBuilt || rebuild)) {
-    await compose(paths, state, ['build', 'backend', 'frontend'], { build: true, onLine });
-  } else if (!state.source && (!state.backendImage || !state.frontendImage)) {
-    try {
-      await run('docker', ['image', 'inspect', state.backendImage || 'tessmora-backend:local', state.frontendImage || 'tessmora-frontend:local'], { timeout: 10000 });
-    } catch {
-      throw new TessmoraError('SOURCE_REQUIRED', '此开发版本尚未提供公共应用镜像。', '在 Tessmora 源码根目录运行 tessmora setup，或传入 --source /绝对路径；也可设置 --backend-image 和 --frontend-image 使用已发布镜像。');
-    }
-  }
-  await compose(paths, state, ['up', '-d', '--wait', '--wait-timeout', '240'], { onLine });
 }
 
 export async function openBrowser(url, { platform = process.platform, wsl = Boolean(process.env.WSL_DISTRO_NAME || /microsoft|wsl/i.test(release())), runner = run } = {}) {

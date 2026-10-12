@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { resolve, join, isAbsolute, parse } from 'node:path';
 import { mkdir, readFile, writeFile, rename, chmod } from 'node:fs/promises';
 import { TessmoraError } from './errors.js';
+import { MINIO_IMAGE } from './runtime-images.js';
 
 export function locations(options = {}) {
   const instance = options.instance || 'default';
@@ -80,6 +81,7 @@ export async function ensureEnvironment(paths, state) {
     TESSMORA_MINIO_PASSWORD: previous.TESSMORA_MINIO_PASSWORD || randomBytes(24).toString('hex'),
     TESSMORA_BACKEND_IMAGE: state.backendImage || 'tessmora-backend:local',
     TESSMORA_FRONTEND_IMAGE: state.frontendImage || 'tessmora-frontend:local',
+    TESSMORA_MINIO_IMAGE: state.minioImage || previous.TESSMORA_MINIO_IMAGE || process.env.TESSMORA_MINIO_IMAGE || MINIO_IMAGE,
     TESSMORA_HF_ENDPOINT: state.modelEndpoint || 'https://huggingface.co',
     TESSMORA_BUILD_PROXY: state.buildProxy || '',
     TESSMORA_PROXY: state.proxy || '',

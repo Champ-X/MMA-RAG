@@ -37,7 +37,8 @@ test('an unfinished instance resumes setup and explicit start gives recovery gui
   assert.equal(JSON.parse(resumed.stdout).error.code, 'INTERACTIVE_REQUIRED');
   const started = await cli(['start', '--home', home, '--json', '--no-open']);
   assert.equal(JSON.parse(started.stdout).error.code, 'SETUP_INCOMPLETE');
-  assert.match(JSON.parse(started.stdout).error.hint, /tessmora setup/);
+  assert.match(JSON.parse(started.stdout).error.hint, /node .*tessmora\.js setup --home /);
+  assert.ok(JSON.parse(started.stdout).error.hint.includes(home));
 });
 
 test('incomplete setup and doctor both explain Docker recovery in JSON without host mutations', async (t) => {
@@ -134,7 +135,7 @@ test('invalid credentials never persist; model download interruption resumes fro
   const storagePort = await availablePort(19000);
   const fakeBin = join(home, 'bin'); await mkdir(fakeBin);
   const fakeDocker = join(fakeBin, 'docker');
-  await writeFile(fakeDocker, `#!${process.execPath}\nconst args=process.argv.slice(2); if(args.includes('ps')) console.log(JSON.stringify([{Service:'frontend',State:'running',Publishers:[{PublishedPort:${port}}]}])); else if(args.includes('version')) console.log('29.0.0');\n`);
+  await writeFile(fakeDocker, `#!${process.execPath}\nconst args=process.argv.slice(2); if(args.includes('ps')) console.log(JSON.stringify([{Service:'frontend',State:'running',Publishers:[{PublishedPort:${port}}]}])); else if(args.includes('config')) console.log(JSON.stringify({services:{backend:{image:'test/backend'},frontend:{image:'test/frontend'},minio:{image:'test/minio'},qdrant:{image:'test/qdrant'},redis:{image:'test/redis'}}})); else if(args.includes('version')) console.log('29.0.0');\n`);
   await chmod(fakeDocker, 0o755);
   const env = { PATH: `${fakeBin}:${process.env.PATH}`, TESSMORA_DEEPSEEK_API_KEY: '', TESSMORA_SILICONFLOW_API_KEY: '' };
   const paths = locations({ home });

@@ -71,6 +71,20 @@
 
 跨平台步骤由确定性测试覆盖；本轮没有在全新系统实际安装 Docker，也没有执行 Docker Desktop 的首次授权。Windows / WSL2、Linux amd64 的完整安装验收仍待完成，不能将引导分支测试等同于这些平台的实机验收。
 
+## 2026-10-12 安装进度、恢复指令与 MinIO 来源修复
+
+用户在 Windows / Ubuntu 24.04 终端反馈：构建动画换行后残留大量重复行，旧 MinIO Quay 镜像返回 401，源码启动退出后提示的 `tessmora setup` 又找不到命令。本轮针对三项问题统一调整向导与分发流程。
+
+- 环境准备分为五阶段，显示当前活动和耗时，完成阶段保留摘要；动画按实际终端列宽截断，完整脱敏输出写入权限为 0600 的实例日志。超过 15 秒无输出会显示等待时长，不虚构整体下载百分比。
+- 真实 PTY 的 60 / 88 / 120 列录制及 xterm 渲染均验证：各完成阶段只保留一行，没有原始长下载地址刷屏；检查过窄屏、进度页和失败恢复页截图。菜单退出与构建动画中的 Ctrl+C 均返回 130；恢复命令包含实际源码入口与自定义配置目录。上述构建进度与失败由隔离 Docker 替身驱动。
+- CLI **50 项测试通过**，覆盖列宽、日志脱敏、镜像错误分类、失败前置、缓存复用与构建完成后的恢复。真实子进程 JSON 失败路径保持 stdout 单一结果、stderr 进度事件，并保留第 2 阶段与构建检查点。Compose 2.20 的上游源码确认没有 `pull --policy`，因此实现使用本地镜像检查加常规 pull。
+- 实测旧 Quay 标签 / digest 不可获取，Docker Hub 同版本不可用，历史二进制返回 410。替代镜像从官方 commit `07c3a429bfed433e49018cb0f78a52145d4bedeb` 构建，源码 SHA256 校验通过；`tessmora-minio:review` 镜像 ID 为 `33cff63d1cd5`，实际运行报告原 `RELEASE.2025-09-07T16-13-09Z` 版本。源码下载较慢；Go 依赖下载阶段中断后，通过显式构建代理续建并复用缓存。本轮没有改变 Docker 引擎设置。
+- 新 MinIO 镜像与已有应用 review 镜像完成 Linux arm64 隔离 smoke：六个服务启动，网页、API、安装权限和运行依赖通过；实际 S3 写入后重启 MinIO，再读取得到相同内容。证据：`data/distribution-smoke/tessmora-smoke-iw0kdcnw/report.json`。
+- 新 CLI 运行模块另在真实 Docker 上完成全部五阶段，使用独立目录与 16400 / 17400 端口，接口报告 healthy / managed。证据：`data/cli-acceptance/runtime-review-LNQgx8/report.json`。两组隔离容器均已清理；3001 返回 HTTP 200，原 `mmrag_*` 存储持续运行。
+- npm tarball 包含运行进度模块及 MinIO 构建资源，共 21 个文件；临时 prefix 安装后的 `doctor --json` 通过，安装前检查未创建实例目录。
+
+本轮实际镜像构建与 S3 验收为 Linux arm64；尚未替用户在其 Windows / WSL2 电脑重跑完整安装。未再次执行付费模型调用、资料入库或多模态业务验收，也没有发布公共 npm 包或预构建镜像。
+
 ## 本地证据与发布状态
 
 证据保留于被 Git 忽略的目录，不包含在 npm 包、镜像构建上下文或提交内容中：

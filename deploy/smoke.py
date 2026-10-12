@@ -32,6 +32,7 @@ def main() -> None:
     parser.add_argument("--keep", action="store_true", help="Keep the isolated installation running for browser QA")
     parser.add_argument("--backend-image", default="tessmora-backend:local")
     parser.add_argument("--frontend-image", default="tessmora-frontend:local")
+    parser.add_argument("--minio-image", default="tessmora-minio:RELEASE.2025-09-07T16-13-09Z")
     args = parser.parse_args()
     compose = ["docker", "compose"]
     if subprocess.run(compose + ["version"], capture_output=True).returncode:
@@ -57,6 +58,7 @@ def main() -> None:
         "TESSMORA_MINIO_PASSWORD": secrets.token_urlsafe(32),
         "TESSMORA_BACKEND_IMAGE": args.backend_image,
         "TESSMORA_FRONTEND_IMAGE": args.frontend_image,
+        "TESSMORA_MINIO_IMAGE": args.minio_image,
     }
     envfile = evidence / "runtime.env"
     envfile.write_text("".join(key + "='" + value.replace("'", "\\'") + "'\n" for key, value in values.items()))
@@ -113,15 +115,30 @@ def main() -> None:
             "assert magic.from_buffer(b'Tessmora sample'); "
             "print('CPU PyTorch:', torch.__version__); print('BGE-M3 / CLIP / CLAP imports: ready')")
         report["checks"]["inference_dependencies"] = inference_imports.stdout.strip().splitlines()
+        # Exercise the rebuilt storage image through S3, including persistence.
+        s3_client = (
+            "import io, os; from minio import Minio; "
+            "c=Minio('minio:9000', access_key=os.environ['MINIO_ACCESS_KEY'], "
+            "secret_key=os.environ['MINIO_SECRET_KEY'], secure=False); "
+        )
+        compose_run("exec", "-T", "backend", "python", "-c", s3_client +
+                    "c.make_bucket('onboarding-smoke'); "
+                    "payload=b'Every fragment finds its place.'; "
+                    "c.put_object('onboarding-smoke', 'fragment.txt', io.BytesIO(payload), len(payload))")
+        report["checks"]["storage_version"] = compose_run("exec", "-T", "minio", "minio", "--version").stdout.strip()
         marker = "/state/distribution-smoke-marker.txt"
         compose_run("exec", "-T", "backend", "python", "-c",
                     "from pathlib import Path; import sys; Path(sys.argv[1]).write_text(sys.argv[2])", marker, project)
-        compose_run("restart", "backend", "worker", "frontend")
+        compose_run("restart", "minio", "backend", "worker", "frontend")
         compose_run("up", "-d", "--wait", "--wait-timeout", "300")
         persisted = compose_run("exec", "-T", "backend", "python", "-c",
                     "from pathlib import Path; import sys; print(Path(sys.argv[1]).read_text())", marker)
         assert persisted.stdout.strip() == project
         assert request("/health")["status"] == "healthy"
+        compose_run("exec", "-T", "backend", "python", "-c", s3_client +
+                    "r=c.get_object('onboarding-smoke', 'fragment.txt'); "
+                    "assert r.read()==b'Every fragment finds its place.'; r.close(); r.release_conn()")
+        report["checks"]["s3_restart_persistence"] = True
         report["checks"]["restart_persistence"] = True
         report["passed"] = True
     except Exception as error:

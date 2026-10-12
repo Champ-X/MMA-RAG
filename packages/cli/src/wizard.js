@@ -2,9 +2,10 @@ import { readFile, mkdir, access, readdir } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { resolve } from 'node:path';
 import { saveState, projectName, validateDataDir, normalizeUrl, ensureEnvironment } from './config.js';
-import { availablePort, detectSource, startRuntime, openBrowser, containers } from './docker.js';
+import { availablePort, detectSource, openBrowser, containers } from './docker.js';
+import { startRuntimeWithUI } from './runtime.js';
 import { prepareDocker } from './docker-guidance.js';
-import { readiness, request, waitForService, prepareModels } from './api.js';
+import { readiness, request, prepareModels } from './api.js';
 import { TessmoraError, redact } from './errors.js';
 import { BACK, backOption, labels, providerLabels } from './ui.js';
 
@@ -52,7 +53,7 @@ async function retryable(ui, action, { back = false } = {}) {
   while (true) {
     try { return await action(); } catch (error) {
       if (!ui.interactive || error.code === 'CANCELLED') throw error;
-      ui.warn(`${error.message}${error.hint ? `\n${error.hint}` : ''}`);
+      ui.failure(error);
       const next = await ui.select('下一步', [
         { value: 'retry', label: '重新检测 / 重试', hint: '保留已经完成的步骤' },
         ...(back ? [backOption] : []),
@@ -82,6 +83,7 @@ export async function setup(paths, initial, options, ui) {
   if (options['build-proxy']) state = await saveState(paths, { ...state, buildProxy: normalizeUrl(options['build-proxy']) });
   if (options.proxy !== undefined) state = await saveState(paths, { ...state, proxy: options.proxy === 'off' ? '' : normalizeUrl(options.proxy) });
   if (options['debian-mirror']) state = await saveState(paths, { ...state, debianMirror: normalizeUrl(options['debian-mirror']) });
+  if (options['minio-image']) state = await saveState(paths, { ...state, minioImage: options['minio-image'] });
   let step = options.configure ? 0 : Math.min(state.step ?? 0, 5);
   if (ui.interactive && initial && !options.configure) {
     const choice = await ui.select(initial.stage === 'ready' ? '检测到已有安装' : '上次的配置进度已保留', [
@@ -90,18 +92,12 @@ export async function setup(paths, initial, options, ui) {
     ]);
     if (choice === 'configure') step = 0;
   }
-  if (options.configure || options.mode || options.url || options.capabilities || options['data-dir'] || options.port || options['storage-port'] || options.source) step = 0;
+  if (options.configure || options.mode || options.url || options.capabilities || options['data-dir'] || options.port || options['storage-port'] || (options.source && resolve(options.source) !== state.source)) step = 0;
   const persist = async (nextStep, stage) => { state = await saveState(paths, { ...state, step: nextStep, stage }); step = nextStep; };
   if (state.mode === 'local' && step >= 3) {
     const resumed = await retryable(ui, async () => {
       if (await prepareDocker(ui, { ...options, back: true }) === BACK) return BACK;
-      const spin = ui.spinner('恢复已有运行环境');
-      try {
-        await startRuntime(paths, state, { onLine: (line) => spin.message(line.split('\n').at(-1).slice(0, 140)) });
-        const status = await waitForService(state.url);
-        spin.stop('运行环境已恢复');
-        return status;
-      } catch (error) { spin.error('运行环境尚未恢复'); throw error; }
+      return startRuntimeWithUI(paths, state, options, ui);
     }, { back: true });
     if (resumed === BACK) step = 2;
     else if (step >= 5 && !resumed.setup.ready) {
@@ -201,15 +197,14 @@ export async function setup(paths, initial, options, ui) {
       state = { ...state, port, storagePort, url: `http://localhost:${port}` };
       await persist(2, 'runtime');
       await ensureEnvironment(paths, state);
+      ui.card('本次安装', [
+        `工作台  ${state.url}`, `资料    ${state.dataDir}`,
+        `能力    ${state.capabilities.map(cap => labels[cap]).join(' · ')}`,
+        '', '只管理当前实例。资料与下载缓存会持续保留。',
+      ]);
       const started = await retryable(ui, async () => {
-        const spin = ui.spinner(state.source && !state.runtimeBuilt ? '首次构建运行环境 · 下载依赖可能需要几分钟' : '启动应用与存储服务');
-        try {
-          await startRuntime(paths, state, { rebuild: options.rebuild, onLine: (line) => spin.message(line.split('\n').at(-1).slice(0, 140)) });
-          spin.message('验证应用与首次配置接口');
-          await waitForService(state.url);
-          spin.stop('应用、存储与配置接口已就绪');
-          return true;
-        } catch (error) { spin.error('运行环境准备未完成'); throw error; }
+        await startRuntimeWithUI(paths, state, options, ui);
+        return true;
       }, { back: true });
       if (started === BACK) { step = 2; continue; }
       state.runtimeBuilt = Boolean(state.source);
@@ -240,7 +235,9 @@ export async function setup(paths, initial, options, ui) {
         const spin = ui.spinner('实际测试所选能力的模型连接');
         let result;
         try { result = await request(state.url, '/api/setup/test', { token: env.TESSMORA_SETUP_TOKEN, body: { capabilities: state.capabilities, credentials }, timeout: 600000 }); }
-        finally { spin.stop('模型连接测试结束'); }
+        catch (error) { spin.error('模型连接测试未完成'); throw error; }
+        if (result.success) spin.stop('模型连接测试通过');
+        else spin.error('模型连接测试完成 · 有项目需要修复');
         for (const row of result.results || []) (row.success ? ui.success : ui.warn).call(ui, redact(`${row.provider} · ${row.capability} · ${row.model}: ${row.success ? '通过' : row.message || row.error_code || '失败'}`, Object.values(credentials)));
         if (!result.success || !result.test_receipt) throw new TessmoraError('MODEL_TEST_FAILED', '部分模型连接测试未通过，尚未保存本次凭证。', '返回上一步可重新填写；检查密钥、余额、模型权限和网络后重试。');
         return result;
@@ -293,7 +290,11 @@ export async function setup(paths, initial, options, ui) {
         if (!await openBrowser(url)) ui.warn(`未能自动打开浏览器，请访问 ${state.url}`);
       }
       await persist(6, state.mode === 'remote' && !state.remoteReady ? state.remoteManaged ? 'remote-pending' : 'connected' : 'ready');
-      ui.finish(`${state.url}\n下次启动：tessmora start${paths.instance !== 'default' ? ` --instance ${paths.instance}` : ''}\n修改配置：tessmora configure · 排查问题：tessmora doctor`);
+      ui.card(state.mode === 'remote' ? '服务已连接' : '你的知识工作台已就绪', [
+        state.url, '', '下一步：导入一份资料 → 提问 → 查看引用原文', '',
+        '下次启动：tessmora start', '修改配置：tessmora configure', '排查问题：tessmora doctor',
+      ]);
+      ui.finish('Every fragment finds its place.');
     }
   }
   return { success: true, mode: state.mode, url: state.url, capabilities: state.capabilities, dataDir: state.dataDir, stage: state.stage, reachable: true, ready: state.mode === 'remote' ? state.remoteReady : true };

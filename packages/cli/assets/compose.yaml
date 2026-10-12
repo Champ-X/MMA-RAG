@@ -60,7 +60,7 @@ services:
       backend:
         condition: service_healthy
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: ${TESSMORA_MINIO_IMAGE:-tessmora-minio:RELEASE.2025-09-07T16-13-09Z}
     restart: unless-stopped
     command: [server, /data, --console-address, ":9001"]
     environment:
