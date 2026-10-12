@@ -41,5 +41,5 @@ RUN mkdir -p /app/backend/data /app/backend/logs /app/backend/temp /app/backend/
     && node --version && ffmpeg -version >/dev/null && libreoffice --version
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=90s --retries=6 \
-    CMD curl --fail --silent http://127.0.0.1:8000/health >/dev/null || exit 1
+    CMD curl --noproxy '*' --fail --silent --show-error --max-time 4 http://127.0.0.1:8000/health >/dev/null || exit 1
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -85,6 +85,18 @@
 
 本轮实际镜像构建与 S3 验收为 Linux arm64；尚未替用户在其 Windows / WSL2 电脑重跑完整安装。未再次执行付费模型调用、资料入库或多模态业务验收，也没有发布公共 npm 包或预构建镜像。
 
+## 2026-10-12 WSL 启动失败诊断与修复
+
+用户提供的三份安装日志显示：存储和应用镜像准备成功，第一次 Compose 检查报告 frontend 不健康，后两次报告 worker 不健康。补充容器日志确认 worker 到 Redis 的连接曾反复超时，每次等待约两分钟，随后恢复并报告 ready。前端 API 已能返回 200，旧 wget 探针却返回 502；用户在同一容器执行 `wget -Y off` 直接访问同一 `/health` 得到 200，确认代理影响了回环健康检查。Redis 早期网络超时的具体 WSL / VPN 设置原因未得到证明。
+
+- 前端 GET 探针显式禁用代理，后端与 MinIO 的 curl 也显式绕过代理并限定请求时间。修复同步到 Compose 与 npm 运行资源，可覆盖旧缓存镜像的探针。
+- Celery 的 Redis 连接 / 读写等待限制为 5 秒，显式启用启动重试；worker 探针保留 ping 原始输出。启动失败自动采集当前实例所有服务状态、失败探针、异常日志与内部 DNS / TCP 检查；`doctor` 使用相同诊断。重试仅重新启动仍不健康的应用服务。
+- CLI **58 项测试通过**，覆盖多个失败服务、OOM、缺失服务、脱敏、诊断不可用、启动错误分类及重试范围；npm dry-run 包含新诊断模块，共 22 个文件。60 / 88 / 120 列 PTY 生成诊断错误页，按故障服务分组，并核对终端渲染；画面使用模拟故障内容。
+- 真实 Linux arm64 隔离 smoke 通过：前端注入无效代理后，旧探针失败，新探针与 API 可用；通过 Redis 执行真实 Celery 测试任务；无响应 Redis 替身在 **5.1 秒**后报连接失败；S3 写入、服务重启与持久化读回通过。特意使用旧 `tessmora-frontend:review` 镜像，验证 Compose 可直接修正缓存镜像。证据：`data/distribution-smoke/tessmora-smoke-yjrnc6uc/report.json`。
+- 真实 CLI 启动模块的故障注入与恢复通过：只让隔离 frontend 的探针失败，错误页与安装日志准确记录该服务及探针输出；恢复后 frontend 重新健康，backend / worker / Redis / MinIO / Qdrant 的容器 ID 均保持不变。证据：`data/cli-acceptance/startup-diagnostics-20261012/report.json`。两组隔离容器均已移除，原 3001 和 `mmrag_*` 服务保持运行。
+
+构建边界：前端完整镜像构建通过；后端完整构建完成了依赖安装、pip check 与源码复制，但导出解包因本机 Docker 空间不足失败。删除本次失败镜像后，以此前通过验收的 backend review 镜像为基础，仅加载本次变更的 `celery_app.py` 与探针完成上述实际运行验证；没有清理其他项目镜像、重启 Docker 或迁移用户资料。Windows / WSL2 的证据来自用户日志与探针对照，并非本机完整 WSL 安装验收；本轮未再次进行模型付费调用或多模态业务测试。
+
 ## 本地证据与发布状态
 
 证据保留于被 Git 忽略的目录，不包含在 npm 包、镜像构建上下文或提交内容中：

@@ -20,6 +20,34 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# A TCP server that accepts Redis connections but never responds, like a stalled
+# container route. Exercise Kombu's real socket settings rather than asserting config.
+BROKER_TIMEOUT_PROBE = """
+import socket, threading, time
+from celery_app import celery_app
+server = socket.socket()
+server.bind(('127.0.0.1', 0))
+server.listen()
+def stall():
+    connection, _ = server.accept()
+    with connection:
+        time.sleep(15)
+threading.Thread(target=stall, daemon=True).start()
+started = time.monotonic()
+try:
+    with celery_app.connection_for_read(f'redis://127.0.0.1:{server.getsockname()[1]}/0') as connection:
+        connection.ensure_connection(max_retries=0)
+except Exception as error:
+    elapsed = time.monotonic() - started
+    assert 'timeout' in str(error).lower() or 'timed out' in str(error).lower(), type(error).__name__
+    assert elapsed < 12, f'Redis socket attempt took {elapsed:.1f}s'
+    print(f'Stalled Redis connection failed after {elapsed:.1f}s')
+else:
+    raise AssertionError('Unresponsive Redis was accepted')
+finally:
+    server.close()
+"""
+
 
 def free_port() -> int:
     with socket.socket() as sock:
@@ -64,7 +92,11 @@ def main() -> None:
     envfile.write_text("".join(key + "='" + value.replace("'", "\\'") + "'\n" for key, value in values.items()))
     envfile.chmod(0o600)
     process_env = {key: value for key, value in os.environ.items() if not key.startswith("TESSMORA_")}
-    cmd = compose + ["--env-file", str(envfile), "-p", project, "-f", str(ROOT / "deploy" / "compose.yaml")]
+    # Reproduce Docker Desktop/WSL injecting an external proxy into frontend.
+    # The local Nginx -> API readiness check must bypass this unreachable proxy.
+    proxy_overlay = evidence / "proxy-smoke.yaml"
+    proxy_overlay.write_text('services:\n  frontend:\n    environment:\n      http_proxy: http://127.0.0.1:1\n      HTTP_PROXY: http://127.0.0.1:1\n')
+    cmd = compose + ["--env-file", str(envfile), "-p", project, "-f", str(ROOT / "deploy" / "compose.yaml"), "-f", str(proxy_overlay)]
     base = f"http://127.0.0.1:{port}"
 
     def compose_run(*command: str) -> subprocess.CompletedProcess:
@@ -82,6 +114,17 @@ def main() -> None:
         compose_run("up", "-d", "--wait", "--wait-timeout", "300")
         report["checks"]["health"] = request("/health")
         assert report["checks"]["health"]["status"] == "healthy"
+        compose_run("exec", "-T", "frontend", "sh", "-c",
+                    "if wget --quiet --spider http://127.0.0.1/health; then exit 1; fi; "
+                    "wget -Y off -q -O /dev/null -T 3 http://127.0.0.1/health")
+        report["checks"]["proxy_safe_healthcheck"] = True
+        task = compose_run("exec", "-T", "backend", "python", "-c",
+                           "from celery_app import celery_app; "
+                           "result=celery_app.send_task('celery_app.debug_task', queue='celery').get(timeout=20); "
+                           "assert result=={'hello':'world'}; print('Worker processed task through Redis')")
+        report["checks"]["worker_task"] = task.stdout.strip()
+        timeout_probe = compose_run("exec", "-T", "backend", "python", "-c", BROKER_TIMEOUT_PROBE)
+        report["checks"]["broker_socket_timeout"] = timeout_probe.stdout.strip()
         page = request("/setup")
         assert "<html" in page and "/assets/" in page, "Compiled SPA was not served"
         report["checks"]["setup_status"] = request("/api/setup/status")

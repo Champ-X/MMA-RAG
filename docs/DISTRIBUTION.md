@@ -62,6 +62,10 @@ CLI 以私有 `--env-file` 和独立 `--project-name` 启动 Compose。私有文
 
 Nginx 代理 `/api/` 和 `/health`，支持流式输出及较长解析请求。`/setup` 等前端路径由 SPA 处理。Pi 使用与安装管理相同的本地凭证，网页完成引导后沿用已认证会话。
 
+回环健康探针显式绕过代理：前端使用 BusyBox wget 的 `-Y off` 并执行 GET；后端与 MinIO 使用 curl 的 `--noproxy '*'`。不能仅依赖 `NO_PROXY`，Docker 客户端可能向容器注入小写代理变量。Compose 中也定义探针，更新 CLI 运行配置即可修正缓存镜像的探针。worker 保留 Celery ping 的退出码与原始输出；Redis 传输连接和读写超时为 5 秒，启动连接失败后继续重试，避免每次等待操作系统约两分钟的 TCP 超时。
+
+安装失败会采集当前 Compose 项目的状态、退出码 / OOM、最近探针与异常服务日志，后端 / worker 还会探测内部 DNS 与 TCP。诊断有超时与长度限制，不读取容器完整环境；沿用配置凭证脱敏。再次执行 setup 仅重启仍不健康的应用服务以重新等待检查，不重启健康服务或存储。
+
 ## 数据与重启
 
 数据目录内各部分独立保存：
@@ -99,6 +103,8 @@ python3 deploy/smoke.py --backend-image tessmora-backend:review --frontend-image
 ```
 
 脚本使用随机项目名、空数据目录、空模型配置和空闲端口，不操作已有安装。退出时默认停止且移除本次隔离容器，保留报告与数据，便于检查；不执行 `down -v`。报告不包含管理 token、存储密码或模型密钥。`--keep` 实例检查完毕后，使用输出目录内的 `runtime.env`、报告内 `project`，对同一 Compose 文件执行 `down`。
+
+Smoke 还会给前端注入一个不可用代理，验证旧探针失败而新探针与网页/API 均可用；通过 Redis 投递并执行真实 Celery 测试任务，并用不响应的 Redis 替身验证单次连接超时。代理覆盖文件保留在该次证据目录，便于复查。
 
 [Distribution images 工作流](../.github/workflows/distribution.yml)在原生 Linux amd64 / arm64 runner 上构建并执行此检查。该检查证明基础安装与重启；真实模型连接、下载恢复、资料入库、问答引用及浏览器视觉验收需要分别保留证据，不能用健康检查替代。
 

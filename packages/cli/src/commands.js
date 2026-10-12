@@ -7,6 +7,7 @@ import { prepareDocker, checkDockerWithGuidance } from './docker-guidance.js';
 import { readiness, request } from './api.js';
 import { setup } from './wizard.js';
 import { TessmoraError, publicError } from './errors.js';
+import { collectRuntimeDiagnostics, diagnosticSummary, serviceReady, runtimeServices } from './runtime-diagnostics.js';
 
 export async function execute(command, paths, options, ui) {
   const state = await readState(paths);
@@ -99,9 +100,12 @@ export async function execute(command, paths, options, ui) {
       });
       await check('containers', async () => {
         const list = await containers(paths, state);
-        const required = ['backend', 'worker', 'frontend', 'minio', 'qdrant', 'redis'];
-        const missing = required.filter((name) => !list.some((container) => container.Service === name && container.State === 'running' && container.Health !== 'unhealthy'));
-        if (missing.length) throw new TessmoraError('CONTAINERS_NOT_RUNNING', `未运行：${missing.join(', ')}`, '运行 tessmora start，或查看 tessmora logs。');
+        const missing = runtimeServices.filter(name => !list.some(container => container.Service === name && serviceReady({ state: container.State, health: container.Health })));
+        if (missing.length) {
+          const diagnostics = await collectRuntimeDiagnostics(paths, state);
+          const summary = diagnosticSummary(diagnostics);
+          if (summary.failed.length || diagnostics.unavailable) throw new TessmoraError('CONTAINERS_NOT_RUNNING', `尚未就绪：${(summary.failed.length ? summary.failed : missing).join(', ')}`, summary.lines.join('\n'));
+        }
         return '全部运行中';
       });
     }

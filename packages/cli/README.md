@@ -107,6 +107,18 @@ tessmora setup --yes --instance server --mode remote \
 
 向导与 `doctor` 会展示 Docker 可用内存和 CPU。内存少于 8 GiB 时给出资源建议，但不会修改或重启已有 Docker 引擎；完整多模态通常需要更多资源。
 
+启动失败时，向导会自动记录本实例六个服务的状态、失败探针、异常服务最近 80 行日志；后端或任务服务异常时，还会检查容器到 Redis / MinIO / Qdrant 的 DNS 和 TCP 连接。错误页显示具体服务与关键原因，完整脱敏诊断写入当前安装日志。`doctor` 也提供这些诊断。再次运行 setup 时，仅对仍不健康的应用服务重新启动检查，健康服务与存储不重启。
+
+网页可访问却显示 `frontend unhealthy` 时，可能是 Docker 注入的代理影响了回环探针。当前探针显式绕过代理；运行配置中的修复也适用于已有镜像。源码用户更新后可运行：
+
+```bash
+git pull --ff-only
+npm --prefix packages/cli ci
+node packages/cli/bin/tessmora.js setup --rebuild
+```
+
+沿用原来的 `--home` / `--instance`（如有）。`--rebuild` 会将后端连接超时等源码更新放入应用镜像，复用 Docker 缓存，保留模型与资料。Redis 自身健康不代表 worker 到 Redis 的网络可达；若诊断显示 `tcp_timeout` 或 `dns_failed`，需检查 Docker / WSL 网络与 VPN 路由。Redis 单次连接 / 读写等待限制为 5 秒，由 Celery 继续重试；这不会自动修改宿主网络。
+
 本地模型默认从 `https://huggingface.co` 下载。如果所在网络无法访问，向导的“调整目录和端口”中可填写可信模型镜像，也可执行 `tessmora setup --model-endpoint https://your-trusted-model-mirror.example` 更新地址并从当前阶段继续。CLI 不会自行切换镜像；此选项只改变模型下载源，不改变模型服务商 API 地址。已有缓存会保留。
 
 源码构建遇到网络问题时可使用 `--build-proxy http://容器可达的代理地址:端口` 或 `--debian-mirror https://可信Debian镜像站`。代理地址不能使用容器内不可达的宿主 `127.0.0.1`，也不接受 URL 内嵌账号密码；CLI 不会自动复制宿主机的代理设置。构建代理通过临时 build args 传入，不写入应用镜像环境。

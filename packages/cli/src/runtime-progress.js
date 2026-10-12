@@ -2,6 +2,7 @@ import { mkdirSync, openSync, writeSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import { redact, TessmoraError } from './errors.js';
 import { plainLine, duration } from './terminal.js';
+import { diagnosticSummary } from './runtime-diagnostics.js';
 
 export const runtimePhases = [
   ['check', '检查本机环境'], ['storage', '准备存储组件'],
@@ -41,11 +42,17 @@ export function activitySummary(line) {
   return undefined;
 }
 
-export function runtimeFailure(error, { phase, target, logPath } = {}) {
+export function runtimeFailure(error, { phase, target, logPath, diagnostics } = {}) {
   if (error.code === 'CANCELLED') return error;
   const raw = `${error.message}\n${error.hint || ''}`;
   let code = error.code || 'RUNTIME_FAILED', message = error.message, hint = error.hint;
-  if (/buildx.*(?:required|missing|not|install)|BuildKit.*(?:required|disabled)|requires BuildKit/i.test(raw)) {
+  if (['start', 'ready'].includes(phase)) {
+    const summary = diagnosticSummary(diagnostics);
+    code = 'SERVICE_START_FAILED';
+    message = summary.failed.length ? `服务启动检查未通过：${summary.failed.join('、')}` : phase === 'ready' ? '服务已启动，但工作台连接未通过检查' : '服务启动检查未完成';
+    const includeCommandError = !summary.failed.length || !/unhealthy|dependency failed/i.test(raw);
+    hint = [...summary.lines, ...(includeCommandError ? [`启动错误：${plainLine(error.hint || error.message).slice(-400)}`] : []), '', '检查本实例：tessmora doctor'].join('\n');
+  } else if (/buildx.*(?:required|missing|not|install)|BuildKit.*(?:required|disabled)|requires BuildKit/i.test(raw)) {
     code = 'BUILDER_MISSING'; message = '源码构建需要 Docker Buildx / BuildKit';
     hint = 'Docker Desktop 用户请更新 Desktop；Linux 用户按 Docker 官方安装说明补齐 docker-buildx-plugin。\n完成后执行 docker buildx version 检查，再继续配置。';
   } else if (/401|403|unauthorized|denied:|pull access denied/i.test(raw)) {
@@ -69,7 +76,7 @@ export function runtimeFailure(error, { phase, target, logPath } = {}) {
     message = `${runtimePhases.find(([id]) => id === phase)?.[1] || '运行环境准备'}未完成${target ? `：${target}` : ''}`;
     hint = '查看下方日志中的具体错误，修复后重试。已完成的镜像与构建缓存会保留。';
   }
-  return new TessmoraError(code, message, `${hint || '修复后重试。'}${logPath ? `\n\n详细日志：${logPath}` : ''}`, { phase, target, logPath });
+  return new TessmoraError(code, message, `${hint || '修复后重试。'}${logPath ? `\n\n详细日志：${logPath}` : ''}`, { phase, target, logPath, ...(diagnostics ? { diagnostics } : {}) });
 }
 
 export function runtimeReporter(ui, { logPath, source }) {

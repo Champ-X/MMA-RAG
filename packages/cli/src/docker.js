@@ -161,13 +161,18 @@ export async function compose(paths, state, args, options = {}) {
   const env = await ensureEnvironment(paths, state);
   const prefix = await composeArgs(paths, state, options);
   const [command, commandPrefix] = await resolveCompose();
-  let credentials = [];
-  try { credentials = Object.values(JSON.parse(await readFile(join(state.dataDir, 'state', 'setup.json'), 'utf8')).credentials || {}); } catch { /* API may not have saved a configuration yet. */ }
-  return run(command, [...commandPrefix, ...prefix, ...args], { ...options, env: { ...process.env, ...Object.fromEntries(Object.entries(env).map(([key, value]) => [key, String(value)])) }, secrets: [env.TESSMORA_SETUP_TOKEN, env.TESSMORA_MINIO_PASSWORD, ...credentials] });
+  return run(command, [...commandPrefix, ...prefix, ...args], { ...options, env: { ...process.env, ...Object.fromEntries(Object.entries(env).map(([key, value]) => [key, String(value)])) }, secrets: await runtimeSecrets(paths, state, env) });
 }
 
-export async function containers(paths, state) {
-  const output = await compose(paths, state, ['ps', '--all', '--format', 'json']);
+export async function runtimeSecrets(paths, state, env) {
+  env ||= await ensureEnvironment(paths, state);
+  let credentials = [];
+  try { credentials = Object.values(JSON.parse(await readFile(join(state.dataDir, 'state', 'setup.json'), 'utf8')).credentials || {}); } catch { /* API may not have saved a configuration yet. */ }
+  return [env.TESSMORA_SETUP_TOKEN, env.TESSMORA_MINIO_PASSWORD, ...credentials].filter(value => typeof value === 'string' && value);
+}
+
+export async function containers(paths, state, options = {}) {
+  const output = await compose(paths, state, ['ps', '--all', '--format', 'json'], options);
   if (!output) return [];
   try { const json = JSON.parse(output); return Array.isArray(json) ? json : [json]; } catch {
     return output.split('\n').filter(Boolean).map((line) => JSON.parse(line));

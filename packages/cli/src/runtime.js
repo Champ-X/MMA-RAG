@@ -1,12 +1,13 @@
-import { dockerCheck, claimDataDir, validatePorts, compose, run } from './docker.js';
+import { dockerCheck, claimDataDir, validatePorts, compose, run, containers } from './docker.js';
 import { ensureEnvironment, saveState } from './config.js';
 import { waitForService } from './api.js';
 import { TessmoraError } from './errors.js';
 import { MINIO_IMAGE, LEGACY_MINIO_IMAGE } from './runtime-images.js';
 import { runtimeJournal, runtimeReporter, runtimePhases, activitySummary, runtimeFailure } from './runtime-progress.js';
+import { collectRuntimeDiagnostics } from './runtime-diagnostics.js';
 
 export async function startRuntime(paths, state, { rebuild = false, onProgress = () => {}, journal } = {}, deps = {}) {
-  const operations = { dockerCheck, claimDataDir, validatePorts, compose, run, ensureEnvironment, saveState, waitForService, ...deps };
+  const operations = { dockerCheck, claimDataDir, validatePorts, compose, run, containers, collectRuntimeDiagnostics, ensureEnvironment, saveState, waitForService, ...deps };
   let phase, target;
   const log = journal || runtimeJournal(paths);
   const detail = (text) => onProgress({ phase, detail: text, activity: true });
@@ -82,6 +83,13 @@ export async function startRuntime(paths, state, { rebuild = false, onProgress =
       }
     });
     await stage('start', async () => {
+      const previous = await operations.containers(paths, state, { timeout: 8000 });
+      const retry = [...new Set(previous.filter(row => ['frontend', 'backend', 'worker'].includes(row.Service) && row.State === 'running' && row.Health === 'unhealthy').map(row => row.Service))];
+      if (retry.length) {
+        const message = `重新检查异常应用服务：${retry.join('、')} · 健康服务与存储保持运行`;
+        detail(message); log.write(message);
+        await operations.compose(paths, state, ['restart', '--no-deps', ...retry], { onLine, timeout: 60000 });
+      }
       detail('启动 6 个服务并等待健康检查 · 最多 4 分钟');
       await operations.compose(paths, state, ['--progress', 'plain', 'up', '-d', '--pull', 'never', '--no-build', '--wait', '--wait-timeout', '240'], { onLine });
     });
@@ -91,7 +99,13 @@ export async function startRuntime(paths, state, { rebuild = false, onProgress =
     });
   } catch (error) {
     log.write(`${error.message}\n${error.hint || ''}`);
-    throw runtimeFailure(error, { phase, target, logPath: log.path });
+    let diagnostics;
+    if (['start', 'ready'].includes(phase) && error.code !== 'CANCELLED') {
+      detail('正在定位未就绪的服务 · 采集探针、内网连接和日志');
+      try { diagnostics = await operations.collectRuntimeDiagnostics(paths, state, { journal: log, onProgress: detail }); }
+      catch { log.write('诊断采集未完成，保留原始启动错误。'); }
+    }
+    throw runtimeFailure(error, { phase, target, logPath: log.path, diagnostics });
   } finally { if (!journal) log.close(); }
 }
 

@@ -70,6 +70,7 @@ function fixture({ minio = MINIO_IMAGE, cached = [], fail } = {}) {
   const state = { source: '/source', step: 2, url: 'http://127.0.0.1:19000' };
   const deps = {
     dockerCheck: async () => {}, claimDataDir: async () => {}, validatePorts: async () => {},
+    containers: async () => [], collectRuntimeDiagnostics: async () => ({ services: [] }),
     ensureEnvironment: async () => ({ TESSMORA_MINIO_IMAGE: minio, TESSMORA_BACKEND_IMAGE: 'backend:local', TESSMORA_FRONTEND_IMAGE: 'frontend:local' }),
     run: async (_command, args) => {
       calls.push(args);
@@ -90,7 +91,7 @@ function fixture({ minio = MINIO_IMAGE, cached = [], fail } = {}) {
     waitForService: async () => ({ setup: { ready: false } }),
   };
   const options = { journal: { path: '/log', write: line => logs.push(line) }, onProgress: e => events.push(e) };
-  return { state, calls, events, deps, options };
+  return { state, calls, logs, events, deps, options };
 }
 
 test('fresh preparation builds pinned storage first and verifies the app after service health', async () => {
@@ -128,4 +129,38 @@ test('app build checkpoint survives a later startup failure and retry skips comp
   f.calls.length = 0;
   await startRuntime({}, f.state, f.options, f.deps);
   assert.ok(!f.calls.some(args => args.includes('build')));
+});
+
+test('retry only restarts this instance unhealthy applications before waiting again', async () => {
+  const f = fixture();
+  f.deps.containers = async () => [
+    { Service: 'frontend', State: 'running', Health: 'unhealthy' },
+    { Service: 'worker', State: 'running', Health: 'healthy' },
+    { Service: 'backend', State: 'running', Health: 'starting' },
+    { Service: 'redis', State: 'running', Health: 'unhealthy' },
+  ];
+  await startRuntime({}, f.state, f.options, f.deps);
+  assert.deepEqual(f.calls.find(args => args[0] === 'restart'), ['restart', '--no-deps', 'frontend']);
+  assert.ok(f.calls.findIndex(args => args[0] === 'restart') < f.calls.findIndex(args => args.includes('up')));
+  assert.ok(!f.calls.some(args => args.includes('down') || args.includes('prune')));
+});
+
+test('startup errors collect diagnostics once and do not misclassify Redis timeouts as image download errors', async () => {
+  const f = fixture({ fail: args => args.includes('up') });
+  let diagnosed = 0;
+  f.deps.collectRuntimeDiagnostics = async (_paths, _state, { journal }) => {
+    diagnosed++;
+    journal.write('worker: Timeout connecting to redis');
+    return { services: [{ service: 'worker', state: 'running', health: 'unhealthy', logs: 'Cannot connect to redis: Timeout connecting to server' }] };
+  };
+  await assert.rejects(startRuntime({}, f.state, f.options, f.deps), error => error.code === 'SERVICE_START_FAILED' && error.message.includes('worker') && error.hint.includes('Cannot connect to redis'));
+  assert.equal(diagnosed, 1);
+  assert.ok(f.logs.some(line => line.includes('Timeout connecting to redis')));
+  assert.equal(f.state.runtimeBuilt, true);
+});
+
+test('unavailable diagnostics never hide the original startup failure', async () => {
+  const f = fixture({ fail: args => args.includes('up') });
+  f.deps.collectRuntimeDiagnostics = async () => { throw new Error('Docker unavailable'); };
+  await assert.rejects(startRuntime({}, f.state, f.options, f.deps), error => error.code === 'SERVICE_START_FAILED' && error.hint.includes('401 UNAUTHORIZED') && error.hint.includes('/log'));
 });

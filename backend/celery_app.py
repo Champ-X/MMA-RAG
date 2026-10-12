@@ -28,6 +28,10 @@ celery_app = Celery(
 
 # Celery 配置
 celery_app.conf.update(
+    # Redis otherwise inherits the OS TCP connect timeout (~2 minutes on WSL).
+    # Bound each attempt and let Celery retry until the container network recovers.
+    broker_connection_retry_on_startup=True,
+    broker_transport_options={"socket_connect_timeout": 5, "socket_timeout": 5},
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",

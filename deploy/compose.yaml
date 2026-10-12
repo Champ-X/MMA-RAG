@@ -4,6 +4,12 @@ x-app: &app
   image: ${TESSMORA_BACKEND_IMAGE:-tessmora-backend:local}
   restart: unless-stopped
   init: true
+  healthcheck:
+    test: [CMD, curl, --noproxy, "*", --fail, --silent, --show-error, --max-time, "4", "http://127.0.0.1:8000/health"]
+    interval: 10s
+    timeout: 5s
+    start_period: 90s
+    retries: 6
   environment: &app-environment
     TESSMORA_STATE_DIR: /state
     TESSMORA_SETUP_TOKEN: ${TESSMORA_SETUP_TOKEN:?Run tessmora setup to generate the private setup token}
@@ -46,7 +52,8 @@ services:
     <<: *app
     command: [celery, -A, celery_app, worker, -Q, "knowledge,ingestion,retrieval,celery", --loglevel=info, --concurrency=1]
     healthcheck:
-      test: [CMD-SHELL, "celery -A celery_app inspect ping --destination celery@$$HOSTNAME --timeout 5 | grep -q pong"]
+      # Celery returns nonzero without a reply; retain its output for diagnostics.
+      test: [CMD-SHELL, "celery -A celery_app inspect ping --destination celery@$$HOSTNAME --timeout 5"]
       interval: 30s
       timeout: 10s
       start_period: 90s
@@ -54,6 +61,14 @@ services:
   frontend:
     image: ${TESSMORA_FRONTEND_IMAGE:-tessmora-frontend:local}
     restart: unless-stopped
+    # Docker client proxy defaults can inject http_proxy even into Nginx.
+    # BusyBox wget does not reliably honor NO_PROXY; explicitly bypass it.
+    healthcheck:
+      test: [CMD, wget, -Y, "off", -q, -O, /dev/null, -T, "3", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 6
     ports:
       - "127.0.0.1:${TESSMORA_PORT:-3001}:80"
     depends_on:
@@ -71,7 +86,7 @@ services:
     volumes:
       - ${TESSMORA_DATA_DIR}/minio:/data
     healthcheck:
-      test: [CMD, curl, --fail, --silent, http://127.0.0.1:9000/minio/health/live]
+      test: [CMD, curl, --noproxy, "*", --fail, --silent, --show-error, --max-time, "4", "http://127.0.0.1:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 6
