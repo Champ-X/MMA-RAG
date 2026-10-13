@@ -188,3 +188,19 @@
   .pi-toggle, .pi-toggle[aria-pressed], .dark .pi-toggle[aria-pressed] { background: Canvas; border: 1px solid ButtonText; color: ButtonText; box-shadow: none; }
   .pi-toggle[aria-pressed='true'] { outline: 2px solid Highlight; }
 }
+.pi-composer-connection { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 18px; font-size: 12px; color: #64748b; }
+.pi-composer-connection span { flex: 1 1 220px; }
+.pi-composer-connection button { color: #7054b3; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; min-height: 28px; }
+.pi-composer-connection button:focus-visible { outline: 2px solid #ac97d4; outline-offset: 3px; border-radius: 3px; }
+.dark .pi-composer-connection { color: #b4bfd1; }
+.dark .pi-composer-connection button { color: #c4aff1; }
+.pi-workspace-connection { display: grid; gap: 12px; font-size: 14px; line-height: 1.65; }
+.pi-workspace-connection code { display: block; padding: 10px 12px; border-radius: 8px; background: var(--wf-subtle); font-size: 12px; overflow-wrap: anywhere; }
+.pi-workspace-connection summary { cursor: pointer; color: var(--wf-muted); }
+.pi-workspace-connection details p { margin: 8px 0; }
+.pi-workspace-connection input { width: 100%; min-width: 0; border: 1px solid var(--wf-line); border-radius: 8px; padding: 9px 12px; background: var(--wf-surface); }
+.pi-workspace-connection input:focus-visible { outline: 2px solid var(--wf-focus); outline-offset: 2px; }
+.pi-workspace-connection input[aria-invalid="true"] { border-color: #be3455; }
+.pi-workspace-hint { color: var(--wf-muted); font-size: 12px; }
+.pi-workspace-error { color: #be3455; }
+.dark .pi-workspace-error { color: #fda4af; }

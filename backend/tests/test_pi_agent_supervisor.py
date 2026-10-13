@@ -554,6 +554,7 @@ async def test_media_cookie_requires_auth_expires_and_binds_workspace(tmp_path, 
             response = await client.get("/api/pi/config", headers={"Authorization": "Bearer correct-token"})
             assert response.status_code == 200
             assert all(flag in response.headers["set-cookie"] for flag in ("HttpOnly", "Secure", "SameSite=strict"))
+            assert (await client.get("/api/pi/config", headers={"Authorization": "Bearer wrong-token"})).status_code == 401
             assert (await client.get("/api/pi/runs", params={"session_id": "s"})).status_code == 200
             host.settings.trusted_user_id = "bob"
             assert (await client.get("/api/pi/runs", params={"session_id": "s"})).status_code == 401

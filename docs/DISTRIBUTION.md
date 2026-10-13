@@ -30,6 +30,12 @@ docker compose --env-file /path/to/private/runtime.env \
 
 没有 `docker compose` 子命令时替换为 `docker-compose`。构建失败后可重试，Docker 会复用已完成的层。受网络环境影响时，可设置 `TESSMORA_DEBIAN_MIRROR=https://mirrors.ustc.edu.cn` 后构建，使用 Debian 镜像站；APT 仍验证发行版签名。构建不需要模型 API 凭证；模型权重也不内嵌在应用镜像中。
 
+源码安装的 `setup` / `start` 会比较实际构建输入的内容指纹和 Docker 镜像 ID，源码更新或镜像被替换后自动增量构建，再更新应用容器。旧安装缺少版本记录时补建一次；源码和镜像均未变化时跳过构建。检查兼容没有 Git 历史的源码目录，排除密钥、资料、缓存和生成产物。构建成功但启动失败时保留构建记录，重试可直接继续；构建失败或构建期间源码发生变化时不记录新版本成功。
+
+更新源码后运行 `node packages/cli/bin/tessmora.js setup` 即可继续原实例；`--rebuild` 仍可强制更新。源码模式的构建与启动均使用同一源码目录中的 Compose 文件，避免构建新代码却使用包内旧运行配置。维护 Dockerfile / `.dockerignore` 的复制范围时，需同步 `packages/cli/src/source-build.js` 的构建输入范围。
+
+终端快捷命令通过 `npm --prefix packages/cli run register-command` 注册到 npm 全局目录；源码启动不会自动改写 PATH。注册与 PATH 排查见 [安装器说明](../packages/cli/README.md)。使用 `--no-open` 或 WSL 自动打开失败时，运行 `node packages/cli/bin/tessmora.js open --print-url` 获取带凭证的私有连接链接。裸地址不携带首次访问凭证，网页会提供连接恢复入口。
+
 终端向导的网络选项允许显式指定模型下载镜像和构建代理，无需手改 `.env`。代理地址必须能从 Docker 容器内访问；宿主机的 `127.0.0.1` 在容器内指向容器本身。构建代理只用于下载依赖；`--proxy` 运行代理用于容器内模型请求与下载，内部服务通信会绕过代理。代理不能替代模型服务的 API 凭证。
 
 运行配置同时覆盖大小写的 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` / `NO_PROXY`，避免 Docker 客户端注入的旧代理或小写 `no_proxy` 覆盖应用设置。所有 Qdrant 客户端默认直连，包括安装检查、普通检索与 Pi 检索；不会更改模型服务的代理设置。SDK 自带的版本探测会忽略连接代理选项，因此统一关闭这一独立请求，实际连接检查通过 SDK 读取集合完成。自定义远程 Qdrant 部署确实需要代理时，可显式设置后端环境变量 `QDRANT_USE_ENV_PROXY=true`。

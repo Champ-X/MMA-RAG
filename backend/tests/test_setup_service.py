@@ -424,3 +424,49 @@ async def test_media_setup_probes_independent_pi_models_before_issuing_receipt(m
     assert (pi.vision_model, "vision") in seen
     assert not result["success"] and result["test_receipt"] is None
     assert not (managed.root / "setup.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_resumed_install_migrates_legacy_media_and_pi_before_testing_and_saving(managed, monkeypatch):
+    from app.core.llm import LLMRegistry, connection_probe
+    from app.core.llm.manager import llm_manager
+    from app.modules.pi_agent import config as pi_config
+
+    old = {
+        "version": 1, "capabilities": ["text", "image", "audio", "video"],
+        "credentials": {"deepseek": "synthetic-d", "siliconflow": "synthetic-s", "aliyun_bailian": "synthetic-b"},
+        "task_models": {
+            "image_captioning": "Qwen/Qwen3-Omni-30B-A3B-Captioner",
+            "audio_transcription": "aliyun_bailian:qwen3-omni-flash",
+            "video_parsing": "aliyun_bailian:qwen3.5-omni-plus-2026-03-15",
+            "embedding": "Qwen/Qwen3-Embedding-8B",
+        },
+    }
+    (managed.root / "setup.json").write_text(json.dumps(old))
+    monkeypatch.setenv("PI_AGENT_VISION_MODEL", "aliyun_bailian:qwen3-vl-plus-2025-12-19")
+    monkeypatch.setenv("PI_AGENT_AUDIO_MODEL", "aliyun_bailian:qwen3-omni-flash")
+    pi = pi_config.PiSettings(_env_file=None)
+    monkeypatch.setattr(pi_config, "get_pi_settings", lambda: pi)
+    monkeypatch.setattr(llm_manager, "registry", LLMRegistry())
+    seen = []
+
+    async def probe(source, **kwargs):
+        seen.append((kwargs["model"], kwargs.get("capability", "tools")))
+        return {"success": True, **kwargs}
+
+    monkeypatch.setattr(connection_probe, "run_probe", probe)
+    monkeypatch.setattr(setup_service, "_tool_probe", probe)
+    result = await managed.test({})
+    assert result["success"] and result["test_receipt"]
+    assert ("aliyun_bailian:qwen3.8-flash", "vision") in seen
+    assert (old["task_models"]["image_captioning"], "vision") in seen
+    for capability in ("audio", "video"):
+        assert ("aliyun_bailian:qwen3.8-omni-flash", capability) in seen
+    assert not any(model in {"aliyun_bailian:qwen3-vl-plus-2025-12-19", old["task_models"]["audio_transcription"], old["task_models"]["video_parsing"]} for model, _ in seen)
+    status = await managed.save({"test_receipt": result["test_receipt"]})
+    assert status["tested"]
+    saved = json.loads((managed.root / "setup.json").read_text())
+    assert saved["credentials"] == {**old["credentials"], "openrouter": ""}
+    assert saved["task_models"]["embedding"] == old["task_models"]["embedding"]
+    assert saved["task_models"]["image_captioning"] == old["task_models"]["image_captioning"]
+    assert saved["task_models"]["video_parsing"] == "aliyun_bailian:qwen3.8-omni-flash"

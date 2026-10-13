@@ -41,7 +41,9 @@ def owner_for(request: Request):
         cookie = request.cookies.get("pi_workspace", "")
         timestamp = cookie.split(".", 1)[0]
         cookie_ok = bool(re.fullmatch(r"[0-9]{1,12}", timestamp)) and 0 <= time.time() - int(timestamp) < 6 * 3600 and hmac.compare_digest(cookie, media_cookie(settings, timestamp))
-        if not bearer_ok and not cookie_ok:
+        # Explicit reconnect attempts must validate the supplied credential,
+        # even when this browser still has a valid workspace cookie.
+        if not bearer_ok and (request.headers.get("authorization") is not None or not cookie_ok):
             raise HTTPException(401, "纯 Agent 服务需要已配置的访问凭证")
         return settings.trusted_user_id or "configured-workspace"
     try:

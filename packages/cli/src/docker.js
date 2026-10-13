@@ -145,7 +145,7 @@ export async function detectSource(explicit) {
 
 export async function composeArgs(paths, state, { build = false, minioBuild = false } = {}) {
   let asset = join(packageRoot, 'assets', 'compose.yaml');
-  if (build && state.source) asset = join(state.source, 'deploy', 'compose.yaml');
+  if (state.source) asset = join(state.source, 'deploy', 'compose.yaml');
   try { await access(asset); } catch {
     const source = state.source || await detectSource();
     if (!source) throw new TessmoraError('ASSET_MISSING', '安装包缺少 Compose 运行文件。', '请重新安装完整 npm 包，或在源码目录运行 npm run prepare-assets --prefix packages/cli。');

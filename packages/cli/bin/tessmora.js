@@ -37,6 +37,7 @@ const HELP = `  用法  tessmora [命令] [选项]
   --credential-file <文件>   非交互配置的私有 JSON 凭证文件
   --yes                     非交互模式使用指定参数和推荐默认值
   --no-open                 不打开浏览器
+  --print-url               配合 open 显示私有连接链接，不打开浏览器
   --json                    stdout 输出 JSON，进度写入 stderr
   --rebuild                 重新构建本地源码镜像
   --tail <行数>             logs 行数，默认 100
@@ -47,6 +48,7 @@ const HELP = `  用法  tessmora [命令] [选项]
 
   无配置时直接运行 tessmora 即开始引导；已有配置时启动服务。
   发布前开发版：在源码根目录运行 tessmora setup --source .
+  注册终端命令：在源码根目录运行 npm --prefix packages/cli run register-command
 `;
 
 let json = process.argv.includes('--json');
@@ -56,17 +58,18 @@ try {
     allowPositionals: true,
     options: {
       help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' }, json: { type: 'boolean' }, yes: { type: 'boolean', short: 'y' },
-      'no-open': { type: 'boolean' }, rebuild: { type: 'boolean' }, follow: { type: 'boolean', short: 'f' },
+      'no-open': { type: 'boolean' }, 'print-url': { type: 'boolean' }, rebuild: { type: 'boolean' }, follow: { type: 'boolean', short: 'f' },
       ...Object.fromEntries(['instance', 'home', 'source', 'mode', 'url', 'capabilities', 'data-dir', 'port', 'storage-port', 'backend-image', 'frontend-image', 'minio-image', 'model-endpoint', 'build-proxy', 'proxy', 'debian-mirror', 'credential-file', 'tail', 'service'].map((key) => [key, { type: 'string' }])),
     },
   });
   json = Boolean(options.json);
   format = commandFormatter(options);
-  if (options.help) process.stdout.write(brandBanner() + HELP);
+  if (options.help) process.stdout.write(brandBanner() + format(HELP));
   else if (options.version) process.stdout.write(json ? '{"version":"0.1.0"}\n' : '0.1.0\n');
   else {
     if (positionals.length > 1) throw new TessmoraError('INVALID_ARGUMENTS', '每次只能运行一个命令。', '运行 tessmora --help 查看用法。');
     const command = positionals[0];
+    if (options['print-url'] && (command !== 'open' || json)) throw new TessmoraError('INVALID_ARGUMENTS', '--print-url 仅用于 open，且不能与 --json 一起使用。', '运行 tessmora open --print-url，仅向当前终端显示私有连接链接。');
     if (command && !['setup', 'configure', 'start', 'stop', 'status', 'logs', 'doctor', 'open'].includes(command)) throw new TessmoraError('UNKNOWN_COMMAND', `未知命令 ${command}。`, '运行 tessmora --help 查看用法。');
     const ui = createUI(options);
     const result = await execute(command, locations(options), options, ui);

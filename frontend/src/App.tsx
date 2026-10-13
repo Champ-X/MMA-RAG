@@ -2,14 +2,20 @@ import { BrowserRouter as Router, Navigate, Routes, Route } from 'react-router-d
 import { Toaster } from '@/components/ui/toaster'
 import { ThemeProvider } from '@/hooks/useTheme'
 import { AppLayout } from '@/components/layout/AppLayout'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { SetupGate } from '@/components/SetupGate'
-import { consumeSetupToken } from '@/lib/setupSession'
+import { consumeSetupToken, getSetupToken } from '@/lib/setupSession'
+import { piApi } from '@/services/piAgent'
 
 consumeSetupToken()
 const SetupPage = lazy(() => import('@/pages/SetupPage'))
 
 function App() {
+  useEffect(() => {
+    // Establish the HttpOnly workspace session on authenticated CLI entry,
+    // including /setup, so another tab can open the plain workspace URL.
+    if (getSetupToken()) void piApi.config().catch(() => {})
+  }, [])
   return (
     <ThemeProvider defaultTheme="light" storageKey="mmrag-ui-theme">
       <Router>

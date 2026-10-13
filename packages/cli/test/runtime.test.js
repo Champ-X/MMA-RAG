@@ -42,6 +42,7 @@ test('compose arguments scope all commands to private env and instance project',
   assert.equal(args[0], '--env-file');
   assert.equal(args[1], paths.env);
   assert.ok(args.includes(projectName(paths)));
+  assert.ok(args.includes(join(state.source, 'deploy', 'compose.yaml')), 'source builds and startup use the same current manifest');
   assert.ok(!args.includes('--volumes'));
   assert.ok(!args.includes('down'));
 });

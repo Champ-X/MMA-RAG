@@ -6,11 +6,11 @@ import { putAttachmentBlob } from '@/lib/chatAttachmentBlobStore'
 import { chatFileKind } from '@/lib/chatAttachmentFile'
 import { applyPiEvent, initialPiTrace } from '@/lib/piTrace'
 import { piApi, watchPiRun } from '@/services/piAgent'
-import { piTerminal } from '@/types/pi'
+import { piTerminal, type PiConfig } from '@/types/pi'
 import { restorePiMessages } from '@/lib/piHistory'
 import { activePiRun } from '@/lib/piSession'
 
-export function usePiAgent() {
+export function usePiAgent(workspaceConfig?: PiConfig | null) {
   const sessions = useChatStore(state => state.sessions)
   const activeSessionId = useChatStore(state => state.activeSessionId)
   const watchers = useRef(new Map<string, AbortController>())
@@ -28,7 +28,7 @@ export function usePiAgent() {
         ? { ...session, messages: restorePiMessages(session.messages, runs) } : session) }))
     }).catch(() => {})
     return () => { cancelled = true }
-  }, [activeSessionId])
+  }, [activeSessionId, workspaceConfig])
 
   useEffect(() => {
     for (const session of sessions) for (const message of session.messages) {

@@ -7,8 +7,10 @@ import { useConfigStore } from '@/store/useConfigStore'
 import { useThinkingChain } from '@/hooks/useThinkingChain'
 import { useChatScrollFollow } from '@/hooks/useChatScrollFollow'
 import { usePiAgent } from '@/hooks/usePiAgent'
-import { piApi } from '@/services/piAgent'
-import { piStatusLabel, type PiConfig } from '@/types/pi'
+import { PiApiError } from '@/services/piAgent'
+import { usePiWorkspace } from '@/hooks/usePiWorkspace'
+import { PiWorkspaceDialog } from './PiWorkspaceDialog'
+import { piStatusLabel } from '@/types/pi'
 import { piModelDisplayName } from '@/lib/piTraceView'
 import { cn } from '@/lib/utils'
 import { getModelVendor, VENDOR_LOGOS } from '@/lib/modelVendors'
@@ -229,11 +231,7 @@ export function ChatInterface() {
   } = useChatStore()
 
   const legacyChain = useThinkingChain()
-  const pi = usePiAgent()
-  const isStreaming = legacyChain.isStreaming || pi.isStreaming
-  const error = pi.error || legacyChain.error
-  const [piConfig, setPiConfig] = useState<PiConfig | null>(null)
-  const [piConfigError, setPiConfigError] = useState('')
+  const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false)
   const { config } = useConfigStore()
   const {
     knowledgeBases: scopeKnowledgeBases,
@@ -247,6 +245,11 @@ export function ChatInterface() {
 
   const activeSession = getActiveSession()
   const piEnabled = activeSession?.executionEngine === 'pi'
+  const workspace = usePiWorkspace(Boolean(piEnabled))
+  const { config: piConfig, error: piConfigError, fail: failWorkspace } = workspace
+  const pi = usePiAgent(piConfig)
+  const isStreaming = legacyChain.isStreaming || pi.isStreaming
+  const error = pi.error || legacyChain.error
   const sendMessage = piEnabled ? pi.sendMessage : legacyChain.sendMessage
   const piState = pi.active?.sessionId === activeSessionId ? pi.active.pi.status : 'ready'
   const piModelId = activeSession?.piModel || piConfig?.default_model || ''
@@ -261,13 +264,6 @@ export function ChatInterface() {
     observer.observe(dock)
     return () => { observer.disconnect(); workspace.style.removeProperty('--chat-dock-height') }
   }, [])
-  useEffect(() => {
-    if (!piEnabled || piConfig) return
-    let cancelled = false
-    void piApi.config().then(value => { if (!cancelled) { setPiConfig(value); setPiConfigError('') } })
-      .catch(cause => { if (!cancelled) setPiConfigError(cause instanceof Error ? cause.message : 'Pi 配置暂不可用') })
-    return () => { cancelled = true }
-  }, [piEnabled, piConfig])
   const agentMode = normalizeAgentMode(activeSession?.agentMode)
   const messages = useMemo(() => activeSession?.messages ?? [], [activeSession?.messages])
   const followLatestMessage = useChatScrollFollow(scrollAreaRef, messageContentRef, activeSessionId)
@@ -440,7 +436,7 @@ export function ChatInterface() {
   const submitMessage = useCallback(async (nextInput?: string) => {
     const submission = trimComposerValue(nextInput === undefined ? draft : { text: nextInput, mentions: [] })
     const text = submission.text
-    if ((!text && attachments.length === 0) || isLoading || preparingRef.current || !activeSessionId) return
+    if ((!text && attachments.length === 0) || isLoading || preparingRef.current || !activeSessionId || (piEnabled && !piConfig)) return
     followLatestMessage()
     preparingRef.current = true
     setIsPreparing(true)
@@ -484,6 +480,7 @@ export function ChatInterface() {
         setEditorRevision(prev => prev + 1)
       }
     } catch (e) {
+      if (e instanceof PiApiError && e.status === 401) failWorkspace(e)
       console.error('发送失败', e)
       if (epoch === composerEpoch.current) {
         setDraft(submission)
@@ -495,7 +492,7 @@ export function ChatInterface() {
       setIsPreparing(false)
       setLoading(false)
     }
-  }, [draft, attachments, questionEdit, isLoading, activeSessionId, setLoading, requestScopeFiles, selectedScopeFiles, activeSession, sendMessage, followLatestMessage])
+  }, [draft, attachments, questionEdit, isLoading, activeSessionId, setLoading, requestScopeFiles, selectedScopeFiles, activeSession, sendMessage, followLatestMessage, piEnabled, piConfig, failWorkspace])
 
   const handleSend = useCallback(() => {
     void submitMessage()
@@ -949,7 +946,11 @@ export function ChatInterface() {
             />
             </Suspense>
             {attachmentError && <p className="composer-attachment-error" role="alert">{attachmentError}</p>}
-            {piEnabled && piConfigError && <p className="pi-composer-config-error" role="alert">{piConfigError}</p>}
+            {piEnabled && piConfigError && <div className="pi-composer-connection" role="alert">
+              <span>{piConfigError}</span>
+              {workspace.needsAuth && <button type="button" onClick={() => setWorkspaceDialogOpen(true)}>连接工作区</button>}
+              <button type="button" disabled={workspace.loading} onClick={workspace.retry}>重试</button>
+            </div>}
 
             {mentionState && (
               <section className="file-mention-panel" aria-label="引用素材文件">
@@ -1089,11 +1090,11 @@ export function ChatInterface() {
                   <span className="hidden sm:inline">{agentModeShortLabel}</span>
                 </button>}
 
-                {piEnabled && <label className="pi-model-picker" title={piModelId ? `Pi 模型：${piModelId}` : '读取 Pi 模型配置'}>
+                {piEnabled && <label className="pi-model-picker" title={piConfigError || (piModelId ? `Pi 模型：${piModelId}` : '读取 Pi 模型配置')}>
                   {piModelLogo ? <img src={piModelLogo} alt="" width={16} height={16} /> : <Zap size={15} aria-hidden />}
-                  <select aria-label="纯 Agent 独立模型" disabled={isLoading || !piConfig} value={piModelId}
+                  <select aria-label="纯 Agent 独立模型" disabled={isLoading || !piConfig} value={piConfig ? piModelId : ''}
                     onChange={event => activeSessionId && updateSessionPiModel(activeSessionId, event.target.value)}>
-                    {!piConfig ? <option value="">读取模型…</option> : piConfig.models.map(model => <option key={model} value={model}>{piModelDisplayName(model)}</option>)}
+                    {!piConfig ? <option value="">{workspace.loading ? '读取模型…' : workspace.needsAuth ? '待连接工作区' : '模型加载失败'}</option> : piConfig.models.map(model => <option key={model} value={model}>{piModelDisplayName(model)}</option>)}
                   </select>
                   <ChevronDown size={13} aria-hidden />
                 </label>}
@@ -1198,7 +1199,7 @@ export function ChatInterface() {
                     className={cn(
                       "flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-purple-600 text-white shadow-md shadow-purple-500/30 transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/40 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
                     )}
-                    disabled={(!input.trim() && attachments.length === 0) || isLoading || !activeSessionId}
+                    disabled={(!input.trim() && attachments.length === 0) || isLoading || !activeSessionId || (piEnabled && !piConfig)}
                   >
                     <Send className="h-4 w-4" aria-hidden />
                   </button>
@@ -1219,6 +1220,7 @@ export function ChatInterface() {
         />
       </div>
 
+      {workspaceDialogOpen && <PiWorkspaceDialog onClose={() => setWorkspaceDialogOpen(false)} connect={workspace.connect} />}
       {/* 引用悬浮卡片 */}
       {citePopover.open ? (
         <div ref={citePopoverRef}>

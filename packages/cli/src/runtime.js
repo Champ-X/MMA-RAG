@@ -5,9 +5,10 @@ import { TessmoraError } from './errors.js';
 import { MINIO_IMAGE, LEGACY_MINIO_IMAGE } from './runtime-images.js';
 import { runtimeJournal, runtimeReporter, runtimePhases, activitySummary, runtimeFailure } from './runtime-progress.js';
 import { collectRuntimeDiagnostics } from './runtime-diagnostics.js';
+import { sourceFingerprint } from './source-build.js';
 
 export async function startRuntime(paths, state, { rebuild = false, onProgress = () => {}, journal } = {}, deps = {}) {
-  const operations = { dockerCheck, claimDataDir, validatePorts, compose, run, containers, collectRuntimeDiagnostics, ensureEnvironment, saveState, waitForService, ...deps };
+  const operations = { dockerCheck, claimDataDir, validatePorts, compose, run, containers, collectRuntimeDiagnostics, ensureEnvironment, saveState, waitForService, sourceFingerprint, ...deps };
   let phase, target;
   const log = journal || runtimeJournal(paths);
   const detail = (text) => onProgress({ phase, detail: text, activity: true });
@@ -29,6 +30,14 @@ export async function startRuntime(paths, state, { rebuild = false, onProgress =
     try { await operations.run('docker', ['image', 'inspect', image], { timeout: 10000 }); return true; }
     catch { return false; }
   };
+  const imageId = async image => {
+    try { return (await operations.run('docker', ['image', 'inspect', image, '--format', '{{.Id}}'], { timeout: 10000 })).trim() || null; }
+    catch { return null; }
+  };
+  const appImages = async env => ({
+    backend: await imageId(env.TESSMORA_BACKEND_IMAGE),
+    frontend: await imageId(env.TESSMORA_FRONTEND_IMAGE),
+  });
   try {
     let env, serviceImages;
     await stage('check', async () => {
@@ -66,14 +75,32 @@ export async function startRuntime(paths, state, { rebuild = false, onProgress =
     });
     await stage('build', async () => {
       if (state.source) {
-        const cached = state.runtimeBuilt && await hasImage(env.TESSMORA_BACKEND_IMAGE) && await hasImage(env.TESSMORA_FRONTEND_IMAGE);
+        detail('检查应用源码与已有镜像是否一致');
+        const fingerprint = await operations.sourceFingerprint(state.source);
+        const images = await appImages(env);
+        const previous = state.runtimeBuild;
+        const cached = state.runtimeBuilt && previous?.fingerprint === fingerprint
+          && images.backend && images.frontend
+          && images.backend === previous.images?.backend && images.frontend === previous.images?.frontend;
         if (!cached || rebuild) {
-          target = 'Tessmora'; detail('构建网页、后端与 Pi · 复用已经完成的镜像层');
+          target = 'Tessmora';
+          const reason = rebuild ? '按要求重新构建应用' : !previous ? '建立应用版本记录，更新已有源码镜像'
+            : previous.fingerprint !== fingerprint ? '检测到源码更新，自动更新应用镜像' : '应用镜像缺失或已变更，重新构建';
+          detail(`${reason} · 复用已经完成的镜像层`);
+          log.write(reason);
           await operations.compose(paths, state, ['--progress', 'plain', 'build', 'backend', 'frontend'], { build: true, onLine });
+          if (await operations.sourceFingerprint(state.source) !== fingerprint) {
+            throw new TessmoraError('SOURCE_CHANGED_DURING_BUILD', '构建期间源码发生变化，尚未启动新版本。', '等待源码更新完成后重试；已完成的镜像层会复用。');
+          }
+          const builtImages = await appImages(env);
+          if (!builtImages.backend || !builtImages.frontend) {
+            throw new TessmoraError('APP_IMAGE_MISSING', '构建后未找到完整应用镜像，尚未启动新版本。', '检查构建日志后重新运行 tessmora setup。');
+          }
           // Persist immediately: a later startup failure must not lose this checkpoint.
           state.runtimeBuilt = true;
+          state.runtimeBuild = { fingerprint, images: builtImages };
           await operations.saveState(paths, state);
-        } else detail('应用镜像已存在，跳过重复构建');
+        } else detail('应用镜像与当前源码一致，复用已有构建');
       } else {
         for (const service of ['backend', 'frontend']) {
           target = service; detail(`准备 ${service} 镜像`);

@@ -1,5 +1,5 @@
 import { apiClient } from './api_client'
-import { getAuthToken } from '@/lib/setupSession'
+import { getAuthToken, setSetupToken } from '@/lib/setupSession'
 import type { ChatScopeFile } from '@/store/useChatStore'
 import type { ChatMention } from '@/lib/chatReferences'
 import { persistMentions } from '@/lib/chatReferences'
@@ -22,11 +22,10 @@ function normalizeAssets(event: PiEvent): PiEvent {
       ...(citation.audio_url ? { audio_url: url } : {}), ...(citation.video_url ? { video_url: url } : {}) } : citation
   }) } }
 }
-function headers(): Record<string, string> {
-  const token = getAuthToken()
+function headers(token = getAuthToken()): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
-class PiApiError extends Error {
+export class PiApiError extends Error {
   constructor(message: string, readonly status: number) { super(message) }
 }
 async function checked(response: Response) {
@@ -43,7 +42,27 @@ export const piApi = {
     return (await checked(await fetch(`${base()}/runs?session_id=${encodeURIComponent(sessionId)}`,
       { headers: headers(), signal: AbortSignal.timeout(5000) }))).json()
   },
-  async config(): Promise<PiConfig> { return (await checked(await fetch(`${base()}/config`, { headers: headers() }))).json() },
+  async config(token?: string): Promise<PiConfig> {
+    try {
+      return await (await checked(await fetch(`${base()}/config`, {
+        headers: headers(token), signal: AbortSignal.timeout(10000), cache: 'no-store',
+      }))).json()
+    } catch (error) {
+      if (error instanceof Error && error.name === 'TimeoutError') throw new Error('连接工作区超时，请检查服务后重试。')
+      throw error
+    }
+  },
+  async connect(value: string): Promise<PiConfig> {
+    let token = value.trim()
+    if (/^https?:\/\//i.test(token)) {
+      try { token = new URLSearchParams(new URL(token).hash.slice(1)).get('setup_token') || '' }
+      catch { token = '' }
+    }
+    if (!token || /\s/.test(token)) throw new Error('请粘贴完整的连接链接或访问凭证。')
+    const config = await piApi.config(token)
+    setSetupToken(token)
+    return config
+  },
   async get(runId: string, signal?: AbortSignal): Promise<PiRun> { return (await checked(await fetch(`${base()}/runs/${runId}`, { headers: headers(), signal }))).json() },
   async cancel(runId: string): Promise<PiRun> { return (await checked(await fetch(`${base()}/runs/${runId}/cancel`, { method: 'POST', headers: headers() }))).json() },
   async artifact(runId: string, id: string): Promise<unknown> { return (await checked(await fetch(`${base()}/runs/${runId}/artifacts/${id}`, { headers: headers() }))).json() },

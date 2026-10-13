@@ -1,7 +1,8 @@
 import { stat, access } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { readState, ensureEnvironment } from './config.js';
-import { compose, containers, openBrowser } from './docker.js';
+import { readState } from './config.js';
+import { compose, containers } from './docker.js';
+import { openWorkspace } from './browser-entry.js';
 import { startRuntimeWithUI } from './runtime.js';
 import { prepareDocker, checkDockerWithGuidance } from './docker-guidance.js';
 import { readiness, storageReadiness } from './api.js';
@@ -35,13 +36,14 @@ export async function execute(command, paths, options, ui) {
     if (state.mode === 'remote' && status.setup.managed === false) ui.info('已连接源码服务，模型配置由远端环境管理。');
     else if (status.setup.setup_required) ui.warn('服务已启动，首次配置尚未完成。运行 tessmora setup 继续。');
     else if (!status.setup.tested) ui.info('模型配置已变更；现有工作台可以继续使用，configure 可重新验证连接。');
-    if (!options['no-open']) await openInstance(paths, state, ui);
+    if (!options['no-open']) await openWorkspace(paths, state, ui);
+    else ui.info('连接网页：tessmora open；无法自动打开时用 tessmora open --print-url 获取连接链接。');
     if (!options.json) ui.finish(`${state.url}\n状态：tessmora status · 日志：tessmora logs`);
     return { success: true, url: state.url, ready: status.setup.ready, setup: status.setup };
   }
   if (command === 'open') {
     await readiness(state.url);
-    return { success: await openInstance(paths, state, ui), url: state.url };
+    return { success: await openWorkspace(paths, state, ui, { printUrl: options['print-url'] }), url: state.url };
   }
   if (command === 'stop') {
     if (state.mode === 'remote') throw new TessmoraError('REMOTE_READ_ONLY', '远程连接不会停止服务器。', '请在服务所在机器管理其运行状态。');
@@ -124,12 +126,4 @@ export async function execute(command, paths, options, ui) {
     return { success: checks.every((check) => check.success), checks, url: state.url };
   }
   throw new TessmoraError('UNKNOWN_COMMAND', `未知命令 ${command}。`, '运行 tessmora --help 查看命令。');
-}
-
-async function openInstance(paths, state, ui) {
-  const env = state.mode === 'local' ? await ensureEnvironment(paths, state) : {};
-  const url = env.TESSMORA_SETUP_TOKEN ? `${state.url}/#setup_token=${encodeURIComponent(env.TESSMORA_SETUP_TOKEN)}` : state.url;
-  const opened = await openBrowser(url);
-  if (!opened) ui.warn(`未能自动打开浏览器，请访问 ${state.url}。`);
-  return opened;
 }

@@ -20,6 +20,43 @@ function cli(args, env = {}) {
   });
 }
 
+test('private browser links require explicit open and never enter JSON output', async () => {
+  for (const args of [['open', '--print-url', '--json'], ['start', '--print-url', '--json']]) {
+    const result = await cli(args);
+    assert.equal(result.code, 1);
+    assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_ARGUMENTS');
+    assert.ok(!result.stdout.includes('#setup_token='));
+  }
+});
+
+test('source command registration uses the configured global prefix instead of linking into the source tree', async (t) => {
+  const prefix = await mkdtemp(join(tmpdir(), 'tessmora-register-'));
+  t.after(() => rm(prefix, { recursive: true, force: true }));
+  const userconfig = join(prefix, '.npmrc');
+  await writeFile(userconfig, `prefix=${prefix}\n`);
+  const directory = fileURLToPath(new URL('..', import.meta.url));
+  const result = await new Promise(resolve => {
+    const child = spawn(process.execPath, [join(directory, 'scripts/register-command.js')], {
+      env: { ...process.env, npm_config_userconfig: userconfig, npm_config_prefix: directory },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+    child.stdout.on('data', value => { output += value });
+    child.stderr.on('data', value => { output += value });
+    child.on('close', code => resolve({ code, output }));
+  });
+  assert.equal(result.code, 0, result.output);
+  const registered = join(prefix, process.platform === 'win32' ? 'tessmora.cmd' : 'bin/tessmora');
+  const output = await new Promise(resolve => {
+    const child = spawn(registered, ['--version'], { cwd: tmpdir(), stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    child.stdout.on('data', value => { stdout += value });
+    child.on('close', code => resolve({ code, stdout }));
+  });
+  assert.equal(output.code, 0);
+  assert.equal(output.stdout.trim(), '0.1.0');
+});
+
 test('non-TTY setup exits with actionable JSON instead of hanging on a prompt', async (t) => {
   const home = await mkdtemp(join(tmpdir(), 'tessmora-notty-'));
   t.after(() => rm(home, { recursive: true, force: true }));

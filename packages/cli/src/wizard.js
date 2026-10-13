@@ -2,7 +2,8 @@ import { readFile, mkdir, access, readdir } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { resolve } from 'node:path';
 import { saveState, projectName, validateDataDir, normalizeUrl, ensureEnvironment } from './config.js';
-import { availablePort, detectSource, openBrowser, containers } from './docker.js';
+import { availablePort, detectSource, containers } from './docker.js';
+import { openWorkspace } from './browser-entry.js';
 import { startRuntimeWithUI } from './runtime.js';
 import { prepareDocker } from './docker-guidance.js';
 import { readiness, request, prepareModels, storageReadiness } from './api.js';
@@ -10,6 +11,7 @@ import { TessmoraError, redact } from './errors.js';
 import { BACK, backOption, labels, providerLabels } from './ui.js';
 import { runtimeJournal } from './runtime-progress.js';
 import { modelReporter, chooseModelNetwork, canRepairModelNetwork } from './model-progress.js';
+import { modelResultLine, modelTestHint } from './model-results.js';
 
 export function parseCapabilities(value = 'text') {
   const selected = value.split(',').map((item) => item.trim()).filter(Boolean);
@@ -261,8 +263,8 @@ async function runSetup(paths, initial, options, ui) {
         catch (error) { spin.error('模型连接测试未完成'); throw error; }
         if (result.success) spin.stop('模型连接测试通过');
         else spin.error('模型连接测试完成 · 有项目需要修复');
-        for (const row of result.results || []) (row.success ? ui.success : ui.warn).call(ui, redact(`${row.provider} · ${row.capability} · ${row.model}: ${row.success ? '通过' : row.message || row.error_code || '失败'}`, Object.values(credentials)));
-        if (!result.success || !result.test_receipt) throw new TessmoraError('MODEL_TEST_FAILED', '部分模型连接测试未通过，尚未保存本次凭证。', '返回上一步可重新填写；检查密钥、余额、模型权限和网络后重试。');
+        for (const row of result.results || []) (row.success ? ui.success : ui.warn).call(ui, redact(modelResultLine(row), Object.values(credentials)));
+        if (!result.success || !result.test_receipt) throw new TessmoraError('MODEL_TEST_FAILED', '部分模型连接测试未通过，尚未保存本次凭证。', modelTestHint(result.results, state));
         return result;
       }, { back: true });
       if (tested === BACK) { step = 3; continue; }
@@ -321,15 +323,13 @@ async function runSetup(paths, initial, options, ui) {
       ui.step(6, '开始使用', '导入一份资料，提问，并打开答案中的引用原文。');
       let shouldOpen = !options['no-open'];
       if (ui.interactive && shouldOpen) shouldOpen = await ui.confirm('现在打开 Tessmora？');
-      if (shouldOpen) {
-        const env = state.mode === 'local' ? await ensureEnvironment(paths, state) : {};
-        const url = env.TESSMORA_SETUP_TOKEN ? `${state.url}/setup#setup_token=${encodeURIComponent(env.TESSMORA_SETUP_TOKEN)}` : state.url;
-        if (!await openBrowser(url)) ui.warn(`未能自动打开浏览器，请访问 ${state.url}`);
-      }
+      if (shouldOpen) await openWorkspace(paths, state, ui, { setup: true });
+      else ui.info('连接网页：tessmora open；无法自动打开时用 tessmora open --print-url 获取带凭证的连接链接。');
       await persist(6, state.mode === 'remote' && !state.remoteReady ? state.remoteManaged ? 'remote-pending' : 'connected' : 'ready');
       ui.card(state.mode === 'remote' ? '服务已连接' : '你的知识工作台已就绪', [
         state.url, '', '下一步：导入一份资料 → 提问 → 查看引用原文', '',
-        '下次启动：tessmora start', '修改配置：tessmora configure', '排查问题：tessmora doctor',
+        '下次启动：tessmora start', '停止服务：tessmora stop', '修改配置：tessmora configure', '排查问题：tessmora doctor',
+        ...(state.source ? ['注册终端快捷命令：在源码目录执行 npm --prefix packages/cli run register-command'] : []),
       ]);
       ui.finish('Every fragment finds its place.');
     }

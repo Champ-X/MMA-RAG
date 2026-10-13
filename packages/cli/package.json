@@ -10,6 +10,7 @@
   "scripts": {
     "test": "node --test test/*.test.js",
     "prepare-assets": "node scripts/prepare-assets.js",
+    "register-command": "node scripts/register-command.js",
     "prepack": "npm run prepare-assets"
   },
   "dependencies": { "@clack/prompts": "1.8.1", "fast-string-width": "3.0.2", "picocolors": "1.1.1" }

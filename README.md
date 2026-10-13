@@ -100,6 +100,8 @@ node packages/cli/bin/tessmora.js setup --source .
 
 向导会构建并启动网页、后端、Pi 运行时及存储服务，遮罩输入 API Key，实际测试模型连接，再按需准备本地模型。下载或配置中断后，重新运行同一命令继续。已有开发环境正在使用默认端口时，请在向导中选择其他端口。
 
+希望直接使用 `tessmora setup / stop / open`，在仓库目录执行一次 `npm --prefix packages/cli run register-command`，再用 `tessmora --version` 验证。源码启动和 `git pull` 本身不会注册终端命令；注册失败或 PATH 尚未配置时，继续使用上面的 `node packages/cli/bin/tessmora.js` 入口。WSL 无法自动打开网页时，运行 `node packages/cli/bin/tessmora.js open --print-url`，将完整的私有连接链接粘贴到浏览器。
+
 完整本机运行仍需要 Docker 与 Compose 2.20+。系统安装和授权由用户完成；向导支持等待 Docker 就绪后自动继续，遇到权限或 Compose 版本问题时给出具体修复指引。
 
 安装器支持打包为 npm 包并在本机安装；**尚未发布公共 npm 包或预构建镜像**，不要直接假定 `npm install -g @tessmora/cli` 已可用。打包安装、`start/stop/status/logs/configure/doctor/open`、数据备份和远程连接见 [安装器说明](packages/cli/README.md) 与 [完整容器分发](docs/DISTRIBUTION.md)。

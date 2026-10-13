@@ -20,6 +20,9 @@ export function createUI({ json = false, quiet = false, interactive = Boolean(pr
   };
   return {
     interactive: tty,
+    // Only the explicit `open --print-url` action may disclose this link.
+    // Keep it out of structured events, setup journals and diagnostics.
+    connectionLink(url) { process.stdout.write(`${url}\n`); },
     intro() {
       if (tty) {
         process.stdout.write(brandBanner());

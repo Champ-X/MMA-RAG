@@ -69,12 +69,14 @@ function fixture({ minio = MINIO_IMAGE, cached = [], fail } = {}) {
   const images = new Set(cached), calls = [], logs = [], events = [];
   const state = { source: '/source', step: 2, url: 'http://127.0.0.1:19000' };
   const deps = {
+    sourceFingerprint: async () => 'source-v1',
     dockerCheck: async () => {}, claimDataDir: async () => {}, validatePorts: async () => {},
     containers: async () => [], collectRuntimeDiagnostics: async () => ({ services: [] }),
     ensureEnvironment: async () => ({ TESSMORA_MINIO_IMAGE: minio, TESSMORA_BACKEND_IMAGE: 'backend:local', TESSMORA_FRONTEND_IMAGE: 'frontend:local' }),
     run: async (_command, args) => {
       calls.push(args);
       if (args[0] === 'image' && !images.has(args[2])) throw new Error('missing image');
+      if (args[0] === 'image') return `sha256:${args[2]}`;
       if (args[0] === 'tag') images.add(args[2]);
     },
     compose: async (_paths, _state, args, options = {}) => {
@@ -129,6 +131,56 @@ test('app build checkpoint survives a later startup failure and retry skips comp
   f.calls.length = 0;
   await startRuntime({}, f.state, f.options, f.deps);
   assert.ok(!f.calls.some(args => args.includes('build')));
+});
+
+test('legacy checkpoints and changed source rebuild once before starting containers', async () => {
+  const f = fixture({ cached: [MINIO_IMAGE, 'qdrant:v1', 'redis:v7', 'backend:local', 'frontend:local'] });
+  f.state.runtimeBuilt = true; // Previous CLI stored only this boolean.
+  await startRuntime({}, f.state, f.options, f.deps);
+  assert.equal(f.state.runtimeBuild.fingerprint, 'source-v1');
+  assert.ok(f.calls.findIndex(args => args.includes('build')) < f.calls.findIndex(args => args.includes('up')));
+  f.calls.length = 0;
+  await startRuntime({}, f.state, f.options, f.deps);
+  assert.ok(!f.calls.some(args => args.includes('build')));
+  f.deps.sourceFingerprint = async () => 'source-v2';
+  f.calls.length = 0;
+  await startRuntime({}, f.state, f.options, f.deps);
+  assert.equal(f.state.runtimeBuild.fingerprint, 'source-v2');
+  assert.equal(f.calls.filter(args => args.includes('build')).length, 1);
+  assert.ok(f.logs.some(line => line.includes('检测到源码更新')));
+  assert.ok(!f.calls.some(args => args.includes('down') || args.includes('prune') || args.includes('--volumes')));
+});
+
+test('overwritten image tags and explicit rebuild cannot reuse an unrelated checkpoint', async () => {
+  const f = fixture();
+  await startRuntime({}, f.state, f.options, f.deps);
+  f.state.runtimeBuild.images.backend = 'sha256:another-source';
+  f.calls.length = 0;
+  await startRuntime({}, f.state, f.options, f.deps);
+  assert.ok(f.calls.some(args => args.includes('build')));
+  f.calls.length = 0;
+  await startRuntime({}, f.state, { ...f.options, rebuild: true }, f.deps);
+  assert.ok(f.calls.some(args => args.includes('build')));
+});
+
+test('failed or racing builds never mark new source ready or start stale containers', async () => {
+  let failBuild = false;
+  const f = fixture({ fail: args => failBuild && args.includes('build') });
+  await startRuntime({}, f.state, f.options, f.deps);
+  const original = structuredClone(f.state.runtimeBuild);
+  f.deps.sourceFingerprint = async () => 'source-v2';
+  failBuild = true;
+  f.calls.length = 0;
+  await assert.rejects(startRuntime({}, f.state, f.options, f.deps));
+  assert.deepEqual(f.state.runtimeBuild, original);
+  assert.ok(!f.calls.some(args => args.includes('up')));
+  failBuild = false;
+  let read = 0;
+  f.deps.sourceFingerprint = async () => ++read === 1 ? 'source-v2' : 'source-v3';
+  f.calls.length = 0;
+  await assert.rejects(startRuntime({}, f.state, f.options, f.deps), { code: 'SOURCE_CHANGED_DURING_BUILD' });
+  assert.deepEqual(f.state.runtimeBuild, original);
+  assert.ok(!f.calls.some(args => args.includes('up')));
 });
 
 test('retry only restarts this instance unhealthy applications before waiting again', async () => {

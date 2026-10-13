@@ -16,7 +16,16 @@ tessmora setup --source "$PWD"
 
 也可以无需全局安装：`node packages/cli/bin/tessmora.js setup --source .`。
 
-源码启动没有注册全局 `tessmora` 命令。中断后在仓库目录执行 `node packages/cli/bin/tessmora.js setup` 继续；界面会按实际启动方式生成指令，并保留自定义 `--home` / `--instance`。
+源码启动没有注册全局 `tessmora` 命令。中断后在仓库目录执行 `node packages/cli/bin/tessmora.js setup` 继续；界面会按实际启动方式生成指令，并保留自定义 `--home` / `--instance`。也可在仓库目录注册快捷命令：
+
+```bash
+npm --prefix packages/cli run register-command
+tessmora --version
+tessmora setup
+tessmora stop
+```
+
+注册使用 npm link 连接当前源码，之后 `git pull` 更新也会作用于这个命令；不要删除或移动源码目录。注册脚本不会修改 shell 配置或启动服务。如果出现 `EACCES`，建议使用用户级 Node.js 安装，或选择可写的 npm 全局目录（例如 `npm config set prefix "$HOME/.local"`）后重新注册。如果注册成功仍提示 `command not found`，在当前终端执行 `export PATH="$(npm prefix -g)/bin:$PATH"`；要在新终端持续生效，将同一行加入 `~/.zshrc` 或 `~/.bashrc`。无需使用 sudo。
 
 正式发布镜像后，安装入口可使用 `npm install -g @tessmora/cli` / `npx @tessmora/cli setup`，并设置对应版本的 `--backend-image` 与 `--frontend-image`。npm 安装阶段不会启动服务、下载模型或收集凭证。源码构建与模型准备都发生在明确的 `setup` 中。
 
@@ -25,7 +34,7 @@ tessmora setup --source "$PWD"
 1. 选择本机 Docker 运行，或只连接已有远程服务。
 2. 选择文档问答、完整多模态，或自定义图片/音频/视频能力。
 3. 检查 Docker，选择资料目录，解决端口冲突，准备完整运行环境。
-4. 先确认 Qdrant 与 MinIO 可访问，再按当前模型路由遮罩输入所需凭证，真实测试后保存；默认 DeepSeek 负责对话，SiliconFlow 负责向量、重排与普通图片理解，音视频和 Pi 独立媒体能力按实际配置补充服务商。测试会产生少量服务商用量。
+4. 先确认 Qdrant 与 MinIO 可访问，再按当前模型路由遮罩输入所需凭证，真实测试后保存；默认 DeepSeek 负责对话，SiliconFlow 负责向量与重排，百炼负责图片、音频和视频。Pi 独立能力按实际配置测试，结果标注具体任务。测试会产生少量服务商用量。
 5. 检查存储并准备检索集合，再下载或复用所选能力的本地模型缓存，验证推理。存储与模型准备分别显示进度；重试保留已完成任务。
 6. 打开网页，在首次使用卡片导入示例资料，提问并打开引用原文。
 
@@ -35,7 +44,9 @@ tessmora setup --source "$PWD"
 
 `doctor` 会通过后端实际读取 Qdrant 集合和 MinIO 存储桶。即使网页可打开、知识库列表为空，存储连接失败也不会显示检查通过。遇到 `STORAGE_UNAVAILABLE`，按提示检查对应服务；已保存的模型配置和下载缓存会保留，无需重新填写密钥。模型缓存完整也不会掩盖本次存储准备失败。
 
-已有源码安装更新此修复后，在原仓库运行 `git pull --ff-only`，再执行 `node packages/cli/bin/tessmora.js setup --rebuild` 重建应用镜像。原来使用了 `--home` / `--instance` 时须沿用；仅拉取代码不会更新已经运行的容器。无需删除数据目录或重新解析资料。
+已有源码安装更新代码后，在原仓库运行 `git pull --ff-only`，再执行 `node packages/cli/bin/tessmora.js setup`。向导会核对源码构建输入与应用镜像：发生变化时自动增量构建并更新后端、worker 和网页；一致时复用已有构建。旧版仅有“已构建”标记的实例会自动补做一次增量构建，建立版本记录。原来使用了 `--home` / `--instance` 时须沿用；仅拉取代码不会更新已经运行的容器。
+
+构建检查覆盖后端、Pi、前端及构建配置的实际文件内容，包括尚未提交的编辑，无需 Git 历史。文档、密钥、知识库数据、模型缓存与生成产物不参与应用版本判断。镜像被其他源码安装覆盖或丢失时也会重新构建；构建失败不会保存成功记录或继续启动旧应用。`--rebuild` 仍可强制增量重建，无需删除数据目录或重新解析资料。通过旧版全局 CLI 启动的用户应更新本地 CLI 包，或改用上述源码入口。
 
 ### Docker 尚未准备好时
 
@@ -71,9 +82,12 @@ tessmora logs --follow     # 持续查看日志
 tessmora configure         # 调整能力、端口和模型凭证
 tessmora doctor            # 检查 Docker、权限、容器和真实 HTTP 状态
 tessmora open              # 重新打开网页并建立本机配置会话
+tessmora open --print-url  # WSL / 无桌面：显示私有连接链接供手动打开
 ```
 
 `start --no-open` 适合无桌面环境。远程连接只读取健康和配置状态，不创建容器、不修改远程配置，也不允许远程 `stop` / `logs`。
+
+纯 Agent 提示“待连接工作区”时，用 `open` 重新打开，或在“连接工作区”中粘贴 `open --print-url` 输出的完整链接。源码入口为 `node packages/cli/bin/tessmora.js open --print-url`，自定义 `--home` / `--instance` 需沿用。链接包含本实例访问凭证，请勿分享；仅显式 `open --print-url` 向终端输出，不进入安装日志或普通 JSON 状态。浏览器验证成功后建立 6 小时 HttpOnly 会话，其他标签页可继续访问；输入错误凭证不会覆盖已有凭证。这与服务商 API Key 是不同的凭证。
 
 连接已有源码服务时，CLI 区分“可以连接”和“服务报告模型已就绪”；不会把连通成功改写成模型测试通过，也不强制源码服务进入托管安装。模型设置继续由远端原有环境管理。
 
