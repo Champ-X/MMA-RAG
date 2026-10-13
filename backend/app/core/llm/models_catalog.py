@@ -84,7 +84,7 @@ def infer_siliconflow_model_types(model_id: str, sub_types: Optional[List[str]] 
         type_set.add("audio")
 
     # 部分新一代通义/聚合模型以 chat 子类型发布，但官方能力页标注支持图像/视频理解。
-    if any(token in m for token in ("qwen3.5-", "qwen3.6-", "qwen3.7-")):
+    if any(token in m for token in ("qwen3.5-", "qwen3.6-", "qwen3.7-", "qwen3.8-")):
         type_set.update({"chat", "vision", "video"})
     if "kimi-k2.5" in m or "kimi-k2.6" in m:
         type_set.update({"chat", "vision"})
@@ -103,6 +103,9 @@ def infer_deepseek_model_types(model_id: str) -> str:
 
 def infer_bailian_model_types(model_id: str) -> str:
     m = model_id.lower()
+    # Realtime variants use WebSocket/WebRTC, not these task routes' HTTP APIs.
+    if "-realtime" in m:
+        return ""
     if "rerank" in m:
         return "reranker"
     if "embedding" in m or "-embed" in m or m.startswith("text-embedding"):
@@ -115,7 +118,7 @@ def infer_bailian_model_types(model_id: str) -> str:
         type_set.add("vision")
     if "asr" in m or "speech" in m or "audio" in m or "transcription" in m:
         type_set.add("audio")
-    if any(token in m for token in ("qwen3.5-", "qwen3.6-", "qwen3.7-")):
+    if any(token in m for token in ("qwen3.5-", "qwen3.6-", "qwen3.7-", "qwen3.8-")):
         type_set.update({"vision", "video"})
     if "kimi/kimi" in m or "kimi-k" in m:
         type_set.update({"vision", "video"})
@@ -307,6 +310,7 @@ async def _fetch_openrouter_models(client: httpx.AsyncClient) -> List[Tuple[str,
             "input_modalities": arch.get("input_modalities") if isinstance(arch, dict) else None,
             "output_modalities": arch.get("output_modalities") if isinstance(arch, dict) else None,
             "supported_parameters": raw.get("supported_parameters"),
+            "expiration_date": raw.get("expiration_date"),
             "max_output_tokens": (raw.get("top_provider") or {}).get("max_completion_tokens")
             if isinstance(raw.get("top_provider"), dict)
             else None,

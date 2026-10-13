@@ -30,7 +30,8 @@ def _parse_dashscope_error_body(body_text: str) -> Optional[str]:
 
 
 # 官方文档：qwen3-omni-flash 等 Omni 模型「stream 必须设置为 True，否则会报错」
-_OMNI_MODELS_REQUIRE_STREAM = ("qwen3-omni-flash", "qwen-omni-turbo")
+_OMNI_MODELS_REQUIRE_STREAM = ("qwen3-omni-flash", "qwen-omni-turbo", "qwen3.8-omni-flash")
+_NON_THINKING_DEFAULTS = {"qwen3.5-flash", "qwen3.8-flash", "qwen3.8-omni-flash"}
 
 
 def _is_omni_model_require_stream(model: str) -> bool:
@@ -220,6 +221,9 @@ class AliyunBailianProvider(BaseLLMProvider):
                 max_tokens = max(1, min(65536, int(max_tokens)))
             except (TypeError, ValueError):
                 max_tokens = 16000
+            options = {}
+            if "enable_thinking" in kwargs or model in _NON_THINKING_DEFAULTS:
+                options["enable_thinking"] = kwargs.get("enable_thinking", False)
             response_stream = MultiModalConversation.call(
                 api_key=self.api_key,
                 model=model,
@@ -229,6 +233,7 @@ class AliyunBailianProvider(BaseLLMProvider):
                 result_format="message",
                 temperature=kwargs.get("temperature", 0.1),
                 max_tokens=max_tokens,
+                **options,
             )
             # DashScope 流式接口会返回 iterable；个别 SDK/模型可能直接返回单个 Response，二者兼容。
             if hasattr(response_stream, "status_code"):
@@ -341,7 +346,7 @@ class AliyunBailianProvider(BaseLLMProvider):
         }
         # Flash serves bounded interactive fallbacks. Its upstream thinking
         # default can spend the whole attempt budget before returning content.
-        if "enable_thinking" in kwargs or model == "qwen3.5-flash":
+        if "enable_thinking" in kwargs or model in _NON_THINKING_DEFAULTS:
             payload["enable_thinking"] = kwargs.get("enable_thinking", False)
         if "response_format" in kwargs:
             payload["response_format"] = kwargs["response_format"]
@@ -398,7 +403,7 @@ class AliyunBailianProvider(BaseLLMProvider):
             "temperature": kwargs.get("temperature", 0.7),
             "max_tokens": max_tokens,
         }
-        if "enable_thinking" in kwargs or model == "qwen3.5-flash":
+        if "enable_thinking" in kwargs or model in _NON_THINKING_DEFAULTS:
             payload["enable_thinking"] = kwargs.get("enable_thinking", False)
         if "response_format" in kwargs:
             payload["response_format"] = kwargs["response_format"]
@@ -523,7 +528,7 @@ class AliyunBailianProvider(BaseLLMProvider):
         if "top_k" in kwargs:
             payload["top_k"] = kwargs["top_k"]
         
-        if "enable_thinking" in kwargs or model == "qwen3.5-flash":
+        if "enable_thinking" in kwargs or model in _NON_THINKING_DEFAULTS:
             payload["enable_thinking"] = kwargs.get("enable_thinking", False)
         if "response_format" in kwargs:
             payload["response_format"] = kwargs["response_format"]

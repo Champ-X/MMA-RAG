@@ -6,6 +6,10 @@
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 from app.core.llm.model_health import ModelHealth
+from app.core.llm.model_lifecycle import (
+    UNAVAILABLE_MODELS, model_expiration_date, model_is_unavailable,
+    model_lifecycle_status, upgrade_model_id,
+)
 from app.core.config import settings
 from app.core.logger import get_logger
 import json
@@ -86,25 +90,17 @@ class LLMRegistry:
 
         # 模型注册
         self._models = {
-            # 聊天模型
-            "Qwen/Qwen3-235B-A22B-Thinking-2507": {
-                "provider": "siliconflow",
-                "type": "chat",
-                "context_length": 256000, # 256K tokens
-                "description": "Qwen3 235B 思考模型"
-            },
-            "Qwen/Qwen3-235B-A22B-Instruct-2507": {
-                "provider": "siliconflow",
-                "type": "chat",
-                "context_length": 256000, # 256K tokens
-                "description": "Qwen3 235B 指令遵循大语言模型"
-            },
-            "Qwen/Qwen3.5-397B-A17B": {
+            "Qwen/Qwen3.8-27B": {
                 "provider": "siliconflow",
                 "type": "chat,vision,video",
-                "context_length": 262144,  # 256K tokens，与 OpenRouter 同系模型一致
-                "description": "Qwen3.5 397B MoE 指令模型（SiliconFlow）"
+                "description": "Qwen3.8 27B 多模态模型（SiliconFlow）",
             },
+            "Pro/zai-org/GLM-5.1": {
+                "provider": "siliconflow",
+                "type": "chat",
+                "description": "GLM-5.1 对话、推理（SiliconFlow）",
+            },
+            # 聊天模型
             "deepseek:deepseek-flash": {
                 "provider": "deepseek",
                 "raw_model": "deepseek-flash",
@@ -112,41 +108,11 @@ class LLMRegistry:
                 "description": "DeepSeek Flash（官方 API）",
             },
             # Siliconflow 新增模型
-            "Pro/MiniMaxAI/MiniMax-M2.5": {
-                "provider": "siliconflow",
-                "type": "chat",
-                "context_length": 200000,  # 200K tokens
-                "description": "MiniMax M2.5 对话模型"
-            },
-            "Pro/moonshotai/Kimi-K2.5": {
-                "provider": "siliconflow",
-                "type": "chat,vision",  # 对话、视觉、推理
-                "context_length": 256000,  # 256K tokens
-                "description": "Kimi K2.5 对话、视觉、推理"
-            },
             "Pro/moonshotai/Kimi-K2.6": {
                 "provider": "siliconflow",
                 "type": "chat,vision",  # 对话、视觉、推理
                 "context_length": 256000,  # 256K tokens
                 "description": "Kimi K2.6 对话、视觉、推理"
-            },
-            "moonshotai/Kimi-K2-Thinking": {
-                "provider": "siliconflow",
-                "type": "chat",
-                "context_length": 256000,  # 256K tokens
-                "description": "Kimi K2 思考模型（对话、推理）"
-            },
-            "Pro/zai-org/GLM-5": {
-                "provider": "siliconflow",
-                "type": "chat",
-                "context_length": 200000,  # 200K tokens
-                "description": "GLM-5 对话、推理"
-            },
-            "zai-org/GLM-4.6V": {
-                "provider": "siliconflow",
-                "type": "vision",
-                "context_length": 128000,  # 128K tokens
-                "description": "GLM-4.6V 视觉模型"
             },
 
             # 嵌入模型
@@ -169,12 +135,6 @@ class LLMRegistry:
                 "type": "vision",
                 "context_length": 256000, # 256K tokens
                 "description": "Qwen3 视觉理解模型"
-            },
-            "Qwen/Qwen3-VL-235B-A22B-Instruct": {
-                "provider": "siliconflow",
-                "type": "vision",
-                "context_length": 256000, # 256K tokens
-                "description": "Qwen3 大规模视觉模型"
             },
             "Qwen/Qwen3-Omni-30B-A3B-Instruct": {
                 "provider": "siliconflow",
@@ -230,13 +190,6 @@ class LLMRegistry:
                     "description": "Google Gemini 2.5 Flash（OpenRouter）",
                     "raw_model": "google/gemini-2.5-flash",
                 },
-                "openrouter:google/gemini-3-pro-preview": {
-                    "provider": "openrouter",
-                    "type": "chat,vision,audio,video",
-                    "context_length": 1048576,
-                    "description": "Google Gemini 3 Pro Preview（OpenRouter）",
-                    "raw_model": "google/gemini-3-pro-preview",
-                },
                 "openrouter:qwen/qwen3.5-plus-02-15": {
                     "provider": "openrouter",
                     "type": "chat,vision,video",
@@ -272,6 +225,34 @@ class LLMRegistry:
         # 使用 aliyun_bailian:model_name 格式避免冲突
         if "aliyun_bailian" in self._providers:
             aliyun_bailian_models = {
+                "aliyun_bailian:qwen3.8-flash": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,video",
+                    "description": "Qwen3.8 Flash（阿里云百炼，默认非思考模式）",
+                    "raw_model": "qwen3.8-flash",
+                    "context_length": 1000000,
+                },
+                "aliyun_bailian:qwen3.8-omni-flash": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,audio,video",
+                    "description": "Qwen3.8 Omni Flash（阿里云百炼，音视频理解）",
+                    "raw_model": "qwen3.8-omni-flash",
+                    "context_length": 1000000,
+                },
+                "aliyun_bailian:qwen3.5-omni-plus": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,audio,video",
+                    "description": "Qwen3.5 Omni Plus（阿里云百炼，音视频备用）",
+                    "raw_model": "qwen3.5-omni-plus",
+                    "context_length": 256000,
+                },
+                "aliyun_bailian:qwen3.5-omni-flash": {
+                    "provider": "aliyun_bailian",
+                    "type": "chat,vision,audio,video",
+                    "description": "Qwen3.5 Omni Flash（阿里云百炼，音视频备用）",
+                    "raw_model": "qwen3.5-omni-flash",
+                    "context_length": 256000,
+                },
                 "aliyun_bailian:qwen3.5-plus": {
                     "provider": "aliyun_bailian",
                     "type": "chat,vision,video",
@@ -300,13 +281,6 @@ class LLMRegistry:
                     "description": "Qwen3.5 Flash（阿里云百炼，默认非思考模式）",
                     "raw_model": "qwen3.5-flash",
                 },
-                "aliyun_bailian:qwen3-max": {
-                    "provider": "aliyun_bailian",
-                    "type": "chat",
-                    "context_length": 252000,  # 252K
-                    "description": "Qwen3 Max（阿里云百炼）",
-                    "raw_model": "qwen3-max",
-                },
                 "aliyun_bailian:qwen3-vl-rerank": {
                     "provider": "aliyun_bailian",
                     "type": "reranker",
@@ -328,40 +302,12 @@ class LLMRegistry:
                     "description": "Text Embedding V4（阿里云百炼）",
                     "raw_model": "text-embedding-v4",
                 },
-                "aliyun_bailian:qwen3-vl-embedding": {
-                    "provider": "aliyun_bailian",
-                    "type": "embedding",
-                    "context_length": 32000,  # 32K
-                    "description": "Qwen3 VL Embedding（阿里云百炼）",
-                    "raw_model": "qwen3-vl-embedding",
-                },
-                "aliyun_bailian:qwen3-omni-30b-a3b-captioner": {
-                    "provider": "aliyun_bailian",
-                    "type": "audio",
-                    "context_length": 32000,  # 32K
-                    "description": "Qwen3 Omni 30B A3B Captioner（阿里云百炼）",
-                    "raw_model": "qwen3-omni-30b-a3b-captioner",
-                },
-                "aliyun_bailian:qwen3-vl-flash": {
-                    "provider": "aliyun_bailian",
-                    "type": "chat,vision,video",
-                    "context_length": 30000,  # 30K
-                    "description": "Qwen3 VL Flash（阿里云百炼）",
-                    "raw_model": "qwen3-vl-flash",
-                },
                 "aliyun_bailian:qwen3-vl-plus": {
                     "provider": "aliyun_bailian",
                     "type": "chat,vision,video",
                     "context_length": 30000,  # 30K
                     "description": "Qwen3 VL Plus（阿里云百炼）",
                     "raw_model": "qwen3-vl-plus",
-                },
-                "aliyun_bailian:qwen3-vl-plus-2025-12-19": {
-                    "provider": "aliyun_bailian",
-                    "type": "chat,vision,video",
-                    "context_length": 30000,  # 30K
-                    "description": "Qwen3 VL Plus 2025-12-19（阿里云百炼）",
-                    "raw_model": "qwen3-vl-plus-2025-12-19",
                 },
                 "aliyun_bailian:qwen3-omni-flash": {
                     "provider": "aliyun_bailian",
@@ -376,20 +322,6 @@ class LLMRegistry:
                     "context_length": 32000,  # 32K
                     "description": "Qwen3.5 Omni Plus 2026-03-15（阿里云百炼）",
                     "raw_model": "qwen3.5-omni-plus-2026-03-15",
-                },
-                "aliyun_bailian:qwen-omni-turbo": {
-                    "provider": "aliyun_bailian",
-                    "type": "chat,vision,audio,video",
-                    "context_length": 30000,  # 30K
-                    "description": "Qwen Omni Turbo（阿里云百炼）",
-                    "raw_model": "qwen-omni-turbo",
-                },
-                "aliyun_bailian:kimi/kimi-k2.5": {
-                    "provider": "aliyun_bailian",
-                    "type": "chat,vision,video",
-                    "context_length": 30000,  # 30K
-                    "description": "Kimi K2.5（阿里云百炼）",
-                    "raw_model": "kimi/kimi-k2.5",
                 },
             }
             self._models.update(aliyun_bailian_models)
@@ -415,10 +347,10 @@ class LLMRegistry:
                 "fallbacks": ["aliyun_bailian:qwen3.5-flash"],
             },
             "image_captioning": {
-                "model": "aliyun_bailian:qwen3-vl-plus-2025-12-19",
+                "model": "aliyun_bailian:qwen3.8-flash",
                 "fallbacks": [
+                    "aliyun_bailian:qwen3-vl-plus",
                     "Qwen/Qwen3-Omni-30B-A3B-Captioner",
-                    "Qwen/Qwen3-Omni-30B-A3B-Instruct",
                 ],
             },
             # 文档分块使用独立任务路由。调用端禁用 provider fallback：LLM
@@ -457,19 +389,20 @@ class LLMRegistry:
             },
             # 仅保留已通过实际音频输入验证的百炼 Omni 路由。
             "audio_transcription": {
-                "model": "aliyun_bailian:qwen3-omni-flash",
+                "model": "aliyun_bailian:qwen3.8-omni-flash",
                 "fallbacks": [
-                    "aliyun_bailian:qwen-omni-turbo",
+                    "aliyun_bailian:qwen3.5-omni-plus",
+                    "aliyun_bailian:qwen3.5-omni-flash",
                 ],
             },
             # 视频解析：Scene–Shot 结果含逐 Shot ASR。video_local 会被阿里云 provider
             # 直接交给 DashScope MultiModalConversation，因此备用模型也必须能理解视频内音频，
             # 且必须保留在同一 provider（其他 OpenAI provider 无法读取本地 video_local 块）。
             "video_parsing": {
-                "model": "aliyun_bailian:qwen3.5-omni-plus-2026-03-15",
+                "model": "aliyun_bailian:qwen3.8-omni-flash",
                 "fallbacks": [
-                    "aliyun_bailian:qwen3-omni-flash",
-                    "aliyun_bailian:qwen-omni-turbo",
+                    "aliyun_bailian:qwen3.5-omni-plus",
+                    "aliyun_bailian:qwen3.5-omni-flash",
                 ],
             },
         }
@@ -477,7 +410,7 @@ class LLMRegistry:
         def _apply(s: Any, task: str) -> None:
             v = (s or "").strip() if s is not None else ""
             if v and task in self._task_config:
-                self._task_config[task]["model"] = v
+                self._task_config[task]["model"] = upgrade_model_id(v)
         _apply(getattr(settings, "default_chat_model", None), "final_generation")
         _apply(getattr(settings, "document_chunking_model", None), "document_chunking")
         _apply(getattr(settings, "default_embedding_model", None), "embedding")
@@ -489,7 +422,7 @@ class LLMRegistry:
         from app.core.runtime_paths import read_managed_config
         for task, model in read_managed_config().get("task_models", {}).items():
             if task in self._task_config and task not in self._read_task_overrides():
-                self._task_config[task]["model"] = model
+                self._task_config[task]["model"] = upgrade_model_id(model)
         self._normalize_task_models()
         self._task_routing = {k: v["model"] for k, v in self._task_config.items()}
 
@@ -539,7 +472,7 @@ class LLMRegistry:
             elif value is not None:
                 model_name = str(value).strip()
             if model_name:
-                normalized[task_type] = model_name
+                normalized[task_type] = upgrade_model_id(model_name)
         return normalized
 
     def _write_task_overrides(self, overrides: Dict[str, str]) -> None:
@@ -576,6 +509,11 @@ class LLMRegistry:
 
     def _normalize_task_models(self) -> None:
         for task_type, config in self._task_config.items():
+            config["model"] = upgrade_model_id(config["model"])
+            config["fallbacks"] = list(dict.fromkeys(
+                upgrade_model_id(model) for model in config.get("fallbacks", [])
+                if model not in UNAVAILABLE_MODELS or upgrade_model_id(model) != model
+            ))
             candidates = [config.get("model"), *(config.get("fallbacks") or [])]
             selected_model = None
             seen = set()
@@ -650,6 +588,8 @@ class LLMRegistry:
         1. 直接模型名（如 "Qwen/Qwen3-235B-A22B-Instruct-2507"）
         2. provider:model 格式（如 "openrouter:qwen/qwen3.5-plus-02-15"）
         """
+        if model_is_unavailable(model_name, self._models.get(model_name, {})):
+            return {}
         # 如果包含冒号，尝试解析为 provider:model 格式
         if ":" in model_name:
             parts = model_name.split(":", 1)
@@ -733,8 +673,9 @@ class LLMRegistry:
                     return False
                 types = [s.strip() for s in str(t).split(",") if s.strip()]
                 return model_type in types
-            return [name for name, config in self._models.items() if _match(config)]
-        return list(self._models.keys())
+            return [name for name, config in self._models.items()
+                    if _match(config) and not model_is_unavailable(name, config)]
+        return [name for name, config in self._models.items() if not model_is_unavailable(name, config)]
 
     def list_models_by_provider(self) -> Dict[str, Dict[str, List[str]]]:
         """按 provider 分组的模型列表，供前端按所选 provider 只显示该 provider 的模型。
@@ -742,6 +683,8 @@ class LLMRegistry:
         """
         result: Dict[str, Dict[str, List[str]]] = {}
         for name, config in self._models.items():
+            if model_is_unavailable(name, config):
+                continue
             provider = config.get("provider") or "siliconflow"
             types = self._extract_model_types(config)
             if not types:
@@ -758,6 +701,8 @@ class LLMRegistry:
 
     def add_model(self, name: str, config: Dict[str, Any]):
         """Merge fresh metadata without preserving disproven old capabilities/limits."""
+        if name in UNAVAILABLE_MODELS:
+            return
         existing = self._models.get(name)
         if not existing:
             self._models[name] = dict(config)
@@ -804,6 +749,8 @@ class LLMRegistry:
                 "input_modalities": config.get("input_modalities"),
                 "output_modalities": config.get("output_modalities"),
                 "supported_parameters": config.get("supported_parameters"),
+                "expiration_date": model_expiration_date(name, config),
+                "lifecycle_status": model_lifecycle_status(name, config),
             }
         return details
 

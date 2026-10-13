@@ -13,6 +13,10 @@ from app.core.llm.providers.deepseek import DeepSeekProvider
 @pytest.mark.parametrize("model,options,expected", [
     ("qwen3.5-flash", {}, False),
     ("qwen3.5-flash", {"enable_thinking": True}, True),
+    ("qwen3.8-flash", {}, False),
+    ("qwen3.8-flash", {"enable_thinking": True}, True),
+    ("qwen3.8-omni-flash", {}, False),
+    ("qwen3.8-omni-flash", {"enable_thinking": True}, True),
     ("qwen3.5-plus", {}, None),
 ])
 async def test_flash_defaults_to_no_thinking_without_overriding_explicit_choice(
@@ -44,6 +48,8 @@ async def test_flash_defaults_to_no_thinking_without_overriding_explicit_choice(
         result = await provider.chat_completion(**kwargs)
         assert result["choices"][0]["message"]["content"] == "ready"
     assert len(payloads) == 1
+    if model == "qwen3.8-omni-flash":
+        assert payloads[0]["stream"] is True
     assert payloads[0]["response_format"] == {"type": "json_object"}
     if expected is None:
         assert "enable_thinking" not in payloads[0]

@@ -305,7 +305,9 @@ class SetupService:
                 "capability_checks": {kind: self._plan(registry, list(dict.fromkeys(["text", kind]))) for kind in CAPABILITIES},
                 "pi_models": {"enabled": pi.enabled, "chat": pi.model, "embedding": pi.embedding_model, "vision": pi.vision_model, "audio": pi.audio_model},
                 "configured_at": saved.get("configured_at"), "tested_at": saved.get("tested_at"),
-                "models": [{"id": model, "provider": config.get("provider"), "type": config.get("type")} for model, config in registry._models.items()]}
+                "models": [{"id": model, "provider": registry.get_model_config(model).get("provider"),
+                            "type": registry.get_model_config(model).get("type")}
+                           for model in registry.list_models()]}
 
     async def _validate_embedding_change(self, draft: dict) -> None:
         from app.core.llm.manager import llm_manager

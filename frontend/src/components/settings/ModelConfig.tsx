@@ -60,11 +60,11 @@ const TASK_BACKEND_KEYS: Record<TaskId, string> = {
 
 const FALLBACK_MODELS: Record<string, Partial<Record<AvailableModelType, string[]>>> = {
   siliconflow: {
-    chat: ['Qwen/Qwen3.5-397B-A17B', 'Pro/moonshotai/Kimi-K2.6'],
+    chat: ['Qwen/Qwen3.8-27B', 'Pro/moonshotai/Kimi-K2.6'],
     embedding: ['Qwen/Qwen3-Embedding-8B'],
     vision: ['Qwen/Qwen3-VL-30B-A3B-Instruct'],
     reranker: ['Qwen/Qwen3-Reranker-8B'],
-    video: ['Qwen/Qwen3.5-397B-A17B'],
+    video: ['Qwen/Qwen3.8-27B'],
   },
   deepseek: {
     chat: ['deepseek:deepseek-flash'],
@@ -72,10 +72,10 @@ const FALLBACK_MODELS: Record<string, Partial<Record<AvailableModelType, string[
   openrouter: {},
   aliyun_bailian: {
     chat: ['aliyun_bailian:qwen3.5-flash'],
-    vision: ['aliyun_bailian:qwen3-vl-plus-2025-12-19'],
+    vision: ['aliyun_bailian:qwen3.8-flash'],
     reranker: ['aliyun_bailian:qwen3-rerank'],
-    audio: ['aliyun_bailian:qwen3-omni-flash'],
-    video: ['aliyun_bailian:qwen3.5-omni-plus-2026-03-15'],
+    audio: ['aliyun_bailian:qwen3.8-omni-flash'],
+    video: ['aliyun_bailian:qwen3.8-omni-flash'],
   },
 }
 
@@ -110,7 +110,7 @@ const DEFAULT_MATRIX: TaskModelEntry[] = [
     description: '图像内容理解与描述生成',
     category: 'vision',
     provider: 'aliyun_bailian',
-    model: 'aliyun_bailian:qwen3-vl-plus-2025-12-19',
+    model: 'aliyun_bailian:qwen3.8-flash',
   },
   {
     taskId: 'audio',
@@ -118,7 +118,7 @@ const DEFAULT_MATRIX: TaskModelEntry[] = [
     description: '语音/音频理解与转写',
     category: 'audio',
     provider: 'aliyun_bailian',
-    model: 'aliyun_bailian:qwen3-omni-flash',
+    model: 'aliyun_bailian:qwen3.8-omni-flash',
   },
   {
     taskId: 'video',
@@ -126,7 +126,7 @@ const DEFAULT_MATRIX: TaskModelEntry[] = [
     description: '视频场景切分与多模态摘要',
     category: 'video',
     provider: 'aliyun_bailian',
-    model: 'aliyun_bailian:qwen3.5-omni-plus-2026-03-15',
+    model: 'aliyun_bailian:qwen3.8-omni-flash',
   },
   {
     taskId: 'portrait',
@@ -564,8 +564,8 @@ export function ModelConfig({
           : '模型配置没有未保存更改'
 
   const providerList = (category: AvailableModelType, taskKey?: string) => {
-    const taskCandidates = taskKey ? (availableModels?.task_candidates?.[taskKey] ?? []) : []
-    if (taskCandidates.length > 0) {
+    const taskCandidates = taskKey ? availableModels?.task_candidates?.[taskKey] : undefined
+    if (taskCandidates) {
       return Array.from(new Set(taskCandidates.map((item) => item.provider).filter(Boolean)))
     }
     if (availableModels?.models_by_provider && Object.keys(availableModels.models_by_provider).length > 0) {
@@ -579,16 +579,12 @@ export function ModelConfig({
   }
 
   const modelList = (provider: string, category: AvailableModelType, taskKey?: string) => {
-    const taskCandidates = taskKey ? (availableModels?.task_candidates?.[taskKey] ?? []) : []
-    const rankedModels = taskCandidates
-      .filter((item) => item.provider === provider)
-      .map((item) => item.model)
+    const taskCandidates = taskKey ? availableModels?.task_candidates?.[taskKey] : undefined
+    if (taskCandidates) {
+      return taskCandidates.filter((item) => item.provider === provider).map((item) => item.model)
+    }
     if (availableModels?.models_by_provider && Object.keys(availableModels.models_by_provider).length > 0) {
       const providerModels = availableModels.models_by_provider[provider]?.[category] ?? []
-      if (rankedModels.length > 0) {
-        const seen = new Set(rankedModels)
-        return [...rankedModels, ...providerModels.filter((model) => !seen.has(model))]
-      }
       return [...providerModels]
     }
     return [...(FALLBACK_MODELS[provider]?.[category] ?? [])]

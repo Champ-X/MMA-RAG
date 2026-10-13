@@ -321,7 +321,7 @@ async def test_completed_onboarding_survives_route_edit_but_missing_cache_requir
     await managed.prepare()
     await managed._task
     assert managed.status()["ready"] and not managed.status()["setup_required"]
-    llm_manager.registry.update_task_model("final_generation", "Qwen/Qwen3-235B-A22B-Instruct-2507", persist=True)
+    llm_manager.registry.update_task_model("final_generation", "Qwen/Qwen3.8-27B", persist=True)
     assert not managed.status()["tested"]
     assert not managed.status()["setup_required"]
     artifact.unlink()
@@ -379,7 +379,7 @@ def test_capability_checks_include_independent_pi_media_routes(managed, monkeypa
     pi = get_pi_settings()
     monkeypatch.setattr(pi, "enabled", True)
     monkeypatch.setattr(pi, "embedding_model", "openrouter:qwen/qwen3-embedding-8b")
-    monkeypatch.setattr(pi, "audio_model", "aliyun_bailian:qwen-omni-turbo")
+    monkeypatch.setattr(pi, "audio_model", "aliyun_bailian:qwen3.5-omni-plus")
     status = managed.status()
     plans = status["capability_checks"]
     for capability in ("text", "image", "audio", "video"):
@@ -409,7 +409,7 @@ async def test_media_setup_probes_independent_pi_models_before_issuing_receipt(m
     from app.modules.pi_agent.config import get_pi_settings
     from pydantic import SecretStr
     pi = get_pi_settings()
-    monkeypatch.setattr(pi, "vision_model", "aliyun_bailian:qwen3-vl-plus-2025-12-19")
+    monkeypatch.setattr(pi, "vision_model", "aliyun_bailian:qwen3-vl-plus")
     monkeypatch.setattr(pi, "model_api_key", SecretStr("synthetic-pi-key"))
     seen = []
     async def probe(source, **kwargs):

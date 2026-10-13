@@ -87,6 +87,8 @@ export interface ModelCatalogDetail {
   input_modalities?: string[];
   output_modalities?: string[];
   supported_parameters?: string[];
+  expiration_date?: string | null;
+  lifecycle_status?: 'active' | 'retiring' | 'retired' | 'unavailable';
 }
 
 export interface TaskModelCandidate {
@@ -266,7 +268,7 @@ const defaultConfig: SystemConfig = {
       id: 'caption',
       name: '图像描述模型',
       provider: 'aliyun_bailian',
-      model: 'aliyun_bailian:qwen3-vl-plus-2025-12-19',
+      model: 'aliyun_bailian:qwen3.8-flash',
       maxTokens: 1024,
       temperature: 0.3,
       topP: 0.9,
@@ -276,7 +278,7 @@ const defaultConfig: SystemConfig = {
       id: 'audio',
       name: '音频转写模型',
       provider: 'aliyun_bailian',
-      model: 'aliyun_bailian:qwen3-omni-flash',
+      model: 'aliyun_bailian:qwen3.8-omni-flash',
       maxTokens: 1024,
       temperature: 0.2,
       topP: 0.9,
@@ -286,7 +288,7 @@ const defaultConfig: SystemConfig = {
       id: 'video',
       name: '视频解析模型',
       provider: 'aliyun_bailian',
-      model: 'aliyun_bailian:qwen3.5-omni-plus-2026-03-15',
+      model: 'aliyun_bailian:qwen3.8-omni-flash',
       maxTokens: 2048,
       temperature: 0.2,
       topP: 0.9,
@@ -318,6 +320,16 @@ const LEGACY_TASK_DEFAULTS: Record<string, string> = {
   rewrite: 'Qwen/Qwen3.5-397B-A17B',
   chat: 'Pro/moonshotai/Kimi-K2.6',
   portrait: 'Pro/moonshotai/Kimi-K2.6',
+};
+
+const LEGACY_MEDIA_DEFAULTS: Record<string, string[]> = {
+  caption: ['aliyun_bailian:qwen3-vl-plus-2025-12-19'],
+  audio: ['aliyun_bailian:qwen3-omni-flash', 'aliyun_bailian:qwen-omni-turbo'],
+  video: [
+    'aliyun_bailian:qwen3.5-omni-plus-2026-03-15',
+    'aliyun_bailian:qwen3-omni-flash',
+    'aliyun_bailian:qwen-omni-turbo',
+  ],
 };
 
 export const useConfigStore = create<ConfigStore>()(
@@ -552,19 +564,24 @@ export const useConfigStore = create<ConfigStore>()(
     }),
     {
       name: 'config-store',
-      version: 1,
+      version: 2,
       migrate: (persistedState, version) => {
         const state = persistedState as { config: SystemConfig };
-        if (version >= 1 || !Array.isArray(state?.config?.models)) return state;
+        if (version >= 2 || !Array.isArray(state?.config?.models)) return state;
         return {
           ...state,
           config: {
             ...state.config,
-            models: state.config.models.map((model) =>
-              LEGACY_TASK_DEFAULTS[model.id] === model.model
-                ? { ...model, provider: 'deepseek', model: 'deepseek:deepseek-flash' }
-                : model
-            ),
+            models: state.config.models.map((model) => {
+              if (version < 1 && LEGACY_TASK_DEFAULTS[model.id] === model.model) {
+                return { ...model, provider: 'deepseek', model: 'deepseek:deepseek-flash' };
+              }
+              if (LEGACY_MEDIA_DEFAULTS[model.id]?.includes(model.model)) {
+                const replacement = defaultConfig.models.find((entry) => entry.id === model.id)!;
+                return { ...model, provider: replacement.provider, model: replacement.model };
+              }
+              return model;
+            }),
           },
         };
       },

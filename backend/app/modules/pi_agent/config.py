@@ -4,9 +4,10 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.core.runtime_paths import state_dir
+from app.core.llm.model_lifecycle import upgrade_model_id
 
 ROOT = Path(__file__).resolve().parents[4]
 
@@ -22,8 +23,8 @@ class PiSettings(BaseSettings):
     model_base_url: str | None = None
     yield_to_legacy: bool = True
     embedding_model: str = "Qwen/Qwen3-Embedding-8B"
-    vision_model: str = "aliyun_bailian:qwen3-vl-plus-2025-12-19"
-    audio_model: str = "aliyun_bailian:qwen3-omni-flash"
+    vision_model: str = "aliyun_bailian:qwen3.8-flash"
+    audio_model: str = "aliyun_bailian:qwen3.8-omni-flash"
     allowed_models: list[str] = Field(default_factory=list)
     allowed_kb_ids: list[str] | None = None
     # Local workspace access is explicit; deployments can supply a trusted server token.
@@ -34,6 +35,11 @@ class PiSettings(BaseSettings):
     # Scheduling capacity, not run limits: excess work waits and remains cancellable.
     max_concurrent_runs: int = Field(default=2, ge=1)
     max_concurrent_searches: int = Field(default=1, ge=1)
+
+    @field_validator("vision_model", "audio_model", mode="before")
+    @classmethod
+    def upgrade_legacy_media_model(cls, value: str) -> str:
+        return upgrade_model_id(value)
 
 
 @lru_cache

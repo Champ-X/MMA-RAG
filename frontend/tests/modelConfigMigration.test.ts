@@ -50,7 +50,7 @@ test('a new browser starts with Flash for all four text tasks', () => {
   }
 })
 
-test('v0 rehydration migrates old task defaults and writes v1 without losing settings', async () => {
+test('v0 rehydration migrates old task defaults and writes v2 without losing settings', async () => {
   const previous = legacyConfig()
   seed(previous, 0)
   await useConfigStore.persist.rehydrate()
@@ -65,7 +65,7 @@ test('v0 rehydration migrates old task defaults and writes v1 without losing set
   assert.deepEqual(current.defaultKnowledgeBaseIds, ['selected-kb'])
   assert.deepEqual(current.models.filter((model) => !(model.id in oldDefaults)),
     previous.models.filter((model) => !(model.id in oldDefaults)))
-  assert.equal(persisted().version, 1)
+  assert.equal(persisted().version, 2)
   assert.deepEqual(persisted().state.config, current)
   assert.equal(previous.models.find((model) => model.id === 'chat')!.model, kimi)
 })
@@ -88,11 +88,46 @@ test('choosing an old model after migration survives later rehydration', async (
   await useConfigStore.persist.rehydrate()
   useConfigStore.getState().updateModelConfig('chat', { provider: 'siliconflow', model: kimi })
   const selected = persisted()
-  assert.equal(selected.version, 1)
+  assert.equal(selected.version, 2)
   // Simulate a fresh store state while restoring the actual saved selection.
   useConfigStore.setState({ config: structuredClone(defaults) })
   storage.setItem('config-store', JSON.stringify(selected))
   await useConfigStore.persist.rehydrate()
   assert.equal(useConfigStore.getState().getModelConfig('chat')!.model, kimi)
   assert.equal(persisted().state.config.models.find((model: { id: string }) => model.id === 'chat').model, kimi)
+})
+
+test('v1 media migration preserves generation choices, knowledge bases, and sampling options', async () => {
+  const previous = legacyConfig()
+  const media: Record<string, string> = {
+    caption: 'aliyun_bailian:qwen3-vl-plus-2025-12-19',
+    audio: 'aliyun_bailian:qwen-omni-turbo',
+    video: 'aliyun_bailian:qwen3.5-omni-plus-2026-03-15',
+  }
+  previous.models = previous.models.map((model) => media[model.id]
+    ? { ...model, provider: 'aliyun_bailian', model: media[model.id] } : model)
+  seed(previous, 1)
+  await useConfigStore.persist.rehydrate()
+  const current = useConfigStore.getState().config
+  for (const id of Object.keys(media)) {
+    const model = current.models.find((entry) => entry.id === id)!
+    assert.equal(model.model, id === 'caption'
+      ? 'aliyun_bailian:qwen3.8-flash' : 'aliyun_bailian:qwen3.8-omni-flash')
+    assert.equal(model.temperature, 0.42)
+  }
+  assert.deepEqual(current.models.filter((model) => !(model.id in media)),
+    previous.models.filter((model) => !(model.id in media)))
+  assert.equal(current.theme, 'dark')
+  assert.deepEqual(current.defaultKnowledgeBaseIds, ['selected-kb'])
+  assert.equal(persisted().version, 2)
+})
+
+test('v1 custom media models survive migration', async () => {
+  const previous = structuredClone(defaults)
+  previous.models = previous.models.map((model) => model.id === 'caption'
+    ? { ...model, provider: 'siliconflow', model: 'Qwen/Qwen3-VL-30B-A3B-Instruct' }
+    : model.id === 'video' ? { ...model, model: 'aliyun_bailian:qwen3.5-omni-plus' } : model)
+  seed(previous, 1)
+  await useConfigStore.persist.rehydrate()
+  assert.deepEqual(useConfigStore.getState().config, previous)
 })
