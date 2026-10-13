@@ -273,13 +273,8 @@ class MinIOAdapter:
             raise
 
     def list_bucket_names(self) -> List[str]:
-        """列出所有存储桶名称"""
-        try:
-            buckets = self.client.list_buckets()
-            return [b.name for b in buckets]
-        except Exception as e:
-            logger.warning(f"列出存储桶失败: {e}")
-            return []
+        """列出所有存储桶；连接失败不能伪装成空目录。"""
+        return [bucket.name for bucket in self.client.list_buckets()]
 
     def get_bucket_tags(self, bucket_name: str) -> Dict[str, str]:
         """获取存储桶标签（知识库元数据：name, description, created_at, updated_at, user_id）。"""
@@ -287,10 +282,10 @@ class MinIOAdapter:
             tags = self.client.get_bucket_tags(bucket_name)
             return dict(tags) if tags else {}
         except S3Error as e:
-            if "NoSuchTagSet" in str(e) or "404" in str(e):
+            if e.code == "NoSuchTagSet":
                 return {}
             logger.warning(f"获取存储桶标签失败 {bucket_name}: {e}")
-            return {}
+            raise
 
     def set_bucket_tags(self, bucket_name: str, tags: Dict[str, str]) -> None:
         """设置存储桶标签。键值均为字符串，用于存储知识库 name、description 等。"""
@@ -308,16 +303,18 @@ class MinIOAdapter:
         """读取桶内 .kb_meta.json，返回 name/description/created_at/updated_at/user_id。不存在或解析失败返回 None。"""
         try:
             response = self.client.get_object(bucket_name, KB_META_OBJECT)
-            content = response.read()
-            response.close()
-            response.release_conn()
+            try:
+                content = response.read()
+            finally:
+                response.close()
+                response.release_conn()
             data = json.loads(content.decode("utf-8"))
             return data if isinstance(data, dict) else None
         except S3Error as e:
-            if "NoSuchKey" in str(e) or "404" in str(e):
+            if e.code == "NoSuchKey":
                 return None
             logger.warning(f"读取知识库元数据失败 {bucket_name}: {e}")
-            return None
+            raise
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             logger.warning(f"解析知识库元数据失败 {bucket_name}: {e}")
             return None

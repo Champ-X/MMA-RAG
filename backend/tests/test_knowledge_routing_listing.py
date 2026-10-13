@@ -12,6 +12,7 @@ from app.modules.knowledge.service import KnowledgeBase, KnowledgeBaseService
 
 def make_service():
     service = KnowledgeBaseService.__new__(KnowledgeBaseService)
+    service._catalog_loaded = True
     service._kb_storage = {
         kb_id: KnowledgeBase(
             id=kb_id, name=f"旧名称 {kb_id}", description=f"说明 {kb_id}",

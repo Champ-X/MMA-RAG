@@ -15,6 +15,7 @@ jobs:
           python-version: '3.12'
       - run: python scripts/check_repository.py
       - run: python scripts/test_dev.py
+      - run: python scripts/test_deploy_nginx.py
       - run: git diff --check
   javascript:
     runs-on: ubuntu-latest

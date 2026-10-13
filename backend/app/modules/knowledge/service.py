@@ -238,6 +238,10 @@ def _kb_to_tags(kb: KnowledgeBase) -> Dict[str, str]:
     }
 
 
+class KnowledgeCatalogUnavailable(RuntimeError):
+    """The durable catalog could not be read; never represent it as empty."""
+
+
 class KnowledgeBaseService:
     """知识库管理服务。数据源仅为 MinIO（列桶 + 桶标签），不再使用本地 JSON 文件。"""
 
@@ -259,7 +263,9 @@ class KnowledgeBaseService:
 
     def _load_from_minio(self) -> None:
         """从 MinIO 列出所有 kb- 存储桶；优先用桶内 .kb_meta.json（支持任意 UTF-8），无则用桶标签。"""
-        self._kb_storage = {}
+        # Build a complete snapshot before publishing it. A failed read must
+        # retain existing entries and leave initialization retryable.
+        catalog: Dict[str, KnowledgeBase] = {}
         try:
             bucket_names = self.minio_adapter.list_bucket_names()
             for bucket_name in bucket_names:
@@ -268,16 +274,27 @@ class KnowledgeBaseService:
                     continue
                 meta = self.minio_adapter.get_kb_metadata(bucket_name)
                 if meta:
-                    self._kb_storage[kb_id] = _kb_from_meta(bucket_name, meta)
+                    catalog[kb_id] = _kb_from_meta(bucket_name, meta)
                 else:
                     tags = self.minio_adapter.get_bucket_tags(bucket_name)
-                    self._kb_storage[kb_id] = _tags_to_kb(bucket_name, tags)
-            for kb in list(self._kb_storage.values()):
-                self._kb_storage[kb.id] = kb
-            logger.info(f"已从 MinIO 加载 {len(self._kb_storage)} 个知识库")
+                    catalog[kb_id] = _tags_to_kb(bucket_name, tags)
+            for kb in list(catalog.values()):
+                catalog[kb.id] = kb
+            self._kb_storage = catalog
+            self._catalog_loaded = True
+            logger.info(f"已从 MinIO 加载 {len({kb.id for kb in catalog.values()})} 个知识库")
         except Exception as e:
-            logger.warning(f"从 MinIO 加载知识库失败，将使用空列表: {e}")
-            self._kb_storage = {}
+            logger.warning(f"从 MinIO 加载知识库失败，保留已有目录: {e}")
+            raise KnowledgeCatalogUnavailable("暂时无法读取素材空间目录，请检查存储连接后重试。已有资料未被清空。") from e
+
+    async def _ensure_catalog_loaded(self) -> None:
+        # A newly created space or direct detail read only populates a partial
+        # cache. Only a successful bucket listing establishes completeness.
+        if self._catalog_loaded:
+            return
+        async with self._catalog_lock:
+            if not self._catalog_loaded:
+                await asyncio.to_thread(self._load_from_minio)
 
     def _ensure_kb_in_cache(self, kb_id: str) -> bool:
         """若 kb_id 不在缓存中且对应 MinIO 桶存在，则从 .kb_meta.json 或桶标签加载并加入缓存。返回是否在缓存中。"""
@@ -289,10 +306,15 @@ class KnowledgeBaseService:
         self.vector_store = VectorStore()
         self.minio_adapter = MinIOAdapter()
         self._kb_storage: Dict[str, KnowledgeBase] = {}
+        self._catalog_loaded = False
+        self._catalog_lock = asyncio.Lock()
         from app.core.runtime_paths import state_dir
         if not state_dir():
-            self._load_from_minio()
-        # Managed installs load the catalog on the first list/get request.
+            try:
+                self._load_from_minio()
+            except KnowledgeCatalogUnavailable:
+                pass  # Startup stays available; the first catalog request retries.
+        # Managed installs load the full catalog on first list or mutation.
     
     async def create_knowledge_base(
         self,
@@ -303,6 +325,7 @@ class KnowledgeBaseService:
     ) -> Dict[str, Any]:
         """创建知识库（在 MinIO 建桶并写入桶标签，不再写本地 JSON）"""
         try:
+            await self._ensure_catalog_loaded()
             kb_id = str(uuid.uuid4())
             now = datetime.utcnow().isoformat()
             kb = KnowledgeBase(
@@ -314,7 +337,6 @@ class KnowledgeBaseService:
                 user_id=user_id,
                 metadata=metadata or {}
             )
-            self._kb_storage[kb_id] = kb
             await self._create_kb_structure(kb_id)
             bucket_name = self.minio_adapter.bucket_name_for_kb(kb_id)
             # 优先用 .kb_meta.json 持久化（任意 UTF-8），重启后可正确加载
@@ -330,6 +352,7 @@ class KnowledgeBaseService:
                 self.minio_adapter.set_bucket_tags(bucket_name, _kb_to_tags(kb))
             except Exception as tag_err:
                 logger.debug(f"桶标签写入可选失败（已用 .kb_meta.json 持久化）: {tag_err}")
+            self._kb_storage[kb_id] = kb
             audit_log(
                 f"知识库创建成功: {name}",
                 kb_id=kb_id,
@@ -410,9 +433,7 @@ class KnowledgeBaseService:
     ) -> List[Dict[str, Any]]:
         """列出知识库；检索路由可省略统计，列表页默认保留完整统计。"""
         try:
-            # 仅首次或未加载时从 MinIO 拉取；后续列表用内存，保证本进程内编辑后刷新不丢
-            if not self._kb_storage:
-                self._load_from_minio()
+            await self._ensure_catalog_loaded()
             pairs: List[Tuple[str, KnowledgeBase]] = []
             seen_ids = set()
             for kb_id, kb in list(self._kb_storage.items()):
@@ -453,7 +474,7 @@ class KnowledgeBaseService:
 
         except Exception as e:
             logger.error(f"列出知识库失败: {str(e)}")
-            return []
+            raise
     
     async def update_knowledge_base(
         self,
@@ -464,6 +485,7 @@ class KnowledgeBaseService:
     ) -> Optional[Dict[str, Any]]:
         """更新知识库"""
         try:
+            await self._ensure_catalog_loaded()
             kb = self._kb_storage.get(kb_id)
             if not kb:
                 return None
@@ -513,6 +535,7 @@ class KnowledgeBaseService:
     async def delete_knowledge_base(self, kb_id: str) -> bool:
         """删除知识库（以 MinIO 桶存在为准；向量删除会尝试 _kb_id_candidates 以兼容 Qdrant 中不同 kb_id）"""
         try:
+            await self._ensure_catalog_loaded()
             self._ensure_kb_in_cache(kb_id)
             if kb_id not in self._kb_storage:
                 return False

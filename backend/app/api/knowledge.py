@@ -15,7 +15,11 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from app.core.logger import get_logger
 from app.core.keyword_extract import extract_keywords_for_portrait
-from app.modules.knowledge.service import KnowledgeBaseService, office_preview_cache_object_path
+from app.modules.knowledge.service import (
+    KnowledgeBaseService,
+    KnowledgeCatalogUnavailable,
+    office_preview_cache_object_path,
+)
 from app.modules.knowledge.portraits import PortraitGenerator
 from app.modules.knowledge.suggested_questions import (
     build_context_and_questions_payload,
@@ -105,6 +109,8 @@ async def list_knowledge_bases(user_id: Optional[str] = None):
                 for i, kb in enumerate(kbs)
             ]
         }
+    except KnowledgeCatalogUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e)) from None
     except Exception as e:
         logger.error(f"获取知识库列表失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
