@@ -57,16 +57,19 @@
 .settings-page-header { justify-content: space-between; flex-wrap: wrap; gap: 20px 24px; margin-bottom: 28px; }
 .settings-page-heading { min-width: 0; gap: 18px; }
 .settings-page-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin-inline-start: auto; }
-.settings-setup-link {
+.settings-service-entry { display: flex; align-items: center; gap: 13px; margin-bottom: 20px; padding: 18px 20px; border: 1px solid var(--settings-border); border-radius: 12px; background: var(--settings-surface); }
+.settings-service-entry > svg { flex-shrink: 0; color: var(--settings-accent); }
+.settings-service-entry > div { flex: 1; min-width: 0; }
+.settings-service-entry strong { font-size: 13px; font-weight: 600; }
+.settings-service-entry p { margin-top: 5px; color: var(--settings-muted); font-size: 12px; line-height: 1.7; }
+.settings-service-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 44px;
   gap: 8px;
   padding: 10px 13px;
-  border: 1px solid var(--settings-border);
-  border-radius: 11px;
-  background: var(--settings-surface);
+  border-radius: 8px;
   color: var(--settings-accent);
   font-size: 13px;
   font-weight: 600;
@@ -75,9 +78,9 @@
   white-space: nowrap;
   transition: background 150ms, border-color 150ms;
 }
-.settings-setup-link:hover { border-color: var(--settings-accent); background: var(--settings-accent-soft); }
-.settings-setup-link:focus-visible { outline: 2px solid var(--settings-accent); outline-offset: 3px; }
-.settings-setup-link > svg { flex-shrink: 0; }
+.settings-service-link:hover { background: var(--settings-accent-soft); }
+.settings-service-link:focus-visible { outline: 2px solid var(--settings-accent); outline-offset: 3px; }
+.settings-service-link > svg { flex-shrink: 0; }
 .settings-page-heading h1 {
   margin: 0;
   font-family: 'Noto Serif SC', 'Songti SC', serif;
@@ -274,7 +277,9 @@
   .settings-container { padding: 22px 12px 28px; }
   .settings-page-header { flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
   .settings-page-actions { width: 100%; margin-inline-start: 0; gap: 10px; }
-  .settings-setup-link { font-size: 12px; padding-inline: 10px; }
+  .settings-service-entry { flex-wrap: wrap; padding: 16px; gap: 10px; }
+  .settings-service-entry > div { flex-basis: calc(100% - 32px); }
+  .settings-service-link { margin-inline-start: 28px; font-size: 12px; padding-inline: 10px; }
   .settings-page-heading { min-width: 0; align-items: flex-start; gap: 12px; }
   .settings-page-heading > div { min-width: 0; }
   .settings-page-heading h1 { font-size: 25px; }

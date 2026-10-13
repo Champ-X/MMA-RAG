@@ -1,10 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import type { TaskModelEntry } from '@/components/settings/ModelConfig'
 import { DecisionSettings } from '@/components/settings/DecisionSettings'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useTheme } from '@/hooks/useTheme'
+import { useSetupStatus } from '@/hooks/useSetupStatus'
 import { cn } from '@/lib/utils'
 import { useConfigStore, type SystemConfig } from '@/store/useConfigStore'
 import { useToastStore } from '@/store/useToastStore'
@@ -13,7 +14,7 @@ import {
   Brain,
   Check,
   ChevronRight,
-  Compass,
+  PlugZap,
   Monitor,
   Moon,
   Palette,
@@ -211,6 +212,8 @@ function SettingsPageLoading() {
 
 export function SettingsPage() {
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const setupStatus = useSetupStatus()
   const {
     config,
     availableModels,
@@ -228,7 +231,8 @@ export function SettingsPage() {
   const [modelSettingsHaveChanges, setModelSettingsHaveChanges] = useState(false)
   const [decisionSettingsHaveChanges, setDecisionSettingsHaveChanges] = useState(false)
   const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false)
-  const [activeSection, setActiveSection] = useState<SettingsSection>('interface')
+  const requestedSection = searchParams.get('section')
+  const activeSection: SettingsSection = SETTINGS_SECTIONS.find(section => section.id === requestedSection)?.id || 'interface'
   const scrollRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
   const [hasActivatedModelMatrix, setHasActivatedModelMatrix] = useState(
@@ -238,7 +242,12 @@ export function SettingsPage() {
   const isSettingsActive = location.pathname === '/settings'
 
   const activateSection = (section: SettingsSection) => {
-    setActiveSection(section)
+    setSearchParams(previous => {
+      const next = new URLSearchParams(previous)
+      if (section === 'interface') next.delete('section')
+      else next.set('section', section)
+      return next
+    }, { replace: true })
     const viewport = scrollRef.current?.firstElementChild
     if (viewport instanceof HTMLElement) viewport.scrollTo({ top: 0 })
   }
@@ -360,11 +369,6 @@ export function SettingsPage() {
             </div>
           </div>
           <div className="settings-page-actions">
-            <Link to="/setup" className="settings-setup-link">
-              <Compass size={17} aria-hidden />
-              <span>服务配置向导</span>
-              <ChevronRight size={15} aria-hidden />
-            </Link>
             <div className={cn('settings-sync-status', pendingChanges && 'has-changes')} role="status">
               {pendingChanges ? <span className="settings-status-dot" aria-hidden /> : <Check size={15} aria-hidden />}
               {pendingChanges ? '有未保存的更改' : '所有更改已保存'}
@@ -500,6 +504,13 @@ export function SettingsPage() {
           tabIndex={0}
           className="settings-tabpanel"
         >
+          {setupStatus?.managed && <div className="settings-service-entry">
+            <PlugZap size={18} aria-hidden />
+            <div><strong>服务连接与能力</strong><p>更新 API Key、调整资料类型，或重新准备本地模型。</p></div>
+            <Link to={setupStatus.ready ? '/setup?edit=services' : '/setup'} className="settings-service-link">
+              {setupStatus.ready ? '管理连接' : '继续配置'}<ChevronRight size={15} aria-hidden />
+            </Link>
+          </div>}
           {(isSettingsActive || hasActivatedModelMatrix) && (
             <Suspense fallback={<ModelConfigLoading />}>
               <ModelConfig

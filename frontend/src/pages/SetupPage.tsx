@@ -1,17 +1,18 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, AlertCircle, Eye, EyeOff, FileText, Loader2, Terminal } from 'lucide-react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, AlertCircle, Eye, EyeOff, FileText, Loader2, Terminal, Image, Headphones, Film, Route, LayoutGrid, KeyRound } from 'lucide-react'
 import { getSetupToken, setSetupToken } from '@/lib/setupSession'
 import { SetupError, setupApi, type Capability, type ModelPreparation, type Provider, type SetupDraft, type SetupStatus, type SetupTest } from '@/services/setup'
 import { SetupSample } from '@/components/SetupSample'
 import './setupPage.css'
 
 const steps = ['选择能力', '连接模型', '验证与准备', '开始使用']
-const capabilities: Array<{ id: Capability; title: string; description: string; models: string }> = [
-  { id: 'text', title: '文档与对话', description: '导入文档、检索证据，并获得带引用的回答。', models: '必选 · BGE-M3' },
-  { id: 'image', title: '图片', description: '读懂图像内容，并检索相关图片。', models: '增加 CLIP' },
-  { id: 'audio', title: '音频', description: '转录、检索录音，回到对应的声音片段。', models: '增加 CLAP' },
-  { id: 'video', title: '视频', description: '理解画面和语音，定位视频中的证据。', models: '增加 CLIP + CLAP' },
+const stepDescriptions = ['选择需要处理的资料', '接入你的模型服务', '检查连接，准备本地模型', '带着第一份资料出发']
+const capabilities: Array<{ id: Capability; title: string; description: string; models: string; icon: typeof FileText }> = [
+  { id: 'text', title: '文档与对话', description: '检索文档证据，获得带引用的回答。', models: '基础能力 · BGE-M3', icon: FileText },
+  { id: 'image', title: '图片', description: '理解图像内容，找到相关的图片。', models: '增加 CLIP', icon: Image },
+  { id: 'audio', title: '音频', description: '转录与检索，回到录音中的片段。', models: '增加 CLAP', icon: Headphones },
+  { id: 'video', title: '视频', description: '结合画面和语音，定位视频证据。', models: '增加 CLIP + CLAP', icon: Film },
 ]
 const providerNames: Record<Provider, string> = { deepseek: 'DeepSeek', siliconflow: 'SiliconFlow', aliyun_bailian: '阿里云百炼', openrouter: 'OpenRouter' }
 const providerLinks: Record<Provider, string> = { deepseek: 'https://platform.deepseek.com/api_keys', siliconflow: 'https://cloud.siliconflow.cn/account/ak', aliyun_bailian: 'https://bailian.console.aliyun.com/', openrouter: 'https://openrouter.ai/settings/keys' }
@@ -21,6 +22,87 @@ const errorMessage = (error: unknown) => error instanceof Error ? error.message 
 const modelPhases: Record<string, string> = { cache: '检查缓存', metadata: '连接下载源', download: '下载文件', verify: '校验文件', load: '载入模型', load_download: '下载与载入', inference: '推理验证', artifacts: '保存验证结果' }
 const bytes = (value: number) => value >= 1024 ** 3 ? `${(value / 1024 ** 3).toFixed(2)} GiB` : `${Math.round(value / 1024 ** 2)} MiB`
 
+function FragmentArtwork() {
+  const id = useId()
+  return <div className="setup-fragments" aria-hidden="true">
+    <svg className="setup-fragment-illustration" viewBox="0 0 320 240" fill="none" focusable="false">
+      <defs>
+        <filter id={`${id}-shadow`} x="-35%" y="-30%" width="180%" height="180%"><feDropShadow dx="0" dy="6" stdDeviation="5" floodColor="#26334b" floodOpacity=".1" /></filter>
+        <linearGradient id={`${id}-image`} x1="0" y1="0" x2="1" y2="1"><stop stopColor="var(--setup-accent-soft)" /><stop offset="1" stopColor="var(--setup-success-soft)" /></linearGradient>
+      </defs>
+      <ellipse cx="164" cy="119" rx="118" ry="92" fill="var(--setup-accent-soft)" opacity=".5" />
+      <path d="M40 84C20 135 58 206 147 208M189 26c55-8 97 20 104 68" stroke="var(--setup-border)" strokeDasharray="3 6" strokeLinecap="round" />
+      <g transform="rotate(-11 77 64)" filter={`url(#${id}-shadow)`}>
+        <rect x="28" y="29" width="100" height="75" rx="12" fill="var(--setup-surface)" stroke="var(--setup-border)" />
+        <rect x="41" y="42" width="22" height="24" rx="5" fill="var(--setup-accent-soft)" />
+        <path d="M47 49h9m-9 5h9m-9 5h5" stroke="var(--setup-accent)" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M72 48h40m-40 9h28M42 80h69M42 88h45" stroke="var(--setup-border)" strokeWidth="3" strokeLinecap="round" />
+      </g>
+      <g transform="rotate(5 180 119)">
+        <rect x="107" y="41" width="143" height="167" rx="16" fill="var(--setup-accent-soft)" stroke="var(--setup-border)" />
+      </g>
+      <g filter={`url(#${id}-shadow)`}>
+        <rect x="100" y="34" width="142" height="167" rx="16" fill="var(--setup-surface)" stroke="var(--setup-border)" />
+        <rect x="117" y="51" width="27" height="27" rx="8" fill="var(--setup-accent-soft)" />
+        <path d="m124 58 13 0v13h-13zM130.5 58v13M124 64.5h13" stroke="var(--setup-accent)" strokeWidth="1.4" strokeLinejoin="round" />
+        <text x="153" y="69" fill="var(--setup-ink)" fontSize="12" fontWeight="600">知识笔记</text>
+        <path d="M118 96h104m-104 10h86m-86 10h95" stroke="var(--setup-border)" strokeWidth="3" strokeLinecap="round" />
+        <rect x="117" y="133" width="108" height="32" rx="7" fill="var(--setup-accent-soft)" />
+        <path d="M127 144h42m-42 9h70" stroke="var(--setup-accent)" strokeOpacity=".45" strokeWidth="3" strokeLinecap="round" />
+        <circle cx="121" cy="182" r="3" fill="var(--setup-success)" />
+        <path d="M130 182h46" stroke="var(--setup-border)" strokeWidth="3" strokeLinecap="round" />
+      </g>
+      <g transform="rotate(-8 68 157)" filter={`url(#${id}-shadow)`}>
+        <rect x="20" y="119" width="94" height="76" rx="12" fill="var(--setup-surface)" stroke="var(--setup-border)" />
+        <rect x="28" y="127" width="78" height="51" rx="7" fill={`url(#${id}-image)`} />
+        <circle cx="88" cy="141" r="6" fill="var(--setup-accent)" opacity=".3" />
+        <path d="m28 167 23-24 18 20 12-12 25 25v2H28Z" fill="var(--setup-success)" opacity=".4" />
+        <path d="M31 186h35" stroke="var(--setup-border)" strokeWidth="3" strokeLinecap="round" />
+      </g>
+      <g transform="rotate(9 263 94)" filter={`url(#${id}-shadow)`}>
+        <rect x="215" y="69" width="87" height="48" rx="14" fill="var(--setup-surface)" stroke="var(--setup-border)" />
+        <path d="M229 90v6m6-12v18m6-22v26m6-18v10m6-12v14m6-23v32m6-25v18m6-15v12m6-10v8m6-14v20m6-13v6" stroke="var(--setup-accent)" strokeWidth="2.5" strokeLinecap="round" />
+      </g>
+      <g transform="rotate(8 262 176)" filter={`url(#${id}-shadow)`}>
+        <rect x="233" y="153" width="57" height="44" rx="12" fill="var(--setup-success-soft)" stroke="var(--setup-border)" />
+        <path d="m256 167 13 8-13 8Z" fill="var(--setup-success)" opacity=".8" />
+      </g>
+      <path d="M57 213h7m-3.5-3.5v7M274 42h7m-3.5-3.5v7" stroke="var(--setup-accent)" strokeOpacity=".45" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+    <p>Every fragment <strong>finds its place.</strong></p>
+  </div>
+}
+
+function SourceConfiguration() {
+  return <main className="setup-source">
+    <section className="setup-source-panel" aria-labelledby="source-title">
+      <div className="setup-source-hero">
+        <div className="setup-source-copy">
+          <span className="setup-mode-label"><Terminal size={15} aria-hidden />项目环境配置</span>
+          <h1 id="source-title">沿用项目配置，<br /><span>继续你的工作。</span></h1>
+          <p>当前服务沿用项目的环境配置。<br />模型选择与检索偏好，可以直接在设置中调整。</p>
+        </div>
+        <FragmentArtwork />
+      </div>
+      <div className="setup-destinations">
+        <Link to="/settings?section=models" className="setup-destination is-primary">
+          <span className="setup-destination-icon"><Route size={21} aria-hidden /></span>
+          <span><strong>模型与路由</strong><small>选择模型，检查服务连接</small></span><ArrowRight size={18} aria-hidden />
+        </Link>
+        <Link to="/" className="setup-destination">
+          <span className="setup-destination-icon"><LayoutGrid size={21} aria-hidden /></span>
+          <span><strong>返回工作台</strong><small>继续整理资料与提问</small></span><ArrowRight size={18} aria-hidden />
+        </Link>
+      </div>
+      <details className="setup-source-help">
+        <summary><KeyRound size={15} aria-hidden />需要更换 API Key？</summary>
+        <p>请在项目环境配置中更新对应服务商的密钥，并按当前部署方式重启相关服务，再到「模型与路由」测试连接。</p>
+      </details>
+    </section>
+    <p className="setup-source-caption">此配置方式无需经过首次安装向导。</p>
+  </main>
+}
+
 function ModelProgress({ name, value }: { name: string; value: ModelPreparation }) {
   const failed = ['error', 'interrupted'].includes(value.state)
   const downloading = value.phase === 'download' && value.state === 'running'
@@ -29,7 +111,7 @@ function ModelProgress({ name, value }: { name: string; value: ModelPreparation 
   return <li className={`setup-model ${failed ? 'has-error' : ''}`}>
     <span className={failed ? 'setup-fail' : value.state === 'ready' ? 'setup-pass' : ''} aria-hidden>{value.state === 'ready' ? <CheckCircle2 size={18} /> : failed ? <AlertCircle size={18} /> : value.state === 'running' ? <Loader2 size={18} className="setup-spin" /> : '·'}</span>
     <div className="setup-model-body">
-      <div className="setup-model-heading"><strong>{modelNames[name] || name}</strong><span>{value.state === 'ready' ? '已就绪' : modelPhases[value.phase || ''] || '等待准备'}</span></div>
+      <div className="setup-model-heading"><strong>{modelNames[name] || name}</strong><span>{failed ? value.state === 'interrupted' ? '已中断' : '需要处理' : value.state === 'ready' ? '已就绪' : modelPhases[value.phase || ''] || '等待准备'}</span></div>
       <p role={failed ? 'alert' : 'status'}>{value.message}</p>
       {measurable && <><progress className="setup-progress" aria-label={`${name} 文件下载进度`} max={value.total_bytes} value={done} /><div className="setup-model-metrics"><span>{bytes(done)} / {bytes(value.total_bytes!)}</span><span>{Math.floor(done / value.total_bytes! * 100)}%</span></div></>}
       {downloading && !measurable && value.files_total !== undefined && <p>{value.files_completed || 0} / {value.files_total} 个文件已下载</p>}
@@ -42,6 +124,8 @@ function ModelProgress({ name, value }: { name: string; value: ModelPreparation 
 }
 
 export default function SetupPage() {
+  const [searchParams] = useSearchParams()
+  const editing = searchParams.get('edit') === 'services'
   const [status, setStatus] = useState<SetupStatus | null>(null)
   const [step, setStep] = useState(0)
   const [selected, setSelected] = useState<Capability[]>(['text'])
@@ -65,13 +149,13 @@ export default function SetupPage() {
       setSelected(result.capabilities)
       setSaved(result.tested)
       setWatchPreparation(result.progress.state === 'running')
-      setStep(result.ready ? 3 : result.tested ? 2 : 0)
+      setStep(result.ready ? editing ? 1 : 3 : result.tested ? 2 : 0)
       setError('')
     }).catch(reason => { if (active) setError(errorMessage(reason)) })
     return () => { active = false }
-  }, [attempt])
+  }, [attempt, editing])
 
-  useEffect(() => { heading.current?.focus() }, [step])
+  useEffect(() => { heading.current?.focus() }, [step, status?.managed])
 
   useEffect(() => {
     if (!watchPreparation) return
@@ -155,37 +239,48 @@ export default function SetupPage() {
   const preparing = watchPreparation || status?.progress.state === 'running'
   const locked = Boolean(busy) || preparing
   return <div className="tessmora-setup">
-    <header className="setup-topbar"><Link to="/" className="setup-wordmark">Tessmora<span>初次见面，或重新出发。</span></Link><span className="setup-local"><span />你的知识工作台</span></header>
-    <main className="setup-shell">
-      <aside className="setup-sidebar">
-        <div><p className="setup-eyebrow">LET’S GET STARTED</p><h1>让知识，<br />有迹可循。</h1><p className="setup-intro">几个步骤，把 Tessmora 配置成你的样子。</p></div>
+    <header className={`setup-topbar ${status && !status.managed ? 'is-source' : ''}`}>
+      <Link to="/" className="setup-wordmark">
+        <span className="setup-brand-emblem"><img src="/tessmora-logo.png" alt="" /></span>
+        <span className="setup-brand-copy"><strong>Tessmora</strong><small>{status?.managed ? '服务连接与能力' : '你的知识工作台'}</small></span>
+      </Link>
+      {status && !status.setup_required && <Link to="/settings?section=models" className="setup-back-link"><ArrowLeft size={15} aria-hidden />返回设置</Link>}
+    </header>
+    {status && !status.managed ? <SourceConfiguration /> : !status ? <main className="setup-loading" aria-busy={!error}>
+      {error ? <AlertCircle size={28} aria-hidden /> : <Loader2 size={28} className="setup-spin" aria-hidden />}
+      <h1>{error ? '暂时无法读取配置' : '正在连接你的工作台'}</h1>
+      <p role={error ? 'alert' : 'status'}>{error || '正在读取服务状态，请稍候…'}</p>
+      {error && <button className="setup-button primary" onClick={() => { setError(''); setAttempt(value => value + 1) }}>重新连接</button>}
+    </main> : <main className="setup-shell">
+      <aside className="setup-sidebar" aria-label="服务配置">
+        <p className="setup-eyebrow">{editing ? '调整你的配置' : '配置你的工作台'}</p>
         <ol className="setup-steps" aria-label="配置进度">{steps.map((title, index) => <li key={title} aria-current={step === index ? 'step' : undefined} className={index === step ? 'current' : index < step ? 'complete' : ''}>
-          <span className="setup-step-number">{index < step ? <Check size={16} /> : `0${index + 1}`}</span><span>{title}</span>
+          <span className="setup-step-number">{index < step ? <Check size={15} /> : `0${index + 1}`}</span><span><strong>{title}</strong><small>{stepDescriptions[index]}</small></span>
         </li>)}</ol>
-        <p className="setup-side-note"><Terminal size={17} />与终端向导共用配置。<br />稍后可随时回来调整。</p>
+        <div className="setup-sidebar-note"><Terminal size={17} aria-hidden /><p>与终端向导共用配置。<br />已保存的密钥与模型缓存会保留。</p></div>
       </aside>
-      <section className="setup-main" aria-busy={Boolean(busy)}>
-        {!status ? <div className="setup-loading"><Loader2 className="setup-spin" /><p role="status">{error || '正在读取服务配置…'}</p>{error && <button className="setup-button" onClick={() => setAttempt(value => value + 1)}>重新连接</button>}</div> : !status.managed ? <>
-          <p className="setup-eyebrow">SOURCE INSTALLATION</p><h2 ref={heading} tabIndex={-1}>当前使用源码配置</h2><p className="setup-lead">此安装沿用项目的环境配置。模型和检索选项可以在设置中调整。</p><Link className="setup-button primary" to="/settings">进入设置 <ArrowRight size={17} /></Link>
-        </> : <>
-          <p className="setup-eyebrow">STEP 0{step + 1} / 04</p>
-          <h2 ref={heading} tabIndex={-1}>{['先从你需要的能力开始', '连接你的模型服务', '确认一切都准备好了', '你的工作台已就绪'][step]}</h2>
+      <section className="setup-main" aria-labelledby="setup-heading" aria-busy={Boolean(busy)}>
+        <header className="setup-panel-header">
+          <div className="setup-panel-position"><span>步骤 {step + 1} / 4</span><span className="setup-step-meter" aria-hidden>{steps.map((_, index) => <i key={index} className={index <= step ? 'filled' : ''} />)}</span></div>
+          <h1 id="setup-heading" ref={heading} tabIndex={-1}>{['从你需要的能力开始', '连接你的模型服务', '确认一切准备就绪', '你的工作台已就绪'][step]}</h1>
           <p className="setup-lead">{['文档与对话是起点。其他能力按需启用，之后也能添加。', '填写所需服务的 API Key。已保存的密钥留空即可保留。', '用真实请求检查连接，再准备本地检索模型。', '从一份小文档开始，体验提问、回答和证据引用。'][step]}</p>
-
-          {!authorized && step < 3 && <form className="setup-unlock" onSubmit={unlock}>
-            <label htmlFor="setup-token">连接安装会话</label><p>运行 <code>tessmora open</code> 重新打开此页面，或粘贴此实例的安装令牌。</p><div className="setup-unlock-row"><input id="setup-token" name="setup-token" type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} value={token} onChange={event => setToken(event.target.value)} required /><button className="setup-button" disabled={Boolean(busy)}>连接</button></div>
+        </header>
+        <div className="setup-panel-body">
+          {!authorized && step < 3 && <form className="setup-unlock" method="post" onSubmit={unlock}>
+            <label htmlFor="setup-token"><KeyRound size={16} aria-hidden />连接安装会话</label><p id="setup-token-help">运行 <code>tessmora open</code> 重新打开页面，或输入此实例的安装令牌。</p><div className="setup-unlock-row"><input id="setup-token" name="setup-token" type="password" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} aria-describedby="setup-token-help" value={token} onChange={event => setToken(event.target.value)} required /><button className="setup-button" disabled={Boolean(busy)}>连接</button></div>
           </form>}
 
           {step === 0 && <><fieldset className="setup-capabilities"><legend className="sr-only">选择使用能力</legend>{capabilities.map(item => <label key={item.id} className={`setup-capability ${selected.includes(item.id) ? 'selected' : ''}`}>
-            <input type="checkbox" checked={selected.includes(item.id)} disabled={item.id === 'text'} onChange={event => { setSelected(current => event.target.checked ? [...current, item.id] : current.filter(value => value !== item.id)); invalidate() }} />
-            <span><strong>{item.title}</strong><span>{item.description}</span><small>{item.models}</small></span>
+            <input type="checkbox" name="capabilities" value={item.id} aria-label={item.title} checked={selected.includes(item.id)} disabled={item.id === 'text'} onChange={event => { setSelected(current => event.target.checked ? [...current, item.id] : current.filter(value => value !== item.id)); invalidate() }} />
+            <span className="setup-capability-icon"><item.icon size={23} strokeWidth={1.6} aria-hidden /></span>
+            <strong>{item.title}</strong><span className="setup-capability-description">{item.description}</span><small>{item.models}</small>
           </label>)}</fieldset><p className="setup-hint">首次下载可能需要数 GB 空间；准备过程中会保留缓存，便于中断后继续。</p><div className="setup-actions"><button className="setup-button primary" onClick={() => setStep(1)}>继续 <ArrowRight size={17} /></button></div></>}
 
-          {step === 1 && <form onSubmit={event => { event.preventDefault(); setStep(2) }}>
+          {step === 1 && <form method="post" onSubmit={event => { event.preventDefault(); setStep(2) }}>
             <div className="setup-providers">{requiredProviders.map(provider => <div className="setup-provider" key={provider}>
               <div className="setup-provider-heading"><label htmlFor={`key-${provider}`}>{providerNames[provider]}</label><a href={providerLinks[provider]} target="_blank" rel="noreferrer">获取 API Key ↗</a></div>
-              <p>{providerHints[provider]}{status.providers[provider]?.configured && <span className="setup-saved"> 已保存</span>}</p>
-              <div className="setup-key-input"><input id={`key-${provider}`} name={`key-${provider}`} autoCapitalize="none" type={revealed[provider] ? 'text' : 'password'} autoComplete="off" spellCheck={false} value={credentials[provider] || ''} placeholder={status.providers[provider]?.configured ? '留空保留已有密钥' : '粘贴 API Key'} onChange={event => { setCredentials(current => ({ ...current, [provider]: event.target.value })); invalidate() }} /><button type="button" aria-label={`${revealed[provider] ? '隐藏' : '显示'} ${providerNames[provider]} 密钥`} aria-pressed={Boolean(revealed[provider])} onClick={() => setRevealed(current => ({ ...current, [provider]: !current[provider] }))}>{revealed[provider] ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
+              <p id={`key-${provider}-help`}>{providerHints[provider]}{status.providers[provider]?.configured && <span className="setup-saved"> 已保存</span>}</p>
+              <div className="setup-key-input"><input id={`key-${provider}`} name={`key-${provider}`} aria-describedby={`key-${provider}-help`} autoCapitalize="none" autoCorrect="off" type={revealed[provider] ? 'text' : 'password'} autoComplete="off" spellCheck={false} required={!status.providers[provider]?.configured} value={credentials[provider] || ''} placeholder={status.providers[provider]?.configured ? '留空保留已有密钥' : '粘贴 API Key'} onChange={event => { setCredentials(current => ({ ...current, [provider]: event.target.value })); invalidate() }} /><button type="button" aria-label={`${revealed[provider] ? '隐藏' : '显示'} ${providerNames[provider]} 密钥`} aria-pressed={Boolean(revealed[provider])} onClick={() => setRevealed(current => ({ ...current, [provider]: !current[provider] }))}>{revealed[provider] ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
             </div>)}</div><p className="setup-hint">密钥只发送给当前 Tessmora 服务，并保存在安装目录。连接测试会产生少量模型调用费用。</p><div className="setup-actions"><button type="button" className="setup-button" onClick={() => setStep(0)}><ArrowLeft size={17} />上一步</button><button className="setup-button primary">继续 <ArrowRight size={17} /></button></div>
           </form>}
 
@@ -205,9 +300,9 @@ export default function SetupPage() {
           {step === 3 && <><div className="setup-ready"><CheckCircle2 size={24} /><div><strong>连接已验证，模型已准备</strong><p>以后运行 <code>tessmora start</code> 即可重新启动。</p></div></div><SetupSample /><div className="setup-actions"><button className="setup-button" onClick={() => setStep(0)}>调整配置</button><Link className="setup-button primary" to="/">进入工作台 <ArrowRight size={17} /></Link></div></>}
           {busy && <p className="setup-live" role="status"><Loader2 size={17} className="setup-spin" />{busy}</p>}
           {error && <p className="setup-error" role="alert">{error}</p>}
-        </>}
-        <footer className="setup-footer"><FileText size={14} /><span>你的文档保存在所选安装目录。模型调用会将所需内容发送给配置的服务商。</span></footer>
+        </div>
+        <footer className="setup-footer"><FileText size={14} aria-hidden /><span>文档保存在所选安装目录。模型调用会将所需内容发送给配置的服务商。</span></footer>
       </section>
-    </main>
+    </main>}
   </div>
 }
