@@ -123,10 +123,10 @@ async function runSetup(paths, initial, options, ui) {
   }
   while (step < 6) {
     if (step === 0) {
-      ui.step(1, '选择运行方式', '在自己的电脑安放知识，或连接已有的 Tessmora。');
+      ui.step(1, '选择运行方式', '在本机创建工作台，或连接已经部署的服务。');
       const mode = options.mode || (ui.interactive ? await ui.select('在哪里运行 Tessmora？', [
-        { value: 'local', label: '在这台电脑运行', hint: '推荐 · Docker 管理运行环境' },
-        { value: 'remote', label: '连接已有服务', hint: '只检查连接，不创建或修改远程服务' },
+        { value: 'local', label: '在这台电脑运行', badge: '推荐', hint: 'Docker 为你准备服务，资料保存在本机。' },
+        { value: 'remote', label: '连接已有服务', hint: '填写服务地址，使用已经部署好的工作台。' },
       ], state.mode || 'local') : state.mode || 'local');
       if (!['local', 'remote'].includes(mode)) throw new TessmoraError('INVALID_MODE', '--mode 仅支持 local 或 remote。');
       if (state.mode && state.mode !== mode && (initial?.step >= 3 || state.runtimeCreated)) throw new TessmoraError('INSTANCE_MODE', '已有实例不能直接切换本机与远程模式。', '请使用 --instance 新名称创建另一个实例；原实例的管理入口与数据会保留。');
@@ -155,13 +155,13 @@ async function runSetup(paths, initial, options, ui) {
       if (options.capabilities) state.capabilities = parseCapabilities(options.capabilities);
       else if (ui.interactive) {
         const choice = await ui.select('准备使用什么？', [
-          { value: 'text', label: '文档问答', hint: '推荐 · Markdown、TXT 起步，准备 BGE-M3' },
+          { value: 'text', label: '文档问答', badge: '推荐', hint: '从 Markdown、TXT 开始；准备 BGE-M3 检索模型。' },
           { value: 'all', label: '完整多模态', hint: '文档、图片、音频、视频；下载体积更大' },
           { value: 'custom', label: '自定义能力', hint: state.capabilities.map((cap) => labels[cap]).join('、') },
           backOption,
         ], state.capabilities.length === 1 ? 'text' : 'custom');
         if (choice === BACK) { step = 0; continue; }
-        state.capabilities = choice === 'all' ? Object.keys(labels) : choice === 'text' ? ['text'] : [...new Set(['text', ...await ui.multiselect('选择能力（空格选择，回车继续）', Object.entries(labels).map(([value, label]) => ({ value, label })), state.capabilities)])];
+        state.capabilities = choice === 'all' ? Object.keys(labels) : choice === 'text' ? ['text'] : [...new Set(['text', ...await ui.multiselect('需要哪些能力？', Object.entries(labels).map(([value, label]) => ({ value, label })), state.capabilities)])];
       }
       await persist(2, 'runtime');
     }

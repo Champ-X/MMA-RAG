@@ -64,13 +64,26 @@ function colorCode(attribute, trueColor) {
 export function brandBanner({
   columns = process.stdout.columns || 80,
   colors = pc,
+  caption = true,
+  responsive = false,
   colorDepth = process.stdout.getColorDepth?.() || (/truecolor|24bit/i.test(process.env.COLORTERM || '') ? 24 : 4),
 } = {}) {
   const width = Math.max(1, Math.floor(Number(columns)) || 80);
   const margin = width >= 30 ? '  ' : '';
   const padding = width >= 28 ? '  ' : '';
   const available = width - margin.length - padding.length * 2;
-  const layout = LAYOUTS.find(blocks => blocks.every(rows => rows[0].length <= available));
+  let layout = LAYOUTS.find(blocks => blocks.every(rows => rows[0].length <= available));
+  // Keep the approved wordmark at full size on wide terminals. In a split
+  // terminal, scale it as one word instead of stacking it above the controls.
+  if (responsive && available < LAYOUTS[0][0][0].length) {
+    if (available < 48) return `\n${margin}${padding}${colors.cyan(colors.bold('TESSMORA'))}\n\n`;
+    const source = LAYOUTS[0][0];
+    const height = Math.max(4, Math.round(source.length * available / source[0].length));
+    layout = [Array.from({ length: height }, (_, y) => {
+      const row = source[Math.floor((y + 0.5) * source.length / height)];
+      return Array.from({ length: available }, (_, x) => row[Math.floor((x + 0.5) * row.length / available)]);
+    })];
+  }
   // Below one glyph's width, retain the full name without clipping a large letter.
   if (!layout) {
     const name = 'TESSMORA'.match(new RegExp(`.{1,${width}}`, 'g')).join('\n');
@@ -102,11 +115,11 @@ export function brandBanner({
   lines.push(blank);
 
   const captionWidth = width - margin.length;
-  const caption = [];
+  const captionLines = [];
   for (const word of TAGLINE.split(' ')) {
-    const previous = caption.at(-1);
-    if (previous && previous.length + word.length + 1 <= captionWidth) caption[caption.length - 1] += ` ${word}`;
-    else caption.push(word);
+    const previous = captionLines.at(-1);
+    if (previous && previous.length + word.length + 1 <= captionWidth) captionLines[captionLines.length - 1] += ` ${word}`;
+    else captionLines.push(word);
   }
-  return `\n${lines.join('\n')}\n\n${caption.map(line => `${margin}${colors.dim(line)}`).join('\n')}\n\n`;
+  return `\n${lines.join('\n')}\n${caption ? `\n${captionLines.map(line => `${margin}${colors.dim(line)}`).join('\n')}\n\n` : ''}`;
 }
