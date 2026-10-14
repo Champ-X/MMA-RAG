@@ -2,7 +2,7 @@
 import asyncio
 import time
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, call
 
 import pytest
 import httpx
@@ -41,9 +41,9 @@ async def test_query_deadline_cancels_hung_embedding_without_global_cooldown(mon
     )
     assert not result.success and result.error_category == "query_timeout"
     assert result.model_used == "indexed-model" and not result.fallback_used
-    assert result.duration >= .02
+    assert .04 <= result.duration < .5
     assert cancelled.is_set()
-    provider.embed_texts.assert_awaited_once_with(texts=["query"], model="indexed-model")
+    assert provider.embed_texts.await_args_list == [call(texts=["query"], model="indexed-model")] * 2
     assert manager.registry.model_health.snapshot() == []
 
 
@@ -104,12 +104,12 @@ async def test_timeout_is_local_to_request_and_does_not_block_ingestion_or_next_
     # Other branches of the same request cannot each spend another deadline.
     repeated = await cache.embed(manager, ["different query branch"])
     assert repeated.error_category == "query_timeout" and repeated.duration == 0
-    assert provider.embed_texts.await_count == 1
+    assert provider.embed_texts.await_count == 2
 
     ingestion = await manager.embed(["ingestion document"])
     assert ingestion.success
     next_query = await QueryEmbeddingCache().embed(manager, ["next query"])
-    assert next_query.success and provider.embed_texts.await_count == 3
+    assert next_query.success and provider.embed_texts.await_count == 4
     assert manager.registry.model_health.snapshot()[0]["failure_count"] == 0
 
 
@@ -130,7 +130,7 @@ async def test_concurrent_branches_share_one_timeout_and_keep_previous_good_vect
     ])
     assert [result.error_category for result in results] == ["query_timeout", "query_timeout", None]
     assert results[1].duration == 0 and results[2].data == [[1.0, 0.0]]
-    assert provider.embed_texts.await_count == 2 and cache.reused_vectors == 1
+    assert provider.embed_texts.await_count == 3 and cache.reused_vectors == 1
 
 
 @pytest.mark.asyncio
@@ -175,7 +175,7 @@ async def test_changed_model_configuration_can_retry_after_request_timeout(monke
     provider.embed_texts.return_value = [[1.0, 0.0, 0.0]]
     result = await cache.embed(manager, ["query"])
     assert result.success and result.data == [[1.0, 0.0, 0.0]]
-    assert provider.embed_texts.await_count == 2
+    assert provider.embed_texts.await_count == 3
 
 
 @pytest.mark.asyncio

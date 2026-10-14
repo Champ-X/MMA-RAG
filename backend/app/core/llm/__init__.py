@@ -120,7 +120,11 @@ class LLMRegistry:
                 "provider": "siliconflow",
                 "type": "embedding",
                 "context_length": 32000, # 32K tokens
-                "description": "Qwen3 嵌入模型"
+                "description": "Qwen3 嵌入模型",
+                # Explicitly compatible query routes; ingestion keeps its own policy.
+                "embedding_space": "qwen3-embedding-8b",
+                "embedding_dimensions": 4096,
+                "query_fallback": "openrouter:qwen/qwen3-embedding-8b",
             },
             
             # 视觉模型
@@ -175,6 +179,9 @@ class LLMRegistry:
                     "context_length": 32000,
                     "description": "Qwen3 嵌入模型（OpenRouter）",
                     "raw_model": "qwen/qwen3-embedding-8b",  # 实际API调用的模型名
+                    "embedding_space": "qwen3-embedding-8b",
+                    "embedding_dimensions": 4096,
+                    "embedding_options": {"provider": {"ignore": ["siliconflow"]}},
                 },
                 "openrouter:google/gemini-3-flash-preview": {
                     "provider": "openrouter",

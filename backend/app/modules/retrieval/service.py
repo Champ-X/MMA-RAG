@@ -501,6 +501,8 @@ class RetrievalService:
             
             # 4. 混合检索
             search_results = await self._perform_hybrid_search(retrieval_context, embedding_cache=embedding_cache)
+            if search_results.get("strategy") == "error":
+                raise RuntimeError(search_results.get("error") or "检索服务暂时不可用，本次检索未完成，请稍后重试。")
             
             # 5. 两阶段重排
             reranked_results = await self._apply_reranking(
@@ -826,7 +828,7 @@ class RetrievalService:
             if search_results.get("strategy") == "error":
                 # A total search failure is distinct from a valid empty result.
                 # Preserve the failed stage and stop before ranking/generation.
-                raise RuntimeError("检索服务暂时不可用，本次检索未完成，请稍后重试。")
+                raise RuntimeError(search_results.get("error") or "检索服务暂时不可用，本次检索未完成，请稍后重试。")
 
             yield ("retrieval", timings.attach("retrieval", {"stage_status": "processing", "message": "正在比较相关性并整理检索结果…"}))
             # 5. 两阶段重排

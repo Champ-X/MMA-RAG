@@ -198,7 +198,9 @@ class OpenRouterProvider(BaseLLMProvider):
             logger.error(f"OpenRouter stream_chat 错误 [{model}]: {e}")
             raise
 
-    async def embed_texts(self, texts: List[str], model: str) -> List[List[float]]:
+    async def embed_texts(
+        self, texts: List[str], model: str, provider: Optional[Dict[str, Any]] = None,
+    ) -> List[List[float]]:
         """文本向量化（OpenRouter支持embeddings）"""
         import httpx
 
@@ -206,6 +208,8 @@ class OpenRouterProvider(BaseLLMProvider):
             "model": model,
             "input": texts,
         }
+        if provider is not None:
+            payload["provider"] = provider
 
         timeout = 60.0
         try:

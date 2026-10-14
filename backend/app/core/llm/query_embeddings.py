@@ -1,14 +1,14 @@
-"""Request-local reuse of successful, identical query embeddings.
+"""Bounded query recovery and request-local reuse of compatible embeddings.
 
-No text normalization, approximate matches, cross-request storage, or fallback
-model vectors are cached. A partially cached batch is sent intact to preserve
-provider batching and fallback behavior. Query-only deadline failures suppress
-further uncached calls in this request, without cooling down ingestion models.
+Retry the primary once on a query deadline, then try one explicitly compatible
+provider. Successful recovery is reused only inside this request, with its real
+model attribution. Neither query cancellation nor failover changes ingestion.
 """
 
 import asyncio
 import copy
 import json
+import math
 import time
 from typing import List, Optional
 
@@ -19,29 +19,96 @@ from .manager import LLMCallResult
 logger = get_logger(__name__)
 
 
-async def _embed_query_batch(manager, texts: List[str]) -> LLMCallResult:
+class QueryEmbeddingError(RuntimeError):
+    """An unavailable query vector is not a successful search with zero hits."""
+
+
+def _query_fallback(registry, model):
+    """Catalog membership or matching dimensions alone do not imply compatibility."""
+    if registry is None:
+        return None
+    config = registry.get_model_config(model)
+    candidate = config.get("query_fallback")
+    if not candidate or candidate == model or not config.get("embedding_space"):
+        return None
+    backup = registry.get_model_config(candidate)
+    if (
+        backup.get("embedding_space") == config["embedding_space"]
+        and backup.get("embedding_dimensions") == config.get("embedding_dimensions")
+        and isinstance(config.get("embedding_dimensions"), int)
+        and config["embedding_dimensions"] > 0
+        and registry.get_provider(backup.get("provider", "")) is not None
+    ):
+        return candidate
+    return None
+
+
+def _valid_vectors(data, count, dimensions=None):
+    return (
+        isinstance(data, list) and len(data) == count
+        and all(
+            isinstance(vector, list) and vector
+            and (dimensions is None or len(vector) == dimensions)
+            and all(isinstance(v, (int, float)) and math.isfinite(v) for v in vector)
+            for vector in data
+        )
+    )
+
+
+async def _embed_query_batch(manager, texts: List[str], preferred_model=None) -> LLMCallResult:
     registry = getattr(manager, "registry", None)
     model = registry.get_task_model("embedding") if registry else ""
+    config = registry.get_model_config(model) if registry else {}
+    backup = _query_fallback(registry, model)
     timeout = settings.query_embedding_timeout_seconds
     started = time.monotonic()
-    try:
-        # Cancellation propagates through LLMManager without recording a
-        # provider failure: this is the query's patience limit, not evidence
-        # that the same model cannot finish an ingestion batch.
-        return await asyncio.wait_for(manager.embed(texts=texts), timeout=timeout)
-    except asyncio.TimeoutError:
-        elapsed = time.monotonic() - started
-        logger.warning("Query embedding deadline exceeded: model={} duration={:.3f}s", model, elapsed)
-        return LLMCallResult(
-            success=False, error=f"Query embedding exceeded {timeout:g}s deadline",
-            duration=elapsed, model_used=model or "", error_category="query_timeout",
-        )
+
+    async def attempt(candidate, deadline):
+        options = registry.get_model_config(candidate).get("embedding_options", {}) if registry else {}
+        try:
+            # This layer owns the sequence/budget. Do not let the manager run a
+            # second fallback chain, or cool down ingestion on query cancellation.
+            result = await asyncio.wait_for(
+                manager.embed(texts=texts, fallback=False,
+                              **({"model": candidate} if candidate else {}), **options),
+                timeout=deadline,
+            )
+        except asyncio.TimeoutError:
+            result = LLMCallResult(
+                success=False, error=f"Query embedding exceeded {deadline:g}s attempt",
+                model_used=candidate or "", error_category="query_timeout",
+            )
+        if result.success and not _valid_vectors(result.data, len(texts), config.get("embedding_dimensions")):
+            result = LLMCallResult(False, error="Invalid query embedding batch or dimensions",
+                                   model_used=candidate or "", error_category="invalid_embedding")
+        result.fallback_used = result.fallback_used or bool(backup and candidate == backup)
+        # Include failed primary waiting in the successful fallback receipt.
+        result.duration = time.monotonic() - started
+        logger.info("Query embedding attempt: model={} fallback={} success={} reason={} elapsed={:.3f}s",
+                    candidate, result.fallback_used, result.success, result.error_category, result.duration)
+        return result
+
+    # Once recovery succeeds, new texts in the same request go directly to that
+    # provider instead of paying the primary timeout twice in every branch.
+    if not backup or preferred_model != backup:
+        for _ in range(2):
+            result = await attempt(model, timeout)
+            if result.success:
+                return result
+            # Actual HTTP errors already have classified cooldowns. Repeating
+            # a 401/429/503 immediately cannot help; advance to the backup.
+            if result.error_category != "query_timeout":
+                break
+    if backup:
+        result = await attempt(backup, settings.query_embedding_fallback_timeout_seconds)
+    return result
 
 
 class QueryEmbeddingCache:
     def __init__(self):
         self._vectors = {}
-        self._timed_out_signatures = set()
+        self._failed_signatures = {}
+        self._preferred_models = {}
         self._lock = asyncio.Lock()
         self.reused_vectors = 0
         self.failures = []
@@ -60,15 +127,20 @@ class QueryEmbeddingCache:
         if not model or not texts:
             return None, [], None
         config = registry.get_model_config(model)
-        signature = (id(manager), model, json.dumps(config, sort_keys=True, default=str))
+        backup = _query_fallback(registry, model)
+        configs = [config, backup, registry.get_model_config(backup) if backup else None]
+        signature = (id(manager), model, json.dumps(configs, sort_keys=True, default=str))
         keys = [(signature, text) for text in texts]
         if all(key in self._vectors for key in keys):
-            self.reused_vectors += len(keys)
-            return signature, keys, LLMCallResult(
-                success=True,
-                data=[copy.deepcopy(self._vectors[key]) for key in keys],
-                model_used=model,
-            )
+            sources = {(self._vectors[key][1], self._vectors[key][2]) for key in keys}
+            if len(sources) == 1:
+                used_model, fallback_used = sources.pop()
+                self.reused_vectors += len(keys)
+                return signature, keys, LLMCallResult(
+                    success=True,
+                    data=[copy.deepcopy(self._vectors[key][0]) for key in keys],
+                    model_used=used_model, fallback_used=fallback_used,
+                )
         return signature, keys, None
 
     async def embed(self, manager, texts: List[str]) -> LLMCallResult:
@@ -90,25 +162,25 @@ class QueryEmbeddingCache:
             # the middle of a request cannot reuse an incompatible vector.
             model = signature[1]
 
-            if signature in self._timed_out_signatures:
-                return LLMCallResult(
-                    success=False, model_used=model, error_category="query_timeout",
-                    error="Query embedding deadline already exceeded for this request",
-                )
+            if signature in self._failed_signatures:
+                failed = copy.copy(self._failed_signatures[signature])
+                failed.duration = 0
+                return failed
 
-            result = self._observe(await _embed_query_batch(manager, texts))
-            if result.error_category == "query_timeout":
-                self._timed_out_signatures.add(signature)
+            result = self._observe(await _embed_query_batch(manager, texts, self._preferred_models.get(signature)))
+            if result.error_category == "query_timeout" or (not result.success and result.fallback_used):
+                self._failed_signatures[signature] = copy.copy(result)
+            backup = _query_fallback(manager.registry, model)
+            compatible_fallback = bool(backup and result.fallback_used and result.model_used == backup)
             if (
                 result.success
-                and not result.fallback_used
-                and result.model_used == model
-                and isinstance(result.data, list)
-                and len(result.data) == len(texts)
-                and all(isinstance(vector, list) and vector for vector in result.data)
+                and ((not result.fallback_used and result.model_used == model) or compatible_fallback)
+                and _valid_vectors(result.data, len(texts))
             ):
+                if compatible_fallback:
+                    self._preferred_models[signature] = result.model_used
                 for key, vector in zip(keys, result.data):
-                    self._vectors[key] = copy.deepcopy(vector)
+                    self._vectors[key] = (copy.deepcopy(vector), result.model_used, result.fallback_used)
             return result
 
 

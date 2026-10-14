@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from app.core.llm.manager import llm_manager
-from app.core.llm.query_embeddings import QueryEmbeddingCache, embed_queries
+from app.core.llm.query_embeddings import QueryEmbeddingCache, QueryEmbeddingError, embed_queries
 from app.core.sparse_encoder import get_sparse_encoder
 from app.core.logger import get_logger, audit_log
 from app.core.local_models import get_local_model_runtime
@@ -165,6 +165,7 @@ class HybridSearchEngine:
             # Wait for every enabled branch; preserve insertion order for RRF
             # tie-breaking regardless of completion order. No latency cutoff.
             branch_times = {}
+            branch_errors = {}
 
             async def run_branch(task_type, task):
                 started = time.perf_counter()
@@ -172,6 +173,9 @@ class HybridSearchEngine:
                     result = await task
                     logger.info(f"{task_type}检索完成: {len(result)} 个结果")
                     return result
+                except QueryEmbeddingError:
+                    branch_errors[task_type] = "query_embedding_failed"
+                    return []
                 except Exception as exc:
                     logger.error(f"{task_type}检索失败: {type(exc).__name__}: {exc}")
                     return []
@@ -182,6 +186,27 @@ class HybridSearchEngine:
                 run_branch(task_type, task) for task_type, task in search_tasks
             ])
             results = dict(zip((name for name, _ in search_tasks), rows))
+
+            # Sparse documents cannot substitute for a failed explicit media
+            # request. Selected-file evidence can still satisfy that modality;
+            # optional media failures must not discard usable text evidence.
+            available_modalities = {
+                row.get("content_type", "doc") for rows in results.values() for row in rows
+            }
+            required_failed = any(
+                intent == "explicit_demand" and branch in branch_errors and kind not in available_modalities
+                for branch, kind, intent in (
+                    ("visual", "image", visual_intent), ("audio", "audio", audio_intent),
+                    ("video", "video", video_intent),
+                )
+            )
+            if branch_errors and (required_failed or not any(results.values())):
+                return {
+                    "raw_results": results, "fused_results": [], "strategy": "error",
+                    "error": "查询向量服务暂时不可用，本次检索未完成，请稍后重试。",
+                    "branch_errors": branch_errors, "branch_times": branch_times,
+                    "processing_time": (datetime.utcnow() - start_time).total_seconds(),
+                }
 
             # 所有已启用分支均未命中时，记录各模态库存，区分漏搜与空库。
             if not any(results.values()) and target_kb_ids:
@@ -235,6 +260,7 @@ class HybridSearchEngine:
                 "strategy": f"hybrid_{len(results)}_way",
                 "processing_time": processing_time,
                 "branch_times": branch_times,
+                "branch_errors": branch_errors,
                 "kb_targets": target_kb_ids
             }
             
@@ -502,7 +528,7 @@ class HybridSearchEngine:
             
             if not embedding_result.success or not embedding_result.data:
                 logger.error("Dense检索向量化失败")
-                return []
+                raise QueryEmbeddingError()
             
             query_vectors = embedding_result.data
             results = []
@@ -569,6 +595,8 @@ class HybridSearchEngine:
             
             return unique_results
             
+        except QueryEmbeddingError:
+            raise
         except Exception as e:
             logger.error(f"Dense检索失败: {str(e)}")
             return []
@@ -716,7 +744,7 @@ class HybridSearchEngine:
             
             if not text_embedding_result.success or not text_embedding_result.data:
                 logger.error("Visual检索文本语义向量化失败")
-                return []
+                raise QueryEmbeddingError()
             
             text_query_vector = text_embedding_result.data[0]
             logger.debug(f"文本语义向量生成成功: 维度={len(text_query_vector)}")
@@ -832,6 +860,8 @@ class HybridSearchEngine:
                 
                 return search_results
             
+        except QueryEmbeddingError:
+            raise
         except Exception as e:
             logger.error(f"Visual检索失败: {str(e)}", exc_info=True)
             return []
@@ -1099,7 +1129,7 @@ class HybridSearchEngine:
             embed_result = await embed_queries(self.llm_manager, [query], embedding_cache)
             if not embed_result.success or not embed_result.data:
                 logger.error("音频检索向量化失败")
-                return []
+                raise QueryEmbeddingError()
             query_vector = embed_result.data[0] if isinstance(embed_result.data, list) else embed_result.data
             # Sparse 是音频召回的可选增强，不能因本地 BGE-M3 版本/模型加载
             # 异常而中断 text_vec + CLAP 主召回路径。
@@ -1163,6 +1193,8 @@ class HybridSearchEngine:
                     }
                 })
             return formatted_results
+        except QueryEmbeddingError:
+            raise
         except Exception as e:
             logger.error("音频检索失败: {}", e, exc_info=True)
             return []
@@ -1185,7 +1217,7 @@ class HybridSearchEngine:
             embed_result = await embed_queries(self.llm_manager, [query], embedding_cache)
             if not embed_result.success or not embed_result.data:
                 logger.error("视频检索向量化失败")
-                return []
+                raise QueryEmbeddingError()
             query_vector = embed_result.data[0] if isinstance(embed_result.data, list) else embed_result.data
 
             # 2. Sparse 查询与普通文本检索保持同一 BGE-M3 语义；失败时不影响 dense 两路。
@@ -1323,6 +1355,8 @@ class HybridSearchEngine:
                     })
             return formatted_results
             
+        except QueryEmbeddingError:
+            raise
         except Exception as e:
             logger.error(f"视频检索失败: {str(e)}", exc_info=True)
             return []

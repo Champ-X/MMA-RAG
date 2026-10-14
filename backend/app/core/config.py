@@ -251,10 +251,14 @@ class Settings(BaseSettings):
         validation_alias="DEFAULT_EMBEDDING_MODEL"
     )
     # Interactive retrieval must not inherit ingestion's 60s embedding wait.
-    # Keep the indexed vector space; time out and use existing sparse fallback.
+    # Query-only: two primary attempts, then one compatible provider fallback.
     query_embedding_timeout_seconds: float = Field(
-        default=12.0, gt=0, le=60,
+        default=5.0, gt=0, le=60,
         validation_alias="QUERY_EMBEDDING_TIMEOUT_SECONDS",
+    )
+    query_embedding_fallback_timeout_seconds: float = Field(
+        default=10.0, gt=0, le=60,
+        validation_alias="QUERY_EMBEDDING_FALLBACK_TIMEOUT_SECONDS",
     )
 
     # BGE-M3 稀疏编码：模型 ID 或本机目录；无法直连 huggingface.co 时在 .env 设置 HF_ENDPOINT（如 https://hf-mirror.com）
