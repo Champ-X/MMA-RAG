@@ -1,0 +1,476 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-14T19:43:44+08:00",
+  "title": "Design System: Tessmora Architecture Reading Surface",
+  "extensions": {
+    "colorMeta": {
+      "atlas-paper": {
+        "role": "neutral",
+        "displayName": "atlas paper",
+        "tonalRamp": [
+          "oklch(15% 0.0054 297.73)",
+          "oklch(26% 0.0054 297.73)",
+          "oklch(38% 0.0054 297.73)",
+          "oklch(49% 0.0054 297.73)",
+          "oklch(61% 0.0054 297.73)",
+          "oklch(72% 0.0054 297.73)",
+          "oklch(84% 0.0054 297.73)",
+          "oklch(95% 0.0054 297.73)"
+        ]
+      },
+      "atlas-surface": {
+        "role": "neutral",
+        "displayName": "atlas surface",
+        "tonalRamp": [
+          "oklch(15% 0.0000 0.00)",
+          "oklch(26% 0.0000 0.00)",
+          "oklch(38% 0.0000 0.00)",
+          "oklch(49% 0.0000 0.00)",
+          "oklch(61% 0.0000 0.00)",
+          "oklch(72% 0.0000 0.00)",
+          "oklch(84% 0.0000 0.00)",
+          "oklch(95% 0.0000 0.00)"
+        ]
+      },
+      "atlas-ink": {
+        "role": "neutral",
+        "displayName": "atlas ink",
+        "tonalRamp": [
+          "oklch(15% 0.0413 293.78)",
+          "oklch(26% 0.0413 293.78)",
+          "oklch(38% 0.0413 293.78)",
+          "oklch(49% 0.0413 293.78)",
+          "oklch(61% 0.0413 293.78)",
+          "oklch(72% 0.0413 293.78)",
+          "oklch(84% 0.0413 293.78)",
+          "oklch(95% 0.0413 293.78)"
+        ]
+      },
+      "atlas-muted": {
+        "role": "neutral",
+        "displayName": "atlas muted",
+        "tonalRamp": [
+          "oklch(15% 0.0320 298.97)",
+          "oklch(26% 0.0320 298.97)",
+          "oklch(38% 0.0320 298.97)",
+          "oklch(49% 0.0320 298.97)",
+          "oklch(61% 0.0320 298.97)",
+          "oklch(72% 0.0320 298.97)",
+          "oklch(84% 0.0320 298.97)",
+          "oklch(95% 0.0320 298.97)"
+        ]
+      },
+      "atlas-line": {
+        "role": "neutral",
+        "displayName": "atlas line",
+        "tonalRamp": [
+          "oklch(15% 0.0181 300.04)",
+          "oklch(26% 0.0181 300.04)",
+          "oklch(38% 0.0181 300.04)",
+          "oklch(49% 0.0181 300.04)",
+          "oklch(61% 0.0181 300.04)",
+          "oklch(72% 0.0181 300.04)",
+          "oklch(84% 0.0181 300.04)",
+          "oklch(95% 0.0181 300.04)"
+        ]
+      },
+      "atlas-accent": {
+        "role": "primary",
+        "displayName": "atlas accent",
+        "tonalRamp": [
+          "oklch(15% 0.1506 290.28)",
+          "oklch(26% 0.1506 290.28)",
+          "oklch(38% 0.1506 290.28)",
+          "oklch(49% 0.1506 290.28)",
+          "oklch(61% 0.1506 290.28)",
+          "oklch(72% 0.1506 290.28)",
+          "oklch(84% 0.1506 290.28)",
+          "oklch(95% 0.1506 290.28)"
+        ]
+      },
+      "atlas-tint": {
+        "role": "neutral",
+        "displayName": "atlas tint",
+        "tonalRamp": [
+          "oklch(15% 0.0163 297.52)",
+          "oklch(26% 0.0163 297.52)",
+          "oklch(38% 0.0163 297.52)",
+          "oklch(49% 0.0163 297.52)",
+          "oklch(61% 0.0163 297.52)",
+          "oklch(72% 0.0163 297.52)",
+          "oklch(84% 0.0163 297.52)",
+          "oklch(95% 0.0163 297.52)"
+        ]
+      },
+      "atlas-teal": {
+        "role": "secondary",
+        "displayName": "atlas teal",
+        "tonalRamp": [
+          "oklch(15% 0.0697 184.56)",
+          "oklch(26% 0.0697 184.56)",
+          "oklch(38% 0.0697 184.56)",
+          "oklch(49% 0.0697 184.56)",
+          "oklch(61% 0.0697 184.56)",
+          "oklch(72% 0.0697 184.56)",
+          "oklch(84% 0.0697 184.56)",
+          "oklch(95% 0.0697 184.56)"
+        ]
+      },
+      "atlas-purple": {
+        "role": "secondary",
+        "displayName": "atlas purple",
+        "tonalRamp": [
+          "oklch(15% 0.0992 308.54)",
+          "oklch(26% 0.0992 308.54)",
+          "oklch(38% 0.0992 308.54)",
+          "oklch(49% 0.0992 308.54)",
+          "oklch(61% 0.0992 308.54)",
+          "oklch(72% 0.0992 308.54)",
+          "oklch(84% 0.0992 308.54)",
+          "oklch(95% 0.0992 308.54)"
+        ]
+      },
+      "atlas-dark-paper": {
+        "role": "neutral",
+        "displayName": "atlas dark paper",
+        "tonalRamp": [
+          "oklch(15% 0.0284 266.37)",
+          "oklch(26% 0.0284 266.37)",
+          "oklch(38% 0.0284 266.37)",
+          "oklch(49% 0.0284 266.37)",
+          "oklch(61% 0.0284 266.37)",
+          "oklch(72% 0.0284 266.37)",
+          "oklch(84% 0.0284 266.37)",
+          "oklch(95% 0.0284 266.37)"
+        ]
+      },
+      "atlas-dark-surface": {
+        "role": "neutral",
+        "displayName": "atlas dark surface",
+        "tonalRamp": [
+          "oklch(15% 0.0316 263.89)",
+          "oklch(26% 0.0316 263.89)",
+          "oklch(38% 0.0316 263.89)",
+          "oklch(49% 0.0316 263.89)",
+          "oklch(61% 0.0316 263.89)",
+          "oklch(72% 0.0316 263.89)",
+          "oklch(84% 0.0316 263.89)",
+          "oklch(95% 0.0316 263.89)"
+        ]
+      },
+      "atlas-dark-ink": {
+        "role": "neutral",
+        "displayName": "atlas dark ink",
+        "tonalRamp": [
+          "oklch(15% 0.0129 266.70)",
+          "oklch(26% 0.0129 266.70)",
+          "oklch(38% 0.0129 266.70)",
+          "oklch(49% 0.0129 266.70)",
+          "oklch(61% 0.0129 266.70)",
+          "oklch(72% 0.0129 266.70)",
+          "oklch(84% 0.0129 266.70)",
+          "oklch(95% 0.0129 266.70)"
+        ]
+      },
+      "atlas-dark-accent": {
+        "role": "primary",
+        "displayName": "atlas dark accent",
+        "tonalRamp": [
+          "oklch(15% 0.0807 295.80)",
+          "oklch(26% 0.0807 295.80)",
+          "oklch(38% 0.0807 295.80)",
+          "oklch(49% 0.0807 295.80)",
+          "oklch(61% 0.0807 295.80)",
+          "oklch(72% 0.0807 295.80)",
+          "oklch(84% 0.0807 295.80)",
+          "oklch(95% 0.0807 295.80)"
+        ]
+      },
+      "atlas-dark-action": {
+        "role": "primary",
+        "displayName": "atlas dark action",
+        "tonalRamp": [
+          "oklch(15% 0.1217 296.37)",
+          "oklch(26% 0.1217 296.37)",
+          "oklch(38% 0.1217 296.37)",
+          "oklch(49% 0.1217 296.37)",
+          "oklch(61% 0.1217 296.37)",
+          "oklch(72% 0.1217 296.37)",
+          "oklch(84% 0.1217 296.37)",
+          "oklch(95% 0.1217 296.37)"
+        ]
+      },
+      "atlas-dark-on-action": {
+        "role": "neutral",
+        "displayName": "atlas dark on action",
+        "tonalRamp": [
+          "oklch(15% 0.0420 295.55)",
+          "oklch(26% 0.0420 295.55)",
+          "oklch(38% 0.0420 295.55)",
+          "oklch(49% 0.0420 295.55)",
+          "oklch(61% 0.0420 295.55)",
+          "oklch(72% 0.0420 295.55)",
+          "oklch(84% 0.0420 295.55)",
+          "oklch(95% 0.0420 295.55)"
+        ]
+      },
+      "blueprint-paper": {
+        "role": "neutral",
+        "displayName": "blueprint paper",
+        "tonalRamp": [
+          "oklch(15% 0.0539 295.22)",
+          "oklch(26% 0.0539 295.22)",
+          "oklch(38% 0.0539 295.22)",
+          "oklch(49% 0.0539 295.22)",
+          "oklch(61% 0.0539 295.22)",
+          "oklch(72% 0.0539 295.22)",
+          "oklch(84% 0.0539 295.22)",
+          "oklch(95% 0.0539 295.22)"
+        ]
+      },
+      "blueprint-ink": {
+        "role": "neutral",
+        "displayName": "blueprint ink",
+        "tonalRamp": [
+          "oklch(15% 0.0190 299.07)",
+          "oklch(26% 0.0190 299.07)",
+          "oklch(38% 0.0190 299.07)",
+          "oklch(49% 0.0190 299.07)",
+          "oklch(61% 0.0190 299.07)",
+          "oklch(72% 0.0190 299.07)",
+          "oklch(84% 0.0190 299.07)",
+          "oklch(95% 0.0190 299.07)"
+        ]
+      },
+      "blueprint-lilac": {
+        "role": "secondary",
+        "displayName": "blueprint lilac",
+        "tonalRamp": [
+          "oklch(15% 0.0503 298.05)",
+          "oklch(26% 0.0503 298.05)",
+          "oklch(38% 0.0503 298.05)",
+          "oklch(49% 0.0503 298.05)",
+          "oklch(61% 0.0503 298.05)",
+          "oklch(72% 0.0503 298.05)",
+          "oklch(84% 0.0503 298.05)",
+          "oklch(95% 0.0503 298.05)"
+        ]
+      },
+      "blueprint-mint": {
+        "role": "secondary",
+        "displayName": "blueprint mint",
+        "tonalRamp": [
+          "oklch(15% 0.0431 174.14)",
+          "oklch(26% 0.0431 174.14)",
+          "oklch(38% 0.0431 174.14)",
+          "oklch(49% 0.0431 174.14)",
+          "oklch(61% 0.0431 174.14)",
+          "oklch(72% 0.0431 174.14)",
+          "oklch(84% 0.0431 174.14)",
+          "oklch(95% 0.0431 174.14)"
+        ]
+      },
+      "blueprint-apricot": {
+        "role": "tertiary",
+        "displayName": "blueprint apricot",
+        "tonalRamp": [
+          "oklch(15% 0.0553 61.65)",
+          "oklch(26% 0.0553 61.65)",
+          "oklch(38% 0.0553 61.65)",
+          "oklch(49% 0.0553 61.65)",
+          "oklch(61% 0.0553 61.65)",
+          "oklch(72% 0.0553 61.65)",
+          "oklch(84% 0.0553 61.65)",
+          "oklch(95% 0.0553 61.65)"
+        ]
+      },
+      "blueprint-retrieval-ink": {
+        "role": "neutral",
+        "displayName": "blueprint retrieval ink",
+        "tonalRamp": [
+          "oklch(15% 0.0260 176.57)",
+          "oklch(26% 0.0260 176.57)",
+          "oklch(38% 0.0260 176.57)",
+          "oklch(49% 0.0260 176.57)",
+          "oklch(61% 0.0260 176.57)",
+          "oklch(72% 0.0260 176.57)",
+          "oklch(84% 0.0260 176.57)",
+          "oklch(95% 0.0260 176.57)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Editorial display",
+        "purpose": "Architecture hero headline only."
+      },
+      "headline": {
+        "displayName": "Section headline",
+        "purpose": "Architecture reading sections."
+      },
+      "body": {
+        "displayName": "Reading body",
+        "purpose": "Prose and general controls."
+      },
+      "source": {
+        "displayName": "Source path",
+        "purpose": "Source links and code identifiers."
+      }
+    },
+    "shadows": [
+      {
+        "name": "selected-path",
+        "value": "0 3px 12px #3028460a",
+        "purpose": "Subtle separation for the pressed execution-path control."
+      }
+    ],
+    "motion": [
+      {
+        "name": "path-state",
+        "value": "180ms ease-out",
+        "purpose": "Path and node background or border transitions; no-preference only."
+      },
+      {
+        "name": "detail-reveal",
+        "value": "200ms ease-out",
+        "purpose": "Node detail reveal from opacity .65 and translateY(-4px) to its final state."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation: none; transition: none; scroll-behavior: auto",
+        "purpose": "Surface-wide reduced-motion override; no continuous hero animation."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "module-tabs-four-columns",
+        "value": "1100px"
+      },
+      {
+        "name": "atlas-navigation-compact",
+        "value": "1000px"
+      },
+      {
+        "name": "blueprint-stacked-lanes-and-storage-groups",
+        "value": "820px"
+      },
+      {
+        "name": "path-explorer-reflow",
+        "value": "780px"
+      },
+      {
+        "name": "blueprint-overview-vertical",
+        "value": "700px"
+      },
+      {
+        "name": "atlas-single-column",
+        "value": "660px"
+      },
+      {
+        "name": "module-tabs-two-columns",
+        "value": "540px"
+      },
+      {
+        "name": "blueprint-shared-stores-stacked",
+        "value": "510px"
+      },
+      {
+        "name": "path-explorer-single-column",
+        "value": "480px"
+      },
+      {
+        "name": "atlas-small-inset",
+        "value": "350px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Hero primary action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Light-theme hero action; extracted from the hero action rule.",
+      "html": "<div class=\"ds-preview\"><button class=\"ds-primary\" type=\"button\">探索系统架构 <span aria-hidden=\"true\">↓</span></button></div>",
+      "css": ".ds-preview{font:15px/1.7 'Manrope','PingFang SC','Microsoft YaHei',system-ui,sans-serif;}.ds-primary{display:inline-flex; align-items:center; gap:16px; min-height:46px; padding:11px 18px; border-radius:8px; background:#6852b5; color:#fff; font-size:13px; font-weight:600;}.ds-primary:hover{background:#765591;}.ds-primary{border:0;cursor:pointer;font-family:inherit}.ds-primary:focus-visible{outline:2px solid #6852b5;outline-offset:4px;}"
+    },
+    {
+      "name": "Hero primary action, dark",
+      "kind": "button",
+      "refersTo": "button-primary-dark",
+      "description": "Explicit dark-theme action colors, on a dark local preview field.",
+      "html": "<div class=\"ds-preview\"><div class=\"ds-dark-field\"><button class=\"ds-primary-dark\" type=\"button\">探索系统架构 <span aria-hidden=\"true\">↓</span></button></div></div>",
+      "css": ".ds-preview{font:15px/1.7 'Manrope','PingFang SC','Microsoft YaHei',system-ui,sans-serif;}.ds-primary-dark{display:inline-flex; align-items:center; gap:16px; min-height:46px; padding:11px 18px; border-radius:8px; background:#6852b5; color:#fff; font-size:13px; font-weight:600;}.ds-primary-dark{background:#a28add; color:#201a30;}.ds-dark-field{padding:18px;background:#191f2d}.ds-primary-dark{border:0;cursor:pointer;font-family:inherit}.ds-primary-dark:focus-visible{outline:2px solid #c4b6ef;outline-offset:4px}"
+    },
+    {
+      "name": "Secondary document link",
+      "kind": "button",
+      "refersTo": "link-secondary",
+      "description": "Quiet document link alongside the primary hero action.",
+      "html": "<div class=\"ds-preview\"><a class=\"ds-secondary\" href=\"#technical-docs\">阅读技术文档 <span aria-hidden=\"true\">↗</span></a></div>",
+      "css": ".ds-preview{font:15px/1.7 'Manrope','PingFang SC','Microsoft YaHei',system-ui,sans-serif;}.ds-secondary{display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#686276; min-height:44px;}.ds-secondary:hover{color:#6852b5;}.ds-secondary{text-decoration:none}.ds-secondary:focus-visible{outline:2px solid #6852b5;outline-offset:4px;}"
+    },
+    {
+      "name": "Section navigation",
+      "kind": "nav",
+      "refersTo": "navigation-current",
+      "description": "Current section is identified by color, weight and a bottom rule.",
+      "html": "<div class=\"ds-preview\"><nav class=\"ds-nav\" aria-label=\"架构页目录\"><a href=\"#overview\" aria-current=\"location\">设计思想</a><a href=\"#system\">架构全貌</a><a href=\"#paths\">执行路径</a></nav></div>",
+      "css": ".ds-preview{font:15px/1.7 'Manrope','PingFang SC','Microsoft YaHei',system-ui,sans-serif;}.ds-nav{display: flex; align-items: center; gap: clamp(12px,1.6cqi,23px); flex: 1; min-width: 0;}.ds-nav a{display: grid; align-items: center; min-height: 42px; white-space: nowrap; color: #686276; font-size: 13px; border-bottom: 2px solid transparent;}.ds-nav a:hover{color: #6852b5;}.ds-nav a[aria-current]{color: #6852b5; border-bottom-color: #6852b5; font-weight: 700;}.ds-nav{padding:10px 18px;background:#f8f7fb;overflow-x:auto}.ds-nav a{text-decoration:none}.ds-nav a:focus-visible{outline:2px solid #6852b5;outline-offset:4px;}"
+    },
+    {
+      "name": "Global execution-mode selector",
+      "kind": "input",
+      "refersTo": "mode-select",
+      "description": "Native select controls the page reading mode; the preview has no framework behavior.",
+      "html": "<div class=\"ds-preview\"><label class=\"ds-mode\"><select aria-label=\"全页执行路径\"><option>Direct</option><option>Agent</option><option>Pi</option></select><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" width=\"13\" height=\"13\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"m6 9 6 6 6-6\"/></svg></label></div>",
+      "css": ".ds-preview{font:15px/1.7 'Manrope','PingFang SC','Microsoft YaHei',system-ui,sans-serif;}.ds-mode{display: flex; align-items: center; gap: 6px; position: relative; margin-left: auto; color: #6852b5;}.ds-mode select{appearance: none; background: #eeebf7; border: 0; min-height: 38px; padding: 7px 28px 7px 12px; border-radius: 7px; font: 700 12px 'Manrope', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; color: inherit; cursor: pointer; max-width: 118px;}.ds-mode > svg{position: absolute; right: 10px; pointer-events: none;}.ds-mode{width:max-content;margin-left:0}.ds-mode select:focus-visible{outline:2px solid #6852b5;outline-offset:4px;}"
+    },
+    {
+      "name": "Pressed execution path",
+      "kind": "button",
+      "refersTo": "path-selected",
+      "description": "Selected conventional path; the actual Pi state uses the explorer teal token.",
+      "html": "<div class=\"ds-preview\"><div class=\"ds-path-rail\"><button class=\"ds-path\" aria-pressed=\"true\" type=\"button\"><strong>Direct</strong><span>聚焦问答</span></button></div></div>",
+      "css": ".ds-preview{font:15px/1.7 'Manrope','PingFang SC','Microsoft YaHei',system-ui,sans-serif;}.ds-path-rail{display: flex; align-items: stretch; gap: 6px; padding: 6px; background: #eeebf7; border: 1px solid #dfdbe8; border-radius: 12px 12px 0 0;}.ds-path{display: flex; justify-content: center; align-items: center; gap: 10px; min-height: 48px; padding: 10px 16px; flex: 1; min-width: 0; border: 0; border-radius: 7px; color: #686276; background: transparent;}.ds-path strong{font-size: 15px; white-space: nowrap;}.ds-path > span{font-size: 12px;}.ds-path:hover{background: #f8f7fb; color: #302b42;}.ds-path[aria-pressed='true']{background: #fff; color: #6852b5; box-shadow: 0 3px 12px #3028460a;}.ds-path{font-family:inherit;cursor:pointer}.ds-path:focus-visible{outline:2px solid #6852b5;outline-offset:4px;}@media(prefers-reduced-motion:no-preference){.ds-path{transition:background-color .18s ease-out,border-color .18s ease-out}}"
+    },
+    {
+      "name": "Blueprint retrieval panel and modality labels",
+      "kind": "card",
+      "refersTo": "blueprint-retrieval",
+      "description": "Current mint retrieval node with uniform 8px corners; modality labels are static, not interactive filters.",
+      "html": "<div class=\"ds-preview\"><section class=\"ds-retrieval\"><a class=\"ds-source\" href=\"#retrieval\">RetrievalService</a><p>理解问题、明确范围、画像路由</p><div class=\"ds-modalities\"><span>Dense</span><span>Sparse</span><span>CLIP</span><span>CLAP</span><span>Video</span></div></section></div>",
+      "css": ".ds-preview{font:15px/1.7 'Manrope','PingFang SC','Microsoft YaHei',system-ui,sans-serif;}.ds-retrieval{padding:11px 13px;color:#293c37;background:#b9dfd3;border:1px solid #6c9688;border-radius:8px;}.ds-source{display:inline-flex;gap:6px;align-items:center;min-height:26px;font-weight:650;text-decoration:none;text-underline-offset:4px;color:inherit;}.ds-retrieval>.ds-source{font-size:16px;font-weight:700;}.ds-source:hover{text-decoration:underline;}.ds-retrieval>p{color:#39544b;font-size:12px;line-height:1.8;margin:2px 0 0;}.ds-modalities{display:flex;flex-wrap:wrap;gap:5px;margin-top:12px;}.ds-modalities span{padding:2px 5px;font-size:12px;border:1px solid #83b5a5;border-radius:4px;}.ds-source:focus-visible{outline:2px solid #302846;outline-offset:4px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "沿证据阅读架构",
+    "overview": "This is a descriptive snapshot of the current v3 `/architecture` implementation, recorded on 2026-10-14. Its scope is the architecture reading surface inside the existing application shell. The metaphor describes the implementation; it is not a user-approved brand direction and must not be imposed on other routes.\n\nThe page moves from design principles to the system blueprint, execution paths, an illustrative evidence journey, module implementation and runtime boundaries. Editorial typography, a tactile illustration and varied diagram compositions support that reading sequence. Product facts remain in `PRODUCT.md`; source code remains the authority when this snapshot drifts.",
+    "keyCharacteristics": [
+      "A readable Chinese editorial hierarchy with restrained technical labels.",
+      "Pale reading surfaces, a deep blueprint field and distinct evidence-path colors.",
+      "Art introduces the idea; interactive diagrams explain actual responsibilities.",
+      "Headings and their introductions share one left alignment; content groups stay close to their labels.",
+      "Light and dark themes, container-aware layouts and optional short motion."
+    ],
+    "rules": [
+      "Section introductions place the heading above its description on one left axis, with a 12px gap.",
+      "The blueprint overview uses four bordered nodes with 8px corners and separate 24px arrow tracks, separated by 12px grid gaps. At 700px and below, nodes and arrows follow vertical reading order.",
+      "Blueprint nodes, the Pi host boundary and storage groups use 8px corners. Short 14px vertical connectors join internal nodes; there are no floating buses or percentage-positioned SVG routes.",
+      "Shared knowledge storage groups MinIO and Qdrant with their write/read responsibilities. Pi runtime records group SQLite and local files with Pi-host-only persistence. Storage icons use Lucide at 22px with stroke width 1.5.",
+      "Module tabs are horizontal and reflow from eight columns to four at 1100px and two at 540px. At 350px they show names only, and contract labels stack above descriptions. Module panels use natural content height, with prose bounded at 58em.",
+      "Mechanism titles and descriptions are vertically adjacent in one copy block; the evidence journey aligns explanatory and evidence columns at the top with natural content height.",
+      "Runtime storage scope labels follow their description in the same content column. Runtime disclosure tags remain next to their title."
+    ],
+    "dos": [
+      "Do keep this document scoped to `/architecture` and refresh it against the actual CSS when that surface changes.",
+      "Do use source-linked explanatory content and label the evidence journey as illustrative.",
+      "Do verify both themes, narrow layouts, keyboard focus and reduced-motion behavior."
+    ],
+    "donts": [
+      "Don't imply this snapshot is a user-approved product-wide identity.",
+      "Don't treat conceptual artwork, illustrative traces or color coding as proof of runtime behavior.",
+      "Don't flatten the page into repeated cards or add continuous motion that competes with reading.",
+      "Don't reintroduce overlaid arrows, floating buses, fixed-height empty panels or detached labels in the system diagram and reading sections."
+    ]
+  }
+}
