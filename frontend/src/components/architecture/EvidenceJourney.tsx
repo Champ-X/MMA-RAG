@@ -72,18 +72,18 @@ const querySteps: Record<ArchitectureMode, JourneyStep[]> = {
   ],
   agent: [
     {
-      id: 'scope', label: '拆解任务', title: '先明确取证任务',
-      description: '常规 Agent 把问题拆成视频中的解释和讲义中的定义，沿所选来源范围规划查询。',
-      action: '任务计划 + 来源范围', view: 'scope',
+      id: 'scope', label: '原问题取证', title: '先检索原问题，建立证据起点',
+      description: '常规 Agent 先沿所选来源范围检索原问题，获得第一组视频与讲义线索，再判断还需要补充什么。',
+      action: '原问题 → 常规检索服务', view: 'scope',
     },
     {
-      id: 'search', label: '首轮检索', title: '第一轮先找到概念线索',
-      description: '调用公共检索服务找到视频转写片段。如果讲义依据不足，循环可以继续补查。',
-      action: 'RetrievalService · 第 1 轮', view: 'parsed',
+      id: 'search', label: '规划补查', title: '从已有证据中，识别需要补齐的部分',
+      description: '已有视频转写可以提供概念线索。如果讲义依据不足，Agent 规划互补子问题，继续调用常规检索服务。',
+      action: '已有证据 → 缺口与补查计划', view: 'parsed',
     },
     {
       id: 'retrieve', label: '补查与合并', title: '在预算内补齐讲义依据',
-      description: '追加查询定位讲义中的定义，去重并合并证据。轮数、查询数和证据量受预算约束。',
+      description: '追加查询定位讲义中的定义。补查受轮数与查询预算约束；跨轮去重，最终合并时限制交付的证据量。',
       action: '追加检索 → 去重合并', view: 'retrieved',
     },
     {
@@ -219,8 +219,8 @@ export function EvidenceJourney({ mode }: { mode: ArchitectureMode }) {
   return (
     <div className="evidence-journey">
       <div className="atlas-section-intro journey-intro">
-        <div><span className="journey-eyebrow">02 / 跟随一次任务</span><h2>看一份证据，如何走到回答里。</h2></div>
-        <p>从视频里的 24 秒，到回答中的一个引用。沿同一份来源，观察素材准备与三条回答路径。</p>
+        <div><h2>跟随一份证据</h2></div>
+        <p>以一段视频和一份讲义为例。从素材入库走到回答，再点击引用回到证据。</p>
       </div>
 
       <div className="journey-toolbar">
@@ -249,7 +249,6 @@ export function EvidenceJourney({ mode }: { mode: ArchitectureMode }) {
 
       <div className="journey-workspace">
         <div className="journey-step-detail">
-          <span className="journey-stage-count">{String(activeIndex + 1).padStart(2, '0')} / {String(steps.length).padStart(2, '0')}</span>
           <h3>{step.title}</h3>
           <p>{step.description}</p>
           <div className="journey-action"><span>这一阶段</span><code>{step.action}</code></div>

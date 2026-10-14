@@ -7,7 +7,7 @@ export const architectureModes = [
 ] as const
 
 export const architectureSourceBase = 'https://github.com/Champ-X/MMA-RAG/blob/main/'
-export const architectureReviewDate = '2026-10-13'
+export const architectureReviewDate = '2026-10-14'
 
 export function architectureSourceUrl(path: string) {
   return architectureSourceBase + path
