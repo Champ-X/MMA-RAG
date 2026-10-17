@@ -1,9 +1,7 @@
 /**
  * React DOM/SSE integration replay, with no production dependency additions.
  * From frontend/:
- * npm install --prefix /tmp/tessmora-sidebar-dom-tests --no-package-lock --no-save jsdom@26.1.0
- * ./node_modules/.bin/esbuild tests/streamingRendering.dom.tsx --bundle --platform=node --format=cjs --external:react '--external:react/*' --external:react-dom '--external:react-dom/*' --external:jsdom --loader:.css=empty --outfile=/tmp/tessmora-sidebar-dom-tests/streaming-tests.cjs
- * NODE_PATH="$PWD/node_modules:/tmp/tessmora-sidebar-dom-tests/node_modules" node --test /tmp/tessmora-sidebar-dom-tests/streaming-tests.cjs
+ * npm run test:dom
  *
  * These measurements describe React/jsdom execution, not browser paint/FPS.
  */

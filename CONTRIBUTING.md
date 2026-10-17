@@ -25,6 +25,7 @@ python3 scripts/check_repository.py
 python3 scripts/test_dev.py
 npm --prefix frontend ci
 npm --prefix frontend test
+npm --prefix frontend run test:dom
 npm --prefix frontend run build
 npm --prefix agent-runtime ci
 npm --prefix agent-runtime test
@@ -39,7 +40,7 @@ SILICONFLOW_API_KEY=test-only PYTHONPATH=backend .venv/bin/python -m pytest back
 
 部分后端模块在导入时初始化存储客户端，完整收集需要可达的本地 MinIO/Qdrant。测试通常替换模型调用，但手工验证脚本和 live 评测会使用真实服务并可能产生费用；请使用专用数据与凭证。没有这些服务时，选择不依赖它们的模块测试并在 PR 中说明未覆盖范围。不要把被卡住或中断的收集计为通过。
 
-`frontend/tests/*.dom.tsx` 是独立的 DOM 回放检查，不包含在 `npm test` 的 Node 测试 glob 中；`replay*.tsx` 用于开发回放。涉及交互时还须通过真实浏览器核对相关流程、窄屏、深浅主题与键盘操作。构建通过不等于视觉验收。
+`npm --prefix frontend run test:dom` 运行 `frontend/tests/*.dom.tsx` 的 React/jsdom 回归，各测试文件使用独立进程，覆盖会话删除、提交竞态、附件清理等交互；依赖由 `npm ci` 安装，CI 同样执行。`replay*.tsx` 用于开发回放。涉及交互时还须通过真实浏览器核对相关流程、窄屏、深浅主题与键盘操作。构建通过不等于视觉验收。
 
 CI 自动检查仓库规则、启动控制器、前端测试/构建和 Pi 协议。完整后端、真实模型及浏览器验收由变更作者报告，不伪装为 CI 已覆盖。
 

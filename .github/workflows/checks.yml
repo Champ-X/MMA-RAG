@@ -31,6 +31,7 @@ jobs:
             packages/cli/package-lock.json
       - run: npm --prefix frontend ci
       - run: npm --prefix frontend test
+      - run: npm --prefix frontend run test:dom
       - run: npm --prefix frontend run build
       - run: npm --prefix agent-runtime ci
       - run: npm --prefix agent-runtime test
