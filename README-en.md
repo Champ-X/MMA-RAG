@@ -205,7 +205,7 @@ Pi can list sources, perform exact or hybrid search, read paginated source text,
 
 `@` materials support reading and comparison; **they do not automatically expand search scope**. A local ledger stores run events, evidence, and attachments for cancellation, event reconnection, and history recovery. A server restart marks unfinished runs as interrupted instead of automatically executing them again.
 
-Pi currently has **no application-level per-run cap on duration, tokens, or total tool calls**. Long tasks remain subject to model context, provider, and machine limits and can be stopped by the user. Citation checks validate evidence identity and numbering; answer completeness and source support still need review. See the [Pi mode guide](docs/PI_AGENT_MODE.md) for configuration, tool contracts, and known limitations.
+Pi currently has **no application-level per-run cap on duration, tokens, or total tool calls**. Long tasks remain subject to model context, provider, and machine limits and can be stopped by the user. Repeated calls without progress, truncated output, exhausted context, and stalled connections stop automatically; deleting a conversation first stops its background tasks. Citation checks validate evidence identity and numbering; answer completeness and source support still need review. See the [Pi mode guide](docs/PI_AGENT_MODE.md) for configuration, tool contracts, and known limitations.
 
 ## Architecture
 

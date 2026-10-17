@@ -360,3 +360,36 @@ test('Pi watcher cancellation also aborts its completion-status request', { time
     else Reflect.deleteProperty(globalThis, 'localStorage')
   }
 })
+
+test('deleting a session waits for server cancellation, including uncached runs', async () => {
+  const original = globalThis.fetch
+  const sessionId = useChatStore.getState().createSession()
+  let respond!: (value: Response) => void
+  const requests: Array<{ url: string; method?: string }> = []
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), method: init?.method })
+    return new Promise<Response>(resolve => { respond = resolve })
+  }
+  try {
+    const deletion = useChatStore.getState().deleteSession(sessionId)
+    assert.ok(useChatStore.getState().getSessionById(sessionId))
+    assert.match(requests[0].url, new RegExp(`/sessions/${sessionId}$`))
+    assert.equal(requests[0].method, 'DELETE')
+    respond(Response.json({ closed: true, runs: [{ id: 'uncached', status: 'cancelled' }] }))
+    await deletion
+    assert.equal(useChatStore.getState().getSessionById(sessionId), null)
+  } finally { globalThis.fetch = original }
+})
+
+test('failed or incomplete server cancellation preserves the session and its controls', async () => {
+  const original = globalThis.fetch
+  const sessionId = useChatStore.getState().createSession()
+  try {
+    for (const response of [new Response('unavailable', { status: 503 }),
+      Response.json({ closed: true, runs: [{ status: 'cancelling' }] })]) {
+      globalThis.fetch = async () => response
+      await assert.rejects(useChatStore.getState().deleteSession(sessionId))
+      assert.ok(useChatStore.getState().getSessionById(sessionId))
+    }
+  } finally { globalThis.fetch = original }
+})

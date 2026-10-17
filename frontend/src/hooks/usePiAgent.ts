@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useChatStore, type ChatMessageAttachment, type ChatScopeFile } from '@/store/useChatStore'
+import { useChatStore, type ChatScopeFile } from '@/store/useChatStore'
 import type { ChatMention } from '@/lib/chatReferences'
 import { persistMentions } from '@/lib/chatReferences'
-import { putAttachmentBlob } from '@/lib/chatAttachmentBlobStore'
-import { chatFileKind } from '@/lib/chatAttachmentFile'
+import { createPendingChatAttachments } from '@/lib/pendingChatAttachments'
 import { applyPiEvent, initialPiTrace } from '@/lib/piTrace'
 import { piApi, watchPiRun } from '@/services/piAgent'
 import { piTerminal, type PiConfig } from '@/types/pi'
 import { restorePiMessages } from '@/lib/piHistory'
 import { activePiRun } from '@/lib/piSession'
+import { registerSessionWork } from '@/lib/sessionWork'
 
 export function usePiAgent(workspaceConfig?: PiConfig | null) {
   const sessions = useChatStore(state => state.sessions)
   const activeSessionId = useChatStore(state => state.activeSessionId)
   const watchers = useRef(new Map<string, AbortController>())
+  const submitting = useRef(new Set<string>())
   const [failure, setFailure] = useState<{ sessionId: string; message: string } | null>(null)
   const active = activePiRun(sessions, activeSessionId)
 
@@ -62,24 +63,38 @@ export function usePiAgent(workspaceConfig?: PiConfig | null) {
     const store = useChatStore.getState()
     const session = sessionId ? store.getSessionById(sessionId) : store.getActiveSession()
     if (!session) throw new Error('没有活跃的会话')
-    setFailure(null)
-    const ids = files?.map((_, i) => attachmentIds?.[i] || `att_${crypto.randomUUID()}`)
-    let attachments: ChatMessageAttachment[] | undefined
-    if (files?.length) attachments = await Promise.all(files.map(async (file, i) => {
-      const id = ids![i], kind = chatFileKind(file) || 'image'
-      await putAttachmentBlob(id, file)
-      const thumbDataUrl = kind === 'image' ? await (await import('@/lib/chatAttachmentThumb')).imageFileToPersistedThumb(file) : undefined
-      return { id, kind, name: file.name, size: file.size, ...(thumbDataUrl ? { thumbDataUrl } : {}) }
-    }))
-    const previous = [...session.messages].reverse().find(m => m.pi)?.pi
-    const run = await piApi.create({ requestId: crypto.randomUUID(), sessionId: session.id, message: content,
-      knowledgeBaseIds, model: session.piModel, selectedFiles, mentions, files, attachmentIds: ids,
-      history: session.messages.filter(m => !m.error).map(m => ({ role: m.role, content: m.content })),
-      parentRunId: previous?.runId })
-    if (useChatStore.getState().getSessionById(session.id)?.messages.some(message => message.pi?.runId === run.id)) return
-    store.addMessage(session.id, { role: 'user', content: content || `（已上传 ${files?.length || 0} 个附件）`,
-      executionEngine: 'pi', mentions: persistMentions(mentions || []), attachments, scopeFiles: selectedFiles, scopeVersion: 2 })
-    store.addMessage(session.id, { role: 'assistant', content: '', citations: [], executionEngine: 'pi', pi: initialPiTrace(run) })
+    if (submitting.current.has(session.id) || activePiRun(store.sessions, session.id)) {
+      throw new Error('此会话已有正在提交或运行的任务，请先停止或等待完成。')
+    }
+    submitting.current.add(session.id)
+    let deleted = false
+    const pendingAttachments = createPendingChatAttachments(() => useChatStore.getState().sessions.flatMap(item => item.messages))
+    const unregister = registerSessionWork(session.id, () => { deleted = true; void pendingAttachments.discard() })
+    try {
+      setFailure(null)
+      const attachments = await pendingAttachments.prepare(files, attachmentIds)
+      if (deleted || !useChatStore.getState().getSessionById(session.id)) return
+      const previous = [...session.messages].reverse().find(m => m.pi)?.pi
+      const run = await piApi.create({ requestId: crypto.randomUUID(), sessionId: session.id, message: content,
+        knowledgeBaseIds, model: session.piModel, selectedFiles, mentions, files, attachmentIds: attachments?.map(item => item.id),
+        history: session.messages.filter(m => !m.error).map(m => ({ role: m.role, content: m.content })),
+        parentRunId: previous?.runId })
+      if (deleted || !useChatStore.getState().getSessionById(session.id)) {
+        // The server's session closure handles the create/delete race. Cancel
+        // here too if a late create response arrives before closure completes.
+        await piApi.cancel(run.id)
+        return
+      }
+      if (useChatStore.getState().getSessionById(session.id)?.messages.some(message => message.pi?.runId === run.id)) return
+      store.addMessage(session.id, { role: 'user', content: content || `（已上传 ${files?.length || 0} 个附件）`,
+        executionEngine: 'pi', mentions: persistMentions(mentions || []), attachments, scopeFiles: selectedFiles, scopeVersion: 2 })
+      pendingAttachments.publish()
+      store.addMessage(session.id, { role: 'assistant', content: '', citations: [], executionEngine: 'pi', pi: initialPiTrace(run) })
+    } finally {
+      unregister()
+      await pendingAttachments.discard()
+      submitting.current.delete(session.id)
+    }
   }, [])
 
   const cancel = useCallback(async () => {

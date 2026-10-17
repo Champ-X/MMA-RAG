@@ -10,14 +10,14 @@ import {
 import type { ThoughtPhase } from '@/types/sse'
 import { advanceThinking } from '@/lib/thinkingState'
 import { freezeStageTimings, mergeStageTimings } from '@/lib/stageTiming'
-import { putAttachmentBlob } from '@/lib/chatAttachmentBlobStore'
+import { createPendingChatAttachments } from '@/lib/pendingChatAttachments'
 import { mergeCitationReferences } from '@/lib/citations'
-import { normalizeAgentMode, type ChatMessageAttachment, type ChatScopeFile, type ThoughtData } from '@/store/useChatStore'
+import { normalizeAgentMode, type ChatScopeFile, type ThoughtData } from '@/store/useChatStore'
 import { persistMentions, type ChatMention } from '@/lib/chatReferences'
-import { chatFileKind } from '@/lib/chatAttachmentFile'
 import { mixedModeContext } from '@/lib/mixedModeContext'
 import { readDecisionDiagnostics } from '@/lib/decisionDiagnostics'
 import { createStreamTextBuffer, subscribeStreamTextLifecycle, type StreamTextBuffer } from '@/lib/streamTextBuffer'
+import { registerSessionWork } from '@/lib/sessionWork'
 
 interface UseThinkingChainOptions {
   onThought?: (e: ThoughtEvent) => void
@@ -55,10 +55,13 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
   const textBufferRef = useRef<StreamTextBuffer | null>(null)
   const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const streamEpochRef = useRef(0)
+  const unregisterWorkRef = useRef<(() => void) | null>(null)
   const currentUserQueryRef = useRef<string | null>(null) // 保存当前用户查询
   const [error, setError] = useState<string | null>(null)
 
   const cleanup = useCallback(({ preserveError = false }: { preserveError?: boolean } = {}) => {
+    unregisterWorkRef.current?.()
+    unregisterWorkRef.current = null
     // Persist the final received text before clearing the message/session identity.
     textBufferRef.current?.close()
     textBufferRef.current = null
@@ -95,88 +98,70 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
 
     // A previous completion delay or cancelled request must not affect this turn.
     cleanup()
+    const pendingAttachments = createPendingChatAttachments(() => useChatStore.getState().sessions.flatMap(item => item.messages))
+    unregisterWorkRef.current = registerSessionWork(session.id, () => { cleanup(); void pendingAttachments.discard() })
     const streamEpoch = streamEpochRef.current
     const isCurrentStream = () => streamEpochRef.current === streamEpoch
     let terminalReceived = false
 
-    const displayContent =
-      (content.trim() ? content : '') ||
-      (files?.length ? `（已上传 ${files.length} 个附件）` : '')
-
-    const baseId = Date.now()
-    let attachments: ChatMessageAttachment[] | undefined
-    if (files?.length) {
-      attachments = await Promise.all(
-        files.map(async (f, i) => {
-          const id = attachmentIds?.[i] ?? `att_${baseId}_${i}_${Math.random().toString(36).slice(2, 9)}`
-          await putAttachmentBlob(id, f)
-          const kind = chatFileKind(f) ?? 'image'
-          const base: ChatMessageAttachment = { id, kind, name: f.name, size: f.size }
-          if (kind === 'image') {
-            const { imageFileToPersistedThumb } = await import('@/lib/chatAttachmentThumb')
-            const thumbDataUrl = await imageFileToPersistedThumb(f)
-            return {
-              ...base,
-              previewUrl: URL.createObjectURL(f),
-              ...(thumbDataUrl ? { thumbDataUrl } : {}),
-            }
-          }
-          return base
-        })
-      )
-    }
-    if (!isCurrentStream()) return
-
-    addMessage(session.id, {
-      role: 'user',
-      content: displayContent,
-      attachments,
-      mentions: mentions?.length ? persistMentions(mentions) : undefined,
-      scopeFiles: selectedFiles?.length ? selectedFiles : undefined,
-      scopeVersion: 2,
-    })
-    const savedMessages = getSessionById(session.id)?.messages
-    const userMessageId = savedMessages?.[savedMessages.length - 1]?.id
-    addMessage(session.id, {
-      role: 'assistant',
-      content: '',
-      citations: [],
-    })
-
-    const after = getSessionById(session.id)
-    const last = after?.messages[after.messages.length - 1]
-    currentMessageIdRef.current = last?.id ?? null
-    streamingSessionIdRef.current = session.id
-    currentUserQueryRef.current = content.trim() ? content : displayContent
-
-    const messageId = currentMessageIdRef.current
-    const textBuffer = createStreamTextBuffer((text) => {
-      if (!isCurrentStream()) return
-      setCurrentResponse(text)
-      if (messageId) updateMessage(session.id, messageId, { content: text })
-    })
-    textBufferRef.current = textBuffer
-    setIsStreaming(true)
-    setError(null)
-    setCurrentResponse('')
-    setStreamingSessionId(session.id)
-
-    const requestedAgentMode = normalizeAgentMode(session.agentMode)
-    const isExplicitAgent = requestedAgentMode === 'agent'
-
-    // 显式 Agent 模式使用独立的研究轨迹，不借用直接检索的「意图解析」占位。
-    setThinking({
-      currentStage: isExplicitAgent ? 'agent' : 'intent',
-      thoughtData: isExplicitAgent ? { agent_mode: true } : {},
-      stages: {
-        intent: isExplicitAgent ? 'idle' : 'processing',
-        routing: 'idle',
-        retrieval: 'idle',
-        generation: 'idle',
-      },
-    })
-
     try {
+      const displayContent =
+        (content.trim() ? content : '') ||
+        (files?.length ? `（已上传 ${files.length} 个附件）` : '')
+
+      const attachments = await pendingAttachments.prepare(files, attachmentIds, true)
+      if (!isCurrentStream() || !getSessionById(session.id)) return
+
+      addMessage(session.id, {
+        role: 'user',
+        content: displayContent,
+        attachments,
+        mentions: mentions?.length ? persistMentions(mentions) : undefined,
+        scopeFiles: selectedFiles?.length ? selectedFiles : undefined,
+        scopeVersion: 2,
+      })
+      pendingAttachments.publish()
+      const savedMessages = getSessionById(session.id)?.messages
+      const userMessageId = savedMessages?.[savedMessages.length - 1]?.id
+      addMessage(session.id, {
+        role: 'assistant',
+        content: '',
+        citations: [],
+      })
+
+      const after = getSessionById(session.id)
+      const last = after?.messages[after.messages.length - 1]
+      currentMessageIdRef.current = last?.id ?? null
+      streamingSessionIdRef.current = session.id
+      currentUserQueryRef.current = content.trim() ? content : displayContent
+
+      const messageId = currentMessageIdRef.current
+      const textBuffer = createStreamTextBuffer((text) => {
+        if (!isCurrentStream()) return
+        setCurrentResponse(text)
+        if (messageId) updateMessage(session.id, messageId, { content: text })
+      })
+      textBufferRef.current = textBuffer
+      setIsStreaming(true)
+      setError(null)
+      setCurrentResponse('')
+      setStreamingSessionId(session.id)
+
+      const requestedAgentMode = normalizeAgentMode(session.agentMode)
+      const isExplicitAgent = requestedAgentMode === 'agent'
+
+      // 显式 Agent 模式使用独立的研究轨迹，不借用直接检索的「意图解析」占位。
+      setThinking({
+        currentStage: isExplicitAgent ? 'agent' : 'intent',
+        thoughtData: isExplicitAgent ? { agent_mode: true } : {},
+        stages: {
+          intent: isExplicitAgent ? 'idle' : 'processing',
+          routing: 'idle',
+          retrieval: 'idle',
+          generation: 'idle',
+        },
+      })
+
       streamRef.current = createChatStream(
         content,
         {
@@ -314,6 +299,8 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
       setError(err instanceof Error ? err.message : '发送失败')
       cleanup({ preserveError: true })
       throw err
+    } finally {
+      await pendingAttachments.discard()
     }
   }
 

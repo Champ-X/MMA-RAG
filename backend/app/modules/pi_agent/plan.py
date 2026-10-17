@@ -21,7 +21,15 @@ def bind_plan(items, request, previous, delivered, *, retained_spans=None):
     if len({item[0] for item in identities}) != len(items):
         raise ToolError("invalid_answer_plan", "回答要点编号不能重复。")
     if previous and identities[:len(previous["items"])] != _identities(previous["items"]):
-        raise ToolError("answer_plan_locked", "既有要点、顺序、用户原句、依据类型和来源类型不可删除或改写；可追加遗漏项，更新证据与进度。")
+        fields = ("id", "requirement", "quote", "modality", "basis")
+        changes = [{"index": index, "field": field, "expected": expected,
+                    "received": identities[index][offset] if index < len(identities) else None}
+                   for index, old in enumerate(_identities(previous["items"]))
+                   for offset, (field, expected) in enumerate(zip(fields, old))
+                   if index >= len(identities) or identities[index][offset] != expected]
+        raise ToolError("answer_plan_locked", "既有要点身份不可改写。请恢复下列字段的 expected 值，"
+                        "保留本次证据与进度更新；不要重复提交相同参数。差异："
+                        + json.dumps(changes, ensure_ascii=False))
     user_messages = [request["message"], *(entry["content"] for entry in request.get("history", [])
                                         if entry.get("role") == "user")]
     for item in items:

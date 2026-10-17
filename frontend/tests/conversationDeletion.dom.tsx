@@ -1,9 +1,7 @@
 /**
  * Real React/Radix DOM regressions without adding a production dependency.
  * From frontend/:
- * npm install --prefix /tmp/tessmora-sidebar-dom-tests --no-package-lock --no-save jsdom@26.1.0
- * ./node_modules/.bin/esbuild tests/conversationDeletion.dom.tsx --bundle --platform=node --format=cjs --packages=external --loader:.css=empty --outfile=/tmp/tessmora-sidebar-dom-tests/sidebar-tests.cjs
- * NODE_PATH="$PWD/node_modules:/tmp/tessmora-sidebar-dom-tests/node_modules" node --test /tmp/tessmora-sidebar-dom-tests/sidebar-tests.cjs
+ * npm run test:dom
  */
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, test } from 'node:test'
@@ -34,6 +32,7 @@ let container: HTMLDivElement
 let act: typeof import('react-dom/test-utils').act
 let Sidebar: typeof import('../src/components/layout/ConversationSidebar').ConversationSidebar
 const requireFrontendPackage = createRequire(`${process.cwd()}/package.json`)
+let deleteBehavior: () => Promise<void> = async () => {}
 
 const makeSessions = (): ChatSession[] => ['first', 'second', 'third'].map((id, index) => ({
   id, title: ['麝香甜瓜的起源', '中国古典园林', '下一次讨论'][index], messages: [],
@@ -53,7 +52,8 @@ function Harness() {
         session.id === id ? { ...session, title, titleEdited: true } : session))}
       onTogglePinnedConversation={(id) => setSessions(previous => previous.map(session =>
         session.id === id ? { ...session, isPinned: !session.isPinned } : session))}
-      onDeleteConversation={(id) => {
+      onDeleteConversation={async (id) => {
+        await deleteBehavior()
         setDeleted((previous) => [...previous, id])
         setSessions((previous) => previous.filter((session) => session.id !== id))
       }}
@@ -97,6 +97,7 @@ const openDeletion = async () => {
 }
 
 beforeEach(async () => {
+  deleteBehavior = async () => {}
   // Import DOM-aware libraries only after installing the browser environment.
   const client = requireFrontendPackage('react-dom/client') as typeof import('react-dom/client')
   act = (requireFrontendPackage('react-dom/test-utils') as typeof import('react-dom/test-utils')).act
@@ -180,4 +181,39 @@ test('each recent conversation has a decorative line icon and only the current o
     assert.equal(glyph.getAttribute('aria-hidden'), 'true')
     assert.equal(glyph.getAttribute('focusable'), 'false')
   }
+})
+
+test('pending cancellation keeps the conversation visible and prevents repeat deletion or dismissal', async () => {
+  let finish!: () => void
+  let attempts = 0
+  deleteBehavior = () => { attempts++; return new Promise<void>(resolve => { finish = resolve }) }
+  await openDeletion()
+  const confirm = dialog()!.querySelector<HTMLButtonElement>('.conversation-delete-confirm')!
+  await click(confirm)
+  assert.equal(confirm.disabled, true)
+  assert.match(confirm.textContent!, /正在停止任务/)
+  assert.equal(document.querySelectorAll('[data-conversation-select]').length, 3)
+  await click(confirm)
+  await act(async () => {
+    document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await settle()
+  })
+  assert.ok(dialog())
+  assert.equal(attempts, 1)
+  await act(async () => { finish(); await settle() })
+  assert.equal(dialog(), null)
+  assert.deepEqual(callbackIds('deleted'), ['first'])
+})
+
+test('cancellation failure preserves the target and exposes a retryable error', async () => {
+  deleteBehavior = async () => { throw new Error('服务暂时不可用') }
+  await openDeletion()
+  await click(dialog()!.querySelector<HTMLButtonElement>('.conversation-delete-confirm')!)
+  assert.match(dialog()!.querySelector('[role="alert"]')!.textContent!, /删除失败，会话已保留.*服务暂时不可用/)
+  assert.equal(document.querySelectorAll('[data-conversation-select]').length, 3)
+  assert.deepEqual(callbackIds('deleted'), [])
+  deleteBehavior = async () => {}
+  await click(dialog()!.querySelector<HTMLButtonElement>('.conversation-delete-confirm')!)
+  assert.equal(dialog(), null)
+  assert.deepEqual(callbackIds('deleted'), ['first'])
 })

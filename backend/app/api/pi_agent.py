@@ -31,10 +31,8 @@ def media_cookie(settings, timestamp):
     return f"{timestamp}.{signature}"
 
 
-def owner_for(request: Request):
+def workspace_owner_for(request: Request):
     settings = get_pi_settings()
-    if not settings.enabled:
-        raise HTTPException(503, "纯 Agent 模式尚未启用")
     if settings.api_token:
         expected = "Bearer " + settings.api_token.get_secret_value()
         bearer_ok = hmac.compare_digest(request.headers.get("authorization", ""), expected)
@@ -58,6 +56,12 @@ def owner_for(request: Request):
     # Current Tessmora is a single-user local workspace. This is not advertised
     # as application RBAC: remote deployments must supply a trusted identity.
     return settings.trusted_user_id or "local-workspace"
+
+
+def owner_for(request: Request):
+    if not get_pi_settings().enabled:
+        raise HTTPException(503, "纯 Agent 模式尚未启用")
+    return workspace_owner_for(request)
 
 
 def host():
@@ -161,6 +165,20 @@ async def read_run(run_id: str, owner=Depends(owner_for)):
         return host().store.get(run_id, owner=owner)
     except RunNotFound as error:
         raise translate(error) from None
+
+
+@router.delete("/sessions/{session_id}")
+async def close_session(session_id: str, owner=Depends(workspace_owner_for)):
+    # Disabling new Pi work must not disable closing ordinary/mixed sessions
+    # or cleaning up tasks accepted before the mode was disabled.
+    from app.modules.chat.session_work import stop_session_work
+    legacy_tasks = stop_session_work(owner, session_id, data_dir=get_pi_settings().data_dir)
+    async def close_all():
+        result, _ = await asyncio.gather(host().close_session(session_id, owner),
+                                        asyncio.gather(*legacy_tasks, return_exceptions=True))
+        return result
+    # A disconnected delete client must not interrupt either engine's cleanup.
+    return await asyncio.shield(close_all())
 
 
 @router.post("/runs/{run_id}/cancel")

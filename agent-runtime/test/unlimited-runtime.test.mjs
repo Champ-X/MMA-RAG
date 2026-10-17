@@ -46,7 +46,7 @@ test('research exceeds old model, tool, search and token allowances without clos
   assert.equal(turns, 66); assert.equal(searches, 65); assert.equal(accounted, 660000);
 });
 
-test('plain assistant responses can recover after more than two protocol reminders', async () => {
+test('plain assistant responses cannot continue indefinitely without submitting', async () => {
   let turns = 0;
   const runtime = createRuntime({ run_id: 'reminders', model, tools, prompt: 'Complete the task' }, {
     emit: () => {},
@@ -55,7 +55,7 @@ test('plain assistant responses can recover after more than two protocol reminde
     callHost: async method => method === 'model_request' ? { allowed: true }
       : method === 'model_usage' ? {} : { content: [{ type: 'text', text: 'ok' }], details: { terminal: 'completed' } },
   });
-  assert.equal((await runtime.run()).terminal, 'completed'); assert.equal(turns, 6);
+  assert.equal((await runtime.run()).code, 'answer_not_submitted'); assert.equal(turns, 3);
 });
 
 for (const maximum of [128000, 0]) test(`HTTP uses provider output capacity or its default (${maximum})`, async t => {

@@ -23,7 +23,7 @@ def model_endpoint(registry, name: str, capability: str):
 class ModelTransport:
     def __init__(self, registry, settings, ledger: UsageLedger, emit, *, client=None):
         self.registry, self.settings, self.ledger, self.emit = registry, settings, ledger, emit
-        self.client = client or httpx.AsyncClient(timeout=httpx.Timeout(None, connect=8),
+        self.client = client or httpx.AsyncClient(timeout=httpx.Timeout(connect=8, read=120, write=30, pool=8),
                                                  limits=httpx.Limits(max_connections=2, max_keepalive_connections=2))
         self._call_id = 0
         self._embeddings = {}

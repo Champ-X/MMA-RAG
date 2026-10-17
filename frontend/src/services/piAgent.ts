@@ -38,6 +38,14 @@ const serializeFiles = (files: ChatScopeFile[]) => files.map(file => ({ kb_id: f
   name: file.name, type: file.type || '', kb_name: file.kbName || '' }))
 
 export const piApi = {
+  async closeSession(sessionId: string): Promise<void> {
+    const result = await (await checked(await fetch(`${base()}/sessions/${encodeURIComponent(sessionId)}`,
+      { method: 'DELETE', headers: headers(), signal: AbortSignal.timeout(30000) }))).json()
+    if (result.closed !== true || !Array.isArray(result.runs)
+      || result.runs.some((run: PiRun) => !['completed', 'partial', 'needs_input', 'cancelled', 'failed'].includes(run.status))) {
+      throw new Error('后台任务尚未全部停止，请重试删除。')
+    }
+  },
   async list(sessionId: string): Promise<{ runs: PiRun[] }> {
     return (await checked(await fetch(`${base()}/runs?session_id=${encodeURIComponent(sessionId)}`,
       { headers: headers(), signal: AbortSignal.timeout(5000) }))).json()

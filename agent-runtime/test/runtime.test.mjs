@@ -232,3 +232,57 @@ test('long research archives tool bodies while preserving the question and tool-
   assert.equal((await runtime.run()).terminal, 'completed');
   assert.ok(events.some(event => event.type === 'context.compacted'));
 });
+
+for (const content of [[], [{ type: 'text', text: 'x' }], [toolCall('broken', 'search', { query: '' })]]) {
+  test(`truncated output stops after one paid response (${content[0]?.type || 'empty'})`, async () => {
+    let requests = 0, toolCalls = 0, settlements = 0;
+    const runtime = createRuntime(config, {
+      emit: () => {},
+      providerStream: () => { requests++; return response(content, 'length'); },
+      callHost: async method => {
+        if (method === 'model_request') return { allowed: true };
+        if (method === 'model_usage') { settlements++; return {}; }
+        toolCalls++; throw new Error('Truncated tools must never execute');
+      },
+    });
+    assert.equal((await runtime.run()).code, 'model_output_truncated');
+    assert.equal(requests, 1);
+    assert.equal(settlements, 1);
+    assert.equal(toolCalls, 0);
+  });
+}
+
+test('exhausted physical context is rejected before admission or provider billing', async () => {
+  let admissions = 0, requests = 0;
+  const runtime = createRuntime({ ...config, prompt: 'x'.repeat(160000) }, {
+    emit: () => {},
+    providerStream: () => { requests++; throw new Error('must not send'); },
+    callHost: async () => { admissions++; return { allowed: true }; },
+  });
+  assert.equal((await runtime.run()).code, 'context_capacity_exhausted');
+  assert.equal(admissions, 0);
+  assert.equal(requests, 0);
+});
+
+test('text without a submitted answer cannot request endless continuation', async () => {
+  let requests = 0;
+  const runtime = createRuntime(config, {
+    emit: () => {},
+    providerStream: () => { requests++; return response([{ type: 'text', text: 'working' }], 'stop'); },
+    callHost: async () => ({ allowed: true }),
+  });
+  assert.equal((await runtime.run()).code, 'answer_not_submitted');
+  assert.equal(requests, 3);
+});
+
+test('successful but identical tool results cannot drive an endless paid loop', async () => {
+  let requests = 0;
+  const runtime = createRuntime(config, {
+    emit: () => {},
+    providerStream: () => response([toolCall(`repeat-${++requests}`, 'search', { query: 'same' })]),
+    callHost: async method => method === 'model_request' ? { allowed: true } : method === 'model_usage' ? {}
+      : { content: [{ type: 'text', text: 'same evidence' }], details: { evidence_ids: [1] } },
+  });
+  assert.equal((await runtime.run()).code, 'repeated_tool_result');
+  assert.equal(requests, 4);
+});

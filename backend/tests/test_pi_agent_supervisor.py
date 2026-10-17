@@ -133,7 +133,7 @@ createInterface({input:process.stdin}).on('line',line=>{
 
 
 @pytest.mark.asyncio
-async def test_real_pi_recovers_after_more_than_three_identical_invalid_calls(tmp_path, monkeypatch):
+async def test_real_pi_stops_repeated_invalid_calls_before_more_paid_requests(tmp_path, monkeypatch):
     requests = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -170,13 +170,13 @@ async def test_real_pi_recovers_after_more_than_three_identical_invalid_calls(tm
         run = await host.start(request(), "alice")
         await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 8)
         saved = host.store.get(run["id"])
-        assert saved["status"] == "needs_input"
-        assert saved["state"]["answer"] == "需要哪份资料？"
-        assert len(requests) == saved["state"]["usage"]["model_requests"] == 6
-        assert saved["state"]["usage"]["model_tokens"] == 780
+        assert saved["status"] == "failed"
+        assert saved["state"]["code"] == "repeated_tool_failure"
+        assert len(requests) == saved["state"]["usage"]["model_requests"] == 3
+        assert saved["state"]["usage"]["model_tokens"] == 390
         events = host.store.events(run["id"])
         rejections = [e for e in events if e["type"] == "tool.rejected"]
-        assert len(rejections) == 5 and all(e["data"]["executed"] is False for e in rejections)
+        assert len(rejections) == 3 and all(e["data"]["executed"] is False for e in rejections)
         assert not any(e["type"] == "budget.finalizing" for e in events)
     finally:
         await host.close()
@@ -582,3 +582,178 @@ async def test_json_cannot_invent_local_attachment_descriptors(tmp_path, monkeyp
             assert not host.jobs
     finally:
         await host.close()
+
+
+@pytest.mark.asyncio
+async def test_session_delete_cancels_running_and_queued_workers_and_fences_late_creates(tmp_path, monkeypatch):
+    from app.modules.pi_agent.store import RunConflict, RunStore
+    script = "setInterval(() => {}, 1000);"
+    host = make_host(tmp_path, monkeypatch, script=script, max_concurrent_runs=1)
+    try:
+        running = await host.start(request('running-key'), 'alice')
+        await wait_until(lambda: running['id'] in host.processes)
+        process = host.processes[running['id']]
+        queued = await host.start(request('queued-key'), 'alice')
+        other = await host.start(request('other-key'), 'bob')
+        result = await host.close_session('session', 'alice')
+        assert result['closed'] is True
+        assert {r['status'] for r in result['runs']} == {'cancelled'}
+        assert process.returncode is not None
+        assert running['id'] not in host.processes
+        assert host.store.get(other['id'])['status'] in {'queued', 'running'}
+        # Both retrying the original create and delayed new requests are fenced.
+        for key in ['running-key', 'late-upload']:
+            with pytest.raises(RunConflict, match='已删除'):
+                await host.start(request(key), 'alice')
+        assert (await host.close_session('session', 'alice'))['closed'] is True
+        restored = RunStore(host.store.path)
+        with pytest.raises(RunConflict, match='已删除'):
+            restored.create(owner='alice', request=request('after-restart').model_dump(), config={})
+        assert restored.events(running['id']), 'Deletion must preserve billing and cancellation evidence'
+    finally:
+        await host.close()
+
+
+@pytest.mark.asyncio
+async def test_delete_before_creation_blocks_orphans_and_api_waits_for_terminal_state(tmp_path, monkeypatch):
+    from app.api import pi_agent as api
+    host = make_host(tmp_path, monkeypatch)
+    monkeypatch.setattr(api, 'host', lambda: host)
+    monkeypatch.setattr(api, 'get_pi_settings', lambda: host.settings)
+    app = FastAPI()
+    app.include_router(api.router, prefix='/api/pi')
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://localhost') as client:
+            result = await client.delete('/api/pi/sessions/session')
+            assert result.status_code == 200
+            assert result.json() == {'session_id': 'session', 'closed': True, 'runs': []}
+            late = await client.post('/api/pi/runs', json=request('late-key').model_dump())
+            assert late.status_code == 409
+            assert not host.jobs
+    finally:
+        await host.close()
+
+
+@pytest.mark.asyncio
+async def test_session_deletion_closes_real_provider_connection_and_preserves_unknown_usage(tmp_path, monkeypatch):
+    received, disconnected = threading.Event(), threading.Event()
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers['Content-Length']))
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.end_headers()
+            self.wfile.write(b': waiting for model output\n\n')
+            self.wfile.flush()
+            received.set()
+            self.connection.settimeout(5)
+            if self.rfile.read(1) == b'':
+                disconnected.set()
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    class LocalRegistry(Registry):
+        def get_provider(self, name):
+            return SimpleNamespace(api_key='local-test-only', base_url=f'http://127.0.0.1:{server.server_port}')
+
+    host = make_host(tmp_path, monkeypatch, yield_to_legacy=False)
+    host.registry, host.worker = LocalRegistry(), WORKER
+    try:
+        run = await host.start(request(), 'alice')
+        await wait_until(received.is_set)
+        process = host.processes[run['id']]
+        result = await asyncio.wait_for(host.close_session('session', 'alice'), 4)
+        await wait_until(disconnected.is_set)
+        assert result['runs'] == [{'id': run['id'], 'status': 'cancelled'}]
+        assert process.returncode is not None and not host.jobs and not host.processes
+        saved = host.store.get(run['id'])
+        assert saved['state']['usage']['model_requests'] == 1
+        assert saved['state']['usage']['unknown_usage_requests'] == 1
+        assert saved['state']['usage']['model_tokens'] == 0
+    finally:
+        await host.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+@pytest.mark.asyncio
+async def test_disabled_pi_still_allows_authenticated_session_closure(tmp_path, monkeypatch):
+    from app.api import pi_agent as api
+    from app.modules.pi_agent.store import RunConflict
+    host = make_host(tmp_path, monkeypatch, enabled=False, api_token='test-only-token')
+    monkeypatch.setattr(api, 'host', lambda: host)
+    monkeypatch.setattr(api, 'get_pi_settings', lambda: host.settings)
+    app = FastAPI()
+    app.include_router(api.router, prefix='/api/pi')
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://localhost') as client:
+            assert (await client.delete('/api/pi/sessions/session')).status_code == 401
+            headers = {'Authorization': 'Bearer test-only-token'}
+            result = await client.delete('/api/pi/sessions/session', headers=headers)
+            assert result.status_code == 200
+            assert result.json() == {'session_id': 'session', 'closed': True, 'runs': []}
+            assert (await client.post('/api/pi/runs', json=request().model_dump(), headers=headers)).status_code == 503
+            with pytest.raises(RunConflict, match='已删除'):
+                host.store.create(owner='configured-workspace', request=request().model_dump(), config={})
+    finally:
+        await host.close()
+
+
+@pytest.mark.asyncio
+async def test_incident_plan_modality_loop_is_stopped_with_real_worker_and_host(tmp_path, monkeypatch):
+    requests = []
+    original = [{"id": "poster", "requirement": "挑选海报", "quote": "比较结果", "modality": "any",
+                 "basis": "sources", "status": "pending", "evidence_ids": [], "supporting_evidence_ids": [],
+                 "input_quotes": [], "gap": ""}]
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_POST(self):
+            requests.append(json.loads(self.rfile.read(int(self.headers['Content-Length']))))
+            items = [dict(original[0], modality='any' if len(requests) == 1 else 'image')]
+            frames = [
+                {'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': 0, 'id': f'plan-{len(requests)}',
+                    'type': 'function', 'function': {'name': 'update_answer_plan', 'arguments': json.dumps({'items': items})}}]}}]},
+                {'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}],
+                 'usage': {'prompt_tokens': 100, 'completion_tokens': 30, 'total_tokens': 130}},
+            ]
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.end_headers()
+            self.wfile.write((''.join('data: ' + json.dumps(f) + '\n\n' for f in frames) + 'data: [DONE]\n\n').encode())
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    class LocalRegistry(Registry):
+        def get_provider(self, name):
+            return SimpleNamespace(api_key='local-test-only', base_url=f'http://127.0.0.1:{server.server_port}')
+
+    host = make_host(tmp_path, monkeypatch, answer_plan_enabled=True, yield_to_legacy=False)
+    host.registry, host.worker = LocalRegistry(), WORKER
+    try:
+        run = await host.start(request(), 'alice')
+        await asyncio.wait_for(asyncio.gather(*host.jobs.values()), 8)
+        saved = host.store.get(run['id'])
+        assert saved['status'] == 'failed' and saved['state']['code'] == 'repeated_tool_failure'
+        assert len(requests) == saved['state']['usage']['model_requests'] == 4
+        assert saved['state']['answer_plan']['items'][0]['modality'] == 'any'
+        failures = [e for e in host.store.events(run['id']) if e['type'] == 'tool.failed']
+        assert len(failures) == 3
+        assert all(e['data']['code'] == 'answer_plan_locked' for e in failures)
+        assert all('"expected": "any"' in e['data']['message'] for e in failures)
+    finally:
+        await host.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

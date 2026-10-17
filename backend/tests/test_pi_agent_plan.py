@@ -132,3 +132,27 @@ async def test_large_plan_updates_remain_available_without_output_or_retention_c
     assert not result.get("isError")
     assert len(json.loads(result["content"][0]["text"])["retained_evidence"][0]["content"]) == 40000
     assert store.get(run)["state"]["answer_plan"] == tools.answer_plan
+
+
+@pytest.mark.asyncio
+async def test_locked_plan_feedback_identifies_exact_fields_and_can_be_repaired(tmp_path):
+    tools, store, run, _, sources = make_tools(tmp_path)
+    original = items()
+    for item in original:
+        item['modality'] = 'any'
+    await tools.execute('initial', 'update_answer_plan', {'items': original})
+    for s in sources:
+        await tools.execute(s.id, 'read_source', {'source_id': s.id})
+    changed = items()
+    changed[0].update(status='ready', evidence_ids=[1])
+    changed[1].update(status='ready', evidence_ids=[2])
+    failure = await tools.execute('bad', 'update_answer_plan', {'items': changed})
+    feedback = failure['details']['message']
+    assert failure['details']['code'] == 'answer_plan_locked'
+    assert '"field": "modality"' in feedback and '"expected": "any"' in feedback
+    assert '"received": "image"' in feedback and '"received": "audio"' in feedback
+    for item in changed:
+        item['modality'] = 'any'
+    repaired = await tools.execute('fixed', 'update_answer_plan', {'items': changed})
+    assert not repaired.get('isError')
+    assert all(item['status'] == 'ready' for item in store.get(run)['state']['answer_plan']['items'])

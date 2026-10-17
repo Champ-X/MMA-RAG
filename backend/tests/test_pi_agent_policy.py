@@ -76,6 +76,22 @@ def test_work_continues_past_all_former_cumulative_allowances():
     assert used["tool_output_chars"] == 10000000
 
 
+def test_pending_receipts_remain_unknown_without_double_counting_late_settlement():
+    ledger = UsageLedger()
+    ledger.start_model(1)
+    ledger.start_model(2)
+    ledger.settle_model(1, {"totalTokens": 1234})
+    assert ledger.snapshot()["model_tokens"] == 1234
+    assert ledger.snapshot()["unknown_usage_requests"] == 1
+    assert ledger.snapshot()["unknown_usage_requests"] == 1, "Reading usage must not settle pending calls"
+    ledger.settle_model(2, {"totalTokens": 100})
+    assert ledger.snapshot()["unknown_usage_requests"] == 0
+    assert ledger.snapshot()["model_tokens"] == 1334
+    ledger.start_model(3)
+    ledger.settle_model(3, None)
+    assert ledger.snapshot()["unknown_usage_requests"] == 1
+
+
 def test_parallel_model_calls_have_independent_idempotent_accounting():
     ledger = UsageLedger()
     for turn in range(-100, 100):

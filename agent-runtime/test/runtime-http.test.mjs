@@ -522,15 +522,16 @@ async function failureScenario(t, batches, hostTool = async () => ({
   return { result: await runtime.run(), requests, calls, settlements, events };
 }
 
-test('five identical invalid calls can be repaired on a later model turn', async t => {
+test('identical schema failures stop after three rounds without executing tools', async t => {
   const run = await failureScenario(t, [...Array.from({ length: 5 }, () => [['set_answer_requirements', {}]]), [['submit_answer', { answer: 'repaired' }]]]);
-  assert.equal(run.result.terminal, 'completed');
+  assert.equal(run.result.terminal, 'failed');
+  assert.equal(run.result.code, 'repeated_tool_failure');
   assert.equal(run.result.answer, undefined);
-  assert.equal(run.requests.length, 6);
-  assert.equal(run.settlements.length, 6);
-  assert.equal(run.calls.length, 1);
+  assert.equal(run.requests.length, 3);
+  assert.equal(run.settlements.length, 3);
+  assert.equal(run.calls.length, 0);
   const rejections = run.events.filter(e => e.type === 'tool.rejected');
-  assert.equal(rejections.length, 5);
+  assert.equal(rejections.length, 3);
   assert.ok(rejections.every(e => e.data.executed === false && /Received arguments:\n\{\}/.test(e.data.message)));
 });
 
@@ -546,14 +547,15 @@ test('repairing failed nullable registration arguments still reaches the host un
   assert.ok(run.requests[2].messages.some(m => m.role === 'tool' && /Validation failed/.test(m.content)));
 });
 
-test('five host failures keep feedback and allow a subsequent successful call', async t => {
+test('repeated host failures stop while preserving original feedback and billed usage', async t => {
   const run = await failureScenario(t, [...Array.from({ length: 5 }, () => [['search', { query: 'same' }]]), [['submit_answer', { answer: 'repaired' }]]],
     async params => params.name === 'submit_answer' ? { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed' } } : ({ isError: true, content: [{ type: 'text', text: 'query backend unavailable' }],
       details: { code: 'tool_failed', retryable: true } }));
-  assert.equal(run.result.terminal, 'completed');
-  assert.equal(run.requests.length, 6);
-  assert.equal(run.calls.length, 6);
-  assert.equal(run.settlements.length, 6);
+  assert.equal(run.result.terminal, 'failed');
+  assert.equal(run.result.code, 'repeated_tool_failure');
+  assert.equal(run.requests.length, 3);
+  assert.equal(run.calls.length, 3);
+  assert.equal(run.settlements.length, 3);
   assert.ok(run.requests[2].messages.some(m => m.role === 'tool' && m.content === 'query backend unavailable'));
   assert.equal(run.events.filter(e => e.type === 'tool.rejected').length, 0, 'Dispatched calls use the host trace');
 });
@@ -570,21 +572,69 @@ test('repairing failed calls is measured per round and ignores object key order'
     [['search', { a: 1, b: 2 }]], [['search', { b: 2, a: 1 }]], [['search', { a: 1, b: 2 }]],
     [['submit_answer', { answer: 'should not run' }]],
   ]);
-  assert.equal(repeated.result.terminal, 'completed');
-  assert.equal(repeated.requests.length, 4);
+  assert.equal(repeated.result.terminal, 'failed');
+  assert.equal(repeated.requests.length, 3);
 });
 
-test('successful tool progress or changed arguments allow further repairs', async t => {
-  const failure = [['search', {}]];
-  const run = await failureScenario(t, [failure, failure,
-    [...failure, ['search', { query: 'real progress' }]], failure, failure,
-    [['search', { wrong: 'changed' }]], failure, failure,
+test('unrelated successful calls cannot reset repeated local schema rejections', async t => {
+  const run = await failureScenario(t, Array.from({ length: 5 }, (_, n) => [
+    ['search', {}], ['search', { query: `research ${n}` }],
+  ]), async () => ({ content: [{ type: 'text', text: 'source received' }], details: { evidence_ids: [1] } }));
+  assert.equal(run.result.code, 'repeated_tool_failure');
+  assert.equal(run.requests.length, 3);
+  assert.equal(run.settlements.length, 3);
+  assert.deepEqual(run.calls.map(call => call.args.query), ['research 0', 'research 1', 'research 2']);
+  assert.equal(run.events.filter(event => event.type === 'tool.rejected').length, 3);
+});
+
+test('unrelated successful calls cannot reset repeated nonretryable host failures', async t => {
+  const run = await failureScenario(t, Array.from({ length: 5 }, (_, n) => [
+    ['search', { query: 'unchanged invalid request' }], ['search', { query: `research ${n}` }],
+  ]), async params => params.args.query === 'unchanged invalid request'
+    ? { isError: true, content: [{ type: 'text', text: 'The request is locked; repair its arguments' }],
+      details: { code: 'request_locked', retryable: false } }
+    : { content: [{ type: 'text', text: '{"sources":[],"total":0}' }] });
+  assert.equal(run.result.code, 'repeated_tool_failure');
+  assert.equal(run.requests.length, 3);
+  assert.equal(run.settlements.length, 3);
+  assert.equal(run.calls.length, 6);
+});
+
+test('retryable failures separated by healthy research do not accumulate across the run', async t => {
+  const batches = Array.from({ length: 6 }, (_, n) => [
+    [['search', { query: 'temporarily unavailable' }]], [['search', { query: `research ${n}` }]],
+  ]).flat();
+  batches.push([['submit_answer', { answer: 'accepted' }]]);
+  const run = await failureScenario(t, batches, async params => params.name === 'submit_answer'
+    ? { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed' } }
+    : params.args.query === 'temporarily unavailable'
+      ? { isError: true, content: [{ type: 'text', text: 'Temporary network failure' }],
+        details: { code: 'tool_failed', retryable: true } }
+      : { content: [{ type: 'text', text: `New evidence for ${params.args.query}` }] });
+  assert.equal(run.result.terminal, 'completed');
+  assert.equal(run.requests.length, 13);
+  assert.equal(run.settlements.length, 13);
+});
+
+test('success of the same operation resolves its earlier deterministic rejections', async t => {
+  let attempts = 0;
+  const run = await failureScenario(t, [
+    ...Array.from({ length: 5 }, () => [['search', { query: 'same operation' }]]),
     [['submit_answer', { answer: 'accepted' }]],
   ], async params => params.name === 'submit_answer'
     ? { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed' } }
-    : { content: [{ type: 'text', text: 'source received' }], details: { evidence_ids: [1] } });
+    : ++attempts === 3
+      ? { content: [{ type: 'text', text: 'prerequisite resolved, operation succeeded' }] }
+      : { isError: true, content: [{ type: 'text', text: 'missing prerequisite' }],
+        details: { code: 'prerequisite_missing', retryable: false } });
   assert.equal(run.result.terminal, 'completed');
-  assert.equal(run.requests.length, 9);
-  assert.deepEqual(run.calls.map(call => call.name), ['search', 'submit_answer']);
-  assert.equal(run.settlements.length, 9);
+  assert.equal(run.requests.length, 6);
+});
+
+test('changing invalid arguments cannot evade the no-progress guard indefinitely', async t => {
+  const batches = Array.from({ length: 12 }, (_, n) => [['search', { invalid: n }]]);
+  const run = await failureScenario(t, batches);
+  assert.equal(run.result.code, 'tool_failure_loop');
+  assert.equal(run.requests.length, 8);
+  assert.equal(run.calls.length, 0);
 });

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { chatApi } from '@/services/api_client';
+import { piApi } from '@/services/piAgent';
+import { cancelSessionWork } from '@/lib/sessionWork';
 import { collectUserAttachmentIds, deleteAttachmentBlobs } from '@/lib/chatAttachmentBlobStore';
 import { createChatPersistence } from '@/lib/chatPersistence';
 import type { AgentRoundTrace, CitationReference, StageTimings } from '@/types/sse';
@@ -199,7 +201,7 @@ interface ChatStore {
   
   switchSession: (sessionId: string) => void;
   
-  deleteSession: (sessionId: string) => void;
+  deleteSession: (sessionId: string) => Promise<void>;
   
   updateSessionTitle: (sessionId: string, title: string) => void;
   toggleSessionPinned: (sessionId: string) => void;
@@ -358,7 +360,11 @@ export const useChatStore = create<ChatStore>()(
       },
 
       // 删除会话（若删光则自动新建一个，保证始终有会话）
-      deleteSession: (sessionId) => {
+      deleteSession: async (sessionId) => {
+        cancelSessionWork(sessionId);
+        // The server also closes creation races and runs missing from this cache.
+        // Preserve the conversation and its stop control if cancellation fails.
+        await piApi.closeSession(sessionId);
         set((state) => {
           const doomed = state.sessions.find((s) => s.id === sessionId)
           cleanupMessageAttachments(doomed?.messages)

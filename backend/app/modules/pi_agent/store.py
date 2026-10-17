@@ -48,6 +48,10 @@ class RunStore:
                     UNIQUE(owner, request_key)
                 );
                 CREATE INDEX IF NOT EXISTS pi_session_runs ON pi_runs(owner, session_id, created_at);
+                CREATE TABLE IF NOT EXISTS pi_closed_sessions (
+                    owner TEXT NOT NULL, session_id TEXT NOT NULL, closed_at REAL NOT NULL,
+                    PRIMARY KEY(owner, session_id)
+                );
                 CREATE TABLE IF NOT EXISTS pi_events (
                     run_id TEXT NOT NULL REFERENCES pi_runs(id) ON DELETE CASCADE,
                     seq INTEGER NOT NULL, event_json TEXT NOT NULL, PRIMARY KEY(run_id, seq)
@@ -101,6 +105,9 @@ class RunStore:
     def create(self, *, owner: str, request: dict, config: dict) -> tuple[dict, bool]:
         digest = fingerprint(request)
         with self._connection(write=True) as db:
+            if db.execute("SELECT 1 FROM pi_closed_sessions WHERE owner=? AND session_id=?",
+                          (owner, request["session_id"])).fetchone():
+                raise RunConflict("此会话已删除，不能继续创建任务。请在新会话中重试。")
             old = db.execute("SELECT * FROM pi_runs WHERE owner=? AND request_key=?",
                              (owner, request["client_request_id"])).fetchone()
             if old:
@@ -144,6 +151,12 @@ class RunStore:
             rows = db.execute("SELECT * FROM pi_runs WHERE owner=? AND session_id=? ORDER BY created_at DESC",
                               (owner, session_id)).fetchall()
             return [self._decode(row) for row in rows]
+
+    def close_session(self, owner: str, session_id: str):
+        # Keep billing/evidence records, but reject even delayed create retries.
+        with self._connection(write=True) as db:
+            db.execute("INSERT OR IGNORE INTO pi_closed_sessions VALUES (?,?,?)",
+                       (owner, session_id, time.time()))
 
     def record_answer_requirements(self, run_id: str, requirements: dict, *, parent_span_id=None):
         """Register once, atomically with the event used by live UI and replay."""

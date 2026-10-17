@@ -160,12 +160,12 @@ export function AppLayout() {
     navigate(`/chat/${encodeURIComponent(sessionId)}`)
   }
 
-  const handleDeleteConversation = (sessionId: string) => {
-    const wasActive = activeSessionId === sessionId
-    const nextSession = sessions.find((session) => session.id !== sessionId)
-    deleteSession(sessionId)
-    if (wasActive) {
-      navigate(nextSession ? `/chat/${encodeURIComponent(nextSession.id)}` : '/')
+  const handleDeleteConversation = async (sessionId: string) => {
+    await deleteSession(sessionId)
+    // The user can change routes while the server drains the cancelled worker.
+    if (window.location.pathname === `/chat/${encodeURIComponent(sessionId)}`) {
+      const nextSessionId = useChatStore.getState().activeSessionId
+      navigate(nextSessionId ? `/chat/${encodeURIComponent(nextSessionId)}` : '/')
     }
   }
 

@@ -47,7 +47,7 @@ interface ConversationSidebarProps {
   onToggleTheme: () => void
   onNewConversation: () => void
   onSelectConversation: (sessionId: string) => void
-  onDeleteConversation: (sessionId: string) => void
+  onDeleteConversation: (sessionId: string) => void | Promise<void>
   onRenameConversation: (sessionId: string, title: string) => void
   onTogglePinnedConversation: (sessionId: string) => void
   onNavigate: (view: Exclude<SidebarView, 'chat'>) => void
@@ -281,6 +281,8 @@ export function ConversationSidebar({
   const deleteDialogId = useId()
   const [searchOpen, setSearchOpen] = useState(false)
   const [pendingDeletion, setPendingDeletion] = useState<{ id: string; title: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [pendingRename, setPendingRename] = useState<string | null>(null)
   const [renameTitle, setRenameTitle] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
@@ -404,7 +406,7 @@ export function ConversationSidebar({
     setActiveSearchResult(null)
   }
 
-  const confirmConversationDeletion = () => {
+  const confirmConversationDeletion = async () => {
     if (!pendingDeletion || deleteConfirmedRef.current) return
     // The list can change while confirmation is open. Never delete a stale target.
     if (!sessions.some((session) => session.id === pendingDeletion.id)) {
@@ -412,8 +414,17 @@ export function ConversationSidebar({
       return
     }
     deleteConfirmedRef.current = true
-    onDeleteConversation(pendingDeletion.id)
-    setPendingDeletion(null)
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await onDeleteConversation(pendingDeletion.id)
+      setPendingDeletion(null)
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : '无法停止后台任务，会话已保留，请重试。')
+    } finally {
+      deleteConfirmedRef.current = false
+      setDeleting(false)
+    }
   }
 
   const requestConversationRename = (session: ChatSession, trigger: HTMLButtonElement | null) => {
@@ -423,6 +434,7 @@ export function ConversationSidebar({
   }
 
   const requestConversationDeletion = (session: ChatSession, trigger: HTMLButtonElement | null) => {
+    setDeleteError(null)
     deleteReturnFocusRef.current = trigger
     deleteConfirmedRef.current = false
     setPendingDeletion({ id: session.id, title: getConversationTitle(session) })
@@ -836,13 +848,16 @@ export function ConversationSidebar({
         </Dialog.Portal>
       </Dialog.Root>
 
-      <Dialog.Root open={pendingDeletion !== null} onOpenChange={(open) => { if (!open) setPendingDeletion(null) }}>
+      <Dialog.Root open={pendingDeletion !== null} onOpenChange={(open) => { if (!open && !deleting) setPendingDeletion(null) }}>
         <Dialog.Portal>
           <Dialog.Overlay className="conversation-delete-overlay" />
           <Dialog.Content
             id={deleteDialogId}
             role="alertdialog"
             className="conversation-delete-dialog"
+            aria-busy={deleting}
+            onEscapeKeyDown={(event) => { if (deleting) event.preventDefault() }}
+            onPointerDownOutside={(event) => { if (deleting) event.preventDefault() }}
             onOpenAutoFocus={(event) => { event.preventDefault(); deleteCancelRef.current?.focus() }}
             onCloseAutoFocus={(event) => {
               event.preventDefault()
@@ -862,18 +877,20 @@ export function ConversationSidebar({
             </div>
             <Dialog.Description asChild>
               <div>
-                <p className="conversation-delete-description">将移除此会话及其消息记录，此操作无法撤销。</p>
+                <p className="conversation-delete-description">将先停止此会话中运行的任务，再移除会话及其消息记录，此操作无法撤销。</p>
                 <div className="conversation-delete-target">
                   <MessageSquare size={16} strokeWidth={1.6} aria-hidden />
                   <span>{pendingDeletion?.title}</span>
                 </div>
               </div>
             </Dialog.Description>
+            {deleteError && <p role="alert" className="conversation-delete-description text-red-600">删除失败，会话已保留。{deleteError}</p>}
             <div className="conversation-delete-actions">
               <Dialog.Close asChild>
-                <button ref={deleteCancelRef} type="button" className="conversation-delete-cancel">取消</button>
+                <button ref={deleteCancelRef} type="button" className="conversation-delete-cancel" disabled={deleting}>取消</button>
               </Dialog.Close>
-              <button type="button" className="conversation-delete-confirm" onClick={confirmConversationDeletion}>删除会话</button>
+              <button type="button" className="conversation-delete-confirm" disabled={deleting}
+                onClick={() => void confirmConversationDeletion()}>{deleting ? '正在停止任务…' : '删除会话'}</button>
             </div>
           </Dialog.Content>
         </Dialog.Portal>

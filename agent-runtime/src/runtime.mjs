@@ -3,6 +3,15 @@ import { stream } from '@earendil-works/pi-ai/api/openai-completions';
 import { getBuiltinModel } from '@earendil-works/pi-ai/providers/all';
 import { estimateContextTokens, estimateMessageTokens } from '@earendil-works/pi-ai/utils/estimate';
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
+import { createHash } from 'node:crypto';
+import { fetchWithIdleTimeout } from './transport.mjs';
+
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object') return Object.fromEntries(
+    Object.keys(value).sort().map(key => [key, canonical(value[key])]));
+  return value;
+}
 
 function latestDraftCallIds(messages, recordedDrafts) {
   const latest = messages.findLast(message => message.role === 'assistant'
@@ -232,9 +241,9 @@ function providerStreamDefault(model, context, options) {
   // max_tokens and use its native default. No application response-token cap.
   const transport = options.fetch || globalThis.fetch;
   return stream(model, context, { ...options,
-    // The SDK installs a whole-request timer. The run's AbortSignal owns
-    // cancellation; a healthy slow request is allowed to finish.
-    fetch: (url, init) => transport(url, { ...init, signal: options.signal }),
+    // Keep explicit cancellation and an inactivity watchdog, without imposing
+    // a total duration limit on healthy streaming research.
+    fetch: (url, init) => fetchWithIdleTimeout(transport, url, init, options.signal),
     reasoningEffort: options.reasoning === 'off' ? undefined : options.reasoning });
 }
 
@@ -248,6 +257,12 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
   let answerPlan;
   let turn = 0;
   let activeModelCall = null;
+  const repeatedFailures = new Map();
+  const deterministicFailures = new Map();
+  let unsubmittedTurns = 0;
+  let failedRounds = 0;
+  const successfulOutcomes = new Set();
+  let unchangedRounds = 0;
   const drafts = new Map();
   const dispatched = new Set();
   const recordedDrafts = new Map();
@@ -341,6 +356,16 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
             ...(projection.indexes.length ? { archived_evidence_indexes: projection.indexes } : {}),
             ...(projection.retainedIds.length ? { archived_retained_evidence_ids: projection.retainedIds } : {}) });
         }
+        const available = model.contextWindow
+          ? model.contextWindow - (projection.tokens ?? estimateContextTokens(context).tokens) : 0;
+        // A full context cannot be repaired by purchasing another one-token
+        // response. Require room for an actionable tool call before admission.
+        const reserve = Math.min(model.maxTokens || 1024, 1024, Math.max(1, Math.floor(model.contextWindow * 0.05)));
+        if (model.contextWindow && available < reserve) {
+          finalResult = { terminal: 'failed', code: 'context_capacity_exhausted',
+            message: '上下文整理后仍没有足够的回答空间，任务已停止以避免重复消耗。请缩小范围或在新会话中继续。' };
+          return errorStream(requestedModel, finalResult.message);
+        }
         const requestTurn = ++turn;
         // Host accounting and resource scheduling are independent of duration,
         // cumulative usage and the number of previous tool/model calls.
@@ -351,7 +376,6 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
         await emit('model.started', { turn, model: requestedModel.id, provider: requestedModel.provider,
           thinking_level: config.thinking_level || 'off' });
         activeModelCall = { turn, startedAt: performance.now() };
-        const available = model.contextWindow ? Math.max(1, model.contextWindow - (projection.tokens ?? estimateContextTokens(context).tokens)) : 0;
         const maxTokens = model.maxTokens ? (available ? Math.min(model.maxTokens, available) : model.maxTokens) : undefined;
         return providerStream(requestedModel, context, {
           ...options, apiKey: config.api_key, ...(maxTokens ? { maxTokens } : {}),
@@ -366,11 +390,85 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
     finishTurn: async ({ message, toolResults }) => {
       if (finalResult) return { action: 'end' };
       if (['error', 'aborted'].includes(message.stopReason)) return;
+      if (message.stopReason === 'length') {
+        finalResult = { terminal: 'failed', code: 'model_output_truncated',
+          message: '模型输出被截断，无法完成有效调用；已停止自动续跑，避免重复计费。已取得的证据与过程仍可查看。' };
+        return { action: 'end' };
+      }
+      // This is a lack-of-progress guard, not a total turn/token allowance.
+      // Compare canonical arguments and feedback, ignoring generated call IDs.
+      const failed = toolResults.filter(result => result.isError);
+      let progressed = false;
+      for (const result of toolResults.filter(result => !result.isError)) {
+        const call = message.content.find(part => part.type === 'toolCall' && part.id === result.toolCallId);
+        const operation = createHash('sha256').update(JSON.stringify(canonical({
+          name: result.toolName, args: call?.arguments,
+        }))).digest('hex');
+        // Only success of this operation resolves its prior deterministic
+        // rejection. Unrelated research cannot make invalid arguments valid.
+        deterministicFailures.delete(operation);
+        const key = createHash('sha256').update(JSON.stringify(canonical({
+          name: result.toolName, args: call?.arguments, content: result.content,
+        }))).digest('hex');
+        if (!successfulOutcomes.has(key)) progressed = true;
+        successfulOutcomes.add(key);
+      }
+      if (progressed) unchangedRounds = 0;
+      else if (toolResults.some(result => !result.isError) && ++unchangedRounds >= 3) {
+        finalResult = { terminal: 'failed', code: 'repeated_tool_result',
+          message: '任务重复执行相同操作且结果没有变化，已停止自动调用。已取得的证据与过程仍可查看。' };
+        return { action: 'end' };
+      }
+      if (progressed) { repeatedFailures.clear(); failedRounds = 0; }
+      else if (failed.length && ++failedRounds >= 8) {
+        finalResult = { terminal: 'failed', code: 'tool_failure_loop',
+          message: '工具连续失败且未取得新结果，任务已停止以避免持续消耗。请检查服务或调整请求后重试。' };
+        return { action: 'end' };
+      }
+      const seen = new Set();
+      for (const result of failed) {
+        const call = message.content.find(part => part.type === 'toolCall' && part.id === result.toolCallId);
+        // The pinned SDK emits this validation prefix before execute(), so it
+        // cannot be confused with a transient error returned by the host.
+        const schemaRejected = call && !dispatched.has(call.id) && result.content.some(part =>
+          part.type === 'text' && part.text.startsWith(`Validation failed for tool "${call.name}":\n`));
+        const deterministic = result.details?.retryable === false || schemaRejected;
+        if (progressed && !deterministic) continue;
+        const signature = createHash('sha256').update(JSON.stringify(canonical({
+          name: result.toolName, args: call?.arguments, feedback: result.details?.code
+            || result.content.filter(part => part.type === 'text').map(part => part.text.split('Received arguments:')[0]),
+        }))).digest('hex');
+        if (seen.has(signature)) continue;
+        seen.add(signature);
+        let failures = repeatedFailures;
+        if (deterministic) {
+          const operation = createHash('sha256').update(JSON.stringify(canonical({
+            name: result.toolName, args: call?.arguments,
+          }))).digest('hex');
+          if (!deterministicFailures.has(operation)) deterministicFailures.set(operation, new Map());
+          failures = deterministicFailures.get(operation);
+        }
+        const count = (failures.get(signature) || 0) + 1;
+        failures.set(signature, count);
+        if (count >= 3) {
+          finalResult = { terminal: 'failed', code: 'repeated_tool_failure',
+            message: deterministic
+              ? `工具 ${result.toolName} 使用相同参数反复收到不可重试的拒绝，任务已停止以避免重复消耗。请按工具反馈修正请求。`
+              : `工具 ${result.toolName} 使用相同参数连续失败且没有取得进展，任务已停止以避免重复消耗。请查看工具反馈后重试。` };
+          return { action: 'end' };
+        }
+      }
       if (!message.content.some((part) => part.type === 'toolCall')) {
+        if (++unsubmittedTurns >= 3) {
+          finalResult = { terminal: 'failed', code: 'answer_not_submitted',
+            message: '模型多次返回文本但未提交有效结果，任务已停止以避免空转。' };
+          return { action: 'end' };
+        }
         agent.state.messages.push({ role: 'user', timestamp: Date.now(),
           content: '请将最终回答通过 submit_answer 提交，或使用工具继续完成任务。当前文本尚未作为最终结果保存。' });
         return { action: 'continue' };
       }
+      unsubmittedTurns = 0;
     },
   });
 

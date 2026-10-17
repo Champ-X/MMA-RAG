@@ -109,7 +109,9 @@ class UsageLedger:
 
     def snapshot(self):
         return {"model_requests": self.model_requests, "model_tokens": self.model_tokens,
-                "unknown_usage_requests": self.unknown_usage_requests, "tool_calls": self.tool_calls,
+                # Cancellation or worker failure can prevent a provider receipt
+                # from arriving. In-flight requests are not known zero usage.
+                "unknown_usage_requests": self.unknown_usage_requests + len(self._pending), "tool_calls": self.tool_calls,
                 "searches": self.searches, "media_calls": self.media_calls,
                 "media_input_bytes": self.media_input_bytes, "media_seconds": self.media_seconds,
                 "tool_output_chars": self.tool_output_chars,

@@ -4,7 +4,7 @@
 """
 
 from fastapi import APIRouter, HTTPException, Request, Query, File, Form, UploadFile
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from typing import Dict, Any, List, Optional, Tuple, AsyncGenerator
 from pydantic import BaseModel, Field
 import json
@@ -12,6 +12,7 @@ import asyncio
 import uuid
 import time
 from datetime import datetime
+from contextlib import aclosing
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -36,6 +37,7 @@ from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
 from app.modules.chat.attachment_summarizer import MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_AUDIO_BYTES, MAX_VIDEO_BYTES, summarize_chat_attachments
 from app.modules.chat.references import normalize_attachment_ids, resolve_message_references, resolve_multipart_references
 from app.modules.chat.context_manager import build_conversation_context, trim_stored_messages
+from app.modules.chat.session_work import SessionStreamingResponse, track_session_work, workspace_owner
 
 router = APIRouter()
 router.include_router(model_probe_router)
@@ -338,10 +340,20 @@ async def _resolve_media_presigned_url(
 @router.post("/message")
 async def chat_message(request: Request):
     """非流式聊天对话接口"""
+    try:
+        data = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    session_id = data.get("sessionId") or str(uuid.uuid4())
+    data["sessionId"] = session_id
+    with track_session_work(workspace_owner(), session_id):
+        return await _chat_message(data)
+
+
+async def _chat_message(data):
     decision_config = get_jev_config()
     retrieval_result = None
     try:
-        data = await request.json()
         message = data.get("message", "")
         knowledge_base_ids = data.get("knowledgeBaseIds", [])
         selected_files = _normalize_selected_files(data.get("selectedFiles"))
@@ -580,10 +592,11 @@ async def _iter_chat_sse(
     decision_config = get_jev_config()
     receipt = {"observed": {}, "retrieval": None}
     try:
-        async for line in _iter_chat_sse_impl(
+        async with aclosing(_iter_chat_sse_impl(
             stage_timer=timings, decision_config=decision_config, decision_receipt=receipt, **kwargs
-        ):
-            yield line
+        )) as owned_stream:
+            async for line in owned_stream:
+                yield line
     except asyncio.CancelledError:
         timings.finish_active("cancelled")
         raise
@@ -724,31 +737,33 @@ async def _iter_chat_sse_impl(
     retrieval_result = None
     agent_result = None
     if mode_resolution.enabled:
-        async for stage, payload in agentic_retrieval_service.search_stream(
+        async with aclosing(agentic_retrieval_service.search_stream(
             query=resolved_query,
             kb_context=kb_context,
             session_context=session_context,
             attachment_context=attachment_context,
             model=model,
-        ):
-            if stage == "_result":
-                agent_result = payload
-                retrieval_result = payload.retrieval_result
-                break
-            yield thought(stage, payload)
+        )) as owned_stream:
+            async for stage, payload in owned_stream:
+                if stage == "_result":
+                    agent_result = payload
+                    retrieval_result = payload.retrieval_result
+                    break
+                yield thought(stage, payload)
     else:
-        async for stage, payload in retrieval_service.search_stream(
+        async with aclosing(retrieval_service.search_stream(
             allow_smalltalk=True,
             query=resolved_query,
             kb_context=kb_context,
             session_context=session_context,
             attachment_context=attachment_context,
             stage_timer=stage_timer,
-        ):
-            if stage == "_result":
-                retrieval_result = payload
-                break
-            yield thought(stage, payload)
+        )) as owned_stream:
+            async for stage, payload in owned_stream:
+                if stage == "_result":
+                    retrieval_result = payload
+                    break
+                yield thought(stage, payload)
 
     if retrieval_result is None:
         raise RuntimeError("检索流未返回结果")
@@ -763,7 +778,7 @@ async def _iter_chat_sse_impl(
     last_citations: List[Any] = []
     citation_audit = None
     generation_done = False
-    async for event in generation_service.stream_generate_response(
+    async with aclosing(generation_service.stream_generate_response(
         query=resolved_query,
         retrieval_result=retrieval_result,
         session_id=current_session_id,
@@ -772,41 +787,42 @@ async def _iter_chat_sse_impl(
         attachment_context=attachment_context,
         session_context=session_context,
         attachment_files=attachment_files,
-    ):
-        event_type = event.type.value if hasattr(event.type, "value") else str(event.type)
+    )) as owned_stream:
+        async for event in owned_stream:
+            event_type = event.type.value if hasattr(event.type, "value") else str(event.type)
 
-        if event_type == "message":
-            chunk = event.data.get("content", "")
-            answer_chunks.append(chunk)
-            yield f"data: {json.dumps({'type': 'message', 'data': {'delta': chunk}})}\n\n"
-        elif event_type == "thought":
-            stage = event.data.get("stage", "generation")
-            if isinstance(event.data.get("message"), dict):
-                pl = event.data.get("message", {})
-            else:
-                pl = {"message": event.data.get("message", "")}
-            if "status" in event.data:
-                pl["status"] = event.data["status"]
-            yield thought(stage, pl)
-        elif event_type == "citation":
-            refs = event.data.get("references", event.data.get("citations", []))
-            last_citations = refs
-            citation_data = {"references": refs}
-            if event.data.get("replace"):
-                citation_data["replace"] = True
-            yield f"data: {json.dumps({'type': 'citation', 'data': citation_data}, ensure_ascii=False)}\n\n"
-        elif event_type == "error":
-            stage_timer.finish_active("failed")
-            decision_receipt["retrieval"] = _retrieval_diagnostics(retrieval_result, config=decision_config)
-            failure = {'type': 'error', 'message': event.data.get('error', '未知错误'),
-                       'stage_timings': stage_timer.snapshot(),
-                       'diagnostics': failure_diagnostics(decision_receipt['retrieval'], decision_config)}
-            yield f"data: {json.dumps(failure, ensure_ascii=False)}\n\n"
-            return
-        elif event_type == "done":
-            citation_audit = event.data.get("jev_citation_audit")
-            generation_done = True
-            break
+            if event_type == "message":
+                chunk = event.data.get("content", "")
+                answer_chunks.append(chunk)
+                yield f"data: {json.dumps({'type': 'message', 'data': {'delta': chunk}})}\n\n"
+            elif event_type == "thought":
+                stage = event.data.get("stage", "generation")
+                if isinstance(event.data.get("message"), dict):
+                    pl = event.data.get("message", {})
+                else:
+                    pl = {"message": event.data.get("message", "")}
+                if "status" in event.data:
+                    pl["status"] = event.data["status"]
+                yield thought(stage, pl)
+            elif event_type == "citation":
+                refs = event.data.get("references", event.data.get("citations", []))
+                last_citations = refs
+                citation_data = {"references": refs}
+                if event.data.get("replace"):
+                    citation_data["replace"] = True
+                yield f"data: {json.dumps({'type': 'citation', 'data': citation_data}, ensure_ascii=False)}\n\n"
+            elif event_type == "error":
+                stage_timer.finish_active("failed")
+                decision_receipt["retrieval"] = _retrieval_diagnostics(retrieval_result, config=decision_config)
+                failure = {'type': 'error', 'message': event.data.get('error', '未知错误'),
+                           'stage_timings': stage_timer.snapshot(),
+                           'diagnostics': failure_diagnostics(decision_receipt['retrieval'], decision_config)}
+                yield f"data: {json.dumps(failure, ensure_ascii=False)}\n\n"
+                return
+            elif event_type == "done":
+                citation_audit = event.data.get("jev_citation_audit")
+                generation_done = True
+                break
 
     if not generation_done:
         raise RuntimeError("生成流未正常结束")
@@ -867,21 +883,23 @@ async def stream_chat(
     agentMode: str = Query("direct"),
 ):
     """流式聊天接口 (SSE)，无附件时使用 GET。"""
+    current_sid = (sessionId or "").strip() or str(uuid.uuid4())
 
     async def generate():
         try:
-            async for line in _iter_chat_sse(
+            async with aclosing(_iter_chat_sse(
                 message=message,
                 knowledge_base_ids_csv=knowledgeBaseIds,
                 selected_files_raw=selectedFiles,
                 reference_files_raw=referenceFiles,
                 mentions_raw=mentions,
-                session_id_opt=sessionId,
+                session_id_opt=current_sid,
                 model=model,
                 agent_mode=agentMode,
                 attachment_context=None,
-            ):
-                yield line
+            )) as owned_stream:
+                async for line in owned_stream:
+                    yield line
         except JevRequiredError as exc:
             event = {'type': 'error', 'message': str(exc), 'diagnostics': exc.diagnostics()}
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
@@ -889,7 +907,7 @@ async def stream_chat(
             logger.error(f"流式聊天失败: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SessionStreamingResponse(generate(), owner=workspace_owner(), session_id=current_sid)
 
 
 @router.post("/stream")
@@ -908,6 +926,7 @@ async def stream_chat_multipart(
     files: List[UploadFile] = File(default=[]),
 ):
     """流式聊天 (SSE)，支持 multipart 上传图片/音频附件（服务端生成摘要，不入库）。"""
+    current_sid = (sessionId or "").strip() or str(uuid.uuid4())
 
     named_uploads = [uf for uf in files if uf.filename]
     if len(named_uploads) > MAX_ATTACHMENTS:
@@ -962,7 +981,6 @@ async def stream_chat_multipart(
                 kb_ids_pre = [
                     x.strip() for x in knowledgeBaseIds.split(",") if x.strip()
                 ]
-            current_sid = (sessionId or "").strip() or str(uuid.uuid4())
             if current_sid not in sessions:
                 sessions[current_sid] = {
                     "id": current_sid,
@@ -998,7 +1016,7 @@ async def stream_chat_multipart(
                 message_text if message_text.strip() else "请结合我上传的附件内容回答。"
             )
 
-            async for line in _iter_chat_sse(
+            async with aclosing(_iter_chat_sse(
                 message=effective_message,
                 knowledge_base_ids_csv=knowledgeBaseIds,
                 selected_files_raw=selectedFiles,
@@ -1011,8 +1029,9 @@ async def stream_chat_multipart(
                 attachment_context=attachment_context,
                 include_connected=False,
                 conversation_context=conversation_context,
-            ):
-                yield line
+            )) as owned_stream:
+                async for line in owned_stream:
+                    yield line
         except JevRequiredError as exc:
             event = {'type': 'error', 'message': str(exc), 'diagnostics': exc.diagnostics()}
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
@@ -1023,7 +1042,7 @@ async def stream_chat_multipart(
             for uf in files:
                 await uf.close()
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SessionStreamingResponse(generate(), owner=workspace_owner(), session_id=current_sid)
 
 
 @router.post("/reference-audio-url")

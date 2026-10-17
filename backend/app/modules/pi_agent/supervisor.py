@@ -385,6 +385,21 @@ class PiSupervisor:
             self.store.transition(run_id, "cancelled")
         return self.store.get(run_id, owner=owner)
 
+    async def close_session(self, session_id, owner):
+        async with self.creation_lock:
+            self.store.close_session(owner, session_id)
+            runs = self.store.list_runs(owner, session_id)
+            jobs = [self.jobs[run["id"]] for run in runs if run["id"] in self.jobs]
+            for run in runs:
+                await self.cancel(run["id"], owner)
+        # Cancellation must reach worker/transport cleanup before the UI removes
+        # its only handle to the task. A disconnected delete request cannot undo it.
+        if jobs:
+            await asyncio.shield(asyncio.gather(*jobs, return_exceptions=True))
+        return {"session_id": session_id, "closed": True,
+                "runs": [{"id": run["id"], "status": run["status"]}
+                         for run in self.store.list_runs(owner, session_id)]}
+
     async def close(self):
         self.closed = True
         jobs = list(self.jobs.values())
