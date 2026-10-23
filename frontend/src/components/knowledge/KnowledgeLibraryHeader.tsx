@@ -1,13 +1,13 @@
 import { translate as t, useTranslation, getLanguage } from '@/i18n'
-import { FileText, Image, Music, Plus, Video } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import type { KnowledgeBase } from '@/store/useKnowledgeStore'
 import './knowledgeLibraryHeader.css'
 
 const modalities = [
-  { key: 'documents', label: '文档', Icon: FileText },
-  { key: 'images', label: '图片', Icon: Image },
-  { key: 'audio', label: '音频', Icon: Music },
-  { key: 'video', label: '视频', Icon: Video },
+  { key: 'documents', label: '文档' },
+  { key: 'images', label: '图片' },
+  { key: 'audio', label: '音频' },
+  { key: 'video', label: '视频' },
 ] as const
 
 interface KnowledgeLibraryHeaderProps {
@@ -30,6 +30,7 @@ export function KnowledgeLibraryHeader({
   }
   const total = Object.values(counts).reduce((sum, count) => sum + count, 0)
   const pending = loading || unavailable
+  const empty = !pending && knowledgeBases.length === 0
   const formatCount = (value: number) => pending ? '—' : value.toLocaleString(getLanguage())
 
   return (
@@ -37,28 +38,28 @@ export function KnowledgeLibraryHeader({
       <div className="knowledge-library-header__main">
         <div className="knowledge-library-header__intro">
           <span className="knowledge-library-header__icon" aria-hidden="true">
-            <img src="/knowledge-library-icon.png" alt="" draggable={false} width={52} height={52} />
+            <img src="/knowledge/empty-collection.webp" alt="" draggable={false} width={78} height={52} />
           </span>
           <div className="knowledge-library-header__copy">
             <h1>{t("素材空间")}</h1>
             <p className="knowledge-library-header__description">{t("整理文档、图片与影音，随时检索和引用。")}</p>
           </div>
-          <div className="knowledge-library-header__inventory">
+          {!empty && <div className="knowledge-library-header__inventory">
             <p className="knowledge-library-header__total">
               <span>{t("已收录")}</span><strong>{formatCount(total)}</strong><span>{t("份素材")}</span>
               {(loading || unavailable) && <span className="sr-only">{unavailable ? t("素材统计暂不可用") : t("正在载入素材")}</span>}
             </p>
             <dl className="knowledge-library-header__modalities" aria-label={t("素材类型统计")}>
-              {modalities.map(({ key, label, Icon }) => (
+              {modalities.map(({ key, label }) => (
                 <div key={key} className={`knowledge-library-header__modality knowledge-library-header__modality--${key}`}>
-                  <dt><span className="knowledge-library-header__modality-icon" aria-hidden="true"><Icon size={12} strokeWidth={1.7} /></span><span>{t(label)}</span></dt>
+                  <dt><span className="knowledge-library-header__modality-icon" aria-hidden="true"><img src={`/knowledge/material-${key}.webp`} width={44} height={44} alt="" decoding="async" /></span><span>{t(label)}</span></dt>
                   <dd>{formatCount(counts[key])}</dd>
                 </div>
               ))}
             </dl>
-          </div>
+          </div>}
         </div>
-        <button className="knowledge-library-header__create" type="button" onClick={onCreate}>
+        {!empty && <button className="knowledge-library-header__create" type="button" onClick={onCreate}>
           <svg className="knowledge-library-header__create-art" preserveAspectRatio="none" viewBox="0 0 184 62" fill="none" aria-hidden="true" focusable="false">
             <path className="knowledge-library-header__create-back" d="M10 27V14a8 8 0 0 1 8-8h35c4 0 6 1 8 4l5 6h100a9 9 0 0 1 9 9v22a9 9 0 0 1-9 9H21a11 11 0 0 1-11-11Z" />
             <g className="knowledge-library-header__create-paper">
@@ -70,7 +71,7 @@ export function KnowledgeLibraryHeader({
           </svg>
           <span className="knowledge-library-header__create-label">{t("新建素材空间")}</span>
           <span className="knowledge-library-header__create-symbol" aria-hidden="true"><Plus size={15} strokeWidth={1.7} /></span>
-        </button>
+        </button>}
       </div>
     </header>
   )

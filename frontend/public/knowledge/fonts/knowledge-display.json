@@ -1,0 +1,17 @@
+{
+  "family": "Ma Shan Zheng",
+  "postScriptName": "MaShanZheng-Regular",
+  "weight": 400,
+  "style": "normal",
+  "license": "SIL Open Font License 1.1",
+  "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/mashanzheng/MaShanZheng-Regular.ttf",
+  "licenseUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/mashanzheng/OFL.txt",
+  "sourceSha256": "6d2546bb189c732a8ca29af9e22457b152387d158aa459e4ac2ce1e51788b7fb",
+  "outputSha256": "801f34f250093322172bd617f73b6f0c1488f388efea9d7476dd28ad5146fb55",
+  "outputBytes": 14612,
+  "headlineText": "创建第一个素材空间",
+  "additionalCharacters": "U+0020-U+007E (ASCII)",
+  "unicodeRange": "U+0020-007E, U+4E00, U+4E2A, U+521B, U+5EFA, U+6750, U+7A7A, U+7B2C, U+7D20, U+95F4",
+  "subsetTool": "fontTools 4.67.0; Brotli WOFF2",
+  "verifiedHeadlineGlyphs": true
+}

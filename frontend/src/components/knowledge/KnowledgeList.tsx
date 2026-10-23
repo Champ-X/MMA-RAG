@@ -6,6 +6,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { Plus, Upload, Search, MoreVertical, Trash2, Database, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, ChevronDown, ChevronRight, AlertCircle, RotateCcw } from 'lucide-react'
 import { UploadPipeline, type UploadPipelineProgress, type UploadFileProgress } from './UploadPipeline'
 import { KnowledgeLibraryHeader } from './KnowledgeLibraryHeader'
+import { KnowledgeLibraryEmpty } from './KnowledgeLibraryEmpty'
 import { KnowledgeDetailHeader } from './KnowledgeDetailHeader'
 import { KnowledgeContentOverview } from './KnowledgeContentOverview'
 import { VideoFileCover } from './VideoFileCover'
@@ -2940,6 +2941,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
 
   // --- KB 列表视图 ---
   if (viewState === 'list') {
+    const emptyLibrary = !loading && !listFetchError && knowledgeBases.length === 0
     const defaultCoverSlotByKnowledgeBaseId = new Map(
       knowledgeBases
         .filter((knowledgeBase) => {
@@ -2955,7 +2957,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     )
 
     return (
-      <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative">
+      <div className={cn("flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative", emptyLibrary && 'knowledge-library--empty')}>
         <KnowledgeLibraryHeader
           knowledgeBases={knowledgeBases}
           loading={loading && knowledgeBases.length === 0}
@@ -2964,7 +2966,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
         />
 
         {/* Content */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-8">
+        <div className={cn('min-h-0 flex-1 overflow-y-auto', emptyLibrary ? 'knowledge-library-empty-content' : 'p-5 sm:p-8')}>
           {loading ? (
             <div className="grid auto-rows-[11rem] grid-cols-1 items-stretch md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3].map((i) => (
@@ -2974,40 +2976,25 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                 </div>
               ))}
             </div>
+          ) : emptyLibrary ? (
+            <KnowledgeLibraryEmpty onCreate={() => setShowCreateModal(true)} />
           ) : knowledgeBases.length === 0 ? (
             <div className="flex min-h-[26rem] items-center justify-center">
-              {listFetchError ? (
-                <KnowledgeEmptyState
-                  icon={AlertCircle}
-                  title={t("知识库列表加载失败")}
-                  description={t("当前仍停留在本地视图。{{listFetchError}} 请确认后端代理可用后重试。", { listFetchError: listFetchError })}
-                  tone="amber"
-                  action={
-                    <button
-                      type="button"
-                      onClick={() => fetchKnowledgeBases()}
-                      className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-amber-200 bg-white px-4 text-sm font-semibold text-amber-700 shadow-sm transition-colors hover:bg-amber-50 dark:border-amber-500/30 dark:bg-slate-900 dark:text-amber-300 dark:hover:bg-amber-950/30"
-                    >
-                       {t("重试")} </button>
-                  }
-                />
-              ) : (
-                <KnowledgeEmptyState
-                  icon={Database}
-                  title={t("创建第一个素材空间")}
-                  description={t("把文档、图片、音频和视频放进同一个可检索空间，系统会自动完成解析、向量化和主题画像。")}
-                  tone="indigo"
-                  action={
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateModal(true)}
-                      className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition-colors hover:from-indigo-500 hover:to-violet-500"
-                    >
-                      <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-                       {t("新建素材空间")} </button>
-                  }
-                />
-              )}
+              <KnowledgeEmptyState
+                icon={AlertCircle}
+                title={t("知识库列表加载失败")}
+                description={t("当前仍停留在本地视图。{{listFetchError}} 请确认后端代理可用后重试。", { listFetchError: listFetchError })}
+                tone="amber"
+                action={
+                  <button
+                    type="button"
+                    onClick={() => fetchKnowledgeBases()}
+                    className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-amber-200 bg-white px-4 text-sm font-semibold text-amber-700 shadow-sm transition-colors hover:bg-amber-50 dark:border-amber-500/30 dark:bg-slate-900 dark:text-amber-300 dark:hover:bg-amber-950/30"
+                  >
+                    {t("重试")}
+                  </button>
+                }
+              />
             </div>
           ) : (
             <div className="grid auto-rows-[11rem] grid-cols-1 items-stretch md:grid-cols-2 lg:grid-cols-3 gap-6">
