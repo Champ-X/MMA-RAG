@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import asdict
+from contextvars import copy_context
+from app.core.prompt_language import prompt_language
 import fcntl
 from functools import partial
 import json
@@ -88,7 +90,7 @@ class PiSupervisor:
                 if stopped.is_set():
                     raise ToolError("cancelled", "原文件读取已取消")
             kwargs["checkpoint"] = checkpoint
-        future = asyncio.get_running_loop().run_in_executor(self.io_pool, partial(function, *args, **kwargs))
+        future = asyncio.get_running_loop().run_in_executor(self.io_pool, copy_context().run, partial(function, *args, **kwargs))
         try:
             return await asyncio.shield(future)
         except asyncio.CancelledError:
@@ -114,6 +116,7 @@ class PiSupervisor:
         return value
 
     async def start(self, request: RunRequest, owner: str):
+        request = request.model_copy(deep=True)  # Freeze language and inputs at admission.
         if self.closed or not self.settings.enabled:
             raise ToolError("pi_unavailable", "纯 Agent 模式当前不可用")
         async with self.creation_lock:
@@ -130,7 +133,7 @@ class PiSupervisor:
             # durable preparation phase before tools or model calls can begin.
             if self.settings.allowed_kb_ids is not None:
                 AccessScope.from_request(request, set(self.settings.allowed_kb_ids))
-            public = {"engine": "pi", "protocol_version": 1, "model": model["name"], "provider": model["provider"],
+            public = {"language": request.language, "engine": "pi", "protocol_version": 1, "model": model["name"], "provider": model["provider"],
                       "thinking_enabled": self.settings.thinking_enabled,
                       "answer_checks_enabled": self.settings.answer_checks_enabled,
                       "answer_plan_enabled": self.settings.answer_plan_enabled,
@@ -180,7 +183,7 @@ class PiSupervisor:
             finally:
                 if not waiting.done():
                     waiting.cancel()
-        future = loop.run_in_executor(self.io_pool, partial(SourceCatalog.load, self.storage, checkpoint=checkpoint))
+        future = loop.run_in_executor(self.io_pool, copy_context().run, partial(SourceCatalog.load, self.storage, checkpoint=checkpoint))
         try:
             return await asyncio.shield(future)
         except asyncio.CancelledError:
@@ -225,6 +228,10 @@ class PiSupervisor:
         return catalog, scope, annotated, bindings
 
     async def _run(self, run_id, request, owner, model, key):
+        with prompt_language(request.language):
+            return await self._run_localized(run_id, request, owner, model, key)
+
+    async def _run_localized(self, run_id, request, owner, model, key):
         ledger, transport, process = None, None, None
         try:
             async with self.run_gate:
@@ -249,11 +256,11 @@ class PiSupervisor:
                     "input_materials": inputs, "search_scope": scope.public(),
                     "accessible_knowledge_bases": [{"id": k, "name": v} for k, v in catalog.knowledge_bases.items() if k in scope.allowed_kbs],
                     "history_for_context_only_not_evidence": history}, ensure_ascii=False)
-                config = {"run_id": run_id, "model": model, "api_key": key,
+                config = {"language": request.language, "run_id": run_id, "model": model, "api_key": key,
                           "thinking_level": "medium" if self.settings.thinking_enabled else "off",
                           "answer_checks_enabled": self.settings.answer_checks_enabled,
                           "answer_plan_enabled": self.settings.answer_plan_enabled,
-                          "tools": definitions(self.settings.answer_checks_enabled, self.settings.answer_plan_enabled), "prompt": prompt}
+                          "tools": definitions(self.settings.answer_checks_enabled, self.settings.answer_plan_enabled, request.language), "prompt": prompt}
                 env = _worker_environment()
                 if self.settings.yield_to_legacy:
                     from .admission import legacy_activity

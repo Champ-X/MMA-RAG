@@ -4,6 +4,7 @@
 """
 
 from fastapi import APIRouter, HTTPException, Request, Query, File, Form, UploadFile
+from app.core.prompt_language import language_stream, localized, prompt_language
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, List, Optional, Tuple, AsyncGenerator
 from pydantic import BaseModel, Field
@@ -346,7 +347,8 @@ async def chat_message(request: Request):
         raise HTTPException(status_code=400, detail=str(exc)) from None
     session_id = data.get("sessionId") or str(uuid.uuid4())
     data["sessionId"] = session_id
-    with track_session_work(workspace_owner(), session_id):
+    language = data.get("language") if "language" in data else request.headers.get("X-Tessmora-Language")
+    with track_session_work(workspace_owner(), session_id), prompt_language(language):
         return await _chat_message(data)
 
 
@@ -371,7 +373,7 @@ async def _chat_message(data):
         model = _clean_optional_str(data.get("model"))
 
         if not message.strip():
-            raise HTTPException(status_code=400, detail="消息内容不能为空")
+            raise HTTPException(status_code=400, detail=localized("消息内容不能为空", 'Message must not be empty'))
         
         logger.info(
             f"收到聊天消息: {message[:50]}..., session_id={session_id}, "
@@ -470,7 +472,7 @@ async def _chat_message(data):
         
         if not generation_result.get("success"):
             return JSONResponse(status_code=500, content={
-                "detail": generation_result.get("error", "生成回答失败"),
+                "detail": generation_result.get("error", localized("生成回答失败", 'Answer generation failed')),
                 "diagnostics": failure_diagnostics(
                     _retrieval_diagnostics(retrieval_result, config=decision_config), decision_config),
             })
@@ -567,7 +569,7 @@ async def _chat_message(data):
     except Exception as e:
         logger.error(f"聊天消息处理失败: {str(e)}", exc_info=True)
         return JSONResponse(status_code=500, content={
-            "detail": f"处理聊天消息时发生错误: {str(e)}",
+            "detail": localized(f"处理聊天消息时发生错误: {str(e)}", f'Failed to process the chat message: {str(e)}'),
             "diagnostics": failure_diagnostics(
                 _retrieval_diagnostics(retrieval_result, config=decision_config), decision_config),
         })
@@ -720,9 +722,9 @@ async def _iter_chat_sse_impl(
         auto_mode_payload = {
             "stage_status": "processing",
             "message": (
-                "自动模式已选择 Agent 深研"
+                localized("自动模式已选择 Agent 深研", 'Auto mode selected Agent research')
                 if mode_resolution.enabled
-                else "自动模式已选择直接检索"
+                else localized("自动模式已选择直接检索", 'Auto mode selected direct retrieval')
             ),
             "agent_mode_auto": True,
             "agent_mode": mode_resolution.enabled,
@@ -766,13 +768,13 @@ async def _iter_chat_sse_impl(
                 yield thought(stage, payload)
 
     if retrieval_result is None:
-        raise RuntimeError("检索流未返回结果")
+        raise RuntimeError(localized("检索流未返回结果", 'Retrieval stream returned no result'))
     decision_receipt["result"] = retrieval_result
     include_reference_materials(retrieval_result, reference_materials)
     decision_receipt["retrieval"] = _retrieval_diagnostics(retrieval_result, config=decision_config)
 
     stage_timer.start("generation")
-    yield thought("generation", {"message": "正在准备生成回答...", "status": "preparing", "stage_status": "processing"})
+    yield thought("generation", {"message": localized("正在准备生成回答...", 'Preparing the answer...'), "status": "preparing", "stage_status": "processing"})
 
     answer_chunks: List[str] = []
     last_citations: List[Any] = []
@@ -814,7 +816,7 @@ async def _iter_chat_sse_impl(
             elif event_type == "error":
                 stage_timer.finish_active("failed")
                 decision_receipt["retrieval"] = _retrieval_diagnostics(retrieval_result, config=decision_config)
-                failure = {'type': 'error', 'message': event.data.get('error', '未知错误'),
+                failure = {'type': 'error', 'message': event.data.get('error', localized('未知错误', 'Unknown error')),
                            'stage_timings': stage_timer.snapshot(),
                            'diagnostics': failure_diagnostics(decision_receipt['retrieval'], decision_config)}
                 yield f"data: {json.dumps(failure, ensure_ascii=False)}\n\n"
@@ -825,9 +827,9 @@ async def _iter_chat_sse_impl(
                 break
 
     if not generation_done:
-        raise RuntimeError("生成流未正常结束")
+        raise RuntimeError(localized("生成流未正常结束", 'Generation stream did not complete'))
     stage_timer.finish("generation")
-    yield thought("generation", {"message": "回答生成完成", "status": "completed", "stage_status": "completed"})
+    yield thought("generation", {"message": localized("回答生成完成", 'Answer complete'), "status": "completed", "stage_status": "completed"})
     thinking["_generation_completed"] = True
     final_timings = stage_timer.snapshot()
     thinking["stage_timings"] = final_timings
@@ -881,6 +883,7 @@ async def stream_chat(
     sessionId: Optional[str] = Query(None),
     model: Optional[str] = Query(None),
     agentMode: str = Query("direct"),
+    language: str = Query("zh-CN"),
 ):
     """流式聊天接口 (SSE)，无附件时使用 GET。"""
     current_sid = (sessionId or "").strip() or str(uuid.uuid4())
@@ -907,7 +910,7 @@ async def stream_chat(
             logger.error(f"流式聊天失败: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
-    return SessionStreamingResponse(generate(), owner=workspace_owner(), session_id=current_sid)
+    return SessionStreamingResponse(language_stream(generate(), language), owner=workspace_owner(), session_id=current_sid)
 
 
 @router.post("/stream")
@@ -923,6 +926,7 @@ async def stream_chat_multipart(
     sessionId: Optional[str] = Form(None),
     model: Optional[str] = Form(None),
     agentMode: str = Form("direct"),
+    language: str = Form("zh-CN"),
     files: List[UploadFile] = File(default=[]),
 ):
     """流式聊天 (SSE)，支持 multipart 上传图片/音频附件（服务端生成摘要，不入库）。"""
@@ -930,10 +934,11 @@ async def stream_chat_multipart(
 
     named_uploads = [uf for uf in files if uf.filename]
     if len(named_uploads) > MAX_ATTACHMENTS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"附件最多 {MAX_ATTACHMENTS} 个",
-        )
+        with prompt_language(language):
+            raise HTTPException(
+                status_code=400,
+                detail=localized(f"附件最多 {MAX_ATTACHMENTS} 个", f'At most {MAX_ATTACHMENTS} attachments are allowed'),
+            )
 
     async def generate():
         try:
@@ -941,14 +946,14 @@ async def stream_chat_multipart(
                 conversation_context = None
                 if conversationContext is not None:
                     if len(conversationContext) > 64000:
-                        raise ValueError("会话上下文过长")
+                        raise ValueError(localized("会话上下文过长", 'Conversation context is too long'))
                     conversation_context = json.loads(conversationContext)
                     if not isinstance(conversation_context, list) or len(conversation_context) > 24 or any(
                         not isinstance(item, dict) or set(item) != {"role", "content"} or
                         not isinstance(item["role"], str) or item["role"] not in {"user", "assistant"} or not isinstance(item["content"], str)
                         for item in conversation_context
                     ):
-                        raise ValueError("会话上下文仅允许有界的用户与助手消息")
+                        raise ValueError(localized("会话上下文仅允许有界的用户与助手消息", 'Conversation context must contain only bounded user and assistant messages'))
                 ids = normalize_attachment_ids(attachmentIds, len(named_uploads))
                 attachment_files = [
                     {"id": ids[i], "index": i + 1, "name": uf.filename, "type": uf.content_type or ""}
@@ -968,12 +973,12 @@ async def stream_chat_multipart(
                 limit = MAX_VIDEO_BYTES if video_upload else max(MAX_IMAGE_BYTES, MAX_AUDIO_BYTES)
                 body = await uf.read(limit + 1)
                 if len(body) > limit:
-                    raise ValueError(f"附件超过 {limit // 1024 // 1024}MB：{uf.filename}")
+                    raise ValueError(localized(f"附件超过 {limit // 1024 // 1024}MB：{uf.filename}", f'Attachment exceeds {limit // 1024 // 1024}MB：{uf.filename}'))
                 raw_files.append((uf.filename, uf.content_type or "", body))
                 attachment_files[i]["size"] = len(body)
 
             if not message_text.strip() and not raw_files:
-                yield f"data: {json.dumps({'type': 'error', 'message': '请输入消息或上传附件'})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'message': localized('请输入消息或上传附件', 'Enter a message or upload an attachment')})}\n\n"
                 return
 
             kb_ids_pre: List[str] = []
@@ -993,7 +998,7 @@ async def stream_chat_multipart(
 
             attachment_context: Optional[str] = None
             if raw_files:
-                yield f"data: {_thought_event_payload('attachment', {'message': '正在分析附件…', 'status': 'processing', 'count': len(raw_files)})}\n\n"
+                yield f"data: {_thought_event_payload('attachment', {'message': localized('正在分析附件…', 'Analyzing attachments…'), 'status': 'processing', 'count': len(raw_files)})}\n\n"
                 try:
                     block, parsed_items = await summarize_chat_attachments(
                         user_message=summary_query, files=raw_files
@@ -1005,15 +1010,15 @@ async def stream_chat_multipart(
                 for file, parsed in zip(attachment_files, parsed_items):
                     file.update(kind=parsed["modality"], status=parsed["status"], summary=parsed["summary"], media_info=parsed.get("media_info", {}))
                 failed = sum(item["status"] == "failed" for item in parsed_items)
-                note = f"{failed} 个附件解析失败；回答会明确说明缺失内容" if failed else "附件解析已完成"
+                note = localized(f"{failed} 个附件解析失败；回答会明确说明缺失内容", f'{failed} attachments failed to parse; the answer will explain the missing information') if failed else localized("附件解析已完成", 'Attachment analysis complete')
                 yield f"data: {_thought_event_payload('attachment', {'message': note, 'status': 'completed', 'count': len(raw_files), 'items': parsed_items})}\n\n"
                 if failed == len(parsed_items):
                     details = " ".join(f"{item.get('filename') or '附件'}：{item['summary']}" for item in parsed_items)
-                    yield f"data: {json.dumps({'type': 'error', 'stage': 'attachment', 'message': '所有附件均解析失败，请检查文件或模型配置后重试。' + details}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'error', 'stage': 'attachment', 'message': localized('所有附件均解析失败，请检查文件或模型配置后重试。', 'All attachments failed to parse. Check the files or model settings and try again. ') + details}, ensure_ascii=False)}\n\n"
                     return
 
             effective_message = (
-                message_text if message_text.strip() else "请结合我上传的附件内容回答。"
+                message_text if message_text.strip() else localized("请结合我上传的附件内容回答。", 'Please answer using my uploaded attachments.')
             )
 
             async with aclosing(_iter_chat_sse(
@@ -1042,7 +1047,7 @@ async def stream_chat_multipart(
             for uf in files:
                 await uf.close()
 
-    return SessionStreamingResponse(generate(), owner=workspace_owner(), session_id=current_sid)
+    return SessionStreamingResponse(language_stream(generate(), language), owner=workspace_owner(), session_id=current_sid)
 
 
 @router.post("/reference-audio-url")

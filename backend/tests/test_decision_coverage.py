@@ -10,6 +10,8 @@ from app.modules.retrieval.service import RetrievalService
 from app.core.decision_diagnostics import failure_diagnostics, retrieval_diagnostics
 from app.core.jev_settings import JevConfig
 from app.core.llm.jev import JevRequiredError
+from app.core.prompt_language import prompt_language
+from app.modules.generation.templates.multimodal_fmt import MultiModalFormatter
 
 
 def policy():
@@ -177,6 +179,39 @@ def test_reference_map_alone_does_not_prove_context_was_formatted():
     prompt = finalize_coverage(result, {"1": SimpleNamespace(content_type="image")}, context_string="参考材料构建失败")
     assert result.debug_info["decision_coverage"]["modalities"]["image"]["context_count"] == 0
     assert "上下文包含 1" not in prompt and "查询向量化失败" in prompt
+
+
+@pytest.mark.parametrize("language", ["zh-CN", "en-US"])
+def test_context_coverage_recognizes_localized_material_headers_without_counting_unrendered_references(language):
+    ctx = context()
+    ctx.audio_intent = ctx.video_intent = "explicit_demand"
+    rows = [{"id": kind, "content_type": kind} for kind in ("image", "audio", "video")]
+    receipt = coverage_receipt(ctx, {kind: [row] for kind, row in zip(("visual", "audio", "video"), rows)}, rows,
+                               embedding_failures=["query_timeout"])
+    result = SimpleNamespace(debug_info={"decision_coverage": receipt})
+    references = {str(index): SimpleNamespace(content_type=kind)
+                  for index, kind in enumerate(("image", "audio", "video"), 1)}
+    formatter = MultiModalFormatter()
+    with prompt_language(language):
+        rendered = formatter.format_image_content("1", "Original source", "image.png", {})
+        # A duplicate header must not double count; an unknown ID must not add evidence.
+        rendered += "\n" + rendered + "\n" + formatter.format_image_content("99", "Other source", "other.png", {})
+        prompt = finalize_coverage(result, references, context_string=rendered)
+    modalities = result.debug_info["decision_coverage"]["modalities"]
+    assert {kind: (row["context_count"], row["status"]) for kind, row in modalities.items()} == {
+        "image": (1, "included"), "audio": (0, "not_in_context"), "video": (0, "not_in_context"),
+    }
+    assert receipt["modalities"]["image"]["context_count"] is None
+    if language == "en-US":
+        assert "Images: The context includes 1 reference materials" in prompt
+        assert "Audio: Candidates were not included in the generation context" in prompt
+        assert "Some query embeddings failed" in prompt
+        assert "does not establish that the whole knowledge base lacks material" in prompt
+        assert not any("\u4e00" <= char <= "\u9fff" for char in prompt)
+    else:
+        assert "图片：上下文包含 1 项参考材料" in prompt
+        assert "音频：候选未进入生成上下文" in prompt
+        assert "不能推断整个知识库没有资料" in prompt
 
 
 @pytest.mark.asyncio

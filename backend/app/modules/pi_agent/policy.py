@@ -1,6 +1,8 @@
 """Immutable request scope and host-owned accounting, independent of model instructions."""
 from __future__ import annotations
 
+from .language import translate_prompt
+
 from dataclasses import dataclass, field
 import time
 
@@ -28,9 +30,9 @@ class AccessScope:
         references = frozenset((f.kb_id, f.file_id) for f in request.reference_files)
         all_requested = requested | {kb for kb, _ in files | references}
         if not all_requested <= allowed:
-            raise ToolError("scope_denied", "所选知识库或引用材料不在当前可访问范围内")
+            raise ToolError("scope_denied", translate_prompt("所选知识库或引用材料不在当前可访问范围内"))
         if requested and any(kb not in requested for kb, _ in files):
-            raise ToolError("scope_conflict", "指定文件与所选知识库范围冲突")
+            raise ToolError("scope_conflict", translate_prompt("指定文件与所选知识库范围冲突"))
         search_kbs = frozenset(kb for kb, _ in files) if files else requested or allowed
         return cls(allowed, search_kbs, files, references)
 
@@ -48,7 +50,7 @@ class AccessScope:
     def narrow_kbs(self, requested: list[str] | None) -> list[str]:
         effective = set(requested) if requested else set(self.search_kbs)
         if not effective <= self.search_kbs:
-            raise ToolError("scope_denied", "工具不能扩展本轮检索范围")
+            raise ToolError("scope_denied", translate_prompt("工具不能扩展本轮检索范围"))
         return sorted(effective)
 
     def public(self):
@@ -79,7 +81,7 @@ class UsageLedger:
 
     def start_model(self, turn: int):
         if turn in self._pending or turn in self._settled:
-            raise ToolError("duplicate_model_request", "重复的模型请求标识")
+            raise ToolError("duplicate_model_request", translate_prompt("重复的模型请求标识"))
         self.model_requests += 1
         self._pending.add(turn)
         return {"allowed": True}

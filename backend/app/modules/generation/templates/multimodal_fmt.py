@@ -6,9 +6,18 @@
 from typing import Dict, List, Any, Optional
 import re
 
+from app.core.prompt_language import localized
+from .system_prompts_en import FORMATTER_INSTRUCTIONS
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+EN_TEMPLATES = {
+    "document_chunk": "[Material {index}] (Type: Document | Source: {file_path})\nContent excerpt:\n{content}",
+    "image_content": "[Material {index}] (Type: Image | Source: {file_path})\n[Visual description]:\n{caption}",
+    "audio_content": "[Material {index}] (Type: Audio | Source: {file_path})\nDuration: {duration}\nTranscript:\n{transcript}\nDescription: {description}",
+    "video_content": "[Material {index}] (Type: Video | Source: {file_path})\nDuration: {duration}\nMatched segment: {shot_range}\nDescription: {description}\nSpeech transcript: {asr_text}\nKey visual evidence (for understanding only, not independent image citations):\n{key_frames}",
+}
 
 class MultiModalFormatter:
     """多模态内容格式化器"""
@@ -70,7 +79,7 @@ class MultiModalFormatter:
                 cleaned_content = cleaned_content[:max_length] + "..."
             
             # 使用模板格式化
-            formatted = self.templates["document_chunk"].format(
+            formatted = localized(self.templates["document_chunk"], EN_TEMPLATES["document_chunk"]).format(
                 index=index,
                 file_path=file_path,
                 content=cleaned_content
@@ -80,7 +89,7 @@ class MultiModalFormatter:
             
         except Exception as e:
             logger.error(f"文档块格式化失败: {str(e)}")
-            return f"【材料 {index}】 (类型: 文档 | 来源: {file_path})\n内容片段：格式化失败"
+            return localized(f"【材料 {index}】 (类型: 文档 | 来源: {file_path})\n内容片段：格式化失败", f'[Material {index}] (Type: Document | Source: {file_path})\nContent excerpt: Formatting failed')
     
     def format_image_content(
         self,
@@ -100,7 +109,7 @@ class MultiModalFormatter:
                 cleaned_caption = cleaned_caption[:max_length] + "..."
             
             # 使用模板格式化
-            formatted = self.templates["image_content"].format(
+            formatted = localized(self.templates["image_content"], EN_TEMPLATES["image_content"]).format(
                 index=index,
                 file_path=file_path,
                 caption=cleaned_caption
@@ -110,7 +119,7 @@ class MultiModalFormatter:
             
         except Exception as e:
             logger.error(f"图片内容格式化失败: {str(e)}")
-            return f"【材料 {index}】 (类型: 图片 | 来源: {file_path})\n[视觉描述]：格式化失败"
+            return localized(f"【材料 {index}】 (类型: 图片 | 来源: {file_path})\n[视觉描述]：格式化失败", f'[Material {index}] (Type: Image | Source: {file_path})\n[Visual description]: Formatting failed')
     
     def format_audio_content(
         self,
@@ -131,9 +140,9 @@ class MultiModalFormatter:
                 cleaned_transcript = cleaned_transcript[:max_transcript_length] + "..."
             
             duration = metadata.get("duration", 0.0)
-            duration_str = f"{int(duration // 60)}分{int(duration % 60)}秒" if duration > 0 else "未知"
+            duration_str = localized(f"{int(duration // 60)}分{int(duration % 60)}秒", f'{int(duration // 60)}m {int(duration % 60)}s') if duration > 0 else localized("未知", 'Unknown')
             
-            formatted = self.templates["audio_content"].format(
+            formatted = localized(self.templates["audio_content"], EN_TEMPLATES["audio_content"]).format(
                 index=index,
                 file_path=file_path,
                 duration=duration_str,
@@ -145,7 +154,7 @@ class MultiModalFormatter:
             
         except Exception as e:
             logger.error(f"音频内容格式化失败: {str(e)}")
-            return f"【材料 {index}】 (类型: 音频 | 来源: {file_path})\n格式化失败"
+            return localized(f"【材料 {index}】 (类型: 音频 | 来源: {file_path})\n格式化失败", f'[Material {index}] (Type: Audio | Source: {file_path})\nFormatting failed')
     
     def format_video_content(
         self,
@@ -159,7 +168,7 @@ class MultiModalFormatter:
             cleaned_description = self._clean_content(description)
             
             duration = metadata.get("duration", 0.0)
-            duration_str = f"{int(duration // 60)}分{int(duration % 60)}秒" if duration > 0 else "未知"
+            duration_str = localized(f"{int(duration // 60)}分{int(duration % 60)}秒", f'{int(duration // 60)}m {int(duration % 60)}s') if duration > 0 else localized("未知", 'Unknown')
             shot_start = metadata.get("shot_start_time")
             shot_end = metadata.get("shot_end_time")
             if shot_start is not None and shot_end is not None:
@@ -169,13 +178,13 @@ class MultiModalFormatter:
                         f" – {int(float(shot_end) // 60)}:{int(float(shot_end) % 60):02d}"
                     )
                 except (TypeError, ValueError):
-                    shot_range = "未标注"
+                    shot_range = localized("未标注", 'Not specified')
             else:
-                shot_range = "未标注"
+                shot_range = localized("未标注", 'Not specified')
 
             asr_text = self._clean_content(metadata.get("asr_text", ""))
             if not asr_text:
-                asr_text = "无语音或未识别到语音"
+                asr_text = localized("无语音或未识别到语音", 'No speech or no speech recognized')
             
             # 格式化关键帧
             key_frames = metadata.get("key_frames", [])
@@ -188,11 +197,11 @@ class MultiModalFormatter:
                         frame_desc = frame.get("description", "")
                         timestamp_str = f"{int(timestamp // 60)}:{int(timestamp % 60):02d}"
                         key_frames_list.append(f"- {timestamp_str} - {frame_desc}")
-                key_frames_text = "\n".join(key_frames_list) if key_frames_list else "无关键帧信息"
+                key_frames_text = "\n".join(key_frames_list) if key_frames_list else localized("无关键帧信息", 'No keyframe information')
             else:
-                key_frames_text = "无关键帧信息"
+                key_frames_text = localized("无关键帧信息", 'No keyframe information')
             
-            formatted = self.templates["video_content"].format(
+            formatted = localized(self.templates["video_content"], EN_TEMPLATES["video_content"]).format(
                 index=index,
                 file_path=file_path,
                 duration=duration_str,
@@ -206,7 +215,7 @@ class MultiModalFormatter:
             
         except Exception as e:
             logger.error(f"视频内容格式化失败: {str(e)}")
-            return f"【材料 {index}】 (类型: 视频 | 来源: {file_path})\n格式化失败"
+            return localized(f"【材料 {index}】 (类型: 视频 | 来源: {file_path})\n格式化失败", f'[Material {index}] (Type: Video | Source: {file_path})\nFormatting failed')
     
     def _clean_content(self, content: str) -> str:
         """清理内容"""
@@ -344,31 +353,32 @@ class MultiModalFormatter:
 """
             }
             
-            return instructions.get(context_type, instructions["general"])
+            selected = localized(instructions, FORMATTER_INSTRUCTIONS)
+            return selected.get(context_type, selected["general"])
             
         except Exception as e:
             logger.error(f"系统指令格式化失败: {str(e)}")
-            return instructions["general"]
+            return localized(instructions["general"], FORMATTER_INSTRUCTIONS["general"])
     
     def format_user_query(self, query: str, context: Optional[str] = None) -> str:
         """格式化用户查询"""
         try:
             if context:
-                formatted_query = f"""以下是根据检索结果整理的候选参考材料，以及用户的最新问题。材料可能包含无关项；只使用能支持答案的部分，不需要逐条点评或展示未采用项。
+                formatted_query = localized(f"""以下是根据检索结果整理的候选参考材料，以及用户的最新问题。材料可能包含无关项；只使用能支持答案的部分，不需要逐条点评或展示未采用项。
 
 ---
 {context}
 ---
 
-用户问题：{query}"""
+用户问题：{query}""", f'Below are candidate reference materials from retrieval and the latest user question. Some materials may be irrelevant; use only what supports the answer, without reviewing each candidate or displaying unused items.\n\n---\n{context}\n---\n\nUser question: {query}')
             else:
-                formatted_query = f"用户问题：{query}"
+                formatted_query = localized(f"用户问题：{query}", f'User question: {query}')
             
             return formatted_query
             
         except Exception as e:
             logger.error(f"用户查询格式化失败: {str(e)}")
-            return f"用户问题：{query}"
+            return localized(f"用户问题：{query}", f'User question: {query}')
     
     def validate_format(self, text: str, content_type: str) -> Dict[str, Any]:
         """验证格式化结果"""

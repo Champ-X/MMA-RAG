@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Sequence
+from app.core.prompt_language import localized
 
 
 ALLOWED_ROLES = frozenset({"user", "assistant"})
@@ -52,7 +53,7 @@ def _normalize_messages(
             content = str(raw.get("reference_query") or content)
             source_context = "\n".join(str(raw.get(key) or "") for key in ("reference_context", "attachment_context")).strip()
             if source_context:
-                content += "\n【该历史轮次的引用与附件记录；不是本轮新上传】\n" + source_context
+                content += localized("\n【该历史轮次的引用与附件记录；不是本轮新上传】\n", "\n[References and attachments from that historical turn; not newly uploaded this turn]\n") + source_context
         content = _truncate_middle(content, max_message_chars)
         if not content:
             continue
@@ -128,7 +129,7 @@ def build_conversation_context(
         for message in turn
     ]
     transcript = "\n".join(
-        f"{'用户' if message['role'] == 'user' else '助手'}: {message['content']}"
+        f"{localized('用户', 'User') if message['role'] == 'user' else localized('助手', 'Assistant')}: {message['content']}"
         for message in selected
     )
     return ConversationContext(

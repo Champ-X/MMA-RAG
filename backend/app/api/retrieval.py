@@ -9,11 +9,12 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel, Field, model_validator
 
 from app.core.logger import get_logger
 from app.core.llm.jev import JevRequiredError
+from app.core.prompt_language import prompt_language
 from app.modules.retrieval.service import RetrievalResult, RetrievalService
 
 
@@ -32,6 +33,7 @@ class SelectedFileRequest(BaseModel):
 
 
 class KnowledgeSearchRequest(BaseModel):
+    language: str = "zh-CN"
     query: str = Field(..., min_length=1)
     knowledge_base_ids: List[str] = Field(default_factory=list)
     file_ids: List[str] = Field(default_factory=list)
@@ -231,7 +233,13 @@ def serialize_search_response(
 
 
 @router.post("/search", response_model=KnowledgeSearchResponse)
-async def search_knowledge(request: KnowledgeSearchRequest) -> KnowledgeSearchResponse:
+async def search_knowledge(request: KnowledgeSearchRequest, language_header: Optional[str] = Header(None, alias="X-Tessmora-Language")) -> KnowledgeSearchResponse:
+    language = request.language if "language" in request.model_fields_set else language_header
+    with prompt_language(language):
+        return await _search_knowledge(request)
+
+
+async def _search_knowledge(request: KnowledgeSearchRequest) -> KnowledgeSearchResponse:
     """Search MMA-RAG and return compact multimodal evidence without generating an answer."""
     query = " ".join(request.query.split()).strip()
     if not query:

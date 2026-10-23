@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.core.prompt_language import normalize_language
 
 PROTOCOL_VERSION = 1
 TERMINAL_STATUSES = frozenset({"completed", "partial", "needs_input", "cancelled", "failed"})
@@ -23,6 +25,7 @@ class SourceFile(BaseModel):
 class RunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     protocol_version: Literal[1] = 1
+    language: Literal["zh-CN", "en-US"] = "zh-CN"
     client_request_id: str = Field(min_length=8)
     session_id: str = Field(min_length=1)
     message: str = Field(min_length=1)
@@ -34,6 +37,11 @@ class RunRequest(BaseModel):
     history: list[dict[str, str]] = Field(default_factory=list)
     parent_run_id: str | None = None
     attachments: list[dict[str, Any]] = Field(default_factory=list)
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def normalize_prompt_language(cls, value):
+        return normalize_language(value)
 
 
 class RunEvent(BaseModel):

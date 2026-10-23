@@ -11,6 +11,7 @@ from typing import Any, AsyncGenerator, Dict, Iterable, List, Optional, Tuple
 from app.core.config import settings
 from app.core.llm.jev import JevRequiredError
 from app.core.llm.manager import llm_manager
+from app.core.prompt_language import localized
 from app.core.logger import get_logger
 from app.core.score_details import merge_retrieval_scores
 from app.modules.agent.models import AgentDecision, AgentRunResult, AgentTraceStep
@@ -766,7 +767,7 @@ class AgenticRetrievalService:
         yield (
             "intent",
             {
-                "message": "正在分析问题并查找初始证据…",
+                "message": localized("正在分析问题并查找初始证据…", 'Analyzing the question and finding initial evidence…'),
                 "agent_status": "planning",
                 "intent_type": "agentic",
                 "original_query": clean_query,
@@ -867,7 +868,7 @@ class AgenticRetrievalService:
 
             yield ("intent", {
                 "agent_mode": True, "agent_status": "planning",
-                "message": "正在评估已有证据并规划下一步…" if evidence else "正在制定检索计划…",
+                "message": localized("正在评估已有证据并规划下一步…", 'Evaluating evidence and planning the next step…') if evidence else localized("正在制定检索计划…", 'Planning retrieval…'),
                 "agent_rounds": _agent_rounds_payload(trace),
             })
             decision = await self.planner.decide(
@@ -960,7 +961,7 @@ class AgenticRetrievalService:
             yield (
                 "routing",
                 {
-                    "message": f"Agent 第 {round_number} 轮正在执行 {len(queries)} 条检索",
+                    "message": localized(f"Agent 第 {round_number} 轮正在执行 {len(queries)} 条检索", f'Agent round {round_number} is running {len(queries)} searches'),
                     "agent_status": "searching",
                     "target_kbs": [],
                     "fallback_search": not bool((kb_context or {}).get("kb_ids")),
@@ -1021,7 +1022,7 @@ class AgenticRetrievalService:
                 yield (
                     "retrieval",
                     {
-                        "message": f"Agent 第 {round_number} 轮检索失败，使用已有证据继续",
+                        "message": localized(f"Agent 第 {round_number} 轮检索失败，使用已有证据继续", f'Agent round {round_number} failed; continuing with existing evidence'),
                         "target_kbs": [],
                         "sub_queries": list(executed_queries),
                         "total_found": len(evidence),
@@ -1102,7 +1103,7 @@ class AgenticRetrievalService:
                 "retrieval",
                 {
                     "message": (
-                        f"Agent 第 {round_number} 轮完成：新增 {new_count} 条证据"
+                        localized(f"Agent 第 {round_number} 轮完成：新增 {new_count} 条证据", f'Agent round {round_number} complete: {new_count} new evidence items')
                     ),
                     "target_kbs": target_kbs,
                     "sub_queries": list(executed_queries),
@@ -1153,7 +1154,7 @@ class AgenticRetrievalService:
         ]
         yield ("retrieval", {
             "agent_mode": True, "agent_status": "completed",
-            "message": "证据整理完成，正在准备回答…",
+            "message": localized("证据整理完成，正在准备回答…", 'Evidence organized; preparing the answer…'),
             "agent_rounds": _agent_rounds_payload(trace),
         })
         yield ("_result", run_result)

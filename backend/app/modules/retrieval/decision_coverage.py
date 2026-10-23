@@ -7,6 +7,8 @@ from collections import Counter
 from copy import deepcopy
 import re
 
+from app.core.prompt_language import localized
+
 FIELDS = {"image": "visual_intent", "audio": "audio_intent", "video": "video_intent"}
 VERSION = "decision-coverage-v1"
 
@@ -75,7 +77,9 @@ def finalize_coverage(retrieval_result, reference_map, *, context_string=None):
     # actually represented in the final context supplied to generation.
     present = set(reference_map)
     if isinstance(context_string, str):
-        present = set(re.findall(r"^【材料 (\d+)】", context_string, re.M))
+        present = {match.group(1) or match.group(2) for match in re.finditer(
+            r"^(?:【材料 (\d+)】|\[Material (\d+)\])", context_string, re.M
+        )}
     available = Counter(ref.content_type for key, ref in reference_map.items() if key in present)
     for kind, row in receipt["modalities"].items():
         row["context_count"] = available[kind]
@@ -84,21 +88,30 @@ def finalize_coverage(retrieval_result, reference_map, *, context_string=None):
         elif row["retained_count"]:
             row["status"] = "not_in_context"
     debug["decision_coverage"] = receipt
-    labels = {"image": "图片", "audio": "音频", "video": "视频"}
-    statuses = {"not_searched": "本轮未执行该类检索", "no_candidates": "本轮未返回候选",
-                "filtered": "候选未进入最终检索结果", "not_in_context": "候选未进入生成上下文"}
+    labels = localized({"image": "图片", "audio": "音频", "video": "视频"},
+                       {"image": "Images", "audio": "Audio", "video": "Video"})
+    statuses = localized(
+        {"not_searched": "本轮未执行该类检索", "no_candidates": "本轮未返回候选",
+         "filtered": "候选未进入最终检索结果", "not_in_context": "候选未进入生成上下文"},
+        {"not_searched": "This modality was not searched this turn", "no_candidates": "No candidates were returned this turn",
+         "filtered": "Candidates were not retained in the final retrieval results", "not_in_context": "Candidates were not included in the generation context"},
+    )
     lines = []
     if "query_embedding_failed" in receipt.get("warnings", []):
-        lines.append("本轮部分查询向量化失败，检索覆盖可能不完整；不能据此断言资料不存在。")
+        lines.append(localized("本轮部分查询向量化失败，检索覆盖可能不完整；不能据此断言资料不存在。",
+                               "Some query embeddings failed this turn, so retrieval coverage may be incomplete; this does not establish that material is absent."))
     for kind, row in receipt["modalities"].items():
         if row["effective_intent"] == "explicit_demand":
-            lines.append(f"{labels[kind]}：" + (f"上下文包含 {row['context_count']} 项参考材料" if row["context_count"]
-                         else statuses.get(row["status"], "上下文未包含此类参考材料")))
+            count_text = localized(f"上下文包含 {row['context_count']} 项参考材料",
+                                   f"The context includes {row['context_count']} reference materials")
+            lines.append(labels[kind] + localized("：", ": ") + (count_text if row["context_count"]
+                         else statuses.get(row["status"], localized("上下文未包含此类参考材料", "The context contains no reference materials of this modality"))))
     if not lines:
         return ""
-    return ("\n\n本轮证据覆盖记录（系统观测）：\n" + "\n".join(lines)
-            + "\n请逐项回应用户需求。材料可用不代表内容足以支持结论；缺少证据时明确本轮未能完成的部分。"
-              "未检索或未返回候选不能推断整个知识库没有资料；不要虚构文件、歌曲、画面或引用。")
+    return (localized("\n\n本轮证据覆盖记录（系统观测）：\n", "\n\nEvidence coverage this turn (system observations):\n") + "\n".join(lines)
+            + localized("\n请逐项回应用户需求。材料可用不代表内容足以支持结论；缺少证据时明确本轮未能完成的部分。"
+                        "未检索或未返回候选不能推断整个知识库没有资料；不要虚构文件、歌曲、画面或引用。",
+                        "\nAddress each user requirement. Available material does not mean its content sufficiently supports a conclusion; explicitly state which parts could not be completed this turn due to missing evidence. A modality not searched or returning no candidates does not establish that the whole knowledge base lacks material; do not invent files, songs, visuals or citations."))
 
 
 def sync_effective_requirements(preprocessing, *, action):

@@ -12,6 +12,7 @@ from datetime import datetime
 from app.core.llm.manager import llm_manager
 from app.core.llm.jev import JevError, JevRequiredError, get_jev_client
 from app.core.jev_settings import get_jev_config
+from app.core.prompt_language import localized
 from app.core.logger import get_logger, audit_log
 from app.core.score_details import finite_score, merge_retrieval_scores
 from app.modules.retrieval.decision_evidence import POLICY_VERSION, evidence_summary, supplement_evidence
@@ -632,21 +633,21 @@ class Reranker:
                 transcript = payload.get("transcript", "")
                 description = payload.get("description", "")
                 file_path = payload.get("file_path", "")
-                content = f"[音频/歌曲] 来源: {file_path}\n转写/歌词: {transcript}\n描述: {description}"
+                content = localized(f"[音频/歌曲] 来源: {file_path}\n转写/歌词: {transcript}\n描述: {description}", f'[Audio/song] Source: {file_path}\nTranscript/lyrics: {transcript}\nDescription: {description}')
             elif content_type == "video":
                 description = payload.get("description", "")
                 file_path = payload.get("file_path", "")
-                content = f"[视频] 来源: {file_path}\n描述: {description}"
+                content = localized(f"[视频] 来源: {file_path}\n描述: {description}", f'[Video] Source: {file_path}\nDescription: {description}')
             elif payload.get("text_content"):
                 # 文本/文档内容
                 text_content = payload.get("text_content", "")
                 file_path = payload.get("file_path", "")
-                content = f"[文档片段] 来源: {file_path}\n内容: {text_content}"
+                content = localized(f"[文档片段] 来源: {file_path}\n内容: {text_content}", f'[Document excerpt] Source: {file_path}\nContent: {text_content}')
             else:
                 # 图片内容
                 caption = payload.get("caption", "")
                 file_path = payload.get("file_path", "")
-                content = f"[图片描述] 来源: {file_path}\n描述: {caption}"
+                content = localized(f"[图片描述] 来源: {file_path}\n描述: {caption}", f'[Image description] Source: {file_path}\nDescription: {caption}')
             
             # 限制内容长度
             if len(content) > 1000:

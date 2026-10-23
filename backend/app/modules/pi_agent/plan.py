@@ -5,6 +5,8 @@ chooses a recommendation. Retention does not create a new observation.
 """
 from __future__ import annotations
 
+from .language import translate_prompt
+
 import json
 
 from .answers import evidence_units
@@ -19,7 +21,7 @@ def _identities(items):
 def bind_plan(items, request, previous, delivered, *, retained_spans=None):
     identities = _identities(items)
     if len({item[0] for item in identities}) != len(items):
-        raise ToolError("invalid_answer_plan", "回答要点编号不能重复。")
+        raise ToolError("invalid_answer_plan", translate_prompt("回答要点编号不能重复。"))
     if previous and identities[:len(previous["items"])] != _identities(previous["items"]):
         fields = ("id", "requirement", "quote", "modality", "basis")
         changes = [{"index": index, "field": field, "expected": expected,
@@ -27,47 +29,47 @@ def bind_plan(items, request, previous, delivered, *, retained_spans=None):
                    for index, old in enumerate(_identities(previous["items"]))
                    for offset, (field, expected) in enumerate(zip(fields, old))
                    if index >= len(identities) or identities[index][offset] != expected]
-        raise ToolError("answer_plan_locked", "既有要点身份不可改写。请恢复下列字段的 expected 值，"
-                        "保留本次证据与进度更新；不要重复提交相同参数。差异："
+        raise ToolError("answer_plan_locked", translate_prompt("既有要点身份不可改写。请恢复下列字段的 expected 值，"
+                        "保留本次证据与进度更新；不要重复提交相同参数。差异：")
                         + json.dumps(changes, ensure_ascii=False))
     user_messages = [request["message"], *(entry["content"] for entry in request.get("history", [])
                                         if entry.get("role") == "user")]
     for item in items:
         if not item["requirement"].strip() or not item["quote"].strip() or item["quote"] not in request["message"]:
-            raise ToolError("invalid_answer_plan", "quote必须逐字来自当前用户问题，不能来自资料或你自己的解释。")
+            raise ToolError("invalid_answer_plan", translate_prompt("quote必须逐字来自当前用户问题，不能来自资料或你自己的解释。"))
         input_quotes = item.get("input_quotes", [])
         if any(not quote.strip() or not any(quote in message for message in user_messages) for quote in input_quotes):
-            raise ToolError("invalid_answer_plan", "input_quotes须逐字来自当前或历史用户消息，不能来自助手或工具资料。")
+            raise ToolError("invalid_answer_plan", translate_prompt("input_quotes须逐字来自当前或历史用户消息，不能来自助手或工具资料。"))
         selected, support = item["evidence_ids"], item["supporting_evidence_ids"]
         if len(set(selected)) != len(selected) or len(set(support)) != len(support):
-            raise ToolError("invalid_answer_plan", "同一要点的证据编号不能重复。")
+            raise ToolError("invalid_answer_plan", translate_prompt("同一要点的证据编号不能重复。"))
         for number in selected + support:
             if number not in delivered:
-                raise ToolError("invalid_evidence", "回答要点只能选择本轮工具已实际交付的证据。")
+                raise ToolError("invalid_evidence", translate_prompt("回答要点只能选择本轮工具已实际交付的证据。"))
         if item["modality"] != "any" and any(delivered[number].modality != item["modality"] for number in selected):
-            raise ToolError("answer_plan_modality", "主要证据须符合已登记来源类型；其他补充依据放入supporting_evidence_ids。")
+            raise ToolError("answer_plan_modality", translate_prompt("主要证据须符合已登记来源类型；其他补充依据放入supporting_evidence_ids。"))
         if item.get("basis", "sources") == "user_input":
             if selected or support or item["modality"] != "any":
-                raise ToolError("invalid_answer_plan", "user_input只处理用户提供的输入，modality用any且不选择外部证据；需要来源时登记sources项。")
+                raise ToolError("invalid_answer_plan", translate_prompt("user_input只处理用户提供的输入，modality用any且不选择外部证据；需要来源时登记sources项。"))
             if item["status"] in {"ready", "incomplete"} and not input_quotes:
-                raise ToolError("answer_plan_input_missing", "user_input的ready/incomplete须用input_quotes绑定实际用户输入。")
+                raise ToolError("answer_plan_input_missing", translate_prompt("user_input的ready/incomplete须用input_quotes绑定实际用户输入。"))
         elif item["status"] in {"ready", "incomplete"} and not selected:
-            raise ToolError("answer_plan_evidence_missing", "ready/incomplete要点须有实际选中的evidence_ids，目录项或文件名不能替代证据；完全没有依据用unavailable。")
+            raise ToolError("answer_plan_evidence_missing", translate_prompt("ready/incomplete要点须有实际选中的evidence_ids，目录项或文件名不能替代证据；完全没有依据用unavailable。"))
         if item["status"] in {"incomplete", "unavailable"} and not item["gap"].strip():
-            raise ToolError("invalid_answer_plan", "incomplete/unavailable须在gap中说明该用户要求具体未交付的部分，不能用一般来源说明代替。")
+            raise ToolError("invalid_answer_plan", translate_prompt("incomplete/unavailable须在gap中说明该用户要求具体未交付的部分，不能用一般来源说明代替。"))
         if item["status"] == "unavailable" and (selected or support):
-            raise ToolError("invalid_answer_plan", "unavailable要点须清空证据；已有部分结果但仍缺少用户要求的内容用incomplete，并保留已有依据。")
+            raise ToolError("invalid_answer_plan", translate_prompt("unavailable要点须清空证据；已有部分结果但仍缺少用户要求的内容用incomplete，并保留已有依据。"))
         if item["status"] not in {"incomplete", "unavailable"} and item["gap"]:
-            raise ToolError("invalid_answer_plan", "gap只用于实际未交付的要求；仍缺少结果用incomplete/unavailable，一般来源说明必要时写在正文末尾。")
+            raise ToolError("invalid_answer_plan", translate_prompt("gap只用于实际未交付的要求；仍缺少结果用incomplete/unavailable，一般来源说明必要时写在正文末尾。"))
     numbers = {number for item in items for number in item["evidence_ids"] + item["supporting_evidence_ids"]}
     spans = ([span for span in (previous or {}).get("retained_spans", []) if span["evidence_id"] in numbers]
              if retained_spans is None else retained_spans)
     if len({span["evidence_id"] for span in spans}) != len(spans):
-        raise ToolError("invalid_retained_span", "同一证据只能指定一个保留区间。")
+        raise ToolError("invalid_retained_span", translate_prompt("同一证据只能指定一个保留区间。"))
     for span in spans:
         number, start, end = span["evidence_id"], span["start"], span["end"]
         if number not in numbers or not 0 <= start < end <= len(delivered[number].content):
-            raise ToolError("invalid_retained_span", "保留区间必须指向已选且已交付原文中的有效Unicode字符范围。")
+            raise ToolError("invalid_retained_span", translate_prompt("保留区间必须指向已选且已交付原文中的有效Unicode字符范围。"))
     return {"items": items, "retained_spans": spans}
 
 
@@ -134,20 +136,20 @@ def allows_input_only_answer(plan):
 
 def validate_delivery(args, plan):
     if plan is None:
-        raise ToolError("answer_plan_missing", "先用update_answer_plan登记用户要求的全部交付项。")
+        raise ToolError("answer_plan_missing", translate_prompt("先用update_answer_plan登记用户要求的全部交付项。"))
     # Plans track research progress; they must never force unnecessary citations
     # into the answer or hide citations the model chose while drafting.
     pending = [item["id"] for item in plan["items"] if item["status"] == "pending"]
     gaps = [item["gap"] for item in plan["items"] if item["status"] in {"incomplete", "unavailable"}]
     if pending:
-        raise ToolError("answer_delivery_incomplete", "请先核对尚未完成的用户要求："
+        raise ToolError("answer_delivery_incomplete", translate_prompt("请先核对尚未完成的用户要求：")
                         + json.dumps(pending, ensure_ascii=False)
-                        + "。继续研究或如实记录缺口，再提交回答。")
+                        + translate_prompt("。继续研究或如实记录缺口，再提交回答。"))
     if gaps and args["status"] != "partial":
-        raise ToolError("answer_delivery_gap", "仍有用户要求未交付，须使用status=partial，并将每项gap原样列入limitations。")
+        raise ToolError("answer_delivery_gap", translate_prompt("仍有用户要求未交付，须使用status=partial，并将每项gap原样列入limitations。"))
     if not gaps and args["status"] == "partial":
-        raise ToolError("answer_status_mismatch", "所有交付项均为ready，不能仅因来源范围或一般说明提交partial。若已满足用户要求，提交completed、limitations=[]，必要说明写在正文末尾；若确有用户要求未交付，先将对应项更新为incomplete/unavailable并说明具体gap。")
+        raise ToolError("answer_status_mismatch", translate_prompt("所有交付项均为ready，不能仅因来源范围或一般说明提交partial。若已满足用户要求，提交completed、limitations=[]，必要说明写在正文末尾；若确有用户要求未交付，先将对应项更新为incomplete/unavailable并说明具体gap。"))
     if set(args["limitations"]) != set(gaps):
-        raise ToolError("answer_delivery_gap", "limitations须恰好对应incomplete/unavailable项的gap，不得添加一般来源说明；必要说明由你写在正文末尾。")
+        raise ToolError("answer_delivery_gap", translate_prompt("limitations须恰好对应incomplete/unavailable项的gap，不得添加一般来源说明；必要说明由你写在正文末尾。"))
     if args["outcome"] == "not_found" and any(item["status"] != "unavailable" for item in plan["items"]):
-        raise ToolError("answer_delivery_gap", "not_found须将所有要点标为unavailable并清空选择，不能附带已选候选。")
+        raise ToolError("answer_delivery_gap", translate_prompt("not_found须将所有要点标为unavailable并清空选择，不能附带已选候选。"))

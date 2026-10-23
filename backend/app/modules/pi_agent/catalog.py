@@ -6,6 +6,8 @@ never guess a KB from a filename or take the most common index UUID.
 """
 from __future__ import annotations
 
+from .language import translate_prompt
+
 from dataclasses import dataclass
 import hashlib
 import json
@@ -115,14 +117,14 @@ class SourceCatalog:
     def get(self, identity: str, scope: AccessScope, *, search=False) -> Source:
         source = self.sources.get(identity)
         if not source:
-            raise ToolError("source_unavailable", "来源不存在或不在本轮范围内")
+            raise ToolError("source_unavailable", translate_prompt("来源不存在或不在本轮范围内"))
         if source.attachment:
             if search:
-                raise ToolError("scope_denied", "输入附件不能作为知识库搜索结果")
+                raise ToolError("scope_denied", translate_prompt("输入附件不能作为知识库搜索结果"))
             return source
         allowed = scope.can_search if search else scope.can_read
         if not allowed(source.kb_id, source.file_id):
-            raise ToolError("scope_denied", "来源不在本轮允许范围内")
+            raise ToolError("scope_denied", translate_prompt("来源不在本轮允许范围内"))
         return source
 
     def visible(self, scope: AccessScope, *, search=False):
@@ -189,11 +191,11 @@ class SourceCatalog:
                     digest.update(block)
                     target.write(block)
             if digest.hexdigest() != source.version:
-                raise ToolError("source_changed", "附件已变化，请重新上传")
+                raise ToolError("source_changed", translate_prompt("附件已变化，请重新上传"))
             return
         current = client.stat_object(source.bucket, source.object_path)
         if current.etag != source.version or current.size != source.size:
-            raise ToolError("source_changed", "原文件已更新，请重新开始任务以使用新版本")
+            raise ToolError("source_changed", translate_prompt("原文件已更新，请重新开始任务以使用新版本"))
         checkpoint()
         response = client.get_object(source.bucket, source.object_path,
                                      request_headers={"If-Match": source.version})
@@ -208,4 +210,4 @@ class SourceCatalog:
             response.close()
             response.release_conn()
         if size != source.size:
-            raise ToolError("source_changed", "原文件读取不完整")
+            raise ToolError("source_changed", translate_prompt("原文件读取不完整"))

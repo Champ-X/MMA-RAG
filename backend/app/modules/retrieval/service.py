@@ -17,6 +17,7 @@ from .search_engine import HybridSearchEngine
 from .reranker import Reranker
 from .reference_materials import include_reference_materials
 from .decision_coverage import coverage_receipt, apply_grounding_fallback, sync_effective_requirements, adopted_exclusions, modality as evidence_modality
+from app.core.prompt_language import localized
 from app.core.logger import get_logger, audit_log
 from app.core.llm.jev import JevRequiredError
 from app.core.jev_settings import get_jev_config
@@ -677,7 +678,7 @@ class RetrievalService:
         try:
             logger.info(f"开始检索流程(流式): {query}")
             timings.start("intent")
-            yield ("intent", timings.attach("intent", {"stage_status": "processing", "message": "正在分析问题与检索需求…"}))
+            yield ("intent", timings.attach("intent", {"stage_status": "processing", "message": localized("正在分析问题与检索需求…", 'Analyzing the question and retrieval requirements…')}))
             fast_result = await self._try_fast_path(
                 query, kb_context, session_context, attachment_context, allow_smalltalk,
             )
@@ -687,7 +688,7 @@ class RetrievalService:
                 fast_result.debug_info["stage_timings"] = timings.snapshot()
                 yield ("retrieval", timings.attach("retrieval", {
                     "stage_status": "completed",
-                    "message": "问候无需检索" if reason == "standalone_greeting" else "当前检索索引为空",
+                    "message": localized("问候无需检索", 'No retrieval needed for this greeting') if reason == "standalone_greeting" else localized("当前检索索引为空", 'The retrieval index is empty'),
                     "fast_path": reason, "total_found": 0, "reranked_count": 0,
                     "sparse_keywords": [], "sub_queries": [],
                 }))
@@ -709,7 +710,7 @@ class RetrievalService:
             )
             intent_payload = {
                 "stage_status": "completed",
-                "message": "意图解析完成",
+                "message": localized("意图解析完成", 'Intent analysis complete'),
                 "jev_decision": preprocessing_result.get("jev_decision", {}),
                 "intent_type": preprocessing_result.get("intent_type", "factual"),
                 "original_query": preprocessing_result.get("original_query", query),
@@ -733,7 +734,7 @@ class RetrievalService:
             # 2. 知识库路由
             timings.start("routing")
             yield ("routing", timings.attach("routing", {
-                "stage_status": "processing", "message": "正在选择相关知识库…",
+                "stage_status": "processing", "message": localized("正在选择相关知识库…", 'Selecting relevant knowledge bases…'),
             }))
             routing_result = await self._route_to_knowledge_bases(
                 preprocessing_result["refined_query"],
@@ -757,7 +758,7 @@ class RetrievalService:
                 ]
             routing_payload = {
                 "stage_status": "completed",
-                "message": "智能路由完成",
+                "message": localized("智能路由完成", 'Knowledge-base routing complete'),
                 "target_kbs": target_kbs,
                 "fallback_search": len(target_kb_ids) == 0,
                 "routing_method": getattr(routing_result, "routing_method", ""),
@@ -817,7 +818,7 @@ class RetrievalService:
                 )
 
             yield ("retrieval", timings.attach("retrieval", {
-                "stage_status": "processing", "message": "正在检索相关材料…",
+                "stage_status": "processing", "message": localized("正在检索相关材料…", 'Retrieving relevant materials…'),
                 "sparse_keywords": list(retrieval_context.search_strategies.get("sparse_keywords", []) or []),
                 "sub_queries": preprocessing_result.get("sub_queries", []) or [],
             }))
@@ -830,7 +831,7 @@ class RetrievalService:
                 # Preserve the failed stage and stop before ranking/generation.
                 raise RuntimeError(search_results.get("error") or "检索服务暂时不可用，本次检索未完成，请稍后重试。")
 
-            yield ("retrieval", timings.attach("retrieval", {"stage_status": "processing", "message": "正在比较相关性并整理检索结果…"}))
+            yield ("retrieval", timings.attach("retrieval", {"stage_status": "processing", "message": localized("正在比较相关性并整理检索结果…", 'Comparing relevance and organizing results…')}))
             # 5. 两阶段重排
             rerank_started = time.perf_counter()
             reranked_results = await self._apply_reranking(
@@ -877,7 +878,7 @@ class RetrievalService:
             final_ranking_count = reranked_results.get("final_ranking_count", len(results_list))
             retrieval_payload = {
                 "stage_status": "completed",
-                "message": f"检索完成，找到 {len(results_list)} 个相关结果",
+                "message": localized(f"检索完成，找到 {len(results_list)} 个相关结果", f'Retrieval complete: {len(results_list)} relevant results'),
                 "reranking_scorer": reranked_results.get("scorer", {}),
                 "target_modality_fallback": target_modality_fallback,
                 "sparse_keywords": sparse_keywords,

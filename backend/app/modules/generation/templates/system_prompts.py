@@ -7,6 +7,8 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 from app.core.logger import get_logger
+from app.core.prompt_language import get_prompt_language, localized
+from . import system_prompts_en as english
 
 logger = get_logger(__name__)
 
@@ -144,17 +146,18 @@ class SystemPromptManager:
         """
         try:
             # 获取基础提示词
-            base_prompt = self.prompt_templates.get("base", {})
+            templates = localized(self.prompt_templates, english.PROMPT_TEMPLATES)
+            base_prompt = templates.get("base", {})
             
             # 获取意图特定提示词
-            intent_prompt = self.prompt_templates.get(intent_type, {})
+            intent_prompt = templates.get(intent_type, {})
             
             # 构建提示词
             system_prompt_parts = [
-                "# 角色设定",
+                localized("# 角色设定", "# Role"),
                 base_prompt.get("role", ""),
                 "",
-                "# 核心指令"
+                localized("# 核心指令", "# Core instructions")
             ]
             
             # 添加核心指令
@@ -164,14 +167,14 @@ class SystemPromptManager:
             # 添加意图特定指令
             additional_instructions = intent_prompt.get("additional_instructions", [])
             if additional_instructions:
-                system_prompt_parts.extend(["", "# 特定指令"])
+                system_prompt_parts.extend(["", localized("# 特定指令", "# Specific instructions")])
                 system_prompt_parts.extend(additional_instructions)
             
             # 添加额外上下文
             if additional_context:
-                system_prompt_parts.extend(["", f"# 额外上下文", additional_context])
+                system_prompt_parts.extend(["", localized("# 额外上下文", "# Additional context"), additional_context])
             
-            system_prompt_parts.extend(["", "# 回答范围", ANSWER_SCOPE_INSTRUCTIONS])
+            system_prompt_parts.extend(["", localized("# 回答范围", "# Answer scope"), localized(ANSWER_SCOPE_INSTRUCTIONS, english.ANSWER_SCOPE_INSTRUCTIONS)])
             return "\n".join(system_prompt_parts)
             
         except Exception as e:
@@ -180,6 +183,8 @@ class SystemPromptManager:
     
     def _get_fallback_prompt(self) -> str:
         """获取备用提示词"""
+        if get_prompt_language() == "en-US":
+            return english.ANSWER_SCOPE_INSTRUCTIONS + "\n\n" + english.FALLBACK_PROMPT
         return ANSWER_SCOPE_INSTRUCTIONS + "\n\n" + """你是 Tessmora 的多模态内容检索助手。
 
 请基于提供的参考材料回答问题，并：
@@ -225,7 +230,7 @@ class SystemPromptManager:
 """
             }
             
-            return specialized_prompts.get(query_type, "")
+            return localized(specialized_prompts, english.SPECIALIZED_PROMPTS).get(query_type, "")
             
         except Exception as e:
             logger.error(f"获取专业化提示词失败: {str(e)}")
@@ -247,7 +252,8 @@ class SystemPromptManager:
             # 逐步缩短指令
             shortened_parts = []
             
-            for line in prompt.replace(ANSWER_SCOPE_INSTRUCTIONS, '').split('\n'):
+            scope = localized(ANSWER_SCOPE_INSTRUCTIONS, english.ANSWER_SCOPE_INSTRUCTIONS)
+            for line in prompt.replace(scope, '').split('\n'):
                 if line.startswith('#'):
                     # 保留标题
                     shortened_parts.append(line)
@@ -267,9 +273,16 @@ class SystemPromptManager:
                     "3. **诚实回答**：如无相关信息，请诚实回答",
                     "4. **格式要求**：使用 Markdown 格式"
                 ]
-                return '\n'.join(core_lines) + "\n" + ANSWER_SCOPE_INSTRUCTIONS
+                core_lines = localized(core_lines, [
+                    "# Role", "You are Tessmora's multimodal content-retrieval assistant.", "", "# Core instructions",
+                    "1. **Citations**: Cite every fact with [id].",
+                    "2. **Images**: Explicitly identify any image you use.",
+                    "3. **Honesty**: Honestly state when relevant information is absent.",
+                    "4. **Format**: Use Markdown.",
+                ])
+                return '\n'.join(core_lines) + "\n" + scope
             
-            return '\n'.join(shortened_parts) + '\n' + ANSWER_SCOPE_INSTRUCTIONS
+            return '\n'.join(shortened_parts) + '\n' + scope
             
         except Exception as e:
             logger.error(f"提示词长度优化失败: {str(e)}")
@@ -290,13 +303,13 @@ class SystemPromptManager:
             variants.append(concise_version)
             
             # 详细版本
-            detailed_prompt = base_prompt + """
+            detailed_prompt = base_prompt + localized("""
 
 # 详细指导
 - 仔细阅读所有参考材料
 - 区分文档内容和图片描述
 - 提供深入的分析和见解
-- 结构化组织回答内容"""
+- 结构化组织回答内容""", "\n\n# Detailed guidance\n- Read all reference materials carefully\n- Distinguish document content from image descriptions\n- Provide in-depth analysis and insights\n- Organize the answer structurally")
             
             variants.append(detailed_prompt)
             

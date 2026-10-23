@@ -14,6 +14,8 @@ from .jev_answer_audit import maybe_audit_answer
 from .citation_selection import select_answer_references
 from app.core.llm.manager import llm_manager
 from app.core.logger import get_logger, audit_log
+from app.core.prompt_language import localized
+from .templates.system_prompts_en import MULTI_TURN as MULTI_TURN_EN
 
 logger = get_logger(__name__)
 
@@ -80,7 +82,7 @@ class GenerationService:
             intent_type = getattr(retrieval_result.context, 'intent_type', 'factual')
             system_prompt = self.prompt_manager.build_system_prompt(intent_type)
             if session_context:
-                system_prompt = f"{system_prompt}\n{MULTI_TURN_SYSTEM_INSTRUCTIONS}"
+                system_prompt = f"{system_prompt}\n{localized(MULTI_TURN_SYSTEM_INSTRUCTIONS, MULTI_TURN_EN)}"
             
             # 3. 构建用户输入
             user_input = self.context_builder.formatter.format_user_query(
@@ -192,7 +194,7 @@ class GenerationService:
             # 发送"开始准备上下文"事件
             yield StreamEvent(
                 type=StreamEventType.THOUGHT,
-                data={"stage": "generation", "message": "正在构建上下文...", "status": "building_context"},
+                data={"stage": "generation", "message": localized("正在构建上下文...", 'Building context...'), "status": "building_context"},
                 timestamp=datetime.utcnow().timestamp()
             )
             
@@ -208,7 +210,7 @@ class GenerationService:
             # 发送"准备提示词"事件
             yield StreamEvent(
                 type=StreamEventType.THOUGHT,
-                data={"stage": "generation", "message": "正在准备提示词...", "status": "preparing_prompt"},
+                data={"stage": "generation", "message": localized("正在准备提示词...", 'Preparing prompts...'), "status": "preparing_prompt"},
                 timestamp=datetime.utcnow().timestamp()
             )
             
@@ -216,7 +218,7 @@ class GenerationService:
             intent_type = getattr(retrieval_result.context, 'intent_type', 'factual')
             system_prompt = self.prompt_manager.build_system_prompt(intent_type)
             if session_context:
-                system_prompt = f"{system_prompt}\n{MULTI_TURN_SYSTEM_INSTRUCTIONS}"
+                system_prompt = f"{system_prompt}\n{localized(MULTI_TURN_SYSTEM_INSTRUCTIONS, MULTI_TURN_EN)}"
             
             # 构建用户输入
             user_input = self.context_builder.formatter.format_user_query(
@@ -227,7 +229,7 @@ class GenerationService:
             # 发送"开始生成"事件，让前端知道流式生成即将开始
             yield StreamEvent(
                 type=StreamEventType.THOUGHT,
-                data={"stage": "generation", "message": "正在生成回答...", "status": "generating"},
+                data={"stage": "generation", "message": localized("正在生成回答...", 'Generating the answer...'), "status": "generating"},
                 timestamp=datetime.utcnow().timestamp()
             )
             
@@ -288,9 +290,9 @@ class GenerationService:
         """生成内容摘要"""
         try:
             summary_prompts = {
-                "general": f"请为以下内容生成简洁的摘要：\n\n{content}",
-                "executive": f"请为以下内容生成高管摘要：\n\n{content}",
-                "technical": f"请为以下技术内容生成详细摘要：\n\n{content}"
+                "general": localized(f"请为以下内容生成简洁的摘要：\n\n{content}", f'Create a concise summary of the following content:\n\n{content}'),
+                "executive": localized(f"请为以下内容生成高管摘要：\n\n{content}", f'Create an executive summary of the following content:\n\n{content}'),
+                "technical": localized(f"请为以下技术内容生成详细摘要：\n\n{content}", f'Create a detailed summary of the following technical content:\n\n{content}')
             }
             
             prompt = summary_prompts.get(summary_type, summary_prompts["general"])
@@ -337,10 +339,10 @@ class GenerationService:
         """分析内容"""
         try:
             analysis_prompts = {
-                "sentiment": f"请分析以下内容的情感倾向：\n\n{content}",
-                "topics": f"请提取以下内容的主要主题：\n\n{content}",
-                "entities": f"请提取以下内容中的实体信息：\n\n{content}",
-                "structure": f"请分析以下内容的结构：\n\n{content}"
+                "sentiment": localized(f"请分析以下内容的情感倾向：\n\n{content}", f'Analyze the sentiment of the following content:\n\n{content}'),
+                "topics": localized(f"请提取以下内容的主要主题：\n\n{content}", f'Extract the main topics from the following content:\n\n{content}'),
+                "entities": localized(f"请提取以下内容中的实体信息：\n\n{content}", f'Extract entity information from the following content:\n\n{content}'),
+                "structure": localized(f"请分析以下内容的结构：\n\n{content}", f'Analyze the structure of the following content:\n\n{content}')
             }
             
             prompt = analysis_prompts.get(analysis_type, analysis_prompts["sentiment"])

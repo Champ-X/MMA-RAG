@@ -126,7 +126,7 @@ def test_prepared_scope_sources_and_completion_event_commit_together(tmp_path, m
         store.artifact(run, "_sources")
     event = store.finish_preparation(run, scope=scope, sources=sources, duration_ms=12)
     reopened = RunStore(store.path)
-    assert reopened.get(run)["config"] == {"scope": scope, "scope_ready": True}
+    assert reopened.get(run)["config"] == {"scope": scope, "scope_ready": True, "language": "zh-CN"}
     assert reopened.artifact(run, "_sources") == sources
     assert event == reopened.events(run)[-1]
     assert event["type"] == "sources.completed" and event["span_id"] == "sources"

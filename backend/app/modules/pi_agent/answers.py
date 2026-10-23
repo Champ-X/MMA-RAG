@@ -6,6 +6,8 @@ Original source text and numeric citation identities remain immutable.
 """
 from __future__ import annotations
 
+from .language import translate_prompt
+
 import re
 
 import markdown
@@ -73,17 +75,18 @@ def citation_errors(args, delivered, *, allow_uncited=False):
     errors = []
     used, declared = {int(n) for n in re.findall(r"\[(\d+)\]", args["answer"])}, set(args["evidence_ids"])
     if args["outcome"] == "not_found" and (used or declared or args["status"] != "partial"):
-        errors.append({"code": "unsupported_citations", "message": "未找到相关依据时必须提交 partial，且不得附候选或来源介绍的引用"})
+        errors.append({"code": "unsupported_citations", "message": translate_prompt("未找到相关依据时必须提交 partial，且不得附候选或来源介绍的引用")})
     if used != declared or not used <= delivered.keys():
-        errors.append({"code": "citation_mismatch", "message": "正文引用与 evidence_ids 不一致，或引用了本轮尚未返回的证据。请修正后重新提交。"})
+        errors.append({"code": "citation_mismatch", "message": translate_prompt("正文引用与 evidence_ids 不一致，或引用了本轮尚未返回的证据。请修正后重新提交。")})
     if not used and not allow_uncited and (args["status"] != "partial" or not args["limitations"]):
-        errors.append({"code": "missing_evidence", "message": "无来源支撑时请提交 partial，并说明证据缺口；不能当作已核验的回答。"})
+        errors.append({"code": "missing_evidence", "message": translate_prompt("无来源支撑时请提交 partial，并说明证据缺口；不能当作已核验的回答。")})
     if args["status"] == "partial" and not args["limitations"]:
-        errors.append({"code": "missing_limitations", "message": "部分回答必须具体说明哪些用户要求尚未交付"})
+        errors.append({"code": "missing_limitations", "message": translate_prompt("部分回答必须具体说明哪些用户要求尚未交付")})
     if args["status"] == "completed" and args["limitations"]:
-        errors.append({"code": "answer_status_mismatch", "message": "completed的limitations须为空；一般来源说明必要时写在正文末尾，确有用户要求未交付才用partial。"})
-    if "知识库中未找到相关内容" in args["answer"] and used:
-        errors.append({"code": "unsupported_citations", "message": "没有相关证据的回答不能保留候选引用"})
+        errors.append({"code": "answer_status_mismatch", "message": translate_prompt("completed的limitations须为空；一般来源说明必要时写在正文末尾，确有用户要求未交付才用partial。")})
+    if used and ("知识库中未找到相关内容" in args["answer"]
+                 or "no relevant content was found in the knowledge base" in args["answer"].casefold()):
+        errors.append({"code": "unsupported_citations", "message": translate_prompt("没有相关证据的回答不能保留候选引用")})
     return errors
 
 
@@ -115,7 +118,7 @@ def media_target_errors(answer, image_targets, *, preserved_inputs=()):
     if not invalid:
         return []
     return [{"code": "invalid_media_target",
-             "message": "正文图片地址未对应本次选中并交付的图片来源。使用该来源的数字[编号]即可展示媒体；不要把来源身份、文件名或未取得的地址当作图片链接。",
+             "message": translate_prompt("正文图片地址未对应本次选中并交付的图片来源。使用该来源的数字[编号]即可展示媒体；不要把来源身份、文件名或未取得的地址当作图片链接。"),
              "invalid_targets": [target[:160] for target in invalid[:4]]}]
 
 
@@ -129,7 +132,7 @@ def source_notices(statements):
             notices.append({"code": "generated_caption_selected", "unit_id": statement["unit_id"],
                 "evidence_ids": sorted({source["evidence_id"] for source in generated}),
                 "source_spans": sorted({source["span_id"] for source in generated}),
-                "message": "这些选中片段按既有标记识别为生成图注，不能仅凭parsed_text类型当作作者正文。回答作者的定义、机制或结论时，请核对相关正文；若使用图像描述，应明确其观察性质与局限。是否支持当前主张仍须由你判断，本提示不作语义裁决。"})
+                "message": translate_prompt("这些选中片段按既有标记识别为生成图注，不能仅凭parsed_text类型当作作者正文。回答作者的定义、机制或结论时，请核对相关正文；若使用图像描述，应明确其观察性质与局限。是否支持当前主张仍须由你判断，本提示不作语义裁决。")})
     return notices
 
 
@@ -146,15 +149,15 @@ def assess_answer(args, delivered, *, allow_uncited=False):
             recognized = {int(n) for n in re.findall(r"\[(\d+)\]", args["answer"])}
             declared = set(args["evidence_ids"])
             error.update(
-                message="正文每个数字引用必须单独加方括号，例如[1][2]；[1,2]和[e1s1]都不是有效正文引用，e1s1只用于source_spans。evidence_ids须与正文实际识别的编号一致，且全部来自本轮已返回证据。请自行核对原文并修订，格式示例不证明语义支持。",
+                message=translate_prompt("正文每个数字引用必须单独加方括号，例如[1][2]；[1,2]和[e1s1]都不是有效正文引用，e1s1只用于source_spans。evidence_ids须与正文实际识别的编号一致，且全部来自本轮已返回证据。请自行核对原文并修订，格式示例不证明语义支持。"),
                 recognized_evidence_ids=sorted(recognized), declared_evidence_ids=sorted(declared),
                 unavailable_evidence_ids=sorted((recognized | declared) - delivered.keys()))
     if not any(uid.startswith("a") for uid in expected):
-        errors.append({"code": "empty_answer", "message": "回答正文不能为空或只有空白。"})
+        errors.append({"code": "empty_answer", "message": translate_prompt("回答正文不能为空或只有空白。")})
     ids = [item["unit_id"] for item in statements]
     if len(ids) != len(set(ids)) or set(ids) != set(expected):
         errors.append({"code": "incomplete_statements", "message":
-            "必须恰好评价正文每个非空行(a1起)和每条limitations(l1起)，不得遗漏、重复或新增编号。",
+            translate_prompt("必须恰好评价正文每个非空行(a1起)和每条limitations(l1起)，不得遗漏、重复或新增编号。"),
             "expected_units": list(expected)})
     source_units = {unit["id"]: (evidence, unit) for evidence in delivered.values() for unit in evidence_units(evidence)}
     for item in statements:
@@ -180,22 +183,22 @@ def assess_answer(args, delivered, *, allow_uncited=False):
         factual = kind in {"fact", "inference"}
         if factual and not anchors and not allow_uncited:
             errors.append({"code": "missing_support", "unit_id": uid,
-                           "message": "事实或推断必须关联已返回的原文片段；缺乏依据时删除该断言或改为本次未找到支持。"})
+                           "message": translate_prompt("事实或推断必须关联已返回的原文片段；缺乏依据时删除该断言或改为本次未找到支持。")})
         if factual and uid.startswith("l"):
             errors.append({"code": "fact_in_limitations", "unit_id": uid,
-                           "message": "limitations只记录研究缺口；资料内容的事实断言须移到正文并给出支持。"})
+                           "message": translate_prompt("limitations只记录研究缺口；资料内容的事实断言须移到正文并给出支持。")})
         if not factual and (anchors or markers):
             errors.append({"code": "nonfactual_citations", "unit_id": uid,
-                           "message": "拒答、限制说明和纯标题不附来源候选；含来源事实的整行应归为fact或inference。"})
+                           "message": translate_prompt("拒答、限制说明和纯标题不附来源候选；含来源事实的整行应归为fact或inference。")})
         if factual and markers != {source["evidence_id"] for source in sources}:
             selected = sorted({source["evidence_id"] for source in sources})
             errors.append({"code": "statement_citation_mismatch", "unit_id": uid,
-                           "message": "该行实际识别的正文引用须与所选source_spans的来源编号一致，每个数字单独加方括号。示例只说明格式，仍须自行核对原文是否支持整行事实。",
+                           "message": translate_prompt("该行实际识别的正文引用须与所选source_spans的来源编号一致，每个数字单独加方括号。示例只说明格式，仍须自行核对原文是否支持整行事实。"),
                            "recognized_evidence_ids": sorted(markers), "selected_source_evidence_ids": selected,
                            "citation_format_example": "".join(f"[{number}]" for number in selected)})
         if args["outcome"] == "not_found" and factual:
             errors.append({"code": "not_found_factual_assertion", "unit_id": uid,
-                           "message": "not_found只说明本次检索缺乏支持，不能断言整篇或全库没有某类信息。"})
+                           "message": translate_prompt("not_found只说明本次检索缺乏支持，不能断言整篇或全库没有某类信息。")})
         if not unit["text"].strip():
             errors.append({"code": "empty_statement", "unit_id": uid})
         resolved.append({"unit_id": uid, "kind": kind, "start": unit["start"], "end": unit["end"],
@@ -205,7 +208,7 @@ def assess_answer(args, delivered, *, allow_uncited=False):
     if limit is not None and size > limit:
         errors.append({"code": "answer_too_long", "actual": size, "maximum": limit,
                        "over_by": size - limit,
-                       "message": "正文超出所声明的用户篇幅要求，请由Pi缩短后重新检查或提交。"})
+                       "message": translate_prompt("正文超出所声明的用户篇幅要求，请由Pi缩短后重新检查或提交。")})
     notices = source_notices(resolved)
     return {"protocol_valid": not errors, "errors": errors, "answer_units": units,
             "body_characters": size, "declared_max_characters": limit, "statements": resolved,
@@ -226,7 +229,7 @@ def repair_feedback(report):
         for notice in notices[:4]]
     return {"body_characters": size, "declared_max_characters": limit, "over_by": over_by,
             "suggested_body_characters": max(1, int(limit * 0.85)) if over_by else None,
-            "instruction": "正文单元按非空行而非句子编号；整行全部事实共用该单元的来源列表。超长时保留用户所问事实与引用，整体精简到建议字数留出余量，不要只反复删少数字符，也不要调高或省略已声明的上限。ascii_letters是正文中A-Z/a-z所占字符，不是词数，也不表示这些内容可以删除。中文答复可把一般术语准确译为中文，必要英文专名保留一次；优先重述措辞、去掉重复名称和背景，不要靠删除关键事实、条件或比较维度来满足限长。",
+            "instruction": translate_prompt("正文单元按非空行而非句子编号；整行全部事实共用该单元的来源列表。超长时保留用户所问事实与引用，整体精简到建议字数留出余量，不要只反复删少数字符，也不要调高或省略已声明的上限。ascii_letters是正文中A-Z/a-z所占字符，不是词数，也不表示这些内容可以删除。中文答复可把一般术语准确译为中文，必要英文专名保留一次；优先重述措辞、去掉重复名称和背景，不要靠删除关键事实、条件或比较维度来满足限长。"),
             **({"body_character_counts": report["body_character_counts"]} if "body_character_counts" in report else {}),
             **({"source_notices": preview, "source_notice_count": len(notices),
                 "source_notices_truncated": len(preview) < len(notices) or any(

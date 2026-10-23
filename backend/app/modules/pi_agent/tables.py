@@ -1,6 +1,8 @@
 """Deterministic table queries; no Python/SQL execution supplied by models."""
 from __future__ import annotations
 
+from .language import translate_prompt
+
 import csv
 from decimal import Decimal, InvalidOperation
 import io
@@ -24,7 +26,7 @@ def load_table(path: Path, sheet: str | None):
             book = openpyxl.load_workbook(handle, read_only=True, data_only=False)
             try:
                 if sheet and sheet not in book.sheetnames:
-                    raise ToolError("sheet_unavailable", "工作表不存在，可用工作表：" + ", ".join(book.sheetnames)[:1000])
+                    raise ToolError("sheet_unavailable", translate_prompt("工作表不存在，可用工作表：") + ", ".join(book.sheetnames)[:1000])
                 selected = book[sheet] if sheet else book[book.sheetnames[0]]
                 rows = []
                 for row in selected.iter_rows(values_only=True):
@@ -33,12 +35,12 @@ def load_table(path: Path, sheet: str | None):
             finally:
                 book.close()
     else:
-        raise ToolError("unsupported_table", "query_table 支持 CSV、TSV、XLSX 原文件；PDF 表格请读取原文并检查对应页")
+        raise ToolError("unsupported_table", translate_prompt("query_table 支持 CSV、TSV、XLSX 原文件；PDF 表格请读取原文并检查对应页"))
     if not rows:
-        raise ToolError("empty_table", "表格为空")
+        raise ToolError("empty_table", translate_prompt("表格为空"))
     headers = [str(value or "").strip() for value in rows[0]]
     if len(set(headers)) != len(headers) or any(not h for h in headers):
-        raise ToolError("ambiguous_table_header", "表头存在重复或空白，不能可靠按列计算")
+        raise ToolError("ambiguous_table_header", translate_prompt("表头存在重复或空白，不能可靠按列计算"))
     return headers, [{"_row": index, **{h: row[i] if i < len(row) else None for i, h in enumerate(headers)}}
                      for index, row in enumerate(rows[1:], start=2)], sheet
 
@@ -50,7 +52,7 @@ def number(value):
             raise InvalidOperation
         return parsed
     except (InvalidOperation, ValueError):
-        raise ToolError("non_numeric_cell", "计算列包含非数值或公式；请先用 select 检查原始单元格，不能将缺值当作零") from None
+        raise ToolError("non_numeric_cell", translate_prompt("计算列包含非数值或公式；请先用 select 检查原始单元格，不能将缺值当作零")) from None
 
 
 def query_table(path: Path, args: dict):
@@ -60,7 +62,7 @@ def query_table(path: Path, args: dict):
     group_by = args.get("group_by")
     requested = set(columns) | {f["column"] for f in args["filters"]} | {c for c in (value_column, group_by) if c}
     if not requested <= set(headers):
-        raise ToolError("unknown_column", "列名无效，可用列：" + ", ".join(headers)[:1200])
+        raise ToolError("unknown_column", translate_prompt("列名无效，可用列：") + ", ".join(headers)[:1200])
     selected = rows
     for filt in args["filters"]:
         op, target, column = filt["op"], filt["value"], filt["column"]
@@ -80,7 +82,7 @@ def query_table(path: Path, args: dict):
         more = offset + limit < len(selected)
     else:
         if operation != "count" and not value_column:
-            raise ToolError("missing_column", "数值计算必须指定 value_column")
+            raise ToolError("missing_column", translate_prompt("数值计算必须指定 value_column"))
         groups = {}
         for row in selected:
             groups.setdefault(str(row[group_by]) if group_by else "all", []).append(row)
@@ -96,4 +98,4 @@ def query_table(path: Path, args: dict):
             "operation": operation, "value_column": value_column, "group_by": group_by,
             "filters": args["filters"], "result": result, "truncated": more,
             "next_offset": args["offset"] + args["limit"] if more else None,
-            "formula_policy": "公式作为原文返回，不执行、不使用可能过期的缓存数值"}
+            "formula_policy": translate_prompt("公式作为原文返回，不执行、不使用可能过期的缓存数值")}

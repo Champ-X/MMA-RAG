@@ -8,6 +8,7 @@ import json
 
 from app.core.llm.manager import llm_manager
 from app.core.llm.prompt_engine import prompt_engine
+from app.core.prompt_language import localized
 from app.core.logger import get_logger
 from app.modules.chat.context_manager import build_conversation_context
 from app.core.jev_settings import get_jev_config
@@ -87,7 +88,7 @@ class IntentProcessor:
             
             block = (attachment_context_block or "").strip()
             if not block:
-                block = "（本轮无用户上传的图片/音频摘要）"
+                block = localized("（本轮无用户上传的图片/音频摘要）", "(No user-uploaded image/audio summaries in this turn)")
 
             # 构建提示词
             prompt = self.prompt_engine.render_template(
@@ -97,15 +98,17 @@ class IntentProcessor:
                 attachment_context_block=block,
             )
             if include_source_proposals:
-                prompt += "\n\n" + PROPOSAL_INSTRUCTION
+                from .decision_plan import PROPOSAL_INSTRUCTION_EN
+                prompt += "\n\n" + localized(PROPOSAL_INSTRUCTION, PROPOSAL_INSTRUCTION_EN)
             
             # 调用LLM进行意图识别
             messages = [
                 {
                     "role": "system",
-                    "content": (
+                    "content": localized(
                         "你是一个专业的RAG查询处理器。请仔细分析用户的查询，"
-                        "生成结构化的JSON输出，包含意图分类、查询改写等信息。"
+                        "生成结构化的JSON输出，包含意图分类、查询改写等信息。",
+                        "You are a professional RAG query processor. Analyze the user query carefully and produce structured JSON containing intent classification, query rewrites and related information."
                     )
                 },
                 {
@@ -159,7 +162,7 @@ class IntentProcessor:
             max_chars=4000,
             max_message_chars=1200,
         )
-        return context.transcript or "无对话历史"
+        return context.transcript or localized("无对话历史", 'No conversation history')
     
     def _parse_llm_response(self, response_data: Dict[str, Any]) -> Dict[str, Any]:
         """解析LLM响应"""

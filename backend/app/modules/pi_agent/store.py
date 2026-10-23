@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from .contracts import Evidence, RunEvent, TERMINAL_STATUSES
+from app.core.prompt_language import normalize_language
 
 
 class RunNotFound(LookupError):
@@ -89,6 +90,8 @@ class RunStore:
         result = dict(row)
         for key in ("request", "config", "state"):
             result[key] = json.loads(result.pop(f"{key}_json"))
+        result["request"].setdefault("language", "zh-CN")
+        result["config"].setdefault("language", result["request"]["language"])
         result.pop("owner", None)
         result.pop("request_hash", None)
         result.pop("request_key", None)
@@ -103,6 +106,8 @@ class RunStore:
         return row
 
     def create(self, *, owner: str, request: dict, config: dict) -> tuple[dict, bool]:
+        request = {**request, "language": normalize_language(request.get("language"))}
+        config = {**config, "language": request["language"]}
         digest = fingerprint(request)
         with self._connection(write=True) as db:
             if db.execute("SELECT 1 FROM pi_closed_sessions WHERE owner=? AND session_id=?",
@@ -111,7 +116,9 @@ class RunStore:
             old = db.execute("SELECT * FROM pi_runs WHERE owner=? AND request_key=?",
                              (owner, request["client_request_id"])).fetchone()
             if old:
-                if old["request_hash"] != digest:
+                previous = json.loads(old["request_json"])
+                previous.setdefault("language", "zh-CN")
+                if old["request_hash"] != digest and fingerprint(previous) != digest:
                     raise RunConflict("同一个请求标识不能用于不同的问题或范围")
                 return self._decode(old), False
             run_id, now = str(uuid.uuid4()), time.time()

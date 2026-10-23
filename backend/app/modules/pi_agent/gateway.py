@@ -1,6 +1,8 @@
 """Independent, read-only retrieval. No legacy planner, reranker or health state."""
 from __future__ import annotations
 
+from .language import translate_prompt
+
 import asyncio
 import json
 import re
@@ -144,7 +146,7 @@ class KnowledgeGateway:
             # A source readable as input is not necessarily searchable.
             chosen = [self.catalog.get(identity, self.scope, search=True) for identity in dict.fromkeys(source_ids)]
             if any(source.kb_id not in kbs for source in chosen):
-                raise ToolError("scope_conflict", "指定来源与本次查询的知识库范围冲突")
+                raise ToolError("scope_conflict", translate_prompt("指定来源与本次查询的知识库范围冲突"))
             query_scope = replace(self.scope, search_kbs=frozenset(s.kb_id for s in chosen),
                                   search_files=frozenset((s.kb_id, s.file_id) for s in chosen))
         sources = [s for s in self.catalog.visible(query_scope, search=True) if s.kb_id in kbs]
@@ -186,7 +188,7 @@ class KnowledgeGateway:
                 except Exception as error:
                     # No provider exception strings: they can contain credentials or URLs.
                     errors.append({"method": "lexical", "modality": modality, "code": type(error).__name__,
-                                   "message": "该模态索引读取失败"})
+                                   "message": translate_prompt("该模态索引读取失败")})
                 if vector is not None:
                     for using in vectors:
                         try:
@@ -202,7 +204,7 @@ class KnowledgeGateway:
                             rankings.append(ranking)
                         except Exception as error:
                             errors.append({"method": "dense", "modality": modality, "code": type(error).__name__,
-                                           "message": "该模态向量检索失败"})
+                                           "message": translate_prompt("该模态向量检索失败")})
         scores = defaultdict(float)
         for ranking in rankings:
             for rank, key in enumerate(ranking):
@@ -210,7 +212,7 @@ class KnowledgeGateway:
         keys = sorted(scores, key=lambda key: (-scores[key], key))[:limit]
         evidence = [self._evidence(records[k][0], k[0], records[k][1], max_chars=1400) for k in keys]
         if not evidence and errors and not rankings:
-            raise ToolError("search_unavailable", "搜索服务未能完成查询，请稍后重试；这不代表没有相关内容", retryable=True)
+            raise ToolError("search_unavailable", translate_prompt("搜索服务未能完成查询，请稍后重试；这不代表没有相关内容"), retryable=True)
         return evidence, {"status": "partial" if errors or truncated else "ok" if evidence else "no_hits",
                           "methods": ["exact" if mode == "exact" else "lexical", *(["dense"] if vector is not None else [])],
                           "errors": errors, "truncated": truncated,
@@ -219,9 +221,9 @@ class KnowledgeGateway:
     async def read(self, source: Source, *, start: int, limit: int, modality: str | None = None,
                    text_offset: int = 0, expected_record_version: str | None = None):
         if (text_offset or expected_record_version) and limit != 1:
-            raise ToolError("ambiguous_text_offset", "续读单个索引片段时必须设置 limit=1")
+            raise ToolError("ambiguous_text_offset", translate_prompt("续读单个索引片段时必须设置 limit=1"))
         if source.attachment:
-            raise ToolError("use_media_tool", "请使用 inspect_media 读取本机媒体附件")
+            raise ToolError("use_media_tool", translate_prompt("请使用 inspect_media 读取本机媒体附件"))
         kind = modality or source.modality
         extra = [qm.FieldCondition(key="chunk_index", range=qm.Range(gte=start, lt=start + limit))] if kind == "doc" else []
         points, clipped = await self._scroll(COLLECTIONS[kind][0], self._filter([source], extra=extra))
@@ -241,11 +243,11 @@ class KnowledgeGateway:
             total = len(points)
             has_more = start + limit < total or clipped
         if text_offset and selected and text_offset >= len(point_text(selected[0].payload or {}, kind)):
-            raise ToolError("text_offset_out_of_range", "续读位置超出当前索引片段，请从 text_offset=0 重新读取并核对来源版本")
+            raise ToolError("text_offset_out_of_range", translate_prompt("续读位置超出当前索引片段，请从 text_offset=0 重新读取并核对来源版本"))
         observations = [self._evidence(source, kind, p, max_chars=max(1000, 12000 // max(1, limit)),
                                      text_offset=text_offset) for p in selected]
         if expected_record_version and observations and observations[0].provenance["record_version"] != expected_record_version:
-            raise ToolError("index_record_changed", "索引片段版本已改变，请从头读取，不能将不同版本的文字拼接为同一原文")
+            raise ToolError("index_record_changed", translate_prompt("索引片段版本已改变，请从头读取，不能将不同版本的文字拼接为同一原文"))
         continuations = [{"source_id": source.id,
                           "start": evidence.locator["chunk_index"] if kind == "doc" else start + index,
                           "limit": 1, "text_offset": evidence.locator["text_end"],

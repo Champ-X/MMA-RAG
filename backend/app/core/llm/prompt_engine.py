@@ -4,9 +4,12 @@
 """
 
 from typing import Dict, List, Any, Optional
+import re
 from jinja2 import Template, Environment
 from app.core.logger import get_logger
 from app.core.llm.prompt import TEMPLATES
+from app.core.llm.online_prompts_en import TEMPLATES as ONLINE_EN_TEMPLATES
+from app.core.prompt_language import get_prompt_language
 
 logger = get_logger(__name__)
 
@@ -29,22 +32,16 @@ class PromptEngine:
     ) -> str:
         """渲染模板"""
         
-        template_str = self.templates.get(template_name)
+        template_str = self.get_template(template_name)
         if not template_str:
             raise ValueError(f"模板 {template_name} 不存在")
         
         try:
             # 使用简单的字符串替换方法，避免Jinja2解析用户输入中的大括号导致错误
-            result = template_str
-            
-            # 先替换模板变量，使用简单的字符串替换
-            for key, value in kwargs.items():
-                placeholder = "{" + key + "}"
-                if placeholder in result:
-                    # 直接替换，不需要转义（因为我们不使用Jinja2渲染用户输入）
-                    result = result.replace(placeholder, str(value))
-            
-            return result
+            # Resolve placeholders in the template once. A user/source value may
+            # itself contain a placeholder spelling; it must remain literal data.
+            pattern = re.compile(r"\{(" + "|".join(re.escape(key) for key in kwargs) + r")\}") if kwargs else None
+            return pattern.sub(lambda match: str(kwargs[match.group(1)]), template_str) if pattern else template_str
             
         except Exception as e:
             logger.error(f"模板渲染失败 {template_name}: {str(e)}", exc_info=True)
@@ -65,6 +62,8 @@ class PromptEngine:
     
     def get_template(self, template_name: str) -> str:
         """获取原始模板"""
+        if get_prompt_language() == "en-US" and template_name in ONLINE_EN_TEMPLATES:
+            return ONLINE_EN_TEMPLATES[template_name]
         return self.templates.get(template_name, "")
     
     def add_template(self, name: str, template: str):

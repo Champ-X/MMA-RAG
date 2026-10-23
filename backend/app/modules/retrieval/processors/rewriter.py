@@ -10,6 +10,7 @@ from collections import Counter
 
 from app.core.llm.manager import llm_manager
 from app.core.llm.prompt_engine import prompt_engine
+from app.core.prompt_language import localized
 from app.core.logger import get_logger
 from app.modules.chat.context_manager import build_conversation_context
 
@@ -63,8 +64,8 @@ class QueryRewriter:
                 {
                     "role": "system",
                     "content": (
-                        "你是一个专业的查询改写专家。你的任务是将用户的原始查询"
-                        "改写得更加清晰、准确，并生成多种表述方式和关键词。"
+                        localized("你是一个专业的查询改写专家。你的任务是将用户的原始查询"
+                        "改写得更加清晰、准确，并生成多种表述方式和关键词。", 'You are a professional query-rewriting specialist. Make the original query clearer and more precise, and generate alternative formulations and keywords.')
                     )
                 },
                 {
@@ -119,7 +120,7 @@ class QueryRewriter:
             max_chars=4000,
             max_message_chars=1200,
         )
-        return context.transcript or "无对话历史"
+        return context.transcript or localized("无对话历史", 'No conversation history')
     
     def _parse_rewrite_response(self, response_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """解析查询改写响应"""
@@ -253,7 +254,7 @@ class QueryRewriter:
     ) -> List[str]:
         """生成多视角查询"""
         try:
-            prompt = f"""
+            prompt = localized(f"""
 请将以下查询改写成 {num_views} 个不同角度的表述方式，保持原意不变：
 
 原始查询：{query}
@@ -264,12 +265,12 @@ class QueryRewriter:
 3. 适合用于语义检索的多样性增强
 
 请直接输出改写后的查询，每行一个：
-"""
+""", f'\nRewrite the following query into {num_views} formulations from different viewpoints, preserving its meaning:\n\nOriginal query: {query}\n\nRequirements:\n1. Every rewrite must express the same core meaning.\n2. Use different vocabulary and syntax.\n3. Make them suitable for diversified semantic retrieval.\n\nOutput only the rewritten queries, one per line:\n')
             
             messages = [
                 {
                     "role": "system",
-                    "content": "你是一个专业的查询改写专家。"
+                    "content": localized("你是一个专业的查询改写专家。", 'You are a professional query-rewriting specialist.')
                 },
                 {
                     "role": "user",

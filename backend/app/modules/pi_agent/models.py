@@ -1,6 +1,9 @@
 """Per-run HTTP transports; never update the shared provider health or task routes."""
 from __future__ import annotations
 
+from .language import translate_prompt
+from app.core.prompt_language import localized
+
 import json
 import time
 
@@ -12,10 +15,10 @@ from .policy import UsageLedger, ToolError
 def model_endpoint(registry, name: str, capability: str):
     config = registry.get_model_config(name)
     if capability not in str(config.get("type", "")).split(","):
-        raise ToolError("model_unavailable", f"纯 Agent 的 {capability} 模型尚未配置")
+        raise ToolError("model_unavailable", localized(f"纯 Agent 的 {capability} 模型尚未配置", f"The Pi Agent {capability} model has not been configured."))
     provider = registry.get_provider(config["provider"])
     if not provider or not getattr(provider, "api_key", None):
-        raise ToolError("model_unavailable", f"纯 Agent 的 {capability} 服务商尚未配置")
+        raise ToolError("model_unavailable", localized(f"纯 Agent 的 {capability} 服务商尚未配置", f"The Pi Agent {capability} provider has not been configured."))
     return {"name": name, "model": config.get("raw_model") or name.split(":", 1)[-1],
             "provider": config["provider"], "base_url": provider.base_url.rstrip("/"), "key": provider.api_key}
 
@@ -67,7 +70,7 @@ class ModelTransport:
             status = "stop"
             return vector
         except (httpx.HTTPError, ValueError, KeyError, IndexError):
-            raise ToolError("embedding_unavailable", "查询向量服务未能完成，本次搜索可继续使用词面匹配", retryable=True) from None
+            raise ToolError("embedding_unavailable", translate_prompt("查询向量服务未能完成，本次搜索可继续使用词面匹配"), retryable=True) from None
         finally:
             self._finish(config, "embedding", started, usage, call_id, span, parent, status)
 
@@ -104,7 +107,7 @@ class ModelTransport:
                 raise ValueError("incomplete_observation")
             return answer.strip(), {"model": name, "usage": usage or {}, "input_allowance": input_units}
         except (httpx.HTTPError, ValueError, KeyError, TypeError):
-            raise ToolError("media_model_unavailable", "媒体模型未返回完整观察结果，请缩小片段或稍后重试", retryable=True) from None
+            raise ToolError("media_model_unavailable", translate_prompt("媒体模型未返回完整观察结果，请缩小片段或稍后重试"), retryable=True) from None
         finally:
             self._finish(config, kind, started, usage, call_id, span, parent, status)
 

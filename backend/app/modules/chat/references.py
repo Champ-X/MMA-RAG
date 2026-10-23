@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from app.core.prompt_language import localized
 
 MAX_MENTIONS = 64
 
@@ -89,14 +90,14 @@ def resolve_message_references(message: str, raw: Any, selected_files: list[dict
             identity = {"source": source, "kbId": file["kb_id"], "fileId": file["file_id"],
                         "kbName": file.get("kb_name", ""), "name": file.get("name") or ref.get("name"),
                         "type": file.get("type", "")}
-            label = bindings[key]["label"] if key in bindings else f"知识库K{sum(k[0] == source for k in bindings) + 1}"
+            label = bindings[key]["label"] if key in bindings else localized("知识库K", "Knowledge base K") + str(sum(k[0] == source for k in bindings) + 1)
         elif source == "attachment":
             file = local_files.get(ref.get("attachmentId"))
             if not file:
                 raise ValueError("引用的本机附件未上传或已移除，请重新添加。")
             key = (source, file["id"])
             identity = {"source": source, "attachmentId": file["id"], "name": file["name"], "type": file.get("type", "")}
-            label = f"本机附件A{file['index']}"
+            label = localized("本机附件A", "Local attachment A") + str(file['index'])
         else:
             raise ValueError("未知的引用来源。")
         if not isinstance(identity["name"], str) or token != f"@{identity['name']}":
@@ -109,8 +110,9 @@ def resolve_message_references(message: str, raw: Any, selected_files: list[dict
     context = ""
     if bindings:
         context = (
-            "【行内引用对应关系】\n以下是用户原句的文件绑定；按原句位置理解比较、顺序和指代。"
-            "同名文件以来源及标识区分。K/A 标签是对象标识，不是回答中的文献引用编号。\n"
+            localized("【行内引用对应关系】\n以下是用户原句的文件绑定；按原句位置理解比较、顺序和指代。"
+            "同名文件以来源及标识区分。K/A 标签是对象标识，不是回答中的文献引用编号。\n",
+            "[Inline reference bindings]\nThe following files are bound to the original user sentence. Interpret comparisons, ordering and references by their positions. Distinguish identically named files by source and identity. K/A labels identify objects; they are not answer citation numbers.\n")
             + json.dumps(list(bindings.values()), ensure_ascii=False)
         )
     return canonical, "".join(annotated), context

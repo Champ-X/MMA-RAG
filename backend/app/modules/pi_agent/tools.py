@@ -12,6 +12,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .contracts import Evidence
+from .language import translate_prompt, translate_schema
 from .answers import assess_answer, citation_errors, compact_assessment, evidence_payload, media_target_errors, repair_feedback
 from .policy import ToolError
 from .requirements import apply_requirements, bind_requirements
@@ -204,8 +205,8 @@ def tool_contracts(answer_checks_enabled=False, answer_plan_enabled=False):
     return {"update_answer_plan": PLAN_TOOL, **contracts} if answer_plan_enabled else contracts
 
 
-def definitions(answer_checks_enabled=False, answer_plan_enabled=False):
-    return [{"name": name, "label": name, "description": description, "parameters": args.model_json_schema()}
+def definitions(answer_checks_enabled=False, answer_plan_enabled=False, language=None):
+    return [{"name": name, "label": name, "description": translate_prompt(description, language), "parameters": translate_schema(args.model_json_schema(), language)}
             for name, (args, description) in tool_contracts(answer_checks_enabled, answer_plan_enabled).items()]
 
 
@@ -234,7 +235,7 @@ class ToolSet:
 
     def _evidence(self, number):
         if number not in self.delivered:
-            raise ToolError("invalid_evidence", "只能使用本轮工具实际返回的证据编号")
+            raise ToolError("invalid_evidence", translate_prompt("只能使用本轮工具实际返回的证据编号"))
         return self.delivered[number]
 
     def _output_size(self, result, observations, first_number):
@@ -249,14 +250,14 @@ class ToolSet:
         span, started = f"tool:{call_id}", time.monotonic()
         try:
             if self.final_result:
-                raise ToolError("already_submitted", "任务结果已经提交")
+                raise ToolError("already_submitted", translate_prompt("任务结果已经提交"))
             if name not in self.contracts or call_id in self.calls:
-                raise ToolError("invalid_tool", "未知工具或重复调用标识")
+                raise ToolError("invalid_tool", translate_prompt("未知工具或重复调用标识"))
             args = self.contracts[name][0].model_validate(raw).model_dump()
             if self.answer_checks_enabled and self.answer_requirements is None and name not in {"set_answer_requirements", "ask_user"}:
-                raise ToolError("answer_requirements_missing", "请先用set_answer_requirements登记当前用户的正文上限、原句和必答要点，再自主研究或提交。")
+                raise ToolError("answer_requirements_missing", translate_prompt("请先用set_answer_requirements登记当前用户的正文上限、原句和必答要点，再自主研究或提交。"))
             if self.answer_plan_enabled and self.answer_plan is None and name not in {"update_answer_plan", "set_answer_requirements", "ask_user"}:
-                raise ToolError("answer_plan_missing", "请先用update_answer_plan登记当前用户要求的全部交付项与素材类型，再研究或提交。")
+                raise ToolError("answer_plan_missing", translate_prompt("请先用update_answer_plan登记当前用户要求的全部交付项与素材类型，再研究或提交。"))
             self.calls.add(call_id)
             self.ledger.record_tool(name)
         except (ToolError, ValidationError) as error:
@@ -300,11 +301,11 @@ class ToolSet:
         except (ToolError, asyncio.TimeoutError) as error:
             return self._error(name, span, started, error, executed=True)
         except Exception:
-            return self._error(name, span, started, ToolError("tool_failed", "工具执行失败，尚未取得有效结果", retryable=True), executed=True)
+            return self._error(name, span, started, ToolError("tool_failed", translate_prompt("工具执行失败，尚未取得有效结果"), retryable=True), executed=True)
 
     def _error(self, name, span, started, error, *, executed):
         code = error.code if isinstance(error, ToolError) else "invalid_arguments" if isinstance(error, ValidationError) else "tool_timeout"
-        message = str(error) if isinstance(error, ToolError) else "工具参数不符合接口定义" if isinstance(error, ValidationError) else "工具执行超时"
+        message = str(error) if isinstance(error, ToolError) else translate_prompt("工具参数不符合接口定义") if isinstance(error, ValidationError) else translate_prompt("工具执行超时")
         value = {"code": code, "message": message, "retryable": getattr(error, "retryable", False)}
         self.emit("tool.failed" if executed else "tool.rejected", {"name": name, **value, "executed": executed,
                   "duration_ms": round((time.monotonic() - started) * 1000)}, span_id=span)
@@ -324,7 +325,7 @@ class ToolSet:
         if name == "set_answer_requirements":
             requirements = bind_requirements(args, self.store.get(self.run_id)["request"])
             if self.answer_requirements is not None and self.answer_requirements != requirements:
-                raise ToolError("answer_requirements_locked", "本轮回答要求已经登记，不能因草稿超长而解除或提高上限。")
+                raise ToolError("answer_requirements_locked", translate_prompt("本轮回答要求已经登记，不能因草稿超长而解除或提高上限。"))
             return {"status": "recorded", "answer_requirements": requirements}, [], None
         if name == "list_sources":
             sources = sorted(self.catalog.visible(self.scope), key=lambda s: (not s.attachment, s.kb_id, s.name, s.id))
@@ -343,7 +344,7 @@ class ToolSet:
         if name == "expand_context":
             evidence = self._evidence(args["evidence_id"])
             if evidence.modality != "doc" or "chunk_index" not in evidence.locator:
-                raise ToolError("no_adjacent_chunks", "该证据没有文档邻接片段，请使用 read_source 或 inspect_media")
+                raise ToolError("no_adjacent_chunks", translate_prompt("该证据没有文档邻接片段，请使用 read_source 或 inspect_media"))
             source = self.catalog.get(evidence.source_id, self.scope)
             observations, result = await self.gateway.read(source, start=max(0, evidence.locator["chunk_index"] - args["radius"]), limit=1 + 2 * args["radius"])
             return result, observations, None
@@ -400,7 +401,7 @@ class ToolSet:
             used = {int(i) for i in re.findall(r"\[(\d+)\]", args["answer"])}
             if assessment and not assessment["protocol_valid"]:
                 feedback = json.dumps(repair_feedback(assessment), ensure_ascii=False)
-                raise ToolError(assessment["errors"][0]["code"], f"逐项检查未通过，请按宿主实际计数与正文单元整体修订：{feedback}")
+                raise ToolError(assessment["errors"][0]["code"], translate_prompt("逐项检查未通过，请按宿主实际计数与正文单元整体修订：") + feedback)
             if not assessment:
                 errors = citation_errors(args, self.delivered, allow_uncited=allow_uncited) + media_errors
                 if errors:

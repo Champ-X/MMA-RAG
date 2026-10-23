@@ -11,12 +11,32 @@ import json
 import re
 from typing import Any, Dict, Iterable, List, Optional
 
+from app.core.prompt_language import localized
 from app.core.logger import get_logger
 from app.modules.agent.models import AgentDecision
 
 logger = get_logger(__name__)
 
 _FENCED_JSON_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
+
+PLANNER_SYSTEM_PROMPT_EN = """You are the retrieval planner for Tessmora Omni-Modal Agentic Retrieval Platform.
+Your job is to assess evidence sufficiency and decide whether to retrieve more, not to answer the user.
+The only available tool is the read-only multimodal_knowledge_search. It reuses Dense + Sparse + Visual + Audio + Video search, knowledge-base portrait routing, RRF and Cross-Encoder reranking.
+Rules:
+1. With no evidence, search. If direct-retrieval anchor evidence for the original question exists, assess whether it covers the main question; do not treat it as empty.
+2. Decompose complex questions into complementary, short, explicit search queries, at most 3 at a time.
+3. If an original image/audio/video requirement is not unnecessary, include at least one query explicitly expressing that modality. Do not drop original modality requirements during rewriting.
+4. Do not repeat executed queries. Target remaining evidence gaps.
+5. When direct retrieval resolved a topic or knowledge base, preserve that meaning in subqueries. Do not switch domains merely because a word is ambiguous; expand domains only when current evidence or the question explicitly requires it.
+6. Use exploration history. For remaining gaps, prefer new topic/modality wording that reaches unexplored relevant knowledge bases without sacrificing relevance for novelty.
+7. Return final when evidence covers the main aspects of the question.
+8. Return only one JSON object, without Markdown or explanations.
+9. role=user_reference marks objects explicitly selected with @ for analysis, not the search scope. Tasks finding matching images/videos must find other material; do not present inputs as discovered results. Comparing the designated inputs does not require extra retrieval merely for expansion.
+JSON:
+{"action":"search","reason":"Why this evidence is needed","queries":["question1","question2"]}
+or
+{"action":"final","reason":"Why the evidence is sufficient","queries":[]}
+"""
 
 PLANNER_SYSTEM_PROMPT = """你是 Tessmora Omni-Modal Agentic Retrieval Platform 的检索规划器。
 你的职责不是回答用户，而是判断当前证据是否足够，并决定下一步是否继续检索。
@@ -118,7 +138,7 @@ class AgentPlanner:
         anchor_knowledge_bases: Optional[List[Dict[str, Any]]] = None,
         model: Optional[str] = None,
     ) -> Optional[AgentDecision]:
-        user_prompt = f"""<task>
+        user_prompt = localized(f"""<task>
 用户问题：{query}
 当前轮次：{round_number}/{max_rounds}
 已经执行的查询：{json.dumps(executed_queries, ensure_ascii=False)}
@@ -131,10 +151,10 @@ class AgentPlanner:
 {evidence_digest or "尚无证据。"}
 </evidence>
 
-请输出下一步 JSON。"""
+请输出下一步 JSON。""", f"<task>\nUser question: {query}\nCurrent round: {round_number}/{max_rounds}\nExecuted queries: {json.dumps(executed_queries, ensure_ascii=False)}\nKnowledge-base exploration history: {json.dumps(explored_knowledge_bases or [], ensure_ascii=False)}\nOriginal query multimodal requirements: {json.dumps(modality_requirements or {}, ensure_ascii=False)}\nKnowledge bases anchored by direct retrieval of the original question: {json.dumps(anchor_knowledge_bases or [], ensure_ascii=False)}\n</task>\n\n<evidence>\n{evidence_digest or 'No evidence yet.'}\n</evidence>\n\nReturn the next-step JSON.")
         result = await self.llm_manager.chat(
             messages=[
-                {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
+                {"role": "system", "content": localized(PLANNER_SYSTEM_PROMPT, PLANNER_SYSTEM_PROMPT_EN)},
                 {"role": "user", "content": user_prompt},
             ],
             task_type="final_generation",
