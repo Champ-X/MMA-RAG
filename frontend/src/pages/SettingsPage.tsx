@@ -439,9 +439,7 @@ export function SettingsPage() {
             </header>
 
             <div className="settings-interface-body">
-              <div className="settings-fieldset">
-                <LanguageSelect />
-              </div>
+              <LanguageSelect />
               <fieldset className="settings-fieldset">
                 <legend>{tr("颜色模式")}</legend>
                 <div className="settings-theme-options">

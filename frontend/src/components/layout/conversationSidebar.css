@@ -199,6 +199,46 @@ button:is(:hover, :focus-visible) > .sidebar-utility-icon { color: var(--sidebar
   .sidebar-nav-icon, .sidebar-utility-icon, .conversation-glyph path, .conversation-delete-actions button, .conversation-actions-trigger { transition: none; }
 }
 
-.sidebar-language { min-width: 0; }
-.sidebar-language label { font-size: 12px; gap: 6px; }
-.sidebar-language select { min-width: 0; max-width: 100%; font-size: 12px; }
+.conversation-history-heading { display: flex; align-items: center; justify-content: space-between; min-height: 32px; padding: 0 4px 4px 12px; gap: 8px; }
+.conversation-selection-trigger { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border-radius: 7px; color: var(--sidebar-icon-ink); }
+.conversation-selection-trigger:hover { background: #eaf0f6; }
+.conversation-selection-trigger:disabled { opacity: .4; cursor: default; }
+.conversation-selection-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 2px 4px 8px; }
+.conversation-selection-toolbar button { min-height: 30px; padding: 5px 8px; border-radius: 7px; font-size: 12px; font-weight: 500; line-height: 20px; }
+.conversation-select-all { color: var(--sidebar-icon-ink); }
+.conversation-select-all:hover { background: #eaf0f6; }
+.conversation-bulk-delete { display: inline-flex; align-items: center; justify-content: center; gap: 5px; color: #a7434c; background: #f9edef; }
+.conversation-bulk-delete:hover { background: #f4e1e4; }
+.conversation-bulk-delete:disabled { color: #8492a6; background: #edf1f6; cursor: not-allowed; }
+.conversation-selection-row { border-radius: 10px; }
+.conversation-selection-row:hover { background: #f0f4f8; }
+.conversation-selection-row[data-selected='true'] { background: #eaf0f6; }
+.conversation-selection-row label { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 7px 12px; cursor: pointer; }
+.conversation-selection-row input { flex-shrink: 0; width: 16px; height: 16px; margin: 0; accent-color: #5c71ae; cursor: pointer; }
+.conversation-selection-row label > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 20px; }
+.conversation-selection-row label > svg { flex-shrink: 0; color: var(--sidebar-icon-ink); }
+.conversation-selection-row:focus-within { outline: 2px solid var(--sidebar-icon-active); outline-offset: -2px; }
+.conversation-selection-trigger:focus-visible,
+.conversation-selection-toolbar button:focus-visible { outline: 2px solid var(--sidebar-icon-active); outline-offset: 2px; }
+.conversation-history-heading.hidden,
+.conversation-selection-toolbar.hidden { display: none; }
+.conversation-delete-targets { max-height: min(240px, 35dvh); overflow-y: auto; margin-top: 12px; scrollbar-width: thin; scrollbar-color: var(--delete-line) transparent; }
+.conversation-delete-targets .conversation-delete-target { margin-top: 0; }
+.conversation-delete-targets .conversation-delete-target + .conversation-delete-target { margin-top: 6px; }
+.conversation-delete-error { margin-top: 16px; color: var(--delete-danger); font-size: 13px; line-height: 22px; overflow-wrap: anywhere; }
+.conversation-delete-actions button:disabled { opacity: .55; cursor: wait; }
+.conversation-sidebar .sidebar-language-toggle { width: 32px; height: 32px; color: var(--sidebar-icon-ink); }
+.conversation-sidebar .sidebar-language-toggle:hover { background: #eaf0f6; color: var(--sidebar-icon-active); }
+.dark .conversation-selection-trigger:hover,
+.dark .conversation-select-all:hover,
+.dark .conversation-selection-row:hover { background: #252522; }
+.dark .conversation-selection-row[data-selected='true'] { background: #2b2b28; }
+.dark .conversation-selection-row input { accent-color: #b9c6eb; color-scheme: dark; }
+.dark .conversation-bulk-delete { color: #ec9aa2; background: #35232e; }
+.dark .conversation-bulk-delete:hover { background: #462c35; }
+.dark .conversation-bulk-delete:disabled { color: #929188; background: #2b2b28; }
+.dark .conversation-sidebar .sidebar-language-toggle:hover { background: #33332f; }
+@media (max-width: 640px) {
+  .conversation-history-heading, .conversation-selection-toolbar { display: none; }
+  .conversation-sidebar .sidebar-language-toggle { width: 100%; height: 36px; }
+}

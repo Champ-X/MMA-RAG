@@ -1,5 +1,5 @@
 import { translate as t, useTranslation } from '@/i18n'
-import { LanguageSelect } from '@/i18n/LanguageSelect'
+import { LanguageToggle } from '@/i18n/LanguageSelect'
 import {
   useEffect,
   useId,
@@ -15,6 +15,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import {
   CornerDownLeft,
+  ListChecks,
   MessageSquare,
   Moon,
   MoreHorizontal,
@@ -197,9 +198,10 @@ interface HistorySessionRowProps {
   onTogglePinned: (id: string) => void
   onRename: (session: ChatSession, trigger: HTMLButtonElement | null) => void
   onDelete: (session: ChatSession, trigger: HTMLButtonElement | null) => void
+  onStartSelection: (sessionId: string) => void
 }
 
-function HistorySessionRow({ session, active, activeRef, theme, onSelect, onTogglePinned, onRename, onDelete }: HistorySessionRowProps) {
+function HistorySessionRow({ session, active, activeRef, theme, onSelect, onTogglePinned, onRename, onDelete, onStartSelection }: HistorySessionRowProps) {
   useTranslation()
   const title = getConversationTitle(session)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -240,6 +242,10 @@ function HistorySessionRow({ session, active, activeRef, theme, onSelect, onTogg
             {session.isPinned ? <PinOff size={16} strokeWidth={1.7} aria-hidden /> : <Pin size={16} strokeWidth={1.7} aria-hidden />}
             {session.isPinned ? t("取消置顶") : t("置顶")}
           </DropdownMenu.Item>
+          <DropdownMenu.Item className="conversation-actions-item" onSelect={() => {
+            openingDialogRef.current = true
+            onStartSelection(session.id)
+          }}><ListChecks size={16} strokeWidth={1.7} aria-hidden />{t("多选")}</DropdownMenu.Item>
           <DropdownMenu.Separator className="conversation-actions-separator" />
           <DropdownMenu.Item className="conversation-actions-item conversation-actions-item--danger" onSelect={() => {
             openingDialogRef.current = true
@@ -280,12 +286,19 @@ export function ConversationSidebar({
   const deleteCancelRef = useRef<HTMLButtonElement>(null)
   const deleteReturnFocusRef = useRef<HTMLButtonElement | null>(null)
   const deleteConfirmedRef = useRef(false)
+  const selectionTriggerRef = useRef<HTMLButtonElement>(null)
+  const selectionStartRef = useRef<string | null>(null)
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
   const renameInputRef = useRef<HTMLInputElement>(null)
   const renameReturnFocusRef = useRef<HTMLButtonElement | null>(null)
   const searchId = useId()
   const deleteDialogId = useId()
   const [searchOpen, setSearchOpen] = useState(false)
-  const [pendingDeletion, setPendingDeletion] = useState<{ id: string; title: string } | null>(null)
+  const [pendingDeletion, setPendingDeletion] = useState<{ targets: { id: string; title: string }[]; batch: boolean } | null>(null)
+  const [selecting, setSelecting] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [deleteProgress, setDeleteProgress] = useState({ done: 0, total: 0 })
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [pendingRename, setPendingRename] = useState<string | null>(null)
@@ -296,6 +309,8 @@ export function ConversationSidebar({
   const [isResizing, setIsResizing] = useState(false)
   const normalizedSearchQuery = normalizeSearchText(searchQuery)
   const orderedSessions = useMemo(() => sortConversationSessions(sessions), [sessions])
+  const selectedSessions = orderedSessions.filter(session => selectedIds.has(session.id))
+  const allSelected = sessions.length > 0 && selectedSessions.length === sessions.length
   const filteredNavigationItems = navigationItems.filter((item) =>
     normalizeSearchText(`${t(item.label)} ${t(item.description)} ${item.keywords}`).includes(normalizedSearchQuery)
   )
@@ -350,6 +365,16 @@ export function ConversationSidebar({
       block: 'nearest',
     })
   }, [activeSessionId, activeView])
+
+  useEffect(() => {
+    if (!selecting) return
+    const frame = requestAnimationFrame(() => {
+      const checkboxes = sidebarRef.current?.querySelectorAll<HTMLInputElement>('[data-conversation-check]')
+      const target = Array.from(checkboxes ?? []).find(input => input.value === selectionStartRef.current) ?? checkboxes?.[0]
+      target?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [selecting])
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -413,19 +438,42 @@ export function ConversationSidebar({
 
   const confirmConversationDeletion = async () => {
     if (!pendingDeletion || deleteConfirmedRef.current) return
-    // The list can change while confirmation is open. Never delete a stale target.
-    if (!sessions.some((session) => session.id === pendingDeletion.id)) {
+    // Freeze targets at confirmation, skip stale IDs, and delete the active one
+    // last so batch deletion does not navigate through conversations on the way.
+    const targets = pendingDeletion.targets
+      .filter(target => sessionsRef.current.some(session => session.id === target.id))
+      .sort((a, b) => Number(a.id === activeSessionId) - Number(b.id === activeSessionId))
+    if (!targets.length) {
       setPendingDeletion(null)
       return
     }
     deleteConfirmedRef.current = true
     setDeleting(true)
     setDeleteError(null)
+    setDeleteProgress({ done: 0, total: targets.length })
+    const failures: typeof targets = []
+    let firstError = ''
     try {
-      await onDeleteConversation(pendingDeletion.id)
-      setPendingDeletion(null)
-    } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : t("无法停止后台任务，会话已保留，请重试。"))
+      for (const [index, target] of targets.entries()) {
+        try {
+          if (sessionsRef.current.some(session => session.id === target.id)) await onDeleteConversation(target.id)
+        } catch (error) {
+          failures.push(target)
+          if (!firstError) firstError = error instanceof Error ? error.message : t("无法停止后台任务，会话已保留，请重试。")
+        }
+        setDeleteProgress({ done: index + 1, total: targets.length })
+      }
+      if (failures.length) {
+        setPendingDeletion({ ...pendingDeletion, targets: failures })
+        if (pendingDeletion.batch) setSelectedIds(new Set(failures.map(target => target.id)))
+        setDeleteError(firstError)
+      } else {
+        setPendingDeletion(null)
+        if (pendingDeletion.batch) {
+          setSelecting(false)
+          setSelectedIds(new Set())
+        }
+      }
     } finally {
       deleteConfirmedRef.current = false
       setDeleting(false)
@@ -442,8 +490,27 @@ export function ConversationSidebar({
     setDeleteError(null)
     deleteReturnFocusRef.current = trigger
     deleteConfirmedRef.current = false
-    setPendingDeletion({ id: session.id, title: getConversationTitle(session) })
+    setPendingDeletion({ targets: [{ id: session.id, title: getConversationTitle(session) }], batch: false })
   }
+
+  const startSelection = (sessionId?: string) => {
+    selectionStartRef.current = sessionId ?? null
+    setSelectedIds(new Set(sessionId ? [sessionId] : []))
+    setSelecting(true)
+  }
+
+  const cancelSelection = () => {
+    setSelecting(false)
+    setSelectedIds(new Set())
+    selectionTriggerRef.current?.focus()
+  }
+
+  const toggleSelection = (sessionId: string) => setSelectedIds(previous => {
+    const next = new Set(previous)
+    if (next.has(sessionId)) next.delete(sessionId)
+    else next.add(sessionId)
+    return next
+  })
 
   const handleSearchOpenChange = (open: boolean) => {
     setSearchOpen(open)
@@ -640,15 +707,39 @@ export function ConversationSidebar({
       <section
         aria-label={t("最近会话")}
         aria-hidden={collapsed}
+        onKeyDown={event => {
+          if (event.key === 'Escape' && selecting && !pendingDeletion) {
+            event.preventDefault()
+            cancelSelection()
+          }
+        }}
         className={cn(
           'mt-5 flex min-h-0 flex-1 flex-col',
           collapsed ? 'mt-0 px-0' : 'px-3',
           'max-[640px]:mt-0 max-[640px]:px-0'
         )}
       >
-        <div className={cn('shrink-0 px-3 pb-1.5', collapsed && 'hidden', 'max-[640px]:hidden')}>
-          <span className={cn('text-[12px] font-medium tracking-[0.02em]', theme.muted)}>{t("最近会话")}</span>
+        <div className={cn('conversation-history-heading shrink-0', collapsed && 'hidden', 'max-[640px]:hidden')}>
+          <span className={cn('text-[12px] font-medium tracking-[0.02em]', theme.muted)} role={selecting ? 'status' : undefined}>
+            {selecting ? t("已选 {{count}} 个", { count: selectedSessions.length }) : t("最近会话")}
+          </span>
+          <button ref={selectionTriggerRef} type="button" className="conversation-selection-trigger" disabled={!sessions.length}
+            aria-label={selecting ? t("取消多选") : t("多选会话")} title={selecting ? t("取消多选") : t("多选会话")}
+            onClick={() => selecting ? cancelSelection() : startSelection()}>
+            {selecting ? <X size={16} strokeWidth={1.7} aria-hidden /> : <ListChecks size={16} strokeWidth={1.7} aria-hidden />}
+          </button>
         </div>
+
+        {selecting && <div className={cn('conversation-selection-toolbar', collapsed && 'hidden', 'max-[640px]:hidden')}>
+          <button type="button" className="conversation-select-all" onClick={() => setSelectedIds(allSelected ? new Set() : new Set(sessions.map(session => session.id)))}>
+            {allSelected ? t("取消全选") : t("全选")}
+          </button>
+          <button type="button" className="conversation-bulk-delete" disabled={!selectedSessions.length} onClick={event => {
+            deleteReturnFocusRef.current = event.currentTarget
+            setDeleteError(null)
+            setPendingDeletion({ targets: selectedSessions.map(session => ({ id: session.id, title: getConversationTitle(session) })), batch: true })
+          }}><Trash2 size={14} strokeWidth={1.7} aria-hidden />{t("删除所选")}</button>
+        </div>}
 
         <div
           role="list"
@@ -668,10 +759,18 @@ export function ConversationSidebar({
           ) : (
             orderedSessions.map((session) => {
               const active = activeView === 'chat' && session.id === activeSessionId
+              if (selecting) return <div key={session.id} role="listitem" className="conversation-selection-row" data-selected={selectedIds.has(session.id)}>
+                <label>
+                  <input type="checkbox" data-conversation-check value={session.id} checked={selectedIds.has(session.id)}
+                    aria-label={t("选择会话：{{title}}", { title: getConversationTitle(session) })} onChange={() => toggleSelection(session.id)} />
+                  <span title={getConversationTitle(session)}>{getConversationTitle(session)}</span>
+                  {session.isPinned && <Pin size={12} strokeWidth={1.7} aria-label={t("置顶")} />}
+                </label>
+              </div>
               return <HistorySessionRow key={session.id} session={session} active={active}
                 activeRef={active ? activeSessionRef : undefined} theme={theme}
                 onSelect={onSelectConversation} onTogglePinned={onTogglePinnedConversation}
-                onRename={requestConversationRename} onDelete={requestConversationDeletion} />
+                onRename={requestConversationRename} onDelete={requestConversationDeletion} onStartSelection={startSelection} />
             })
           )}
         </div>
@@ -685,12 +784,11 @@ export function ConversationSidebar({
           'max-[640px]:mx-2.5'
         )}
       >
-        <div className={cn('sidebar-language mb-3', collapsed && 'hidden', 'max-[640px]:hidden')}><LanguageSelect /></div>
         <div
           className={cn(
             'grid items-center rounded-[14px] border p-1 shadow-[0_10px_30px_-24px_rgba(15,23,42,0.45)] backdrop-blur-sm',
             'border-[#E3EAF3] bg-white/85 dark:border-[#3A3A36] dark:bg-[#242421]/90 dark:shadow-[0_12px_30px_-22px_rgba(0,0,0,0.8)]',
-            collapsed ? 'grid-cols-1 gap-1' : 'grid-cols-[32px_minmax(0,1fr)_32px] gap-1',
+            collapsed ? 'grid-cols-1 gap-1' : 'grid-cols-[28px_minmax(0,1fr)_32px_32px] gap-0.5',
             'max-[640px]:grid-cols-1 max-[640px]:gap-1'
           )}
         >
@@ -755,6 +853,8 @@ export function ConversationSidebar({
               aria-hidden
             />
           </button>
+
+          <LanguageToggle className="sidebar-language-toggle" />
 
           <button
             type="button"
@@ -878,24 +978,31 @@ export function ConversationSidebar({
           >
             <div className="conversation-delete-heading">
               <span className="conversation-delete-symbol" aria-hidden><Trash2 size={19} strokeWidth={1.65} /></span>
-              <Dialog.Title>{t("删除会话")}</Dialog.Title>
+              <Dialog.Title>{pendingDeletion?.batch ? t("删除 {{count}} 个会话？", { count: pendingDeletion.targets.length }) : t("删除会话")}</Dialog.Title>
             </div>
             <Dialog.Description asChild>
               <div>
-                <p className="conversation-delete-description">{t("将先停止此会话中运行的任务，再移除会话及其消息记录，此操作无法撤销。")}</p>
-                <div className="conversation-delete-target">
-                  <MessageSquare size={16} strokeWidth={1.6} aria-hidden />
-                  <span>{pendingDeletion?.title}</span>
+                <p className="conversation-delete-description">{pendingDeletion?.batch
+                  ? t("将先停止所选会话中运行的任务，再删除会话及其消息记录，此操作无法撤销。")
+                  : t("将先停止此会话中运行的任务，再移除会话及其消息记录，此操作无法撤销。")}</p>
+                <div className="conversation-delete-targets">
+                  {pendingDeletion?.targets.map(target => <div key={target.id} className="conversation-delete-target">
+                    <MessageSquare size={16} strokeWidth={1.6} aria-hidden />
+                    <span>{target.title}</span>
+                  </div>)}
                 </div>
               </div>
             </Dialog.Description>
-            {deleteError && <p role="alert" className="conversation-delete-description text-red-600">{t("删除失败，会话已保留。")}{deleteError}</p>}
+            {deleteError && <p role="alert" className="conversation-delete-error">{pendingDeletion?.batch
+              ? t("{{count}} 个会话删除失败，已保留，请重试。", { count: pendingDeletion.targets.length })
+              : t("删除失败，会话已保留。")}{deleteError}</p>}
+            {deleting && pendingDeletion?.batch && <p role="status" className="conversation-delete-description">{t("正在删除 {{done}} / {{total}}…", deleteProgress)}</p>}
             <div className="conversation-delete-actions">
               <Dialog.Close asChild>
                 <button ref={deleteCancelRef} type="button" className="conversation-delete-cancel" disabled={deleting}>{t("取消")}</button>
               </Dialog.Close>
               <button type="button" className="conversation-delete-confirm" disabled={deleting}
-                onClick={() => void confirmConversationDeletion()}>{deleting ? t("正在停止任务…") : t("删除会话")}</button>
+                onClick={() => void confirmConversationDeletion()}>{deleting ? t("正在停止任务…") : pendingDeletion?.batch ? t("删除所选") : t("删除会话")}</button>
             </div>
           </Dialog.Content>
         </Dialog.Portal>

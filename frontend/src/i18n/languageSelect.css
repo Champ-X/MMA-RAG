@@ -1,0 +1,119 @@
+.language-preference,
+.language-compact,
+.language-toggle {
+  --language-accent: var(--settings-accent, #6a5bc2);
+  --language-ink: var(--settings-ink, #26334b);
+  --language-muted: var(--settings-muted, #627087);
+  --language-border: var(--settings-border, #e3e7ee);
+  --language-surface: var(--settings-surface, #fff);
+  --language-soft: var(--settings-soft, #f6f7fb);
+  --language-accent-soft: var(--settings-accent-soft, #f0edfc);
+}
+
+.dark .language-preference,
+.dark .language-compact,
+.dark .language-toggle {
+  --language-accent: var(--settings-accent, #c0b2ff);
+  --language-ink: var(--settings-ink, #e4e8f3);
+  --language-muted: var(--settings-muted, #a1acc1);
+  --language-border: var(--settings-border, #30394c);
+  --language-surface: var(--settings-surface, #1b2231);
+  --language-soft: var(--settings-soft, #222b3c);
+  --language-accent-soft: var(--settings-accent-soft, #322e4d);
+}
+
+.language-preference {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  min-width: 0;
+}
+
+.language-preference-copy { min-width: 0; }
+.language-preference-title { color: var(--language-ink); font-size: 15px; font-weight: 650; line-height: 1.6; }
+.language-options {
+  display: flex;
+  flex-shrink: 0;
+  min-width: 0;
+  gap: 4px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--language-border);
+  border-radius: 12px;
+  background: var(--language-soft);
+}
+
+.language-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 9px 16px;
+  border-radius: 8px;
+  color: var(--language-muted);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 150ms, background-color 150ms;
+}
+
+.language-option:hover { color: var(--language-ink); background: var(--language-surface); }
+.language-option.is-selected { color: var(--language-accent); background: var(--language-accent-soft); }
+.language-option:has(input:focus-visible) { outline: 2px solid var(--language-accent); outline-offset: 2px; }
+.language-option-check { flex-shrink: 0; opacity: 0; }
+.language-option.is-selected .language-option-check { opacity: 1; }
+
+.language-compact { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 10px; color: var(--language-muted); font-size: 13px; }
+.language-compact-picker { position: relative; display: inline-flex; }
+.language-compact-picker select {
+  min-height: 40px;
+  appearance: none;
+  padding: 8px 34px 8px 12px;
+  border: 1px solid var(--language-border);
+  border-radius: 9px;
+  background: var(--language-surface);
+  color: var(--language-ink);
+  font: inherit;
+  cursor: pointer;
+  color-scheme: light;
+}
+.dark .language-compact-picker select { color-scheme: dark; }
+.language-compact-picker select:hover { border-color: var(--language-accent); }
+.language-compact-picker select:focus-visible { outline: 2px solid var(--language-accent); outline-offset: 3px; }
+.language-compact-picker > svg { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); pointer-events: none; }
+
+.language-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--language-muted);
+  cursor: pointer;
+  transition: color 150ms, background-color 150ms;
+}
+.language-toggle:hover { background: var(--language-accent-soft); color: var(--language-accent); }
+.language-toggle:active { background: var(--language-soft); }
+.language-toggle:focus-visible { outline: 2px solid var(--language-accent); outline-offset: 2px; }
+
+@media (max-width: 640px) {
+  .language-options { width: 100%; }
+  .language-option { flex: 1; min-height: 44px; padding-inline: 10px; }
+  .language-toggle { width: 40px; height: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .language-option,
+  .language-toggle { transition: none; }
+}
