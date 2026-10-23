@@ -32,15 +32,25 @@ class StartupError(RuntimeError):
     pass
 
 
+class MissingStorageError(StartupError):
+    def __init__(self, message, containers):
+        super().__init__(message)
+        self.containers = containers
+
+
+class PendingStorageError(StartupError):
+    pass
+
+
 def say(message):
     print(message, flush=True)
 
 
-def log_tail(path, lines=30):
+def log_tail(path, lines=30, start_offset=0):
     # Logs can be large after repeated restarts; only read a bounded tail.
     with path.open("rb") as handle:
         handle.seek(0, os.SEEK_END)
-        handle.seek(max(0, handle.tell() - 65536))
+        handle.seek(max(start_offset, handle.tell() - 65536))
         return "\n".join(handle.read().decode("utf-8", errors="replace").splitlines()[-lines:])
 
 
@@ -192,7 +202,7 @@ def stop():
             signal_owned(supervisor, signal.SIGKILL)
     stop_children(read_state())
     STATE.unlink(missing_ok=True)
-    say("Frontend/backend stopped. MinIO, Qdrant and Redis remain running.")
+    say("Frontend/backend stopped. Storage containers were not changed.")
 
 
 def assert_port_free(port):
@@ -296,33 +306,94 @@ def preflight(install=True):
     say(f"Python {sys.version_info.major}.{sys.version_info.minor}, Node {'.'.join(map(str, version))}, frontend/Pi dependencies OK")
 
 
-def docker_command():
+def colima_profile():
+    if not shutil.which("colima"):
+        return None
+    result = run(["colima", "list", "--json"], check=False)
+    if result.returncode:
+        return None
+    try:
+        # Colima versions emit either JSON lines or a JSON array.
+        payload = json.loads(result.stdout)
+        profiles = payload if isinstance(payload, list) else [payload]
+    except ValueError:
+        try:
+            profiles = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+        except ValueError:
+            return None
+    return next((profile for profile in profiles if isinstance(profile, dict)
+                 and profile.get("name") == "mma-rag" and profile.get("runtime") == "docker"), None)
+
+
+def docker_command(allow_stopped_colima=False):
     if not shutil.which("docker"):
         raise StartupError("Docker is not installed.")
     context = os.environ.get("MMA_DOCKER_CONTEXT")
+    profile = None
     if not context:
         exists = run(["docker", "context", "inspect", "colima-mma-rag"], check=False)
-        context = "colima-mma-rag" if exists.returncode == 0 else run(["docker", "context", "show"]).stdout.strip()
+        if exists.returncode:
+            profile = colima_profile()
+        context = "colima-mma-rag" if exists.returncode == 0 or profile else run(["docker", "context", "show"]).stdout.strip()
     env = dict(os.environ, DOCKER_CONTEXT=context)
     for key in ("DOCKER_HOST", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "COMPOSE_FILE", "COMPOSE_PROJECT_NAME"):
         env.pop(key, None)
     docker = ["docker", "--context", context]
-    endpoint = run(docker + ["context", "inspect", context, "--format", "{{.Endpoints.docker.Host}}"], env=env).stdout.strip()
+    result = run(docker + ["context", "inspect", context, "--format", "{{.Endpoints.docker.Host}}"], env=env, check=False)
+    if result.returncode:
+        if context == "colima-mma-rag":
+            profile = profile or colima_profile()
+            if profile:
+                if allow_stopped_colima:
+                    return docker, env, context  # Validate the endpoint again after starting this existing profile.
+                raise StartupError(f"Existing Colima profile mma-rag is {profile.get('status', 'unavailable')}; its Docker context is unavailable. "
+                                   "Start the profile before checking storage. This check did not start services.")
+        raise StartupError(f"Docker context {context} is unavailable. Start it first or set MMA_DOCKER_CONTEXT.")
+    endpoint = result.stdout.strip()
     if not endpoint.startswith("unix://"):
         raise StartupError("Local data and localhost probes require a local Unix-socket Docker context.")
     return docker, env, context
 
 
-def start_storage(restored, cancelled):
-    docker, env, context = docker_command()
-    say(f"Docker context: {context}")
-    if run(docker + ["info"], env=env, timeout=10, check=False).returncode:
-        if context != "colima-mma-rag" or not shutil.which("colima"):
-            raise StartupError(f"Start Docker context {context} first or set MMA_DOCKER_CONTEXT.")
-        say("Starting Colima profile mma-rag...")
-        run(["colima", "start", "--profile", "mma-rag", "--activate=false"], timeout=240, capture=False, env=env)
-        run(docker + ["info"], timeout=10, env=env)
+def write_storage_record(path, record):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(record, indent=2) + "\n")
+    temporary.chmod(0o600)
+    temporary.replace(path)
 
+
+def storage_bootstrap(env):
+    try:
+        record = json.loads((RUN_DIR / "storage-bootstrap.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(record, dict) or (env.get("DOCKER_CONTEXT") and record.get("context") != env["DOCKER_CONTEXT"]):
+        return {}
+    return record
+
+
+def bootstrap_container_matches(container, record):
+    name = container.get("Name", "").lstrip("/")
+    labels = container.get("Config", {}).get("Labels") or {}
+    expected_id = record.get("container_ids", {}).get(name)
+    destination = "/qdrant/storage" if name == "mmrag_qdrant" else "/data"
+    mounts = [mount for mount in container.get("Mounts", []) if mount.get("Destination") == destination]
+    return (name in STORAGE and bool(record.get("project")) and labels.get("com.docker.compose.project") == record["project"]
+            and len(mounts) == 1 and mounts[0].get("Type") == "bind"
+            and record.get("sources", {}).get(name) == mounts[0].get("Source")
+            and (not expected_id or expected_id == container.get("Id")))
+
+
+def known_empty_storage(container, env):
+    """Only our recorded, intentionally empty new instance may lack a marker."""
+    record = storage_bootstrap(env)
+    name = container.get("Name", "").lstrip("/")
+    return record.get("allow_empty", {}).get(name, False) and bootstrap_container_matches(container, record)
+
+
+def inspect_storage(docker, env, restored=False):
+    """Read-only checks shared by startup and doctor; never repair or create data."""
     existing = []
     for name in STORAGE:
         result = run(docker + ["container", "inspect", name], env=env, check=False)
@@ -331,31 +402,204 @@ def start_storage(restored, cancelled):
         elif run(docker + ["info"], env=env, timeout=10, check=False).returncode:
             raise StartupError("Docker became unavailable while inspecting storage; no directories were created.")
     if existing:
+        record = storage_bootstrap(env)
+        if not restored and record.get("phase") == "pending" and all(bootstrap_container_matches(container, record) for container in existing):
+            raise PendingStorageError("This launcher's new storage is still initializing; normal startup can resume its recorded Compose project.")
         if len(existing) != len(STORAGE):
             raise StartupError("Storage containers are incomplete. Restore the missing containers before starting; existing data was retained.")
-        for container, destination in zip(existing[:2], ("/data", "/qdrant/storage")):
-            mounts = [m for m in container["Mounts"] if m["Destination"] == destination]
-            if not mounts or mounts[0]["Type"] != "bind" or not Path(mounts[0]["Source"]).is_dir():
-                raise StartupError(f"Missing local persistent storage mount for {container['Name']}; refusing empty storage.")
-            say(f"Reuse {container['Name']}: {mounts[0]['Source']}")
+        problems = []
+        missing_only = True
+        for container, destination, marker in zip(existing[:2], ("/data", "/qdrant/storage"), (".minio.sys", "collections")):
+            mounts = [m for m in container.get("Mounts", []) if m.get("Destination") == destination]
+            if len(mounts) != 1:
+                problems.append(f"{container['Name']}: Destination={destination}; expected one bind mount, found {len(mounts)}.")
+                missing_only = False
+                continue
+            mount = mounts[0]
+            source = mount.get("Source")
+            kind = mount.get("Type")
+            description = f"{container['Name']}: Type={kind!r}, Source={source!r}, Destination={destination!r}"
+            if kind != "bind":
+                problems.append(f"{description}; expected a local bind mount.")
+                missing_only = False
+            elif not isinstance(source, str) or not source or not Path(source).is_absolute():
+                problems.append(f"{description}; invalid local source path.")
+                missing_only = False
+            elif not Path(source).exists():
+                problems.append(f"{description}; source directory is missing or unavailable (including a broken symlink).")
+            elif not Path(source).is_dir():
+                problems.append(f"{description}; source is not a directory.")
+                missing_only = False
+            elif not (Path(source) / marker).is_dir():
+                empty = not any(Path(source).iterdir())
+                if empty and not restored and known_empty_storage(container, env):
+                    say(f"Reuse intentionally new storage: {description}")
+                    continue
+                problems.append(f"{description}; source appears uninitialized or empty; missing data marker {marker!r}."
+                                + (" Nonempty data was retained for manual inspection." if not empty else ""))
+                missing_only = missing_only and empty
+            else:
+                say(f"Storage mount OK: {description}")
+        if problems:
+            message = (
+                "Missing or uninitialized local persistent storage mount.\n"
+                + "\n".join(problems)
+                + "\n--restored requires the original data. Normal start can preserve the old containers and initialize separate storage only for missing or empty bind sources. "
+                "Do not create empty replacement directories at the old Source. See docs/LOCAL_STARTUP.md.")
+            if missing_only:
+                raise MissingStorageError(message, existing)
+            raise StartupError(message)
+    return existing
+
+
+def storage_paths(project, restored=False, preserving=()):
+    base = Path(os.environ.get("MMA_STORAGE_ROOT", "~/.local/share/tessmora/dev-storage")).expanduser()
+    if not base.is_absolute():
+        raise StartupError("MMA_STORAGE_ROOT must be an absolute path.")
+    paths = [base / name for name in ("minio_data", "qdrant_storage", "redis_data")]
+    old_sources = {Path(mount["Source"]).resolve() for container in preserving
+                   for mount in container.get("Mounts", []) if mount.get("Type") == "bind" and mount.get("Source")}
+
+    def overlaps_preserved(candidates):
+        return any(path.resolve().is_relative_to(source) or source.is_relative_to(path.resolve())
+                   for path in candidates for source in old_sources)
+
+    if overlaps_preserved(paths):
+        # Preserved containers must never gain access to the replacement dataset.
+        paths = [base / "instances" / project / name for name in ("minio_data", "qdrant_storage", "redis_data")]
+        if overlaps_preserved(paths):
+            raise StartupError("MMA_STORAGE_ROOT overlaps preserved storage; choose a separate directory before starting.")
+    if not preserving:
+        legacy = [ROOT / "minio_data", ROOT / "qdrant_storage"]
+        if any(path.is_dir() and any(path.iterdir()) for path in legacy):
+            paths[:2] = legacy  # Existing checkout data takes priority over a fresh stable directory.
+    initialized = []
+    for path, marker in zip(paths[:2], (".minio.sys", "collections")):
+        if (path.exists() or path.is_symlink()) and not path.is_dir():
+            raise StartupError(f"Storage path is not an available directory: {path}")
+        ready = (path / marker).is_dir()
+        if path.is_dir() and any(path.iterdir()) and not ready:
+            raise StartupError(f"Nonempty storage lacks {marker}: {path}; existing files were retained.")
+        initialized.append(ready)
+    if any(initialized) and not all(initialized):
+        raise StartupError("Existing local storage is incomplete; restore its matching MinIO/Qdrant data before starting.")
+    if restored and not all(initialized):
+        raise StartupError("Restored startup requires existing MinIO/Qdrant data or all three existing storage containers.")
+    if (paths[2].exists() or paths[2].is_symlink()) and not paths[2].is_dir():
+        raise StartupError(f"Redis storage path is not an available directory: {paths[2]}")
+    return paths
+
+
+def preserve_storage(docker, env, context, containers, suffix):
+    path = RUN_DIR / f"storage-preserved-{suffix}.json"
+    record = {"context": context, "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "status": "planned", "containers": []}
+    for container in containers:
+        name = container["Name"].lstrip("/")
+        record["containers"].append({"id": container["Id"], "name": name, "preserved_name": f"{name}__preserved_{suffix}",
+                                     "image": container.get("Image"), "mounts": container.get("Mounts", []),
+                                     "restart_policy": container.get("HostConfig", {}).get("RestartPolicy", {})})
+    write_storage_record(path, record)
+    for item in record["containers"]:
+        if item["restart_policy"].get("Name") not in (None, "", "no"):
+            run(docker + ["update", "--restart=no", item["id"]], env=env)
+    run(docker + ["stop", *[item["id"] for item in record["containers"]]], env=env, timeout=90)
+    record["status"] = "stopped"
+    write_storage_record(path, record)
+    renamed = []
+    try:
+        for item in record["containers"]:
+            run(docker + ["rename", item["id"], item["preserved_name"]], env=env)
+            renamed.append(item)
+    except StartupError:
+        for item in reversed(renamed):
+            run(docker + ["rename", item["id"], item["name"]], env=env, check=False)
+        record["status"] = "rename_failed; inspect names before retrying"
+        write_storage_record(path, record)
+        raise
+    record["status"] = "preserved"
+    write_storage_record(path, record)
+    say(f"Previous storage containers retained. Recovery record: {path}")
+
+
+def storage_compose(docker, env):
+    if run(docker + ["compose", "version"], env=env, check=False).returncode == 0:
+        return docker + ["compose"]
+    elif shutil.which("docker-compose"):
+        return ["docker-compose"]
+    raise StartupError("Install Docker Compose first.")
+
+
+def launch_storage_compose(docker, env, record):
+    compose = storage_compose(docker, env)
+    run(compose + ["-p", record["project"], "-f", str(ROOT / "docker-compose.yml"), "-f", record["overlay"],
+                   "--env-file", str(ROOT / "backend" / ".env"),
+                   "up", "-d", "--no-deps", "minio", "qdrant", "redis"], env=env, timeout=180, capture=False)
+    # A newly started service may be writing initialization files before its
+    # marker exists. Check identity/mounts now; service health is awaited below.
+    for name in STORAGE:
+        result = run(docker + ["container", "inspect", name], env=env)
+        container = json.loads(result.stdout)[0]
+        if not bootstrap_container_matches(container, record):
+            raise StartupError(f"New storage ownership/mount check failed for {name}; inspect the recorded Compose project.")
+        record["container_ids"][name] = container["Id"]
+    write_storage_record(RUN_DIR / "storage-bootstrap.json", record)
+    say("Local storage: " + ", ".join(record["sources"].values()))
+
+
+def create_storage(docker, env, context, restored=False, preserving=()):
+    suffix = time.strftime("%Y%m%d%H%M%S") + "-" + uuid.uuid4().hex[:8]
+    project = "tessmora-dev-" + suffix
+    paths = storage_paths(project, restored, preserving)
+    storage_compose(docker, env)  # Fail before touching existing containers if Compose is unavailable.
+    for path in paths:
+        path.mkdir(parents=True, exist_ok=True)
+    overlay = RUN_DIR / f"storage-compose-{suffix}.json"
+    services = {}
+    for service, path, destination in zip(("minio", "qdrant", "redis"), paths, ("/data", "/qdrant/storage", "/data")):
+        services[service] = {"volumes": [{"type": "bind", "source": str(path), "target": destination,
+                                          "bind": {"create_host_path": False}}]}
+    write_storage_record(overlay, {"services": services})
+    if preserving:
+        preserve_storage(docker, env, context, preserving, suffix)
+    record_path = RUN_DIR / "storage-bootstrap.json"
+    record = {"project": project, "context": context, "overlay": str(overlay), "phase": "pending",
+              "sources": dict(zip(STORAGE, map(str, paths))), "container_ids": {}, "allow_empty": dict.fromkeys(STORAGE, True)}
+    # Persist before Compose, so a failed first boot can retry the same empty instance.
+    write_storage_record(record_path, record)
+    launch_storage_compose(docker, env, record)
+
+
+def start_storage(restored, cancelled):
+    docker, env, context = docker_command(allow_stopped_colima=True)
+    say(f"Docker context: {context}")
+    if run(docker + ["info"], env=env, timeout=10, check=False).returncode:
+        if context != "colima-mma-rag" or not colima_profile():
+            raise StartupError(f"Start Docker context {context} first or set MMA_DOCKER_CONTEXT.")
+        say("Starting Colima profile mma-rag...")
+        run(["colima", "start", "--profile", "mma-rag", "--activate=false"], timeout=240, capture=False, env=env)
+        docker, env, context = docker_command()  # Do not trust a recreated or changed context until its endpoint is local.
+        run(docker + ["info"], timeout=10, env=env)
+
+    try:
+        existing = inspect_storage(docker, env, restored)
+    except PendingStorageError:
+        launch_storage_compose(docker, env, storage_bootstrap(env))
+        existing = None
+    except MissingStorageError as exc:
+        if restored:
+            raise
+        say("Previous storage data is missing or empty. Preserving its containers and starting a separate local dataset.")
+        create_storage(docker, env, context, preserving=exc.containers)
+        existing = None
+    if existing:
         # Compose up against another checkout would change mounts and hide its data.
         run(docker + ["start", *STORAGE], env=env)
-    else:
-        minio = ROOT / "minio_data"
-        qdrant = ROOT / "qdrant_storage"
-        if restored and not (minio.is_dir() and (qdrant / "collections").is_dir()):
-            raise StartupError("Restored startup requires existing MinIO/Qdrant data or all three existing storage containers.")
-        if run(docker + ["compose", "version"], env=env, check=False).returncode == 0:
-            compose = docker + ["compose"]
-        elif shutil.which("docker-compose"):
-            compose = ["docker-compose"]
+    elif existing is not None:
+        record = storage_bootstrap(env)
+        if not restored and record.get("phase") == "pending":
+            launch_storage_compose(docker, env, record)
         else:
-            raise StartupError("Install Docker Compose first.")
-        minio.mkdir(exist_ok=True)
-        qdrant.mkdir(exist_ok=True)
-        run(compose + ["-p", "mma-rag", "-f", str(ROOT / "docker-compose.yml"),
-                       "--env-file", str(ROOT / "backend" / ".env"),
-                       "up", "-d", "minio", "qdrant", "redis"], env=env, timeout=180, capture=False)
+            create_storage(docker, env, context, restored)
 
     def storage_ready():
         try:
@@ -369,6 +613,13 @@ def start_storage(restored, cancelled):
             return False
 
     wait_ready("MinIO/Qdrant/Redis", storage_ready, [], 90, cancelled)
+    record = storage_bootstrap(env)
+    if record:
+        record["phase"] = "ready"
+        for name, marker in zip(STORAGE[:2], (".minio.sys", "collections")):
+            if (Path(record["sources"][name]) / marker).is_dir():
+                record["allow_empty"][name] = False
+        write_storage_record(RUN_DIR / "storage-bootstrap.json", record)
     say("MinIO, Qdrant and Redis are ready")
 
 
@@ -461,6 +712,7 @@ def start(args):
     if args.reload:
         command.append("--reload")
     with SUPERVISOR_LOG.open("a") as output:
+        launch_offset = output.tell()
         output.write(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')} launch ---\n")
         output.flush()
         process = subprocess.Popen(command, cwd=ROOT, stdin=subprocess.DEVNULL,
@@ -478,7 +730,7 @@ def start(args):
                 last_message = time.monotonic()
             time.sleep(0.3)
         if not ready:
-            say(log_tail(SUPERVISOR_LOG, 60))
+            say(log_tail(SUPERVISOR_LOG, 60, start_offset=launch_offset))
             raise StartupError("Startup failed. Run ./start-dev.sh logs for service details.")
         say(f"Frontend: http://localhost:{args.port}\nAPI: http://localhost:8000/docs")
         say("Health and /api proxy verified. Logs: ./start-dev.sh logs")
@@ -537,7 +789,11 @@ def main():
             preflight(install=False)
             docker, env, context = docker_command()
             run(docker + ["info"], env=env, timeout=10)
-            say(f"Docker {context} OK. This check does not install dependencies or start services.")
+            existing = inspect_storage(docker, env, args.restored)
+            if not existing:
+                paths = storage_paths("doctor", args.restored)
+                say("No existing storage containers. Startup storage paths: " + ", ".join(map(str, paths)))
+            say(f"Docker {context} and storage mount checks OK. This check does not install dependencies, start services, or verify storage API health.")
         else:
             with lock("operation.lock"):
                 if args.action in ("stop", "restart"):
