@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { useEffect, useId, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { ChevronDown } from 'lucide-react'
@@ -26,6 +27,7 @@ export function VendorModelSelect({
   buttonClassName,
   ariaLabel,
 }: VendorModelSelectProps) {
+  useTranslation()
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const generatedId = useId().replace(/:/g, '')
@@ -36,7 +38,7 @@ export function VendorModelSelect({
   const displayText = value || list[0] || ''
   const listboxId = `${generatedId}-vendor-model-listbox`
   const activeOptionId = open && list.length > 0 ? `${listboxId}-option-${activeIndex}` : undefined
-  const buttonAriaLabel = `${ariaLabel || '选择模型'}，共 ${list.length} 个模型`
+  const buttonAriaLabel = tr("{{v0}}，共 {{v1}} 个模型", { v0: ariaLabel || tr("选择模型"), v1: list.length })
 
   useEffect(() => {
     if (!open) return
@@ -153,13 +155,12 @@ export function VendorModelSelect({
           id={listboxId}
           role="listbox"
           aria-activedescendant={activeOptionId}
-          aria-label={`${ariaLabel || '模型列表'}，共 ${list.length} 个模型`}
+          aria-label={tr("{{v0}}，共 {{v1}} 个模型", { v0: ariaLabel || tr("模型列表"), v1: list.length })}
           className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-xl border-2 border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
         >
           {list.length === 0 ? (
             <li className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400" role="status">
-              暂无可选模型
-            </li>
+              {tr("暂无可选模型")}</li>
           ) : list.map((m, idx) => {
             const provider = getModelProvider(m)
             const providerLogo = provider ? PROVIDER_LOGOS[provider] : null

@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { Node, type Editor } from '@tiptap/core'
 import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type NodeViewProps } from '@tiptap/react'
@@ -12,6 +13,7 @@ import { getFileMentionState, type FileMentionState } from './fileMentionGroups'
 import { fromMentionDocument, toMentionDocument } from './mentionDocument'
 
 function MentionView({ node }: NodeViewProps) {
+  useTranslation()
   return <NodeViewWrapper as="span" className="file-mention-node" contentEditable={false}>
     <InlineFileChip reference={node.attrs.reference} />
   </NodeViewWrapper>
@@ -43,6 +45,7 @@ interface Props {
 }
 
 export const MentionComposer = forwardRef<MentionComposerHandle, Props>(function MentionComposer(props, ref) {
+  useTranslation()
   const current = useRef(props)
   current.current = props
   const lastValue = useRef(JSON.stringify(props.value))
@@ -64,8 +67,8 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(function
     content: toMentionDocument(props.value),
     editable: !props.disabled,
     editorProps: {
-      attributes: { role: 'combobox', 'aria-label': '输入对话问题', 'aria-multiline': 'true',
-        'aria-autocomplete': 'list', 'aria-haspopup': 'listbox', 'data-placeholder': '输入问题，使用 @ 引用文件或本机附件' },
+      attributes: { role: 'combobox', 'aria-label': tr("输入对话问题"), 'aria-multiline': 'true',
+        'aria-autocomplete': 'list', 'aria-haspopup': 'listbox', 'data-placeholder': tr("输入问题，使用 @ 引用文件或本机附件") },
       handleKeyDown: (_view, event) => {
         if (event.isComposing || event.keyCode === 229 || editor?.view.composing) return false
         return current.current.onKeyDown(event)

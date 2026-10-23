@@ -1,3 +1,4 @@
+import { translate as t, useTranslation } from '@/i18n'
 import { useEffect, useState, useCallback, useId, useRef } from 'react'
 import {
   Card,
@@ -54,7 +55,7 @@ function getPortraitErrorMessage(error: unknown) {
     const message = error.message
     if (typeof message === 'string' && message) return message
   }
-  return '生成失败'
+  return t("生成失败")
 }
 
 export function PortraitGraph({
@@ -67,6 +68,7 @@ export function PortraitGraph({
   onClusterSelect,
   className,
 }: PortraitGraphProps) {
+  useTranslation()
   const totalDataCount = textCount + imageCount + audioCount + videoShotCount
   const [clusters, setClusters] = useState<PortraitCluster[]>([])
   const [loading, setLoading] = useState(true)
@@ -172,7 +174,7 @@ export function PortraitGraph({
             pollingIntervalRef.current = null
           }
           setGenerating(false)
-          setGenError('生成超时，请稍后手动刷新查看结果')
+          setGenError(t("生成超时，请稍后手动刷新查看结果"))
         }, 180000) // 3分钟超时
 
         // 轮询检查函数（静默检查，不设置 loading 状态）
@@ -235,7 +237,7 @@ export function PortraitGraph({
             }
           } catch (err) {
             // 轮询时出错，继续轮询（不停止）
-            console.error('轮询检查画像状态失败:', err)
+            console.error(t("轮询检查画像状态失败:"), err)
           }
         }
 
@@ -264,12 +266,12 @@ export function PortraitGraph({
 
   const selectedCluster = clusters.find((cluster) => cluster.cluster_id === selectedId) ?? null
   const portraitSummaryText = generating
-    ? '主题画像正在生成中'
+    ? t("主题画像正在生成中")
     : clusters.length > 0
-      ? `主题画像已生成 ${clusters.length} 个主题${selectedCluster ? `，当前选中主题包含 ${selectedCluster.cluster_size} 条内容` : ''}`
+      ? t("主题画像已生成 {{value1}} 个主题{{value2}}", { value1: clusters.length, value2: selectedCluster ? t("，当前选中主题包含 {{value1}} 条内容", { value1: selectedCluster.cluster_size }) : '' })
       : loading
-        ? '主题画像正在加载'
-        : '暂无主题画像'
+        ? t("主题画像正在加载")
+        : t("暂无主题画像")
 
   const toggleBubbleSelection = useCallback((cluster: PortraitCluster) => {
     const nextSelectedId = selectedId === cluster.cluster_id ? null : cluster.cluster_id
@@ -283,7 +285,7 @@ export function PortraitGraph({
   }, [onClusterSelect])
 
   return (
-    <div className={cn('space-y-4', className)} role="region" aria-label="知识库画像概览" aria-describedby={chartSummaryId}>
+    <div className={cn('space-y-4', className)} role="region" aria-label={t("知识库画像概览")} aria-describedby={chartSummaryId}>
       <span id={chartSummaryId} className="sr-only" aria-live="polite">
         {portraitSummaryText}
       </span>
@@ -299,8 +301,8 @@ export function PortraitGraph({
               </svg>
             </span>
             <div>
-              <CardTitle className="portrait-atlas-title">主题星图</CardTitle>
-              <p>从内容分布，发现主题与线索</p>
+              <CardTitle className="portrait-atlas-title">{t("主题星图")}</CardTitle>
+              <p>{t("从内容分布，发现主题与线索")}</p>
             </div>
           </div>
           {clusters.length > 0 && (
@@ -309,23 +311,23 @@ export function PortraitGraph({
               className="portrait-atlas-regenerate"
               onClick={handleRegenerate}
               disabled={generating}
-              aria-label={generating ? '主题画像生成中' : '重新生成主题画像'}
+              aria-label={generating ? t("主题画像生成中") : t("重新生成主题画像")}
             >
               <span aria-hidden="true"><RefreshCw size={14} strokeWidth={1.7} className={generating ? 'motion-safe:animate-spin' : undefined} /></span>
-              <span>{generating ? '生成中…' : '重新生成'}</span>
+              <span>{generating ? t("生成中…") : t("重新生成")}</span>
             </button>
           )}
         </CardHeader>
         <CardContent className="portrait-atlas-content space-y-4">
           {loading ? (
-            <div className="flex h-80 items-center justify-center" role="status" aria-live="polite" aria-label="正在加载知识库主题画像">
+            <div className="flex h-80 items-center justify-center" role="status" aria-live="polite" aria-label={t("正在加载知识库主题画像")}>
               <div className="text-center">
                 <div className="mx-auto mb-2 h-8 w-8 motion-safe:animate-spin rounded-full border-2 border-indigo-400 border-t-fuchsia-400 dark:border-indigo-500 dark:border-t-fuchsia-500" aria-hidden />
-                <p className="text-muted-foreground">正在加载画像…</p>
+                <p className="text-muted-foreground">{t("正在加载画像…")}</p>
               </div>
             </div>
           ) : clusters.length === 0 ? (
-            <div className="flex h-80 flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-gradient-to-br from-indigo-50/40 via-transparent to-fuchsia-50/40 dark:from-indigo-950/30 dark:via-transparent dark:to-fuchsia-950/30" role={generating ? 'status' : 'region'} aria-label={generating ? '正在生成主题画像' : '主题画像空状态'}>
+            <div className="flex h-80 flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-gradient-to-br from-indigo-50/40 via-transparent to-fuchsia-50/40 dark:from-indigo-950/30 dark:via-transparent dark:to-fuchsia-950/30" role={generating ? 'status' : 'region'} aria-label={generating ? t("正在生成主题画像") : t("主题画像空状态")}>
               {generating ? (
                 <>
                   <div className="relative">
@@ -335,10 +337,9 @@ export function PortraitGraph({
                     </div>
                   </div>
                   <div className="text-center space-y-2">
-                    <p className="text-base font-medium text-slate-700 dark:text-slate-200">正在生成主题画像</p>
+                    <p className="text-base font-medium text-slate-700 dark:text-slate-200">{t("正在生成主题画像")}</p>
                     <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm px-4">
-                      正在分析知识库内容并生成主题聚类，请稍候…
-                    </p>
+                       {t("正在分析知识库内容并生成主题聚类，请稍候…")} </p>
                     <div className="flex items-center justify-center gap-2 text-xs text-slate-400 dark:text-slate-500">
                       <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 motion-safe:animate-pulse" aria-hidden />
                       <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 motion-safe:animate-pulse" style={{ animationDelay: '0.2s' }} aria-hidden />
@@ -353,32 +354,29 @@ export function PortraitGraph({
                     strokeWidth={2}
                     aria-hidden
                   />
-                  <p className="text-base font-medium text-slate-700 dark:text-slate-200 mt-2">暂无主题画像</p>
+                  <p className="text-base font-medium text-slate-700 dark:text-slate-200 mt-2">{t("暂无主题画像")}</p>
                   <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm text-center px-4">
-                    知识库需至少有一条已完成解析的文本、图片、音频或视频 Shot，才能生成主题聚类画像。
-                  </p>
+                     {t("知识库需至少有一条已完成解析的文本、图片、音频或视频 Shot，才能生成主题聚类画像。")} </p>
                   <Button
                     variant="default"
                     size="sm"
                     onClick={handleRegenerate}
                     disabled={generating || totalDataCount < PORTRAIT_DATA_THRESHOLD}
-                    aria-label={generating ? '主题画像生成中' : '生成主题画像'}
+                    aria-label={generating ? t("主题画像生成中") : t("生成主题画像")}
                     className="gap-2"
                   >
                     {generating ? (
                       <>
                         <RefreshCw className="h-4 w-4 motion-safe:animate-spin" aria-hidden />
-                        生成中…
-                      </>
+                         {t("生成中…")} </>
                     ) : (
                       <>
                         <RefreshCw className="h-4 w-4" aria-hidden />
-                        生成画像
-                      </>
+                         {t("生成画像")} </>
                     )}
                   </Button>
                   {totalDataCount < PORTRAIT_DATA_THRESHOLD && (
-                    <p className="text-xs text-amber-600" role="status">当前尚无可用于画像的解析内容</p>
+                    <p className="text-xs text-amber-600" role="status">{t("当前尚无可用于画像的解析内容")}</p>
                   )}
                   {genError && (
                     <p className="text-xs text-destructive" role="alert">{genError}</p>
@@ -398,8 +396,7 @@ export function PortraitGraph({
           {generating && clusters.length > 0 && (
             <p className="flex items-center gap-2 rounded-lg bg-teal-50 px-3 py-2 text-xs text-teal-700 dark:bg-teal-950/40 dark:text-teal-200" role="status">
               <RefreshCw className="h-3.5 w-3.5 motion-safe:animate-spin" aria-hidden />
-              正在更新主题，完成前仍可浏览当前星图。
-            </p>
+               {t("正在更新主题，完成前仍可浏览当前星图。")} </p>
           )}
           {genError && clusters.length > 0 && <p className="text-xs text-destructive" role="alert">{genError}</p>}
         </CardContent>

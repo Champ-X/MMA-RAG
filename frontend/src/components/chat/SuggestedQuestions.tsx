@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowUpRight, Library, RefreshCw, Sparkles } from 'lucide-react'
 import { knowledgeApi } from '@/services/api_client'
@@ -35,6 +36,7 @@ interface LoadState {
 export function SuggestedQuestions({
   session, selectedScopeFiles, disabled = false, onSelect,
 }: SuggestedQuestionsProps) {
+  useTranslation()
   const knowledgeBases = useKnowledgeStore((state) => state.knowledgeBases)
   const fetchKnowledgeBases = useKnowledgeStore((state) => state.fetchKnowledgeBases)
   const scopeValue = JSON.stringify(getSuggestionScope(session, selectedScopeFiles))
@@ -89,31 +91,30 @@ export function SuggestedQuestions({
       <div className="suggestions-heading">
         <h2 className="suggestions-title">
           <span className="suggestions-title-icon"><Sparkles size={17} aria-hidden /></span>
-          你可以这样问
-        </h2>
+          {tr("你可以这样问")}</h2>
         <button type="button" disabled={disabled || loading}
           onClick={() => setRefresh((value) => ({ key: cacheKey, revision: value.revision + 1 }))}
           className="suggestions-refresh">
           <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin motion-reduce:animate-none')} aria-hidden />
-          {loading ? '正在准备' : current.failed || current.pending ? '再试一次' : '换一批'}
+          {loading ? tr("正在准备") : current.failed || current.pending ? tr("再试一次") : tr("换一批")}
         </button>
       </div>
       {!questions.length && (
         <p className="py-3 text-sm leading-6 text-slate-500 dark:text-slate-400" role="status" aria-live="polite">
-          {loading ? '正在看看你的资料，找几个值得聊的问题…' : current.failed
-            ? '推荐问题暂时没加载出来，你也可以先聊聊想了解什么。' : current.pending
-              ? '还在准备问题，稍后可以再试一次。也可以直接开始聊。'
-              : '还没有找到合适的推荐问题，先聊聊你想了解什么吧。'}
+          {loading ? tr("正在看看你的资料，找几个值得聊的问题…") : current.failed
+            ? tr("推荐问题暂时没加载出来，你也可以先聊聊想了解什么。") : current.pending
+              ? tr("还在准备问题，稍后可以再试一次。也可以直接开始聊。")
+              : tr("还没有找到合适的推荐问题，先聊聊你想了解什么吧。")}
         </p>
       )}
-          <ul className="suggestions-grid" aria-label="推荐问题">
+          <ul className="suggestions-grid" aria-label={tr("推荐问题")}>
             {questions.map((item, index) => (
               <li key={item.id} className="min-w-0">
                 <button
                   type="button"
                   disabled={disabled}
                   title={item.text}
-                  aria-label={`发送推荐问题：${item.text}`}
+                  aria-label={tr("发送推荐问题：{{v0}}", { v0: item.text })}
                   onClick={() => onSelect(item.text)}
                   className="suggestion-card"
                   data-note={['honey', 'sage', 'lavender'][index % 3]}

@@ -111,3 +111,6 @@
   .knowledge-library-header__create:hover .knowledge-library-header__create-paper { transform: none; }
   .knowledge-library-header__create:active { transform: none; }
 }
+
+:lang(en) .knowledge-library-header__create { width: max-content; min-width: 14rem; }
+:lang(en) .knowledge-library-header__create-label { white-space: normal; text-align: center; }

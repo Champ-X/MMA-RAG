@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { X, Eye, Image } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCallback, useState, useRef, useEffect, useId } from 'react'
@@ -41,6 +42,7 @@ function VideoWithSeek({
   onError?: (e: SyntheticEvent<HTMLVideoElement, Event>) => void
   ariaDescribedBy?: string
 }) {
+  useTranslation()
   const ref = useRef<HTMLVideoElement>(null)
   const hasSeeked = useRef(false)
   useEffect(() => {
@@ -75,7 +77,7 @@ function VideoWithSeek({
       ref={ref}
       src={src}
       controls
-      aria-label="视频引用预览"
+      aria-label={tr("视频引用预览")}
       aria-describedby={ariaDescribedBy}
       preload="metadata"
       className="w-full h-auto min-h-[200px] aspect-video rounded-lg object-contain bg-black"
@@ -102,6 +104,7 @@ function ImageDisplayWithErrorHandler({
   fileName?: string
   onErrorRetry?: () => Promise<string | null>
 }) {
+  useTranslation()
   const [imageError, setImageError] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
   const [retryUrl, setRetryUrl] = useState<string | null>(null)
@@ -174,7 +177,7 @@ function ImageDisplayWithErrorHandler({
         {imageError ? (
           <div className="flex flex-col items-center justify-center gap-2 p-4" role="alert">
             <Image className="h-8 w-8 text-slate-400 dark:text-slate-500" aria-hidden />
-            <p className="text-xs text-slate-500 dark:text-slate-400">图片加载失败</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{tr("图片加载失败")}</p>
             {fileName && (
               <p className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-full">{fileName}</p>
             )}
@@ -182,7 +185,7 @@ function ImageDisplayWithErrorHandler({
         ) : (
           <>
             {!imageLoaded && (
-              <div className="absolute inset-0 flex items-center justify-center z-10" role="status" aria-label="图片加载中">
+              <div className="absolute inset-0 flex items-center justify-center z-10" role="status" aria-label={tr("图片加载中")}>
                 <div className="animate-spin h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full" aria-hidden />
               </div>
             )}
@@ -215,6 +218,7 @@ function ImageDisplayWithErrorHandler({
 }
 
 export function CitationPopover(props: CitationPopoverProps) {
+  useTranslation()
   if (props.item?.source === 'attachment') {
     return props.open && props.rect ? <AttachmentCitationPopover item={props.item} rect={props.rect} onClose={props.onClose} /> : null
   }
@@ -228,6 +232,7 @@ function KnowledgeCitationPopover({
   onClose,
   onOpenInspector,
 }: CitationPopoverProps) {
+  useTranslation()
   const activeSession = useChatStore((s) => s.getActiveSession())
   const fallbackKbId = activeSession?.knowledgeBaseIds?.[0]
   const [refreshedImgUrl, setRefreshedImgUrl] = useState<string | null>(null)
@@ -372,13 +377,13 @@ function KnowledgeCitationPopover({
   const hasVideoPreview = Boolean(item.video_url || refreshedVideoUrl)
   const videoSegmentLabel =
     item.start_sec != null && item.end_sec != null
-      ? `片段 ${formatTimeLabel(item.start_sec)} - ${formatTimeLabel(item.end_sec)}`
+      ? tr("片段 {{v0}} - {{v1}}", { v0: formatTimeLabel(item.start_sec), v1: formatTimeLabel(item.end_sec) })
       : item.start_sec != null
-        ? `从 ${formatTimeLabel(item.start_sec)} 开始`
+        ? tr("从 {{v0}} 开始", { v0: formatTimeLabel(item.start_sec) })
         : item.end_sec != null
-          ? `至 ${formatTimeLabel(item.end_sec)} 结束`
+          ? tr("至 {{v0}} 结束", { v0: formatTimeLabel(item.end_sec) })
           : null
-  const sourceLabel = item.file_name ? shortenFileName(item.file_name, 32) : '未知路径'
+  const sourceLabel = item.file_name ? shortenFileName(item.file_name, 32) : tr("未知路径")
   const score = citationScoreSummary(item)
 
   return (
@@ -405,7 +410,7 @@ function KnowledgeCitationPopover({
           <div className="flex-shrink-0 flex items-center justify-between border-b border-slate-200/80 dark:border-slate-700/80 px-5 py-3.5 bg-slate-50/50 dark:bg-slate-900/30">
             <div className="min-w-0 flex-1 mr-3">
               <div id={popoverTitleId} className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100" title={item.file_name || undefined}>
-                {item.file_name || '未知文件'}
+                {item.file_name || tr("未知文件")}
               </div>
               <div id={popoverDescriptionId} className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium">
                 {score.label}：{score.value}
@@ -415,7 +420,7 @@ function KnowledgeCitationPopover({
               type="button"
               onClick={onClose}
               className="flex-shrink-0 grid h-9 w-9 place-items-center rounded-xl text-slate-500 hover:bg-slate-200/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-100 transition-colors"
-              aria-label="关闭引用预览"
+              aria-label={tr("关闭引用预览")}
             >
               <X className="h-4 w-4" aria-hidden />
             </button>
@@ -424,7 +429,7 @@ function KnowledgeCitationPopover({
           {/* 内容区域可滚动：图片与文字一起滚动 */}
           <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0 scrollbar-hide">
             {item.type === 'image' && (item.img_url || refreshedImgUrl || ((item.file_path || item.file_name) && (item.debug_info?.kb_id || fallbackKbId))) && (
-              <section aria-label="图片引用预览">
+              <section aria-label={tr("图片引用预览")}>
                 <ImageDisplayWithErrorHandler
                   imgUrl={refreshedImgUrl || item.img_url || ''}
                   fileName={item.file_name}
@@ -456,18 +461,17 @@ function KnowledgeCitationPopover({
                 {hasAudioPreview && (
                   <section
                     className="mb-4 rounded-xl border border-amber-200/70 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-950/40 p-4 shadow-sm"
-                    aria-label="音频引用预览"
+                    aria-label={tr("音频引用预览")}
                   >
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">音频预览</span>
+                      <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">{tr("音频预览")}</span>
                       <span id={audioPreviewStatusId} className="text-[11px] text-amber-600/80 dark:text-amber-300/80">
-                        可使用播放器控件播放
-                      </span>
+                        {tr("可使用播放器控件播放")}</span>
                     </div>
                     <audio
                       src={refreshedAudioUrl || item.audio_url || ''}
                       controls
-                      aria-label="音频引用预览"
+                      aria-label={tr("音频引用预览")}
                       aria-describedby={audioPreviewStatusId}
                       className="w-full h-12 rounded-lg"
                       preload="metadata"
@@ -492,15 +496,14 @@ function KnowledgeCitationPopover({
                 {(item.content || !hasAudioPreview) && (
                   <section
                     className="rounded-xl bg-amber-50/50 dark:bg-amber-900/20 p-4 text-sm text-slate-700 dark:text-slate-200 border border-amber-100/80 dark:border-amber-800/40 leading-relaxed"
-                    aria-label="音频转写内容"
+                    aria-label={tr("音频转写内容")}
                   >
                     {!hasAudioPreview && (
                       <p className="mb-2 text-xs font-medium text-amber-700 dark:text-amber-300" role="status">
-                        未返回可播放音频，已展示文本内容
-                      </p>
+                        {tr("未返回可播放音频，已展示文本内容")}</p>
                     )}
                     <div className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap max-h-[200px] overflow-y-auto">
-                      {item.content || '无内容'}
+                      {item.content || tr("无内容")}
                     </div>
                   </section>
                 )}
@@ -512,11 +515,10 @@ function KnowledgeCitationPopover({
                 {hasVideoPreview && (
                   <section
                     className="mb-4 rounded-xl overflow-hidden border border-sky-200/70 dark:border-sky-800/50 bg-slate-100/80 dark:bg-slate-800/80 p-3 ring-1 ring-slate-200/50 dark:ring-slate-600/30 shadow-sm"
-                    aria-label="视频引用预览"
+                    aria-label={tr("视频引用预览")}
                   >
                     <p id={videoPreviewStatusId} className="sr-only">
-                      视频播放器已加载，可使用原生控件播放
-                    </p>
+                      {tr("视频播放器已加载，可使用原生控件播放")}</p>
                     {videoSegmentLabel && (
                       <div className="mb-2 flex items-center">
                         <span
@@ -555,15 +557,14 @@ function KnowledgeCitationPopover({
                 {(item.content || !hasVideoPreview) && (
                   <section
                     className="rounded-xl bg-slate-50/80 dark:bg-slate-800/50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50"
-                    aria-label="视频引用文本内容"
+                    aria-label={tr("视频引用文本内容")}
                   >
                     {!hasVideoPreview && (
                       <p className="mb-2 text-xs font-medium text-sky-700 dark:text-sky-300" role="status">
-                        未返回可播放视频，已展示文本内容
-                      </p>
+                        {tr("未返回可播放视频，已展示文本内容")}</p>
                     )}
                     <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap max-h-[180px] overflow-y-auto">
-                      {item.content || '无内容'}
+                      {item.content || tr("无内容")}
                     </div>
                   </section>
                 )}
@@ -576,7 +577,7 @@ function KnowledgeCitationPopover({
               item.content && (
                 <section
                   className="rounded-xl bg-purple-50/80 dark:bg-purple-900/20 p-4 text-sm text-slate-700 dark:text-slate-200 border border-purple-100/80 dark:border-purple-800/40"
-                  aria-label="图片 VLM Caption"
+                  aria-label={tr("图片 VLM Caption")}
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <Eye size={14} className="text-purple-600 dark:text-purple-400 shrink-0" aria-hidden />
@@ -590,32 +591,31 @@ function KnowledgeCitationPopover({
             ) : item.type !== 'audio' && item.type !== 'video' ? (
               <section
                 className="rounded-xl bg-slate-100/50 dark:bg-slate-800/30 p-4 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed"
-                aria-label="文本引用内容"
+                aria-label={tr("文本引用内容")}
               >
-                {item.content || '无内容'}
+                {item.content || tr("无内容")}
               </section>
             ) : null}
           </div>
 
           <footer
             className="flex-shrink-0 flex items-center justify-between gap-3 px-5 py-3.5 border-t border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-900/30"
-            aria-label="引用来源与操作"
+            aria-label={tr("引用来源与操作")}
           >
             <div
               className="text-xs text-slate-500 dark:text-slate-400 truncate flex-1 min-w-0"
               title={item.file_name || undefined}
-              aria-label={`引用来源：${sourceLabel}`}
+              aria-label={tr("引用来源：{{v0}}", { v0: sourceLabel })}
             >
               {sourceLabel}
             </div>
             <button
               type="button"
               onClick={onOpenInspector}
-              aria-label={`打开引用检查器：${item.file_name || '未知文件'}`}
+              aria-label={tr("打开引用检查器：{{v0}}", { v0: item.file_name || tr("未知文件") })}
               className="flex-shrink-0 rounded-xl bg-gradient-to-br from-indigo-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-fuchsia-500/20 transition-all duration-200 hover:brightness-110 hover:shadow-lg hover:shadow-fuchsia-500/25 active:scale-[0.98]"
             >
-              打开检查器
-            </button>
+              {tr("打开检查器")}</button>
           </footer>
         </motion.div>
       )}

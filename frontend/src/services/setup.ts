@@ -1,3 +1,4 @@
+import { translate as tr } from '@/i18n'
 import { getSetupToken } from '@/lib/setupSession'
 
 export type Capability = 'text' | 'image' | 'audio' | 'video'
@@ -72,7 +73,7 @@ async function request<T>(path: string, data?: unknown): Promise<T> {
     redirect: 'error',
   })
   const result = await response.json().catch(() => ({}))
-  if (!response.ok) throw new SetupError(typeof result.detail === 'string' ? result.detail : `配置服务返回 ${response.status}，请检查连接后重试。`, response.status)
+  if (!response.ok) throw new SetupError(typeof result.detail === 'string' ? result.detail : tr("配置服务返回 {{v0}}，请检查连接后重试。", { v0: response.status }), response.status)
   return result
 }
 

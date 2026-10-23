@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { lazy, Suspense, useState, useRef, useId, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
 import { Send, Zap, Paperclip, Database, Square, AtSign, X, Sparkles, Search, BrainCircuit, Pencil, ChevronDown } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -104,6 +105,7 @@ const ComposerAttachmentTile = lazy(() =>
 )
 
 function ComposerAttachmentTileFallback() {
+  useTranslation()
   return (
     <span
       className="inline-flex h-14 w-14 shrink-0 animate-pulse rounded-xl border border-slate-200/80 bg-slate-100 shadow-sm dark:border-slate-700 dark:bg-slate-800"
@@ -113,13 +115,14 @@ function ComposerAttachmentTileFallback() {
 }
 
 function MessageBubbleLoading({ role }: { role: Message['role'] }) {
+  useTranslation()
   const isUser = role === 'user'
   return (
     <div
       className={cn('flex w-full', isUser ? 'justify-end' : 'justify-start')}
       role="status"
       aria-live="polite"
-      aria-label={isUser ? '正在载入用户消息' : '正在载入助手消息'}
+      aria-label={isUser ? tr("正在载入用户消息") : tr("正在载入助手消息")}
     >
       <div
         className={cn(
@@ -135,6 +138,7 @@ function MessageBubbleLoading({ role }: { role: Message['role'] }) {
 }
 
 function OpenRouterModelBrandIconFallback({ className }: { className?: string }) {
+  useTranslation()
   return (
     <span
       className={cn(
@@ -147,12 +151,13 @@ function OpenRouterModelBrandIconFallback({ className }: { className?: string })
 }
 
 function SuggestedQuestionsLoading() {
+  useTranslation()
   return (
     <div
       className="mx-auto w-full max-w-3xl"
       role="status"
       aria-live="polite"
-      aria-label="正在载入推荐问题"
+      aria-label={tr("正在载入推荐问题")}
     >
       <div className="chat-suggestions-loading" aria-hidden>
         {[0, 1, 2].map((item) => (
@@ -171,6 +176,7 @@ function maxBytesForChatFile(f: File): number {
 }
 
 export function ChatInterface() {
+  const { i18n } = useTranslation()
   const [draft, setDraft] = useState<ComposerValue>({ text: '', mentions: [] })
   const input = draft.text
   const setInput = (text: string) => setDraft({ text, mentions: [] })
@@ -283,15 +289,15 @@ export function ChatInterface() {
   }
 
   const agentModeLabel =
-    agentMode === 'auto' ? 'Agent 自动' : agentMode === 'agent' ? 'Agent 深研' : '直接检索'
+    agentMode === 'auto' ? tr("Agent 自动") : agentMode === 'agent' ? tr("Agent 深研") : tr("直接检索")
   const agentModeShortLabel =
-    agentMode === 'auto' ? '自动' : agentMode === 'agent' ? '深研' : '直搜'
+    agentMode === 'auto' ? tr("自动") : agentMode === 'agent' ? tr("深研") : tr("直搜")
   const agentModeHint =
     agentMode === 'auto'
-      ? '自动判断是否需要多轮深研；点击切换为直接检索'
+      ? tr("自动判断是否需要多轮深研；点击切换为直接检索")
       : agentMode === 'direct'
-        ? '固定使用单轮多模态检索；点击切换为 Agent 深研'
-        : '固定使用 Agent 多轮补查；点击切换为自动判断'
+        ? tr("固定使用单轮多模态检索；点击切换为 Agent 深研")
+        : tr("固定使用 Agent 多轮补查；点击切换为自动判断")
 
   // 获取当前选中的模型名称，简化显示
   const chatFullModelId = useMemo(
@@ -305,8 +311,8 @@ export function ChatInterface() {
     if (chatModel.includes('/')) {
       return chatModel.split('/').pop() || chatModel
     }
-    return chatModel || '模型'
-  }, [chatFullModelId])
+    return chatModel || tr("模型")
+  }, [chatFullModelId, i18n.language])
 
   /** 非 OpenRouter：本地 vendor 图；OpenRouter 在按钮内单独用 Lobe 图标 */
   const currentModelLogo = useMemo(() => {
@@ -366,8 +372,8 @@ export function ChatInterface() {
 
   const localMentionOptions = useMemo(() => {
     if (!mentionState) return []
-    const query = mentionState.query.trim().toLowerCase().replace(/^(本机|附件)\//, '')
-    return attachments.filter(a => !query || `${a.file.name} 本机 附件`.toLowerCase().includes(query))
+    const query = mentionState.query.trim().toLowerCase().replace(/^(本机|附件|local|attachments?)\//, '')
+    return attachments.filter(a => !query || `${a.file.name} 本机 附件 local attachment`.toLowerCase().includes(query))
       .map(a => ({ source: 'attachment' as const, attachmentId: a.id, name: a.file.name,
         type: a.file.type, previewUrl: a.previewUrl }))
   }, [mentionState, attachments])
@@ -485,7 +491,7 @@ export function ChatInterface() {
       if (epoch === composerEpoch.current) {
         setDraft(submission)
         setAttachments(attachments)
-        setAttachmentError(`未能发送，请重试。${e instanceof Error ? e.message : ''}`)
+        setAttachmentError(tr("未能发送，请重试。{{v0}}", { v0: e instanceof Error ? e.message : '' }))
       } else releaseAttachmentPreviews(attachments)
     } finally {
       preparingRef.current = false
@@ -534,7 +540,7 @@ export function ChatInterface() {
       requestAnimationFrame(() => inputRef.current?.focus())
     } catch (error) {
       if (epoch === composerEpoch.current && useChatStore.getState().activeSessionId === sessionId) {
-        setAttachmentError(error instanceof Error ? error.message : '恢复问题失败，请重试。')
+        setAttachmentError(error instanceof Error ? error.message : tr("恢复问题失败，请重试。"))
       }
     } finally {
       preparingRef.current = false
@@ -625,17 +631,17 @@ export function ChatInterface() {
       const isAudio = chatFileKind(f) === 'audio'
       const isVideo = chatFileKind(f) === 'video'
       if (!isImage && !isAudio && !isVideo) {
-        errors.push(`不支持的格式：${f.name}。请添加图片、音频或 MP4、WebM、MOV 视频。`)
+        errors.push(tr("不支持的格式：{{v0}}。请添加图片、音频或 MP4、WebM、MOV 视频。", { v0: f.name }))
         continue
       }
       const limit = maxBytesForChatFile(f)
       if (!f.size || (!piEnabled && f.size > limit)) {
         const mb = Math.round(limit / (1024 * 1024))
-        errors.push(piEnabled ? `无法添加 ${f.name}：文件不能为空。` : `无法添加 ${f.name}：文件需非空且不超过 ${mb}MB。`)
+        errors.push(piEnabled ? tr("无法添加 {{v0}}：文件不能为空。", { v0: f.name }) : tr("无法添加 {{v0}}：文件需非空且不超过 {{v1}}MB。", { v0: f.name, v1: mb }))
         continue
       }
       if (!piEnabled && attachmentsRef.current.length + next.length >= MAX_CHAT_ATTACHMENTS) {
-        errors.push(`每轮最多添加 ${MAX_CHAT_ATTACHMENTS} 个附件。`)
+        errors.push(tr("每轮最多添加 {{v0}} 个附件。", { v0: MAX_CHAT_ATTACHMENTS }))
         break
       }
       next.push({
@@ -741,7 +747,7 @@ export function ChatInterface() {
           <div
             className="mx-auto flex w-[calc(100%_-_3rem)] max-w-4xl flex-col gap-6"
             role={messages.length > 0 ? 'log' : undefined}
-            aria-label={messages.length > 0 ? '对话消息' : undefined}
+            aria-label={messages.length > 0 ? tr("对话消息") : undefined}
             aria-live={messages.length > 0 ? 'polite' : undefined}
             aria-relevant={messages.length > 0 ? 'additions text' : undefined}
           >
@@ -844,18 +850,17 @@ export function ChatInterface() {
             {questionEdit && (
               <div className="flex items-center gap-2 border-b border-indigo-100/80 bg-indigo-50/60 px-5 py-2 text-xs dark:border-indigo-500/20 dark:bg-indigo-950/30">
                 <Pencil size={13} className="text-indigo-500 dark:text-indigo-300" aria-hidden />
-                <span className="font-medium text-indigo-700 dark:text-indigo-200">编辑问题</span>
-                <span className="text-slate-500 dark:text-slate-400">发送后重新检索，原对话保留</span>
+                <span className="font-medium text-indigo-700 dark:text-indigo-200">{tr("编辑问题")}</span>
+                <span className="text-slate-500 dark:text-slate-400">{tr("发送后重新检索，原对话保留")}</span>
                 <button type="button" onClick={cancelQuestionEdit} disabled={isLoading}
                   className="ml-auto rounded-md px-2 py-1 text-slate-600 transition-colors hover:bg-indigo-100/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-indigo-900/50">
-                  取消编辑
-                </button>
+                  {tr("取消编辑")}</button>
               </div>
             )}
             {(selectedScopeFiles.length > 0 || attachments.length > 0) && (
               <div className="flex flex-col gap-3 border-b border-slate-100/90 bg-gradient-to-b from-slate-50/95 via-stone-50/70 to-white/40 px-4 py-3 dark:border-slate-700/60 dark:from-slate-950/40 dark:via-slate-900/40 dark:to-slate-900/10">
                 {selectedScopeFiles.length > 0 && (
-                  <div className="composer-scope-files" role="list" aria-label="已引用的文件">
+                  <div className="composer-scope-files" role="list" aria-label={tr("已引用的文件")}>
                     {selectedScopeFiles.map((file) => {
                       const source = scopeFilesByKb[file.kbId]?.find(item => item.id === file.fileId)
                         ?? { name: file.name, type: file.type || '' }
@@ -866,15 +871,15 @@ export function ChatInterface() {
                             <span className="composer-scope-name" title={file.name}>{file.name}</span>
                             <span className="composer-scope-origin" title={file.kbName}>
                               <AtSign size={11} aria-hidden />
-                              <span>{file.kbName || '素材空间'}</span>
+                              <span>{file.kbName || tr("素材空间")}</span>
                               <span aria-hidden>·</span>{filePresentation(source).label}
                             </span>
                           </div>
                           <button
                             type="button"
-                            title={`移除检索文件：${file.name}`}
+                            title={tr("移除检索文件：{{v0}}", { v0: file.name })}
                             disabled={isLoading}
-                            aria-label={`移除检索文件：${file.kbName ? `${file.kbName} / ${file.name}` : file.name}`}
+                            aria-label={tr("移除检索文件：{{v0}}", { v0: file.kbName ? `${file.kbName} / ${file.name}` : file.name })}
                             onClick={() => setSelectedScopeFiles(prev => prev.filter(item => !(item.kbId === file.kbId && item.fileId === file.fileId)))}
                             className="composer-scope-remove"
                           ><X size={14} aria-hidden /></button>
@@ -885,7 +890,7 @@ export function ChatInterface() {
                 )}
                 {attachments.length > 0 && (
                   <div className="space-y-2">
-                    <div className="local-attachment-heading"><span>本机附件 · {attachments.length}{!piEnabled && ` / ${MAX_CHAT_ATTACHMENTS}`}</span><span>输入 @ 引用 · 本轮使用</span></div>
+                    <div className="local-attachment-heading"><span>{tr("本机附件 · {{count}}", { count: attachments.length })}{!piEnabled && ` / ${MAX_CHAT_ATTACHMENTS}`}</span><span>{tr("输入 @ 引用 · 本轮使用")}</span></div>
                     <div className="flex flex-wrap items-center gap-2">
                     {attachments.map((a) => {
                       const item: ChatMessageAttachment = {
@@ -917,7 +922,7 @@ export function ChatInterface() {
                 )}
               </div>
             )}
-            <Suspense fallback={<div className="min-h-[72px] px-6 py-5 text-sm text-slate-400" role="status">正在准备输入框…</div>}>
+            <Suspense fallback={<div className="min-h-[72px] px-6 py-5 text-sm text-slate-400" role="status">{tr("正在准备输入框…")}</div>}>
             <MentionComposer
               key={`${activeSessionId}-${editorRevision}`}
               ref={inputRef}
@@ -948,36 +953,36 @@ export function ChatInterface() {
             {attachmentError && <p className="composer-attachment-error" role="alert">{attachmentError}</p>}
             {piEnabled && piConfigError && <div className="pi-composer-connection" role="alert">
               <span>{piConfigError}</span>
-              {workspace.needsAuth && <button type="button" onClick={() => setWorkspaceDialogOpen(true)}>连接工作区</button>}
-              <button type="button" disabled={workspace.loading} onClick={workspace.retry}>重试</button>
+              {workspace.needsAuth && <button type="button" onClick={() => setWorkspaceDialogOpen(true)}>{tr("连接工作区")}</button>}
+              <button type="button" disabled={workspace.loading} onClick={workspace.retry}>{tr("重试")}</button>
             </div>}
 
             {mentionState && (
-              <section className="file-mention-panel" aria-label="引用素材文件">
+              <section className="file-mention-panel" aria-label={tr("引用素材文件")}>
                 <header className="file-mention-heading">
-                  <span className="file-mention-title"><AtSign size={15} aria-hidden />引用文件</span>
+                  <span className="file-mention-title"><AtSign size={15} aria-hidden />{tr("引用文件")}</span>
                   <span className="file-mention-count" role="status">
-                    {mentionOptions.length} 个{mentionState.query ? '匹配文件' : '可选文件'}
-                    {scopeLoadingKbIds.length > 0 && ' · 加载中…'}
+                    {mentionState.query ? tr("{{count}} 个匹配文件", { count: mentionOptions.length }) : tr("{{count}} 个可选文件", { count: mentionOptions.length })}
+                    {scopeLoadingKbIds.length > 0 && tr(" · 加载中…")}
                   </span>
                 </header>
                 {scopeFailedKbIds.length > 0 && (
                   <div className="file-mention-error" role="status">
-                    <span>{scopeFailedKbIds.length} 个空间加载失败，结果暂不完整。</span>
-                    <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { void ensureAllKbFiles(true) }}>重试</button>
+                    <span>{scopeFailedKbIds.length} {tr("个空间加载失败，结果暂不完整。")}</span>
+                    <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { void ensureAllKbFiles(true) }}>{tr("重试")}</button>
                   </div>
                 )}
                 <div
                   id={mentionListboxId}
                   ref={mentionListRef}
                   role="listbox"
-                  aria-label="可添加的检索文件"
+                  aria-label={tr("可添加的检索文件")}
                   aria-busy={scopeLoadingKbIds.length > 0}
                   className="file-mention-list"
                 >
                   {localMentionOptions.length > 0 && (
-                    <div role="group" aria-label="本机附件，仅用于当前对话" className="file-mention-group" data-source="attachment">
-                      <div className="file-mention-group-title"><span>本机附件</span><span>本轮使用 · 未入库</span></div>
+                    <div role="group" aria-label={tr("本机附件，仅用于当前对话")} className="file-mention-group" data-source="attachment">
+                      <div className="file-mention-group-title"><span>{tr("本机附件")}</span><span>{tr("本轮使用 · 未入库")}</span></div>
                       {localMentionOptions.map((option, index) => (
                         <button key={option.attachmentId} id={`${mentionListboxId}-option-${index}`}
                           ref={node => { mentionOptionRefs.current[index] = node }} type="button" role="option"
@@ -986,17 +991,17 @@ export function ChatInterface() {
                           className="file-mention-option">
                           <FileScopeThumbnail file={option} />
                           <span className="file-mention-copy"><span className="file-mention-name">{option.name}</span>
-                            <span className="file-mention-meta">本机附件<span aria-hidden>·</span>{filePresentation(option).label}</span></span>
+                            <span className="file-mention-meta">{tr("本机附件")}<span aria-hidden>·</span>{filePresentation(option).label}</span></span>
                           {index === mentionHighlightIndex && <span className="file-mention-enter" aria-hidden>↵</span>}
                         </button>
                       ))}
                     </div>
                   )}
                   {mentionGroups.map(group => (
-                    <div key={group.kbId} role="group" aria-label={`${group.kbName}，${group.totalMatches} 个匹配`} className="file-mention-group">
+                    <div key={group.kbId} role="group" aria-label={tr("{{v0}}，{{v1}} 个匹配", { v0: group.kbName, v1: group.totalMatches })} className="file-mention-group">
                       <div className="file-mention-group-title">
                         <span>{group.kbName}</span>
-                        <span>{group.failed ? '加载失败' : !group.hasLoaded ? '加载中…' : `${group.totalMatches} 个文件`}</span>
+                        <span>{group.failed ? tr("加载失败") : !group.hasLoaded ? tr("加载中…") : tr("{{v0}} 个文件", { v0: group.totalMatches })}</span>
                       </div>
                       {group.files.map(file => {
                         const optionIndex = mentionOptionIndexByKey.get(fileScopeKey(group.kbId, file.id)) ?? 0
@@ -1027,12 +1032,12 @@ export function ChatInterface() {
                     </div>
                   ))}
                   {mentionOptions.length === 0 && scopeLoadingKbIds.length === 0 && scopeFailedKbIds.length === 0 && (
-                    <p className="file-mention-empty" role="status">{mentionState.query ? '没有匹配文件，请检查知识库名称或文件关键词。' : '暂无可引用的文件，可先添加本机图片或音频。'}</p>
+                    <p className="file-mention-empty" role="status">{mentionState.query ? tr("没有匹配文件，请检查知识库名称或文件关键词。") : tr("暂无可引用的文件，可先添加本机图片或音频。")}</p>
                   )}
                 </div>
                 <footer className="file-mention-footer">
-                  <span>@知识库/文件 · @本机/附件</span>
-                  <span className="file-mention-keys">↑↓ 选择 · Enter 添加 · Esc 关闭</span>
+                  <span>{tr("@知识库/文件 · @本机/附件")}</span>
+                  <span className="file-mention-keys">{tr("↑↓ 选择 · Enter 添加 · Esc 关闭")}</span>
                 </footer>
               </section>
             )}
@@ -1041,8 +1046,8 @@ export function ChatInterface() {
             <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2 bg-gradient-to-b from-transparent to-slate-50/60 px-4 py-2.5 dark:to-slate-950/25">
               <div className={cn('flex shrink-0 items-center gap-2', piEnabled && 'pi-composer-controls')}>
                 <button type="button" className="pi-toggle" aria-pressed={piEnabled}
-                  aria-label={piEnabled ? '关闭纯 Agent 模式，恢复原回答方式' : '开启 Pi 纯 Agent 模式'}
-                  title={piEnabled ? '关闭后恢复原回答方式，草稿与材料保持不变' : 'Pi 自主决定检索、阅读与回答步骤'}
+                  aria-label={piEnabled ? tr("关闭纯 Agent 模式，恢复原回答方式") : tr("开启 Pi 纯 Agent 模式")}
+                  title={piEnabled ? tr("关闭后恢复原回答方式，草稿与材料保持不变") : tr("Pi 自主决定检索、阅读与回答步骤")}
                   disabled={isLoading || !activeSessionId} onMouseDown={event => event.preventDefault()}
                   onClick={() => { if (activeSessionId) updateSessionPiMode(activeSessionId, !piEnabled) }}>
                   <span className="pi-toggle-symbol" aria-hidden>π</span>
@@ -1051,17 +1056,17 @@ export function ChatInterface() {
                 {!piEnabled && <button
                   type="button"
                   onClick={() => setKbConfigPanelOpen(true)}
-                  title="知识库范围配置"
-                  aria-label="打开知识库范围配置"
+                  title={tr("知识库范围配置")}
+                  aria-label={tr("打开知识库范围配置")}
                   className="group flex h-8 items-center gap-1.5 rounded-full border border-blue-200/60 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-blue-700 shadow-sm shadow-blue-500/10 ring-1 ring-blue-200/30 transition-all duration-200 hover:border-blue-300/80 hover:from-blue-100/90 hover:to-indigo-100/90 hover:shadow-md hover:shadow-blue-500/20 hover:ring-blue-300/50 active:scale-95 dark:border-blue-500/40 dark:from-blue-900/30 dark:to-indigo-900/30 dark:text-blue-200 dark:ring-blue-500/20 dark:hover:border-blue-400/60 dark:hover:from-blue-800/40 dark:hover:to-indigo-800/40"
                 >
                   <Database className="h-3.5 w-3.5 text-blue-600 dark:text-blue-300 transition-transform duration-200 group-hover:scale-110" aria-hidden />
                   <span>
                     {activeSession?.kbMode === 'all'
-                      ? '全部'
+                      ? tr("全部")
                       : activeSession?.kbMode === 'manual'
-                        ? `指定 ${activeSession?.knowledgeBaseIds?.length ?? 0} 个`
-                        : '智能路由'}
+                        ? tr("指定 {{v0}} 个", { v0: activeSession?.knowledgeBaseIds?.length ?? 0 })
+                        : tr("智能路由")}
                   </span>
                 </button>}
 
@@ -1070,7 +1075,7 @@ export function ChatInterface() {
                   onClick={cycleAgentMode}
                   disabled={isLoading || !activeSessionId}
                   title={agentModeHint}
-                  aria-label={`回答方式：${agentModeLabel}。${agentModeHint}`}
+                  aria-label={tr("回答方式：{{v0}}。{{v1}}", { v0: agentModeLabel, v1: agentModeHint })}
                   className={cn(
                     'group inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold shadow-sm ring-1 transition-all duration-200 hover:-translate-y-px hover:shadow-md active:translate-y-0 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50',
                     agentMode === 'auto'
@@ -1090,24 +1095,24 @@ export function ChatInterface() {
                   <span className="hidden sm:inline">{agentModeShortLabel}</span>
                 </button>}
 
-                {piEnabled && <label className="pi-model-picker" title={piConfigError || (piModelId ? `Pi 模型：${piModelId}` : '读取 Pi 模型配置')}>
+                {piEnabled && <label className="pi-model-picker" title={piConfigError || (piModelId ? tr("Pi 模型：{{v0}}", { v0: piModelId }) : tr("读取 Pi 模型配置"))}>
                   {piModelLogo ? <img src={piModelLogo} alt="" width={16} height={16} /> : <Zap size={15} aria-hidden />}
-                  <select aria-label="纯 Agent 独立模型" disabled={isLoading || !piConfig} value={piConfig ? piModelId : ''}
+                  <select aria-label={tr("纯 Agent 独立模型")} disabled={isLoading || !piConfig} value={piConfig ? piModelId : ''}
                     onChange={event => activeSessionId && updateSessionPiModel(activeSessionId, event.target.value)}>
-                    {!piConfig ? <option value="">{workspace.loading ? '读取模型…' : workspace.needsAuth ? '待连接工作区' : '模型加载失败'}</option> : piConfig.models.map(model => <option key={model} value={model}>{piModelDisplayName(model)}</option>)}
+                    {!piConfig ? <option value="">{workspace.loading ? tr("读取模型…") : workspace.needsAuth ? tr("待连接工作区") : tr("模型加载失败")}</option> : piConfig.models.map(model => <option key={model} value={model}>{piModelDisplayName(model)}</option>)}
                   </select>
                   <ChevronDown size={13} aria-hidden />
                 </label>}
                 {piEnabled && <span className={cn('pi-composer-status', piState === 'ready' && 'sr-only')} role="status">
                   {piState !== 'ready' && <span className="pi-status-dot" aria-hidden />}
-                  {piState === 'ready' ? '纯 Agent 模式已开启' : piStatusLabel[piState]}
+                  {piState === 'ready' ? tr("纯 Agent 模式已开启") : piStatusLabel[piState]}
                 </span>}
 
                 {!piEnabled && <button
                   type="button"
                   onClick={() => setModelConfigPanelOpen(true)}
-                  title="对话模型选择"
-                  aria-label={`打开对话模型选择，当前模型：${currentModel}`}
+                  title={tr("对话模型选择")}
+                  aria-label={tr("打开对话模型选择，当前模型：{{v0}}", { v0: currentModel })}
                   className="group flex h-8 items-center gap-1.5 rounded-full border border-purple-200/60 bg-gradient-to-r from-purple-50/80 to-pink-50/80 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-purple-700 shadow-sm shadow-purple-500/10 ring-1 ring-purple-200/30 transition-all duration-200 hover:border-purple-300/80 hover:from-purple-100/90 hover:to-pink-100/90 hover:shadow-md hover:shadow-purple-500/20 hover:ring-purple-300/50 active:scale-95 dark:border-purple-500/40 dark:from-purple-900/30 dark:to-pink-900/30 dark:text-purple-200 dark:ring-purple-500/20 dark:hover:border-purple-400/60 dark:hover:from-purple-800/40 dark:hover:to-pink-800/40"
                 >
                   {openRouterModelRaw ? (
@@ -1140,8 +1145,8 @@ export function ChatInterface() {
               <div className="ml-auto flex shrink-0 items-center gap-2">
                 {piEnabled && <button type="button" className="pi-scope-trigger"
                   onClick={() => setKbConfigPanelOpen(true)} disabled={isLoading || !activeSessionId}
-                  title={activeSession?.kbMode === 'manual' ? `检索范围：指定 ${activeSession.knowledgeBaseIds.length} 个知识库` : '检索范围：全部可访问的知识库'}
-                  aria-label="打开知识库范围配置" aria-haspopup="dialog" aria-expanded={kbConfigPanelOpen}>
+                  title={activeSession?.kbMode === 'manual' ? tr("检索范围：指定 {{v0}} 个知识库", { v0: activeSession.knowledgeBaseIds.length }) : tr("检索范围：全部可访问的知识库")}
+                  aria-label={tr("打开知识库范围配置")} aria-haspopup="dialog" aria-expanded={kbConfigPanelOpen}>
                   <Database size={15} strokeWidth={1.7} aria-hidden />
                   {activeSession?.kbMode === 'manual' && <span>{activeSession.knowledgeBaseIds.length}</span>}
                 </button>}
@@ -1149,8 +1154,8 @@ export function ChatInterface() {
                   type="button"
                   onClick={() => setFileScopePickerOpen(true)}
                   disabled={isLoading || !activeSessionId}
-                  title="指定检索文件"
-                  aria-label={`打开指定检索文件选择器，当前已选 ${requestScopeFiles.length} 个文件`}
+                  title={tr("指定检索文件")}
+                  aria-label={tr("打开指定检索文件选择器，当前已选 {{v0}} 个文件", { v0: requestScopeFiles.length })}
                   aria-haspopup="dialog"
                   aria-expanded={fileScopePickerOpen}
                   data-selected={requestScopeFiles.length > 0}
@@ -1159,7 +1164,7 @@ export function ChatInterface() {
                   <span className="composer-file-trigger__symbol" aria-hidden="true">
                     <AtSign size={15} strokeWidth={1.8} />
                   </span>
-                  <span>文件</span>
+                  <span>{tr("文件")}</span>
                   {requestScopeFiles.length > 0 && (
                     <span className="composer-file-trigger__count" aria-hidden="true">
                       {requestScopeFiles.length}
@@ -1171,8 +1176,8 @@ export function ChatInterface() {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isLoading || !activeSessionId}
-                  title={piEnabled ? '添加图片、音频或视频附件' : '添加附件：图片/音频 10MB，视频 30MB 且 60 秒以内'}
-                  aria-label="添加图片、音频或视频附件"
+                  title={piEnabled ? tr("添加图片、音频或视频附件") : tr("添加附件：图片/音频 10MB，视频 30MB 且 60 秒以内")}
+                  aria-label={tr("添加图片、音频或视频附件")}
                   className="flex h-8 w-8 items-center justify-center text-slate-700 transition-all duration-200 hover:text-slate-900 hover:scale-110 active:scale-95 dark:text-slate-300 dark:hover:text-slate-100"
                 >
                   <Paperclip className="h-5 w-5" strokeWidth={2} aria-hidden />
@@ -1182,8 +1187,8 @@ export function ChatInterface() {
                   <button
                     type="button"
                     onClick={handleStop}
-                    title="停止生成"
-                    aria-label="停止生成"
+                    title={tr("停止生成")}
+                    aria-label={tr("停止生成")}
                     className={cn(
                       "flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 text-white shadow-md shadow-blue-500/30 transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/40 hover:scale-105 active:scale-95"
                     )}
@@ -1194,8 +1199,8 @@ export function ChatInterface() {
                   <button
                     type="button"
                     onClick={handleSend}
-                    title={questionEdit ? '重新检索生成' : '发送'}
-                    aria-label={questionEdit ? '重新检索生成' : '发送消息'}
+                    title={questionEdit ? tr("重新检索生成") : tr("发送")}
+                    aria-label={questionEdit ? tr("重新检索生成") : tr("发送消息")}
                     className={cn(
                       "flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-purple-600 text-white shadow-md shadow-purple-500/30 transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/40 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
                     )}
@@ -1215,7 +1220,7 @@ export function ChatInterface() {
           multiple
           accept="image/jpeg,image/png,image/webp,image/gif,audio/*,video/mp4,video/webm,video/quicktime"
           className="hidden"
-          aria-label="选择图片或音频附件"
+          aria-label={tr("选择图片或音频附件")}
           onChange={handleFileSelect}
         />
       </div>

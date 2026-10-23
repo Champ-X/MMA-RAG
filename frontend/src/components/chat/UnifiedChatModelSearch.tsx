@@ -1,3 +1,4 @@
+import { getLanguage, translate as tr, useTranslation } from '@/i18n'
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Search, AlertCircle, Check, Cpu, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
@@ -14,6 +15,10 @@ export type ChatCatalogItem = {
 }
 
 const LIST_LIMIT = 50
+const providerAliases: Record<string, string[]> = {
+  aliyun_bailian: ['阿里云百炼', 'AliyunBailian', 'Alibaba Cloud Bailian', 'Alibaba Cloud Model Studio'],
+  other: ['其他来源', 'Other sources'],
+}
 
 const listScrollClass = cn(
   'overflow-y-auto overscroll-contain',
@@ -27,8 +32,8 @@ function providerLabel(provider: string): string {
     siliconflow: 'SiliconFlow',
     deepseek: 'DeepSeek',
     openrouter: 'OpenRouter',
-    aliyun_bailian: '阿里云百炼',
-    other: '其他来源',
+    aliyun_bailian: tr("阿里云百炼"),
+    other: tr("其他来源"),
   }
   return m[provider] ?? provider
 }
@@ -38,10 +43,10 @@ export function getChatModelDisplayName(item: ChatCatalogItem): string {
   const name = item.name?.trim() || ''
   const normalize = (value: string) => value.toLocaleLowerCase().replace(/[\s_()（）:：·-]/g, '')
   const providerName = normalize(name).replace(/目录同步$/, '').replace(/官方api$/, '')
-  const providerAliases = [item.provider, providerLabel(item.provider), getModelProvider(item.registry_id) || '']
+  const aliases = [item.provider, ...(providerAliases[item.provider] ?? []), getModelProvider(item.registry_id) || '']
     .map(normalize)
     .filter(Boolean)
-  if (name && providerName && !providerAliases.includes(providerName)) return name
+  if (name && providerName && !aliases.includes(providerName)) return name
 
   const registryId = item.registry_id.trim()
   const modelId = item.id?.trim()
@@ -50,6 +55,7 @@ export function getChatModelDisplayName(item: ChatCatalogItem): string {
 }
 
 function CatalogRowIcon({ item }: { item: ChatCatalogItem }) {
+  useTranslation()
   if (item.provider === 'openrouter') {
     return <OpenRouterModelBrandIcon modelId={item.id} size={26} className="mt-0.5" ariaHidden />
   }
@@ -72,6 +78,7 @@ interface UnifiedChatModelSearchProps {
 }
 
 export function UnifiedChatModelSearch(props: UnifiedChatModelSearchProps) {
+  useTranslation()
   return props.variant === 'dialog'
     ? <DialogModelDirectory {...props} />
     : <LegacyChatModelSearch {...props} />
@@ -85,6 +92,7 @@ function LegacyChatModelSearch({
   onSelect,
   className,
 }: UnifiedChatModelSearchProps) {
+  useTranslation()
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
@@ -157,7 +165,7 @@ function LegacyChatModelSearch({
     <div className={cn('space-y-2', className)}>
       <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
         <Search className="h-4 w-4 text-indigo-500 dark:text-indigo-400" aria-hidden />
-        <span>搜索对话模型（已配置 API Key 的供应商）</span>
+        <span>{tr("搜索对话模型（已配置 API Key 的供应商）")}</span>
       </label>
 
       <div
@@ -181,8 +189,8 @@ function LegacyChatModelSearch({
           onKeyDown={handleSearchKeyDown}
           placeholder={
             loading && catalog.length === 0
-              ? '正在从各供应商同步模型目录…'
-              : '模型 id、注册名、展示名或供应商…'
+              ? tr("正在从各供应商同步模型目录…")
+              : tr("模型 id、注册名、展示名或供应商…")
           }
           disabled={disabled}
           className={cn(
@@ -190,7 +198,7 @@ function LegacyChatModelSearch({
             'placeholder:text-slate-400 dark:placeholder:text-slate-500',
             'focus-visible:ring-0 focus-visible:ring-offset-0'
           )}
-          aria-label="搜索所有已启用供应商的对话模型"
+          aria-label={tr("搜索所有已启用供应商的对话模型")}
           aria-controls={listboxId}
           aria-activedescendant={activeOptionId}
         />
@@ -202,21 +210,19 @@ function LegacyChatModelSearch({
           role="alert"
         >
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden />
-          <span>目录提示：{fetchError}</span>
+          <span>{tr("目录提示：")}{fetchError}</span>
         </p>
       )}
 
       {!loading && catalog.length === 0 && !fetchError && (
         <p className="text-center text-[11px] text-slate-500 dark:text-slate-400" role="status">
-          未获取到对话模型（请检查后端与 API Key）
-        </p>
+          {tr("未获取到对话模型（请检查后端与 API Key）")}</p>
       )}
 
       {!disabled && catalog.length > 0 && (
         <>
           <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-400" aria-live="polite">
-            匹配结果（{matchCount} / 最多 {LIST_LIMIT} 条）
-          </p>
+            {tr("匹配结果（{{count}} / 最多 {{limit}} 条）", { count: matchCount, limit: LIST_LIMIT })}</p>
           <div
             className={cn(
               listScrollClass,
@@ -227,12 +233,11 @@ function LegacyChatModelSearch({
               id={listboxId}
               className="divide-y divide-slate-100 py-0.5 dark:divide-slate-700/80"
               role="listbox"
-              aria-label="对话模型搜索结果"
+              aria-label={tr("对话模型搜索结果")}
             >
               {matchCount === 0 ? (
                 <li className="px-4 py-6 text-center text-[11px] text-slate-500 dark:text-slate-400" role="status">
-                  无匹配结果，请调整关键词
-                </li>
+                  {tr("无匹配结果，请调整关键词")}</li>
               ) : (
                 filtered.map((m, idx) => {
                   const active = currentChatModel === m.registry_id
@@ -281,7 +286,7 @@ function LegacyChatModelSearch({
                               )}
                               {typeof m.context_length === 'number' && (
                                 <span className="text-slate-400 dark:text-slate-500">
-                                  上下文约 {m.context_length.toLocaleString()} tokens
+                                  {tr("上下文约 {{tokens}} tokens", { tokens: m.context_length.toLocaleString(getLanguage()) })}
                                 </span>
                               )}
                             </span>
@@ -302,6 +307,7 @@ function LegacyChatModelSearch({
 
 /** The dialog uses one searchable directory; other callers retain their existing layout. */
 function DialogModelDirectory({ catalog, loading, currentChatModel, onSelect, className }: UnifiedChatModelSearchProps) {
+  const { i18n } = useTranslation()
   const [query, setQuery] = useState('')
   const [provider, setProvider] = useState('all')
   const [activeIndex, setActiveIndex] = useState(-1)
@@ -325,7 +331,7 @@ function DialogModelDirectory({ catalog, loading, currentChatModel, onSelect, cl
       const text = [item.registry_id, item.id, item.name, item.provider, providerLabel(item.provider)].join(' ').toLocaleLowerCase()
       return words.every(word => text.includes(word))
     })
-  }, [catalog, effectiveProvider, query])
+  }, [catalog, effectiveProvider, query, i18n.language])
   const visible = filtered.slice(0, visibleLimit)
   const boundedIndex = activeIndex < visible.length ? activeIndex : -1
   const activeOptionId = boundedIndex >= 0 ? `${listboxId}-option-${boundedIndex}` : undefined
@@ -355,7 +361,7 @@ function DialogModelDirectory({ catalog, loading, currentChatModel, onSelect, cl
   }
 
   return <div className={cn('model-directory', className)}>
-    <label className="workflow-label" htmlFor={inputId}>选择模型</label>
+    <label className="workflow-label" htmlFor={inputId}>{tr("选择模型")}</label>
     <div className="workflow-search model-directory-search">
       <Search size={17} aria-hidden />
       <input
@@ -368,27 +374,27 @@ function DialogModelDirectory({ catalog, loading, currentChatModel, onSelect, cl
         value={query}
         onChange={event => setQuery(event.target.value)}
         onKeyDown={handleSearchKeyDown}
-        placeholder="搜索模型名称或供应商…"
+        placeholder={tr("搜索模型名称或供应商…")}
         aria-expanded={catalog.length > 0}
         aria-autocomplete="list"
         aria-controls={listboxId}
         aria-activedescendant={activeOptionId}
         aria-describedby={`${id}-model-help`}
       />
-      {query && <button type="button" className="model-directory-clear" aria-label="清空模型搜索" onClick={() => { setQuery(''); inputRef.current?.focus() }}><X size={15} aria-hidden /></button>}
+      {query && <button type="button" className="model-directory-clear" aria-label={tr("清空模型搜索")} onClick={() => { setQuery(''); inputRef.current?.focus() }}><X size={15} aria-hidden /></button>}
     </div>
 
-    {providers.length > 1 && <div className="model-provider-filters" role="group" aria-label="按供应商筛选">
-      <button type="button" aria-pressed={effectiveProvider === 'all'} onClick={() => setProvider('all')}>全部<span>{catalog.length}</span></button>
+    {providers.length > 1 && <div className="model-provider-filters" role="group" aria-label={tr("按供应商筛选")}>
+      <button type="button" aria-pressed={effectiveProvider === 'all'} onClick={() => setProvider('all')}>{tr("全部")}<span>{catalog.length}</span></button>
       {providers.map(([key, count]) => <button key={key} type="button" aria-pressed={effectiveProvider === key} onClick={() => setProvider(key)}>{providerLabel(key)}<span>{count}</span></button>)}
     </div>}
 
     <div className="model-directory-heading">
-      <span>{loading ? '正在更新模型目录…' : `${filtered.length} 个模型`}</span>
-      <span id={`${id}-model-help`}>↑↓ 浏览 · Enter 选择</span>
+      <span>{loading ? tr("正在更新模型目录…") : tr("{{v0}} 个模型", { v0: filtered.length })}</span>
+      <span id={`${id}-model-help`}>{tr("↑↓ 浏览 · Enter 选择")}</span>
     </div>
 
-    <ul ref={listRef} id={listboxId} role="listbox" aria-label="对话模型" aria-busy={loading} className="model-directory-list">
+    <ul ref={listRef} id={listboxId} role="listbox" aria-label={tr("对话模型")} aria-busy={loading} className="model-directory-list">
       {visible.map((item, index) => {
         const selected = item.registry_id === currentChatModel
         const modelName = getChatModelDisplayName(item)
@@ -410,18 +416,18 @@ function DialogModelDirectory({ catalog, loading, currentChatModel, onSelect, cl
             <span className="model-directory-copy">
               <span className="model-directory-name">{modelName}</span>
               <span className="model-directory-id">{item.registry_id}</span>
-              <span className="model-directory-meta">{providerLabel(item.provider)}{typeof item.context_length === 'number' && item.context_length > 0 && <> · {item.context_length.toLocaleString()} tokens 上下文</>}</span>
+              <span className="model-directory-meta">{providerLabel(item.provider)}{typeof item.context_length === 'number' && item.context_length > 0 && <> · {item.context_length.toLocaleString(getLanguage())} {tr("tokens 上下文")}</>}</span>
             </span>
-            <span className="model-directory-selected">{selected ? <><Check size={15} aria-hidden /><span>当前</span></> : <span className="model-directory-radio" aria-hidden />}</span>
+            <span className="model-directory-selected">{selected ? <><Check size={15} aria-hidden /><span>{tr("当前")}</span></> : <span className="model-directory-radio" aria-hidden />}</span>
           </button>
         </li>
       })}
     </ul>
     {visible.length === 0 && <div className="workflow-empty model-directory-empty" role="status">
       <Cpu size={22} aria-hidden />
-      <p>{loading ? '正在获取可选模型' : catalog.length > 0 ? '没有找到匹配的模型' : '暂无可选模型'}</p>
-      <span>{loading ? '模型目录加载后会显示在这里。' : catalog.length > 0 ? '试试其他关键词，或切换到全部供应商。' : '请检查服务连接与供应商配置。'}</span>
+      <p>{loading ? tr("正在获取可选模型") : catalog.length > 0 ? tr("没有找到匹配的模型") : tr("暂无可选模型")}</p>
+      <span>{loading ? tr("模型目录加载后会显示在这里。") : catalog.length > 0 ? tr("试试其他关键词，或切换到全部供应商。") : tr("请检查服务连接与供应商配置。")}</span>
     </div>}
-    {visible.length < filtered.length && <button type="button" className="model-directory-more" onClick={() => setVisibleLimit(limit => limit + LIST_LIMIT)}>显示更多模型<span>已显示 {visible.length} / {filtered.length}</span></button>}
+    {visible.length < filtered.length && <button type="button" className="model-directory-more" onClick={() => setVisibleLimit(limit => limit + LIST_LIMIT)}>{tr("显示更多模型")}<span>{tr("已显示 {{shown}} / {{total}}", { shown: visible.length, total: filtered.length })}</span></button>}
   </div>
 }

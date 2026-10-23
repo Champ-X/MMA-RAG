@@ -1,3 +1,4 @@
+import { translate as tr, getLanguage } from '@/i18n'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useChatStore, type ChatScopeFile } from '@/store/useChatStore'
 import type { ChatMention } from '@/lib/chatReferences'
@@ -44,11 +45,11 @@ export function usePiAgent(workspaceConfig?: PiConfig | null) {
         const pi = applyPiEvent(old, event)
         useChatStore.getState().updateMessage(session.id, message.id, { pi,
           content: pi.answer || '', citations: pi.citations || [],
-          error: pi.status === 'failed' ? pi.message || 'Agent 运行中断' : undefined })
+          error: pi.status === 'failed' ? pi.message || tr("Agent 运行中断") : undefined })
       }, controller.signal).catch(cause => {
         const pi = current()?.pi
         if (pi && !controller.signal.aborted) useChatStore.getState().updateMessage(session.id, message.id, {
-          pi: { ...pi, connectionError: cause instanceof Error ? cause.message : '过程连接中断' } })
+          pi: { ...pi, connectionError: cause instanceof Error ? cause.message : tr("过程连接中断") } })
       }).finally(() => { watchers.current.delete(trace.runId) })
     }
   }, [sessions])
@@ -60,11 +61,12 @@ export function usePiAgent(workspaceConfig?: PiConfig | null) {
 
   const sendMessage = useCallback(async (content: string, knowledgeBaseIds?: string[], sessionId?: string,
     files?: File[], selectedFiles?: ChatScopeFile[], mentions?: ChatMention[], attachmentIds?: string[]) => {
+    const language = getLanguage() // Freeze this submission before asynchronous file preparation.
     const store = useChatStore.getState()
     const session = sessionId ? store.getSessionById(sessionId) : store.getActiveSession()
-    if (!session) throw new Error('没有活跃的会话')
+    if (!session) throw new Error(tr("没有活跃的会话"))
     if (submitting.current.has(session.id) || activePiRun(store.sessions, session.id)) {
-      throw new Error('此会话已有正在提交或运行的任务，请先停止或等待完成。')
+      throw new Error(tr("此会话已有正在提交或运行的任务，请先停止或等待完成。"))
     }
     submitting.current.add(session.id)
     let deleted = false
@@ -75,7 +77,7 @@ export function usePiAgent(workspaceConfig?: PiConfig | null) {
       const attachments = await pendingAttachments.prepare(files, attachmentIds)
       if (deleted || !useChatStore.getState().getSessionById(session.id)) return
       const previous = [...session.messages].reverse().find(m => m.pi)?.pi
-      const run = await piApi.create({ requestId: crypto.randomUUID(), sessionId: session.id, message: content,
+      const run = await piApi.create({ requestId: crypto.randomUUID(), sessionId: session.id, message: content, language,
         knowledgeBaseIds, model: session.piModel, selectedFiles, mentions, files, attachmentIds: attachments?.map(item => item.id),
         history: session.messages.filter(m => !m.error).map(m => ({ role: m.role, content: m.content })),
         parentRunId: previous?.runId })
@@ -86,7 +88,7 @@ export function usePiAgent(workspaceConfig?: PiConfig | null) {
         return
       }
       if (useChatStore.getState().getSessionById(session.id)?.messages.some(message => message.pi?.runId === run.id)) return
-      store.addMessage(session.id, { role: 'user', content: content || `（已上传 ${files?.length || 0} 个附件）`,
+      store.addMessage(session.id, { role: 'user', content: content || tr("（已上传 {{v0}} 个附件）", { v0: files?.length || 0 }),
         executionEngine: 'pi', mentions: persistMentions(mentions || []), attachments, scopeFiles: selectedFiles, scopeVersion: 2 })
       pendingAttachments.publish()
       store.addMessage(session.id, { role: 'assistant', content: '', citations: [], executionEngine: 'pi', pi: initialPiTrace(run) })
@@ -105,7 +107,7 @@ export function usePiAgent(workspaceConfig?: PiConfig | null) {
       if (message?.pi && !piTerminal(message.pi.status)) store.updateMessage(active.sessionId, active.messageId, {
         pi: { ...message.pi, status: 'cancelling', connectionError: undefined } })
     } catch (cause) { setFailure({ sessionId: active.sessionId,
-      message: cause instanceof Error ? cause.message : '取消请求失败，请重试' }) }
+      message: cause instanceof Error ? cause.message : tr("取消请求失败，请重试") }) }
   }, [active])
 
   return { sendMessage, cancel, isStreaming: Boolean(active), active,

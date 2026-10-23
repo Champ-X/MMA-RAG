@@ -1,3 +1,4 @@
+import { translate as t, useTranslation } from '@/i18n'
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
@@ -129,30 +130,33 @@ const querySteps: Record<ArchitectureMode, JourneyStep[]> = {
 const modeNames: Record<ArchitectureMode, string> = { direct: 'Direct', agent: '有界 Agent', pi: 'Pi Agent' }
 
 function EvidenceExcerpt({ kind, children }: { kind: 'transcript' | 'original' | 'observation'; children: React.ReactNode }) {
-  const labels = { transcript: '语音转写', original: '讲义原文', observation: '模型观察' }
+  useTranslation()
+  const labels = { transcript: t("语音转写"), original: t("讲义原文"), observation: t("模型观察") }
   return (
     <div className={`journey-excerpt journey-excerpt--${kind}`}>
-      <span className="journey-type">{labels[kind]}</span>
+      <span className="journey-type">{t(labels[kind])}</span>
       <p>{children}</p>
     </div>
   )
 }
 
 function VideoFrame({ showDiagram = false }: { showDiagram?: boolean }) {
+  useTranslation()
   return (
-    <div className="journey-video-frame" aria-label="示例视频片段，贝叶斯更新示意画面">
-      <div className="journey-frame-top"><Video size={15} aria-hidden="true" /><span>概念课 · 贝叶斯更新</span><span>示意画面</span></div>
+    <div className="journey-video-frame" aria-label={t("示例视频片段，贝叶斯更新示意画面")}>
+      <div className="journey-frame-top"><Video size={15} aria-hidden="true" /><span>{t("概念课 · 贝叶斯更新")}</span><span>{t("示意画面")}</span></div>
       <div className="journey-frame-diagram" aria-hidden="true">
-        <span>先验</span><span className="journey-frame-symbol">×</span><span>新证据</span><ArrowRight size={20} /><span className="journey-frame-posterior">后验</span>
+        <span>{t("先验")}</span><span className="journey-frame-symbol">×</span><span>{t("新证据")}</span><ArrowRight size={20} /><span className="journey-frame-posterior">{t("后验")}</span>
       </div>
-      {showDiagram && <p className="journey-frame-note">归一化后，更新对事件的判断</p>}
+      {showDiagram && <p className="journey-frame-note">{t("归一化后，更新对事件的判断")}</p>}
       <div className="journey-video-timeline" aria-hidden="true"><span /></div>
-      <div className="journey-frame-time"><span>02:18—02:42</span><span>来源 VIDEO-01</span></div>
+      <div className="journey-frame-time"><span>02:18—02:42</span><span>{t("来源 VIDEO-01")}</span></div>
     </div>
   )
 }
 
 export function EvidenceJourney({ mode }: { mode: ArchitectureMode }) {
+  useTranslation()
   const [journey, setJourney] = useState<Journey>('query')
   const [stepIndex, setStepIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -219,29 +223,29 @@ export function EvidenceJourney({ mode }: { mode: ArchitectureMode }) {
   return (
     <div className="evidence-journey">
       <div className="atlas-section-intro journey-intro">
-        <div><h2>跟随一份证据</h2></div>
-        <p>以一段视频和一份讲义为例。从素材入库走到回答，再点击引用回到证据。</p>
+        <div><h2>{t("跟随一份证据")}</h2></div>
+        <p>{t("以一段视频和一份讲义为例。从素材入库走到回答，再点击引用回到证据。")}</p>
       </div>
 
       <div className="journey-toolbar">
-        <div className="journey-switch" role="group" aria-label="选择演示链路">
-          <button type="button" aria-pressed={journey === 'ingestion'} onClick={() => setJourney('ingestion')}>素材入库</button>
-          <button type="button" aria-pressed={journey === 'query'} onClick={() => setJourney('query')}>问题到回答</button>
+        <div className="journey-switch" role="group" aria-label={t("选择演示链路")}>
+          <button type="button" aria-pressed={journey === 'ingestion'} onClick={() => setJourney('ingestion')}>{t("素材入库")}</button>
+          <button type="button" aria-pressed={journey === 'query'} onClick={() => setJourney('query')}>{t("问题到回答")}</button>
         </div>
-        <div className="journey-demo-label"><span className="journey-example-badge">虚构示例</span><span>{journey === 'query' ? `${modeNames[mode]} 路径` : '三条路径共用的素材准备'}</span></div>
+        <div className="journey-demo-label"><span className="journey-example-badge">{t("虚构示例")}</span><span>{t(journey === 'query' ? t("{{value1}} 路径", { value1: t(modeNames[mode]) }) : t("三条路径共用的素材准备"))}</span></div>
       </div>
 
       <div className="journey-case">
-        <div className="journey-case-files"><span><Video size={16} aria-hidden="true" />概念课.mp4</span><span><FileText size={16} aria-hidden="true" />课程讲义.pdf</span></div>
-        <p><span>示例问题</span>视频怎样解释贝叶斯更新？请结合讲义说明。</p>
+        <div className="journey-case-files"><span><Video size={16} aria-hidden="true" />{t("概念课.mp4")}</span><span><FileText size={16} aria-hidden="true" />{t("课程讲义.pdf")}</span></div>
+        <p><span>{t("示例问题")}</span>{t("视频怎样解释贝叶斯更新？请结合讲义说明。")}</p>
       </div>
 
-      <ol className="journey-steps" aria-label={journey === 'ingestion' ? '素材入库步骤' : `${modeNames[mode]} 回答步骤`}>
+      <ol className="journey-steps" aria-label={t(journey === 'ingestion' ? t("素材入库步骤") : t("{{value1}} 回答步骤", { value1: t(modeNames[mode]) }))}>
         {steps.map((item, index) => (
           <li key={item.id}>
             <button type="button" aria-current={index === activeIndex ? 'step' : undefined} onClick={() => goToStep(index)}>
               <span className={`journey-step-marker ${index < activeIndex ? 'is-complete' : ''}`}>{index < activeIndex ? <Check size={13} aria-hidden="true" /> : String(index + 1).padStart(2, '0')}</span>
-              <span>{item.label}</span>
+              <span>{t(item.label)}</span>
             </button>
           </li>
         ))}
@@ -249,51 +253,49 @@ export function EvidenceJourney({ mode }: { mode: ArchitectureMode }) {
 
       <div className="journey-workspace">
         <div className="journey-step-detail">
-          <h3>{step.title}</h3>
-          <p>{step.description}</p>
-          <div className="journey-action"><span>这一阶段</span><code>{step.action}</code></div>
-          <div className="journey-controls" role="group" aria-label="控制步骤演示">
-            <button type="button" aria-label="上一步" disabled={activeIndex === 0} onClick={() => goToStep(activeIndex - 1)}><ChevronLeft size={18} aria-hidden="true" /></button>
+          <h3>{t(step.title)}</h3>
+          <p>{t(step.description)}</p>
+          <div className="journey-action"><span>{t("这一阶段")}</span><code>{t(step.action)}</code></div>
+          <div className="journey-controls" role="group" aria-label={t("控制步骤演示")}>
+            <button type="button" aria-label={t("上一步")} disabled={activeIndex === 0} onClick={() => goToStep(activeIndex - 1)}><ChevronLeft size={18} aria-hidden="true" /></button>
             <button type="button" className="journey-play" aria-pressed={playing} disabled={reducedMotion} onClick={() => {
               if (!playing && activeIndex === steps.length - 1) setStepIndex(0)
               setPlaying(value => !value)
-            }}>{playing ? <Pause size={15} aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}{playing ? '暂停' : activeIndex === steps.length - 1 ? '重新演示' : '播放演示'}</button>
-            <button type="button" aria-label="下一步" disabled={activeIndex === steps.length - 1} onClick={() => goToStep(activeIndex + 1)}><ChevronRight size={18} aria-hidden="true" /></button>
+            }}>{playing ? <Pause size={15} aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}{t(playing ? t("暂停") : activeIndex === steps.length - 1 ? t("重新演示") : t("播放演示"))}</button>
+            <button type="button" aria-label={t("下一步")} disabled={activeIndex === steps.length - 1} onClick={() => goToStep(activeIndex + 1)}><ChevronRight size={18} aria-hidden="true" /></button>
           </div>
-          <p className="journey-play-hint">{reducedMotion ? '已遵循减少动态效果偏好，请逐步查看。' : '点击步骤自由查看，播放每 5 秒前进一步。'}</p>
-          <p className="journey-status" aria-live={playing ? 'off' : 'polite'} aria-atomic="true">{journey === 'ingestion' ? '素材入库' : modeNames[mode]}：第 {activeIndex + 1} 步，{step.label}</p>
+          <p className="journey-play-hint">{t(reducedMotion ? t("已遵循减少动态效果偏好，请逐步查看。") : t("点击步骤自由查看，播放每 5 秒前进一步。"))}</p>
+          <p className="journey-status" aria-live={playing ? 'off' : 'polite'} aria-atomic="true">{t(journey === 'ingestion' ? t("素材入库") : modeNames[mode])}{t("：第")} {activeIndex + 1}  {t("步，")}{t(step.label)}</p>
         </div>
 
         <div className="journey-evidence-area">
-          <div className="journey-evidence-heading"><h3 ref={evidenceTitle} tabIndex={-1}>{isAnswer ? '有来处的回答' : step.view === 'indexed' ? '同一来源，两种存储职责' : '随步骤展开的证据'}</h3><span>{isAnswer ? '点击引用回到来源' : '来源身份始终保留'}</span></div>
+          <div className="journey-evidence-heading"><h3 ref={evidenceTitle} tabIndex={-1}>{t(isAnswer ? t("有来处的回答") : step.view === 'indexed' ? t("同一来源，两种存储职责") : t("随步骤展开的证据"))}</h3><span>{t(isAnswer ? t("点击引用回到来源") : t("来源身份始终保留"))}</span></div>
 
           {isAnswer ? (
             <div className="journey-answer">
-              <span className="journey-answer-label">示例回答</span>
-              <p>视频用“先验 × 新证据 → 后验”解释贝叶斯更新：新证据改变原有判断，归一化后得到新的概率。<button type="button" className="journey-inline-citation" aria-label="查看 E-01 视频转写来源" onClick={() => openCitation('E-01')}>[1]</button></p>
-              <p>讲义给出同一关系：后验概率由似然与先验共同决定。<button type="button" className="journey-inline-citation" aria-label="查看 E-02 讲义原文来源" onClick={() => openCitation('E-02')}>[2]</button></p>
+              <span className="journey-answer-label">{t("示例回答")}</span>
+              <p>{t("视频用“先验 × 新证据 → 后验”解释贝叶斯更新：新证据改变原有判断，归一化后得到新的概率。")}<button type="button" className="journey-inline-citation" aria-label={t("查看 E-01 视频转写来源")} onClick={() => openCitation('E-01')}>[1]</button></p>
+              <p>{t("讲义给出同一关系：后验概率由似然与先验共同决定。")}<button type="button" className="journey-inline-citation" aria-label={t("查看 E-02 讲义原文来源")} onClick={() => openCitation('E-02')}>[2]</button></p>
               {showObservation && (
                 <EvidenceExcerpt kind="observation">
-                  对指定视频区间的采样观察中，画面展示了先验、证据与后验之间的箭头关系。
-                  <button type="button" className="journey-inline-citation" aria-label="查看 E-03 视频模型观察来源" onClick={() => openCitation('E-03')}>[3]</button>
-                  {' '}这份观察与转写和原文分别记录。
-                </EvidenceExcerpt>
+                   {t("对指定视频区间的采样观察中，画面展示了先验、证据与后验之间的箭头关系。")} <button type="button" className="journey-inline-citation" aria-label={t("查看 E-03 视频模型观察来源")} onClick={() => openCitation('E-03')}>[3]</button>
+                  {' '}{t("这份观察与转写和原文分别记录。")} </EvidenceExcerpt>
               )}
               <div className="journey-citation-list">
                 <button type="button" onClick={() => openCitation('E-01')}>
                   <Video size={15} aria-hidden="true" />
-                  <span><b>[1] E-01 · 视频转写</b><small>概念课.mp4 · 02:18—02:42</small></span>
+                  <span><b>{t("[1] E-01 · 视频转写")}</b><small>{t("概念课.mp4 · 02:18—02:42")}</small></span>
                   <ArrowRight size={15} aria-hidden="true" />
                 </button>
                 <button type="button" onClick={() => openCitation('E-02')}>
                   <FileText size={15} aria-hidden="true" />
-                  <span><b>[2] E-02 · 讲义原文</b><small>课程讲义.pdf · 第 7 页</small></span>
+                  <span><b>{t("[2] E-02 · 讲义原文")}</b><small>{t("课程讲义.pdf · 第 7 页")}</small></span>
                   <ArrowRight size={15} aria-hidden="true" />
                 </button>
                 {showObservation && (
                   <button type="button" onClick={() => openCitation('E-03')}>
                     <Video size={15} aria-hidden="true" />
-                    <span><b>[3] E-03 · 模型观察</b><small>同一视频来源 · 指定区间的采样观察</small></span>
+                    <span><b>{t("[3] E-03 · 模型观察")}</b><small>{t("同一视频来源 · 指定区间的采样观察")}</small></span>
                     <ArrowRight size={15} aria-hidden="true" />
                   </button>
                 )}
@@ -301,32 +303,32 @@ export function EvidenceJourney({ mode }: { mode: ArchitectureMode }) {
             </div>
           ) : (
             <>
-              <article ref={videoEvidence} tabIndex={-1} aria-label="E-01 视频来源片段" className={`journey-evidence-record ${focusedEvidence === 'E-01' ? 'is-focused' : ''}`}>
-                <div className="journey-record-identity"><span className="journey-evidence-id">E-01</span><span>概念课.mp4</span><span className="journey-record-location">02:18—02:42</span></div>
+              <article ref={videoEvidence} tabIndex={-1} aria-label={t("E-01 视频来源片段")} className={`journey-evidence-record ${focusedEvidence === 'E-01' ? 'is-focused' : ''}`}>
+                <div className="journey-record-identity"><span className="journey-evidence-id">E-01</span><span>{t("概念课.mp4")}</span><span className="journey-record-location">02:18—02:42</span></div>
                 {['files', 'scope', 'observed'].includes(step.view) && <VideoFrame showDiagram={step.view === 'observed'} />}
-                {step.view !== 'files' && step.view !== 'scope' && <EvidenceExcerpt kind="transcript">“先验与新证据相乘，再归一化得到后验。”</EvidenceExcerpt>}
-                {step.view === 'parsed' && <div className="journey-derived-note"><span>镜头描述 · 入库生成</span><p>讲师展示贝叶斯更新关系的示意图。模型描述与语音转写分别保存。</p></div>}
-                {step.view === 'located' && <p className="journey-location-note">来源 VIDEO-01 · 镜头 Shot-04 · 时间定位 138—162 秒</p>}
-                {step.view === 'indexed' && <div className="journey-storage-pair"><div><span>MinIO</span><p>原视频、关键帧、解析清单</p></div><ArrowRight size={16} aria-hidden="true" /><div><span>Qdrant</span><p>Shot 描述 / ASR 的 Dense + Sparse</p></div></div>}
-                {step.view === 'context' && <div className="journey-context-note"><Check size={14} aria-hidden="true" /><span>带来源位置进入上下文 · 回答引用 [1]</span></div>}
+                {step.view !== 'files' && step.view !== 'scope' && <EvidenceExcerpt kind="transcript">{t("“先验与新证据相乘，再归一化得到后验。”")}</EvidenceExcerpt>}
+                {step.view === 'parsed' && <div className="journey-derived-note"><span>{t("镜头描述 · 入库生成")}</span><p>{t("讲师展示贝叶斯更新关系的示意图。模型描述与语音转写分别保存。")}</p></div>}
+                {step.view === 'located' && <p className="journey-location-note">{t("来源 VIDEO-01 · 镜头 Shot-04 · 时间定位 138—162 秒")}</p>}
+                {step.view === 'indexed' && <div className="journey-storage-pair"><div><span>MinIO</span><p>{t("原视频、关键帧、解析清单")}</p></div><ArrowRight size={16} aria-hidden="true" /><div><span>Qdrant</span><p>{t("Shot 描述 / ASR 的 Dense + Sparse")}</p></div></div>}
+                {step.view === 'context' && <div className="journey-context-note"><Check size={14} aria-hidden="true" /><span>{t("带来源位置进入上下文 · 回答引用 [1]")}</span></div>}
               </article>
 
               {showLecture ? (
-                <article ref={lectureEvidence} tabIndex={-1} aria-label="E-02 讲义原文片段" className={`journey-evidence-record journey-evidence-record--lecture ${focusedEvidence === 'E-02' ? 'is-focused' : ''}`}>
-                  <div className="journey-record-identity"><span className="journey-evidence-id">E-02</span><span>课程讲义.pdf</span><span className="journey-record-location">第 7 页</span></div>
-                  <EvidenceExcerpt kind="original">“后验概率由似然与先验共同决定。”</EvidenceExcerpt>
-                  {step.view === 'indexed' && <p className="journey-location-note">保留原文的 Chunk · Dense + Sparse · 来源 DOC-01</p>}
-                  {step.view === 'context' && <div className="journey-context-note"><Check size={14} aria-hidden="true" /><span>保留原文进入上下文 · 回答引用 [2]</span></div>}
+                <article ref={lectureEvidence} tabIndex={-1} aria-label={t("E-02 讲义原文片段")} className={`journey-evidence-record journey-evidence-record--lecture ${focusedEvidence === 'E-02' ? 'is-focused' : ''}`}>
+                  <div className="journey-record-identity"><span className="journey-evidence-id">E-02</span><span>{t("课程讲义.pdf")}</span><span className="journey-record-location">{t("第 7 页")}</span></div>
+                  <EvidenceExcerpt kind="original">{t("“后验概率由似然与先验共同决定。”")}</EvidenceExcerpt>
+                  {step.view === 'indexed' && <p className="journey-location-note">{t("保留原文的 Chunk · Dense + Sparse · 来源 DOC-01")}</p>}
+                  {step.view === 'context' && <div className="journey-context-note"><Check size={14} aria-hidden="true" /><span>{t("保留原文进入上下文 · 回答引用 [2]")}</span></div>}
                 </article>
-              ) : <div className="journey-lecture-preview"><FileText size={18} aria-hidden="true" /><div><span>课程讲义.pdf</span><p>{step.view === 'parsed' ? '文档保留原文，独立形成文本块。' : '另一份来源，为视频解释提供文字依据。'}</p></div></div>}
+              ) : <div className="journey-lecture-preview"><FileText size={18} aria-hidden="true" /><div><span>{t("课程讲义.pdf")}</span><p>{t(step.view === 'parsed' ? t("文档保留原文，独立形成文本块。") : t("另一份来源，为视频解释提供文字依据。"))}</p></div></div>}
               {showObservation && (
-                <article ref={mediaEvidence} tabIndex={-1} aria-label="E-03 视频模型观察" className={`journey-evidence-record journey-evidence-record--observation ${focusedEvidence === 'E-03' ? 'is-focused' : ''}`}>
+                <article ref={mediaEvidence} tabIndex={-1} aria-label={t("E-03 视频模型观察")} className={`journey-evidence-record journey-evidence-record--observation ${focusedEvidence === 'E-03' ? 'is-focused' : ''}`}>
                   <div className="journey-record-identity">
                     <span className="journey-evidence-id">E-03</span>
-                    <span>概念课.mp4 · VIDEO-01</span>
+                    <span>{t("概念课.mp4 · VIDEO-01")}</span>
                     <span className="journey-record-location">02:18—02:42</span>
                   </div>
-                  <EvidenceExcerpt kind="observation">指定区间的采样画面显示“先验 × 新证据 → 后验”。同一视频的观察与转写使用独立证据编号；采样未覆盖的帧保持未核验。</EvidenceExcerpt>
+                  <EvidenceExcerpt kind="observation">{t("指定区间的采样画面显示“先验 × 新证据 → 后验”。同一视频的观察与转写使用独立证据编号；采样未覆盖的帧保持未核验。")}</EvidenceExcerpt>
                 </article>
               )}
             </>
@@ -334,7 +336,7 @@ export function EvidenceJourney({ mode }: { mode: ArchitectureMode }) {
         </div>
       </div>
 
-      <p className="journey-example-note">内容、文件名与证据编号均为教学示例；本演示不调用模型或读取实际知识库。实际引用编号在取证时分配。</p>
+      <p className="journey-example-note">{t("内容、文件名与证据编号均为教学示例；本演示不调用模型或读取实际知识库。实际引用编号在取证时分配。")}</p>
     </div>
   )
 }

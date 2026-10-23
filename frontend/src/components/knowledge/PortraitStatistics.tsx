@@ -1,3 +1,4 @@
+import { translate as t, useTranslation, getLanguage } from '@/i18n'
 import { useId, useState } from 'react'
 import { FileText, Film, Image as ImageIcon, Music2 } from 'lucide-react'
 import {
@@ -14,11 +15,12 @@ interface PortraitStatisticsProps extends PortraitSourceCounts {
   documentCount: number
 }
 
-const countLabel = (count: number) => count.toLocaleString('zh-CN')
-const compactCount = new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 })
+const countLabel = (count: number) => count.toLocaleString(getLanguage())
 const sourceIcons = { text: FileText, image: ImageIcon, audio: Music2, video: Film }
 
 export function PortraitStatistics({ topicCount, documentCount, ...counts }: PortraitStatisticsProps) {
+  useTranslation()
+  const compactCount = new Intl.NumberFormat(getLanguage(), { notation: 'compact', maximumFractionDigits: 1 })
   const id = useId().replace(/:/g, '')
   const [selected, setSelected] = useState<PortraitSourceKind | null>(null)
   const [preview, setPreview] = useState<PortraitSourceKind | null>(null)
@@ -28,20 +30,20 @@ export function PortraitStatistics({ topicCount, documentCount, ...counts }: Por
   const displayedCount = activeSource?.count ?? total
   const displayedCountLabel = countLabel(displayedCount)
   const chartDescription = total > 0
-    ? `共 ${countLabel(total)} 个内容样本。${segments.map(source => `${source.label} ${countLabel(source.count)}，占比 ${formatPortraitPercentage(source.percentage)}`).join('；')}。`
-    : '暂无已解析内容样本，环形图为空。'
+    ? t("共 {{value1}} 个内容样本。{{value2}}。", { value1: countLabel(total), value2: segments.map(source => t("{{value1}} {{value2}}，占比 {{value3}}", { value1: source.label, value2: countLabel(source.count), value3: formatPortraitPercentage(source.percentage) })).join('；') })
+    : t("暂无已解析内容样本，环形图为空。")
 
   return (
     <section className="portrait-statistics">
       <header className="portrait-statistics__header">
-        <h3 className="portrait-statistics__title">主题统计</h3>
+        <h3 className="portrait-statistics__title">{t("主题统计")}</h3>
         <dl className="portrait-statistics__summary">
           <div>
-            <dt>主题</dt>
+            <dt>{t("主题")}</dt>
             <dd>{topicCount === undefined ? '—' : countLabel(normalizePortraitCount(topicCount))}</dd>
           </div>
           <div>
-            <dt>文档</dt>
+            <dt>{t("文档")}</dt>
             <dd>{countLabel(normalizePortraitCount(documentCount))}</dd>
           </div>
         </dl>
@@ -73,9 +75,9 @@ export function PortraitStatistics({ topicCount, documentCount, ...counts }: Por
               className={displayedCountLabel.length > 5 ? 'portrait-statistics__count portrait-statistics__count--compact' : 'portrait-statistics__count'}
               title={displayedCountLabel}
             >{displayedCount >= 1000000 ? compactCount.format(displayedCount) : displayedCountLabel}</strong>
-            <span className="portrait-statistics__center-label">{activeSource?.label ?? (total > 0 ? '内容样本' : '暂无样本')}</span>
+            <span className="portrait-statistics__center-label">{activeSource?.label ?? (total > 0 ? t("内容样本") : t("暂无样本"))}</span>
             <span className="portrait-statistics__center-detail">
-              {activeSource ? `占比 ${formatPortraitPercentage(activeSource.percentage)}` : total > 0 ? '已解析内容' : '等待内容解析'}
+              {activeSource ? t("占比 {{value1}}", { value1: formatPortraitPercentage(activeSource.percentage) }) : total > 0 ? t("已解析内容") : t("等待内容解析")}
             </span>
           </div>
         </figure>
@@ -91,7 +93,7 @@ export function PortraitStatistics({ topicCount, documentCount, ...counts }: Por
                   data-source={source.kind}
                   disabled={source.count === 0}
                   aria-pressed={source.count > 0 && selected === source.kind}
-                  aria-label={`${source.count === 0 ? `${source.label}暂无已解析样本` : `查看${source.label}样本`}：${countLabel(source.count)}，占比 ${formatPortraitPercentage(source.percentage)}`}
+                  aria-label={t("{{value1}}：{{value2}}，占比 {{value3}}", { value1: source.count === 0 ? t("{{value1}}暂无已解析样本", { value1: source.label }) : t("查看{{value1}}样本", { value1: source.label }), value2: countLabel(source.count), value3: formatPortraitPercentage(source.percentage) })}
                   onMouseEnter={() => setPreview(source.kind)}
                   onMouseLeave={() => setPreview(null)}
                   onFocus={() => setPreview(source.kind)}

@@ -1,3 +1,4 @@
+import { translate as t, useTranslation } from '@/i18n'
 import { useId } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Check, ChevronDown } from 'lucide-react'
@@ -30,10 +31,11 @@ interface BrandSelectProps {
 
 /** Small branded choice lists; large model catalogs keep their searchable model picker. */
 export function BrandSelect({ id, name, label, ariaLabel, value, options, onChange, disabled, className }: BrandSelectProps) {
+  useTranslation()
   const generatedId = useId()
   const controlId = id ?? generatedId
   const selected = options.find(option => option.value === value)
-  const accessibleLabel = ariaLabel ?? label ?? '选择配置'
+  const accessibleLabel = ariaLabel ?? label ?? t("选择配置")
 
   return (
     <div className={cn('brand-select', className)}>
@@ -45,12 +47,12 @@ export function BrandSelect({ id, name, label, ariaLabel, value, options, onChan
             type="button"
             id={controlId}
             className="brand-select-trigger"
-            aria-label={`${accessibleLabel}，当前：${selected?.label ?? (value || '未选择')}`}
+            aria-label={t("{{accessibleLabel}}，当前：{{value2}}", { accessibleLabel: accessibleLabel, value2: selected?.label ?? (value || t("未选择")) })}
             disabled={disabled || options.length === 0}
             title={selected?.label ?? value}
           >
             {selected && <BrandIcon provider={selected.provider} modelId={selected.modelId} size={22} />}
-            <span className="brand-select-value">{selected?.label ?? (value || '暂无可用选项')}</span>
+            <span className="brand-select-value">{selected?.label ?? (value || t("暂无可用选项"))}</span>
             <ChevronDown className="brand-select-chevron" size={14} aria-hidden="true" />
           </button>
         </DropdownMenu.Trigger>

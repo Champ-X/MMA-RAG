@@ -1,3 +1,4 @@
+import { translate as t, useTranslation } from '@/i18n'
 import { useState } from 'react'
 import { Film, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -17,6 +18,7 @@ function formatFrameTime(seconds: number): string {
 
 /** Presentation only: the parent file card continues to open the original video. */
 export function VideoFileCover({ src, name, timestamp, className }: VideoFileCoverProps) {
+  useTranslation()
   const [failedSrc, setFailedSrc] = useState<string | undefined>()
   const [loadedSrc, setLoadedSrc] = useState<string | undefined>()
   const hasCover = Boolean(src && failedSrc !== src)
@@ -26,12 +28,12 @@ export function VideoFileCover({ src, name, timestamp, className }: VideoFileCov
     <div className={cn('relative isolate aspect-video w-full overflow-hidden bg-slate-900', className)}>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 text-slate-400" aria-hidden>
         <Film className="h-9 w-9" strokeWidth={1.25} />
-        <span className="text-[11px] tracking-[0.12em]">视频素材</span>
+        <span className="text-[11px] tracking-[0.12em]">{t("视频素材")}</span>
       </div>
       {hasCover && (
         <img
           src={src}
-          alt={`${name}的视频封面`}
+          alt={t("{{name}}的视频封面", { name: name })}
           loading="lazy"
           decoding="async"
           onLoad={() => setLoadedSrc(src)}
@@ -54,11 +56,10 @@ export function VideoFileCover({ src, name, timestamp, className }: VideoFileCov
       </span>
       <div className="pointer-events-none absolute inset-x-3 bottom-3 flex items-center justify-between gap-2 text-white">
         <span className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-black/25 px-2 py-1 text-[10px] font-medium tracking-wide backdrop-blur-sm">
-          <Film className="h-3 w-3" aria-hidden /> 视频
-        </span>
+          <Film className="h-3 w-3" aria-hidden />  {t("视频")} </span>
         {ready && typeof timestamp === 'number' && Number.isFinite(timestamp) && (
-          <span className="rounded-md bg-black/35 px-2 py-1 text-[10px] tabular-nums backdrop-blur-sm" title="封面画面在原视频中的时间">
-            画面 · {formatFrameTime(timestamp)}
+          <span className="rounded-md bg-black/35 px-2 py-1 text-[10px] tabular-nums backdrop-blur-sm" title={t("封面画面在原视频中的时间")}>
+             {t("画面 ·")} {formatFrameTime(timestamp)}
           </span>
         )}
       </div>

@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { useState } from 'react'
 import { FileText, Image, Music, Video } from 'lucide-react'
 import type { KnowledgeBaseFileItem } from './useFileScopeOptions'
@@ -7,13 +8,14 @@ export function filePresentation(file: Pick<KnowledgeBaseFileItem, 'name' | 'typ
   const type = String(file.type || '').toLowerCase().split(';')[0].trim()
   const extension = file.name.split('.').pop()?.toLowerCase() || ''
   const matches = (values: string[]) => values.includes(type) || values.includes(extension)
-  if (type.startsWith('audio/') || matches(['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg', 'wma', 'opus'])) return { Icon: Music, kind: 'audio', label: '音频' }
-  if (type.startsWith('video/') || matches(['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'])) return { Icon: Video, kind: 'video', label: '视频' }
-  if (type.startsWith('image/') || matches(['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'svg', 'bmp', 'tiff', 'tif', 'heic', 'heif'])) return { Icon: Image, kind: 'image', label: '图片' }
-  return { Icon: FileText, kind: 'document', label: '文档' }
+  if (type.startsWith('audio/') || matches(['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg', 'wma', 'opus'])) return { Icon: Music, kind: 'audio', label: tr("音频") }
+  if (type.startsWith('video/') || matches(['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'])) return { Icon: Video, kind: 'video', label: tr("视频") }
+  if (type.startsWith('image/') || matches(['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'svg', 'bmp', 'tiff', 'tif', 'heic', 'heif'])) return { Icon: Image, kind: 'image', label: tr("图片") }
+  return { Icon: FileText, kind: 'document', label: tr("文档") }
 }
 
 export function FileScopeThumbnail({ file }: { file: Pick<KnowledgeBaseFileItem, 'name' | 'type' | 'previewUrl' | 'coverUrl'> }) {
+  useTranslation()
   const { Icon, kind } = filePresentation(file)
   const src = kind === 'image' ? file.previewUrl : kind === 'video' ? file.coverUrl : undefined
   const [failedSrc, setFailedSrc] = useState<string>()

@@ -1,3 +1,4 @@
+import { translate as t, useTranslation } from '@/i18n'
 import { useRef, type FormEventHandler, type ReactNode } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
@@ -26,6 +27,7 @@ export function WorkflowDialog({
   open, onOpenChange, title, eyebrow, description, icon, size = 'md', footer,
   children, className, busy = false, onSubmit, sourceTheme,
 }: WorkflowDialogProps) {
+  useTranslation()
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const contents = (
@@ -68,7 +70,7 @@ export function WorkflowDialog({
               <span className="workflow-dialog-sheet workflow-dialog-sheet--middle" />
               <span className="workflow-dialog-icon">{icon}<span className="workflow-dialog-icon-rule" /></span>
             </div>}
-            <Dialog.Close className="workflow-dialog-close" disabled={busy} aria-label={`关闭${title}`}>
+            <Dialog.Close className="workflow-dialog-close" disabled={busy} aria-label={t("关闭{{title}}", { title: title })}>
               <X size={18} strokeWidth={1.7} aria-hidden="true" />
             </Dialog.Close>
           </header>

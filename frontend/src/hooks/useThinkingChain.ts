@@ -1,3 +1,4 @@
+import { translate as tr, getLanguage } from '@/i18n'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { flushChatPersistence, useChatStore } from '@/store/useChatStore'
 import { useConfigStore } from '@/store/useConfigStore'
@@ -30,9 +31,9 @@ interface UseThinkingChainOptions {
 function getChatErrorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message
     : err && typeof err === 'object' && 'message' in err && typeof err.message === 'string'
-      ? err.message : '发生未知错误'
+      ? err.message : tr("发生未知错误")
   if (raw.includes("Illegal header value") || raw.includes("Bearer '")) {
-    return '模型服务密钥未配置或无效，请检查后端环境变量后重试。'
+    return tr("模型服务密钥未配置或无效，请检查后端环境变量后重试。")
   }
   return raw
 }
@@ -93,8 +94,9 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     mentions?: ChatMention[],
     attachmentIds?: string[],
   ) => {
+    const language = getLanguage() // Freeze this submission before asynchronous file preparation.
     const session = sessionId ? getSessionById(sessionId) : getActiveSession()
-    if (!session) throw new Error('没有活跃的会话')
+    if (!session) throw new Error(tr("没有活跃的会话"))
 
     // A previous completion delay or cancelled request must not affect this turn.
     cleanup()
@@ -107,7 +109,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
     try {
       const displayContent =
         (content.trim() ? content : '') ||
-        (files?.length ? `（已上传 ${files.length} 个附件）` : '')
+        (files?.length ? tr("（已上传 {{v0}} 个附件）", { v0: files.length }) : '')
 
       const attachments = await pendingAttachments.prepare(files, attachmentIds, true)
       if (!isCurrentStream() || !getSessionById(session.id)) return
@@ -283,6 +285,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
           },
         },
         { 
+          language,
           knowledgeBaseIds, 
           sessionId: sessionId ?? session.id,
           model: config.models.find(m => m.id === 'chat')?.model,
@@ -296,7 +299,7 @@ export function useThinkingChain(options: UseThinkingChainOptions = {}) {
       )
     } catch (err) {
       if (!isCurrentStream()) return
-      setError(err instanceof Error ? err.message : '发送失败')
+      setError(err instanceof Error ? err.message : tr("发送失败"))
       cleanup({ preserveError: true })
       throw err
     } finally {

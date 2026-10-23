@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import { translate as tr, getLanguage } from '@/i18n';
 import { getAuthToken, getSetupToken } from '@/lib/setupSession'
 import type { ChatScopeFile } from '@/store/useChatStore'
 import type { DecisionConfig, DecisionSettingsResponse, DecisionTestResponse, DecisionIntentTestResponse } from '@/types/decision'
@@ -41,6 +42,7 @@ class ApiClient {
     // 请求拦截器
     this.instance.interceptors.request.use(
       (config) => {
+        config.headers['X-Tessmora-Language'] = getLanguage();
         // 添加认证token（如果需要）
         const token = getAuthToken();
         if (token) {
@@ -120,9 +122,9 @@ class ApiClient {
           } catch {
             // ignore non-json body
           }
-          throw new Error(detail || error?.message || '文件预览失败');
+          throw new Error(detail || error?.message || tr("文件预览失败"));
         } catch {
-          throw new Error(error?.message || '文件预览失败');
+          throw new Error(error?.message || tr("文件预览失败"));
         }
       }
       throw error;
@@ -259,11 +261,11 @@ class ApiClient {
       } catch {
         // ignore
       }
-      throw new Error(detail || `上传失败: ${response.status}`);
+      throw new Error(detail || tr("上传失败: {{v0}}", { v0: response.status }));
     }
 
     const reader = response.body?.getReader();
-    if (!reader) throw new Error('无法读取响应流');
+    if (!reader) throw new Error(tr("无法读取响应流"));
 
     const decoder = new TextDecoder();
     let buffer = '';
@@ -285,7 +287,7 @@ class ApiClient {
           continue; // skip malformed line
         }
         if (obj.status === 'failed') {
-          throw new Error(String(obj.error ?? obj.message ?? '处理失败'));
+          throw new Error(String(obj.error ?? obj.message ?? tr("处理失败")));
         }
           if (obj.result !== undefined) {
             result = obj.result as T;
@@ -304,7 +306,7 @@ class ApiClient {
     }
 
     if (result !== null) return result;
-    throw new Error('流式上传未返回 result');
+    throw new Error(tr("流式上传未返回 result"));
   }
 }
 
@@ -917,8 +919,10 @@ export const chatApi = {
     knowledgeBaseIds?: string[];
     selectedFiles?: ChatScopeFile[];
     stream?: boolean;
+    language?: ReturnType<typeof getLanguage>;
   }) => apiClient.post('/chat/message', {
     ...data,
+    language: data.language ?? getLanguage(),
     ...(data.selectedFiles ? { selectedFiles: serializeSelectedFiles(data.selectedFiles) } : {}),
   }),
   
@@ -936,6 +940,7 @@ export const chatApi = {
       `${apiClient.getBaseURL()}/chat/stream?` + 
       new URLSearchParams({
         message: data.message,
+        language: getLanguage(),
         knowledgeBaseIds: data.knowledgeBaseIds?.join(',') || '',
       })
     );

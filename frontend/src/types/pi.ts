@@ -25,6 +25,8 @@ export interface PiStep {
   evidenceIds?: number[]
   artifactId?: string
   parentId?: string
+  errorCode?: string
+  presentation?: Pick<PiEvent, 'type' | 'data'>
 }
 export interface PiTrace {
   runId: string

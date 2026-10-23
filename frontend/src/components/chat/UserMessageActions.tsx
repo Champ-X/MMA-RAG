@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { useEffect, useRef, useState } from 'react'
 import { Check, Copy, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -8,6 +9,7 @@ export function UserMessageActions({ content, contentId, onEdit, disabled = fals
   onEdit?: () => void
   disabled?: boolean
 }) {
+  useTranslation()
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const copying = useRef(false)
   const mounted = useRef(true)
@@ -38,15 +40,15 @@ export function UserMessageActions({ content, contentId, onEdit, disabled = fals
   return (
     <div className="pointer-events-none flex min-h-7 items-center justify-end gap-0.5 opacity-0 transition-opacity duration-150 group-hover/user-message:pointer-events-auto group-hover/user-message:opacity-100 group-[:has(:focus-visible)]/user-message:pointer-events-auto group-[:has(:focus-visible)]/user-message:opacity-100 motion-reduce:transition-none">
       <span role="status" className={cn('mr-1 text-xs', copyState === 'failed' ? 'text-rose-600 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400')}>
-        {copyState === 'copied' ? '已复制' : copyState === 'failed' ? '复制失败，请选中文字后复制' : ''}
+        {copyState === 'copied' ? tr("已复制") : copyState === 'failed' ? tr("复制失败，请选中文字后复制") : ''}
       </span>
-      <button type="button" className={actionClass} aria-label="复制消息" aria-describedby={contentId}
-        title={copyState === 'copied' ? '已复制' : '复制'} onClick={() => { void copy() }}>
+      <button type="button" className={actionClass} aria-label={tr("复制消息")} aria-describedby={contentId}
+        title={copyState === 'copied' ? tr("已复制") : tr("复制")} onClick={() => { void copy() }}>
         {copyState === 'copied' ? <Check size={15} aria-hidden /> : <Copy size={15} aria-hidden />}
       </button>
       {onEdit && (
-        <button type="button" className={actionClass} aria-label="编辑消息" aria-describedby={contentId}
-          title={disabled ? '请等待当前请求结束后编辑' : '编辑'} onClick={onEdit} disabled={disabled}>
+        <button type="button" className={actionClass} aria-label={tr("编辑消息")} aria-describedby={contentId}
+          title={disabled ? tr("请等待当前请求结束后编辑") : tr("编辑")} onClick={onEdit} disabled={disabled}>
           <Pencil size={15} aria-hidden />
         </button>
       )}

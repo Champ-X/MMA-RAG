@@ -1,16 +1,17 @@
+import { translate as t } from '@/i18n'
 /** User-facing stages shared by every upload modality. Percentages come from the server. */
 export function uploadStageLabel(status: string, stage?: string): string {
-  if (status === 'completed' || status === 'ready') return '已就绪'
-  if (status === 'failed') return '处理失败'
-  if (status === 'queued') return '排队中'
-  if (status === 'uploading') return '上传中'
+  if (status === 'completed' || status === 'ready') return t("已就绪")
+  if (status === 'failed') return t("处理失败")
+  if (status === 'queued') return t("排队中")
+  if (status === 'uploading') return t("上传中")
   const labels: Record<string, string> = {
-    initializing: '准备解析', uploading: '保存原文件', fetching: '读取文件',
-    parsing: '解析内容', processing: '解析内容', asr: '音频转写',
-    scene_shot_parsing: '解析场景与镜头', video_scene_shot_parsing: '解析场景与镜头',
-    vectorizing: '建立检索索引', extracting_keyframes: '提取关键帧',
-    embedding_keyframes: '建立文字索引', vectorizing_keyframes: '建立画面索引',
-    storing: '保存索引', portrait: '更新素材概览',
+    initializing: t("准备解析"), uploading: t("保存原文件"), fetching: t("读取文件"),
+    parsing: t("解析内容"), processing: t("解析内容"), asr: t("音频转写"),
+    scene_shot_parsing: t("解析场景与镜头"), video_scene_shot_parsing: t("解析场景与镜头"),
+    vectorizing: t("建立检索索引"), extracting_keyframes: t("提取关键帧"),
+    embedding_keyframes: t("建立文字索引"), vectorizing_keyframes: t("建立画面索引"),
+    storing: t("保存索引"), portrait: t("更新素材概览"),
   }
-  return labels[stage ?? ''] ?? '处理中'
+  return labels[stage ?? ''] ?? t("处理中")
 }

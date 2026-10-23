@@ -245,3 +245,16 @@
   .setup-spin { animation: none; }
   .setup-capability, .setup-button, .setup-destination { transition: none; }
 }
+
+/* Keep setup controls usable when translated labels expand. */
+.setup-topbar { flex-wrap: wrap; }
+.setup-language { margin-inline-start: auto; min-width: 0; }
+.setup-language label { flex-wrap: wrap; }
+.setup-language select { max-width: 100%; }
+.setup-capability strong, .setup-steps strong { overflow-wrap: anywhere; }
+@media (max-width: 620px) {
+  .setup-topbar .setup-language { flex: 1 1 100%; margin-inline-start: 0; }
+  .setup-language label { justify-content: space-between; }
+  .setup-steps li { flex: 1 1 0; min-width: 0; text-align: center; }
+  .setup-steps strong { padding-inline: 4px; }
+}

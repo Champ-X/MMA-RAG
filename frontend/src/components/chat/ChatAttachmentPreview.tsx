@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Music2, Image as ImageIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -7,20 +8,21 @@ import { formatAttachmentSize } from '@/lib/chatAttachmentFile'
 
 /** 用户消息上方：从 IndexedDB 恢复二进制后可用原图/播放器；无库内数据时图片用 thumbDataUrl，音频仅展示元信息 */
 export function UserMessageAttachmentTile({ item }: { item: ChatMessageAttachment }) {
+  useTranslation()
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
   const [restoreStatus, setRestoreStatus] = useState<'loading' | 'ready' | 'missing'>('loading')
   const urlRef = useRef<string | null>(null)
   const attachmentId = useId().replace(/:/g, '')
   const restoreStatusId = `${attachmentId}-restore-status`
-  const attachmentName = item.name || '未命名附件'
+  const attachmentName = item.name || tr("未命名附件")
   const attachmentSize = formatAttachmentSize(item.size)
-  const attachmentLabel = `${item.kind === 'image' ? '图片' : item.kind === 'audio' ? '音频' : '视频'}附件：${attachmentName}，${attachmentSize}`
+  const attachmentLabel = tr("{{v0}}附件：{{v1}}，{{v2}}", { v0: item.kind === 'image' ? tr("图片") : item.kind === 'audio' ? tr("音频") : tr("视频"), v1: attachmentName, v2: attachmentSize })
   const restoreStatusText =
     restoreStatus === 'ready'
-      ? '已恢复原始附件数据'
+      ? tr("已恢复原始附件数据")
       : restoreStatus === 'missing'
-        ? '未找到本地原始附件数据，使用可用预览或文件信息'
-        : '正在恢复原始附件数据'
+        ? tr("未找到本地原始附件数据，使用可用预览或文件信息")
+        : tr("正在恢复原始附件数据")
 
   useEffect(() => {
     let cancelled = false
@@ -67,9 +69,9 @@ export function UserMessageAttachmentTile({ item }: { item: ChatMessageAttachmen
           {restoreStatusText}
         </span>
         {src ? (
-          <img src={src} alt={`附件图片：${attachmentName}`} className="h-full w-full object-cover" />
+          <img src={src} alt={tr("附件图片：{{v0}}", { v0: attachmentName })} className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full w-full items-center justify-center" role="status" aria-label="图片附件预览不可用">
+          <div className="flex h-full w-full items-center justify-center" role="status" aria-label={tr("图片附件预览不可用")}>
             <ImageIcon className="h-6 w-6 text-slate-400" aria-hidden />
           </div>
         )}
@@ -79,8 +81,8 @@ export function UserMessageAttachmentTile({ item }: { item: ChatMessageAttachmen
 
   if (item.kind === 'video') return (
     <div role="group" aria-label={attachmentLabel} className="w-56 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-900">
-      {blobUrl ? <video src={blobUrl} controls playsInline preload="metadata" aria-label={`播放视频附件：${attachmentName}`} className="aspect-video w-full bg-black" />
-        : <p role="status" className="p-3 text-xs text-slate-500">{attachmentName} · {restoreStatus === 'loading' ? '正在恢复…' : '原视频已清理'}</p>}
+      {blobUrl ? <video src={blobUrl} controls playsInline preload="metadata" aria-label={tr("播放视频附件：{{v0}}", { v0: attachmentName })} className="aspect-video w-full bg-black" />
+        : <p role="status" className="p-3 text-xs text-slate-500">{attachmentName} · {restoreStatus === 'loading' ? tr("正在恢复…") : tr("原视频已清理")}</p>}
     </div>
   )
 
@@ -110,7 +112,7 @@ export function UserMessageAttachmentTile({ item }: { item: ChatMessageAttachmen
             {attachmentName}
           </p>
           <p className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400">
-            音频 · {attachmentSize}
+            {tr("音频 · {{size}}", { size: attachmentSize })}
           </p>
         </div>
       </div>
@@ -118,15 +120,14 @@ export function UserMessageAttachmentTile({ item }: { item: ChatMessageAttachmen
         <audio
           src={blobUrl}
           controls
-          aria-label={`播放音频附件：${attachmentName}`}
+          aria-label={tr("播放音频附件：{{v0}}", { v0: attachmentName })}
           aria-describedby={restoreStatusId}
           className="h-8 w-full min-w-[200px] max-w-full"
           preload="metadata"
         />
       ) : (
         <span className="sr-only" role="status">
-          音频播放器暂不可用，已显示附件文件信息
-        </span>
+          {tr("音频播放器暂不可用，已显示附件文件信息")}</span>
       )}
     </div>
   )
@@ -139,12 +140,13 @@ export function UserMessageAttachmentStrip({
   attachments: ChatMessageAttachment[]
   className?: string
 }) {
+  useTranslation()
   if (!attachments.length) return null
   return (
     <div
       className={cn('flex flex-wrap justify-end gap-2', className)}
       role="list"
-      aria-label={`消息附件，共 ${attachments.length} 个`}
+      aria-label={tr("消息附件，共 {{v0}} 个", { v0: attachments.length })}
     >
       {attachments.map((item) => (
         <div key={item.id} role="listitem">

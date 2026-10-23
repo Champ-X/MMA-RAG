@@ -1,4 +1,5 @@
 import { apiClient } from './api_client'
+import { translate as tr, getLanguage, type Language } from '@/i18n'
 import { getAuthToken, setSetupToken } from '@/lib/setupSession'
 import type { ChatScopeFile } from '@/store/useChatStore'
 import type { ChatMention } from '@/lib/chatReferences'
@@ -32,7 +33,7 @@ async function checked(response: Response) {
   if (response.ok) return response
   const body = await response.json().catch(() => ({}))
   const detail = body.detail
-  throw new PiApiError(typeof detail === 'string' ? detail : detail?.message || `Agent 服务返回 ${response.status}`, response.status)
+  throw new PiApiError(typeof detail === 'string' ? detail : detail?.message || tr("Agent 服务返回 {{v0}}", { v0: response.status }), response.status)
 }
 const serializeFiles = (files: ChatScopeFile[]) => files.map(file => ({ kb_id: file.kbId, file_id: file.fileId,
   name: file.name, type: file.type || '', kb_name: file.kbName || '' }))
@@ -43,7 +44,7 @@ export const piApi = {
       { method: 'DELETE', headers: headers(), signal: AbortSignal.timeout(30000) }))).json()
     if (result.closed !== true || !Array.isArray(result.runs)
       || result.runs.some((run: PiRun) => !['completed', 'partial', 'needs_input', 'cancelled', 'failed'].includes(run.status))) {
-      throw new Error('后台任务尚未全部停止，请重试删除。')
+      throw new Error(tr("后台任务尚未全部停止，请重试删除。"))
     }
   },
   async list(sessionId: string): Promise<{ runs: PiRun[] }> {
@@ -56,7 +57,7 @@ export const piApi = {
         headers: headers(token), signal: AbortSignal.timeout(10000), cache: 'no-store',
       }))).json()
     } catch (error) {
-      if (error instanceof Error && error.name === 'TimeoutError') throw new Error('连接工作区超时，请检查服务后重试。')
+      if (error instanceof Error && error.name === 'TimeoutError') throw new Error(tr("连接工作区超时，请检查服务后重试。"))
       throw error
     }
   },
@@ -66,7 +67,7 @@ export const piApi = {
       try { token = new URLSearchParams(new URL(token).hash.slice(1)).get('setup_token') || '' }
       catch { token = '' }
     }
-    if (!token || /\s/.test(token)) throw new Error('请粘贴完整的连接链接或访问凭证。')
+    if (!token || /\s/.test(token)) throw new Error(tr("请粘贴完整的连接链接或访问凭证。"))
     const config = await piApi.config(token)
     setSetupToken(token)
     return config
@@ -79,10 +80,13 @@ export const piApi = {
   },
   sourceUrl(runId: string, sourceId: string) { return `${base()}/runs/${encodeURIComponent(runId)}/sources/${encodeURIComponent(sourceId)}/content` },
   async create(options: { requestId: string; sessionId: string; message: string; model?: string; knowledgeBaseIds?: string[];
+    language?: Language;
     selectedFiles?: ChatScopeFile[]; mentions?: ChatMention[]; files?: File[]; attachmentIds?: string[];
     history: Array<{ role: string; content: string }>; parentRunId?: string }): Promise<PiRun> {
+    const language = options.language ?? getLanguage()
     const spec = { protocol_version: 1, client_request_id: options.requestId, session_id: options.sessionId,
-      message: options.message || '请分析上传的材料。', model: options.model,
+      language,
+      message: options.message || tr("请分析上传的材料。", { lng: language }), model: options.model,
       knowledge_base_ids: options.knowledgeBaseIds || [], selected_files: serializeFiles(options.selectedFiles || []),
       reference_files: serializeFiles(referenceFilesFromMentions(options.mentions || [])),
       mentions: persistMentions(options.mentions || []), history: options.history, parent_run_id: options.parentRunId }
@@ -112,7 +116,7 @@ export async function watchPiRun(runId: string, after: () => number, onEvent: (e
   while (!signal.aborted) {
     try {
       const response = await checked(await fetch(`${base()}/runs/${runId}/events?after=${after()}`, { headers: headers(), signal }))
-      if (!response.body) throw new Error('Agent 事件流不可用')
+      if (!response.body) throw new Error(tr("Agent 事件流不可用"))
       const reader = response.body.getReader(), decoder = new TextDecoder()
       let buffer = ''
       try {
@@ -125,7 +129,7 @@ export async function watchPiRun(runId: string, after: () => number, onEvent: (e
             const data = frame.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n')
             if (data) {
               const event = JSON.parse(data) as PiEvent
-              if (event.protocol_version !== 1 || event.run_id !== runId) throw new Error('Agent 事件协议不匹配')
+              if (event.protocol_version !== 1 || event.run_id !== runId) throw new Error(tr("Agent 事件协议不匹配"))
               onEvent(normalizeAssets(event))
               retries = 0
               if (/^run\.(completed|partial|needs_input|cancelled|failed)$/.test(event.type)) return
@@ -137,7 +141,7 @@ export async function watchPiRun(runId: string, after: () => number, onEvent: (e
       // A completed run can have no newer events if another tab already saved them.
       const run = await piApi.get(runId, signal)
       if (['completed', 'partial', 'needs_input', 'cancelled', 'failed'].includes(run.status) && after() >= run.seq) return
-      throw new Error('Agent 过程连接中断')
+      throw new Error(tr("Agent 过程连接中断"))
     } catch (error) {
       if (signal.aborted) return
       if (error instanceof PiApiError && error.status >= 400 && error.status < 500

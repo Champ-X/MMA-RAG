@@ -1,3 +1,4 @@
+import { translate as t, useTranslation, getLanguage } from '@/i18n'
 import { useState, useEffect, useId, useLayoutEffect, useRef, useMemo, type ComponentType } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
@@ -187,8 +188,8 @@ function formatTokenCount(value?: number): string {
 }
 
 function formatCatalogTime(value?: number | null): string {
-  if (!value) return '尚未同步'
-  return new Date(value * 1000).toLocaleString('zh-CN', {
+  if (!value) return t("尚未同步")
+  return new Date(value * 1000).toLocaleString(getLanguage(), {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -205,19 +206,21 @@ function modelDisplayName(model: string): string {
 function modelSummary(model: string, detail?: ModelCatalogDetail): string {
   const capabilities = (detail?.capabilities ?? []).map((item) => CAPABILITY_LABELS[item]).filter(Boolean)
   const context = formatTokenCount(detail?.context_length)
-  return [model, ...capabilities, context && `${context} tokens 上下文`].filter(Boolean).join(' · ')
+  return [model, ...capabilities, context && t("{{context}} tokens 上下文", { context: context })].filter(Boolean).join(' · ')
 }
 
 function ModelLogo({ modelId, provider, className }: { modelId: string; provider?: string; className?: string }) {
+  useTranslation()
   return <BrandIcon modelId={modelId} provider={provider} size={22} className={className} />
 }
 
 function RouteTestFeedback({ id, state, label, capability }: { id: string; state?: ModelRouteTestState; label: string; capability: AvailableModelType }) {
+  useTranslation()
   const result = state?.result
   return <div id={id} className={cn('settings-model-test-feedback', result && (result.success ? 'is-success' : 'is-failure'))}>
     {state && <>
       {result ? (result.success ? <Check size={14} aria-hidden /> : <AlertCircle size={14} aria-hidden />) : <RefreshCw size={14} className={state.status === 'running' ? 'animate-spin' : undefined} aria-hidden />}
-      <span><span className="sr-only">{label}：</span>{result ? <><strong>{result.success ? '连接通过' : '测试未通过'}</strong><span className="settings-model-test-duration">{(result.duration_ms / 1000).toFixed(2)} 秒</span><span className="settings-model-test-message">{result.success ? result.details || result.message : result.message}</span></> : state.status === 'queued' ? '等待测试…' : `正在测试${CAPABILITY_LABELS[capability]}…`}</span>
+      <span><span className="sr-only">{label}：</span>{result ? <><strong>{result.success ? t("连接通过") : t("测试未通过")}</strong><span className="settings-model-test-duration">{(result.duration_ms / 1000).toFixed(2)}  {t("秒")}</span><span className="settings-model-test-message">{result.success ? result.details || result.message : result.message}</span></> : state.status === 'queued' ? t("等待测试…") : t("正在测试{{value1}}…", { value1: CAPABILITY_LABELS[capability] })}</span>
     </>}
   </div>
 }
@@ -243,6 +246,7 @@ function LogoModelSelect({
   isActive?: boolean
   details?: Record<string, ModelCatalogDetail>
 }) {
+  useTranslation()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -261,8 +265,8 @@ function LogoModelSelect({
   const searchId = `${generatedId}-settings-model-search`
   const activeOptionId = open && filteredModels.length > 0 ? `${listboxId}-option-${activeIndex}` : undefined
   const selectLabel = displayValue
-    ? `选择模型，当前模型：${displayValue}，共 ${list.length} 个候选`
-    : `选择模型，当前无可用模型，共 ${list.length} 个候选`
+    ? t("选择模型，当前模型：{{displayValue}}，共 {{value2}} 个候选", { displayValue: displayValue, value2: list.length })
+    : t("选择模型，当前无可用模型，共 {{value1}} 个候选", { value1: list.length })
 
   const getSelectedIndex = (models = filteredModels) => Math.max(0, models.findIndex((model) => model === value))
 
@@ -429,13 +433,13 @@ function LogoModelSelect({
           {searchable && (
             <div className="settings-model-picker-search">
               <Search className="h-4 w-4" aria-hidden />
-              <label className="sr-only" htmlFor={searchId}>搜索模型</label>
+              <label className="sr-only" htmlFor={searchId}>{t("搜索模型")}</label>
               <input
                 id={searchId}
                 ref={searchRef}
                 type="search"
                 autoComplete="off"
-                placeholder="输入模型名称搜索…"
+                placeholder={t("输入模型名称搜索…")}
                 value={query}
                 aria-controls={listboxId}
                 onChange={(event) => { setQuery(event.target.value); setActiveIndex(0) }}
@@ -447,13 +451,13 @@ function LogoModelSelect({
                   }
                 }}
               />
-              <span>{filteredModels.length} 个</span>
+              <span>{filteredModels.length}  {t("个")}</span>
             </div>
           )}
           <ul
             id={listboxId}
             role="listbox"
-            aria-label={`模型列表，共 ${filteredModels.length} 个候选`}
+            aria-label={t("模型列表，共 {{value1}} 个候选", { value1: filteredModels.length })}
             aria-activedescendant={activeOptionId}
             className="settings-model-picker-list"
           >
@@ -479,7 +483,7 @@ function LogoModelSelect({
               </li>
             ))}
           </ul>
-          {filteredModels.length === 0 && <p className="settings-model-picker-empty" role="status">没有匹配的模型，试试其他名称。</p>}
+          {filteredModels.length === 0 && <p className="settings-model-picker-empty" role="status">{t("没有匹配的模型，试试其他名称。")}</p>}
         </div>,
         document.body
       )
@@ -491,7 +495,7 @@ function LogoModelSelect({
         ref={buttonRef}
         type="button"
         disabled={disabled}
-        title={displayValue ? modelSummary(displayValue, details[displayValue]) : '当前无可用模型'}
+        title={displayValue ? modelSummary(displayValue, details[displayValue]) : t("当前无可用模型")}
         aria-label={ariaLabel ?? selectLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -505,9 +509,9 @@ function LogoModelSelect({
         className="settings-model-control settings-model-trigger"
       >
         {displayValue && <ModelLogo modelId={displayValue} provider={provider} />}
-        <span className="min-w-0 flex-1 truncate">{displayValue ? modelDisplayName(displayValue) : '当前无可用模型'}</span>
+        <span className="min-w-0 flex-1 truncate">{displayValue ? modelDisplayName(displayValue) : t("当前无可用模型")}</span>
         {formatTokenCount(details[displayValue]?.context_length) && (
-          <span className="settings-model-context" aria-label={`上下文 ${formatTokenCount(details[displayValue]?.context_length)} tokens`}>
+          <span className="settings-model-context" aria-label={t("上下文 {{value1}} tokens", { value1: formatTokenCount(details[displayValue]?.context_length) })}>
             {formatTokenCount(details[displayValue]?.context_length)}
           </span>
         )}
@@ -528,6 +532,7 @@ export function ModelConfig({
   onHasChangesChange,
   className,
 }: ModelConfigProps) {
+  useTranslation()
   const [matrix, setMatrix] = useState<TaskModelEntry[]>(initialConfig?.taskMatrix ?? DEFAULT_MATRIX)
   const [reranker, setReranker] = useState(initialConfig?.reranker ?? DEFAULT_RERANK)
   const [hasChanges, setHasChanges] = useState(false)
@@ -554,14 +559,14 @@ export function ModelConfig({
   const testHelpId = useId()
   const configStatusId = useId().replace(/:/g, '') + '-model-config-status'
   const configStatusText = saving
-    ? '正在保存模型配置'
+    ? t("正在保存模型配置")
     : catalogRefreshing
-      ? '正在刷新官方模型目录'
+      ? t("正在刷新官方模型目录")
       : savedBrief
-        ? '模型配置已保存'
+        ? t("模型配置已保存")
         : hasChanges
-          ? '模型配置有未保存更改'
-          : '模型配置没有未保存更改'
+          ? t("模型配置有未保存更改")
+          : t("模型配置没有未保存更改")
 
   const providerList = (category: AvailableModelType, taskKey?: string) => {
     const taskCandidates = taskKey ? availableModels?.task_candidates?.[taskKey] : undefined
@@ -683,7 +688,7 @@ export function ModelConfig({
 
   const handleSave = async () => {
     if (invalidSelections.length > 0) {
-      showError(`${invalidSelections.join('、')}的模型已不在当前目录中，请重新选择后保存。`)
+      showError(t("{{value1}}的模型已不在当前目录中，请重新选择后保存。", { value1: invalidSelections.join('、') }))
       return
     }
     setSaving(true)
@@ -692,14 +697,14 @@ export function ModelConfig({
       await onSave?.({ taskMatrix: matrix, reranker })
       savedConfigRef.current = { taskMatrix: matrix, reranker }
       setHasChanges(false)
-      showSuccess('配置已保存')
+      showSuccess(t("配置已保存"))
       setSavedBrief(true)
       if (savedBriefTimerRef.current) {
         clearTimeout(savedBriefTimerRef.current)
       }
       savedBriefTimerRef.current = setTimeout(() => setSavedBrief(false), 2000)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '保存失败'
+      const msg = e instanceof Error ? e.message : t("保存失败")
       showError(msg)
     } finally {
       setSaving(false)
@@ -718,22 +723,22 @@ export function ModelConfig({
   const invalidSelections = matrix
     .filter((task) => !providerList(task.category, TASK_BACKEND_KEYS[task.taskId]).includes(task.provider)
       || !modelList(task.provider, task.category, TASK_BACKEND_KEYS[task.taskId]).includes(task.model))
-    .map((task) => task.label)
-  if (!rerankerProviders.includes(reranker.provider) || !rerankerModels.includes(reranker.model)) invalidSelections.push('检索结果重排')
+    .map((task) => t(task.label))
+  if (!rerankerProviders.includes(reranker.provider) || !rerankerModels.includes(reranker.model)) invalidSelections.push(t("检索结果重排"))
 
   const failedCatalogProviders = Object.entries(catalogStatus?.providers ?? {})
     .filter(([, status]) => !status.ok)
-    .map(([provider]) => PROVIDER_DISPLAY_NAMES[provider] ?? provider)
+    .map(([provider]) => t(PROVIDER_DISPLAY_NAMES[provider] ?? provider))
 
   const routeGroups: Array<{ id: string; label: string; tasks: Array<TaskId | 'reranker'> }> = [
-    { id: 'conversation', label: '对话与检索', tasks: ['generation', 'intent', 'rewrite', 'embedding', 'reranker'] },
-    { id: 'content', label: '内容理解', tasks: ['caption', 'audio', 'video', 'portrait'] },
+    { id: 'conversation', label: t("对话与检索"), tasks: ['generation', 'intent', 'rewrite', 'embedding', 'reranker'] },
+    { id: 'content', label: t("内容理解"), tasks: ['caption', 'audio', 'video', 'portrait'] },
   ]
 
   const renderRoute = (taskId: TaskId | 'reranker') => {
     const isReranker = taskId === 'reranker'
     const task = isReranker
-      ? { ...reranker, taskId, label: '检索结果重排', description: '调整召回结果的相关性顺序', category: 'reranker' as const }
+      ? { ...reranker, taskId, label: t("检索结果重排"), description: t("调整召回结果的相关性顺序"), category: 'reranker' as const }
       : matrix.find((item) => item.taskId === taskId)
     if (!task) return null
     const Icon = isReranker ? ArrowDownUp : TASK_META[taskId].icon
@@ -756,29 +761,29 @@ export function ModelConfig({
           <span className="settings-model-task-icon" data-task={taskId}><Icon className="h-5 w-5" aria-hidden /></span>
           <div className="settings-model-task-copy">
             <div className="settings-model-task-title">
-              {task.label}
-              {isPrimary && <span className="settings-model-primary-label">主模型</span>}
-              {changed && <span className="settings-model-change-dot" title="未保存的更改"><span className="sr-only">未保存的更改</span></span>}
+              {t(task.label)}
+              {isPrimary && <span className="settings-model-primary-label">{t("主模型")}</span>}
+              {changed && <span className="settings-model-change-dot" title={t("未保存的更改")}><span className="sr-only">{t("未保存的更改")}</span></span>}
             </div>
-            <p id={`model-task-help-${taskId}`}>{task.description}</p>
+            <p id={`model-task-help-${taskId}`}>{t(task.description)}</p>
           </div>
         </div>
         <div className="settings-model-route-area">
           <div className="settings-model-route-line">
-            <div className="settings-model-route" role="group" aria-label={`${task.label}路由`} aria-describedby={`model-task-help-${taskId}`}>
+            <div className="settings-model-route" role="group" aria-label={t("{{value1}}路由", { value1: t(task.label) })} aria-describedby={`model-task-help-${taskId}`}>
               <div className="settings-model-provider-wrap">
                 <BrandSelect
                   name={`${taskId}-provider`}
                   value={task.provider}
                   onChange={(value) => updateSelection('provider', value)}
                   className="settings-model-provider"
-                  ariaLabel={isReranker ? 'Reranker Provider' : `${task.label} Provider`}
+                  ariaLabel={isReranker ? 'Reranker Provider' : `${t(task.label)} Provider`}
                   disabled={providers.length === 0 || saving}
                   options={[
                     ...(task.provider && !providers.includes(task.provider)
-                      ? [{ value: task.provider, label: `${PROVIDER_DISPLAY_NAMES[task.provider] ?? task.provider}（不可用）`, provider: task.provider, disabled: true }]
+                      ? [{ value: task.provider, label: t("{{value1}}（不可用）", { value1: t(PROVIDER_DISPLAY_NAMES[task.provider] ?? task.provider) }), provider: task.provider, disabled: true }]
                       : []),
-                    ...providers.map((provider) => ({ value: provider, label: PROVIDER_DISPLAY_NAMES[provider] ?? provider, provider })),
+                    ...providers.map((provider) => ({ value: provider, label: t(PROVIDER_DISPLAY_NAMES[provider] ?? provider), provider })),
                   ]}
                 />
               </div>
@@ -789,21 +794,21 @@ export function ModelConfig({
                 details={modelDetails}
                 disabled={models.length === 0 || saving}
                 onChange={(value) => updateSelection('model', value)}
-                ariaLabel={`${isReranker ? 'Reranker 模型' : `${task.label}模型`}，当前模型：${modelDisplayName(task.model) || '无'}`}
+                ariaLabel={t("{{value1}}，当前模型：{{value2}}", { value1: isReranker ? t("Reranker 模型") : t("{{value1}}模型", { value1: t(task.label) }), value2: modelDisplayName(task.model) || t("无") })}
                 isActive={isActive}
                 className="settings-model-selection"
               />
             </div>
             <button type="button" className="settings-model-test-button"
-              aria-label={`${testState?.status === 'done' ? '重新测试' : '测试'}${task.label}连接`}
+              aria-label={t("{{value1}}{{value2}}连接", { value1: testState?.status === 'done' ? t("重新测试") : t("测试"), value2: t(task.label) })}
               aria-describedby={`${testHelpId} model-route-test-${taskId}`}
               disabled={testPending || !task.provider || !task.model}
               onClick={() => routeTests.test(testSelection)}>
               {testPending ? <RefreshCw size={14} className={testState?.status === 'running' ? 'animate-spin' : undefined} aria-hidden /> : <PlugZap size={14} aria-hidden />}
-              {testState?.status === 'running' ? '测试中' : testState?.status === 'queued' ? '排队中' : testState?.status === 'done' ? '重测' : '测试'}
+              {testState?.status === 'running' ? t("测试中") : testState?.status === 'queued' ? t("排队中") : testState?.status === 'done' ? t("重测") : t("测试")}
             </button>
           </div>
-          <RouteTestFeedback id={`model-route-test-${taskId}`} state={testState} label={task.label} capability={task.category} />
+          <RouteTestFeedback id={`model-route-test-${taskId}`} state={testState} label={t(task.label)} capability={task.category} />
         </div>
       </div>
     )
@@ -812,54 +817,53 @@ export function ModelConfig({
   return (
     <div className={cn('settings-model-config', className)}>
       <span id={configStatusId} className="sr-only" aria-live="polite">{configStatusText}</span>
-      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{routeTests.lastResult && `${modelDisplayName(routeTests.lastResult.model)}，${CAPABILITY_LABELS[routeTests.lastResult.capability]}：${routeTests.lastResult.success ? routeTests.lastResult.details || routeTests.lastResult.message : routeTests.lastResult.message}`}</span>
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{routeTests.lastResult && `${modelDisplayName(routeTests.lastResult.model)}，${t(CAPABILITY_LABELS[routeTests.lastResult.capability])}：${routeTests.lastResult.success ? routeTests.lastResult.details || routeTests.lastResult.message : routeTests.lastResult.message}`}</span>
       <div className="settings-model-card">
         <header className="settings-model-header">
           <div className="settings-model-title-line">
             <Route className="h-5 w-5" aria-hidden />
-            <h2>模型路由</h2>
+            <h2>{t("模型路由")}</h2>
           </div>
           <div className="settings-model-catalog">
-            <span className="settings-model-catalog-status" title={`${totalModelCount} 个候选模型 · 已同步 ${syncedModelCount} 个官方模型 · ${lastRefreshLabel}`}>
-              <span aria-hidden />{syncedModelCount} 个官方模型
-              <span className="settings-model-catalog-time">{lastRefreshLabel === '尚未同步' ? lastRefreshLabel : `${lastRefreshLabel} 更新`}</span>
+            <span className="settings-model-catalog-status" title={t("{{totalModelCount}} 个候选模型 · 已同步 {{syncedModelCount}} 个官方模型 · {{lastRefreshLabel}}", { totalModelCount: totalModelCount, syncedModelCount: syncedModelCount, lastRefreshLabel: lastRefreshLabel })}>
+              <span aria-hidden />{syncedModelCount}  {t("个官方模型")} <span className="settings-model-catalog-time">{!catalogStatus?.last_refresh_finished_at ? lastRefreshLabel : t("{{lastRefreshLabel}} 更新", { lastRefreshLabel: lastRefreshLabel })}</span>
             </span>
             {onRefreshCatalog && (
               <button
                 type="button"
                 className="settings-model-refresh"
                 disabled={catalogRefreshing || saving}
-                aria-label={catalogRefreshing ? '正在刷新官方模型目录' : '刷新官方模型目录'}
+                aria-label={catalogRefreshing ? t("正在刷新官方模型目录") : t("刷新官方模型目录")}
                 aria-describedby={configStatusId}
                 onClick={() => void onRefreshCatalog()}
               >
                 <RefreshCw className={cn('h-3.5 w-3.5', catalogRefreshing && 'animate-spin')} aria-hidden />
-                {catalogRefreshing ? '同步中' : '刷新'}
+                {catalogRefreshing ? t("同步中") : t("刷新")}
               </button>
             )}
           </div>
         </header>
 
         <div className="settings-model-test-toolbar">
-          <div><p className="settings-model-test-heading">连通性检查</p><p id={testHelpId} className="settings-model-test-help">测试当前选择，不保存；会产生少量模型调用。相同服务商、模型和能力共用结果。</p></div>
+          <div><p className="settings-model-test-heading">{t("连通性检查")}</p><p id={testHelpId} className="settings-model-test-help">{t("测试当前选择，不保存；会产生少量模型调用。相同服务商、模型和能力共用结果。")}</p></div>
           <div className="settings-model-test-toolbar-actions">
-            {batchActive && <button type="button" className="settings-model-test-button" disabled={!routeTests.batch?.queued} onClick={routeTests.stopQueued}><Square size={12} aria-hidden />停止排队</button>}
+            {batchActive && <button type="button" className="settings-model-test-button" disabled={!routeTests.batch?.queued} onClick={routeTests.stopQueued}><Square size={12} aria-hidden />{t("停止排队")}</button>}
             <button type="button" className="settings-model-test-button is-batch" disabled={batchActive || !testSelections.some(route => route.provider && route.model)} onClick={routeTests.testAll}>
-              {batchActive ? <RefreshCw size={14} className="animate-spin" aria-hidden /> : <PlugZap size={14} aria-hidden />}{batchActive ? '正在测试' : '测试全部'}
+              {batchActive ? <RefreshCw size={14} className="animate-spin" aria-hidden /> : <PlugZap size={14} aria-hidden />}{batchActive ? t("正在测试") : t("测试全部")}
             </button>
           </div>
           <p className="settings-model-test-progress">{routeTests.batch && <>
-            已检测 {routeTests.batch.completed}/{routeTests.batch.total} 项 · {routeTests.batch.succeeded} 项通过 · {routeTests.batch.failed} 项未通过{routeTests.batch.cancelled > 0 ? ` · ${routeTests.batch.cancelled} 项已取消` : ''}
-            {routeTests.batch.running > 0 ? ` · ${routeTests.batch.running} 项进行中` : ''}
-            {routeTests.batch.queued > 0 ? ` · ${routeTests.batch.queued} 项排队中` : ''}
-            {routeTests.batch.stopped && routeTests.batch.running > 0 ? '。已停止排队，进行中的测试会继续。' : ''}
+             {t("已检测")} {routeTests.batch.completed}/{routeTests.batch.total}  {t("项 ·")} {routeTests.batch.succeeded}  {t("项通过 ·")} {routeTests.batch.failed}  {t("项未通过")}{routeTests.batch.cancelled > 0 ? t(" · {{value1}} 项已取消", { value1: routeTests.batch.cancelled }) : ''}
+            {routeTests.batch.running > 0 ? t(" · {{value1}} 项进行中", { value1: routeTests.batch.running }) : ''}
+            {routeTests.batch.queued > 0 ? t(" · {{value1}} 项排队中", { value1: routeTests.batch.queued }) : ''}
+            {routeTests.batch.stopped && routeTests.batch.running > 0 ? t("。已停止排队，进行中的测试会继续。") : ''}
           </>}</p>
         </div>
 
         {(failedCatalogProviders.length > 0 || (hasChanges && invalidSelections.length > 0)) && (
           <div className="settings-model-notices" role="status">
-            {failedCatalogProviders.length > 0 && <p><AlertCircle className="h-4 w-4" aria-hidden />{failedCatalogProviders.join('、')} 更新失败，仍可使用已有目录。</p>}
-            {hasChanges && invalidSelections.length > 0 && <p><AlertCircle className="h-4 w-4" aria-hidden />目录已更新，请为{invalidSelections.join('、')}重新选择模型。</p>}
+            {failedCatalogProviders.length > 0 && <p><AlertCircle className="h-4 w-4" aria-hidden />{failedCatalogProviders.join('、')}  {t("更新失败，仍可使用已有目录。")}</p>}
+            {hasChanges && invalidSelections.length > 0 && <p><AlertCircle className="h-4 w-4" aria-hidden />{t("目录已更新，请为{{tasks}}重新选择模型。", { tasks: invalidSelections.join(getLanguage() === 'en-US' ? ', ' : '、') })}</p>}
           </div>
         )}
 
@@ -868,7 +872,7 @@ export function ModelConfig({
             <section key={group.id} aria-labelledby={`settings-model-group-${group.id}`} className="settings-model-group" data-group={group.id}>
               <div className="settings-model-section-heading">
                 <h3 id={`settings-model-group-${group.id}`}>{group.label}</h3>
-                <div className="settings-model-column-labels" aria-hidden><span>服务商</span><span>模型</span></div>
+                <div className="settings-model-column-labels" aria-hidden><span>{t("服务商")}</span><span>{t("模型")}</span></div>
               </div>
               {group.tasks.map(renderRoute)}
             </section>
@@ -878,26 +882,26 @@ export function ModelConfig({
         <footer className={cn('settings-model-actions', hasChanges && 'has-changes')}>
           <p className={cn(savedBrief && 'is-saved')}>
             {savedBrief ? <Check className="h-4 w-4" aria-hidden /> : hasChanges ? <AlertCircle className="h-4 w-4" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
-            {saving ? '正在保存模型路由…' : savedBrief ? '模型路由已保存' : hasChanges ? '有未保存的更改' : '当前配置已保存'}
+            {saving ? t("正在保存模型路由…") : savedBrief ? t("模型路由已保存") : hasChanges ? t("有未保存的更改") : t("当前配置已保存")}
           </p>
           <div className="settings-model-action-buttons">
             <Button
               variant="outline"
               className="settings-model-secondary"
               disabled={!hasChanges || saving}
-              aria-label={hasChanges ? '重置模型配置为上次保存状态' : '当前没有可重置的模型配置更改'}
+              aria-label={hasChanges ? t("重置模型配置为上次保存状态") : t("当前没有可重置的模型配置更改")}
               aria-describedby={configStatusId}
               onClick={handleReset}
-            ><RotateCcw className="mr-2 h-4 w-4" aria-hidden />撤销更改</Button>
+            ><RotateCcw className="mr-2 h-4 w-4" aria-hidden />{t("撤销更改")}</Button>
             <Button
               className="settings-model-save"
               disabled={!hasChanges || saving}
-              aria-label={saving ? '正在保存模型配置' : hasChanges ? '保存模型配置' : '当前没有可保存的模型配置更改'}
+              aria-label={saving ? t("正在保存模型配置") : hasChanges ? t("保存模型配置") : t("当前没有可保存的模型配置更改")}
               aria-describedby={configStatusId}
               onClick={handleSave}
             >
               {saving ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : savedBrief ? <Check className="mr-2 h-4 w-4" aria-hidden /> : <Save className="mr-2 h-4 w-4" aria-hidden />}
-              {saving ? '保存中…' : savedBrief ? '已保存' : '保存模型路由'}
+              {saving ? t("保存中…") : savedBrief ? t("已保存") : t("保存模型路由")}
             </Button>
           </div>
         </footer>

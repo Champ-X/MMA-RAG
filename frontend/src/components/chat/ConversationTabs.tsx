@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { useEffect, useRef } from 'react'
 import { Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -18,11 +19,12 @@ export function ConversationTabs({
   onCreate,
   onDelete,
 }: ConversationTabsProps) {
+  useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const activeConversation = conversations.find((conv) => conv.id === activeConversationId)
   const activeConversationTitle = activeConversation
-    ? activeConversation.messages.find((m) => m.role === 'user')?.content || activeConversation.title || '未命名对话'
-    : '未选择对话'
+    ? activeConversation.messages.find((m) => m.role === 'user')?.content || activeConversation.title || tr("未命名对话")
+    : tr("未选择对话")
 
   useEffect(() => {
     if (scrollRef.current && activeConversationId) {
@@ -36,9 +38,9 @@ export function ConversationTabs({
   }, [activeConversationId])
 
   return (
-    <nav className="relative w-full flex-shrink-0 py-0.5" aria-label={`对话标签，共 ${conversations.length} 个`}>
+    <nav className="relative w-full flex-shrink-0 py-0.5" aria-label={tr("对话标签，共 {{v0}} 个", { v0: conversations.length })}>
       <span className="sr-only" aria-live="polite">
-        当前对话：{activeConversationTitle}
+        {tr("当前对话：{{title}}", { title: activeConversationTitle })}
       </span>
       <div className="relative overflow-hidden rounded-b-[22px] rounded-t-none border-x-0 border-b-[1.5px] border-t-0 border-slate-300/95 bg-white/85 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.16),0_16px_36px_-28px_rgba(76,29,149,0.3)] backdrop-blur-xl dark:border-slate-600/90 dark:bg-slate-950/70 dark:shadow-[0_16px_34px_-24px_rgba(0,0,0,0.6),0_18px_36px_-30px_rgba(76,29,149,0.28)]">
         <div
@@ -72,7 +74,7 @@ export function ConversationTabs({
               ref={scrollRef}
               className="relative flex min-h-0 items-center gap-2 overflow-x-auto px-3 py-1.5 pr-2 scrollbar-hide"
               role="list"
-              aria-label="可切换的对话"
+              aria-label={tr("可切换的对话")}
             >
               {conversations.map((conv) => {
                 const isActive = conv.id === activeConversationId
@@ -81,7 +83,7 @@ export function ConversationTabs({
                 const rawTitle = firstUserMsg ? firstUserMsg.content : conv.title
                 const displayTitle =
                   rawTitle.length > titleMaxLen ? rawTitle.slice(0, titleMaxLen) + '…' : rawTitle
-                const accessibleTitle = rawTitle || '未命名对话'
+                const accessibleTitle = rawTitle || tr("未命名对话")
 
                 return (
                   <div
@@ -108,7 +110,7 @@ export function ConversationTabs({
                         'min-w-0 shrink truncate text-left text-[14px] font-medium leading-snug tracking-tight'
                       )}
                       aria-current={isActive ? 'true' : undefined}
-                      aria-label={`${isActive ? '当前对话' : '切换到对话'}：${accessibleTitle}`}
+                      aria-label={`${isActive ? tr("当前对话") : tr("切换到对话")}：${accessibleTitle}`}
                       onClick={() => onSelect(conv.id)}
                     >
                       {displayTitle}
@@ -116,8 +118,8 @@ export function ConversationTabs({
                     {conversations.length > 1 && (
                       <button
                         type="button"
-                        title={`删除对话：${accessibleTitle}`}
-                        aria-label={`删除对话：${accessibleTitle}`}
+                        title={tr("删除对话：{{v0}}", { v0: accessibleTitle })}
+                        aria-label={tr("删除对话：{{v0}}", { v0: accessibleTitle })}
                         className={cn(
                           'shrink-0 rounded-xl p-1 transition-all duration-200',
                           isActive
@@ -141,8 +143,8 @@ export function ConversationTabs({
           <div className="flex shrink-0 items-center border-l border-slate-200/90 bg-gradient-to-b from-white/90 to-indigo-50/40 py-1.5 pl-2.5 pr-3 backdrop-blur-sm dark:border-slate-600/80 dark:from-slate-950/90 dark:to-indigo-950/40">
             <button
               type="button"
-              title="新建对话"
-              aria-label="新建对话"
+              title={tr("新建对话")}
+              aria-label={tr("新建对话")}
               className={cn(
                 'group relative isolate grid h-9 w-9 shrink-0 place-items-center rounded-xl transition-all duration-200 ease-out',
                 'bg-gradient-to-br from-indigo-500 via-indigo-500 to-violet-600 text-white',

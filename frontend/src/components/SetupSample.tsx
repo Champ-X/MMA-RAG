@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CheckCircle2, Copy, FileText, Loader2 } from 'lucide-react'
 import { knowledgeApi } from '@/services/api_client'
+import { useTranslation } from '@/i18n'
 
 const KEY = 'tessmora.setup-sample'
 const question = '什么情况下必须回滚？回滚后如何验证？'
@@ -24,6 +25,7 @@ function readSample(): SampleState | null {
 }
 
 export function SetupSample() {
+  const { t } = useTranslation()
   const [sample, setSample] = useState<SampleState | null>(readSample)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -101,12 +103,12 @@ export function SetupSample() {
   }
 
   return <section className="setup-sample">
-    <div className="setup-sample-title"><FileText size={21} /><h3>试一份小文档</h3><span>可选</span></div>
-    <p>导入一份回滚手册，用下面的问题试试回答，再点击引用查看原文。</p>
+    <div className="setup-sample-title"><FileText size={21} /><h3>{t('试一份小文档')}</h3><span>{t('可选')}</span></div>
+    <p>{t('导入一份回滚手册，用下面的问题试试回答，再点击引用查看原文。')}</p>
     <blockquote>{question}</blockquote>
-    {sample?.done ? <div className="setup-sample-controls"><Link className="setup-button" to={`/knowledge/${sample.kbId}`}>打开示例知识库</Link><button className="setup-button" onClick={async () => { try { await navigator.clipboard.writeText(question); setCopied(true) } catch { setError('请直接选中并复制上方问题。') } }}><Copy size={15} />{copied ? '已复制问题' : '复制问题'}</button></div>
-      : <button className="setup-button" disabled={busy || Boolean(sample?.taskId)} onClick={importSample}>{busy || sample?.taskId ? <Loader2 size={16} className="setup-spin" /> : <FileText size={16} />}{sample?.taskId ? '正在索引…' : error ? '重试导入示例' : '导入示例文档'}</button>}
-    {message && <p className="setup-live" role="status">{sample?.done && <CheckCircle2 size={16} />}{message}</p>}
-    {error && <p className="setup-error" role="alert">{error}</p>}
+    {sample?.done ? <div className="setup-sample-controls"><Link className="setup-button" to={`/knowledge/${sample.kbId}`}>{t('打开示例知识库')}</Link><button className="setup-button" onClick={async () => { try { await navigator.clipboard.writeText(question); setCopied(true) } catch { setError('请直接选中并复制上方问题。') } }}><Copy size={15} />{copied ? t('已复制问题') : t('复制问题')}</button></div>
+      : <button className="setup-button" disabled={busy || Boolean(sample?.taskId)} onClick={importSample}>{busy || sample?.taskId ? <Loader2 size={16} className="setup-spin" /> : <FileText size={16} />}{sample?.taskId ? t('正在索引…') : error ? t('重试导入示例') : t('导入示例文档')}</button>}
+    {message && <p className="setup-live" role="status">{sample?.done && <CheckCircle2 size={16} />}{t(message)}</p>}
+    {error && <p className="setup-error" role="alert">{t(error)}</p>}
   </section>
 }

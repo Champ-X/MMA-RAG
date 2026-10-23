@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { useState } from 'react'
 import React from 'react'
 import type { CitationReference } from '@/types/sse'
@@ -71,6 +72,7 @@ function getCitationColorClass(refType: 'doc' | 'image' | 'audio' | 'video'): { 
 
 // 图片 Lightbox 内容组件，带错误处理
 function ImageLightboxContent({ imgUrl, fileName }: { imgUrl: string; fileName?: string }) {
+  useTranslation()
   const [imageError, setImageError] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
   const imgRef = React.useRef<HTMLImageElement>(null)
@@ -115,8 +117,8 @@ function ImageLightboxContent({ imgUrl, fileName }: { imgUrl: string; fileName?:
     return (
       <div className="w-full h-[70vh] bg-slate-100 dark:bg-slate-800 rounded-lg flex flex-col items-center justify-center gap-3">
         <Image className="h-12 w-12 text-slate-400 dark:text-slate-500" />
-        <p className="text-sm text-slate-500 dark:text-slate-400">图片加载失败</p>
-        <p className="text-xs text-slate-400 dark:text-slate-500">{fileName || '未知文件'}</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{tr("图片加载失败")}</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500">{fileName || tr("未知文件")}</p>
       </div>
     )
   }
@@ -164,6 +166,7 @@ function ImageThumbnailButton({
   onLightboxClick: () => void
   onCiteClick?: (e: React.MouseEvent<HTMLButtonElement>) => void
 }) {
+  useTranslation()
   const [imageError, setImageError] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
   const imgRef = React.useRef<HTMLImageElement>(null)
@@ -291,6 +294,7 @@ export function InlineCitation({
   imageThumbnailRefs,
   className,
 }: InlineCitationProps) {
+  useTranslation()
   const [selected, setSelected] = useState<CitationReference | null>(null)
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const useInternalPreview = !onCiteClick
@@ -351,7 +355,7 @@ export function InlineCitation({
                 }}
               >
                 <Icon className={cn('mr-1 h-3 w-3', iconColor)} />
-                [{displayNum}]{ref.source === 'attachment' && <span className="ml-1 font-sans text-teal-700 dark:text-teal-300">本机</span>}
+                [{displayNum}]{ref.source === 'attachment' && <span className="ml-1 font-sans text-teal-700 dark:text-teal-300">{tr("本机")}</span>}
               </Button>
             )
           })}
@@ -375,7 +379,7 @@ export function InlineCitation({
 
       {variant === 'sidebar' && (
         <div className={cn('space-y-4', className)}>
-          <h4 className="font-semibold">引用来源</h4>
+          <h4 className="font-semibold">{tr("引用来源")}</h4>
           {refs.map((r) => (
             <ReferenceDetailCard
               key={r.id}
@@ -425,9 +429,9 @@ export function InlineCitation({
                       const Icon = getReferenceIcon(refType)
                       return <Icon className="h-5 w-5" />
                     })()}
-                    <span>【材料 {selected.id}】</span>
+                    <span>{tr("【材料{{id}}】", { id: selected.id })}</span>
                     <Badge variant="outline">
-                      {selected.type === 'doc' ? '文档' : selected.type === 'image' ? '图片' : selected.type === 'audio' ? '音频' : '视频'}
+                      {selected.type === 'doc' ? tr("文档") : selected.type === 'image' ? tr("图片") : selected.type === 'audio' ? tr("音频") : tr("视频")}
                     </Badge>
                   </DialogTitle>
                 </DialogHeader>
@@ -455,8 +459,8 @@ export function InlineCitation({
                 <ImageLightboxContent imgUrl={selected.img_url} fileName={selected.file_name} />
               </div>
               <div className="bg-muted/50 p-4 rounded-lg">
-                <h4 className="font-medium mb-2">视觉描述</h4>
-                <p className="text-sm">{selected.content || '暂无描述'}</p>
+                <h4 className="font-medium mb-2">{tr("视觉描述")}</h4>
+                <p className="text-sm">{selected.content || tr("暂无描述")}</p>
               </div>
             </div>
           </DialogContent>
@@ -473,11 +477,12 @@ function ReferenceDetailCard({
   reference: CitationReference
   onViewImage?: () => void
 }) {
+  useTranslation()
   const [contextLens, setContextLens] = useState<'prev' | 'curr' | 'next'>('curr')
   const ctx = normalizeContextWindow(reference.debug_info?.context_window)
   const refType = (reference.type === 'doc' || reference.type === 'image' || reference.type === 'audio' || reference.type === 'video') ? reference.type : 'doc'
   const Icon = getReferenceIcon(refType)
-  const typeLabel = reference.type === 'doc' ? '文档' : reference.type === 'image' ? '图片' : reference.type === 'audio' ? '音频' : '视频'
+  const typeLabel = reference.type === 'doc' ? tr("文档") : reference.type === 'image' ? tr("图片") : reference.type === 'audio' ? tr("音频") : tr("视频")
   const { icon: iconColor } = getCitationColorClass(refType)
 
   return (
@@ -486,7 +491,7 @@ function ReferenceDetailCard({
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm flex items-center gap-2">
             <Icon className={cn('h-4 w-4', iconColor)} />
-            <span>【材料 {reference.id}】</span>
+            <span>{tr("【材料{{id}}】", { id: reference.id })}</span>
             <Badge variant="outline" className="text-xs">
               {typeLabel}
             </Badge>
@@ -500,18 +505,18 @@ function ReferenceDetailCard({
       </CardHeader>
       <CardContent className="pt-0 space-y-3">
         <div>
-          <p className="text-xs text-muted-foreground mb-1">文件名</p>
+          <p className="text-xs text-muted-foreground mb-1">{tr("文件名")}</p>
           <p className="text-sm font-medium">{reference.file_name}</p>
         </div>
         {reference.type === 'audio' && reference.audio_url && (
           <div>
-            <p className="text-xs text-muted-foreground mb-1">播放</p>
+            <p className="text-xs text-muted-foreground mb-1">{tr("播放")}</p>
             <audio src={reference.audio_url} controls className="w-full h-9 rounded-lg" preload="metadata" />
           </div>
         )}
         <div>
           <p className="text-xs text-muted-foreground mb-1">
-            {reference.type === 'doc' ? '内容片段' : reference.type === 'image' ? '视觉描述' : reference.type === 'audio' ? '转写/描述' : '描述'}
+            {reference.type === 'doc' ? tr("内容片段") : reference.type === 'image' ? tr("视觉描述") : reference.type === 'audio' ? tr("转写/描述") : tr("描述")}
           </p>
           <p className="text-sm bg-muted/50 p-2 rounded text-xs">{reference.content}</p>
         </div>
@@ -519,7 +524,7 @@ function ReferenceDetailCard({
         {/* 溯源计分板 */}
         {reference.scores && (
           <div>
-            <p className="text-xs text-muted-foreground mb-2">检索分数</p>
+            <p className="text-xs text-muted-foreground mb-2">{tr("检索分数")}</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {(['dense', 'sparse', 'rerank'] as const).map((k) => {
                 const v = reference.scores![k]
@@ -546,7 +551,7 @@ function ReferenceDetailCard({
         {/* 上下文窗口透镜 */}
         {ctx && (ctx.prev || ctx.next) && (
           <div>
-            <p className="text-xs text-muted-foreground mb-2">上下文窗口</p>
+            <p className="text-xs text-muted-foreground mb-2">{tr("上下文窗口")}</p>
             <div className="flex gap-1 mb-2">
               <Button
                 variant={contextLens === 'prev' ? 'secondary' : 'outline'}
@@ -561,8 +566,7 @@ function ReferenceDetailCard({
                 size="sm"
                 onClick={() => setContextLens('curr')}
               >
-                当前
-              </Button>
+                {tr("当前")}</Button>
               <Button
                 variant={contextLens === 'next' ? 'secondary' : 'outline'}
                 size="sm"
@@ -584,21 +588,18 @@ function ReferenceDetailCard({
           {reference.type === 'image' && reference.img_url && (
             <Button variant="outline" size="sm" onClick={onViewImage} className="flex-1">
               <Eye className="mr-2 h-3 w-3" />
-              查看大图
-            </Button>
+              {tr("查看大图")}</Button>
           )}
           {reference.type === 'audio' && reference.audio_url && (
             <a href={reference.audio_url} target="_blank" rel="noopener noreferrer" className="flex-1">
               <Button variant="outline" size="sm" className="w-full">
                 <Music className="mr-2 h-3 w-3" />
-                播放/下载
-              </Button>
+                {tr("播放/下载")}</Button>
             </a>
           )}
           <Button variant="outline" size="sm" className="flex-1">
             <ExternalLink className="mr-2 h-3 w-3" />
-            原始文件
-          </Button>
+            {tr("原始文件")}</Button>
         </div>
       </CardContent>
     </Card>

@@ -1,3 +1,4 @@
+import { translate as t, useTranslation, getLanguage } from '@/i18n'
 import { useId, useState, useEffect } from 'react'
 import { X, CheckCircle, Loader2, AlertCircle, Image as ImageIcon, FileText, FileCode, Presentation, FileSpreadsheet, FolderPlus, Type, Pencil, Check, Music, Video, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -36,7 +37,7 @@ const PROCESSING_STAGE_LABELS: Record<string, string> = {
 function getStageLabel(stage?: string): string | undefined {
   const normalized = String(stage || '').trim().toLowerCase()
   if (!normalized) return undefined
-  return PROCESSING_STAGE_LABELS[normalized] || normalized.replace(/_/g, ' ')
+  return (PROCESSING_STAGE_LABELS[normalized] ? t(PROCESSING_STAGE_LABELS[normalized]) : undefined) || normalized.replace(/_/g, ' ')
 }
 
 function compactStatusText(value?: string): string | undefined {
@@ -49,11 +50,12 @@ function formatUpdatedAt(updatedAt?: string): string | undefined {
   if (!updatedAt) return undefined
   const date = new Date(updatedAt)
   if (Number.isNaN(date.getTime())) return updatedAt
-  return date.toLocaleString()
+  return date.toLocaleString(getLanguage())
 }
 
 // 状态徽章。后台任务的阶段、进度和失败原因保持紧凑展示，完整内容放在 title 中。
 export function StatusBadge({ status, stage, progress, message, error, updatedAt, variant = 'badge' }: StatusBadgeProps) {
+  useTranslation()
   const normalizedStatus = String(status || '').toLowerCase()
   const normalizedProgress = typeof progress === 'number' && Number.isFinite(progress)
     ? Math.max(0, Math.min(100, Math.round(progress)))
@@ -61,19 +63,19 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
   const stageLabel = getStageLabel(stage)
   const detail = normalizedStatus === 'failed'
     ? compactStatusText(error || message)
-    : [stageLabel && stageLabel !== '等待队列' ? stageLabel : undefined, normalizedProgress != null ? `${normalizedProgress}%` : undefined]
+    : [stageLabel && stage !== 'queued' ? stageLabel : undefined, normalizedProgress != null ? `${normalizedProgress}%` : undefined]
       .filter(Boolean)
       .join(' · ') || undefined
   const updatedAtText = formatUpdatedAt(updatedAt)
-  const title = [message, error, updatedAtText ? `最后更新：${updatedAtText}` : undefined]
+  const title = [message, error, updatedAtText ? t("最后更新：{{updatedAtText}}", { updatedAtText: updatedAtText }) : undefined]
     .filter(Boolean)
     .join('\n') || undefined
 
   if (variant === 'subtle') {
     const labels: Record<string, string> = {
-      ready: '就绪', processing: '处理中', queued: '排队中', failed: '解析失败', unindexed: '未完成解析',
+      ready: t("就绪"), processing: t("处理中"), queued: t("排队中"), failed: t("解析失败"), unindexed: t("未完成解析"),
     }
-    const label = labels[normalizedStatus] || '未知状态'
+    const label = labels[normalizedStatus] || t("未知状态")
     const busy = normalizedStatus === 'processing' || normalizedStatus === 'queued'
     const showDetail = busy || normalizedStatus === 'failed'
     const visibleDetail = showDetail ? detail : undefined
@@ -82,7 +84,7 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
         className="file-status-subtle"
         data-status={normalizedStatus}
         role={busy ? 'status' : undefined}
-        aria-label={`文件状态：${label}${visibleDetail ? `，${visibleDetail}` : ''}`}
+        aria-label={t("文件状态：{{label}}{{value2}}", { label: label, value2: visibleDetail ? `，${visibleDetail}` : '' })}
         title={[label, visibleDetail, title].filter(Boolean).join('\n')}
       >
         {busy ? <Loader2 size={12} className="file-status-subtle__spinner" aria-hidden />
@@ -97,10 +99,9 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
     return (
       <span
         className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-200 dark:bg-green-950/95 dark:text-green-300 dark:border-green-800"
-        aria-label="文件状态：就绪"
+        aria-label={t("文件状态：就绪")}
       >
-        <CheckCircle size={10} aria-hidden /> 就绪
-      </span>
+        <CheckCircle size={10} aria-hidden />  {t("就绪")} </span>
     )
   }
   if (normalizedStatus === 'processing') {
@@ -108,11 +109,11 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
       <span
         className="inline-flex max-w-full items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-950/95 dark:text-amber-300 dark:border-amber-800"
         role="status"
-        aria-label="文件状态：处理中"
+        aria-label={t("文件状态：处理中")}
         title={title}
       >
         <Loader2 size={10} className="shrink-0 animate-spin" aria-hidden />
-        <span className="truncate">处理中{detail ? ` · ${detail}` : ''}</span>
+        <span className="truncate">{t("处理中")}{detail ? ` · ${detail}` : ''}</span>
       </span>
     )
   }
@@ -121,11 +122,11 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
       <span
         className="inline-flex max-w-full items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-700 border border-sky-200 dark:bg-sky-950/95 dark:text-sky-300 dark:border-sky-800"
         role="status"
-        aria-label="文件状态：排队中"
+        aria-label={t("文件状态：排队中")}
         title={title}
       >
         <Loader2 size={10} className="shrink-0 animate-spin" aria-hidden />
-        <span className="truncate">排队中{detail ? ` · ${detail}` : ''}</span>
+        <span className="truncate">{t("排队中")}{detail ? ` · ${detail}` : ''}</span>
       </span>
     )
   }
@@ -133,11 +134,11 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
     return (
       <span
         className="inline-flex max-w-full items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-700 border border-rose-200 dark:bg-rose-950/95 dark:text-rose-300 dark:border-rose-800"
-        aria-label="文件状态：解析失败"
+        aria-label={t("文件状态：解析失败")}
         title={title}
       >
         <AlertCircle size={10} className="shrink-0" aria-hidden />
-        <span className="truncate">解析失败{detail ? ` · ${detail}` : ''}</span>
+        <span className="truncate">{t("解析失败")}{detail ? ` · ${detail}` : ''}</span>
       </span>
     )
   }
@@ -145,19 +146,19 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
     return (
       <span
         className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-950/95 dark:text-amber-300 dark:border-amber-800"
-        aria-label="文件状态：未完成解析"
+        aria-label={t("文件状态：未完成解析")}
       >
-        <AlertCircle size={10} aria-hidden /> 未完成解析
-      </span>
+        <AlertCircle size={10} aria-hidden />  {t("未完成解析")} </span>
     )
   }
-  return <span className="text-slate-400 text-xs" aria-label="文件状态：未知">Unknown</span>
+  return <span className="text-slate-400 text-xs" aria-label={t("文件状态：未知")}>Unknown</span>
 }
 
 // 文件类型图标配置：不同文档类型使用不同图标与配色，便于一眼区分
 const FILE_ICON_SIZE_DEFAULT = 16
 /** 与文件列表 FileThumb / FileHero 一致的类型图标（扩展名或 MIME 映射后的短类型） */
 export function FileIcon({ type, size = FILE_ICON_SIZE_DEFAULT }: { type: string; size?: number }) {
+  useTranslation()
   const lowerType = String(type || '').toLowerCase()
   const s = size
 
@@ -233,6 +234,7 @@ export interface KnowledgeFileView {
 }
 
 export function FileThumb({ file }: { file: KnowledgeFileView }) {
+  useTranslation()
   const [failedSrc, setFailedSrc] = useState<string>()
   const kind = isImageType(file.type) ? 'image' : isVideoType(file.type) ? 'video' : isAudioType(file.type) ? 'audio' : 'document'
   const src = kind === 'image' ? file.thumbnailUrl || file.previewUrl : kind === 'video' ? file.coverUrl : undefined
@@ -274,6 +276,7 @@ function getFileHeroIconBg(type: string): string {
 }
 
 function DocumentCover({ file }: { file: KnowledgeFileView }) {
+  useTranslation()
   const extension = (file.name.match(/\.([^.]+)$/)?.[1] || file.type || 'FILE').toUpperCase()
   const kind = ['XLS', 'XLSX', 'CSV', 'ODS'].includes(extension) ? 'table'
     : ['PPT', 'PPTX', 'ODP'].includes(extension) ? 'slides'
@@ -284,7 +287,7 @@ function DocumentCover({ file }: { file: KnowledgeFileView }) {
 
   // These shapes identify the format; document content is shown in the actual preview.
   return (
-    <div className="file-document-cover" data-kind={kind} role="img" aria-label={`${extension} 文件类型封面`}>
+    <div className="file-document-cover" data-kind={kind} role="img" aria-label={t("{{extension}} 文件类型封面", { extension: extension })}>
       <div className="file-document-cover__sheet" aria-hidden="true">
         <div className="file-document-cover__masthead">
           <strong>{extension.slice(0, 8)}</strong>
@@ -341,6 +344,7 @@ function DocumentCover({ file }: { file: KnowledgeFileView }) {
 
 // 文件主图（画廊视图）
 export function FileHero({ file }: { file: KnowledgeFileView }) {
+  useTranslation()
   const [failedThumbnail, setFailedThumbnail] = useState<string>()
   const isImg = isImageType(file?.type)
   const isAudio = isAudioType(file?.type)
@@ -361,7 +365,7 @@ export function FileHero({ file }: { file: KnowledgeFileView }) {
     return <DocumentCover file={file} />
   }
   return (
-    <div className="flex flex-col items-center justify-center text-slate-400" role="img" aria-label={`文件类型：${isAudio ? '音频' : isVideo ? '视频' : String(file?.type || 'file').toUpperCase()}`}>
+    <div className="flex flex-col items-center justify-center text-slate-400" role="img" aria-label={t("文件类型：{{value1}}", { value1: isAudio ? t("音频") : isVideo ? t("视频") : String(file?.type || 'file').toUpperCase() })}>
       <div className={cn('p-4 rounded-xl border', getFileHeroIconBg(file?.type))}>
         <FileIcon type={file?.type} size={FILE_HERO_ICON_SIZE} />
       </div>
@@ -380,7 +384,7 @@ export function FileHero({ file }: { file: KnowledgeFileView }) {
         </div>
       )}
       <div className={cn('text-xs font-medium text-slate-500 dark:text-slate-400', (isAudio || isVideo) ? 'mt-1' : 'mt-2')}>
-        {isAudio ? '音频' : isVideo ? '视频' : String(file?.type || 'file').toUpperCase()}
+        {isAudio ? t("音频") : isVideo ? t("视频") : String(file?.type || 'file').toUpperCase()}
       </div>
     </div>
   )
@@ -391,6 +395,7 @@ export function CreateKbModal({ onClose, onCreate }: {
   onClose: () => void
   onCreate: (name: string, desc: string) => void | Promise<void>
 }) {
+  useTranslation()
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
   const [creating, setCreating] = useState(false)
@@ -406,9 +411,9 @@ export function CreateKbModal({ onClose, onCreate }: {
     <WorkflowDialog
       open
       onOpenChange={(open) => { if (!open) onClose() }}
-      eyebrow="素材空间"
-      title="新建素材空间"
-      description="把相关素材放在一起，方便整理、检索与对话。"
+      eyebrow={t("素材空间")}
+      title={t("新建素材空间")}
+      description={t("把相关素材放在一起，方便整理、检索与对话。")}
       icon={<FolderPlus />}
       size="sm"
       busy={creating}
@@ -421,39 +426,39 @@ export function CreateKbModal({ onClose, onCreate }: {
         try {
           await onCreate(name.trim(), desc.trim())
         } catch (cause) {
-          setError(cause instanceof Error ? cause.message : '创建失败，请稍后重试。')
+          setError(cause instanceof Error ? cause.message : t("创建失败，请稍后重试。"))
         } finally {
           setCreating(false)
         }
       }}
       footer={<>
-        <span className="workflow-footer-summary">创建后即可添加素材</span>
+        <span className="workflow-footer-summary">{t("创建后即可添加素材")}</span>
         <div className="workflow-footer-actions">
-          <button type="button" onClick={onClose} disabled={creating} className="workflow-button" aria-label="取消新建素材空间">取消</button>
+          <button type="button" onClick={onClose} disabled={creating} className="workflow-button" aria-label={t("取消新建素材空间")}>{t("取消")}</button>
           <button type="submit" disabled={!isNameValid || creating} className="workflow-button-primary">
             {creating ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <FolderPlus size={15} aria-hidden />}
-            {creating ? '创建中…' : '创建空间'}
+            {creating ? t("创建中…") : t("创建空间")}
           </button>
         </div>
       </>}
     >
-      <div className="knowledge-create-types" aria-label="可添加的素材类型">
-        <span><FileText aria-hidden />文档</span>
-        <span><ImageIcon aria-hidden />图片</span>
-        <span><Music aria-hidden />音频</span>
-        <span><Video aria-hidden />视频</span>
+      <div className="knowledge-create-types" aria-label={t("可添加的素材类型")}>
+        <span><FileText aria-hidden />{t("文档")}</span>
+        <span><ImageIcon aria-hidden />{t("图片")}</span>
+        <span><Music aria-hidden />{t("音频")}</span>
+        <span><Video aria-hidden />{t("视频")}</span>
       </div>
       <div className="knowledge-create-field">
-        <label htmlFor={nameInputId} className="workflow-label">空间名称 <span className="knowledge-create-required">必填</span></label>
-        <input id={nameInputId} value={name} onChange={(event) => { setName(event.target.value); setError(null) }}
-          className="workflow-field" placeholder="例如：产品资料、旅行见闻" data-autofocus required disabled={creating}
+        <label htmlFor={nameInputId} className="workflow-label">{t("空间名称")} <span className="knowledge-create-required">{t("必填")}</span></label>
+        <input id={nameInputId} name="name" value={name} onChange={(event) => { setName(event.target.value); setError(null) }}
+          className="workflow-field" placeholder={t("例如：产品资料、旅行见闻")} data-autofocus required disabled={creating}
           aria-describedby={error ? `${nameHintId} ${errorId}` : nameHintId} />
-        <p id={nameHintId} className="workflow-help">用主题或用途命名，之后更容易找到。</p>
+        <p id={nameHintId} className="workflow-help">{t("用主题或用途命名，之后更容易找到。")}</p>
       </div>
       <div className="knowledge-create-field">
-        <label htmlFor={descInputId} className="workflow-label">空间描述 <span className="knowledge-create-optional">选填</span></label>
+        <label htmlFor={descInputId} className="workflow-label">{t("空间描述")} <span className="knowledge-create-optional">{t("选填")}</span></label>
         <textarea id={descInputId} value={desc} onChange={(event) => setDesc(event.target.value)}
-          className="workflow-field" placeholder="简要介绍这里的素材内容或使用场景…" rows={3} disabled={creating} />
+          className="workflow-field" placeholder={t("简要介绍这里的素材内容或使用场景…")} rows={3} disabled={creating} />
       </div>
       {error && <p id={errorId} role="alert" className="knowledge-create-error">{error}</p>}
     </WorkflowDialog>
@@ -470,6 +475,7 @@ export function EditKbModal({
   onClose: () => void
   onSave: (id: string, name: string, description: string) => void
 }) {
+  useTranslation()
   const [name, setName] = useState(kb.name)
   const [desc, setDesc] = useState(kb.description ?? '')
   const dialogId = useId().replace(/:/g, '')
@@ -504,14 +510,14 @@ export function EditKbModal({
                 <Pencil size={20} strokeWidth={2.5} aria-hidden />
               </div>
               <div>
-                <h3 id={titleId} className="text-lg font-bold text-slate-800 dark:text-slate-100">编辑知识库</h3>
-                <p id={descriptionId} className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">修改名称与描述</p>
+                <h3 id={titleId} className="text-lg font-bold text-slate-800 dark:text-slate-100">{t("编辑知识库")}</h3>
+                <p id={descriptionId} className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{t("修改名称与描述")}</p>
               </div>
             </div>
             <button
               type="button"
               onClick={onClose}
-              aria-label="关闭编辑知识库弹窗"
+              aria-label={t("关闭编辑知识库弹窗")}
               className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-800/60 transition-colors"
             >
               <X size={20} aria-hidden />
@@ -522,39 +528,37 @@ export function EditKbModal({
         {/* Content */}
         <div className="p-6 space-y-5 bg-white dark:bg-slate-950">
           <span id={formStatusId} className="sr-only" role="status" aria-live="polite">
-            {isNameValid ? `将保存知识库：${name.trim()}` : '请输入知识库名称后再保存'}
+            {isNameValid ? t("将保存知识库：{{value1}}", { value1: name.trim() }) : t("请输入知识库名称后再保存")}
           </span>
           <div className="space-y-2">
             <label htmlFor={nameInputId} className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
               <Type size={16} className="text-indigo-500" aria-hidden />
-              名称 <span className="text-red-500" aria-hidden>*</span>
+               {t("名称")} <span className="text-red-500" aria-hidden>*</span>
             </label>
             <input
               id={nameInputId}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full border-2 border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 dark:focus:border-indigo-500 outline-none transition-all shadow-sm hover:border-slate-300 dark:hover:border-slate-600"
-              placeholder="例如：产品文档库"
+              placeholder={t("例如：产品文档库")}
               autoFocus
               required
               aria-required="true"
               aria-describedby={`${nameHintId} ${formStatusId}`}
             />
             <p id={nameHintId} className="text-xs text-slate-500 dark:text-slate-400">
-              必填，保存时会自动去除首尾空格。
-            </p>
+               {t("必填，保存时会自动去除首尾空格。")} </p>
           </div>
           <div className="space-y-2">
             <label htmlFor={descInputId} className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
               <FileText size={16} className="text-indigo-500" aria-hidden />
-              描述
-            </label>
+               {t("描述")} </label>
             <textarea
               id={descInputId}
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
               className="w-full border-2 border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 h-28 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 dark:focus:border-indigo-500 outline-none resize-none transition-all shadow-sm hover:border-slate-300 dark:hover:border-slate-600"
-              placeholder="这个知识库会包含哪些数据？"
+              placeholder={t("这个知识库会包含哪些数据？")}
             />
           </div>
         </div>
@@ -564,26 +568,24 @@ export function EditKbModal({
           <button
             type="button"
             onClick={onClose}
-            aria-label="取消编辑知识库"
+            aria-label={t("取消编辑知识库")}
             className="px-5 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors"
           >
-            取消
-          </button>
+             {t("取消")} </button>
           <button
             type="button"
             onClick={() => {
               if (name.trim()) onSave(kb.id, name.trim(), desc.trim())
             }}
             disabled={!isNameValid}
-            aria-label={isNameValid ? `保存知识库：${name.trim()}` : '保存知识库：请先输入名称'}
+            aria-label={isNameValid ? t("保存知识库：{{value1}}", { value1: name.trim() }) : t("保存知识库：请先输入名称")}
             aria-describedby={formStatusId}
             className={cn(
               'px-5 py-2.5 bg-gradient-to-tr from-indigo-600 to-fuchsia-600 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/30 hover:from-indigo-500 hover:to-fuchsia-500 hover:shadow-xl hover:shadow-indigo-500/40 transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center gap-2',
             )}
           >
             <Check size={16} aria-hidden />
-            保存
-          </button>
+             {t("保存")} </button>
         </div>
       </div>
     </div>
@@ -592,6 +594,7 @@ export function EditKbModal({
 
 // 统计项
 export function StatItem({ label, value }: { label: string; value: string | number }) {
+  useTranslation()
   return (
     <div className="flex justify-between items-center text-sm">
       <span className="text-slate-500 dark:text-slate-400">{label}</span>

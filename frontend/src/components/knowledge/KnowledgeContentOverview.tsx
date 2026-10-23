@@ -1,3 +1,4 @@
+import { translate as t, useTranslation, getLanguage } from '@/i18n'
 import { useId, useState } from 'react'
 import { ChevronDown, FileText, Image, Info, Layers, Music, Video } from 'lucide-react'
 import * as Tooltip from '@radix-ui/react-tooltip'
@@ -38,6 +39,7 @@ interface KnowledgeContentOverviewProps {
 }
 
 export function KnowledgeContentOverview({ files, loading, index }: KnowledgeContentOverviewProps) {
+  useTranslation()
   const [expanded, setExpanded] = useState(false)
   const [showExplanation, setShowExplanation] = useState(false)
   const id = useId()
@@ -53,16 +55,16 @@ export function KnowledgeContentOverview({ files, loading, index }: KnowledgeCon
   const SummaryIcon = summaryKind?.icon ?? Layers
 
   const indexedContent = [
-    { label: '文本索引文件', count: index.documents },
-    { label: '文本块', count: index.chunks },
-    { label: '图片索引', count: index.images },
-    { label: '音频索引', count: index.audio },
-    { label: '视频片段', count: index.videoShots },
+    { label: t("文本索引文件"), count: index.documents },
+    { label: t("文本块"), count: index.chunks },
+    { label: t("图片索引"), count: index.images },
+    { label: t("音频索引"), count: index.audio },
+    { label: t("视频片段"), count: index.videoShots },
   ]
   const dimensions = [
-    { label: '文本', value: index.dimensions.text },
-    { label: '图片', value: index.dimensions.image },
-    { label: '音频', value: index.dimensions.audio },
+    { label: t("文本"), value: index.dimensions.text },
+    { label: t("图片"), value: index.dimensions.image },
+    { label: t("音频"), value: index.dimensions.audio },
   ]
 
   return (
@@ -73,15 +75,15 @@ export function KnowledgeContentOverview({ files, loading, index }: KnowledgeCon
             <SummaryIcon size={19} strokeWidth={1.65} />
           </span>
           <div className="knowledge-overview__summary">
-            <h3 id={headingId}>内容概览</h3>
-            <p><strong>{loading ? '—' : files.length.toLocaleString('zh-CN')}</strong><span>个文件</span></p>
+            <h3 id={headingId}>{t("内容概览")}</h3>
+            <p><strong>{loading ? '—' : files.length.toLocaleString(getLanguage())}</strong><span>{t("个文件")}</span></p>
           </div>
         </div>
-        <dl className="knowledge-overview__kinds" aria-label="文件分类统计">
+        <dl className="knowledge-overview__kinds" aria-label={t("文件分类统计")}>
           {CONTENT_KINDS.map(({ key, label, icon: Icon }) => (
             <div key={key} data-kind={key} data-active={!loading && counts[key] > 0}>
-              <dt><Icon size={15} strokeWidth={1.6} aria-hidden />{label}</dt>
-              <dd>{loading ? '—' : counts[key].toLocaleString('zh-CN')}</dd>
+              <dt><Icon size={15} strokeWidth={1.6} aria-hidden />{t(label)}</dt>
+              <dd>{loading ? '—' : counts[key].toLocaleString(getLanguage())}</dd>
             </div>
           ))}
         </dl>
@@ -95,17 +97,17 @@ export function KnowledgeContentOverview({ files, loading, index }: KnowledgeCon
             setShowExplanation(false)
           }}
         >
-          索引详情<span className="knowledge-overview__toggle-icon" aria-hidden="true"><ChevronDown size={12} strokeWidth={1.7} /></span>
+           {t("索引详情")}<span className="knowledge-overview__toggle-icon" aria-hidden="true"><ChevronDown size={12} strokeWidth={1.7} /></span>
         </button>
       </div>
       <div id={detailsId} className="knowledge-overview__details" hidden={!expanded}>
         <div className="knowledge-overview__panel knowledge-overview__panel--index">
           <div className="knowledge-overview__panel-heading">
-            <h4>检索内容</h4>
+            <h4>{t("检索内容")}</h4>
             <Tooltip.Provider delayDuration={200}>
               <Tooltip.Root open={showExplanation} onOpenChange={setShowExplanation}>
                 <Tooltip.Trigger asChild>
-                  <button type="button" className="knowledge-overview__info" aria-label="文件与索引统计说明" onClick={(event) => {
+                  <button type="button" className="knowledge-overview__info" aria-label={t("文件与索引统计说明")} onClick={(event) => {
                     event.preventDefault()
                     setShowExplanation(true)
                   }}>
@@ -114,8 +116,7 @@ export function KnowledgeContentOverview({ files, loading, index }: KnowledgeCon
                 </Tooltip.Trigger>
                 <Tooltip.Portal>
                   <Tooltip.Content className="knowledge-overview-tooltip" side="top" align="start" sideOffset={8} collisionPadding={12}>
-                    一个文件可对应多个内容片段，文件数与索引数按不同口径统计。
-                    <Tooltip.Arrow className="knowledge-overview-tooltip__arrow" />
+                     {t("一个文件可对应多个内容片段，文件数与索引数按不同口径统计。")} <Tooltip.Arrow className="knowledge-overview-tooltip__arrow" />
                   </Tooltip.Content>
                 </Tooltip.Portal>
               </Tooltip.Root>
@@ -123,19 +124,19 @@ export function KnowledgeContentOverview({ files, loading, index }: KnowledgeCon
           </div>
           <dl className="knowledge-overview__index-metrics">
             {indexedContent.map(({ label, count }) => (
-              <div key={label} data-active={count > 0}><dt>{label}</dt><dd>{count.toLocaleString('zh-CN')}</dd></div>
+              <div key={label} data-active={count > 0}><dt>{t(label)}</dt><dd>{count.toLocaleString(getLanguage())}</dd></div>
             ))}
           </dl>
         </div>
         <div className="knowledge-overview__panel knowledge-overview__panel--dimensions">
           <div className="knowledge-overview__panel-heading">
-            <h4>向量维度</h4>
+            <h4>{t("向量维度")}</h4>
           </div>
-          <dl className="knowledge-overview__dimension-metrics" aria-label="向量维度详情">
+          <dl className="knowledge-overview__dimension-metrics" aria-label={t("向量维度详情")}>
             {dimensions.map(({ label, value }) => (
               <div key={label}>
-                <dt>{label}</dt>
-                <dd>{value}<span>维</span></dd>
+                <dt>{t(label)}</dt>
+                <dd>{value}<span>{t("维")}</span></dd>
               </div>
             ))}
           </dl>

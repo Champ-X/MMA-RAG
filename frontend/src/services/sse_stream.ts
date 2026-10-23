@@ -1,4 +1,5 @@
 import { apiClient } from './api_client';
+import { translate as tr, getLanguage, type Language } from '@/i18n';
 const getBaseURL = () => apiClient.getBaseURL();
 import type {
   ThoughtEvent,
@@ -29,6 +30,7 @@ export interface StreamChatCallbacks {
 }
 
 export interface StreamChatOptions {
+  language?: Language;
   message: string;
   knowledgeBaseIds?: string[];
   sessionId?: string;
@@ -110,6 +112,7 @@ class SSEStreamManager {
     callbacks: StreamChatCallbacks
   ): { close: () => void; get isClosed(): boolean } {
     this.close();
+    options = { ...options, language: options.language ?? getLanguage() };
 
     if (options.files?.length || options.selectedFiles?.length || options.mentions?.length || options.conversationContext) {
       return this._streamChatMultipart(options, callbacks);
@@ -117,6 +120,7 @@ class SSEStreamManager {
 
     const params = new URLSearchParams({
       message: options.message,
+      language: options.language!,
       ...(options.knowledgeBaseIds?.length && {
         knowledgeBaseIds: options.knowledgeBaseIds.join(','),
       }),
@@ -152,7 +156,7 @@ class SSEStreamManager {
       let raw: Record<string, unknown>;
       try {
         const parsed = JSON.parse(ev.data) as unknown;
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('无效的 SSE 响应');
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(tr("无效的 SSE 响应"));
         raw = parsed as Record<string, unknown>;
       } catch (err) {
         fail(err);
@@ -165,7 +169,7 @@ class SSEStreamManager {
     source.onerror = () => {
       // This endpoint starts a new chat operation and has no event-resume
       // protocol. Native automatic reconnection would repeat the whole query.
-      fail(new Error('连接在回答完成前中断，请重试。'));
+      fail(new Error(tr("连接在回答完成前中断，请重试。")));
     };
 
     return {
@@ -186,6 +190,7 @@ class SSEStreamManager {
     this._multipartAbort = ac;
 
     const form = new FormData();
+    form.append('language', options.language ?? getLanguage());
     form.append('message', options.message || '');
     // Multipart string fields normalize LF to CRLF. JSON escapes preserve the
     // exact text against which UTF-16 mention offsets were calculated.
@@ -235,7 +240,7 @@ class SSEStreamManager {
         }
         const reader = res.body?.getReader();
         if (!reader) {
-          callbacks.onError?.(new Error('响应无正文'));
+          callbacks.onError?.(new Error(tr("响应无正文")));
           return;
         }
         const decoder = new TextDecoder();
@@ -263,7 +268,7 @@ class SSEStreamManager {
           }
         }
         if (!terminalReceived && !ac.signal.aborted) {
-          callbacks.onError?.(new Error('连接在回答完成前中断，请重试。'));
+          callbacks.onError?.(new Error(tr("连接在回答完成前中断，请重试。")));
         }
       } catch (e) {
         if (e instanceof Error && e.name === 'AbortError') return;
@@ -315,6 +320,7 @@ export function createChatStream(
   return sseStreamManager.streamChat(
     {
       message,
+      language: opts?.language,
       knowledgeBaseIds: opts?.knowledgeBaseIds,
       sessionId: opts?.sessionId,
       model: opts?.model,

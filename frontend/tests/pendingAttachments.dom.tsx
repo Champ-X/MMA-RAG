@@ -78,6 +78,8 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  const { setLanguage } = await import('../src/i18n')
+  setLanguage('zh-CN')
   await act(async () => { root.unmount() })
   container.remove()
   Object.assign(api, originalApi)
@@ -177,4 +179,42 @@ test('a preparation failure waits for sibling writes before reclaiming every unp
   assert.equal(blobs.size, 0)
   assert.deepEqual(revoked, ['blob:first'])
   assert.equal(store.getState().getSessionById(id)!.messages.length, 0)
+})
+
+
+test('Pi captures language before attachment preparation and does not switch an already submitted run', async () => {
+  const { setLanguage } = await import('../src/i18n')
+  const id = await session()
+  heldIds.add('language-pi')
+  let submittedLanguage: string | undefined, pending!: Promise<void>
+  api.create = async options => {
+    submittedLanguage = options.language
+    return { id: 'language-pi-run', status: 'completed', session_id: id, seq: 1, created_at: 1,
+      config: { model: 'fixture' }, request: { message: options.message, client_request_id: options.requestId }, state: {} } as PiRun
+  }
+  await act(async () => {
+    setLanguage('en-US')
+    pending = pi.sendMessage('original question', [], id, [audio()], undefined, undefined, ['language-pi'])
+  })
+  assert.equal(submittedLanguage, undefined)
+  await act(async () => { setLanguage('zh-CN'); releases.get('language-pi')!(); await pending })
+  assert.equal(submittedLanguage, 'en-US')
+})
+
+test('legacy captures language before attachment preparation and forwards it into multipart transport', async () => {
+  const { setLanguage } = await import('../src/i18n')
+  const id = await session()
+  heldIds.add('language-legacy')
+  let submittedLanguage: FormDataEntryValue | null | undefined, pending!: Promise<void>
+  globalThis.fetch = async (_url, init) => {
+    submittedLanguage = (init?.body as FormData).get('language')
+    return new Response('data: {"event":"complete","data":{}}\n\n', { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+  }
+  await act(async () => {
+    setLanguage('en-US')
+    pending = legacy.sendMessage('original question', [], id, [audio()], undefined, undefined, ['language-legacy'])
+  })
+  assert.equal(submittedLanguage, undefined)
+  await act(async () => { setLanguage('zh-CN'); releases.get('language-legacy')!(); await pending })
+  assert.equal(submittedLanguage, 'en-US')
 })

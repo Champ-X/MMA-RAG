@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Cpu, RefreshCw } from 'lucide-react'
 import { WorkflowDialog } from '@/components/ui/WorkflowDialog'
@@ -26,6 +27,7 @@ function fallbackCatalogItem(registryId: string): ChatCatalogItem {
 }
 
 export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) {
+  useTranslation()
   const { config, updateModelConfig } = useConfigStore()
   const [chatModels, setChatModels] = useState<string[]>([])
   const [chatCatalog, setChatCatalog] = useState<ChatCatalogItem[]>([])
@@ -66,7 +68,7 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
         }
       })
       .catch((error: unknown) => {
-        if (!cancelled) setCatalogError(error instanceof Error ? error.message : '加载失败')
+        if (!cancelled) setCatalogError(error instanceof Error ? error.message : tr("加载失败"))
       })
       .finally(() => { if (!cancelled) setModelsLoading(false) })
     return () => { cancelled = true }
@@ -102,39 +104,38 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
 
   return (
     <WorkflowDialog
-      eyebrow="对话设置"
+      eyebrow={tr("对话设置")}
       open={open}
       onOpenChange={onOpenChange}
-      title="对话模型"
-      description="选择用于生成回答的模型，选择后立即生效。"
+      title={tr("对话模型")}
+      description={tr("选择用于生成回答的模型，选择后立即生效。")}
       icon={<Cpu size={20} aria-hidden />}
       size="md"
       className="model-config-dialog"
       footer={<>
-        <span className="workflow-footer-summary">选择会自动保存到本地配置</span>
+        <span className="workflow-footer-summary">{tr("选择会自动保存到本地配置")}</span>
         <div className="workflow-footer-actions">
-          <button type="button" className="workflow-button workflow-button-primary" onClick={() => onOpenChange(false)}>完成</button>
+          <button type="button" className="workflow-button workflow-button-primary" onClick={() => onOpenChange(false)}>{tr("完成")}</button>
         </div>
       </>}
     >
       <div className="model-current" aria-live="polite" aria-atomic="true">
         <span className="model-current-symbol" aria-hidden>{currentChatModel ? <Check size={18} /> : <Cpu size={18} />}</span>
         <div className="model-current-copy">
-          <p className="model-current-label">当前模型{currentProvider && <span> · {currentProvider === 'AliyunBailian' ? '阿里云百炼' : currentProvider}</span>}</p>
-          <p className="model-current-name">{currentName || '尚未选择模型'}</p>
+          <p className="model-current-label">{tr("当前模型")}{currentProvider && <span> · {currentProvider === 'AliyunBailian' ? tr("阿里云百炼") : currentProvider}</span>}</p>
+          <p className="model-current-name">{currentName || tr("尚未选择模型")}</p>
           {currentChatModel && currentName !== currentChatModel && <p className="model-current-id">{currentChatModel}</p>}
         </div>
-        <span className="model-current-state">{currentChatModel ? '使用中' : '待选择'}</span>
+        <span className="model-current-state">{currentChatModel ? tr("使用中") : tr("待选择")}</span>
       </div>
 
       {catalogError && <div className="model-catalog-notice" role="status">
         <div>
-          <p>模型目录暂时无法更新</p>
-          <span>{catalog.length > 0 ? '你仍可选择已加载的模型。' : '请检查连接后重试。'}</span>
+          <p>{tr("模型目录暂时无法更新")}</p>
+          <span>{catalog.length > 0 ? tr("你仍可选择已加载的模型。") : tr("请检查连接后重试。")}</span>
         </div>
         <button type="button" className="workflow-button workflow-button-quiet" onClick={() => setRefreshKey(key => key + 1)} disabled={modelsLoading}>
-          <RefreshCw size={14} aria-hidden />重试
-        </button>
+          <RefreshCw size={14} aria-hidden />{tr("重试")}</button>
       </div>}
 
       <UnifiedChatModelSearch

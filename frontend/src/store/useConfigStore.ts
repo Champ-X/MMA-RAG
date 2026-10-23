@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { setLanguage as applyLanguage, normalizeLanguage, type Language } from '@/i18n';
 import { persist } from 'zustand/middleware';
 import { systemApi } from '@/services/api_client';
 
@@ -183,6 +184,7 @@ interface ConfigStore {
   updateModelConfig: (modelId: string, updates: Partial<ModelConfig>) => void;
   
   updateSystemConfig: (updates: Partial<SystemConfig>) => void;
+  setLanguage: (language: Language) => void;
   
   resetModelConfig: (modelId: string) => void;
   
@@ -392,11 +394,17 @@ export const useConfigStore = create<ConfigStore>()(
       },
 
       // 更新系统配置
+      setLanguage: (language) => {
+        const next = normalizeLanguage(language);
+        set((state) => ({ config: { ...state.config, language: next } }));
+        applyLanguage(next);
+      },
       updateSystemConfig: (updates) => {
         set((state) => ({
           config: { ...state.config, ...updates },
           hasUnsavedChanges: true,
         }));
+        if (updates.language) applyLanguage(normalizeLanguage(updates.language));
       },
 
       // 重置单个模型配置
@@ -421,6 +429,7 @@ export const useConfigStore = create<ConfigStore>()(
           config: defaultConfig,
           hasUnsavedChanges: true,
         }));
+        applyLanguage(defaultConfig.language);
       },
 
       // 保存配置（后端运行时更新并持久化）
@@ -584,6 +593,10 @@ export const useConfigStore = create<ConfigStore>()(
             }),
           },
         };
+      },
+      merge: (persisted, current) => {
+        const saved = persisted as { config?: Partial<SystemConfig> } | undefined;
+        return { ...current, config: { ...current.config, ...saved?.config, language: normalizeLanguage(saved?.config?.language) } };
       },
       partialize: (state) => ({
         config: state.config,

@@ -1,3 +1,4 @@
+import { translate as t, useTranslation } from '@/i18n'
 import React from 'react'
 import * as XLSX from 'xlsx'
 import { FileSpreadsheet, AlertCircle } from 'lucide-react'
@@ -63,6 +64,7 @@ function normalizeMatrix(rawRows: unknown[][]): { matrix: string[][]; cols: numb
 }
 
 export const ExcelPreview: React.FC<ExcelPreviewProps> = ({ blob, fileType, filename }) => {
+  useTranslation()
   const [sheets, setSheets] = React.useState<SheetData[] | null>(null)
   const [activeSheetIdx, setActiveSheetIdx] = React.useState<number>(0)
   const [error, setError] = React.useState<string | null>(null)
@@ -73,7 +75,7 @@ export const ExcelPreview: React.FC<ExcelPreviewProps> = ({ blob, fileType, file
   const tablePanelId = `${previewId}-excel-table-panel`
   const virtualRangeId = `${previewId}-excel-virtual-range`
   const activeTabId = `${previewId}-sheet-tab-${activeSheetIdx}`
-  const displayName = filename || `${fileType.toUpperCase()} 表格`
+  const displayName = filename || t("{{value1}} 表格", { value1: fileType.toUpperCase() })
 
   React.useEffect(() => {
     let cancelled = false
@@ -115,14 +117,14 @@ export const ExcelPreview: React.FC<ExcelPreviewProps> = ({ blob, fileType, file
           }
         } catch (e: unknown) {
           if (!cancelled) {
-            setError(getPreviewErrorMessage(e, '解析失败：文件可能损坏或格式不受支持'))
+            setError(getPreviewErrorMessage(e, t("解析失败：文件可能损坏或格式不受支持")))
             setParsing(false)
           }
         }
       })
       .catch((e: unknown) => {
         if (!cancelled) {
-          setError(getPreviewErrorMessage(e, '读取文件流失败'))
+          setError(getPreviewErrorMessage(e, t("读取文件流失败")))
           setParsing(false)
         }
       })
@@ -137,10 +139,10 @@ export const ExcelPreview: React.FC<ExcelPreviewProps> = ({ blob, fileType, file
         className="flex h-64 flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-900"
         role="status"
         aria-live="polite"
-        aria-label={`正在解析表格预览：${displayName}`}
+        aria-label={t("正在解析表格预览：{{displayName}}", { displayName: displayName })}
       >
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" aria-hidden />
-        <div className="mt-3 text-sm">表格解析中…</div>
+        <div className="mt-3 text-sm">{t("表格解析中…")}</div>
       </div>
     )
   }
@@ -150,12 +152,10 @@ export const ExcelPreview: React.FC<ExcelPreviewProps> = ({ blob, fileType, file
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30" role="alert">
         <div className="flex items-center gap-2 text-sm font-medium text-amber-800 dark:text-amber-200">
           <AlertCircle className="h-4 w-4" aria-hidden />
-          表格预览失败
-        </div>
+           {t("表格预览失败")} </div>
         <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-amber-700 dark:text-amber-300">{error}</div>
         <div className="mt-2 text-xs text-amber-700/90 dark:text-amber-300/90">
-          可切换到「分块」查看后端解析后的内容；若文件确为有效的 xlsx/xls/csv，请联系管理员排查。
-        </div>
+           {t("可切换到「分块」查看后端解析后的内容；若文件确为有效的 xlsx/xls/csv，请联系管理员排查。")} </div>
       </div>
     )
   }
@@ -166,8 +166,7 @@ export const ExcelPreview: React.FC<ExcelPreviewProps> = ({ blob, fileType, file
         className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400"
         role="status"
       >
-        表格为空。
-      </div>
+         {t("表格为空。")} </div>
     )
   }
 
@@ -175,7 +174,7 @@ export const ExcelPreview: React.FC<ExcelPreviewProps> = ({ blob, fileType, file
   const totalRows = activeSheet.rowCount
   const dataRowCount = Math.max(0, totalRows - 1) // 第 0 行为表头
   const useVirtualization = dataRowCount > VIRTUALIZE_THRESHOLD
-  const tableSummary = `${displayName}，当前工作表 ${activeSheet.name}，${activeSheet.rowCount} 行，${activeSheet.colCount} 列${useVirtualization ? '，已启用虚拟滚动' : ''}`
+  const tableSummary = t("{{displayName}}，当前工作表 {{value2}}，{{value3}} 行，{{value4}} 列{{value5}}", { displayName: displayName, value2: activeSheet.name, value3: activeSheet.rowCount, value4: activeSheet.colCount, value5: useVirtualization ? t("，已启用虚拟滚动") : '' })
 
   const focusSheetTab = (idx: number) => {
     const boundedIdx = Math.max(0, Math.min(idx, sheets.length - 1))
@@ -206,7 +205,7 @@ export const ExcelPreview: React.FC<ExcelPreviewProps> = ({ blob, fileType, file
   }
 
   return (
-    <section className="space-y-3" aria-label={`表格预览：${displayName}`} aria-describedby={summaryId}>
+    <section className="space-y-3" aria-label={t("表格预览：{{displayName}}", { displayName: displayName })} aria-describedby={summaryId}>
       <span id={summaryId} className="sr-only" aria-live="polite">
         {tableSummary}
       </span>
@@ -214,18 +213,17 @@ export const ExcelPreview: React.FC<ExcelPreviewProps> = ({ blob, fileType, file
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/40">
         <FileSpreadsheet className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
         <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
-          {filename || `${fileType.toUpperCase()} 表格`}
+          {filename || t("{{value1}} 表格", { value1: fileType.toUpperCase() })}
         </span>
         <span className="text-[11px] text-slate-400 dark:text-slate-500">
-          {activeSheet.rowCount} 行 × {activeSheet.colCount} 列
-          {useVirtualization ? '（已启用虚拟滚动）' : ''}
+          {activeSheet.rowCount}  {t("行 ×")} {activeSheet.colCount}  {t("列")} {useVirtualization ? t("（已启用虚拟滚动）") : ''}
         </span>
       </div>
 
       {sheets.length > 1 && (
         <div
           role="tablist"
-          aria-label="工作表切换"
+          aria-label={t("工作表切换")}
           className="-mb-px flex flex-wrap items-center gap-1 border-b border-slate-200 dark:border-slate-800"
         >
           {sheets.map((s, idx) => {
@@ -277,6 +275,7 @@ export const ExcelPreview: React.FC<ExcelPreviewProps> = ({ blob, fileType, file
 
 /** 普通滚动表格：直接渲染全部行；适用于 ≤ VIRTUALIZE_THRESHOLD 行 */
 const FullSheetTable: React.FC<{ sheet: SheetData; summary: string }> = ({ sheet, summary }) => {
+  useTranslation()
   const headerRow = sheet.matrix[0] || []
   const bodyRows = sheet.matrix.slice(1)
   const colCount = sheet.colCount
@@ -305,7 +304,7 @@ const FullSheetTable: React.FC<{ sheet: SheetData; summary: string }> = ({ sheet
           {bodyRows.length === 0 ? (
             <tr>
               <td colSpan={colCount + 1} className="px-3 py-6 text-center text-xs text-slate-400 dark:text-slate-500">
-                <span role="status">（无数据行）</span>
+                <span role="status">{t("（无数据行）")}</span>
               </td>
             </tr>
           ) : (
@@ -340,6 +339,7 @@ const FullSheetTable: React.FC<{ sheet: SheetData; summary: string }> = ({ sheet
 
 /** 虚拟化表格：仅渲染可视范围内的行，适用于 > VIRTUALIZE_THRESHOLD 行 */
 const VirtualizedSheetTable: React.FC<{ sheet: SheetData; summary: string; rangeId: string }> = ({ sheet, summary, rangeId }) => {
+  useTranslation()
   const headerRow = sheet.matrix[0] || []
   const bodyRows = sheet.matrix.slice(1)
   const colCount = sheet.colCount
@@ -364,7 +364,7 @@ const VirtualizedSheetTable: React.FC<{ sheet: SheetData; summary: string; range
   const endIdx = Math.min(total, startIdx + visibleCount)
   const offsetY = startIdx * ROW_HEIGHT
   const totalHeight = total * ROW_HEIGHT
-  const visibleRangeLabel = total > 0 ? `当前渲染第 ${startIdx + 1} 到 ${endIdx} 行，共 ${total} 个数据行` : '当前工作表无数据行'
+  const visibleRangeLabel = total > 0 ? t("当前渲染第 {{value1}} 到 {{endIdx}} 行，共 {{total}} 个数据行", { value1: startIdx + 1, endIdx: endIdx, total: total }) : t("当前工作表无数据行")
 
   return (
     <div
@@ -372,7 +372,7 @@ const VirtualizedSheetTable: React.FC<{ sheet: SheetData; summary: string; range
       onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
       className="overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950"
       style={{ maxHeight: `${VIRTUAL_VIEWPORT_VH}vh` }}
-      aria-label={`${sheet.name} 虚拟滚动表格`}
+      aria-label={t("{{value1}} 虚拟滚动表格", { value1: sheet.name })}
       aria-describedby={rangeId}
     >
       <span id={rangeId} className="sr-only" aria-live="polite">

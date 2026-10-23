@@ -1,3 +1,4 @@
+import { translate as t, useTranslation } from '@/i18n'
 import ReactMarkdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import { knowledgeApi } from '@/services/api_client'
@@ -9,6 +10,7 @@ interface KnowledgeMarkdownPreviewProps {
 }
 
 export function KnowledgeMarkdownPreview({ content, kbId, fileId }: KnowledgeMarkdownPreviewProps) {
+  useTranslation()
   const normalizedContent = content.trim()
   const components: Components = {
     img: ({ src, alt, ...rest }) => {
@@ -41,13 +43,12 @@ export function KnowledgeMarkdownPreview({ content, kbId, fileId }: KnowledgeMar
         className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-400"
         role="status"
       >
-        Markdown 内容为空。
-      </div>
+         {t("Markdown 内容为空。")} </div>
     )
   }
 
   return (
-    <article aria-label="Markdown 文档预览">
+    <article aria-label={t("Markdown 文档预览")}>
       <ReactMarkdown components={components}>{content}</ReactMarkdown>
     </article>
   )

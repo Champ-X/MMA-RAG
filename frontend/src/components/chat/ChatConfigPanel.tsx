@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { useState, useEffect, useMemo } from 'react'
 import { SlidersHorizontal, Database, Zap, Route, List, CheckSquare, Search, Sparkles } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -19,6 +20,7 @@ interface ChatConfigPanelProps {
 }
 
 export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
+  useTranslation()
   const { knowledgeBases, fetchKnowledgeBases } = useKnowledgeStore()
   const { config, updateSystemConfig, updateModelConfig } = useConfigStore()
   const { getActiveSession, updateSessionKnowledgeBases, updateSessionAgentMode } = useChatStore()
@@ -82,7 +84,7 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
         if (cancelled) return
         setChatModels([])
         setChatCatalog([])
-        setCatalogError(e instanceof Error ? e.message : '加载失败')
+        setCatalogError(e instanceof Error ? e.message : tr("加载失败"))
         if (!savedChatModel) {
           setCurrentChatModel(config.models.find(m => m.id === 'chat')?.model || '')
         }
@@ -152,8 +154,7 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/10 to-purple-500/10">
               <SlidersHorizontal className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
             </div>
-            发送前配置
-          </DialogTitle>
+            {tr("发送前配置")}</DialogTitle>
         </DialogHeader>
 
         <ScrollArea className="min-h-0 flex-1 [scrollbar-width:thin] [&>div]:max-h-full [&>div]:overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300/80 dark:[&::-webkit-scrollbar-thumb]:bg-slate-600">
@@ -164,9 +165,8 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/40">
                 <Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-400" />
               </div>
-              回答方式
-            </div>
-            <div className="grid grid-cols-3 gap-2" role="group" aria-label="回答方式">
+              {tr("回答方式")}</div>
+            <div className="grid grid-cols-3 gap-2" role="group" aria-label={tr("回答方式")}>
               <button
                 type="button"
                 aria-pressed={agentMode === 'auto'}
@@ -180,11 +180,9 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
               >
                 <span className="mb-2 flex items-center gap-2 text-sm font-semibold">
                   <Sparkles className="h-4 w-4" />
-                  自动
-                </span>
+                  {tr("自动")}</span>
                 <span className="block text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-                  按问题选择
-                </span>
+                  {tr("按问题选择")}</span>
               </button>
               <button
                 type="button"
@@ -199,11 +197,9 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
               >
                 <span className="mb-2 flex items-center gap-2 text-sm font-semibold">
                   <Search className="h-4 w-4" />
-                  直接
-                </span>
+                  {tr("直接")}</span>
                 <span className="block text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-                  固定单轮检索
-                </span>
+                  {tr("固定单轮检索")}</span>
               </button>
               <button
                 type="button"
@@ -219,8 +215,7 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
                 <span className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold">
                   <span className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4" />
-                    深研
-                  </span>
+                    {tr("深研")}</span>
                   <span className="flex items-center gap-1" aria-hidden>
                     {[0, 1, 2].map(node => (
                       <span
@@ -234,16 +229,15 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
                   </span>
                 </span>
                 <span className="block text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-                  固定多轮补查
-                </span>
+                  {tr("固定多轮补查")}</span>
               </button>
             </div>
             <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">
               {agentMode === 'auto'
-                ? '根据问题的对比、分步、跨模态和研究复杂度自动选择'
+                ? tr("根据问题的对比、分步、跨模态和研究复杂度自动选择")
                 : agentMode === 'agent'
-                  ? '在预算内迭代调用现有图文音视频检索，并保留原引用链路'
-                  : '适合简单问答；多模态检索与知识库路由仍然启用'}
+                  ? tr("在预算内迭代调用现有图文音视频检索，并保留原引用链路")
+                  : tr("适合简单问答；多模态检索与知识库路由仍然启用")}
             </p>
           </div>
 
@@ -253,8 +247,7 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/40">
                 <Database className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
               </div>
-              知识库范围
-            </div>
+              {tr("知识库范围")}</div>
             <div className="flex gap-2.5">
               <button
                 type="button"
@@ -267,7 +260,7 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
                 )}
               >
                 <Route className="h-4 w-4 flex-shrink-0" />
-                <span>智能路由</span>
+                <span>{tr("智能路由")}</span>
               </button>
               <button
                 type="button"
@@ -280,7 +273,7 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
                 )}
               >
                 <List className="h-4 w-4 flex-shrink-0" />
-                <span>全部</span>
+                <span>{tr("全部")}</span>
               </button>
               <button
                 type="button"
@@ -293,13 +286,13 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
                 )}
               >
                 <CheckSquare className="h-4 w-4 flex-shrink-0" />
-                <span>指定</span>
+                <span>{tr("指定")}</span>
               </button>
             </div>
             {kbMode === 'manual' && (
               <ScrollArea className="mt-4 max-h-[min(50vh,320px)] h-auto rounded-xl border border-slate-200/50 bg-white/40 backdrop-blur-sm dark:border-slate-700/50 dark:bg-slate-800/50 p-2.5 shadow-inner">
                 {knowledgeBases.length === 0 ? (
-                  <p className="py-4 text-center text-sm text-slate-500 dark:text-slate-400">暂无知识库，请先创建</p>
+                  <p className="py-4 text-center text-sm text-slate-500 dark:text-slate-400">{tr("暂无知识库，请先创建")}</p>
                 ) : (
                   <div className="space-y-1.5">
                     {knowledgeBases.map(kb => (
@@ -317,7 +310,7 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
                           className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-600"
                         />
                         <span className="flex-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">{kb.name}</span>
-                        <span className="text-xs text-slate-400 dark:text-slate-500">{kb.stats?.documents ?? 0} 文档</span>
+                        <span className="text-xs text-slate-400 dark:text-slate-500">{kb.stats?.documents ?? 0} {tr("文档")}</span>
                       </label>
                     ))}
                   </div>
@@ -325,9 +318,9 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
               </ScrollArea>
             )}
             <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">
-              {kbMode === 'auto' && '不传知识库，由后端智能路由选择'}
-              {kbMode === 'all' && '在所有知识库中检索'}
-              {kbMode === 'manual' && '仅在选中的知识库中检索'}
+              {kbMode === 'auto' && tr("不传知识库，由后端智能路由选择")}
+              {kbMode === 'all' && tr("在所有知识库中检索")}
+              {kbMode === 'manual' && tr("仅在选中的知识库中检索")}
             </p>
           </div>
 
@@ -337,8 +330,7 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/40">
                 <Zap className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
               </div>
-              对话模型
-            </div>
+              {tr("对话模型")}</div>
             <UnifiedChatModelSearch
               catalog={chatCatalog}
               loading={modelsLoading}
@@ -348,10 +340,10 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
               className="mb-4"
             />
             {modelsLoading ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400">加载厂商分组…</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">{tr("加载厂商分组…")}</p>
             ) : groupedByVendor.length === 0 ? (
               <span className="text-sm text-slate-500 dark:text-slate-400">
-                {config.models.find(m => m.id === 'chat')?.name || '对话模型'}
+                {config.models.find(m => m.id === 'chat')?.name || tr("对话模型")}
               </span>
             ) : (
               <div className="space-y-4">
@@ -370,11 +362,10 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
                             height={20}
                           />
                         )}
-                        <span>{VENDOR_DISPLAY_NAMES[vendor]}</span>
+                        <span>{tr(VENDOR_DISPLAY_NAMES[vendor])}</span>
                         {isCurrentVendor && (
                           <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-normal text-indigo-600 dark:text-indigo-400">
-                            当前使用
-                          </span>
+                            {tr("当前使用")}</span>
                         )}
                       </label>
                       <VendorModelSelect
@@ -383,14 +374,14 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
                         isActive={!!isCurrentVendor}
                         onSelect={applyModel}
                         buttonClassName="min-h-[40px] py-2"
-                        ariaLabel={`选择 ${vendor} 模型`}
+                        ariaLabel={tr("选择 {{v0}} 模型", { v0: tr(VENDOR_DISPLAY_NAMES[vendor]) })}
                       />
                     </div>
                   )
                 })}
               </div>
             )}
-            <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">当前使用后端配置的 final_generation 模型</p>
+            <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">{tr("当前使用后端配置的 final_generation 模型")}</p>
           </div>
           </div>
         </ScrollArea>
@@ -401,14 +392,12 @@ export function ChatConfigPanel({ open, onOpenChange }: ChatConfigPanelProps) {
             onClick={() => onOpenChange(false)}
             className="rounded-xl border-slate-200/80 bg-white/50 backdrop-blur-sm hover:bg-white/70 dark:border-slate-600/80 dark:bg-slate-800/50 dark:hover:bg-slate-700/70"
           >
-            取消
-          </Button>
+            {tr("取消")}</Button>
           <Button 
             onClick={handleApply}
             className="rounded-xl bg-indigo-500/90 backdrop-blur-sm text-white shadow-md shadow-indigo-500/25 hover:bg-indigo-500 hover:shadow-lg hover:shadow-indigo-500/30"
           >
-            应用
-          </Button>
+            {tr("应用")}</Button>
         </div>
       </DialogContent>
     </Dialog>

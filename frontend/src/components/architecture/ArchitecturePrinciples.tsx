@@ -1,3 +1,4 @@
+import { translate as t, useTranslation } from '@/i18n'
 import { ArrowUpRight, ChevronDown } from 'lucide-react'
 import { architectureSourceUrl } from '@/data/architectureExperience'
 import './architecturePrinciples.css'
@@ -38,21 +39,22 @@ const principles = [
 ]
 
 export function ArchitecturePrinciples() {
+  useTranslation()
   return <div className="atlas-principles">
     <div className="atlas-principles-statement">
-      <h2>先建立证据，<br />再组织答案。</h2>
-      <p>检索到一段文字，只是开始。系统还要保留材料的原貌、定位与身份，让搜索可以继续深读，让结论可以回头核对。</p>
-      <div className="atlas-evidence-language" aria-label="贯穿系统的证据身份">
-        <div><span>来源</span><strong>它来自哪里</strong></div>
-        <div><span>位置</span><strong>原文中的哪一处</strong></div>
-        <div><span>类型</span><strong>原文、转写或观察</strong></div>
+      <h2>{t("先建立证据，")}<br />{t("再组织答案。")}</h2>
+      <p>{t("检索到一段文字，只是开始。系统还要保留材料的原貌、定位与身份，让搜索可以继续深读，让结论可以回头核对。")}</p>
+      <div className="atlas-evidence-language" aria-label={t("贯穿系统的证据身份")}>
+        <div><span>{t("来源")}</span><strong>{t("它来自哪里")}</strong></div>
+        <div><span>{t("位置")}</span><strong>{t("原文中的哪一处")}</strong></div>
+        <div><span>{t("类型")}</span><strong>{t("原文、转写或观察")}</strong></div>
       </div>
-      <span className="atlas-principles-note">贯穿系统的共同语言：证据</span>
+      <span className="atlas-principles-note">{t("贯穿系统的共同语言：证据")}</span>
     </div>
     <div className="atlas-principles-list">
       {principles.map((principle, index) => <details key={principle.title} className="atlas-principle" open={index === 0}>
-        <summary><span><h3>{principle.title}</h3><span>{principle.summary}</span></span><ChevronDown size={20} aria-hidden="true" /></summary>
-        <div className="atlas-principle-body"><p>{principle.reason}</p><p>{principle.mechanism}</p><p className="atlas-principle-boundary">{principle.boundary}</p><a href={architectureSourceUrl(principle.source)} target="_blank" rel="noreferrer">{principle.label}<ArrowUpRight size={14} aria-hidden="true" /></a></div>
+        <summary><span><h3>{t(principle.title)}</h3><span>{t(principle.summary)}</span></span><ChevronDown size={20} aria-hidden="true" /></summary>
+        <div className="atlas-principle-body"><p>{t(principle.reason)}</p><p>{t(principle.mechanism)}</p><p className="atlas-principle-boundary">{t(principle.boundary)}</p><a href={architectureSourceUrl(principle.source)} target="_blank" rel="noreferrer">{t(principle.label)}<ArrowUpRight size={14} aria-hidden="true" /></a></div>
       </details>)}
     </div>
   </div>

@@ -1,3 +1,5 @@
+import { translate as t, useTranslation } from '@/i18n'
+import { LanguageSelect } from '@/i18n/LanguageSelect'
 import {
   useEffect,
   useId,
@@ -169,6 +171,7 @@ function getSessionSearchResult(
 }
 
 function HighlightedSearchText({ text, query }: { text: string; query: string }) {
+  useTranslation()
   if (!query) return <>{text}</>
 
   const normalizedText = text.toLocaleLowerCase()
@@ -197,6 +200,7 @@ interface HistorySessionRowProps {
 }
 
 function HistorySessionRow({ session, active, activeRef, theme, onSelect, onTogglePinned, onRename, onDelete }: HistorySessionRowProps) {
+  useTranslation()
   const title = getConversationTitle(session)
   const [menuOpen, setMenuOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -206,7 +210,7 @@ function HistorySessionRow({ session, active, activeRef, theme, onSelect, onTogg
     className={cn('conversation-sidebar-row group relative flex min-w-0 items-center rounded-[10px]',
       railTransition, active ? theme.selected : theme.hover)}>
     <button type="button" data-conversation-select onClick={() => onSelect(session.id)} title={title}
-      aria-label={`${active ? '当前会话：' : '打开会话：'}${title}${session.isPinned ? '，已置顶' : ''}`}
+      aria-label={t("{{value1}}{{title}}{{value3}}", { value1: active ? t("当前会话：") : t("打开会话："), title: title, value3: session.isPinned ? t("，已置顶") : '' })}
       aria-current={active ? 'true' : undefined}
       className={cn('flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-3 pr-10 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset', theme.focus)}>
       <span className="conversation-sidebar-row-icon" data-active={active} aria-hidden><ConversationGlyph /></span>
@@ -220,27 +224,27 @@ function HistorySessionRow({ session, active, activeRef, theme, onSelect, onTogg
     }}>
       <DropdownMenu.Trigger asChild>
         <button ref={triggerRef} type="button" className="conversation-actions-trigger"
-          aria-label={`会话操作：${title}`} title="会话操作"><MoreHorizontal size={18} strokeWidth={1.8} aria-hidden /></button>
+          aria-label={t("会话操作：{{title}}", { title: title })} title={t("会话操作")}><MoreHorizontal size={18} strokeWidth={1.8} aria-hidden /></button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="conversation-actions-menu" align="end" sideOffset={5} collisionPadding={10}
-          aria-label="会话操作" onCloseAutoFocus={(event) => {
+          aria-label={t("会话操作")} onCloseAutoFocus={(event) => {
             // A dialog owns focus after rename/delete; the closing menu must not steal it.
             if (openingDialogRef.current) event.preventDefault()
           }}>
           <DropdownMenu.Item className="conversation-actions-item" onSelect={() => {
             openingDialogRef.current = true
             onRename(session, triggerRef.current)
-          }}><Pencil size={16} strokeWidth={1.7} aria-hidden />重命名</DropdownMenu.Item>
+          }}><Pencil size={16} strokeWidth={1.7} aria-hidden />{t("重命名")}</DropdownMenu.Item>
           <DropdownMenu.Item className="conversation-actions-item" onSelect={() => onTogglePinned(session.id)}>
             {session.isPinned ? <PinOff size={16} strokeWidth={1.7} aria-hidden /> : <Pin size={16} strokeWidth={1.7} aria-hidden />}
-            {session.isPinned ? '取消置顶' : '置顶'}
+            {session.isPinned ? t("取消置顶") : t("置顶")}
           </DropdownMenu.Item>
           <DropdownMenu.Separator className="conversation-actions-separator" />
           <DropdownMenu.Item className="conversation-actions-item conversation-actions-item--danger" onSelect={() => {
             openingDialogRef.current = true
             onDelete(session, triggerRef.current)
-          }}><Trash2 size={16} strokeWidth={1.7} aria-hidden />删除</DropdownMenu.Item>
+          }}><Trash2 size={16} strokeWidth={1.7} aria-hidden />{t("删除")}</DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
@@ -262,6 +266,7 @@ export function ConversationSidebar({
   onTogglePinnedConversation,
   onNavigate,
 }: ConversationSidebarProps) {
+  useTranslation()
   const sidebarRef = useRef<HTMLElement | null>(null)
   const activeSessionRef = useRef<HTMLDivElement | null>(null)
   const resizeOriginRef = useRef(0)
@@ -292,7 +297,7 @@ export function ConversationSidebar({
   const normalizedSearchQuery = normalizeSearchText(searchQuery)
   const orderedSessions = useMemo(() => sortConversationSessions(sessions), [sessions])
   const filteredNavigationItems = navigationItems.filter((item) =>
-    normalizeSearchText(`${item.label} ${item.description} ${item.keywords}`).includes(normalizedSearchQuery)
+    normalizeSearchText(`${t(item.label)} ${t(item.description)} ${item.keywords}`).includes(normalizedSearchQuery)
   )
   const matchingSessions = useMemo(
     () =>
@@ -420,7 +425,7 @@ export function ConversationSidebar({
       await onDeleteConversation(pendingDeletion.id)
       setPendingDeletion(null)
     } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : '无法停止后台任务，会话已保留，请重试。')
+      setDeleteError(error instanceof Error ? error.message : t("无法停止后台任务，会话已保留，请重试。"))
     } finally {
       deleteConfirmedRef.current = false
       setDeleting(false)
@@ -531,7 +536,7 @@ export function ConversationSidebar({
   return (
     <aside
       ref={sidebarRef}
-      aria-label="主导航与会话"
+      aria-label={t("主导航与会话")}
       style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}
       className={cn(
         'conversation-sidebar relative z-30 flex h-[100dvh] shrink-0 flex-col overflow-hidden border-r font-sans transition-[width] duration-200 ease-out motion-reduce:transition-none',
@@ -552,8 +557,8 @@ export function ConversationSidebar({
           <button
             type="button"
             onClick={onToggleCollapsed}
-            title={collapsed ? '展开侧栏' : '收起侧栏'}
-            aria-label={collapsed ? '展开侧栏' : '收起侧栏'}
+            title={collapsed ? t("展开侧栏") : t("收起侧栏")}
+            aria-label={collapsed ? t("展开侧栏") : t("收起侧栏")}
             className={cn(
               'grid h-[62px] w-[62px] place-items-center rounded-[18px]',
               theme.hover,
@@ -583,8 +588,8 @@ export function ConversationSidebar({
           ref={newConversationRef}
           type="button"
           onClick={onNewConversation}
-          title="新建对话"
-          aria-label="新建对话"
+          title={t("新建对话")}
+          aria-label={t("新建对话")}
           className={cn(
             'sidebar-nav-button flex h-10 w-full items-center rounded-[10px] px-[9px] text-[14px] font-medium tracking-[-0.01em]',
             theme.secondary,
@@ -597,11 +602,11 @@ export function ConversationSidebar({
           )}
         >
           <span className="sidebar-nav-icon" aria-hidden><SidebarGlyph name="new-conversation" /></span>
-          <span className={cn(collapsed && 'hidden', 'max-[640px]:hidden')}>新建对话</span>
+          <span className={cn(collapsed && 'hidden', 'max-[640px]:hidden')}>{t("新建对话")}</span>
         </button>
       </div>
 
-      <nav aria-label="功能导航" className={cn('shrink-0 pt-0.5', collapsed ? 'px-0' : 'px-3', 'max-[640px]:px-2')}>
+      <nav aria-label={t("功能导航")} className={cn('shrink-0 pt-0.5', collapsed ? 'px-0' : 'px-3', 'max-[640px]:px-2')}>
         <div className="space-y-0.5">
           {navigationItems.map((item) => {
             const active = activeView === item.id
@@ -611,8 +616,8 @@ export function ConversationSidebar({
                 key={item.id}
                 type="button"
                 onClick={() => onNavigate(item.id)}
-                title={item.label}
-                aria-label={item.label}
+                title={t(item.label)}
+                aria-label={t(item.label)}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'sidebar-nav-button flex h-10 w-full items-center rounded-[10px] px-[9px] text-[14px] font-medium tracking-[-0.01em]',
@@ -625,7 +630,7 @@ export function ConversationSidebar({
                 )}
               >
                 <span className="sidebar-nav-icon" aria-hidden><SidebarGlyph name={item.id} /></span>
-                <span className={cn(collapsed && 'hidden', 'max-[640px]:hidden')}>{item.label}</span>
+                <span className={cn(collapsed && 'hidden', 'max-[640px]:hidden')}>{t(item.label)}</span>
               </button>
             )
           })}
@@ -633,7 +638,7 @@ export function ConversationSidebar({
       </nav>
 
       <section
-        aria-label="最近会话"
+        aria-label={t("最近会话")}
         aria-hidden={collapsed}
         className={cn(
           'mt-5 flex min-h-0 flex-1 flex-col',
@@ -642,12 +647,12 @@ export function ConversationSidebar({
         )}
       >
         <div className={cn('shrink-0 px-3 pb-1.5', collapsed && 'hidden', 'max-[640px]:hidden')}>
-          <span className={cn('text-[12px] font-medium tracking-[0.02em]', theme.muted)}>最近会话</span>
+          <span className={cn('text-[12px] font-medium tracking-[0.02em]', theme.muted)}>{t("最近会话")}</span>
         </div>
 
         <div
           role="list"
-          aria-label="会话列表"
+          aria-label={t("会话列表")}
           className={cn(
             'min-h-0 flex-1 space-y-0 overflow-y-auto pb-3 scrollbar-hide',
             collapsed && 'hidden',
@@ -659,8 +664,7 @@ export function ConversationSidebar({
               className={cn('px-3 py-3 text-[13px] leading-5', theme.muted, collapsed && 'hidden', 'max-[640px]:hidden')}
               role="status"
             >
-              还没有对话
-            </p>
+               {t("还没有对话")} </p>
           ) : (
             orderedSessions.map((session) => {
               const active = activeView === 'chat' && session.id === activeSessionId
@@ -681,6 +685,7 @@ export function ConversationSidebar({
           'max-[640px]:mx-2.5'
         )}
       >
+        <div className={cn('sidebar-language mb-3', collapsed && 'hidden', 'max-[640px]:hidden')}><LanguageSelect /></div>
         <div
           className={cn(
             'grid items-center rounded-[14px] border p-1 shadow-[0_10px_30px_-24px_rgba(15,23,42,0.45)] backdrop-blur-sm',
@@ -690,7 +695,7 @@ export function ConversationSidebar({
           )}
         >
           <div
-            aria-label="当前用户：Tessmora"
+            aria-label={t("当前用户：Tessmora")}
             className={cn(
               'flex h-8 min-w-0 items-center justify-center',
               collapsed && 'hidden',
@@ -715,8 +720,8 @@ export function ConversationSidebar({
               setActiveSearchResult(null)
               setSearchOpen(true)
             }}
-            title="搜索页面与会话"
-            aria-label="搜索页面与会话"
+            title={t("搜索页面与会话")}
+            aria-label={t("搜索页面与会话")}
             className={cn(
               'h-8 w-full rounded-[10px] text-[12px] font-medium',
               collapsed ? 'grid h-9 place-items-center px-0' : 'flex items-center gap-1 px-1.5',
@@ -728,7 +733,7 @@ export function ConversationSidebar({
               'max-[640px]:grid max-[640px]:h-9 max-[640px]:place-items-center max-[640px]:px-0'
             )}
           >
-            <span className={cn(collapsed && 'hidden', 'max-[640px]:hidden')}>搜索</span>
+            <span className={cn(collapsed && 'hidden', 'max-[640px]:hidden')}>{t("搜索")}</span>
             <kbd
               className={cn(
                 'rounded-[5px] border border-slate-200/90 bg-white px-1 py-0.5 font-sans text-[8px] font-medium leading-none text-slate-400 shadow-sm',
@@ -754,8 +759,8 @@ export function ConversationSidebar({
           <button
             type="button"
             onClick={onToggleTheme}
-            title={isDark ? '切换至浅色主题' : '切换至深色主题'}
-            aria-label={isDark ? '切换至浅色主题' : '切换至深色主题'}
+            title={isDark ? t("切换至浅色主题") : t("切换至深色主题")}
+            aria-label={isDark ? t("切换至浅色主题") : t("切换至深色主题")}
             aria-pressed={isDark}
             className={cn(
               'grid h-8 w-full place-items-center rounded-[10px]',
@@ -780,7 +785,7 @@ export function ConversationSidebar({
       {!collapsed && (
         <div
           role="separator"
-          aria-label="调整侧栏宽度"
+          aria-label={t("调整侧栏宽度")}
           aria-orientation="vertical"
           aria-valuemin={SIDEBAR_MIN_WIDTH}
           aria-valuemax={getSidebarMaxWidth()}
@@ -788,7 +793,7 @@ export function ConversationSidebar({
           tabIndex={0}
           onPointerDown={handleResizeStart}
           onKeyDown={handleResizeKeyDown}
-          title="拖动调整侧栏宽度；方向键可微调"
+          title={t("拖动调整侧栏宽度；方向键可微调")}
           className={cn(
             'group absolute inset-y-0 right-0 z-40 w-3 touch-none cursor-col-resize outline-none focus-visible:bg-indigo-500/12 max-[640px]:hidden',
             isResizing ? 'bg-indigo-500/12' : 'hover:bg-indigo-500/[0.07]'
@@ -830,18 +835,18 @@ export function ConversationSidebar({
             }}>
               <div className="conversation-rename-heading">
                 <span aria-hidden><Pencil size={18} strokeWidth={1.7} /></span>
-                <Dialog.Title>重命名会话</Dialog.Title>
+                <Dialog.Title>{t("重命名会话")}</Dialog.Title>
               </div>
-              <Dialog.Description>设置一个方便查找的会话名称。</Dialog.Description>
-              <label className="sr-only" htmlFor={`${searchId}-rename`}>会话名称</label>
+              <Dialog.Description>{t("设置一个方便查找的会话名称。")}</Dialog.Description>
+              <label className="sr-only" htmlFor={`${searchId}-rename`}>{t("会话名称")}</label>
               <input id={`${searchId}-rename`} ref={renameInputRef} value={renameTitle} autoComplete="off"
                 onChange={(event) => setRenameTitle(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault()
                 }} />
               <div className="conversation-rename-actions">
-                <Dialog.Close asChild><button type="button">取消</button></Dialog.Close>
-                <button type="submit" disabled={!renameTitle.trim()}>保存</button>
+                <Dialog.Close asChild><button type="button">{t("取消")}</button></Dialog.Close>
+                <button type="submit" disabled={!renameTitle.trim()}>{t("保存")}</button>
               </div>
             </form>
           </Dialog.Content>
@@ -873,24 +878,24 @@ export function ConversationSidebar({
           >
             <div className="conversation-delete-heading">
               <span className="conversation-delete-symbol" aria-hidden><Trash2 size={19} strokeWidth={1.65} /></span>
-              <Dialog.Title>删除会话</Dialog.Title>
+              <Dialog.Title>{t("删除会话")}</Dialog.Title>
             </div>
             <Dialog.Description asChild>
               <div>
-                <p className="conversation-delete-description">将先停止此会话中运行的任务，再移除会话及其消息记录，此操作无法撤销。</p>
+                <p className="conversation-delete-description">{t("将先停止此会话中运行的任务，再移除会话及其消息记录，此操作无法撤销。")}</p>
                 <div className="conversation-delete-target">
                   <MessageSquare size={16} strokeWidth={1.6} aria-hidden />
                   <span>{pendingDeletion?.title}</span>
                 </div>
               </div>
             </Dialog.Description>
-            {deleteError && <p role="alert" className="conversation-delete-description text-red-600">删除失败，会话已保留。{deleteError}</p>}
+            {deleteError && <p role="alert" className="conversation-delete-description text-red-600">{t("删除失败，会话已保留。")}{deleteError}</p>}
             <div className="conversation-delete-actions">
               <Dialog.Close asChild>
-                <button ref={deleteCancelRef} type="button" className="conversation-delete-cancel" disabled={deleting}>取消</button>
+                <button ref={deleteCancelRef} type="button" className="conversation-delete-cancel" disabled={deleting}>{t("取消")}</button>
               </Dialog.Close>
               <button type="button" className="conversation-delete-confirm" disabled={deleting}
-                onClick={() => void confirmConversationDeletion()}>{deleting ? '正在停止任务…' : '删除会话'}</button>
+                onClick={() => void confirmConversationDeletion()}>{deleting ? t("正在停止任务…") : t("删除会话")}</button>
             </div>
           </Dialog.Content>
         </Dialog.Portal>
@@ -910,11 +915,10 @@ export function ConversationSidebar({
             }}
           >
             <Dialog.Description className="sr-only">
-              搜索功能页面、会话标题、提问或回答。使用上下方向键选择结果，按 Enter 打开，按 Esc 关闭。
-            </Dialog.Description>
+               {t("搜索功能页面、会话标题、提问或回答。使用上下方向键选择结果，按 Enter 打开，按 Esc 关闭。")} </Dialog.Description>
             <div className="conversation-search-header">
               <div className="conversation-search-heading">
-                <Dialog.Title>搜索</Dialog.Title>
+                <Dialog.Title>{t("搜索")}</Dialog.Title>
               </div>
               <div className="conversation-search-input-row">
                 <Search size={19} strokeWidth={1.8} aria-hidden />
@@ -926,23 +930,23 @@ export function ConversationSidebar({
                   value={searchQuery}
                   onChange={(event) => { setSearchQuery(event.target.value); setActiveSearchResult(null) }}
                   onKeyDown={handleSearchKeyDown}
-                  placeholder="搜索页面、问题或回答…"
-                  aria-label="搜索页面、问题或回答"
+                  placeholder={t("搜索页面、问题或回答…")}
+                  aria-label={t("搜索页面、问题或回答")}
                   aria-autocomplete="list"
                   aria-expanded={searchOpen}
                   aria-controls={`${searchId}-results`}
                   aria-activedescendant={selectedSearchResult ? searchOptionId(selectedSearchResult) : undefined}
                 />
-                {searchQuery && <button type="button" className="conversation-search-clear" onClick={clearSearchQuery} aria-label="清空搜索内容"><X size={14} aria-hidden /></button>}
+                {searchQuery && <button type="button" className="conversation-search-clear" onClick={clearSearchQuery} aria-label={t("清空搜索内容")}><X size={14} aria-hidden /></button>}
                 <Dialog.Close asChild>
-                  <button type="button" aria-label="关闭搜索" className="conversation-search-close">esc</button>
+                  <button type="button" aria-label={t("关闭搜索")} className="conversation-search-close">esc</button>
                 </Dialog.Close>
               </div>
             </div>
-            <div ref={searchResultsRef} className="conversation-search-results" id={`${searchId}-results`} role="listbox" aria-label="页面与会话搜索结果">
+            <div ref={searchResultsRef} className="conversation-search-results" id={`${searchId}-results`} role="listbox" aria-label={t("页面与会话搜索结果")}>
               {filteredNavigationItems.length > 0 && (
                 <div className="conversation-search-group" role="group" aria-labelledby={`${searchId}-navigation`}>
-                  <div className="conversation-search-group-heading" id={`${searchId}-navigation`}>页面与功能 <span>{filteredNavigationItems.length}</span></div>
+                  <div className="conversation-search-group-heading" id={`${searchId}-navigation`}>{t("页面与功能")} <span>{filteredNavigationItems.length}</span></div>
                   {filteredNavigationItems.map((item) => {
                     const id = `page:${item.id}`
                     return (
@@ -957,8 +961,8 @@ export function ConversationSidebar({
                       >
                         <span className="conversation-search-option-icon"><SidebarGlyph name={item.id} size={18} /></span>
                         <span className="conversation-search-option-copy">
-                          <span className="conversation-search-option-title"><span><HighlightedSearchText text={item.label} query={normalizedSearchQuery} /></span>{activeView === item.id && <span className="conversation-search-result-tag">当前</span>}</span>
-                          <span className="conversation-search-option-description"><HighlightedSearchText text={item.description} query={normalizedSearchQuery} /></span>
+                          <span className="conversation-search-option-title"><span><HighlightedSearchText text={t(item.label)} query={normalizedSearchQuery} /></span>{activeView === item.id && <span className="conversation-search-result-tag">{t("当前")}</span>}</span>
+                          <span className="conversation-search-option-description"><HighlightedSearchText text={t(item.description)} query={normalizedSearchQuery} /></span>
                         </span>
                         <CornerDownLeft size={15} className="conversation-search-open-icon" aria-hidden />
                       </button>
@@ -968,7 +972,7 @@ export function ConversationSidebar({
               )}
               {filteredSessions.length > 0 && (
                 <div className="conversation-search-group" role="group" aria-labelledby={`${searchId}-sessions`}>
-                  <div className="conversation-search-group-heading" id={`${searchId}-sessions`}>{normalizedSearchQuery ? '会话与消息' : '最近会话'} <span>{filteredSessions.length}{matchingSessions.length > filteredSessions.length ? ` / ${matchingSessions.length}` : ''}</span></div>
+                  <div className="conversation-search-group-heading" id={`${searchId}-sessions`}>{normalizedSearchQuery ? t("会话与消息") : t("最近会话")} <span>{filteredSessions.length}{matchingSessions.length > filteredSessions.length ? ` / ${matchingSessions.length}` : ''}</span></div>
                   {filteredSessions.map((result) => {
                     const id = `chat:${result.session.id}`
                     return (
@@ -979,44 +983,44 @@ export function ConversationSidebar({
                         onMouseEnter={() => setActiveSearchResult(id)}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => activateSearchResult(id)}
-                        aria-label={`打开会话：${result.title}${result.matches.length ? `，匹配${result.matches.map(match => match.role === 'assistant' ? '回答' : '提问').join('、')}` : ''}`}
+                        aria-label={t("打开会话：{{value1}}{{value2}}", { value1: result.title, value2: result.matches.length ? t("，匹配{{value1}}", { value1: result.matches.map(match => match.role === 'assistant' ? t("回答") : t("提问")).join('、') }) : '' })}
                         className="conversation-search-option"
                       >
                         <span className="conversation-search-option-icon"><MessageSquare size={17} strokeWidth={1.7} aria-hidden /></span>
                         <span className="conversation-search-option-copy">
                           <span className="conversation-search-option-title">
                             <span><HighlightedSearchText text={result.title} query={normalizedSearchQuery} /></span>
-                            {result.session.id === activeSessionId && activeView === 'chat' && <span className="conversation-search-result-tag">当前</span>}
-                            {result.titleMatched && <span className="conversation-search-result-tag">标题匹配</span>}
+                            {result.session.id === activeSessionId && activeView === 'chat' && <span className="conversation-search-result-tag">{t("当前")}</span>}
+                            {result.titleMatched && <span className="conversation-search-result-tag">{t("标题匹配")}</span>}
                           </span>
                           {result.matches.length > 0 ? (
                             <span className="conversation-search-matches">
                               {result.matches.map((match) => (
                                 <span key={match.id} className="conversation-search-match">
-                                  <span className="conversation-search-match-role" data-role={match.role}>{match.role === 'assistant' ? '回答' : '提问'}</span>
+                                  <span className="conversation-search-match-role" data-role={match.role}>{match.role === 'assistant' ? t("回答") : t("提问")}</span>
                                   <span className="conversation-search-snippet"><HighlightedSearchText text={match.snippet} query={normalizedSearchQuery} /></span>
                                 </span>
                               ))}
                             </span>
-                          ) : <span className="conversation-search-option-description">{result.session.messages.length > 0 ? `${result.session.messages.length} 条消息` : '尚无消息'} · 打开会话</span>}
+                          ) : <span className="conversation-search-option-description">{result.session.messages.length > 0 ? t("{{value1}} 条消息", { value1: result.session.messages.length }) : t("尚无消息")}  {t("· 打开会话")}</span>}
                         </span>
                         <CornerDownLeft size={15} className="conversation-search-open-icon" aria-hidden />
                       </button>
                     )
                   })}
-                  {matchingSessions.length > filteredSessions.length && <p className="conversation-search-more">显示前 {filteredSessions.length} 个会话，可输入更具体的关键词继续查找。</p>}
+                  {matchingSessions.length > filteredSessions.length && <p className="conversation-search-more">{t("显示前")} {filteredSessions.length}  {t("个会话，可输入更具体的关键词继续查找。")}</p>}
                 </div>
               )}
               {searchResultIds.length === 0 && (
                 <div className="conversation-search-empty">
                   <span className="conversation-search-empty-icon"><Search size={21} strokeWidth={1.5} aria-hidden /></span>
-                  <strong>没有找到相关结果</strong>
-                  <p>试试更短的关键词，也可以搜索会话中的提问或回答。</p>
+                  <strong>{t("没有找到相关结果")}</strong>
+                  <p>{t("试试更短的关键词，也可以搜索会话中的提问或回答。")}</p>
                 </div>
               )}
             </div>
             <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-              {searchResultIds.length ? `${searchResultIds.length} 项结果` : '暂无匹配'}
+              {searchResultIds.length ? t("{{value1}} 项结果", { value1: searchResultIds.length }) : t("暂无匹配")}
             </span>
           </Dialog.Content>
         </Dialog.Portal>

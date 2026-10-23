@@ -1,13 +1,15 @@
+import { translate as tr, getLanguage } from '../i18n'
 import { piTerminal, type PiEvent, type PiRun, type PiStep, type PiTrace } from '../types/pi'
 
-export function submissionFeedback(step: Pick<PiStep, 'kind' | 'label' | 'status' | 'text'>): { summary: string; detail: string } | undefined {
+export function submissionFeedback(step: Pick<PiStep, 'kind' | 'label' | 'status' | 'text' | 'errorCode'>): { summary: string; detail: string } | undefined {
   if (step.kind !== 'tool' || step.label !== 'submit_answer' || step.status !== 'failed'
-    || !step.text?.startsWith('逐项检查未通过')) return undefined
-  const fallback = { summary: '本次草稿未通过校验。', detail: step.text }
+    || !(step.text?.startsWith('逐项检查未通过') || step.text?.startsWith('Unit checks failed.')
+      || (step.text?.includes('{') && ['answer_too_long', 'incomplete_statements', 'statement_citation_mismatch', 'unavailable_support', 'missing_support'].includes(step.errorCode || '')))) return undefined
+  const fallback = { summary: tr('本次草稿未通过校验。'), detail: step.text! }
   try {
-    const start = step.text.indexOf('{')
+    const start = step.text!.indexOf('{')
     if (start < 0) return fallback
-    const report: unknown = JSON.parse(step.text.slice(start))
+    const report: unknown = JSON.parse(step.text!.slice(start))
     if (!report || typeof report !== 'object' || Array.isArray(report)) return fallback
     const { body_characters: actual, declared_max_characters: maximum, errors } = report as Record<string, unknown>
     const codes = new Set(Array.isArray(errors) ? errors.flatMap(error => error && typeof error === 'object'
@@ -15,12 +17,12 @@ export function submissionFeedback(step: Pick<PiStep, 'kind' | 'label' | 'status
     const parts: string[] = []
     if (codes.has('answer_too_long') && typeof actual === 'number' && Number.isSafeInteger(actual)
       && typeof maximum === 'number' && Number.isSafeInteger(maximum) && maximum > 0 && actual > maximum) {
-      parts.push(`草稿 ${actual} 字符，超过 ${maximum} 字符上限。`)
+      parts.push(tr('草稿 {{actual}} 字符，超过 {{maximum}} 字符上限。', { actual, maximum }))
     }
-    if (codes.has('incomplete_statements')) parts.push('逐项核验记录尚未完整对应正文。')
+    if (codes.has('incomplete_statements')) parts.push(tr('逐项核验记录尚未完整对应正文。'))
     if (['citation_mismatch', 'statement_citation_mismatch', 'unavailable_support', 'unsupported_citations', 'missing_support']
-      .some(code => codes.has(code))) parts.push('引用标记或来源记录需要修正。')
-    return { summary: parts.join('') || fallback.summary, detail: step.text }
+      .some(code => codes.has(code))) parts.push(tr('引用标记或来源记录需要修正。'))
+    return { summary: parts.join(getLanguage() === 'en-US' ? ' ' : '') || fallback.summary, detail: step.text! }
   } catch {
     // Truncated and older records remain inspectable, without guessing counts
     // or turning a protocol failure into a semantic verdict.
@@ -37,11 +39,12 @@ export function applyPiEvent(previous: PiTrace, event: PiEvent): PiTrace {
   if (event.protocol_version !== 1 || event.run_id !== previous.runId || event.seq <= previous.seq) return previous
   if (previous.seq > 0 && piTerminal(previous.status)) return previous
   // The transport replays missing events before allowing the cursor to advance.
-  if (event.seq !== previous.seq + 1) throw new Error('Agent 过程事件存在缺口，正在重新同步')
+  if (event.seq !== previous.seq + 1) throw new Error(tr('Agent 过程事件存在缺口，正在重新同步'))
   const next = { ...previous, seq: event.seq, connectionError: undefined }
   const data = event.data
   const stepId = event.span_id || (data.turn != null ? `model:${data.turn}` : String(data.tool_call_id || event.event_id))
   const updateStep = (step: PiStep) => {
+    if (step.kind === 'context') step = { ...step, presentation: { type: event.type, data: event.data } }
     next.steps = previous.steps.some(s => s.id === step.id)
       ? previous.steps.map(s => s.id === step.id ? step : s) : [...previous.steps, step]
   }
@@ -118,7 +121,64 @@ export function applyPiEvent(previous: PiTrace, event: PiEvent): PiTrace {
       args: data.args as PiStep['args'] || old?.args, parentId: event.parent_span_id || old?.parentId,
       text: typeof data.message === 'string' ? data.message : typeof data.error === 'string' ? data.error : old?.text,
       evidenceIds: data.evidence_ids as number[] | undefined || old?.evidenceIds,
-      artifactId: typeof data.artifact_id === 'string' ? data.artifact_id : old?.artifactId })
+      artifactId: typeof data.artifact_id === 'string' ? data.artifact_id : old?.artifactId,
+      errorCode: typeof data.code === 'string' ? data.code : old?.errorCode })
   }
   return next
+}
+
+/** Format authored trace chrome on render; never translate model prose or source material. */
+export function piStepText(step: PiStep): string | undefined {
+  if (step.kind !== 'context') return step.text
+  const event = step.presentation
+  if (event?.type === 'answer.requirements') {
+    const data = event.data
+    const points = Array.isArray(data.required_points) ? data.required_points.filter((point): point is string => typeof point === 'string') : []
+    return [typeof data.max_characters === 'number' ? tr('正文上限 {{count}} 字符。', { count: data.max_characters }) : tr('未登记正文字符上限。'),
+      points.length ? tr('回答要点：{{text}}', { text: points.join('；') }) : '',
+      typeof data.length_quote === 'string' ? tr('用户原句：{{text}}', { text: data.length_quote }) : '',
+      tr('以上为 Pi 对用户要求的理解。')].filter(Boolean).join('\n')
+  }
+  if (event?.type === 'answer.plan') {
+    const items = Array.isArray(event.data.items) ? event.data.items.filter((item): item is Record<string, unknown> =>
+      !!item && typeof item === 'object' && !Array.isArray(item)) : []
+    const labels: Record<string, string> = { pending: '待补充', ready: '已就绪', incomplete: '仍有缺项', unavailable: '缺少依据' }
+    return items.map(item => `${tr(labels[String(item.status)] || '待补充')} · ${String(item.requirement || '')}`
+      + (item.basis === 'user_input' ? tr('（依据用户输入）') : '')
+      + (['incomplete', 'unavailable'].includes(String(item.status)) && typeof item.gap === 'string' ? `：${item.gap}` : '')).join('\n')
+      + '\n' + tr('以上为 Agent 的任务理解与选择，未独立验证语义支持。')
+  }
+  if (event?.type === 'context.compacted') {
+    const drafts = typeof event.data.archived_answer_attempts === 'number' ? event.data.archived_answer_attempts : 0
+    const results = typeof event.data.archived_tool_results === 'number' ? event.data.archived_tool_results : 0
+    return [results ? tr('{{count}} 份工具结果保留在任务记录中。', { count: results }) : '', drafts
+      ? tr('{{count}} 次被拒草稿的完整内容与失败原因保留在任务记录中；模型继续使用最新草稿和反馈。', { count: drafts })
+      : tr('原始证据与完整过程仍可查看。')].filter(Boolean).join('\n')
+  }
+  // Older saved traces carry authored labels mixed with verbatim user values.
+  // Match only full wrapper lines/prefixes, leaving interpolated values intact.
+  return step.text?.split('\n').map((line, index, lines) => {
+    let match = /^正文上限 (\d+) 字符。$/.exec(line)
+    if (match) return tr('正文上限 {{count}} 字符。', { count: match[1] })
+    match = /^来源范围已确认，可读取 (\d+) 项资料。$/.exec(line)
+    if (match) return tr('来源范围已确认，可读取 {{count}} 项资料。', { count: match[1] })
+    match = /^(\d+) 份工具结果保留在任务记录中。$/.exec(line)
+    if (match) return tr('{{count}} 份工具结果保留在任务记录中。', { count: match[1] })
+    match = /^(\d+) 次被拒草稿的完整内容与失败原因保留在任务记录中；模型继续使用最新草稿和反馈。$/.exec(line)
+    if (match) return tr('{{count}} 次被拒草稿的完整内容与失败原因保留在任务记录中；模型继续使用最新草稿和反馈。', { count: match[1] })
+    if (step.label === '已登记回答要求') {
+      if (line.startsWith('用户原句：')) return tr('用户原句：{{text}}', { text: line.slice(5) })
+      if (line.startsWith('回答要点：')) return tr('回答要点：{{text}}', { text: line.slice(5) })
+      if (index === 0 && line === '未登记正文字符上限。') return tr(line)
+      if (index === lines.length - 1 && line === '以上为 Pi 对用户要求的理解。') return tr(line)
+      return line
+    }
+    if (step.label === '任务进度与依据') {
+      match = /^(待补充|已就绪|仍有缺项|缺少依据) · (.*)$/.exec(line)
+      if (match) return `${tr(match[1])} · ${match[2]}`
+      if (index === lines.length - 1 && line === '以上为 Agent 的任务理解与选择，未独立验证语义支持。') return tr(line)
+      return line
+    }
+    return tr(line)
+  }).join('\n')
 }

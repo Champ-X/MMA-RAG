@@ -1,3 +1,4 @@
+import { translate as t, useTranslation } from '@/i18n'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import { useChatStore } from '@/store/useChatStore'
@@ -23,6 +24,7 @@ const InspectorDrawer = lazy(() =>
 )
 
 function RoutePanelLoading({ label }: { label: string }) {
+  useTranslation()
   return (
     <div
       className="flex h-full min-h-0 items-center justify-center"
@@ -38,6 +40,7 @@ function RoutePanelLoading({ label }: { label: string }) {
 }
 
 export function AppLayout() {
+  useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
   const { sessionId: routeSessionId, knowledgeBaseId: routeKnowledgeBaseId } = useParams<{
@@ -199,12 +202,12 @@ export function AppLayout() {
       {/* 主内容区域：核心视图常驻挂载；架构页首次访问后常驻，避免对话页跳转时卸载中断流式等 */}
       <main
         className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfcfe] dark:bg-slate-950"
-        aria-label="主内容区"
+        aria-label={t("主内容区")}
       >
         <div
           className={cn('flex-1 min-h-0 overflow-hidden', !isChatActive && 'hidden')}
           aria-hidden={!isChatActive}
-          aria-label="对话工作区"
+          aria-label={t("对话工作区")}
           hidden={!isChatActive}
           role="region"
         >
@@ -213,12 +216,12 @@ export function AppLayout() {
         <div
           className={cn('flex-1 min-h-0 overflow-hidden p-2 md:p-3', !isKnowledgeActive && 'hidden')}
           aria-hidden={!isKnowledgeActive}
-          aria-label="知识库工作台"
+          aria-label={t("知识库工作台")}
           hidden={!isKnowledgeActive}
           role="region"
         >
           {(isKnowledgeActive || hasVisitedKnowledge) ? (
-            <Suspense fallback={<RoutePanelLoading label="正在载入知识库工作台…" />}>
+            <Suspense fallback={<RoutePanelLoading label={t("正在载入知识库工作台…")} />}>
               <KnowledgeList
                 routeKnowledgeBaseId={routeKnowledgeBaseId}
                 onRouteChange={(knowledgeBaseId) => {
@@ -235,12 +238,12 @@ export function AppLayout() {
         <div
           className={cn('flex-1 min-h-0 overflow-hidden p-2 md:p-3', !isSettingsActive && 'hidden')}
           aria-hidden={!isSettingsActive}
-          aria-label="设置中心"
+          aria-label={t("设置中心")}
           hidden={!isSettingsActive}
           role="region"
         >
           {(isSettingsActive || hasVisitedSettings) ? (
-            <Suspense fallback={<RoutePanelLoading label="正在载入设置中心…" />}>
+            <Suspense fallback={<RoutePanelLoading label={t("正在载入设置中心…")} />}>
               <SettingsPage />
             </Suspense>
           ) : null}
@@ -248,12 +251,12 @@ export function AppLayout() {
         <div
           className={cn('flex-1 min-h-0 overflow-hidden p-2 md:p-3', !isArchitectureActive && 'hidden')}
           aria-hidden={!isArchitectureActive}
-          aria-label="架构导读"
+          aria-label={t("架构导读")}
           hidden={!isArchitectureActive}
           role="region"
         >
           {(isArchitectureActive || hasVisitedArchitecture) ? (
-            <Suspense fallback={<RoutePanelLoading label="正在载入架构导读…" />}>
+            <Suspense fallback={<RoutePanelLoading label={t("正在载入架构导读…")} />}>
               <ArchitecturePage />
             </Suspense>
           ) : null}

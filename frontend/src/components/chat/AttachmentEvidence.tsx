@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Image as ImageIcon, Music, Video, X } from 'lucide-react'
 import type { CitationReference } from '@/types/sse'
@@ -13,6 +14,7 @@ export function AttachmentEvidence({ reference, displayNumber, onOpen, preview =
   onOpen?: (rect: DOMRect, target: HTMLElement) => void
   preview?: boolean
 }) {
+  useTranslation()
   const attachment = useChatStore(state => state.getActiveSession()?.messages
     .flatMap(message => message.role === 'user' ? message.attachments ?? [] : [])
     .find(item => item.id === reference.attachment_id))
@@ -34,18 +36,18 @@ export function AttachmentEvidence({ reference, displayNumber, onOpen, preview =
   const current = media.id === reference.attachment_id ? media : { loaded: false, url: undefined }
   const savedOriginal = piOriginalUrl(reference)
   const src = current.url || savedOriginal || (reference.type === 'image' ? attachment?.thumbDataUrl : undefined)
-  const label = `本机${reference.type === 'image' ? '图片' : reference.type === 'audio' ? '音频' : '视频'}：${reference.file_name}`
+  const label = tr("本机{{v0}}：{{v1}}", { v0: reference.type === 'image' ? tr("图片") : reference.type === 'audio' ? tr("音频") : tr("视频"), v1: reference.file_name })
   const Icon = reference.type === 'image' ? ImageIcon : reference.type === 'audio' ? Music : Video
   const header = <><Icon size={15} className="shrink-0 text-teal-600 dark:text-teal-300" aria-hidden />
     <span className="min-w-0 flex-1 truncate" title={reference.file_name}>{reference.file_name}</span>
-    <span className="shrink-0 text-[11px] text-teal-700 dark:text-teal-300">本机附件{displayNumber != null && ` · [${displayNumber}]`}</span></>
+    <span className="shrink-0 text-[11px] text-teal-700 dark:text-teal-300">{tr("本机附件")}{displayNumber != null && ` · [${displayNumber}]`}</span></>
   return (
     <figure data-attachment-evidence={reference.attachment_id} className={cn(
       'mx-auto w-full min-w-0 overflow-hidden rounded-xl border border-dashed border-teal-200 bg-teal-50/30 dark:border-teal-700/60 dark:bg-teal-950/20',
       preview ? '' : 'my-3 max-w-[38rem]'
     )}>
       {onOpen ? <button type="button" onClick={event => onOpen(event.currentTarget.getBoundingClientRect(), event.currentTarget)}
-        aria-label={`查看附件引用：${reference.file_name}`}
+        aria-label={tr("查看附件引用：{{v0}}", { v0: reference.file_name })}
         className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs text-slate-600 hover:bg-teal-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-teal-500 dark:text-slate-300 dark:hover:bg-teal-900/20">{header}</button>
         : <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-slate-600 dark:text-slate-300">{header}</div>}
       {src && !failed ? (
@@ -56,9 +58,9 @@ export function AttachmentEvidence({ reference, displayNumber, onOpen, preview =
             ? <div className="px-3 pb-3"><audio src={src} controls preload="metadata" aria-label={label} onError={() => setFailed(true)} className="h-10 w-full [color-scheme:light] dark:[color-scheme:dark]" /></div>
             : <video src={src} controls playsInline preload="metadata" aria-label={label} onError={() => setFailed(true)} className="max-h-[360px] w-full bg-black" />
       ) : <p role="status" className="px-3 pb-3 text-xs text-slate-500 dark:text-slate-400">
-        {!current.loaded ? '正在恢复附件…' : failed ? '当前浏览器无法预览此附件。' : '本机原文件已清理，无法预览。引用的解析内容仍保留。'}
+        {!current.loaded ? tr("正在恢复附件…") : failed ? tr("当前浏览器无法预览此附件。") : tr("本机原文件已清理，无法预览。引用的解析内容仍保留。")}
       </p>}
-      {src && !current.url && !savedOriginal && current.loaded && <p className="px-3 py-2 text-xs text-slate-500">原文件已清理，当前仅展示保存的缩略图。</p>}
+      {src && !current.url && !savedOriginal && current.loaded && <p className="px-3 py-2 text-xs text-slate-500">{tr("原文件已清理，当前仅展示保存的缩略图。")}</p>}
     </figure>
   )
 }
@@ -66,6 +68,7 @@ export function AttachmentEvidence({ reference, displayNumber, onOpen, preview =
 export function AttachmentCitationPopover({ item, rect, onClose }: {
   item: CitationReference; rect: DOMRect; onClose: () => void
 }) {
+  useTranslation()
   const titleId = useId()
   const closeRef = useRef<HTMLButtonElement>(null)
   useEffect(() => { closeRef.current?.focus({ preventScroll: true }) }, [item.attachment_id])
@@ -78,15 +81,15 @@ export function AttachmentCitationPopover({ item, rect, onClose }: {
     className="z-40 flex flex-col overflow-hidden rounded-2xl border border-teal-200/80 bg-white shadow-xl dark:border-teal-800 dark:bg-slate-950">
     <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
       <div className="min-w-0 flex-1"><h2 id={titleId} className="truncate text-sm font-semibold" title={item.file_name}>{item.file_name}</h2>
-        <p className="mt-1 text-xs text-teal-700 dark:text-teal-300">本机附件 · 来自此对话</p></div>
-      <button ref={closeRef} type="button" onClick={onClose} aria-label="关闭引用预览"
+        <p className="mt-1 text-xs text-teal-700 dark:text-teal-300">{tr("本机附件 · 来自此对话")}</p></div>
+      <button ref={closeRef} type="button" onClick={onClose} aria-label={tr("关闭引用预览")}
         className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-500 dark:hover:bg-slate-800"><X size={16} aria-hidden /></button>
     </div>
     <div className="min-h-0 overflow-y-auto p-4">
       <AttachmentEvidence reference={item} preview />
-      <div className="mt-4 text-xs font-medium text-slate-500 dark:text-slate-400">回答依据的附件解析</div>
-      <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700 dark:text-slate-200">{item.content || '没有保存的解析内容。'}</p>
-      {item.media_info?.sampled_seconds && <p className="mt-3 text-xs text-slate-500">视频按 {item.media_info.sampled_seconds.map(second => `${second}s`).join('、')} 抽样解析。</p>}
+      <div className="mt-4 text-xs font-medium text-slate-500 dark:text-slate-400">{tr("回答依据的附件解析")}</div>
+      <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700 dark:text-slate-200">{item.content || tr("没有保存的解析内容。")}</p>
+      {item.media_info?.sampled_seconds && <p className="mt-3 text-xs text-slate-500">{tr("视频按 {{times}} 抽样解析。", { times: item.media_info.sampled_seconds.map(second => `${second}s`).join(', ') })}</p>}
     </div>
   </div>
 }

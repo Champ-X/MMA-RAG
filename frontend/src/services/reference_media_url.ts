@@ -1,3 +1,4 @@
+import { translate as tr } from '@/i18n'
 import { chatApi } from './api_client'
 
 const MIN_FRESH_TTL_MS = 60_000
@@ -60,7 +61,7 @@ export async function getFreshReferenceMediaUrl({
   if (!force && isReferenceMediaUrlFresh(currentUrl)) return currentUrl!
 
   const params = { kb_id: kbId.trim(), file_path: filePath.trim() }
-  if (!params.kb_id || !params.file_path) throw new Error('缺少知识库或文件路径，无法刷新媒体地址')
+  if (!params.kb_id || !params.file_path) throw new Error(tr("缺少知识库或文件路径，无法刷新媒体地址"))
   const key = JSON.stringify([type, params.kb_id, params.file_path])
   const cached = mediaUrlCache.get(key)
   if (!force && cached && cached.expiresAt > Date.now() + MIN_FRESH_TTL_MS) {
@@ -77,7 +78,7 @@ export async function getFreshReferenceMediaUrl({
   }
   const request = resolveUrl()
     .then((url) => {
-      if (!url?.trim()) throw new Error('媒体播放或预览地址为空')
+      if (!url?.trim()) throw new Error(tr("媒体播放或预览地址为空"))
       const expiresAt = getPresignedExpiry(url) ?? Date.now() + 5 * 60_000
       mediaUrlCache.set(key, { url, expiresAt })
       return url

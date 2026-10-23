@@ -1,3 +1,4 @@
+import { translate as tr, getLanguage } from '@/i18n'
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { chatApi } from '@/services/api_client';
@@ -292,7 +293,7 @@ export const useChatStore = create<ChatStore>()(
         
         const newSession: ChatSession = {
           id: sessionId,
-          title: options.title || `新对话 ${new Date().toLocaleString()}`,
+          title: options.title || tr('新对话 {{date}}', { date: new Date().toLocaleString(getLanguage()) }),
           messages: [],
           knowledgeBaseIds: options.knowledgeBaseIds || [],
           kbMode: 'auto',
@@ -325,7 +326,7 @@ export const useChatStore = create<ChatStore>()(
           const now = Date.now();
           const newSession: ChatSession = {
             id: sessionId,
-            title: options.title || `新对话 ${new Date().toLocaleString()}`,
+            title: options.title || tr('新对话 {{date}}', { date: new Date().toLocaleString(getLanguage()) }),
             messages: [],
             knowledgeBaseIds: options.knowledgeBaseIds || [],
             kbMode: 'auto',
@@ -381,7 +382,7 @@ export const useChatStore = create<ChatStore>()(
             const now = Date.now();
             const newSession: ChatSession = {
               id: `session_${now}_${Math.random().toString(36).substr(2, 9)}`,
-              title: `新对话 ${new Date().toLocaleString()}`,
+              title: tr('新对话 {{date}}', { date: new Date().toLocaleString(getLanguage()) }),
               messages: [],
               knowledgeBaseIds: [],
               kbMode: 'auto',

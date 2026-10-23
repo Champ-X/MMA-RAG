@@ -198,3 +198,7 @@ button:is(:hover, :focus-visible) > .sidebar-utility-icon { color: var(--sidebar
 @media (prefers-reduced-motion: reduce) {
   .sidebar-nav-icon, .sidebar-utility-icon, .conversation-glyph path, .conversation-delete-actions button, .conversation-actions-trigger { transition: none; }
 }
+
+.sidebar-language { min-width: 0; }
+.sidebar-language label { font-size: 12px; gap: 6px; }
+.sidebar-language select { min-width: 0; max-width: 100%; font-size: 12px; }

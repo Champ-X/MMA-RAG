@@ -1,3 +1,4 @@
+import { translate as t, useTranslation } from '@/i18n'
 import { useEffect, useRef, useState } from 'react'
 import { ArrowDown, ArrowRight, ArrowUpRight, AudioLines, Bot, Braces, Check, ChevronRight, Code2, Database, FileText, Image, Layers3, MessageSquare, Repeat2, Search, ShieldCheck, Video, X } from 'lucide-react'
 import { architectureModes, architectureSourceUrl, type ArchitectureMode } from '@/data/architectureExperience'
@@ -22,6 +23,7 @@ const paths = {
 } as const
 
 export function ArchitectureMap({ mode, onModeChange }: { mode: ArchitectureMode; onModeChange: (mode: ArchitectureMode) => void }) {
+  useTranslation()
   const [selected, setSelected] = useState<ContractId | null>(null)
   const opener = useRef<HTMLButtonElement | null>(null)
   const detailHeading = useRef<HTMLHeadingElement>(null)
@@ -39,66 +41,66 @@ export function ArchitectureMap({ mode, onModeChange }: { mode: ArchitectureMode
     })
   }
   const node = (id: ContractId, title: string, sub: string, Icon: typeof Search) => (
-    <button type="button" className="atlas-flow-node" aria-expanded={selected === id} aria-controls="architecture-node-detail" onClick={event => select(id, event.currentTarget)} aria-label={`查看${contracts[id].title}职责`}>
-      <Icon size={20} strokeWidth={1.6} aria-hidden="true" /><span><strong>{title}</strong><small>{sub}</small></span><ChevronRight size={15} aria-hidden="true" />
+    <button type="button" className="atlas-flow-node" aria-expanded={selected === id} aria-controls="architecture-node-detail" onClick={event => select(id, event.currentTarget)} aria-label={t("查看{{value1}}职责", { value1: t(contracts[id].title) })}>
+      <Icon size={20} strokeWidth={1.6} aria-hidden="true" /><span><strong>{t(title)}</strong><small>{t(sub)}</small></span><ChevronRight size={15} aria-hidden="true" />
     </button>
   )
   return <div className="atlas-map-explorer" data-path={mode}>
-    <div className="atlas-path-picker" role="group" aria-label="选择架构执行路径">
+    <div className="atlas-path-picker" role="group" aria-label={t("选择架构执行路径")}>
       {architectureModes.map(item => <button key={item.id} type="button" aria-pressed={mode === item.id} onClick={() => onModeChange(item.id)}>
         {item.id === 'pi' ? <span className="atlas-pi-glyph" aria-hidden="true">π</span> : item.id === 'agent' ? <Repeat2 size={18} aria-hidden="true" /> : <Search size={18} aria-hidden="true" />}
-        <strong>{item.name}</strong><span>{item.label}</span>{mode === item.id && <Check size={15} className="atlas-path-check" aria-hidden="true" />}
+        <strong>{t(item.name || '')}</strong><span>{t(item.label || '')}</span>{mode === item.id && <Check size={15} className="atlas-path-check" aria-hidden="true" />}
       </button>)}
     </div>
-    <figure className="atlas-flow-map" aria-label={`${mode === 'pi' ? 'Pi Agent' : mode === 'agent' ? 'Agent' : 'Direct'} 架构路径`}>
-      <figcaption className="atlas-flow-title"><h3>{path.title}</h3><span>{path.description}</span></figcaption>
+    <figure className="atlas-flow-map" aria-label={t("{{value1}} 架构路径", { value1: mode === 'pi' ? 'Pi Agent' : mode === 'agent' ? 'Agent' : 'Direct' })}>
+      <figcaption className="atlas-flow-title"><h3>{t(path.title || '')}</h3><span>{t(path.description || '')}</span></figcaption>
       <div className="atlas-flow-canvas">
         <div className="atlas-materials">
-          <h3>多模态资料</h3>
+          <h3>{t("多模态资料")}</h3>
           <div className="atlas-material-list">
-            <span><FileText size={18} aria-hidden="true" />文档与表格</span>
-            <span><Image size={18} aria-hidden="true" />图片</span>
-            <span><AudioLines size={18} aria-hidden="true" />音频</span>
-            <span><Video size={18} aria-hidden="true" />视频</span>
+            <span><FileText size={18} aria-hidden="true" />{t("文档与表格")}</span>
+            <span><Image size={18} aria-hidden="true" />{t("图片")}</span>
+            <span><AudioLines size={18} aria-hidden="true" />{t("音频")}</span>
+            <span><Video size={18} aria-hidden="true" />{t("视频")}</span>
           </div>
-          <button type="button" className="atlas-prepare-link" aria-expanded={selected === 'ingestion'} aria-controls="architecture-node-detail" onClick={event => select('ingestion', event.currentTarget)}>解析与索引<ArrowUpRight size={15} aria-hidden="true" /></button>
-          <div className="atlas-material-storage"><Database size={16} aria-hidden="true" /><span><span>MinIO 保留原件</span><span>Qdrant 建立索引</span></span></div>
+          <button type="button" className="atlas-prepare-link" aria-expanded={selected === 'ingestion'} aria-controls="architecture-node-detail" onClick={event => select('ingestion', event.currentTarget)}>{t("解析与索引")}<ArrowUpRight size={15} aria-hidden="true" /></button>
+          <div className="atlas-material-storage"><Database size={16} aria-hidden="true" /><span><span>{t("MinIO 保留原件")}</span><span>{t("Qdrant 建立索引")}</span></span></div>
         </div>
         <ArrowRight className="atlas-flow-connector" size={24} strokeWidth={1.3} aria-hidden="true" />
         <div className={`atlas-processing ${isPi ? 'atlas-processing--pi' : ''}`}>
           {isPi ? <>
-            <button type="button" className="atlas-host-boundary" aria-expanded={selected === 'host'} aria-controls="architecture-node-detail" onClick={event => select('host', event.currentTarget)}><ShieldCheck size={17} aria-hidden="true" /><span>Python 宿主<small>来源范围 · 任务账本 · 交付校验</small></span><ChevronRight size={14} aria-hidden="true" /></button>
+            <button type="button" className="atlas-host-boundary" aria-expanded={selected === 'host'} aria-controls="architecture-node-detail" onClick={event => select('host', event.currentTarget)}><ShieldCheck size={17} aria-hidden="true" /><span>{t("Python 宿主")}<small>{t("来源范围 · 任务账本 · 交付校验")}</small></span><ChevronRight size={14} aria-hidden="true" /></button>
             <div className="atlas-pi-loop">
-              {node('pi', 'Pi 自主循环', '规划、选择工具、生成答案', Bot)}
-              <div className="atlas-loop-link"><Repeat2 size={17} aria-hidden="true" /><span>调用工具 / 返回证据</span></div>
-              {node('tools', '只读来源工具', '独立搜索、原文深读、媒体观察', Search)}
+              {node('pi', t("Pi 自主循环"), t("规划、选择工具、生成答案"), Bot)}
+              <div className="atlas-loop-link"><Repeat2 size={17} aria-hidden="true" /><span>{t("调用工具 / 返回证据")}</span></div>
+              {node('tools', t("只读来源工具"), t("独立搜索、原文深读、媒体观察"), Search)}
             </div>
           </> : <>
-            <div className="atlas-processing-label"><Layers3 size={16} aria-hidden="true" /><span>{mode === 'agent' ? '有界补查，共用检索与生成' : '常规检索与生成'}</span></div>
-            {node(mode === 'agent' ? 'agent' : 'retrieval', mode === 'agent' ? '原问题检索 + 补查' : '检索相关证据', mode === 'agent' ? '规划子问题、补查、去重合并' : '意图、召回、融合与重排', mode === 'agent' ? Repeat2 : Search)}
+            <div className="atlas-processing-label"><Layers3 size={16} aria-hidden="true" /><span>{t(mode === 'agent' ? t("有界补查，共用检索与生成") : t("常规检索与生成"))}</span></div>
+            {node(mode === 'agent' ? 'agent' : 'retrieval', mode === 'agent' ? t("原问题检索 + 补查") : t("检索相关证据"), mode === 'agent' ? t("规划子问题、补查、去重合并") : t("意图、召回、融合与重排"), mode === 'agent' ? Repeat2 : Search)}
             <ArrowDown className="atlas-inner-arrow" size={17} aria-hidden="true" />
-            {node('context', '组织上下文', '选择材料，建立引用映射', Braces)}
+            {node('context', t("组织上下文"), t("选择材料，建立引用映射"), Braces)}
             <ArrowDown className="atlas-inner-arrow" size={17} aria-hidden="true" />
-            {node('generation', '生成回答', '流式正文，保留实际引用', MessageSquare)}
+            {node('generation', t("生成回答"), t("流式正文，保留实际引用"), MessageSquare)}
           </>}
         </div>
         <ArrowRight className="atlas-flow-connector" size={24} strokeWidth={1.3} aria-hidden="true" />
         <div className="atlas-delivery">
           <MessageSquare size={27} strokeWidth={1.4} aria-hidden="true" />
-          <h3>有据可查的回答</h3>
-          <p>正文与引用一起交付，<br />每条来源可返回原处。</p>
-          <dl><div><dt>文档</dt><dd>页码 / 原文片段</dd></div><div><dt>媒体</dt><dd>时间 / 镜头位置</dd></div><div><dt>证据</dt><dd>{isPi ? '身份 / 版本 / 类型' : '来源 / 实际引用'}</dd></div></dl>
+          <h3>{t("有据可查的回答")}</h3>
+          <p>{t("正文与引用一起交付，")}<br />{t("每条来源可返回原处。")}</p>
+          <dl><div><dt>{t("文档")}</dt><dd>{t("页码 / 原文片段")}</dd></div><div><dt>{t("媒体")}</dt><dd>{t("时间 / 镜头位置")}</dd></div><div><dt>{t("证据")}</dt><dd>{t(isPi ? t("身份 / 版本 / 类型") : t("来源 / 实际引用"))}</dd></div></dl>
         </div>
       </div>
-      <div className="atlas-flow-note"><p>{path.note}</p><span>架构示意</span></div>
+      <div className="atlas-flow-note"><p>{t(path.note || '')}</p><span>{t("架构示意")}</span></div>
     </figure>
     <div id="architecture-node-detail" hidden={!contract} className="atlas-node-detail">
       {contract && <>
-        <div className="atlas-node-detail-heading"><div><h3 ref={detailHeading} tabIndex={-1}>{contract.title}</h3><p>{contract.subtitle}</p></div><button type="button" aria-label="收起模块职责" onClick={() => { setSelected(null); opener.current?.focus() }}><X size={19} aria-hidden="true" /></button></div>
-        <dl><div><dt>输入</dt><dd>{contract.receives}</dd></div><div><dt>处理</dt><dd>{contract.does}</dd></div><div><dt>产物</dt><dd>{contract.delivers}</dd></div></dl>
-        <a href={architectureSourceUrl(contract.path)} target="_blank" rel="noreferrer"><Code2 size={16} aria-hidden="true" /><span>{contract.path}</span><ArrowUpRight size={16} aria-hidden="true" /></a>
+        <div className="atlas-node-detail-heading"><div><h3 ref={detailHeading} tabIndex={-1}>{t(contract.title || '')}</h3><p>{t(contract.subtitle || '')}</p></div><button type="button" aria-label={t("收起模块职责")} onClick={() => { setSelected(null); opener.current?.focus() }}><X size={19} aria-hidden="true" /></button></div>
+        <dl><div><dt>{t("输入")}</dt><dd>{t(contract.receives || '')}</dd></div><div><dt>{t("处理")}</dt><dd>{t(contract.does || '')}</dd></div><div><dt>{t("产物")}</dt><dd>{t(contract.delivers || '')}</dd></div></dl>
+        <a href={architectureSourceUrl(contract.path)} target="_blank" rel="noreferrer"><Code2 size={16} aria-hidden="true" /><span>{t(contract.path || '')}</span><ArrowUpRight size={16} aria-hidden="true" /></a>
       </>}
     </div>
-    <div className="atlas-system-distinction"><p><strong>适合的任务</strong><span>{path.fit}</span></p><p><strong>执行方式与取舍</strong><span>{path.tradeoff}</span></p></div>
+    <div className="atlas-system-distinction"><p><strong>{t("适合的任务")}</strong><span>{t(path.fit || '')}</span></p><p><strong>{t("执行方式与取舍")}</strong><span>{t(path.tradeoff || '')}</span></p></div>
   </div>
 }

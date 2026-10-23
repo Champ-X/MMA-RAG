@@ -1,3 +1,5 @@
+import { translate as t, useTranslation, getLanguage } from '@/i18n'
+
 import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import * as Dialog from '@radix-ui/react-dialog'
@@ -35,6 +37,11 @@ const ManualInputModal = React.lazy(() => import('./ManualInputModal'))
 const ExcelPreview = React.lazy(() =>
   import('./ExcelPreview').then((module) => ({ default: module.ExcelPreview }))
 )
+function formatFileDate(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(getLanguage())
+}
+
 const PortraitGraph = React.lazy(() =>
   import('./PortraitGraph').then((module) => ({ default: module.PortraitGraph }))
 )
@@ -83,6 +90,7 @@ function PreviewPaneLoading({
   hint?: string
   variant: 'document' | 'chunks'
 }) {
+  useTranslation()
   return (
     <div
       className={cn(
@@ -140,13 +148,14 @@ function PreviewPaneLoading({
 }
 
 function PortraitGraphLoading() {
+  useTranslation()
   return (
     <div className="rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50 px-6 py-10 text-center shadow-sm ring-1 ring-slate-100/80 dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:ring-slate-800/60">
       <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-950/40 dark:text-indigo-300">
         <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
       </div>
-      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">正在载入知识库画像</p>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">画像图表会在组件加载后继续使用当前知识库统计数据。</p>
+      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t("正在载入知识库画像")}</p>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t("画像图表会在组件加载后继续使用当前知识库统计数据。")}</p>
     </div>
   )
 }
@@ -167,6 +176,7 @@ function MediaDescriptionPanel({
   empty: React.ReactNode
   children: React.ReactNode
 }) {
+  useTranslation()
   return (
     <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 overflow-hidden bg-gradient-to-b from-white via-slate-50/35 to-slate-50/95 dark:from-slate-900 dark:via-slate-950/90 dark:to-slate-950 shadow-sm ring-1 ring-slate-100/70 dark:ring-slate-800/80">
       <div className="flex items-center gap-2.5 px-4 py-3 border-b border-slate-100/90 dark:border-slate-800 bg-gradient-to-r from-indigo-50/70 via-slate-50/90 to-transparent dark:from-indigo-950/35 dark:via-slate-900 dark:to-transparent">
@@ -181,7 +191,7 @@ function MediaDescriptionPanel({
         {loading ? (
           <div className="flex items-center gap-2.5 text-sm text-slate-500 dark:text-slate-400">
             <Loader2 className="h-4 w-4 shrink-0 animate-spin text-indigo-500 dark:text-indigo-400" aria-hidden />
-            <span>加载描述中…</span>
+            <span>{t("加载描述中…")}</span>
           </div>
         ) : hasContent ? (
           <div className="space-y-4 text-sm text-slate-700 dark:text-slate-200 leading-[1.7]">{children}</div>
@@ -208,6 +218,7 @@ function KnowledgeEmptyState({
   tone?: 'slate' | 'indigo' | 'amber'
   compact?: boolean
 }) {
+  useTranslation()
   const toneClass = {
     slate: {
       icon: 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400',
@@ -248,19 +259,20 @@ function KnowledgeEmptyState({
 }
 
 function FileListLoadingState({ knowledgeBaseName }: { knowledgeBaseName: string }) {
+  useTranslation()
   return (
     <div
       className="flex min-h-[14rem] flex-col items-center justify-center px-6 text-center"
       role="status"
       aria-live="polite"
-      aria-label={`正在加载 ${knowledgeBaseName} 的文件列表`}
+      aria-label={t("正在加载 {{knowledgeBaseName}} 的文件列表", { knowledgeBaseName: knowledgeBaseName })}
     >
       <span className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-100 bg-indigo-50 text-indigo-600 shadow-sm dark:border-indigo-500/20 dark:bg-indigo-950/35 dark:text-indigo-300">
         <span className="absolute inset-0 rounded-2xl border border-indigo-300/50 animate-ping dark:border-indigo-400/20" aria-hidden />
         <Loader2 className="relative h-5 w-5 animate-spin" aria-hidden />
       </span>
-      <p className="mt-4 text-sm font-semibold text-slate-800 dark:text-slate-100">正在读取文件清单</p>
-      <p className="mt-1.5 max-w-sm text-xs leading-5 text-slate-500 dark:text-slate-400">已切换到「{knowledgeBaseName}」，上一知识库的内容不会继续显示。</p>
+      <p className="mt-4 text-sm font-semibold text-slate-800 dark:text-slate-100">{t("正在读取文件清单")}</p>
+      <p className="mt-1.5 max-w-sm text-xs leading-5 text-slate-500 dark:text-slate-400">{t("已切换到「")}{knowledgeBaseName}{t("」，上一知识库的内容不会继续显示。")}</p>
     </div>
   )
 }
@@ -406,6 +418,7 @@ function FilePreviewModal({
   /** 失败视频可复用 MinIO 原文件重新入队，不要求用户再次选择本地文件。 */
   onRetryVideo?: () => Promise<void>
 }) {
+  useTranslation()
   const [tab, setTab] = React.useState<'preview' | 'chunks'>('preview')
   const previewTabRefs = React.useRef<Record<'preview' | 'chunks', HTMLButtonElement | null>>({
     preview: null,
@@ -485,7 +498,7 @@ function FilePreviewModal({
     try {
       await onRetryVideo()
     } catch (error) {
-      setRetryVideoError(getErrorMessage(error, '重新入队失败，请稍后再试。'))
+      setRetryVideoError(getErrorMessage(error, t("重新入队失败，请稍后再试。")))
     } finally {
       setRetryingVideo(false)
     }
@@ -569,7 +582,7 @@ function FilePreviewModal({
         if (cancelled) return
         setPdfObjectUrl(null)
         if (isOfficeDocument) {
-          setOfficePreviewError(getErrorMessage(err, 'Office 文件页面内预览暂不可用'))
+          setOfficePreviewError(getErrorMessage(err, t("Office 文件页面内预览暂不可用")))
         }
       })
       .finally(() => { if (!cancelled) setPdfLoading(false) })
@@ -602,7 +615,7 @@ function FilePreviewModal({
         if (!cancelled) setExcelBlob(blob)
       })
       .catch((err: unknown) => {
-        if (!cancelled) setExcelError(getErrorMessage(err, '加载表格文件失败'))
+        if (!cancelled) setExcelError(getErrorMessage(err, t("加载表格文件失败")))
       })
       .finally(() => {
         if (!cancelled) setExcelLoading(false)
@@ -682,23 +695,23 @@ function FilePreviewModal({
   const previewStatusText =
     tab === 'chunks' && isDoc
       ? loadingPreviewDetails
-        ? `正在加载 ${file.name} 的文档分块`
+        ? t("正在加载 {{value1}} 的文档分块", { value1: file.name })
         : hasChunks
-          ? `${file.name} 共有 ${details?.chunks?.length ?? 0} 个文档分块`
-          : `${file.name} 暂未获取到分块内容`
+          ? t("{{value1}} 共有 {{value2}} 个文档分块", { value1: file.name, value2: details?.chunks?.length ?? 0 })
+          : t("{{value1}} 暂未获取到分块内容", { value1: file.name })
       : (pdfLoading || excelLoading || audioLoading || videoLoading || loadingPreviewDetails || loadingRawText)
-        ? `正在加载 ${file.name} 的预览内容`
-        : `正在显示 ${file.name} 的预览内容`
+        ? t("正在加载 {{value1}} 的预览内容", { value1: file.name })
+        : t("正在显示 {{value1}} 的预览内容", { value1: file.name })
 
   const renderTextPreviewCard = (extraHint?: React.ReactNode) => (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
       <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
-        {isMd ? 'Markdown 预览' : '文本预览'}
+        {isMd ? t("Markdown 预览") : t("文本预览")}
       </div>
       {extraHint}
       {isMd ? (
         <div className="rag-markdown max-h-[60vh] max-w-none overflow-y-auto">
-          <Suspense fallback={<div className="text-sm text-slate-500 dark:text-slate-400">正在载入 Markdown 预览…</div>}>
+          <Suspense fallback={<div className="text-sm text-slate-500 dark:text-slate-400">{t("正在载入 Markdown 预览…")}</div>}>
             <KnowledgeMarkdownPreview content={textPreview} kbId={kbId ?? undefined} fileId={file?.id ?? undefined} />
           </Suspense>
         </div>
@@ -769,7 +782,7 @@ function FilePreviewModal({
                   </span>
                   <span className="text-slate-600 tabular-nums dark:text-slate-400">{file.size}</span>
                   <span className="text-slate-300 dark:text-slate-600">·</span>
-                  <span className="text-slate-600 dark:text-slate-400">{file.date}</span>
+                  <span className="text-slate-600 dark:text-slate-400">{formatFileDate(file.date)}</span>
                 </div>
               </div>
             </div>
@@ -782,7 +795,7 @@ function FilePreviewModal({
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950'
               )}
               type="button"
-              aria-label={`关闭文件预览：${file.name}`}
+              aria-label={t("关闭文件预览：{{value1}}", { value1: file.name })}
             >
               <X size={18} strokeWidth={2.25} aria-hidden />
             </button>
@@ -794,7 +807,7 @@ function FilePreviewModal({
             <div
               className="inline-flex items-center gap-0.5 rounded-xl bg-slate-200/50 dark:bg-slate-800/90 p-1 ring-1 ring-inset ring-slate-300/40 dark:ring-slate-700/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
               role="tablist"
-              aria-label="预览方式"
+              aria-label={t("预览方式")}
             >
               <button
                 id={previewTabId}
@@ -817,8 +830,7 @@ function FilePreviewModal({
                 type="button"
               >
                 <Eye className="h-3.5 w-3.5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
-                预览
-              </button>
+                 {t("预览")} </button>
               {isDoc && (
                 <button
                   id={chunksTabId}
@@ -841,7 +853,7 @@ function FilePreviewModal({
                   type="button"
                 >
                   <Layers className="h-3.5 w-3.5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
-                  <span className="whitespace-nowrap">分块</span>
+                  <span className="whitespace-nowrap">{t("分块")}</span>
                   <span
                     className={cn(
                       'ml-0.5 inline-flex h-[1.375rem] min-w-[1.375rem] items-center justify-center rounded-full px-2 text-[11px] font-semibold tabular-nums leading-none',
@@ -851,7 +863,7 @@ function FilePreviewModal({
                         : 'bg-slate-200/65 text-slate-600 border border-slate-300/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:bg-slate-700/65 dark:text-slate-300 dark:border-slate-500/25 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
                     )}
                     aria-label={
-                      loadingPreviewDetails ? '分块数量加载中' : `共 ${details?.chunks?.length ?? 0} 个分块`
+                      loadingPreviewDetails ? t("分块数量加载中") : t("共 {{value1}} 个分块", { value1: details?.chunks?.length ?? 0 })
                     }
                   >
                     {loadingPreviewDetails ? (
@@ -888,8 +900,7 @@ function FilePreviewModal({
             hasChunks ? (
               <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden">
                 <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-sm font-medium text-slate-800 dark:text-slate-100">
-                  文档分块
-                </div>
+                   {t("文档分块")} </div>
                 <div className="max-h-[60vh] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
                   {details!.chunks!.map((c) => (
                     <div key={c.index} className="p-4">
@@ -903,16 +914,15 @@ function FilePreviewModal({
               </div>
             ) : loadingPreviewDetails ? (
               <PreviewPaneLoading
-                title="正在加载分块内容…"
-                hint="正在从知识库获取解析后的文本块，请稍候"
+                title={t("正在加载分块内容…")}
+                hint={t("正在从知识库获取解析后的文本块，请稍候")}
                 variant="chunks"
               />
             ) : (
               <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/50 px-5 py-8 text-center">
                 <Layers className="mx-auto h-9 w-9 text-slate-300 dark:text-slate-600 mb-3" aria-hidden />
                 <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-sm mx-auto">
-                  暂未获取到分块内容。可先查看「预览」文本；若文件刚上传，稍后重试即可。
-                </p>
+                   {t("暂未获取到分块内容。可先查看「预览」文本；若文件刚上传，稍后重试即可。")} </p>
               </div>
             )
           ) : isImg && file.previewUrl ? (
@@ -921,14 +931,13 @@ function FilePreviewModal({
                 <img src={file.previewUrl} alt={file.name} className="w-full h-auto max-h-[50vh] object-contain" />
               </div>
               <MediaDescriptionPanel
-                title="图片描述"
+                title={t("图片描述")}
                 icon={ImageIcon}
                 loading={loadingPreviewDetails}
                 hasContent={!!(details?.caption ?? details?.description)}
                 empty={
                   <p className="text-sm text-slate-400 italic leading-relaxed dark:text-slate-500">
-                    暂无描述（若为刚上传的图片，描述生成后刷新预览即可）
-                  </p>
+                     {t("暂无描述（若为刚上传的图片，描述生成后刷新预览即可）")} </p>
                 }
               >
                 <p className="whitespace-pre-wrap text-[15px] leading-[1.75] text-slate-800 dark:text-slate-100">
@@ -945,7 +954,7 @@ function FilePreviewModal({
               />
             </div>
           ) : isExcel && excelBlob ? (
-            <Suspense fallback={<PreviewPaneLoading title="正在载入表格预览器…" hint="表格文件已读取完成，正在准备浏览器端预览组件。" variant="document" />}>
+            <Suspense fallback={<PreviewPaneLoading title={t("正在载入表格预览器…")} hint={t("表格文件已读取完成，正在准备浏览器端预览组件。")} variant="document" />}>
               <ExcelPreview
                 blob={excelBlob}
                 fileType={fileTypeLower as 'xlsx' | 'xls' | 'csv'}
@@ -954,45 +963,42 @@ function FilePreviewModal({
             </Suspense>
           ) : isExcel && excelLoading ? (
             <PreviewPaneLoading
-              title="表格加载中…"
-              hint="正在拉取文件流并由浏览器解析"
+              title={t("表格加载中…")}
+              hint={t("正在拉取文件流并由浏览器解析")}
               variant="document"
             />
           ) : isExcel && excelError ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30" role="alert">
-              <div className="text-sm font-medium text-amber-800 dark:text-amber-200">表格预览暂不可用</div>
+              <div className="text-sm font-medium text-amber-800 dark:text-amber-200">{t("表格预览暂不可用")}</div>
               <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-amber-700 dark:text-amber-300">
                 {excelError}
               </div>
               <div className="mt-2 text-xs text-amber-700/90 dark:text-amber-300/90">
-                可切换到「分块」查看后端解析后的表头摘要、行块与列画像。
-              </div>
+                 {t("可切换到「分块」查看后端解析后的表头摘要、行块与列画像。")} </div>
             </div>
           ) : isOfficeDocument && pdfLoading && !!textPreview ? (
             renderTextPreviewCard(
               <div className="mb-3 rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/30 px-3 py-2 text-xs text-sky-700 dark:text-sky-300">
-                正在生成页内预览（Office 转 PDF 可能耗时几秒），你可先查看文本预览或切到「分块」。
-              </div>
+                 {t("正在生成页内预览（Office 转 PDF 可能耗时几秒），你可先查看文本预览或切到「分块」。")} </div>
             )
           ) : isPdfOrOfficeViewable && pdfLoading ? (
             <PreviewPaneLoading
-              title="文档加载中…"
+              title={t("文档加载中…")}
               hint={
                 isOfficeDocument
-                  ? 'Office 文档需先转换为 PDF，可能需要数秒至一分钟'
-                  : '正在拉取文件流以生成预览'
+                  ? t("Office 文档需先转换为 PDF，可能需要数秒至一分钟")
+                  : t("正在拉取文件流以生成预览")
               }
               variant="document"
             />
           ) : isOfficeDocument && officePreviewError ? (
             <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-4" role="alert">
-              <div className="text-sm font-medium text-amber-800 dark:text-amber-200">Office 页内预览暂不可用</div>
+              <div className="text-sm font-medium text-amber-800 dark:text-amber-200">{t("Office 页内预览暂不可用")}</div>
               <div className="mt-2 text-sm text-amber-700 dark:text-amber-300 leading-relaxed whitespace-pre-wrap">
                 {officePreviewError}
               </div>
               <div className="mt-2 text-xs text-amber-700/90 dark:text-amber-300/90">
-                若该文件已成功解析，可切换到「分块」查看内容；服务端安装 LibreOffice 后可恢复页内预览。
-              </div>
+                 {t("若该文件已成功解析，可切换到「分块」查看内容；服务端安装 LibreOffice 后可恢复页内预览。")} </div>
             </div>
           ) : isAudio && audioObjectUrl ? (
             <div className="space-y-4">
@@ -1003,19 +1009,17 @@ function FilePreviewModal({
                   className="w-full max-w-md mx-auto"
                   preload="metadata"
                 >
-                  您的浏览器不支持音频播放。
-                </audio>
+                   {t("您的浏览器不支持音频播放。")} </audio>
                 <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 text-center">{file.name}</p>
               </div>
               <MediaDescriptionPanel
-                title="音频描述"
+                title={t("音频描述")}
                 icon={Music}
                 loading={loadingPreviewDetails}
                 hasContent={!!(details?.caption ?? details?.transcript ?? details?.description)}
                 empty={
                   <p className="text-sm text-slate-400 italic leading-relaxed dark:text-slate-500">
-                    暂无描述（若为刚上传的音频，描述生成后刷新预览即可）
-                  </p>
+                     {t("暂无描述（若为刚上传的音频，描述生成后刷新预览即可）")} </p>
                 }
               >
                 {details?.description ? (
@@ -1034,8 +1038,7 @@ function FilePreviewModal({
                   >
                     <div className="mb-2.5 flex flex-wrap items-center gap-2">
                       <span className="inline-flex items-center rounded-full bg-violet-500/[0.12] px-2.5 py-0.5 text-xs font-semibold text-violet-700 ring-1 ring-violet-200/50 dark:bg-violet-400/10 dark:text-violet-300 dark:ring-violet-500/25">
-                        转写内容
-                      </span>
+                         {t("转写内容")} </span>
                     </div>
                     <p className="whitespace-pre-wrap rounded-lg bg-slate-50/90 px-3 py-3 text-[15px] leading-[1.75] text-slate-800 ring-1 ring-slate-200/60 dark:bg-slate-900/50 dark:text-slate-100 dark:ring-slate-700/80">
                       {details.transcript}
@@ -1050,7 +1053,7 @@ function FilePreviewModal({
           ) : isAudio && audioLoading ? (
             <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400" role="status" aria-live="polite">
               <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent" aria-hidden />
-              <div className="mt-3 text-sm">音频加载中…</div>
+              <div className="mt-3 text-sm">{t("音频加载中…")}</div>
             </div>
           ) : isVideo && videoObjectUrl ? (
             <div className="space-y-4">
@@ -1061,19 +1064,17 @@ function FilePreviewModal({
                   className="w-full max-w-full rounded-lg bg-black"
                   preload="metadata"
                 >
-                  您的浏览器不支持视频播放。
-                </video>
+                   {t("您的浏览器不支持视频播放。")} </video>
                 <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 text-center">{file.name}</p>
               </div>
               <MediaDescriptionPanel
-                title="视频描述"
+                title={t("视频描述")}
                 icon={Video}
                 loading={loadingPreviewDetails}
                 hasContent={!!(details?.caption ?? details?.description)}
                 empty={
                   <p className="text-sm text-slate-400 italic leading-relaxed dark:text-slate-500">
-                    暂无描述（若为刚上传的视频，描述生成后刷新预览即可）
-                  </p>
+                     {t("暂无描述（若为刚上传的视频，描述生成后刷新预览即可）")} </p>
                 }
               >
                 <p className="whitespace-pre-wrap text-[15px] leading-[1.75] text-slate-800 dark:text-slate-100">
@@ -1084,20 +1085,19 @@ function FilePreviewModal({
           ) : isVideo && videoLoading ? (
             <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400" role="status" aria-live="polite">
               <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent" aria-hidden />
-              <div className="mt-3 text-sm">视频加载中…</div>
+              <div className="mt-3 text-sm">{t("视频加载中…")}</div>
             </div>
           ) : textPreview ? (
             renderTextPreviewCard(
               officePreviewError && isOfficeDocument ? (
                 <div className="mb-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                  {officePreviewError} 已自动切换为解析文本预览；如需页内幻灯片预览，请在服务端安装 LibreOffice。
-                </div>
+                  {officePreviewError}  {t("已自动切换为解析文本预览；如需页内幻灯片预览，请在服务端安装 LibreOffice。")} </div>
               ) : null
             )
           ) : (loadingPreviewDetails || loadingRawText) && (isTextFile || isImg || isDoc) ? (
             <PreviewPaneLoading
-              title="加载预览中…"
-              hint="正在获取文件详情与文本内容"
+              title={t("加载预览中…")}
+              hint={t("正在获取文件详情与文本内容")}
               variant="document"
             />
           ) : (
@@ -1105,7 +1105,7 @@ function FilePreviewModal({
               <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
                 <FileText size={24} aria-hidden />
               </div>
-              <div className="mt-3 text-sm">该文件类型暂无预览</div>
+              <div className="mt-3 text-sm">{t("该文件类型暂无预览")}</div>
             </div>
           )}
         </div>
@@ -1117,7 +1117,7 @@ function FilePreviewModal({
               <button
                 onClick={() => { void handleRetryVideo() }}
                 disabled={retryingVideo}
-                aria-label={retryingVideo ? `正在重新解析视频：${file.name}` : `重新解析视频：${file.name}`}
+                aria-label={retryingVideo ? t("正在重新解析视频：{{value1}}", { value1: file.name }) : t("重新解析视频：{{value1}}", { value1: file.name })}
                 className={cn(
                   'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold',
                   'border border-sky-200/90 bg-white text-sky-700 shadow-sm shadow-sky-100/40',
@@ -1132,7 +1132,7 @@ function FilePreviewModal({
                 type="button"
               >
                 <RotateCcw className={cn('h-4 w-4 shrink-0 opacity-90', retryingVideo && 'animate-spin')} strokeWidth={2.25} aria-hidden />
-                {retryingVideo ? '重新入队中…' : '重新解析视频'}
+                {retryingVideo ? t("重新入队中…") : t("重新解析视频")}
               </button>
               {retryVideoError ? (
                 <p className="mt-1.5 max-w-xs text-xs leading-relaxed text-red-600 dark:text-red-400" role="alert">
@@ -1152,7 +1152,7 @@ function FilePreviewModal({
                 })
               }}
               disabled={loadingRawText || !onEdit || rawContent == null}
-              aria-label={loadingRawText ? `正在加载 Markdown 内容：${file.name}` : `编辑 Markdown 内容：${file.name}`}
+              aria-label={loadingRawText ? t("正在加载 Markdown 内容：{{value1}}", { value1: file.name }) : t("编辑 Markdown 内容：{{value1}}", { value1: file.name })}
               className={cn(
                 'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold',
                 'border border-indigo-200/90 bg-white text-indigo-700 shadow-sm shadow-indigo-100/40',
@@ -1167,12 +1167,12 @@ function FilePreviewModal({
               type="button"
             >
               <Pencil className="h-4 w-4 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
-              {loadingRawText ? '加载内容中…' : '编辑内容'}
+              {loadingRawText ? t("加载内容中…") : t("编辑内容")}
             </button>
           )}
           <button
             onClick={onClose}
-            aria-label={`关闭文件预览：${file.name}`}
+            aria-label={t("关闭文件预览：{{value1}}", { value1: file.name })}
             className={cn(
               'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold',
               'border border-slate-200/95 bg-white text-slate-700 shadow-sm shadow-slate-200/50',
@@ -1184,11 +1184,10 @@ function FilePreviewModal({
             type="button"
           >
             <X className="h-4 w-4 shrink-0 opacity-80" strokeWidth={2.25} aria-hidden />
-            关闭
-          </button>
+             {t("关闭")} </button>
           <button
             onClick={onDelete}
-            aria-label={`删除文件：${file.name}`}
+            aria-label={t("删除文件：{{value1}}", { value1: file.name })}
             className={cn(
               'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold',
               'border border-red-200/90 bg-white text-red-600 shadow-sm shadow-red-100/40',
@@ -1201,8 +1200,7 @@ function FilePreviewModal({
             type="button"
           >
             <Trash2 className="h-4 w-4 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
-            删除文件
-          </button>
+             {t("删除文件")} </button>
         </div>
       </Dialog.Content>
       </Dialog.Portal>
@@ -1224,6 +1222,7 @@ function ImportUrlModal({
   /** 已开始后台导入时回调，用于在上传流水线中展示进度（轮询 processing_id） */
   onStartImport?: (payload: { processing_id: string; filename: string }) => void
 }) {
+  useTranslation()
   const [url, setUrl] = useState('')
   const [filename, setFilename] = useState('')
   const [loading, setLoading] = useState(false)
@@ -1294,7 +1293,7 @@ function ImportUrlModal({
       } catch (err: unknown) {
         if (cancelled) return
         setInspectResult(null)
-        setInspectError(getErrorMessage(err, 'URL 识别失败'))
+        setInspectError(getErrorMessage(err, t("URL 识别失败")))
       } finally {
         if (!cancelled) setInspecting(false)
       }
@@ -1330,7 +1329,7 @@ function ImportUrlModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!url.trim()) {
-      setError('请输入 URL')
+      setError(t("请输入 URL"))
       return
     }
     setError(null)
@@ -1353,7 +1352,7 @@ function ImportUrlModal({
       onSuccess()
       onClose()
     } catch (err: unknown) {
-      setError(getErrorMessage(err, '导入失败'))
+      setError(getErrorMessage(err, t("导入失败")))
     } finally {
       setLoading(false)
     }
@@ -1373,9 +1372,9 @@ function ImportUrlModal({
     <WorkflowDialog
       open
       onOpenChange={(open) => { if (!open) onClose() }}
-      eyebrow="素材导入"
-      title="从 URL 导入"
-      description="把网页、文件或飞书文档，收进当前素材空间。"
+      eyebrow={t("素材导入")}
+      title={t("从 URL 导入")}
+      description={t("把网页、文件或飞书文档，收进当前素材空间。")}
       icon={<Link2 size={20} />}
       size="md"
       sourceTheme="link"
@@ -1384,12 +1383,12 @@ function ImportUrlModal({
       onSubmit={handleSubmit}
       footer={(
         <>
-          <span className="workflow-footer-summary">导入后可在上传列表查看进度</span>
+          <span className="workflow-footer-summary">{t("导入后可在上传列表查看进度")}</span>
           <div className="workflow-footer-actions">
-            <button type="button" disabled={loading} onClick={onClose} aria-label="取消 URL 导入" className="workflow-button">取消</button>
-            <button type="submit" disabled={loading} aria-describedby={error ? errorId : undefined} aria-label={loading ? '正在导入 URL' : '导入 URL'} className="workflow-button workflow-button-primary">
+            <button type="button" disabled={loading} onClick={onClose} aria-label={t("取消 URL 导入")} className="workflow-button">{t("取消")}</button>
+            <button type="submit" disabled={loading} aria-describedby={error ? errorId : undefined} aria-label={loading ? t("正在导入 URL") : t("导入 URL")} className="workflow-button workflow-button-primary">
               {loading ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Link2 size={15} aria-hidden />}
-              {loading ? '正在导入…' : '导入链接'}
+              {loading ? t("正在导入…") : t("导入链接")}
             </button>
           </div>
         </>
@@ -1397,30 +1396,30 @@ function ImportUrlModal({
     >
       <fieldset className="import-form" disabled={loading}>
         <div className="import-primary-field">
-          <label htmlFor={`${modalDomId}-url`} className="workflow-label">链接地址 <span className="import-required">*</span></label>
+          <label htmlFor={`${modalDomId}-url`} className="workflow-label">{t("链接地址")} <span className="import-required">*</span></label>
           <div className="import-input-icon">
             <Link2 size={18} aria-hidden />
             <input data-autofocus id={`${modalDomId}-url`} name="url" type="url" required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/article" className="workflow-field" autoComplete="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} aria-describedby={`${modalDomId}-url-help`} />
           </div>
-          <p id={`${modalDomId}-url-help`} className="workflow-help">粘贴链接后，自动识别类型、标题和文件名。</p>
+          <p id={`${modalDomId}-url-help`} className="workflow-help">{t("粘贴链接后，自动识别类型、标题和文件名。")}</p>
           {(inspecting || inspectResult || inspectError) && (
             <div className="import-link-preview" role={inspectError ? 'alert' : 'status'} aria-live="polite" aria-atomic="true">
               {inspecting ? (
-                <div className="import-inline-status"><Loader2 size={15} className="animate-spin" aria-hidden />正在识别链接…</div>
+                <div className="import-inline-status"><Loader2 size={15} className="animate-spin" aria-hidden />{t("正在识别链接…")}</div>
               ) : inspectResult ? (
                 <>
                   <div className="import-preview-heading">
-                    <span className="import-tag">{inspectResult.detected_kind === 'feishu_document' ? '飞书文档' : inspectResult.detected_kind === 'webpage' ? '网页正文' : '文件直链'}</span>
+                    <span className="import-tag">{inspectResult.detected_kind === 'feishu_document' ? t("飞书文档") : inspectResult.detected_kind === 'webpage' ? t("网页正文") : t("文件直链")}</span>
                     {formatContentLength(inspectResult.content_length) && <span className="workflow-help">{formatContentLength(inspectResult.content_length)}</span>}
-                    {suggestedMode && suggestedMode !== mode && <button type="button" onClick={() => setMode(suggestedMode)} className="import-inline-action">使用建议模式</button>}
+                    {suggestedMode && suggestedMode !== mode && <button type="button" onClick={() => setMode(suggestedMode)} className="import-inline-action">{t("使用建议模式")}</button>}
                   </div>
                   {inspectResult.title && <p className="import-preview-title">{inspectResult.title}</p>}
                   <div className="import-preview-meta">
                     {inspectResult.site && <span>{inspectResult.site}</span>}
                     {inspectResult.content_type && <span>{inspectResult.content_type}</span>}
                   </div>
-                  <p className="workflow-help">建议文件名：{inspectResult.suggested_filename}</p>
-                  {inspectResult.final_url && inspectResult.final_url !== trimmedUrl && <p className="workflow-help import-wrap">跳转地址：{inspectResult.final_url}</p>}
+                  <p className="workflow-help">{t("建议文件名：")}{inspectResult.suggested_filename}</p>
+                  {inspectResult.final_url && inspectResult.final_url !== trimmedUrl && <p className="workflow-help import-wrap">{t("跳转地址：")}{inspectResult.final_url}</p>}
                   {inspectResult.warning && <p className="import-warning">{inspectResult.warning}</p>}
                 </>
               ) : <p className="import-warning">{inspectError}</p>}
@@ -1428,13 +1427,13 @@ function ImportUrlModal({
           )}
         </div>
         <fieldset className="import-option-group">
-          <legend className="workflow-label">解析方式</legend>
+          <legend className="workflow-label">{t("解析方式")}</legend>
           <div className="import-mode-grid">
             {([
-              { v: 'webpage', label: '网页正文', hint: '提取正文图片', icon: FileText },
-              { v: 'feishu', label: '飞书文档', hint: '文档、表格等', icon: Layers },
-              { v: 'auto', label: '自动识别', hint: '按类型选择', icon: Zap },
-              { v: 'file', label: '原始文件', hint: '下载原始文件', icon: FolderOpen },
+              { v: 'webpage', label: t("网页正文"), hint: t("提取正文图片"), icon: FileText },
+              { v: 'feishu', label: t("飞书文档"), hint: t("文档、表格等"), icon: Layers },
+              { v: 'auto', label: t("自动识别"), hint: t("按类型选择"), icon: Zap },
+              { v: 'file', label: t("原始文件"), hint: t("下载原始文件"), icon: FolderOpen },
             ] as const).map((opt) => (
               <label key={opt.v} className={cn('import-mode-option', mode === opt.v && 'is-selected')}>
                 <input type="radio" name="url-import-mode" value={opt.v} checked={mode === opt.v} onChange={() => setMode(opt.v)} className="sr-only" />
@@ -1445,26 +1444,26 @@ function ImportUrlModal({
             ))}
           </div>
           <p className="workflow-help">
-            {mode === 'webpage' && '提取网页主要内容，保存为 Markdown 文档。'}
-            {mode === 'feishu' && '读取飞书文档内容，包含图片、表格、画板与嵌入数据。'}
-            {mode === 'auto' && '自动识别网页或文件，并使用对应方式导入。'}
-            {mode === 'file' && '保留原始文件，支持文档、图片、音频与视频。'}
+            {mode === 'webpage' && t("提取网页主要内容，保存为 Markdown 文档。")}
+            {mode === 'feishu' && t("读取飞书文档内容，包含图片、表格、画板与嵌入数据。")}
+            {mode === 'auto' && t("自动识别网页或文件，并使用对应方式导入。")}
+            {mode === 'file' && t("保留原始文件，支持文档、图片、音频与视频。")}
           </p>
         </fieldset>
         <div className="import-disclosure">
           <button type="button" onClick={() => setShowAdvanced((v) => !v)} aria-expanded={showAdvanced} aria-controls={advancedOptionsId} className="import-disclosure-trigger">
-            <span>更多选项<small>自定义文件名与正文内容</small></span><ChevronDown size={16} className={cn(showAdvanced && 'rotate-180')} aria-hidden />
+            <span>{t("更多选项")}<small>{t("自定义文件名与正文内容")}</small></span><ChevronDown size={16} className={cn(showAdvanced && 'rotate-180')} aria-hidden />
           </button>
           {showAdvanced && (
             <div id={advancedOptionsId} className="import-disclosure-body">
               <div className="import-advanced-filename">
-                <label htmlFor={`${modalDomId}-filename`} className="workflow-label">文件名 <span className="import-optional">可选</span></label>
-                <input id={`${modalDomId}-filename`} name="filename" type="text" value={filename} onChange={(e) => setFilename(e.target.value)} placeholder="留空时自动命名" className="workflow-field" />
+                <label htmlFor={`${modalDomId}-filename`} className="workflow-label">{t("文件名")} <span className="import-optional">{t("可选")}</span></label>
+                <input id={`${modalDomId}-filename`} name="filename" type="text" value={filename} onChange={(e) => setFilename(e.target.value)} placeholder={t("留空时自动命名")} className="workflow-field" />
               </div>
-              <label className="import-check-row"><input name="include-links" type="checkbox" checked={includeLinks} onChange={(e) => setIncludeLinks(e.target.checked)} disabled={mode === 'file'} /><span>保留正文中的链接</span></label>
-              <label className="import-check-row"><input name="include-images" type="checkbox" checked={includeImages} onChange={(e) => setIncludeImages(e.target.checked)} disabled={mode === 'file'} /><span>保留正文中的图片引用</span></label>
-              <label className="import-check-row"><input name="download-images" type="checkbox" checked={downloadImages && includeImages} onChange={(e) => setDownloadImages(e.target.checked)} disabled={mode === 'file' || !includeImages} /><span>{mode === 'feishu' ? '同时导入图片与画板缩略图' : '同时导入图片，供后续检索'}</span></label>
-              {mode === 'file' && <p className="workflow-help">原始文件模式无需配置正文选项。</p>}
+              <label className="import-check-row"><input name="include-links" type="checkbox" checked={includeLinks} onChange={(e) => setIncludeLinks(e.target.checked)} disabled={mode === 'file'} /><span>{t("保留正文中的链接")}</span></label>
+              <label className="import-check-row"><input name="include-images" type="checkbox" checked={includeImages} onChange={(e) => setIncludeImages(e.target.checked)} disabled={mode === 'file'} /><span>{t("保留正文中的图片引用")}</span></label>
+              <label className="import-check-row"><input name="download-images" type="checkbox" checked={downloadImages && includeImages} onChange={(e) => setDownloadImages(e.target.checked)} disabled={mode === 'file' || !includeImages} /><span>{mode === 'feishu' ? t("同时导入图片与画板缩略图") : t("同时导入图片，供后续检索")}</span></label>
+              {mode === 'file' && <p className="workflow-help">{t("原始文件模式无需配置正文选项。")}</p>}
             </div>
           )}
         </div>
@@ -1487,6 +1486,7 @@ function ImportHotTopicsModal({
   /** 异步导入已启动时回调，关闭弹窗并在上传流水线中展示进度（轮询 processing_id） */
   onStartImport?: (payload: { processing_id: string; filename: string }) => void
 }) {
+  useTranslation()
   const [query, setQuery] = useState('')
   const [topic, setTopic] = useState<'' | 'general' | 'news' | 'finance'>('')
   const [timeRange, setTimeRange] = useState<'' | 'day' | 'week' | 'month' | 'year'>('')
@@ -1522,7 +1522,7 @@ function ImportHotTopicsModal({
       onSuccess()
       onClose()
     } catch (err: unknown) {
-      setError(getErrorMessage(err, '热点导入失败'))
+      setError(getErrorMessage(err, t("热点导入失败")))
     } finally {
       setLoading(false)
     }
@@ -1533,9 +1533,9 @@ function ImportHotTopicsModal({
     <WorkflowDialog
       open
       onOpenChange={(open) => { if (!open) onClose() }}
-      eyebrow="素材导入"
-      title="热点资讯导入"
-      description="围绕你关注的话题，收集资讯并保存为可检索的文档。"
+      eyebrow={t("素材导入")}
+      title={t("热点资讯导入")}
+      description={t("围绕你关注的话题，收集资讯并保存为可检索的文档。")}
       icon={<Newspaper size={20} />}
       size="md"
       className="import-dialog import-dialog--news"
@@ -1544,12 +1544,12 @@ function ImportHotTopicsModal({
       onSubmit={handleSubmit}
       footer={(
         <>
-          <span className="workflow-footer-summary">最多导入 {Math.min(20, Math.max(1, maxResults))} 条资讯</span>
+          <span className="workflow-footer-summary">{t("最多导入")} {Math.min(20, Math.max(1, maxResults))}  {t("条资讯")}</span>
           <div className="workflow-footer-actions">
-            <button type="button" disabled={loading} onClick={onClose} aria-label="取消热点资讯导入" className="workflow-button">取消</button>
-            <button type="submit" disabled={loading} aria-describedby={error ? errorId : undefined} aria-label={loading ? '正在导入热点资讯' : '导入热点资讯'} className="workflow-button workflow-button-primary">
+            <button type="button" disabled={loading} onClick={onClose} aria-label={t("取消热点资讯导入")} className="workflow-button">{t("取消")}</button>
+            <button type="submit" disabled={loading} aria-describedby={error ? errorId : undefined} aria-label={loading ? t("正在导入热点资讯") : t("导入热点资讯")} className="workflow-button workflow-button-primary">
               {loading ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Newspaper size={15} aria-hidden />}
-              {loading ? '正在收集…' : '收集资讯'}
+              {loading ? t("正在收集…") : t("收集资讯")}
             </button>
           </div>
         </>
@@ -1557,17 +1557,17 @@ function ImportHotTopicsModal({
     >
       <fieldset className="import-form" disabled={loading}>
         <div className="import-primary-field">
-          <label htmlFor={`${modalDomId}-query`} className="workflow-label">关注关键词 <span className="import-optional">可选</span></label>
+          <label htmlFor={`${modalDomId}-query`} className="workflow-label">{t("关注关键词")} <span className="import-optional">{t("可选")}</span></label>
           <div className="import-input-icon">
             <Search size={18} aria-hidden />
-            <input data-autofocus id={`${modalDomId}-query`} name="query" type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="例如：人工智能、科技进展" className="workflow-field" aria-describedby={`${modalDomId}-query-help`} />
+            <input data-autofocus id={`${modalDomId}-query`} name="query" type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("例如：人工智能、科技进展")} className="workflow-field" aria-describedby={`${modalDomId}-query-help`} />
           </div>
-          <p id={`${modalDomId}-query-help`} className="workflow-help">留空时收集默认热点资讯。</p>
+          <p id={`${modalDomId}-query-help`} className="workflow-help">{t("留空时收集默认热点资讯。")}</p>
         </div>
         <fieldset className="import-option-group">
-          <legend className="workflow-label">资讯主题</legend>
+          <legend className="workflow-label">{t("资讯主题")}</legend>
           <div className="import-segmented">
-            {([{ value: '', label: '默认' }, { value: 'general', label: '综合' }, { value: 'news', label: '新闻' }, { value: 'finance', label: '财经' }] as const).map((item) => (
+            {([{ value: '', label: t("默认") }, { value: 'general', label: t("综合") }, { value: 'news', label: t("新闻") }, { value: 'finance', label: t("财经") }] as const).map((item) => (
               <label key={item.value} className={cn('import-segment', topic === item.value && 'is-selected')}>
                 <input type="radio" name="hot-topic" value={item.value} checked={topic === item.value} onChange={() => setTopic(item.value)} className="sr-only" />{item.label}
               </label>
@@ -1576,18 +1576,18 @@ function ImportHotTopicsModal({
         </fieldset>
         <div className="import-field-grid">
           <div>
-            <label htmlFor={`${modalDomId}-time`} className="workflow-label">时间范围</label>
+            <label htmlFor={`${modalDomId}-time`} className="workflow-label">{t("时间范围")}</label>
             <select id={`${modalDomId}-time`} name="time_range" value={timeRange} onChange={(e) => setTimeRange(e.target.value as typeof timeRange)} className="workflow-field">
-              <option value="">默认范围</option><option value="day">近一天</option><option value="week">近一周</option><option value="month">近一月</option><option value="year">近一年</option>
+              <option value="">{t("默认范围")}</option><option value="day">{t("近一天")}</option><option value="week">{t("近一周")}</option><option value="month">{t("近一月")}</option><option value="year">{t("近一年")}</option>
             </select>
           </div>
           <div>
-            <label htmlFor={`${modalDomId}-max`} className="workflow-label">资讯条数</label>
+            <label htmlFor={`${modalDomId}-max`} className="workflow-label">{t("资讯条数")}</label>
             <input id={`${modalDomId}-max`} name="max_results" type="number" min={1} max={20} value={maxResults} onChange={(e) => setMaxResults(parseInt(e.target.value, 10) || 10)} className="workflow-field" aria-describedby={`${modalDomId}-max-help`} />
-            <p id={`${modalDomId}-max-help`} className="workflow-help">1–20 条，默认 10 条</p>
+            <p id={`${modalDomId}-max-help`} className="workflow-help">{t("1–20 条，默认 10 条")}</p>
           </div>
         </div>
-        <div className="workflow-note import-note"><Newspaper size={17} aria-hidden /><span>资讯将保存为文档，可在导入完成后查看和检索。</span></div>
+        <div className="workflow-note import-note"><Newspaper size={17} aria-hidden /><span>{t("资讯将保存为文档，可在导入完成后查看和检索。")}</span></div>
       </fieldset>
       {error && <p id={errorId} className="import-error" role="alert"><AlertCircle size={16} aria-hidden />{error}</p>}
     </WorkflowDialog>
@@ -1607,6 +1607,7 @@ function ImportFolderModal({
   /** 本地已选文件列表：关闭弹窗并由父组件按「上传流水线」逐个上传，显示每文件进度 */
   onImportLocalFiles: (files: File[]) => void
 }) {
+  useTranslation()
   const [folderPath, setFolderPath] = useState('')
   const [recursive, setRecursive] = useState(true)
   const [extensionsStr, setExtensionsStr] = useState('')
@@ -1700,7 +1701,7 @@ function ImportFolderModal({
 
   const handleSelectLocalFolder = async () => {
     if (!supportsFolderPicker) {
-      setError('当前浏览器不支持选择文件夹，请使用 Chrome/Edge 或下方输入服务端路径')
+      setError(t("当前浏览器不支持选择文件夹，请使用 Chrome/Edge 或下方输入服务端路径"))
       return
     }
     setError(null)
@@ -1710,7 +1711,7 @@ function ImportFolderModal({
     try {
       const dirHandle = await directoryPicker?.()
       if (!dirHandle) {
-        setError('当前浏览器不支持选择文件夹，请使用 Chrome/Edge 或下方输入服务端路径')
+        setError(t("当前浏览器不支持选择文件夹，请使用 Chrome/Edge 或下方输入服务端路径"))
         return
       }
       const files: File[] = []
@@ -1724,9 +1725,9 @@ function ImportFolderModal({
         files
       )
       setSelectedFiles(files)
-      if (files.length === 0) setError('该文件夹下没有符合条件的文件')
+      if (files.length === 0) setError(t("该文件夹下没有符合条件的文件"))
     } catch (err: unknown) {
-      if (getErrorName(err) !== 'AbortError') setError(getErrorMessage(err, '选择文件夹失败'))
+      if (getErrorName(err) !== 'AbortError') setError(getErrorMessage(err, t("选择文件夹失败")))
     } finally {
       setPickingFolder(false)
     }
@@ -1755,7 +1756,7 @@ function ImportFolderModal({
           },
           (event) => {
             if (event.stage === 'scan_complete') {
-              setFolderProgress({ stage: 'importing', current: 0, total: event.total ?? 0, message: '开始导入…' })
+              setFolderProgress({ stage: 'importing', current: 0, total: event.total ?? 0, message: t("开始导入…") })
             } else {
               setFolderProgress(event)
             }
@@ -1770,14 +1771,14 @@ function ImportFolderModal({
           }
         )
       } catch (err: unknown) {
-        setError(getErrorMessage(err, '导入失败'))
+        setError(getErrorMessage(err, t("导入失败")))
       } finally {
         setLoading(false)
         setFolderProgress(null)
       }
       return
     }
-    setError('请先选择本地文件夹或输入服务端路径')
+    setError(t("请先选择本地文件夹或输入服务端路径"))
   }
 
   const canImport = (selectedFiles != null && selectedFiles.length > 0) || folderPath.trim().length > 0
@@ -1785,19 +1786,19 @@ function ImportFolderModal({
   const folderProgressTotal = folderProgress?.total ?? 0
   const folderProgressLabel = folderProgress
     ? folderProgress.stage === 'scanning'
-      ? '正在扫描文件夹…'
+      ? t("正在扫描文件夹…")
       : folderProgress.stage === 'importing'
-        ? `正在导入 ${folderProgressCurrent}/${folderProgressTotal}`
-        : '处理中…'
+        ? t("正在导入 {{folderProgressCurrent}}/{{folderProgressTotal}}", { folderProgressCurrent: folderProgressCurrent, folderProgressTotal: folderProgressTotal })
+        : t("处理中…")
     : ''
 
   return (
     <WorkflowDialog
       open
       onOpenChange={(open) => { if (!open) onClose() }}
-      eyebrow="素材导入"
-      title="从文件夹导入"
-      description="一次添加整个文件夹，支持子文件夹与文件类型筛选。"
+      eyebrow={t("素材导入")}
+      title={t("从文件夹导入")}
+      description={t("一次添加整个文件夹，支持子文件夹与文件类型筛选。")}
       icon={<FolderOpen size={20} />}
       size="md"
       className="import-dialog import-dialog--folder"
@@ -1806,11 +1807,11 @@ function ImportFolderModal({
       onSubmit={(event) => { event.preventDefault(); void handleImport() }}
       footer={(
         <>
-          <span className="workflow-footer-summary">{selectedFiles?.length ? `已选 ${selectedFiles.length} 个本地文件` : folderPath.trim() ? '从服务端路径导入' : '选择来源后开始导入'}</span>
+          <span className="workflow-footer-summary">{selectedFiles?.length ? t("已选 {{value1}} 个本地文件", { value1: selectedFiles.length }) : folderPath.trim() ? t("从服务端路径导入") : t("选择来源后开始导入")}</span>
           <div className="workflow-footer-actions">
-            <button type="button" disabled={loading || pickingFolder} onClick={onClose} aria-label="取消文件夹导入" className="workflow-button">{result ? '关闭' : '取消'}</button>
-            <button type="submit" disabled={!canImport || loading || pickingFolder} aria-describedby={error ? errorId : loading && folderProgress ? progressId : result ? resultId : undefined} aria-label={loading ? '正在导入文件夹' : '导入文件夹'} className="workflow-button workflow-button-primary">
-              {loading ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <FolderOpen size={15} aria-hidden />}{loading ? '正在导入…' : '开始导入'}
+            <button type="button" disabled={loading || pickingFolder} onClick={onClose} aria-label={t("取消文件夹导入")} className="workflow-button">{result ? t("关闭") : t("取消")}</button>
+            <button type="submit" disabled={!canImport || loading || pickingFolder} aria-describedby={error ? errorId : loading && folderProgress ? progressId : result ? resultId : undefined} aria-label={loading ? t("正在导入文件夹") : t("导入文件夹")} className="workflow-button workflow-button-primary">
+              {loading ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <FolderOpen size={15} aria-hidden />}{loading ? t("正在导入…") : t("开始导入")}
             </button>
           </div>
         </>
@@ -1818,49 +1819,49 @@ function ImportFolderModal({
     >
       <fieldset className="import-form" disabled={loading || pickingFolder}>
         <div>
-          <p className="workflow-label">选择文件来源</p>
+          <p className="workflow-label">{t("选择文件来源")}</p>
           <button type="button" data-autofocus onClick={handleSelectLocalFolder} disabled={pickingFolder || loading} aria-describedby={selectedFiles?.length ? selectedFilesStatusId : undefined} className={cn('import-folder-picker', Boolean(selectedFiles?.length) && 'has-selection')}>
             <span className="import-folder-symbol">{pickingFolder ? <Loader2 size={23} className="animate-spin" aria-hidden /> : <FolderOpen size={23} aria-hidden />}</span>
-            <span><strong>{pickingFolder ? '正在读取文件夹…' : selectedFiles?.length ? `已选择 ${selectedFiles.length} 个文件` : '选择本地文件夹'}</strong><small>{selectedFiles?.length ? '点击重新选择文件夹' : '从电脑批量添加文档、图片等素材'}</small></span>
+            <span><strong>{pickingFolder ? t("正在读取文件夹…") : selectedFiles?.length ? t("已选择 {{value1}} 个文件", { value1: selectedFiles.length }) : t("选择本地文件夹")}</strong><small>{selectedFiles?.length ? t("点击重新选择文件夹") : t("从电脑批量添加文档、图片等素材")}</small></span>
             <Plus size={17} aria-hidden />
           </button>
-          {!supportsFolderPicker && <p className="workflow-help" role="note">当前浏览器不支持文件夹选择，请使用 Chrome / Edge，或填写下方路径。</p>}
+          {!supportsFolderPicker && <p className="workflow-help" role="note">{t("当前浏览器不支持文件夹选择，请使用 Chrome / Edge，或填写下方路径。")}</p>}
           {Boolean(selectedFiles?.length) && (
             <div id={selectedFilesStatusId} className="import-selection-status" role="status">
-              <span>将导入已选本地文件，并在上传列表显示进度。</span>
-              <button type="button" onClick={() => setSelectedFiles(null)} className="import-inline-action">清除</button>
+              <span>{t("将导入已选本地文件，并在上传列表显示进度。")}</span>
+              <button type="button" onClick={() => setSelectedFiles(null)} className="import-inline-action">{t("清除")}</button>
             </div>
           )}
         </div>
         <details className="import-disclosure">
-          <summary className="import-disclosure-trigger"><span>使用服务端路径<small>{folderPath.trim() || '素材已在服务器上时使用'}</small></span><ChevronDown size={16} aria-hidden /></summary>
+          <summary className="import-disclosure-trigger"><span>{t("使用服务端路径")}<small>{folderPath.trim() || t("素材已在服务器上时使用")}</small></span><ChevronDown size={16} aria-hidden /></summary>
           <div className="import-disclosure-body">
             <div>
-              <label htmlFor={`${modalDomId}-path`} className="workflow-label">服务端文件夹路径</label>
+              <label htmlFor={`${modalDomId}-path`} className="workflow-label">{t("服务端文件夹路径")}</label>
               <input id={`${modalDomId}-path`} name="folder_path" type="text" value={folderPath} onChange={(e) => setFolderPath(e.target.value)} placeholder="/data/docs" autoCapitalize="none" autoCorrect="off" spellCheck={false} className="workflow-field" aria-describedby={`${modalDomId}-path-help`} />
-              <p id={`${modalDomId}-path-help`} className="workflow-help">使用服务可访问的文件夹路径。{selectedFiles?.length ? '当前将优先导入已选本地文件。' : ''}</p>
+              <p id={`${modalDomId}-path-help`} className="workflow-help">{t("使用服务可访问的文件夹路径。")}{selectedFiles?.length ? t("当前将优先导入已选本地文件。") : ''}</p>
             </div>
           </div>
         </details>
         <details className="import-disclosure">
-          <summary className="import-disclosure-trigger"><span>文件筛选 <small>{recursive ? '包含子文件夹' : '仅当前文件夹'} · 最多 {maxFiles} 个</small></span><ChevronDown size={16} aria-hidden /></summary>
+          <summary className="import-disclosure-trigger"><span>{t("文件筛选")} <small>{recursive ? t("包含子文件夹") : t("仅当前文件夹")}  {t("· 最多")} {maxFiles}  {t("个")}</small></span><ChevronDown size={16} aria-hidden /></summary>
           <div className="import-disclosure-body import-form">
-            <label className="import-check-row"><input id={`${modalDomId}-recursive`} name="recursive" type="checkbox" checked={recursive} onChange={(e) => setRecursive(e.target.checked)} /><span>包含子文件夹</span></label>
+            <label className="import-check-row"><input id={`${modalDomId}-recursive`} name="recursive" type="checkbox" checked={recursive} onChange={(e) => setRecursive(e.target.checked)} /><span>{t("包含子文件夹")}</span></label>
             <div className="import-field-grid">
               <div>
-                <label htmlFor={`${modalDomId}-extensions`} className="workflow-label">文件类型 <span className="import-optional">可选</span></label>
+                <label htmlFor={`${modalDomId}-extensions`} className="workflow-label">{t("文件类型")} <span className="import-optional">{t("可选")}</span></label>
                 <input id={`${modalDomId}-extensions`} name="extensions" type="text" value={extensionsStr} onChange={(e) => setExtensionsStr(e.target.value)} placeholder=".pdf, .txt, .md" className="workflow-field" />
               </div>
               <div>
-                <label htmlFor={`${modalDomId}-max`} className="workflow-label">最大文件数</label>
+                <label htmlFor={`${modalDomId}-max`} className="workflow-label">{t("最大文件数")}</label>
                 <input id={`${modalDomId}-max`} name="max_files" type="number" min={1} max={2000} value={maxFiles} onChange={(e) => setMaxFiles(Number(e.target.value) || 500)} className="workflow-field" />
               </div>
             </div>
             <div>
-              <label htmlFor={`${modalDomId}-exclude`} className="workflow-label">排除文件或目录 <span className="import-optional">可选</span></label>
+              <label htmlFor={`${modalDomId}-exclude`} className="workflow-label">{t("排除文件或目录")} <span className="import-optional">{t("可选")}</span></label>
               <input id={`${modalDomId}-exclude`} name="exclude_patterns" type="text" value={excludeStr} onChange={(e) => setExcludeStr(e.target.value)} placeholder="__pycache__, .git, *.tmp" className="workflow-field" />
             </div>
-            <p className="workflow-help">多项用逗号分隔；修改筛选后，请重新选择本地文件夹。</p>
+            <p className="workflow-help">{t("多项用逗号分隔；修改筛选后，请重新选择本地文件夹。")}</p>
           </div>
         </details>
       </fieldset>
@@ -1871,7 +1872,7 @@ function ImportFolderModal({
           {folderProgress.message && folderProgress.stage === 'importing' && <p className="workflow-help import-wrap">{folderProgress.message}</p>}
         </div>
       )}
-      {result && <p id={resultId} className="workflow-note" role="status">成功 {result.success_count}，失败 {result.failed_count}，共 {result.total} 个文件。</p>}
+      {result && <p id={resultId} className="workflow-note" role="status">{t("成功")} {result.success_count}{t("，失败")} {result.failed_count}{t("，共")} {result.total}  {t("个文件。")}</p>}
       {error && <p id={errorId} className="import-error" role="alert"><AlertCircle size={16} aria-hidden />{error}</p>}
     </WorkflowDialog>
   )
@@ -1902,6 +1903,7 @@ function ImportSearchModal({
   /** 开始导入时回调，关闭弹窗并由父组件在上传流水线中展示进度 */
   onStartImport?: (params: SearchImportParams) => void
 }) {
+  useTranslation()
   const [query, setQuery] = useState('')
   const [source, setSource] = useState<'google_images' | 'pixabay' | 'internet_archive'>('pixabay')
   const [quantity, setQuantity] = useState(5)
@@ -1937,7 +1939,7 @@ function ImportSearchModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!query.trim()) {
-      setError('请输入搜索关键词')
+      setError(t("请输入搜索关键词"))
       return
     }
     setError(null)
@@ -1962,7 +1964,7 @@ function ImportSearchModal({
           if ((event.success_count ?? 0) > 0) onSuccess()
           setProgress(null)
         } else if (event.stage === 'error') {
-          setError(event.message ?? '导入失败')
+          setError(event.message ?? t("导入失败"))
           setProgress(null)
         } else {
           setProgress({
@@ -1974,7 +1976,7 @@ function ImportSearchModal({
         }
       })
     } catch (err: unknown) {
-      setError(getErrorMessage(err, '导入失败'))
+      setError(getErrorMessage(err, t("导入失败")))
     } finally {
       setLoading(false)
     }
@@ -1982,11 +1984,11 @@ function ImportSearchModal({
 
   const stageLabel =
     progress?.stage === 'searching'
-      ? '搜索中…'
+      ? t("搜索中…")
       : progress?.stage === 'downloading'
-        ? `下载 ${progress.current}/${progress.total}`
+        ? t("下载 {{value1}}/{{value2}}", { value1: progress.current, value2: progress.total })
         : progress?.stage === 'importing'
-          ? `导入 ${progress.current}/${progress.total}`
+          ? t("导入 {{value1}}/{{value2}}", { value1: progress.current, value2: progress.total })
           : progress?.stage
             ? progress.stage
             : ''
@@ -1997,9 +1999,9 @@ function ImportSearchModal({
     <WorkflowDialog
       open
       onOpenChange={(open) => { if (!open) onClose() }}
-      eyebrow="素材导入"
-      title="搜索图片导入"
-      description="按关键词查找图片，直接导入当前素材空间。"
+      eyebrow={t("素材导入")}
+      title={t("搜索图片导入")}
+      description={t("按关键词查找图片，直接导入当前素材空间。")}
       icon={<ImagePlus size={20} />}
       size="md"
       className="import-dialog import-dialog--images"
@@ -2008,11 +2010,11 @@ function ImportSearchModal({
       onSubmit={handleSubmit}
       footer={(
         <>
-          <span className="workflow-footer-summary">最多导入 {Math.min(20, Math.max(1, quantity))} 张图片</span>
+          <span className="workflow-footer-summary">{t("最多导入")} {Math.min(20, Math.max(1, quantity))}  {t("张图片")}</span>
           <div className="workflow-footer-actions">
-            <button type="button" disabled={loading} onClick={onClose} aria-label={result ? '关闭图片搜索导入弹窗' : '取消图片搜索导入'} className="workflow-button">{result ? '关闭' : '取消'}</button>
-            <button type="submit" disabled={loading} aria-describedby={error ? errorId : progress ? progressId : result ? resultId : undefined} aria-label={loading ? '正在导入图片搜索结果' : '开始导入图片搜索结果'} className="workflow-button workflow-button-primary">
-              {loading ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Search size={15} aria-hidden />}{loading ? '正在处理…' : '搜索并导入'}
+            <button type="button" disabled={loading} onClick={onClose} aria-label={result ? t("关闭图片搜索导入弹窗") : t("取消图片搜索导入")} className="workflow-button">{result ? t("关闭") : t("取消")}</button>
+            <button type="submit" disabled={loading} aria-describedby={error ? errorId : progress ? progressId : result ? resultId : undefined} aria-label={loading ? t("正在导入图片搜索结果") : t("开始导入图片搜索结果")} className="workflow-button workflow-button-primary">
+              {loading ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Search size={15} aria-hidden />}{loading ? t("正在处理…") : t("搜索并导入")}
             </button>
           </div>
         </>
@@ -2020,16 +2022,16 @@ function ImportSearchModal({
     >
       <fieldset className="import-form" disabled={loading}>
         <div className="import-primary-field">
-          <label htmlFor={`${modalDomId}-query`} className="workflow-label">搜索关键词 <span className="import-required">*</span></label>
+          <label htmlFor={`${modalDomId}-query`} className="workflow-label">{t("搜索关键词")} <span className="import-required">*</span></label>
           <div className="import-input-icon">
             <Search size={18} aria-hidden />
-            <input data-autofocus id={`${modalDomId}-query`} name="query" type="text" required value={query} onChange={(e) => setQuery(e.target.value)} placeholder="例如：山间日出、建筑细节" className="workflow-field" />
+            <input data-autofocus id={`${modalDomId}-query`} name="query" type="text" required value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("例如：山间日出、建筑细节")} className="workflow-field" />
           </div>
         </div>
         <fieldset className="import-option-group">
-          <legend className="workflow-label">图片来源</legend>
+          <legend className="workflow-label">{t("图片来源")}</legend>
           <div className="import-segmented import-source-options">
-            {([{ value: 'pixabay', label: 'Pixabay', hint: '素材图库' }, { value: 'google_images', label: 'Google', hint: '全网图片' }, { value: 'internet_archive', label: 'Internet Archive', hint: '数字馆藏' }] as const).map((item) => (
+            {([{ value: 'pixabay', label: 'Pixabay', hint: t("素材图库") }, { value: 'google_images', label: 'Google', hint: t("全网图片") }, { value: 'internet_archive', label: 'Internet Archive', hint: t("数字馆藏") }] as const).map((item) => (
               <label key={item.value} className={cn('import-segment', source === item.value && 'is-selected')}>
                 <input type="radio" name="image-source" value={item.value} checked={source === item.value} onChange={() => setSource(item.value)} className="sr-only" />
                 <strong>{item.label}</strong><small>{item.hint}</small>
@@ -2041,28 +2043,28 @@ function ImportSearchModal({
         {source === 'pixabay' && (
           <div className="import-field-grid">
             <div>
-              <label htmlFor={`${modalDomId}-type`} className="workflow-label">图片类型</label>
-              <select id={`${modalDomId}-type`} name="pixabay_image_type" value={pixabayImageType} onChange={(e) => setPixabayImageType(e.target.value)} className="workflow-field"><option value="all">全部类型</option><option value="photo">照片</option><option value="illustration">插画</option><option value="vector">矢量图</option></select>
+              <label htmlFor={`${modalDomId}-type`} className="workflow-label">{t("图片类型")}</label>
+              <select id={`${modalDomId}-type`} name="pixabay_image_type" value={pixabayImageType} onChange={(e) => setPixabayImageType(e.target.value)} className="workflow-field"><option value="all">{t("全部类型")}</option><option value="photo">{t("照片")}</option><option value="illustration">{t("插画")}</option><option value="vector">{t("矢量图")}</option></select>
             </div>
             <div>
-              <label htmlFor={`${modalDomId}-order`} className="workflow-label">排序方式</label>
-              <select id={`${modalDomId}-order`} name="pixabay_order" value={pixabayOrder} onChange={(e) => setPixabayOrder(e.target.value)} className="workflow-field"><option value="popular">最受欢迎</option><option value="latest">最新发布</option></select>
+              <label htmlFor={`${modalDomId}-order`} className="workflow-label">{t("排序方式")}</label>
+              <select id={`${modalDomId}-order`} name="pixabay_order" value={pixabayOrder} onChange={(e) => setPixabayOrder(e.target.value)} className="workflow-field"><option value="popular">{t("最受欢迎")}</option><option value="latest">{t("最新发布")}</option></select>
             </div>
           </div>
         )}
         {source === 'internet_archive' && (
           <div>
-            <label htmlFor={`${modalDomId}-sort`} className="workflow-label">排序方式</label>
-            <select id={`${modalDomId}-sort`} name="archive_sort" value={archiveSort} onChange={(e) => setArchiveSort(e.target.value)} className="workflow-field"><option value="relevance">相关度</option><option value="popular">最受欢迎</option><option value="newest">最新发布</option></select>
+            <label htmlFor={`${modalDomId}-sort`} className="workflow-label">{t("排序方式")}</label>
+            <select id={`${modalDomId}-sort`} name="archive_sort" value={archiveSort} onChange={(e) => setArchiveSort(e.target.value)} className="workflow-field"><option value="relevance">{t("相关度")}</option><option value="popular">{t("最受欢迎")}</option><option value="newest">{t("最新发布")}</option></select>
           </div>
         )}
         <div className="import-quantity-row">
           <div>
-            <label htmlFor={`${modalDomId}-quantity`} className="workflow-label">导入数量</label>
+            <label htmlFor={`${modalDomId}-quantity`} className="workflow-label">{t("导入数量")}</label>
             <input id={`${modalDomId}-quantity`} name="quantity" type="number" min={1} max={20} value={quantity} onChange={(e) => setQuantity(Number(e.target.value) || 5)} className="workflow-field" aria-describedby={`${modalDomId}-quantity-help`} />
-            <p id={`${modalDomId}-quantity-help`} className="workflow-help">1–20 张</p>
+            <p id={`${modalDomId}-quantity-help`} className="workflow-help">{t("1–20 张")}</p>
           </div>
-          <label className="import-check-row import-randomize"><input name="randomize" type="checkbox" checked={randomize} onChange={(e) => setRandomize(e.target.checked)} /><span>增加结果随机性<small>相同关键词也能发现不同图片</small></span></label>
+          <label className="import-check-row import-randomize"><input name="randomize" type="checkbox" checked={randomize} onChange={(e) => setRandomize(e.target.checked)} /><span>{t("增加结果随机性")}<small>{t("相同关键词也能发现不同图片")}</small></span></label>
         </div>
       </fieldset>
       {progress && (
@@ -2245,7 +2247,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
         id: f.id,
         name: f.name,
         size: f.size >= 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} MB` : f.size >= 1024 ? `${(f.size / 1024).toFixed(1)} KB` : `${f.size} B`,
-        date: f.date ? new Date(f.date).toLocaleDateString() : '-',
+        date: f.date || '-',
         type: f.type,
         status: f.status || 'ready',
         processingId: f.processing_id,
@@ -2274,7 +2276,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
         || requestVersion !== fileRequestVersionRef.current
       ) return
       // 网络波动或后端暂时繁忙时，不能抹掉已经显示的待处理视频，否则轮询条件也会随之丢失。
-      console.warn('获取文件列表失败，将保留当前列表并重试', error)
+      console.warn(t("获取文件列表失败，将保留当前列表并重试"), error)
       setFilesLoading(false)
       setFileListRetry((previous) => ({
         kbId: knowledgeBaseId,
@@ -2400,7 +2402,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
         try {
           if (snapshotError) throw snapshotError
           const status = snapshotById.get(task.processingId)
-          if (!status || status.status === 'error') throw new Error(status?.error || '进度状态暂不可用')
+          if (!status || status.status === 'error') throw new Error(status?.error || t("进度状态暂不可用"))
           const normalizedStatus = String(status?.status || '').toLowerCase()
           if (normalizedStatus === 'completed') {
             delete progressPollFailureCountRef.current[task.processingId]
@@ -2413,13 +2415,13 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
               task,
               status,
               terminal: 'failed' as const,
-              error: status?.error || status?.message || '上传任务已过期，请查看文件列表确认结果',
+              error: status?.error || status?.message || t("上传任务已过期，请查看文件列表确认结果"),
             }
           }
           delete progressPollFailureCountRef.current[task.processingId]
           return { task, status }
         } catch (error) {
-          const message = getErrorMessage(error, '无法获取上传任务状态')
+          const message = getErrorMessage(error, t("无法获取上传任务状态"))
           const httpStatus = getErrorHttpStatus(error)
           // 404 表示后端明确找不到任务；其余网络/超时错误可能只是服务繁忙，不能把仍在
           // 运行的长视频误标失败。
@@ -2447,7 +2449,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
               processing_id: task.processingId,
               status: 'processing',
               stage: 'processing',
-              message: `进度服务暂不可用，${Math.ceil(retryDelayMs / 1000)} 秒后重试。`,
+              message: t("进度服务暂不可用，{{value1}} 秒后重试。", { value1: Math.ceil(retryDelayMs / 1000) }),
             },
             transient: true,
             error: message,
@@ -2529,8 +2531,8 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
       if (Object.keys(terminalOutcomes).length > 0) {
         const failedMessages = taskStates
           .filter((item) => item.terminal === 'failed')
-          .map((item) => `${item.task.filename}: ${item.error || '处理失败'}`)
-        if (failedMessages.length > 0) console.warn('后台上传任务结束:', failedMessages.join('；'))
+          .map((item) => t("{{value1}}: {{value2}}", { value1: item.task.filename, value2: item.error || t("处理失败") }))
+        if (failedMessages.length > 0) console.warn(t("后台上传任务结束:"), failedMessages.join('；'))
         setBackgroundUploadTaskOutcomes(nextOutcomes)
       }
 
@@ -2541,7 +2543,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
         currentFile: active?.task.filename ?? prev.currentFile,
         currentFileIsImage: active?.task.isImage ?? prev.currentFileIsImage,
         submitted: true,
-        message: taskStates.some(item => item.transient) ? '进度同步暂时中断，正在重试；后台任务仍会继续。' : undefined,
+        message: taskStates.some(item => item.transient) ? t("进度同步暂时中断，正在重试；后台任务仍会继续。") : undefined,
         files: tasks.map<UploadFileProgress>(task => {
           const item = taskStates.find(item => item.task.processingId === task.processingId)
           const previous = prev.files?.find(file => file.id === task.processingId)
@@ -2702,7 +2704,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
       await createKnowledgeBase({ name, description: desc })
       setShowCreateModal(false)
     } catch (error) {
-      console.error('创建知识库失败:', error)
+      console.error(t("创建知识库失败:"), error)
       throw error
     }
   }
@@ -2787,14 +2789,14 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
       setCurrentUploadFiles(null)
 
     } catch (error) {
-      console.error('批量上传提交失败', error)
+      console.error(t("批量上传提交失败"), error)
       setUploadProgress((prev) => prev ? {
         ...prev,
         stage: 'done',
         stageProgress: 100,
         failed: prev.total,
-        message: getErrorMessage(error, '上传提交失败，请重试。'),
-        files: prev.files?.map(file => ({ ...file, status: 'failed', error: getErrorMessage(error, '上传提交失败') })),
+        message: getErrorMessage(error, t("上传提交失败，请重试。")),
+        files: prev.files?.map(file => ({ ...file, status: 'failed', error: getErrorMessage(error, t("上传提交失败")) })),
       } : prev)
       uploadSubmissionRef.current = false
       setUploading(false)
@@ -2810,7 +2812,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     filename: string
     content: string
   }) => {
-    if (!activeKbId) throw new Error('请先选择知识库')
+    if (!activeKbId) throw new Error(t("请先选择知识库"))
     const file = new File([content], filename, { type: 'text/markdown' })
     setManualInputDraft(null)
     await handleFileUpload([file], { sourceType: 'manual_input' })
@@ -2841,7 +2843,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     content: string
   }) => {
     if (!activeKbId || manualInputDraft?.mode !== 'edit' || !manualInputDraft.fileId) {
-      throw new Error('缺少待编辑的手动文档信息')
+      throw new Error(t("缺少待编辑的手动文档信息"))
     }
     await knowledgeApi.replaceManualFileContent(activeKbId, manualInputDraft.fileId, {
       filename,
@@ -2855,7 +2857,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
   const handleDeleteKb = async (kbId: string) => {
     setMenuOpenKbId(null)
     const kb = knowledgeBases.find((k) => k.id === kbId)
-    const ok = window.confirm(`确定删除知识库「${kb?.name || kbId}」？此操作不可撤销。`)
+    const ok = window.confirm(t("确定删除知识库「{{value1}}」？此操作不可撤销。", { value1: kb?.name || kbId }))
     if (!ok) return
     try {
       await deleteKnowledgeBase(kbId)
@@ -2863,7 +2865,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
         returnToKnowledgeList()
       }
     } catch (error) {
-      console.error('删除知识库失败:', error)
+      console.error(t("删除知识库失败:"), error)
     }
   }
 
@@ -2872,29 +2874,29 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
       await updateKnowledgeBase(id, { name, description })
       setEditKb(null)
     } catch (error) {
-      console.error('更新知识库失败:', error)
+      console.error(t("更新知识库失败:"), error)
     }
   }
 
   const handleDeleteFile = async (fileId: string) => {
     if (!activeKbId) return
-    const ok = window.confirm('确定删除该文件？')
+    const ok = window.confirm(t("确定删除该文件？"))
     if (!ok) return
     try {
       await knowledgeApi.deleteKnowledgeBaseFile(activeKbId, fileId)
       setFiles((prev) => prev.filter((f) => f.id !== fileId))
       await fetchKnowledgeBases()
     } catch (e) {
-      console.error('删除文件失败', e)
+      console.error(t("删除文件失败"), e)
     }
   }
 
   const handleRetryVideo = async (file: KnowledgeFileView) => {
     if (!activeKbId || !file.processingId) {
-      throw new Error('缺少可恢复的视频任务信息')
+      throw new Error(t("缺少可恢复的视频任务信息"))
     }
     if (!isVideoType(file.type) || String(file.status || '').toLowerCase() !== 'failed') {
-      throw new Error('仅支持重新解析已失败的视频')
+      throw new Error(t("仅支持重新解析已失败的视频"))
     }
 
     const response = await knowledgeApi.retryVideoUpload(file.processingId)
@@ -2904,7 +2906,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
       status: 'queued',
       stage: 'queued',
       progress: 0,
-      message: response.message || '已从原视频重新入队，等待处理…',
+      message: response.message || t("已从原视频重新入队，等待处理…"),
       error: undefined,
       updatedAt: new Date().toISOString(),
     }
@@ -2977,8 +2979,8 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
               {listFetchError ? (
                 <KnowledgeEmptyState
                   icon={AlertCircle}
-                  title="知识库列表加载失败"
-                  description={`当前仍停留在本地视图。${listFetchError} 请确认后端代理可用后重试。`}
+                  title={t("知识库列表加载失败")}
+                  description={t("当前仍停留在本地视图。{{listFetchError}} 请确认后端代理可用后重试。", { listFetchError: listFetchError })}
                   tone="amber"
                   action={
                     <button
@@ -2986,15 +2988,14 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                       onClick={() => fetchKnowledgeBases()}
                       className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-amber-200 bg-white px-4 text-sm font-semibold text-amber-700 shadow-sm transition-colors hover:bg-amber-50 dark:border-amber-500/30 dark:bg-slate-900 dark:text-amber-300 dark:hover:bg-amber-950/30"
                     >
-                      重试
-                    </button>
+                       {t("重试")} </button>
                   }
                 />
               ) : (
                 <KnowledgeEmptyState
                   icon={Database}
-                  title="创建第一个素材空间"
-                  description="把文档、图片、音频和视频放进同一个可检索空间，系统会自动完成解析、向量化和主题画像。"
+                  title={t("创建第一个素材空间")}
+                  description={t("把文档、图片、音频和视频放进同一个可检索空间，系统会自动完成解析、向量化和主题画像。")}
                   tone="indigo"
                   action={
                     <button
@@ -3003,8 +3004,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                       className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition-colors hover:from-indigo-500 hover:to-violet-500"
                     >
                       <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-                      新建素材空间
-                    </button>
+                       {t("新建素材空间")} </button>
                   }
                 />
               )}
@@ -3038,8 +3038,8 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                     <button
                       type="button"
                       onClick={openKbDetail}
-                      aria-label={`打开知识库：${kb.name}`}
-                      title={`打开知识库：${kb.name}`}
+                      aria-label={t("打开知识库：{{value1}}", { value1: kb.name })}
+                      title={t("打开知识库：{{value1}}", { value1: kb.name })}
                       className="absolute inset-0 z-20 cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-fuchsia-400/40 dark:focus-visible:ring-offset-slate-950"
                     />
                     {/* 未上传图片/视频时按素材类型配一张浅色默认封面，并以轻微色调区分每个空间。 */}
@@ -3082,7 +3082,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                   : 'text-slate-600 dark:text-slate-300'
                               )}
                             >
-                              {kb.description || '暂无描述'}
+                              {kb.description || t("暂无描述")}
                             </p>
                             <div
                               className={cn(
@@ -3097,31 +3097,27 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                   <span className="text-[13px] leading-none" aria-hidden>
                                     📄
                                   </span>
-                                  {kb.stats?.documents ?? 0} 文件
-                                </span>
+                                  {kb.stats?.documents ?? 0}  {t("文件")} </span>
                                 <span className="opacity-80 shrink-0">·</span>
                                 <span className="inline-flex items-center gap-1 shrink-0">
                                   <span className="text-[13px] leading-none" aria-hidden>
                                     🖼️
                                   </span>
-                                  {kb.stats?.images ?? 0} 图片
-                                </span>
+                                  {kb.stats?.images ?? 0}  {t("图片")} </span>
                                 <span className="opacity-80 shrink-0">·</span>
                                 <span className="inline-flex items-center gap-1 shrink-0">
                                   <span className="text-[13px] leading-none" aria-hidden>
                                     🎵
                                   </span>
-                                  {kb.stats?.audio ?? 0} 音频
-                                </span>
+                                  {kb.stats?.audio ?? 0}  {t("音频")} </span>
                                 <span className="opacity-80 shrink-0">·</span>
                                 <span className="inline-flex items-center gap-1 shrink-0">
                                   <span className="text-[13px] leading-none" aria-hidden>
                                     🎥
                                   </span>
-                                  {kb.stats?.video ?? 0} 视频
-                                </span>
+                                  {kb.stats?.video ?? 0}  {t("视频")} </span>
                               </div>
-                              <span className="shrink-0">{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
+                              <span className="shrink-0">{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString(getLanguage()) : t("未知")}</span>
                               <div className="pointer-events-auto relative z-40 shrink-0">
                                 <button
                                   onClick={(e) => {
@@ -3134,8 +3130,8 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                       ? 'border-white/30 bg-white/15 text-white/90 shadow-md hover:border-white/40 hover:bg-white/25 hover:text-white'
                                       : 'border-slate-200/90 bg-white/70 text-slate-500 hover:border-indigo-200 hover:bg-white hover:text-indigo-600 dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-indigo-400/40 dark:hover:text-indigo-200'
                                   )}
-                                  title="更多操作"
-                                  aria-label={`更多操作：${kb.name}`}
+                                  title={t("更多操作")}
+                                  aria-label={t("更多操作：{{value1}}", { value1: kb.name })}
                                 >
                                   <MoreVertical size={14} strokeWidth={2} />
                                 </button>
@@ -3152,15 +3148,13 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                       }}
                                       className="w-full px-3 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-t-xl first:pt-2.5"
                                     >
-                                      <Pencil size={14} /> 编辑
-                                    </button>
+                                      <Pencil size={14} />  {t("编辑")} </button>
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteKb(kb.id)}
                                       className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-b-xl last:pb-2.5"
                                     >
-                                      <Trash2 size={14} /> 删除
-                                    </button>
+                                      <Trash2 size={14} />  {t("删除")} </button>
                                   </div>
                                 )}
                               </div>
@@ -3185,7 +3179,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                           </div>
                           <h3 className={cn(kbCardTitleClass, 'text-slate-800 transition-colors duration-300 group-hover:text-fuchsia-700 dark:text-slate-100 dark:group-hover:text-fuchsia-300')}>{kb.name}</h3>
                           <p className="line-clamp-2 h-8 min-h-0 flex-1 overflow-hidden text-ellipsis text-sm leading-snug text-slate-500 transition-colors duration-300 group-hover:text-slate-600 dark:text-slate-400 dark:group-hover:text-slate-300">
-                            {kb.description || '暂无描述'}
+                            {kb.description || t("暂无描述")}
                           </p>
                         </div>
                         <div className="pointer-events-none relative z-30 mt-3 flex flex-shrink-0 items-center justify-between gap-2 border-t border-slate-100 pt-3 text-[11px] text-slate-400 transition-colors duration-300 group-hover:border-fuchsia-100 dark:border-slate-800 dark:group-hover:border-fuchsia-900/35">
@@ -3194,31 +3188,27 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                               <span className="text-[13px] leading-none" aria-hidden>
                                 📄
                               </span>
-                              {kb.stats?.documents ?? 0} 文件
-                            </span>
+                              {kb.stats?.documents ?? 0}  {t("文件")} </span>
                             <span className="opacity-70">·</span>
                             <span className="inline-flex items-center gap-1">
                               <span className="text-[13px] leading-none" aria-hidden>
                                 🖼️
                               </span>
-                              {kb.stats?.images ?? 0} 图片
-                            </span>
+                              {kb.stats?.images ?? 0}  {t("图片")} </span>
                             <span className="opacity-70">·</span>
                             <span className="inline-flex items-center gap-1">
                               <span className="text-[13px] leading-none" aria-hidden>
                                 🎵
                               </span>
-                              {kb.stats?.audio ?? 0} 音频
-                            </span>
+                              {kb.stats?.audio ?? 0}  {t("音频")} </span>
                             <span className="opacity-70">·</span>
                             <span className="inline-flex items-center gap-1">
                               <span className="text-[13px] leading-none" aria-hidden>
                                 🎥
                               </span>
-                              {kb.stats?.video ?? 0} 视频
-                            </span>
+                              {kb.stats?.video ?? 0}  {t("视频")} </span>
                           </div>
-                          <span className="shrink-0">{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString() : '未知'}</span>
+                          <span className="shrink-0">{kb.updated_at ? new Date(kb.updated_at).toLocaleDateString(getLanguage()) : t("未知")}</span>
                           <div className="pointer-events-auto relative z-40 shrink-0">
                             <button
                               onClick={(e) => {
@@ -3226,8 +3216,8 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                 setMenuOpenKbId((id) => (id === kb.id ? null : kb.id))
                               }}
                               className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 shadow-sm transition-all hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-500 active:scale-95"
-                              title="更多操作"
-                              aria-label={`更多操作：${kb.name}`}
+                              title={t("更多操作")}
+                              aria-label={t("更多操作：{{value1}}", { value1: kb.name })}
                             >
                               <MoreVertical size={14} strokeWidth={2} />
                             </button>
@@ -3244,15 +3234,13 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                   }}
                                   className="w-full px-3 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-t-xl first:pt-2.5"
                                 >
-                                  <Pencil size={14} /> 编辑
-                                </button>
+                                  <Pencil size={14} />  {t("编辑")} </button>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteKb(kb.id)}
                                   className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-b-xl last:pb-2.5"
                                 >
-                                  <Trash2 size={14} /> 删除
-                                </button>
+                                  <Trash2 size={14} />  {t("删除")} </button>
                               </div>
                             )}
                           </div>
@@ -3288,16 +3276,15 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
             className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-40"
             role="status"
             aria-live="polite"
-            aria-label="拖拽上传，进入知识库详情页后松手即可上传"
+            aria-label={t("拖拽上传，进入知识库详情页后松手即可上传")}
           >
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-6 py-5 shadow-xl text-center">
               <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center mx-auto">
                 <Upload size={22} aria-hidden />
               </div>
-              <div className="mt-3 font-semibold text-slate-900 dark:text-slate-100">拖拽上传</div>
+              <div className="mt-3 font-semibold text-slate-900 dark:text-slate-100">{t("拖拽上传")}</div>
               <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                进入某个知识库详情页后松手即可上传
-              </div>
+                 {t("进入某个知识库详情页后松手即可上传")} </div>
             </div>
           </div>
         )}
@@ -3313,18 +3300,18 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
       if (!trimmedFileQuery) return true
       return f.name.toLowerCase().includes(normalizedFileQuery)
     })
-    const currentFileViewLabel = fileView === 'grid' ? '画廊视图' : '列表视图'
+    const currentFileViewLabel = fileView === 'grid' ? t("画廊视图") : t("列表视图")
     const activeFilePanelId = `${fileListDomId}-file-active-panel`
     const fileResultBaseText = filesLoading
-      ? `${currentFileViewLabel}，正在读取「${activeKb.name}」的文件清单。`
+      ? t("{{currentFileViewLabel}}，正在读取「{{value2}}」的文件清单。", { currentFileViewLabel: currentFileViewLabel, value2: activeKb.name })
       : trimmedFileQuery
-      ? `${currentFileViewLabel}，搜索“${trimmedFileQuery}”命中 ${filteredFiles.length} 个文件，共 ${files.length} 个文件。`
-      : `${currentFileViewLabel}，显示全部 ${files.length} 个文件。`
+      ? t("{{currentFileViewLabel}}，搜索“{{trimmedFileQuery}}”命中 {{value3}} 个文件，共 {{value4}} 个文件。", { currentFileViewLabel: currentFileViewLabel, trimmedFileQuery: trimmedFileQuery, value3: filteredFiles.length, value4: files.length })
+      : t("{{currentFileViewLabel}}，显示全部 {{value2}} 个文件。", { currentFileViewLabel: currentFileViewLabel, value2: files.length })
     const fileListRetryDelaySeconds = fileListRetry?.kbId === activeKbId
       ? Math.ceil(Math.min(30000, 1000 * (2 ** Math.max(0, fileListRetry.attempt - 1))) / 1000)
       : undefined
     const fileResultStatusText = fileListRetryDelaySeconds != null
-      ? `${fileResultBaseText} 文件状态同步暂不可用，将在约 ${fileListRetryDelaySeconds} 秒后重试。`
+      ? t("{{fileResultBaseText}} 文件状态同步暂不可用，将在约 {{fileListRetryDelaySeconds}} 秒后重试。", { fileResultBaseText: fileResultBaseText, fileListRetryDelaySeconds: fileListRetryDelaySeconds })
       : fileResultBaseText
     const documentCount = kbStats?.documents ?? activeKb.stats?.documents ?? 0
     const textChunkCount = kbStats?.chunks ?? activeKb.stats?.chunks ?? 0
@@ -3361,43 +3348,43 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
               externalFiles={currentUploadFiles}
             >
               <div className="upload-sources">
-                <div className="upload-source-group" role="group" aria-label="直接添加">
-                  <h4>直接添加</h4>
+                <div className="upload-source-group" role="group" aria-label={t("直接添加")}>
+                  <h4>{t("直接添加")}</h4>
                   <div className="upload-source-group__items">
                     <button type="button" className="upload-source" data-source="document" disabled={uploading}
-                      onClick={() => setManualInputDraft({ mode: 'create', initialFilename: '未命名文档.md', initialContent: '' })}
-                      aria-label="新建 Markdown 文档，输入文本后直接分块、向量化并入库">
+                      onClick={() => setManualInputDraft({ mode: 'create', initialFilename: t("未命名文档.md"), initialContent: '' })}
+                      aria-label={t("新建 Markdown 文档，输入文本后直接分块、向量化并入库")}>
                       <span className="upload-source__icon"><Pencil size={19} strokeWidth={1.7} aria-hidden /></span>
-                      <span className="upload-source__copy"><strong>新建文档</strong><small>编写或粘贴内容</small></span>
+                      <span className="upload-source__copy"><strong>{t("新建文档")}</strong><small>{t("编写或粘贴内容")}</small></span>
                       <ChevronRight className="upload-source__arrow" size={14} aria-hidden />
                     </button>
                     <button type="button" className="upload-source" data-source="folder" disabled={uploading}
-                      onClick={() => setShowImportFolderModal(true)} aria-label="从文件夹导入，支持本地或服务端路径">
+                      onClick={() => setShowImportFolderModal(true)} aria-label={t("从文件夹导入，支持本地或服务端路径")}>
                       <span className="upload-source__icon"><FolderOpen size={19} strokeWidth={1.7} aria-hidden /></span>
-                      <span className="upload-source__copy"><strong>文件夹导入</strong><small>批量添加目录素材</small></span>
+                      <span className="upload-source__copy"><strong>{t("文件夹导入")}</strong><small>{t("批量添加目录素材")}</small></span>
                       <ChevronRight className="upload-source__arrow" size={14} aria-hidden />
                     </button>
                   </div>
                 </div>
-                <div className="upload-source-group" role="group" aria-label="从网络导入">
-                  <h4>从网络导入</h4>
+                <div className="upload-source-group" role="group" aria-label={t("从网络导入")}>
+                  <h4>{t("从网络导入")}</h4>
                   <div className="upload-source-group__items upload-source-group__items--web">
                     <button type="button" className="upload-source" data-source="link" disabled={uploading}
-                      onClick={() => setShowImportUrlModal(true)} aria-label="从 URL 导入，支持网页或文件直链">
+                      onClick={() => setShowImportUrlModal(true)} aria-label={t("从 URL 导入，支持网页或文件直链")}>
                       <span className="upload-source__icon"><Link2 size={19} strokeWidth={1.7} aria-hidden /></span>
-                      <span className="upload-source__copy"><strong>链接导入</strong><small>网页 / 文件</small></span>
+                      <span className="upload-source__copy"><strong>{t("链接导入")}</strong><small>{t("网页 / 文件")}</small></span>
                       <ChevronRight className="upload-source__arrow" size={14} aria-hidden />
                     </button>
                     <button type="button" className="upload-source" data-source="image" disabled={uploading}
-                      onClick={() => setShowImportSearchModal(true)} aria-label="打开图片搜索导入，按关键词批量导入">
+                      onClick={() => setShowImportSearchModal(true)} aria-label={t("打开图片搜索导入，按关键词批量导入")}>
                       <span className="upload-source__icon"><ImagePlus size={19} strokeWidth={1.7} aria-hidden /></span>
-                      <span className="upload-source__copy"><strong>图片搜索</strong><small>按关键词搜图</small></span>
+                      <span className="upload-source__copy"><strong>{t("图片搜索")}</strong><small>{t("按关键词搜图")}</small></span>
                       <ChevronRight className="upload-source__arrow" size={14} aria-hidden />
                     </button>
                     <button type="button" className="upload-source" data-source="news" disabled={uploading}
-                      onClick={() => setShowImportHotTopicsModal(true)} aria-label="导入热点资讯，自动抓取新闻素材">
+                      onClick={() => setShowImportHotTopicsModal(true)} aria-label={t("导入热点资讯，自动抓取新闻素材")}>
                       <span className="upload-source__icon"><Newspaper size={19} strokeWidth={1.7} aria-hidden /></span>
-                      <span className="upload-source__copy"><strong>热点资讯</strong><small>按话题收集</small></span>
+                      <span className="upload-source__copy"><strong>{t("热点资讯")}</strong><small>{t("按话题收集")}</small></span>
                       <ChevronRight className="upload-source__arrow" size={14} aria-hidden />
                     </button>
                   </div>
@@ -3424,8 +3411,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                 <div className="resource-files__heading">
                   <h3>
                     <span className="resource-files__heading-icon"><Layers size={16} strokeWidth={1.7} aria-hidden /></span>
-                    文件列表
-                    <span className="resource-files__count">{filesLoading ? '—' : files.length}</span>
+                     {t("文件列表")} <span className="resource-files__count">{filesLoading ? '—' : files.length}</span>
                   </h3>
                   <p
                     id={fileResultsStatusId}
@@ -3441,7 +3427,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                   <div
                     className="resource-files__view-switch"
                     role="tablist"
-                    aria-label="文件视图"
+                    aria-label={t("文件视图")}
                     aria-describedby={fileResultsStatusId}
                   >
                     <button
@@ -3453,16 +3439,15 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                       role="tab"
                       aria-selected={fileView === 'grid'}
                       aria-controls={fileView === 'grid' ? activeFilePanelId : undefined}
-                      aria-label={`切换到画廊视图，${filteredFiles.length} 个结果`}
+                      aria-label={t("切换到画廊视图，{{value1}} 个结果", { value1: filteredFiles.length })}
                       tabIndex={fileView === 'grid' ? 0 : -1}
                       onKeyDown={handleFileViewTabKeyDown}
                       className="resource-files__view-tab"
                       type="button"
-                      title="画廊视图"
+                      title={t("画廊视图")}
                     >
                       <LayoutGrid size={14} strokeWidth={1.7} aria-hidden />
-                      画廊
-                    </button>
+                       {t("画廊")} </button>
                     <button
                       id={fileTableTabId}
                       ref={(node) => {
@@ -3472,16 +3457,15 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                       role="tab"
                       aria-selected={fileView === 'table'}
                       aria-controls={fileView === 'table' ? activeFilePanelId : undefined}
-                      aria-label={`切换到列表视图，${filteredFiles.length} 个结果`}
+                      aria-label={t("切换到列表视图，{{value1}} 个结果", { value1: filteredFiles.length })}
                       tabIndex={fileView === 'table' ? 0 : -1}
                       onKeyDown={handleFileViewTabKeyDown}
                       className="resource-files__view-tab"
                       type="button"
-                      title="列表视图"
+                      title={t("列表视图")}
                     >
                       <List size={14} strokeWidth={1.7} aria-hidden />
-                      列表
-                    </button>
+                       {t("列表")} </button>
                   </div>
                   <label className="resource-files__search">
                     <Search size={15} strokeWidth={1.7} aria-hidden />
@@ -3490,9 +3474,9 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                       value={fileQuery}
                       onChange={(e) => setFileQuery(e.target.value)}
                       type="search"
-                      placeholder="搜索文件名称"
+                      placeholder={t("搜索文件名称")}
                       autoComplete="off"
-                      aria-label="搜索文件"
+                      aria-label={t("搜索文件")}
                       aria-describedby={fileResultsStatusId}
                       aria-controls={activeFilePanelId}
                     />
@@ -3519,11 +3503,11 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                     </colgroup>
                     <thead role="rowgroup">
                       <tr role="row">
-                        <th scope="col">文件名</th>
-                        <th scope="col" className="resource-files__size">大小</th>
-                        <th scope="col" className="resource-files__status">状态</th>
-                        <th scope="col" className="resource-files__date">日期</th>
-                        <th scope="col" className="resource-files__actions"><span className="sr-only">操作</span></th>
+                        <th scope="col">{t("文件名")}</th>
+                        <th scope="col" className="resource-files__size">{t("大小")}</th>
+                        <th scope="col" className="resource-files__status">{t("状态")}</th>
+                        <th scope="col" className="resource-files__date">{t("日期")}</th>
+                        <th scope="col" className="resource-files__actions"><span className="sr-only">{t("操作")}</span></th>
                       </tr>
                     </thead>
                     <tbody role="rowgroup">
@@ -3539,11 +3523,11 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                             <KnowledgeEmptyState
                               compact
                               icon={files.length === 0 ? Upload : Search}
-                              title={fileListRetry && files.length === 0 ? '暂时无法读取素材' : files.length === 0 ? '上传第一份素材' : '没有匹配的文件'}
+                              title={fileListRetry && files.length === 0 ? t("暂时无法读取素材") : files.length === 0 ? t("上传第一份素材") : t("没有匹配的文件")}
                               description={
-                                fileListRetry && files.length === 0 ? '服务暂时繁忙，正在自动重试；这不表示素材已丢失。' : files.length === 0
-                                  ? '从上方拖拽上传、URL 导入、文件夹导入或手动新建 Markdown，即可开始构建检索语料。'
-                                  : '试试缩短关键词，或切回全部文件后再定位目标素材。'
+                                fileListRetry && files.length === 0 ? t("服务暂时繁忙，正在自动重试；这不表示素材已丢失。") : files.length === 0
+                                  ? t("从上方拖拽上传、URL 导入、文件夹导入或手动新建 Markdown，即可开始构建检索语料。")
+                                  : t("试试缩短关键词，或切回全部文件后再定位目标素材。")
                               }
                               tone={files.length === 0 ? 'indigo' : 'slate'}
                             />
@@ -3562,7 +3546,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                 className="resource-files__open"
                                 type="button"
                                 title={file.name}
-                                aria-label={`预览文件：${file.name}`}
+                                aria-label={t("预览文件：{{value1}}", { value1: file.name })}
                               >
                                 <FileThumb file={file} />
                                 <span className="resource-files__file-copy">
@@ -3573,8 +3557,8 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                 </span>
                               </button>
                               <div className="resource-files__mobile-meta">
-                                <span><span className="sr-only">大小：</span>{file.size}</span>
-                                <span><span className="sr-only">日期：</span>{file.date}</span>
+                                <span><span className="sr-only">{t("大小：")}</span>{file.size}</span>
+                                <span><span className="sr-only">{t("日期：")}</span>{formatFileDate(file.date)}</span>
                                 <span className="resource-files__inline-status">
                                   <StatusBadge status={file.status} stage={file.stage} progress={file.progress} message={file.message} error={file.error} updatedAt={file.updatedAt} variant="subtle" />
                                 </span>
@@ -3595,15 +3579,15 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                               />
                             </td>
                             <td className="resource-files__date" role="cell">
-                              {file.date}
+                              {formatFileDate(file.date)}
                             </td>
                             <td className="resource-files__actions" role="cell">
                               <button
                                 onClick={() => handleDeleteFile(file.id)}
                                 className="resource-files__delete"
-                                title="删除文件"
+                                title={t("删除文件")}
                                 type="button"
-                                aria-label={`删除文件：${file.name}`}
+                                aria-label={t("删除文件：{{value1}}", { value1: file.name })}
                               >
                                 <Trash2 size={16} aria-hidden />
                               </button>
@@ -3629,11 +3613,11 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                       <KnowledgeEmptyState
                         compact
                         icon={files.length === 0 ? Upload : Search}
-                        title={fileListRetry && files.length === 0 ? '暂时无法读取素材' : files.length === 0 ? '上传第一份素材' : '没有匹配的文件'}
+                        title={fileListRetry && files.length === 0 ? t("暂时无法读取素材") : files.length === 0 ? t("上传第一份素材") : t("没有匹配的文件")}
                         description={
-                          fileListRetry && files.length === 0 ? '服务暂时繁忙，正在自动重试；这不表示素材已丢失。' : files.length === 0
-                            ? '上方的上传与导入入口已经准备好；添加素材后会自动进入解析、向量化与画像流程。'
-                            : '当前搜索条件没有命中文件。清空搜索词即可回到完整文件列表。'
+                          fileListRetry && files.length === 0 ? t("服务暂时繁忙，正在自动重试；这不表示素材已丢失。") : files.length === 0
+                            ? t("上方的上传与导入入口已经准备好；添加素材后会自动进入解析、向量化与画像流程。")
+                            : t("当前搜索条件没有命中文件。清空搜索词即可回到完整文件列表。")
                         }
                         tone={files.length === 0 ? 'indigo' : 'slate'}
                       />
@@ -3657,8 +3641,8 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                   : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-fuchsia-300 dark:hover:border-fuchsia-500 hover:shadow-sm'
                             )}
                             type="button"
-                            title={isMedia ? '点击播放或查看详情' : '点击预览'}
-                            aria-label={`${isMedia ? '播放或查看文件详情' : '预览文件'}：${file.name}`}
+                            title={isMedia ? t("点击播放或查看详情") : t("点击预览")}
+                            aria-label={t("{{value1}}：{{value2}}", { value1: isMedia ? t("播放或查看文件详情") : t("预览文件"), value2: file.name })}
                           >
                             <div className="relative w-full shrink-0">
                               <div className={cn(
@@ -3683,7 +3667,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                               <div className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate" title={file.name}>{file.name}</div>
                               <div className="mt-2 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between">
                                 <span>{file.size}</span>
-                                <span>{file.date}</span>
+                                <span>{formatFileDate(file.date)}</span>
                               </div>
                               <div className="mt-2 flex items-center justify-between gap-2">
                                 <span className="flex min-w-0 flex-1">
@@ -3702,7 +3686,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                   isAudio ? 'text-violet-500 dark:text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300' : isVideo ? 'text-sky-500 dark:text-sky-400 group-hover:text-sky-600 dark:group-hover:text-sky-300' : 'text-slate-400 group-hover:text-fuchsia-600'
                                 )}>
                                   {isMedia ? <Play size={12} aria-hidden /> : <Eye size={13} aria-hidden />}
-                                  <span className="resource-files__preview-label">{isMedia ? '播放' : '预览'}</span>
+                                  <span className="resource-files__preview-label">{isMedia ? t("播放") : t("预览")}</span>
                                 </span>
                               </div>
                             </div>
@@ -3825,11 +3809,11 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                 stageProgress: 0,
                 submitted: true,
                 files: [],
-                message: '正在搜索图片，请保持页面打开。',
+                message: t("正在搜索图片，请保持页面打开。"),
                 total,
                 completed: 0,
                 failed: 0,
-                currentFile: '搜索中…',
+                currentFile: t("搜索中…"),
                 currentFileIsImage: true,
               })
               importApi
@@ -3860,7 +3844,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                   if (event.stage === 'error') {
                     flushSync(() => {
                       setUploadProgress((prev) =>
-                        prev ? { ...prev, stage: 'done', failed: prev.total, completed: 0, message: event.message || '图片导入失败，请重试。' } : prev
+                        prev ? { ...prev, stage: 'done', failed: prev.total, completed: 0, message: event.message || t("图片导入失败，请重试。") } : prev
                       )
                     })
                     uploadSubmissionRef.current = false
@@ -3886,7 +3870,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                         ...prev,
                         stage: frontStage,
                         stageProgress: progressPct,
-                        message: `${event.message || '正在导入图片'}，请保持页面打开。`,
+                        message: t("{{value1}}，请保持页面打开。", { value1: event.message || t("正在导入图片") }),
                         total: tot,
                       }
                       return next
@@ -3897,7 +3881,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                   uploadSubmissionRef.current = false
                   setUploading(false)
                   setCurrentUploadFiles(null)
-                  setUploadProgress((prev) => (prev ? { ...prev, stage: 'done', failed: prev.total, message: getErrorMessage(error, '图片导入失败，请重试。') } : undefined))
+                  setUploadProgress((prev) => (prev ? { ...prev, stage: 'done', failed: prev.total, message: getErrorMessage(error, t("图片导入失败，请重试。")) } : undefined))
                 })
             }}
           />
@@ -3959,8 +3943,8 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
               <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center mx-auto">
                 <Upload size={22} />
               </div>
-              <div className="mt-3 font-semibold text-slate-900 dark:text-slate-100">松手上传到当前知识库</div>
-              <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">支持批量上传，逐个显示解析进度</div>
+              <div className="mt-3 font-semibold text-slate-900 dark:text-slate-100">{t("松手上传到当前知识库")}</div>
+              <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t("支持批量上传，逐个显示解析进度")}</div>
             </div>
           </div>
         )}
@@ -3970,8 +3954,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
 
   return (
     <div className="flex-1 flex items-center justify-center text-slate-400 bg-slate-50 dark:bg-slate-950">
-      未找到该知识库，可能已被删除。
-    </div>
+       {t("未找到该知识库，可能已被删除。")} </div>
   )
 }
 

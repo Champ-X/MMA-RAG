@@ -128,3 +128,6 @@
 @media (prefers-reduced-motion: reduce) {
   .knowledge-overview *, .knowledge-overview-tooltip { animation: none !important; transition: none !important; }
 }
+
+:lang(en) .knowledge-overview__kinds dt { white-space: normal; }
+:lang(en) .knowledge-overview__kinds dt svg { flex-shrink: 0; }

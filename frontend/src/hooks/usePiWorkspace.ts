@@ -1,3 +1,4 @@
+import { translate as tr } from '@/i18n'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { piApi, PiApiError } from '@/services/piAgent'
 import type { PiConfig } from '@/types/pi'
@@ -13,7 +14,7 @@ export function usePiWorkspace(enabled: boolean) {
     const auth = cause instanceof PiApiError && cause.status === 401
     setConfig(null)
     setNeedsAuth(auth)
-    setError(auth ? '当前浏览器尚未连接工作区，或连接已过期。' : cause instanceof Error ? cause.message : '工作区暂时无法连接，请重试。')
+    setError(auth ? tr("当前浏览器尚未连接工作区，或连接已过期。") : cause instanceof Error ? cause.message : tr("工作区暂时无法连接，请重试。"))
   }, [])
   useEffect(() => {
     if (!enabled) return

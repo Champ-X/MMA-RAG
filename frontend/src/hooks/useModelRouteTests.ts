@@ -1,3 +1,4 @@
+import { translate as tr } from '@/i18n'
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react'
 import { isAxiosError } from 'axios'
 import { systemApi } from '@/services/api_client'
@@ -14,7 +15,7 @@ async function probeRoute(route: ModelRouteSelection): Promise<ModelRouteTestRes
     return {
       ...route, success: false, duration_ms: performance.now() - started,
       error_code: timedOut ? 'timeout' : 'network_error',
-      message: timedOut ? '连接测试超时，请稍后重试。' : detail ?? '无法完成连接测试，请检查后端连接后重试。',
+      message: timedOut ? tr("连接测试超时，请稍后重试。") : detail ?? tr("无法完成连接测试，请检查后端连接后重试。"),
     }
   }
 }

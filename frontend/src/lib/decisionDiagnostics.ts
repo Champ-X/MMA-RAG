@@ -1,3 +1,4 @@
+import { translate as tr } from '@/i18n'
 import type { DecisionCitationUnit, DecisionContextCheckpoint, DecisionCoverage, DecisionDiagnostics, DecisionIntentBlocker, DecisionIntentRecord, DecisionModelRecord, DecisionModalityRequirement, DecisionPlanAction, DecisionRerankRecord } from '@/types/decision'
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -119,19 +120,19 @@ const reasons: Record<string, string> = {
 
 export function decisionReason(reason?: string): string {
   if (!reason) return ''
-  if (/^http_\d{3}$/.test(reason)) return `判断服务返回错误（${reason.slice(5)}）。`
-  return reasons[reason] ?? '此环节未完成；具体原因未提供可显示的说明。'
+  if (/^http_\d{3}$/.test(reason)) return tr("判断服务返回错误（{{v0}}）。", { v0: reason.slice(5) })
+  return tr(reasons[reason] ?? '此环节未完成；具体原因未提供可显示的说明。')
 }
 
 export function intentBlockerLabel(blocker: DecisionIntentBlocker): string {
-  if (blocker.field === 'intent_type') return '任务类型尚不确定，需要原模型处理。'
+  if (blocker.field === 'intent_type') return tr('任务类型尚不确定，需要原模型处理。')
   if (blocker.field === 'planning') return ({
-    needs_planning: '问题需要分解与查询规划。',
-    unresolved_context: '缺少可确定指代的历史或附件。',
-    uncertain: '是否需要复杂规划尚不确定。',
-  } as Record<string, string>)[blocker.reason] ?? '需要原模型完成查询规划。'
-  const label = ({ image: '图片', audio: '音频', video: '视频' } as Record<string, string>)[blocker.field] ?? '来源'
-  return `${label}来源的判断${blocker.reason === 'conflict' ? '存在冲突' : '尚不确定'}。`
+    needs_planning: tr('问题需要分解与查询规划。'),
+    unresolved_context: tr('缺少可确定指代的历史或附件。'),
+    uncertain: tr('是否需要复杂规划尚不确定。'),
+  } as Record<string, string>)[blocker.reason] ?? tr('需要原模型完成查询规划。')
+  const label = ({ image: tr('图片'), audio: tr('音频'), video: tr('视频') } as Record<string, string>)[blocker.field] ?? tr('来源')
+  return tr(blocker.reason === 'conflict' ? '{{v0}}来源的判断存在冲突。' : '{{v0}}来源的判断尚不确定。', { v0: label })
 }
 
 export function decisionModel(record?: DecisionModelRecord): string | undefined {
@@ -143,10 +144,10 @@ export function decisionModel(record?: DecisionModelRecord): string | undefined 
 }
 
 export function decisionProviderName(provider?: string): string | undefined {
-  return provider === 'openrouter' ? 'OpenRouter' : provider === 'typesafe' ? 'TypeSafe' : provider === 'bailian' || provider === 'Alibaba Cloud Bailian' ? '阿里云百炼' : provider
+  return provider === 'openrouter' ? 'OpenRouter' : provider === 'typesafe' ? 'TypeSafe' : provider === 'bailian' || provider === 'Alibaba Cloud Bailian' ? tr('阿里云百炼') : provider
 }
 
-export function intentOutcome(record?: DecisionIntentRecord): string {
+function intentOutcomeKey(record?: DecisionIntentRecord): string {
   if (!record || record.status === 'unavailable') return '未记录'
   if (record.status === 'failed') return '已终止'
   if (record.mode === 'off' || record.status === 'disabled') return '沿用原模型'
@@ -165,36 +166,36 @@ export function intentOutcome(record?: DecisionIntentRecord): string {
 }
 
 export function planActionOutcome(action: DecisionPlanAction): string {
-  if (action.applied) return action.changed ? '已应用并调整来源' : '已确认，原设置一致'
-  if (action.reason === 'already_planned') return '原规划已包含，未重复调用'
-  if (action.reason === 'model_purpose_not_admitted') return '用途未通过验证，未调用'
-  if (action.reason === 'equivalent_action') return '合并重复核验'
-  if (action.profile?.execution === 'observe_only') return '仅观察，未获准应用'
-  if (action.status !== 'evaluated') return '未核验，未应用'
-  if (action.decision === 'contradicted') return '与请求不符，未应用'
-  return '未满足核验条件，未应用'
+  if (action.applied) return action.changed ? tr('已应用并调整来源') : tr('已确认，原设置一致')
+  if (action.reason === 'already_planned') return tr('原规划已包含，未重复调用')
+  if (action.reason === 'model_purpose_not_admitted') return tr('用途未通过验证，未调用')
+  if (action.reason === 'equivalent_action') return tr('合并重复核验')
+  if (action.profile?.execution === 'observe_only') return tr('仅观察，未获准应用')
+  if (action.status !== 'evaluated') return tr('未核验，未应用')
+  if (action.decision === 'contradicted') return tr('与请求不符，未应用')
+  return tr('未满足核验条件，未应用')
 }
 
 export function checkpointOutcome(record: DecisionContextCheckpoint): string {
-  if (record.mode === 'off' || record.reason === 'disabled') return '未启用'
-  if (record.status === 'fallback') return '检查失败，保留上下文'
-  if (record.mode === 'shadow') return '仅记录候选'
-  if (record.added_ids?.length) return `追加 ${record.added_ids.length} 段证据`
-  if (record.status === 'skipped' && record.attempted_count === 0 && record.requests?.length === 0) return '无需模型调用'
-  return record.status === 'ok' ? '未追加证据' : '检查未完成'
+  if (record.mode === 'off' || record.reason === 'disabled') return tr('未启用')
+  if (record.status === 'fallback') return tr('检查失败，保留上下文')
+  if (record.mode === 'shadow') return tr('仅记录候选')
+  if (record.added_ids?.length) return tr("追加 {{v0}} 段证据", { v0: record.added_ids.length })
+  if (record.status === 'skipped' && record.attempted_count === 0 && record.requests?.length === 0) return tr('无需模型调用')
+  return record.status === 'ok' ? tr('未追加证据') : tr('检查未完成')
 }
 
 export function requirementLabel(status?: string): string {
-  return ({ required: '明确需要', helpful: '可能有帮助', forbidden: '明确排除', not_needed: '未识别需求', uncertain: '信号不确定', conflict: '信号冲突' } as Record<string, string>)[status ?? ''] ?? '未记录'
+  return ({ required: tr('明确需要'), helpful: tr('可能有帮助'), forbidden: tr('明确排除'), not_needed: tr('未识别需求'), uncertain: tr('信号不确定'), conflict: tr('信号冲突') } as Record<string, string>)[status ?? ''] ?? tr('未记录')
 }
 
 export function requirementAction(record: DecisionModalityRequirement): string {
-  const actions: Record<string, string> = { adopted: '已采用', added_required: '补充检索需求', retained_baseline: '沿用原规划', conflict_retained_baseline: '冲突，保留原规划', abstained: '弃权，未改写规划', source_binding: '遵循指定来源', source_grounding: '补充背景来源' }
-  return actions[record.action ?? ''] ?? '执行情况未记录'
+  const actions: Record<string, string> = { adopted: tr('已采用'), added_required: tr('补充检索需求'), retained_baseline: tr('沿用原规划'), conflict_retained_baseline: tr('冲突，保留原规划'), abstained: tr('弃权，未改写规划'), source_binding: tr('遵循指定来源'), source_grounding: tr('补充背景来源') }
+  return actions[record.action ?? ''] ?? tr('执行情况未记录')
 }
 
 export function coverageStatus(status?: string): string {
-  return ({ not_searched: '未检索', no_candidates: '本次未召回', filtered: '筛选后未保留', retained: '已保留，待确认上下文', included: '已进入上下文', not_in_context: '未进入上下文' } as Record<string, string>)[status ?? ''] ?? '执行阶段未记录'
+  return ({ not_searched: tr('未检索'), no_candidates: tr('本次未召回'), filtered: tr('筛选后未保留'), retained: tr('已保留，待确认上下文'), included: tr('已进入上下文'), not_in_context: tr('未进入上下文') } as Record<string, string>)[status ?? ''] ?? tr('执行阶段未记录')
 }
 
 export function hasCoverageGap(coverage?: DecisionCoverage): boolean {
@@ -203,29 +204,29 @@ export function hasCoverageGap(coverage?: DecisionCoverage): boolean {
 }
 
 export function rerankOutcome(record?: DecisionRerankRecord): string {
-  if (!record || record.status === 'unavailable') return '未记录'
-  if (record.status === 'failed') return '已终止'
-  if (record.mode === 'off' || record.status === 'disabled') return '沿用原排序'
-  if (['deferred_to_context_checkpoint', 'awaiting_final_context'].includes(record.reason ?? '')) return '沿用原排序'
-  if (record.status === 'fallback') return '已回退'
-  if (record.status === 'skipped') return '已跳过'
-  if (record.mode === 'shadow') return '仅作对照'
-  if (record.mode === 'assist') return record.added_ids?.length ? `补充 ${record.added_ids.length} 条证据` : '保留原证据'
-  return record.status === 'ok' ? '已采用排序' : '未记录'
+  if (!record || record.status === 'unavailable') return tr('未记录')
+  if (record.status === 'failed') return tr('已终止')
+  if (record.mode === 'off' || record.status === 'disabled') return tr('沿用原排序')
+  if (['deferred_to_context_checkpoint', 'awaiting_final_context'].includes(record.reason ?? '')) return tr('沿用原排序')
+  if (record.status === 'fallback') return tr('已回退')
+  if (record.status === 'skipped') return tr('已跳过')
+  if (record.mode === 'shadow') return tr('仅作对照')
+  if (record.mode === 'assist') return record.added_ids?.length ? tr("补充 {{v0}} 条证据", { v0: record.added_ids.length }) : tr('保留原证据')
+  return record.status === 'ok' ? tr('已采用排序') : tr('未记录')
 }
 
 export function citationStatus(unit: DecisionCitationUnit): { label: string; review: boolean; tone: 'quiet' | 'review' } {
   const result = unit.result
-  if (result?.status !== 'evaluated') return { label: '未诊断', review: true, tone: 'quiet' }
+  if (result?.status !== 'evaluated') return { label: tr('未诊断'), review: true, tone: 'quiet' }
   const relation = result.answers?.relation?.choice
-  const source = unit.evidence_basis === 'derived_text' ? '描述 / 转写' : '来源'
-  if (relation === 'contradicted') return { label: `${source}存在冲突`, review: true, tone: 'review' }
-  if (relation === 'insufficient') return { label: `${source}支持不足`, review: true, tone: 'review' }
+  const source = unit.evidence_basis === 'derived_text' ? tr('描述 / 转写') : tr('来源')
+  if (relation === 'contradicted') return { label: tr("{{v0}}存在冲突", { v0: source }), review: true, tone: 'review' }
+  if (relation === 'insufficient') return { label: tr("{{v0}}支持不足", { v0: source }), review: true, tone: 'review' }
   if (relation === 'supported') {
     const review = result.choice_support_signal === false || result.factorized_support_signal === false
-    return { label: review ? '支持信号较弱' : `${source}支持此声明`, review, tone: review ? 'review' : 'quiet' }
+    return { label: review ? tr('支持信号较弱') : tr("{{v0}}支持此声明", { v0: source }), review, tone: review ? 'review' : 'quiet' }
   }
-  return { label: '判断结果未记录', review: true, tone: 'quiet' }
+  return { label: tr('判断结果未记录'), review: true, tone: 'quiet' }
 }
 
 /** Older offsets are Python Unicode code points, not JavaScript UTF-16 units. */
@@ -234,48 +235,53 @@ export function citationStatement(answer: string, unit: DecisionCitationUnit): s
   if (Number.isInteger(unit.start) && Number.isInteger(unit.end) && unit.start! >= 0 && unit.end! > unit.start!) {
     return Array.from(answer).slice(unit.start, unit.end).join('').trim()
   }
-  return '这条历史未保留对应声明。'
+  return tr('这条历史未保留对应声明。')
 }
 
 export function decisionSummary(diagnostics: DecisionDiagnostics): string[] {
-  if (diagnostics.code === 'jev_required_failed') return [diagnostics.reason === 'uncertain_decision' ? '判断不确定，严格模式已停止' : '严格判断未完成']
+  if (diagnostics.code === 'jev_required_failed') return [diagnostics.reason === 'uncertain_decision' ? tr('判断不确定，严格模式已停止') : tr('严格判断未完成')]
   const runs = diagnostics.retrieval?.runs ?? []
   const checkpoint = diagnostics.retrieval?.context_checkpoint
   const labels: string[] = []
   const plans = runs.filter(run => run.jev_decision?.strategy === 'plan_first').map(run => run.jev_decision!)
   if (plans.length) {
-    labels.push(plans.every(record => record.plan?.baseline_plan_preserved) ? '原规划已保留' : '已记录规划检查')
+    labels.push(plans.every(record => record.plan?.baseline_plan_preserved) ? tr('原规划已保留') : tr('已记录规划检查'))
     const applied = plans.some(record => record.plan?.actions?.some(action => action.applied))
-    if (applied) labels.push('来源约束已核验')
-    if (plans.some(record => record.plan?.actions?.some(action => action.profile?.execution === 'observe_only'))) labels.push(applied ? '部分来源动作仅作记录' : '来源动作仅作记录')
-  } else if (runs.some(run => run.jev_decision?.partially_applied)) labels.push('意图部分采用')
-  else if (runs.some(run => run.jev_decision?.accepted)) labels.push('意图已接管')
-  else if (runs.some(run => intentOutcome(run.jev_decision) === '已弃权')) labels.push('意图沿用原规划')
-  if (hasCoverageGap(diagnostics.retrieval?.decision_coverage)) labels.push('部分证据需求未覆盖')
-  if (diagnostics.retrieval?.decision_coverage?.warnings?.length) labels.push('检索存在异常')
+    if (applied) labels.push(tr('来源约束已核验'))
+    if (plans.some(record => record.plan?.actions?.some(action => action.profile?.execution === 'observe_only'))) labels.push(applied ? tr('部分来源动作仅作记录') : tr('来源动作仅作记录'))
+  } else if (runs.some(run => run.jev_decision?.partially_applied)) labels.push(tr('意图部分采用'))
+  else if (runs.some(run => run.jev_decision?.accepted)) labels.push(tr('意图已接管'))
+  else if (runs.some(run => intentOutcomeKey(run.jev_decision) === '已弃权')) labels.push(tr('意图沿用原规划'))
+  if (hasCoverageGap(diagnostics.retrieval?.decision_coverage)) labels.push(tr('部分证据需求未覆盖'))
+  if (diagnostics.retrieval?.decision_coverage?.warnings?.length) labels.push(tr('检索存在异常'))
   const finalAdded = checkpoint ? checkpoint.added_ids : diagnostics.retrieval?.final_added_ids
   if (Array.isArray(finalAdded)) {
-    if (finalAdded.length) labels.push(`补充 ${finalAdded.length} 条证据`)
+    if (finalAdded.length) labels.push(tr("补充 {{v0}} 条证据", { v0: finalAdded.length }))
   } else if (!checkpoint && runs.some(run => run.reranking_scorer?.added_ids?.length)) {
-    labels.push(runs.length === 1 ? `补充 ${runs[0].reranking_scorer!.added_ids!.length} 条证据` : '曾补充候选证据')
+    labels.push(runs.length === 1 ? tr("补充 {{v0}} 条证据", { v0: runs[0].reranking_scorer!.added_ids!.length }) : tr('曾补充候选证据'))
   }
-  if (checkpoint?.mode === 'shadow') labels.push('补证仅作记录')
-  else if (checkpoint?.status === 'skipped' && checkpoint.attempted_count === 0 && checkpoint.requests?.length === 0) labels.push('补证未调用模型')
-  else if (checkpoint?.status === 'ok' && !checkpoint.added_ids?.length) labels.push('上下文未追加')
-  if (runs.some(run => run.reranking_scorer?.mode === 'shadow' && run.reranking_scorer.status === 'ok')) labels.push('重排仅作对照')
-  if (runs.some(run => ['replace','force'].includes(run.reranking_scorer?.mode ?? '') && run.reranking_scorer?.status === 'ok')) labels.push('已采用排序')
-  if (checkpoint?.status === 'fallback' || runs.some(run => run.jev_decision?.status === 'fallback' || intentOutcome(run.jev_decision) === '已回退' || run.reranking_scorer?.status === 'fallback')) labels.push('部分判断已回退')
-  if (runs.some(run => intentOutcome(run.jev_decision) === '已跳过' || (run.reranking_scorer?.status === 'skipped' && !['deferred_to_context_checkpoint', 'awaiting_final_context'].includes(run.reranking_scorer.reason ?? '')))) labels.push('部分判断已跳过')
+  if (checkpoint?.mode === 'shadow') labels.push(tr('补证仅作记录'))
+  else if (checkpoint?.status === 'skipped' && checkpoint.attempted_count === 0 && checkpoint.requests?.length === 0) labels.push(tr('补证未调用模型'))
+  else if (checkpoint?.status === 'ok' && !checkpoint.added_ids?.length) labels.push(tr('上下文未追加'))
+  if (runs.some(run => run.reranking_scorer?.mode === 'shadow' && run.reranking_scorer.status === 'ok')) labels.push(tr('重排仅作对照'))
+  if (runs.some(run => ['replace','force'].includes(run.reranking_scorer?.mode ?? '') && run.reranking_scorer?.status === 'ok')) labels.push(tr('已采用排序'))
+  if (checkpoint?.status === 'fallback' || runs.some(run => run.jev_decision?.status === 'fallback' || intentOutcomeKey(run.jev_decision) === '已回退' || run.reranking_scorer?.status === 'fallback')) labels.push(tr('部分判断已回退'))
+  if (runs.some(run => intentOutcomeKey(run.jev_decision) === '已跳过' || (run.reranking_scorer?.status === 'skipped' && !['deferred_to_context_checkpoint', 'awaiting_final_context'].includes(run.reranking_scorer.reason ?? '')))) labels.push(tr('部分判断已跳过'))
   const audit = diagnostics.jev_citation_audit
   if (audit) {
-    if (!audit.units?.length) labels.push(audit.status === 'not_evaluated' || audit.reason ? '引用未诊断' : '无可诊断声明')
-    else if (audit.units.some(unit => citationStatus(unit).tone === 'review')) labels.push('引用需复核')
-    else if (audit.status === 'not_evaluated' || audit.units?.some(unit => unit.result?.status !== 'evaluated')) labels.push('引用部分未诊断')
-    else labels.push('已记录引用诊断')
+    if (!audit.units?.length) labels.push(audit.status === 'not_evaluated' || audit.reason ? tr('引用未诊断') : tr('无可诊断声明'))
+    else if (audit.units.some(unit => citationStatus(unit).tone === 'review')) labels.push(tr('引用需复核'))
+    else if (audit.status === 'not_evaluated' || audit.units?.some(unit => unit.result?.status !== 'evaluated')) labels.push(tr('引用部分未诊断'))
+    else labels.push(tr('已记录引用诊断'))
   }
   if (!labels.length) {
     const config = diagnostics.retrieval?.jev_config
-    labels.push(config && [config.intent_mode, config.rerank_mode, config.citation_mode].every(mode => !mode || mode === 'off') ? '未启用' : '本轮未接管')
+    labels.push(config && [config.intent_mode, config.rerank_mode, config.citation_mode].every(mode => !mode || mode === 'off') ? tr('未启用') : tr('本轮未接管'))
   }
   return labels
+}
+
+/** Localize the display outcome without using translated text in branch decisions. */
+export function intentOutcome(record?: DecisionIntentRecord): string {
+  return tr(intentOutcomeKey(record))
 }

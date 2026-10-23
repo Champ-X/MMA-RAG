@@ -1,6 +1,8 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import './chatWelcome.css'
 
 export function ChatWelcome() {
+  useTranslation()
   return (
     <header className="chat-welcome">
       <div className="chat-welcome-emblem" aria-hidden="true">
@@ -16,7 +18,7 @@ export function ChatWelcome() {
       </div>
       <div className="chat-welcome-copy">
         <h1 className="chat-welcome-title">
-          <span className="chat-welcome-greeting">你好，我是 </span>
+          <span className="chat-welcome-greeting">{tr("你好，我是")}</span>
           <span className="chat-welcome-name" lang="en">Tessmora</span>
         </h1>
         <p className="chat-welcome-hint" lang="en">

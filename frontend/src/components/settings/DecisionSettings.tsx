@@ -1,3 +1,4 @@
+import { translate as t, useTranslation } from '@/i18n'
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { isAxiosError } from 'axios'
 import { AlertCircle, CheckCircle2, KeyRound, Loader2, PlugZap, Zap } from 'lucide-react'
@@ -19,13 +20,14 @@ function modelName(name: string) {
 
 function errorMessage(error: unknown) {
   if (isAxiosError(error) && typeof error.response?.data?.detail === 'string') return error.response.data.detail
-  return '无法连接服务端，请检查后端连接后重试。'
+  return t("无法连接服务端，请检查后端连接后重试。")
 }
 
 function Preference({ name, title, description, checked, disabled, hint, onChange }: {
   name: string; title: string; description: string; checked: boolean; disabled: boolean
   hint?: string; onChange: (checked: boolean) => void
 }) {
+  useTranslation()
   const id = useId()
   return <label className={cn('decision-preference', disabled && 'is-unavailable')} htmlFor={id}>
     <span className="decision-preference-copy">
@@ -40,6 +42,7 @@ function Preference({ name, title, description, checked, disabled, hint, onChang
 }
 
 export function DecisionSettings({ onHasChangesChange }: { onHasChangesChange: (dirty: boolean) => void }) {
+  useTranslation()
   const id = useId()
   const [saved, setSaved] = useState<DecisionSettingsResponse | null>(null)
   const [draft, setDraft] = useState<DecisionConfig | null>(null)
@@ -123,7 +126,7 @@ export function DecisionSettings({ onHasChangesChange }: { onHasChangesChange: (
     const payload = decisionPreferencesPayload(draft, saved.models)
     if ((payload.intent_mode !== 'off' || payload.citation_mode !== 'off')
       && !saved.providers.find(item => item.id === payload.provider)?.api_key_configured) {
-      setError('请先配置所选服务商的密钥，或关闭下面的功能后保存。')
+      setError("请先配置所选服务商的密钥，或关闭下面的功能后保存。")
       return
     }
     const request = ++requestId.current
@@ -135,7 +138,7 @@ export function DecisionSettings({ onHasChangesChange }: { onHasChangesChange: (
       if (request !== requestId.current) return
       setSaved(result)
       setDraft(result.config)
-      setMessage('已保存，对新请求生效')
+      setMessage("已保存，对新请求生效")
     } catch (caught) {
       if (request === requestId.current) setError(errorMessage(caught))
     } finally {
@@ -154,74 +157,74 @@ export function DecisionSettings({ onHasChangesChange }: { onHasChangesChange: (
   const routeChanged = !!draft && !!saved && (draft.provider !== saved.config.provider || draft.model !== saved.config.model)
   const savedModel = saved?.models.find(item => item.id === saved.config.model && item.provider === saved.config.provider)
   const sourceAlternatives = saved?.models.filter(item => supportsSourceCheck({ provider: item.provider, model: item.id }, saved.models))
-    .slice(0, 2).map(item => modelName(item.name)).join(' 或 ')
+    .slice(0, 2).map(item => modelName(item.name)).join(t(" 或 "))
 
   return <section id="decision" aria-labelledby={`${id}-title`} className="decision-settings">
     <header className="decision-header">
-      <div className="decision-heading"><Zap aria-hidden /><div><h2 id={`${id}-title`}>Decision 模型</h2><p>按需核对检索需求与回答引用</p></div></div>
+      <div className="decision-heading"><Zap aria-hidden /><div><h2 id={`${id}-title`}>{t("Decision 模型")}</h2><p>{t("按需核对检索需求与回答引用")}</p></div></div>
       <span className={cn('decision-status-badge', enabled && 'is-enabled')}><span aria-hidden className="decision-status-dot" />
-        {loading ? '正在读取' : !saved ? '状态未知' : legacyActive ? '使用旧版设置' : enabled ? '已启用' : '未启用'}
+        {loading ? t("正在读取") : !saved ? t("状态未知") : legacyActive ? t("使用旧版设置") : enabled ? t("已启用") : t("未启用")}
       </span>
     </header>
     <form onSubmit={submit} aria-busy={loading || saving}>
-      {error && <p role="alert" className="decision-notice decision-error"><AlertCircle aria-hidden /><span>{error}</span></p>}
-      {loading ? <p role="status" className="decision-loading"><Loader2 className="animate-spin" aria-hidden />正在读取设置…</p> : draft && saved ? (
+      {error && <p role="alert" className="decision-notice decision-error"><AlertCircle aria-hidden /><span>{t(error)}</span></p>}
+      {loading ? <p role="status" className="decision-loading"><Loader2 className="animate-spin" aria-hidden />{t("正在读取设置…")}</p> : draft && saved ? (
         <fieldset disabled={saving} className="decision-body">
-          <legend className="sr-only">Decision 使用设置</legend>
+          <legend className="sr-only">{t("Decision 使用设置")}</legend>
           <div className="decision-model-grid">
-            <BrandSelect id={`${id}-provider`} name="decision-provider" label="服务商" value={draft.provider}
-              options={saved.providers.map(item => ({ value: item.id, label: item.name, provider: item.id }))}
+            <BrandSelect id={`${id}-provider`} name="decision-provider" label={t("服务商")} value={draft.provider}
+              options={saved.providers.map(item => ({ value: item.id, label: t(item.name), provider: item.id }))}
               onChange={value => selectProvider(value as DecisionProvider)} disabled={saving} />
-            <BrandSelect id={`${id}-model`} name="decision-model" label="模型" value={draft.model}
+            <BrandSelect id={`${id}-model`} name="decision-model" label={t("模型")} value={draft.model}
               options={[
-                ...(missingModel ? [{ value: draft.model, label: draft.model || '暂无可选模型', modelId: draft.model, provider: draft.provider, disabled: true }] : []),
+                ...(missingModel ? [{ value: draft.model, label: draft.model || t("暂无可选模型"), modelId: draft.model, provider: draft.provider, disabled: true }] : []),
                 ...models.map(item => ({ value: item.id, label: modelName(item.name), description: item.id, modelId: item.id, provider: item.provider })),
               ]} onChange={model => edit({ ...draft, model })} disabled={saving} />
           </div>
           <div className="decision-connection">
             <div className="decision-connection-copy">
               <p className={cn('decision-connection-line', unavailable && 'is-unavailable')}><KeyRound aria-hidden />
-                <span>{unavailable ? '未配置密钥' : '密钥已配置'}</span>
-                {draft.provider === 'bailian' && <span className="decision-endpoint">{provider?.region === 'cn-beijing' ? '北京' : provider?.region === 'ap-southeast-1' ? '新加坡' : ''}{provider?.endpoint_kind === 'trial' ? '试用入口' : provider?.endpoint_kind === 'workspace' ? '业务空间入口' : 'Decision 接口'}</span>}
+                <span>{unavailable ? t("未配置密钥") : t("密钥已配置")}</span>
+                {draft.provider === 'bailian' && <span className="decision-endpoint">{provider?.region === 'cn-beijing' ? t("北京") : provider?.region === 'ap-southeast-1' ? t("新加坡") : ''}{provider?.endpoint_kind === 'trial' ? t("试用入口") : provider?.endpoint_kind === 'workspace' ? t("业务空间入口") : t("Decision 接口")}</span>}
               </p>
-              {unavailable && <p className="decision-connection-help">请在服务端配置 <code>{providerCredentials[draft.provider]}</code>。</p>}
+              {unavailable && <p className="decision-connection-help">{t("请在服务端配置")} <code>{providerCredentials[draft.provider]}</code>。</p>}
             </div>
             <Button type="button" variant="outline" size="sm" className="decision-button decision-test-button"
               disabled={unavailable || !draft.model || missingModel || testing} onClick={() => void testConnection()}>
-              {testing ? <Loader2 className="animate-spin" aria-hidden /> : <PlugZap aria-hidden />}{testing ? '测试中…' : '测试连接'}
+              {testing ? <Loader2 className="animate-spin" aria-hidden /> : <PlugZap aria-hidden />}{testing ? t("测试中…") : t("测试连接")}
             </Button>
           </div>
           {(testResult || testError) && <div role="status" aria-live="polite" className={cn('decision-test-result', testResult?.success ? 'is-success' : 'is-error')}>
             {testResult?.success ? <CheckCircle2 aria-hidden /> : <AlertCircle aria-hidden />}
-            <span>{testResult?.success ? <>连接正常 <span className="decision-test-duration">{testResult.duration_s.toFixed(2)} 秒</span></>
-              : testError || decisionTestErrorMessage(testResult?.error)}</span>
+            <span>{testResult?.success ? <>{t("连接正常")} <span className="decision-test-duration">{testResult.duration_s.toFixed(2)}  {t("秒")}</span></>
+              : testError ? t(testError) : decisionTestErrorMessage(testResult?.error)}</span>
           </div>}
-          {routeChanged && <p className="decision-saved-route"><span>当前使用</span><BrandIcon provider={saved.config.provider} size={14} />
-            <span>{savedModel ? modelName(savedModel.name) : saved.config.model}</span><span>保存后切换</span></p>}
-          {legacyActive && <p className="decision-legacy-note" role="note">旧版实验设置仍在生效。保存后将恢复常规排序，并按下方开关运行。</p>}
+          {routeChanged && <p className="decision-saved-route"><span>{t("当前使用")}</span><BrandIcon provider={saved.config.provider} size={14} />
+            <span>{savedModel ? modelName(savedModel.name) : saved.config.model}</span><span>{t("保存后切换")}</span></p>}
+          {legacyActive && <p className="decision-legacy-note" role="note">{t("旧版实验设置仍在生效。保存后将恢复常规排序，并按下方开关运行。")}</p>}
 
           <div className="decision-preferences">
-            <Preference name="decision-source-check" title="核对检索需求"
-              description="按你的要求核对素材类型，无法确定时继续原有检索。"
+            <Preference name="decision-source-check" title={t("核对检索需求")}
+              description={t("按你的要求核对素材类型，无法确定时继续原有检索。")}
               checked={sourceEnabled} disabled={!sourceSupported || (unavailable && !sourceEnabled)}
-              hint={!sourceSupported ? `此模型暂不支持${sourceAlternatives ? `，可选 ${sourceAlternatives}` : '，请选择支持此功能的模型'}。` : undefined}
+              hint={!sourceSupported ? sourceAlternatives ? t("此模型暂不支持，可选 {{models}}。", { models: sourceAlternatives }) : t("此模型暂不支持，请选择支持此功能的模型。") : undefined}
               onChange={checked => edit({ ...draft, intent_mode: checked ? 'adaptive' : 'off' })} />
-            <Preference name="decision-citation-check" title="检查回答引用"
-              description="对照引用文字，标出依据不足或冲突的语句，供你复核。"
+            <Preference name="decision-citation-check" title={t("检查回答引用")}
+              description={t("对照引用文字，标出依据不足或冲突的语句，供你复核。")}
               checked={draft.citation_mode === 'shadow'} disabled={unavailable && draft.citation_mode === 'off'}
               onChange={checked => edit({ ...draft, citation_mode: checked ? 'shadow' : 'off' })} />
           </div>
-          <p className="decision-scope-note">开启会增加模型调用。适用于普通检索与 Agent 深研，Pi Agent 使用独立流程。</p>
+          <p className="decision-scope-note">{t("开启会增加模型调用。适用于普通检索与 Agent 深研，Pi Agent 使用独立流程。")}</p>
         </fieldset>
       ) : null}
       <footer className="decision-footer">
         <p role="status" aria-live="polite" className={cn('decision-save-status', message && 'is-saved', dirty && 'is-dirty')}>
-          {message && <CheckCircle2 aria-hidden />}{saving ? '正在保存…' : message || (dirty ? '更改尚未保存' : legacyActive ? '保存后应用简化设置' : saved ? '已保存' : '设置未载入')}
+          {message && <CheckCircle2 aria-hidden />}{saving ? t("正在保存…") : message ? t(message) : (dirty ? t("更改尚未保存") : legacyActive ? t("保存后应用简化设置") : saved ? t("已保存") : t("设置未载入"))}
         </p>
         <div className="decision-footer-actions">
-          {(dirty || !saved) && <Button type="button" variant="outline" size="sm" className="decision-button decision-button-secondary" disabled={loading || saving} onClick={() => void load()}>{saved ? '取消' : '重新读取'}</Button>}
+          {(dirty || !saved) && <Button type="button" variant="outline" size="sm" className="decision-button decision-button-secondary" disabled={loading || saving} onClick={() => void load()}>{saved ? t("取消") : t("重新读取")}</Button>}
           {draft && <Button type="submit" size="sm" className="decision-button decision-button-primary" disabled={loading || saving || (!dirty && !legacyActive)}>
-            {saving && <Loader2 className="animate-spin" aria-hidden />}{legacyActive && !dirty ? '应用简化设置' : '保存设置'}
+            {saving && <Loader2 className="animate-spin" aria-hidden />}{legacyActive && !dirty ? t("应用简化设置") : t("保存设置")}
           </Button>}
         </div>
       </footer>

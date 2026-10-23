@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { chatApi } from '@/services/api_client'
 import { isReferenceMediaUrlFresh } from '@/services/reference_media_url'
@@ -12,6 +13,7 @@ export function ReferenceImage({
   label: string
   onOpen: (rect: DOMRect, triggerElement: HTMLButtonElement) => void
 }) {
+  useTranslation()
   const [src, setSrc] = useState<string>()
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading')
   const [attempt, setAttempt] = useState(0)
@@ -30,7 +32,7 @@ export function ReferenceImage({
     try {
       const result = await chatApi.getReferenceImageUrl({ kb_id: kbId, file_path: filePath })
       if (current !== generation.current) return
-      if (!result.img_url) throw new Error('图片地址为空')
+      if (!result.img_url) throw new Error(tr("图片地址为空"))
       setSrc(result.img_url)
     } catch {
       if (current === generation.current) setStatus('error')
@@ -71,11 +73,11 @@ export function ReferenceImage({
   if (status === 'error') {
     return (
       <div className="max-w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800">
-        <p role="status">图片暂时无法加载</p>
+        <p role="status">{tr("图片暂时无法加载")}</p>
         <p className="max-w-sm break-all text-xs text-slate-500">{label}</p>
         <div className="flex gap-3">
-          <button type="button" className="min-h-11 text-indigo-600 dark:text-indigo-300" onClick={() => setAttempt((n) => n + 1)}>重试加载</button>
-          <button type="button" className="min-h-11 text-indigo-600 dark:text-indigo-300" onClick={(e) => onOpen(e.currentTarget.getBoundingClientRect(), e.currentTarget)}>查看引用</button>
+          <button type="button" className="min-h-11 text-indigo-600 dark:text-indigo-300" onClick={() => setAttempt((n) => n + 1)}>{tr("重试加载")}</button>
+          <button type="button" className="min-h-11 text-indigo-600 dark:text-indigo-300" onClick={(e) => onOpen(e.currentTarget.getBoundingClientRect(), e.currentTarget)}>{tr("查看引用")}</button>
         </div>
       </div>
     )
@@ -86,9 +88,9 @@ export function ReferenceImage({
       type="button"
       onClick={(e) => onOpen(e.currentTarget.getBoundingClientRect(), e.currentTarget)}
       className={`relative max-w-full overflow-hidden rounded-lg p-0 hover:ring-2 ring-primary/40 ${status === 'loading' ? 'min-h-32 min-w-48 bg-slate-100 dark:bg-slate-800' : ''}`}
-      aria-label={`查看图片引用：${label}`}
+      aria-label={tr("查看图片引用：{{v0}}", { v0: label })}
     >
-      {status === 'loading' && <span role="status" className="absolute inset-0 flex items-center justify-center text-xs text-slate-500">正在加载图片…</span>}
+      {status === 'loading' && <span role="status" className="absolute inset-0 flex items-center justify-center text-xs text-slate-500">{tr("正在加载图片…")}</span>}
       {src && (
         <img
           key={`${attempt}:${src}`}

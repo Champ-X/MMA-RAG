@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import React, { Suspense } from 'react'
 import { ChevronDown, Music, Pause, Play, Video } from 'lucide-react'
 import { InlineCitation } from './InlineCitation'
@@ -36,6 +37,7 @@ const MarkdownBlockContext = React.createContext<MarkdownBlockRenderers | null>(
 const citationBlockTags: MarkdownBlockTag[] = ['p', 'li', 'table', 'th', 'td', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']
 const citationBlockComponents = Object.fromEntries(citationBlockTags.map(tag => {
   function CitationBlock(props: MarkdownBlockProps) {
+  useTranslation()
     return React.useContext(MarkdownBlockContext)?.[tag](props)
   }
   return [tag, CitationBlock]
@@ -70,14 +72,15 @@ export interface LiveThinkingProps {
 }
 
 function ThinkingCapsuleFallback() {
+  useTranslation()
   return (
     <div className="w-full rounded-xl border border-slate-200/70 bg-slate-50/90 px-3 py-2 text-xs font-medium text-slate-500 dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-400">
-      正在载入思考过程…
-    </div>
+      {tr("正在载入思考过程…")}</div>
   )
 }
 
 function MarkdownRendererFallback({ content }: { content: string }) {
+  useTranslation()
   return (
     <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-slate-300">
       {content}
@@ -324,6 +327,7 @@ function findCitationById(
 }
 
 function CitationInlineButton({ n, available, local, onClick }: { n: number; available: boolean; local?: boolean; onClick?: (rect: DOMRect, triggerElement: HTMLButtonElement) => void }) {
+  useTranslation()
   return (
     <button
       type="button"
@@ -337,8 +341,8 @@ function CitationInlineButton({ n, available, local, onClick }: { n: number; ava
       className="inline-flex items-center justify-center mx-0.5 text-[9px] font-semibold rounded-[5px] transition-all border align-text-top min-w-[1rem] h-4 px-1 text-indigo-700 dark:text-indigo-200 bg-gradient-to-br from-indigo-50 via-purple-50 to-fuchsia-50 dark:from-indigo-600/30 dark:via-purple-600/20 dark:to-fuchsia-600/30 hover:from-indigo-100 hover:via-purple-100 hover:to-fuchsia-100 dark:hover:from-indigo-600/40 dark:hover:via-purple-600/30 dark:hover:to-fuchsia-600/40 border-indigo-300/60 dark:border-indigo-700/60 shadow-sm hover:shadow active:scale-95"
       data-source={local ? 'attachment' : 'knowledge'}
       style={local ? { borderStyle: 'dashed', color: 'var(--attachment-cite-text, #0f766e)', background: 'var(--attachment-cite-bg, #f0fdfa)' } : undefined}
-      title={available ? `点击查看${local ? '本机附件' : ''}引用 ${n}` : `引用 ${n} 的来源数据不可用`}
-      aria-label={available ? `查看引用 ${n}` : `引用 ${n} 的来源数据不可用`}
+      title={available ? local ? tr("点击查看本机附件引用 {{number}}", { number: n }) : tr("点击查看引用 {{number}}", { number: n }) : tr("引用 {{v0}} 的来源数据不可用", { v0: n })}
+      aria-label={available ? tr("查看引用 {{v0}}", { v0: n }) : tr("引用 {{v0}} 的来源数据不可用", { v0: n })}
     >
       {n}
     </button>
@@ -372,6 +376,7 @@ function ParagraphImageDisplay({
   fallbackKbId?: string
   displayIndexByRefId?: Map<number | string, number>
 }) {
+  useTranslation()
   const images = deduplicateMediaCitations(
     citations.filter((citation) => citation.type === 'image' && !isVideoKeyframeCitation(citation))
   )
@@ -387,7 +392,7 @@ function ParagraphImageDisplay({
           url={citation.img_url}
           kbId={citation.debug_info?.kb_id || fallbackKbId}
           filePath={citation.file_path || citation.file_name}
-          label={citation.file_name || `引用 ${citation.id}`}
+          label={citation.file_name || tr("引用 {{v0}}", { v0: citation.id })}
           onOpen={(rect, triggerElement) => onCiteClick?.(citation.id, rect, messageId, triggerElement)}
         />
       ))}
@@ -403,6 +408,7 @@ function MediaEvidenceDescription({
   content: string
   accent: 'audio' | 'video'
 }) {
+  useTranslation()
   const [expanded, setExpanded] = React.useState(false)
   const [canExpand, setCanExpand] = React.useState(false)
   const textRef = React.useRef<HTMLSpanElement>(null)
@@ -464,7 +470,7 @@ function MediaEvidenceDescription({
                   ),
             )}
           >
-            {expanded ? '收起' : '展开'}
+            {expanded ? tr("收起") : tr("展开")}
             <ChevronDown
               className={cn('size-3.5 transition-transform', expanded && 'rotate-180')}
               strokeWidth={2}
@@ -487,6 +493,7 @@ function InlineAudioPlayer({
   label: string
   onError?: (event: React.SyntheticEvent<HTMLAudioElement, Event>) => void
 }) {
+  useTranslation()
   const audioRef = React.useRef<HTMLAudioElement>(null)
   const [isPlaying, setIsPlaying] = React.useState(false)
   const [currentTime, setCurrentTime] = React.useState(0)
@@ -538,7 +545,7 @@ function InlineAudioPlayer({
         type="button"
         onClick={() => void togglePlayback()}
         className="flex size-8 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white shadow-sm shadow-violet-900/15 transition-[background-color,transform] hover:bg-violet-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 dark:bg-violet-500 dark:hover:bg-violet-400 dark:focus-visible:ring-offset-slate-800"
-        aria-label={isPlaying ? `暂停${label}` : `播放${label}`}
+        aria-label={isPlaying ? tr("暂停{{v0}}", { v0: label }) : tr("播放{{v0}}", { v0: label })}
       >
         {isPlaying ? (
           <Pause className="size-3.5" fill="currentColor" strokeWidth={2.25} aria-hidden />
@@ -562,7 +569,7 @@ function InlineAudioPlayer({
           audioRef.current.currentTime = nextTime
           setCurrentTime(nextTime)
         }}
-        aria-label={`${label}播放进度`}
+        aria-label={tr("{{v0}}播放进度", { v0: label })}
         aria-valuetext={`${formatTimeLabel(currentTime)} / ${formatTimeLabel(safeDuration)}`}
         className="media-audio-range min-w-0 flex-1 disabled:cursor-wait disabled:opacity-50"
         style={rangeStyle}
@@ -588,6 +595,7 @@ function ParagraphAudioDisplay({
   displayIndexByRefId?: Map<number | string, number>
   fallbackKbId?: string
 }) {
+  useTranslation()
   const [fetchedAudioUrls, setFetchedAudioUrls] = React.useState<Record<string, string>>({})
   const [loadingRefId, setLoadingRefId] = React.useState<string | number | null>(null)
   const uniqueCitations = React.useMemo(() => deduplicateMediaCitations(citations), [citations])
@@ -649,7 +657,7 @@ function ParagraphAudioDisplay({
               <button
                 type="button"
                 onClick={handleOpenPopover}
-                aria-label={`打开音频引用 ${displayNum}${citation.file_name ? `：${citation.file_name}` : ''}`}
+                aria-label={tr("打开音频引用 {{v0}}{{v1}}", { v0: displayNum, v1: citation.file_name ? `：${citation.file_name}` : '' })}
                 className="group flex w-full min-w-0 items-center gap-2.5 bg-[#F7F5FF] px-3 py-2.5 text-left transition-colors hover:bg-[#F2EFFF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 dark:bg-[#211B38] dark:hover:bg-[#282046]"
               >
                 <span className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-white/80 text-violet-700 ring-1 ring-violet-200/80 transition-colors group-hover:bg-white dark:bg-violet-950/60 dark:text-violet-300 dark:ring-violet-800/70 dark:group-hover:bg-violet-900/70">
@@ -672,7 +680,7 @@ function ParagraphAudioDisplay({
               {hasAudioUrl ? (
                 <InlineAudioPlayer
                   src={resolvedUrl!}
-                  label={`音频引用 ${displayNum}${citation.file_name ? `：${citation.file_name}` : ''}`}
+                  label={tr("音频引用 {{v0}}{{v1}}", { v0: displayNum, v1: citation.file_name ? `：${citation.file_name}` : '' })}
                   onError={async () => {
                     const filePath = citation.file_path || citation.file_name
                     const kbId = citation.debug_info?.kb_id || fallbackKbId
@@ -693,15 +701,15 @@ function ParagraphAudioDisplay({
                   type="button"
                   onClick={handleClickPlay}
                   disabled={loadingRefId === citation.id}
-                  aria-label={`${loadingRefId === citation.id ? '正在加载' : '加载'}音频播放器 ${displayNum}`}
+                  aria-label={tr("{{v0}}音频播放器 {{v1}}", { v0: loadingRefId === citation.id ? tr("正在加载") : tr("加载"), v1: displayNum })}
                   className="flex min-h-14 w-full items-center justify-center gap-2 border-x-0 border-y border-[#E9E3FF] bg-[#FCFBFF] px-3 py-2.5 text-[13px] font-semibold text-violet-700 transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 dark:border-[#393057] dark:bg-[#191827] dark:text-violet-300 dark:hover:bg-[#1E1D31]"
                 >
                   {loadingRefId === citation.id ? (
-                    <span>加载中…</span>
+                    <span>{tr("加载中…")}</span>
                   ) : (
                     <>
                       <Play className="h-3.5 w-3.5 flex-shrink-0" fill="currentColor" aria-hidden />
-                      <span>加载音频播放器</span>
+                      <span>{tr("加载音频播放器")}</span>
                     </>
                   )}
                 </button>
@@ -734,6 +742,7 @@ function VideoPlayerWithSeek({
   onClick?: (e: React.MouseEvent<HTMLVideoElement>) => void
   onError?: (e: React.SyntheticEvent<HTMLVideoElement, Event>) => void
 }) {
+  useTranslation()
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const hasSeeked = React.useRef(false)
   React.useEffect(() => {
@@ -772,7 +781,7 @@ function VideoPlayerWithSeek({
       ref={videoRef}
       src={src}
       controls
-      aria-label="视频引用播放器"
+      aria-label={tr("视频引用播放器")}
       preload="metadata"
       className={className}
       onClick={onClick}
@@ -816,6 +825,7 @@ function ParagraphVideoDisplay({
   displayIndexByRefId?: Map<number | string, number>
   fallbackKbId?: string
 }) {
+  useTranslation()
   const [fetchedVideoUrls, setFetchedVideoUrls] = React.useState<Record<string, string>>({})
   const [loadingRefId, setLoadingRefId] = React.useState<string | number | null>(null)
   const uniqueCitations = React.useMemo(() => deduplicateMediaCitations(citations), [citations])
@@ -864,11 +874,11 @@ function ParagraphVideoDisplay({
         const endSec = citation.end_sec != null ? Number(citation.end_sec) : null
         const segmentLabel =
           startSec != null && endSec != null
-            ? `片段 ${formatTimeLabel(startSec)} - ${formatTimeLabel(endSec)}`
+            ? tr("片段 {{v0}} - {{v1}}", { v0: formatTimeLabel(startSec), v1: formatTimeLabel(endSec) })
             : startSec != null
-              ? `从 ${formatTimeLabel(startSec)} 开始`
+              ? tr("从 {{v0}} 开始", { v0: formatTimeLabel(startSec) })
               : endSec != null
-                ? `至 ${formatTimeLabel(endSec)} 结束`
+                ? tr("至 {{v0}} 结束", { v0: formatTimeLabel(endSec) })
                 : null
         const content = citation.content?.trim() ?? ''
 
@@ -917,7 +927,7 @@ function ParagraphVideoDisplay({
               <button
                 type="button"
                 onClick={handleOpenPopover}
-                aria-label={`打开视频引用 ${displayNum}${citation.file_name ? `：${citation.file_name}` : ''}`}
+                aria-label={tr("打开视频引用 {{v0}}{{v1}}", { v0: displayNum, v1: citation.file_name ? `：${citation.file_name}` : '' })}
                 className="group flex w-full min-w-0 items-center gap-2.5 bg-[#F1FCFE] px-3 py-2.5 text-left transition-colors hover:bg-[#EAF9FC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-500 dark:bg-[#102C36] dark:hover:bg-[#143844]"
               >
                 <span className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-white/80 text-cyan-700 ring-1 ring-cyan-200/80 transition-colors group-hover:bg-white dark:bg-cyan-950/60 dark:text-cyan-300 dark:ring-cyan-800/70 dark:group-hover:bg-cyan-900/70">
@@ -977,15 +987,15 @@ function ParagraphVideoDisplay({
                   type="button"
                   onClick={handleClickPlay}
                   disabled={loadingRefId === citation.id}
-                  aria-label={`${loadingRefId === citation.id ? '正在加载' : '加载'}视频播放器 ${displayNum}`}
+                  aria-label={tr("{{v0}}视频播放器 {{v1}}", { v0: loadingRefId === citation.id ? tr("正在加载") : tr("加载"), v1: displayNum })}
                   className="flex aspect-[16/5] min-h-20 w-full items-center justify-center gap-2.5 border-x-0 border-y border-[#D6F3F8] bg-[#F8FDFF] px-4 py-3 text-[13px] font-semibold text-cyan-700 transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-500 dark:border-[#1B4855] dark:bg-[#122630] dark:text-cyan-300 dark:hover:bg-[#152F3A]"
                 >
                   {loadingRefId === citation.id ? (
-                    <span>加载中…</span>
+                    <span>{tr("加载中…")}</span>
                   ) : (
                     <>
                       <Play className="h-4 w-4 flex-shrink-0" fill="currentColor" aria-hidden />
-                      <span>加载视频播放器</span>
+                      <span>{tr("加载视频播放器")}</span>
                     </>
                   )}
                 </button>
@@ -1003,6 +1013,7 @@ function ParagraphVideoDisplay({
 
 // 自定义 img 组件，防止显示破损图片图标
 const MarkdownImage = React.memo(({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
+  useTranslation()
   const [imageError, setImageError] = React.useState(false)
   const [imageLoaded, setImageLoaded] = React.useState(false)
   const imgRef = React.useRef<HTMLImageElement>(null)
@@ -1085,6 +1096,7 @@ export function MessageBubble({
   onEdit,
   regenerationDisabled = false,
 }: MessageBubbleProps) {
+  useTranslation()
   const fallbackKbId = useChatStore((s) => s.getActiveSession()?.knowledgeBaseIds?.[0])
   const uiConfig = useConfigStore((s) => s.config)
   const isUser = message.type === 'user'
@@ -1296,8 +1308,7 @@ export function MessageBubble({
       {isStoppedHint ? (
         // 终止提示消息 - 类似 Gemini 的显示方式：居中、浅灰色背景
         <div className="rounded-md bg-slate-100 dark:bg-slate-800/60 px-3 py-1.5 text-xs text-slate-500 dark:text-slate-400">
-          你已让系统停止这条回答
-        </div>
+          {tr("你已让系统停止这条回答")}</div>
       ) : (
         <>
           {!isUser && (
@@ -1343,7 +1354,7 @@ export function MessageBubble({
                   role="alert"
                 >
                   {thoughtData?.failure_stage && <p className="mb-1 font-semibold">
-                    {thoughtData.failure_stage === 'validation' ? '引用校验未通过' : '附件解析未完成'}
+                    {thoughtData.failure_stage === 'validation' ? tr("引用校验未通过") : tr("附件解析未完成")}
                   </p>}
                   {message.error}
                 </div>
@@ -1351,8 +1362,7 @@ export function MessageBubble({
               {onEditRetry && message.error && message.error !== 'stopped' && message.error !== 'stopped_hint' && (
                 <button type="button" onClick={onEditRetry} disabled={regenerationDisabled}
                   className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 transition-colors hover:bg-indigo-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:opacity-50 dark:border-indigo-500/40 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:bg-indigo-900/50">
-                  编辑后重试
-                </button>
+                  {tr("编辑后重试")}</button>
               )}
 
               {isStreaming && message.content && (
@@ -1363,11 +1373,10 @@ export function MessageBubble({
 
           {showCitations && hasMissingReferences && (
             <div role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-              <p>这条回答的部分引用缺少来源数据，对应图片和来源详情无法显示。请重新生成回答。</p>
+              <p>{tr("这条回答的部分引用缺少来源数据，对应图片和来源详情无法显示。请重新生成回答。")}</p>
               {onRegenerate && (
                 <button type="button" disabled={regenerationDisabled} onClick={onRegenerate} className="mt-1 min-h-11 font-medium underline underline-offset-4 disabled:opacity-50">
-                  重新生成回答
-                </button>
+                  {tr("重新生成回答")}</button>
               )}
             </div>
           )}

@@ -1,3 +1,4 @@
+import { translate as tr, useTranslation } from '@/i18n'
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import type { TaskModelEntry } from '@/components/settings/ModelConfig'
@@ -25,6 +26,7 @@ import {
   Zap,
 } from 'lucide-react'
 import './settingsPage.css'
+import { LanguageSelect } from '@/i18n/LanguageSelect'
 
 const ModelConfig = lazy(() =>
   import('@/components/settings/ModelConfig').then((module) => ({ default: module.ModelConfig }))
@@ -143,6 +145,7 @@ function PreferenceToggle({
   enabled: boolean
   onToggle: () => void
 }) {
+  useTranslation()
   const helpId = useId()
   return (
     <button
@@ -161,7 +164,7 @@ function PreferenceToggle({
         <span className="settings-preference-title">{title}</span>
         <span id={helpId} className="settings-help">{description}</span>
       </span>
-      <span className="settings-preference-state" aria-hidden>{enabled ? '已开启' : '已关闭'}</span>
+      <span className="settings-preference-state" aria-hidden>{enabled ? tr("已开启") : tr("已关闭")}</span>
       <span className={cn('settings-switch', enabled && 'is-on')} aria-hidden>
         <span />
       </span>
@@ -170,12 +173,13 @@ function PreferenceToggle({
 }
 
 function ModelConfigLoading() {
+  useTranslation()
   return (
     <section
       className="settings-panel settings-loading-panel"
       role="status"
       aria-live="polite"
-      aria-label="正在载入模型路由"
+      aria-label={tr("正在载入模型路由")}
     >
       <div className="mb-6 flex items-center gap-3">
         <span className="h-10 w-10 animate-pulse rounded-[6px] bg-slate-100 dark:bg-slate-800" aria-hidden />
@@ -197,6 +201,7 @@ function ModelConfigLoading() {
 }
 
 function SettingsPageLoading() {
+  useTranslation()
   return (
     <ScrollArea className="settings-page h-full">
       <div className="settings-container">
@@ -211,6 +216,7 @@ function SettingsPageLoading() {
 }
 
 export function SettingsPage() {
+  useTranslation()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const setupStatus = useSetupStatus()
@@ -281,7 +287,7 @@ export function SettingsPage() {
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault()
-      event.returnValue = '当前配置未保存，是否离开？'
+      event.returnValue = tr("当前配置未保存，是否离开？")
       return event.returnValue
     }
 
@@ -291,10 +297,10 @@ export function SettingsPage() {
 
   const initialConfig = useMemo(() => configToTaskMatrix({ models: config.models }), [config.models])
   const themeLabel = useMemo(
-    () => THEME_OPTIONS.find((item) => item.value === config.theme)?.label ?? '浅色',
+    () => THEME_OPTIONS.find((item) => item.value === config.theme)?.label ?? tr("浅色"),
     [config.theme]
   )
-  const preferencesStatusText = `界面偏好已自动保存，当前主题为${themeLabel}`
+  const preferencesStatusText = tr("界面偏好已自动保存，当前主题为{{v0}}", { v0: tr(themeLabel) })
 
   const handleRetry = useCallback(() => {
     setError(null)
@@ -308,9 +314,9 @@ export function SettingsPage() {
       await loadConfig({ refreshCatalog: true })
       const latestError = useConfigStore.getState().error
       if (latestError) {
-        showError(`模型目录刷新失败：${latestError}`)
+        showError(tr("模型目录刷新失败：{{v0}}", { v0: latestError }))
       } else {
-        showSuccess('官网模型目录已刷新')
+        showSuccess(tr("官网模型目录已刷新"))
       }
     } finally {
       setIsRefreshingCatalog(false)
@@ -364,20 +370,20 @@ export function SettingsPage() {
           <div className="settings-page-heading">
             <span className="settings-page-emblem" aria-hidden><Settings2 size={24} /></span>
             <div>
-              <h1>设置</h1>
-              <p>调整外观、模型和检索行为，让工具更合你的习惯。</p>
+              <h1>{tr("设置")}</h1>
+              <p>{tr("调整外观、模型和检索行为，让工具更合你的习惯。")}</p>
             </div>
           </div>
           <div className="settings-page-actions">
             <div className={cn('settings-sync-status', pendingChanges && 'has-changes')} role="status">
               {pendingChanges ? <span className="settings-status-dot" aria-hidden /> : <Check size={15} aria-hidden />}
-              {pendingChanges ? '有未保存的更改' : '所有更改已保存'}
+              {pendingChanges ? tr("有未保存的更改") : tr("所有更改已保存")}
             </div>
           </div>
         </header>
 
         <div className="settings-navigation">
-          <div role="tablist" aria-label="设置分区" className="settings-tabs">
+          <div role="tablist" aria-label={tr("设置分区")} className="settings-tabs">
             {SETTINGS_SECTIONS.map((section, index) => {
               const Icon = section.icon
               return (
@@ -395,25 +401,24 @@ export function SettingsPage() {
                   onKeyDown={(event) => handleTabKeyDown(event, index)}
                 >
                   <Icon size={18} aria-hidden />
-                  {section.label}
-                  {sectionDirty[section.id] && <span className="settings-tab-dirty"><span aria-hidden /><span className="sr-only">有未保存更改</span></span>}
+                  {tr(section.label)}
+                  {sectionDirty[section.id] && <span className="settings-tab-dirty"><span aria-hidden /><span className="sr-only">{tr("有未保存更改")}</span></span>}
                 </button>
               )
             })}
           </div>
-          <span className="settings-navigation-hint">界面偏好自动保存</span>
+          <span className="settings-navigation-hint">{tr("界面偏好自动保存")}</span>
         </div>
 
         {error && (
           <div className="settings-error" role="alert">
             <AlertCircle size={20} aria-hidden />
             <div>
-              <p className="settings-error-title">配置同步失败</p>
-              <p>当前显示本地或默认配置。{error}</p>
+              <p className="settings-error-title">{tr("配置同步失败")}</p>
+              <p>{tr("当前显示本地或默认配置。")}{tr(error)}</p>
             </div>
-            <Button variant="outline" className="settings-secondary-button" aria-label="重试加载设置配置" onClick={handleRetry}>
-              重试加载
-            </Button>
+            <Button variant="outline" className="settings-secondary-button" aria-label={tr("重试加载设置配置")} onClick={handleRetry}>
+              {tr("重试加载")}</Button>
           </div>
         )}
 
@@ -429,13 +434,16 @@ export function SettingsPage() {
             <header className="settings-panel-header">
               <span className="settings-section-icon" aria-hidden><Palette size={21} /></span>
               <div>
-                <h2 id="settings-interface-title">界面与显示</h2>
+                <h2 id="settings-interface-title">{tr("界面与显示")}</h2>
               </div>
             </header>
 
             <div className="settings-interface-body">
+              <div className="settings-fieldset">
+                <LanguageSelect />
+              </div>
               <fieldset className="settings-fieldset">
-                <legend>颜色模式</legend>
+                <legend>{tr("颜色模式")}</legend>
                 <div className="settings-theme-options">
                   {THEME_OPTIONS.map((item) => {
                     const Icon = item.icon
@@ -461,7 +469,7 @@ export function SettingsPage() {
                         </span>
                         <span className="settings-theme-label">
                           <Icon size={18} aria-hidden />
-                          <span>{item.label}</span>
+                          <span>{tr(item.label)}</span>
                           <span className="settings-theme-check" aria-hidden>{active && <Check size={13} />}</span>
                         </span>
                       </label>
@@ -472,20 +480,20 @@ export function SettingsPage() {
 
               <div className="settings-answer-preferences">
                 <div className="settings-group-heading">
-                  <h3>回答辅助信息</h3>
+                  <h3>{tr("回答辅助信息")}</h3>
                 </div>
                 <div className="settings-preference-list">
                   <PreferenceToggle
                     icon={Brain}
-                    title="显示思考链"
-                    description="展开查询理解、路由与检索策略，方便了解回答过程。"
+                    title={tr("显示思考链")}
+                    description={tr("展开查询理解、路由与检索策略，方便了解回答过程。")}
                     enabled={config.enableThinking}
                     onToggle={() => handleToggle('enableThinking')}
                   />
                   <PreferenceToggle
                     icon={Quote}
-                    title="显示引用"
-                    description="展示引用编号和来源卡片，方便查看原始材料。"
+                    title={tr("显示引用")}
+                    description={tr("展示引用编号和来源卡片，方便查看原始材料。")}
                     enabled={config.enableCitations}
                     onToggle={() => handleToggle('enableCitations')}
                   />
@@ -506,9 +514,9 @@ export function SettingsPage() {
         >
           {setupStatus?.managed && <div className="settings-service-entry">
             <PlugZap size={18} aria-hidden />
-            <div><strong>服务连接与能力</strong><p>更新 API Key、调整资料类型，或重新准备本地模型。</p></div>
+            <div><strong>{tr("服务连接与能力")}</strong><p>{tr("更新 API Key、调整资料类型，或重新准备本地模型。")}</p></div>
             <Link to={setupStatus.ready ? '/setup?edit=services' : '/setup'} className="settings-service-link">
-              {setupStatus.ready ? '管理连接' : '继续配置'}<ChevronRight size={15} aria-hidden />
+              {setupStatus.ready ? tr("管理连接") : tr("继续配置")}<ChevronRight size={15} aria-hidden />
             </Link>
           </div>}
           {(isSettingsActive || hasActivatedModelMatrix) && (

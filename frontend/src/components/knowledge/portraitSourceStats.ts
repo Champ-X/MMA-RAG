@@ -1,3 +1,4 @@
+import { translate as t } from '@/i18n'
 export interface PortraitSourceCounts {
   textCount: number
   imageCount: number
@@ -14,10 +15,10 @@ export function normalizePortraitCount(value: number): number {
 /** Only comparable content samples enter the denominator, never topics or files. */
 export function buildPortraitSourceStats(counts: PortraitSourceCounts) {
   const sources = [
-    { kind: 'text' as const, label: '文本块', count: normalizePortraitCount(counts.textCount), color: '#4266df' },
-    { kind: 'image' as const, label: '图片', count: normalizePortraitCount(counts.imageCount), color: '#0b967f' },
-    { kind: 'audio' as const, label: '音频', count: normalizePortraitCount(counts.audioCount), color: '#a647ce' },
-    { kind: 'video' as const, label: '视频片段', count: normalizePortraitCount(counts.videoShotCount), color: '#df6c2b' },
+    { kind: 'text' as const, label: t("文本块"), count: normalizePortraitCount(counts.textCount), color: '#4266df' },
+    { kind: 'image' as const, label: t("图片"), count: normalizePortraitCount(counts.imageCount), color: '#0b967f' },
+    { kind: 'audio' as const, label: t("音频"), count: normalizePortraitCount(counts.audioCount), color: '#a647ce' },
+    { kind: 'video' as const, label: t("视频片段"), count: normalizePortraitCount(counts.videoShotCount), color: '#df6c2b' },
   ]
   const total = sources.reduce((sum, source) => sum + source.count, 0)
   let offset = 0
