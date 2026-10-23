@@ -1,0 +1,16 @@
+/* Page-specific, self-hosted Noto CJK subsets; see docs/architecture-typography-assets.md. */
+@font-face {
+  font-family: 'Tessmora Sans';
+  src: url('/architecture/fonts/tessmora-sans-sc.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 650;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Tessmora Serif';
+  src: url('/architecture/fonts/tessmora-serif-sc.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}

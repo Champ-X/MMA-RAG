@@ -182,7 +182,7 @@ export function AppLayout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f8fafc] text-[#182230] dark:bg-slate-950 dark:text-slate-100">
+    <div className={cn('flex h-screen overflow-hidden bg-[#f8fafc] text-[#182230] dark:bg-slate-950 dark:text-slate-100', isArchitectureActive && 'h-dvh')}>
       <ConversationSidebar
         sessions={sessions}
         activeSessionId={activeSessionId}
@@ -249,7 +249,7 @@ export function AppLayout() {
           ) : null}
         </div>
         <div
-          className={cn('flex-1 min-h-0 overflow-hidden p-2 md:p-3', !isArchitectureActive && 'hidden')}
+          className={cn('flex-1 min-h-0 overflow-hidden', !isArchitectureActive && 'hidden')}
           aria-hidden={!isArchitectureActive}
           aria-label={t("架构导读")}
           hidden={!isArchitectureActive}

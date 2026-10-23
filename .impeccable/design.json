@@ -1,222 +1,253 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-14T19:43:44+08:00",
+  "generatedAt": "2026-10-23T11:27:58.404612+00:00",
   "title": "Design System: Tessmora Architecture Reading Surface",
   "extensions": {
     "colorMeta": {
-      "atlas-paper": {
+      "book-paper": {
         "role": "neutral",
-        "displayName": "atlas paper",
+        "displayName": "book paper",
+        "canonical": "#fffefd",
         "tonalRamp": [
-          "oklch(15% 0.0054 297.73)",
-          "oklch(26% 0.0054 297.73)",
-          "oklch(38% 0.0054 297.73)",
-          "oklch(49% 0.0054 297.73)",
-          "oklch(61% 0.0054 297.73)",
-          "oklch(72% 0.0054 297.73)",
-          "oklch(84% 0.0054 297.73)",
-          "oklch(95% 0.0054 297.73)"
+          "oklch(15% 0.0017 67.80)",
+          "oklch(26% 0.0017 67.80)",
+          "oklch(38% 0.0017 67.80)",
+          "oklch(49% 0.0017 67.80)",
+          "oklch(61% 0.0017 67.80)",
+          "oklch(72% 0.0017 67.80)",
+          "oklch(84% 0.0017 67.80)",
+          "oklch(95% 0.0017 67.80)"
         ]
       },
-      "atlas-surface": {
+      "book-ink": {
         "role": "neutral",
-        "displayName": "atlas surface",
+        "displayName": "book ink",
+        "canonical": "#292437",
         "tonalRamp": [
-          "oklch(15% 0.0000 0.00)",
-          "oklch(26% 0.0000 0.00)",
-          "oklch(38% 0.0000 0.00)",
-          "oklch(49% 0.0000 0.00)",
-          "oklch(61% 0.0000 0.00)",
-          "oklch(72% 0.0000 0.00)",
-          "oklch(84% 0.0000 0.00)",
-          "oklch(95% 0.0000 0.00)"
+          "oklch(15% 0.0352 296.08)",
+          "oklch(26% 0.0352 296.08)",
+          "oklch(38% 0.0352 296.08)",
+          "oklch(49% 0.0352 296.08)",
+          "oklch(61% 0.0352 296.08)",
+          "oklch(72% 0.0352 296.08)",
+          "oklch(84% 0.0352 296.08)",
+          "oklch(95% 0.0352 296.08)"
         ]
       },
-      "atlas-ink": {
+      "book-muted": {
         "role": "neutral",
-        "displayName": "atlas ink",
+        "displayName": "book muted",
+        "canonical": "#655f72",
         "tonalRamp": [
-          "oklch(15% 0.0413 293.78)",
-          "oklch(26% 0.0413 293.78)",
-          "oklch(38% 0.0413 293.78)",
-          "oklch(49% 0.0413 293.78)",
-          "oklch(61% 0.0413 293.78)",
-          "oklch(72% 0.0413 293.78)",
-          "oklch(84% 0.0413 293.78)",
-          "oklch(95% 0.0413 293.78)"
+          "oklch(15% 0.0307 299.71)",
+          "oklch(26% 0.0307 299.71)",
+          "oklch(38% 0.0307 299.71)",
+          "oklch(49% 0.0307 299.71)",
+          "oklch(61% 0.0307 299.71)",
+          "oklch(72% 0.0307 299.71)",
+          "oklch(84% 0.0307 299.71)",
+          "oklch(95% 0.0307 299.71)"
         ]
       },
-      "atlas-muted": {
+      "book-line": {
         "role": "neutral",
-        "displayName": "atlas muted",
+        "displayName": "book line",
+        "canonical": "#e6e0ed",
         "tonalRamp": [
-          "oklch(15% 0.0320 298.97)",
-          "oklch(26% 0.0320 298.97)",
-          "oklch(38% 0.0320 298.97)",
-          "oklch(49% 0.0320 298.97)",
-          "oklch(61% 0.0320 298.97)",
-          "oklch(72% 0.0320 298.97)",
-          "oklch(84% 0.0320 298.97)",
-          "oklch(95% 0.0320 298.97)"
+          "oklch(15% 0.0186 306.65)",
+          "oklch(26% 0.0186 306.65)",
+          "oklch(38% 0.0186 306.65)",
+          "oklch(49% 0.0186 306.65)",
+          "oklch(61% 0.0186 306.65)",
+          "oklch(72% 0.0186 306.65)",
+          "oklch(84% 0.0186 306.65)",
+          "oklch(95% 0.0186 306.65)"
         ]
       },
-      "atlas-line": {
-        "role": "neutral",
-        "displayName": "atlas line",
-        "tonalRamp": [
-          "oklch(15% 0.0181 300.04)",
-          "oklch(26% 0.0181 300.04)",
-          "oklch(38% 0.0181 300.04)",
-          "oklch(49% 0.0181 300.04)",
-          "oklch(61% 0.0181 300.04)",
-          "oklch(72% 0.0181 300.04)",
-          "oklch(84% 0.0181 300.04)",
-          "oklch(95% 0.0181 300.04)"
-        ]
-      },
-      "atlas-accent": {
+      "book-accent": {
         "role": "primary",
-        "displayName": "atlas accent",
+        "displayName": "book accent",
+        "canonical": "#6948a5",
         "tonalRamp": [
-          "oklch(15% 0.1506 290.28)",
-          "oklch(26% 0.1506 290.28)",
-          "oklch(38% 0.1506 290.28)",
-          "oklch(49% 0.1506 290.28)",
-          "oklch(61% 0.1506 290.28)",
-          "oklch(72% 0.1506 290.28)",
-          "oklch(84% 0.1506 290.28)",
-          "oklch(95% 0.1506 290.28)"
+          "oklch(15% 0.1445 297.05)",
+          "oklch(26% 0.1445 297.05)",
+          "oklch(38% 0.1445 297.05)",
+          "oklch(49% 0.1445 297.05)",
+          "oklch(61% 0.1445 297.05)",
+          "oklch(72% 0.1445 297.05)",
+          "oklch(84% 0.1445 297.05)",
+          "oklch(95% 0.1445 297.05)"
         ]
       },
-      "atlas-tint": {
+      "book-tint": {
         "role": "neutral",
-        "displayName": "atlas tint",
+        "displayName": "book tint",
+        "canonical": "#f0eafa",
         "tonalRamp": [
-          "oklch(15% 0.0163 297.52)",
-          "oklch(26% 0.0163 297.52)",
-          "oklch(38% 0.0163 297.52)",
-          "oklch(49% 0.0163 297.52)",
-          "oklch(61% 0.0163 297.52)",
-          "oklch(72% 0.0163 297.52)",
-          "oklch(84% 0.0163 297.52)",
-          "oklch(95% 0.0163 297.52)"
+          "oklch(15% 0.0222 302.93)",
+          "oklch(26% 0.0222 302.93)",
+          "oklch(38% 0.0222 302.93)",
+          "oklch(49% 0.0222 302.93)",
+          "oklch(61% 0.0222 302.93)",
+          "oklch(72% 0.0222 302.93)",
+          "oklch(84% 0.0222 302.93)",
+          "oklch(95% 0.0222 302.93)"
         ]
       },
-      "atlas-teal": {
+      "book-teal": {
         "role": "secondary",
-        "displayName": "atlas teal",
+        "displayName": "book teal",
+        "canonical": "#356f64",
         "tonalRamp": [
-          "oklch(15% 0.0697 184.56)",
-          "oklch(26% 0.0697 184.56)",
-          "oklch(38% 0.0697 184.56)",
-          "oklch(49% 0.0697 184.56)",
-          "oklch(61% 0.0697 184.56)",
-          "oklch(72% 0.0697 184.56)",
-          "oklch(84% 0.0697 184.56)",
-          "oklch(95% 0.0697 184.56)"
+          "oklch(15% 0.0637 179.58)",
+          "oklch(26% 0.0637 179.58)",
+          "oklch(38% 0.0637 179.58)",
+          "oklch(49% 0.0637 179.58)",
+          "oklch(61% 0.0637 179.58)",
+          "oklch(72% 0.0637 179.58)",
+          "oklch(84% 0.0637 179.58)",
+          "oklch(95% 0.0637 179.58)"
         ]
       },
-      "atlas-purple": {
+      "book-canvas": {
+        "role": "neutral",
+        "displayName": "book canvas",
+        "canonical": "#f7f4fa",
+        "tonalRamp": [
+          "oklch(15% 0.0085 308.36)",
+          "oklch(26% 0.0085 308.36)",
+          "oklch(38% 0.0085 308.36)",
+          "oklch(49% 0.0085 308.36)",
+          "oklch(61% 0.0085 308.36)",
+          "oklch(72% 0.0085 308.36)",
+          "oklch(84% 0.0085 308.36)",
+          "oklch(95% 0.0085 308.36)"
+        ]
+      },
+      "book-dark-paper": {
+        "role": "neutral",
+        "displayName": "book dark paper",
+        "canonical": "#211e29",
+        "tonalRamp": [
+          "oklch(15% 0.0211 297.31)",
+          "oklch(26% 0.0211 297.31)",
+          "oklch(38% 0.0211 297.31)",
+          "oklch(49% 0.0211 297.31)",
+          "oklch(61% 0.0211 297.31)",
+          "oklch(72% 0.0211 297.31)",
+          "oklch(84% 0.0211 297.31)",
+          "oklch(95% 0.0211 297.31)"
+        ]
+      },
+      "book-dark-ink": {
+        "role": "neutral",
+        "displayName": "book dark ink",
+        "canonical": "#f1edf8",
+        "tonalRamp": [
+          "oklch(15% 0.0152 302.55)",
+          "oklch(26% 0.0152 302.55)",
+          "oklch(38% 0.0152 302.55)",
+          "oklch(49% 0.0152 302.55)",
+          "oklch(61% 0.0152 302.55)",
+          "oklch(72% 0.0152 302.55)",
+          "oklch(84% 0.0152 302.55)",
+          "oklch(95% 0.0152 302.55)"
+        ]
+      },
+      "book-dark-muted": {
+        "role": "neutral",
+        "displayName": "book dark muted",
+        "canonical": "#beb6cd",
+        "tonalRamp": [
+          "oklch(15% 0.0333 301.46)",
+          "oklch(26% 0.0333 301.46)",
+          "oklch(38% 0.0333 301.46)",
+          "oklch(49% 0.0333 301.46)",
+          "oklch(61% 0.0333 301.46)",
+          "oklch(72% 0.0333 301.46)",
+          "oklch(84% 0.0333 301.46)",
+          "oklch(95% 0.0333 301.46)"
+        ]
+      },
+      "book-dark-line": {
+        "role": "neutral",
+        "displayName": "book dark line",
+        "canonical": "#443a53",
+        "tonalRamp": [
+          "oklch(15% 0.0440 302.61)",
+          "oklch(26% 0.0440 302.61)",
+          "oklch(38% 0.0440 302.61)",
+          "oklch(49% 0.0440 302.61)",
+          "oklch(61% 0.0440 302.61)",
+          "oklch(72% 0.0440 302.61)",
+          "oklch(84% 0.0440 302.61)",
+          "oklch(95% 0.0440 302.61)"
+        ]
+      },
+      "book-dark-accent": {
+        "role": "primary",
+        "displayName": "book dark accent",
+        "canonical": "#cbb0f5",
+        "tonalRamp": [
+          "oklch(15% 0.0997 302.14)",
+          "oklch(26% 0.0997 302.14)",
+          "oklch(38% 0.0997 302.14)",
+          "oklch(49% 0.0997 302.14)",
+          "oklch(61% 0.0997 302.14)",
+          "oklch(72% 0.0997 302.14)",
+          "oklch(84% 0.0997 302.14)",
+          "oklch(95% 0.0997 302.14)"
+        ]
+      },
+      "book-dark-tint": {
+        "role": "neutral",
+        "displayName": "book dark tint",
+        "canonical": "#33283f",
+        "tonalRamp": [
+          "oklch(15% 0.0432 305.84)",
+          "oklch(26% 0.0432 305.84)",
+          "oklch(38% 0.0432 305.84)",
+          "oklch(49% 0.0432 305.84)",
+          "oklch(61% 0.0432 305.84)",
+          "oklch(72% 0.0432 305.84)",
+          "oklch(84% 0.0432 305.84)",
+          "oklch(95% 0.0432 305.84)"
+        ]
+      },
+      "book-dark-teal": {
         "role": "secondary",
-        "displayName": "atlas purple",
+        "displayName": "book dark teal",
+        "canonical": "#a3d0c0",
         "tonalRamp": [
-          "oklch(15% 0.0992 308.54)",
-          "oklch(26% 0.0992 308.54)",
-          "oklch(38% 0.0992 308.54)",
-          "oklch(49% 0.0992 308.54)",
-          "oklch(61% 0.0992 308.54)",
-          "oklch(72% 0.0992 308.54)",
-          "oklch(84% 0.0992 308.54)",
-          "oklch(95% 0.0992 308.54)"
+          "oklch(15% 0.0523 171.23)",
+          "oklch(26% 0.0523 171.23)",
+          "oklch(38% 0.0523 171.23)",
+          "oklch(49% 0.0523 171.23)",
+          "oklch(61% 0.0523 171.23)",
+          "oklch(72% 0.0523 171.23)",
+          "oklch(84% 0.0523 171.23)",
+          "oklch(95% 0.0523 171.23)"
         ]
       },
-      "atlas-dark-paper": {
+      "book-dark-canvas": {
         "role": "neutral",
-        "displayName": "atlas dark paper",
+        "displayName": "book dark canvas",
+        "canonical": "#1c1922",
         "tonalRamp": [
-          "oklch(15% 0.0284 266.37)",
-          "oklch(26% 0.0284 266.37)",
-          "oklch(38% 0.0284 266.37)",
-          "oklch(49% 0.0284 266.37)",
-          "oklch(61% 0.0284 266.37)",
-          "oklch(72% 0.0284 266.37)",
-          "oklch(84% 0.0284 266.37)",
-          "oklch(95% 0.0284 266.37)"
-        ]
-      },
-      "atlas-dark-surface": {
-        "role": "neutral",
-        "displayName": "atlas dark surface",
-        "tonalRamp": [
-          "oklch(15% 0.0316 263.89)",
-          "oklch(26% 0.0316 263.89)",
-          "oklch(38% 0.0316 263.89)",
-          "oklch(49% 0.0316 263.89)",
-          "oklch(61% 0.0316 263.89)",
-          "oklch(72% 0.0316 263.89)",
-          "oklch(84% 0.0316 263.89)",
-          "oklch(95% 0.0316 263.89)"
-        ]
-      },
-      "atlas-dark-ink": {
-        "role": "neutral",
-        "displayName": "atlas dark ink",
-        "tonalRamp": [
-          "oklch(15% 0.0129 266.70)",
-          "oklch(26% 0.0129 266.70)",
-          "oklch(38% 0.0129 266.70)",
-          "oklch(49% 0.0129 266.70)",
-          "oklch(61% 0.0129 266.70)",
-          "oklch(72% 0.0129 266.70)",
-          "oklch(84% 0.0129 266.70)",
-          "oklch(95% 0.0129 266.70)"
-        ]
-      },
-      "atlas-dark-accent": {
-        "role": "primary",
-        "displayName": "atlas dark accent",
-        "tonalRamp": [
-          "oklch(15% 0.0807 295.80)",
-          "oklch(26% 0.0807 295.80)",
-          "oklch(38% 0.0807 295.80)",
-          "oklch(49% 0.0807 295.80)",
-          "oklch(61% 0.0807 295.80)",
-          "oklch(72% 0.0807 295.80)",
-          "oklch(84% 0.0807 295.80)",
-          "oklch(95% 0.0807 295.80)"
-        ]
-      },
-      "atlas-dark-action": {
-        "role": "primary",
-        "displayName": "atlas dark action",
-        "tonalRamp": [
-          "oklch(15% 0.1217 296.37)",
-          "oklch(26% 0.1217 296.37)",
-          "oklch(38% 0.1217 296.37)",
-          "oklch(49% 0.1217 296.37)",
-          "oklch(61% 0.1217 296.37)",
-          "oklch(72% 0.1217 296.37)",
-          "oklch(84% 0.1217 296.37)",
-          "oklch(95% 0.1217 296.37)"
-        ]
-      },
-      "atlas-dark-on-action": {
-        "role": "neutral",
-        "displayName": "atlas dark on action",
-        "tonalRamp": [
-          "oklch(15% 0.0420 295.55)",
-          "oklch(26% 0.0420 295.55)",
-          "oklch(38% 0.0420 295.55)",
-          "oklch(49% 0.0420 295.55)",
-          "oklch(61% 0.0420 295.55)",
-          "oklch(72% 0.0420 295.55)",
-          "oklch(84% 0.0420 295.55)",
-          "oklch(95% 0.0420 295.55)"
+          "oklch(15% 0.0179 300.18)",
+          "oklch(26% 0.0179 300.18)",
+          "oklch(38% 0.0179 300.18)",
+          "oklch(49% 0.0179 300.18)",
+          "oklch(61% 0.0179 300.18)",
+          "oklch(72% 0.0179 300.18)",
+          "oklch(84% 0.0179 300.18)",
+          "oklch(95% 0.0179 300.18)"
         ]
       },
       "blueprint-paper": {
         "role": "neutral",
         "displayName": "blueprint paper",
+        "canonical": "#302846",
         "tonalRamp": [
           "oklch(15% 0.0539 295.22)",
           "oklch(26% 0.0539 295.22)",
@@ -231,6 +262,7 @@
       "blueprint-ink": {
         "role": "neutral",
         "displayName": "blueprint ink",
+        "canonical": "#f5f1ff",
         "tonalRamp": [
           "oklch(15% 0.0190 299.07)",
           "oklch(26% 0.0190 299.07)",
@@ -242,9 +274,40 @@
           "oklch(95% 0.0190 299.07)"
         ]
       },
+      "blueprint-muted": {
+        "role": "neutral",
+        "displayName": "blueprint muted",
+        "canonical": "#cec3dc",
+        "tonalRamp": [
+          "oklch(15% 0.0364 305.44)",
+          "oklch(26% 0.0364 305.44)",
+          "oklch(38% 0.0364 305.44)",
+          "oklch(49% 0.0364 305.44)",
+          "oklch(61% 0.0364 305.44)",
+          "oklch(72% 0.0364 305.44)",
+          "oklch(84% 0.0364 305.44)",
+          "oklch(95% 0.0364 305.44)"
+        ]
+      },
+      "blueprint-rule": {
+        "role": "neutral",
+        "displayName": "blueprint rule",
+        "canonical": "#766686",
+        "tonalRamp": [
+          "oklch(15% 0.0526 307.37)",
+          "oklch(26% 0.0526 307.37)",
+          "oklch(38% 0.0526 307.37)",
+          "oklch(49% 0.0526 307.37)",
+          "oklch(61% 0.0526 307.37)",
+          "oklch(72% 0.0526 307.37)",
+          "oklch(84% 0.0526 307.37)",
+          "oklch(95% 0.0526 307.37)"
+        ]
+      },
       "blueprint-lilac": {
-        "role": "secondary",
+        "role": "neutral",
         "displayName": "blueprint lilac",
+        "canonical": "#d8cef2",
         "tonalRamp": [
           "oklch(15% 0.0503 298.05)",
           "oklch(26% 0.0503 298.05)",
@@ -259,6 +322,7 @@
       "blueprint-mint": {
         "role": "secondary",
         "displayName": "blueprint mint",
+        "canonical": "#b9dfd3",
         "tonalRamp": [
           "oklch(15% 0.0431 174.14)",
           "oklch(26% 0.0431 174.14)",
@@ -271,8 +335,9 @@
         ]
       },
       "blueprint-apricot": {
-        "role": "tertiary",
+        "role": "secondary",
         "displayName": "blueprint apricot",
+        "canonical": "#f2cfb2",
         "tonalRamp": [
           "oklch(15% 0.0553 61.65)",
           "oklch(26% 0.0553 61.65)",
@@ -283,194 +348,258 @@
           "oklch(84% 0.0553 61.65)",
           "oklch(95% 0.0553 61.65)"
         ]
-      },
-      "blueprint-retrieval-ink": {
-        "role": "neutral",
-        "displayName": "blueprint retrieval ink",
-        "tonalRamp": [
-          "oklch(15% 0.0260 176.57)",
-          "oklch(26% 0.0260 176.57)",
-          "oklch(38% 0.0260 176.57)",
-          "oklch(49% 0.0260 176.57)",
-          "oklch(61% 0.0260 176.57)",
-          "oklch(72% 0.0260 176.57)",
-          "oklch(84% 0.0260 176.57)",
-          "oklch(95% 0.0260 176.57)"
-        ]
       }
     },
     "typographyMeta": {
       "display": {
-        "displayName": "Editorial display",
-        "purpose": "Architecture hero headline only."
+        "displayName": "Overview statement",
+        "purpose": "Tessmora Sans 650, 40–64px fluid sizing; 36px at route widths of 600px or below and 28px at 320px or below."
       },
       "headline": {
-        "displayName": "Section headline",
-        "purpose": "Architecture reading sections."
+        "displayName": "Topic heading",
+        "purpose": "Tessmora Sans 650, 32–48px fluid sizing; 32px on small screens."
+      },
+      "section": {
+        "displayName": "Reading section",
+        "purpose": "Tessmora Sans 650 at 26px/1.5; 24px at route widths of 600px or below."
+      },
+      "subhead": {
+        "displayName": "Explanatory subsection",
+        "purpose": "20px Tessmora Sans for steps and supporting headings; 18px on small screens."
       },
       "body": {
-        "displayName": "Reading body",
-        "purpose": "Prose and general controls."
+        "displayName": "Reader body",
+        "purpose": "Tessmora Sans 400 at 18px/1.85; 17px at route widths of 600px or below."
+      },
+      "prose": {
+        "displayName": "Implementation prose",
+        "purpose": "Visible explanations normally bounded at 76ch with 18px paragraph spacing."
+      },
+      "support": {
+        "displayName": "Supporting prose",
+        "purpose": "16px explanations and tables, including narrow layouts."
+      },
+      "quote": {
+        "displayName": "Quoted or example material",
+        "purpose": "Tessmora Serif for execution questions, specimen fragments and cited examples; never the primary heading face."
+      },
+      "label": {
+        "displayName": "Supporting label",
+        "purpose": "14px controls, sources and technical labels."
+      },
+      "small": {
+        "displayName": "Compact caption",
+        "purpose": "13px captions, topic indices and secondary outline text."
       },
       "source": {
-        "displayName": "Source path",
-        "purpose": "Source links and code identifiers."
+        "displayName": "Technical identifier",
+        "purpose": "Monospace for actual paths, fields, collection names and compact data."
       }
     },
-    "shadows": [
-      {
-        "name": "selected-path",
-        "value": "0 3px 12px #3028460a",
-        "purpose": "Subtle separation for the pressed execution-path control."
-      }
-    ],
+    "shadows": [],
     "motion": [
       {
-        "name": "path-state",
+        "name": "topic-entry",
+        "value": "240ms cubic-bezier(.16, 1, .3, 1)",
+        "purpose": "One visible 5px vertical movement; only under prefers-reduced-motion: no-preference."
+      },
+      {
+        "name": "overview-arrow",
         "value": "180ms ease-out",
-        "purpose": "Path and node background or border transitions; no-preference only."
+        "purpose": "4px arrow response on the overview action."
       },
       {
-        "name": "detail-reveal",
-        "value": "200ms ease-out",
-        "purpose": "Node detail reveal from opacity .65 and translateY(-4px) to its final state."
-      },
-      {
-        "name": "reduced-motion",
-        "value": "animation: none; transition: none; scroll-behavior: auto",
-        "purpose": "Surface-wide reduced-motion override; no continuous hero animation."
+        "name": "section-jump",
+        "value": "smooth; auto under prefers-reduced-motion: reduce",
+        "purpose": "Focus and scroll to a section selected in the inline wide-screen outline."
       }
     ],
     "breakpoints": [
       {
-        "name": "module-tabs-four-columns",
+        "name": "atlas-compact-article-spacing",
+        "value": "1200px"
+      },
+      {
+        "name": "atlas-compact-topic-navigation",
         "value": "1100px"
       },
       {
-        "name": "atlas-navigation-compact",
+        "name": "atlas-mobile-type-and-spacing",
+        "value": "600px"
+      },
+      {
+        "name": "reader-paired-explanations",
         "value": "1000px"
       },
       {
-        "name": "blueprint-stacked-lanes-and-storage-groups",
-        "value": "820px"
+        "name": "reader-stacked-explanations",
+        "value": "760px"
       },
       {
-        "name": "path-explorer-reflow",
-        "value": "780px"
+        "name": "reader-stacked-topic-groups",
+        "value": "560px"
       },
       {
-        "name": "blueprint-overview-vertical",
-        "value": "700px"
+        "name": "comparison-stacked-fields",
+        "value": "680px"
       },
       {
-        "name": "atlas-single-column",
+        "name": "storage-runtime-stacked",
         "value": "660px"
       },
       {
-        "name": "module-tabs-two-columns",
+        "name": "storage-figure-compact",
+        "value": "290px"
+      },
+      {
+        "name": "storage-figure-smallest",
+        "value": "240px"
+      },
+      {
+        "name": "retrieval-figure-recompose",
         "value": "540px"
       },
       {
-        "name": "blueprint-shared-stores-stacked",
-        "value": "510px"
+        "name": "retrieval-figure-vertical",
+        "value": "390px"
       },
       {
-        "name": "path-explorer-single-column",
-        "value": "480px"
+        "name": "parsing-five-visible-tabs",
+        "value": "560px"
       },
       {
-        "name": "atlas-small-inset",
-        "value": "350px"
+        "name": "parsing-compact-tab-labels",
+        "value": "340px"
+      },
+      {
+        "name": "atlas-smallest-reading-space",
+        "value": "320px"
+      },
+      {
+        "name": "parsing-three-column-tabs",
+        "value": "240px"
       }
     ]
   },
   "components": [
     {
-      "name": "Hero primary action",
+      "name": "Explore the design",
       "kind": "button",
-      "refersTo": "button-primary",
-      "description": "Light-theme hero action; extracted from the hero action rule.",
-      "html": "<div class=\"ds-preview\"><button class=\"ds-primary\" type=\"button\">探索系统架构 <span aria-hidden=\"true\">↓</span></button></div>",
-      "css": ".ds-preview{font:15px/1.7 'Manrope','PingFang SC','Microsoft YaHei',system-ui,sans-serif;}.ds-primary{display:inline-flex; align-items:center; gap:16px; min-height:46px; padding:11px 18px; border-radius:8px; background:#6852b5; color:#fff; font-size:13px; font-weight:600;}.ds-primary:hover{background:#765591;}.ds-primary{border:0;cursor:pointer;font-family:inherit}.ds-primary:focus-visible{outline:2px solid #6852b5;outline-offset:4px;}"
+      "refersTo": "opening-action",
+      "description": "Filled violet overview action leading into design principles.",
+      "html": "<button class=\"ds-open\">从设计出发点开始<svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14m-6-6 6 6-6 6\"/></svg></button>",
+      "css": ".ds-open{font-family:'Tessmora Sans','PingFang SC',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:26px;min-height:48px;padding:12px 20px;border:0;border-radius:10px;background:var(--book-accent,#6948a5);color:var(--book-paper,#fffefd);font-size:16px;font-weight:600}.ds-open svg{transition:transform 180ms ease-out}.ds-open:hover svg{transform:translateX(4px)}.ds-open:focus-visible{outline:2px solid var(--book-accent,#6948a5);outline-offset:4px}@media(prefers-reduced-motion:reduce){.ds-open svg{transition:none}}"
     },
     {
-      "name": "Hero primary action, dark",
-      "kind": "button",
-      "refersTo": "button-primary-dark",
-      "description": "Explicit dark-theme action colors, on a dark local preview field.",
-      "html": "<div class=\"ds-preview\"><div class=\"ds-dark-field\"><button class=\"ds-primary-dark\" type=\"button\">探索系统架构 <span aria-hidden=\"true\">↓</span></button></div></div>",
-      "css": ".ds-preview{font:15px/1.7 'Manrope','PingFang SC','Microsoft YaHei',system-ui,sans-serif;}.ds-primary-dark{display:inline-flex; align-items:center; gap:16px; min-height:46px; padding:11px 18px; border-radius:8px; background:#6852b5; color:#fff; font-size:13px; font-weight:600;}.ds-primary-dark{background:#a28add; color:#201a30;}.ds-dark-field{padding:18px;background:#191f2d}.ds-primary-dark{border:0;cursor:pointer;font-family:inherit}.ds-primary-dark:focus-visible{outline:2px solid #c4b6ef;outline-offset:4px}"
-    },
-    {
-      "name": "Secondary document link",
-      "kind": "button",
-      "refersTo": "link-secondary",
-      "description": "Quiet document link alongside the primary hero action.",
-      "html": "<div class=\"ds-preview\"><a class=\"ds-secondary\" href=\"#technical-docs\">阅读技术文档 <span aria-hidden=\"true\">↗</span></a></div>",
-      "css": ".ds-preview{font:15px/1.7 'Manrope','PingFang SC','Microsoft YaHei',system-ui,sans-serif;}.ds-secondary{display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#686276; min-height:44px;}.ds-secondary:hover{color:#6852b5;}.ds-secondary{text-decoration:none}.ds-secondary:focus-visible{outline:2px solid #6852b5;outline-offset:4px;}"
-    },
-    {
-      "name": "Section navigation",
+      "name": "Current topic",
       "kind": "nav",
       "refersTo": "navigation-current",
-      "description": "Current section is identified by color, weight and a bottom rule.",
-      "html": "<div class=\"ds-preview\"><nav class=\"ds-nav\" aria-label=\"架构页目录\"><a href=\"#overview\" aria-current=\"location\">设计思想</a><a href=\"#system\">架构全貌</a><a href=\"#paths\">执行路径</a></nav></div>",
-      "css": ".ds-preview{font:15px/1.7 'Manrope','PingFang SC','Microsoft YaHei',system-ui,sans-serif;}.ds-nav{display: flex; align-items: center; gap: clamp(12px,1.6cqi,23px); flex: 1; min-width: 0;}.ds-nav a{display: grid; align-items: center; min-height: 42px; white-space: nowrap; color: #686276; font-size: 13px; border-bottom: 2px solid transparent;}.ds-nav a:hover{color: #6852b5;}.ds-nav a[aria-current]{color: #6852b5; border-bottom-color: #6852b5; font-weight: 700;}.ds-nav{padding:10px 18px;background:#f8f7fb;overflow-x:auto}.ds-nav a{text-decoration:none}.ds-nav a:focus-visible{outline:2px solid #6852b5;outline-offset:4px;}"
+      "description": "Selected topic within the horizontal eight-column strip above the article, visible only above an architecture container width of 1100px. It uses a violet-tinted field and no shadow. The original application sidebar remains beside the architecture content.",
+      "html": "<nav aria-label=\"内容导航\"><a class=\"ds-chapter\" href=\"#materials\" aria-current=\"page\"><span>02</span>分模态解析</a></nav>",
+      "css": ".ds-chapter{font-family:'Tessmora Sans','PingFang SC',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 8px;border-radius:8px;background:var(--book-tint,#f0eafa);color:var(--book-accent,#6948a5);font-size:14px;line-height:1.5;font-weight:650;text-decoration:none}.ds-chapter>span{font-size:13px;font-weight:500;opacity:.7;font-variant-numeric:tabular-nums}.ds-chapter:hover{background:var(--book-canvas,#f7f4fa)}.ds-chapter:focus-visible{outline:2px solid var(--book-accent,#6948a5);outline-offset:4px}"
     },
     {
-      "name": "Global execution-mode selector",
-      "kind": "input",
-      "refersTo": "mode-select",
-      "description": "Native select controls the page reading mode; the preview has no framework behavior.",
-      "html": "<div class=\"ds-preview\"><label class=\"ds-mode\"><select aria-label=\"全页执行路径\"><option>Direct</option><option>Agent</option><option>Pi</option></select><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" width=\"13\" height=\"13\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"m6 9 6 6 6-6\"/></svg></label></div>",
-      "css": ".ds-preview{font:15px/1.7 'Manrope','PingFang SC','Microsoft YaHei',system-ui,sans-serif;}.ds-mode{display: flex; align-items: center; gap: 6px; position: relative; margin-left: auto; color: #6852b5;}.ds-mode select{appearance: none; background: #eeebf7; border: 0; min-height: 38px; padding: 7px 28px 7px 12px; border-radius: 7px; font: 700 12px 'Manrope', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; color: inherit; cursor: pointer; max-width: 118px;}.ds-mode > svg{position: absolute; right: 10px; pointer-events: none;}.ds-mode{width:max-content;margin-left:0}.ds-mode select:focus-visible{outline:2px solid #6852b5;outline-offset:4px;}"
+      "name": "Compact topic selector",
+      "kind": "nav",
+      "refersTo": "mobile-topic-select",
+      "description": "At architecture container widths of 1100px or below, a full-width previous/select/next row replaces the horizontal topic strip and inline section outline. This available width excludes the retained application sidebar.",
+      "html": "<nav class=\"ds-mobile\" aria-label=\"主题导航\"><button aria-label=\"上一节\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m15 18-6-6 6-6\"/></svg></button><label><select aria-label=\"选择主题\"><option>总览</option><option selected>02 · 分模态解析</option><option>03 · 存储与索引</option></select><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m6 9 6 6 6-6\"/></svg></label><button aria-label=\"下一节\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m9 18 6-6-6-6\"/></svg></button></nav>",
+      "css": ".ds-mobile{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 18px;background:var(--book-canvas,#f7f4fa);border-bottom:1px solid var(--book-line,#e6e0ed);font-family:'Tessmora Sans','PingFang SC',sans-serif}.ds-mobile button{display:grid;place-items:center;width:40px;height:40px;color:var(--book-accent,#6948a5);background:transparent;border:0;cursor:pointer}.ds-mobile label{position:relative;display:flex;align-items:center;flex:1;max-width:350px}.ds-mobile select{width:100%;appearance:none;padding:10px 28px 10px 12px;background:transparent;border:0;color:var(--book-ink,#292437);font-family:inherit;font-size:14px;font-weight:600;line-height:1.5;text-align:center;cursor:pointer}.ds-mobile label>svg{position:absolute;right:8px;pointer-events:none;color:var(--book-accent,#6948a5)}.ds-mobile button:hover{background:var(--book-tint,#f0eafa)}.ds-mobile :is(button,select):focus-visible{outline:2px solid var(--book-accent,#6948a5);outline-offset:4px}"
     },
     {
-      "name": "Pressed execution path",
+      "name": "Inline section outline",
+      "kind": "nav",
+      "refersTo": "section-jump",
+      "description": "An inline wrapping row below the wide-screen topic strip. Clicking scrolls and focuses the heading; article scrolling updates aria-current. Hidden with the strip at architecture widths of 1100px or below.",
+      "html": "<div class=\"ds-outline\" role=\"navigation\" aria-label=\"本节内容\"><h3>本节内容</h3><button aria-current=\"location\">保存原件，组织表示</button><button>从入库到查询</button></div>",
+      "css": ".ds-outline{display:flex;align-items:center;flex-wrap:wrap;gap:4px 20px;max-width:1444px;margin:10px auto 0;padding-top:10px;border-top:1px solid var(--book-line,#e6e0ed);font-family:'Tessmora Sans','PingFang SC',sans-serif}.ds-outline h3{margin:0;font-size:13px;font-weight:600;color:var(--book-muted,#655f72)}.ds-outline button{padding:4px 0;min-height:32px;border:0;background:transparent;color:var(--book-muted,#655f72);font-size:14px;line-height:1.6;text-align:left;cursor:pointer}.ds-outline button:hover,.ds-outline button[aria-current]{color:var(--book-accent,#6948a5);text-decoration:underline;text-underline-offset:5px}.ds-outline button:focus-visible{outline:2px solid var(--book-accent,#6948a5);outline-offset:4px}"
+    },
+    {
+      "name": "Next topic",
+      "kind": "button",
+      "refersTo": "pagination-next",
+      "description": "A normal-flow footer control after article content; its label names the next destination.",
+      "html": "<button class=\"ds-next\">存储与索引<svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14m-6-6 6 6-6 6\"/></svg></button>",
+      "css": ".ds-next{font-family:'Tessmora Sans','PingFang SC','Microsoft YaHei',system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:12px;min-height:44px;border:0;background:transparent;color:var(--book-accent,#6948a5);font-size:14px}.ds-next:hover{text-decoration:underline;text-underline-offset:5px}.ds-next:focus-visible{outline:2px solid var(--book-accent,#6948a5);outline-offset:4px;}"
+    },
+    {
+      "name": "Parsing modality",
+      "kind": "button",
+      "refersTo": "parsing-tab-selected",
+      "description": "Five modality tabs expose the selected specimen and processing details. At parsing-container widths of 560px or below, all five remain visible as icon-over-label choices with a 64px minimum height; the grid has five columns above 240px and three at 240px or below. Labels are 16px, then 14px at 340px. Documents displays as Docs narrowly while retaining the full accessible name.",
+      "html": "<div class=\"ds-parsing\"><div class=\"ds-material-tabs\" role=\"tablist\" aria-label=\"Explore parsing by material type\"><button class=\"ds-material\" role=\"tab\" aria-selected=\"true\" aria-label=\"Documents\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8ZM14 2v6h6M8 13h8M8 17h6\"/></svg><span class=\"ds-material-full\">Documents</span><span class=\"ds-material-short\" aria-hidden=\"true\">Docs</span></button><button class=\"ds-material\" role=\"tab\" aria-selected=\"false\" aria-label=\"Tables\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 3h18v18H3ZM3 9h18M9 3v18M3 15h18\"/></svg><span>Tables</span></button><button class=\"ds-material\" role=\"tab\" aria-selected=\"false\" aria-label=\"Images\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 3h18v18H3ZM3 16l5-5 4 4 4-5 5 7M8 7h.01\"/></svg><span>Images</span></button><button class=\"ds-material\" role=\"tab\" aria-selected=\"false\" aria-label=\"Audio\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M9 18V5l12-2v13M9 18a3 3 0 1 1-3-3h3M21 16a3 3 0 1 1-3-3h3\"/></svg><span>Audio</span></button><button class=\"ds-material\" role=\"tab\" aria-selected=\"false\" aria-label=\"Video\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 5h12v14H3ZM15 10l6-4v12l-6-4\"/></svg><span>Video</span></button></div></div>",
+      "css": ".ds-parsing{container:ds-parsing/inline-size;font-family:'Tessmora Sans','PingFang SC',sans-serif}.ds-material-tabs{display:flex;gap:8px;padding:6px;background:var(--book-canvas,#f7f4fa);border-radius:12px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:var(--book-line,#e6e0ed) transparent}.ds-material{font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;flex-shrink:0;min-height:49px;padding:10px 18px;border:0;border-radius:8px;background:transparent;color:var(--book-muted,#655f72);font-size:16px;transition:color 150ms ease-out,border-color 150ms ease-out}.ds-material:hover{color:var(--book-accent,#6948a5)}.ds-material[aria-selected='true']{background:var(--book-accent,#6948a5);color:var(--book-paper,#fffefd);font-weight:600}.ds-material-short{display:none}.ds-material:focus-visible{outline:2px solid var(--book-accent,#6948a5);outline-offset:-3px}@container ds-parsing (max-width:560px){.ds-material-tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;overflow:visible}.ds-material{flex-direction:column;min-width:0;min-height:64px;gap:5px;padding:7px 2px;font-size:16px;line-height:1.3}.ds-material-full{display:none}.ds-material-short{display:inline}}@container ds-parsing (max-width:340px){.ds-material{font-size:14px}.ds-material svg{width:15px}}@container ds-parsing (max-width:240px){.ds-material-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(prefers-reduced-motion:reduce){.ds-material{transition:none}}"
+    },
+    {
+      "name": "Selected question approach",
       "kind": "button",
       "refersTo": "path-selected",
-      "description": "Selected conventional path; the actual Pi state uses the explorer teal token.",
-      "html": "<div class=\"ds-preview\"><div class=\"ds-path-rail\"><button class=\"ds-path\" aria-pressed=\"true\" type=\"button\"><strong>Direct</strong><span>聚焦问答</span></button></div></div>",
-      "css": ".ds-preview{font:15px/1.7 'Manrope','PingFang SC','Microsoft YaHei',system-ui,sans-serif;}.ds-path-rail{display: flex; align-items: stretch; gap: 6px; padding: 6px; background: #eeebf7; border: 1px solid #dfdbe8; border-radius: 12px 12px 0 0;}.ds-path{display: flex; justify-content: center; align-items: center; gap: 10px; min-height: 48px; padding: 10px 16px; flex: 1; min-width: 0; border: 0; border-radius: 7px; color: #686276; background: transparent;}.ds-path strong{font-size: 15px; white-space: nowrap;}.ds-path > span{font-size: 12px;}.ds-path:hover{background: #f8f7fb; color: #302b42;}.ds-path[aria-pressed='true']{background: #fff; color: #6852b5; box-shadow: 0 3px 12px #3028460a;}.ds-path{font-family:inherit;cursor:pointer}.ds-path:focus-visible{outline:2px solid #6852b5;outline-offset:4px;}@media(prefers-reduced-motion:no-preference){.ds-path{transition:background-color .18s ease-out,border-color .18s ease-out}}"
+      "description": "One of three horizontal pressed-state execution choices; a mode-specific mechanism figure, full steps and tradeoffs appear below without making a model request.",
+      "html": "<button class=\"ds-path\" aria-pressed=\"true\"><span><strong>Agent</strong><small>有界补查</small></span><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14m-6-6 6 6-6 6\"/></svg></button>",
+      "css": ".ds-path{font-family:'Tessmora Sans','PingFang SC','Microsoft YaHei',system-ui,sans-serif;cursor:pointer;display:flex;align-items:center;gap:12px;text-align:left;min-height:70px;padding:14px 20px;border:0;border-radius:6px;background:var(--book-tint,#f0eafa);color:var(--book-accent,#6948a5)}.ds-path strong{display:block;font-size:20px;font-weight:600}.ds-path small{display:block;margin-top:3px;font-size:14px;line-height:1.6}.ds-path>svg{margin-left:20px}.ds-path:hover{color:var(--book-ink,#292437)}.ds-path:focus-visible{outline:2px solid var(--book-accent,#6948a5);outline-offset:4px;}"
     },
     {
-      "name": "Blueprint retrieval panel and modality labels",
-      "kind": "card",
-      "refersTo": "blueprint-retrieval",
-      "description": "Current mint retrieval node with uniform 8px corners; modality labels are static, not interactive filters.",
-      "html": "<div class=\"ds-preview\"><section class=\"ds-retrieval\"><a class=\"ds-source\" href=\"#retrieval\">RetrievalService</a><p>理解问题、明确范围、画像路由</p><div class=\"ds-modalities\"><span>Dense</span><span>Sparse</span><span>CLIP</span><span>CLAP</span><span>Video</span></div></section></div>",
-      "css": ".ds-preview{font:15px/1.7 'Manrope','PingFang SC','Microsoft YaHei',system-ui,sans-serif;}.ds-retrieval{padding:11px 13px;color:#293c37;background:#b9dfd3;border:1px solid #6c9688;border-radius:8px;}.ds-source{display:inline-flex;gap:6px;align-items:center;min-height:26px;font-weight:650;text-decoration:none;text-underline-offset:4px;color:inherit;}.ds-retrieval>.ds-source{font-size:16px;font-weight:700;}.ds-source:hover{text-decoration:underline;}.ds-retrieval>p{color:#39544b;font-size:12px;line-height:1.8;margin:2px 0 0;}.ds-modalities{display:flex;flex-wrap:wrap;gap:5px;margin-top:12px;}.ds-modalities span{padding:2px 5px;font-size:12px;border:1px solid #83b5a5;border-radius:4px;}.ds-source:focus-visible{outline:2px solid #302846;outline-offset:4px;}"
+      "name": "Inline source citation",
+      "kind": "button",
+      "refersTo": "citation",
+      "description": "A compact source marker inside reading prose; the application opens a labeled excerpt and moves focus.",
+      "html": "<button class=\"ds-citation\" aria-expanded=\"false\">讲义 p.12<svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M7 17 17 7M7 7h10v10\"/></svg></button>",
+      "css": ".ds-citation{font-family:'Tessmora Sans','PingFang SC','Microsoft YaHei',system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:3px 7px;margin:0 3px;border:0;border-radius:3px;background:var(--book-tint,#f0eafa);color:var(--book-accent,#6948a5);font-size:14px;line-height:1.6;white-space:nowrap;transition:background-color 150ms ease-out}.ds-citation svg{width:12px;height:12px}.ds-citation:hover{background:color-mix(in srgb,var(--book-accent,#6948a5) 18%,var(--book-paper,#fffefd))}.ds-citation:focus-visible{outline:2px solid var(--book-accent,#6948a5);outline-offset:5px}@media(prefers-reduced-motion:reduce){.ds-citation{transition:none}}"
+    },
+    {
+      "name": "Implementation comparison",
+      "kind": "custom",
+      "refersTo": "comparison-table",
+      "description": "A semantic comparison that retains columns on desktop and stacks labeled fields at a 680px named-container breakpoint. The application localizes data-label values for Chinese and English; the accessible outer region keeps overflow fallback.",
+      "html": "<div class=\"ds-table-wrap\" role=\"region\" aria-label=\"存储职责对照\" tabindex=\"0\"><table class=\"ds-table\"><caption>每一类存储保存什么</caption><thead><tr><th scope=\"col\">存储</th><th scope=\"col\">负责保存</th></tr></thead><tbody><tr><th scope=\"row\">MinIO</th><td data-label=\"负责保存\">原件、派生物、知识库元数据</td></tr><tr><th scope=\"row\">Qdrant</th><td data-label=\"负责保存\">检索向量、文本与来源 payload</td></tr></tbody></table></div>",
+      "css": ".ds-table-wrap{container:reading-table / inline-size;max-width:100%;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--book-accent,#6948a5) var(--book-tint,#f0eafa)}.ds-table-wrap:focus-visible{outline:2px solid var(--book-accent,#6948a5);outline-offset:4px}.ds-table{width:100%;min-width:340px;border-collapse:separate;border-spacing:0;text-align:left;font:16px/1.75 \"Tessmora Sans\",\"PingFang SC\",system-ui,sans-serif}.ds-table caption{text-align:left;color:var(--book-muted,#655f72);font-size:14px;padding-bottom:14px}.ds-table th,.ds-table td{padding:16px 20px 16px 0;border-bottom:1px solid var(--book-line,#e6e0ed);vertical-align:top}.ds-table thead th{font-size:14px;font-weight:500;color:var(--book-muted,#655f72)}.ds-table tbody th{color:var(--book-ink,#292437);font-weight:600}.ds-table td{color:var(--book-muted,#655f72)}@container reading-table (max-width:680px){.ds-table{display:block;min-width:0;width:100%}.ds-table caption{display:block}.ds-table thead{display:none}.ds-table tbody{display:block}.ds-table tr{display:block;padding-block:20px;border-bottom:1px solid var(--book-line,#e6e0ed)}.ds-table th,.ds-table td{display:block;position:static;width:auto;min-width:0;border:0;padding:0}.ds-table tbody th{margin-bottom:14px;font-size:16px}.ds-table tbody td{margin-top:14px;font-size:16px}.ds-table td::before{content:attr(data-label);display:block;margin-bottom:4px;color:var(--book-accent,#6948a5);font-size:14px;font-weight:500}}"
+    },
+    {
+      "name": "Structural explanation figure",
+      "kind": "custom",
+      "refersTo": "mechanism-figure",
+      "description": "Mint originals and lilac indexes are joined by shared source identity. Runtime reuses tinted responsibility groups. The separate PathFigure retains crisp SVG execution geometry; retrieval perspectives use transparent raster illustrations. Captions distinguish illustrations from observations.",
+      "html": "<figure class=\"ds-mechanism\"><div><section><strong>MinIO</strong><p>原件与派生物</p></section><span>kb_id · file_id</span><section><strong>Qdrant</strong><p>向量与来源 payload</p></section></div><figcaption>索引指出可能相关的位置，原始材料保留可回看的语境。</figcaption></figure>",
+      "css": ".ds-mechanism{margin:24px 0 34px;color:var(--book-ink,#292437);font:16px/1.8 'Tessmora Sans','PingFang SC',sans-serif;container:ds-mechanism/inline-size}.ds-mechanism>div{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:stretch}.ds-mechanism section{min-width:0;padding:24px;border-radius:16px;background:color-mix(in srgb,var(--book-teal,#356f64) 13%,var(--book-paper,#fffefd))}.ds-mechanism section:last-child{background:color-mix(in srgb,var(--book-accent,#6948a5) 13%,var(--book-paper,#fffefd))}.ds-mechanism strong{font-size:20px;font-weight:650;color:var(--book-teal,#356f64)}.ds-mechanism section:last-child strong{color:var(--book-accent,#6948a5)}.ds-mechanism p{margin:6px 0 0;color:var(--book-muted,#655f72)}.ds-mechanism>div>span{align-self:center;font:14px/1.8 'IBM Plex Mono',monospace;overflow-wrap:anywhere}.ds-mechanism figcaption{padding:13px 0;font-size:16px;color:var(--book-muted,#655f72)}@container ds-mechanism (max-width:660px){.ds-mechanism>div{grid-template-columns:1fr}}"
+    },
+    {
+      "name": "Retrieval perspective illustrations",
+      "kind": "custom",
+      "refersTo": "retrieval-illustration",
+      "description": "Three transparent images explain retrieval perspectives: a violet semantic lens, mint matching terms, and distinct image/audio markers. They sit in 3:2 frames on 9% accent fields, with a 280px wide-layout height cap. Localized alt text and a shared conceptual caption preserve the distinction between retrieval candidates and verified answer support. PathFigure remains unchanged.",
+      "html": "<figure class=\"ds-retrieval\"><div class=\"ds-retrieval-grid\"><div class=\"ds-retrieval-item\" data-art=\"semantic\"><div class=\"ds-retrieval-frame\"><img src=\"/architecture/illustrations/retrieval-semantic.webp\" width=\"1536\" height=\"1024\" alt=\"A violet lens and ribbons connect distinct documents whose meanings are related.\" loading=\"lazy\" decoding=\"async\"></div><div class=\"ds-retrieval-copy\"><h3>Related meaning</h3><span>Dense</span><p>Different wording can still lead to related material.</p></div></div><div class=\"ds-retrieval-item\" data-art=\"lexical\"><div class=\"ds-retrieval-frame\"><img src=\"/architecture/illustrations/retrieval-lexical.webp\" width=\"1536\" height=\"1024\" alt=\"A mint glass selection aligns matching term blocks across three documents.\" loading=\"lazy\" decoding=\"async\"></div><div class=\"ds-retrieval-copy\"><h3>Shared terminology</h3><span>Sparse</span><p>Model names and specialist terms preserve concrete query constraints.</p></div></div><div class=\"ds-retrieval-item\" data-art=\"media\"><div class=\"ds-retrieval-frame\"><img src=\"/architecture/illustrations/retrieval-media.webp\" width=\"1536\" height=\"1024\" alt=\"A landscape image and sculptural waveform each connect to a separate query marker.\" loading=\"lazy\" decoding=\"async\"></div><div class=\"ds-retrieval-copy\"><h3>Visual and acoustic links</h3><span>CLIP · CLAP</span><p>CLIP and CLAP use their own image and audio representation spaces.</p></div></div></div><figcaption>The illustrations explain retrieval perspectives, not actual vector distributions or scores. Similarity produces candidates; support for an answer still requires checking content and applicability.</figcaption></figure>",
+      "css": ".ds-retrieval{container:ds-retrieval/inline-size;margin:0;color:var(--book-ink,#292437);font-family:'Tessmora Sans','PingFang SC',sans-serif}.ds-retrieval-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;margin:24px 0 22px}.ds-retrieval-item{--ds-art-color:var(--book-accent,#6948a5);min-width:0}.ds-retrieval-item[data-art='lexical']{--ds-art-color:var(--book-teal,#356f64)}.ds-retrieval-item[data-art='media']{--ds-art-color:var(--rv-apricot,#955d34)}.ds-retrieval-frame{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:3/2;max-height:280px;overflow:hidden;border-radius:16px;background:color-mix(in srgb,var(--ds-art-color) 9%,var(--book-paper,#fffefd))}.ds-retrieval-frame img{display:block;box-sizing:border-box;width:100%;height:100%;min-height:0;object-fit:contain;padding:10px}.ds-retrieval-copy{padding-top:16px}.ds-retrieval-copy h3{font-size:20px;font-weight:700;line-height:1.6;margin:5px 0 8px}.ds-retrieval-copy>span{display:block;color:var(--ds-art-color);font-size:14px;line-height:1.6;margin:0 0 7px}.ds-retrieval-copy p{margin:0;color:var(--book-muted,#655f72);font-size:16px;line-height:1.9}.ds-retrieval>figcaption{border-top:1px solid var(--book-line,#e6e0ed);padding:13px 0 15px;color:var(--book-muted,#655f72);font-size:16px;line-height:1.9}@container ds-retrieval (max-width:540px){.ds-retrieval-grid{grid-template-columns:1fr;gap:20px;margin-block:18px}.ds-retrieval-item{display:grid;grid-template-columns:minmax(100px,.85fr) minmax(0,1.15fr);align-items:center;gap:20px}.ds-retrieval-frame{min-width:0;max-height:none}.ds-retrieval-copy{padding-top:0}.ds-retrieval-copy h3{margin-block:3px 6px}.ds-retrieval-copy p{line-height:1.8}}@container ds-retrieval (max-width:390px){.ds-retrieval-item{grid-template-columns:1fr;gap:0}.ds-retrieval-frame{max-height:240px}.ds-retrieval-copy{padding-top:16px}.ds-retrieval-copy>span{margin-top:4px}}"
     }
   ],
   "narrative": {
-    "northStar": "沿证据阅读架构",
-    "overview": "This is a descriptive snapshot of the current v3 `/architecture` implementation, recorded on 2026-10-14. Its scope is the architecture reading surface inside the existing application shell. The metaphor describes the implementation; it is not a user-approved brand direction and must not be imposed on other routes.\n\nThe page moves from design principles to the system blueprint, execution paths, an illustrative evidence journey, module implementation and runtime boundaries. Editorial typography, a tactile illustration and varied diagram compositions support that reading sequence. Product facts remain in `PRODUCT.md`; source code remains the authority when this snapshot drifts.",
+    "northStar": "以清晰的阅读路径与图文层次，讲清真实的设计与实现",
+    "overview": "This source snapshot records the focused `/architecture` surface on 2026-10-23. Tessmora presents an overview and seven substantive topics: design principles, parsing, storage, retrieval, execution paths, answers and citations, and runtime boundaries. Technical explanations, examples, tradeoffs and source links stay visible for the selected topic; only the retained reference appendices are folded.\n\nThe architecture surface remains inside the original application shell, as explicitly requested by the user. The conversation sidebar retains its brand, workspace navigation and global language/theme controls. The page adds only a “Design & implementation” header with GitHub, topic navigation and the reading area. Warm near-white paper, violet openings and purposeful diagram colors support the content. This is a route-specific design, not a product-wide restyle.",
     "keyCharacteristics": [
-      "A readable Chinese editorial hierarchy with restrained technical labels.",
-      "Pale reading surfaces, a deep blueprint field and distinct evidence-path colors.",
-      "Art introduces the idea; interactive diagrams explain actual responsibilities.",
-      "Headings and their introductions share one left alignment; content groups stay close to their labels.",
-      "Light and dark themes, container-aware layouts and optional short motion."
+      "The original conversation sidebar remains visible; the architecture header contains only its subject and GitHub.",
+      "An eight-column horizontal topic strip with an inline section outline at route widths above 1100px; previous/select/next navigation replaces it at 1100px and below.",
+      "Self-hosted Sans 650 headings, 18px body text and 16px supporting prose; Serif is reserved for quoted and example material.",
+      "The retained sculpture and transparent illustrations sit in tinted openings; storage/runtime diagrams and three retrieval illustrations use color to distinguish their subjects.",
+      "One topic at a time, URL-based navigation, normal-flow article pagination, coordinated themes and Chinese/English copy."
     ],
     "rules": [
-      "Section introductions place the heading above its description on one left axis, with a 12px gap.",
-      "The blueprint overview uses four bordered nodes with 8px corners and separate 24px arrow tracks, separated by 12px grid gaps. At 700px and below, nodes and arrows follow vertical reading order.",
-      "Blueprint nodes, the Pi host boundary and storage groups use 8px corners. Short 14px vertical connectors join internal nodes; there are no floating buses or percentage-positioned SVG routes.",
-      "Shared knowledge storage groups MinIO and Qdrant with their write/read responsibilities. Pi runtime records group SQLite and local files with Pi-host-only persistence. Storage icons use Lucide at 22px with stroke width 1.5.",
-      "Module tabs are horizontal and reflow from eight columns to four at 1100px and two at 540px. At 350px they show names only, and contract labels stack above descriptions. Module panels use natural content height, with prose bounded at 58em.",
-      "Mechanism titles and descriptions are vertically adjacent in one copy block; the evidence journey aligns explanatory and evidence columns at the top with natural content height.",
-      "Runtime storage scope labels follow their description in the same content column. Runtime disclosure tags remain next to their title."
+      {
+        "name": "The Explanation First Rule",
+        "body": "State the choice, show its mechanism and limits, and connect the explanation to a concrete example, diagram or source.",
+        "section": "typography"
+      }
     ],
     "dos": [
-      "Do keep this document scoped to `/architecture` and refresh it against the actual CSS when that surface changes.",
-      "Do use source-linked explanatory content and label the evidence journey as illustrative.",
-      "Do verify both themes, narrow layouts, keyboard focus and reduced-motion behavior."
+      "**Do** preserve the original conversation sidebar and use horizontal topics or the compact selector according to the available architecture width.",
+      "**Do** keep technical depth, source links and illustrative boundaries visible in the selected topic.",
+      "**Do** preserve the artwork, font licenses and asset provenance recorded in docs/architecture-visual-assets.md and docs/architecture-typography-assets.md.",
+      "**Do** use color to clarify storage, process and retrieval relationships while keeping labels explicit.",
+      "**Do** verify both languages, both themes, narrow layouts, keyboard focus and reduced motion after UI changes."
     ],
     "donts": [
-      "Don't imply this snapshot is a user-approved product-wide identity.",
-      "Don't treat conceptual artwork, illustrative traces or color coding as proof of runtime behavior.",
-      "Don't flatten the page into repeated cards or add continuous motion that competes with reading.",
-      "Don't reintroduce overlaid arrows, floating buses, fixed-height empty panels or detached labels in the system diagram and reading sections."
+      "**Don't** remove the original conversation sidebar or duplicate its logo, workspace-return, language and theme controls inside the architecture header.",
+      "**Don't** replace substantive explanations with slogans or a repeated grid of generic cards.",
+      "**Don't** pin article pagination over the content, hide the retained mobile artwork or continuously animate illustrations.",
+      "**Don't** present conceptual diagrams, example citations or execution choices as live backend calls or measured performance."
     ]
   }
 }

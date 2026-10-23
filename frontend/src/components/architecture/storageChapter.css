@@ -1,0 +1,81 @@
+.st-chapter {
+  min-width: 0;
+  container: storage-chapter / inline-size;
+}
+
+.st-chapter code {
+  font-family: var(--atlas-mono, 'SFMono-Regular', Consolas, monospace);
+  font-size: var(--book-label);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.st-object-map {
+  margin: 30px 0 22px;
+  padding-block: 23px 8px;
+  border-block: 1px solid var(--book-line);
+}
+
+.st-object-map figcaption {
+  color: var(--book-ink);
+  font: 600 var(--book-subtitle)/1.7 var(--book-sans);
+}
+
+.st-object-map > .reading-note { margin-block: 7px 21px; }
+.st-object-map dl { margin: 0; }
+.st-object-map dl > div {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 18px;
+  padding-block: 15px;
+}
+
+.st-object-map dl > div + div { border-top: 1px solid var(--book-line); }
+.st-object-map dt { color: var(--book-accent); font-size: var(--book-support); font-weight: 600; line-height: 1.8; }
+.st-object-map dd { min-width: 0; margin: 0; }
+.st-object-map dd > code { display: block; color: var(--book-ink); font-size: var(--book-label); line-height: 1.9; }
+.st-object-map dd > span { display: block; color: var(--book-muted); font-size: var(--book-support); line-height: 1.9; margin-top: 5px; }
+
+.st-schema-wrap,
+.st-roles-wrap {
+  max-width: 100%;
+  overflow: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--book-accent) var(--book-tint);
+  margin-block: 25px 16px;
+}
+
+.st-schema-wrap:focus-visible,
+.st-roles-wrap:focus-visible { outline: 2px solid var(--book-accent); outline-offset: 5px; }
+.st-schema-table,
+.st-roles-table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; }
+.st-schema-table { min-width: 590px; }
+.st-roles-table { min-width: 450px; }
+.st-chapter table caption { text-align: left; color: var(--book-muted); font-size: var(--book-label); line-height: 1.8; padding-bottom: 14px; }
+.st-chapter table :is(th, td) { padding: 15px 16px 15px 0; border-bottom: 1px solid var(--book-line); vertical-align: top; }
+.st-chapter table thead th { color: var(--book-muted); font-size: var(--book-label); font-weight: 500; }
+.st-chapter table tbody th { color: var(--book-ink); font-size: var(--book-support); font-weight: 600; }
+.st-chapter table td { color: var(--book-muted); font-size: var(--book-support); line-height: 1.85; }
+.st-chapter table :is(th, td):last-child { padding-right: 0; }
+.st-schema-table tbody th { width: 33%; }
+.st-schema-table tbody th > code { display: block; color: var(--book-accent); font-size: var(--book-label); }
+.st-schema-table tbody th > span { display: block; font-weight: 400; line-height: 1.8; margin-top: 7px; }
+.st-schema-table td:nth-child(2) { width: 34%; }
+.st-chapter code.st-field-line { display: block; color: var(--book-ink); font-size: var(--book-label); line-height: 1.9; }
+.st-roles-table tbody th { width: 19%; }
+.st-roles-table td { width: 40%; }
+.st-tradeoff { margin-top: 30px; padding-top: 25px; border-top: 1px solid var(--book-line); }
+.st-tradeoff h3 { margin: 0 0 13px; font: 600 var(--book-subtitle)/1.7 var(--book-sans); color: var(--book-ink); }
+.st-tradeoff p { margin: 0; max-width: 72ch; font-size: var(--book-support); line-height: 1.85; color: var(--book-muted); }
+
+@container storage-chapter (max-width: 520px) {
+  .st-object-map dl > div { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .st-object-map { margin-top: 24px; }
+  .st-chapter table tbody th { position: sticky; inset-inline-start: 0; background: var(--book-paper); }
+  .st-chapter table thead th { background: var(--book-paper); }
+  .st-schema-table tbody th { width: 170px; }
+  .st-roles-table tbody th { width: 85px; }
+  .st-object-map figcaption { font-size: var(--book-subtitle); }
+  .st-tradeoff h3 { font-size: var(--book-subtitle); }
+}

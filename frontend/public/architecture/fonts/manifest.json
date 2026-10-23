@@ -1,0 +1,73 @@
+{
+  "sourceRepository": "https://github.com/google/fonts",
+  "sourceCommit": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+  "fontToolsVersion": "4.67.0",
+  "sourceFiles": [
+    "frontend/src/components/architecture/ArchitectureBlueprint.tsx",
+    "frontend/src/components/architecture/ArchitectureDetails.tsx",
+    "frontend/src/components/architecture/ArchitectureDiagram.tsx",
+    "frontend/src/components/architecture/ArchitectureMap.tsx",
+    "frontend/src/components/architecture/ArchitectureNav.tsx",
+    "frontend/src/components/architecture/ArchitecturePrinciples.tsx",
+    "frontend/src/components/architecture/ArchitectureRuntime.tsx",
+    "frontend/src/components/architecture/BookExplorers.tsx",
+    "frontend/src/components/architecture/ConnectorLayer.tsx",
+    "frontend/src/components/architecture/DataFlowDiagram.tsx",
+    "frontend/src/components/architecture/EditorialFigures.tsx",
+    "frontend/src/components/architecture/EvidenceCircuit.tsx",
+    "frontend/src/components/architecture/EvidenceConfluence.tsx",
+    "frontend/src/components/architecture/EvidenceJourney.tsx",
+    "frontend/src/components/architecture/InteractiveFlowStudio.tsx",
+    "frontend/src/components/architecture/ModuleExplorer.tsx",
+    "frontend/src/components/architecture/NarrativeChapters.tsx",
+    "frontend/src/components/architecture/OverviewSection.tsx",
+    "frontend/src/components/architecture/ParsingChapter.tsx",
+    "frontend/src/components/architecture/PathsChapter.tsx",
+    "frontend/src/components/architecture/RequestFlowStepper.tsx",
+    "frontend/src/components/architecture/RetrievalChapter.tsx",
+    "frontend/src/components/architecture/RetrievalVisuals.tsx",
+    "frontend/src/components/architecture/StorageChapter.tsx",
+    "frontend/src/components/architecture/StorageVisuals.tsx",
+    "frontend/src/components/architecture/TechStackSection.tsx",
+    "frontend/src/data/architectureData.ts",
+    "frontend/src/data/architectureExperience.ts",
+    "frontend/src/pages/ArchitecturePage.tsx"
+  ],
+  "requestedCodepoints": 967,
+  "fonts": [
+    {
+      "file": "tessmora-sans-sc.woff2",
+      "family": "Tessmora Sans",
+      "sourceFile": "ofl/notosanssc/NotoSansSC[wght].ttf",
+      "sourceSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+      "weightRange": [
+        400,
+        650
+      ],
+      "defaultWeight": 400,
+      "bytes": 258168,
+      "sha256": "ecff5374698cad3083bf34424c7e3c3c8ae942720b77126382ef1badbad18330",
+      "unicodeCodepoints": 967,
+      "glyphs": 1346,
+      "xHeightRatio": 0.543,
+      "missingCodepoints": []
+    },
+    {
+      "file": "tessmora-serif-sc.woff2",
+      "family": "Tessmora Serif",
+      "sourceFile": "ofl/notoserifsc/NotoSerifSC[wght].ttf",
+      "sourceSha256": "050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9",
+      "weightRange": [
+        400,
+        700
+      ],
+      "defaultWeight": 400,
+      "bytes": 352480,
+      "sha256": "7a6021b56afc4e8a116e88e9fa9c981969c054306e41893f8556733789a9e21a",
+      "unicodeCodepoints": 967,
+      "glyphs": 1346,
+      "xHeightRatio": 0.514,
+      "missingCodepoints": []
+    }
+  ]
+}

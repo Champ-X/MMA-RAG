@@ -1,153 +1,186 @@
+import '@/components/architecture/architecture.css'
 import { translate as t, useTranslation } from '@/i18n'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { EditorialArtwork } from '@/components/architecture/EditorialFigures'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ArrowDown, ArrowUp, BookOpenText, ChevronDown, Layers3, ArrowUpRight, FileText, ScanLine, Network, Quote } from 'lucide-react'
-import { ArchitecturePrinciples } from '@/components/architecture/ArchitecturePrinciples'
+import { ArrowLeft, ArrowRight, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { ArchitectureBlueprint } from '@/components/architecture/ArchitectureBlueprint'
-import { ArchitectureMap } from '@/components/architecture/ArchitectureMap'
-import { EvidenceJourney } from '@/components/architecture/EvidenceJourney'
 import { ArchitectureDetails } from '@/components/architecture/ArchitectureDetails'
 import { ArchitectureRuntime } from '@/components/architecture/ArchitectureRuntime'
-import { architectureModes, architectureReviewDate, architectureSourceUrl, type ArchitectureMode } from '@/data/architectureExperience'
-import '@/components/architecture/architecture.css'
+import { ParsingChapter } from '@/components/architecture/ParsingChapter'
+import { StorageChapter } from '@/components/architecture/StorageChapter'
+import { RetrievalChapter } from '@/components/architecture/RetrievalChapter'
+import { PathsChapter } from '@/components/architecture/PathsChapter'
+import { DesignChapter, EvidenceChapter, RuntimeChapter } from '@/components/architecture/NarrativeChapters'
+import { architectureModes, architectureSourceUrl, type ArchitectureMode } from '@/data/architectureExperience'
+import '@/components/architecture/architectureFonts.css'
+import '@/components/architecture/architectureBook.css'
+import '@/components/architecture/architectureIllustrated.css'
 
-const sections = [
-  { id: 'overview', name: '设计思想' },
-  { id: 'system', name: '架构全貌' },
-  { id: 'paths', name: '执行路径' },
-  { id: 'flow-lab', name: '证据之旅' },
-  { id: 'modules', name: '模块实现' },
-  { id: 'tech-stack', name: '运行边界' },
+type BookText = (zh: string, en: string) => string
+const chapters = [
+  { id: 'overview', name: ['总览', 'Overview'], title: ['', ''], lead: ['', ''] },
+  { id: 'idea', name: ['设计出发点', 'Design principles'], title: ['资料很多，然后呢？', 'Plenty of material. Now what?'], lead: ['从保存资料，到组织可以核对的证据。', 'From stored material to evidence we can inspect.'] },
+  { id: 'materials', name: ['分模态解析', 'Parsing by modality'], title: ['每一种资料，都有自己的语言。', 'Every medium has a language.'], lead: ['从文档结构到视频镜头，理解内容，也保留它发生的位置。', 'From document structure to video shots: understand the content and retain its location.'] },
+  { id: 'storage', name: ['存储与索引', 'Storage & indexes'], title: ['保存原件，也保存找到它的路。', 'Keep the original. Keep a way to find it.'], lead: ['原文件、派生素材、搜索表示和运行记录，各自承担不同的职责。', 'Originals, derived assets, searchable representations and run records have distinct responsibilities.'] },
+  { id: 'retrieval', name: ['多路检索', 'Retrieval channels'], title: ['一个问题，需要不止一种线索。', 'One question. Several kinds of clues.'], lead: ['理解不同召回方式能找到什么，再看它们如何被选择、合并和排序。', 'Understand what each channel can find, then how results are selected, combined and ranked.'] },
+  { id: 'paths', name: ['问答与研究', 'Answers & research'], title: ['有些问题，值得多走一步。', 'Some questions deserve another step.'], lead: ['聚焦回答、有界补查与自主研究，采用不同的执行方式。', 'Focused answers, bounded follow-up and independent research take different execution paths.'] },
+  { id: 'evidence', name: ['回答与引用', 'Answers & citations'], title: ['一个答案，应该经得起回看。', 'An answer worth looking into.'], lead: ['从候选材料，到模型上下文，再到真正出现在回答中的引用。', 'From candidate material to model context and the citations actually used in an answer.'] },
+  { id: 'system', name: ['运行与边界', 'Runtime & boundaries'], title: ['把这些想法，变成一个系统。', 'Turning these ideas into a system.'], lead: ['服务分工、模型接入与恢复行为，决定这些设计怎样运行。', 'Service responsibilities, model integrations and recovery behavior bring the design into operation.'] },
 ] as const
-type SectionId = typeof sections[number]['id']
-const legacySections: Record<string, SectionId> = { 'system-architecture': 'system', 'request-flow': 'flow-lab', 'data-flow': 'flow-lab' }
-const isMode = (value: string | null): value is ArchitectureMode => architectureModes.some(mode => mode.id === value)
-function readMode(): ArchitectureMode {
-  const value = new URLSearchParams(window.location.search).get('path')
-  return isMode(value) ? value : 'direct'
+const legacyChapters: Record<string, string> = { 'flow-lab': 'evidence', 'request-flow': 'evidence', 'data-flow': 'evidence', 'system-architecture': 'system', modules: 'system', 'tech-stack': 'system' }
+
+function SourceLink({ path, children }: { path: string; children: React.ReactNode }) {
+  return <a className="book-source-link" href={architectureSourceUrl(path)} target="_blank" rel="noreferrer">{children}<ArrowUpRight size={14} aria-hidden="true" /></a>
 }
 
 export function ArchitecturePage() {
   const { i18n } = useTranslation()
+  const text: BookText = (zh, en) => i18n.language.startsWith('en') ? en : zh
   const location = useLocation()
-  const navigateRouter = useNavigate()
-  const [mode, setMode] = useState<ArchitectureMode>(readMode)
-  const [activeSection, setActiveSection] = useState<SectionId>('overview')
+  const navigate = useNavigate()
+  const hash = location.hash.slice(1)
+  const chapterId = legacyChapters[hash] ?? hash
+  const chapterIndex = Math.max(0, chapters.findIndex(chapter => chapter.id === chapterId))
+  const chapter = chapters[chapterIndex]
+  const path = new URLSearchParams(location.search).get('path')
+  const mode: ArchitectureMode = architectureModes.some(item => item.id === path) ? path as ArchitectureMode : 'direct'
   const viewportRef = useRef<HTMLDivElement>(null)
-  const navRef = useRef<HTMLElement>(null)
-  const modeInfo = architectureModes.find(item => item.id === mode)!
-
-  const navigate = useCallback((id: SectionId, updateHistory = true, focus = true) => {
-    if (updateHistory) {
-      const url = new URL(window.location.href)
-      url.hash = id === 'overview' ? '' : id
-      navigateRouter(url.pathname + url.search + url.hash)
-    }
-    setActiveSection(id)
-    window.requestAnimationFrame(() => {
-      const section = document.getElementById(id)
-      const viewport = viewportRef.current
-      if (!section || !viewport) return
-      const top = id === 'overview' ? 0 : viewport.scrollTop + section.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (navRef.current?.offsetHeight ?? 0) - 24
-      viewport.scrollTo({ top: Math.max(0, top), behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
-      if (focus) section.focus({ preventScroll: true })
-    })
-  }, [navigateRouter])
-
-  const changeMode = useCallback((next: ArchitectureMode) => {
-    setMode(next)
-    const url = new URL(window.location.href)
-    if (next === 'direct') url.searchParams.delete('path')
-    else url.searchParams.set('path', next)
-    navigateRouter(url.pathname + url.search + url.hash, { replace: true })
-  }, [navigateRouter])
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  const [outline, setOutline] = useState<{ id: string; title: string }[]>([])
+  const [activeSection, setActiveSection] = useState('')
+  const previousChapter = useRef(chapterIndex)
+  const focusOnNavigation = useRef(false)
+  const direction = chapterIndex >= previousChapter.current ? 'forward' : 'backward'
+  const href = (id: string) => `${location.pathname}${location.search}${id === 'overview' ? '' : `#${id}`}`
+  const go = (index: number) => {
+    focusOnNavigation.current = true
+    viewportRef.current?.scrollTo({ top: 0, behavior: 'auto' })
+    navigate(href(chapters[index].id))
+  }
+  const changeMode = (next: ArchitectureMode) => {
+    const params = new URLSearchParams(location.search)
+    if (next === 'direct') params.delete('path')
+    else params.set('path', next)
+    navigate(`${location.pathname}${params.size ? `?${params}` : ''}${location.hash}`, { replace: true })
+  }
 
   useEffect(() => {
     if (location.pathname !== '/architecture') return
-    const oldTitle = document.title
-    const title = t("系统架构 · Tessmora")
+    const previous = document.title
+    const title = t('系统架构 · Tessmora')
     document.title = title
-    return () => {
-      if (document.title === title) document.title = oldTitle
-    }
+    return () => { if (document.title === title) document.title = previous }
   }, [location.pathname, i18n.language])
 
   useEffect(() => {
-    if (location.pathname === '/architecture') setMode(readMode())
-  }, [location.pathname, location.search])
+    viewportRef.current?.scrollTo({ top: 0, behavior: 'auto' })
+    if (focusOnNavigation.current || previousChapter.current !== chapterIndex) headingRef.current?.focus({ preventScroll: true })
+    focusOnNavigation.current = false
+    previousChapter.current = chapterIndex
+  }, [chapterIndex])
 
   useEffect(() => {
-    if (location.pathname !== '/architecture') return
-    const hash = location.hash.slice(1)
-    const id = sections.find(item => item.id === hash)?.id ?? legacySections[hash] ?? 'overview'
-    navigate(id, false, false)
-  }, [location.pathname, location.hash, navigate])
+    const headings = [...(viewportRef.current?.querySelectorAll<HTMLElement>('h2') ?? [])].filter(heading => !heading.closest('.book-appendix'))
+    setOutline(headings.map((heading, index) => {
+      heading.id = `section-${chapter.id}-${index}`
+      heading.tabIndex = -1
+      return { id: heading.id, title: heading.textContent ?? '' }
+    }))
+    setActiveSection('')
+  }, [chapter.id, i18n.language, mode])
 
-  useEffect(() => {
+  const jumpToSection = (id: string) => {
+    const viewport = viewportRef.current
+    const target = viewport?.querySelector<HTMLElement>(`#${id}`)
+    if (!viewport || !target) return
+    viewport.scrollTo({ top: target.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop - 28,
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+    target.focus({ preventScroll: true })
+    setActiveSection(id)
+  }
+  const trackSection = () => {
     const viewport = viewportRef.current
     if (!viewport) return
-    let frame = 0
-    const update = () => {
-      frame = 0
-      const line = viewport.getBoundingClientRect().top + (navRef.current?.offsetHeight ?? 0) + 64
-      let current: SectionId = 'overview'
-      for (const section of sections) {
-        const element = document.getElementById(section.id)
-        if (element && element.getBoundingClientRect().top <= line) current = section.id
-      }
-      setActiveSection(current)
-    }
-    const schedule = () => { if (!frame) frame = window.requestAnimationFrame(update) }
-    viewport.addEventListener('scroll', schedule, { passive: true })
-    const observer = new ResizeObserver(schedule)
-    observer.observe(viewport)
-    if (viewport.lastElementChild) observer.observe(viewport.lastElementChild)
-    return () => {
-      viewport.removeEventListener('scroll', schedule)
-      observer.disconnect()
-      window.cancelAnimationFrame(frame)
-    }
-  }, [])
+    const threshold = viewport.getBoundingClientRect().top + 160
+    const headings = [...viewport.querySelectorAll<HTMLElement>('h2')].filter(heading => !heading.closest('.book-appendix'))
+    const passed = headings.filter(heading => heading.getBoundingClientRect().top <= threshold)
+    const current = passed[passed.length - 1]
+    setActiveSection(current?.id ?? '')
+  }
 
-  return <div className="architecture-page architecture-experience h-full min-h-0" data-mode={mode}>
-    <div ref={viewportRef} className="architecture-scroll-viewport atlas-viewport">
-      <nav ref={navRef} className="atlas-experience-nav" aria-label={t("架构页目录")}>
-        <a className="atlas-nav-brand" href="#overview" onClick={event => { event.preventDefault(); navigate('overview') }} aria-label={t("回到系统全貌")}><Layers3 size={18} aria-hidden="true" /><span>{t("系统架构")}</span></a>
-        <div className="atlas-experience-links">{sections.map(({ id, name }) => <a key={id} href={`#${id}`} aria-current={activeSection === id ? 'location' : undefined} onClick={event => { event.preventDefault(); navigate(id) }}>{t(name || '')}</a>)}</div>
-        <label className="atlas-global-mode"><span className="sr-only">{t("全页执行路径")}</span><select value={mode} onChange={event => { if (isMode(event.target.value)) changeMode(event.target.value) }} aria-label={t("全页执行路径")}>{architectureModes.map(item => <option key={item.id} value={item.id}>{t(item.name || '')}</option>)}</select><ChevronDown size={13} aria-hidden="true" /></label>
-      </nav>
-      <div className="atlas-experience-content">
-        <section id="overview" className="atlas-experience-hero" tabIndex={-1}>
-          <div className="atlas-cover">
-            <div className="atlas-cover-copy">
-              <h1>{t("知识各有形态，")}<br />{t("答案应有来处。")}</h1>
-              <p>{t("Tessmora 的架构，围绕证据展开。")}<br />{t("以多模态索引组织资料，用分层检索与独立 Agent 推进问答和研究，让结论始终连接来源。")}</p>
-              <div className="atlas-cover-actions"><button type="button" onClick={() => navigate('system')}>{t("探索系统架构")}<ArrowDown size={16} aria-hidden="true" /></button><a href={architectureSourceUrl('docs/MMA_ARCHITECTURE.md')} target="_blank" rel="noreferrer">{t("阅读技术文档")}<ArrowUpRight size={16} aria-hidden="true" /></a></div>
+  useEffect(() => {
+    if (!['modules', 'tech-stack', 'system-architecture'].includes(hash)) return
+    const frame = window.requestAnimationFrame(() => document.getElementById(hash)?.scrollIntoView({ block: 'start' }))
+    return () => window.cancelAnimationFrame(frame)
+  }, [hash])
+
+  return <div className="architecture-page architecture-experience architecture-book h-full min-h-0">
+    <header className="book-masthead">
+      <a className="book-masthead-title" href={href('overview')} onClick={event => { event.preventDefault(); go(0) }}>
+        <strong>{text('设计与实现', 'Design & implementation')}</strong>
+      </a>
+      <div className="book-header-actions">
+        <SourceLink path="README.md">GitHub</SourceLink>
+      </div>
+    </header>
+    <div className="book-mobile-navigation">
+      <button onClick={() => go(chapterIndex - 1)} disabled={chapterIndex === 0} aria-label={text('上一节', 'Previous topic')}><ChevronLeft size={20} aria-hidden="true" /></button>
+      <label><select aria-label={text('选择主题', 'Choose a topic')} value={chapterIndex} onChange={event => go(Number(event.target.value))}>{chapters.map((item, index) => <option key={item.id} value={index}>{index === 0 ? '' : `0${index} · `}{text(item.name[0], item.name[1])}</option>)}</select><ChevronDown size={16} aria-hidden="true" /></label>
+      <button onClick={() => go(chapterIndex === chapters.length - 1 ? 0 : chapterIndex + 1)} aria-label={text('下一节', 'Next topic')}><ChevronRight size={20} aria-hidden="true" /></button>
+    </div>
+    <div className="book-layout">
+      <div className="book-sidebar">
+        <nav aria-label={text('内容导航', 'Topic navigation')}>
+          {chapters.map((item, index) => <a key={item.id} href={href(item.id)} aria-current={index === chapterIndex ? 'page' : undefined} onClick={event => { event.preventDefault(); go(index) }}><span className="book-index">{index === 0 ? '—' : `0${index}`}</span><span>{text(item.name[0], item.name[1])}</span><ChevronRight className="book-nav-arrow" size={15} aria-hidden="true" /></a>)}
+        </nav>
+        {chapterIndex > 0 && outline.length > 0 && <div className="book-outline" role="navigation" aria-label={text('本节内容', 'In this topic')}><h3>{text('本节内容', 'In this topic')}</h3>{outline.map(item => <button key={item.id} type="button" aria-current={activeSection === item.id ? 'location' : undefined} onClick={() => jumpToSection(item.id)}>{item.title}</button>)}</div>}
+      </div>
+      <div ref={viewportRef} className="book-reading-viewport architecture-scroll-viewport" onScroll={trackSection} tabIndex={0} aria-label={text('正文', 'Content')}>
+        <article key={chapter.id} className={`book-page ${chapterIndex === 0 ? 'book-cover-page' : ''}`} data-direction={direction} data-chapter={chapter.id} aria-labelledby="book-heading">
+          {chapterIndex === 0 ? <>
+            <div className="book-cover-spread">
+              <div className="book-cover-copy">
+                <h1 id="book-heading" ref={headingRef} tabIndex={-1}>{text('知识各有形态，', 'Knowledge takes many forms.')}<br /><span>{text('答案应有来处。', 'Answers need a source.')}</span></h1>
+                <p>{text('一份文档、一张图片、一段声音。', 'A document. An image. A fragment of sound.')}<br />{text('散落的资料，如何成为可以对话的知识？', 'How can scattered material become knowledge you can talk to?')}</p>
+                <p className="book-cover-invitation">{text('理解 Tessmora 如何解析多模态资料、组织索引、寻找证据，再把它们变成有出处的回答。', 'Explore how Tessmora parses multimodal material, organizes indexes, finds evidence and builds answers with sources.')}</p>
+                <button className="book-start" type="button" onClick={() => go(1)}>{text('从设计出发点开始', 'Explore the design')}<ArrowRight size={18} aria-hidden="true" /></button>
+              </div>
+              <figure className="book-cover-art"><img src="/architecture/evidence-sculpture.webp" width="1280" height="960" alt={text('文档、图像、声音和视频，由紫色丝带连接到同一个知识容器。', 'Documents, images, sound and video connected by violet ribbons to a shared knowledge container.')} loading="eager" decoding="async" /><figcaption>{text('不同的形态，共同的来处。', 'Different forms. Connected sources.')}</figcaption></figure>
             </div>
-            <div className="atlas-cover-art"><img src="/architecture/evidence-sculpture.webp" width="1280" height="960" alt="" loading="eager" decoding="async" /><span>{t("异构材料，沿证据连接。")}</span></div>
-          </div>
-          <div className="atlas-design-thread" aria-label={t("项目的设计主线")}>
-            <span><FileText size={18} aria-hidden="true" /><strong>{t("保留原件")}</strong><small>{t("让来源可复读")}</small></span>
-            <span><ScanLine size={18} aria-hidden="true" /><strong>{t("理解模态")}</strong><small>{t("保留模态线索")}</small></span>
-            <span><Network size={18} aria-hidden="true" /><strong>{t("组织证据")}</strong><small>{t("让研究可推进")}</small></span>
-            <span><Quote size={18} aria-hidden="true" /><strong>{t("回到来源")}</strong><small>{t("让结论可核对")}</small></span>
-          </div>
-          <ArchitecturePrinciples />
-        </section>
-        <section id="system" className="atlas-experience-section atlas-system-section" tabIndex={-1}>
-          <div className="atlas-section-intro"><h2>{t("从资料入库，到有据可查的回答")}</h2><p>{t("资料入库形成可定位的索引；Direct、Agent 与 Pi 按各自的执行方式取证，共用原件与知识数据。")}</p></div>
-          <ArchitectureBlueprint />
-        </section>
-        <section id="paths" className="atlas-experience-section" tabIndex={-1}>
-          <div className="atlas-section-intro"><h2>{t("为不同问题，选择合适的取证深度")}</h2><p>{t("从一次检索到多轮补查，再到自主研究。切换路径，查看控制方式、生成职责与适用问题。")}</p></div>
-          <ArchitectureMap mode={mode} onModeChange={changeMode} />
-          <div className="atlas-hero-caption"><span>{t("常规 Auto 在 Direct 与 Agent 之间选择；Pi 单独开启。")}</span><button type="button" onClick={() => navigate('flow-lab')}>{t("跟随一次问答")}<ArrowDown size={15} aria-hidden="true" /></button></div>
-        </section>
-        <section id="flow-lab" className="atlas-experience-section" tabIndex={-1}><EvidenceJourney mode={mode} /></section>
-        <section id="modules" className="atlas-experience-section" tabIndex={-1}><ArchitectureDetails mode={mode} /></section>
-        <section id="tech-stack" className="atlas-experience-section" tabIndex={-1}><ArchitectureRuntime mode={mode} /></section>
-        <footer className="atlas-experience-footer"><div><BookOpenText size={19} aria-hidden="true" /><span><strong>{t("读懂架构，也看清能力的边界。")}</strong><small>{t("内容核对")} <time dateTime={architectureReviewDate}>{t(architectureReviewDate.replace(/-/g, '.'))}</time>  {t("· 当前阅读")} {t(modeInfo.name || '')}</small></span></div><button type="button" onClick={() => navigate('overview')}>{t("回到顶部")}<ArrowUp size={15} aria-hidden="true" /></button></footer>
+            <nav className="overview-routes" aria-label={text('探索架构主题', 'Explore architecture topics')}>
+              {[
+                { title: text('资料如何被理解', 'How material is understood'), detail: text('从解析结构，到可以搜索的表示。', 'From parsed structure to searchable representations.'), links: [2, 3] },
+                { title: text('问题如何找到依据', 'How questions find evidence'), detail: text('比较检索视角，选择研究的深度。', 'Compare retrieval perspectives and research depth.'), links: [4, 5] },
+                { title: text('回答如何经得起回看', 'How answers remain inspectable'), detail: text('追溯来源，理解系统的运行边界。', 'Trace sources and understand runtime boundaries.'), links: [6, 7] },
+              ].map(item => <div key={item.title}><h2>{item.title}</h2><p>{item.detail}</p><div>{item.links.map(index => <a key={index} href={href(chapters[index].id)} onClick={event => { event.preventDefault(); go(index) }}>{text(chapters[index].name[0], chapters[index].name[1])}<ArrowUpRight size={13} aria-hidden="true" /></a>)}</div></div>)}
+            </nav>
+          </> : <>
+            <div className={`book-chapter-opening ${['idea', 'evidence'].includes(chapter.id) ? 'book-chapter-opening--illustrated' : ''}`}><div><h1 id="book-heading" ref={headingRef} tabIndex={-1}>{text(chapter.title[0], chapter.title[1])}</h1><p className="book-chapter-lead">{text(chapter.lead[0], chapter.lead[1])}</p></div>{chapter.id === 'idea' && <EditorialArtwork kind="representation" text={text} />}{chapter.id === 'evidence' && <EditorialArtwork kind="evidence" text={text} />}</div>
+            {chapter.id === 'idea' && <DesignChapter text={text} />}
+            {chapter.id === 'materials' && <ParsingChapter text={text} />}
+            {chapter.id === 'storage' && <StorageChapter text={text} />}
+            {chapter.id === 'retrieval' && <RetrievalChapter text={text} />}
+            {chapter.id === 'paths' && <PathsChapter text={text} mode={mode} onModeChange={changeMode} />}
+            {chapter.id === 'evidence' && <EvidenceChapter text={text} />}
+            {chapter.id === 'system' && <div className="book-system">
+              <RuntimeChapter text={text} />
+              <div className="book-further-reading"><h2>{text('系统全景与源码索引', 'System map and source index')}</h2><p>{text('把前面的设计放在一起，查看模块之间的连接。', 'Bring the design together and inspect the connections between modules.')}</p>
+                <details id="system-architecture" className="book-appendix" open={hash === 'system-architecture' || undefined}><summary><span>{text('展开系统全景', 'Explore the system map')}</span><ChevronDown size={18} aria-hidden="true" /></summary><div><ArchitectureBlueprint /></div></details>
+                <details id="modules" className="book-appendix" open={hash === 'modules' || undefined}><summary><span>{text('查看模块与源码', 'Read the modules and source')}</span><ChevronDown size={18} aria-hidden="true" /></summary><div><ArchitectureDetails mode={mode} /></div></details>
+                <details id="tech-stack" className="book-appendix" open={hash === 'tech-stack' || undefined}><summary><span>{text('查看运行配置与恢复约定', 'Inspect runtime and recovery details')}</span><ChevronDown size={18} aria-hidden="true" /></summary><div><ArchitectureRuntime mode={mode} /></div></details>
+              </div>
+              <div className="book-colophon"><a href="/" onClick={event => { event.preventDefault(); navigate('/') }}>{text('回到对话', 'Return to chat')}<ArrowUpRight size={17} aria-hidden="true" /></a><SourceLink path="docs/MMA_ARCHITECTURE.md">{text('完整技术文档', 'Full technical documentation')}</SourceLink></div>
+            </div>}
+          </>}
+          <footer className="book-pagination" aria-label={text('内容切换', 'Topic navigation controls')}>
+            <button type="button" className="book-prev" aria-label={chapterIndex === 1 ? text('回到总览', 'Back to overview') : text('上一节', 'Previous topic')} disabled={chapterIndex === 0} onClick={() => go(chapterIndex - 1)}><ArrowLeft size={16} aria-hidden="true" /><span>{chapterIndex === 1 ? text('回到总览', 'Back to overview') : text('上一节', 'Previous topic')}</span></button>
+            <span className="book-page-indicator">{text(chapter.name[0], chapter.name[1])}<span>{chapterIndex === 0 ? 'TESSMORA' : `${String(chapterIndex).padStart(2, '0')} / 07`}</span></span>
+            <button type="button" className="book-next" onClick={() => go(chapterIndex === chapters.length - 1 ? 0 : chapterIndex + 1)}><span>{chapterIndex === chapters.length - 1 ? text('回到总览', 'Return to overview') : text(chapters[chapterIndex + 1].name[0], chapters[chapterIndex + 1].name[1])}</span><ArrowRight size={17} aria-hidden="true" /></button>
+          </footer>
+        </article>
       </div>
     </div>
+
   </div>
 }

@@ -1,169 +1,235 @@
 ---
-name: Tessmora Architecture Reading Surface
-description: Current visual implementation of /architecture only; not a product-wide identity or an approved brand specification.
+name: "Tessmora Architecture Reading Surface"
+description: "Focused, illustrated explanation of Tessmora design and implementation; scoped to /architecture."
 colors:
-  atlas-paper: "#f8f7fb"
-  atlas-surface: "#fff"
-  atlas-ink: "#302b42"
-  atlas-muted: "#686276"
-  atlas-line: "#dfdbe8"
-  atlas-accent: "#6852b5"
-  atlas-tint: "#eeebf7"
-  atlas-teal: "#266b63"
-  atlas-purple: "#765591"
-  atlas-dark-paper: "#191f2d"
-  atlas-dark-surface: "#232b3b"
-  atlas-dark-ink: "#e6eaf3"
-  atlas-dark-accent: "#c4b6ef"
-  atlas-dark-action: "#a28add"
-  atlas-dark-on-action: "#201a30"
+  book-paper: "#fffefd"
+  book-ink: "#292437"
+  book-muted: "#655f72"
+  book-line: "#e6e0ed"
+  book-accent: "#6948a5"
+  book-tint: "#f0eafa"
+  book-teal: "#356f64"
+  book-canvas: "#f7f4fa"
+  book-dark-paper: "#211e29"
+  book-dark-ink: "#f1edf8"
+  book-dark-muted: "#beb6cd"
+  book-dark-line: "#443a53"
+  book-dark-accent: "#cbb0f5"
+  book-dark-tint: "#33283f"
+  book-dark-teal: "#a3d0c0"
+  book-dark-canvas: "#1c1922"
   blueprint-paper: "#302846"
   blueprint-ink: "#f5f1ff"
+  blueprint-muted: "#cec3dc"
+  blueprint-rule: "#766686"
   blueprint-lilac: "#d8cef2"
   blueprint-mint: "#b9dfd3"
   blueprint-apricot: "#f2cfb2"
-  blueprint-retrieval-ink: "#293c37"
 typography:
   display:
-    fontFamily: "'Noto Serif SC', 'Songti SC', STSong, serif"
-    fontSize: "clamp(32px,1.6rem + 2cqi,56px)"
-    fontWeight: 600
-    lineHeight: 1.5
-    letterSpacing: "-.025em"
+    fontFamily: "'Tessmora Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+    fontSize: "clamp(2.5rem, 1.3rem + 3.1cqi, 4rem)"
+    fontWeight: 650
+    lineHeight: 1.35
+    letterSpacing: "-.035em"
   headline:
-    fontFamily: "'Noto Serif SC', 'Songti SC', STSong, serif"
-    fontSize: "clamp(28px,1.25rem + 1.1cqi,36px)"
+    fontFamily: "'Tessmora Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+    fontSize: "clamp(2rem, 1.15rem + 2.4cqi, 3rem)"
+    fontWeight: 650
+    lineHeight: 1.35
+    letterSpacing: "-.035em"
+  section:
+    fontFamily: "'Tessmora Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+    fontSize: "1.625rem"
+    fontWeight: 650
+    lineHeight: 1.5
+    letterSpacing: "-.015em"
+  subhead:
+    fontFamily: "'Tessmora Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+    fontSize: "1.25rem"
     fontWeight: 600
-    lineHeight: 1.45
-    letterSpacing: "-.02em"
+    lineHeight: 1.6
   body:
-    fontFamily: "'Manrope', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif"
-    fontSize: "15px"
+    fontFamily: "'Tessmora Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+    fontSize: "1.125rem"
+    fontWeight: 400
+    lineHeight: 1.85
+  prose:
+    fontFamily: "'Tessmora Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+    fontSize: "1.125rem"
+    lineHeight: 1.85
+  support:
+    fontFamily: "'Tessmora Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+    fontSize: "1rem"
+    lineHeight: 1.8
+  quote:
+    fontFamily: "'Tessmora Serif', 'Noto Serif SC', 'Songti SC', Georgia, serif"
+    fontSize: "1.5rem"
+    fontWeight: 600
     lineHeight: 1.7
   label:
-    fontFamily: "'Manrope', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif"
-    fontSize: "13px"
+    fontFamily: "'Tessmora Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+    fontSize: ".875rem"
+    lineHeight: 1.65
+  small:
+    fontFamily: "'Tessmora Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+    fontSize: ".8125rem"
+    lineHeight: 1.7
   source:
     fontFamily: "'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace"
-    fontSize: "12px"
+    fontSize: ".875rem"
     lineHeight: 1.7
 rounded:
-  control: "7px"
-  button: "8px"
-  panel: "12px"
-  viewport: "18px"
+  reader: "0px"
+  control: "10px"
+  note: "12px"
+  illustrated: "16px"
+  path: "6px"
+  parsing: "8px"
+  navigation: "8px"
+  citation: "3px"
   blueprint: "8px"
-  blueprint-node: "8px"
-  retrieval: "8px"
 spacing:
-  control-gap: "6px"
-  inline-gap: "12px"
-  content-inset: "clamp(18px,3.5cqi,48px)"
-  section: "56px"
-  compact-section: "32px"
+  article-top: "36px"
+  article-inline: "48px"
+  article-bottom: "56px"
+  reading-section: "40px"
+  reading-section-compact: "32px"
+  prose-paragraph: "18px"
+  paired-explanation: "32px"
+  compact-inline: "20px"
 components:
-  button-primary:
-    backgroundColor: "{colors.atlas-accent}"
-    textColor: "{colors.atlas-surface}"
-    rounded: "{rounded.button}"
-    padding: "11px 18px"
-  button-primary-hover:
-    backgroundColor: "{colors.atlas-purple}"
-  button-primary-dark:
-    backgroundColor: "{colors.atlas-dark-action}"
-    textColor: "{colors.atlas-dark-on-action}"
-  link-secondary:
-    textColor: "{colors.atlas-muted}"
+  opening-action:
+    backgroundColor: "{colors.book-accent}"
+    textColor: "{colors.book-paper}"
+    rounded: "{rounded.control}"
+    padding: "12px 20px"
+    height: "48px"
   navigation-current:
-    textColor: "{colors.atlas-accent}"
-  mode-select:
-    backgroundColor: "{colors.atlas-tint}"
-    textColor: "{colors.atlas-accent}"
-    rounded: "{rounded.control}"
-    padding: "7px 28px 7px 12px"
+    backgroundColor: "{colors.book-tint}"
+    textColor: "{colors.book-accent}"
+    rounded: "{rounded.navigation}"
+    padding: "10px 8px"
+    height: "44px"
+  mobile-topic-select:
+    backgroundColor: "{colors.book-canvas}"
+    textColor: "{colors.book-ink}"
+    padding: "10px 28px 10px 12px"
+  section-jump:
+    textColor: "{colors.book-muted}"
+    padding: "4px 0"
+    height: "32px"
+  pagination-next:
+    textColor: "{colors.book-accent}"
+    height: "44px"
+  parsing-tab-selected:
+    backgroundColor: "{colors.book-accent}"
+    textColor: "{colors.book-paper}"
+    rounded: "{rounded.parsing}"
+    padding: "10px 18px"
   path-selected:
-    backgroundColor: "{colors.atlas-surface}"
-    textColor: "{colors.atlas-accent}"
-    rounded: "{rounded.control}"
-    padding: "10px 16px"
-  blueprint-retrieval:
-    backgroundColor: "{colors.blueprint-mint}"
-    textColor: "{colors.blueprint-retrieval-ink}"
-    rounded: "{rounded.retrieval}"
-    padding: "11px 13px"
+    backgroundColor: "{colors.book-tint}"
+    textColor: "{colors.book-accent}"
+    rounded: "{rounded.path}"
+    padding: "14px 20px"
+  citation:
+    backgroundColor: "{colors.book-tint}"
+    textColor: "{colors.book-accent}"
+    rounded: "{rounded.citation}"
+    padding: "3px 7px"
+  comparison-table:
+    textColor: "{colors.book-muted}"
+    padding: "16px 20px 16px 0"
+  mechanism-figure:
+    textColor: "{colors.book-ink}"
+    rounded: "{rounded.illustrated}"
+  retrieval-illustration:
+    textColor: "{colors.book-ink}"
+    rounded: "{rounded.illustrated}"
+    padding: "10px"
 ---
 
 # Design System: Tessmora Architecture Reading Surface
 
 ## Overview
 
-**Creative North Star: "沿证据阅读架构"**
+**Creative North Star: "以清晰的阅读路径与图文层次，讲清真实的设计与实现"**
 
-This is a descriptive snapshot of the current v3 `/architecture` implementation, recorded on 2026-10-14. Its scope is the architecture reading surface inside the existing application shell. The metaphor describes the implementation; it is not a user-approved brand direction and must not be imposed on other routes.
+This source snapshot records the focused `/architecture` surface on 2026-10-23. Tessmora presents an overview and seven substantive topics: design principles, parsing, storage, retrieval, execution paths, answers and citations, and runtime boundaries. Technical explanations, examples, tradeoffs and source links stay visible for the selected topic; only the retained reference appendices are folded.
 
-The page moves from design principles to the system blueprint, execution paths, an illustrative evidence journey, module implementation and runtime boundaries. Editorial typography, a tactile illustration and varied diagram compositions support that reading sequence. Product facts remain in `PRODUCT.md`; source code remains the authority when this snapshot drifts.
+The architecture surface remains inside the original application shell, as explicitly requested by the user. The conversation sidebar retains its brand, workspace navigation and global language/theme controls. The page adds only a “Design & implementation” header with GitHub, topic navigation and the reading area. Warm near-white paper, violet openings and purposeful diagram colors support the content. This is a route-specific design, not a product-wide restyle.
 
 **Key Characteristics:**
-- A readable Chinese editorial hierarchy with restrained technical labels.
-- Pale reading surfaces, a deep blueprint field and distinct evidence-path colors.
-- Art introduces the idea; interactive diagrams explain actual responsibilities.
-- Headings and their introductions share one left alignment; content groups stay close to their labels.
-- Light and dark themes, container-aware layouts and optional short motion.
+
+- The original conversation sidebar remains visible; the architecture header contains only its subject and GitHub.
+- An eight-column horizontal topic strip with an inline section outline at route widths above 1100px; previous/select/next navigation replaces it at 1100px and below.
+- Self-hosted Sans 650 headings, 18px body text and 16px supporting prose; Serif is reserved for quoted and example material.
+- The retained sculpture and transparent illustrations sit in tinted openings; storage/runtime diagrams and three retrieval illustrations use color to distinguish their subjects.
+- One topic at a time, URL-based navigation, normal-flow article pagination, coordinated themes and Chinese/English copy.
 
 ## Colors
 
-Primary violet connects navigation, actions and the conventional execution path. Teal distinguishes Pi in the path explorer. Neutral paper, surface, ink, muted and line tokens provide the reading hierarchy; the dark theme overrides this local token scope.
+The light theme uses near-white paper, dark violet ink, a pale violet canvas and a stronger violet interaction accent. The dark theme replaces all eight `--book-*` surface and text colors together. The palette above is extracted from `architectureBook.css`; color names describe this route only.
 
-The blueprint keeps its own deep field in both themes. Lilac identifies preparation, mint identifies conventional retrieval, and apricot identifies Pi. These are local diagram roles: Pi's teal in the explorer is not a global color identity. Preserve text labels alongside all color distinctions.
+Tinted fields group information: the cover and illustrated openings use `--book-tint`; the compact topic selector and pagination use `--book-canvas`, while the selected wide-screen topic uses `--book-tint`. Storage originals and the independent Node/Pi process use mint, while indexes and the Python host use lilac. Those diagram fields mix their accent at 13% with paper. Retrieval illustrations sit on 9% accent grounds, with violet for semantic, teal for lexical and apricot for media clues. Color is accompanied by text and structural relationships. The retained full-system blueprint keeps its separate dark palette.
 
 ## Typography
 
-Display and section headings use the declared Noto Serif SC / Songti stack; prose and controls use Manrope with Chinese system fallbacks. Source paths use IBM Plex Mono with monospace fallbacks. These are CSS stacks, not a promise that every font is installed or downloaded.
+Self-hosted **Tessmora Sans** carries headings, prose and controls. Overview and topic headings use weight 650, as do primary section headings. **Tessmora Serif** is reserved for quoted/example material, including execution questions, document fragments and cited excerpts. The local font faces expose real 400–650 Sans and 400–700 Serif axes; preserve their subsets and licenses.
 
-Use the display and headline roles for the reading hierarchy. Body defaults are in frontmatter; the hero description uses a looser line height (1.95) and a bounded measure (29em). Technical labels remain subordinate to prose. Source paths may wrap anywhere.
+At a 16px root, the main scale is 18px body, 16px support, 14px labels, 13px compact captions, 20px subheads and 26px section headings. Overview headings range from 40–64px, topic headings from 32–48px. Reading prose normally stays within 76ch, with 1.85 line height and 18px between paragraphs. At route widths of 600px or below, body becomes 17px, support remains 16px, sections become 24px, and overview/topic headings become 36px/32px. At 320px or below, the overview heading becomes 28px. English openings use tighter line heights. Monospace is for actual paths, fields, identities and data.
+
+**The Explanation First Rule.** State the choice, show its mechanism and limits, and connect the explanation to a concrete example, diagram or source.
 
 ## Layout
 
-The architecture panel owns its scroll viewport and sticky section navigation. Content is centered at a maximum width of 1360px with fluid inline padding. Desktop hero copy and artwork use a 1:1.12 grid. Section introductions are a single block: the heading comes first, followed by the introduction with a 12px top margin on the same left axis. Their outer spacing tightens on narrow containers.
+`AppLayout.tsx` retains the original `ConversationSidebar` on `/architecture`, honoring the user's explicit preference. Its expanded width defaults to 264px and respects the user's saved width; the existing collapsed width is 80px and the mobile rail is 72px at viewport widths of 640px or below. Chat and visited-page mounting behavior stay intact. The architecture content region removes its outer padding and uses the remaining viewport space.
 
-Breakpoints refer to the `atlas` container, not the browser viewport. Module tabs use eight columns, four at 1100px and below, and two at 540px and below. At 820px the blueprint's execution lanes and two storage groups become stacked; at 700px its overview follows a vertical reading order with downward arrows in their own rows; at 510px the two shared stores stack. At 660px the hero and principles become one column, the design thread becomes two columns, and navigation gains its own horizontally scrollable row. The execution-path explorer retains its own 780px and 480px layout changes.
+`ArchitecturePage.tsx` adds a compact “设计与实现 / Design & implementation” header with an overview link and GitHub. It does not duplicate the application's logo, workspace-return, language or theme controls. The page and `.book-layout` use a column flex shell, with navigation outside the independently scrolling article.
 
-Module panels and the evidence journey use natural content height. Their headings, explanations and controls remain near the content they describe instead of being separated by reserved empty space. Mechanism disclosures place their explanation immediately below their title. Runtime storage descriptions keep their scope labels on the next line in the same content column; disclosure tags sit next to their title.
+Above an `atlas` container width of 1100px, topic navigation is an eight-column horizontal strip: overview plus seven topics. The existing `.book-sidebar` class names this top strip, not a second vertical sidebar. Links have 14px labels and a violet-tinted selected field; an inline, wrapping section-jump row follows when headings are available. Article scrolling updates the current section, and outline jumps focus the heading while respecting reduced motion.
 
-At 350px and below, module tabs show names only, and contract labels stack above their descriptions. This keeps the two-column directory readable within the existing application sidebar. Module prose uses a 58em maximum measure and progressive `text-wrap: pretty`; narrow layouts use their available width.
+At 1100px or below, the topic strip and section outline are hidden. A full-width row supplies previous/next buttons and a centered native topic select. This breakpoint responds to available architecture width after the original sidebar, not the whole browser viewport. The title and GitHub remain in the page header. No second contents column reduces the reading width.
+
+The article is capped at 1540px with 36px top, 48px inline and 56px bottom padding. Padding becomes 28px/32px/40px at 1200px, 24px/20px/32px at 600px, and 20px/14px/28px at 320px. Sections are separated by 40px, or 32px on small screens. Previous/next pagination follows the article in normal flow. Hashes select topics, legacy hashes retain their mappings, and the `path` query parameter selects Direct, Agent or Pi. Topic changes reset article scroll and focus its heading.
+
+The overview pairs copy with the retained sculpture in a tinted, two-column opening, followed by three themed topic groups. Design and citation topics use compact tinted openings with transparent artwork. At 600px, their heading spans the opening while the lead shares a row with a 120px illustration; at 320px the opening stacks. Reading explanations combine prose, definition rows, tables and diagrams. Parsing pairs a sticky specimen with processing steps on wide containers; at a 760px reader width it becomes a static stacked explanation. Other paired prose and evidence diagrams also stack there. Tables unfold into localized labeled fields at a 680px table-container width. Storage/runtime figures stack at 660px; retrieval illustration-and-caption pairs recompose at 540px and become vertical at 390px. Their image frames use a 3:2 aspect ratio, a 280px maximum height on wide layouts, 16px corners and 10px image padding; the smallest layout caps them at 240px.
 
 ## Elevation & Depth
 
-Depth comes mainly from contrasting fields, thin rules, deliberate corners and the generated sculpture's material lighting. Most panels stay flat. The selected execution-path control uses one quiet shadow (`0 3px 12px #3028460a`); avoid spreading that effect to every section.
+Tinted surfaces, spacing and thin rules provide grouping within the architecture content. The selected topic uses a violet-tinted field without a shadow. The original application sidebar retains its existing visual treatment. Diagrams use crisp DOM/SVG geometry and HTML labels to explain source identity, process boundaries and search relationships.
 
-The original `frontend/public/architecture/evidence-sculpture.webp` illustration expresses documents, images, audio and video converging into organized evidence. It is conceptual artwork, not a topology or evidence of a live backend state. Retain its transparent background, 4:3 proportions and empty decorative alternative text; adjacent prose carries its meaning.
+Keep `evidence-sculpture.webp` on the overview and the transparent `representation-layers.webp` and `evidence-lens.webp` in their corresponding topic openings. The cover image uses multiply blending in light mode and normal blending in dark mode. Preserve intrinsic proportions, alpha and localized alternative text. These are conceptual illustrations, not system receipts.
+
+Retrieval adds three transparent raster assets under `frontend/public/architecture/illustrations/`: `retrieval-semantic.webp`, `retrieval-lexical.webp` and `retrieval-media.webp`. A violet lens connects related documents; mint selections align matching terms; a landscape image and sculptural waveform connect to separate query markers. `RetrievalArtwork` supplies localized alternative text, lazy loading and asynchronous decoding. The shared caption explains that these images illustrate retrieval perspectives, not actual vector distributions or scores. The separate `PathFigure` execution diagrams retain their DOM/SVG geometry. Asset generation and provenance remain documented in `docs/architecture-visual-assets.md`.
+
+Topic entry is one visible 5px upward movement over 240ms with `cubic-bezier(.16, 1, .3, 1)`, enabled only when reduced motion is not requested. The overview arrow uses a short 180ms response. Section jumps become immediate when reduced motion is requested.
 
 ## Shapes
 
-Controls use small, consistent curves; the reading viewport and ordinary panels use broader curves. The blueprint board, its overview nodes, execution nodes, host boundary and storage groups use 8px corners. Its modality labels use 4px corners. The principles statement retains asymmetric corners as a separate editorial element; those corners are not applied to the system diagram.
+The full reading surface is square-edged. Tinted illustrated openings and storage/runtime groups use 16px corners; notes and article pagination use 12px; the primary action uses 10px. Topic selection and parsing tabs use 8px. Execution choices retain 6px corners and inline citations 3px. Rounded fields identify a meaningful opening, grouped responsibility or control, rather than wrapping every paragraph.
 
 ## Components
 
-- **Primary action and secondary link:** the hero action has a minimum height of 46px; its secondary document link has a minimum height of 44px. The dark theme explicitly changes the primary action's fill and text.
-- **Section navigation and mode selector:** sticky, compact and keyboard reachable. The current section has both a colored label and a bottom rule. The native select controls the entire page's execution mode.
-- **Execution-path selector:** three pressed-state buttons share one rail. Selection changes the diagram and its nearby explanation; expanded node details remain next to the diagram. Pi uses the explorer's teal path tokens.
-- **Blueprint overview and entry:** four bordered content nodes occupy four flexible grid tracks; the three arrows each occupy a separate 24px track with 12px gaps on either side. A compact entry strip groups the available entrances with FastAPI. There are no floating distribution buses or decorative percentage-positioned routes.
-- **Blueprint execution and storage:** source-linked preparation, conventional RAG and Pi responsibilities retain their lilac, mint and apricot roles. Short 14px vertical connectors directly join internal nodes. The bottom has two actual groups: shared knowledge storage contains MinIO and Qdrant with a write/read responsibility sentence; Pi runtime records contain SQLite and local files with an explicit Pi-host-only persistence sentence. Storage icons use Lucide at 22px and stroke width 1.5. The static modality chips label content; they are not filters.
-- **Module explorer and mechanisms:** horizontal tabs reflow to 8/4/2 columns. The selected panel grows naturally around its introduction, input/process/output contract and source links. Mechanism titles and descriptions are vertically adjacent within the same summary copy block.
-- **Evidence journey:** explanatory and evidence columns align at their top and use natural height; controls follow the current stage content. The demonstration remains explicitly illustrative.
-- **Runtime boundaries:** storage descriptions and scope labels stay together; lifecycle labels precede their explanations, and disclosure scope tags remain adjacent to their title.
-- **Principle disclosures:** native details/summary retain their text context while opening supporting explanations and source links.
+- **Navigation:** the wide-screen topic strip uses `aria-current="page"`; its inline section outline uses `aria-current="location"`. At route widths of 1100px or below, a native select with previous/next buttons replaces both. The final next action returns to overview. Original application navigation remains in the conversation sidebar.
+- **Openings:** the overview has a filled violet entry action and retained sculpture. Design/evidence openings pair Sans headings with transparent art capped at 240px, reducing to 120px on small screens.
+- **Parsing and execution:** five modality tabs expose their specimen, mechanism, persisted fields and limits. At parsing-container widths of 560px or below, all five tabs stay visible in an icon-over-label grid; it has five columns above 240px and three columns at 240px or below. Each tab is at least 64px high. Labels use 16px text, reducing to the existing 14px label role at 340px. The English document label reads “Docs” narrowly while its accessible name remains “Documents”. The active tab has a filled violet field. Direct/Agent/Pi pressed-state controls expose complete mode-specific explanations without making model calls.
+- **Storage and runtime:** mint/lilac groupings distinguish original objects from index records, and Python responsibilities from the independent Node/Pi loop. Explicit connectors and identity fields carry meaning. Persistence remains a separate labeled row.
+- **Retrieval and citations:** three transparent illustrations introduce related meaning, shared terminology, and visual/acoustic links. Human-readable headings precede the Dense, Sparse and CLIP · CLAP labels; the media copy explicitly keeps image and audio representation spaces separate. The shared caption distinguishes conceptual perspectives from actual distributions or scores, and states that candidates still require content/applicability checks. Citation figures distinguish candidate identity, answer order and unused material. Example source controls focus the excerpt and return focus on close.
+- **Sources and appendices:** implementation links accompany their explanation. Semantic comparisons keep localized field labels on narrow screens. Native disclosures are reserved for the retained system map, module index and runtime/configuration references.
 
-Interactive elements use a visible 2px focus outline with a 4px offset; blueprint links adjust the outline color for their background. Motion is limited to short state transitions (180–200ms), disclosure icons and a subtle detail reveal. `prefers-reduced-motion: reduce` removes animation, transitions and smooth scrolling across this surface. Do not animate the hero sculpture continuously.
+Visible focus, themed selection and scrollbars remain part of the surface. Load the shared architecture base before component overrides so generic rules do not erase local control typography.
 
 ## Do's and Don'ts
 
-- **Do** keep this document scoped to `/architecture` and refresh it against the actual CSS when that surface changes.
-- **Do** use source-linked explanatory content and label the evidence journey as illustrative.
-- **Do** verify both themes, narrow layouts, keyboard focus and reduced-motion behavior.
-- **Don't** imply this snapshot is a user-approved product-wide identity.
-- **Don't** treat conceptual artwork, illustrative traces or color coding as proof of runtime behavior.
-- **Don't** flatten the page into repeated cards or add continuous motion that competes with reading.
-- **Don't** reintroduce overlaid arrows, floating buses, fixed-height empty panels or detached labels in the system diagram and reading sections.
+- **Do** preserve the original conversation sidebar and use horizontal topics or the compact selector according to the available architecture width.
+- **Do** keep technical depth, source links and illustrative boundaries visible in the selected topic.
+- **Do** preserve the artwork, font licenses and asset provenance recorded in docs/architecture-visual-assets.md and docs/architecture-typography-assets.md.
+- **Do** use color to clarify storage, process and retrieval relationships while keeping labels explicit.
+- **Do** verify both languages, both themes, narrow layouts, keyboard focus and reduced motion after UI changes.
+- **Don't** remove the original conversation sidebar or duplicate its logo, workspace-return, language and theme controls inside the architecture header.
+- **Don't** replace substantive explanations with slogans or a repeated grid of generic cards.
+- **Don't** pin article pagination over the content, hide the retained mobile artwork or continuously animate illustrations.
+- **Don't** present conceptual diagrams, example citations or execution choices as live backend calls or measured performance.
 
-Implementation references: `frontend/src/components/architecture/architecture.css`, `architectureBlueprint.css`, `architecturePrinciples.css`, `architectureMap.css`, `architectureDetails.css`, `evidenceJourney.css`, `architectureRuntime.css` and `frontend/src/pages/ArchitecturePage.tsx`. `.impeccable/design.json` adds compact component previews and extension metadata; it does not redefine the CSS source of truth. Its synthesized OKLCH ramps support palette previews only and are not additional implementation tokens.
+Implementation sources: `frontend/src/components/layout/AppLayout.tsx`, `frontend/src/pages/ArchitecturePage.tsx`, and the architecture styles/components in `frontend/src/components/architecture/`, especially `architectureBook.css`, `architectureIllustrated.css`, `architectureFonts.css`, `storageVisuals.css` and `retrievalVisuals.css`. The sidecar carries matching component previews and metadata; synthesized tonal ramps are preview aids, not implementation tokens.

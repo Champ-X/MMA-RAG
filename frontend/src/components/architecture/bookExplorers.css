@@ -1,0 +1,28 @@
+.book-evidence { color: var(--book-ink); container-type: inline-size; }
+.book-evidence button { -webkit-tap-highlight-color: transparent; }
+.book-evidence-disclaimer { margin: 0 0 24px; color: var(--book-muted); font-size: var(--book-label); line-height: 1.7; }
+.book-evidence-answer { max-width: 65ch; }
+.book-evidence-answer p { margin: 0 0 19px; font-family: var(--book-serif); font-size: 1.375rem; line-height: 1.85; text-wrap: pretty; }
+.architecture-book .book-citation { display: inline-flex; align-items: center; gap: 4px; vertical-align: .12em; padding: 3px 7px; margin: 0 3px; border: 0; border-radius: 3px; background: var(--book-tint); color: var(--book-accent); font-family: inherit; font-size: var(--book-label); line-height: 1.6; white-space: nowrap; cursor: pointer; transition: background-color 150ms ease-out; }
+.architecture-book .book-citation:hover,
+.architecture-book .book-citation[aria-expanded='true'] { background: color-mix(in srgb, var(--book-accent) 18%, var(--book-paper)); }
+.book-source-space { margin-top: 28px; padding-top: 23px; border-top: 1px solid var(--book-line); }
+.book-source-invitation { display: flex; gap: 10px; align-items: center; margin: 0; padding: 8px 0 15px; color: var(--book-muted); font-size: var(--book-support); line-height: 1.8; }
+.book-source-invitation svg { flex-shrink: 0; color: var(--book-accent); }
+.book-source-panel { scroll-margin-top: 100px; }
+.architecture-book .book-source-panel:focus { outline: 2px solid var(--book-accent); outline-offset: 10px; }
+.book-source-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--book-accent); }
+.book-source-heading h3 { margin: 0; font-size: var(--book-support); line-height: 1.7; font-weight: 600; }
+.book-source-heading > span { margin-left: auto; color: var(--book-muted); font-size: var(--book-label); }
+.book-source-panel blockquote { margin: 18px 0 13px; padding: 0; border: 0; color: var(--book-ink); font-family: var(--book-serif); font-size: var(--book-subtitle); line-height: 1.9; }
+.book-source-context { margin: 0 0 14px; color: var(--book-muted); font-size: var(--book-support); line-height: 1.9; }
+.architecture-book .book-source-return { display: inline-flex; gap: 7px; align-items: center; min-height: 36px; padding: 7px 0; border: 0; background: none; color: var(--book-accent); font-size: var(--book-label); cursor: pointer; }
+.architecture-book .book-source-return:hover { text-decoration: underline; text-underline-offset: 4px; }
+.book-evidence-footnote { margin: 23px 0 0; max-width: 70ch; color: var(--book-muted); font-size: var(--book-label); line-height: 1.85; }
+
+@container (max-width: 560px) {
+  .book-source-heading > span { flex-basis: 100%; margin-left: 27px; }
+  .book-evidence-answer p { font-size: var(--book-subtitle); }
+}
+@container (max-width: 340px) { .book-source-panel blockquote { font-size: var(--book-subtitle); } }
+@media (prefers-reduced-motion: reduce) { .architecture-book .book-citation { transition: none; } }
