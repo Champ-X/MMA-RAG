@@ -1,5 +1,6 @@
 """Exercise production SPA routing in an isolated nginx container (requires Docker)."""
 from pathlib import Path
+import http.client
 import subprocess
 import tempfile
 import time
@@ -46,7 +47,7 @@ class FrontendRoutingTest(unittest.TestCase):
             try:
                 with cls.http.open(cls.base, timeout=2):
                     break
-            except urllib.error.URLError:
+            except (urllib.error.URLError, http.client.RemoteDisconnected):
                 if time.monotonic() >= deadline:
                     raise
                 time.sleep(0.1)
