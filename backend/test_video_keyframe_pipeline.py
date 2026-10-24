@@ -80,7 +80,7 @@ def test_video_clip_batches_keep_event_loop_friendly_vector_count():
         "task-1": {"processing_id": "task-1", "status": "processing"},
     }
     service._processing_status_redis_client = None
-    service._persist_processing_status = lambda _status: None
+    service._persist_processing_status = lambda _status, **_kwargs: None
 
     vectors = asyncio.run(
         service._vectorize_video_keyframe_clip_batches(

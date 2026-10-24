@@ -41,6 +41,15 @@ _PUBLIC_UPLOAD_TASK_FIELDS = (
     "progress",
     "message",
     "error",
+    "error_code",
+    "retryable",
+    "provider_code",
+    "provider_request_id",
+    "model_used",
+    "recovery_hint",
+    "storage_persisted",
+    "failed_segment_start",
+    "failed_segment_end",
     "submitted_at",
     "started_at",
     "updated_at",
@@ -50,6 +59,10 @@ _PUBLIC_UPLOAD_TASK_FIELDS = (
     "lease_expires_at",
     "lease_expired_at",
 )
+
+
+class KnowledgeFileDeletionUnavailable(RuntimeError):
+    """Deletion could not finish; the client must retain its file entry for retry."""
 
 
 def _is_raw_video_object_path(object_path: Any) -> bool:
@@ -1725,6 +1738,11 @@ class KnowledgeBaseService:
                 file_id = str(task.get("file_id") or "")
                 if file_id and file_id in visible_ids:
                     continue
+                if file_id and str(task.get("status") or "") == "failed":
+                    # A completed MinIO scan is authoritative for stored files.
+                    # Missing failed originals must not be recreated from stale
+                    # task caches, even while Redis is temporarily unavailable.
+                    continue
                 processing_id = str(task.get("processing_id") or "")
                 if not processing_id:
                     continue
@@ -1818,6 +1836,68 @@ class KnowledgeBaseService:
             return None
 
     async def delete_kb_file(self, kb_id: str, file_id: str) -> bool:
+        # A disconnected client must not cancel a to_thread operation while
+        # releasing its deletion fence. Let the owned operation settle first.
+        operation = asyncio.create_task(self._delete_kb_file_with_status(kb_id, file_id))
+        try:
+            return await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            while not operation.done():
+                try:
+                    await asyncio.shield(operation)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            try:
+                operation.result()
+            except (Exception, asyncio.CancelledError):
+                logger.warning("客户端离开后文件删除未完成 kb_id={} file_id={}", kb_id, file_id)
+            raise
+
+    async def _delete_kb_file_with_status(self, kb_id: str, file_id: str) -> bool:
+        """Fence retries before deleting, then retire durable upload state."""
+        if not self._ensure_kb_in_cache(kb_id):
+            return False
+        if file_id.startswith("videos/") and "/keyframes/" in file_id:
+            bucket_name = self.minio_adapter.get_bucket_for_kb(kb_id)
+            if not await self.minio_adapter.delete_file(bucket_name, file_id):
+                raise KnowledgeFileDeletionUnavailable("删除未完成，请检查存储连接后重试。")
+            return True
+
+        from app.modules.ingestion.service import get_ingestion_status_reader
+
+        reader = get_ingestion_status_reader()
+        reservation = await asyncio.to_thread(reader.begin_file_deletion, file_id, kb_id)
+        if reservation["already_deleted"]:
+            return True
+        committed = False
+        try:
+            success = await self._delete_kb_file_resources(
+                kb_id, file_id,
+                known_file=bool(reservation["matched_count"] or reservation["already_deleted"]),
+            )
+            if not success:
+                return False
+            await asyncio.to_thread(reader.commit_file_deletion, file_id, kb_id, reservation["token"])
+            committed = True
+            return True
+        finally:
+            # The public method shields this operation from client cancel.
+            # A direct cancellation (e.g. process shutdown) may leave physical
+            # to_thread I/O running: neither abort nor relinquish its fence.
+            operation = asyncio.current_task()
+            if operation is None or not operation.cancelling():
+                try:
+                    if not committed:
+                        await asyncio.shield(asyncio.to_thread(
+                            reader.abort_file_deletion, file_id, kb_id, reservation["token"],
+                        ))
+                finally:
+                    if operation is None or not operation.cancelling():
+                        reader.release_file_deletion_owner(reservation["token"])
+
+    async def _delete_kb_file_resources(self, kb_id: str, file_id: str, *, known_file: bool = False) -> bool:
         """删除知识库下的单个文件及其向量（以 MinIO 桶存在为准）。先删向量再删 MinIO，向量删除失败则不删 MinIO。
         若 file_id 为关键帧的 object_path（形如 videos/xxx/keyframes/seg_0_80_0.jpg），则仅删除该 MinIO 对象。"""
         try:
@@ -1849,7 +1929,7 @@ class KnowledgeBaseService:
                 elif op.startswith("videos/"):
                     if rest.startswith(file_id + "_") or rest.startswith(file_id + "/"):
                         object_paths.append(op)
-            if not object_paths:
+            if not object_paths and not known_file:
                 return False
             # 视频的主题权重高且 Scene 语义会直接影响画像路由；删除一条视频后不能等待
             # 通用的 chunk 增量阈值才刷新画像。原始视频位于 videos/{file_id}_{filename}。
@@ -1909,6 +1989,7 @@ class KnowledgeBaseService:
                     deleted_chunk_count += 1
 
             # 兜底：不限定 kb_id（与预览详情中按 file_id 全局 scroll 一致），清除候选 kb_id 均未覆盖时的残留点
+            global_cleanup_complete = True
             filt_by_file_id = Filter(
                 must=[FieldCondition(key="file_id", match=MatchValue(value=file_id))]
             )
@@ -1919,6 +2000,7 @@ class KnowledgeBaseService:
                 )
                 deleted_chunk_count += 1
             except Exception as del_e:
+                global_cleanup_complete = False
                 logger.warning(f"删除文件文本向量(按 file_id 全局)失败 file_id={file_id}: {del_e}")
             try:
                 self.vector_store.client.delete(
@@ -1927,6 +2009,7 @@ class KnowledgeBaseService:
                 )
                 deleted_chunk_count += 1
             except Exception as del_e:
+                global_cleanup_complete = False
                 logger.warning(f"删除文件图片向量(按 file_id 全局)失败 file_id={file_id}: {del_e}")
             try:
                 filt_by_src = Filter(
@@ -1938,6 +2021,7 @@ class KnowledgeBaseService:
                 )
                 deleted_chunk_count += 1
             except Exception as del_e:
+                global_cleanup_complete = False
                 logger.warning(
                     f"删除文件图片向量(按 source_file_id 全局)失败 file_id={file_id}: {del_e}"
                 )
@@ -1948,13 +2032,16 @@ class KnowledgeBaseService:
                 )
                 deleted_chunk_count += 1
             except Exception as del_e:
+                global_cleanup_complete = False
                 logger.warning(f"删除文件音频向量(按 file_id 全局)失败 file_id={file_id}: {del_e}")
             if self.vector_store.delete_video_points_by_file_id(None, file_id):
                 deleted_chunk_count += 1
+            else:
+                global_cleanup_complete = False
 
-            if deleted_chunk_count == 0:
-                logger.error(f"删除文件向量全部失败，不删除 MinIO 对象 kb_id={kb_id} file_id={file_id}")
-                return False
+            if deleted_chunk_count == 0 or not global_cleanup_complete:
+                logger.error(f"文件向量清理未全部完成，不删除 MinIO 对象 kb_id={kb_id} file_id={file_id}")
+                raise KnowledgeFileDeletionUnavailable("索引清理未完成，请检查存储连接后重试。")
 
             minio_delete_targets = list(object_paths)
             for op in object_paths:
@@ -1977,7 +2064,8 @@ class KnowledgeBaseService:
 
             # 向量删除成功后，再删除 MinIO 中该文件的所有对象（含 Office 预览 PDF 缓存）
             for object_path in minio_delete_targets:
-                await self.minio_adapter.delete_file(bucket_name, object_path)
+                if not await self.minio_adapter.delete_file(bucket_name, object_path):
+                    raise KnowledgeFileDeletionUnavailable("原文件删除未完成，请检查存储连接后重试。")
 
             # 清理该文件在知识库问题池中的问题
             try:
@@ -1990,7 +2078,7 @@ class KnowledgeBaseService:
 
             # 文本/图片/音频删除沿用增量阈值；视频删除则立即重建，保证视频主题不会在
             # 知识库画像中长期残留。
-            if deleted_chunk_count > 0:
+            if deleted_chunk_count > 0 and object_paths:
                 try:
                     from app.core.portrait_trigger import (
                         increment_and_maybe_trigger,
@@ -2024,9 +2112,11 @@ class KnowledgeBaseService:
                             logger.warning(f"删除空知识库向量/画像失败 candidate={cid}: {e}")
 
             return True
+        except KnowledgeFileDeletionUnavailable:
+            raise
         except Exception as e:
             logger.error(f"删除知识库文件失败: {str(e)}")
-            return False
+            raise KnowledgeFileDeletionUnavailable("删除未完成，请检查存储连接后重试。") from e
 
     async def search_knowledge_bases(
         self,

@@ -342,7 +342,10 @@ async def get_upload_progress_batch(body: UploadProgressBatchRequest):
                  for task_id in dict.fromkeys(body.processing_ids)]
     )
     fields = {"processing_id", "status", "stage", "progress", "message", "error",
-              "updated_at", "file_id", "file_path", "file_size"}
+              "updated_at", "file_id", "file_path", "file_size",
+              "error_code", "retryable", "provider_code", "provider_request_id",
+              "model_used", "recovery_hint", "storage_persisted",
+              "failed_segment_start", "failed_segment_end"}
     return {"statuses": [{key: value for key, value in status.items() if key in fields}
                          for status in statuses]}
 

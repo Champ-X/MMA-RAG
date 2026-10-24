@@ -17,6 +17,7 @@ import base64
 from io import BytesIO
 import warnings
 import os
+import socket
 import redis
 from PIL import Image
 
@@ -52,6 +53,8 @@ from .video_scene_shot import (
     normalize_video_analysis,
     shift_video_analysis,
 )
+from .video_segments import extract_segment, prefetch_segments, segment_command, video_segments
+from .video_errors import VideoParsingError, cleared_video_error_status, video_error_status
 from app.core.config import settings
 from app.core.llm.manager import llm_manager
 from app.core.llm.prompt_engine import prompt_engine
@@ -65,10 +68,21 @@ _clap_query_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cla
 PROCESSING_STATUS_KEY_PREFIX = "ingestion:processing:task:"
 PROCESSING_STATUS_KB_KEY_PREFIX = "ingestion:processing:kb:"
 PROCESSING_STATUS_FILE_KEY_PREFIX = "ingestion:processing:file:"
+PROCESSING_STATUS_DELETION_KEY_PREFIX = "ingestion:processing:deletion:"
+
+
+class ProcessingTaskActiveError(ValueError):
+    """A running upload or another deletion owns this exact file."""
+
+
+class ProcessingStatusUnavailableError(RuntimeError):
+    """Deletion/retry cannot safely proceed without the shared status store."""
 
 _ingestion_service_instance: Optional["IngestionService"] = None
 _status_reader_instance: Optional["IngestionService"] = None
 _ingestion_service_lock = threading.Lock()
+_active_file_deletions: set[str] = set()
+_active_file_deletions_lock = threading.Lock()
 
 
 def get_ingestion_service() -> "IngestionService":
@@ -213,9 +227,7 @@ class IngestionService:
             now + timedelta(seconds=self._processing_lease_timeout_seconds())
         ).isoformat()
         status["updated_at"] = now.isoformat()
-        self._processing_status[processing_id] = status
-        self._persist_processing_status(status)
-        return True
+        return self._persist_processing_status(status)
 
     def _acquire_processing_lease(self, processing_id: str, lease_id: str) -> bool:
         """为即将启动的后台任务建立唯一 lease。"""
@@ -235,9 +247,7 @@ class IngestionService:
             ).isoformat(),
             "updated_at": now.isoformat(),
         })
-        self._processing_status[processing_id] = status
-        self._persist_processing_status(status)
-        return True
+        return self._persist_processing_status(status)
 
     async def _heartbeat_processing_lease(self, processing_id: str, lease_id: str) -> None:
         """让后台任务在整个生命周期（含 semaphore 排队）持续续约。"""
@@ -282,32 +292,170 @@ class IngestionService:
     def _processing_status_file_key(file_id: str) -> str:
         return f"{PROCESSING_STATUS_FILE_KEY_PREFIX}{file_id}"
 
-    def _persist_processing_status(self, status: Dict[str, Any]) -> None:
-        """把可恢复的上传任务状态写到 Redis；失败时保留内存降级。"""
+    @staticmethod
+    def _processing_deletion_key(file_id: str, kb_id: str) -> str:
+        # Bucket aliases and the source KB UUID must share the same reservation.
+        return f"{PROCESSING_STATUS_DELETION_KEY_PREFIX}{str(kb_id).removeprefix('kb-')}:{file_id}"
+
+    def _processing_deletion_keys(self, status: Dict[str, Any]) -> List[str]:
+        file_id = str(status.get("file_id") or "")
+        if not file_id:
+            return []
+        return sorted({
+            self._processing_deletion_key(file_id, str(status[field]))
+            for field in ("source_kb_id", "kb_id", "bucket") if status.get(field)
+        })
+
+    @staticmethod
+    def _status_matches_file(status: Dict[str, Any], file_id: str, kb_id: str) -> bool:
+        return str(status.get("file_id") or "") == str(file_id) and str(kb_id).removeprefix("kb-") in {
+            str(status.get(field) or "").removeprefix("kb-") for field in ("source_kb_id", "kb_id", "bucket")
+        }
+
+    @staticmethod
+    def _deletion_owner_is_dead(reservation: Dict[str, Any]) -> bool:
+        """A new DELETE may recover a dead or explicitly settled local owner."""
+        if reservation.get("owner_host") != socket.gethostname():
+            return False
+        pid = reservation.get("owner_pid")
+        if not isinstance(pid, int) or pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        except (PermissionError, OSError):
+            return False
+        token = reservation.get("token")
+        if pid != os.getpid() or not isinstance(token, str) or not token:
+            return False
+        # All status-reader instances share this registry. A live process can
+        # leave a reservation behind when Redis fails during both commit/abort;
+        # only an operation that has settled may relinquish its local ownership.
+        with _active_file_deletions_lock:
+            return token not in _active_file_deletions
+
+    @staticmethod
+    def release_file_deletion_owner(token: str) -> None:
+        """Call only after the owned physical deletion and status I/O settle."""
+        with _active_file_deletions_lock:
+            _active_file_deletions.discard(token)
+
+    def _cache_processing_status(self, status: Dict[str, Any]) -> None:
+        processing_id = str(status.get("processing_id") or "")
+        if self._processing_status.get(processing_id, {}).get("status") == "deleted" and status.get("status") != "deleted":
+            return
+        self._processing_status[processing_id] = status.copy()
+        if status.get("status") == "deleted":
+            # A status reader may have been created before the full service.
+            for instance in (_ingestion_service_instance, _status_reader_instance):
+                if instance is not None:
+                    instance._processing_status[processing_id] = status.copy()
+
+    @staticmethod
+    def _deleted_processing_status(status: Dict[str, Any]) -> Dict[str, Any]:
+        # Keep identifiers for progress/idempotency; discard stale recovery claims.
+        fields = ("processing_id", "file_id", "file_path", "file_size", "file_type",
+                  "kb_id", "source_kb_id", "bucket", "submitted_at")
+        deleted = {field: status[field] for field in fields if field in status}
+        now = datetime.utcnow().isoformat()
+        deleted.update(status="deleted", stage="deleted", progress=0,
+                       message="文件已删除", storage_persisted=False,
+                       retryable=False, deleted_at=status.get("deleted_at") or now,
+                       updated_at=status.get("deleted_at") or now)
+        return deleted
+
+    def _write_processing_status(self, target: Any, status: Dict[str, Any]) -> None:
+        processing_id = str(status["processing_id"])
+        payload = json.dumps(status, ensure_ascii=False, default=str, separators=(",", ":"))
+        ttl = self._processing_status_ttl_seconds()
+        target.setex(self._processing_status_key(processing_id), ttl, payload)
+        for kb_id in {str(status.get("source_kb_id") or ""), str(status.get("kb_id") or "")}:
+            if kb_id:
+                key = self._processing_status_kb_key(kb_id)
+                target.sadd(key, processing_id)
+                target.expire(key, ttl)
+        if status.get("file_id"):
+            target.setex(self._processing_status_file_key(str(status["file_id"])), ttl, processing_id)
+
+    def _persist_processing_status(
+        self, status: Dict[str, Any], *, require_persistence: bool = False,
+        expected_status: Optional[str] = None, raise_if_reserved: bool = False,
+    ) -> bool:
+        """Persist progress without overwriting a deletion reservation/tombstone.
+
+        WATCH covers both the task and its file reservation, so a retry and a
+        delete cannot both acquire ownership after reading the same failed row.
+        """
         processing_id = str(status.get("processing_id") or "")
         if not processing_id:
-            return
+            return False
+        if self._processing_status.get(processing_id, {}).get("status") == "deleted":
+            if raise_if_reserved:
+                raise ProcessingTaskActiveError("文件已删除，任务不能继续处理")
+            return False
         client = self._get_processing_status_redis_client()
         if client is None:
-            return
-        ttl = self._processing_status_ttl_seconds()
-        try:
-            payload = json.dumps(status, ensure_ascii=False, default=str, separators=(",", ":"))
-            client.setex(self._processing_status_key(processing_id), ttl, payload)
-            for kb_id in {
-                str(status.get("source_kb_id") or ""),
-                str(status.get("kb_id") or ""),
-            }:
-                if not kb_id:
-                    continue
-                key = self._processing_status_kb_key(kb_id)
-                client.sadd(key, processing_id)
-                client.expire(key, ttl)
-            file_id = str(status.get("file_id") or "")
-            if file_id:
-                client.setex(self._processing_status_file_key(file_id), ttl, processing_id)
-        except Exception as e:
-            logger.debug("持久化上传状态失败 processing_id={}: {}", processing_id, e)
+            if require_persistence:
+                raise ProcessingStatusUnavailableError("上传状态存储暂不可用，请稍后重试")
+            return False
+        key = self._processing_status_key(processing_id)
+        for _ in range(4):
+            pipeline = None
+            try:
+                target = client
+                if hasattr(client, "pipeline"):
+                    pipeline = client.pipeline()
+                    target = pipeline
+                    pipeline.watch(key, *self._processing_deletion_keys(status))
+                raw = target.get(key)
+                current = json.loads(raw) if raw else None
+                if current and current.get("status") == "deleted":
+                    self._cache_processing_status(current)
+                    if raise_if_reserved:
+                        raise ProcessingTaskActiveError("文件已删除，任务不能继续处理")
+                    return False
+                deletion_keys = sorted(set(self._processing_deletion_keys(status)) |
+                                       set(self._processing_deletion_keys(current or {})))
+                if pipeline is not None and deletion_keys:
+                    pipeline.watch(*deletion_keys)
+                for deletion_key in deletion_keys:
+                    raw = target.get(deletion_key)
+                    if raw:
+                        reservation = json.loads(raw)
+                        self._cache_processing_status(
+                            self._deleted_processing_status(current or status)
+                            if reservation.get("status") == "deleted" else (current or status)
+                        )
+                        if raise_if_reserved:
+                            raise ProcessingTaskActiveError("文件正在删除或已经删除，任务不能继续处理")
+                        return False
+                if expected_status is not None and (current or {}).get("status") != expected_status:
+                    if current:
+                        self._cache_processing_status(current)
+                    return False
+                if pipeline is not None:
+                    pipeline.multi()
+                self._write_processing_status(target, status)
+                if pipeline is not None:
+                    pipeline.execute()
+                self._cache_processing_status(status)
+                return True
+            except redis.WatchError:
+                continue
+            except ProcessingTaskActiveError:
+                raise
+            except Exception as error:
+                if require_persistence:
+                    raise ProcessingStatusUnavailableError("上传状态存储暂不可用，请稍后重试") from error
+                logger.debug("持久化上传状态失败 processing_id={}: {}", processing_id, error)
+                return False
+            finally:
+                if pipeline is not None:
+                    pipeline.reset()
+        if require_persistence:
+            raise ProcessingStatusUnavailableError("上传状态正在变更，请稍后重试")
+        return False
 
     def _load_persisted_processing_status(self, processing_id: str, *, raise_on_error: bool = False) -> Optional[Dict[str, Any]]:
         client = self._get_processing_status_redis_client()
@@ -318,7 +466,9 @@ class IngestionService:
         try:
             raw = client.get(self._processing_status_key(processing_id))
             if not raw:
-                return None
+                return self._deleted_cached_file_status(
+                    getattr(self, "_processing_status", {}).get(processing_id) or {}, client,
+                )
             parsed = json.loads(raw)
             return parsed if isinstance(parsed, dict) else None
         except Exception as e:
@@ -326,6 +476,255 @@ class IngestionService:
             if raise_on_error:
                 raise
             return None
+
+    def _deleted_cached_file_status(self, status: Dict[str, Any], client: Any) -> Optional[Dict[str, Any]]:
+        """An expired task in another worker's cache still obeys the file tombstone."""
+        for key in self._processing_deletion_keys(status):
+            raw = client.get(key)
+            if raw and json.loads(raw).get("status") == "deleted":
+                deleted = self._deleted_processing_status(status)
+                self._cache_processing_status(deleted)
+                return deleted
+        return None
+
+    def _deletion_status_client(self) -> redis.Redis:
+        client = self._get_processing_status_redis_client()
+        if client is None or not hasattr(client, "pipeline"):
+            raise ProcessingStatusUnavailableError("上传状态存储暂不可用，暂不能安全删除文件")
+        return client
+
+    def _file_status_candidates(self, client: Any, file_id: str, kb_id: str) -> Dict[str, Dict[str, Any]]:
+        """Deletion is rare: also scan task keys to cover expired/missing indexes."""
+        candidates: Dict[str, Dict[str, Any]] = {}
+        for instance in (self, _ingestion_service_instance, _status_reader_instance):
+            if instance is not None:
+                for task_id, status in getattr(instance, "_processing_status", {}).items():
+                    if self._status_matches_file(status, file_id, kb_id):
+                        candidates[task_id] = status.copy()
+        keys = list(client.scan_iter(match=f"{PROCESSING_STATUS_KEY_PREFIX}*", count=200))
+        rows = client.mget(keys) if keys else []
+        for raw in rows:
+            if raw:
+                status = json.loads(raw)
+                if self._status_matches_file(status, file_id, kb_id):
+                    candidates[str(status["processing_id"])] = status
+        # Refresh local candidates even when their persisted scope has changed.
+        for task_id in list(candidates):
+            raw = client.get(self._processing_status_key(task_id))
+            if raw:
+                status = json.loads(raw)
+                if self._status_matches_file(status, file_id, kb_id):
+                    candidates[task_id] = status
+                else:
+                    candidates.pop(task_id)
+        return candidates
+
+    def _assert_terminal_file_statuses(self, statuses: Dict[str, Dict[str, Any]]) -> None:
+        for task_id, status in statuses.items():
+            if str(status.get("status") or "") not in {"completed", "failed", "cancelled", "deleted"}:
+                raise ProcessingTaskActiveError("文件仍在排队或处理中，请等待任务结束后再删除")
+            for instance in (self, _ingestion_service_instance, _status_reader_instance):
+                task = getattr(instance, "_background_upload_tasks", {}).get(task_id)
+                if task is not None and not task.done():
+                    raise ProcessingTaskActiveError("文件处理任务尚未结束，请稍后再删除")
+
+    def assert_file_deletable(self, file_id: str, kb_id: str) -> int:
+        """Read-only guard. Use begin_file_deletion to reserve before deleting."""
+        try:
+            client = self._deletion_status_client()
+            statuses = self._file_status_candidates(client, file_id, kb_id)
+            self._assert_terminal_file_statuses(statuses)
+            return len(statuses)
+        except (ProcessingTaskActiveError, ProcessingStatusUnavailableError):
+            raise
+        except Exception as error:
+            raise ProcessingStatusUnavailableError("上传状态存储暂不可用，暂不能安全删除文件") from error
+
+    def begin_file_deletion(self, file_id: str, kb_id: str) -> Dict[str, Any]:
+        """Reserve a terminal file before any physical deletion.
+
+        Reservations have no TTL. A new DELETE can take over a dead same-host
+        PID or a settled operation in this process; video retry stays fenced.
+        """
+        if not file_id or not kb_id:
+            raise ValueError("删除文件需要 file_id 和 kb_id")
+        client = self._deletion_status_client()
+        key = self._processing_deletion_key(file_id, kb_id)
+        for _ in range(4):
+            pipeline = client.pipeline()
+            active_token = None
+            reserved = False
+            try:
+                pipeline.watch(key, self._processing_status_file_key(file_id),
+                               self._processing_status_kb_key(kb_id))
+                raw = pipeline.get(key)
+                previous_reservation = None
+                if raw:
+                    reservation = json.loads(raw)
+                    if reservation.get("status") == "deleted":
+                        return {"token": reservation["token"],
+                                "matched_count": len(reservation.get("task_ids") or []),
+                                "already_deleted": True}
+                    if not self._deletion_owner_is_dead(reservation):
+                        raise ProcessingTaskActiveError("文件正在删除中，请稍后重试")
+                    previous_reservation = reservation
+                statuses = self._file_status_candidates(client, file_id, kb_id)
+                for task_id, status in ((previous_reservation or {}).get("task_snapshots") or {}).items():
+                    if task_id not in statuses and self._status_matches_file(status, file_id, kb_id):
+                        statuses[task_id] = status
+                if statuses:
+                    pipeline.watch(*(self._processing_status_key(task_id) for task_id in statuses))
+                for task_id in list(statuses):
+                    raw = pipeline.get(self._processing_status_key(task_id))
+                    if raw:
+                        current = json.loads(raw)
+                        if not self._status_matches_file(current, file_id, kb_id):
+                            statuses.pop(task_id)
+                        else:
+                            statuses[task_id] = current
+                self._assert_terminal_file_statuses(statuses)
+                # Include legacy source/storage aliases so a retry cannot bypass
+                # the reservation by using a different KB identifier.
+                keys = sorted({key} | set((previous_reservation or {}).get("keys") or []) |
+                              {item for status in statuses.values() for item in self._processing_deletion_keys(status)})
+                pipeline.watch(*keys)
+                for alias in keys:
+                    raw = pipeline.get(alias)
+                    if raw and (not previous_reservation or
+                                json.loads(raw).get("token") != previous_reservation.get("token")):
+                        raise ProcessingTaskActiveError("文件正在删除或已经删除，请刷新后重试")
+                reservation = {"token": str(uuid.uuid4()), "status": "deleting", "file_id": file_id,
+                               "kb_id": kb_id, "task_ids": sorted(statuses), "keys": keys,
+                               "task_snapshots": statuses,
+                               "owner_host": socket.gethostname(), "owner_pid": os.getpid(),
+                               "created_at": datetime.utcnow().isoformat()}
+                payload = json.dumps(reservation, ensure_ascii=False, separators=(",", ":"))
+                # Register before Redis can publish this token, eliminating the
+                # CAS-success/registration gap visible to another reader thread.
+                active_token = reservation["token"]
+                with _active_file_deletions_lock:
+                    _active_file_deletions.add(active_token)
+                pipeline.multi()
+                for alias in keys:
+                    pipeline.set(alias, payload)
+                pipeline.execute()
+                reserved = True
+                return {"token": reservation["token"], "matched_count": len(statuses),
+                        "already_deleted": False}
+            except redis.WatchError:
+                continue
+            except (ProcessingTaskActiveError, ProcessingStatusUnavailableError):
+                raise
+            except Exception as error:
+                raise ProcessingStatusUnavailableError("上传状态存储暂不可用，暂不能安全删除文件") from error
+            finally:
+                if active_token and not reserved:
+                    # No physical deletion can have started before begin returns.
+                    self.release_file_deletion_owner(active_token)
+                pipeline.reset()
+        raise ProcessingStatusUnavailableError("文件状态正在变更，请稍后重试删除")
+
+    def commit_file_deletion(self, file_id: str, kb_id: str, token: str) -> int:
+        """Retire tasks after storage deletion; deleted tombstones never expire."""
+        client = self._deletion_status_client()
+        key = self._processing_deletion_key(file_id, kb_id)
+        for _ in range(4):
+            pipeline = client.pipeline()
+            try:
+                pipeline.watch(key)
+                raw = pipeline.get(key)
+                reservation = json.loads(raw) if raw else {}
+                if not token or reservation.get("token") != token:
+                    raise ProcessingTaskActiveError("文件删除预约已变更，请刷新后重试")
+                task_ids = reservation.get("task_ids") or []
+                if reservation.get("status") == "deleted":
+                    return len(task_ids)
+                keys = reservation.get("keys") or [key]
+                task_keys = [self._processing_status_key(task_id) for task_id in task_ids]
+                mapping_key = self._processing_status_file_key(file_id)
+                pipeline.watch(*keys, *task_keys, mapping_key)
+                statuses = {}
+                for task_id in task_ids:
+                    raw = pipeline.get(self._processing_status_key(task_id))
+                    current = json.loads(raw) if raw else (reservation.get("task_snapshots") or {}).get(task_id)
+                    if current and self._status_matches_file(current, file_id, kb_id):
+                        statuses[task_id] = current
+                self._assert_terminal_file_statuses(statuses)
+                for alias in keys:
+                    raw = pipeline.get(alias)
+                    if not raw or json.loads(raw).get("token") != token:
+                        raise ProcessingTaskActiveError("文件删除预约已变更，请刷新后重试")
+                mapped_task = pipeline.get(mapping_key)
+                if isinstance(mapped_task, bytes):
+                    mapped_task = mapped_task.decode()
+                tombstones = [self._deleted_processing_status(status) for status in statuses.values()]
+                reservation.update(status="deleted", deleted_at=datetime.utcnow().isoformat())
+                reservation.pop("task_snapshots", None)
+                payload = json.dumps(reservation, ensure_ascii=False, separators=(",", ":"))
+                pipeline.multi()
+                for alias in keys:
+                    pipeline.set(alias, payload)
+                for status in tombstones:
+                    task_id = status["processing_id"]
+                    pipeline.set(self._processing_status_key(task_id), json.dumps(status, ensure_ascii=False))
+                    for scope in {kb_id, str(status.get("source_kb_id") or ""), str(status.get("kb_id") or "")}:
+                        if scope:
+                            pipeline.srem(self._processing_status_kb_key(scope), task_id)
+                if mapped_task in task_ids:
+                    pipeline.delete(mapping_key)
+                pipeline.execute()
+                for status in tombstones:
+                    self._cache_processing_status(status)
+                self.release_file_deletion_owner(token)
+                return len(tombstones)
+            except redis.WatchError:
+                continue
+            except (ProcessingTaskActiveError, ProcessingStatusUnavailableError):
+                raise
+            except Exception as error:
+                raise ProcessingStatusUnavailableError("删除状态保存失败，请稍后重试") from error
+            finally:
+                pipeline.reset()
+        raise ProcessingStatusUnavailableError("文件状态正在变更，请稍后重试删除")
+
+    def abort_file_deletion(self, file_id: str, kb_id: str, token: str) -> None:
+        """Only the reservation owner may release an uncommitted deletion."""
+        client = self._deletion_status_client()
+        key = self._processing_deletion_key(file_id, kb_id)
+        for _ in range(4):
+            pipeline = client.pipeline()
+            try:
+                pipeline.watch(key)
+                raw = pipeline.get(key)
+                reservation = json.loads(raw) if raw else {}
+                if reservation.get("token") != token or reservation.get("status") == "deleted":
+                    return
+                keys = reservation.get("keys") or [key]
+                pipeline.watch(*keys)
+                if any(not (raw := pipeline.get(alias)) or json.loads(raw).get("token") != token for alias in keys):
+                    raise ProcessingTaskActiveError("文件删除预约已变更")
+                pipeline.multi()
+                pipeline.delete(*keys)
+                pipeline.execute()
+                self.release_file_deletion_owner(token)
+                return
+            except redis.WatchError:
+                continue
+            except ProcessingTaskActiveError:
+                raise
+            except Exception as error:
+                raise ProcessingStatusUnavailableError("文件删除预约暂时无法释放，请稍后重试") from error
+            finally:
+                pipeline.reset()
+        raise ProcessingStatusUnavailableError("文件删除预约正在变更，请稍后重试")
+
+    def retire_file_processing_status(self, file_id: str, kb_id: str) -> int:
+        """For already-deleted objects; physical deletion must use the 3-step API."""
+        reservation = self.begin_file_deletion(file_id, kb_id)
+        try:
+            return self.commit_file_deletion(file_id, kb_id, reservation["token"])
+        finally:
+            self.release_file_deletion_owner(reservation["token"])
 
     def _lease_expired_failure_status(self, status: Dict[str, Any]) -> Dict[str, Any]:
         now = datetime.utcnow().isoformat()
@@ -438,7 +837,7 @@ class IngestionService:
         if client is not None:
             try:
                 ids = client.smembers(self._processing_status_kb_key(str(kb_id))) or set()
-                ids = [item.decode() if isinstance(item, bytes) else str(item) for item in ids]
+                ids = sorted(set(statuses) | {item.decode() if isinstance(item, bytes) else str(item) for item in ids})
                 # One Redis round trip for a batch, instead of one GET per file.
                 if hasattr(client, "mget"):
                     rows = client.mget([self._processing_status_key(item) for item in ids]) if ids else []
@@ -447,6 +846,10 @@ class IngestionService:
                             item = json.loads(raw)
                             if isinstance(item, dict):
                                 statuses[processing_id] = item
+                        elif processing_id in statuses:
+                            deleted = self._deleted_cached_file_status(statuses[processing_id], client)
+                            if deleted:
+                                statuses[processing_id] = deleted
                 else:
                     for processing_id in ids:
                         item = self._load_persisted_processing_status(processing_id)
@@ -454,11 +857,20 @@ class IngestionService:
                             statuses[processing_id] = item
             except Exception as e:
                 logger.debug("读取知识库上传任务集合失败 kb_id={}: {}", kb_id, e)
+                # Another worker may already have retired cached failed rows.
+                # Do not recreate placeholders from unverified stale memory.
+                return []
+        else:
+            return []
+        for status in statuses.values():
+            self._cache_processing_status(status)
         recovered = [
             self._recover_expired_processing_status(status)
             for status in statuses.values()
+            if status.get("status") != "deleted"
         ]
-        return sorted(recovered, key=self._status_recency_timestamp, reverse=True)
+        return sorted((status for status in recovered if status.get("status") != "deleted"),
+                      key=self._status_recency_timestamp, reverse=True)
 
     def _get_video_processing_semaphore(self) -> asyncio.Semaphore:
         semaphore = getattr(self, "_video_processing_semaphore", None)
@@ -836,7 +1248,7 @@ class IngestionService:
                 # 链路按受控并发消费。后续任务明确显示“排队中”，而不是在刷新后消失。
                 self._update_processing_status(processing_id, {
                     "status": "queued",
-                    "progress": 40,
+                    "progress": 25,
                     "stage": "queued",
                     "message": "视频已上传，等待 Scene–Shot 解析队列…",
                 })
@@ -845,9 +1257,9 @@ class IngestionService:
                 async with self._get_video_processing_semaphore():
                     self._update_processing_status(processing_id, {
                         "status": "processing",
-                        "progress": 40,
-                        "stage": "processing",
-                        "message": "正在执行 Scene–Shot 多模态解析…",
+                        "progress": 30,
+                        "stage": "preparing_video",
+                        "message": "正在读取视频并准备 Scene–Shot 解析…",
                     })
                     result = await self._process_video(
                         parse_result=parse_result,
@@ -922,7 +1334,8 @@ class IngestionService:
                 "stage": "error",
                 "message": f"处理失败: {str(e)}",
                 "error": str(e),
-                "failed_at": datetime.utcnow().isoformat()
+                "failed_at": datetime.utcnow().isoformat(),
+                **video_error_status(e),
             })
             
             raise
@@ -1403,9 +1816,9 @@ class IngestionService:
             raise ValueError("视频时长无效，无法执行 Scene–Shot 解析")
 
         self._update_processing_status(processing_id, {
-            "stage": "parsing",
-            "progress": 20,
-            "message": "Qwen Omni 正在联合解析视频画面、场景、镜头与语音…",
+            "stage": "preparing_video",
+            "progress": 30,
+            "message": "正在读取原视频并准备解析片段…",
         })
 
         video_bytes = file_content or b""
@@ -1476,73 +1889,124 @@ class IngestionService:
         try:
             if duration <= chunk_threshold or not full_video_path:
                 # 本地文件优先；没有可落盘内容时，仍可让 provider 尝试可访问的 presigned URL。
-                analysis = await self._parse_video_scene_shot_mllm(
-                    duration=duration,
-                    processing_id=processing_id,
-                    video_local_path=full_video_path,
-                    video_url=video_url,
-                    video_fps=video_fps,
-                    previous_segments_summary=None,
-                )
+                self._update_processing_status(processing_id, {
+                    "stage": "parsing_segment",
+                    "progress": 30,
+                    "segment_index": 1,
+                    "segment_total": 1,
+                    "message": f"Qwen Omni 正在解析第 1/1 段（0–{duration:.0f} 秒）…",
+                })
+                try:
+                    analysis = await self._parse_video_scene_shot_mllm(
+                        duration=duration,
+                        processing_id=processing_id,
+                        video_local_path=full_video_path,
+                        video_url=video_url,
+                        video_fps=video_fps,
+                        previous_segments_summary=None,
+                    )
+                except VideoParsingError as error:
+                    raise error.at_segment(0.0, duration) from error
             else:
                 analyses: List[Dict[str, Any]] = []
                 failed_chunks: List[Tuple[float, float]] = []
-                step = max(1.0, max_chunk - overlap)
-                chunk_start = 0.0
-                chunk_index = 0
+                failed_errors: List[VideoParsingError] = []
+                segments = video_segments(duration, max_chunk, overlap)
+                segment_total = len(segments)
                 previous_context = "（本段为视频首段，无前文。）"
-                while chunk_start < duration:
-                    chunk_duration = min(max_chunk, duration - chunk_start)
-                    if chunk_duration <= 0:
-                        break
-                    # 精确转码切段会阻塞；放在线程中避免阻塞上传 API 的事件循环。
-                    segment_path = await asyncio.to_thread(
-                        self._extract_video_segment_to_file,
-                        full_video_path,
-                        chunk_start,
-                        chunk_duration,
+                ffmpeg_bin = (getattr(settings, "ffmpeg_path", None) or "").strip() or "ffmpeg"
+
+                async def prepare(segment):
+                    return await extract_segment(
+                        ffmpeg_bin, full_video_path, segment.start, segment.duration,
                     )
-                    if not segment_path:
-                        logger.warning("Scene–Shot 长视频切段失败: start={:.1f} duration={:.1f}", chunk_start, chunk_duration)
-                        failed_chunks.append((chunk_start, chunk_start + chunk_duration))
-                        chunk_start += step
-                        chunk_index += 1
-                        continue
-                    try:
+
+                # Transcode only the next window while the current model request
+                # runs. Model calls remain sequential: the next prompt receives
+                # the preceding successful response's context, never a stale one.
+                async with prefetch_segments(segments, prepare) as prepared_segments:
+                    for segment in segments:
+                        chunk_start, chunk_duration = segment.start, segment.duration
+                        completed_progress = 30 + int(40 * (segment.index - 1) / segment_total)
+                        segment_label = f"第 {segment.index}/{segment_total} 段（{chunk_start:.0f}–{chunk_start + chunk_duration:.0f} 秒）"
                         self._update_processing_status(processing_id, {
-                            "stage": "parsing",
-                            "progress": min(65, 20 + int(45 * min(1.0, (chunk_start + chunk_duration) / duration))),
-                            "message": f"Qwen Omni 正在解析第 {chunk_index + 1} 段（{chunk_start:.0f}–{chunk_start + chunk_duration:.0f} 秒）…",
+                            "stage": "preparing_segment",
+                            "progress": completed_progress,
+                            "segment_index": segment.index,
+                            "segment_total": segment_total,
+                            "message": f"正在准备视频{segment_label}…",
                         })
-                        local_analysis = await self._parse_video_scene_shot_mllm(
-                            duration=chunk_duration,
-                            processing_id=processing_id,
-                            video_local_path=segment_path,
-                            video_url=None,
-                            video_fps=video_fps,
-                            previous_segments_summary=previous_context,
+                        waiting_since = time.perf_counter()
+                        prepared = await anext(prepared_segments)
+                        wait_seconds = time.perf_counter() - waiting_since
+                        logger.info(
+                            "视频分段准备完成 processing_id={} segment={}/{} start={:.3f} duration={:.3f} preparation_seconds={:.3f} wait_seconds={:.3f} success={}",
+                            processing_id, segment.index, segment_total, chunk_start, chunk_duration,
+                            prepared.preparation_seconds, wait_seconds, bool(prepared.path),
+                        )
+                        if not prepared.path:
+                            logger.warning("Scene–Shot 长视频切段失败: start={:.1f} duration={:.1f}", chunk_start, chunk_duration)
+                            failed_chunks.append((chunk_start, chunk_start + chunk_duration))
+                            failed_errors.append(VideoParsingError(
+                                "视频切段失败，未写入检索索引。",
+                                error_code="video_segment_extraction_failed",
+                            ).at_segment(chunk_start, chunk_start + chunk_duration))
+                            continue
+                        self._update_processing_status(processing_id, {
+                            "stage": "parsing_segment",
+                            "progress": completed_progress,
+                            "message": f"Qwen Omni 正在解析{segment_label}…",
+                        })
+                        parsing_since = time.perf_counter()
+                        try:
+                            local_analysis = await self._parse_video_scene_shot_mllm(
+                                duration=chunk_duration,
+                                processing_id=processing_id,
+                                video_local_path=prepared.path,
+                                video_url=None,
+                                video_fps=video_fps,
+                                previous_segments_summary=previous_context,
+                            )
+                        except VideoParsingError as error:
+                            scoped_error = error.at_segment(chunk_start, chunk_start + chunk_duration)
+                            logger.warning(
+                                "视频分段解析失败 processing_id={} segment={}/{} start={} end={} error_code={} provider_code={} provider_request_id={} model_used={}",
+                                processing_id, segment.index, segment_total, chunk_start, chunk_start + chunk_duration,
+                                error.error_code, error.provider_code, error.provider_request_id, error.model_used,
+                            )
+                            if error.error_code == "content_policy":
+                                # Do not change the request, switch providers, or submit later
+                                # windows after an explicit provider content-policy refusal.
+                                raise scoped_error from error
+                            failed_errors.append(scoped_error)
+                            local_analysis = None
+                        logger.info(
+                            "视频分段解析结束 processing_id={} segment={}/{} start={:.3f} duration={:.3f} model_seconds={:.3f} success={}",
+                            processing_id, segment.index, segment_total, chunk_start, chunk_duration,
+                            time.perf_counter() - parsing_since, bool(local_analysis),
                         )
                         if local_analysis:
                             shifted = shift_video_analysis(local_analysis, chunk_start)
                             analyses.append(shifted)
                             previous_context = build_previous_context(shifted)
                         else:
-                            logger.warning("Scene–Shot 长视频第 {} 段未获得有效模型结果", chunk_index + 1)
+                            logger.warning("Scene–Shot 长视频第 {} 段未获得有效模型结果", segment.index)
                             failed_chunks.append((chunk_start, chunk_start + chunk_duration))
-                    finally:
-                        try:
-                            os.unlink(segment_path)
-                        except OSError:
-                            pass
-                    chunk_start += step
-                    chunk_index += 1
+                        self._update_processing_status(processing_id, {
+                            "progress": 30 + int(40 * segment.index / segment_total),
+                        })
                 if failed_chunks:
                     ranges = ", ".join(f"{start:.0f}–{end:.0f} 秒" for start, end in failed_chunks[:3])
                     suffix = "…" if len(failed_chunks) > 3 else ""
-                    raise RuntimeError(
+                    message = (
                         "视频 Scene–Shot 解析不完整，未写入任何检索向量；"
-                        f"失败片段：{ranges}{suffix}。请稍后重试。"
+                        f"失败片段：{ranges}{suffix}。"
                     )
+                    if failed_errors:
+                        raise VideoParsingError(f"{message}{failed_errors[0]}", **failed_errors[0].status_fields())
+                    raise VideoParsingError(message, error_code="video_invalid_json",
+                                            failed_segment_start=failed_chunks[0][0],
+                                            failed_segment_end=failed_chunks[0][1])
                 if analyses:
                     analysis = merge_chunk_analyses(
                         analyses,
@@ -1566,8 +2030,9 @@ class IngestionService:
 
         if not analysis or not analysis.get("scenes"):
             # 不能用通用单 Shot 伪装为已解析：那会让列表显示 ready，却没有真实视觉/ASR 证据。
-            raise RuntimeError(
-                "视频多模态解析未返回有效的 Scene–Shot 结果，原始视频已保留；请稍后重试。"
+            raise VideoParsingError(
+                "视频多模态解析未返回有效的 Scene–Shot 结果，原始视频已保留；请稍后重试。",
+                error_code="video_invalid_json", failed_segment_start=0.0, failed_segment_end=duration,
             )
 
         self._update_processing_status(processing_id, {
@@ -1700,12 +2165,12 @@ class IngestionService:
             source = "video_url"
             source_content = {"type": "video_url", "video_url": {"url": video_url}, "fps": video_fps}
         else:
-            logger.warning("Scene–Shot 解析未提供视频文件或 URL")
-            return None
+            raise VideoParsingError("未提供可读取的视频文件或 URL。", error_code="video_source_unavailable")
         retry_attempts = max(0, int(getattr(settings, "video_parsing_retry_attempts", 1) or 0))
+        last_error: Optional[VideoParsingError] = None
         for attempt in range(retry_attempts + 1):
             retry_instruction = ""
-            if attempt:
+            if last_error and last_error.error_code == "video_invalid_json":
                 retry_instruction = (
                     "\n\n# 格式恢复重试\n"
                     "上一次结果不是完整 JSON。请减少非必要 Scene/Shot 的拆分和描述长度，"
@@ -1724,6 +2189,9 @@ class IngestionService:
                     temperature=getattr(settings, "video_parsing_temperature", 0.1),
                 )
             except Exception as e:
+                if isinstance(e, VideoParsingError):
+                    raise
+                last_error = VideoParsingError.from_model_failure(e)
                 logger.warning(
                     "Scene–Shot MLLM 调用失败（{}，第 {}/{} 次）: {}",
                     source,
@@ -1731,8 +2199,11 @@ class IngestionService:
                     retry_attempts + 1,
                     e,
                 )
+                if last_error.error_code == "content_policy" or last_error.retryable is False:
+                    raise last_error from e
                 continue
-            if not result.success or not result.data:
+            if not result.success:
+                last_error = VideoParsingError.from_model_failure(result)
                 logger.warning(
                     "Scene–Shot MLLM 调用未成功（{}，第 {}/{} 次）: {}",
                     source,
@@ -1740,8 +2211,13 @@ class IngestionService:
                     retry_attempts + 1,
                     result.error,
                 )
+                if last_error.error_code == "content_policy" or last_error.retryable is False:
+                    raise last_error
                 continue
-            raw = result.data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            response = result.data if isinstance(result.data, dict) else {}
+            choices = response.get("choices") or []
+            message = choices[0].get("message") if choices and isinstance(choices[0], dict) else None
+            raw = message.get("content", "") if isinstance(message, dict) else ""
             if isinstance(raw, list):
                 raw = "".join(
                     (part.get("text") or part.get("content") or str(part)) if isinstance(part, dict) else str(part)
@@ -1749,7 +2225,7 @@ class IngestionService:
                 )
             data = extract_json_object(raw)
             if data and isinstance(data.get("scenes"), list):
-                return normalize_video_analysis(
+                normalized = normalize_video_analysis(
                     data,
                     duration,
                     max_keyframes_per_shot=max(
@@ -1761,6 +2237,8 @@ class IngestionService:
                         float(getattr(settings, "video_keyframe_min_gap_seconds", 1.0) or 0.0),
                     ),
                 )
+                if normalized.get("scenes"):
+                    return normalized
             logger.warning(
                 "Scene–Shot MLLM JSON 解析失败（{}，第 {}/{} 次），返回前 500 字符: {}",
                 source,
@@ -1768,7 +2246,14 @@ class IngestionService:
                 retry_attempts + 1,
                 (str(raw)[:500] + "...") if raw else "(空)",
             )
-        return None
+            last_error = VideoParsingError(
+                "视频模型未返回完整有效的 Scene–Shot JSON；原视频已保留，未写入检索索引。",
+                error_code="video_invalid_json", retryable=True,
+                model_used=getattr(result, "model_used", None),
+                provider_request_id=getattr(result, "request_id", None),
+            )
+        assert last_error is not None
+        raise last_error
 
     @staticmethod
     def _select_video_keyframes_for_processing(
@@ -3838,14 +4323,14 @@ class IngestionService:
         self._update_processing_status(processing_id, {
             "status": "queued",
             "stage": "queued",
-            "progress": 40,
+            "progress": 25,
             "message": "原视频已就绪，等待 Scene–Shot 重新解析队列…",
         })
         async with self._get_video_processing_semaphore():
             self._update_processing_status(processing_id, {
                 "status": "processing",
-                "stage": "processing",
-                "progress": 40,
+                "stage": "preparing_video",
+                "progress": 30,
                 "message": "正在重新执行 Scene–Shot 多模态解析…",
             })
             result = await self._process_video(
@@ -3887,16 +4372,17 @@ class IngestionService:
         if existing_task is not None and not existing_task.done():
             raise ValueError("视频任务仍在运行，不能重复入队")
 
-        status = self._load_persisted_processing_status(processing_id) or self._processing_status.get(processing_id)
+        status = self._load_persisted_processing_status(processing_id, raise_on_error=True) or self._processing_status.get(processing_id)
         if not isinstance(status, dict):
             raise LookupError("未找到上传任务或任务状态已过期")
         if str(status.get("file_type") or "") != "video":
             raise ValueError("仅支持重新处理已落盘的视频任务")
-        if str(status.get("status") or "") in {"queued", "processing"}:
-            raise ValueError("视频任务仍在运行，不能重复入队")
+        if str(status.get("status") or "") != "failed":
+            raise ValueError("仅支持重新处理已失败的视频任务")
         if not all(status.get(field) for field in ("file_id", "bucket", "object_path")):
             raise ValueError("原视频尚未成功保存到对象存储，无法重新处理")
 
+        status = status.copy()
         now = datetime.utcnow().isoformat()
         retry_count = max(0, int(status.get("retry_count") or 0)) + 1
         status.update({
@@ -3906,13 +4392,18 @@ class IngestionService:
             "message": "已从原视频重新入队，等待处理…",
             "error": None,
             "failed_at": None,
+            "completed_at": None,
+            "result": None,
             "lease_expired_at": None,
             "retry_count": retry_count,
             "retried_at": now,
             "updated_at": now,
+            **cleared_video_error_status(),
+            "segment_index": None,
+            "segment_total": None,
         })
-        self._processing_status[processing_id] = status
-        self._persist_processing_status(status)
+        if not self._persist_processing_status(status, require_persistence=True, expected_status="failed"):
+            raise ValueError("视频任务正在删除、已经删除或状态已变更，不能重新入队")
 
         lease_id = str(uuid.uuid4())
         if not self._acquire_processing_lease(processing_id, lease_id):
@@ -3936,6 +4427,7 @@ class IngestionService:
                     "message": f"视频重新处理失败: {retry_error}",
                     "error": str(retry_error),
                     "failed_at": datetime.utcnow().isoformat(),
+                    **video_error_status(retry_error),
                 })
                 raise
             finally:
@@ -3988,9 +4480,14 @@ class IngestionService:
             if persisted:
                 self._processing_status[processing_id] = persisted
         if processing_id in self._processing_status:
-            self._processing_status[processing_id].update(updates)
-            self._processing_status[processing_id]["updated_at"] = datetime.utcnow().isoformat()
-            self._persist_processing_status(self._processing_status[processing_id])
+            current = self._processing_status[processing_id]
+            if current.get("status") == "deleted":
+                raise ProcessingTaskActiveError("文件已删除，任务不能继续处理")
+            status = {**current, **updates, "updated_at": datetime.utcnow().isoformat()}
+            if not self._persist_processing_status(status, raise_if_reserved=True):
+                # Preserve the old single-process fallback, but never replace a
+                # tombstone learned while attempting the shared-store write.
+                self._cache_processing_status(status)
 
     def update_processing_status(self, processing_id: str, **updates: Any) -> None:
         """供外部（如热点导入编排）更新处理状态，便于前端轮询到拉取/整理等阶段。"""
@@ -4010,10 +4507,14 @@ class IngestionService:
             处理状态信息
         """
         try:
-            if processing_id not in self._processing_status:
-                persisted = self._load_persisted_processing_status(processing_id, raise_on_error=True)
-                if persisted:
-                    self._processing_status[processing_id] = persisted
+            cached = self._processing_status.get(processing_id)
+            if cached and cached.get("status") == "deleted":
+                return cached.copy()
+            persisted = self._load_persisted_processing_status(
+                processing_id, raise_on_error=True,
+            )
+            if persisted:
+                self._cache_processing_status(persisted)
             if processing_id not in self._processing_status:
                 return {
                     "processing_id": processing_id,
@@ -4045,7 +4546,9 @@ class IngestionService:
         if not file_id:
             return None
         try:
-            candidates = list(self._processing_status.values())
+            candidates = [self.get_processing_status_sync(task_id)
+                          for task_id, status in list(self._processing_status.items())
+                          if str(status.get("file_id") or "") == str(file_id)]
             if kb_id:
                 candidates.extend(self.list_processing_statuses_for_kb(kb_id))
             else:
@@ -4058,6 +4561,8 @@ class IngestionService:
                             candidates.append(item)
             matches = []
             for status in candidates:
+                if status.get("status") == "deleted":
+                    continue
                 status = self._recover_expired_processing_status(status)
                 if str(status.get("file_id") or "") != str(file_id):
                     continue
@@ -4431,22 +4936,10 @@ class IngestionService:
         fd, segment_path = tempfile.mkstemp(suffix=".mp4")
         try:
             os.close(fd)
-            # 把 -ss 放到输入后并重编码，使片段时间 0 准确对应原视频的 start_sec。
+            # Input accurate seek plus transcoding preserves the exact window
+            # without decoding the entire prefix again for every late segment.
             result = subprocess.run(
-                [
-                    ffmpeg_bin, "-y",
-                    "-i", full_video_path,
-                    "-ss", str(start_sec),
-                    "-t", str(duration_sec),
-                    "-map", "0:v:0?",
-                    "-map", "0:a?",
-                    "-c:v", "libx264",
-                    "-preset", "veryfast",
-                    "-crf", "20",
-                    "-c:a", "aac",
-                    "-movflags", "+faststart",
-                    segment_path,
-                ],
+                segment_command(ffmpeg_bin, full_video_path, start_sec, duration_sec, segment_path),
                 capture_output=True,
                 timeout=120,
             )

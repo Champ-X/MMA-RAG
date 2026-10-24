@@ -7,6 +7,7 @@ from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
 from starlette.datastructures import UploadFile
 
 from app.api import upload as upload_api
@@ -547,3 +548,115 @@ def test_unavailable_progress_storage_is_retryable_not_a_missing_task():
     status = asyncio.run(service.get_processing_status('task-on-another-worker'))
     assert status['status'] == 'error'
     assert status['processing_id'] == 'task-on-another-worker'
+
+
+def _structured_video_failure():
+    return {
+        "error_code": "video_content_rejected",
+        "retryable": False,
+        "provider_code": "DataInspectionFailed",
+        "provider_request_id": "provider-request-1",
+        "model_used": "aliyun_bailian:qwen3.5-omni-plus",
+        "recovery_hint": "请检查失败片段后重新上传。",
+        "storage_persisted": True,
+        "failed_segment_start": 0.0,
+        "failed_segment_end": 120.5,
+    }
+
+
+def test_batch_progress_preserves_structured_video_failure(monkeypatch):
+    details = _structured_video_failure()
+    task = {
+        "processing_id": "failed-video",
+        "status": "failed",
+        "stage": "error",
+        "error": "视频片段未通过服务方检查。",
+        "lease_id": "private-lease",
+        "internal_provider_response": {"private": True},
+        **details,
+    }
+    reader = SimpleNamespace(get_processing_status_sync=lambda _task_id: task.copy())
+    monkeypatch.setattr(upload_api, "get_ingestion_status_reader", lambda: reader)
+
+    result = asyncio.run(upload_api.get_upload_progress_batch(
+        upload_api.UploadProgressBatchRequest(processing_ids=["failed-video"])
+    ))
+
+    assert result == {"statuses": [{
+        "processing_id": "failed-video",
+        "status": "failed",
+        "stage": "error",
+        "error": "视频片段未通过服务方检查。",
+        **details,
+    }]}
+
+
+def test_single_progress_keeps_complete_status_response(monkeypatch):
+    task = {
+        "processing_id": "failed-video",
+        "status": "failed",
+        "lease_id": "existing-full-response-field",
+        "additional_status_field": {"nested": "preserved"},
+        **_structured_video_failure(),
+    }
+    reader = SimpleNamespace(get_processing_status=AsyncMock(return_value=task))
+    monkeypatch.setattr(upload_api, "get_ingestion_status_reader", lambda: reader)
+
+    result = asyncio.run(upload_api.get_upload_progress("failed-video"))
+
+    assert result == task
+    reader.get_processing_status.assert_awaited_once_with("failed-video")
+
+
+@pytest.mark.parametrize("original_exists", [False, True])
+def test_file_list_preserves_structured_video_failure(monkeypatch, original_exists):
+    details = {**_structured_video_failure(), "storage_persisted": original_exists}
+    task = {
+        "processing_id": "failed-video",
+        "file_id": "video-1" if original_exists else None,
+        "file_path": "失败的视频.mp4",
+        "file_size": 1024,
+        "status": "failed",
+        "stage": "error",
+        "error": "视频片段未通过服务方检查。",
+        "lease_id": "private-lease",
+        "internal_provider_response": {"private": True},
+        **details,
+    }
+
+    class FakeMinio:
+        def get_bucket_for_kb(self, _kb_id):
+            return "kb-video"
+
+        def bucket_exists(self, _bucket):
+            return True
+
+        async def list_files(self, **_kwargs):
+            return [{
+                "object_path": "videos/video-1_失败的视频.mp4",
+                "size": 1024,
+                "last_modified": None,
+            }] if original_exists else []
+
+    class FakeVectorStore:
+        def scroll_video_shot_points_by_file_id(self, **_kwargs):
+            raise AssertionError("failed task state must not query Qdrant")
+
+    import app.modules.ingestion.service as ingestion_service_module
+
+    reader = SimpleNamespace(list_processing_statuses_for_kb=lambda _kb_id: [task.copy()])
+    monkeypatch.setattr(ingestion_service_module, "get_ingestion_status_reader", lambda: reader)
+    service = KnowledgeBaseService.__new__(KnowledgeBaseService)
+    service.minio_adapter = FakeMinio()
+    service.vector_store = FakeVectorStore()
+
+    files = asyncio.run(service.list_kb_files("kb-video"))
+
+    assert len(files) == 1
+    item = files[0]
+    assert item["id"] == ("video-1" if original_exists else "processing:failed-video")
+    assert item["status"] == "failed"
+    assert item["error"] == task["error"]
+    assert {field: item[field] for field in details} == details
+    assert "lease_id" not in item
+    assert "internal_provider_response" not in item

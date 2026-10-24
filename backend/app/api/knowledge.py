@@ -463,11 +463,18 @@ async def stream_file_for_preview(kb_id: str, file_id: str):
 @router.delete("/{kb_id}/files/{file_id:path}")
 async def delete_kb_file(kb_id: str, file_id: str):
     """删除知识库下的单个文件"""
+    from app.modules.ingestion.service import ProcessingTaskActiveError, ProcessingStatusUnavailableError
+    from app.modules.knowledge.service import KnowledgeFileDeletionUnavailable
+
     try:
         success = await kb_service.delete_kb_file(kb_id, file_id)
         if not success:
             raise HTTPException(status_code=404, detail="文件不存在")
         return {"message": "文件已删除"}
+    except ProcessingTaskActiveError:
+        raise HTTPException(status_code=409, detail="文件正在处理或删除，请等待任务结束后重试。")
+    except (ProcessingStatusUnavailableError, KnowledgeFileDeletionUnavailable) as error:
+        raise HTTPException(status_code=503, detail=str(error))
     except HTTPException:
         raise
     except Exception as e:
