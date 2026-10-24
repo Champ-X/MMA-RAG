@@ -4,6 +4,7 @@ import { getAuthToken, getSetupToken } from '@/lib/setupSession'
 import type { ChatScopeFile } from '@/store/useChatStore'
 import type { DecisionConfig, DecisionSettingsResponse, DecisionTestResponse, DecisionIntentTestResponse } from '@/types/decision'
 import type { ModelRouteSelection, ModelRouteTestResponse } from '@/types/modelRouteTest'
+import type { UploadFailureFields } from '@/types/upload'
 
 /** 未设置 VITE_API_BASE_URL 时默认 /api：开发时由 Vite 代理到后端，避免浏览器直连 localhost:8000（WSL/端口转发下易失败或超时）；生产需同源反代或显式配置环境变量。 */
 function resolveDefaultApiBaseURL(): string {
@@ -389,7 +390,7 @@ export const knowledgeApi = {
   // 获取知识库文件列表
   getKnowledgeBaseFiles: (id: string) =>
     apiClient.get<{
-      files: Array<{
+      files: Array<UploadFailureFields & {
         id: string
         name: string
         size: number
@@ -542,7 +543,7 @@ export const knowledgeApi = {
 
   /** 获取上传/导入任务进度（用于 URL 导入轮询） */
   getUploadProgress: (taskId: string) =>
-    apiClient.get<{
+    apiClient.get<UploadFailureFields & {
       processing_id: string
       status: string
       stage?: string
@@ -555,7 +556,7 @@ export const knowledgeApi = {
     }>(`/upload/progress/${taskId}`),
 
   getUploadProgressBatch: (taskIds: string[]) =>
-    apiClient.post<{ statuses: Array<{
+    apiClient.post<{ statuses: Array<UploadFailureFields & {
       processing_id: string; status: string; stage?: string; progress?: number;
       message?: string; error?: string; updated_at?: string; file_id?: string;
     }> }>('/upload/progress/batch', { processing_ids: taskIds }),

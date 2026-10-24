@@ -1,3 +1,4 @@
+.upload-file__message { margin: 4px 0 6px; color: var(--upload-muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .upload-panel {
   --upload-ink: #25304a;
   --upload-muted: #69748b;
@@ -125,6 +126,13 @@
 .upload-file[data-status='failed'] { border-color: #bd56694d; }
 .upload-file[data-status='failed'] .upload-file__state, .upload-file[data-status='failed'] .upload-file__status { color: var(--upload-error); }
 .upload-file__error { color: var(--upload-error); font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+.upload-file__failure { display: grid; justify-items: start; gap: 6px; }
+.upload-file__failure p { margin: 0; }
+.upload-file__recovery { color: var(--upload-muted); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+.upload-file__retry { display: inline-flex; align-items: center; gap: 6px; min-block-size: 32px; padding: 5px 10px; border: 1px solid var(--upload-line); border-radius: 6px; background: var(--upload-bg); color: var(--upload-accent); font-size: 11px; font-weight: 600; }
+.upload-file__retry:not(:disabled):hover { border-color: var(--upload-accent); background: var(--upload-tint); }
+.upload-file__retry:disabled { cursor: not-allowed; opacity: .55; }
+.upload-file__retry:focus-visible { outline: 2px solid var(--upload-accent); outline-offset: 3px; }
 .upload-spin { animation: upload-spin 1.4s linear infinite; }
 @keyframes upload-spin { to { transform: rotate(360deg); } }
 .dark .upload-panel { --upload-ink: #e0e6f1; --upload-muted: #99a6bd; --upload-line: #2c354a; --upload-bg: #131c2b; --upload-soft: #192335; --upload-accent: #b19bea; --upload-tint: #24233c; --upload-ready: #82bfae; --upload-error: #e8a0b0; box-shadow: none; }

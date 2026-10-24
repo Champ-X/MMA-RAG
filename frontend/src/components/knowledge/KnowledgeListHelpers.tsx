@@ -4,8 +4,11 @@ import { X, CheckCircle, Loader2, AlertCircle, Image as ImageIcon, FileText, Fil
 import { cn } from '@/lib/utils'
 import { WorkflowDialog } from '@/components/ui/WorkflowDialog'
 import './knowledgeCreateDialog.css'
+import { uploadProgressMessage } from './uploadProgress'
+import { uploadFailureCopy, uploadFailureFields } from './uploadFailure'
+import type { UploadFailureFields } from '@/types/upload'
 
-type StatusBadgeProps = {
+type StatusBadgeProps = UploadFailureFields & {
   status: string
   stage?: string
   progress?: number
@@ -21,6 +24,9 @@ const PROCESSING_STAGE_LABELS: Record<string, string> = {
   uploading: '上传文件',
   fetching: '读取文件',
   parsing: '内容解析',
+  preparing_video: '准备视频',
+  preparing_segment: '准备视频片段',
+  parsing_segment: '解析视频片段',
   processing: '内容解析',
   scene_shot_parsing: '场景镜头解析',
   video_scene_shot_parsing: '场景镜头解析',
@@ -54,20 +60,21 @@ function formatUpdatedAt(updatedAt?: string): string | undefined {
 }
 
 // 状态徽章。后台任务的阶段、进度和失败原因保持紧凑展示，完整内容放在 title 中。
-export function StatusBadge({ status, stage, progress, message, error, updatedAt, variant = 'badge' }: StatusBadgeProps) {
+export function StatusBadge({ status, stage, progress, message, error, updatedAt, variant = 'badge', ...failureFields }: StatusBadgeProps) {
   useTranslation()
   const normalizedStatus = String(status || '').toLowerCase()
   const normalizedProgress = typeof progress === 'number' && Number.isFinite(progress)
     ? Math.max(0, Math.min(100, Math.round(progress)))
     : undefined
   const stageLabel = getStageLabel(stage)
+  const failure = normalizedStatus === 'failed' ? uploadFailureCopy({ ...uploadFailureFields(failureFields), error, message }) : undefined
   const detail = normalizedStatus === 'failed'
-    ? compactStatusText(error || message)
+    ? compactStatusText(failure?.message)
     : [stageLabel && stage !== 'queued' ? stageLabel : undefined, normalizedProgress != null ? `${normalizedProgress}%` : undefined]
       .filter(Boolean)
       .join(' · ') || undefined
   const updatedAtText = formatUpdatedAt(updatedAt)
-  const title = [message, error, updatedAtText ? t("最后更新：{{updatedAtText}}", { updatedAtText: updatedAtText }) : undefined]
+  const title = [failure ? [failure.message, failure.source, failure.recovery].filter(Boolean).join('\n') : uploadProgressMessage(message), updatedAtText ? t("最后更新：{{updatedAtText}}", { updatedAtText: updatedAtText }) : undefined]
     .filter(Boolean)
     .join('\n') || undefined
 
@@ -209,11 +216,11 @@ export function isAudioType(type: string): boolean {
 
 export function isVideoType(type: string): boolean {
   const lower = String(type || '').toLowerCase()
-  return ['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'].includes(lower)
+  return lower.startsWith('video/') || ['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v', 'flv', 'wmv'].includes(lower)
 }
 
 // 文件缩略图（表格视图）
-export interface KnowledgeFileView {
+export interface KnowledgeFileView extends UploadFailureFields {
   id: string
   name: string
   size: string

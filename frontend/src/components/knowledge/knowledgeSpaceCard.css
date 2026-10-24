@@ -1,0 +1,16 @@
+.knowledge-space-card { container-type: inline-size; }
+
+/* Keep every media count visible beside the date and menu on compact cards. */
+@container (max-width: 400px) {
+  .knowledge-space-card__count-separator { display: none; }
+  .knowledge-space-card__count-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

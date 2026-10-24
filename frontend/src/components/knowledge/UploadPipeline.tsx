@@ -1,20 +1,24 @@
 import { translate as t, useTranslation } from '@/i18n'
 import { useId, useRef, useState } from 'react'
-import { Upload, FileUp, FileText, Image, Music2, Film, CheckCircle2, AlertCircle, Loader2, ChevronDown, Clock3, X } from 'lucide-react'
+import { Upload, FileUp, FileText, Image, Music2, Film, CheckCircle2, AlertCircle, Loader2, ChevronDown, Clock3, X, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { uploadStageLabel } from './uploadProgress'
+import { uploadBatchPercent, uploadProgressMessage, uploadStageLabel } from './uploadProgress'
+import { canRetryStoredUpload, readableUploadError, uploadFailureCopy } from './uploadFailure'
+import type { UploadFailureFields } from '@/types/upload'
 import './uploadPipeline.css'
 
 export type PipelineStage = 'idle' | 'minio' | 'parsing' | 'vectorizing' | 'portrait' | 'done'
 
-export interface UploadFileProgress {
+export interface UploadFileProgress extends UploadFailureFields {
   id: string
+  file_id?: string
   name: string
   status: string
   stage?: string
   progress?: number
   message?: string
   error?: string
+  updated_at?: string
 }
 
 export interface UploadPipelineProgress {
@@ -38,6 +42,8 @@ interface UploadPipelineProps {
   uploadProgress?: UploadPipelineProgress
   externalFiles?: File[] | null
   onDismissProgress?: () => void
+  onRetryFile?: (file: UploadFileProgress) => Promise<void>
+  retryStates?: Record<string, { pending?: boolean; error?: string }>
   className?: string
   children?: React.ReactNode
 }
@@ -46,16 +52,23 @@ function fileKind(name: string) {
   const extension = name.split('.').pop()?.toLowerCase() ?? ''
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'tif', 'tiff'].includes(extension)) return { Icon: Image, kind: 'image' }
   if (['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg', 'opus'].includes(extension)) return { Icon: Music2, kind: 'audio' }
-  if (['mp4', 'mov', 'webm', 'avi', 'mkv'].includes(extension)) return { Icon: Film, kind: 'video' }
+  if (['mp4', 'mov', 'webm', 'avi', 'mkv', 'm4v', 'flv', 'wmv'].includes(extension)) return { Icon: Film, kind: 'video' }
   return { Icon: FileText, kind: 'document' }
 }
 
-function UploadFileTile({ file }: { file: UploadFileProgress }) {
+function UploadFileTile({ file, onRetry, retryState, retryDisabled }: {
+  file: UploadFileProgress
+  onRetry?: (file: UploadFileProgress) => Promise<void>
+  retryState?: { pending?: boolean; error?: string }
+  retryDisabled?: boolean
+}) {
   useTranslation()
   const { Icon, kind } = fileKind(file.name)
   const complete = file.status === 'completed'
   const failed = file.status === 'failed'
   const active = file.status === 'processing' || file.status === 'uploading'
+  const failure = failed ? uploadFailureCopy(file) : undefined
+  const canRetry = failed && kind === 'video' && canRetryStoredUpload(file) && Boolean(onRetry)
   const percent = complete ? 100 : file.progress == null ? undefined : Math.max(0, Math.min(100, Math.round(file.progress)))
   return (
     <li className="upload-file" data-status={file.status}>
@@ -66,7 +79,19 @@ function UploadFileTile({ file }: { file: UploadFileProgress }) {
           <span>{uploadStageLabel(file.status, file.stage)}</span>
           {active && percent != null && <span className="upload-file__percent">{percent}%</span>}
         </div>
-        {failed ? <p className="upload-file__error">{file.error || file.message || t("请重新选择此文件上传")}</p>
+        {!complete && !failed && file.message && <p className="upload-file__message">{uploadProgressMessage(file.message)}</p>}
+        {failure ? <div className="upload-file__failure">
+          <p className="upload-file__error">{failure.message}</p>
+          <p className="upload-file__recovery">{failure.source} {failure.recovery}</p>
+          {canRetry && <button type="button" className="upload-file__retry"
+            disabled={retryDisabled || retryState?.pending}
+            aria-label={t('重新解析视频：{{value1}}', { value1: file.name })}
+            onClick={() => { void onRetry?.(file) }}>
+            <RotateCcw size={13} className={retryState?.pending ? 'upload-spin' : undefined} aria-hidden />
+            {retryState?.pending ? t('重新入队中…') : t('重新解析')}
+          </button>}
+          {retryState?.error && <p className="upload-file__error" role="status">{readableUploadError(retryState.error, t('未能重新入队，请确认服务状态后再试。'))}</p>}
+        </div>
           : <progress className="upload-file__track" max={100} value={percent ?? (active ? undefined : 0)} aria-label={file.name + t(" 处理进度")} />}
       </div>
       <span className="upload-file__state" aria-hidden>
@@ -77,7 +102,7 @@ function UploadFileTile({ file }: { file: UploadFileProgress }) {
 }
 
 export function UploadPipeline({ onFileSelect, isUploading = false, uploadProgress: progress,
-  externalFiles, onDismissProgress, className, children }: UploadPipelineProps) {
+  externalFiles, onDismissProgress, onRetryFile, retryStates, className, children }: UploadPipelineProps) {
   useTranslation()
   const input = useRef<HTMLInputElement>(null)
   const dragDepth = useRef(0)
@@ -89,15 +114,14 @@ export function UploadPipeline({ onFileSelect, isUploading = false, uploadProgre
   const entries: UploadFileProgress[] = progress?.files ?? (externalFiles ?? []).map((file, i) => ({ id: String(i), name: file.name, status: 'uploading' }))
   const pending = entries.filter(file => file.status === 'queued').length
   const processing = entries.filter(file => file.status === 'processing').length
-  const percent = progress?.total ? Math.min(100, Math.round(finished / progress.total * 100)) : 0
-  const displayedPercent = progress?.submitted || done ? percent : progress?.transferProgress ?? 0
+  const displayedPercent = progress ? uploadBatchPercent(progress) : 0
   const select = (files: FileList | null) => {
     if (isUploading || !files?.length) return
     setExpanded(true)
     onFileSelect(Array.from(files))
   }
-  const hint = progress?.message || (done
-    ? progress?.failed ? t("查看失败原因，重新上传需要重试的文件。") : t("素材已准备好，可以开始检索与探索。")
+  const hint = (progress?.message && (done && progress.failed ? readableUploadError(progress.message, t('请查看各文件的失败原因和处理建议。')) : progress.message)) || (done
+    ? progress?.failed ? t("请查看各文件的失败原因和处理建议。") : t("素材已准备好，可以开始检索与探索。")
     : progress?.submitted ? t("已由服务端接收，刷新或离开页面后仍会继续处理。")
       : progress?.transferProgress === 100 ? t("文件传输完成，正在确认接收。") : t("正在传输文件，请保持页面打开。"))
 
@@ -113,15 +137,15 @@ export function UploadPipeline({ onFileSelect, isUploading = false, uploadProgre
           <div className="upload-batch__summary">
             <div className="upload-batch__heading">
               <strong role="status" aria-live="polite" aria-atomic="true">
-                {done ? (progress.failed ? t("处理结束，部分文件需要重试") : t("全部处理完成")) : progress.submitted ? t("正在处理素材") : t("正在上传文件")}
+                {done ? (progress.failed ? t("处理结束，部分文件未完成") : t("全部处理完成")) : progress.submitted ? t("正在处理素材") : t("正在上传文件")}
               </strong>
-              {done && onDismissProgress && <button className="upload-batch__dismiss" type="button" onClick={onDismissProgress} aria-label={t("收起本次上传结果")}><X size={15} aria-hidden /></button>}
+              {done && !isUploading && onDismissProgress && <button className="upload-batch__dismiss" type="button" onClick={onDismissProgress} aria-label={t("收起本次上传结果")}><X size={15} aria-hidden /></button>}
             </div>
             <div className="upload-batch__meter">
               <div className="upload-batch__fraction"><b>{finished}</b><span>/ {progress.total}</span><small>{t("个已处理")}</small></div>
               <span className="upload-batch__percentage">{displayedPercent}%</span>
             </div>
-            <progress className="upload-batch__progress" max={100} value={displayedPercent} aria-label={progress.submitted || done ? t("整批文件处理完成比例") : t("文件传输进度")} />
+            <progress className="upload-batch__progress" max={100} value={displayedPercent} aria-label={progress.submitted || done ? t("整批文件处理进度") : t("文件传输进度")} />
             <div className="upload-batch__counts">
               <span data-state="ready"><i />{t("已就绪")} <b>{progress.completed}</b></span>
               {processing > 0 && <span data-state="processing"><i />{t("处理中")} <b>{processing}</b></span>}
@@ -134,7 +158,7 @@ export function UploadPipeline({ onFileSelect, isUploading = false, uploadProgre
             <div className="upload-batch__detail" id={detailsId}>
               <div className="upload-batch__detail-heading"><span>{t("本次上传")}</span><span>{t("逐个解析，完成后即可使用")}</span></div>
               <ul className="upload-batch__files" aria-label={t("本次上传文件状态")}>
-                {entries.map(file => <UploadFileTile key={file.id} file={file} />)}
+                {entries.map(file => <UploadFileTile key={file.id} file={file} onRetry={onRetryFile} retryState={retryStates?.[file.id]} retryDisabled={isUploading} />)}
               </ul>
             </div>
           )}
