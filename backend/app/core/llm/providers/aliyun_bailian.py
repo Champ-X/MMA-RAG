@@ -14,21 +14,6 @@ from app.core.logger import get_logger, log_llm_call
 logger = get_logger(__name__)
 
 
-def _parse_dashscope_error_body(body_text: str) -> Optional[str]:
-    """从兼容模式 JSON 错误体提取可读说明（例如产品未在控制台开通）。"""
-    raw = (body_text or "").strip()
-    if not raw:
-        return None
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
-    err = data.get("error")
-    if isinstance(err, dict):
-        return (err.get("message") or err.get("code") or "").strip() or None
-    return None
-
-
 # 官方文档：qwen3-omni-flash 等 Omni 模型「stream 必须设置为 True，否则会报错」
 _OMNI_MODELS_REQUIRE_STREAM = ("qwen3-omni-flash", "qwen-omni-turbo", "qwen3.8-omni-flash")
 _NON_THINKING_DEFAULTS = {"qwen3.5-flash", "qwen3.8-flash", "qwen3.8-omni-flash"}
@@ -198,9 +183,14 @@ class AliyunBailianProvider(BaseLLMProvider):
                 return "".join(parts)
             return str(content)
 
+        def _field(value: Any, name: str, default: Any = None) -> Any:
+            return value.get(name, default) if isinstance(value, dict) else getattr(value, name, default)
+
+        def _response_choices(response: Any) -> List[Any]:
+            return _field(_field(response, "output"), "choices", []) or []
+
         def _response_content(response: Any) -> str:
-            output = response.get("output") if isinstance(response, dict) else getattr(response, "output", None)
-            choices = (output.get("choices") if isinstance(output, dict) else getattr(output, "choices", None)) or []
+            choices = _response_choices(response)
             if not choices:
                 return ""
             message = getattr(choices[0], "message", None)
@@ -236,36 +226,42 @@ class AliyunBailianProvider(BaseLLMProvider):
                 **options,
             )
             # DashScope 流式接口会返回 iterable；个别 SDK/模型可能直接返回单个 Response，二者兼容。
-            if hasattr(response_stream, "status_code"):
+            if isinstance(response_stream, dict) or hasattr(response_stream, "status_code"):
                 responses = [response_stream]
             else:
                 responses = response_stream
-            text_out = ""
-            last_response = None
+            text_parts: List[str] = []
+            usage: Dict[str, Any] = {}
+            finish_reason = None
+            request_id = None
             for resp in responses:
-                last_response = resp
-                status_code = resp.get("status_code", 200) if isinstance(resp, dict) else getattr(resp, "status_code", 200)
-                output = resp.get("output") if isinstance(resp, dict) else getattr(resp, "output", None)
-                message = resp.get("message") if isinstance(resp, dict) else getattr(resp, "message", None)
-                if status_code != 200 or not output:
-                    code = resp.get("code") if isinstance(resp, dict) else getattr(resp, "code", None)
-                    raise ProviderAPIError(str(message or ""), status_code=status_code, code=code)
-                # incremental_output=True 时每个 chunk 是累积内容，取最后一个非空结果即可；
-                # 非增量 SDK 则拼接防止丢字。
+                status_code = _field(resp, "status_code", 200)
+                output = _field(resp, "output")
+                message = _field(resp, "message")
+                response_usage = _field(resp, "usage")
+                request_id = _field(resp, "request_id") or request_id
+                # A final usage-only chunk can have no output or choices.
+                if status_code != 200 or (not output and not response_usage):
+                    code = _field(resp, "code")
+                    raise ProviderAPIError(str(message or ""), status_code=status_code, code=code, request_id=request_id)
+                if response_usage:
+                    usage = response_usage
+                choices = _response_choices(resp)
+                reason = _field(choices[0], "finish_reason") if choices else None
+                if reason not in (None, "", "null"):
+                    finish_reason = reason
+                # incremental_output=True returns only new tokens. Prefix-based
+                # deduplication would discard legitimate repeated text.
                 current = _response_content(resp)
                 if current:
-                    if current.startswith(text_out):
-                        text_out = current
-                    else:
-                        text_out += current
+                    text_parts.append(current)
+            text_out = "".join(text_parts)
             if not text_out:
                 raise RuntimeError("MultiModalConversation 返回无文本内容")
             return {
-                "choices": [{"message": {"role": "assistant", "content": text_out}}],
-                "usage": (
-                    last_response.get("usage") if isinstance(last_response, dict)
-                    else getattr(last_response, "usage", None)
-                ) or {},
+                "choices": [{"message": {"role": "assistant", "content": text_out}, "finish_reason": finish_reason}],
+                "usage": usage,
+                "request_id": request_id,
             }
 
         timeout = float(kwargs.get("timeout", 600))
@@ -280,12 +276,14 @@ class AliyunBailianProvider(BaseLLMProvider):
         except asyncio.TimeoutError:
             duration = time.time() - start
             log_llm_call(model=model, task_type="chat", tokens_used=0, duration=duration, success=False)
-            logger.error("阿里云百炼 video_local 超时 [%s]: %ss", model, timeout)
+            logger.error("阿里云百炼 video_local 超时 [{}]: {}s", model, timeout)
             raise TimeoutError(f"阿里云百炼 请求超时（{timeout}s）")
         except Exception as e:
             duration = time.time() - start
             log_llm_call(model=model, task_type="chat", tokens_used=0, duration=duration, success=False)
-            logger.error("阿里云百炼 video_local 错误 [%s]: %s", model, e)
+            logger.error("阿里云百炼 video_local 错误 [{}]: {} status={} code={} request_id={}",
+                         model, type(e).__name__, getattr(e, "status_code", None),
+                         getattr(e, "code", None), getattr(e, "request_id", None))
             raise
 
     async def chat_completion(
@@ -597,13 +595,7 @@ class AliyunBailianProvider(BaseLLMProvider):
                                 try:
                                     chunk_data = json.loads(data_str)
                                     
-                                    # 检查是否是错误响应
-                                    if "error" in chunk_data:
-                                        error_info = chunk_data.get("error", {})
-                                        error_msg = error_info.get("message", "未知错误")
-                                        error_code = error_info.get("code", "unknown")
-                                        logger.error(f"阿里云百炼 stream_chat [{model}]: API返回错误 - {error_code}: {error_msg}")
-                                        raise ValueError(f"阿里云百炼API错误: {error_msg}")
+                                    raise_for_stream_error(chunk_data)
                                     
                                     chunk_count += 1
                                     if chunk_count <= 3:  # 前3个chunk记录详细信息
@@ -640,9 +632,8 @@ class AliyunBailianProvider(BaseLLMProvider):
                 f"阿里云百炼 stream_chat HTTP错误 [{model}]: "
                 f"{e.response.status_code if e.response else 'Unknown'} - {error_detail}"
             )
-            api_msg = _parse_dashscope_error_body(error_detail)
-            if api_msg:
-                raise ValueError(f"阿里云百炼: {api_msg}") from e
+            # The manager reads structured error codes and request IDs from the
+            # original response. Wrapping this in ValueError loses that evidence.
             raise
         except Exception as e:
             logger.error(f"阿里云百炼 stream_chat 错误 [{model}]: {type(e).__name__}: {str(e)}")

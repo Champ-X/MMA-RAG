@@ -14,11 +14,13 @@ import httpx
 
 class ProviderAPIError(RuntimeError):
     """Preserve SDK/SSE status codes without depending on an HTTP response."""
-    def __init__(self, message: str, *, status_code: int | None = None, code: Any = None):
+    def __init__(self, message: str, *, status_code: int | None = None, code: Any = None,
+                 request_id: str | None = None):
         super().__init__("Provider returned an API error")
         self.provider_message = message
         self.status_code = status_code
         self.code = code
+        self.request_id = request_id
 
 
 def raise_for_stream_error(chunk: dict[str, Any]) -> None:
@@ -33,13 +35,15 @@ def raise_for_stream_error(chunk: dict[str, Any]) -> None:
             status = None
     except (ValueError, TypeError):
         status = None
-    raise ProviderAPIError(str(error.get("message", "")), status_code=status, code=code)
+    raise ProviderAPIError(str(error.get("message", "")), status_code=status, code=code,
+                           request_id=error.get("request_id") or chunk.get("request_id"))
 
 
 def classify_error(error: Exception) -> dict[str, Any]:
     response = getattr(error, "response", None)
     status = getattr(response, "status_code", None) or getattr(error, "status_code", None)
     code = getattr(error, "code", None)
+    request_id = getattr(error, "request_id", None)
     message = str(getattr(error, "provider_message", "")).lower()
     if response is not None:
         try:
@@ -48,11 +52,19 @@ def classify_error(error: Exception) -> dict[str, Any]:
             if isinstance(detail, dict):
                 code = detail.get("code")
                 message = str(detail.get("message") or "").lower()
+                request_id = detail.get("request_id") or payload.get("request_id") or request_id
         except Exception:
             pass
+        request_id = request_id or response.headers.get("x-request-id") or response.headers.get("request-id")
     # Prefer structured provider evidence; do not classify arbitrary 400s as a
     # globally broken model (the user's input may simply be unsupported).
-    if str(code) == "30003" or "model disabled" in message:
+    normalized_code = str(code or "").replace("_", "").lower()
+    if normalized_code in {"datainspectionfailed", "inputdatainspectionfailed", "outputdatainspectionfailed",
+                           "contentpolicyviolation", "contentfilter"}:
+        # A refusal applies to this request. Do not disable a healthy model or
+        # automatically send the same request to fallback models.
+        category, cooldown, scope = "content_policy", 0, "request"
+    elif str(code) == "30003" or "model disabled" in message:
         category, cooldown, scope = "model_disabled", 600, "model"
     elif status == 401:
         category, cooldown, scope = "authentication", 60, "provider"
@@ -71,6 +83,8 @@ def classify_error(error: Exception) -> dict[str, Any]:
     else:
         category, cooldown, scope = "request_error", 0, "model"
     return {"category": category, "status_code": status, "provider_code": code,
+            "request_id": request_id,
+            "retryable": category in {"rate_limited", "provider_error", "transport"},
             "cooldown_seconds": cooldown, "scope": scope}
 
 

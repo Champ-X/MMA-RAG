@@ -48,6 +48,9 @@ class LLMCallResult:
     fallback_used: bool = False
     error_category: Optional[str] = None
     status_code: Optional[int] = None
+    provider_code: Optional[str] = None
+    request_id: Optional[str] = None
+    retryable: Optional[bool] = None
 
 class LLMManager:
     """LLM管理器单例"""
@@ -118,7 +121,7 @@ class LLMManager:
         )
         
         # 如果失败且启用了故障转移，尝试备用模型
-        if not result.success and fallback:
+        if not result.success and fallback and result.error_category != "content_policy":
             logger.warning(f"主模型 {model} 调用失败: {result.error}，开始故障转移")
             # 将主模型传递给故障转移函数，以便正确跳过
             primary_result = result
@@ -229,9 +232,9 @@ class LLMManager:
                 return
             except Exception as exc:
                 last_error = exc
-                self._health().record(cfg["provider"], raw, "chat_completion",
-                                      duration=time.monotonic() - started, error=exc)
-                if emitted:
+                evidence = self._health().record(cfg["provider"], raw, "chat_completion",
+                                                 duration=time.monotonic() - started, error=exc)
+                if emitted or evidence["category"] == "content_policy":
                     raise
             finally:
                 try:
@@ -270,7 +273,7 @@ class LLMManager:
             model,
             {"texts": texts, **kwargs}
         )
-        if not result.success and fallback:
+        if not result.success and fallback and result.error_category != "content_policy":
             alternative = await self._try_fallback_models(
                 "embed_texts", task_type, {"texts": texts, **kwargs}, primary_model=model,
             )
@@ -309,7 +312,7 @@ class LLMManager:
             {"query": query, "documents": documents, **kwargs}
         )
         
-        if not result.success and fallback:
+        if not result.success and fallback and result.error_category != "content_policy":
             logger.warning(f"主模型 {model} 调用失败: {result.error}，开始故障转移")
             primary_result = result
             result = await self._try_fallback_models(
@@ -333,15 +336,17 @@ class LLMManager:
         provider = self.registry.get_provider(provider_name)
         if not cfg or not provider:
             return LLMCallResult(False, error=f"Model/provider not configured: {model}",
-                                 model_used=model, error_category="configuration")
+                                 model_used=model, error_category="configuration", retryable=False)
         blocked = self._blocked(model, method)
         if blocked:
             return LLMCallResult(False, error=f"Model cooling down: {blocked['category']}",
                                  model_used=model, error_category=blocked["category"],
-                                 status_code=blocked.get("status_code"))
+                                 status_code=blocked.get("status_code"),
+                                 provider_code=blocked.get("provider_code"), request_id=blocked.get("request_id"),
+                                 retryable=blocked.get("retryable"))
         if method == "chat_completion" and not self._supports_messages(model, params.get("messages", [])):
             return LLMCallResult(False, error="Model cannot accept the input modalities",
-                                 model_used=model, error_category="capability")
+                                 model_used=model, error_category="capability", retryable=False)
         raw = self.registry.get_raw_model_name(model)
         params["model"] = raw
         if method == "chat_completion":
@@ -357,7 +362,7 @@ class LLMManager:
                 remaining = deadline - started
                 if remaining <= 0:
                     return LLMCallResult(False, error="Model request total time budget exhausted",
-                                         model_used=model, error_category="budget")
+                                         model_used=model, error_category="budget", retryable=True)
                 data = await asyncio.wait_for(getattr(provider, method)(**params), timeout=remaining)
             else:
                 data = await getattr(provider, method)(**params)
@@ -371,9 +376,12 @@ class LLMManager:
             evidence = self._health().record(provider_name, raw, method, duration=duration, error=exc)
             # Preserve actionable codes without retaining request/response bodies.
             error = f"{type(exc).__name__}: {evidence['category']} (HTTP {evidence.get('status_code')})"
-            logger.warning("Model call failed: {} {} {} {:.3f}s", model, method, error, duration)
+            logger.warning("Model call failed: {} {} {} provider_code={} request_id={} {:.3f}s",
+                           model, method, error, evidence.get("provider_code"), evidence.get("request_id"), duration)
             return LLMCallResult(False, error=error, duration=duration, model_used=model,
-                                 error_category=evidence["category"], status_code=evidence.get("status_code"))
+                                 error_category=evidence["category"], status_code=evidence.get("status_code"),
+                                 provider_code=str(evidence["provider_code"]) if evidence.get("provider_code") is not None else None,
+                                 request_id=evidence.get("request_id"), retryable=evidence.get("retryable"))
 
     async def _try_fallback_models(
         self, method: str, task_type: str, params: Dict[str, Any],
@@ -395,6 +403,8 @@ class LLMManager:
             result = await self._call_with_model(method, model, params)
             if result.success:
                 result.fallback_used = True
+                return result
+            if result.error_category == "content_policy":
                 return result
             last_result = result
             failures.append(f"{model}: {result.error}")
