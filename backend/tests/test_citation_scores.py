@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.core.llm.manager import LLMCallResult
 from app.core.score_details import citation_score_fields
 from app.modules.generation.context_builder import ContextBuilder
 from app.modules.generation.stream_manager import _reference_map_to_frontend_refs
@@ -177,7 +178,7 @@ async def test_audio_reports_raw_dense_only_for_nonfused_query(sparse):
     assert results[0]["retrieval_scores"] == ({} if sparse else {"dense": .64})
 
     engine = HybridSearchEngine.__new__(HybridSearchEngine)
-    engine.llm_manager = SimpleNamespace(embed=AsyncMock(return_value=SimpleNamespace(success=True, data=[[.1]])))
+    engine.llm_manager = SimpleNamespace(embed=AsyncMock(return_value=LLMCallResult(success=True, data=[[.1]])))
     engine.sparse_encoder = SimpleNamespace(encode_query=lambda query: {"sparse": sparse or {}})
     engine.ingestion_service = SimpleNamespace(get_clap_text_vector_for_query=AsyncMock(return_value=None))
     engine.vector_store = SimpleNamespace(search_audio_vectors=AsyncMock(return_value=results))

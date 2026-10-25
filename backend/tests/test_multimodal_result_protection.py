@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.core.llm.manager import LLMCallResult
 from app.modules.retrieval.reranker import Reranker
 from app.modules.retrieval.search_engine import HybridSearchEngine
 
@@ -99,7 +100,7 @@ async def test_audio_search_falls_back_when_sparse_encoder_is_unavailable():
 
     class _LlmStub:
         async def embed(self, **_kwargs):
-            return SimpleNamespace(success=True, data=[[0.1, 0.2]], error=None)
+            return LLMCallResult(success=True, data=[[0.1, 0.2]])
 
     class _IngestionStub:
         async def get_clap_text_vector_for_query(self, _query):

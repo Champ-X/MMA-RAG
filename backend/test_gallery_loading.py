@@ -79,6 +79,7 @@ def test_saved_space_id_survives_reload_and_alias_lookups_do_not_duplicate_list(
     assert kb.id == 'original-12345678'
     service = KnowledgeBaseService.__new__(KnowledgeBaseService)
     service._kb_storage = {'legacy': kb, kb.id: kb}
+    service._catalog_loaded = True
     result = asyncio.run(service.list_knowledge_bases(include_statistics=False))
     assert len(result) == 1 and result[0]['id'] == kb.id
 
