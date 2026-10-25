@@ -123,7 +123,12 @@ async def test_origin_annotations_reach_real_tools_recall_and_accepted_state(tmp
     accepted = await tools.execute("submit", "submit_answer", args)
     assert not accepted.get("isError"), accepted
     assert accepted["details"]["answer_checks"]["statements"][0]["source_spans"][0]["origin"] == "generated_caption"
-    assert first["provenance"] == saved.provenance
+    # The model packet preserves source interpretation and origin boundaries;
+    # storage identity metadata stays in the immutable audit record.
+    assert first["provenance"]["text_origin"] == saved.provenance["text_origin"]
+    assert all(saved.provenance[key] == value for key, value in first["provenance"].items())
+    assert saved.provenance["kb_id"] == "a" and saved.provenance["file_id"] == "file"
+    assert "kb_id" not in first["provenance"]
 
 
 @pytest.mark.parametrize("modality,field", [("image", "caption"), ("audio", "transcript"), ("video", "caption")])

@@ -13,19 +13,26 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .contracts import Evidence
 from .language import translate_prompt, translate_schema
-from .answers import assess_answer, citation_errors, compact_assessment, evidence_payload, media_target_errors, repair_feedback
+from .answers import assess_answer, citation_errors, compact_assessment, media_target_errors, repair_feedback
 from .policy import ToolError
 from .requirements import apply_requirements, bind_requirements
 from .store import fingerprint
 from .tables import query_table
+from .payloads import agent_evidence, source_navigation
 
 
 class Args(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+class PartialObservation(ToolError):
+    def __init__(self, cause, evidence, reused_ids):
+        super().__init__(cause.code, str(cause), retryable=cause.retryable)
+        self.evidence, self.reused_ids = evidence, reused_ids
+
+
 class ListSources(Args):
-    query: str = Field(default="")
+    query: str = Field(default="", description="文件名包含的原样子串，空字符串列出全部；不是关键词或语义搜索。")
     modalities: list[Literal["doc", "image", "audio", "video"]] = Field(default_factory=list,
         description="可选：在分页前按来源模态筛选。查找文档可只选doc；省略或空列表列出所有可读模态，不扩大原任务范围。")
     offset: int = Field(default=0, ge=0)
@@ -40,6 +47,8 @@ class Search(Args):
     source_ids: list[Annotated[str, Field(min_length=1)]] = Field(default_factory=list,
         description="可选：仅搜索已发现的这些source_id，可来自list_sources或此前返回的证据。空列表沿用本轮检索范围；只能缩小范围，不能搜索只读引用或输入附件。")
     limit: int = Field(default=6, ge=1)
+    result_unit: Literal["passage", "source"] = Field(default="passage",
+        description="passage返回相关片段；选择歌曲、电影或图片时用source，每个来源只返回一个代表片段，limit表示不同来源数。")
 
 
 class ReadSource(Args):
@@ -50,6 +59,8 @@ class ReadSource(Args):
         description="单个索引片段内的Unicode字符位置，默认从头读取。续读使用返回的text_continuations参数，且limit必须为1。")
     expected_record_version: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$",
         description="续读时原样传入text_continuations中的版本，防止将已变化的索引片段拼接到旧文字。")
+    view: Literal["content", "overview"] = Field(default="content",
+        description="content读取原文；overview返回分页索引摘录与导航，用于筛选或定位，保留截断和续读位置，不代表已经通读或重新观察原媒体。")
 
 
 class ExpandContext(Args):
@@ -66,8 +77,17 @@ class InspectMedia(Args):
     question: str = Field(min_length=1)
     start_sec: float = Field(default=0, ge=0)
     end_sec: float | None = Field(default=None, ge=0)
-    view: Literal["visual", "audio", "both"] = "both"
+    view: Literal["visual", "audio", "both"] = Field(
+        description="必须显式选择：图片/PDF页仅visual，音频仅audio，视频按待核实问题选择visual、audio或both。不要将画面问题发送给音频通道。")
     page: int = Field(default=1, ge=1)
+    visual_question: str | None = Field(default=None, min_length=1,
+        description="可选：只针对实际可见信息的问题；省略时使用question。")
+    audio_question: str | None = Field(default=None, min_length=1,
+        description="可选：只针对实际可听信息的问题；省略时使用question。")
+    requirement_id: str | None = Field(default=None, min_length=1,
+        description="可选：此次观察服务的已登记交付项id，不改变证据范围。")
+    observation_goal: str = Field(default="",
+        description="简述本次观察需要解决的具体未核实条件。优先复用已有观察，只精查影响选择或结论的区间。")
 
 
 class TableFilter(Args):
@@ -146,6 +166,17 @@ class AskUser(Args):
     options: list[str] = Field(default_factory=list)
 
 
+class ResearchState(Args):
+    current_candidates: list[Annotated[str, Field(min_length=1)]] = Field(default_factory=list,
+        description="当前候选的source_id；只记录已发现且可读取的来源。")
+    verified_conditions: list[str] = Field(default_factory=list,
+        description="已有证据支持的具体条件；这是Agent工作判断，不是宿主独立验证。")
+    open_questions: list[str] = Field(default_factory=list,
+        description="仍会影响交付或候选选择的具体未解问题；不同于最终未交付说明gap。")
+    next_observation: str = Field(default="",
+        description="下一次研究要解决什么；无需内部推理过程。没有实质缺口时及时更新ready并提交。")
+
+
 class AnswerPlanItem(Args):
     id: str = Field(pattern=r"^[a-z][a-z0-9_]{0,31}$")
     requirement: str = Field(min_length=1,
@@ -163,6 +194,8 @@ class AnswerPlanItem(Args):
     supporting_evidence_ids: list[Annotated[int, Field(ge=1)]] = Field(default_factory=list,
         description="解释结果必需的辅助依据，如所问比较、关键反证、适用条件或推导输入；未匹配研究候选不在此列，不为展示检索过程而加入。")
     gap: str = Field(default="", description="仅incomplete/unavailable填写：该用户要求还有什么结果或必要条件未交付；提交时原样列入limitations。不是一般来源范围或更高研究标准的说明。")
+    research_state: ResearchState = Field(default_factory=ResearchState,
+        description="本交付项的研究状态，位于items[].research_state，不是工具顶层参数。")
 
 
 class RetainedSpan(Args):
@@ -171,21 +204,32 @@ class RetainedSpan(Args):
     end: int = Field(ge=1, description="结束位置，不包含此字符；每条证据可指定一个关键区间。")
 
 
+class AnswerPlanPatch(AnswerPlanItem):
+    # Creation validates against AnswerPlanItem after merging. Existing IDs
+    # can update progress without copying immutable user text every time.
+    requirement: str | None = Field(default=None, min_length=1,
+        description="新要点必填；已有要点省略则保留原解释，修改须填写revision_reason。")
+    quote: str | None = Field(default=None, min_length=1,
+        description="新要点必填，逐字来自当前用户；已有要点省略则保留原句，不可改写。")
+
+
 class UpdateAnswerPlan(Args):
-    items: list[AnswerPlanItem] = Field(min_length=1,
-        description="只登记用户希望收到的结果；用于判断结果的背景、条件或材料归入相应项的依据，不自行扩展为独立报告。后续保留既有要求身份与顺序，可追加用户要求中的遗漏项，定稿时可收窄非必要证据选择。")
+    items: list[AnswerPlanPatch] = Field(min_length=1,
+        description="按id更新要点：已有要点仅提交变化字段，省略字段与其他要点保留；数组用[]明确清空。新要点须提供requirement和quote。修正既有解释须填revision_reason，用户原句不可改写。")
     retained_spans: list[RetainedSpan] | None = Field(default=None,
         description="可选：指定已选原文的关键Unicode区间。省略/null保留仍被选择的旧区间；[]清除指定区间、恢复完整已交付文本。不改变证据身份或限制最终引用。")
+    revision_reason: str = Field(default="",
+        description="修改既有requirement、modality或basis时说明纠正原因，历史解释保留审计；普通状态更新无需填写。")
 
 
 DEFINITIONS = {
     "set_answer_requirements": (AnswerRequirements, "研究开始前登记你对本轮回答要求的理解：正文上限、对应用户原句和必答要点。登记只写入本轮账本，不检索资料或生成答案。登记后本轮不可修改，检查和提交始终执行该上限；理解有歧义时可ask_user。"),
-    "list_sources": (ListSources, "列出当前可读来源和输入材料，在分页前按名称及可选modalities过滤。查找文档可让modalities只选doc，避免被抽取图片占满目录页。目录项不能作证据，先读取。"),
+    "list_sources": (ListSources, "按名称和模态分页定位来源；目录不是证据。按内容推荐素材时优先search，不必列出或读取整个目录。"),
     "search": (Search, "在宿主限定范围内搜索已建索引的文本、图片描述、音频描述/转写、视频镜头。hybrid 为语义+词面融合；exact 为原短语包含匹配。可用source_ids将本次查询收窄到已发现的具体来源，用modalities选择文档原文或媒体索引。图片证据如带provenance.parent_document，可用其source_id继续读取所属文档；该链接只是导航，尚未取得文档正文。返回证据、截断及服务错误。输入附件不参与搜索。"),
     "read_source": (ReadSource, "按 source_id 深读已解析来源。文档 start 为 chunk_index，媒体 start 为索引片段偏移。next_start读取后续片段；text_continuations给出当前长片段的续读参数，避免遗漏截断后的条件。图片证据如带provenance.parent_document，可用其source_id继续读取所属文档；导航链接不代表已读取该文档。媒体索引描述不能代替直接观察。"),
     "expand_context": (ExpandContext, "读取已返回文档证据的前后相邻 chunk，核对条件、指代和上下文。"),
     "recall_evidence": (RecallEvidence, "复读本轮已交付的证据，编号和内容保持不变。用于核对上下文中已归档的原文；不读取新来源。"),
-    "inspect_media": (InspectMedia, "直接读取原图片、PDF 指定页、音频或视频的指定区间。默认读取起点后的30秒；可指定任意有效终点，较长区间自动分段处理，没有累计时长或次数限制。视频按每30秒最多6帧采样并记录时间，采样不等于逐帧观察；可用更小区间精查。可选 visual/audio/both，观察模型独立于最终回答模型。"),
+    "inspect_media": (InspectMedia, "针对具体未核实条件直接观察原图片/PDF页或音视频区间。显式选择通道；视频both会分别调用画面和声音模型。默认30秒，长区间每30秒分包、每包最多6帧，并逐包保存证据；失败可复用已完成包。选择最小必要区间，复查前先看已有证据；完全相同请求会复用。采样不等于逐帧观察。研究没有累计时长或次数限制。"),
     "query_table": (QueryTable, "确定性读取 CSV/TSV/XLSX 原表并按列过滤、分组、计数或计算。保留原行号、单位和操作；不执行公式、Python 或 SQL。PDF 表格请读取原文并核对页图。"),
     "check_answer": (CheckedAnswer, "检查你写的草稿：返回非空行/限制说明编号、篇幅、逐项覆盖与实际选中的证据片段；选择生成图注时返回来源提示。不会终结任务或调用模型。可先留空statements取得编号，再核对证据自查并修订；始终执行已登记的正文上限，无需再次填写max_characters。直接submit_answer也执行同样检查。检查只证明完整性和来源身份，不证明语义正确。"),
     "submit_answer": (CheckedAnswer, "提交你完成并逐项核验的最终回答。statements必须覆盖每个正文非空行(a1起)和每条限制(l1起)；fact/inference的source_spans须支持该行全部事实，且与就近[编号]引用一致。evidence_ids恰好等于正文引用。始终执行已登记的正文上限，无需再次填写max_characters。用户要求的内容确实未交付才用partial并说明limitations；无相关依据用not_found、partial、空引用，仅说明本次未找到支持，不能断言整篇/全库没有信息。只做完整性与身份检查，不代写答案或证明语义正确。"),
@@ -193,7 +237,7 @@ DEFINITIONS = {
 }
 
 
-PLAN_TOOL = (UpdateAnswerPlan, "登记用户要求的最终交付项与依据类型，不把研究步骤或一般格式约束当作额外交付物。sources项选择最终正文需要的主要证据evidence_ids和补充依据supporting_evidence_ids；未匹配候选留在研究记录。user_input项以用户原文input_quotes为依据，无需检索或伪造引用。只有明确要求特定原文类型或媒体资产时才限定modality，一般分析使用any；及时更新进度；既有要求不可删改，可追加遗漏项。最终引用数量与原文工作记忆分离；retained_spans可选已交付文本的关键区间，可按研究需要复读或调整。足以交付用户要求即为ready；已有部分结果但仍有实际缺口用incomplete并保留依据，完全未取得依据用unavailable，两者填具体gap。一般来源范围说明不降级状态，不自行增加用户未要求的认证或穷尽条件。计划是研究工作数据，不是最终引用清单。定稿时只引用回答用户问题实际需要的材料，不必逐条引用计划中的证据，也不要陈列无关候选和淘汰过程。宿主只核对状态和引用身份，不代写或证明语义正确。")
+PLAN_TOOL = (UpdateAnswerPlan, "登记和更新用户需要的交付结果。按id合并变化字段，省略字段和未提交项保留；用户原句不可改，解释纠正须附revision_reason。items[].research_state记录每项的当前候选、已核实条件与未解问题，研究批次后按需更新。足以交付即ready；实际未交付用incomplete/unavailable和gap。候选筛选不要求穷尽；最终仅引用必要依据。原文可用retained_spans选区间或recall_evidence复读。宿主检查身份和协议，语义判断由Agent完成。")
 
 
 def tool_contracts(answer_checks_enabled=False, answer_plan_enabled=False):
@@ -218,7 +262,7 @@ class ToolSet:
         self.answer_checks_enabled = answer_checks_enabled
         self.answer_plan_enabled = answer_plan_enabled
         self.contracts = tool_contracts(answer_checks_enabled, answer_plan_enabled)
-        self.evidence_payload = evidence_payload if answer_checks_enabled else lambda e: e.model_dump()
+        self.evidence_payload = lambda e: agent_evidence(e, checked=answer_checks_enabled)
         self.delivered: dict[int, Evidence] = {}
         self.final_result = None
         self.calls = set()
@@ -253,7 +297,10 @@ class ToolSet:
                 raise ToolError("already_submitted", translate_prompt("任务结果已经提交"))
             if name not in self.contracts or call_id in self.calls:
                 raise ToolError("invalid_tool", translate_prompt("未知工具或重复调用标识"))
-            args = self.contracts[name][0].model_validate(raw).model_dump()
+            parsed = self.contracts[name][0].model_validate(raw)
+            args = parsed.model_dump()
+            if name == "update_answer_plan":
+                args["items"] = [item.model_dump(exclude_unset=True) for item in parsed.items]
             if self.answer_checks_enabled and self.answer_requirements is None and name not in {"set_answer_requirements", "ask_user"}:
                 raise ToolError("answer_requirements_missing", translate_prompt("请先用set_answer_requirements登记当前用户的正文上限、原句和必答要点，再自主研究或提交。"))
             if self.answer_plan_enabled and self.answer_plan is None and name not in {"update_answer_plan", "set_answer_requirements", "ask_user"}:
@@ -298,7 +345,7 @@ class ToolSet:
         except asyncio.CancelledError:
             self.emit("tool.cancelled", {"name": name, "duration_ms": round((time.monotonic() - started) * 1000)}, span_id=span)
             raise
-        except (ToolError, asyncio.TimeoutError) as error:
+        except (ToolError, ValidationError, asyncio.TimeoutError) as error:
             return self._error(name, span, started, error, executed=True)
         except Exception:
             return self._error(name, span, started, ToolError("tool_failed", translate_prompt("工具执行失败，尚未取得有效结果"), retryable=True), executed=True)
@@ -307,20 +354,48 @@ class ToolSet:
         code = error.code if isinstance(error, ToolError) else "invalid_arguments" if isinstance(error, ValidationError) else "tool_timeout"
         message = str(error) if isinstance(error, ToolError) else translate_prompt("工具参数不符合接口定义") if isinstance(error, ValidationError) else translate_prompt("工具执行超时")
         value = {"code": code, "message": message, "retryable": getattr(error, "retryable", False)}
-        self.emit("tool.failed" if executed else "tool.rejected", {"name": name, **value, "executed": executed,
+        partial = getattr(error, "evidence", [])
+        if partial:
+            # Only successfully persisted packets are returned. A failed later
+            # packet must not erase paid observations or imply full coverage.
+            value.update(evidence=[self.evidence_payload(e) for e in partial],
+                         evidence_ids=[e.id for e in partial], coverage="partial",
+                         partial_observation_span_id=span,
+                         reused_evidence_ids=error.reused_ids)
+            artifact = "tool_" + fingerprint(span.removeprefix("tool:"))[:24]
+            value["artifact_id"] = artifact
+            self.ledger.account_output(len(json.dumps(value, ensure_ascii=False)))
+            self.store.put_artifact(self.run_id, artifact, value)
+            self.delivered.update({e.id: e for e in partial})
+        self.emit("tool.failed" if executed else "tool.rejected", {"name": name,
+                  **{key: item for key, item in value.items() if key != "evidence"}, "executed": executed,
                   "duration_ms": round((time.monotonic() - started) * 1000)}, span_id=span)
         # A completed emit follows the persisted tool.started arguments. The
         # worker may archive a superseded draft only with this host attestation;
         # schema rejections before execution do not have a saved draft.
-        details = {**value, **({"rejected_answer_span_id": span}
+        details = {**{key: item for key, item in value.items() if key != "evidence"}, **({"rejected_answer_span_id": span}
             if (self.answer_checks_enabled or self.answer_plan_enabled) and executed and name == "submit_answer" else {})}
         return {"isError": True, "content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False)}], "details": details}
 
     async def _dispatch(self, name, args, span):
         if name == "update_answer_plan":
             from .plan import bind_plan, plan_payload
-            plan = bind_plan(args["items"], self.store.get(self.run_id)["request"], self.answer_plan, self.delivered,
-                             retained_spans=args["retained_spans"])
+            previous = {item["id"]: item for item in (self.answer_plan or {}).get("items", [])}
+            complete = []
+            for patch in args["items"]:
+                old = previous.get(patch["id"], {})
+                if not old and (not patch.get("requirement") or not patch.get("quote")):
+                    raise ToolError("invalid_answer_plan", translate_prompt(
+                        "新交付项须提供requirement和quote；更新已有项只需id与变化字段。新要点id：") + patch["id"])
+                merged = {**old, **patch}
+                if "research_state" in patch:
+                    merged["research_state"] = {**old.get("research_state", {}), **patch["research_state"]}
+                item = AnswerPlanItem.model_validate(merged).model_dump()
+                for identity in item.get("research_state", {}).get("current_candidates", []):
+                    self.catalog.get(identity, self.scope)
+                complete.append(item)
+            plan = bind_plan(complete, self.store.get(self.run_id)["request"], self.answer_plan, self.delivered,
+                             retained_spans=args["retained_spans"], revision_reason=args["revision_reason"])
             return plan_payload(plan, self.delivered, checked=self.answer_checks_enabled), [], None
         if name == "set_answer_requirements":
             requirements = bind_requirements(args, self.store.get(self.run_id)["request"])
@@ -332,13 +407,23 @@ class ToolSet:
             sources = [s for s in sources if args["query"].casefold() in s.name.casefold()
                        and (not args["modalities"] or s.modality in args["modalities"])]
             end = args["offset"] + args["limit"]
-            return {"sources": [s.public(self.scope) for s in sources[args["offset"]:end]], "total": len(sources),
+            return {"sources": [source_navigation(s, self.scope) for s in sources[args["offset"]:end]], "total": len(sources),
                     "next_offset": end if end < len(sources) else None, "scope": self.scope.public()}, [], None
         if name == "search":
             observations, result = await self.gateway.search(**args, span_id=span)
             return result, observations, None
         if name == "read_source":
             source = self.catalog.get(args.pop("source_id"), self.scope)
+            view = args.pop("view")
+            if view == "overview":
+                observations, result = await self.gateway.overview(source, **args)
+                result = {**result, "existing_observations": [
+                    {"evidence_id": e.id, "locator": e.locator,
+                     "question": e.provenance.get("question", "")}
+                    for e in self.delivered.values()
+                    if e.source_id == source.id and e.observation == "media_observation"
+                    and e.provenance.get("source_version") == source.version]}
+                return result, observations, None
             observations, result = await self.gateway.read(source, **args)
             return result, observations, None
         if name == "expand_context":
@@ -352,7 +437,33 @@ class ToolSet:
             return {"status": "recalled"}, [self._evidence(n) for n in args["evidence_ids"]], None
         if name == "inspect_media":
             source = self.catalog.get(args.pop("source_id"), self.scope)
-            return {"status": "observed"}, [await self.media.inspect(source, **args, span_id=span)], None
+            requirement = args.pop("requirement_id")
+            goal = args.pop("observation_goal")
+            if requirement and (not self.answer_plan or requirement not in {
+                    item["id"] for item in self.answer_plan["items"]}):
+                raise ToolError("invalid_requirement", translate_prompt("观察关联的交付项不存在，请使用已登记的id。"))
+            packets, reused_ids = {}, []
+            def record_packet(evidence, *, reused=False):
+                assigned = self.store.add_evidence(self.run_id, evidence)
+                packets[assigned.id] = assigned
+                if reused and assigned.id not in reused_ids:
+                    reused_ids.append(assigned.id)
+                return assigned
+            try:
+                aggregate = await self.media.inspect(source, **args, span_id=span, on_packet=record_packet)
+            except Exception as error:
+                # Cancellation is a BaseException and must propagate without
+                # granting delivery. Other failures still return saved packets,
+                # using safe messages rather than provider or filesystem text.
+                cause = error if isinstance(error, ToolError) else ToolError(
+                    "tool_timeout" if isinstance(error, asyncio.TimeoutError) else "tool_failed",
+                    translate_prompt("工具执行超时") if isinstance(error, asyncio.TimeoutError)
+                    else translate_prompt("工具执行失败，尚未取得完整结果"), retryable=True)
+                if packets:
+                    raise PartialObservation(cause, list(packets.values()), reused_ids) from error
+                raise
+            return {"status": "observed", "reused_evidence_ids": reused_ids,
+                    "requirement_id": requirement, "observation_goal": goal}, list(packets.values()) or [aggregate], None
         if name == "query_table":
             source = self.catalog.get(args.pop("source_id"), self.scope)
             with tempfile.TemporaryDirectory(prefix="tessmora-pi-table-") as directory:

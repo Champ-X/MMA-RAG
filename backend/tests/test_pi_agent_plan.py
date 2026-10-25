@@ -62,14 +62,13 @@ async def test_media_answer_keeps_all_cited_assets_without_plan_based_filtering(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("change,code", [("omit", "answer_plan_locked"), ("quote", "answer_plan_locked"),
+@pytest.mark.parametrize("change,code", [("quote", "answer_plan_locked"),
     ("type", "answer_plan_locked"), ("foreign", "invalid_evidence"), ("wrong_media", "answer_plan_modality")])
 async def test_plan_cannot_drop_requirements_or_select_unavailable_or_wrong_media(tmp_path, change, code):
     tools, store, run, _, sources = make_tools(tmp_path)
     selected, _ = await select(tools, sources)
     before = copy.deepcopy(store.get(run)["state"]["answer_plan"])
-    if change == "omit": selected.pop()
-    elif change == "quote": selected[0]["quote"] = "其他用户的话"
+    if change == "quote": selected[0]["quote"] = "其他用户的话"
     elif change == "type": selected[0]["modality"] = "video"
     elif change == "foreign": selected[0]["evidence_ids"] = [99]
     else: selected[0]["evidence_ids"] = [3]

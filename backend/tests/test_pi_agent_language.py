@@ -157,8 +157,11 @@ async def test_online_media_prompt_is_english_but_question_and_observation_are_u
     inspector = MediaInspector(SimpleNamespace(download=lambda *_: None), object(), SimpleNamespace(observe=observe),
                                SimpleNamespace(record_media=lambda *_: None), object(), blocking)
     source = SimpleNamespace(modality="image", name="原始文件.jpg", id="source", version="v1", attachment=False)
-    with prompt_language("en-US"):
-        result = await inspector.inspect(source, question="这个字是什么？", start_sec=0, end_sec=None, view="both", page=1, span_id="test")
+    try:
+        with prompt_language("en-US"):
+            result = await inspector.inspect(source, question="这个字是什么？", start_sec=0, end_sec=None, view="visual", page=1, span_id="test")
+    finally:
+        await inspector.close()
     assert captured[0][0]["text"].startswith("Describe only what is actually visible.")
     assert captured[0][0]["text"].endswith("这个字是什么？")
     assert result.content == "原始观察内容" and result.file_name == "原始文件.jpg"

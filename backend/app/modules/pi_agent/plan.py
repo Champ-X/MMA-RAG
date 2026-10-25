@@ -7,9 +7,10 @@ from __future__ import annotations
 
 from .language import translate_prompt
 
+from copy import deepcopy
 import json
 
-from .answers import evidence_units
+from .payloads import agent_evidence
 from .policy import ToolError
 
 
@@ -18,20 +19,29 @@ def _identities(items):
             for item in items]
 
 
-def bind_plan(items, request, previous, delivered, *, retained_spans=None):
+def bind_plan(items, request, previous, delivered, *, retained_spans=None, revision_reason=""):
     identities = _identities(items)
     if len({item[0] for item in identities}) != len(items):
         raise ToolError("invalid_answer_plan", translate_prompt("回答要点编号不能重复。"))
-    if previous and identities[:len(previous["items"])] != _identities(previous["items"]):
-        fields = ("id", "requirement", "quote", "modality", "basis")
-        changes = [{"index": index, "field": field, "expected": expected,
-                    "received": identities[index][offset] if index < len(identities) else None}
-                   for index, old in enumerate(_identities(previous["items"]))
-                   for offset, (field, expected) in enumerate(zip(fields, old))
-                   if index >= len(identities) or identities[index][offset] != expected]
-        raise ToolError("answer_plan_locked", translate_prompt("既有要点身份不可改写。请恢复下列字段的 expected 值，"
-                        "保留本次证据与进度更新；不要重复提交相同参数。差异：")
+    changes = []
+    old_items = {item["id"]: item for item in (previous or {}).get("items", [])}
+    for item in items:
+        old = old_items.get(item["id"])
+        if old is None:
+            continue
+        for field in ("requirement", "quote", "modality", "basis"):
+            expected, received = old.get(field, "sources" if field == "basis" else None), item.get(field, "sources" if field == "basis" else None)
+            if expected != received:
+                changes.append({"id": item["id"], "field": field, "expected": expected, "received": received})
+    # User wording is immutable. The Agent may correct its own interpretation,
+    # but only explicitly and with an auditable reason; it cannot drop an item.
+    if changes and (any(change["field"] == "quote" for change in changes) or not revision_reason.strip()):
+        raise ToolError("answer_plan_locked", translate_prompt("用户原句quote不可改写。修订requirement、modality或basis须提供revision_reason；"
+                        "否则恢复下列字段的expected值，并保留证据与进度更新。差异：")
                         + json.dumps(changes, ensure_ascii=False))
+    updates = {item["id"]: item for item in items}
+    items = [deepcopy(updates.get(item["id"], item)) for item in (previous or {}).get("items", [])]
+    items.extend(deepcopy(item) for key, item in updates.items() if key not in old_items)
     user_messages = [request["message"], *(entry["content"] for entry in request.get("history", [])
                                         if entry.get("role") == "user")]
     for item in items:
@@ -46,8 +56,12 @@ def bind_plan(items, request, previous, delivered, *, retained_spans=None):
         for number in selected + support:
             if number not in delivered:
                 raise ToolError("invalid_evidence", translate_prompt("回答要点只能选择本轮工具已实际交付的证据。"))
-        if item["modality"] != "any" and any(delivered[number].modality != item["modality"] for number in selected):
-            raise ToolError("answer_plan_modality", translate_prompt("主要证据须符合已登记来源类型；其他补充依据放入supporting_evidence_ids。"))
+        mismatched = [{"evidence_id": number, "modality": delivered[number].modality}
+                      for number in selected if item["modality"] != "any" and delivered[number].modality != item["modality"]]
+        if mismatched:
+            raise ToolError("answer_plan_modality", translate_prompt("主要证据须符合已登记来源类型；其他补充依据放入supporting_evidence_ids。")
+                            + translate_prompt("错配：") + json.dumps({"item_id": item["id"],
+                                "expected_modality": item["modality"], "mismatched_evidence": mismatched}, ensure_ascii=False))
         if item.get("basis", "sources") == "user_input":
             if selected or support or item["modality"] != "any":
                 raise ToolError("invalid_answer_plan", translate_prompt("user_input只处理用户提供的输入，modality用any且不选择外部证据；需要来源时登记sources项。"))
@@ -70,7 +84,13 @@ def bind_plan(items, request, previous, delivered, *, retained_spans=None):
         number, start, end = span["evidence_id"], span["start"], span["end"]
         if number not in numbers or not 0 <= start < end <= len(delivered[number].content):
             raise ToolError("invalid_retained_span", translate_prompt("保留区间必须指向已选且已交付原文中的有效Unicode字符范围。"))
-    return {"items": items, "retained_spans": spans}
+    result = {"items": items, "retained_spans": deepcopy(spans)}
+    revisions = deepcopy((previous or {}).get("interpretation_revisions", []))
+    if changes:
+        revisions.append({"reason": revision_reason.strip(), "changes": changes})
+    if revisions:
+        result["interpretation_revisions"] = revisions
+    return result
 
 
 def _selection_order(plan):
@@ -92,12 +112,15 @@ def retained_evidence(plan, delivered, *, checked=False):
     def packet(number):
         original = delivered[number]
         start, end = explicit.get(number, (0, len(original.content)))
-        payload = {"content": original.content[start:end]}
+        # Retained originals have the same interpretation and continuation
+        # boundaries as first delivery. Only display/audit metadata is omitted;
+        # sampling, source versions and text-origin marks survive compaction.
+        payload = agent_evidence(original, checked=checked)
         if checked:
             # Clip original units instead of recomputing their identities on a
             # substring. Tail excerpts must retain original IDs and offsets.
             units = []
-            for unit in evidence_units(original):
+            for unit in payload["content_units"]:
                 left, right = max(start, unit["start"]), min(end, unit["end"])
                 if left >= right:
                     continue
@@ -105,16 +128,11 @@ def retained_evidence(plan, delivered, *, checked=False):
                 if (left, right) != (unit["start"], unit["end"]):
                     clipped.update(original_start=unit["start"], original_end=unit["end"], truncated=True)
                 units.append(clipped)
-            payload = {"content_units": units}
-        locator = {key: value for key, value in original.locator.items() if key in {
-            "point_id", "collection", "chunk_index", "page", "page_number", "text_start", "text_end", "start_sec", "end_sec",
-            "shot_start_time", "shot_end_time"} and (isinstance(value, (int, float)) or isinstance(value, str) and len(value) <= 128)}
-        return {"id": number, "source_id": original.source_id, "file_name": original.file_name[:128],
+            payload["content_units"] = units
+        else:
+            payload["content"] = original.content[start:end]
+        return {**payload, "id": number, "file_name": original.file_name[:128],
                        **({"file_name_truncated": True} if len(original.file_name) > 128 else {}),
-                       "modality": original.modality, "observation": original.observation,
-                       "version": original.version, "locator": locator,
-                       **({"locator_omitted_fields": sorted(set(original.locator) - set(locator))} if locator != original.locator else {}),
-                       **payload,
                        "retained_range": {"start": start, "end": end, "original_characters": len(original.content),
                                           "truncated": start > 0 or end < len(original.content)}}
 

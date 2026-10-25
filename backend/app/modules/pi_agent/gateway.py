@@ -15,6 +15,7 @@ from .catalog import SourceCatalog, Source
 from .contracts import Evidence
 from .policy import AccessScope, ToolError
 from .store import fingerprint
+from .payloads import source_navigation
 from .text_origins import document_text_origin, TEXT_ORIGIN_VERSION
 
 COLLECTIONS = {
@@ -46,6 +47,16 @@ def lexical_terms(query):
                 else [token, *(token[i:i + 2] for i in range(len(token) - 1))]))
 
 
+def distinct_sources(keys, records):
+    seen, selected = set(), []
+    for key in keys:
+        identity = records[key][0].id
+        if identity not in seen:
+            seen.add(identity)
+            selected.append(key)
+    return selected
+
+
 def evidence_for(source: Source, modality: str, point, *, max_chars=6000, text_offset=0,
                  annotate_text_origins=False) -> Evidence:
     payload = point.payload or {}
@@ -58,7 +69,7 @@ def evidence_for(source: Source, modality: str, point, *, max_chars=6000, text_o
     metadata = metadata if isinstance(metadata, dict) else {}
     text = point_text(payload, modality)
     locator = {"point_id": str(point.id), "collection": COLLECTIONS[modality][0]}
-    for key in ("chunk_index", "shot_id", "scene_id", "shot_start_time", "shot_end_time"):
+    for key in ("chunk_index", "shot_id", "scene_id", "shot_start_time", "shot_end_time", "duration_seconds"):
         if payload.get(key) is not None:
             locator[key] = payload[key]
     for key in ("page", "page_number", "section_path"):
@@ -83,7 +94,14 @@ def evidence_for(source: Source, modality: str, point, *, max_chars=6000, text_o
                     observation=observation, locator=locator,
                     provenance={"kb_id": source.kb_id, "file_id": source.file_id, "source_version": source.version,
                                 "index_kb_id": payload.get("kb_id"), "record_version": record_version,
-                                "truncated": text_offset > 0 or len(content) < len(text), **origin},
+                                "truncated": text_offset > 0 or len(content) < len(text),
+                                "content_types": [kind for field, kind in {
+                                    "text_content": "parsed_text", "caption": "indexed_visual_description",
+                                    "description": "indexed_audio_description", "transcript": "indexed_transcript",
+                                    "asr_text": "indexed_asr_transcript"}.items()
+                                    if payload.get(field) and field in {
+                                        "doc": {"text_content"}, "image": {"caption"},
+                                        "audio": {"description", "transcript"}, "video": {"caption", "asr_text"}}[modality]], **origin},
                     citation={"type": source.modality, "file_name": source.name,
                               "debug_info": {"kb_id": source.kb_id, "chunk_id": str(point.id)},
                               **({"start_sec": payload["shot_start_time"]} if "shot_start_time" in payload else {}),
@@ -138,7 +156,7 @@ class KnowledgeGateway:
         return points, cursor is not None
 
     async def search(self, *, query: str, mode: str, modalities: list[str], knowledge_base_ids: list[str],
-                     limit: int, span_id: str, source_ids: list[str] | None = None):
+                     limit: int, span_id: str, source_ids: list[str] | None = None, result_unit="passage"):
         kbs = self.scope.narrow_kbs(knowledge_base_ids)
         query_scope = self.scope
         if source_ids:
@@ -153,6 +171,12 @@ class KnowledgeGateway:
         if not sources:
             return [], {"status": "no_hits", "scope": query_scope.public(), "methods": [], "truncated": False}
         errors, truncated, rankings, records = [], False, [], {}
+        # Yield before acquiring the shared search slot, never while holding it.
+        settings = getattr(self.models, "settings", None)
+        if settings and settings.yield_to_legacy:
+            from .admission import legacy_activity
+            await legacy_activity.wait(self.models.emit, parent_span_id=span_id, resource="search",
+                max_wait_seconds=getattr(settings, "legacy_priority_grace_seconds", 1.0))
         async with self.search_gate:
             vector = None
             if mode == "hybrid":
@@ -184,7 +208,10 @@ class KnowledgeGateway:
                             key = (modality, str(point.id))
                             records[key] = (source, point)
                             ranked.append((score, key))
-                    rankings.append([key for _, key in sorted(ranked, key=lambda x: (-x[0], x[1]))[:limit * 3]])
+                    ordered = [key for _, key in sorted(ranked, key=lambda x: (-x[0], x[1]))]
+                    if result_unit == "source":
+                        ordered = distinct_sources(ordered, records)
+                    rankings.append(ordered[:limit * 3])
                 except Exception as error:
                     # No provider exception strings: they can contain credentials or URLs.
                     errors.append({"method": "lexical", "modality": modality, "code": type(error).__name__,
@@ -209,17 +236,22 @@ class KnowledgeGateway:
         for ranking in rankings:
             for rank, key in enumerate(ranking):
                 scores[key] += 1 / (60 + rank + 1)
-        keys = sorted(scores, key=lambda key: (-scores[key], key))[:limit]
+        keys = sorted(scores, key=lambda key: (-scores[key], key))
+        if result_unit == "source":
+            keys = distinct_sources(keys, records)
+        keys = keys[:limit]
         evidence = [self._evidence(records[k][0], k[0], records[k][1], max_chars=1400) for k in keys]
         if not evidence and errors and not rankings:
             raise ToolError("search_unavailable", translate_prompt("搜索服务未能完成查询，请稍后重试；这不代表没有相关内容"), retryable=True)
         return evidence, {"status": "partial" if errors or truncated else "ok" if evidence else "no_hits",
                           "methods": ["exact" if mode == "exact" else "lexical", *(["dense"] if vector is not None else [])],
                           "errors": errors, "truncated": truncated,
+                          "result_unit": result_unit,
+                          "returned_source_count": len({e.source_id for e in evidence}),
                           "scope": query_scope.public()}
 
     async def read(self, source: Source, *, start: int, limit: int, modality: str | None = None,
-                   text_offset: int = 0, expected_record_version: str | None = None):
+                   text_offset: int = 0, expected_record_version: str | None = None, excerpt_chars: int | None = None):
         if (text_offset or expected_record_version) and limit != 1:
             raise ToolError("ambiguous_text_offset", translate_prompt("续读单个索引片段时必须设置 limit=1"))
         if source.attachment:
@@ -244,7 +276,7 @@ class KnowledgeGateway:
             has_more = start + limit < total or clipped
         if text_offset and selected and text_offset >= len(point_text(selected[0].payload or {}, kind)):
             raise ToolError("text_offset_out_of_range", translate_prompt("续读位置超出当前索引片段，请从 text_offset=0 重新读取并核对来源版本"))
-        observations = [self._evidence(source, kind, p, max_chars=max(1000, 12000 // max(1, limit)),
+        observations = [self._evidence(source, kind, p, max_chars=excerpt_chars or max(1000, 12000 // max(1, limit)),
                                      text_offset=text_offset) for p in selected]
         if expected_record_version and observations and observations[0].provenance["record_version"] != expected_record_version:
             raise ToolError("index_record_changed", translate_prompt("索引片段版本已改变，请从头读取，不能将不同版本的文字拼接为同一原文"))
@@ -255,8 +287,21 @@ class KnowledgeGateway:
                          for index, evidence in enumerate(observations)
                          if evidence.locator["text_end"] < evidence.locator["total_chars"]]
         return observations, {
-            "source": source.public(self.scope), "total_index_records": total,
+            "source": source_navigation(source, self.scope), "total_index_records": total,
             "next_start": start + limit if has_more else None, "truncated": clipped,
             "text_continuations": continuations,
             "status": "ok" if selected else "no_index_content",
         }
+
+    async def overview(self, source: Source, *, start: int, limit: int,
+                       text_offset: int = 0, expected_record_version: str | None = None):
+        """A paged, verbatim index preview; no new media inference or summary."""
+        if text_offset or expected_record_version:
+            raise ToolError("invalid_overview", translate_prompt("索引概览不接受片段续读参数，请使用content视图续读原文。"))
+        evidence, result = await self.read(source, start=start, limit=limit, excerpt_chars=400)
+        return evidence, {**result, "view": "overview", "preview_only": True,
+                          "direct_media_observation": False,
+                          "navigation": [{"source_id": source.id, "start":
+                              item.locator.get("chunk_index", start + index), "limit": 1,
+                              "view": "content", "locator": item.locator}
+                              for index, item in enumerate(evidence)]}

@@ -15,6 +15,87 @@ function canonical(value) {
   return value;
 }
 
+const RESEARCH_TOOLS = new Set(['search', 'read_source', 'expand_context', 'recall_evidence', 'inspect_media', 'query_table']);
+
+function evidenceProgress(evidence) {
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return evidence;
+  const { id, citation, provenance, content_units, version, ...fields } = evidence;
+  const { usage, calls, model, ...sourceProvenance } = provenance && typeof provenance === 'object' ? provenance : {};
+  return { ...fields,
+    // A media-observation version can fingerprint generated wording. Its
+    // underlying source version is authoritative when supplied by the host.
+    source_version: evidence.source_version || sourceProvenance.source_version || version,
+    provenance: sourceProvenance,
+    ...(Array.isArray(content_units) ? { content_units: content_units.map(unit => {
+      if (!unit || typeof unit !== 'object' || Array.isArray(unit)) return unit;
+      const { id, ...value } = unit;
+      return value;
+    }) } : content_units === undefined ? {} : { content_units }) };
+}
+
+function attestedEvidence(result) {
+  const details = result.details;
+  if (typeof details?.artifact_id !== 'string' || !details.artifact_id.startsWith('tool_')
+    || !Array.isArray(details.evidence_ids) || !details.evidence_ids.length
+    || details.evidence_ids.some(id => !Number.isSafeInteger(id) || id <= 0)
+    || result.content.length !== 1 || result.content[0].type !== 'text') return [];
+  if (result.isError && (result.toolName !== 'inspect_media' || details.coverage !== 'partial'
+    || details.partial_observation_span_id !== `tool:${result.toolCallId}`)) return [];
+  let body;
+  try { body = JSON.parse(result.content[0].text); } catch { return []; }
+  if (!Array.isArray(body?.evidence) || body.evidence.length !== details.evidence_ids.length) return [];
+  const ids = new Set(details.evidence_ids);
+  if (ids.size !== details.evidence_ids.length) return [];
+  for (const evidence of body.evidence) {
+    if (!evidence || !ids.delete(evidence.id) || typeof evidence.source_id !== 'string' || !evidence.source_id
+      || (typeof evidence.content !== 'string' && !Array.isArray(evidence.content_units))) return [];
+  }
+  return ids.size ? [] : body.evidence;
+}
+
+function evidenceProgressKey(evidence) {
+  return createHash('sha256').update(JSON.stringify(canonical(evidenceProgress(evidence)))).digest('hex');
+}
+
+// Evidence numbering, display metadata and provider accounting can change
+// without retrieving any new source content. Keep actual text, source versions
+// and locations in the progress identity, including explicit truncation/errors.
+function progressContent(result) {
+  return result.content.map(part => {
+    if (part.type !== 'text') return part;
+    let body;
+    try { body = JSON.parse(part.text); } catch { return part; }
+    if (!body || !Array.isArray(body.evidence)) return part;
+    const { evidence_ids, reused_evidence_ids, artifact_id, usage, ...stable } = body;
+    stable.evidence = body.evidence.map(evidenceProgress);
+    return { ...part, text: canonical(stable) };
+  });
+}
+
+function projectPlanResults(context, plan, t) {
+  if (!plan) return { context, archived: 0 };
+  let archived = 0;
+  const messages = context.messages.map(message => {
+    if (message.role !== 'toolResult' || message.toolName !== 'update_answer_plan' || message.isError
+      || !message.details?.artifact_id || message.content.length !== 1 || message.content[0].type !== 'text') return message;
+    let body;
+    try { body = JSON.parse(message.content[0].text); } catch { return message; }
+    if (!body?.answer_plan || !Array.isArray(body.retained_evidence)) return message;
+    const evidenceIds = body.retained_evidence.map(entry => entry.id).filter(Number.isSafeInteger);
+    const navigation = evidenceNavigation({ ...message, details: { ...message.details, evidence_ids: evidenceIds } },
+      { evidence: body.retained_evidence });
+    const next = { ...message, content: [{ type: 'text', text: JSON.stringify({ archived_result: message.details.artifact_id,
+      evidence_ids: evidenceIds, current_plan_in_working_memory: true,
+      ...(navigation ? { evidence_navigation: navigation } : {}),
+      instruction: t('当前计划与所选原文已单独提供；此处移除重复副本，历史产物仍在账本。旧选择的编号和摘录仅供定位，不代表无关或已核实。需要旧原文时用recall_evidence复读。',
+        'The current plan and selected originals are supplied separately. This duplicate body is archived in the ledger. Previous selection identifiers and excerpts are navigation, not irrelevance or verification judgments. Use recall_evidence to reread old originals when needed.') }) }] };
+    if (Buffer.byteLength(JSON.stringify(next)) >= Buffer.byteLength(JSON.stringify(message))) return message;
+    archived++;
+    return next;
+  });
+  return { context: { ...context, messages }, archived };
+}
+
 function latestDraftCallIds(messages, recordedDrafts) {
   const latest = messages.findLast(message => message.role === 'assistant'
     && message.content.some(part => part.type === 'toolCall' && recordedDrafts.has(part.id)));
@@ -214,6 +295,9 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
   let finalResult;
   let answerRequirements;
   let answerPlan;
+  let answerPlanIdentity;
+  let researchBatchesWithoutPlanChange = 0;
+  let reviewPending = false;
   let turn = 0;
   let activeModelCall = null;
   const repeatedFailures = new Map();
@@ -221,6 +305,7 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
   let unsubmittedTurns = 0;
   let failedRounds = 0;
   const successfulOutcomes = new Set();
+  const observedEvidence = new Set();
   let unchangedRounds = 0;
   const drafts = new Map();
   const dispatched = new Set();
@@ -238,6 +323,12 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
         const payload = JSON.parse(result.content[0].text);
         answerPlan = { answer_plan: payload.answer_plan, retained_evidence: payload.retained_evidence,
           ...(payload.retention ? { retention: payload.retention } : {}) };
+        const identity = JSON.stringify(canonical(answerPlan));
+        if (identity !== answerPlanIdentity) {
+          answerPlanIdentity = identity;
+          researchBatchesWithoutPlanChange = 0;
+          reviewPending = false;
+        }
       }
       if (!result.isError && definition.name === 'set_answer_requirements' && result.details?.answer_requirements) {
         answerRequirements = result.details.answer_requirements;
@@ -306,6 +397,23 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
           context = { ...context, messages: [...context.messages,
             { role: 'user', timestamp: Date.now(), content: ANSWER_COMPOSITION_PROMPT }] };
         }
+        if (reviewPending && answerPlan) {
+          const pending = answerPlan.answer_plan.items.filter(item => item.status === 'pending').map(item => item.id);
+          context = { ...context, messages: [...context.messages, { role: 'user', timestamp: Date.now(),
+            content: t('研究状态复核：连续多批取得资料，但计划尚未变化。请围绕原问题核对当前候选、已核实条件、尚未解决的问题与下一次观察目标；状态有变化时更新相应计划项。证据足够即可交付，仍有必要缺口则继续定向研究。未引用候选不等于无价值，不能省略关键反证或用户要求的穷尽比较。此提醒不要求额外研究或内部推理说明。',
+              'Research-state review: several batches returned material without a plan change. Recheck current candidates, verified conditions, open questions and the next observation against the original request; update the affected plan items when their state changes. Deliver when evidence is sufficient, or continue targeted research for necessary gaps. Uncited candidates can still matter; retain key counterevidence and explicitly requested exhaustive comparisons. This reminder requires neither extra research nor internal reasoning disclosure.') }] };
+          await emit('research.review', { reason: 'unchanged_plan', research_batches: researchBatchesWithoutPlanChange,
+            pending_item_ids: pending });
+          researchBatchesWithoutPlanChange = 0;
+          reviewPending = false;
+        }
+        // Keep the Agent-selected originals once in the current working state,
+        // even below the model window threshold. Historical tool pairs and
+        // evidence navigation remain intact and every original is rereadable.
+        const workingProjection = projectPlanResults(context, answerPlan, t);
+        context = workingProjection.context;
+        if (workingProjection.archived) await emit('context.compacted', { reason: 'working_memory_deduplication',
+          archived_tool_results: workingProjection.archived, remaining_bytes: Buffer.byteLength(JSON.stringify(context)) });
         const projection = projectWorkingContext(context, model.contextWindow, planIndex, answerPlan,
           recordedDrafts, config.answer_checks_enabled || config.answer_plan_enabled, t);
         context = projection.context;
@@ -328,16 +436,25 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
         const requestTurn = ++turn;
         // Host accounting and resource scheduling are independent of duration,
         // cumulative usage and the number of previous tool/model calls.
-        const admission = await callHost('model_request', {
-          turn: requestTurn, input_bytes: Buffer.byteLength(JSON.stringify(context), 'utf8'),
-        }, options?.signal);
+        const inputBytes = Buffer.byteLength(JSON.stringify(context), 'utf8');
+        const admission = await callHost('model_request', { turn: requestTurn, input_bytes: inputBytes }, options?.signal);
         if (admission.allowed === false) return errorStream(requestedModel, admission.message || t('模型服务当前不可用', "The model service is currently unavailable"));
         await emit('model.started', { turn, model: requestedModel.id, provider: requestedModel.provider,
-          thinking_level: config.thinking_level || 'off' });
+          thinking_level: config.thinking_level || 'off', input_bytes: inputBytes });
         activeModelCall = { turn, startedAt: performance.now() };
         const maxTokens = model.maxTokens ? (available ? Math.min(model.maxTokens, available) : model.maxTokens) : undefined;
+        // DeepSeek rejects required tool choice while thinking is enabled.
+        // Preserve the user's thinking setting and the existing reminder/guard
+        // instead of silently disabling reasoning or issuing a doomed request.
+        const thinkingEnabled = config.thinking_level && config.thinking_level !== 'off';
+        const deepseekThinking = thinkingEnabled && (requestedModel.provider === 'deepseek'
+          || requestedModel.compat?.thinkingFormat === 'deepseek');
         return providerStream(requestedModel, context, {
           ...options, apiKey: config.api_key, ...(maxTokens ? { maxTokens } : {}),
+          // A plain-text turn has not delivered a result through the host.
+          // Repair the next existing request at the protocol boundary, while
+          // leaving research, clarification and submission equally available.
+          ...(unsubmittedTurns > 0 && !deepseekThinking ? { toolChoice: 'required' } : {}),
           maxRetries: 0, temperature: 0.2,
         });
       } catch (error) {
@@ -367,11 +484,26 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
         // rejection. Unrelated research cannot make invalid arguments valid.
         deterministicFailures.delete(operation);
         const key = createHash('sha256').update(JSON.stringify(canonical({
-          name: result.toolName, args: call?.arguments, content: result.content,
+          name: result.toolName, args: call?.arguments, content: progressContent(result),
         }))).digest('hex');
         if (!successfulOutcomes.has(key)) progressed = true;
         successfulOutcomes.add(key);
+        for (const evidence of attestedEvidence(result)) {
+          observedEvidence.add(evidenceProgressKey(evidence));
+        }
       }
+      // A failed later media packet does not erase earlier persisted successes.
+      // Count only host-attested, newly acquired packets; error prose, new IDs,
+      // reused packets and a forged coverage declaration cannot reset guards.
+      let partialProgress = false;
+      for (const result of failed) {
+        for (const evidence of attestedEvidence(result)) {
+          const key = evidenceProgressKey(evidence);
+          if (!observedEvidence.has(key)) partialProgress = true;
+          observedEvidence.add(key);
+        }
+      }
+      progressed ||= partialProgress;
       if (progressed) unchangedRounds = 0;
       else if (toolResults.some(result => !result.isError) && ++unchangedRounds >= 3) {
         finalResult = { terminal: 'failed', code: 'repeated_tool_result',
@@ -383,6 +515,10 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
         finalResult = { terminal: 'failed', code: 'tool_failure_loop',
           message: t('工具连续失败且未取得新结果，任务已停止以避免持续消耗。请检查服务或调整请求后重试。', "Tools failed repeatedly without new results. The task stopped to avoid continued consumption. Check the service or adjust the request before retrying.") };
         return { action: 'end' };
+      }
+      if (config.answer_plan_enabled && answerPlan && (partialProgress || toolResults.some(result => !result.isError && RESEARCH_TOOLS.has(result.toolName)))) {
+        researchBatchesWithoutPlanChange++;
+        if (researchBatchesWithoutPlanChange >= 3) reviewPending = true;
       }
       const seen = new Set();
       for (const result of failed) {
@@ -434,6 +570,12 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
   agent.subscribe(async (event) => {
     if (event.type === 'message_update') {
       const update = event.assistantMessageEvent;
+      if (activeModelCall && !activeModelCall.firstContent
+        && ['text_delta', 'toolcall_delta'].includes(update.type) && typeof update.delta === 'string' && update.delta.length) {
+        activeModelCall.firstContent = true;
+        await emit('model.first_content', { turn: activeModelCall.turn, model: model.id, provider: model.provider,
+          duration_ms: Math.round(performance.now() - activeModelCall.startedAt), content_type: update.type === 'text_delta' ? 'text' : 'tool_call' });
+      }
       if (update.type === 'text_delta') {
         await emit('action.delta', { turn, delta: update.delta });
       } else if (update.type === 'toolcall_delta') {

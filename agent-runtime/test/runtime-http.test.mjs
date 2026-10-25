@@ -178,6 +178,47 @@ function wireConfig(baseUrl, provider = 'deepseek') {
         thinkingFormat: provider === 'deepseek' ? 'deepseek' : 'qwen', maxTokensField: 'max_tokens' } } };
 }
 
+for (const provider of ['deepseek', 'aliyun_bailian']) for (const thinking of ['off', 'medium']) {
+  test(`unsubmitted-text HTTP repair respects provider thinking compatibility (${provider}, ${thinking})`, async t => {
+    const plainText = [
+      { choices: [{ index: 0, delta: { content: '暂定结论仍需核实一个条件。' } }] },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } },
+    ];
+    const { baseUrl, requests } = await sseEndpoint(t, [plainText,
+      draftFrames([{ id: 'verify', name: 'search', args: { query: '核实剩余条件' } }]),
+      draftFrames([{ id: 'finish', name: 'submit_answer', args: { answer: '核实后提交[1]' } }]),
+    ]);
+    const config = wireConfig(baseUrl, provider);
+    config.thinking_level = thinking;
+    config.tools.push({ name: 'ask_user', description: 'Clarify', parameters: Type.Object({ question: Type.String() }) });
+    const hostTools = [], admissions = [];
+    const runtime = createRuntime(config, {
+      emit: () => {},
+      callHost: async (method, params) => {
+        if (method === 'model_request') { admissions.push(params); return { allowed: true }; }
+        if (method === 'model_usage') return {};
+        hostTools.push(params.name);
+        if (params.name === 'search') return { content: [{ type: 'text', text: '已核实剩余条件[1]' }],
+          details: { artifact_id: 'tool_observation', evidence_ids: [1] } };
+        assert.equal(params.name, 'submit_answer');
+        return { content: [{ type: 'text', text: 'accepted' }], details: { terminal: 'completed' } };
+      },
+    });
+    assert.equal((await runtime.run()).terminal, 'completed');
+    assert.deepEqual(hostTools, ['search', 'submit_answer']);
+    assert.equal(requests.length, 3);
+    assert.equal(admissions.length, requests.length, 'Repair uses the existing continuation without an extra model call');
+    const required = provider === 'deepseek' && thinking !== 'off' ? undefined : 'required';
+    assert.deepEqual(requests.map(request => request.tool_choice), [undefined, required, undefined]);
+    for (const request of requests) {
+      assert.deepEqual(request.tools.map(tool => tool.function.name).sort(), ['ask_user', 'search', 'submit_answer']);
+      if (provider === 'deepseek') assert.deepEqual(request.thinking, { type: thinking === 'off' ? 'disabled' : 'enabled' });
+      else assert.equal(request.enable_thinking, thinking !== 'off');
+    }
+  });
+}
+
 
 
 for (const scenario of [

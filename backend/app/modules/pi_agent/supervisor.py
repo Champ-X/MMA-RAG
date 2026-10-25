@@ -7,6 +7,7 @@ from dataclasses import asdict
 from contextvars import copy_context
 from app.core.prompt_language import prompt_language
 import fcntl
+import hashlib
 from functools import partial
 import json
 import os
@@ -23,10 +24,38 @@ from .models import ModelTransport
 from .policy import AccessScope, UsageLedger, ToolError
 from .store import RunStore, RunConflict
 from .tools import ToolSet, definitions
+from .admission import ProviderCapacity
 
 WORKER = ROOT / "agent-runtime" / "src" / "worker.mjs"
 WORKER_EVENTS = {"model.started", "model.completed", "model.rejected", "model.cancelled",
+                 "model.first_content", "research.review",
                  "action.delta", "answer.delta", "answer.reset", "tool.rejected", "context.compacted"}
+
+
+def _fingerprint(value):
+    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def runtime_fingerprints(settings, worker, tool_definitions, *, prompt=None, model=None):
+    """Reproducibility metadata only: no credential, endpoint or content snapshots."""
+    runtime_files = [worker, *(ROOT / "agent-runtime" / "src" / name for name in
+        ("runtime.mjs", "transport.mjs", "proxy.mjs")), ROOT / "agent-runtime" / "package-lock.json",
+        *(Path(__file__).parent / name for name in ("supervisor.py", "admission.py", "models.py", "media.py",
+            "tools.py", "gateway.py", "catalog.py", "plan.py", "policy.py", "contracts.py",
+            "media_cache.py", "payloads.py", "prompt_translations.json"))]
+    hashes = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in runtime_files if path.is_file()}
+    prompt_source = ROOT / "agent-runtime" / "src" / "prompts.mjs"
+    public_settings = settings.model_dump(exclude={"model_api_key", "model_base_url", "api_token",
+        "trusted_user_id", "data_dir", "allowed_kb_ids"})
+    result = {"runtime_sha256": _fingerprint(hashes), "runtime_files": hashes,
+              "system_prompt_sha256": hashlib.sha256(prompt_source.read_bytes()).hexdigest(),
+              "tool_schema_sha256": _fingerprint(tool_definitions), "config_sha256": _fingerprint(public_settings)}
+    if model is not None:
+        result["model_config_sha256"] = _fingerprint({key: value for key, value in model.items()
+                                                    if key not in {"api_key", "baseUrl"}})
+    if prompt is not None:
+        result.update(input_sha256=hashlib.sha256(prompt.encode()).hexdigest(), input_bytes=len(prompt.encode()))
+    return result
 
 
 def _worker_environment():
@@ -52,6 +81,7 @@ class PiSupervisor:
         self.io_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pi-source")
         self.run_gate = asyncio.Semaphore(settings.max_concurrent_runs)
         self.search_gate = asyncio.Semaphore(settings.max_concurrent_searches)
+        self.provider_capacity = ProviderCapacity(settings.max_concurrent_provider_requests)
         self.creation_lock = asyncio.Lock()
         self.jobs, self.processes = {}, {}
         self.closed = False
@@ -139,6 +169,8 @@ class PiSupervisor:
                       "answer_plan_enabled": self.settings.answer_plan_enabled,
                       "execution_policy": "until_complete_or_cancelled", "scope": None, "scope_ready": False,
                       "tool_models": {"embedding": self.settings.embedding_model, "vision": self.settings.vision_model, "audio": self.settings.audio_model}}
+            public["fingerprints"] = runtime_fingerprints(self.settings, self.worker,
+                definitions(self.settings.answer_checks_enabled, self.settings.answer_plan_enabled, request.language), model=model)
             run, created = self.store.create(owner=owner, request=request.model_dump(), config=public)
             if created:
                 task = asyncio.create_task(self._run(run["id"], request, owner, model, key))
@@ -154,23 +186,41 @@ class PiSupervisor:
     async def _admit_preparation(self, ledger, emit):
         if self.settings.yield_to_legacy:
             from .admission import legacy_activity
-            await legacy_activity.wait(emit, parent_span_id="sources")
+            await legacy_activity.wait(emit, parent_span_id="sources", resource="catalog",
+                                       max_wait_seconds=self.settings.legacy_priority_grace_seconds)
 
     async def _load_catalog(self, ledger, emit):
-        await self._admit_preparation(ledger, emit)
+        priority_deadline = None
+        async def admit_scan():
+            nonlocal priority_deadline
+            if not self.settings.yield_to_legacy:
+                return
+            from .admission import legacy_activity
+            if not legacy_activity.active:
+                return
+            # Age the scan once, starting at its first real contention. A
+            # later page or a newly arriving ordinary request cannot reset it.
+            if priority_deadline is None:
+                priority_deadline = time.monotonic() + self.settings.legacy_priority_grace_seconds
+            remaining = priority_deadline - time.monotonic()
+            if remaining > 0:
+                await legacy_activity.wait(emit, parent_span_id="sources", resource="catalog",
+                                           max_wait_seconds=remaining)
+        await admit_scan()
         loop, stopped = asyncio.get_running_loop(), threading.Event()
         def checkpoint():
             if stopped.is_set():
                 raise ToolError("cancelled", "来源准备已取消")
             if not self.settings.yield_to_legacy:
                 return
+            if priority_deadline is not None and time.monotonic() >= priority_deadline:
+                return
             from .admission import legacy_activity
             if not legacy_activity.active:
                 return
-            # The synchronous MinIO iterator can reach another page after an
-            # old request starts. Admit each subsequent read through the loop,
-            # while retaining a cooperative stop path for this worker thread.
-            waiting = asyncio.run_coroutine_threadsafe(self._admit_preparation(ledger, emit), loop)
+            # Re-check contention at each physical read, sharing this scan's
+            # age while preserving cancellation even after priority has aged.
+            waiting = asyncio.run_coroutine_threadsafe(admit_scan(), loop)
             try:
                 while True:
                     if stopped.is_set():
@@ -232,7 +282,8 @@ class PiSupervisor:
             return await self._run_localized(run_id, request, owner, model, key)
 
     async def _run_localized(self, run_id, request, owner, model, key):
-        ledger, transport, process = None, None, None
+        ledger, transport, process, media = None, None, None, None
+        model_slots = {}
         try:
             async with self.run_gate:
                 if self.store.get(run_id)["status"] == "cancelling":
@@ -242,7 +293,7 @@ class PiSupervisor:
                 def emit(event, data, **spans):
                     return self.store.append(run_id, event, self._redact(data), **spans)
                 catalog, scope, annotated, bindings = await self._prepare(run_id, request, owner, ledger, emit)
-                transport = ModelTransport(self.registry, self.settings, ledger, emit)
+                transport = ModelTransport(self.registry, self.settings, ledger, emit, provider_capacity=self.provider_capacity)
                 gateway = KnowledgeGateway(catalog, scope, self.vectors, transport, self.search_gate,
                     annotate_text_origins=self.settings.answer_checks_enabled)
                 media = MediaInspector(catalog, self.storage, transport, ledger, self.settings, self.blocking)
@@ -261,15 +312,13 @@ class PiSupervisor:
                           "answer_checks_enabled": self.settings.answer_checks_enabled,
                           "answer_plan_enabled": self.settings.answer_plan_enabled,
                           "tools": definitions(self.settings.answer_checks_enabled, self.settings.answer_plan_enabled, request.language), "prompt": prompt}
+                emit("runtime.configured", runtime_fingerprints(self.settings, self.worker, config["tools"], prompt=prompt, model=model))
                 env = _worker_environment()
-                if self.settings.yield_to_legacy:
-                    from .admission import legacy_activity
-                    await legacy_activity.wait(emit)
                 process = await asyncio.create_subprocess_exec(self.settings.node_binary, str(self.worker),
                     stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                     cwd=ROOT / "agent-runtime", env=env, limit=2 * 1024 * 1024)
                 self.processes[run_id] = process
-                result = await self._pipe(process, config, toolset, ledger, emit)
+                result = await self._pipe(process, config, toolset, ledger, emit, model_slots=model_slots)
                 if self.store.get(run_id)["status"] == "cancelling":
                     raise asyncio.CancelledError
                 # A worker cannot invent an accepted final answer in its settled frame.
@@ -301,13 +350,25 @@ class PiSupervisor:
                 except asyncio.TimeoutError:
                     process.kill()
                     await process.wait()
-            if transport:
-                await transport.close()
-            self.jobs.pop(run_id, None)
-            self.processes.pop(run_id, None)
+            # Keep provider capacity until a cancelled worker's transport has
+            # actually stopped, just as native source reads retain their slot.
+            for gate in model_slots.values():
+                gate.release()
+            model_slots.clear()
+            try:
+                if media:
+                    await media.close()
+            finally:
+                try:
+                    if transport:
+                        await transport.close()
+                finally:
+                    self.jobs.pop(run_id, None)
+                    self.processes.pop(run_id, None)
 
-    async def _pipe(self, process, config, toolset, ledger, emit):
-        write_lock, calls, tool_gate = asyncio.Lock(), set(), asyncio.Semaphore(2)
+    async def _pipe(self, process, config, toolset, ledger, emit, *, model_slots):
+        write_lock, calls = asyncio.Lock(), set()
+        requested_model_turns = set()
         async def send(value):
             async with write_lock:
                 process.stdin.write((json.dumps(value, ensure_ascii=False) + "\n").encode())
@@ -321,19 +382,36 @@ class PiSupervisor:
             method, params = message.get("method"), message.get("params") or {}
             try:
                 if method == "model_request":
-                    if self.settings.yield_to_legacy:
-                        from .admission import legacy_activity
-                        await legacy_activity.wait(emit)
-                    result = ledger.start_model(params["turn"])
+                    turn = params["turn"]
+                    if not isinstance(turn, int) or isinstance(turn, bool) or turn <= 0:
+                        raise ToolError("invalid_protocol", "模型请求标识必须为正整数")
+                    # Reject even a concurrently queued duplicate before taking
+                    # another permit. Keep settled IDs to fence later replays.
+                    if turn in requested_model_turns:
+                        raise ToolError("duplicate_model_request", "重复的模型请求标识")
+                    requested_model_turns.add(turn)
+                    gate = await self.provider_capacity.acquire(config["model"]["provider"], emit,
+                                                                parent_span_id=f"model:{turn}")
+                    try:
+                        result = ledger.start_model(turn)
+                        model_slots[turn] = gate
+                        emit("model.admitted", {"turn": turn, "provider": config["model"]["provider"],
+                             "input_bytes": params.get("input_bytes")}, span_id=f"model:{turn}")
+                    except BaseException:
+                        if model_slots.get(turn) is gate:
+                            model_slots.pop(turn)
+                        gate.release()
+                        raise
                 elif method == "model_usage":
                     ledger.settle_model(params["turn"], params.get("usage"))
+                    gate = model_slots.pop(params["turn"], None)
+                    if gate:
+                        gate.release()
                     result = {"ok": True}
                 elif method == "tool":
-                    async with tool_gate:
-                        if self.settings.yield_to_legacy:
-                            from .admission import legacy_activity
-                            await legacy_activity.wait(emit, parent_span_id=f"tool:{params['tool_call_id']}")
-                        result = await toolset.execute(params["tool_call_id"], params["name"], params["args"])
+                    # Heavy operations own their actual resource gates. Do not
+                    # occupy a generic slot while waiting on an unrelated one.
+                    result = await toolset.execute(params["tool_call_id"], params["name"], params["args"])
                 else:
                     raise ToolError("invalid_protocol", "未知的 Pi 宿主请求")
                 await send({"type": "response", "id": message["id"], "result": result})

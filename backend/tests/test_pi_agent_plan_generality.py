@@ -163,7 +163,7 @@ def test_discovered_requirements_can_be_appended_but_prior_contract_cannot_be_do
     original = bind([item()])
     expanded = bind([item(), item(id="conditions", quote="结果", requirement="回答适用条件")], previous=original)
     assert len(expanded["items"]) == 2
-    with pytest.raises(ToolError, match="既有"):
+    with pytest.raises(ToolError, match="revision_reason"):
         bind([item(basis="user_input", input_quotes=["比较"])], previous=original)
 
 
@@ -193,7 +193,9 @@ def test_large_metadata_and_escaping_do_not_limit_final_selection(checked):
     assert len(payload["retained_evidence"]) == len(rows)
     assert payload["answer_plan"]["items"][0]["evidence_ids"] == list(rows)
     for entry in payload["retained_evidence"]:
-        assert entry["file_name_truncated"] and entry["locator_omitted_fields"]
+        assert entry["file_name_truncated"]
+        assert entry["locator"] == rows[entry["id"]].locator
+        assert "locator_omitted_fields" not in entry
         if checked:
             for unit in entry["content_units"]:
                 assert unit["text"] == rows[entry["id"]].content[unit["start"]:unit["end"]]

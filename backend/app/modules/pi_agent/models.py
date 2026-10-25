@@ -6,10 +6,12 @@ from app.core.prompt_language import localized
 
 import json
 import time
+from copy import deepcopy
 
 import httpx
 
 from .policy import UsageLedger, ToolError
+from .admission import ProviderCapacity
 
 
 def model_endpoint(registry, name: str, capability: str):
@@ -24,20 +26,34 @@ def model_endpoint(registry, name: str, capability: str):
 
 
 class ModelTransport:
-    def __init__(self, registry, settings, ledger: UsageLedger, emit, *, client=None):
+    def __init__(self, registry, settings, ledger: UsageLedger, emit, *, client=None, provider_capacity=None):
         self.registry, self.settings, self.ledger, self.emit = registry, settings, ledger, emit
+        provider_limit = getattr(settings, "max_concurrent_provider_requests", 2)
         self.client = client or httpx.AsyncClient(timeout=httpx.Timeout(connect=8, read=120, write=30, pool=8),
-                                                 limits=httpx.Limits(max_connections=2, max_keepalive_connections=2))
+            # Actual concurrent requests are bounded by shared provider gates;
+            # a global HTTP pool cap would make unrelated providers block each other.
+            limits=httpx.Limits(max_connections=None, max_keepalive_connections=2 * provider_limit))
         self._call_id = 0
         self._embeddings = {}
+        self._routes = {}
+        self.provider_capacity = provider_capacity or ProviderCapacity(provider_limit)
 
-    def _begin(self, config, kind, input_units, output, parent):
+    def _endpoint(self, name, capability):
+        # A run's cached observations must keep the effective model/endpoint
+        # identity that produced them even if the shared catalog is refreshed.
+        # New runs resolve fresh routes. Credentials remain private in memory.
+        identity = (name, capability)
+        if identity not in self._routes:
+            self._routes[identity] = deepcopy(model_endpoint(self.registry, name, capability))
+        return self._routes[identity]
+
+    def _begin(self, config, kind, input_bytes, parent):
         self._call_id -= 1  # Disjoint from positive Pi reasoning turn IDs.
         call_id = self._call_id
         self.ledger.start_model(call_id)
         span = f"model:{call_id}"
         self.emit("model.started", {"turn": call_id, "model": config["model"], "provider": config["provider"],
-                  "purpose": kind}, span_id=span, parent_span_id=parent)
+                  "purpose": kind, "input_bytes": input_bytes}, span_id=span, parent_span_id=parent)
         return call_id, span, time.monotonic()
 
     def _finish(self, config, kind, started, usage, call_id, span, parent, status):
@@ -50,16 +66,22 @@ class ModelTransport:
         if query in self._embeddings:
             self.emit("model.cache_hit", {"purpose": "embedding"}, parent_span_id=parent)
             return self._embeddings[query]
-        if self.settings.yield_to_legacy:
-            from .admission import legacy_activity
-            await legacy_activity.wait(self.emit, parent_span_id=parent)
-        config = model_endpoint(self.registry, self.settings.embedding_model, "embedding")
-        call_id, span, started = self._begin(config, "embedding", len(query.encode()), 0, parent)
+        config = self._endpoint(self.settings.embedding_model, "embedding")
+        gate = await self.provider_capacity.acquire(config["provider"], self.emit, parent_span_id=parent)
+        body = {"model": config["model"], "input": [query]}
+        try:
+            call_id, span, started = self._begin(config, "embedding", len(json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()), parent)
+        except BaseException:
+            gate.release()
+            raise
         usage, status = None, "error"
         try:
             response = await self.client.post(config["base_url"] + "/embeddings",
                 headers={"Authorization": f"Bearer {config['key']}"},
-                json={"model": config["model"], "input": [query]})
+                json=body)
+            self.emit("model.response", {"turn": call_id, "purpose": "embedding",
+                      "status_code": response.status_code, "elapsed_ms": round((time.monotonic() - started) * 1000)},
+                      span_id=span, parent_span_id=parent)
             response.raise_for_status()
             value = response.json()
             usage = value.get("usage")
@@ -72,15 +94,12 @@ class ModelTransport:
         except (httpx.HTTPError, ValueError, KeyError, IndexError):
             raise ToolError("embedding_unavailable", translate_prompt("查询向量服务未能完成，本次搜索可继续使用词面匹配"), retryable=True) from None
         finally:
+            gate.release()
             self._finish(config, "embedding", started, usage, call_id, span, parent, status)
 
     async def observe(self, parts: list[dict], *, kind: str, input_units: int, parent: str):
-        if self.settings.yield_to_legacy:
-            from .admission import legacy_activity
-            await legacy_activity.wait(self.emit, parent_span_id=parent)
         name = self.settings.audio_model if kind == "audio" else self.settings.vision_model
-        config = model_endpoint(self.registry, name, "audio" if kind == "audio" else "vision")
-        call_id, span, started = self._begin(config, kind, input_units, 0, parent)
+        config = self._endpoint(name, "audio" if kind == "audio" else "vision")
         usage, status, answer = None, "error", ""
         body = {"model": config["model"], "messages": [{"role": "user", "content": parts}],
                 "stream": True, "stream_options": {"include_usage": True},
@@ -89,9 +108,19 @@ class ModelTransport:
             body["enable_thinking"] = False
             if kind == "audio":
                 body["modalities"] = ["text"]
+        gate = await self.provider_capacity.acquire(config["provider"], self.emit, parent_span_id=parent)
+        try:
+            call_id, span, started = self._begin(config, kind, len(json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()), parent)
+        except BaseException:
+            gate.release()
+            raise
+        first_content = False
         try:
             async with self.client.stream("POST", config["base_url"] + "/chat/completions",
                     headers={"Authorization": f"Bearer {config['key']}"}, json=body) as response:
+                self.emit("model.response", {"turn": call_id, "purpose": kind,
+                          "status_code": response.status_code, "elapsed_ms": round((time.monotonic() - started) * 1000)},
+                          span_id=span, parent_span_id=parent)
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     if not line.startswith("data:") or line[5:].strip() == "[DONE]":
@@ -101,7 +130,13 @@ class ModelTransport:
                         raise ValueError("stream_error")
                     usage = value.get("usage") or usage
                     for choice in value.get("choices") or []:
-                        answer += choice.get("delta", {}).get("content") or ""
+                        delta = choice.get("delta", {}).get("content") or ""
+                        if delta and not first_content:
+                            first_content = True
+                            self.emit("model.first_content", {"turn": call_id, "purpose": kind,
+                                      "elapsed_ms": round((time.monotonic() - started) * 1000)},
+                                      span_id=span, parent_span_id=parent)
+                        answer += delta
                         status = choice.get("finish_reason") or status
             if not answer.strip() or status not in {"stop", "end_turn"}:
                 raise ValueError("incomplete_observation")
@@ -109,6 +144,7 @@ class ModelTransport:
         except (httpx.HTTPError, ValueError, KeyError, TypeError):
             raise ToolError("media_model_unavailable", translate_prompt("媒体模型未返回完整观察结果，请缩小片段或稍后重试"), retryable=True) from None
         finally:
+            gate.release()
             self._finish(config, kind, started, usage, call_id, span, parent, status)
 
     async def close(self):

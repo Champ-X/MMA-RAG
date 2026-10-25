@@ -35,6 +35,10 @@ class PiSettings(BaseSettings):
     # Scheduling capacity, not run limits: excess work waits and remains cancellable.
     max_concurrent_runs: int = Field(default=2, ge=1)
     max_concurrent_searches: int = Field(default=1, ge=1)
+    max_concurrent_media: int = Field(default=2, ge=1)
+    max_concurrent_provider_requests: int = Field(default=2, ge=1)
+    # Ordinary retrieval gets an admission head start, not an unbounded veto.
+    legacy_priority_grace_seconds: float = Field(default=1.0, ge=0, allow_inf_nan=False)
 
     @field_validator("vision_model", "audio_model", mode="before")
     @classmethod

@@ -266,13 +266,19 @@ test('exhausted physical context is rejected before admission or provider billin
 
 test('text without a submitted answer cannot request endless continuation', async () => {
   let requests = 0;
+  const choices = [];
   const runtime = createRuntime(config, {
     emit: () => {},
-    providerStream: () => { requests++; return response([{ type: 'text', text: 'working' }], 'stop'); },
+    providerStream: (_model, _context, options) => {
+      requests++;
+      choices.push(options.toolChoice);
+      return response([{ type: 'text', text: 'working' }], 'stop');
+    },
     callHost: async () => ({ allowed: true }),
   });
   assert.equal((await runtime.run()).code, 'answer_not_submitted');
   assert.equal(requests, 3);
+  assert.deepEqual(choices, [undefined, 'required', 'required']);
 });
 
 test('successful but identical tool results cannot drive an endless paid loop', async () => {
