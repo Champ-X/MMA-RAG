@@ -1,8 +1,11 @@
 import { translate as tr, useTranslation } from '@/i18n'
 import React, { Suspense } from 'react'
-import { ChevronDown, Music, Pause, Play, Video } from 'lucide-react'
+import { Play } from 'lucide-react'
 import { InlineCitation } from './InlineCitation'
 import { ReferenceImage } from './ReferenceImage'
+import { VideoPlayerWithSeek } from './VideoPlayerWithSeek'
+import { VideoEvidenceCarousel } from './VideoEvidenceCarousel'
+import { formatMediaTime, InlineAudioPlayer, MediaEvidenceDescription, MediaEvidenceHeader } from './MediaEvidenceCard'
 import type { Components, ExtraProps } from 'react-markdown'
 import { cn } from '@/lib/utils'
 import { findAllCitationMatches, getOrderedRefIdsFromContent, type CitationMatch } from '@/lib/citations'
@@ -400,187 +403,6 @@ function ParagraphImageDisplay({
   )
 }
 
-/** 媒体摘要：以轻量模态底色承接播放器，保持为回答中的次级信息。 */
-function MediaEvidenceDescription({
-  content,
-  accent,
-}: {
-  content: string
-  accent: 'audio' | 'video'
-}) {
-  useTranslation()
-  const [expanded, setExpanded] = React.useState(false)
-  const [canExpand, setCanExpand] = React.useState(false)
-  const textRef = React.useRef<HTMLSpanElement>(null)
-
-  React.useLayoutEffect(() => {
-    const text = textRef.current
-    if (!text || expanded) return
-
-    const measureOverflow = () => {
-      setCanExpand(text.scrollHeight > text.clientHeight + 1)
-    }
-
-    measureOverflow()
-    const observer = new ResizeObserver(measureOverflow)
-    observer.observe(text)
-    return () => observer.disconnect()
-  }, [content, expanded])
-
-  return (
-    <figcaption
-      className={cn(
-        'px-3 py-2.5',
-        accent === 'audio'
-          ? 'bg-[#F7F5FF] dark:bg-[#211B38]'
-          : 'bg-[#F1FCFE] dark:bg-[#102C36]'
-      )}
-    >
-      <p className="relative mb-0 text-[13px] leading-[1.55] text-slate-600 antialiased dark:text-slate-300">
-        <span
-          ref={textRef}
-          className={cn(
-            '[overflow-wrap:anywhere]',
-            expanded ? 'inline' : 'block line-clamp-2',
-            !expanded && canExpand && 'pr-[4.5rem]',
-          )}
-        >
-          {content}
-        </span>
-        {canExpand && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              setExpanded((value) => !value)
-            }}
-            aria-expanded={expanded}
-            className={cn(
-              'inline-flex items-center gap-0.5 rounded-[6px] px-1 text-xs font-semibold leading-[1.55] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-900',
-              !expanded && 'absolute bottom-0 right-0 pl-5',
-              expanded && 'ml-1 align-baseline',
-              accent === 'audio'
-                ? cn(
-                    'text-violet-700 hover:text-violet-800 focus-visible:ring-violet-500 dark:text-violet-300 dark:hover:text-violet-200',
-                    !expanded && 'bg-[linear-gradient(90deg,transparent_0%,rgba(247,245,255,0.96)_28%,#F7F5FF_48%)] dark:bg-[linear-gradient(90deg,transparent_0%,rgba(33,27,56,0.96)_28%,#211B38_48%)]'
-                  )
-                : cn(
-                    'text-cyan-700 hover:text-cyan-800 focus-visible:ring-cyan-500 dark:text-cyan-300 dark:hover:text-cyan-200',
-                    !expanded && 'bg-[linear-gradient(90deg,transparent_0%,rgba(241,252,254,0.96)_28%,#F1FCFE_48%)] dark:bg-[linear-gradient(90deg,transparent_0%,rgba(16,44,54,0.96)_28%,#102C36_48%)]'
-                  ),
-            )}
-          >
-            {expanded ? tr("收起") : tr("展开")}
-            <ChevronDown
-              className={cn('size-3.5 transition-transform', expanded && 'rotate-180')}
-              strokeWidth={2}
-              aria-hidden
-            />
-          </button>
-        )}
-      </p>
-    </figcaption>
-  )
-}
-
-/** 比浏览器原生控件更紧凑的音频播放条，与回答正文的排版尺度保持一致。 */
-function InlineAudioPlayer({
-  src,
-  label,
-  onError,
-}: {
-  src: string
-  label: string
-  onError?: (event: React.SyntheticEvent<HTMLAudioElement, Event>) => void
-}) {
-  useTranslation()
-  const audioRef = React.useRef<HTMLAudioElement>(null)
-  const [isPlaying, setIsPlaying] = React.useState(false)
-  const [currentTime, setCurrentTime] = React.useState(0)
-  const [duration, setDuration] = React.useState(0)
-
-  React.useEffect(() => {
-    setIsPlaying(false)
-    setCurrentTime(0)
-    setDuration(0)
-  }, [src])
-
-  const togglePlayback = async () => {
-    const audio = audioRef.current
-    if (!audio) return
-    if (audio.paused) {
-      try {
-        await audio.play()
-      } catch {
-        setIsPlaying(false)
-      }
-    } else {
-      audio.pause()
-    }
-  }
-
-  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0
-  const progress = safeDuration > 0 ? Math.min(100, (currentTime / safeDuration) * 100) : 0
-  const rangeStyle = { '--media-progress': `${progress}%` } as React.CSSProperties
-
-  return (
-    <div
-      className="flex min-h-14 items-center gap-3 border-x-0 border-y border-[#E9E3FF] bg-[#FCFBFF] px-3 py-2.5 dark:border-[#393057] dark:bg-[#191827]"
-      onClick={(event) => event.stopPropagation()}
-    >
-      <audio
-        ref={audioRef}
-        src={src}
-        preload="metadata"
-        aria-label={label}
-        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
-        onDurationChange={(event) => setDuration(event.currentTarget.duration)}
-        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
-        onEnded={() => setIsPlaying(false)}
-        onError={onError}
-      />
-      <button
-        type="button"
-        onClick={() => void togglePlayback()}
-        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white shadow-sm shadow-violet-900/15 transition-[background-color,transform] hover:bg-violet-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 dark:bg-violet-500 dark:hover:bg-violet-400 dark:focus-visible:ring-offset-slate-800"
-        aria-label={isPlaying ? tr("暂停{{v0}}", { v0: label }) : tr("播放{{v0}}", { v0: label })}
-      >
-        {isPlaying ? (
-          <Pause className="size-3.5" fill="currentColor" strokeWidth={2.25} aria-hidden />
-        ) : (
-          <Play className="ml-0.5 size-3.5" fill="currentColor" strokeWidth={2.25} aria-hidden />
-        )}
-      </button>
-      <span className="media-audio-current w-9 shrink-0 font-mono text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
-        {formatTimeLabel(currentTime)}
-      </span>
-      <input
-        type="range"
-        min={0}
-        max={safeDuration || 0}
-        step={0.1}
-        value={safeDuration ? Math.min(currentTime, safeDuration) : 0}
-        disabled={!safeDuration}
-        onChange={(event) => {
-          const nextTime = Number(event.currentTarget.value)
-          if (!audioRef.current || !Number.isFinite(nextTime)) return
-          audioRef.current.currentTime = nextTime
-          setCurrentTime(nextTime)
-        }}
-        aria-label={tr("{{v0}}播放进度", { v0: label })}
-        aria-valuetext={`${formatTimeLabel(currentTime)} / ${formatTimeLabel(safeDuration)}`}
-        className="media-audio-range min-w-0 flex-1 disabled:cursor-wait disabled:opacity-50"
-        style={rangeStyle}
-      />
-      <span className="w-9 shrink-0 text-right font-mono text-[11px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
-        {safeDuration ? formatTimeLabel(safeDuration) : '--:--'}
-      </span>
-    </div>
-  )
-}
-
 // 段落下方展示的音频引用卡片（图标 + 标签 + 可点击播放，不打开弹层）
 function ParagraphAudioDisplay({
   citations,
@@ -603,7 +425,7 @@ function ParagraphAudioDisplay({
   if (uniqueCitations.length === 0) return null
 
   return (
-    <div className="mx-auto mt-3 w-full min-w-0 max-w-[42rem] space-y-3">
+    <div className="mx-auto mt-2 w-full min-w-0 max-w-[34rem] space-y-2">
       {uniqueCitations.map((citation) => {
         const displayNum = displayIndexByRefId?.get(citation.id) ?? citation.id
         if (citation.source === 'attachment') return <AttachmentEvidence key={getCitationIdentityKey(citation)} reference={citation}
@@ -651,34 +473,12 @@ function ParagraphAudioDisplay({
           <figure
             key={citation.id}
             data-audio-key={key}
-            className="paragraph-audio-card relative min-w-0 overflow-hidden rounded-[16px] border border-[#E9E3FF] bg-[#F7F5FF] shadow-[0_12px_30px_-26px_rgba(76,29,149,0.32)] transition-[border-color,box-shadow] hover:border-[#DCD2FF] hover:shadow-[0_16px_34px_-26px_rgba(76,29,149,0.38)] dark:border-[#393057] dark:bg-[#211B38] dark:shadow-[0_14px_32px_-26px_rgba(0,0,0,0.8)] dark:hover:border-[#4A3C72]"
+            className="media-evidence-card paragraph-audio-card"
           >
-            <div>
-              <button
-                type="button"
-                onClick={handleOpenPopover}
-                aria-label={tr("打开音频引用 {{v0}}{{v1}}", { v0: displayNum, v1: citation.file_name ? `：${citation.file_name}` : '' })}
-                className="group flex w-full min-w-0 items-center gap-2.5 bg-[#F7F5FF] px-3 py-2.5 text-left transition-colors hover:bg-[#F2EFFF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 dark:bg-[#211B38] dark:hover:bg-[#282046]"
-              >
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-white/80 text-violet-700 ring-1 ring-violet-200/80 transition-colors group-hover:bg-white dark:bg-violet-950/60 dark:text-violet-300 dark:ring-violet-800/70 dark:group-hover:bg-violet-900/70">
-                  <Music className="size-3.5" strokeWidth={2.1} aria-hidden />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex min-w-0 items-center gap-2 text-[13px] leading-5">
-                    {citation.file_name ? (
-                      <span
-                        className="min-w-0 truncate text-xs text-slate-500 transition-colors group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-300"
-                        title={citation.file_name}
-                      >
-                        {shortenFileName(citation.file_name)}
-                      </span>
-                    ) : null}
-                  </span>
-                </span>
-              </button>
-
               {hasAudioUrl ? (
                 <InlineAudioPlayer
+                  header={<MediaEvidenceHeader kind="audio" fileName={citation.file_name} displayNumber={displayNum}
+                    onOpen={handleOpenPopover} />}
                   src={resolvedUrl!}
                   label={tr("音频引用 {{v0}}{{v1}}", { v0: displayNum, v1: citation.file_name ? `：${citation.file_name}` : '' })}
                   onError={async () => {
@@ -697,12 +497,15 @@ function ParagraphAudioDisplay({
                   }}
                 />
               ) : (
+                <>
+                <MediaEvidenceHeader kind="audio" fileName={citation.file_name} displayNumber={displayNum}
+                  onOpen={handleOpenPopover} />
                 <button
                   type="button"
                   onClick={handleClickPlay}
                   disabled={loadingRefId === citation.id}
                   aria-label={tr("{{v0}}音频播放器 {{v1}}", { v0: loadingRefId === citation.id ? tr("正在加载") : tr("加载"), v1: displayNum })}
-                  className="flex min-h-14 w-full items-center justify-center gap-2 border-x-0 border-y border-[#E9E3FF] bg-[#FCFBFF] px-3 py-2.5 text-[13px] font-semibold text-violet-700 transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 dark:border-[#393057] dark:bg-[#191827] dark:text-violet-300 dark:hover:bg-[#1E1D31]"
+                  className="media-card-load"
                 >
                   {loadingRefId === citation.id ? (
                     <span>{tr("加载中…")}</span>
@@ -713,102 +516,17 @@ function ParagraphAudioDisplay({
                     </>
                   )}
                 </button>
+                </>
               )}
 
               {citation.content ? (
                 <MediaEvidenceDescription content={citation.content} accent="audio" />
               ) : null}
-            </div>
           </figure>
         )
       })}
     </div>
   )
-}
-
-// 带时间点跳转的视频播放器：加载后跳到 start_sec，可选在 end_sec 暂停
-function VideoPlayerWithSeek({
-  src,
-  startSec,
-  endSec,
-  className,
-  onClick,
-  onError,
-}: {
-  src: string
-  startSec?: number | null
-  endSec?: number | null
-  className?: string
-  onClick?: (e: React.MouseEvent<HTMLVideoElement>) => void
-  onError?: (e: React.SyntheticEvent<HTMLVideoElement, Event>) => void
-}) {
-  useTranslation()
-  const videoRef = React.useRef<HTMLVideoElement>(null)
-  const hasSeeked = React.useRef(false)
-  React.useEffect(() => {
-    hasSeeked.current = false
-    videoRef.current?.load()
-  }, [src, startSec])
-  React.useEffect(() => {
-    const el = videoRef.current
-    if (!el || startSec == null || !Number.isFinite(startSec)) return
-    const onCanPlay = () => {
-      if (hasSeeked.current) return
-      el.currentTime = startSec
-      hasSeeked.current = true
-    }
-    el.addEventListener('canplay', onCanPlay)
-    if (el.readyState >= 2) {
-      el.currentTime = startSec
-      hasSeeked.current = true
-    }
-    return () => {
-      el.removeEventListener('canplay', onCanPlay)
-    }
-  }, [src, startSec])
-  React.useEffect(() => {
-    if (endSec == null || !Number.isFinite(endSec)) return
-    const el = videoRef.current
-    if (!el) return
-    const onTimeUpdate = () => {
-      if (el.currentTime >= endSec) el.pause()
-    }
-    el.addEventListener('timeupdate', onTimeUpdate)
-    return () => el.removeEventListener('timeupdate', onTimeUpdate)
-  }, [endSec])
-  return (
-    <video
-      ref={videoRef}
-      src={src}
-      controls
-      aria-label={tr("视频引用播放器")}
-      preload="metadata"
-      className={className}
-      onClick={onClick}
-      onError={onError}
-    />
-  )
-}
-
-// 将秒数格式化为 MM:SS 或 HH:MM:SS
-function formatTimeLabel(sec: number): string {
-  if (!Number.isFinite(sec) || sec < 0) return '0:00'
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = Math.floor(sec % 60)
-  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
-
-// 短文件名展示：优先取最后一段 _ 后的名称（如 UUID_Peaky.mp4 → Peaky.mp4），否则截断
-function shortenFileName(fileName: string, maxLen = 24): string {
-  if (!fileName || fileName.length <= maxLen) return fileName
-  const lastPart = fileName.includes('_') ? fileName.split('_').pop() ?? fileName : fileName
-  if (lastPart.length <= maxLen) return lastPart
-  const ext = lastPart.includes('.') ? lastPart.slice(lastPart.lastIndexOf('.')) : ''
-  const base = lastPart.slice(0, lastPart.length - ext.length)
-  if (base.length + ext.length <= maxLen) return lastPart
-  return base.slice(0, Math.max(0, maxLen - ext.length - 1)) + '…' + ext
 }
 
 // 段落下方展示的视频引用卡片（图标 + 标签 + 可点击播放，不打开弹层）
@@ -861,154 +579,129 @@ function ParagraphVideoDisplay({
 
   if (uniqueCitations.length === 0) return null
 
-  return (
-    <div className="mx-auto mt-3 w-full min-w-0 max-w-[42rem] space-y-3">
-      {uniqueCitations.map((citation) => {
-        const displayNum = displayIndexByRefId?.get(citation.id) ?? citation.id
-        const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
-        const resolvedUrl = citation.type === 'video' && (fetchedVideoUrls[key] || citation.video_url)
-        const hasVideoUrl = !!resolvedUrl
-        if (citation.source === 'attachment') return <AttachmentEvidence key={getCitationIdentityKey(citation)} reference={citation}
-          displayNumber={displayNum} onOpen={(rect, target) => onCiteClick?.(citation.id, rect, messageId, target)} />
-        const startSec = citation.start_sec != null ? Number(citation.start_sec) : null
-        const endSec = citation.end_sec != null ? Number(citation.end_sec) : null
-        const segmentLabel =
-          startSec != null && endSec != null
-            ? tr("片段 {{v0}} - {{v1}}", { v0: formatTimeLabel(startSec), v1: formatTimeLabel(endSec) })
-            : startSec != null
-              ? tr("从 {{v0}} 开始", { v0: formatTimeLabel(startSec) })
-              : endSec != null
-                ? tr("至 {{v0}} 结束", { v0: formatTimeLabel(endSec) })
-                : null
-        const content = citation.content?.trim() ?? ''
+  const renderCitation = (citation: CitationReference) => {
+    const displayNum = displayIndexByRefId?.get(citation.id) ?? citation.id
+    const key = messageId ? `${messageId}-${citation.id}` : String(citation.id)
+    const resolvedUrl = citation.type === 'video' && (fetchedVideoUrls[key] || citation.video_url)
+    const hasVideoUrl = !!resolvedUrl
+    if (citation.source === 'attachment') return <AttachmentEvidence key={getCitationIdentityKey(citation)} reference={citation}
+      displayNumber={displayNum} onOpen={(rect, target) => onCiteClick?.(citation.id, rect, messageId, target)} />
+    const startSec = citation.start_sec != null ? Number(citation.start_sec) : null
+    const endSec = citation.end_sec != null ? Number(citation.end_sec) : null
+    const segmentLabel =
+      startSec != null && endSec != null
+        ? tr("片段 {{v0}} - {{v1}}", { v0: formatMediaTime(startSec), v1: formatMediaTime(endSec) })
+        : startSec != null
+          ? tr("从 {{v0}} 开始", { v0: formatMediaTime(startSec) })
+          : endSec != null
+            ? tr("至 {{v0}} 结束", { v0: formatMediaTime(endSec) })
+            : null
+    const content = citation.content?.trim() ?? ''
 
-        const handleOpenPopover = (e: React.MouseEvent) => {
-          if (onCiteClick) {
-            const rect = e.currentTarget.closest('.paragraph-video-card')?.getBoundingClientRect() ?? (e.currentTarget as HTMLElement).getBoundingClientRect()
-            onCiteClick(citation.id, rect, messageId, e.currentTarget as HTMLElement)
-          }
+    const handleOpenPopover = (e: React.MouseEvent) => {
+      if (onCiteClick) {
+        const rect = e.currentTarget.closest('.paragraph-video-card')?.getBoundingClientRect() ?? (e.currentTarget as HTMLElement).getBoundingClientRect()
+        onCiteClick(citation.id, rect, messageId, e.currentTarget as HTMLElement)
+      }
+    }
+
+    const handleClickPlay = async (event: React.MouseEvent<HTMLButtonElement>) => {
+      const triggerElement = event.currentTarget
+      if (hasVideoUrl) return
+      const filePath = citation.file_path || citation.file_name
+      const kbId = citation.debug_info?.kb_id || fallbackKbId
+      if (!filePath || !kbId) {
+        if (onCiteClick) onCiteClick(citation.id, new DOMRect(0, 0, 0, 0), messageId, triggerElement)
+        return
+      }
+      setLoadingRefId(citation.id)
+      try {
+        const videoUrl = await getFreshReferenceVideoUrl({
+          kbId,
+          filePath,
+          currentUrl: citation.video_url,
+        })
+        setFetchedVideoUrls((prev) => ({ ...prev, [key]: videoUrl }))
+      } catch {
+        if (onCiteClick) {
+          const el = document.querySelector(`.paragraph-video-card[data-video-key="${key}"]`) as HTMLElement
+          const rect = el?.getBoundingClientRect?.() ?? new DOMRect(0, 0, 0, 0)
+          onCiteClick(citation.id, rect, messageId, triggerElement)
         }
+      } finally {
+        setLoadingRefId(null)
+      }
+    }
 
-        const handleClickPlay = async (event: React.MouseEvent<HTMLButtonElement>) => {
-          const triggerElement = event.currentTarget
-          if (hasVideoUrl) return
-          const filePath = citation.file_path || citation.file_name
-          const kbId = citation.debug_info?.kb_id || fallbackKbId
-          if (!filePath || !kbId) {
-            if (onCiteClick) onCiteClick(citation.id, new DOMRect(0, 0, 0, 0), messageId, triggerElement)
-            return
-          }
-          setLoadingRefId(citation.id)
-          try {
-            const videoUrl = await getFreshReferenceVideoUrl({
-              kbId,
-              filePath,
-              currentUrl: citation.video_url,
-            })
-            setFetchedVideoUrls((prev) => ({ ...prev, [key]: videoUrl }))
-          } catch {
-            if (onCiteClick) {
-              const el = document.querySelector(`.paragraph-video-card[data-video-key="${key}"]`) as HTMLElement
-              const rect = el?.getBoundingClientRect?.() ?? new DOMRect(0, 0, 0, 0)
-              onCiteClick(citation.id, rect, messageId, triggerElement)
-            }
-          } finally {
-            setLoadingRefId(null)
-          }
-        }
-
-        return (
-          <figure
-            key={citation.id}
-            data-video-key={key}
-            className="paragraph-video-card relative min-w-0 overflow-hidden rounded-[16px] border border-[#D6F3F8] bg-[#F1FCFE] shadow-[0_12px_30px_-26px_rgba(8,145,178,0.32)] transition-[border-color,box-shadow] hover:border-[#BEEAF1] hover:shadow-[0_16px_34px_-26px_rgba(8,145,178,0.38)] dark:border-[#1B4855] dark:bg-[#102C36] dark:shadow-[0_14px_32px_-26px_rgba(0,0,0,0.8)] dark:hover:border-[#246071]"
-          >
-            <div>
-              <button
-                type="button"
-                onClick={handleOpenPopover}
-                aria-label={tr("打开视频引用 {{v0}}{{v1}}", { v0: displayNum, v1: citation.file_name ? `：${citation.file_name}` : '' })}
-                className="group flex w-full min-w-0 items-center gap-2.5 bg-[#F1FCFE] px-3 py-2.5 text-left transition-colors hover:bg-[#EAF9FC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-500 dark:bg-[#102C36] dark:hover:bg-[#143844]"
-              >
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-white/80 text-cyan-700 ring-1 ring-cyan-200/80 transition-colors group-hover:bg-white dark:bg-cyan-950/60 dark:text-cyan-300 dark:ring-cyan-800/70 dark:group-hover:bg-cyan-900/70">
-                  <Video className="size-3.5" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" aria-hidden />
-                </span>
-                <span className="flex min-w-0 flex-1 items-center gap-2 text-[13px] leading-5">
-                  {citation.file_name ? (
-                    <span
-                      className="min-w-0 truncate text-xs font-normal text-slate-500 transition-colors group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-300"
-                      title={citation.file_name}
-                    >
-                      {shortenFileName(citation.file_name, 34)}
-                    </span>
-                  ) : null}
-                  {segmentLabel ? (
-                    <span className="ml-auto hidden shrink-0 rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-slate-500 ring-1 ring-inset ring-slate-200/80 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700 sm:inline-flex">
-                      {segmentLabel}
-                    </span>
-                  ) : null}
-                </span>
-              </button>
-              {hasVideoUrl ? (
-                <div className="overflow-hidden border-x-0 border-y border-[#D6F3F8] bg-slate-950 dark:border-[#1B4855]">
-                  {segmentLabel && (
-                    <div className="flex items-center border-b border-white/10 bg-slate-900 px-3 py-1.5 sm:hidden">
-                      <span className="font-mono text-[10px] font-semibold tabular-nums text-slate-300">
-                        {segmentLabel}
-                      </span>
-                    </div>
-                  )}
-                  <VideoPlayerWithSeek
-                    src={resolvedUrl!}
-                    startSec={startSec}
-                    endSec={endSec}
-                    className="aspect-video h-auto w-full bg-black object-contain"
-                    onClick={(e) => e.stopPropagation()}
-                    onError={async () => {
-                      const filePath = citation.file_path || citation.file_name
-                      const kbId = citation.debug_info?.kb_id || fallbackKbId
-                      if (!filePath || !kbId) return
-                      try {
-                        const videoUrl = await getFreshReferenceVideoUrl({
-                          kbId,
-                          filePath,
-                          currentUrl: resolvedUrl,
-                          force: true,
-                        })
-                        setFetchedVideoUrls((prev) => ({ ...prev, [key]: videoUrl }))
-                      } catch {
-                        // 刷新失败，用户可点击弹层查看
-                      }
-                    }}
-                  />
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleClickPlay}
-                  disabled={loadingRefId === citation.id}
-                  aria-label={tr("{{v0}}视频播放器 {{v1}}", { v0: loadingRefId === citation.id ? tr("正在加载") : tr("加载"), v1: displayNum })}
-                  className="flex aspect-[16/5] min-h-20 w-full items-center justify-center gap-2.5 border-x-0 border-y border-[#D6F3F8] bg-[#F8FDFF] px-4 py-3 text-[13px] font-semibold text-cyan-700 transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-500 dark:border-[#1B4855] dark:bg-[#122630] dark:text-cyan-300 dark:hover:bg-[#152F3A]"
-                >
-                  {loadingRefId === citation.id ? (
-                    <span>{tr("加载中…")}</span>
-                  ) : (
-                    <>
-                      <Play className="h-4 w-4 flex-shrink-0" fill="currentColor" aria-hidden />
-                      <span>{tr("加载视频播放器")}</span>
-                    </>
-                  )}
-                </button>
-              )}
-              {content ? <MediaEvidenceDescription content={content} accent="video" /> : null}
-              {/* 关键帧仅用于后端的视觉检索与生成证据；回答区只保留视频片段本身，
-                  避免一个 Shot 的多张帧图把正文撑满。 */}
+    return (
+      <figure
+        key={citation.id}
+        data-video-key={key}
+        className="media-evidence-card paragraph-video-card"
+      >
+          {hasVideoUrl ? (
+            <div className="media-card-video">
+              <span className="media-card-video-reference" aria-hidden="true">[{displayNum}]</span>
+              {segmentLabel && <span className="media-card-video-segment">{segmentLabel}</span>}
+              <VideoPlayerWithSeek
+                src={resolvedUrl!}
+                startSec={startSec}
+                endSec={endSec}
+                className="media-card-video-player"
+                onClick={(e) => e.stopPropagation()}
+                onError={async () => {
+                  const filePath = citation.file_path || citation.file_name
+                  const kbId = citation.debug_info?.kb_id || fallbackKbId
+                  if (!filePath || !kbId) return
+                  try {
+                    const videoUrl = await getFreshReferenceVideoUrl({
+                      kbId,
+                      filePath,
+                      currentUrl: resolvedUrl,
+                      force: true,
+                    })
+                    setFetchedVideoUrls((prev) => ({ ...prev, [key]: videoUrl }))
+                  } catch {
+                    // 刷新失败，用户可点击弹层查看
+                  }
+                }}
+              />
             </div>
-          </figure>
-        )
-      })}
-    </div>
-  )
+          ) : (
+            <button
+              type="button"
+              onClick={handleClickPlay}
+              disabled={loadingRefId === citation.id}
+              aria-label={tr("{{v0}}视频播放器 {{v1}}", { v0: loadingRefId === citation.id ? tr("正在加载") : tr("加载"), v1: displayNum })}
+              className="media-card-load media-card-load-video"
+            >
+              {loadingRefId === citation.id ? (
+                <span>{tr("加载中…")}</span>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 flex-shrink-0" fill="currentColor" aria-hidden />
+                  <span>{tr("加载视频播放器")}</span>
+                </>
+              )}
+            </button>
+          )}
+          <MediaEvidenceHeader kind="video" fileName={citation.file_name} displayNumber={displayNum}
+            onOpen={handleOpenPopover} />
+          {content ? <MediaEvidenceDescription content={content} accent="video" /> : null}
+          {/* 关键帧仅用于后端的视觉检索与生成证据；回答区只保留视频片段本身，
+              避免一个 Shot 的多张帧图把正文撑满。 */}
+      </figure>
+    )
+  }
+
+  if (uniqueCitations.length > 2) {
+    return <VideoEvidenceCarousel citations={uniqueCitations} displayIndexByRefId={displayIndexByRefId}
+      getVideoUrl={citation => fetchedVideoUrls[messageId ? `${messageId}-${citation.id}` : String(citation.id)] || citation.video_url || undefined}
+      renderCitation={renderCitation} />
+  }
+  return <div className="mx-auto mt-3 w-full min-w-0 max-w-[42rem] space-y-3">
+    {uniqueCitations.map(renderCitation)}
+  </div>
 }
 
 // 自定义 img 组件，防止显示破损图片图标

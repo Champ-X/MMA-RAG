@@ -65,6 +65,21 @@ test('KB media and video citations in tables keep their players and source ident
   assert.ok(html.indexOf('view.mp4', html.indexOf('</table>')) > 0)
 })
 
+test('video groups become a carousel only above two distinct segments and stay at their first cited block', async () => {
+  const citations = [1, 2, 3].map(id => ({ id, type: 'video' as const, file_name: 'film.mp4',
+    file_path: 'videos/film.mp4', video_url: '/film.mp4', start_sec: id * 10, end_sec: id * 10 + 5, content: `片段 ${id}` }))
+  const pair = await render('依据 [1][2]。', citations)
+  assert.doesNotMatch(pair, /video-evidence-carousel/)
+  assert.equal((pair.match(/aria-label="视频引用播放器"/g) ?? []).length, 2)
+  const duplicate = await render('依据 [1][2][4]。', [...citations, { ...citations[1], id: 4 }])
+  assert.doesNotMatch(duplicate, /video-evidence-carousel/)
+  const group = await render('| 依据 |\n| --- |\n| [1][2][3] |\n\n重复 [1][2][3]。', citations)
+  assert.equal((group.match(/class="video-evidence-carousel /g) ?? []).length, 1)
+  assert.equal((group.match(/aria-label="视频引用播放器"/g) ?? []).length, 1)
+  assert.match(group, /aria-label="第 1 个，共 3 个片段"/)
+  assert.ok(group.indexOf('video-evidence-carousel') > group.indexOf('</table>'))
+})
+
 test('Pi index and direct observations of one image display it once and retain both citations', async () => {
   const original = '/api/pi/runs/run-a/sources/source-a/content'
   const html = await render('## 推荐图片 [26]\n\n画面观察 [26]，索引补充 [7]。', [
