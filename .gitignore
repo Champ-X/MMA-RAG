@@ -102,6 +102,12 @@ celerybeat.pid
 .env
 backend/.env
 !.env.example
+
+# Local design proposals, generated intermediates and visual review captures.
+# Shipping architecture assets live under frontend/public/architecture/atlas/.
+/output/
+/.impeccable/review/
+/.impeccable/review-gallery/
 !backend/.env.example
 .env.local
 .env.*.local

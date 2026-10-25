@@ -16,7 +16,7 @@
 .sv-figure figcaption { padding-top: 13px; font-size: var(--book-support); line-height: 1.8; color: var(--book-muted); }
 .sv-figure code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
 .sv-storage-section { display: grid; grid-template-columns: minmax(0, 1fr) 100px minmax(0, 1fr); align-items: stretch; gap: 12px; }
-.sv-object-side, .sv-index-side { --sv-side-tone: var(--sv-teal); min-width: 0; padding: 24px; border-radius: 16px; background: var(--sv-mint-surface); }
+.sv-object-side, .sv-index-side { --sv-side-tone: var(--sv-teal); min-width: 0; padding: 24px; border-radius: 2px; background: var(--sv-mint-surface); }
 .sv-index-side { --sv-side-tone: var(--sv-purple); background: var(--sv-lilac-surface); }
 .sv-side-title { display: flex; align-items: center; gap: 11px; margin-bottom: 22px; color: var(--sv-teal); }
 .sv-index-side .sv-side-title { color: var(--sv-purple); }
@@ -64,7 +64,7 @@
 .sv-client-wire { display: flex; align-items: center; justify-content: center; position: relative; height: 38px; width: 100%; }
 .sv-client-wire i { position: absolute; inset: 0 50%; border-left: 1px solid var(--book-muted); }.sv-client-wire i::after { content: ''; position: absolute; bottom: 1px; left: -3px; height: 5px; width: 5px; border-bottom: 1px solid var(--book-muted); border-right: 1px solid var(--book-muted); transform: rotate(45deg); }.sv-client-wire span { font-size: var(--book-label); margin-left: 74px; color: var(--book-muted); }
 .sv-service-space { display: grid; grid-template-columns: minmax(0, 1.3fr) 80px minmax(0, 1fr); align-items: center; }
-.sv-python-space { border: 0; border-radius: 16px; background: var(--sv-lilac-surface); min-width: 0; overflow: hidden; }
+.sv-python-space { border: 0; border-radius: 2px; background: var(--sv-lilac-surface); min-width: 0; overflow: hidden; }
 .sv-python-space > header, .sv-node-space > header { display: flex; align-items: center; gap: 7px; padding: 15px 20px; border-bottom: 1px solid color-mix(in srgb, var(--sv-purple) 23%, transparent); color: color-mix(in srgb, var(--sv-purple) 30%, var(--book-ink)); font-size: var(--book-label); line-height: 1.6; }
 .sv-python-space > header > span:last-child { font-size: var(--book-label); color: var(--book-muted); margin-left: auto; }.sv-process-dot { height: 6px; width: 6px; border-radius: 50%; background: var(--sv-purple); flex-shrink: 0; }
 .sv-python-route { display: flex; align-items: flex-start; gap: 12px; padding: 20px; }.sv-python-route + .sv-python-route { border-top: 1px solid color-mix(in srgb, var(--sv-purple) 20%, transparent); }
@@ -73,7 +73,7 @@
 .sv-python-route--pi .sv-route-index { color: var(--sv-teal); background: color-mix(in srgb, var(--sv-teal) 18%, var(--book-paper)); }
 .sv-tool-wire { align-self: end; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 0 4px 17px; text-align: center; color: var(--book-muted); font-size: var(--book-label); line-height: 1.5; }
 .sv-tool-wire > svg { flex-shrink: 0; color: var(--sv-teal); }
-.sv-node-space { border: 0; border-radius: 16px; background: var(--sv-mint-surface); min-width: 0; align-self: stretch; overflow: hidden; }
+.sv-node-space { border: 0; border-radius: 2px; background: var(--sv-mint-surface); min-width: 0; align-self: stretch; overflow: hidden; }
 .sv-node-space .sv-process-dot { background: var(--sv-teal); }.sv-node-space > header { color: color-mix(in srgb, var(--sv-teal) 35%, var(--book-ink)); border-bottom-color: color-mix(in srgb, var(--sv-teal) 23%, transparent); }
 .sv-loop { position: relative; display: flex; gap: 15px; align-items: center; justify-content: center; height: 62px; width: 110px; margin: 14px auto 9px; border: 1px solid color-mix(in srgb, var(--sv-teal) 60%, transparent); border-radius: 50%; }
 .sv-loop span { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--sv-teal); background: var(--book-paper); }.sv-loop span:first-child { background: var(--sv-teal); }.sv-loop i { position: absolute; top: -3px; right: 31px; height: 5px; width: 5px; border-top: 1px solid var(--sv-teal); border-right: 1px solid var(--sv-teal); transform: rotate(25deg); }.sv-loop i:nth-of-type(2) { inset: auto auto -3px 31px; transform: rotate(205deg); }.sv-loop i:nth-of-type(3) { display: none; }

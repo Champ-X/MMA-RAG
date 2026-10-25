@@ -1,0 +1,43 @@
+{
+  "sourceRepository": "https://github.com/google/fonts",
+  "sourceCommit": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+  "license": "SIL Open Font License 1.1; copies in ../fonts/",
+  "sourceFiles": [
+    "frontend/src/pages/ArchitecturePage.tsx",
+    "frontend/src/components/architecture/color-atlas/AtlasNarratives.tsx",
+    "frontend/src/components/architecture/color-atlas/AtlasOverview.tsx",
+    "frontend/src/components/architecture/color-atlas/AtlasParsing.tsx",
+    "frontend/src/components/architecture/color-atlas/AtlasPrimitives.tsx",
+    "frontend/src/components/architecture/color-atlas/AtlasSystems.tsx"
+  ],
+  "fonts": [
+    {
+      "file": "atlas-serif-sc.woff2",
+      "family": "Tessmora Atlas Serif",
+      "weightRange": [
+        400,
+        900
+      ],
+      "requestedCodepoints": 798,
+      "coveredCodepoints": 798,
+      "fallbackCodepoints": [],
+      "bytes": 312444,
+      "sha256": "4167355d132166223364c8e4f80aece3221ccb13f634b41bac871a5e32980060",
+      "sourceSha256": "050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9"
+    },
+    {
+      "file": "atlas-sans-sc.woff2",
+      "family": "Tessmora Atlas Sans",
+      "weightRange": [
+        400,
+        750
+      ],
+      "requestedCodepoints": 798,
+      "coveredCodepoints": 798,
+      "fallbackCodepoints": [],
+      "bytes": 224868,
+      "sha256": "0edc1d27dad200cf078e115bb6f17063e00e93635921b8a7a9c231111bc469fd",
+      "sourceSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da"
+    }
+  ]
+}

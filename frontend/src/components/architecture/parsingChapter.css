@@ -1,7 +1,7 @@
 .ps-chapter { container-type: inline-size; color: var(--book-ink); }
 .ps-introduction { margin-bottom: 28px; }
-.ps-modality-tabs { display: flex; gap: 8px; padding: 6px; background: var(--book-canvas); border-radius: 12px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--book-line) transparent; }
-.ps-modality-tab { display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex-shrink: 0; min-height: 49px; padding: 10px 18px; border: 0; border-radius: 8px; background: transparent; color: var(--book-muted); font-size: var(--book-support); cursor: pointer; transition: color 150ms ease-out, border-color 150ms ease-out; }
+.ps-modality-tabs { display: flex; gap: 8px; padding: 6px; background: var(--book-canvas); border-radius: 2px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--book-line) transparent; }
+.ps-modality-tab { display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex-shrink: 0; min-height: 49px; padding: 10px 18px; border: 0; border-radius: 2px; background: transparent; color: var(--book-muted); font-size: var(--book-support); cursor: pointer; transition: color 150ms ease-out, border-color 150ms ease-out; }
 .ps-modality-tab:hover { color: var(--book-accent); }
 .ps-modality-tab[data-state='active'] { background: var(--book-accent); color: var(--book-paper); font-weight: 600; }
 .ps-modality-short-label { display: none; }
@@ -11,7 +11,7 @@
 .ps-material-panel[data-state='inactive'] { display: none; }
 .ps-material-opening h3 { margin: 0 0 14px; font: 650 var(--book-section-title)/1.5 var(--book-sans); text-wrap: balance; }
 .ps-material-opening > p { margin: 0; max-width: 72ch; color: var(--book-muted); font-size: var(--book-support); line-height: 1.85; text-wrap: pretty; }
-.ps-specimen { border-radius: 16px; margin: 28px 0 34px; padding: 24px 26px 27px; background: color-mix(in srgb, var(--book-tint) 55%, var(--book-paper)); }
+.ps-specimen { border-radius: 2px; margin: 28px 0 34px; padding: 24px 26px 27px; background: color-mix(in srgb, var(--book-tint) 55%, var(--book-paper)); }
 .ps-specimen figcaption { margin-bottom: 23px; color: var(--book-muted); font-size: var(--book-label); line-height: 1.75; }
 .ps-specimen-comparison { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 35px; }
 .ps-specimen-comparison > div { min-width: 0; }
@@ -55,7 +55,7 @@
 .ps-storage-section { padding-top: 24px; margin-top: 29px; border-top: 1px solid var(--book-line); }
 .ps-storage-section h4 { margin: 0 0 9px; color: var(--book-accent); font-size: var(--book-support); line-height: 1.7; font-weight: 600; }
 .ps-storage-section p { margin: 0; color: var(--book-muted); font-size: var(--book-support); line-height: 1.85; text-wrap: pretty; }
-.ps-design-note { border-radius: 12px; margin-top: 26px; padding: 21px 24px; background: var(--book-tint); }
+.ps-design-note { border-radius: 2px; margin-top: 26px; padding: 21px 24px; background: var(--book-tint); }
 .ps-design-note h4 { margin: 0 0 8px; font: 650 var(--book-subtitle)/1.7 var(--book-sans); }
 .ps-design-note p { margin: 0; color: var(--book-ink); font-size: var(--book-support); line-height: 1.85; text-wrap: pretty; }
 .ps-boundary { margin: 22px 0 0; color: var(--book-muted); font-size: var(--book-support); line-height: 1.85; text-wrap: pretty; }

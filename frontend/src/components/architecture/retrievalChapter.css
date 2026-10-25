@@ -26,7 +26,7 @@
 .rt-channel-table td { color: var(--book-muted); }
 .rt-channel-table td > strong { display: block; color: var(--book-ink); font-weight: 500; }
 .rt-channel-table td p { margin: 5px 0 0; }
-.rt-example { margin-top: 34px; border: 1px solid var(--book-line); border-radius: 3px; overflow: hidden; }
+.rt-example { margin-top: 34px; border: 1px solid var(--book-line); border-radius: 2px; overflow: hidden; }
 .rt-example-intro { padding: 25px 28px 23px; background: var(--book-tint); }
 .rt-example-intro > span { font-size: var(--book-label); color: var(--book-accent); }
 .rt-example-intro > p { max-width: 690px; margin: 12px 0 11px; color: var(--book-ink); font-family: var(--book-sans); font-size: var(--book-subtitle); line-height: 1.8; }
@@ -37,7 +37,7 @@
 .rt-channel-tabs [role="tab"] span { display: block; font-size: var(--book-label); font-weight: 600; }
 .rt-channel-tabs [role="tab"] small { display: block; margin-top: 6px; font-size: var(--book-small); }
 .rt-channel-tabs [role="tab"][data-state="active"] { color: var(--book-accent); background: var(--book-paper); }
-.rt-channel-tabs [role="tab"][data-state="active"]::after { content: ''; position: absolute; inset-inline: 18px; inset-block-end: -1px; height: 2px; background: var(--book-accent); }
+.rt-channel-tabs [role="tab"][data-state="active"]::after { content: ''; position: absolute; inset-inline: 18px; inset-block-end: -1px; height: 3px; background: var(--book-accent); }
 .rt-channel-tabs [role="tab"]:hover { color: var(--book-ink); background: var(--book-tint); }
 .rt-channel-panel { padding: 27px 28px 25px; }
 .rt-channel-panel[data-state="inactive"] { display: none; }

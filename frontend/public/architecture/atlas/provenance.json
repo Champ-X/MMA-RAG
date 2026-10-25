@@ -1,0 +1,107 @@
+{
+  "date": "2026-10-25",
+  "origin": "User-authorized existing Tessmora material spaces",
+  "assets": [
+    {
+      "file": "concrete-architecture.webp",
+      "source": "视觉风格素材库/粗野主义混凝土.png",
+      "sourceSha256": "5e812e79c31fa79da646452d810e7b3e2c7f091d579e84e792a04aa8e05e17d2",
+      "transformation": "WebP q84, width 1000; composition retained",
+      "bytes": 104048,
+      "sha256": "eaced3d9bc6cd76a1d353cd050fa9cd109b467e240a1da559ebfdc08d0bb3fed"
+    },
+    {
+      "file": "botanical-study.webp",
+      "source": "视觉风格素材库/植物学插画.png",
+      "sourceSha256": "33fe463b37f1bfd81ae670edf9c7c145cddb2146f34bee472e3daac6431db13c",
+      "transformation": "WebP q84, width 1000; composition retained",
+      "bytes": 103366,
+      "sha256": "9d01410e1537cbb9707057e32035f5036398f33ebcb8fe09c8f4eef5865eac91"
+    },
+    {
+      "file": "architectural-plan.webp",
+      "source": "视觉风格素材库/建筑蓝图.png",
+      "sourceSha256": "19aecb05a0aeb562f2dd6e1cc595c7fb1f86c1428dc72de5b8e9d38419c21e50",
+      "transformation": "WebP q84, width 1000; composition retained",
+      "bytes": 121928,
+      "sha256": "c6f219c0009dd233ec9e4e540b98020a63ca6ba53b9d3ce8f50a9e9dc1368f5c"
+    },
+    {
+      "file": "garden.webp",
+      "source": "风景人文/园林.jpg",
+      "sourceSha256": "3a3b2e8af20b9089a0cf2f9c849502c752c5c7fbcc86d4bfd31946bc5444fc54",
+      "transformation": "WebP q84, width 1000; composition retained",
+      "bytes": 236938,
+      "sha256": "4185a2d06ce599e94ef5362af6d5af72a5080bb3c972bfd778f4df6d924e39d3"
+    },
+    {
+      "file": "landscape-01.webp",
+      "source": "风景人文/kanenori-sunset-7133867_1920.jpg",
+      "sourceSha256": "088d779cda84065d4325533bb19a0c25a4fa4b287c388ed4ee0c7cdc4c123467",
+      "transformation": "WebP q84, width 1000; composition retained",
+      "bytes": 230618,
+      "sha256": "439ccb9f7e2110416506d1399277ac9733ed3d8a821d1240a13ce8c5246a9538"
+    },
+    {
+      "file": "landscape-02.webp",
+      "source": "风景人文/kanenori-windsurfing-7241074_1920.jpg",
+      "sourceSha256": "9d573c3c352505a9aaa1e5095541acd0749b2cd0ddc67d571cb4965d1ea4f4fa",
+      "transformation": "WebP q84, width 1000; composition retained",
+      "bytes": 103124,
+      "sha256": "bb6d0ed781ae0f6c70edb4f4d24a0f57d04c0f783d590dcd087b1fbe6cc5e7cb"
+    },
+    {
+      "file": "landscape-03.webp",
+      "source": "风景人文/广西阳朔_漓江与喀斯特群峰.jpg",
+      "sourceSha256": "9f94d0e52823420958226e5c567a8897c26eda7e30bf63d9cabef29b1e39b6c7",
+      "transformation": "WebP q84, width 1000; composition retained",
+      "bytes": 117968,
+      "sha256": "7dabdef8d75a4a859b7dc521639eab3af1f74898f45381e8fe8b09b7eb7ebcc7"
+    },
+    {
+      "file": "garden-notes.md",
+      "source": "风景人文/中国古典园林的意境与哲学.md",
+      "transformation": "Unmodified source document",
+      "bytes": 27912,
+      "sha256": "1e3f621c5d436aa3a4a5668be601e91ab17fb5fb6a610da2c6365d741191bb44"
+    },
+    {
+      "file": "listening-preview.mp3",
+      "source": "音乐/半山听雨.mp3",
+      "transformation": "16-second preview starting at 30s; illustration only, not a timestamped search unit",
+      "bytes": 192827,
+      "sha256": "61895ccc196724a394db308d3d18fdc6e15e6ab13f4a97c8edd4afb72efd2427"
+    },
+    {
+      "file": "forest-preview.mp4",
+      "source": "风景人文/forest.mp4",
+      "transformation": "First 10 seconds, 640px, silent preview",
+      "bytes": 1131780,
+      "sha256": "e4f82d2d253f8bc1fd10b9a732e456f160ac90d69c07381c564c8d0be81084e3"
+    },
+    {
+      "file": "forest-frame-1.webp",
+      "source": "风景人文/forest.mp4",
+      "sourceTimeSeconds": 1,
+      "transformation": "Frame extracted at 640px",
+      "bytes": 52904,
+      "sha256": "e6c5b61da725860982d496ff866e988425f0ba6b8bd54f899e64bf18dbecfe9f"
+    },
+    {
+      "file": "forest-frame-2.webp",
+      "source": "风景人文/forest.mp4",
+      "sourceTimeSeconds": 4,
+      "transformation": "Frame extracted at 640px",
+      "bytes": 54568,
+      "sha256": "cfc8c6b169cd5ad68c3c6b739671f6257f4a4dfdc09fd976b240a6e447f31a4a"
+    },
+    {
+      "file": "forest-frame-3.webp",
+      "source": "风景人文/forest.mp4",
+      "sourceTimeSeconds": 8,
+      "transformation": "Frame extracted at 640px",
+      "bytes": 54630,
+      "sha256": "b2da6599f5f7ad62b18f87ceff6d6d4cdf2ddc7c52450cd54e013fbc5a98af4f"
+    }
+  ]
+}
