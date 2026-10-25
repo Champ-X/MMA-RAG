@@ -13,6 +13,7 @@ from pathlib import Path
 import time
 
 from app.core.llm.jev import JevClient, JevError, JevRequiredError
+from app.core.prompt_language import localized
 
 POLICY_VERSION = "decision-plan-v3"
 PROMPT_VERSION = "grounded-source-actions-v1"
@@ -321,7 +322,10 @@ async def verify_plan(query, baseline, *, client_factory, selection=None):
                 before = updated.get(field, "unnecessary")
                 after = "explicit_demand" if row["action"] == "require" else "unnecessary"
                 updated[field] = after
-                updated[field.replace("_intent", "_reasoning")] = "Decision 核验当前用户原话中的来源需求，保留原查询规划"
+                updated[field.replace("_intent", "_reasoning")] = localized(
+                    "Decision 核验当前用户原话中的来源需求，保留原查询规划",
+                    "Decision verified source requirements in the user's current words while retaining the original query plan.",
+                )
                 row.update(applied=True, changed=before != after, before=before, after=after, reason="verified_action")
                 receipt["applied_ids"].append(row["id"])
                 policy["modalities"][kind] = {

@@ -9,6 +9,7 @@ from datetime import datetime
 from app.core.logger import get_logger
 from app.core.prompt_language import get_prompt_language, localized
 from . import system_prompts_en as english
+from .answer_language import answer_language_instructions
 
 logger = get_logger(__name__)
 
@@ -70,7 +71,7 @@ class SystemPromptManager:
                 "**回答原则**：",
                 "**语义匹配优先**：仔细阅读所有【参考材料】，包括文档和图片的视觉描述。判断相关性时应基于语义相似性和主题一致性，而非严格的字面匹配。",
                 "仅使用能支持当前结论或实际推荐的相关材料并就地引用；无需用完所有候选。",
-                "**诚实**：只有在【参考材料】中**完全**没有与用户查询相关的任何信息时，才回答：\"知识库中未找到相关内容\"。",
+                "**诚实**：只有在【参考材料】中**完全**没有与用户查询相关的任何信息时，才用本轮回答语言说明未找到相关内容（中文示例：\"知识库中未找到相关内容\"）。",
                 "若材料中包含 `(类型: 音频)` 且与用户问的歌曲/音乐/意境相关，**应视为有相关内容**，须根据其转写与描述作答并引用，不得回答未找到。",
                 "**格式**：使用 Markdown 格式组织答案。对于要点，请使用无序列表。",
                 "**纯净性**：不要在回答中生成文件下载链接或图片 URL，只需保留 `[id]` 引用标签即可。"
@@ -175,6 +176,7 @@ class SystemPromptManager:
                 system_prompt_parts.extend(["", localized("# 额外上下文", "# Additional context"), additional_context])
             
             system_prompt_parts.extend(["", localized("# 回答范围", "# Answer scope"), localized(ANSWER_SCOPE_INSTRUCTIONS, english.ANSWER_SCOPE_INSTRUCTIONS)])
+            system_prompt_parts.extend(["", answer_language_instructions()])
             return "\n".join(system_prompt_parts)
             
         except Exception as e:
@@ -184,7 +186,7 @@ class SystemPromptManager:
     def _get_fallback_prompt(self) -> str:
         """获取备用提示词"""
         if get_prompt_language() == "en-US":
-            return english.ANSWER_SCOPE_INSTRUCTIONS + "\n\n" + english.FALLBACK_PROMPT
+            return english.ANSWER_SCOPE_INSTRUCTIONS + "\n\n" + english.FALLBACK_PROMPT + "\n\n" + answer_language_instructions()
         return ANSWER_SCOPE_INSTRUCTIONS + "\n\n" + """你是 Tessmora 的多模态内容检索助手。
 
 请基于提供的参考材料回答问题，并：
@@ -192,7 +194,7 @@ class SystemPromptManager:
 2. 首次用到某材料须在论述该内容的段落或列表项内标注，勿仅在文末集中写一串编号。
 3. 使用 Markdown 组织答案；勿输出图片 URL 或 `![]()`，配图仅通过 `[id]`。
 4. 参考了图片时请写「如图 [n] 所示」等并紧跟 `[n]`。
-5. 若无相关信息请诚实说明。"""
+5. 若无相关信息请诚实说明。""" + "\n\n" + answer_language_instructions()
     
     def get_specialized_prompt(self, query_type: str, content: str) -> str:
         """获取专业化提示词"""
@@ -253,7 +255,8 @@ class SystemPromptManager:
             shortened_parts = []
             
             scope = localized(ANSWER_SCOPE_INSTRUCTIONS, english.ANSWER_SCOPE_INSTRUCTIONS)
-            for line in prompt.replace(scope, '').split('\n'):
+            language = answer_language_instructions()
+            for line in prompt.replace(scope, '').replace(language, '').split('\n'):
                 if line.startswith('#'):
                     # 保留标题
                     shortened_parts.append(line)
@@ -280,9 +283,9 @@ class SystemPromptManager:
                     "3. **Honesty**: Honestly state when relevant information is absent.",
                     "4. **Format**: Use Markdown.",
                 ])
-                return '\n'.join(core_lines) + "\n" + scope
+                return '\n'.join(core_lines) + "\n" + scope + "\n\n" + language
             
-            return '\n'.join(shortened_parts) + '\n' + scope
+            return '\n'.join(shortened_parts) + '\n' + scope + "\n\n" + language
             
         except Exception as e:
             logger.error(f"提示词长度优化失败: {str(e)}")

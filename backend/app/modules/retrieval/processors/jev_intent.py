@@ -6,6 +6,7 @@ contradictory requirement abstains instead of silently becoming unnecessary.
 from copy import deepcopy
 
 from app.core.llm.jev import JevClient, JevRequiredError
+from app.core.prompt_language import localized
 
 INTENT_PROMPT_VERSION = 'query-requirements-v3.1'
 POLICY_VERSION = 'decision-intent-v3.1'
@@ -176,7 +177,10 @@ def merge_required_modalities(baseline, requirements):
         if record['status'] == 'required' and context_resolved and not base_excluded:
             if original != 'explicit_demand':
                 updated[field] = 'explicit_demand'
-                updated[field.replace('_intent', '_reasoning')] = 'Decision 补充已确定的独立证据需求，保留原查询规划'
+                updated[field.replace('_intent', '_reasoning')] = localized(
+                    "Decision 补充已确定的独立证据需求，保留原查询规划",
+                    "Decision added a confirmed independent evidence requirement while retaining the original query plan.",
+                )
                 record['action'] = 'added_required'
                 applied.append(modality)
             else:
@@ -280,10 +284,16 @@ async def classify_intent(client: JevClient, query: str, *, force=False,
     analysis = {
         **selected, 'intent_type': task['choice'], 'original_query': query, 'refined_query': query,
         'is_complex': a['is_complex']['noul'] >= .5,
-        'reasoning': 'Decision 模型识别检索意图，查询改写在后续阶段完成',
+        'reasoning': localized(
+            "Decision 模型识别检索意图，查询改写在后续阶段完成",
+            "Decision identified the retrieval intent; query rewriting follows in a later stage.",
+        ),
         'search_strategies': {'dense_query': query, 'sparse_keywords': [], 'multi_view_queries': []},
         'sub_queries': [], 'decision_requirements': requirements,
     }
     for field in ['visual', 'audio', 'video']:
-        analysis[field + '_reasoning'] = '根据实际证据需求判断，区分引用、否定与媒体请求'
+        analysis[field + '_reasoning'] = localized(
+            "根据实际证据需求判断，区分引用、否定与媒体请求",
+            "Assessed the actual evidence needs, distinguishing quotations, negation and media requests.",
+        )
     return analysis, info

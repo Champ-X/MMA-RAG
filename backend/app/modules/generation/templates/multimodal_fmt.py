@@ -7,6 +7,7 @@ from typing import Dict, List, Any, Optional
 import re
 
 from app.core.prompt_language import localized
+from .answer_language import answer_language_instructions
 from .system_prompts_en import FORMATTER_INSTRUCTIONS
 from app.core.logger import get_logger
 
@@ -327,7 +328,7 @@ class MultiModalFormatter:
    - 请结合图片下方的 `[视觉描述]` 内容来解析图片含义。
 
 3. **回答原则**：
-   - **诚实**：如果【参考材料】中没有包含回答用户问题所需的信息，请直接回答："知识库中未找到相关内容"，不要编造答案。
+   - **诚实**：如果【参考材料】中没有包含回答用户问题所需的信息，请用本轮回答语言说明未找到相关内容（中文示例："知识库中未找到相关内容"），不要编造答案。
    - **格式**：使用 Markdown 格式组织答案。对于要点，请使用无序列表。
    - **纯净性**：不要在回答中生成文件下载链接或图片 URL，只需保留 `[id]` 引用标签即可。
 """,
@@ -354,11 +355,11 @@ class MultiModalFormatter:
             }
             
             selected = localized(instructions, FORMATTER_INSTRUCTIONS)
-            return selected.get(context_type, selected["general"])
+            return selected.get(context_type, selected["general"]) + "\n\n" + answer_language_instructions()
             
         except Exception as e:
             logger.error(f"系统指令格式化失败: {str(e)}")
-            return localized(instructions["general"], FORMATTER_INSTRUCTIONS["general"])
+            return localized(instructions["general"], FORMATTER_INSTRUCTIONS["general"]) + "\n\n" + answer_language_instructions()
     
     def format_user_query(self, query: str, context: Optional[str] = None) -> str:
         """格式化用户查询"""

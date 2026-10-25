@@ -118,8 +118,9 @@ def test_shared_generation_objects_select_language_at_call_time():
             for result in manager.get_prompt_variants(intent):
                 assert ANSWER_SCOPE_INSTRUCTIONS in result
             assert ANSWER_SCOPE_INSTRUCTIONS in manager.optimize_prompt_for_length(manager.build_system_prompt(intent), 1)
-        # Translating instructions does not silently change the existing response rule.
-        assert "知识库中未找到相关内容" in manager.build_system_prompt()
+        assert "Write this turn's answer in English by default" in manager.build_system_prompt()
+        assert "No relevant content was found in the knowledge base." in manager.build_system_prompt()
+        assert "知识库中未找到相关内容" not in manager.build_system_prompt()
         assert formatter.format_document_chunk("7", source, "原始文件.md", {}) == (
             "[Material 7] (Type: Document | Source: 原始文件.md)\nContent excerpt:\n" + formatter._clean_content(source))
         wrapped = formatter.format_user_query(query, source)

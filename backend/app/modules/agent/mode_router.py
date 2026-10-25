@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from app.core.prompt_language import localized
+
 
 AGENT_MODES = {"auto", "direct", "agent"}
 
@@ -133,13 +135,13 @@ def resolve_agent_mode(
         return AgentModeResolution(
             requested_mode=requested,
             selected_mode="agent",
-            reason="已手动启用 Agent 深研",
+            reason=localized("已手动启用 Agent 深研", "Agent deep research was enabled manually."),
         )
     if requested == "direct":
         return AgentModeResolution(
             requested_mode=requested,
             selected_mode="direct",
-            reason="已手动选择直接检索",
+            reason=localized("已手动选择直接检索", "Direct retrieval was selected manually."),
         )
 
     text = re.sub(r"\s+", " ", str(query or "")).strip().lower()
@@ -148,19 +150,19 @@ def resolve_agent_mode(
 
     if _contains_any(text, _STRONG_RESEARCH_MARKERS):
         score += 3
-        reasons.append("包含深度调研或方案设计目标")
+        reasons.append(localized("包含深度调研或方案设计目标", "Includes an in-depth research or solution design goal"))
     if _contains_any(text, _COMPARISON_MARKERS):
         score += 3
-        reasons.append("需要对比或权衡多组证据")
+        reasons.append(localized("需要对比或权衡多组证据", "Requires comparison or tradeoffs across multiple sets of evidence"))
     if _contains_any(text, _MULTI_TASK_MARKERS) or re.search(
         r"(?:^|[\s，,；;])(?:[1-9][、.)）]|一[、.)）]|二[、.)）])",
         text,
     ):
         score += 3
-        reasons.append("包含多个独立子任务")
+        reasons.append(localized("包含多个独立子任务", "Includes multiple independent subtasks"))
     if _contains_any(text, _SYNTHESIS_MARKERS):
         score += 1
-        reasons.append("需要分析或综合证据")
+        reasons.append(localized("需要分析或综合证据", "Requires analysis or synthesis of evidence"))
 
     modalities = [
         name
@@ -169,35 +171,35 @@ def resolve_agent_mode(
     ]
     if len(modalities) >= 2:
         score += 2
-        reasons.append("需要跨模态取证")
+        reasons.append(localized("需要跨模态取证", "Requires evidence across modalities"))
 
     question_count = len(re.findall(r"[?？]", text))
     if question_count >= 2:
         score += 1
-        reasons.append("包含多个问题")
+        reasons.append(localized("包含多个问题", "Includes multiple questions"))
     if len(text) >= 160:
         score += 2
-        reasons.append("问题描述较长")
+        reasons.append(localized("问题描述较长", "Has a long question description"))
     elif len(text) >= 80:
         score += 1
-        reasons.append("问题包含较多约束")
+        reasons.append(localized("问题包含较多约束", "Includes several constraints"))
 
     scoped_files = selected_files or []
     if len(scoped_files) >= 2:
         score += 1
-        reasons.append("指定了多个证据文件")
+        reasons.append(localized("指定了多个证据文件", "Specifies multiple evidence files"))
     if attachment_context and _contains_any(text, ("结合", "对照", "比较", "综合")):
         score += 1
-        reasons.append("需要结合附件与知识库")
+        reasons.append(localized("需要结合附件与知识库", "Requires combining attachments with the knowledge base"))
 
     enabled = score >= 3
     return AgentModeResolution(
         requested_mode="auto",
         selected_mode="agent" if enabled else "direct",
         reason=(
-            "；".join(reasons[:3])
+            localized("；", "; ").join(reasons[:3])
             if enabled and reasons
-            else "问题目标集中，单轮多模态检索即可完成"
+            else localized("问题目标集中，单轮多模态检索即可完成", "The request is focused and can be completed with a single multimodal retrieval pass.")
         ),
         score=score,
     )

@@ -141,7 +141,10 @@ class IntentProcessor:
                     if intent_analysis.get(field) in ("explicit_demand", "implicit_enrichment", "unnecessary"):
                         validated_analysis[field] = intent_analysis[field]
                         validated_analysis[name + "_reasoning"] = intent_analysis.get(
-                            name + "_reasoning", "保留生成式规划的有效媒体意图，未做关键词覆盖")
+                            name + "_reasoning", localized(
+                                "保留生成式规划的有效媒体意图，未做关键词覆盖",
+                                "Retained the valid media intent from the generated plan without a keyword override.",
+                            ))
                 # Keep proposals separate from the unchanged baseline validator;
                 # verification checks structure, provenance and actual semantics.
                 validated_analysis["source_proposals"] = intent_analysis.get("source_proposals", [])
@@ -228,11 +231,11 @@ class IntentProcessor:
             # 简单的视觉意图判断（fallback逻辑）
             if has_explicit_visual:
                 visual_intent = "explicit_demand"
-                visual_reasoning = "检测到明确的视觉相关关键词"
+                visual_reasoning = localized("检测到明确的视觉相关关键词", "Detected explicit visual keywords.")
             else:
                 # 简单的隐性判断（fallback，实际应该由LLM判断）
                 visual_intent = "unnecessary"
-                visual_reasoning = "未检测到明确的视觉需求"
+                visual_reasoning = localized("未检测到明确的视觉需求", "No explicit visual need detected.")
             
             # 音频意图判断（fallback，与视觉意图结构对齐：explicit > implicit > unnecessary）
             explicit_audio_keywords_fallback = [
@@ -248,13 +251,16 @@ class IntentProcessor:
             has_implicit_audio = any(kw in content_lower for kw in implicit_audio_keywords_fallback)
             if has_explicit_audio:
                 audio_intent = "explicit_demand"
-                audio_reasoning = "检测到明确的音频请求关键词"
+                audio_reasoning = localized("检测到明确的音频请求关键词", "Detected explicit audio request keywords.")
             elif has_implicit_audio:
                 audio_intent = "implicit_enrichment"
-                audio_reasoning = "检测到与音频载体强相关的主题（歌词/播客/会议等）"
+                audio_reasoning = localized(
+                    "检测到与音频载体强相关的主题（歌词/播客/会议等）",
+                    "Detected an audio-related topic, such as lyrics, podcasts or meetings.",
+                )
             else:
                 audio_intent = "unnecessary"
-                audio_reasoning = "未检测到音频需求"
+                audio_reasoning = localized("未检测到音频需求", "No audio need detected.")
             # 视频意图（与视觉/音频对齐：explicit > implicit > unnecessary）
             explicit_video_keywords_fallback = [
                 "视频", "片段", "视频片段", "视频画面", "画面解释", "结合视频", "结合画面",
@@ -271,13 +277,16 @@ class IntentProcessor:
             has_implicit_video = any(kw in content_lower for kw in implicit_video_keywords_fallback)
             if has_explicit_video:
                 video_intent = "explicit_demand"
-                video_reasoning = "检测到明确的视频请求关键词"
+                video_reasoning = localized("检测到明确的视频请求关键词", "Detected explicit video request keywords.")
             elif has_implicit_video:
                 video_intent = "implicit_enrichment"
-                video_reasoning = "检测到与视频载体强相关的主题（教程、演示、录播等），判为隐性增益"
+                video_reasoning = localized(
+                    "检测到与视频载体强相关的主题（教程、演示、录播等），判为隐性增益",
+                    "Detected a video-related topic, such as a tutorial, demonstration or recording; video may enrich the answer.",
+                )
             else:
                 video_intent = "unnecessary"
-                video_reasoning = "未检测到视频需求"
+                video_reasoning = localized("未检测到视频需求", "No video need detected.")
             return {
                 "reasoning": content[:200],
                 "intent_type": intent_type,
@@ -290,7 +299,7 @@ class IntentProcessor:
                 "video_reasoning": video_reasoning,
                 "search_strategies": {
                     "dense_query": content.split("dense_query")[-1] if "dense_query" in content else content[:100],
-                    "sparse_keywords": ["查询", "信息"],
+                    "sparse_keywords": localized(["查询", "信息"], ["query", "information"]),
                     "multi_view_queries": [content[:100]]
                 },
                 "sub_queries": []
@@ -310,15 +319,18 @@ class IntentProcessor:
             # 确保所有必需字段存在
             validated = {
                 "original_query": original_query,
-                "reasoning": analysis.get("reasoning", "基于查询内容分析"),
+                "reasoning": analysis.get("reasoning", localized("基于查询内容分析", "Analyzed the query content.")),
                 "intent_type": analysis.get("intent_type", "factual"),
                 "is_complex": analysis.get("is_complex", False),
                 "visual_intent": analysis.get("visual_intent", "unnecessary"),
-                "visual_reasoning": analysis.get("visual_reasoning", "未检测到明确的视觉需求"),
+                "visual_reasoning": analysis.get("visual_reasoning", localized(
+                    "未检测到明确的视觉需求",
+                    "No explicit visual need detected.",
+                )),
                 "audio_intent": analysis.get("audio_intent", "unnecessary"),
-                "audio_reasoning": analysis.get("audio_reasoning", "未检测到音频需求"),
+                "audio_reasoning": analysis.get("audio_reasoning", localized("未检测到音频需求", "No audio need detected.")),
                 "video_intent": analysis.get("video_intent", "unnecessary"),
-                "video_reasoning": analysis.get("video_reasoning", "未检测到视频需求"),
+                "video_reasoning": analysis.get("video_reasoning", localized("未检测到视频需求", "No video need detected.")),
                 "search_strategies": {
                     "dense_query": analysis.get("search_strategies", {}).get("dense_query", original_query),
                     "sparse_keywords": analysis.get("search_strategies", {}).get("sparse_keywords", []),
@@ -360,13 +372,19 @@ class IntentProcessor:
                 if has_explicit_visual_request:
                     logger.info("检测到明确的视觉请求关键词，设置visual_intent=explicit_demand: {}", original_query)
                     validated["visual_intent"] = "explicit_demand"
-                    validated["visual_reasoning"] = "检测到明确的视觉请求关键词"
+                    validated["visual_reasoning"] = localized(
+                        "检测到明确的视觉请求关键词",
+                        "Detected explicit visual request keywords.",
+                    )
                 elif has_implicit_visual_topic:
                     validated["visual_intent"] = "implicit_enrichment"
-                    validated["visual_reasoning"] = "检测到与视觉/空间/展示强相关的主题（架构、风光、对比等），判为隐性增益"
+                    validated["visual_reasoning"] = localized(
+                        "检测到与视觉/空间/展示强相关的主题（架构、风光、对比等），判为隐性增益",
+                        "Detected a visual or spatial topic, such as architecture, scenery or comparisons; images may enrich the answer.",
+                    )
                 else:
                     validated["visual_intent"] = "unnecessary"
-                    validated["visual_reasoning"] = "未检测到明确的视觉需求"
+                    validated["visual_reasoning"] = localized("未检测到明确的视觉需求", "No explicit visual need detected.")
             elif has_explicit_visual_request and validated["visual_intent"] != "explicit_demand":
                 logger.info(
                     "检测到明确的视觉请求关键词，强制覆盖visual_intent: {} -> explicit_demand, 查询: {}",
@@ -374,7 +392,10 @@ class IntentProcessor:
                 )
                 validated["visual_intent"] = "explicit_demand"
                 validated["visual_reasoning"] = (
-                    "检测到明确的视觉请求关键词，优先判断为显式需求"
+                    localized(
+                        "检测到明确的视觉请求关键词，优先判断为显式需求",
+                        "Detected explicit visual request keywords; prioritized the explicit request.",
+                    )
                 )
             elif has_implicit_visual_topic and validated["visual_intent"] == "unnecessary":
                 # 与音频一致：查询具有隐性视觉主题但 LLM 判为 unnecessary 时，用关键词补正为 implicit_enrichment
@@ -383,7 +404,10 @@ class IntentProcessor:
                     original_query
                 )
                 validated["visual_intent"] = "implicit_enrichment"
-                validated["visual_reasoning"] = "检测到与视觉/空间/展示强相关的主题（架构、风光、对比等），判为隐性增益"
+                validated["visual_reasoning"] = localized(
+                    "检测到与视觉/空间/展示强相关的主题（架构、风光、对比等），判为隐性增益",
+                    "Detected a visual or spatial topic, such as architecture, scenery or comparisons; images may enrich the answer.",
+                )
             
             # 确保sparse_keywords是列表
             if not isinstance(validated["search_strategies"]["sparse_keywords"], list):
@@ -414,13 +438,19 @@ class IntentProcessor:
                 if has_explicit_audio_request:
                     logger.info("检测到明确的音频请求关键词，设置audio_intent=explicit_demand: {}", original_query)
                     validated["audio_intent"] = "explicit_demand"
-                    validated["audio_reasoning"] = "检测到明确的音频请求关键词"
+                    validated["audio_reasoning"] = localized(
+                        "检测到明确的音频请求关键词",
+                        "Detected explicit audio request keywords.",
+                    )
                 elif has_implicit_audio_topic:
                     validated["audio_intent"] = "implicit_enrichment"
-                    validated["audio_reasoning"] = "检测到与音频载体强相关的主题（歌词/播客/会议等）"
+                    validated["audio_reasoning"] = localized(
+                        "检测到与音频载体强相关的主题（歌词/播客/会议等）",
+                        "Detected an audio-related topic, such as lyrics, podcasts or meetings.",
+                    )
                 else:
                     validated["audio_intent"] = "unnecessary"
-                    validated["audio_reasoning"] = "未检测到音频需求"
+                    validated["audio_reasoning"] = localized("未检测到音频需求", "No audio need detected.")
             elif has_explicit_audio_request and validated["audio_intent"] != "explicit_demand":
                 logger.info(
                     "检测到明确的音频请求关键词，强制覆盖audio_intent: {} -> explicit_demand, 查询: {}",
@@ -428,7 +458,10 @@ class IntentProcessor:
                 )
                 validated["audio_intent"] = "explicit_demand"
                 validated["audio_reasoning"] = (
-                    "检测到明确的音频请求关键词，优先判断为显式需求"
+                    localized(
+                        "检测到明确的音频请求关键词，优先判断为显式需求",
+                        "Detected explicit audio request keywords; prioritized the explicit request.",
+                    )
                 )
             # 视频意图（与视觉/音频对齐：显式请求词优先，无效时按显式/隐性关键词推断）
             valid_video_intents = ["explicit_demand", "implicit_enrichment", "unnecessary"]
@@ -450,27 +483,39 @@ class IntentProcessor:
                 if has_explicit_video_request:
                     logger.info("检测到明确的视频请求关键词，设置video_intent=explicit_demand: {}", original_query)
                     validated["video_intent"] = "explicit_demand"
-                    validated["video_reasoning"] = "检测到明确的视频请求关键词"
+                    validated["video_reasoning"] = localized(
+                        "检测到明确的视频请求关键词",
+                        "Detected explicit video request keywords.",
+                    )
                 elif has_implicit_video_topic:
                     validated["video_intent"] = "implicit_enrichment"
-                    validated["video_reasoning"] = "检测到与视频载体强相关的主题（教程、演示、录播等），判为隐性增益"
+                    validated["video_reasoning"] = localized(
+                        "检测到与视频载体强相关的主题（教程、演示、录播等），判为隐性增益",
+                        "Detected a video-related topic, such as a tutorial, demonstration or recording; video may enrich the answer.",
+                    )
                 else:
                     validated["video_intent"] = "unnecessary"
-                    validated["video_reasoning"] = "未检测到视频需求"
+                    validated["video_reasoning"] = localized("未检测到视频需求", "No video need detected.")
             elif has_explicit_video_request and validated.get("video_intent") != "explicit_demand":
                 logger.info(
                     "检测到明确的视频请求关键词，强制覆盖video_intent: {} -> explicit_demand, 查询: {}",
                     validated["video_intent"], original_query
                 )
                 validated["video_intent"] = "explicit_demand"
-                validated["video_reasoning"] = "检测到明确的视频请求关键词（如'结合视频'、'看视频'等），优先判断为显式需求"
+                validated["video_reasoning"] = localized(
+                    "检测到明确的视频请求关键词（如'结合视频'、'看视频'等），优先判断为显式需求",
+                    "Detected explicit video request keywords; prioritized the explicit request.",
+                )
             elif has_implicit_video_topic and validated.get("video_intent") == "unnecessary":
                 logger.info(
                     "检测到隐性视频相关主题，补正video_intent: unnecessary -> implicit_enrichment, 查询: {}",
                     original_query
                 )
                 validated["video_intent"] = "implicit_enrichment"
-                validated["video_reasoning"] = "检测到与视频载体强相关的主题（教程、演示、录播等），判为隐性增益"
+                validated["video_reasoning"] = localized(
+                    "检测到与视频载体强相关的主题（教程、演示、录播等），判为隐性增益",
+                    "Detected a video-related topic, such as a tutorial, demonstration or recording; video may enrich the answer.",
+                )
             
             return validated
             
@@ -482,15 +527,18 @@ class IntentProcessor:
         """默认意图分析结果"""
         return {
             "original_query": query,
-            "reasoning": "使用默认规则进行简单分析",
+            "reasoning": localized("使用默认规则进行简单分析", "Used default rules for a basic analysis."),
             "intent_type": "factual",
             "is_complex": False,
             "visual_intent": "unnecessary",
-            "visual_reasoning": "使用默认规则，未检测到明确的视觉需求",
+            "visual_reasoning": localized(
+                "使用默认规则，未检测到明确的视觉需求",
+                "Using default rules: no explicit visual need detected.",
+            ),
             "audio_intent": "unnecessary",
-            "audio_reasoning": "使用默认规则，未检测到音频需求",
+            "audio_reasoning": localized("使用默认规则，未检测到音频需求", "Using default rules: no audio need detected."),
             "video_intent": "unnecessary",
-            "video_reasoning": "使用默认规则，未检测到视频需求",
+            "video_reasoning": localized("使用默认规则，未检测到视频需求", "Using default rules: no video need detected."),
             "search_strategies": {
                 "dense_query": query,
                 "sparse_keywords": [],

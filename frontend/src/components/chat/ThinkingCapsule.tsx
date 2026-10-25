@@ -6,6 +6,7 @@ import type { ThoughtData, ThinkingState } from '@/store/useChatStore'
 import type { AgentRoundTrace } from '@/types/sse'
 import { StageDuration, StageTimingDetails } from './StageDuration'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
+import { localizeAgentModeReason, localizeIntentReason } from '@/lib/intentReason'
 
 type StageStatus = 'idle' | 'processing' | 'completed' | 'failed' | 'cancelled'
 
@@ -96,14 +97,14 @@ export function ThinkingCapsule({
     originalQuery: thoughtData?.original_query,
     refinedQuery: thoughtData?.refined_query,
     visualIntent: thoughtData?.visual_intent,
-    visualReasoning: thoughtData?.visual_reasoning,
+    visualReasoning: localizeIntentReason(thoughtData?.visual_reasoning),
     audioIntent: thoughtData?.audio_intent,
-    audioReasoning: thoughtData?.audio_reasoning,
+    audioReasoning: localizeIntentReason(thoughtData?.audio_reasoning),
     videoIntent: thoughtData?.video_intent,
-    videoReasoning: thoughtData?.video_reasoning,
+    videoReasoning: localizeIntentReason(thoughtData?.video_reasoning),
     agentModeAuto: thoughtData?.agent_mode_auto,
     agentModeSelected: thoughtData?.agent_mode_selected,
-    agentModeReason: thoughtData?.agent_mode_reason,
+    agentModeReason: localizeAgentModeReason(thoughtData?.agent_mode_reason),
   }
 
   const routing = thoughtData?.target_kbs ?? (thoughtData?.fallback_search ? { strategy: 'fallback' as const } : undefined)
@@ -507,7 +508,7 @@ export function ThinkingCapsule({
             </div>
             <div className="ml-0.5 space-y-2 border-l border-violet-300/60 pl-2.5 dark:border-violet-600/50 sm:pl-3">
               {intent.agentModeAuto && intent.agentModeReason && (
-                <p className="text-[10px] leading-relaxed text-violet-700/80 dark:text-violet-300/80">
+                <p className="min-w-0 max-w-full break-words text-[10px] leading-relaxed text-violet-700/80 dark:text-violet-300/80">
                   {tr("自动选择 Agent 深研：")}{intent.agentModeReason}
                 </p>
               )}
@@ -657,15 +658,15 @@ export function ThinkingCapsule({
             <StageTimingDetails timing={timings?.intent} />
             <div className="ml-0.5 space-y-1 border-l border-slate-300/60 pl-2.5 dark:border-slate-600/50 sm:pl-3">
               {intent.agentModeAuto && intent.agentModeSelected && (
-                <div className="mb-1.5 rounded-lg border border-indigo-200/80 bg-indigo-50/70 px-2.5 py-2 dark:border-indigo-500/30 dark:bg-indigo-950/30">
+                <div className="mb-1.5 min-w-0 max-w-full rounded-lg border border-indigo-200/80 bg-indigo-50/70 px-2.5 py-2 dark:border-indigo-500/30 dark:bg-indigo-950/30">
                   <div className="flex items-center gap-2 text-[11px] font-semibold text-indigo-800 dark:text-indigo-200">
-                    <Wand2 size={12} aria-hidden />
-                    <span>
+                    <Wand2 size={12} className="shrink-0" aria-hidden />
+                    <span className="min-w-0 break-words">
                       {tr("自动选择：")}{intent.agentModeSelected === 'agent' ? tr("Agent 深研") : tr("直接检索")}
                     </span>
                   </div>
                   {intent.agentModeReason && (
-                    <p className="mt-1 text-[10px] leading-relaxed text-indigo-700/80 dark:text-indigo-300/80">
+                    <p className="mt-1 min-w-0 max-w-full break-words text-[10px] leading-relaxed text-indigo-700/80 dark:text-indigo-300/80">
                       {intent.agentModeReason}
                     </p>
                   )}
@@ -677,7 +678,7 @@ export function ThinkingCapsule({
                   <span
                     className={cn(
                       pillTag,
-                      'normal-case tracking-normal',
+                      'min-w-0 max-w-full break-words [overflow-wrap:anywhere] normal-case tracking-normal',
                       'border-sky-200/80 bg-gradient-to-br from-sky-50 to-blue-50/90 text-sky-700 dark:border-sky-500/30 dark:from-sky-950/50 dark:to-blue-950/40 dark:text-sky-300'
                     )}
                   >
@@ -688,23 +689,23 @@ export function ThinkingCapsule({
               {intent.originalQuery && (
                 <div className="flex items-start gap-2 text-xs">
                   <span className="text-slate-400 dark:text-slate-500 w-20 flex-shrink-0">{tr("原始查询")}</span>
-                  <span className="text-slate-600 dark:text-slate-300 flex-1">{intent.originalQuery}</span>
+                  <span className="min-w-0 flex-1 break-words text-slate-600 dark:text-slate-300">{intent.originalQuery}</span>
                 </div>
               )}
               {intent.refinedQuery && (
                 <div className="flex items-start gap-2 text-xs">
                   <span className="text-slate-400 dark:text-slate-500 w-20 flex-shrink-0">{tr("重写查询")}</span>
-                  <span className="text-slate-700 dark:text-slate-200 flex-1 font-medium">{intent.refinedQuery}</span>
+                  <span className="min-w-0 flex-1 break-words font-medium text-slate-700 dark:text-slate-200">{intent.refinedQuery}</span>
                 </div>
               )}
               {intent.visualIntent && intent.visualIntent !== 'unnecessary' && (
                 <div className="flex items-start gap-2 text-xs">
                   <span className="w-20 flex-shrink-0 text-slate-400 dark:text-slate-500">{tr("视觉意图")}</span>
-                  <div className="flex-1 space-y-1.5">
+                  <div className="min-w-0 flex-1 space-y-1.5">
                     <span
                       className={cn(
                         pillTag,
-                        'gap-1 normal-case',
+                        'min-w-0 max-w-full gap-1 break-words [overflow-wrap:anywhere] normal-case',
                         intent.visualIntent === 'explicit_demand'
                           ? 'border-purple-200/90 bg-gradient-to-br from-purple-50 to-fuchsia-50/80 text-purple-800 dark:border-purple-500/35 dark:from-purple-950/45 dark:to-fuchsia-950/35 dark:text-purple-200'
                           : 'border-blue-200/90 bg-gradient-to-br from-blue-50 to-indigo-50/70 text-blue-800 dark:border-blue-500/35 dark:from-blue-950/45 dark:to-indigo-950/35 dark:text-blue-200'
@@ -714,7 +715,7 @@ export function ThinkingCapsule({
                       {intent.visualIntent === 'explicit_demand' ? tr("显式需求") : tr("隐性增益")}
                     </span>
                     {intent.visualReasoning && (
-                      <div className="border border-slate-100/90 bg-slate-50/80 px-2 py-1.5 text-[11px] leading-relaxed text-slate-600 dark:border-slate-700/60 dark:bg-slate-900/40 dark:text-slate-400">
+                      <div className="min-w-0 max-w-full break-words border border-slate-100/90 bg-slate-50/80 px-2 py-1.5 text-[11px] leading-relaxed text-slate-600 dark:border-slate-700/60 dark:bg-slate-900/40 dark:text-slate-400">
                         {intent.visualReasoning}
                       </div>
                     )}
@@ -724,11 +725,11 @@ export function ThinkingCapsule({
               {intent.audioIntent && intent.audioIntent !== 'unnecessary' && (
                 <div className="flex items-start gap-2 text-xs">
                   <span className="w-20 flex-shrink-0 text-slate-400 dark:text-slate-500">{tr("音频意图")}</span>
-                  <div className="flex-1 space-y-1.5">
+                  <div className="min-w-0 flex-1 space-y-1.5">
                     <span
                       className={cn(
                         pillTag,
-                        'gap-1 normal-case',
+                        'min-w-0 max-w-full gap-1 break-words [overflow-wrap:anywhere] normal-case',
                         intent.audioIntent === 'explicit_demand'
                           ? 'border-amber-200/90 bg-gradient-to-br from-amber-50 to-orange-50/70 text-amber-900 dark:border-amber-500/35 dark:from-amber-950/40 dark:to-orange-950/30 dark:text-amber-200'
                           : 'border-teal-200/90 bg-gradient-to-br from-teal-50 to-emerald-50/70 text-teal-900 dark:border-teal-500/35 dark:from-teal-950/40 dark:to-emerald-950/30 dark:text-teal-200'
@@ -738,7 +739,7 @@ export function ThinkingCapsule({
                       {intent.audioIntent === 'explicit_demand' ? tr("显式需求") : tr("隐性增益")}
                     </span>
                     {intent.audioReasoning && (
-                      <div className="border border-slate-100/90 bg-slate-50/80 px-2 py-1.5 text-[11px] leading-relaxed text-slate-600 dark:border-slate-700/60 dark:bg-slate-900/40 dark:text-slate-400">
+                      <div className="min-w-0 max-w-full break-words border border-slate-100/90 bg-slate-50/80 px-2 py-1.5 text-[11px] leading-relaxed text-slate-600 dark:border-slate-700/60 dark:bg-slate-900/40 dark:text-slate-400">
                         {intent.audioReasoning}
                       </div>
                     )}
@@ -748,11 +749,11 @@ export function ThinkingCapsule({
               {intent.videoIntent && intent.videoIntent !== 'unnecessary' && (
                 <div className="flex items-start gap-2 text-xs">
                   <span className="w-20 flex-shrink-0 text-slate-400 dark:text-slate-500">{tr("视频意图")}</span>
-                  <div className="flex-1 space-y-1.5">
+                  <div className="min-w-0 flex-1 space-y-1.5">
                     <span
                       className={cn(
                         pillTag,
-                        'gap-1 normal-case',
+                        'min-w-0 max-w-full gap-1 break-words [overflow-wrap:anywhere] normal-case',
                         intent.videoIntent === 'explicit_demand'
                           ? 'border-rose-200/90 bg-gradient-to-br from-rose-50 to-red-50/70 text-rose-900 dark:border-rose-500/35 dark:from-rose-950/40 dark:to-red-950/30 dark:text-rose-200'
                           : 'border-sky-200/90 bg-gradient-to-br from-sky-50 to-cyan-50/70 text-sky-900 dark:border-sky-500/35 dark:from-sky-950/40 dark:to-cyan-950/30 dark:text-sky-200'
@@ -762,7 +763,7 @@ export function ThinkingCapsule({
                       {intent.videoIntent === 'explicit_demand' ? tr("显式需求") : tr("隐性增益")}
                     </span>
                     {intent.videoReasoning && (
-                      <div className="border border-slate-100/90 bg-slate-50/80 px-2 py-1.5 text-[11px] leading-relaxed text-slate-600 dark:border-slate-700/60 dark:bg-slate-900/40 dark:text-slate-400">
+                      <div className="min-w-0 max-w-full break-words border border-slate-100/90 bg-slate-50/80 px-2 py-1.5 text-[11px] leading-relaxed text-slate-600 dark:border-slate-700/60 dark:bg-slate-900/40 dark:text-slate-400">
                         {intent.videoReasoning}
                       </div>
                     )}
