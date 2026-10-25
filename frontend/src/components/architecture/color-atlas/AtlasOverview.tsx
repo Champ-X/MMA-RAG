@@ -1,7 +1,8 @@
 import { ArrowRight, FileText, Image, Music2, Play, Video } from 'lucide-react'
 import { AtlasPaper, AtlasWaveform, type AtlasText } from './AtlasPrimitives'
+import type { AtlasMaterial } from './AtlasParsing'
 
-export function AtlasOverview({ text, onExplore }: { text: AtlasText; onExplore: (chapter: number) => void }) {
+export function AtlasOverview({ text, onExplore }: { text: AtlasText; onExplore: (chapter: number, material?: AtlasMaterial) => void }) {
   return <>
     <section className="ca-cover">
       <div className="ca-cover-copy">
@@ -11,7 +12,7 @@ export function AtlasOverview({ text, onExplore }: { text: AtlasText; onExplore:
       </div>
       <div className="ca-collage" role="group" aria-label={text('资料、搜索表示与引用的连接', 'Source material, searchable representations and citations')}>
         <div className="ca-collage-folder"><span>{text('资料', 'Materials')}</span></div>
-        <button type="button" className="ca-collage-photo" onClick={() => onExplore(2)} aria-label={text('查看图片如何解析', 'Explore image parsing')}>
+        <button type="button" className="ca-collage-photo" onClick={() => onExplore(2, 'image')} aria-label={text('查看图片如何解析', 'Explore image parsing')}>
           <img src="/architecture/atlas/concrete-architecture.webp" width="1000" height="1000" {...{ fetchpriority: 'high' }} loading="eager" alt={text('素材空间中的混凝土图书馆，天窗光线落在阶梯与地面上', 'Concrete library from the material space, with daylight falling on its stairs and floor')} />
           <span>{text('原件', 'Original')}</span>
         </button>
@@ -22,8 +23,8 @@ export function AtlasOverview({ text, onExplore }: { text: AtlasText; onExplore:
           <span className="ca-highlight-mark" />
         </AtlasPaper>
         <div className="ca-collage-small-photo"><img src="/architecture/atlas/garden.webp" width="800" height="600" loading="eager" alt={text('园林资料中的曲廊与花木', 'Garden architecture and foliage from the material space')} /></div>
-        <button className="ca-collage-audio" type="button" onClick={() => onExplore(2)} aria-label={text('了解音频搜索表示', 'Explore audio representations')}><span>{text('搜索表示', 'Search representation')}</span><AtlasWaveform /></button>
-        <button className="ca-collage-film" type="button" onClick={() => onExplore(2)} aria-label={text('查看视频解析', 'Explore video parsing')}>
+        <button className="ca-collage-audio" type="button" onClick={() => onExplore(2, 'audio')} aria-label={text('了解音频搜索表示', 'Explore audio representations')}><span>{text('搜索表示', 'Search representation')}</span><AtlasWaveform /></button>
+        <button className="ca-collage-film" type="button" onClick={() => onExplore(2, 'video')} aria-label={text('查看视频解析', 'Explore video parsing')}>
           <div>{[1, 2, 3].map(index => <img key={index} src={`/architecture/atlas/forest-frame-${index}.webp`} width="640" height="360" alt="" loading="eager" />)}</div>
           <span><Play size={15} fill="currentColor" aria-hidden="true" />{text('森林影像', 'Forest footage')} <small>00:01 — 00:08</small></span>
         </button>

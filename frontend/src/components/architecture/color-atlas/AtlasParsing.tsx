@@ -5,7 +5,7 @@ import { AtlasPaper, AtlasSourceLink, AtlasWaveform } from './AtlasPrimitives'
 import './atlasParsing.css'
 
 type Text = (zh: string, en: string) => string
-type Kind = 'document' | 'table' | 'image' | 'audio' | 'video'
+export type AtlasMaterial = 'document' | 'table' | 'image' | 'audio' | 'video'
 type TextProps = { text: Text }
 type Note = { title: string; body: string }
 type Material = { lead: string; motto: string; boundary: string; notes: Note[]; detail: string; stored: string; sources: { path: string; label: string }[] }
@@ -123,7 +123,7 @@ function VideoScene({ text }: TextProps) {
   </div>
 }
 
-function materialContent(text: Text): Record<Kind, Material> {
+function materialContent(text: Text): Record<AtlasMaterial, Material> {
   return {
     document: {
       lead: text('按各自的结构理解资料。选择纸上的标记，查看保留下来的内容。', 'Read the structure of each material. Select a marker to inspect what is retained.'),
@@ -193,17 +193,23 @@ function materialContent(text: Text): Record<Kind, Material> {
   }
 }
 
-export function AtlasParsing({ text }: TextProps) {
-  const [kind, setKind] = useState<Kind>('document')
+export function AtlasParsing({ text, kind: controlledKind, onKindChange }: TextProps & { kind?: AtlasMaterial; onKindChange?: (kind: AtlasMaterial) => void }) {
+  const [localKind, setLocalKind] = useState<AtlasMaterial>('document')
+  const kind = controlledKind ?? localKind
+  const changeKind = (value: string) => {
+    const nextKind = value as AtlasMaterial
+    if (onKindChange) onKindChange(nextKind)
+    else setLocalKind(nextKind)
+  }
   const contents = materialContent(text)
-  const headings: Record<Kind, string> = {
+  const headings: Record<AtlasMaterial, string> = {
     document: text('把原文展开，\n让结构浮现。', 'Open the source.\nReveal the structure.'),
     table: text('让数据成块，\n让关系保留。', 'Group the data.\nKeep its meaning.'),
     image: text('描述之外，\n还有画面本身。', 'Beyond words,\nthere is the image.'),
     audio: text('听见内容，\n也听见声音。', 'Hear the content.\nHear the sound.'),
     video: text('按场景理解，\n沿镜头回看。', 'Read the scene.\nRevisit the shot.'),
   }
-  return <div className="ca-ps-root"><Tabs.Root value={kind} onValueChange={value => setKind(value as Kind)}>
+  return <div className="ca-ps-root"><Tabs.Root value={kind} onValueChange={changeKind}>
     <div className="ca-ps-opening"><h1 id="book-heading" className={text('', 'ca-ps-heading-en')} tabIndex={-1}>{headings[kind].split('\n').map((line, index) => <span key={index}>{line}</span>)}</h1><div className="ca-ps-opening-controls"><Tabs.List className="ca-ps-tabs" aria-label={text('按模态查看解析过程', 'Explore parsing by modality')}>{modalities.map(({ id, zh, en, icon: Icon }) => <Tabs.Trigger className="ca-ps-tab" key={id} value={id}><Icon size={22} strokeWidth={1.6} aria-hidden="true" /><span>{text(zh, en)}</span></Tabs.Trigger>)}</Tabs.List><p className="ca-ps-lead">{contents[kind].lead}</p></div></div>
     {modalities.map(({ id }) => { const content = contents[id]; return <Tabs.Content className="ca-ps-panel" key={id} value={id}>
       {id === 'document' && <DocumentScene text={text} />}{id === 'table' && <TableScene text={text} />}{id === 'image' && <ImageScene text={text} />}{id === 'audio' && <AudioScene text={text} />}{id === 'video' && <VideoScene text={text} />}

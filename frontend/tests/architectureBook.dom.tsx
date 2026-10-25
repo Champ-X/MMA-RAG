@@ -170,6 +170,32 @@ test('material tabs follow keyboard focus and expose the matching reading panel'
   assert.equal(tabs[0].getAttribute('aria-selected'), 'true')
 })
 
+test('cover material links open their matching tab and the URL restores its selection', async () => {
+  await mountBook('/architecture?path=pi')
+  for (const [selector, kind, label] of [
+    ['.ca-collage-photo', 'image', '图片'],
+    ['.ca-collage-audio', 'audio', '音频'],
+    ['.ca-collage-film', 'video', '视频'],
+  ]) {
+    await click(element(selector))
+    assert.equal(router!.state.location.hash, '#materials')
+    assert.equal(new URLSearchParams(router!.state.location.search).get('material'), kind)
+    assert.equal(new URLSearchParams(router!.state.location.search).get('path'), 'pi')
+    assert.equal(element('.ca-ps-tabs [aria-selected="true"]').textContent, label)
+    await act(async () => { await router!.navigate(-1) })
+    assert.equal(router!.state.location.hash, '')
+  }
+  await act(async () => { await router!.navigate('/architecture?path=pi&material=audio#materials') })
+  assert.equal(element('.ca-ps-tabs [aria-selected="true"]').textContent, '音频')
+  const audioTab = element<HTMLButtonElement>('.ca-ps-tabs [aria-selected="true"]')
+  await act(async () => audioTab.focus())
+  await press(audioTab, 'Home')
+  assert.equal(router!.state.location.search, '?path=pi')
+  assert.equal(element('.ca-ps-tabs [aria-selected="true"]').textContent, '文档')
+  await act(async () => { await router!.navigate('/architecture?material=unknown#materials') })
+  assert.equal(element('.ca-ps-tabs [aria-selected="true"]').textContent, '文档')
+})
+
 test('retrieval channels expose distinct clues and limits with keyboard navigation', async () => {
   await mountBook('/architecture#retrieval')
   const tabs = [...container!.querySelectorAll<HTMLButtonElement>('.ca-sys-channel-list [role="tab"]')]

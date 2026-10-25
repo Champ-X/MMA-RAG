@@ -9,6 +9,8 @@ The architecture route implements the approved **C · 彩色图志** designs fro
 - A horizontal chapter index above an independently scrolling reading surface. The app's existing conversation sidebar is not part of this component.
 - Paper stacks, folder tabs, original photographs, audio waveforms and film contact strips explain different stages. Orange connectors represent a relationship or flow. Text and interactions are real DOM elements, not flattened screenshots.
 - Eight chapters, including five parsing states. Local previews are intentionally distinct from backend execution. Native media controls, Radix tab navigation, citation focus management, URL history, legacy deep links and reduced-motion preferences remain available.
+- Paper and photograph depth use separate shadow tokens. Controls share restrained hover, pressed and focus treatments. Inline citation numbers stay with their sentence ending, and narrow layouts wrap source names so the entries remain distinguishable.
+- Overview image, audio and video specimens link directly to the corresponding parsing view. The `material` query parameter preserves the selected modality alongside the existing `path` parameter.
 
 The route uses the approved light paper canvas even when the surrounding application uses a dark theme. This is a page-specific art direction; it does not change the global theme.
 
@@ -30,4 +32,4 @@ Local design drafts, original generations, downloaded font sources and review sc
 
 ## Verification
 
-Verified on 2026-10-25: TypeScript checking, the production build and all 108 frontend DOM tests passed, including seven focused architecture regressions. Browser checks covered all eight chapters and five parsing states at a 390px viewport without content overflow, desktop comparison with the approved designs, working audio/video playback, and citation navigation. Shipping assets and the final 798-codepoint font subsets passed their manifest hash and coverage checks. Vite still reports the application's existing large-chunk advisory.
+Verified on 2026-10-25: TypeScript checking, the production build and all 109 frontend DOM tests passed, including eight focused architecture regressions. Browser checks covered all eight chapters and five parsing states at a 390px viewport without content overflow, desktop comparison with the approved designs, working audio/video playback, and citation navigation. The polish pass also checked modality deep links, title wrapping, source selection and narrow-screen source labels. Shipping assets and the final 798-codepoint font subsets passed their manifest hash and coverage checks. Vite still reports the application's existing large-chunk advisory.

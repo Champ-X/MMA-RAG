@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type CSSProperties } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, ArrowUpRight, Github } from 'lucide-react'
 import { translate as t, useTranslation } from '@/i18n'
@@ -7,7 +7,7 @@ import { ArchitectureDetails } from '@/components/architecture/ArchitectureDetai
 import { ArchitectureRuntime } from '@/components/architecture/ArchitectureRuntime'
 import { architectureModes, architectureSourceUrl, type ArchitectureMode } from '@/data/architectureExperience'
 import { AtlasOverview } from '@/components/architecture/color-atlas/AtlasOverview'
-import { AtlasParsing } from '@/components/architecture/color-atlas/AtlasParsing'
+import { AtlasParsing, type AtlasMaterial } from '@/components/architecture/color-atlas/AtlasParsing'
 import { AtlasStorage, AtlasRetrieval, AtlasRuntime } from '@/components/architecture/color-atlas/AtlasSystems'
 import { AtlasPrinciples, AtlasResearch, AtlasCitations } from '@/components/architecture/color-atlas/AtlasNarratives'
 import '@/components/architecture/architectureFonts.css'
@@ -24,6 +24,7 @@ const chapters = [
   { id: 'system', name: ['运行与边界', 'Runtime'], title: ['看清系统，\n也看清边界。', 'See the system.\nUnderstand its limits.'], lead: ['理解服务如何协作，也理解系统能够恢复到哪里。', 'Understand how services cooperate, and where recovery stops.'] },
 ] as const
 const legacyChapters: Record<string, string> = { 'flow-lab': 'evidence', 'request-flow': 'evidence', 'data-flow': 'evidence', 'system-architecture': 'system', modules: 'system', 'tech-stack': 'system' }
+const materialKinds: readonly AtlasMaterial[] = ['document', 'table', 'image', 'audio', 'video']
 
 export function ArchitecturePage() {
   const { i18n } = useTranslation()
@@ -38,13 +39,25 @@ export function ArchitecturePage() {
   const chapterId = legacyChapters[hash] ?? hash
   const chapterIndex = Math.max(0, chapters.findIndex(item => item.id === chapterId))
   const chapter = chapters[chapterIndex]
-  const path = new URLSearchParams(location.search).get('path')
+  const query = new URLSearchParams(location.search)
+  const path = query.get('path')
+  const material = materialKinds.find(kind => kind === query.get('material')) ?? 'document'
   const mode: ArchitectureMode = architectureModes.some(item => item.id === path) ? path as ArchitectureMode : 'direct'
   const href = (id: string) => `${location.pathname}${location.search}${id === 'overview' ? '' : `#${id}`}`
-  const go = (index: number) => {
+  const go = (index: number, kind?: AtlasMaterial) => {
     if (index < 0 || index >= chapters.length) return
     focusAfterNavigation.current = true
-    navigate(href(chapters[index].id))
+    if (kind) {
+      const params = new URLSearchParams(location.search)
+      params.set('material', kind)
+      navigate(`${location.pathname}?${params}#${chapters[index].id}`)
+    } else navigate(href(chapters[index].id))
+  }
+  const changeMaterial = (next: AtlasMaterial) => {
+    const params = new URLSearchParams(location.search)
+    if (next === 'document') params.delete('material')
+    else params.set('material', next)
+    navigate(`${location.pathname}${params.size ? `?${params}` : ''}${location.hash}`, { replace: true })
   }
   const changeMode = (next: ArchitectureMode) => {
     const params = new URLSearchParams(location.search)
@@ -92,7 +105,7 @@ export function ArchitecturePage() {
         {chapterIndex === 0 ? <AtlasOverview text={text} onExplore={go} /> : <>
           {chapter.id !== 'materials' && <div className="ca-chapter-heading"><h1 id="book-heading" tabIndex={-1}>{text(chapter.title[0], chapter.title[1])}</h1><p>{text(chapter.lead[0], chapter.lead[1])}</p></div>}
           {chapter.id === 'idea' && <AtlasPrinciples text={text} />}
-          {chapter.id === 'materials' && <AtlasParsing text={text} />}
+          {chapter.id === 'materials' && <AtlasParsing text={text} kind={material} onKindChange={changeMaterial} />}
           {chapter.id === 'storage' && <AtlasStorage text={text} />}
           {chapter.id === 'retrieval' && <AtlasRetrieval text={text} />}
           {chapter.id === 'paths' && <AtlasResearch text={text} mode={mode} onModeChange={changeMode} />}
@@ -105,7 +118,7 @@ export function ArchitecturePage() {
         </>}
         <footer className="ca-pagination" aria-label={text('内容切换', 'Topic navigation controls')}>
           <button type="button" className="book-prev" disabled={chapterIndex === 0} onClick={() => go(chapterIndex - 1)}><ArrowLeft size={16} aria-hidden="true" /><span>{chapterIndex > 0 ? text(chapters[chapterIndex - 1].name[0], chapters[chapterIndex - 1].name[1]) : text('总览', 'Overview')}</span></button>
-          <span className="ca-page-position">{String(chapterIndex + 1).padStart(2, '0')}<i />08</span>
+          <span className="ca-page-position" style={{ '--ca-progress': `${(chapterIndex + 1) / chapters.length * 100}%` } as CSSProperties}>{String(chapterIndex + 1).padStart(2, '0')}<i aria-hidden="true" />08</span>
           <button type="button" className="book-next" onClick={() => go(chapterIndex === chapters.length - 1 ? 0 : chapterIndex + 1)}><span>{chapterIndex === chapters.length - 1 ? text('回到总览', 'Back to overview') : text(chapters[chapterIndex + 1].name[0], chapters[chapterIndex + 1].name[1])}</span><ArrowRight size={16} aria-hidden="true" /></button>
         </footer>
       </article>
