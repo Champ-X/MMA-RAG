@@ -14,6 +14,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import base64
+import hashlib
 from io import BytesIO
 import warnings
 import os
@@ -44,6 +45,9 @@ from .storage.vector_store import (
     VectorStore,
 )
 from .splitters.agentic import AgenticDocumentChunker
+from .document_checkpoints import (DOCUMENT_TYPES, DocumentCheckpoints, DocumentProcessingError,
+                                   retry_capabilities, usable_image_caption)
+from .embedding import IngestionEmbeddingConfig, IngestionEmbeddingError, embed_ingestion_texts
 from .video_scene_shot import (
     SCHEMA_VERSION,
     build_previous_context,
@@ -64,6 +68,7 @@ from app.core.local_models import get_local_model_runtime
 
 logger = get_logger(__name__)
 _clap_query_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="clap-query")
+_document_sparse_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="document-sparse")
 
 PROCESSING_STATUS_KEY_PREFIX = "ingestion:processing:task:"
 PROCESSING_STATUS_KB_KEY_PREFIX = "ingestion:processing:kb:"
@@ -528,6 +533,59 @@ class IngestionService:
                 if task is not None and not task.done():
                     raise ProcessingTaskActiveError("文件处理任务尚未结束，请稍后再删除")
 
+    def retire_processing_placeholder(self, processing_id: str, kb_id: str) -> bool:
+        """Delete only an unsaved terminal upload record, never a physical file.
+
+        The task key is the fence: writers already WATCH it and reject deleted
+        tombstones. Keeping this tombstone without a TTL prevents stale readers
+        from recreating a failed placeholder after its KB index entry is removed.
+        """
+        if not processing_id or not kb_id:
+            return False
+        client = self._deletion_status_client()
+        key = self._processing_status_key(processing_id)
+        for _ in range(4):
+            pipeline = None
+            try:
+                pipeline = client.pipeline()
+                pipeline.watch(key)
+                raw = pipeline.get(key)
+                if not raw:
+                    return False
+                status = json.loads(raw)
+                if not isinstance(status, dict) or status.get("processing_id") != processing_id:
+                    raise ProcessingStatusUnavailableError("上传任务记录异常，请稍后重试")
+                # The visible source space owns this placeholder. A migrated
+                # vector-space ID or storage alias must not widen its scope.
+                source_kb_id = str(status.get("source_kb_id") or status.get("kb_id") or "")
+                if not source_kb_id or source_kb_id.removeprefix("kb-") != str(kb_id).removeprefix("kb-"):
+                    return False
+                if status.get("file_id") or status.get("object_path") or status.get("storage_persisted"):
+                    raise ProcessingTaskActiveError("原文件已保存，请刷新列表后按文件记录删除")
+                self._assert_terminal_file_statuses({processing_id: status})
+                if status.get("status") == "deleted":
+                    self._cache_processing_status(status)
+                    return True
+                deleted = self._deleted_processing_status(status)
+                pipeline.multi()
+                pipeline.set(key, json.dumps(deleted, ensure_ascii=False))
+                for scope in {kb_id, source_kb_id, str(status.get("kb_id") or "")}:
+                    if scope:
+                        pipeline.srem(self._processing_status_kb_key(scope), processing_id)
+                pipeline.execute()
+                self._cache_processing_status(deleted)
+                return True
+            except redis.WatchError:
+                continue
+            except (ProcessingTaskActiveError, ProcessingStatusUnavailableError):
+                raise
+            except Exception as error:
+                raise ProcessingStatusUnavailableError("上传状态存储暂不可用，暂不能删除上传记录") from error
+            finally:
+                if pipeline is not None:
+                    pipeline.reset()
+        raise ProcessingStatusUnavailableError("上传任务状态正在变更，请稍后重试删除")
+
     def assert_file_deletable(self, file_id: str, kb_id: str) -> int:
         """Read-only guard. Use begin_file_deletion to reserve before deleting."""
         try:
@@ -869,7 +927,7 @@ class IngestionService:
             for status in statuses.values()
             if status.get("status") != "deleted"
         ]
-        return sorted((status for status in recovered if status.get("status") != "deleted"),
+        return sorted((retry_capabilities(status) for status in recovered if status.get("status") != "deleted"),
                       key=self._status_recency_timestamp, reverse=True)
 
     def _get_video_processing_semaphore(self) -> asyncio.Semaphore:
@@ -1211,6 +1269,8 @@ class IngestionService:
                     "stage": "processing",
                     "message": f"正在处理{file_type}文件..."
                 })
+                checkpoint = self._document_checkpoints(storage_result)
+                await checkpoint.save("parsed", parse_result)
                 result = await self._process_document(
                     parse_result=parse_result,
                     storage_result=storage_result,
@@ -1327,7 +1387,8 @@ class IngestionService:
                 error=str(e)
             )
             
-            # 更新状态：处理失败
+            # Keep the failed stage and provider details; the original remains retryable.
+            failure_fields = self._ingestion_failure_fields(processing_id, e)
             self._update_processing_status(processing_id, {
                 "status": "failed",
                 "progress": 0,
@@ -1335,26 +1396,119 @@ class IngestionService:
                 "message": f"处理失败: {str(e)}",
                 "error": str(e),
                 "failed_at": datetime.utcnow().isoformat(),
-                **video_error_status(e),
+                **failure_fields,
             })
             
             raise
     
+    def _document_checkpoints(self, storage: Dict[str, Any]) -> DocumentCheckpoints:
+        return DocumentCheckpoints(
+            self.minio_adapter.client, bucket=storage["bucket"],
+            file_id=storage["file_id"], object_path=storage["object_path"],
+        )
+
+    def _ingestion_failure_fields(self, processing_id: str, error: Exception) -> dict:
+        status = retry_capabilities(self._processing_status.get(processing_id, {}))
+        fields = {
+            "failed_stage": status.get("stage"),
+            "retry_supported": status.get("retry_supported", False),
+            "retryable": bool(status.get("retry_supported")),
+        }
+        if isinstance(error, (IngestionEmbeddingError, VideoParsingError, DocumentProcessingError)):
+            fields.update(error.status_fields())
+        return fields
+
+    async def _embed_ingestion(self, texts, *, on_progress=None, checkpoint=None):
+        config = IngestionEmbeddingConfig(**{
+            name: getattr(settings, f"ingestion_embedding_{name}")
+            for name in ("batch_size", "max_batch_tokens", "max_batch_bytes", "concurrency",
+                         "max_retries", "total_timeout_seconds")
+        })
+        return await embed_ingestion_texts(
+            self.llm_manager, texts, config=config, on_progress=on_progress,
+            checkpoint_load=(lambda key: checkpoint.load(f"dense/{key}")) if checkpoint else None,
+            checkpoint_save=(lambda key, vectors: checkpoint.save(f"dense/{key}", vectors)) if checkpoint else None,
+        )
+
     async def _process_document(
+        self, parse_result: Dict[str, Any], storage_result: Dict[str, Any],
+        kb_id: str, processing_id: str, file_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        checkpoint = self._document_checkpoints(storage_result)
+        chunks = await checkpoint.load("chunks")
+        if chunks is None:
+            chunks = await self._prepare_document_chunks(
+                parse_result, storage_result, kb_id, processing_id, file_path,
+            )
+            if not chunks:
+                raise ValueError("文档解析未得到可索引文本，原文件已保留，请检查解析结果。")
+            await checkpoint.save("chunks", chunks)
+        else:
+            logger.info("恢复文档分块检查点 processing_id={} chunks={}", processing_id, len(chunks))
+        if not chunks:
+            raise ValueError("文档分块检查点为空，未覆盖已有文本索引。")
+        self._update_processing_status(processing_id, {
+            "checkpoint_stage": "chunks", "chunks_total": len(chunks),
+            "retry_supported": True,
+        })
+        vectors_result = await self._vectorize_text_chunks(chunks, processing_id, checkpoint=checkpoint)
+        self._update_processing_status(processing_id, {
+            "stage": "indexing", "progress": 92, "message": f"正在保存 {len(chunks)} 个文本索引…",
+        })
+        # The storage implementation writes stable IDs/context in one batch.
+        result = await self.vector_store.upsert_text_chunks(
+            kb_id=kb_id, chunks=vectors_result["chunks"], replace_file_id=storage_result["file_id"],
+        )
+        sparse_stats = vectors_result.get("sparse_stats", {})
+        return {
+            "processing_id": processing_id, "status": "completed",
+            "file_id": storage_result["file_id"], "file_type": "document",
+            "chunks_processed": len(chunks), "vectors_stored": result["points_inserted"],
+            "sparse_stats": {**sparse_stats, "chunks_with_sparse": sum(bool(c.get("sparse_vector")) for c in chunks)},
+        }
+
+    async def _existing_document_images(self, kb_id: str, file_id: str) -> dict:
+        """Recover captions from legacy uploads predating checkpoints, scoped to this file."""
+        def read():
+            from qdrant_client.http.models import Filter, FieldCondition, MatchValue
+            images, offset = {}, None
+            while True:
+                points, offset = self.vector_store.client.scroll(
+                    collection_name="image_vectors", limit=100, offset=offset,
+                    scroll_filter=Filter(must=[
+                        FieldCondition(key="kb_id", match=MatchValue(value=kb_id)),
+                        FieldCondition(key="source_file_id", match=MatchValue(value=file_id)),
+                    ]), with_vectors=False, with_payload=True,
+                )
+                for point in points:
+                    payload = point.payload or {}
+                    match = re.search(r"_page(\d+)_img(\d+)\.", payload.get("file_path", ""))
+                    if match and payload.get("caption"):
+                        images[f"{match[1]}:{match[2]}"] = {"caption": payload["caption"], "object_path": payload.get("file_path"), "point_id": str(point.id)}
+                if offset is None:
+                    return images
+        return await asyncio.to_thread(read)
+
+    async def _prepare_document_chunks(
         self,
         parse_result: Dict[str, Any],
         storage_result: Dict[str, Any],
         kb_id: str,
         processing_id: str,
         file_path: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """处理文档文件"""
+    ) -> List[Dict[str, Any]]:
+        """复用已验证图片，生成尚未向量化的文档分块。"""
         
         # 保存 MinIO 存储结果（包含 file_id）
         minio_storage_result = storage_result
+        checkpoint = self._document_checkpoints(storage_result)
+        completed_images = await checkpoint.load("images")
+        if completed_images is None:
+            completed_images = await self._existing_document_images(kb_id, storage_result["file_id"])
         
         # 0. 处理 PDF 中提取的图片（如果有），并收集 (markdown_ref, caption) 用于后续插回
         extracted_images_count = 0
+        image_failures = 0
         caption_replacements: List[tuple] = []  # (markdown_ref, vlm_caption)
         if parse_result.get("file_type") in ["pdf", "docx", "pptx", "md"] and "extracted_images" in parse_result:
             extracted_images = parse_result.get("extracted_images", [])
@@ -1376,6 +1530,23 @@ class IngestionService:
                         image_bytes = img_info.get("image_bytes")
                         image_path = img_info.get("image_path", "")
                         markdown_ref = img_info.get("markdown_ref")
+                        image_key = f"{page_num}:{image_index}"
+                        image_digest = hashlib.sha256(image_bytes).hexdigest() if image_bytes else None
+                        previous_image = completed_images.get(image_key) or {}
+                        if previous_image and not previous_image.get("sha256") and previous_image.get("object_path"):
+                            try:
+                                old_bytes = await self.minio_adapter.get_file_content(storage_result["bucket"], previous_image["object_path"])
+                                previous_image["sha256"] = hashlib.sha256(old_bytes).hexdigest()
+                            except Exception:
+                                # An unavailable old derivative cannot establish image identity.
+                                previous_image.pop("sha256", None)
+                        if image_digest and previous_image.get("sha256") == image_digest and usable_image_caption(previous_image.get("caption")):
+                            caption = previous_image.get("caption")
+                            if caption and markdown_ref:
+                                caption_replacements.append((markdown_ref, caption))
+                            extracted_images_count += 1
+                            await checkpoint.save("images", completed_images)
+                            continue
                         meta = img_info.get("metadata") or {}
                         document_caption = meta.get("document_caption") or img_info.get("document_caption") or ""
                         surrounding_context = self._get_surrounding_context_for_image(
@@ -1408,7 +1579,9 @@ class IngestionService:
                             file_content=image_bytes,
                             file_path=image_filename,
                             kb_id=kb_id,
-                            file_type="images"
+                            file_type="images",
+                            custom_object_path=f"images/{uuid.uuid5(uuid.NAMESPACE_URL, file_id + ':' + image_key)}_{image_filename}",
+                            file_id_override=str(uuid.uuid5(uuid.NAMESPACE_URL, file_id + ':' + image_key)),
                         )
                         
                         # 处理图片（带文档标题与位置上下文的 VLM、CLIP、存储），并收集 markdown_ref 与 caption 用于插回；传入原始文档 file_id 便于删除文档时一并删图
@@ -1424,20 +1597,44 @@ class IngestionService:
                             markdown_ref=markdown_ref,
                             source_file_id=file_id,
                         )
+                        if not usable_image_caption(image_result.get("caption")):
+                            raise DocumentProcessingError("文档图片描述未成功生成，未保存为完成检查点。")
                         if markdown_ref and image_result.get("caption"):
                             cap = image_result["caption"]
                             if cap.startswith("无法生成") or cap == "VLM API返回空响应":
                                 cap = "解析失败"
                             caption_replacements.append((markdown_ref, cap))
 
+                        # If a parser revision changed this image, retire only its exact old
+                        # derivative after the new one is safely stored/indexed.
+                        new_point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"image:{kb_id}:{image_storage_result['file_id']}"))
+                        if previous_image.get("point_id") and previous_image["point_id"] != new_point_id:
+                            from .storage.async_io import settled_write
+                            await settled_write(self.vector_store.client.delete, collection_name="image_vectors",
+                                                points_selector=[previous_image["point_id"]], wait=True)
+                        old_path = previous_image.get("object_path")
+                        if old_path and old_path != image_storage_result["object_path"]:
+                            if not await self.minio_adapter.delete_file(storage_result["bucket"], old_path):
+                                raise RuntimeError("旧文档图片清理失败")
+                        completed_images[image_key] = {
+                            "caption": image_result.get("caption"), "sha256": image_digest,
+                            "object_path": image_storage_result["object_path"],
+                        }
+                        await checkpoint.save("images", completed_images)
                         extracted_images_count += 1
                         logger.info(f"文档内图片处理完成: {image_filename}, 向量数: {image_result.get('vectors_stored', 0)}")
                         
+                    except (IngestionEmbeddingError, DocumentProcessingError):
+                        raise
                     except Exception as e:
+                        image_failures += 1
                         logger.error(f"处理 PDF 图片失败 (第 {img_info.get('page', '?')} 页第 {img_info.get('image_index', '?')} 张): {str(e)}", exc_info=True)
                         continue
                 
                 logger.info(f"文档内图片处理完成: {extracted_images_count}/{len(extracted_images)} 张图片成功处理")
+                if image_failures:
+                    self._update_processing_status(processing_id, {"stage": "processing_images"})
+                    raise RuntimeError(f"文档中 {image_failures} 张图片未处理完成，已保存的结果可在重试时复用。")
         
         # 1. 用「补全后的 markdown」做文本分块：将 VLM 图注插回占位符后再 chunk
         # 按原文位置从后往前替换，避免图注内容中若含其它图片的 ref 串时被误替换导致重复/嵌套
@@ -1459,6 +1656,9 @@ class IngestionService:
                 enriched_markdown = enriched_markdown[:pos] + replacement + enriched_markdown[pos + len(ref) :]
             parse_result_for_chunking = {**parse_result, "markdown": enriched_markdown}
             logger.info("已将 {} 条 VLM 图注插回 Markdown，使用补全后的文本进行分块", len(items))
+        self._update_processing_status(processing_id, {
+            "stage": "chunking", "progress": 45, "message": "正在规划文档分块…",
+        })
         # Excel/CSV 保留其行块/列画像专用策略；其余文档进入 Agentic
         # Chunker。模型只规划原子单元范围，原文由服务端无损物化。
         if parse_result_for_chunking.get("file_type") == "excel" and parse_result_for_chunking.get("sheets"):
@@ -1478,7 +1678,7 @@ class IngestionService:
             chunk["file_path"] = object_path
             chunk["file_type"] = file_type
             chunk["file_id"] = file_id
-            chunk["temp_id"] = str(uuid.uuid4())  # 临时ID，用于context_window
+            chunk["temp_id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"document:{file_id}:{i}"))
         
         # 填充context_window：存储前后相邻chunk的临时ID
         for i, chunk in enumerate(chunks):
@@ -1495,40 +1695,8 @@ class IngestionService:
             chunk_count=len(chunks)
         )
         
-        # 2. 向量化文本块
-        vectors_result = await self._vectorize_text_chunks(chunks, processing_id)
-        
-        # 获取稀疏向量统计信息
-        sparse_stats = vectors_result.get("sparse_stats", {})
-        
-        # 3. 存储到向量数据库
-        vector_storage_result = await self.vector_store.upsert_text_chunks(
-            kb_id=kb_id,
-            chunks=vectors_result["chunks"]
-        )
-        
-        # 统计实际存储了稀疏向量的chunks数量
-        chunks_with_sparse = sum(
-            1 for chunk in vectors_result["chunks"]
-            if chunk.get("sparse_vector") and len(chunk.get("sparse_vector", {})) > 0
-        )
-        
-        return {
-            "processing_id": processing_id,
-            "status": "completed",
-            "file_id": minio_storage_result["file_id"],
-            "chunks_processed": len(chunks),
-            "vectors_stored": vector_storage_result["points_inserted"],
-            "file_type": "document",
-            "sparse_stats": {
-                "chunks_with_sparse": chunks_with_sparse,
-                "total_chunks": sparse_stats.get("total_chunks", len(chunks)),
-                "successful": sparse_stats.get("successful", 0),
-                "failed": sparse_stats.get("failed", 0),
-                "avg_sparse_size": sparse_stats.get("avg_sparse_size", 0.0)
-            }
-        }
-    
+        return chunks
+
     async def _process_image(
         self,
         parse_result: Dict[str, Any],
@@ -1570,6 +1738,7 @@ class IngestionService:
             image_format=parse_result.get("format"),
             document_caption=document_caption,
             surrounding_context=surrounding_context,
+            strict=bool(source_file_id),
         )
         
         audit_log(
@@ -1605,7 +1774,7 @@ class IngestionService:
         
         # 3. 文本向量化描述（空描述用占位符，避免部分 API 对空输入返回 5xx）
         caption = (caption_result.get("caption") or "").strip()
-        text_to_embed = caption if caption else " "
+        text_to_embed = caption if caption else "（无图片描述）"
         self._update_processing_status(processing_id, {"message": "文本向量化"})
         logger.info("开始文本向量化（图片描述） (processing_id={})", processing_id)
         text_vector_result = await self._vectorize_text([text_to_embed])
@@ -3646,7 +3815,8 @@ class IngestionService:
     async def _vectorize_text_chunks(
         self, 
         chunks: List[Dict[str, Any]], 
-        processing_id: str
+        processing_id: str,
+        *, checkpoint=None,
     ) -> Dict[str, Any]:
         """向量化文本块（密集向量 + 稀疏向量）"""
         try:
@@ -3656,16 +3826,19 @@ class IngestionService:
             texts = [chunk["text"] for chunk in chunks]
             embedding_texts = [chunk.get("embedding_text") or chunk["text"] for chunk in chunks]
             
-            # 1. 使用LLM管理器进行密集向量化（Qwen3-Embedding-8B）
-            dense_result = await self.llm_manager.embed(texts=embedding_texts)
-            
-            if not dense_result.success:
-                raise Exception(f"文本密集向量化失败: {dense_result.error}")
-            
-            # 检查数据是否存在
-            if dense_result.data is None:
-                raise Exception("文本密集向量化返回的数据为空")
-            
+            def progress(info):
+                self._update_processing_status(processing_id, {
+                    "stage": "dense_embedding", "progress": 55 + int(25 * info["completed"] / max(1, info["total"])),
+                    "message": f"正在生成文本索引：{info['completed']}/{info['total']} 块",
+                    "embedding_completed": info["completed"], "embedding_total": info["total"],
+                    "embedding_retries": info["retries"],
+                })
+            progress({"completed": 0, "total": len(texts), "retries": 0})
+            dense_vectors = await self._embed_ingestion(embedding_texts, on_progress=progress, checkpoint=checkpoint)
+            self._update_processing_status(processing_id, {
+                "stage": "sparse_embedding", "progress": 82, "message": "正在生成文本关键词索引…",
+            })
+
             # 2. 使用 BGE-M3 进行稀疏向量化
             sparse_stats = {
                 "total_chunks": len(texts),
@@ -3676,7 +3849,9 @@ class IngestionService:
             }
             
             try:
-                sparse_results = self.sparse_encoder.encode_corpus(texts, batch_size=32)
+                sparse_results = await asyncio.get_running_loop().run_in_executor(
+                    _document_sparse_executor, lambda: self.sparse_encoder.encode_corpus(texts, batch_size=32),
+                )
                 logger.info(f"BGE-M3 稀疏向量化完成: {len(sparse_results)} 个文档")
                 
                 # 统计稀疏向量信息
@@ -3706,7 +3881,7 @@ class IngestionService:
             # 3. 组合结果
             vectorized_chunks = []
             for i, chunk in enumerate(chunks):
-                chunk["vector"] = dense_result.data[i]  # 密集向量
+                chunk["vector"] = dense_vectors[i]  # 密集向量
                 
                 # 添加稀疏向量（如果可用）
                 if i < len(sparse_results) and sparse_results[i].get("sparse"):
@@ -3720,7 +3895,7 @@ class IngestionService:
             
             return {
                 "chunks": vectorized_chunks,
-                "tokens_used": getattr(dense_result, 'tokens_used', 0),
+                "tokens_used": 0,
                 "sparse_stats": sparse_stats  # 添加稀疏向量统计信息
             }
             
@@ -3779,6 +3954,7 @@ class IngestionService:
         image_format: Optional[str] = None,
         document_caption: Optional[str] = None,
         surrounding_context: Optional[str] = None,
+        strict: bool = False,
     ) -> Dict[str, Any]:
         """生成图片描述。可传入文档标题与位置上下文以提升与文档语义的一致性。"""
         try:
@@ -3836,6 +4012,8 @@ class IngestionService:
             logger.info("VLM 图片描述调用返回: success={}", result.success)
             if not result.success:
                 logger.error(f"VLM API调用失败: {result.error}")
+                if strict:
+                    raise DocumentProcessingError("文档图片描述模型调用失败，原文件及完成的图片已保留。", result)
                 # 如果API调用失败，返回默认描述
                 caption = "无法生成图片描述，VLM API调用失败"
                 model_used = "unknown"
@@ -3857,6 +4035,8 @@ class IngestionService:
                 
                 model_used = result.model_used or "Qwen/Qwen3-VL-32B-Instruct"
             
+            if strict and not usable_image_caption(caption):
+                raise DocumentProcessingError("文档图片描述模型未返回有效内容。", result)
             logger.info(f"图片描述生成完成: 长度={len(caption)}, 模型={model_used}")
             
             return {
@@ -3866,6 +4046,8 @@ class IngestionService:
             
         except Exception as e:
             logger.error(f"图片描述生成失败: {str(e)}", exc_info=True)
+            if strict:
+                raise
             # 返回默认描述而不是抛出异常，确保流程可以继续
             return {
                 "caption": f"图片描述生成失败: {str(e)}",
@@ -4060,18 +4242,9 @@ class IngestionService:
         """向量化文本"""
         try:
             logger.info("文本向量化: 开始, 文本数={}", len(texts))
-            result = await self.llm_manager.embed(texts=texts)
-            if not result.success:
-                raise Exception(f"文本向量化失败: {result.error}")
-            
-            # 检查数据是否存在
-            if result.data is None:
-                raise Exception("文本向量化返回的数据为空")
-            logger.info("文本向量化: 完成, 向量数={}", len(result.data))
-            return {
-                "vectors": result.data,
-                "model_used": result.model_used
-            }
+            vectors = await self._embed_ingestion(texts)
+            logger.info("文本向量化: 完成, 向量数={}", len(vectors))
+            return {"vectors": vectors, "model_used": self.llm_manager.registry.get_task_model("embedding")}
             
         except Exception as e:
             logger.error(f"文本向量化失败: {str(e)}")
@@ -4359,28 +4532,71 @@ class IngestionService:
         })
         return result
 
-    def retry_video_processing(self, processing_id: str) -> Dict[str, Any]:
-        """重新入队一个已落盘但失败的视频任务。
+    async def _reprocess_persisted_document(self, *, processing_id: str, status: dict) -> dict:
+        storage = {key: status[key] for key in ("bucket", "object_path", "file_id")}
+        storage["size"] = status.get("file_size", 0)
+        checkpoint = self._document_checkpoints(storage)
+        self._update_processing_status(processing_id, {
+            "status": "processing", "stage": "reading_source", "progress": 10,
+            "message": "正在读取已保存文档的处理检查点…",
+        })
+        await asyncio.to_thread(self.minio_adapter.client.stat_object, storage["bucket"], storage["object_path"])
+        chunks = await checkpoint.load("chunks")
+        parsed = {"file_type": status["file_type"]}
+        if chunks is None:
+            parsed = await checkpoint.load("parsed")
+            if parsed is None:
+                self._update_processing_status(processing_id, {
+                    "stage": "parsing", "progress": 15,
+                    "message": "原任务没有解析检查点，正在重新解析已保存的文档…",
+                })
+                content = await self.minio_adapter.get_file_content(storage["bucket"], storage["object_path"])
+                parsed = await self.parser_factory.parse_file(content, status["file_path"])
+                if parsed.get("file_type") not in DOCUMENT_TYPES:
+                    raise ValueError("保存的原文件不是可恢复的文档")
+                if status.get("source_type"):
+                    parsed["metadata"] = {**(parsed.get("metadata") or {}), "source_type": status["source_type"]}
+                await checkpoint.save("parsed", parsed)
+        result = await self._process_document(parsed, storage, status["kb_id"], processing_id, status["file_path"])
+        self._update_processing_status(processing_id, {
+            "status": "completed", "stage": "completed", "progress": 100,
+            "message": "文档恢复处理完成", "completed_at": datetime.utcnow().isoformat(),
+            "result": result,
+        })
+        try:
+            from app.core.portrait_trigger import trigger_portrait_rebuild
+            trigger_portrait_rebuild(status["kb_id"], reason="document_reprocessed")
+        except Exception as exc:
+            logger.warning("文档恢复后画像刷新失败: {}", type(exc).__name__)
+        return result
 
-        原视频和稳定 ``file_id`` 均保留在 MinIO，因此不要求用户重新上传，也不会在
-        文件列表里生成重复文件。只允许失败/已失联的 video 任务重试，运行中的任务
-        不会被抢占或中断。
+    def retry_video_processing(self, processing_id: str) -> Dict[str, Any]:
+        return self.retry_file_processing(processing_id)
+
+    def retry_file_processing(self, processing_id: str) -> Dict[str, Any]:
+        """Restore a failed saved document/video under its existing task/file lease.
+
+        Document checkpoints skip completed work; legacy records reuse verified
+        original/derived objects. CAS fences concurrent retry and deletion.
         """
         if not processing_id:
             raise ValueError("缺少 processing_id")
         existing_task = self._background_upload_tasks.get(processing_id)
         if existing_task is not None and not existing_task.done():
-            raise ValueError("视频任务仍在运行，不能重复入队")
+            raise ValueError("文件任务仍在运行，不能重复入队")
 
         status = self._load_persisted_processing_status(processing_id, raise_on_error=True) or self._processing_status.get(processing_id)
         if not isinstance(status, dict):
             raise LookupError("未找到上传任务或任务状态已过期")
-        if str(status.get("file_type") or "") != "video":
-            raise ValueError("仅支持重新处理已落盘的视频任务")
+        file_type = str(status.get("file_type") or "")
+        if file_type not in DOCUMENT_TYPES | {"video"}:
+            raise ValueError("仅支持重新处理已保存的文档或视频任务")
         if str(status.get("status") or "") != "failed":
-            raise ValueError("仅支持重新处理已失败的视频任务")
+            raise ValueError("仅支持重新处理已失败的文件任务")
+        if file_type in DOCUMENT_TYPES and status.get("retryable") is False:
+            raise ValueError("该任务的失败原因不支持直接重试，请先解决原因")
         if not all(status.get(field) for field in ("file_id", "bucket", "object_path")):
-            raise ValueError("原视频尚未成功保存到对象存储，无法重新处理")
+            raise ValueError("原文件尚未成功保存到对象存储，无法重新处理")
 
         status = status.copy()
         now = datetime.utcnow().isoformat()
@@ -4389,7 +4605,7 @@ class IngestionService:
             "status": "queued",
             "stage": "queued",
             "progress": 0,
-            "message": "已从原视频重新入队，等待处理…",
+            "message": "已从保存的原文件重新入队，等待恢复处理…",
             "error": None,
             "failed_at": None,
             "completed_at": None,
@@ -4399,15 +4615,22 @@ class IngestionService:
             "retried_at": now,
             "updated_at": now,
             **cleared_video_error_status(),
+            "failed_stage": None,
+            "error_category": None,
+            "status_code": None,
+            "retry_supported": True,
+            "storage_persisted": True,
+            "embedding_completed": 0,
+            "embedding_total": None,
             "segment_index": None,
             "segment_total": None,
         })
         if not self._persist_processing_status(status, require_persistence=True, expected_status="failed"):
-            raise ValueError("视频任务正在删除、已经删除或状态已变更，不能重新入队")
+            raise ValueError("文件任务正在删除、已经删除或状态已变更，不能重新入队")
 
         lease_id = str(uuid.uuid4())
         if not self._acquire_processing_lease(processing_id, lease_id):
-            raise RuntimeError("无法为重新处理的视频取得执行租约")
+            raise RuntimeError("无法为重新处理的文件取得执行租约")
 
         async def _run_retry_with_lease() -> Dict[str, Any]:
             heartbeat_task = asyncio.create_task(
@@ -4415,19 +4638,19 @@ class IngestionService:
                 name=f"ingestion-video-retry-heartbeat-{processing_id}",
             )
             try:
-                return await self._reprocess_persisted_video(
-                    processing_id=processing_id,
-                    status=status,
-                )
+                if file_type == "video":
+                    return await self._reprocess_persisted_video(processing_id=processing_id, status=status)
+                async with self._get_file_processing_semaphore():
+                    return await self._reprocess_persisted_document(processing_id=processing_id, status=status)
             except Exception as retry_error:
                 self._update_processing_status(processing_id, {
                     "status": "failed",
                     "stage": "error",
                     "progress": 0,
-                    "message": f"视频重新处理失败: {retry_error}",
+                    "message": f"文件恢复处理失败: {retry_error}",
                     "error": str(retry_error),
                     "failed_at": datetime.utcnow().isoformat(),
-                    **video_error_status(retry_error),
+                    **self._ingestion_failure_fields(processing_id, retry_error),
                 })
                 raise
             finally:
@@ -4449,7 +4672,7 @@ class IngestionService:
                 self._update_processing_status(processing_id, {
                     "status": "failed",
                     "stage": "error",
-                    "message": "服务重启或任务取消，视频重新处理未完成。",
+                    "message": "服务重启或任务取消，文件恢复处理未完成。",
                     "error": "background retry task cancelled",
                 })
                 return
@@ -4466,7 +4689,9 @@ class IngestionService:
             "status": "queued",
             "file_id": str(status["file_id"]),
             "retry_count": retry_count,
-            "message": "已从对象存储重新入队视频解析。",
+            "message": "已从对象存储重新入队文件处理。",
+            "stage": "queued", "progress": 0, "storage_persisted": True,
+            "updated_at": status["updated_at"], "retry_supported": True,
         }
 
     def _update_processing_status(
@@ -4484,7 +4709,10 @@ class IngestionService:
             if current.get("status") == "deleted":
                 raise ProcessingTaskActiveError("文件已删除，任务不能继续处理")
             status = {**current, **updates, "updated_at": datetime.utcnow().isoformat()}
-            if not self._persist_processing_status(status, raise_if_reserved=True):
+            durable_terminal = current.get("file_type") in DOCUMENT_TYPES and updates.get("status") in {"completed", "failed"}
+            if not self._persist_processing_status(status, raise_if_reserved=True, require_persistence=durable_terminal):
+                if durable_terminal:
+                    raise ProcessingStatusUnavailableError("文档处理终态未持久化，请稍后恢复处理")
                 # Preserve the old single-process fallback, but never replace a
                 # tombstone learned while attempting the shared-store write.
                 self._cache_processing_status(status)
@@ -4523,7 +4751,7 @@ class IngestionService:
                 }
 
             status = self._recover_expired_processing_status(self._processing_status[processing_id])
-            return status.copy()
+            return retry_capabilities(status)
             
         except Exception as e:
             logger.error(f"获取处理状态失败: {str(e)}")

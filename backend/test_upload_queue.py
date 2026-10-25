@@ -292,6 +292,7 @@ def test_file_list_includes_queued_placeholder_before_minio_object_exists(monkey
         "type": "mp4",
         "status": "queued",
         "submitted_at": "2026-07-23T16:00:00",
+        "storage_persisted": False,
     }]
 
 

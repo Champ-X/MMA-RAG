@@ -314,6 +314,17 @@ class ApiClient {
 // 创建单例实例
 export const apiClient = new ApiClient();
 
+export type UploadRetryReceipt = UploadFailureFields & {
+  processing_id: string
+  status: 'queued'
+  file_id: string
+  retry_count: number
+  message: string
+  updated_at?: string
+}
+const retryStoredUpload = (taskId: string) =>
+  apiClient.post<UploadRetryReceipt>(`/upload/retry/${encodeURIComponent(taskId)}`)
+
 // 知识库相关API
 export const knowledgeApi = {
   // 获取知识库列表（多库+封面可能较慢，单独放宽超时）
@@ -561,15 +572,9 @@ export const knowledgeApi = {
       message?: string; error?: string; updated_at?: string; file_id?: string;
     }> }>('/upload/progress/batch', { processing_ids: taskIds }),
 
-  /** 对已落盘但失败的视频复用 MinIO 原文件重新入队，不要求浏览器重新选择上传文件。 */
-  retryVideoUpload: (taskId: string) =>
-    apiClient.post<{
-      processing_id: string
-      status: 'queued'
-      file_id: string
-      retry_count: number
-      message: string
-    }>(`/upload/retry/${encodeURIComponent(taskId)}`),
+  /** 按服务端能力复用已保存原文件，不要求浏览器重新选择上传文件。 */
+  retryUpload: retryStoredUpload,
+  retryVideoUpload: retryStoredUpload,
 };
 
 export type ImportUrlMode = 'auto' | 'webpage' | 'file' | 'feishu'

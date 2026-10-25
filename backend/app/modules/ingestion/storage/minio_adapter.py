@@ -18,6 +18,7 @@ from minio.commonconfig import Tags as MinioTags
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from .async_io import settled_write
 
 logger = get_logger(__name__)
 
@@ -207,7 +208,7 @@ class MinIOAdapter:
             # minio-py 是同步客户端；put_object（尤其是大视频）在 async 路由中直接
             # 调用会冻结事件循环，使同一批次后续文件无法及时获得 processing_id。
             # 放到工作线程后，上传状态轮询和其它批量提交仍可继续推进。
-            return await asyncio.to_thread(_upload_sync)
+            return await settled_write(_upload_sync)
         except S3Error as e:
             logger.error(f"文件上传失败: {str(e)}")
             raise

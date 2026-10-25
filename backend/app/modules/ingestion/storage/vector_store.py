@@ -25,6 +25,7 @@ from qdrant_client.http.models import (
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.core.storage_health import StorageSchemaMismatch
+from .async_io import settled_write
 
 logger = get_logger(__name__)
 
@@ -550,7 +551,8 @@ class VectorStore:
     async def upsert_text_chunks(
         self,
         kb_id: str,
-        chunks: List[Dict[str, Any]]
+        chunks: List[Dict[str, Any]],
+        *, replace_file_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         批量插入文本块
@@ -563,16 +565,21 @@ class VectorStore:
             插入结果
         """
         try:
+            if replace_file_id and any(chunk.get("file_id") != replace_file_id for chunk in chunks):
+                raise ValueError("Document replacement contains another file's chunks")
+            if not chunks:
+                return {"points_inserted": 0, "status": "success"}
             points = []
             temp_id_to_real_id = {}  # 临时ID到真实ID的映射
             
-            # 第一遍：插入所有chunk，建立临时ID到真实ID的映射
-            for chunk in chunks:
-                point_id = str(uuid.uuid4())
-                temp_id = chunk.get("temp_id")
-                if temp_id:
-                    temp_id_to_real_id[temp_id] = point_id
-                
+            # Stable file/position IDs make retry after a partial write idempotent.
+            point_ids = [str(uuid.uuid5(uuid.NAMESPACE_URL, f"text:{kb_id}:{chunk['file_id']}:{chunk.get('chunk_index', i)}"))
+                         if chunk.get("file_id") else str(uuid.uuid4()) for i, chunk in enumerate(chunks)]
+            temp_id_to_real_id = {chunk["temp_id"]: point_id for chunk, point_id in zip(chunks, point_ids) if chunk.get("temp_id")}
+            for chunk, point_id in zip(chunks, point_ids):
+                context = {key: temp_id_to_real_id[value]
+                           for key, value in (chunk.get("context_window") or {}).items()
+                           if value in temp_id_to_real_id}
                 # 准备payload（context_window 以 JSON 字符串存，与 PayloadSchemaType.TEXT 一致，稍后更新）
                 payload = {
                     "kb_id": kb_id,
@@ -582,7 +589,7 @@ class VectorStore:
                     "file_path": chunk.get("file_path"),
                     "file_type": chunk.get("file_type"),
                     "chunk_index": chunk.get("chunk_index", 0),
-                    "context_window": "{}",  # 先为空 JSON 字符串，插入后再 set_payload 更新
+                    "context_window": json.dumps(context, ensure_ascii=False),
                     "metadata": chunk.get("metadata", {}),
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
@@ -611,74 +618,23 @@ class VectorStore:
                 )
                 points.append(point)
             
-            # 批量插入
-            operation_info = self.client.upsert(
-                collection_name=TEXT_CHUNK_COLLECTION,
-                points=points
+            # Context is written together with vectors: no per-chunk follow-up requests.
+            # Threaded IO keeps progress/lease heartbeats responsive while Qdrant writes.
+            operation_info = await settled_write(
+                self.client.upsert, collection_name=TEXT_CHUNK_COLLECTION, points=points, wait=True,
             )
-            
-            # 第二遍：更新context_window字段，将临时ID替换为真实ID
-            update_points = []
-            for i, chunk in enumerate(chunks):
-                temp_id = chunk.get("temp_id")
-                if not temp_id:
-                    continue
-                
-                real_id = temp_id_to_real_id.get(temp_id)
-                if not real_id:
-                    continue
-                
-                # 构建更新后的context_window
-                updated_context_window = {}
-                original_context_window = chunk.get("context_window", {})
-                
-                if "prev_chunk_id" in original_context_window:
-                    prev_temp_id = original_context_window["prev_chunk_id"]
-                    prev_real_id = temp_id_to_real_id.get(prev_temp_id)
-                    if prev_real_id:
-                        updated_context_window["prev_chunk_id"] = prev_real_id
-                
-                if "next_chunk_id" in original_context_window:
-                    next_temp_id = original_context_window["next_chunk_id"]
-                    next_real_id = temp_id_to_real_id.get(next_temp_id)
-                    if next_real_id:
-                        updated_context_window["next_chunk_id"] = next_real_id
-                
-                # 如果context_window不为空，更新该point（存为 JSON 字符串，与 TEXT 一致）
-                if updated_context_window:
-                    update_points.append({
-                        "id": real_id,
-                        "payload": {
-                            "context_window": json.dumps(updated_context_window, ensure_ascii=False)
-                        }
-                    })
-            
-            # 批量更新context_window
-            if update_points:
-                try:
-                    # 使用 set_payload 方法更新 payload（不改变向量）
-                    # 按 payload 分组，批量更新相同 payload 的点
-                    payload_to_points = {}
-                    for point in update_points:
-                        payload_key = str(point["payload"])
-                        if payload_key not in payload_to_points:
-                            payload_to_points[payload_key] = {
-                                "payload": point["payload"],
-                                "point_ids": []
-                            }
-                        payload_to_points[payload_key]["point_ids"].append(point["id"])
-                    
-                    # 批量更新（points 传 list 即可，与 PointIdsList 等价）
-                    for payload_data in payload_to_points.values():
-                        self.client.set_payload(
-                            collection_name=TEXT_CHUNK_COLLECTION,
-                            payload=payload_data["payload"],
-                            points=payload_data["point_ids"]
-                        )
-                    logger.info(f"更新了 {len(update_points)} 个chunk的context_window")
-                except Exception as update_e:
-                    logger.warning(f"更新context_window失败: {str(update_e)}")
-            
+            if replace_file_id:
+                # Retire legacy random IDs and stale tails only after the complete
+                # replacement was acknowledged. A failed cleanup is safely retryable.
+                await settled_write(
+                    self.client.delete, collection_name=TEXT_CHUNK_COLLECTION, wait=True,
+                    points_selector=models.FilterSelector(filter=models.Filter(
+                        must=[models.FieldCondition(key="kb_id", match=models.MatchValue(value=kb_id)),
+                              models.FieldCondition(key="file_id", match=models.MatchValue(value=replace_file_id))],
+                        must_not=[models.HasIdCondition(has_id=point_ids)],
+                    )),
+                )
+
             logger.info(f"文本块插入完成: {len(points)} 个, 操作ID: {operation_info.operation_id}")
             
             return {
@@ -710,7 +666,8 @@ class VectorStore:
             points = []
             
             for image in images:
-                point_id = str(uuid.uuid4())
+                point_id = (str(uuid.uuid5(uuid.NAMESPACE_URL, f"image:{kb_id}:{image['file_id']}"))
+                            if image.get("file_id") else str(uuid.uuid4()))
                 
                 # 准备Named Vector
                 vectors = {

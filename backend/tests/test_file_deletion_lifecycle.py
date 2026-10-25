@@ -10,7 +10,7 @@ from app.api import knowledge as api
 from app.modules.ingestion import service as ingestion
 from app.modules.ingestion.service import ProcessingStatusUnavailableError, ProcessingTaskActiveError
 from app.modules.knowledge.service import KnowledgeBaseService, KnowledgeFileDeletionUnavailable
-from test_processing_retirement import TransactionRedis, service, seed
+from test_processing_retirement import TransactionRedis, service, seed, seed_placeholder
 
 
 @pytest.fixture
@@ -54,6 +54,7 @@ def test_delete_retires_status_across_reader_and_restart_without_touching_same_n
         return True
     kb.minio_adapter.delete_file.side_effect = physical_delete
     assert asyncio.run(kb.delete_kb_file('space', 'file'))
+
     assert owner.get_processing_status_sync('task')['status'] == 'deleted'
     assert reader.get_processing_status_sync('task')['status'] == 'deleted'
     assert service(owner._processing_status_redis_client).get_processing_status_sync('task')['status'] == 'deleted'
@@ -62,6 +63,17 @@ def test_delete_retires_status_across_reader_and_restart_without_touching_same_n
     # Once committed, idempotent DELETE does not depend on a healthy object/vector store.
     kb.minio_adapter.list_files.side_effect = OSError('offline')
     assert asyncio.run(kb.delete_kb_file('space', 'file'))
+
+
+def test_document_deletion_removes_hidden_checkpoints_only_for_exact_file(case):
+    kb, owner, reader, original = case
+    paths = [original['object_path'], '.ingestion/file/parsed.json.gz', '.ingestion/file/dense/batch.json.gz',
+             '.ingestion/file-other/chunks.json.gz']
+    kb.minio_adapter.list_files.return_value = [{'object_path': path} for path in paths]
+    assert asyncio.run(kb.delete_kb_file('space', 'file'))
+    removed = {call.args[1] for call in kb.minio_adapter.delete_file.call_args_list}
+    assert removed == set(paths[:3])
+    assert reader.get_processing_status_sync('task')['status'] == 'deleted'
 
 
 def test_ghost_without_original_can_be_deleted_and_unknown_file_still_404(case):
@@ -209,3 +221,80 @@ def test_api_preserves_conflict_and_storage_failure_messages(monkeypatch):
     with pytest.raises(HTTPException) as error:
         asyncio.run(api.delete_kb_file('space', 'file'))
     assert error.value.status_code == 503 and error.value.detail == '存储未就绪'
+
+
+def assert_no_physical_storage_access(kb):
+    kb._ensure_kb_in_cache.assert_not_called()
+    kb.minio_adapter.list_files.assert_not_awaited()
+    kb.minio_adapter.delete_file.assert_not_awaited()
+    kb.vector_store.client.delete.assert_not_called()
+    kb.vector_store.delete_video_points_by_file_id.assert_not_called()
+
+
+def test_api_deletes_unsaved_placeholder_idempotently_without_physical_access(case, monkeypatch):
+    kb, owner, reader, old = case
+    seed_placeholder(owner)
+    seed_placeholder(owner, task_id='same-pdf-new-upload')
+    kb._ensure_kb_in_cache = Mock(side_effect=AssertionError('placeholder must bypass storage'))
+    monkeypatch.setattr(api, 'kb_service', kb)
+    for _ in range(2):
+        assert asyncio.run(api.delete_kb_file('space', 'processing:unsaved')) == {'message': '文件已删除'}
+    assert_no_physical_storage_access(kb)
+    assert reader.get_processing_status_sync('unsaved')['status'] == 'deleted'
+    assert owner._load_persisted_processing_status('task') == old
+    assert owner.get_processing_status_sync('same-pdf-new-upload')['status'] == 'failed'
+    assert owner.get_processing_status_sync('same-name-new-upload')['status'] == 'failed'
+
+
+@pytest.mark.parametrize(('kb_id', 'placeholder_id', 'updates', 'expected_code'), [
+    ('space', 'processing:unknown', {}, 404),
+    ('other', 'processing:unsaved', {}, 404),
+    ('space', 'processing:', {}, 404),
+    ('space', 'processing:unsaved', {'status': 'queued'}, 409),
+    ('space', 'processing:unsaved', {'file_id': 'saved-file'}, 409),
+])
+def test_api_rejects_invalid_placeholder_deletion_without_physical_access(
+    case, monkeypatch, kb_id, placeholder_id, updates, expected_code,
+):
+    kb, owner, _reader, _old = case
+    seed_placeholder(owner, **updates)
+    kb._ensure_kb_in_cache = Mock(side_effect=AssertionError('placeholder must bypass storage'))
+    monkeypatch.setattr(api, 'kb_service', kb)
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(api.delete_kb_file(kb_id, placeholder_id))
+    assert error.value.status_code == expected_code
+    assert_no_physical_storage_access(kb)
+    assert owner.get_processing_status_sync('unsaved')['status'] != 'deleted'
+
+
+@pytest.mark.parametrize('unavailable_method', ['get', 'pipeline'])
+def test_api_placeholder_redis_outage_is_503_without_physical_access(case, monkeypatch, unavailable_method):
+    kb, owner, _reader, _old = case
+    seed_placeholder(owner)
+    kb._ensure_kb_in_cache = Mock(side_effect=AssertionError('placeholder must bypass storage'))
+    monkeypatch.setattr(api, 'kb_service', kb)
+    monkeypatch.setattr(owner._processing_status_redis_client, unavailable_method,
+                        Mock(side_effect=ConnectionError('offline')))
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(api.delete_kb_file('space', 'processing:unsaved'))
+    assert error.value.status_code == 503
+    assert_no_physical_storage_access(kb)
+    assert owner._processing_status['unsaved']['status'] == 'failed'
+
+
+def test_placeholder_list_marks_source_unsaved_and_hides_retired_task(case):
+    kb, owner, reader, _old = case
+    legacy = seed_placeholder(owner)
+    legacy.pop('storage_persisted')
+    assert owner._persist_processing_status(legacy)
+    kb.minio_adapter.bucket_exists = lambda _bucket: True
+    kb.minio_adapter.list_files.return_value = []
+    kb._list_processing_statuses_for_kb_best_effort = AsyncMock(
+        side_effect=lambda kb_id: reader.list_processing_statuses_for_kb(kb_id),
+    )
+    files = asyncio.run(kb.list_kb_files('space'))
+    assert len(files) == 1
+    assert files[0]['id'] == 'processing:unsaved'
+    assert files[0]['storage_persisted'] is False
+    assert asyncio.run(kb.delete_kb_file('space', files[0]['id']))
+    assert asyncio.run(kb.list_kb_files('space')) == []

@@ -416,7 +416,7 @@ for (const receipt of ['resolve', 'reject'] as const) test(`server progress obse
     await settle()
   })
   assertPreserved()
-  if (receipt === 'reject') assert.match(panel().textContent!, /42%/, 'a failed receipt must not roll back confirmed server progress')
+  assert.match(panel().textContent!, /42%/, 'a delayed receipt must not roll back confirmed server progress')
 })
 
 test('authoritative failures clear omitted old classifications, advance time, and reject older snapshots', async () => {
@@ -546,4 +546,163 @@ test('returning focus reconciles deletion of terminal session tasks from another
   assert.deepEqual(saved.tasks.map((task: { processingId: string }) => task.processingId), ['keep-failed'])
   assert.equal(saved.progress.failed, 1)
   assert.doesNotMatch(panel().textContent!, /deleted-elsewhere/)
+})
+
+for (const view of ['gallery', 'table']) test(`unsaved PDF task records block preview but remain deletable in ${view} view`, async () => {
+  const { saveUploadBatch } = await import('../src/components/knowledge/uploadBatchSession')
+  const ids = ['interrupted-one', 'interrupted-two']
+  saveUploadBatch(sessionStorage, 'a', ids.map(id => ({ kbId: 'a', processingId: id, filename: `${id}.pdf`, isImage: false })), {
+    stage: 'done', total: 2, completed: 0, failed: 2, submitted: true,
+    files: ids.map(id => ({ id, name: `${id}.pdf`, status: 'failed', error: 'processing lease expired' })),
+  })
+  const { act, render, panel, files, knowledgeApi } = await setup()
+  // Legacy records may omit both processing_id and storage_persisted. The literal
+  // processing: identity still tells us that no stored file can be previewed.
+  files.a = ids.map(id => ({ id: `processing:${id}`, name: `${id}.pdf`, type: 'pdf', size: 100,
+    date: '', status: 'failed', error: 'processing lease expired' }))
+  let previewRequests = 0
+  knowledgeApi.getFilePreviewDetails = async () => { previewRequests += 1; return {} }
+  knowledgeApi.getFileStream = async () => { previewRequests += 1; return new Blob() }
+  knowledgeApi.getFileTextContent = async () => { previewRequests += 1; return { content: '' } }
+  const response = deferred<Awaited<ReturnType<typeof knowledgeApi.deleteKnowledgeBaseFile>>>()
+  const deletions: string[][] = []
+  knowledgeApi.deleteKnowledgeBaseFile = (kbId, fileId) => { deletions.push([kbId, fileId]); return response.promise }
+  await render('a')
+  if (view === 'table') await act(async () => {
+    (container.querySelector('[aria-label^="切换到列表视图"]') as HTMLButtonElement).click(); await settle()
+  })
+  const preview = container.querySelector('[aria-label="预览文件：interrupted-one.pdf"]') as HTMLButtonElement
+  assert.equal(preview.disabled, true)
+  const hint = document.getElementById(preview.getAttribute('aria-describedby')!)!
+  assert.match(hint.textContent!, /原文件尚未保存，暂时无法预览/)
+  await act(async () => { preview.click(); await settle() })
+  assert.equal(previewRequests, 0)
+  assert.equal(document.querySelector('[role="dialog"]'), null)
+  assert.match(container.textContent!, /后台处理已中断，任务未完成/)
+  assert.doesNotMatch(container.textContent!, /processing lease expired/)
+  const removeFirst = container.querySelector('[aria-label="删除文件：interrupted-one.pdf"]') as HTMLButtonElement
+  assert.equal(removeFirst.disabled, false)
+  assert.equal(removeFirst.closest('button button'), null, 'delete must be a separate native control')
+  await act(async () => { removeFirst.click(); await settle() })
+  assert.deepEqual(deletions, [['a', 'processing:interrupted-one']])
+  assert.equal(JSON.parse(sessionStorage.getItem('tessmora:upload-batch:a')!).tasks.length, 2, 'retain feedback until server confirms deletion')
+  await act(async () => { response.resolve({ message: 'deleted' }); await settle() })
+  const saved = JSON.parse(sessionStorage.getItem('tessmora:upload-batch:a')!)
+  assert.deepEqual(saved.tasks.map((task: { processingId: string }) => task.processingId), ['interrupted-two'])
+  assert.equal(saved.progress.total, 1)
+  assert.equal(saved.progress.failed, 1)
+  await act(async () => {
+    (container.querySelector('[aria-label="删除文件：interrupted-two.pdf"]') as HTMLButtonElement).click(); await settle()
+  })
+  assert.deepEqual(deletions[1], ['a', 'processing:interrupted-two'])
+  assert.equal(sessionStorage.getItem('tessmora:upload-batch:a'), null)
+  assert.equal(panel().querySelector('.upload-batch'), null)
+  await render('b'); await render('a') // Stale list responses must not restore deleted placeholders.
+  assert.equal(container.querySelector('[aria-label="删除文件：interrupted-one.pdf"]'), null)
+  assert.equal(container.querySelector('[aria-label="删除文件：interrupted-two.pdf"]'), null)
+  assert.equal(previewRequests, 0)
+})
+
+
+test('saved PDF retry preserves one original, fences older failures, and resumes its restored batch', async () => {
+  const { saveUploadBatch } = await import('../src/components/knowledge/uploadBatchSession')
+  const failedAt = '2026-10-25T00:00:00Z'
+  const queuedAt = '2026-10-25T01:00:00Z'
+  const failure = { id: 'pdf-task', file_id: 'pdf-original', name: '论文.pdf', status: 'failed',
+    error_code: 'dense_embedding_timeout', failed_stage: 'dense_embedding', retry_supported: true,
+    retryable: true, storage_persisted: true, updated_at: failedAt }
+  saveUploadBatch(sessionStorage, 'a', [{ processingId: failure.id, fileId: failure.file_id, filename: failure.name, isImage: false, kbId: 'a' }],
+    { stage: 'done', total: 1, completed: 0, failed: 1, submitted: true, files: [failure] })
+  const { act, render, panel, files, knowledgeApi, statuses, submissions } = await setup()
+  files.a = [{ ...failure, id: failure.file_id, processing_id: failure.id, type: 'pdf', size: 1234, date: '' }]
+  statuses.set(failure.id, { ...failure, processing_id: failure.id })
+  const retries: string[] = []
+  knowledgeApi.retryUpload = async id => {
+    retries.push(id)
+    return { processing_id: id, file_id: failure.file_id, status: 'queued', retry_count: 1,
+      updated_at: queuedAt, storage_persisted: true, retry_supported: true, message: '等待恢复处理' }
+  }
+  knowledgeApi.retryVideoUpload = async () => { throw new Error('Documents must use the generic endpoint method') }
+  await render('a')
+  assert.match(panel().textContent!, /文本索引生成超时/)
+  assert.match(panel().textContent!, /无需重新上传/)
+  await act(async () => {
+    const button = panel().querySelector('[aria-label="重新处理文件：论文.pdf"]') as HTMLButtonElement
+    button.click(); button.click(); await settle()
+  })
+  assert.deepEqual(retries, ['pdf-task'])
+  assert.equal(submissions.length, 0)
+  const saved = () => JSON.parse(sessionStorage.getItem('tessmora:upload-batch:a')!)
+  assert.equal(saved().progress.files.length, 1)
+  assert.equal(saved().tasks[0].fileId, 'pdf-original')
+  assert.equal(saved().progress.files[0].file_id, 'pdf-original')
+  assert.equal(saved().progress.files[0].status, 'queued', 'old failed poll cannot terminate the new attempt')
+  assert.equal(saved().progress.files[0].failed_stage, undefined)
+  assert.equal(saved().progress.files[0].error_code, undefined)
+  assert.equal(saved().progress.failed, 0)
+  assert.equal(panel().dataset.busy, 'true')
+  await render('b'); await render('a')
+  assert.equal(saved().progress.files[0].status, 'queued', 'old failed file-list snapshot cannot revive failure')
+  assert.equal(container.querySelectorAll('.resource-files__gallery > *').length, 1)
+  assert.doesNotMatch(container.textContent!, /文本索引生成超时/)
+  statuses.set(failure.id, { processing_id: failure.id, file_id: failure.file_id, status: 'processing',
+    stage: 'dense_embedding', progress: 65, message: '正在生成文本索引：12/30 块', updated_at: '2026-10-25T02:00:00Z', storage_persisted: true })
+  await render('b'); await render('a')
+  assert.match(panel().textContent!, /生成文本索引/)
+  assert.match(panel().textContent!, /12\/30 块/)
+  assert.match(panel().textContent!, /65%/)
+  assert.equal(saved().progress.files.length, 1)
+  assert.deepEqual(retries, ['pdf-task'], 'navigation never triggers another retry')
+})
+
+test('saved PDF preview exposes generic retry and disables repeated activation', async () => {
+  const { act, render, files, knowledgeApi } = await setup()
+  files.a = [{ id: 'pdf-original', processing_id: 'pdf-task', name: '可恢复.pdf', type: 'pdf', size: 100, date: '', status: 'failed',
+    storage_persisted: true, retry_supported: true, retryable: true, error_code: 'dense_embedding_timeout', failed_stage: 'dense_embedding' }]
+  const retries: string[] = []
+  const receipt = deferred<Awaited<ReturnType<typeof knowledgeApi.retryUpload>>>()
+  knowledgeApi.retryUpload = id => { retries.push(id); return receipt.promise }
+  await render('a')
+  await act(async () => { (container.querySelector('.resource-files__gallery button') as HTMLButtonElement).click(); await settle() })
+  const button = document.querySelector('[aria-label="重新处理文件：可恢复.pdf"]') as HTMLButtonElement
+  assert.ok(button)
+  await act(async () => { button.click(); button.click(); await settle() })
+  assert.deepEqual(retries, ['pdf-task'])
+  assert.equal(button.disabled, true)
+})
+
+
+test('a delayed PDF queued receipt cannot reopen an already completed recovery', async () => {
+  const { saveUploadBatch } = await import('../src/components/knowledge/uploadBatchSession')
+  const failure = { id: 'pdf-task', file_id: 'pdf-original', name: '论文.pdf', status: 'failed',
+    error_code: 'dense_embedding_timeout', failed_stage: 'dense_embedding', retry_supported: true,
+    retryable: true, storage_persisted: true, updated_at: '2026-10-25T00:00:00Z' }
+  saveUploadBatch(sessionStorage, 'a', [{ processingId: failure.id, fileId: failure.file_id, filename: failure.name, isImage: false, kbId: 'a' }],
+    { stage: 'done', total: 1, completed: 0, failed: 1, submitted: true, files: [failure] })
+  const { act, render, panel, files, knowledgeApi, statuses } = await setup()
+  files.a = [{ ...failure, id: failure.file_id, processing_id: failure.id, type: 'pdf', size: 1234, date: '' }]
+  const response = deferred<Awaited<ReturnType<typeof knowledgeApi.retryUpload>>>()
+  knowledgeApi.retryUpload = () => response.promise
+  await render('a')
+  await act(async () => { (panel().querySelector('.upload-file__retry') as HTMLButtonElement).click(); await settle() })
+  await render('b')
+  files.a = [{ ...files.a[0], status: 'processing', progress: 65, stage: 'dense_embedding', updated_at: '2026-10-25T02:00:00Z' }]
+  statuses.set(failure.id, { processing_id: failure.id, file_id: failure.file_id, status: 'completed', progress: 100,
+    updated_at: '2026-10-25T03:00:00Z', storage_persisted: true })
+  await render('a')
+  assert.equal(panel().dataset.busy, 'false')
+  await act(async () => {
+    response.resolve({ processing_id: failure.id, file_id: failure.file_id, status: 'queued', retry_count: 1,
+      updated_at: '2026-10-25T01:00:00Z', message: 'waiting' })
+    await settle()
+  })
+  const saved = JSON.parse(sessionStorage.getItem('tessmora:upload-batch:a')!)
+  assert.equal(saved.progress.files.length, 1)
+  assert.equal(saved.progress.files[0].status, 'completed')
+  assert.equal(saved.progress.files[0].updated_at, '2026-10-25T03:00:00Z')
+  assert.equal(saved.progress.files[0].failed_stage, undefined)
+  assert.equal(saved.progress.completed, 1)
+  assert.equal(saved.progress.failed, 0)
+  assert.equal(panel().dataset.busy, 'false')
+  assert.doesNotMatch(panel().textContent!, /waiting|文本索引生成超时/)
 })

@@ -74,3 +74,16 @@ test('an all-deleted snapshot is removed without skipping the next space in stor
   assert.equal(local.getItem('tessmora:upload-batch:removed-b'), null)
   assert.equal(local.length, 1)
 })
+
+
+test('a failed PDF session preserves storage identity, failure stage, and explicit retry capability', () => {
+  const local = storage()
+  const failure = { id: 'pdf-task', file_id: 'pdf-original', name: '论文.pdf', status: 'failed',
+    error_code: 'dense_embedding_timeout', failed_stage: 'dense_embedding', retry_supported: true,
+    retryable: true, storage_persisted: true, updated_at: '2026-10-25T01:00:00Z' }
+  saveUploadBatch(local, 'a', [{ processingId: failure.id, fileId: failure.file_id, filename: failure.name, isImage: false, kbId: 'a' }],
+    { stage: 'done', total: 1, completed: 0, failed: 1, submitted: true, files: [failure] })
+  const restored = readUploadBatch(local, 'a')!
+  assert.deepEqual(restored.progress.files, [failure])
+  assert.equal(restored.tasks[0].fileId, 'pdf-original')
+})

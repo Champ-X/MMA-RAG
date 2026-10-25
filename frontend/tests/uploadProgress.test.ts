@@ -33,3 +33,21 @@ test('new segment stages and actual segment ranges remain readable in English', 
     assert.equal(uploadProgressMessage('Provider request 123 timed out'), 'Provider request 123 timed out')
   } finally { setLanguage('zh-CN') }
 })
+
+
+test('document recovery stages and measured chunk counts are readable in both languages', () => {
+  setLanguage('zh-CN')
+  assert.equal(uploadStageLabel('processing', 'dense_embedding'), '生成文本索引')
+  assert.equal(uploadProgressMessage('正在生成文本索引：8/31 块'), '正在生成文本索引：8/31 块')
+  setLanguage('en-US')
+  try {
+    assert.equal(uploadStageLabel('processing', 'reading_source'), 'Reading saved original')
+    assert.equal(uploadStageLabel('processing', 'processing_images'), 'Processing document images')
+    assert.equal(uploadStageLabel('processing', 'chunking'), 'Splitting document content')
+    assert.equal(uploadStageLabel('processing', 'dense_embedding'), 'Building text index')
+    assert.equal(uploadStageLabel('processing', 'sparse_embedding'), 'Building keyword index')
+    assert.equal(uploadStageLabel('processing', 'indexing'), 'Saving search index')
+    assert.equal(uploadProgressMessage('正在生成文本索引：8/31 块'), 'Building text index: 8/31 chunks')
+    assert.equal(uploadProgressMessage('正在保存 31 个文本索引…'), 'Saving 31 text index entries…')
+  } finally { setLanguage('zh-CN') }
+})

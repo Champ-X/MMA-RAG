@@ -345,6 +345,7 @@ async def get_upload_progress_batch(body: UploadProgressBatchRequest):
               "updated_at", "file_id", "file_path", "file_size",
               "error_code", "retryable", "provider_code", "provider_request_id",
               "model_used", "recovery_hint", "storage_persisted",
+              "retry_supported", "failed_stage", "embedding_completed", "embedding_total", "embedding_retries",
               "failed_segment_start", "failed_segment_end"}
     return {"statuses": [{key: value for key, value in status.items() if key in fields}
                          for status in statuses]}
@@ -361,17 +362,13 @@ async def get_upload_progress(task_id: str):
 
 @router.post("/retry/{task_id}", status_code=202)
 async def retry_upload_video(task_id: str):
-    """从 MinIO 中保存的原视频重新入队 Scene–Shot 解析。
-
-    仅适用于已经落盘、但因模型格式错误、服务重启或其他可恢复异常而失败的视频。
-    不重新接收浏览器文件，因此不会产生新的 file_id 或重复原视频对象。
-    """
+    """从已保存的文档检查点或原视频恢复处理，保留原 file_id。"""
     try:
-        return _ingestion().retry_video_processing(task_id)
+        return _ingestion().retry_file_processing(task_id)
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except Exception as error:
-        logger.exception("重新入队视频失败 task_id={}", task_id)
+        logger.exception("重新入队文件失败 task_id={}", task_id)
         raise HTTPException(status_code=500, detail=str(error)) from error

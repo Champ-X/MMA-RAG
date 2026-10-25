@@ -28,7 +28,7 @@ from qdrant_client.http import models
 logger = get_logger(__name__)
 
 # 列文件时忽略的对象路径前缀（MinIO 内系统预览/缓存，非用户上传的素材）
-_KB_LIST_IGNORE_OBJECT_PREFIXES = ("previews/",)
+_KB_LIST_IGNORE_OBJECT_PREFIXES = ("previews/", ".ingestion/",)
 
 # 上传任务状态来自 ingestion service / Redis。文件列表是用户刷新页面后的恢复入口，
 # 因此读取状态只能是 best-effort：状态源短暂不可用时仍应立即返回 MinIO 中的真实文件。
@@ -43,6 +43,11 @@ _PUBLIC_UPLOAD_TASK_FIELDS = (
     "error",
     "error_code",
     "retryable",
+    "retry_supported",
+    "failed_stage",
+    "embedding_completed",
+    "embedding_total",
+    "embedding_retries",
     "provider_code",
     "provider_request_id",
     "model_used",
@@ -1195,25 +1200,26 @@ class KnowledgeBaseService:
                 FieldCondition(key="file_id", match=MatchValue(value=file_id)),
             ]
         )
-        res = self.vector_store.client.scroll(
-            collection_name=TEXT_CHUNK_COLLECTION,
-            scroll_filter=filt,
-            limit=200,
-            with_payload=True,
-        )
-        return res[0] if res else []
+        return self._scroll_all_document_points(filt)
 
     def _scroll_text_points_by_file_id(self, file_id: str):
-        """按 file_id 全局查询 text_chunks（不限制 kb_id），用于兜底。"""
+        """按历史 file_id 查询完整正文，避免大文档预览静默截断。"""
         from qdrant_client.http.models import Filter, FieldCondition, MatchValue
-        filt = Filter(must=[FieldCondition(key="file_id", match=MatchValue(value=file_id))])
-        res = self.vector_store.client.scroll(
-            collection_name=TEXT_CHUNK_COLLECTION,
-            scroll_filter=filt,
-            limit=200,
-            with_payload=True,
-        )
-        return res[0] if res else []
+        return self._scroll_all_document_points(Filter(must=[FieldCondition(key="file_id", match=MatchValue(value=file_id))]))
+
+    def _scroll_all_document_points(self, filt):
+        points, offset = [], None
+        while True:
+            page, next_offset = self.vector_store.client.scroll(
+                collection_name=TEXT_CHUNK_COLLECTION, scroll_filter=filt,
+                limit=200, offset=offset, with_payload=True, with_vectors=False,
+            )
+            points.extend(page)
+            if next_offset is None:
+                return points
+            if next_offset == offset:
+                raise RuntimeError("文档索引分页游标未推进")
+            offset = next_offset
 
     async def get_file_preview_details(
         self, kb_id: str, file_id: str
@@ -1760,6 +1766,8 @@ class KnowledgeBaseService:
                     "type": ext,
                 }
                 placeholder.update(self._public_upload_task_fields(task))
+                if not file_id:
+                    placeholder["storage_persisted"] = False
                 files.append(placeholder)
                 visible_ids.add(placeholder_id)
             return files
@@ -1857,6 +1865,15 @@ class KnowledgeBaseService:
 
     async def _delete_kb_file_with_status(self, kb_id: str, file_id: str) -> bool:
         """Fence retries before deleting, then retire durable upload state."""
+        if file_id.startswith("processing:"):
+            from app.modules.ingestion.service import get_ingestion_status_reader
+
+            # Unsaved uploads have no physical file ID. Resolve the explicit
+            # placeholder namespace before touching any object/vector storage.
+            return await asyncio.to_thread(
+                get_ingestion_status_reader().retire_processing_placeholder,
+                file_id.removeprefix("processing:"), kb_id,
+            )
         if not self._ensure_kb_in_cache(kb_id):
             return False
         if file_id.startswith("videos/") and "/keyframes/" in file_id:
@@ -1924,6 +1941,8 @@ class KnowledgeBaseService:
                         continue
                     if op.startswith("images/") and file_id in rest and "_page" in rest and "_img" in rest:
                         object_paths.append(op)
+                elif op.startswith(f".ingestion/{file_id}/"):
+                    object_paths.append(op)
                 elif op.startswith("audios/") and rest.startswith(file_id + "_"):
                     object_paths.append(op)
                 elif op.startswith("videos/"):

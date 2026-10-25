@@ -9,9 +9,11 @@ safe to fall back to deterministic structural chunking.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
 
@@ -44,13 +46,22 @@ class ChunkingConfig:
     max_agent_input_tokens: int = 24_000
     max_agent_output_tokens: int = 4_000
     temperature: float = 0.0
-    prompt_version: str = "agentic-v1"
+    prompt_version: str = "agentic-v2"
+    agent_timeout_seconds: float = 30.0
+    max_planning_seconds: float = 60.0
+    max_consecutive_failures: int = 2
 
     def __post_init__(self) -> None:
         if self.hard_max_tokens < 64:
             raise ValueError("hard_max_tokens must be at least 64")
         if self.max_agent_input_tokens < 512:
             raise ValueError("max_agent_input_tokens must be at least 512")
+        if self.max_consecutive_failures < 1:
+            raise ValueError("max_consecutive_failures must be positive")
+        for name in ("agent_timeout_seconds", "max_planning_seconds"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be finite and positive")
 
 
 @dataclass(frozen=True)
@@ -87,6 +98,7 @@ class ChunkPlan:
     title: str = ""
     semantic_type: str = "knowledge_unit"
     relations: Tuple[SemanticRelation, ...] = ()
+    budget_split: bool = False
 
 
 @dataclass
@@ -115,6 +127,10 @@ class ChunkingResult:
     planner_name: str
     fallback_windows: int = 0
     warnings: List[str] = field(default_factory=list)
+    repaired_ranges: int = 0
+    planning_calls: int = 0
+    skipped_windows: int = 0
+    planning_seconds: float = 0.0
 
     @property
     def lossless(self) -> bool:
@@ -199,6 +215,18 @@ def _lossless_hard_split(text: str, hard_max_tokens: int) -> List[Tuple[int, int
             lower_bound = start + max(1, int((cursor - start) * 0.45))
             candidates = [point for point in boundaries if lower_bound <= point <= cursor]
             end = max(candidates) if candidates else max(start + 1, cursor)
+        # Character weights choose a useful boundary cheaply, but non-ASCII
+        # scripts and rounding can differ from the validator's token estimate.
+        # Enforce the same hard bound before emitting an atomic fragment.
+        if estimate_tokens(text[start:end]) > hard_max_tokens:
+            low, high = start + 1, end
+            while low < high:
+                middle = (low + high + 1) // 2
+                if estimate_tokens(text[start:middle]) <= hard_max_tokens:
+                    low = middle
+                else:
+                    high = middle - 1
+            end = low
         spans.append((start, end))
         start = end
     return spans
@@ -559,11 +587,15 @@ class LLMPlanningAgent:
         self, units: Sequence[AtomicUnit], config: ChunkingConfig
     ) -> List[Dict[str, str]]:
         rendered_units = []
+        cumulative_tokens = 0
         for unit in units:
             section = " > ".join(unit.section_path) or "(root)"
+            budget_before = cumulative_tokens
+            cumulative_tokens += unit.token_count
             rendered_units.append(
                 f"[{unit.id}] kind={unit.kind}; section={section}; "
-                f"token_estimate={unit.token_count}\n{unit.text.rstrip()}"
+                f"token_estimate={unit.token_count}; budget_before={budget_before}; "
+                f"budget_after={cumulative_tokens}\n{unit.text.rstrip()}"
             )
         units_text = "\n\n".join(rendered_units)
         system = (
@@ -580,7 +612,9 @@ Goals:
   question + answer, method + required example, heading + its immediate content.
 - Do not duplicate overlap. If a prerequisite belongs in another unit, preserve a compact relation instead.
 - Every supplied unit ID must appear exactly once across contiguous, non-overlapping ranges.
-- The hard safety ceiling is approximately {config.hard_max_tokens} tokens per range. It is a ceiling, not a target.
+- Each range must have a total token_estimate of at most {config.hard_max_tokens}. This is a hard ceiling, not a target.
+- Use the supplied costs, not your own token estimate: range cost = end unit's budget_after minus start unit's budget_before.
+- If a semantic group exceeds the ceiling, emit several adjacent ranges at supplied unit boundaries. Never omit units.
 
 Return exactly this JSON shape:
 {{
@@ -611,7 +645,7 @@ Source units:
             fallback=False,
             temperature=config.temperature,
             max_tokens=config.max_agent_output_tokens,
-            timeout=int(getattr(settings, "document_chunking_agent_timeout_seconds", 180)),
+            timeout=config.agent_timeout_seconds,
         )
         if not result or not result.success:
             error = getattr(result, "error", None) or "unknown error"
@@ -622,15 +656,16 @@ Source units:
         return _plans_from_payload(_extract_json_object(raw))
 
 
-def _validate_plan(
+def _validated_plan_ranges(
     plans: Sequence[ChunkPlan],
     content_units: Sequence[AtomicUnit],
-    config: ChunkingConfig,
-) -> None:
+) -> List[Tuple[int, int]]:
+    """Reject coverage errors before considering any budget-only repair."""
     if not plans:
         raise PlanningError("planner returned no chunks")
     positions = {unit.id: index for index, unit in enumerate(content_units)}
     cursor = 0
+    ranges = []
     for index, plan in enumerate(plans):
         if plan.start_unit_id not in positions or plan.end_unit_id not in positions:
             raise PlanningError(f"plan {index} references an unknown source unit")
@@ -638,18 +673,77 @@ def _validate_plan(
         if end < start:
             raise PlanningError(f"plan {index} has reverse source boundaries")
         if start != cursor:
-            expected = content_units[cursor].id
+            expected = content_units[cursor].id if cursor < len(content_units) else "end of source"
             raise PlanningError(
                 f"plan {index} does not provide contiguous coverage (expected {expected})"
             )
+        ranges.append((start, end))
+        cursor = end + 1
+    if cursor != len(content_units):
+        raise PlanningError("plan does not cover all source units")
+    return ranges
+
+
+def _validate_plan(
+    plans: Sequence[ChunkPlan],
+    content_units: Sequence[AtomicUnit],
+    config: ChunkingConfig,
+) -> None:
+    ranges = _validated_plan_ranges(plans, content_units)
+    for index, (start, end) in enumerate(ranges):
         token_count = sum(unit.token_count for unit in content_units[start : end + 1])
         if token_count > config.hard_max_tokens:
             raise PlanningError(
                 f"plan {index} exceeds hard ceiling ({token_count}>{config.hard_max_tokens})"
             )
-        cursor = end + 1
-    if cursor != len(content_units):
-        raise PlanningError("plan does not cover all source units")
+
+
+def _repair_oversized_plans(
+    plans: Sequence[ChunkPlan],
+    content_units: Sequence[AtomicUnit],
+    config: ChunkingConfig,
+) -> Tuple[List[ChunkPlan], int]:
+    """Retain safe semantic plans, splitting only oversized ranges losslessly.
+
+    Relations belong to the original range, so retain them once on its first
+    subrange rather than copying a relation to every fragment. Source-unit IDs
+    remain stable, including targets of relations from other plans.
+    """
+    ranges = _validated_plan_ranges(plans, content_units)
+    repaired: List[ChunkPlan] = []
+    repaired_ranges = 0
+    for plan, (start, end) in zip(plans, ranges):
+        units = content_units[start : end + 1]
+        if sum(unit.token_count for unit in units) <= config.hard_max_tokens:
+            repaired.append(plan)
+            continue
+        repaired_ranges += 1
+        groups: List[List[AtomicUnit]] = []
+        current: List[AtomicUnit] = []
+        tokens = 0
+        for unit in units:
+            if unit.token_count > config.hard_max_tokens:
+                raise PlanningError("atomic source unit exceeds hard ceiling")
+            if current and (unit.kind == "heading" or tokens + unit.token_count > config.hard_max_tokens):
+                groups.append(current)
+                current, tokens = [], 0
+            current.append(unit)
+            tokens += unit.token_count
+        if current:
+            groups.append(current)
+        for index, group in enumerate(groups):
+            repaired.append(
+                ChunkPlan(
+                    start_unit_id=group[0].id,
+                    end_unit_id=group[-1].id,
+                    title=plan.title,
+                    semantic_type=plan.semantic_type,
+                    relations=plan.relations if index == 0 else (),
+                    budget_split=True,
+                )
+            )
+    _validate_plan(repaired, content_units, config)
+    return repaired, repaired_ranges
 
 
 def _window_units(
@@ -662,7 +756,7 @@ def _window_units(
     current: List[AtomicUnit] = []
     current_tokens = 0
     for unit in units:
-        unit_budget = unit.token_count + 12
+        unit_budget = unit.token_count + 40
         if current and current_tokens + unit_budget > budget:
             windows.append(current)
             current, current_tokens = [], 0
@@ -720,7 +814,7 @@ def _materialize_chunks(
             semantic_type=plan.semantic_type or _semantic_type(source[start:end]),
             section_path=section_path,
             embedding_text="",
-            forced_split=any(unit.forced_split for unit in planned_units),
+            forced_split=plan.budget_split or any(unit.forced_split for unit in planned_units),
         )
         chunk.embedding_text = _build_embedding_text(chunk)
         chunks.append(chunk)
@@ -774,12 +868,39 @@ class AgenticChunker:
         plans: List[ChunkPlan] = []
         planner_names: List[str] = []
         fallback_windows = 0
+        repaired_ranges = 0
+        planning_calls = 0
+        skipped_windows = 0
+        consecutive_failures = 0
+        planning_seconds = 0.0
+        deadline = time.monotonic() + self.config.max_planning_seconds
         for window_index, window in enumerate(_window_units(content_units, self.config), start=1):
             active: PlanningAgent = self.planner
+            repaired_in_window = 0
             try:
-                window_plans = await active.plan(window, self.config)
-                _validate_plan(window_plans, window, self.config)
+                remaining = deadline - time.monotonic()
+                if consecutive_failures >= self.config.max_consecutive_failures:
+                    skipped_windows += 1
+                    raise PlanningError("document planner circuit open after consecutive failures")
+                if remaining <= 0:
+                    skipped_windows += 1
+                    raise PlanningError("document planning time budget exhausted")
+                planning_calls += 1
+                started = time.monotonic()
+                try:
+                    window_plans = await asyncio.wait_for(
+                        active.plan(window, self.config),
+                        timeout=min(self.config.agent_timeout_seconds, remaining),
+                    )
+                finally:
+                    planning_seconds += time.monotonic() - started
+                window_plans, repaired_in_window = _repair_oversized_plans(
+                    window_plans, window, self.config
+                )
+                repaired_ranges += repaired_in_window
+                consecutive_failures = 0
             except Exception as exc:
+                consecutive_failures += 1
                 fallback_windows += 1
                 warnings.append(
                     f"window {window_index}: {active.name} rejected; using "
@@ -789,7 +910,7 @@ class AgenticChunker:
                 window_plans = await active.plan(window, self.config)
                 _validate_plan(window_plans, window, self.config)
             plans.extend(window_plans)
-            planner_names.append(active.name)
+            planner_names.append(active.name + ("+budget-split" if repaired_in_window else ""))
 
         _validate_plan(plans, content_units, self.config)
         chunks = _materialize_chunks(source, units, content_units, plans)
@@ -801,6 +922,10 @@ class AgenticChunker:
             planner_name=" + ".join(dict.fromkeys(planner_names)),
             fallback_windows=fallback_windows,
             warnings=warnings,
+            repaired_ranges=repaired_ranges,
+            planning_calls=planning_calls,
+            skipped_windows=skipped_windows,
+            planning_seconds=planning_seconds,
         )
 
 
@@ -879,6 +1004,15 @@ class AgenticDocumentChunker:
                     getattr(settings, "document_chunking_agent_max_output_tokens", 4_000)
                     or 4_000
                 ),
+                agent_timeout_seconds=float(
+                    getattr(settings, "document_chunking_agent_timeout_seconds", 30)
+                ),
+                max_planning_seconds=float(
+                    getattr(settings, "document_chunking_max_planning_seconds", 60)
+                ),
+                max_consecutive_failures=int(
+                    getattr(settings, "document_chunking_max_consecutive_failures", 2)
+                ),
             )
         self.config = config
         model = getattr(settings, "document_chunking_model", None) or None
@@ -914,6 +1048,11 @@ class AgenticDocumentChunker:
                     "source_end": chunk.end,
                     "source_unit_ids": chunk.unit_ids,
                     "forced_split": chunk.forced_split,
+                    "repaired_ranges": result.repaired_ranges,
+                    "fallback_windows": result.fallback_windows,
+                    "planning_calls": result.planning_calls,
+                    "skipped_windows": result.skipped_windows,
+                    "planning_seconds": round(result.planning_seconds, 3),
                 },
                 "semantic_title": chunk.title,
                 "semantic_type": chunk.semantic_type,
@@ -945,11 +1084,16 @@ class AgenticDocumentChunker:
                 result.warnings,
             )
         logger.info(
-            "Agentic Chunker 完成: chunks={} planner={} hard_max_tokens={} fallback_windows={}",
+            "Agentic Chunker 完成: chunks={} planner={} hard_max_tokens={} fallback_windows={} "
+            "repaired_ranges={} planning_calls={} skipped_windows={} planning_seconds={:.3f}",
             len(chunks),
             result.planner_name,
             self.config.hard_max_tokens,
             result.fallback_windows,
+            result.repaired_ranges,
+            result.planning_calls,
+            result.skipped_windows,
+            result.planning_seconds,
         )
         return chunks
 

@@ -3,7 +3,7 @@ import { useId, useRef, useState } from 'react'
 import { Upload, FileUp, FileText, Image, Music2, Film, CheckCircle2, AlertCircle, Loader2, ChevronDown, Clock3, X, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { uploadBatchPercent, uploadProgressMessage, uploadStageLabel } from './uploadProgress'
-import { canRetryStoredUpload, readableUploadError, uploadFailureCopy } from './uploadFailure'
+import { canRetryDocumentUpload, canRetryStoredUpload, readableUploadError, uploadFailureCopy } from './uploadFailure'
 import type { UploadFailureFields } from '@/types/upload'
 import './uploadPipeline.css'
 
@@ -68,7 +68,7 @@ function UploadFileTile({ file, onRetry, retryState, retryDisabled }: {
   const failed = file.status === 'failed'
   const active = file.status === 'processing' || file.status === 'uploading'
   const failure = failed ? uploadFailureCopy(file) : undefined
-  const canRetry = failed && kind === 'video' && canRetryStoredUpload(file) && Boolean(onRetry)
+  const canRetry = failed && (kind === 'video' ? canRetryStoredUpload(file) : canRetryDocumentUpload(file)) && Boolean(onRetry)
   const percent = complete ? 100 : file.progress == null ? undefined : Math.max(0, Math.min(100, Math.round(file.progress)))
   return (
     <li className="upload-file" data-status={file.status}>
@@ -85,10 +85,10 @@ function UploadFileTile({ file, onRetry, retryState, retryDisabled }: {
           <p className="upload-file__recovery">{failure.source} {failure.recovery}</p>
           {canRetry && <button type="button" className="upload-file__retry"
             disabled={retryDisabled || retryState?.pending}
-            aria-label={t('重新解析视频：{{value1}}', { value1: file.name })}
+            aria-label={t(kind === 'video' ? '重新解析视频：{{value1}}' : '重新处理文件：{{value1}}', { value1: file.name })}
             onClick={() => { void onRetry?.(file) }}>
             <RotateCcw size={13} className={retryState?.pending ? 'upload-spin' : undefined} aria-hidden />
-            {retryState?.pending ? t('重新入队中…') : t('重新解析')}
+            {retryState?.pending ? t('重新入队中…') : t(kind === 'video' ? '重新解析' : '重新处理')}
           </button>}
           {retryState?.error && <p className="upload-file__error" role="status">{readableUploadError(retryState.error, t('未能重新入队，请确认服务状态后再试。'))}</p>}
         </div>

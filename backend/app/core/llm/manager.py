@@ -51,6 +51,8 @@ class LLMCallResult:
     provider_code: Optional[str] = None
     request_id: Optional[str] = None
     retryable: Optional[bool] = None
+    retry_after_seconds: float = 0.0
+    cooldown_blocked: bool = False
 
 class LLMManager:
     """LLM管理器单例"""
@@ -343,7 +345,9 @@ class LLMManager:
                                  model_used=model, error_category=blocked["category"],
                                  status_code=blocked.get("status_code"),
                                  provider_code=blocked.get("provider_code"), request_id=blocked.get("request_id"),
-                                 retryable=blocked.get("retryable"))
+                                 retryable=blocked.get("retryable"),
+                                 retry_after_seconds=max(0.0, blocked.get("retry_after", 0) - time.time()),
+                                 cooldown_blocked=True)
         if method == "chat_completion" and not self._supports_messages(model, params.get("messages", [])):
             return LLMCallResult(False, error="Model cannot accept the input modalities",
                                  model_used=model, error_category="capability", retryable=False)
@@ -381,7 +385,8 @@ class LLMManager:
             return LLMCallResult(False, error=error, duration=duration, model_used=model,
                                  error_category=evidence["category"], status_code=evidence.get("status_code"),
                                  provider_code=str(evidence["provider_code"]) if evidence.get("provider_code") is not None else None,
-                                 request_id=evidence.get("request_id"), retryable=evidence.get("retryable"))
+                                 request_id=evidence.get("request_id"), retryable=evidence.get("retryable"),
+                                 retry_after_seconds=max(0.0, evidence.get("retry_after", 0) - time.time()))
 
     async def _try_fallback_models(
         self, method: str, task_type: str, params: Dict[str, Any],

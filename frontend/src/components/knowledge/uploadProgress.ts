@@ -8,6 +8,8 @@ export function uploadStageLabel(status: string, stage?: string): string {
   if (status === 'uploading') return t("上传中")
   const labels: Record<string, string> = {
     initializing: t("准备解析"), uploading: t("保存原文件"), fetching: t("读取文件"),
+    reading_source: t('读取已保存原文件'), processing_images: t('处理文档图片'), chunking: t('拆分文档内容'),
+    dense_embedding: t('生成文本索引'), sparse_embedding: t('生成关键词索引'), indexing: t('保存检索索引'),
     parsing: t("解析内容"), processing: t("解析内容"), asr: t("音频转写"),
     preparing_video: t("准备视频"), preparing_segment: t("准备视频片段"), parsing_segment: t("解析视频片段"),
     scene_shot_parsing: t("解析场景与镜头"), video_scene_shot_parsing: t("解析场景与镜头"),
@@ -35,6 +37,10 @@ export function uploadBatchPercent(progress: UploadPipelineProgress): number {
 /** Translate known service messages without rewriting model output or unknown diagnostics. */
 export function uploadProgressMessage(message?: string): string | undefined {
   if (!message) return undefined
+  const indexed = message.match(/^正在生成文本索引：(\d+)\/(\d+) 块$/)
+  if (indexed) return t('正在生成文本索引：{{completed}}/{{total}} 块', { completed: indexed[1], total: indexed[2] })
+  const storing = message.match(/^正在保存 (\d+) 个文本索引…$/)
+  if (storing) return t('正在保存 {{total}} 个文本索引…', { total: storing[1] })
   const segment = message.match(/^(正在准备视频|Qwen Omni 正在解析)第 (\d+)(?:\/(\d+))? 段（([\d.]+)[–-]([\d.]+) 秒）…$/)
   if (segment) {
     const [, phase, index, total, start, end] = segment

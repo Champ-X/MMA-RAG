@@ -11,7 +11,7 @@ import { KnowledgeLibraryEmpty } from './KnowledgeLibraryEmpty'
 import { KnowledgeDetailHeader } from './KnowledgeDetailHeader'
 import { KnowledgeContentOverview } from './KnowledgeContentOverview'
 import { VideoFileCover } from './VideoFileCover'
-import { canRetryStoredUpload, canRetryVideoFromPreview, readableUploadError, uploadFailureCopy, uploadFailureFields, uploadFailureKeys } from './uploadFailure'
+import { canRetryDocumentUpload, canRetryStoredUpload, canRetryVideoFromPreview, isUploadSourceUnavailable, readableUploadError, uploadFailureCopy, uploadFailureFields, uploadFailureKeys } from './uploadFailure'
 import type { UploadFailureFields } from '@/types/upload'
 import './knowledgeFileList.css'
 import { useKnowledgeUploadBatches, emptyUploadBatch, type KnowledgeUploadBatch, type UploadRemoval } from './useKnowledgeUploadBatches'
@@ -391,6 +391,12 @@ function serviceTimestamp(value?: string): number {
   return Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`)
 }
 
+function isOlderServiceSnapshot(incoming?: string, current?: string): boolean {
+  const incomingTime = serviceTimestamp(incoming)
+  const currentTime = serviceTimestamp(current)
+  return Number.isFinite(incomingTime) && Number.isFinite(currentTime) && incomingTime < currentTime
+}
+
 function isImageFileType(type?: string): boolean {
   const normalized = String(type || '').toLowerCase()
   return normalized.startsWith('image/')
@@ -399,9 +405,9 @@ function isImageFileType(type?: string): boolean {
 
 function toPipelineStage(stage?: string): UploadPipelineProgress['stage'] {
   const normalized = String(stage || '').toLowerCase()
-  if (['vectorizing', 'extracting_keyframes', 'embedding_keyframes', 'vectorizing_keyframes'].includes(normalized)) return 'vectorizing'
-  if (normalized === 'storing' || normalized === 'completed') return 'portrait'
-  if (['initializing', 'uploading', 'queued', 'fetching'].includes(normalized)) return 'minio'
+  if (['vectorizing', 'extracting_keyframes', 'embedding_keyframes', 'vectorizing_keyframes', 'dense_embedding', 'sparse_embedding'].includes(normalized)) return 'vectorizing'
+  if (['storing', 'indexing', 'completed'].includes(normalized)) return 'portrait'
+  if (['initializing', 'uploading', 'queued', 'fetching', 'reading_source'].includes(normalized)) return 'minio'
   if (['preparing_video', 'preparing_segment', 'parsing_segment'].includes(normalized)) return 'parsing'
   return 'parsing'
 }
@@ -422,7 +428,7 @@ function FilePreviewModal({
   onClose,
   onDelete,
   onEdit,
-  onRetryVideo,
+  onRetryFile,
   deleteError,
 }: {
   file: KnowledgeFileView
@@ -430,8 +436,8 @@ function FilePreviewModal({
   onClose: () => void
   onDelete: () => void
   onEdit?: (payload: { fileId: string; filename: string; content: string }) => void
-  /** 失败视频可复用 MinIO 原文件重新入队，不要求用户再次选择本地文件。 */
-  onRetryVideo?: () => Promise<void>
+  /** 可恢复任务复用已保存原文件，不要求用户再次选择本地文件。 */
+  onRetryFile?: () => Promise<void>
   deleteError?: string
 }) {
   useTranslation()
@@ -457,8 +463,9 @@ function FilePreviewModal({
   const [excelBlob, setExcelBlob] = React.useState<Blob | null>(null)
   const [excelLoading, setExcelLoading] = React.useState(false)
   const [excelError, setExcelError] = React.useState<string | null>(null)
-  const [retryingVideo, setRetryingVideo] = React.useState(false)
-  const [retryVideoError, setRetryVideoError] = React.useState<string | null>(null)
+  const [retryingFile, setRetryingFile] = React.useState(false)
+  const [retryFileError, setRetryFileError] = React.useState<string | null>(null)
+  const retryPendingRef = React.useRef(false)
 
   const rawFileType = String(file?.type || '').toLowerCase().split(';')[0].trim()
   const fileNameLower = String(file?.name || '').toLowerCase()
@@ -490,11 +497,10 @@ function FilePreviewModal({
   /** Excel/CSV：通过 stream 拉取 Blob 后由 SheetJS 在前端渲染 */
   const isExcel = ['xlsx', 'xls', 'csv'].includes(fileTypeLower)
   const isDoc = ['pdf', 'docx', 'doc', 'pptx', 'txt', 'md', 'xlsx', 'xls', 'csv'].includes(fileTypeLower)
-  const canRetryVideo = isVideo
-    && String(file.status || '').toLowerCase() === 'failed'
-    && canRetryVideoFromPreview(file)
+  const canRetryFile = String(file.status || '').toLowerCase() === 'failed'
+    && (isVideo ? canRetryVideoFromPreview(file) : canRetryDocumentUpload(file))
     && Boolean(file.processingId)
-    && Boolean(onRetryVideo)
+    && Boolean(onRetryFile)
   const failureCopy = String(file.status || '').toLowerCase() === 'failed' ? uploadFailureCopy(file) : undefined
   const hasChunks = (details?.chunks?.length ?? 0) > 0
   const visiblePreviewTabs: Array<'preview' | 'chunks'> = isDoc ? ['preview', 'chunks'] : ['preview']
@@ -509,16 +515,18 @@ function FilePreviewModal({
   const hasPreviewTabs = hasChunks || isDoc
   const activeTabId = tab === 'chunks' && isDoc ? chunksTabId : previewTabId
 
-  const handleRetryVideo = async () => {
-    if (!onRetryVideo || retryingVideo) return
-    setRetryingVideo(true)
-    setRetryVideoError(null)
+  const handleRetryFile = async () => {
+    if (!onRetryFile || retryPendingRef.current) return
+    retryPendingRef.current = true
+    setRetryingFile(true)
+    setRetryFileError(null)
     try {
-      await onRetryVideo()
+      await onRetryFile()
     } catch (error) {
-      setRetryVideoError(readableUploadError(getErrorMessage(error, ''), t('未能重新入队，请确认服务状态后再试。')))
+      setRetryFileError(readableUploadError(getErrorMessage(error, ''), t('未能重新入队，请确认服务状态后再试。')))
     } finally {
-      setRetryingVideo(false)
+      retryPendingRef.current = false
+      setRetryingFile(false)
     }
   }
 
@@ -1135,12 +1143,12 @@ function FilePreviewModal({
         </div>}
         {/* 底部操作栏：与 Tab 区一致的浅底与分隔；次要 / 危险按钮分层 */}
         <div className="px-6 py-4 bg-slate-50/95 dark:bg-slate-900/85 border-t border-slate-100 dark:border-slate-800/90 flex justify-end gap-2.5 flex-shrink-0">
-          {canRetryVideo && (
+          {canRetryFile && (
             <div className="mr-auto min-w-0">
               <button
-                onClick={() => { void handleRetryVideo() }}
-                disabled={retryingVideo}
-                aria-label={retryingVideo ? t("正在重新解析视频：{{value1}}", { value1: file.name }) : t("重新解析视频：{{value1}}", { value1: file.name })}
+                onClick={() => { void handleRetryFile() }}
+                disabled={retryingFile}
+                aria-label={t(isVideo ? "重新解析视频：{{value1}}" : "重新处理文件：{{value1}}", { value1: file.name })}
                 className={cn(
                   'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold',
                   'border border-sky-200/90 bg-white text-sky-700 shadow-sm shadow-sky-100/40',
@@ -1154,12 +1162,12 @@ function FilePreviewModal({
                 )}
                 type="button"
               >
-                <RotateCcw className={cn('h-4 w-4 shrink-0 opacity-90', retryingVideo && 'animate-spin')} strokeWidth={2.25} aria-hidden />
-                {retryingVideo ? t("重新入队中…") : t("重新解析视频")}
+                <RotateCcw className={cn('h-4 w-4 shrink-0 opacity-90', retryingFile && 'animate-spin')} strokeWidth={2.25} aria-hidden />
+                {retryingFile ? t("重新入队中…") : t(isVideo ? "重新解析视频" : "重新处理")}
               </button>
-              {retryVideoError ? (
+              {retryFileError ? (
                 <p className="mt-1.5 max-w-xs text-xs leading-relaxed text-red-600 dark:text-red-400" role="alert">
-                  {retryVideoError}
+                  {retryFileError}
                 </p>
               ) : null}
             </div>
@@ -2361,6 +2369,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
         message: f.message,
         error: f.error,
         ...uploadFailureFields(f),
+        ...(isUploadSourceUnavailable(f) ? { storage_persisted: false } : {}),
         updatedAt: f.updated_at,
         previewUrl: f.preview_url,
         thumbnailUrl: f.thumbnail_url,
@@ -2374,7 +2383,15 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
         || requestVersion !== fileRequestVersionRef.current
       ) return
       list.filter(file => file.status === 'deleted').forEach(file => removeDeletedUpload(knowledgeBaseId, { fileId: file.id, processingIds: file.processingId ? [file.processingId] : [] }))
-      setFiles(list.filter(file => file.status !== 'deleted' && !isUploadRemoved(knowledgeBaseId, file.id, file.processingId)))
+      setFiles(list.filter(file => file.status !== 'deleted' && !isUploadRemoved(knowledgeBaseId, file.id, file.processingId)).map(file => {
+        const latest = uploadBatchesRef.current[knowledgeBaseId]?.progress?.files?.find(entry => entry.id === file.processingId)
+        if (!latest || !isOlderServiceSnapshot(file.updatedAt, latest.updated_at)) return file
+        return {
+          ...file, status: latest.status === 'completed' ? 'ready' : latest.status,
+          stage: latest.stage, progress: latest.progress, message: latest.message, error: latest.error,
+          ...Object.fromEntries(uploadFailureKeys.map(key => [key, latest[key]])), updatedAt: latest.updated_at,
+        }
+      }))
       setFilesLoading(false)
       setFileListRetry(null)
     } catch (error) {
@@ -2390,7 +2407,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
         attempt: previous?.kbId === knowledgeBaseId ? Math.min(previous.attempt + 1, 6) : 1,
       }))
     }
-  }, [activeKbId, isUploadRemoved, removeDeletedUpload])
+  }, [activeKbId, isUploadRemoved, removeDeletedUpload, uploadBatchesRef])
 
   const fetchKbStats = useCallback(async (knowledgeBaseId = activeKbId) => {
     if (!knowledgeBaseId || activeKbIdRef.current !== knowledgeBaseId) return
@@ -2465,8 +2482,12 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
       let taskStates: BackgroundTaskPollResult[] = await Promise.all(pendingTasks.map(async (task) => {
         try {
           if (snapshotErrors.has(task.processingId)) throw snapshotErrors.get(task.processingId)
-          const status = snapshotById.get(task.processingId)
+          let status = snapshotById.get(task.processingId)
           if (!status || status.status === 'error') throw new Error(status?.error || t("进度状态暂不可用"))
+          const latest = uploadBatchesRef.current[task.kbId]?.progress?.files?.find(file => file.id === task.processingId)
+          if (latest && isOlderServiceSnapshot(status.updated_at, latest.updated_at)) {
+            status = { ...latest, processing_id: task.processingId }
+          }
           const normalizedStatus = String(status?.status || '').toLowerCase()
           if (normalizedStatus === 'deleted') {
             delete progressPollFailureCountRef.current[task.processingId]
@@ -2552,6 +2573,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
             if (!item?.status || item.task.kbId !== activeKbIdRef.current) return file
 
             const status = item.status
+            if (isOlderServiceSnapshot(status.updated_at, file.updatedAt)) return file
             const normalizedStatus = String(status.status || '').toLowerCase()
             const nextStatus = normalizedStatus === 'completed'
               ? 'ready'
@@ -2566,8 +2588,8 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
               stage: status.stage ?? file.stage,
               progress: nextProgress,
               message: status.message ?? file.message,
-              error: status.error ?? item.error ?? file.error,
-              ...uploadFailureFields(status),
+              error: status.updated_at ? status.error ?? item.error : status.error ?? item.error ?? file.error,
+              ...(status.updated_at ? Object.fromEntries(uploadFailureKeys.map(key => [key, status[key]])) : uploadFailureFields(status)),
               updatedAt: status.updated_at ?? file.updatedAt,
             }
             if (
@@ -2626,7 +2648,10 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                 const last = prev?.files?.find(file => file.id === task.processingId)
                 return {
                   ...last, id: task.processingId, name: task.filename,
-                  ...(item?.status && !item.transient ? item.status : {}),
+                  ...(item?.status && !item.transient ? {
+                    ...(item.status.updated_at ? Object.fromEntries(uploadFailureKeys.map(key => [key, item.status![key]])) : {}),
+                    ...item.status, error: item.status.error,
+                  } : {}),
                   status: nextOutcomes[task.processingId] ?? (item?.transient ? last?.status : item?.status?.status) ?? last?.status ?? 'queued',
                 }
               }).concat((prev?.files ?? []).filter(file => !tasks.some(task => task.processingId === file.id))),
@@ -3022,7 +3047,8 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     const ok = window.confirm(t("确定删除该文件？"))
     if (!ok) return
     const file = files.find(item => item.id === fileId)
-    const processingIds = file?.processingId ? [file.processingId] : []
+    const processingId = file?.processingId || (fileId.startsWith('processing:') ? fileId.slice('processing:'.length) : undefined)
+    const processingIds = processingId ? [processingId] : []
     deletingFileKeys.current.add(deleteKey)
     setFileDeleteErrors(previous => ({ ...previous, [deleteKbId]: '' }))
     try {
@@ -3036,11 +3062,17 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     }
   }
 
-  const retryVideoTask = async (processingId: string, filename: string, failure: UploadFailureFields) => {
-    if (!activeKbId || !processingId) throw new Error(t("缺少可恢复的视频任务信息"))
-    if (!canRetryVideoFromPreview(failure)) throw new Error(uploadFailureCopy(failure).recovery)
+  const retryUploadTask = async (
+    processingId: string, filename: string, failure: UploadFailureFields & { id?: string; file_id?: string },
+    video: boolean, fileId?: string,
+  ) => {
+    if (!activeKbId || !processingId) throw new Error(t("缺少可恢复的文件任务信息"))
+    if (!(video ? canRetryVideoFromPreview(failure) : canRetryDocumentUpload(failure))) {
+      throw new Error(uploadFailureCopy(failure).recovery)
+    }
     const retryKbId = activeKbId
     const previousBatch = uploadBatchesRef.current[retryKbId] ?? emptyUploadBatch()
+    const beforeRetry = previousBatch.progress?.files?.find(item => item.id === processingId)
     // Keep the failed rows visible while synchronously reserving this space's lock.
     if (previousBatch.uploading) return
     updateBatch(retryKbId, previous => ({ ...previous, uploading: true }))
@@ -3049,48 +3081,68 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     }))
     setRetryState({ pending: true })
     try {
-      const response = await knowledgeApi.retryVideoUpload(processingId)
+      const response = await (video ? knowledgeApi.retryVideoUpload(processingId) : knowledgeApi.retryUpload(processingId))
       const taskId = response.processing_id || processingId
-      const queued = {
+      const originalId = response.file_id || fileId
+      if (isUploadRemoved(retryKbId, originalId, processingId) || isUploadRemoved(retryKbId, originalId, taskId)) {
+        setRetryState({})
+        return
+      }
+      const queued: UploadFileProgress = {
+        id: taskId, file_id: originalId, name: filename,
         status: 'queued', stage: 'queued', progress: 0, storage_persisted: true,
-        message: response.message || t("已从原视频重新入队，等待处理…"),
-        error: undefined, error_code: undefined, retryable: undefined, recovery_hint: undefined,
-        provider_code: undefined, provider_request_id: undefined, model_used: undefined,
-        failed_segment_start: undefined, failed_segment_end: undefined,
+        retry_supported: response.retry_supported ?? failure.retry_supported,
+        message: response.message || t("已从原文件重新入队，等待处理…"),
+        // Only server dates order attempts; a browser clock may be ahead or behind.
+        updated_at: response.updated_at,
       }
-      const updatedAt = new Date().toISOString()
-      if (activeKbIdRef.current === retryKbId) {
-        setFiles(previous => previous.map(item => item.processingId === processingId ? { ...item, ...queued, processingId: taskId, updatedAt } : item))
-        setPreviewFile(previous => previous?.processingId === processingId ? { ...previous, ...queued, processingId: taskId, updatedAt } : previous)
-      }
+      let accepted = queued
       updateBatch(retryKbId, previous => {
+        const current = previous.progress?.files?.find(item => item.id === taskId)
+        const currentTime = serviceTimestamp(current?.updated_at)
+        const receiptTime = serviceTimestamp(response.updated_at)
+        const beforeTime = serviceTimestamp(beforeRetry?.updated_at)
+        const progressedWhileWaiting = current && (Number.isFinite(receiptTime)
+          ? Number.isFinite(currentTime) && (currentTime > receiptTime || (currentTime === receiptTime && current.status !== 'queued'))
+          : current !== beforeRetry && (current.status !== 'failed' || (Number.isFinite(currentTime) && currentTime > beforeTime)))
+        if (progressedWhileWaiting) accepted = { ...current, file_id: originalId ?? current.file_id }
         const outcomes = { ...previous.outcomes }
         delete outcomes[processingId]
         delete outcomes[taskId]
-        const task = { processingId: taskId, filename, isImage: false, kbId: retryKbId }
-        const tasks = previous.tasks.some(item => item.processingId === processingId)
-          ? previous.tasks.map(item => item.processingId === processingId ? task : item)
-          : [...previous.tasks, task]
-        const entry: UploadFileProgress = { ...queued, id: taskId, name: filename, updated_at: updatedAt }
+        if (accepted.status === 'completed' || accepted.status === 'failed') outcomes[taskId] = accepted.status
+        const task = { processingId: taskId, fileId: originalId, filename, isImage: false, kbId: retryKbId }
+        const tasks = previous.tasks.filter(item => item.processingId !== processingId && item.processingId !== taskId).concat(task)
         const previousFiles = previous.progress?.files ?? []
-        const progressFiles = previousFiles.some(item => item.id === processingId)
-          ? previousFiles.map(item => item.id === processingId ? entry : item)
-          : [...previousFiles, entry]
+        const progressFiles = previousFiles.filter(item => item.id !== processingId && item.id !== taskId).concat(accepted)
         const submissionFailed = progressFiles.filter(item => item.status === 'failed' && !tasks.some(task => task.processingId === item.id)).length
+        const pending = tasks.some(task => !outcomes[task.processingId])
         return {
-          ...previous, uploading: true, outcomes, tasks, submissionFailed,
+          ...previous, uploading: pending, outcomes, tasks, submissionFailed,
           progress: {
-            stage: 'minio', stageProgress: 0, submitted: true, total: progressFiles.length,
+            ...previous.progress,
+            stage: pending ? toPipelineStage(accepted.stage) : 'done', stageProgress: accepted.progress ?? 0,
+            submitted: true, total: progressFiles.length,
             completed: tasks.filter(task => outcomes[task.processingId] === 'completed').length,
             failed: submissionFailed + tasks.filter(task => outcomes[task.processingId] === 'failed').length,
             currentFile: filename, currentFileIsImage: false, files: progressFiles,
           },
         }
       })
+      if (activeKbIdRef.current === retryKbId) {
+        const applyReceipt = (item: KnowledgeFileView): KnowledgeFileView => {
+          if (item.processingId !== processingId || isOlderServiceSnapshot(accepted.updated_at, item.updatedAt)) return item
+          return {
+            ...item, processingId: taskId, status: accepted.status === 'completed' ? 'ready' : accepted.status,
+            stage: accepted.stage, progress: accepted.progress, message: accepted.message, error: accepted.error,
+            ...Object.fromEntries(uploadFailureKeys.map(key => [key, accepted[key]])), updatedAt: accepted.updated_at,
+          }
+        }
+        setFiles(previous => previous.map(applyReceipt))
+        setPreviewFile(previous => previous ? applyReceipt(previous) : previous)
+      }
       setRetryState({})
     } catch (error) {
-      // Only the local lock was reserved before the request. Do not roll back
-      // server progress or refreshed failure fields observed while awaiting it.
+      // Do not roll back server progress observed while awaiting the receipt.
       updateBatch(retryKbId, current => ({
         ...current, uploading: current.tasks.some(task => !current.outcomes[task.processingId]),
       }))
@@ -3100,17 +3152,20 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     }
   }
 
-  const handleRetryVideo = async (file: KnowledgeFileView) => {
-    if (!file.processingId || !isVideoType(file.type) || String(file.status || '').toLowerCase() !== 'failed') {
-      throw new Error(t("仅支持重新解析已失败的视频"))
+  const handleRetryFile = async (file: KnowledgeFileView) => {
+    if (!file.processingId || String(file.status || '').toLowerCase() !== 'failed') {
+      throw new Error(t("仅支持重新处理已失败的文件"))
     }
-    await retryVideoTask(file.processingId, file.name, file)
+    await retryUploadTask(file.processingId, file.name, file, isVideoType(file.type), file.id)
   }
 
   const handleRetryUploadFile = async (file: UploadFileProgress) => {
-    if (file.status !== 'failed' || !canRetryStoredUpload(file) || !isVideoType(file.name.split('.').pop() || '')) return
-    try { await retryVideoTask(file.id, file.name, file) } catch { /* Feedback belongs to this space and task. */ }
+    const video = isVideoType(file.name.split('.').pop() || '')
+    if (file.status !== 'failed' || !(video ? canRetryStoredUpload(file) : canRetryDocumentUpload(file))) return
+    try { await retryUploadTask(file.id, file.name, file, video, file.file_id) } catch { /* Feedback belongs to this space and task. */ }
   }
+
+  const livePreviewFile = previewFile ? files.find(file => file.id === previewFile.id) ?? previewFile : null
 
   // --- KB 列表视图 ---
   if (viewState === 'list') {
@@ -3476,7 +3531,10 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                           </td>
                         </tr>
                       ) : (
-                        filteredFiles.map((file) => (
+                        filteredFiles.map((file) => {
+                          const previewUnavailable = isUploadSourceUnavailable(file)
+                          const previewHintId = `${fileListDomId}-preview-unavailable-${file.id}`
+                          return (
                           <tr
                             key={file.id}
                             className="resource-files__row"
@@ -3484,10 +3542,12 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                           >
                             <th scope="row" className="resource-files__name-cell" role="rowheader">
                               <button
-                                onClick={() => setPreviewFile(file)}
-                                className="resource-files__open"
+                                onClick={() => { if (!previewUnavailable) setPreviewFile(file) }}
+                                disabled={previewUnavailable}
+                                aria-describedby={previewUnavailable ? previewHintId : undefined}
+                                className="resource-files__open disabled:cursor-not-allowed"
                                 type="button"
-                                title={file.name}
+                                title={previewUnavailable ? t('原文件尚未保存，暂时无法预览。') : file.name}
                                 aria-label={t("预览文件：{{value1}}", { value1: file.name })}
                               >
                                 <FileThumb file={file} />
@@ -3498,6 +3558,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                   </span>
                                 </span>
                               </button>
+                              {previewUnavailable && <p id={previewHintId} className="mt-1 text-xs font-normal text-slate-500 dark:text-slate-400">{t('原文件尚未保存，暂时无法预览。')}</p>}
                               <div className="resource-files__mobile-meta">
                                 <span><span className="sr-only">{t("大小：")}</span>{file.size}</span>
                                 <span><span className="sr-only">{t("日期：")}</span>{formatFileDate(file.date)}</span>
@@ -3531,12 +3592,14 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                 title={t("删除文件")}
                                 type="button"
                                 aria-label={t("删除文件：{{value1}}", { value1: file.name })}
+                                aria-describedby={previewUnavailable ? previewHintId : undefined}
                               >
                                 <Trash2 size={16} aria-hidden />
                               </button>
                             </td>
                           </tr>
-                        ))
+                          )
+                        })
                       )}
                     </tbody>
                   </table>
@@ -3571,12 +3634,16 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                         const isAudio = isAudioType(file?.type)
                         const isVideo = isVideoType(file?.type)
                         const isMedia = isAudio || isVideo
+                        const previewUnavailable = isUploadSourceUnavailable(file)
+                        const previewHintId = `${fileListDomId}-preview-unavailable-${file.id}`
                         return (
+                          <div key={file.id} className="relative flex min-w-0">
                           <button
-                            key={file.id}
-                            onClick={() => setPreviewFile(file)}
+                            onClick={() => { if (!previewUnavailable) setPreviewFile(file) }}
+                            disabled={previewUnavailable}
+                            aria-describedby={previewUnavailable ? previewHintId : undefined}
                             className={cn(
-                              'flex flex-col min-w-0 text-left rounded-xl border transition-[border-color,box-shadow] overflow-hidden group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950 motion-reduce:transition-none',
+                              'flex w-full flex-col min-w-0 text-left rounded-xl border transition-[border-color,box-shadow] overflow-hidden group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950 motion-reduce:transition-none disabled:cursor-not-allowed',
                               isAudio
                                 ? 'bg-gradient-to-b from-violet-50/80 to-white dark:from-violet-950/30 dark:to-slate-900 border-violet-200/80 dark:border-violet-800/60 hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-md hover:shadow-violet-500/10'
                                 : isVideo
@@ -3584,7 +3651,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                   : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-fuchsia-300 dark:hover:border-fuchsia-500 hover:shadow-sm'
                             )}
                             type="button"
-                            title={isMedia ? t("点击播放或查看详情") : t("点击预览")}
+                            title={previewUnavailable ? t('原文件尚未保存，暂时无法预览。') : isMedia ? t("点击播放或查看详情") : t("点击预览")}
                             aria-label={t("{{value1}}：{{value2}}", { value1: isMedia ? t("播放或查看文件详情") : t("预览文件"), value2: file.name })}
                           >
                             <div className="relative w-full shrink-0">
@@ -3630,11 +3697,21 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                   isAudio ? 'text-violet-500 dark:text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300' : isVideo ? 'text-sky-500 dark:text-sky-400 group-hover:text-sky-600 dark:group-hover:text-sky-300' : 'text-slate-400 group-hover:text-fuchsia-600'
                                 )}>
                                   {isMedia ? <Play size={12} aria-hidden /> : <Eye size={13} aria-hidden />}
-                                  <span className="resource-files__preview-label">{isMedia ? t("播放") : t("预览")}</span>
+                                  <span className="resource-files__preview-label">{previewUnavailable ? t('暂不可预览') : isMedia ? t("播放") : t("预览")}</span>
                                 </span>
                               </div>
+                              {previewUnavailable && <p id={previewHintId} className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{t('原文件尚未保存，暂时无法预览。')}</p>}
                             </div>
                           </button>
+                          {previewUnavailable && <button
+                            type="button"
+                            onClick={() => { void handleDeleteFile(file.id) }}
+                            className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-red-600 shadow-sm hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 dark:border-slate-700 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-950"
+                            aria-label={t('删除文件：{{value1}}', { value1: file.name })}
+                            aria-describedby={previewHintId}
+                            title={t('删除文件')}
+                          ><Trash2 size={16} aria-hidden /></button>}
+                          </div>
                         )
                       })}
                     </div>
@@ -3667,15 +3744,15 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
         )}
 
         {/* 预览弹窗 */}
-        {previewFile && (
+        {livePreviewFile && !isUploadSourceUnavailable(livePreviewFile) && (
           <FilePreviewModal
-            file={previewFile}
+            file={livePreviewFile}
             kbId={activeKbId}
             onClose={() => setPreviewFile(null)}
             onEdit={handleOpenManualEditor}
-            onRetryVideo={() => handleRetryVideo(previewFile)}
+            onRetryFile={() => handleRetryFile(livePreviewFile)}
             deleteError={fileDeleteError}
-            onDelete={() => { void handleDeleteFile(previewFile.id) }}
+            onDelete={() => { void handleDeleteFile(livePreviewFile.id) }}
           />
         )}
 

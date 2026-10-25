@@ -143,9 +143,18 @@ class Settings(BaseSettings):
         validation_alias="DOCUMENT_CHUNKING_AGENT_MAX_OUTPUT_TOKENS",
     )
     document_chunking_agent_timeout_seconds: int = Field(
-        default=180,
+        default=30,
         validation_alias="DOCUMENT_CHUNKING_AGENT_TIMEOUT_SECONDS",
     )
+    document_chunking_max_consecutive_failures: int = Field(default=2, ge=1, validation_alias="DOCUMENT_CHUNKING_MAX_CONSECUTIVE_FAILURES")
+    document_chunking_max_planning_seconds: float = Field(default=60, gt=0, validation_alias="DOCUMENT_CHUNKING_MAX_PLANNING_SECONDS")
+    ingestion_embedding_batch_size: int = Field(default=32, ge=1, le=128, validation_alias="INGESTION_EMBEDDING_BATCH_SIZE")
+    ingestion_embedding_max_batch_tokens: int = Field(default=16000, ge=600, validation_alias="INGESTION_EMBEDDING_MAX_BATCH_TOKENS")
+    ingestion_embedding_max_batch_bytes: int = Field(default=131072, ge=4096, validation_alias="INGESTION_EMBEDDING_MAX_BATCH_BYTES")
+    ingestion_embedding_concurrency: int = Field(default=2, ge=1, le=8, validation_alias="INGESTION_EMBEDDING_CONCURRENCY")
+    ingestion_embedding_max_retries: int = Field(default=2, ge=0, le=5, validation_alias="INGESTION_EMBEDDING_MAX_RETRIES")
+    ingestion_embedding_total_timeout_seconds: float = Field(default=300, gt=0, validation_alias="INGESTION_EMBEDDING_TOTAL_TIMEOUT_SECONDS")
+
     document_chunking_model: Optional[str] = Field(
         default=None,
         validation_alias="DOCUMENT_CHUNKING_MODEL",

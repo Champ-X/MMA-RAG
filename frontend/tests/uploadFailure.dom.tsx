@@ -142,3 +142,27 @@ test('documents and nonfailed videos do not receive a video recovery button', as
   ])
   assert.equal(retryButtons().length, 0)
 })
+
+
+for (const extension of ['pdf', 'docx', 'pptx', 'txt', 'md', 'xlsx', 'xls', 'csv']) {
+  test(`a saved .${extension} with server retry capability can resume without file selection`, async () => {
+    const doc = failure({ id: 'document-task', file_id: 'saved-original', name: `研究材料.${extension}`,
+      error_code: 'dense_embedding_timeout', failed_stage: 'dense_embedding', retry_supported: true })
+    const { act, retryButtons, retries } = await setup([doc])
+    assert.match(container.textContent!, /文本索引生成超时/)
+    assert.match(container.textContent!, /原文件已保存，无需重新上传/)
+    assert.equal(retryButtons().length, 1)
+    assert.equal(retryButtons()[0].getAttribute('aria-label'), `重新处理文件：研究材料.${extension}`)
+    await act(async () => retryButtons()[0].click())
+    assert.equal(retries[0], doc)
+  })
+}
+
+test('a document placeholder never offers retry even with contradictory saved capability flags', async () => {
+  const { retryButtons } = await setup([
+    failure({ id: 'processing:task', name: 'missing.pdf', retry_supported: true }),
+    failure({ id: 'placeholder-file-id', file_id: 'processing:task', name: 'missing.pdf', retry_supported: true }),
+    failure({ id: 'unsupported-document', name: 'unsupported.pdf', retry_supported: false }),
+  ])
+  assert.equal(retryButtons().length, 0)
+})

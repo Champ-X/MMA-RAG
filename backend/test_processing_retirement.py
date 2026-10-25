@@ -117,6 +117,15 @@ def seed(instance, task_id="task", file_id="file", kb_id="space", status="failed
     return row
 
 
+def seed_placeholder(instance, task_id="unsaved", kb_id="space", status="failed", **updates):
+    row = dict(processing_id=task_id, kb_id=kb_id, source_kb_id=kb_id,
+               file_path="same.pdf", file_type="pdf", status=status,
+               storage_persisted=False, error="processing lease expired", lease_id="old-lease")
+    row.update(updates)
+    assert instance._persist_processing_status(row)
+    return row
+
+
 @pytest.fixture
 def store(monkeypatch):
     monkeypatch.setattr(ingestion, "_ingestion_service_instance", None)
@@ -328,3 +337,104 @@ def test_unknown_file_reservation_can_be_aborted_without_creating_a_tombstone(st
     assert reservation["matched_count"] == 0 and not reservation["already_deleted"]
     owner.abort_file_deletion("unknown", "space", reservation["token"])
     assert store.get(owner._processing_deletion_key("unknown", "space")) is None
+
+
+@pytest.mark.parametrize('terminal_status', ['failed', 'cancelled', 'completed'])
+def test_placeholder_deletion_is_durable_exact_and_idempotent(store, monkeypatch, terminal_status):
+    owner, reader, stale = service(store), service(store), service(store)
+    old = seed_placeholder(owner, status=terminal_status)
+    seed_placeholder(owner, task_id='same-name-new-upload')
+    seed_placeholder(owner, task_id='different-space', kb_id='other')
+    seed(owner, task_id='physical-file')
+    stale._processing_status['unsaved'] = old.copy()
+    monkeypatch.setattr(ingestion, '_ingestion_service_instance', owner)
+    monkeypatch.setattr(ingestion, '_status_reader_instance', reader)
+    assert reader.retire_processing_placeholder('unsaved', 'space')
+    assert service(store).retire_processing_placeholder('unsaved', 'kb-space')
+    assert owner._processing_status_key('unsaved') not in store.ttls
+    assert 'unsaved' not in store.smembers(owner._processing_status_kb_key('space'))
+    for instance in [owner, reader, stale, service(store)]:
+        assert instance.get_processing_status_sync('unsaved')['status'] == 'deleted'
+        assert all(row['processing_id'] != 'unsaved' for row in instance.list_processing_statuses_for_kb('space'))
+    assert not stale._persist_processing_status({**old, 'status': 'processing'})
+    assert not stale._acquire_processing_lease('unsaved', 'new-lease')
+    assert owner.get_processing_status_sync('same-name-new-upload')['status'] == 'failed'
+    assert owner.get_processing_status_sync('different-space')['status'] == 'failed'
+    assert owner.get_processing_status_sync('physical-file')['status'] == 'failed'
+    assert store.get(owner._processing_status_file_key('file')) == 'physical-file'
+
+
+def test_placeholder_deletion_respects_source_space_and_unknown_identity(store):
+    owner = service(store)
+    seed_placeholder(owner, kb_id='vector-space', source_kb_id='visible-space')
+    assert owner.retire_processing_placeholder('unsaved', 'vector-space') is False
+    assert owner.retire_processing_placeholder('unsaved', 'another-space') is False
+    assert owner.retire_processing_placeholder('unknown', 'visible-space') is False
+    assert owner.retire_processing_placeholder('', 'visible-space') is False
+    assert owner.retire_processing_placeholder('unsaved', 'visible-space')
+    assert owner.retire_processing_placeholder('unsaved', 'another-space') is False
+
+
+def test_placeholder_deletion_supports_legacy_kb_scope_but_not_stale_cache_only(store):
+    owner = service(store)
+    row = seed_placeholder(owner, source_kb_id=None)
+    store.delete(owner._processing_status_key('unsaved'))
+    assert owner.retire_processing_placeholder('unsaved', 'space') is False
+    store.set(owner._processing_status_key('unsaved'), json.dumps(row))
+    assert owner.retire_processing_placeholder('unsaved', 'space')
+
+
+@pytest.mark.parametrize('active_status', ['queued', 'processing'])
+def test_placeholder_deletion_rejects_active_tasks(store, active_status):
+    owner = service(store)
+    seed_placeholder(owner, status=active_status)
+    with pytest.raises(ProcessingTaskActiveError):
+        owner.retire_processing_placeholder('unsaved', 'space')
+    assert owner.get_processing_status_sync('unsaved')['status'] == active_status
+
+
+def test_placeholder_deletion_rejects_unfinished_local_runner(store):
+    owner = service(store)
+    seed_placeholder(owner)
+    owner._background_upload_tasks['unsaved'] = Mock(done=lambda: False)
+    with pytest.raises(ProcessingTaskActiveError):
+        owner.retire_processing_placeholder('unsaved', 'space')
+
+
+@pytest.mark.parametrize('source_hint', [
+    {'file_id': 'saved-file'}, {'object_path': 'documents/saved-file_same.pdf'}, {'storage_persisted': True},
+])
+def test_placeholder_deletion_cannot_retire_a_physical_source(store, source_hint):
+    owner = service(store)
+    seed_placeholder(owner, **source_hint)
+    with pytest.raises(ProcessingTaskActiveError):
+        owner.retire_processing_placeholder('unsaved', 'space')
+    assert owner.get_processing_status_sync('unsaved')['status'] == 'failed'
+
+
+@pytest.mark.parametrize('winning_update', [{'status': 'queued'}, {'file_id': 'newly-saved-file'}])
+def test_placeholder_deletion_rechecks_state_and_storage_identity_after_cas_race(store, winning_update):
+    owner = service(store)
+    row = seed_placeholder(owner)
+    store.before_execute = lambda: store.set(owner._processing_status_key('unsaved'),
+                                             json.dumps({**row, **winning_update}))
+    with pytest.raises(ProcessingTaskActiveError):
+        owner.retire_processing_placeholder('unsaved', 'space')
+    assert json.loads(store.get(owner._processing_status_key('unsaved')))['status'] != 'deleted'
+
+
+def test_placeholder_tombstone_wins_a_stale_progress_write_race(store):
+    owner, stale = service(store), service(store)
+    row = seed_placeholder(owner)
+    store.before_execute = lambda: owner.retire_processing_placeholder('unsaved', 'space')
+    assert stale._persist_processing_status({**row, 'status': 'queued'}) is False
+    assert stale.get_processing_status_sync('unsaved')['status'] == 'deleted'
+
+
+def test_placeholder_deletion_fails_closed_when_redis_is_unavailable(store, monkeypatch):
+    owner = service(store)
+    seed_placeholder(owner)
+    monkeypatch.setattr(store, 'get', Mock(side_effect=ConnectionError('offline')))
+    with pytest.raises(ProcessingStatusUnavailableError):
+        owner.retire_processing_placeholder('unsaved', 'space')
+    assert owner._processing_status['unsaved']['status'] == 'failed'

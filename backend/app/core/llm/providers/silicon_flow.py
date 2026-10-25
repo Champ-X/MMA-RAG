@@ -208,7 +208,17 @@ class SiliconFlowProvider(BaseLLMProvider):
             )
             status_code = response.status_code
             response.raise_for_status()
-            return [item.get("embedding", []) for item in response.json().get("data", [])]
+            items = response.json().get("data")
+            if not isinstance(items, list) or len(items) != len(payload["input"]):
+                raise ValueError("Embedding response count does not match input")
+            # The API's index is authoritative; response array order need not
+            # match input order. A singleton without an index is unambiguous.
+            if len(items) == 1 and isinstance(items[0], dict) and "index" not in items[0]:
+                return [items[0].get("embedding", [])]
+            indexes = [item.get("index") if isinstance(item, dict) else None for item in items]
+            if any(type(index) is not int for index in indexes) or sorted(indexes) != list(range(len(items))):
+                raise ValueError("Embedding response indexes are missing, duplicated, or out of range")
+            return [item.get("embedding", []) for item in sorted(items, key=lambda item: item["index"])]
         except asyncio.CancelledError:
             outcome, error_type = "cancelled", "CancelledError"
             raise
