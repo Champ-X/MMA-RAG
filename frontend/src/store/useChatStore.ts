@@ -252,6 +252,30 @@ const initialThinking: ThinkingState = {
 };
 
 type PersistedChatState = Pick<ChatStore, 'sessions' | 'activeSessionId'>
+
+/** Keep the open draft when possible; never infer emptiness from message text. */
+function keepSingleEmptySession(state: PersistedChatState): PersistedChatState {
+  const emptySessions = state.sessions.filter(session => session.messages.length === 0)
+  const retained = emptySessions.find(session => session.id === state.activeSessionId)
+    ?? emptySessions.reduce<ChatSession | undefined>((latest, session) =>
+      !latest || session.updatedAt > latest.updatedAt
+        || (session.updatedAt === latest.updatedAt && session.createdAt > latest.createdAt)
+        ? session : latest, undefined)
+  const sessions = emptySessions.length > 1
+    ? state.sessions.filter(session => session.messages.length > 0 || session.id === retained?.id)
+    : state.sessions
+  const activeSessionId = sessions.some(session => session.id === state.activeSessionId)
+    ? state.activeSessionId
+    : retained?.id ?? sessions[0]?.id ?? null
+  return {
+    sessions: sessions.map(session => session.isActive === (session.id === activeSessionId)
+      ? session : { ...session, isActive: session.id === activeSessionId }),
+    activeSessionId,
+  }
+}
+
+// Initial mount and repeated clicks must share the same server creation request.
+let pendingSessionCreation: Promise<string> | null = null
 let isChatStreaming = false
 const chatPersistence = createChatPersistence<PersistedChatState>({
   isStreaming: () => isChatStreaming,
@@ -288,6 +312,18 @@ export const useChatStore = create<ChatStore>()(
 
       // 创建新会话
       createSession: (options = {}) => {
+        const state = keepSingleEmptySession(get())
+        const emptySession = state.sessions.find(session => session.messages.length === 0)
+        if (emptySession) {
+          set({
+            sessions: state.sessions.map(session => session.isActive === (session.id === emptySession.id)
+              ? session : { ...session, isActive: session.id === emptySession.id }),
+            activeSessionId: emptySession.id,
+            error: null,
+          })
+          return emptySession.id
+        }
+
         const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const now = Date.now();
         
@@ -316,36 +352,48 @@ export const useChatStore = create<ChatStore>()(
         return sessionId;
       },
 
-      createSessionFromApi: async (options = {}) => {
-        try {
-          const res = await chatApi.createSession({
-            title: options.title,
-            knowledgeBaseIds: options.knowledgeBaseIds,
-          }) as { sessionId?: string; success?: boolean };
-          const sessionId = res?.sessionId || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          const now = Date.now();
-          const newSession: ChatSession = {
-            id: sessionId,
-            title: options.title || tr('新对话 {{date}}', { date: new Date().toLocaleString(getLanguage()) }),
-            messages: [],
-            knowledgeBaseIds: options.knowledgeBaseIds || [],
-            kbMode: 'auto',
-            agentMode: 'auto',
-            createdAt: now,
-            updatedAt: now,
-            isActive: true,
-          };
-          set((state) => {
-            const updatedSessions = state.sessions.map(s => ({ ...s, isActive: false }));
-            return {
-              sessions: [...updatedSessions, newSession],
-              activeSessionId: sessionId,
-            };
-          });
-          return sessionId;
-        } catch {
-          return get().createSession(options);
+      createSessionFromApi: (options = {}) => {
+        if (get().sessions.some(session => session.messages.length === 0)) {
+          return Promise.resolve(get().createSession(options))
         }
+        if (pendingSessionCreation) return pendingSessionCreation
+
+        pendingSessionCreation = (async () => {
+          try {
+            const res = await chatApi.createSession({
+              title: options.title,
+              knowledgeBaseIds: options.knowledgeBaseIds,
+            }) as { sessionId?: string; success?: boolean };
+            // A local creation may have completed while the request was pending.
+            if (get().sessions.some(session => session.messages.length === 0)) {
+              return get().createSession(options)
+            }
+            const sessionId = res?.sessionId || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const now = Date.now();
+            const newSession: ChatSession = {
+              id: sessionId,
+              title: options.title || tr('新对话 {{date}}', { date: new Date().toLocaleString(getLanguage()) }),
+              messages: [],
+              knowledgeBaseIds: options.knowledgeBaseIds || [],
+              kbMode: 'auto',
+              agentMode: 'auto',
+              createdAt: now,
+              updatedAt: now,
+              isActive: true,
+            };
+            set((state) => {
+              const updatedSessions = state.sessions.map(s => ({ ...s, isActive: false }));
+              return {
+                sessions: [...updatedSessions, newSession],
+                activeSessionId: sessionId,
+              };
+            });
+            return sessionId;
+          } catch {
+            return get().createSession(options);
+          }
+        })().finally(() => { pendingSessionCreation = null })
+        return pendingSessionCreation
       },
 
       // 切换会话（不重置 thinking，避免正在流式的会话思考过程被清空）
@@ -509,11 +557,12 @@ export const useChatStore = create<ChatStore>()(
               const prev = state.sessions.find((s) => s.id === sessionId)
               const keptIds = new Set(messages.flatMap(m => m.attachments ?? []).map(a => a.id))
               cleanupMessageAttachments(prev?.messages.map(m => ({ ...m, attachments: m.attachments?.filter(a => !keptIds.has(a.id)) })))
-              return {
+              return keepSingleEmptySession({
+                activeSessionId: state.activeSessionId,
                 sessions: state.sessions.map(s =>
                   s.id === sessionId ? { ...s, messages, updatedAt: Date.now() } : s
                 ),
-              }
+              })
             });
           }
         } catch {
@@ -612,6 +661,10 @@ export const useChatStore = create<ChatStore>()(
     {
       name: 'chat-store',
       storage: chatPersistence.storage,
+      merge: (persisted, current) => {
+        const restored = { ...current, ...(persisted as Partial<PersistedChatState>) }
+        return { ...restored, ...keepSingleEmptySession(restored) }
+      },
       partialize: (state) => {
         // Transient stream state controls checkpointing but is never restored.
         isChatStreaming = state.streamingSessionId !== null

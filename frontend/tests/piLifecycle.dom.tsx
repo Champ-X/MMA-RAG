@@ -69,6 +69,10 @@ test('switching sessions while create completes preserves the original task and 
   let first = '', second = ''
   await act(async () => {
     first = store.getState().createSession()
+    // New-conversation actions reuse an empty session; seed an earlier turn so
+    // this fixture still exercises a genuine switch between two conversations.
+    store.getState().addMessage(first, { role: 'user', content: '已有问题' })
+    store.getState().addMessage(first, { role: 'assistant', content: '已有回答' })
     second = store.getState().createSession()
     store.getState().switchSession(first)
   })
@@ -83,7 +87,8 @@ test('switching sessions while create completes preserves the original task and 
       config: { model: 'fixture' }, request: { message: '问题', client_request_id: 'fixture-key' }, state: {} })
     await pending
   })
-  assert.equal(store.getState().getSessionById(first)!.messages.length, 2)
+  assert.equal(store.getState().getSessionById(first)!.messages.length, 4)
+  assert.deepEqual(store.getState().getSessionById(first)!.messages.slice(0, 2).map(message => message.content), ['已有问题', '已有回答'])
   assert.equal(store.getState().getSessionById(second)!.messages.length, 0)
   assert.equal(store.getState().activeSessionId, second)
 })
