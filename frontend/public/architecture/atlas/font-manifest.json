@@ -4,6 +4,9 @@
   "license": "SIL Open Font License 1.1; copies in ../fonts/",
   "sourceFiles": [
     "frontend/src/pages/ArchitecturePage.tsx",
+    "frontend/src/components/architecture/color-atlas/AtlasCasebook.tsx",
+    "frontend/src/components/architecture/color-atlas/AtlasDiagram.tsx",
+    "frontend/src/components/architecture/color-atlas/AtlasImage.tsx",
     "frontend/src/components/architecture/color-atlas/AtlasNarratives.tsx",
     "frontend/src/components/architecture/color-atlas/AtlasOverview.tsx",
     "frontend/src/components/architecture/color-atlas/AtlasParsing.tsx",
@@ -18,11 +21,11 @@
         400,
         900
       ],
-      "requestedCodepoints": 798,
-      "coveredCodepoints": 798,
+      "requestedCodepoints": 808,
+      "coveredCodepoints": 808,
       "fallbackCodepoints": [],
-      "bytes": 312444,
-      "sha256": "4167355d132166223364c8e4f80aece3221ccb13f634b41bac871a5e32980060",
+      "bytes": 314964,
+      "sha256": "b53bfa542647e8e869a84e4d3d7ff3823e84c968ea8b023953b0dc536ce20c6a",
       "sourceSha256": "050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9"
     },
     {
@@ -32,11 +35,11 @@
         400,
         750
       ],
-      "requestedCodepoints": 798,
-      "coveredCodepoints": 798,
+      "requestedCodepoints": 808,
+      "coveredCodepoints": 808,
       "fallbackCodepoints": [],
-      "bytes": 224868,
-      "sha256": "0edc1d27dad200cf078e115bb6f17063e00e93635921b8a7a9c231111bc469fd",
+      "bytes": 227068,
+      "sha256": "993538225b46999241dc7d450fe44918837172e1834e7c11439f7be7405a2fd3",
       "sourceSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da"
     }
   ]

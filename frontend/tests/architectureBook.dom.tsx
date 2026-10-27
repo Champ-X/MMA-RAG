@@ -76,6 +76,7 @@ afterEach(async () => {
   root = undefined
   router = undefined
   container = undefined
+  dom.window.sessionStorage.clear()
   await language('zh-CN')
 })
 
@@ -269,6 +270,98 @@ test('saved retrieval examples change the source snapshot without pretending to 
   const tabs = [...container!.querySelectorAll<HTMLButtonElement>('.ca-sys-channel-list [role="tab"]')]
   await click(tabs[2])
   assert.match(element('.ca-sys-result-folder').textContent!, /对景与框景/)
+})
+
+test('contents disclosure identifies the chapter, closes after selection and returns focus on Escape', async () => {
+  await mountBook('/architecture#materials')
+  const trigger = element<HTMLButtonElement>('.ca-mobile-contents button')
+  assert.match(element('.ca-mobile-contents strong').textContent!, /分模态解析/)
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false')
+  await click(trigger)
+  assert.equal(trigger.getAttribute('aria-expanded'), 'true')
+  assert.equal(trigger.getAttribute('aria-controls'), element('.ca-chapters').id)
+  await press(element('.ca-chapters a'), 'Escape')
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false')
+  assert.equal(document.activeElement, trigger)
+  await click(trigger)
+  await click(element('.ca-chapters a[href$="#retrieval"]'))
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false')
+  assert.match(element('.ca-mobile-contents strong').textContent!, /多路检索/)
+  assert.equal(document.activeElement, element('#book-heading'))
+})
+
+test('image enlargement preserves the chapter, selection and reading position, with Escape focus restoration', async () => {
+  await mountBook('/architecture?material=image#materials')
+  const trigger = element<HTMLButtonElement>('.ca-ps-original-photo .ca-image-trigger')
+  const reader = element('.ca-reading-viewport')
+  reader.scrollTop = 135
+  await act(async () => reader.dispatchEvent(new dom.window.Event('scroll')))
+  await act(async () => { trigger.focus(); trigger.click() })
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"]')
+  assert.ok(dialog)
+  assert.equal(dialog.getAttribute('aria-modal'), 'true')
+  assert.match(dialog.textContent!, /粗野主义混凝土/)
+  assert.ok(dialog.querySelector('img')?.src.endsWith('concrete-architecture.webp'))
+  assert.ok(dialog.contains(document.activeElement))
+  await press(dialog, 'Escape')
+  // Radix restores focus in the unmount cleanup, after React commits the close.
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+  assert.equal(document.querySelector('[role="dialog"]'), null)
+  assert.ok(document.activeElement === trigger, 'Closing the image should restore its trigger focus')
+  assert.equal(reader.scrollTop, 135)
+  assert.equal(router!.state.location.search, '?material=image')
+})
+
+test('browser Back restores the selected saved example, retrieval channel and reading position', async () => {
+  await mountBook('/architecture#retrieval')
+  const select = element<HTMLSelectElement>('.ca-sys-query-bar select')
+  await act(async () => { select.value = 'garden'; select.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+  const tabs = [...container!.querySelectorAll<HTMLButtonElement>('.ca-sys-channel-list [role="tab"]')]
+  await act(async () => tabs[2].focus())
+  const reader = element('.ca-reading-viewport')
+  reader.scrollTop = 240
+  await act(async () => reader.dispatchEvent(new dom.window.Event('scroll')))
+  await click(element('.book-next'))
+  assert.equal(reader.scrollTop, 0)
+  await act(async () => { await router!.navigate(-1) })
+  assert.equal(router!.state.location.hash, '#retrieval')
+  assert.equal(element<HTMLSelectElement>('.ca-sys-query-bar select').value, 'garden')
+  assert.match(element('.ca-sys-channel-list [aria-selected="true"]').textContent!, /CLIP/)
+  assert.equal(reader.scrollTop, 240)
+})
+
+test('the real-source casebook retains provenance, snapshot and original-text links', async () => {
+  await mountBook('/architecture#retrieval')
+  const casebook = element<HTMLDetailsElement>('.ca-casebook')
+  assert.equal(casebook.open, false)
+  await click(element('.ca-casebook summary'))
+  assert.equal(casebook.open, true)
+  assert.match(casebook.textContent!, /保存的检索记录/)
+  assert.match(casebook.textContent!, /chunk 18 \/ 17/)
+  assert.match(casebook.textContent!, /同素材空间配图/)
+  assert.ok(casebook.querySelector('a[href="/architecture/atlas/garden-notes.md"]'))
+  assert.ok(casebook.querySelector('a[href="/architecture/atlas/retrieval-examples.json"]'))
+  assert.ok(casebook.querySelector('a[href="/architecture/atlas/provenance.json"]'))
+  for (const link of casebook.querySelectorAll('a')) assert.equal(link.getAttribute('target'), '_blank')
+})
+
+test('storage and runtime diagrams open a semantic enlarged reader and return focus', async () => {
+  await mountBook('/architecture#storage')
+  for (const chapter of ['storage', 'system']) {
+    await act(async () => { await router!.navigate(`/architecture#${chapter}`) })
+    const trigger = element<HTMLButtonElement>('.ca-diagram-trigger')
+    await act(async () => { trigger.focus(); trigger.click() })
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')
+    assert.ok(dialog)
+    assert.ok(dialog.querySelector('.ca-diagram-scroll[tabindex="0"]'))
+    assert.match(dialog.textContent!, /MinIO/)
+    assert.match(dialog.textContent!, /Qdrant/)
+    if (chapter === 'system') assert.match(dialog.textContent!, /FastAPI/)
+    await press(dialog, 'Escape')
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+    assert.equal(document.querySelector('[role="dialog"]'), null)
+    assert.ok(document.activeElement === trigger, 'Closing the diagram should restore its trigger focus')
+  }
 })
 
 test('every chapter and its parsing, retrieval, path and citation variants have English product copy', async () => {

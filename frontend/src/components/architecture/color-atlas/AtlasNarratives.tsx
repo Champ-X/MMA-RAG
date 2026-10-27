@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useAtlasSelection } from './useAtlasSelection'
+import { AtlasImage } from './AtlasImage'
+import { useEffect, useRef } from 'react'
 import { ArrowRight, ArrowUpRight, BookOpen, Check, ChevronDown, FileText, FolderOpen, Image as ImageIcon, Music2, Search, Table2, Video, X } from 'lucide-react'
 import { architectureModes, type ArchitectureMode } from '@/data/architectureExperience'
 import { AtlasSourceLink, AtlasWaveform } from './AtlasPrimitives'
@@ -76,7 +78,7 @@ export function AtlasPrinciples({ text }: Props) {
 const toolIcons = [Search, BookOpen, Video, Table2]
 
 export function AtlasResearch({ text, mode, onModeChange }: Props & { mode: ArchitectureMode; onModeChange: (mode: ArchitectureMode) => void }) {
-  const [toolIndex, setToolIndex] = useState(0)
+  const [toolIndex, setToolIndex] = useAtlasSelection<number>('research-tool', 0, [0, 1, 2, 3])
   const tools = [
     { title: text('搜索资料', 'Search material'), body: text('先发现与问题相关的来源。搜索结果是线索，文件名本身不构成读过内容的证据。', 'Discover relevant sources first. Search results are clues; a filename is not evidence of having read the content.') },
     { title: text('阅读原文', 'Read originals'), body: text('沿来源身份展开原文，核对上下文与已有描述；读取结果成为可追溯的观察。', 'Follow a source identity into the original, inspect its context, and record a traceable observation.') },
@@ -106,7 +108,7 @@ export function AtlasResearch({ text, mode, onModeChange }: Props & { mode: Arch
 }
 
 export function AtlasCitations({ text }: Props) {
-  const [selected, setSelected] = useState<1 | 2 | null>(null)
+  const [selected, setSelected] = useAtlasSelection<1 | 2 | null>('citation', null, [null, 1, 2])
   const source = selected === 2 ? {
     section: text('四、意境的营造 · 借景 · chunk 17', '4. Creating atmosphere · Borrowed scenery · chunk 17'),
     title: text('把天地，纳入园中。', 'Bring the landscape into the garden.'),
@@ -138,7 +140,7 @@ export function AtlasCitations({ text }: Props) {
         <h2>{text('原始资料', 'Source material')}</h2>
         <div className="ca-story-source-paper">
           <header><span><FileText size={16} />{text('中国古典园林的意境与哲学.md', 'Chinese gardens.md')}</span><a href={`${assets}garden-notes.md`} target="_blank" rel="noreferrer">{text('打开原件', 'Open original')}<ArrowUpRight size={14} /></a>{selected !== null && <button type="button" onClick={close} aria-label={text('收起来源并返回引用', 'Close source and return to citation')}><X size={17} /></button>}</header>
-          <div className="ca-story-source-content"><div className="ca-story-source-text"><span className="ca-story-section-label">{source.section}</span><h3>{source.title}</h3><p>{source.before}</p><blockquote><mark>{source.quote}</mark></blockquote><p>{source.after}</p></div><figure className="ca-story-source-photo"><img src={`${assets}garden.webp`} width="1000" height="700" alt={text('园林素材配图，非文档内嵌原图', 'A garden collection illustration, not an embedded image from the document')} loading="lazy" /><figcaption>{text('素材空间配图', 'Collection illustration')}</figcaption></figure></div>
+          <div className="ca-story-source-content"><div className="ca-story-source-text"><span className="ca-story-section-label">{source.section}</span><h3>{source.title}</h3><p>{source.before}</p><blockquote><mark>{source.quote}</mark></blockquote><p>{source.after}</p></div><figure className="ca-story-source-photo"><AtlasImage src={`${assets}garden.webp`} alt={text('园林素材配图，非文档内嵌原图', 'A garden collection illustration, not an embedded image from the document')} title={text('园林素材配图', 'Garden collection illustration')} caption={text('来自同一素材空间；不是检索文档内嵌的图片。', 'From the same collection, not an embedded image in the retrieved document.')} text={text} /><figcaption>{text('素材空间配图', 'Collection illustration')}</figcaption></figure></div>
         </div>
       </section>
       <svg className="ca-story-citation-connector" viewBox="0 0 1000 400" preserveAspectRatio="none" aria-hidden="true"><path d="M360 125C455 125 467 90 510 145S570 185 610 185" /><circle cx="360" cy="125" r="4" /><circle cx="610" cy="185" r="4" /></svg>

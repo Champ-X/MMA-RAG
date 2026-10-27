@@ -162,6 +162,28 @@
   .ca-cover-copy h1 { font-size:43px; }.ca-cover-copy > p { font-size:15px; }.ca-collage-document h2 { font-size:14px; }.ca-collage-document p { font-size:9px; }.ca-collage-citation { padding:9px; }.ca-collage-citation p { font-size:9px; }.ca-collage-film small { display:none; }
   .ca-pagination { gap:12px; }.ca-page-position { display:none; }.ca-primary { font-size:14px!important; }
 }
+/* A shared reading scale prevents the shell and chapter titles jumping in size. */
+@container color-atlas (min-width:761px) {
+  .ca-masthead { min-height:66px; padding-block:12px 8px; }
+  .ca-wordmark strong { font-size:30px; }
+  .ca-wordmark span { font-size:15px; }
+  .ca-chapters { padding-block:6px 10px; }
+  .ca-chapters a { padding:8px 12px; margin-right:11px; font-size:13px; }
+  .ca-chapters a::after { right:-6px; }
+  .ca-chapters a:focus-visible { outline-offset:2px; }
+  .color-atlas .ca-page:not(.ca-page-overview) { padding-block:18px 16px; }
+  .color-atlas .ca-page:not(.ca-page-overview) .ca-chapter-heading { padding-block:0 20px; }
+  .color-atlas .ca-page:not(.ca-page-overview) .ca-chapter-heading h1 { font-size:clamp(2.25rem,3.6cqi,3.25rem); line-height:1.2; }
+  .color-atlas[lang=en] .ca-page:not(.ca-page-overview) .ca-chapter-heading h1 { font-size:clamp(2rem,3.1cqi,2.875rem); }
+  .color-atlas .ca-page:not(.ca-page-overview) .ca-chapter-heading > p { margin-top:10px; font-size:clamp(.9375rem,1.2cqi,1.0625rem); line-height:1.65; }
+  .color-atlas :is(.ca-page-idea,.ca-page-storage) > .ca-chapter-heading { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); align-items:end; gap:30px; }
+  .color-atlas :is(.ca-page-idea,.ca-page-storage) > .ca-chapter-heading > p { margin:0; text-wrap:pretty; }
+  .color-atlas .ca-page:not(.ca-page-overview) > .ca-pagination { margin-top:24px; padding-top:12px; }
+}
+@container color-atlas (min-width:761px) and (max-width:1049px) {
+  .color-atlas :is(.ca-page-paths,.ca-page-evidence) > .ca-chapter-heading { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); align-items:end; gap:30px; }
+  .color-atlas :is(.ca-page-paths,.ca-page-evidence) > .ca-chapter-heading > p { margin:0; text-wrap:pretty; }
+}
 @media (hover:hover) and (pointer:fine) {
   .ca-github:hover,.ca-source-link:hover { color:#4d60b0; border-color:#8998e8; }
   .ca-github:hover > svg:last-child,.ca-source-link:hover > svg { transform:translate(1px,-1px); }

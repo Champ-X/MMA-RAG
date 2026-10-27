@@ -1,3 +1,5 @@
+import { useAtlasSelection } from './useAtlasSelection'
+import { AtlasImage } from './AtlasImage'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
 import { ArrowDown, ArrowRight, AudioLines, ChevronDown, FileText, Film, Image as ImageIcon, Play, Table2 } from 'lucide-react'
@@ -49,7 +51,7 @@ function Floorplan() {
 }
 
 function DocumentScene({ text }: TextProps) {
-  const [selected, setSelected] = useState(0)
+  const [selected, setSelected] = useAtlasSelection<number>('document-selection', 0, [0, 1, 2])
   const labels = [text('原文片段', 'Source passage'), text('独立图片', 'Separate image'), text('结构化片段', 'Structured passage')]
   return <div className="ca-ps-scene ca-ps-document-scene">
     <Connections />
@@ -68,7 +70,7 @@ function DocumentScene({ text }: TextProps) {
     <div className="ca-ps-operation"><AtlasPaper className="ca-ps-operation-label"><span>{text('规划边界', 'Plan ranges')}</span><ArrowDown size={17} aria-hidden="true" /><strong>{text('按原文切片', 'Slice the source')}</strong></AtlasPaper></div>
     <div className="ca-ps-results ca-ps-document-results">
       <Folder title={labels[0]} className={selected === 0 ? 'is-selected' : ''}><AtlasPaper className="ca-ps-excerpt"><p>{text('框景则是以门洞、窗棂、廊柱为“画框”，将框内的景物裁剪成一幅天然的图画。', 'Framing uses doorways, windows and colonnades as a frame, composing the view as a natural picture.')}</p><small>{text('原文节选 · 章节：对景与框景', 'Source excerpt · section: framed views')}</small></AtlasPaper></Folder>
-      <Folder title={labels[1]} tone="orange" className={selected === 1 ? 'is-selected' : ''}><figure className="ca-ps-extracted-photo"><img src={asset('garden')} width="640" height="480" alt={text('单独保存的园林图片示例', 'An example of a separately stored garden image')} /><figcaption>{text('独立资料图片 · 处理示例', 'Separate source image · processing example')}</figcaption></figure></Folder>
+      <Folder title={labels[1]} tone="orange" className={selected === 1 ? 'is-selected' : ''}><figure className="ca-ps-extracted-photo"><AtlasImage src={asset('garden')} alt={text('单独保存的园林图片示例', 'An example of a separately stored garden image')} title={text('园林资料图片', 'Garden source image')} text={text} /><figcaption>{text('独立资料图片 · 处理示例', 'Separate source image · processing example')}</figcaption></figure></Folder>
       <Folder title={labels[2]} tone="purple" className={selected === 2 ? 'is-selected' : ''}><AtlasPaper className="ca-ps-structured"><MiniTable text={text} rows={2} /></AtlasPaper></Folder>
     </div>
     <p className="ca-ps-selection sr-only" aria-live="polite">{text('已选择：', 'Selected: ')}{labels[selected]}</p>
@@ -76,7 +78,7 @@ function DocumentScene({ text }: TextProps) {
 }
 
 function TableScene({ text }: TextProps) {
-  const [group, setGroup] = useState(0)
+  const [group, setGroup] = useAtlasSelection<number>('table-group', 0, [0, 1])
   return <div className="ca-ps-scene ca-ps-table-scene"><Connections />
     <div className="ca-ps-source ca-ps-table-source"><AtlasPaper className="ca-ps-sheet-paper"><span className="ca-ps-file-label"><Table2 size={14} aria-hidden="true" /> materials.xlsx</span><h3>{text('资料清单', 'Material inventory')}</h3><MiniTable text={text} selected={group} /><div className="ca-ps-row-controls" aria-label={text('查看数据行块', 'Inspect a row block')}><button onClick={() => setGroup(0)} aria-pressed={group === 0}>{text('数据行 1–2', 'Data rows 1–2')}</button><button onClick={() => setGroup(1)} aria-pressed={group === 1}>{text('数据行 3–4', 'Data rows 3–4')}</button></div><p className="ca-ps-sheet-name">{text('工作表：素材目录', 'Sheet: Material catalogue')}</p></AtlasPaper></div>
     <div className="ca-ps-operation"><span className="ca-ps-operation-plain">{text('保留表头', 'Keep headers')}<ArrowRight size={20} aria-hidden="true" /></span></div>
@@ -85,9 +87,9 @@ function TableScene({ text }: TextProps) {
 }
 
 function ImageScene({ text }: TextProps) {
-  const [representation, setRepresentation] = useState<'text' | 'visual'>('text')
+  const [representation, setRepresentation] = useAtlasSelection<'text' | 'visual'>('image-representation', 'text', ['text', 'visual'])
   return <div className="ca-ps-scene ca-ps-image-scene"><Connections variant="two" />
-    <div className="ca-ps-source ca-ps-image-source"><figure className="ca-ps-original-photo"><figcaption>{text('原图', 'Original')} · structure.png</figcaption><img src={asset('concrete-architecture')} width="900" height="700" alt={text('混凝土体块与自然光构成的建筑空间', 'An architectural space formed by concrete and natural light')} /></figure></div>
+    <div className="ca-ps-source ca-ps-image-source"><figure className="ca-ps-original-photo"><figcaption>{text('原图', 'Original')} · structure.png</figcaption><AtlasImage src={asset('concrete-architecture')} alt={text('混凝土体块与自然光构成的建筑空间', 'An architectural space formed by concrete and natural light')} title={text('粗野主义混凝土', 'Brutalist concrete')} text={text} /></figure></div>
     <div className="ca-ps-operation"><span className="ca-ps-operation-plain">{text('两种表示', 'Two representations')}<ArrowRight size={20} aria-hidden="true" /></span></div>
     <div className="ca-ps-results ca-ps-image-results"><Folder title={text('图片与上下文', 'Image & context')} className={representation === 'text' ? 'is-selected' : ''}><button className="ca-ps-representation" onClick={() => setRepresentation('text')} aria-pressed={representation === 'text'}><AtlasPaper className="ca-ps-caption-paper"><span>{text('描述', 'Description')}</span><p>{text('混凝土结构围合空间，光线沿边缘进入。', 'Concrete encloses the space; light enters along its edges.')}</p></AtlasPaper><div className="ca-ps-vector-stamp"><code>text_vec</code><AtlasWaveform seed={2} /></div></button></Folder><Folder title={text('直接编码原图', 'Encode the original')} tone="purple" className={representation === 'visual' ? 'is-selected' : ''}><button className="ca-ps-representation" onClick={() => setRepresentation('visual')} aria-pressed={representation === 'visual'}><figure className="ca-ps-visual-photo"><img src={asset('concrete-architecture')} width="640" height="480" alt={text('送入 CLIP 的原始图片', 'The original image passed to CLIP')} /></figure><div className="ca-ps-vector-stamp"><strong>CLIP</strong><AtlasWaveform seed={8} /><code>clip_vec</code></div></button></Folder><p className="ca-ps-shared-point"><ImageIcon size={18} aria-hidden="true" />{text('两种表示，连接同一个图片检索单元', 'Both representations belong to the same image point')}<span>file_id</span></p></div>
     <p className="sr-only" aria-live="polite">{representation === 'text' ? text('选中语言描述表示', 'Language description selected') : text('选中原图视觉表示', 'Image representation selected')}</p>
@@ -107,7 +109,7 @@ function AudioScene({ text }: TextProps) {
 }
 
 function VideoScene({ text }: TextProps) {
-  const [frame, setFrame] = useState(1)
+  const [frame, setFrame] = useAtlasSelection<number>('video-frame', 1, [0, 1, 2])
   const videoRef = useRef<HTMLVideoElement>(null)
   useEffect(() => { const video = videoRef.current; return () => { video?.pause() } }, [])
   const frames = [
@@ -117,7 +119,7 @@ function VideoScene({ text }: TextProps) {
   ]
   const active = frames[frame]
   return <div className="ca-ps-video-scene"><div className="ca-ps-film"><div className="ca-ps-scene-ruler"><span>{text('场景 / 镜头示意 · 非实跑分割', 'Scene / shot illustration · not a detected split')}</span><span>{text('同一原片 · 00:00–00:10', 'One source excerpt · 00:00–00:10')}</span></div><div className="ca-ps-shot-strip">{frames.map((item, index) => <button key={item.time} className={index === frame ? 'is-selected' : ''} onClick={() => setFrame(index)} aria-pressed={index === frame} aria-label={`${text('关键帧', 'Keyframe')} ${index + 1}: ${item.caption}`}><span className="ca-ps-shot-images ca-ps-shot-images--single"><img src={asset(item.image)} width="640" height="360" alt="" /></span><strong>{text('关键帧', 'Keyframe')} 0{index + 1}</strong><span>{item.time}</span></button>)}</div></div>
-    <div className="ca-ps-shot-detail"><div className="ca-ps-keyframes"><span className="ca-ps-paper-label">{text('镜头结构示意', 'Illustrative shot structure')} · 00:00–00:10</span><AtlasPaper className="ca-ps-keyframe-paper"><h4>{text('实际帧图 · 内部视觉证据', 'Actual frame · visual evidence within a shot')}</h4><div className="ca-ps-keyframe-single"><img src={asset(active.image)} width="640" height="360" alt={active.caption} /></div><span>{active.time} · {text('帧描述 + CLIP', 'Frame description + CLIP')}</span></AtlasPaper></div><div className="ca-ps-shot-vectors"><AtlasPaper className="ca-ps-shot-note"><h4><FileText size={15} aria-hidden="true" />{text('镜头描述', 'Shot caption')} · Dense</h4><p>{text('描述示意：阳光穿过树林，树干与植被形成层次。', 'Illustrative description: sunlight crosses the forest, creating layers of trunks and foliage.')}</p></AtlasPaper><AtlasPaper className="ca-ps-shot-note"><h4><FileText size={15} aria-hidden="true" />{text('镜头描述', 'Shot caption')} · Sparse</h4><p>{text('词面示意：树林、阳光、树干、植被、光影。', 'Illustrative terms: forest, sunlight, trunks, foliage, shadows.')}</p></AtlasPaper><AtlasPaper className="ca-ps-shot-note"><h4><AudioLines size={15} aria-hidden="true" />ASR · Dense</h4><p>{text('转写文本独立编码；无语音时不虚构对白。', 'Transcription is encoded separately; no dialogue is invented when speech is absent.')}</p></AtlasPaper><AtlasPaper className="ca-ps-shot-note"><h4><AudioLines size={15} aria-hidden="true" />ASR · Sparse</h4><p>{text('词面表示来自转写，并保留 ASR 状态。', 'Lexical features come from the transcript, with ASR status retained.')}</p></AtlasPaper></div></div>
+    <div className="ca-ps-shot-detail"><div className="ca-ps-keyframes"><span className="ca-ps-paper-label">{text('镜头结构示意', 'Illustrative shot structure')} · 00:00–00:10</span><AtlasPaper className="ca-ps-keyframe-paper"><h4>{text('实际帧图 · 内部视觉证据', 'Actual frame · visual evidence within a shot')}</h4><div className="ca-ps-keyframe-single"><AtlasImage src={asset(active.image)} alt={active.caption} title={`${text('森林原片', 'Forest source')} · ${active.time}`} caption={text('来自 forest.mp4 的实际截帧；镜头边界仅用于机制示意。', 'An actual frame from forest.mp4; shot boundaries are illustrative.')} text={text} /></div><span>{active.time} · {text('帧描述 + CLIP', 'Frame description + CLIP')}</span></AtlasPaper></div><div className="ca-ps-shot-vectors"><AtlasPaper className="ca-ps-shot-note"><h4><FileText size={15} aria-hidden="true" />{text('镜头描述', 'Shot caption')} · Dense</h4><p>{text('描述示意：阳光穿过树林，树干与植被形成层次。', 'Illustrative description: sunlight crosses the forest, creating layers of trunks and foliage.')}</p></AtlasPaper><AtlasPaper className="ca-ps-shot-note"><h4><FileText size={15} aria-hidden="true" />{text('镜头描述', 'Shot caption')} · Sparse</h4><p>{text('词面示意：树林、阳光、树干、植被、光影。', 'Illustrative terms: forest, sunlight, trunks, foliage, shadows.')}</p></AtlasPaper><AtlasPaper className="ca-ps-shot-note"><h4><AudioLines size={15} aria-hidden="true" />ASR · Dense</h4><p>{text('转写文本独立编码；无语音时不虚构对白。', 'Transcription is encoded separately; no dialogue is invented when speech is absent.')}</p></AtlasPaper><AtlasPaper className="ca-ps-shot-note"><h4><AudioLines size={15} aria-hidden="true" />ASR · Sparse</h4><p>{text('词面表示来自转写，并保留 ASR 状态。', 'Lexical features come from the transcript, with ASR status retained.')}</p></AtlasPaper></div></div>
     <details className="ca-ps-video-preview" onToggle={event => { if (!event.currentTarget.open) videoRef.current?.pause() }}><summary><Play size={15} aria-hidden="true" /><span>{text('查看真实原片预览', 'Watch the original video preview')}</span><small>{text('10 秒 · 无音轨', '10 seconds · no audio')}</small><ChevronDown size={16} aria-hidden="true" /></summary><video ref={videoRef} src="/architecture/atlas/forest-preview.mp4" poster={asset('forest-frame-1')} controls playsInline muted preload="none" width="640" height="360" aria-label={text('森林原片，10 秒无声预览', 'Forest video, a 10-second silent preview')} /></details>
     <p className="sr-only" aria-live="polite">{text('已选择关键帧', 'Selected keyframe')} {frame + 1} · {active.caption} · {active.time}</p>
   </div>
@@ -126,7 +128,7 @@ function VideoScene({ text }: TextProps) {
 function materialContent(text: Text): Record<AtlasMaterial, Material> {
   return {
     document: {
-      lead: text('按各自的结构理解资料。选择纸上的标记，查看保留下来的内容。', 'Read the structure of each material. Select a marker to inspect what is retained.'),
+      lead: text('文档里的原文、图片与表格，分别怎样保留？点按标记，沿结构展开。', 'How are text, images and tables retained? Select a marker to explore their structure.'),
       motto: text('模型规划边界，程序切分原文。', 'The model plans. The program slices the source.'),
       boundary: text('原文保真针对解析后的文本，不等于 OCR 无损。', 'Source fidelity applies to parsed text, not to lossless OCR.'),
       notes: [
@@ -139,7 +141,7 @@ function materialContent(text: Text): Record<AtlasMaterial, Material> {
       sources: [{ path: 'backend/app/modules/ingestion/splitters/agentic.py', label: text('规划与原文切片', 'Planning and source slicing') }, { path: 'backend/app/modules/ingestion/parsers/factory.py', label: text('格式解析', 'Format parsing') }],
     },
     table: {
-      lead: text('保留表头、数据行与列的语义。切换行块，查看同一张表的不同入口。', 'Keep the meaning of headers, rows and columns. Switch row blocks to inspect the same table.'),
+      lead: text('数据分块以后，怎样仍能读懂表头与每一列？切换行块，查看结构。', 'How do row blocks keep their headers and column meaning? Switch blocks to inspect the structure.'),
       motto: text('找到一块数据，不等于完成整表计算。', 'Finding a row block is not a whole-table calculation.'),
       boundary: text('图中行号是解析后的数据行编号，不自动等于 Excel 物理行号。', 'The row numbers identify parsed data rows, not necessarily physical Excel rows.'),
       notes: [
@@ -152,7 +154,7 @@ function materialContent(text: Text): Record<AtlasMaterial, Material> {
       sources: [{ path: 'backend/app/modules/ingestion/parsers/factory.py', label: text('表格与列画像', 'Tables and column profiles') }, { path: 'backend/app/modules/ingestion/service.py', label: text('表格分块与入库', 'Table chunking and ingestion') }],
     },
     image: {
-      lead: text('两种搜索表示，连接同一张原图。选择一种表示，查看各自的线索。', 'Two search representations lead to one original. Select either representation to inspect its clues.'),
+      lead: text('一张图，怎样同时通过描述和画面被找到？选择一种表示，查看线索。', 'How is one image found through both words and vision? Select a representation to inspect its clues.'),
       motto: text('描述提供线索，细节仍要回看原图。', 'Descriptions provide clues. Details live in the original.'),
       boundary: text('图片路径仍指向图片；source_file_id 用来关联抽图的母文档。', 'The image path still points to the image; source_file_id links it to its parent document.'),
       notes: [
@@ -165,7 +167,7 @@ function materialContent(text: Text): Record<AtlasMaterial, Material> {
       sources: [{ path: 'backend/app/modules/ingestion/service.py', label: text('描述与双向量入库', 'Caption and dual-vector ingestion') }, { path: 'backend/app/modules/ingestion/storage/vector_store.py', label: text('图片存储契约', 'Image storage schema') }],
     },
     audio: {
-      lead: text('文本线索与声学线索，共同指向一个音频文件。', 'Textual and acoustic clues lead to the same audio file.'),
+      lead: text('怎样同时搜索音频说了什么、听起来像什么？', 'How can we search both what an audio file says and what it sounds like?'),
       motto: text('定位到音频文件，保留完整的听觉语境。', 'Return to the audio file, with its full listening context.'),
       boundary: text('独立音频当前是文件级索引，不承诺逐句时间定位。', 'Standalone audio is currently indexed by file, without guaranteed sentence-level timestamps.'),
       notes: [
@@ -178,7 +180,7 @@ function materialContent(text: Text): Record<AtlasMaterial, Material> {
       sources: [{ path: 'backend/app/modules/ingestion/service.py', label: text('音频入库与 CLAP', 'Audio ingestion and CLAP') }, { path: 'backend/app/modules/ingestion/storage/vector_store.py', label: text('音频存储契约', 'Audio storage schema') }],
     },
     video: {
-      lead: text('镜头是主要检索单元，关键帧保留在镜头之内。选择一帧，查看原片中的画面。', 'Shots are the main retrieval units; keyframes remain within them. Select a frame to inspect the original image.'),
+      lead: text('视频里的线索怎样回到具体时间？选择关键帧，查看真实画面。', 'How do video clues lead back to a time span? Select a keyframe to inspect the actual footage.'),
       motto: text('覆盖时间轴，不代表逐帧核验。', 'Timeline coverage is not frame-by-frame verification.'),
       boundary: text('帧图来自原视频；场景、镜头与向量展示为结构示意，不是本次解析结果。', 'Frames come from the original video; scene, shot and vector layouts illustrate the structure, not a live parsing result.'),
       notes: [

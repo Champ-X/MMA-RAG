@@ -83,15 +83,19 @@ Tessmora Atlas Serif carries the large Song/Ming display titles and source-like 
 
 The declared weight ranges are Serif 400–900 and Sans 400–750. Source revision, hashes, subset counts and license locations are recorded in `frontend/public/architecture/atlas/font-manifest.json`. Update the subset and manifest together when new copy needs additional characters; a declared font family alone does not guarantee glyph coverage.
 
-The overview title uses 900-weight Serif at `clamp(42px, 6.7cqi, 100px)` with a 1.23 line height. General chapter titles use `clamp(32px, 4.5cqi, 64px)` at 1.25. English, wide systems chapters and narrow containers have their own overrides in the component styles; preserve those overrides when editing copy. The route's base body is 15px Sans at 1.65.
+The overview title uses 900-weight Serif. Above a 760px architecture-container width, its size follows both container width and viewport height, from 44px to 76px with a 1.2 line height; English uses 32px to 52px at 1.15. General desktop chapter titles share a 36–52px scale at 1.2, with 32–46px English titles. The parsing chapter has a matching independent opening. Narrow layouts retain their stacked-cover treatment and readable type. The route's base body is 15px Sans at 1.65.
 
 ## Layout and navigation
 
-The architecture route is a column layout with a masthead, a horizontal chapter index and an independently scrolling reading viewport. The chapter index remains horizontally scrollable in narrow containers; it does not switch to the old topic-select layout. The selected chapter uses `aria-current="page"` and is brought into view after navigation.
+The architecture route is a column layout with a masthead, a horizontal chapter index and an independently scrolling reading viewport. At container widths of 760px or less, the chapter index becomes an explicit Contents disclosure beside the current chapter and position. The expanded two-column directory retains links and closes after selection; Escape returns focus to its control. The selected chapter uses `aria-current="page"` and is brought into view after navigation.
 
 The reading page is capped at 1560px and uses a fluid `clamp(22px, 3.2cqi, 54px)` horizontal gutter. The overview pairs an editorial title with a collage and three linked journey panels. The cover and journey panels stack below a 760px architecture-container width. Individual parsing, systems and narrative compositions use their own container breakpoints to preserve reading order after the sidebar takes space.
 
-Chapter navigation retains the route query and hash, resets the reading scroll and moves focus to the chapter heading. Previous/next controls stay in document flow; the final next control returns to Overview. Direct, Agent and Pi selections preserve the `path` query parameter. Legacy architecture links still resolve to the appropriate chapter or open Runtime appendix.
+The desktop overview fills the available reading height. Its cover absorbs spare height, while the media collage and journey illustrations respond to the window size; pagination ends with a 12px lower inset rather than leaving a blank area beneath it. These rules live in `color-atlas/atlasOverview.css` and apply above 760px. Intrinsic content remains the minimum, so short windows and enlarged text can scroll naturally. Below 420px, the first journey panel places its number and title together, then gives the illustration a full row.
+
+All desktop chapters share the compact masthead, chapter index and title scale. Each chapter's stylesheet adjusts the scene itself: parsing media and result sheets, the two principles flows, research tools, citation papers, storage folders, retrieval channels and the runtime map. Core diagrams remain distinct from supplementary explanations and expandable implementation detail. Long chapters retain natural scrolling; no page is globally scaled or clipped to force its full content into one screen.
+
+Explicit chapter navigation retains the route query and hash, starts the new chapter at the top and moves focus to its heading. Browser Back restores the prior chapter and its reading position. Local selections persist for the browser session; media playback does not resume automatically. Previous/next controls stay in document flow; the final next control returns to Overview. Direct, Agent and Pi selections preserve the `path` query parameter. Legacy architecture links still resolve to the appropriate chapter or open Runtime appendix.
 
 ## Interaction and evidence
 
@@ -101,6 +105,14 @@ Chapter navigation retains the route query and hash, resets the reading scroll a
 - Citation controls focus the source excerpt and return focus when closed. Preserve the difference between a candidate and a cited source.
 - Visible focus, localized accessible names, Chinese and English copy, and reduced-motion rules are part of the interaction contract. Reduced motion disables the route's animations and transitions.
 - Saved retrieval examples are recorded results, not a live status display or a performance benchmark. Standalone audio remains a file-level search unit; the listening preview does not establish timestamped audio indexing.
+
+## Exploration and real examples
+
+Each chapter opening now poses the question its content answers. Compact arrow affordances identify interactive collage and journey objects, while existing technical disclosures keep detailed contracts readable without shrinking them into the core diagram.
+
+Source and keyframe images support an accessible Radix lightbox with focus containment, Escape, an explicit close control and focus restoration. The lightbox shows complete image proportions. Storage and runtime diagrams also have a dedicated enlarged reader: the same semantic diagram renders with its full composition and readable typography, with horizontal scrolling available on small screens. Returning leaves the chapter, source selection and reading position intact.
+
+Retrieval includes a fold-out source casebook using the existing saved architectural-light and garden queries. The concrete image, original garden text and companion garden photograph retain their recorded provenance. Captured query results, derived descriptions and companion illustrations remain explicitly distinct. The casebook links the saved retrieval record and provenance manifest, and issues no model or search requests.
 
 ## Assets and retained components
 
