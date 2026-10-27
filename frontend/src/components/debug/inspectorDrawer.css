@@ -80,7 +80,6 @@
 .source-inspector-image[data-loaded='false'] { opacity: 0; min-height: 160px; }
 .source-inspector-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--inspector-muted); font-size: 12px; }
 .source-inspector-spinner { width: 15px; height: 15px; border: 1.5px solid var(--inspector-border); border-top-color: var(--inspector-accent); border-radius: 50%; animation: source-inspector-spin .8s linear infinite; }
-.source-inspector-media audio { display: block; width: calc(100% - 24px); min-width: 0; max-width: 100%; height: 42px; margin: 0 12px 15px; }
 .source-inspector-media video { display: block; width: 100%; max-height: 42dvh; aspect-ratio: 16 / 9; object-fit: contain; background: #0f1821; }
 .source-inspector-media-fallback { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; min-height: 156px; padding: 24px 20px; color: var(--inspector-muted); text-align: center; }
 .source-inspector-media-fallback > svg { color: #96a8b8; }
@@ -134,3 +133,23 @@
 @media (prefers-reduced-motion: reduce) {
   .source-inspector, .source-inspector-overlay, .source-inspector *, .source-inspector *::before, .source-inspector *::after { animation: none !important; transition: none !important; }
 }
+
+/* A source reading desk: calm paper, useful identity, generous original text. */
+.source-inspector { width: min(620px, 100vw); --inspector-gutter: 30px; --inspector-accent: #78628f; --inspector-surface: #fffefc; --inspector-soft: #f6f3f8; }
+.source-inspector-overlay { background: #20233532; backdrop-filter: blur(2px); }
+.source-inspector-header { background: var(--inspector-surface); padding-top: 30px; padding-bottom: 22px; }
+.source-inspector-icon { background: #f0ebf6; color: #7b668f; border-radius: 12px; width: 44px; height: 44px; }
+.source-inspector-kicker { letter-spacing: .08em; font-size: 11px; color: var(--inspector-accent); }
+.source-inspector-title { font-size: 20px; line-height: 1.5; font-weight: 650; }
+.source-inspector-description { gap: 12px; font-size: 12px; line-height: 1.7; }
+.source-inspector-type { background: var(--inspector-soft); color: var(--inspector-accent); }
+.source-inspector-scroll { padding-top: 26px; overscroll-behavior: contain; }
+.source-inspector-content { margin-bottom: 26px; }
+.source-inspector-prose { border-color: #d8cce3; padding-left: 18px; line-height: 2; }
+.source-inspector-section-heading { margin-bottom: 15px; }
+.source-inspector-section-heading > span, .source-inspector-disclosure summary, .source-inspector-context-label, .source-inspector-metadata, .source-inspector-score-note { font-size: 12px; }
+.source-inspector-metadata dd[data-identifier='true'] { font-size: 11px; }
+.dark .source-inspector { --inspector-accent: #cab2df; --inspector-surface: #1d2330; --inspector-soft: #292c3a; }
+.dark .source-inspector-icon { background: #342e41; color: #cfb8e3; }
+.dark .source-inspector-prose { border-color: #564664; }
+@media (max-width: 520px) { .source-inspector { --inspector-gutter: 18px; } .source-inspector-title { font-size: 17px; } .source-inspector-header { padding-top: 20px; } }

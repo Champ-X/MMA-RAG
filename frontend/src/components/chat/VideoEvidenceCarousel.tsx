@@ -78,7 +78,7 @@ export function VideoEvidenceCarousel({ citations, displayIndexByRefId, getVideo
     return offset && Math.abs(offset) <= 2 ? [{ citation, index, offset }] : []
   })
 
-  return <section className="video-evidence-carousel not-prose" aria-label={tr('视频依据')}
+  return <section className="answer-media-group video-evidence-carousel not-prose" aria-label={tr('视频依据')}
     aria-roledescription={tr('轮播')}>
     <div className="video-evidence-stage">
       {previews.map(({ citation, index, offset }) => <button type="button"

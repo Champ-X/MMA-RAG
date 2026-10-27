@@ -74,7 +74,7 @@ test('video groups become a carousel only above two distinct segments and stay a
   const duplicate = await render('依据 [1][2][4]。', [...citations, { ...citations[1], id: 4 }])
   assert.doesNotMatch(duplicate, /video-evidence-carousel/)
   const group = await render('| 依据 |\n| --- |\n| [1][2][3] |\n\n重复 [1][2][3]。', citations)
-  assert.equal((group.match(/class="video-evidence-carousel /g) ?? []).length, 1)
+  assert.equal((group.match(/class="[^"]*\bvideo-evidence-carousel\b[^"]*"/g) ?? []).length, 1)
   assert.equal((group.match(/aria-label="视频引用播放器"/g) ?? []).length, 1)
   assert.match(group, /aria-label="第 1 个，共 3 个片段"/)
   assert.ok(group.indexOf('video-evidence-carousel') > group.indexOf('</table>'))

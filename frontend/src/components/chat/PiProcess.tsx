@@ -168,17 +168,24 @@ export function PiProcess({ trace }: { trace: PiTrace }) {
       if (message?.pi) store.updateMessage(session.id, message.id, { pi: { ...message.pi, connectionError: undefined } })
     }
   }
-  return <section className="pi-process" data-status={trace.status} data-expanded={open} aria-label={tr("Agent Mode 研究过程")}>
-    <button type="button" className="pi-process-header" aria-expanded={open} aria-controls={bodyId}
+  return <section className="pi-process process-summary" data-status={trace.status} data-expanded={open} aria-label={tr("Agent Mode 研究过程")}>
+    <button type="button" className="pi-process-header process-summary__trigger" aria-expanded={open} aria-controls={bodyId}
       aria-label={tr("Agent Mode 研究过程，{{status}}，{{tools}} 次工具，{{evidence}} 条证据", { status: tr(piStatusLabel[trace.status]), tools: tools.length, evidence: trace.evidence.length })
         + (duration != null ? tr("，耗时 {{seconds}} 秒", { seconds: (duration / 1000).toFixed(1) }) : '')} onClick={() => setOpen(!open)}>
-      <span className="pi-mark" aria-hidden>π</span>
-      <span className="pi-process-identity"><strong>Agent Mode</strong></span>
-      <span className="pi-run-status" role="status"><span className="pi-run-status-dot" aria-hidden />{tr(piStatusLabel[trace.status])}</span>
-      <span className="pi-process-count"><span><Braces size={13} aria-hidden /><b>{tools.length}</b> {tr("次工具")}</span>
-        <span><Files size={13} aria-hidden /><b>{trace.evidence.length}</b> {tr("条证据")}</span>
-        {duration != null && <span><Clock3 size={13} aria-hidden /><b>{(duration / 1000).toFixed(1)}</b>s</span>}</span>
-      <span className="pi-process-toggle" aria-hidden><ChevronDown size={14} className="pi-process-chevron" /></span>
+      <span className="pi-mark process-summary__mark" aria-hidden>π</span>
+      <span className="process-summary__identity">
+        <span className="pi-process-identity"><strong className="process-summary__title">Agent Mode</strong></span>
+        <span className="pi-run-status process-summary__status" data-status={trace.status} role="status">
+          {trace.status === 'completed' ? <Check size={12} aria-hidden />
+            : ['failed', 'partial', 'needs_input'].includes(trace.status) ? <AlertCircle size={12} aria-hidden />
+            : <span className="pi-run-status-dot" aria-hidden />}
+          {tr(piStatusLabel[trace.status])}
+        </span>
+      </span>
+      <span className="pi-process-count process-summary__metrics"><span><Braces size={13} aria-hidden /><b>{tools.length}</b> <span className="process-summary__metric-label">{tr("工具调用")}</span></span>
+        <span><Files size={13} aria-hidden /><b>{trace.evidence.length}</b> <span className="process-summary__metric-label">{tr("证据")}</span></span>
+        {duration != null && <span><Clock3 size={13} aria-hidden /><b>{(duration / 1000).toFixed(1)}<span className="process-summary__metric-unit">s</span></b><span className="process-summary__metric-label process-summary__metric-label--duration">{tr("耗时")}</span></span>}</span>
+      <span className="pi-process-toggle process-summary__toggle" aria-hidden><ChevronDown size={14} className="pi-process-chevron" /></span>
     </button>
     {trace.connectionError && <div className="pi-connection-error" role="alert"><AlertCircle size={14} aria-hidden />
       {tr("连接中断，任务状态待同步。")}<button type="button" onClick={reconnect}><RotateCcw size={12} aria-hidden />{tr("重新连接")}</button></div>}

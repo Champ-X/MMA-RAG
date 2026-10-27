@@ -1,6 +1,6 @@
 import { translate as tr, useTranslation } from '@/i18n'
 import { useId, useMemo, useState } from 'react'
-import { Brain, Network, Search, ChevronDown, ChevronRight, CheckCircle, AlertCircle, Square, Image as ImageIcon, Music, Video, Sparkles, FileText, Wand2, Target } from 'lucide-react'
+import { Brain, Network, Search, ChevronDown, Check, CheckCircle, AlertCircle, Square, Image as ImageIcon, Music, Video, Sparkles, FileText, Wand2, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ThoughtData, ThinkingState } from '@/store/useChatStore'
 import type { AgentRoundTrace } from '@/types/sse'
@@ -355,11 +355,13 @@ export function ThinkingCapsule({
   return (
     <div
       className={cn(
-        'group/capsule w-full overflow-hidden border [container-name:thinking-capsule] [container-type:inline-size] transition-[background-color,border-color,box-shadow] duration-200',
+        'process-summary group/capsule w-full overflow-hidden border [container-name:thinking-capsule] [container-type:inline-size] transition-[background-color,border-color,box-shadow] duration-200',
         open
           ? 'rounded-xl border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-slate-700/70 dark:bg-slate-950 dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]'
-          : 'rounded-[10px] border-slate-200/80 bg-slate-50/[0.65] hover:border-indigo-200/80 hover:bg-slate-50 dark:border-slate-700/70 dark:bg-slate-900/[0.55] dark:hover:border-indigo-400/30 dark:hover:bg-slate-900/80'
+          : 'process-summary--thinking'
       )}
+      data-expanded={open}
+      data-status={collapsedOverallStatus}
       role="region"
       aria-label={capsuleTitle}
       aria-busy={isWorking}
@@ -375,103 +377,43 @@ export function ThinkingCapsule({
         aria-controls={contentId}
         aria-label={`${open ? tr("折叠") : tr("展开")}${capsuleTitle}${summaryLine ? `：${summaryLine}` : ''}`}
         className={cn(
-          'relative flex w-full items-center text-left text-xs font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500/70',
           open
-            ? 'gap-2.5 border-b border-slate-200/80 bg-slate-50/90 px-3 py-2 text-slate-700 hover:bg-slate-100/90 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:bg-slate-900/90'
-            : 'min-h-[44px] gap-2.5 bg-transparent px-3 py-2 text-slate-700 dark:text-slate-100 [@container_thinking-capsule_(max-width:20rem)]:gap-2 [@container_thinking-capsule_(max-width:20rem)]:px-2.5'
+            ? 'relative flex w-full items-center gap-2.5 border-b border-slate-200/80 bg-slate-50/90 px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100/90 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-500 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:bg-slate-900/90'
+            : 'process-summary__trigger'
         )}
       >
-        <span
-          className={cn(
-            'flex shrink-0 items-center justify-center',
-            open
-              ? 'text-indigo-600 dark:text-indigo-400'
-              : 'size-7 rounded-lg bg-indigo-50/90 text-indigo-500 transition-colors group-hover/capsule:bg-indigo-100/70 dark:bg-indigo-400/10 dark:text-indigo-300 dark:group-hover/capsule:bg-indigo-400/15 [@container_thinking-capsule_(max-width:20rem)]:hidden'
-          )}
-          aria-hidden
-        >
-          <Brain size={open ? 15 : 14} strokeWidth={2} />
-        </span>
-        <span className="shrink-0 text-[13px] font-semibold tracking-tight text-slate-800 dark:text-slate-100">
-          {capsuleTitle}
-        </span>
-        {open && isWorking && <StageProcessingCue text={agentWorking ? agentActivity : tr("进行中…")} />}
-        {!open && collapsedStages.length > 0 && (
-          <>
-            <span className="mx-1 h-3.5 w-px shrink-0 bg-slate-200 dark:bg-slate-700 [@container_thinking-capsule_(max-width:40rem)]:hidden" aria-hidden />
-            <span className="flex min-w-0 flex-1 items-center">
-              <span className="inline-flex items-center [@container_thinking-capsule_(max-width:40rem)]:hidden">
-                {collapsedStages.map((stage, index) => (
-                  <span key={`${stage.label}-${index}`} className="contents">
-                    {index > 0 && (
-                      <span
-                        className="mx-2 h-px w-3 shrink-0 bg-slate-200 dark:bg-slate-700"
-                        aria-hidden
-                      />
-                    )}
-                    <span
-                      className={cn(
-                        'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-4',
-                        stage.status === 'completed' && 'text-slate-500 dark:text-slate-400',
-                        stage.status === 'processing' && 'text-indigo-600 dark:text-indigo-300',
-                        stage.status === 'cancelled' && 'text-slate-500 dark:text-slate-400',
-                        stage.status === 'failed' && 'text-rose-700 dark:text-rose-300'
-                      )}
-                    >
-                      {stage.status === 'completed' ? (
-                        <CheckCircle size={12} strokeWidth={2} className="text-emerald-600 dark:text-emerald-400" aria-hidden />
-                      ) : stage.status === 'failed' ? (
-                        <AlertCircle size={12} strokeWidth={2.25} aria-hidden />
-                      ) : stage.status === 'cancelled' ? (
-                        <Square size={11} strokeWidth={2.25} aria-hidden />
-                      ) : (
-                        <ThinkingDonutSpinner className="size-3" />
-                      )}
-                      <span>{stage.label}{stage.status === 'cancelled' ? tr(" · 已停止") : ''}</span>
-                    </span>
-                  </span>
-                ))}
+        {open ? <>
+          <Brain size={15} className="shrink-0 text-indigo-600 dark:text-indigo-400" aria-hidden />
+          <span className="shrink-0 text-[13px] font-semibold tracking-tight text-slate-800 dark:text-slate-100">{capsuleTitle}</span>
+          {isWorking && <StageProcessingCue text={agentWorking ? agentActivity : tr("进行中…")} />}
+          <span className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 dark:border-slate-600/70 dark:bg-slate-900 dark:text-slate-400" aria-hidden>
+            <ChevronDown size={14} strokeWidth={2.25} />
+          </span>
+        </> : <>
+          <span className="process-summary__mark" aria-hidden><Brain size={18} strokeWidth={1.8} /></span>
+          <span className="process-summary__identity">
+            <strong className="process-summary__title">{capsuleTitle}</strong>
+            {collapsedStages.length > 0 && <span className="process-summary__status" data-status={collapsedOverallStatus}>
+              {collapsedOverallStatus === 'completed' ? <CheckCircle size={12} aria-hidden />
+                : collapsedOverallStatus === 'failed' ? <AlertCircle size={12} aria-hidden />
+                : collapsedOverallStatus === 'cancelled' ? <Square size={11} aria-hidden />
+                : <ThinkingDonutSpinner className="size-3" />}
+              <span>{collapsedStatusText}</span>
+            </span>}
+          </span>
+          {collapsedStages.length > 0 && <span className="process-summary__stages" aria-hidden>
+            {collapsedStages.map((stage, index) => <span key={`${stage.label}-${index}`} className="process-summary__stage" data-status={stage.status}>
+              <span className="process-summary__stage-node">
+                {stage.status === 'completed' ? <Check size={10} strokeWidth={2.5} />
+                  : stage.status === 'failed' ? <AlertCircle size={10} />
+                  : stage.status === 'cancelled' ? <Square size={8} />
+                  : <ThinkingDonutSpinner className="size-2.5" />}
               </span>
-              <span
-                className={cn(
-                  'hidden min-w-0 items-center gap-1.5 text-[11px] font-medium [@container_thinking-capsule_(max-width:40rem)]:inline-flex',
-                  collapsedOverallStatus === 'completed' && 'text-slate-500 dark:text-slate-400',
-                  collapsedOverallStatus === 'processing' && 'text-indigo-600 dark:text-indigo-300',
-                  collapsedOverallStatus === 'cancelled' && 'text-slate-500 dark:text-slate-400',
-                  collapsedOverallStatus === 'failed' && 'text-rose-700 dark:text-rose-300'
-                )}
-              >
-                {collapsedOverallStatus === 'completed' ? (
-                  <CheckCircle size={12} strokeWidth={2} className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
-                ) : collapsedOverallStatus === 'failed' ? (
-                  <AlertCircle size={12} strokeWidth={2.25} className="shrink-0" aria-hidden />
-                ) : collapsedOverallStatus === 'cancelled' ? (
-                  <Square size={11} strokeWidth={2.25} className="shrink-0" aria-hidden />
-                ) : (
-                  <ThinkingDonutSpinner className="size-3" />
-                )}
-                <span className="truncate">{collapsedStatusText}</span>
-              </span>
-            </span>
-          </>
-        )}
-        <span
-          className={cn(
-            'ml-auto flex shrink-0 items-center justify-center transition-colors duration-200',
-            open
-              ? 'size-7 rounded-[8px] border border-slate-200/70 bg-white text-slate-500 group-hover/capsule:scale-[1.02] dark:border-slate-600/70 dark:bg-slate-900 dark:text-slate-400'
-              : 'h-7 gap-1 rounded-md pl-2 text-[11px] font-medium text-slate-500 group-hover/capsule:text-indigo-600 dark:text-slate-400 dark:group-hover/capsule:text-indigo-300'
-          )}
-        >
-          {open ? (
-            <ChevronDown size={14} strokeWidth={2.25} aria-hidden />
-          ) : (
-            <>
-              <span>{tr("展开")}</span>
-              <ChevronRight size={14} strokeWidth={2.25} aria-hidden />
-            </>
-          )}
-        </span>
+              <span>{stage.label}{stage.status === 'cancelled' ? tr(" · 已停止") : ''}</span>
+            </span>)}
+          </span>}
+          <span className="process-summary__toggle" aria-hidden><ChevronDown size={15} strokeWidth={1.8} /></span>
+        </>}
       </button>
       {open && (
         <div

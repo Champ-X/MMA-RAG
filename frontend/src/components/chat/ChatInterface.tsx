@@ -16,6 +16,8 @@ import { piModelDisplayName } from '@/lib/piTraceView'
 import { cn } from '@/lib/utils'
 import { getModelVendor, VENDOR_LOGOS } from '@/lib/modelVendors'
 import type { CitationReference } from '@/types/sse'
+import { getOrderedRefIdsFromContent } from '@/lib/citations'
+import './citationRail.css'
 import {
   normalizeAgentMode,
   type AgentMode,
@@ -129,7 +131,7 @@ function MessageBubbleLoading({ role }: { role: Message['role'] }) {
           'animate-pulse shadow-sm',
           isUser
             ? 'h-14 w-56 rounded-[18px_18px_6px_18px] bg-indigo-200/70 dark:bg-indigo-500/30'
-            : 'h-28 w-full rounded-[6px_18px_18px_18px] border border-slate-200/70 border-l-[4px] border-l-indigo-300 bg-[#fffefa] dark:border-slate-700/70 dark:border-l-indigo-500 dark:bg-slate-900'
+            : 'answer-sheet h-28'
         )}
         aria-hidden
       />
@@ -196,8 +198,10 @@ export function ChatInterface() {
     open: boolean
     rect: DOMRect | null
     item: CitationReference | null
+    displayNumber?: number | string
   }>({ open: false, rect: null, item: null })
   const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [inspectingNumber, setInspectingNumber] = useState<number | string>()
   const [inspectingItem, setInspectingItem] = useState<CitationReference | null>(null)
   const [kbConfigPanelOpen, setKbConfigPanelOpen] = useState(false)
   const [fileScopePickerOpen, setFileScopePickerOpen] = useState(false)
@@ -214,6 +218,7 @@ export function ChatInterface() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const citePopoverRef = useRef<HTMLDivElement>(null)
   const citationTriggerRef = useRef<HTMLElement | null>(null)
+  const citationRestoreRef = useRef<{ anchor: HTMLElement; top: number; focus: boolean } | null>(null)
   const mentionStateRef = useRef<FileMentionState | null>(null)
   mentionStateRef.current = mentionState
   const mentionListRef = useRef<HTMLDivElement>(null)
@@ -661,6 +666,7 @@ export function ChatInterface() {
     if (!activeSession) return
 
     let citation: CitationReference | null = null
+    let displayNumber: number | string = refId
     if (messageId) {
       const msg = activeSession.messages.find(m => m.id === messageId)
       if (msg?.citations) {
@@ -668,7 +674,11 @@ export function ChatInterface() {
           if (typeof c === 'object' && 'id' in c) return String(c.id) === String(refId)
           return false
         })
-        if (found && typeof found === 'object' && 'id' in found) citation = found as CitationReference
+        if (found && typeof found === 'object' && 'id' in found) {
+          citation = found as CitationReference
+          const index = getOrderedRefIdsFromContent(msg.content).findIndex(id => String(id) === String(refId))
+          if (index >= 0) displayNumber = index + 1
+        }
       }
     }
     // 若已经指定 messageId 但未找到引用，避免错误回退到上一条消息
@@ -681,6 +691,8 @@ export function ChatInterface() {
           })
           if (found && typeof found === 'object' && 'id' in found) {
             citation = found as CitationReference
+            const index = getOrderedRefIdsFromContent(msg.content).findIndex(id => String(id) === String(refId))
+            if (index >= 0) displayNumber = index + 1
             break
           }
         }
@@ -691,33 +703,55 @@ export function ChatInterface() {
       const rect = event?.currentTarget?.getBoundingClientRect?.()
       if (rect) {
         citationTriggerRef.current = triggerElement ?? (event.currentTarget instanceof HTMLElement ? event.currentTarget : null)
-        setCitePopover({ open: true, rect, item: citation })
+        setCitePopover({ open: true, rect, item: citation, displayNumber })
       }
     }
   }, [])
 
-  // 关闭引用悬浮卡片
-  const closeCitePopover = useCallback(() => {
+  // Preserve the reading position when the source column releases its space.
+  const dismissCitePopover = useCallback((restoreFocus: boolean) => {
+    const anchor = citationTriggerRef.current
+    citationRestoreRef.current = anchor?.isConnected ? { anchor, top: anchor.getBoundingClientRect().top, focus: restoreFocus } : null
     setCitePopover({ open: false, rect: null, item: null })
-    citationTriggerRef.current?.focus({ preventScroll: true })
   }, [])
+  const closeCitePopover = useCallback(() => dismissCitePopover(true), [dismissCitePopover])
+  useLayoutEffect(() => {
+    if (citePopover.open) return
+    const restore = citationRestoreRef.current
+    citationRestoreRef.current = null
+    const viewport = scrollAreaRef.current?.firstElementChild
+    if (restore?.anchor.isConnected && viewport) {
+      viewport.scrollTop += restore.anchor.getBoundingClientRect().top - restore.top
+      if (restore.focus) restore.anchor.focus({ preventScroll: true })
+    }
+  }, [citePopover.open])
 
   // 打开检查器
   const openInspectorFromPopover = useCallback(() => {
     if (citePopover.item) {
       setInspectingItem(citePopover.item)
+      setInspectingNumber(citePopover.displayNumber)
       setInspectorOpen(true)
-      closeCitePopover()
+      dismissCitePopover(false)
     }
-  }, [citePopover.item, closeCitePopover])
+  }, [citePopover.item, citePopover.displayNumber, dismissCitePopover])
+
+  useEffect(() => {
+    setCitePopover({ open: false, rect: null, item: null })
+    setInspectorOpen(false)
+    setInspectingItem(null)
+    citationTriggerRef.current = null
+    citationRestoreRef.current = null
+  }, [activeSessionId])
 
   // 点击外部关闭悬浮卡片
   useEffect(() => {
     if (!citePopover.open) return
 
     const handleClickOutside = (e: MouseEvent) => {
+      if (messageContentRef.current?.contains(e.target as Node)) return
       if (citePopoverRef.current && !citePopoverRef.current.contains(e.target as Node)) {
-        closeCitePopover()
+        dismissCitePopover(false)
       }
     }
 
@@ -734,10 +768,10 @@ export function ChatInterface() {
       document.removeEventListener('mousedown', handleClickOutside)
       document.removeEventListener('keydown', handleEscape)
     }
-  }, [citePopover.open, closeCitePopover])
+  }, [citePopover.open, closeCitePopover, dismissCitePopover])
 
   return (
-    <div ref={chatWorkspaceRef} className="chat-workspace h-full min-h-0 overflow-hidden bg-transparent">
+    <div ref={chatWorkspaceRef} data-source-open={citePopover.open} className="chat-workspace h-full min-h-0 overflow-hidden bg-transparent">
       {/* 消息区 */}
       <ScrollArea ref={scrollAreaRef} className="chat-messages min-h-0">
         <div ref={messageContentRef} className={cn(
@@ -745,7 +779,7 @@ export function ChatInterface() {
           messages.length === 0 && 'flex min-h-full flex-col justify-center'
         )}>
           <div
-            className="mx-auto flex w-[calc(100%_-_3rem)] max-w-4xl flex-col gap-6"
+            className="chat-message-log mx-auto flex max-w-4xl flex-col gap-6"
             role={messages.length > 0 ? 'log' : undefined}
             aria-label={messages.length > 0 ? tr("对话消息") : undefined}
             aria-live={messages.length > 0 ? 'polite' : undefined}
@@ -1234,6 +1268,10 @@ export function ChatInterface() {
               open={citePopover.open}
               rect={citePopover.rect}
               item={citePopover.item}
+              displayNumber={citePopover.displayNumber}
+              anchor={citationTriggerRef.current}
+              workspace={chatWorkspaceRef.current}
+              composer={composerDockRef.current}
               onClose={closeCitePopover}
               onOpenInspector={openInspectorFromPopover}
             />
@@ -1273,6 +1311,7 @@ export function ChatInterface() {
               setInspectingItem(null)
             }}
             citations={inspectingItem ? [inspectingItem] : []}
+            displayNumber={inspectingNumber}
             returnFocusTarget={citationTriggerRef.current}
           />
         </Suspense>

@@ -386,7 +386,7 @@ function ParagraphImageDisplay({
   if (!images.length) return null
 
   return (
-    <div className="flex flex-wrap justify-center gap-3 mt-3 mb-0">
+    <div className="answer-media-group flex flex-wrap justify-center gap-3">
       {images.map((citation) => (
         citation.source === 'attachment' ? <AttachmentEvidence key={getCitationIdentityKey(citation)} reference={citation} displayNumber={displayIndexByRefId?.get(citation.id) ?? citation.id}
           onOpen={(rect, target) => onCiteClick?.(citation.id, rect, messageId, target)} /> :
@@ -425,7 +425,7 @@ function ParagraphAudioDisplay({
   if (uniqueCitations.length === 0) return null
 
   return (
-    <div className="mx-auto mt-2 w-full min-w-0 max-w-[34rem] space-y-2">
+    <div className="answer-media-group mx-auto w-full min-w-0 max-w-[34rem] space-y-3">
       {uniqueCitations.map((citation) => {
         const displayNum = displayIndexByRefId?.get(citation.id) ?? citation.id
         if (citation.source === 'attachment') return <AttachmentEvidence key={getCitationIdentityKey(citation)} reference={citation}
@@ -699,7 +699,7 @@ function ParagraphVideoDisplay({
       getVideoUrl={citation => fetchedVideoUrls[messageId ? `${messageId}-${citation.id}` : String(citation.id)] || citation.video_url || undefined}
       renderCitation={renderCitation} />
   }
-  return <div className="mx-auto mt-3 w-full min-w-0 max-w-[42rem] space-y-3">
+  return <div className="answer-media-group mx-auto w-full min-w-0 max-w-[42rem] space-y-4">
     {uniqueCitations.map(renderCitation)}
   </div>
 }
@@ -995,7 +995,7 @@ export function MessageBubble({
           ? 'inline-block w-auto max-w-[85%] rounded-[18px] border border-slate-200/75 bg-slate-100/95 px-4 py-3 text-slate-800 shadow-[0_10px_28px_-22px_rgba(15,23,42,0.42)] hover:border-slate-300/80 hover:bg-slate-100 dark:border-slate-700/70 dark:bg-slate-800/90 dark:text-slate-100 dark:hover:border-slate-600/75 dark:hover:bg-slate-800 sm:max-w-[72%]'
           : isStoppedHint
             ? 'mx-auto w-auto border-0 bg-transparent shadow-none' // 终止提示：无边框、透明背景、居中
-            : 'relative w-full overflow-hidden rounded-[6px_18px_18px_18px] border border-slate-200/80 border-l-[4px] border-l-indigo-500 bg-[linear-gradient(180deg,#fffefa_0%,#ffffff_100%)] px-4 pb-5 pt-5 text-slate-900 shadow-[0_22px_52px_-36px_rgba(30,41,59,0.48),0_1px_0_rgba(255,255,255,0.96)_inset] ring-1 ring-white/80 hover:border-slate-300/85 hover:border-l-indigo-500 hover:shadow-[0_26px_58px_-38px_rgba(30,41,59,0.56)] dark:border-slate-700/75 dark:border-l-indigo-400 dark:bg-[linear-gradient(180deg,#172033_0%,#0f172a_100%)] dark:text-slate-100 dark:ring-white/[0.04] dark:shadow-[0_24px_58px_-36px_rgba(0,0,0,0.88)] dark:hover:border-slate-600/80 dark:hover:border-l-indigo-400 sm:px-5 sm:pb-6 sm:pt-5'
+            : 'answer-sheet'
       )}
     >
       {isStoppedHint ? (
@@ -1004,12 +1004,7 @@ export function MessageBubble({
           {tr("你已让系统停止这条回答")}</div>
       ) : (
         <>
-          {!isUser && (
-            <span
-              className="pointer-events-none absolute left-5 right-5 top-2 h-px bg-[repeating-linear-gradient(90deg,rgba(99,102,241,0.4)_0_6px,transparent_6px_12px)] opacity-75 dark:bg-[repeating-linear-gradient(90deg,rgba(129,140,248,0.38)_0_6px,transparent_6px_12px)]"
-              aria-hidden
-            />
-          )}
+
 
           {message.pi && <div className="relative z-[1] mb-5"><Suspense fallback={<ThinkingCapsuleFallback />}><PiProcess trace={message.pi} /></Suspense></div>}
           {showThinking && !message.pi && (

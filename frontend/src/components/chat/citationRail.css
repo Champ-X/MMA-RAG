@@ -1,0 +1,71 @@
+.chat-workspace { container: chat-reading / inline-size; }
+/* Keep each message's internal layers below the connector, and let only the
+   actual composer surface cover the part of the line passing beneath it. */
+.chat-messages { z-index: 0; }
+.chat-message-log { width: calc(100% - 3rem); }
+.answer-sheet {
+  position: relative; width: 100%; min-width: 0; padding: 24px;
+  border: 1px solid #e3e5eb; border-radius: 18px;
+  color: #253044; background: #fffefc;
+  box-shadow: 0 3px 12px -8px #25304426;
+}
+.dark .answer-sheet { color: #e2e8f0; background: #172131; border-color: #303d50; box-shadow: 0 3px 12px -8px #0005; }
+[data-source-active='true'] { outline: 1.5px solid #9b8bb9 !important; outline-offset: 3px; border-radius: 5px; }
+::highlight(tessmora-citation-context) { background-color: #e9e1f5b3; }
+.dark ::highlight(tessmora-citation-context) { background-color: #65507a99; }
+.rag-markdown [data-source-context='true'] { background-color: #e9e1f580; border-radius: 4px; box-shadow: -3px 0 0 #a38bbf; }
+.dark .rag-markdown [data-source-context='true'] { background-color: #65507a66; box-shadow: -3px 0 0 #ad94ca; }
+.citation-connector { position: fixed; z-index: 1; pointer-events: none; overflow: hidden; color: #9a8cb4; }
+.citation-connector path { fill: none; stroke-width: 1.4; stroke-linecap: round; }
+.citation-connector__origin { fill: #fffefc; stroke: currentColor; stroke-width: 1.25; }
+.citation-connector__end { fill: currentColor; stroke: none; }
+.dark .citation-connector { color: #b5a0d1; }
+.dark .citation-connector__origin { fill: #172131; }
+.citation-rail {
+  --inspector-ink: #303047; --inspector-muted: #777383; --inspector-accent: #776891;
+  --inspector-border: #e6e3eb; --inspector-surface: #fffefc; --inspector-soft: #f5f3f7;
+  position: fixed; z-index: 40; display: flex; flex-direction: column; min-height: 0;
+  border: 1px solid #ded9e5; border-radius: 17px; color: var(--inspector-ink); background: #fffefc;
+  box-shadow: 0 12px 36px -22px #3e315440, 0 2px 5px #3e315408;
+  animation: citation-rail-enter .18s ease-out;
+}
+.citation-rail__header { display: flex; align-items: flex-start; gap: 11px; padding: 19px 16px 16px; border-bottom: 1px solid var(--inspector-border); }
+.citation-rail__number { display: grid; flex: 0 0 32px; height: 36px; place-items: center; border-radius: 7px; background: #efebf5; color: #75648f; font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 600; }
+.citation-rail__identity { flex: 1; min-width: 0; }
+.citation-rail__identity p { display: flex; align-items: center; gap: 5px; margin: 0 0 5px; font-size: 11px; color: var(--inspector-muted); }
+.citation-rail__identity h2 { margin: 0; font-size: 14px; font-weight: 650; line-height: 1.55; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.citation-rail__close { display: grid; place-items: center; flex: 0 0 30px; height: 30px; border-radius: 8px; color: var(--inspector-muted); transition: background .15s; }
+.citation-rail__close:hover { background: var(--inspector-soft); color: var(--inspector-ink); }
+.citation-rail__body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 17px; }
+.citation-rail .source-inspector-media { margin-bottom: 18px; }
+.citation-rail .source-inspector-image { max-height: 235px; }
+.citation-rail .source-inspector-media-heading { font-size: 11px; }
+.citation-rail__content-label { margin-bottom: 9px; font-size: 11px; font-weight: 600; color: var(--inspector-muted); }
+.citation-rail__excerpt { margin: 0; padding-left: 12px; border-left: 2px solid #d3cbdc; font-size: 13px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
+.citation-rail__footer { display: flex; align-items: center; gap: 10px; padding: 11px 15px; border-top: 1px solid var(--inspector-border); }
+.citation-rail__locate { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; color: var(--inspector-muted); }
+.citation-rail__locate:hover { background: var(--inspector-soft); color: var(--inspector-accent); }
+.citation-rail__details { display: inline-flex; align-items: center; justify-content: center; gap: 18px; margin-left: auto; padding: 8px 12px; border-radius: 9px; background: #efeaf6; color: #66517e; font-size: 12px; font-weight: 600; transition: background .15s; }
+.citation-rail__details:hover { background: #e6def1; }
+.citation-rail :where(button,summary):focus-visible { outline: 2px solid var(--inspector-accent); outline-offset: 3px; }
+.dark .citation-rail { --inspector-ink: #e4deee; --inspector-muted: #a49bb3; --inspector-border: #3c354b; --inspector-soft: #2a2637; background: #211f2d; border-color: #4a4058; box-shadow: 0 12px 36px -22px #0009; }
+.dark .citation-rail__number, .dark .citation-rail__details { background: #373044; color: #d3bee9; }
+.dark .citation-rail__details:hover { background: #44374f; }
+.dark .citation-rail__excerpt { border-color: #5a4c6a; }
+
+@container chat-reading (min-width: 980px) {
+  .chat-workspace[data-source-open='true'] .chat-message-content { padding-right: calc(clamp(320px, 28cqi, 400px) + 76px); padding-left: 24px; max-width: 1440px; margin-inline: auto; }
+  .chat-workspace[data-source-open='true'] .chat-message-log { width: 100%; }
+}
+@container chat-reading (max-width: 600px) {
+  .chat-message-log { width: 100%; }
+  .answer-sheet { padding: 18px 16px; border-radius: 14px; }
+}
+@keyframes citation-rail-enter { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { .citation-rail, .citation-rail * { animation: none !important; transition: none !important; } }
+
+/* Media is a reading pause, with room before the next paragraph or list item. */
+.rag-markdown .answer-media-group { margin-block: 16px 28px; }
+.rag-markdown .answer-media-group + .answer-media-group { margin-top: 0; }
+.rag-markdown > .answer-media-group:last-child { margin-bottom: 10px; }
+@container chat-reading (max-width: 600px) { .rag-markdown .answer-media-group { margin-block: 14px 24px; } }

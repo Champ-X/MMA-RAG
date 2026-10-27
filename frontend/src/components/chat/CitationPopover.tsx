@@ -1,624 +1,126 @@
 import { translate as tr, useTranslation } from '@/i18n'
-import { X, Eye, Image } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { useCallback, useState, useRef, useEffect, useId } from 'react'
-import type { SyntheticEvent } from 'react'
+import { ArrowUpRight, LocateFixed, X } from 'lucide-react'
+import { useId, useLayoutEffect, useRef, useState } from 'react'
 import type { CitationReference } from '@/types/sse'
-import { citationScoreSummary } from '@/lib/citationScores'
-import { chatApi } from '@/services/api_client'
-import { getFreshReferenceVideoUrl, isReferenceMediaUrlFresh } from '@/services/reference_media_url'
-import { useChatStore } from '@/store/useChatStore'
-import { AttachmentCitationPopover } from './AttachmentEvidence'
-
-function formatTimeLabel(sec: number): string {
-  if (!Number.isFinite(sec) || sec < 0) return '0:00'
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = Math.floor(sec % 60)
-  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
-
-function shortenFileName(fileName: string, maxLen = 24): string {
-  if (!fileName || fileName.length <= maxLen) return fileName
-  const lastPart = fileName.includes('_') ? fileName.split('_').pop() ?? fileName : fileName
-  if (lastPart.length <= maxLen) return lastPart
-  const ext = lastPart.includes('.') ? lastPart.slice(lastPart.lastIndexOf('.')) : ''
-  const base = lastPart.slice(0, lastPart.length - ext.length)
-  if (base.length + ext.length <= maxLen) return lastPart
-  return base.slice(0, Math.max(0, maxLen - ext.length - 1)) + '…' + ext
-}
-
-function VideoWithSeek({
-  src,
-  startSec,
-  endSec,
-  onError,
-  ariaDescribedBy,
-}: {
-  src: string
-  startSec?: number | null
-  endSec?: number | null
-  onError?: (e: SyntheticEvent<HTMLVideoElement, Event>) => void
-  ariaDescribedBy?: string
-}) {
-  useTranslation()
-  const ref = useRef<HTMLVideoElement>(null)
-  const hasSeeked = useRef(false)
-  useEffect(() => {
-    hasSeeked.current = false
-    ref.current?.load()
-  }, [src])
-  useEffect(() => {
-    const el = ref.current
-    if (!el || startSec == null || !Number.isFinite(startSec)) return
-    const onCanPlay = () => {
-      if (hasSeeked.current) return
-      el.currentTime = startSec
-      hasSeeked.current = true
-    }
-    el.addEventListener('canplay', onCanPlay)
-    if (el.readyState >= 2) {
-      el.currentTime = startSec
-      hasSeeked.current = true
-    }
-    return () => el.removeEventListener('canplay', onCanPlay)
-  }, [src, startSec])
-  useEffect(() => {
-    if (endSec == null || !Number.isFinite(endSec)) return
-    const el = ref.current
-    if (!el) return
-    const onTimeUpdate = () => { if (el.currentTime >= endSec) el.pause() }
-    el.addEventListener('timeupdate', onTimeUpdate)
-    return () => el.removeEventListener('timeupdate', onTimeUpdate)
-  }, [endSec])
-  return (
-    <video
-      ref={ref}
-      src={src}
-      controls
-      aria-label={tr("视频引用预览")}
-      aria-describedby={ariaDescribedBy}
-      preload="metadata"
-      className="w-full h-auto min-h-[200px] aspect-video rounded-lg object-contain bg-black"
-      onError={onError}
-    />
-  )
-}
+import { AttachmentEvidence } from './AttachmentEvidence'
+import { SourceMediaPreview } from './SourceMediaPreview'
+import { displayFileName, sourceTypes } from './sourceIdentity'
+import { citationRailLayout } from './citationRailLayout'
+import { activateCitationContext } from './citationContextHighlight'
+import './citationRail.css'
 
 interface CitationPopoverProps {
   open: boolean
   rect: DOMRect | null
   item: CitationReference | null
+  displayNumber?: number | string
+  anchor: HTMLElement | null
+  workspace: HTMLElement | null
+  composer: HTMLElement | null
   onClose: () => void
   onOpenInspector: () => void
 }
 
-// 图片显示组件，带错误处理与失败时刷新（onErrorRetry 返回新 URL 时重试）
-function ImageDisplayWithErrorHandler({
-  imgUrl,
-  fileName,
-  onErrorRetry,
-}: {
-  imgUrl: string
-  fileName?: string
-  onErrorRetry?: () => Promise<string | null>
-}) {
+export function CitationPopover({ open, rect, item, displayNumber, anchor, workspace, composer, onClose, onOpenInspector }: CitationPopoverProps) {
   useTranslation()
-  const [imageError, setImageError] = useState(false)
-  const [imageLoaded, setImageLoaded] = useState(false)
-  const [retryUrl, setRetryUrl] = useState<string | null>(null)
-  const imgRef = useRef<HTMLImageElement>(null)
-  const effectiveSrc = imgUrl || retryUrl || ''
+  const titleId = useId()
+  const gradientId = useId().replace(/:/g, '')
+  const panelRef = useRef<HTMLElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const [layout, setLayout] = useState<ReturnType<typeof citationRailLayout> | null>(null)
 
-  useEffect(() => {
-    setImageError(false)
-    setImageLoaded(false)
-    setRetryUrl(null)
-  }, [imgUrl])
-
-  useEffect(() => {
-    const img = imgRef.current
-    if (img && effectiveSrc) {
-      if (img.complete && img.naturalHeight !== 0) {
-        setImageLoaded(true)
-        img.style.visibility = 'visible'
-      } else {
-        img.style.visibility = 'hidden'
-      }
-    }
-  }, [effectiveSrc])
-
-  const handleImageError = useCallback(
-    async (e: SyntheticEvent<HTMLImageElement, Event>) => {
-      e.preventDefault()
-      e.stopPropagation()
-      if (onErrorRetry) {
-        try {
-          const newUrl = await onErrorRetry()
-          if (newUrl) {
-            setRetryUrl(newUrl)
-            setImageLoaded(false)
-            return
-          }
-        } catch {
-          // 刷新失败，下面标记为错误
-        }
-      }
-      setImageError(true)
-      setImageLoaded(false)
-      const img = e.currentTarget
-      img.setAttribute('data-error', 'true')
-      img.style.display = 'none'
-      img.style.visibility = 'hidden'
-      img.style.opacity = '0'
-      img.style.width = '0'
-      img.style.height = '0'
-    },
-    [onErrorRetry]
-  )
-
-  const handleImageLoad = () => {
-    setImageLoaded(true)
-    const img = imgRef.current
-    if (img) {
-      img.style.visibility = 'visible'
-    }
-  }
-
-  if (!effectiveSrc) return null
-
-  return (
-    <div className="mb-3">
-      <div
-        className="rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-center relative shadow-inner"
-        style={{ minHeight: '280px', overflow: 'hidden' }}
-      >
-        {imageError ? (
-          <div className="flex flex-col items-center justify-center gap-2 p-4" role="alert">
-            <Image className="h-8 w-8 text-slate-400 dark:text-slate-500" aria-hidden />
-            <p className="text-xs text-slate-500 dark:text-slate-400">{tr("图片加载失败")}</p>
-            {fileName && (
-              <p className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-full">{fileName}</p>
-            )}
-          </div>
-        ) : (
-          <>
-            {!imageLoaded && (
-              <div className="absolute inset-0 flex items-center justify-center z-10" role="status" aria-label={tr("图片加载中")}>
-                <div className="animate-spin h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full" aria-hidden />
-              </div>
-            )}
-            <img
-              ref={imgRef}
-              src={effectiveSrc}
-              alt={fileName}
-              className="max-w-full max-h-full w-auto h-auto object-contain"
-              style={{
-                opacity: imageLoaded ? 1 : 0,
-                transition: imageLoaded ? 'opacity 0.2s' : 'none',
-                visibility: imageLoaded ? 'visible' : 'hidden'
-              }}
-              onLoadStart={() => {
-                const img = imgRef.current
-                if (img && !imageLoaded) {
-                  img.style.visibility = 'hidden'
-                  img.style.opacity = '0'
-                }
-              }}
-              onError={handleImageError}
-              onLoad={handleImageLoad}
-              onAbort={handleImageError}
-            />
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-export function CitationPopover(props: CitationPopoverProps) {
-  useTranslation()
-  if (props.item?.source === 'attachment') {
-    return props.open && props.rect ? <AttachmentCitationPopover item={props.item} rect={props.rect} onClose={props.onClose} /> : null
-  }
-  return <KnowledgeCitationPopover {...props} />
-}
-
-function KnowledgeCitationPopover({
-  open,
-  rect,
-  item,
-  onClose,
-  onOpenInspector,
-}: CitationPopoverProps) {
-  useTranslation()
-  const activeSession = useChatStore((s) => s.getActiveSession())
-  const fallbackKbId = activeSession?.knowledgeBaseIds?.[0]
-  const [refreshedImgUrl, setRefreshedImgUrl] = useState<string | null>(null)
-  const [refreshedAudioUrl, setRefreshedAudioUrl] = useState<string | null>(null)
-  const [refreshedVideoUrl, setRefreshedVideoUrl] = useState<string | null>(null)
-  const popoverId = useId().replace(/:/g, '')
-  const popoverTitleId = `${popoverId}-citation-title`
-  const popoverDescriptionId = `${popoverId}-citation-description`
-
-  useEffect(() => {
-    if (!open || !item) return
-    setRefreshedImgUrl(null)
-    setRefreshedAudioUrl(null)
-    setRefreshedVideoUrl(null)
-  }, [open, item?.id])
-
-  // 无 URL 但有 file_path + kb_id 时，打开弹层后自动拉取一次媒体地址
-  useEffect(() => {
-    if (!open || !item) return
-    const kbId = item.debug_info?.kb_id || fallbackKbId
-    const filePath = item.file_path || item.file_name
-    if (!filePath || !kbId) return
-    if (item.type === 'image' && !item.img_url && !refreshedImgUrl) {
-      let cancelled = false
-      chatApi
-        .getReferenceImageUrl({ kb_id: kbId, file_path: filePath })
-        .then((res) => {
-          if (!cancelled && res?.img_url) setRefreshedImgUrl(res.img_url)
-        })
-        .catch(() => {})
-      return () => {
-        cancelled = true
-      }
-    }
-    if (item.type === 'audio' && !item.audio_url && !refreshedAudioUrl) {
-      let cancelled = false
-      chatApi
-        .getReferenceAudioUrl({ kb_id: kbId, file_path: filePath })
-        .then((res) => {
-          if (!cancelled && res?.audio_url) setRefreshedAudioUrl(res.audio_url)
-        })
-        .catch(() => {})
-      return () => {
-        cancelled = true
-      }
-    }
-    if (item.type === 'video' && !refreshedVideoUrl && !isReferenceMediaUrlFresh(item.video_url)) {
-      let cancelled = false
-      getFreshReferenceVideoUrl({
-        kbId,
-        filePath,
-        currentUrl: item.video_url,
+  useLayoutEffect(() => {
+    if (!open || !anchor) return
+    let clearHighlight = activateCitationContext(anchor)
+    let frame = 0
+    // Text ranges survive scrolling/reflow. Rebuild only when streamed content changes.
+    const observer = new MutationObserver(() => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        clearHighlight()
+        clearHighlight = activateCitationContext(anchor)
       })
-        .then((videoUrl) => {
-          if (!cancelled) setRefreshedVideoUrl(videoUrl)
-        })
-        .catch(() => {})
-      return () => {
-        cancelled = true
-      }
+    })
+    const answer = anchor.closest('.rag-markdown')
+    if (answer) observer.observe(answer, { childList: true, characterData: true, subtree: true })
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+      clearHighlight()
     }
-  }, [open, item?.id, item?.type, item?.img_url, item?.audio_url, item?.video_url, item?.file_path, item?.file_name, item?.debug_info?.kb_id, fallbackKbId, refreshedImgUrl, refreshedAudioUrl, refreshedVideoUrl])
+  }, [open, anchor])
+
+  useLayoutEffect(() => {
+    if (!open || !rect || !workspace) return
+    let frame = 0
+    // Column reflow must not move the citation away from the reader's current position.
+    const viewport = workspace.querySelector('.chat-messages > div')
+    if (anchor?.isConnected && viewport) viewport.scrollTop += anchor.getBoundingClientRect().top - rect.top
+    anchor?.setAttribute('data-source-active', 'true')
+    const update = () => {
+      const bounds = workspace.getBoundingClientRect()
+      const dockTop = composer?.getBoundingClientRect().top ?? bounds.bottom
+      const bottom = Math.min(bounds.bottom, dockTop, window.innerHeight)
+      const liveRect = anchor?.isConnected ? anchor.getBoundingClientRect() : rect
+      const next = citationRailLayout(bounds, liveRect, bottom, panelRef.current?.getBoundingClientRect().height ?? 460, window.innerWidth,
+        workspace.querySelector('.chat-message-log')?.getBoundingClientRect().right, window.innerHeight)
+      setLayout(anchor?.isConnected ? next : { ...next, connector: null })
+    }
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update) }
+    update()
+    const focusFrame = requestAnimationFrame(() => closeRef.current?.focus({ preventScroll: true }))
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule)
+    for (const element of [workspace, composer, anchor, panelRef.current, workspace.querySelector('.chat-message-content')]) if (element) observer?.observe(element)
+    document.addEventListener('scroll', schedule, { capture: true, passive: true })
+    window.addEventListener('resize', schedule)
+    return () => {
+      cancelAnimationFrame(frame)
+      cancelAnimationFrame(focusFrame)
+      observer?.disconnect()
+      document.removeEventListener('scroll', schedule, true)
+      window.removeEventListener('resize', schedule)
+      anchor?.removeAttribute('data-source-active')
+    }
+  }, [open, item, anchor, workspace, composer, rect])
 
   if (!open || !item || !rect) return null
-
-  // 增大弹窗尺寸：音频/视频有更多展示空间
-  const width = 520
-  const headerHeight = 64
-  const footerHeight = 56
-  const imageMinHeight = item.type === 'image' ? 320 : 0
-  const captionHeight = item.type === 'image' && item.content ? 120 : 0
-  const videoMinHeight = item.type === 'video' ? 300 : 0
-  const audioMinHeight = item.type === 'audio' ? 140 : 0
-  const estimatedHeight = item.type === 'image'
-    ? headerHeight + imageMinHeight + captionHeight + footerHeight
-    : item.type === 'video'
-      ? headerHeight + videoMinHeight + (item.content ? 100 : 0) + footerHeight
-      : item.type === 'audio'
-        ? headerHeight + audioMinHeight + (item.content ? 120 : 0) + footerHeight
-        : headerHeight + 260 + footerHeight
-
-  const pad = 20
-  const gap = 14
-
-  const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1200
-  const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800
-
-  // 计算水平位置（居中）
-  const left = Math.min(
-    Math.max(pad, rect.left - width / 2 + rect.width / 2),
-    viewportW - width - pad
-  )
-
-  // 计算可用空间
-  const spaceBelow = viewportH - rect.bottom - gap - pad
-  const spaceAbove = rect.top - gap - pad
-
-  const canFitBelow = spaceBelow >= estimatedHeight
-  const canFitAbove = spaceAbove >= estimatedHeight
-
-  let top: number
-  let maxHeight: number
-  let placement: 'above' | 'below'
-
-  if (!canFitBelow && canFitAbove) {
-    top = Math.max(pad, rect.top - estimatedHeight - gap)
-    maxHeight = Math.min(estimatedHeight, spaceAbove)
-    placement = 'above'
-  } else if (canFitBelow && !canFitAbove) {
-    top = rect.bottom + gap
-    maxHeight = Math.min(estimatedHeight, spaceBelow)
-    placement = 'below'
-  } else if (canFitBelow && canFitAbove) {
-    if (spaceBelow >= spaceAbove) {
-      top = rect.bottom + gap
-      maxHeight = estimatedHeight
-      placement = 'below'
-    } else {
-      top = Math.max(pad, rect.top - estimatedHeight - gap)
-      maxHeight = estimatedHeight
-      placement = 'above'
-    }
-  } else {
-    const minRequiredHeight = headerHeight + (item.type === 'image' ? 280 : item.type === 'video' ? 280 : item.type === 'audio' ? 180 : 200) + footerHeight
-    if (spaceBelow >= spaceAbove) {
-      top = rect.bottom + gap
-      maxHeight = Math.max(minRequiredHeight, Math.min(estimatedHeight, spaceBelow))
-      placement = 'below'
-    } else {
-      top = pad
-      maxHeight = Math.max(minRequiredHeight, Math.min(estimatedHeight, spaceAbove))
-      placement = 'above'
-    }
-  }
-
-  top = Math.max(pad, Math.min(top, viewportH - maxHeight - pad))
-
-  const audioPreviewStatusId = `${popoverId}-audio-preview-status`
-  const videoPreviewStatusId = `${popoverId}-video-preview-status`
-  const videoSegmentId = `${popoverId}-video-segment`
-  const hasAudioPreview = Boolean(item.audio_url || refreshedAudioUrl)
-  const hasVideoPreview = Boolean(item.video_url || refreshedVideoUrl)
-  const videoSegmentLabel =
-    item.start_sec != null && item.end_sec != null
-      ? tr("片段 {{v0}} - {{v1}}", { v0: formatTimeLabel(item.start_sec), v1: formatTimeLabel(item.end_sec) })
-      : item.start_sec != null
-        ? tr("从 {{v0}} 开始", { v0: formatTimeLabel(item.start_sec) })
-        : item.end_sec != null
-          ? tr("至 {{v0}} 结束", { v0: formatTimeLabel(item.end_sec) })
-          : null
-  const sourceLabel = item.file_name ? shortenFileName(item.file_name, 32) : tr("未知路径")
-  const score = citationScoreSummary(item)
-
-  return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          initial={{ opacity: 0, y: placement === 'above' ? -8 : 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: placement === 'above' ? -8 : 8 }}
-          transition={{ duration: 0.16 }}
-          style={{
-            position: 'fixed',
-            left,
-            top,
-            width,
-            maxHeight: `${maxHeight}px`,
-          }}
-          className="z-40 flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.25),0_0_0_1px_rgba(255,255,255,0.05)_inset] backdrop-blur-xl dark:border-slate-700/80 dark:bg-slate-950/85 dark:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.5)]"
-          role="dialog"
-          aria-modal="false"
-          aria-labelledby={popoverTitleId}
-          aria-describedby={popoverDescriptionId}
-        >
-          <div className="flex-shrink-0 flex items-center justify-between border-b border-slate-200/80 dark:border-slate-700/80 px-5 py-3.5 bg-slate-50/50 dark:bg-slate-900/30">
-            <div className="min-w-0 flex-1 mr-3">
-              <div id={popoverTitleId} className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100" title={item.file_name || undefined}>
-                {item.file_name || tr("未知文件")}
-              </div>
-              <div id={popoverDescriptionId} className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium">
-                {score.label}：{score.value}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-shrink-0 grid h-9 w-9 place-items-center rounded-xl text-slate-500 hover:bg-slate-200/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-100 transition-colors"
-              aria-label={tr("关闭引用预览")}
-            >
-              <X className="h-4 w-4" aria-hidden />
-            </button>
-          </div>
-
-          {/* 内容区域可滚动：图片与文字一起滚动 */}
-          <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0 scrollbar-hide">
-            {item.type === 'image' && (item.img_url || refreshedImgUrl || ((item.file_path || item.file_name) && (item.debug_info?.kb_id || fallbackKbId))) && (
-              <section aria-label={tr("图片引用预览")}>
-                <ImageDisplayWithErrorHandler
-                  imgUrl={refreshedImgUrl || item.img_url || ''}
-                  fileName={item.file_name}
-                  onErrorRetry={
-                    (item.file_path || item.file_name) && (item.debug_info?.kb_id || fallbackKbId)
-                      ? async () => {
-                          try {
-                            const res = await chatApi.getReferenceImageUrl({
-                              kb_id: item.debug_info?.kb_id || fallbackKbId!,
-                              file_path: item.file_path || item.file_name || '',
-                            })
-                            if (res?.img_url) {
-                              setRefreshedImgUrl(res.img_url)
-                              return res.img_url
-                            }
-                          } catch {
-                            //
-                          }
-                          return null
-                        }
-                      : undefined
-                  }
-                />
-              </section>
-            )}
-
-            {item.type === 'audio' && (
-              <>
-                {hasAudioPreview && (
-                  <section
-                    className="mb-4 rounded-xl border border-amber-200/70 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-950/40 p-4 shadow-sm"
-                    aria-label={tr("音频引用预览")}
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">{tr("音频预览")}</span>
-                      <span id={audioPreviewStatusId} className="text-[11px] text-amber-600/80 dark:text-amber-300/80">
-                        {tr("可使用播放器控件播放")}</span>
-                    </div>
-                    <audio
-                      src={refreshedAudioUrl || item.audio_url || ''}
-                      controls
-                      aria-label={tr("音频引用预览")}
-                      aria-describedby={audioPreviewStatusId}
-                      className="w-full h-12 rounded-lg"
-                      preload="metadata"
-                      onError={
-                        (item.file_path || item.file_name) && (item.debug_info?.kb_id || fallbackKbId)
-                          ? async () => {
-                              try {
-                                const res = await chatApi.getReferenceAudioUrl({
-                                  kb_id: item.debug_info?.kb_id || fallbackKbId!,
-                                  file_path: item.file_path || item.file_name || '',
-                                })
-                                if (res?.audio_url) setRefreshedAudioUrl(res.audio_url)
-                              } catch {
-                                //
-                              }
-                            }
-                          : undefined
-                      }
-                    />
-                  </section>
-                )}
-                {(item.content || !hasAudioPreview) && (
-                  <section
-                    className="rounded-xl bg-amber-50/50 dark:bg-amber-900/20 p-4 text-sm text-slate-700 dark:text-slate-200 border border-amber-100/80 dark:border-amber-800/40 leading-relaxed"
-                    aria-label={tr("音频转写内容")}
-                  >
-                    {!hasAudioPreview && (
-                      <p className="mb-2 text-xs font-medium text-amber-700 dark:text-amber-300" role="status">
-                        {tr("未返回可播放音频，已展示文本内容")}</p>
-                    )}
-                    <div className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap max-h-[200px] overflow-y-auto">
-                      {item.content || tr("无内容")}
-                    </div>
-                  </section>
-                )}
-              </>
-            )}
-
-            {item.type === 'video' && (
-              <>
-                {hasVideoPreview && (
-                  <section
-                    className="mb-4 rounded-xl overflow-hidden border border-sky-200/70 dark:border-sky-800/50 bg-slate-100/80 dark:bg-slate-800/80 p-3 ring-1 ring-slate-200/50 dark:ring-slate-600/30 shadow-sm"
-                    aria-label={tr("视频引用预览")}
-                  >
-                    <p id={videoPreviewStatusId} className="sr-only">
-                      {tr("视频播放器已加载，可使用原生控件播放")}</p>
-                    {videoSegmentLabel && (
-                      <div className="mb-2 flex items-center">
-                        <span
-                          id={videoSegmentId}
-                          className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300 border border-sky-200/70 dark:border-sky-700/50"
-                        >
-                          {videoSegmentLabel}
-                        </span>
-                      </div>
-                    )}
-                    <VideoWithSeek
-                      src={refreshedVideoUrl || item.video_url || ''}
-                      startSec={item.start_sec}
-                      endSec={item.end_sec}
-                      ariaDescribedBy={videoSegmentLabel ? videoSegmentId : videoPreviewStatusId}
-                      onError={
-                        (item.file_path || item.file_name) && (item.debug_info?.kb_id || fallbackKbId)
-                          ? async () => {
-                              try {
-                                const videoUrl = await getFreshReferenceVideoUrl({
-                                  kbId: item.debug_info?.kb_id || fallbackKbId!,
-                                  filePath: item.file_path || item.file_name || '',
-                                  currentUrl: refreshedVideoUrl || item.video_url,
-                                  force: true,
-                                })
-                                setRefreshedVideoUrl(videoUrl)
-                              } catch {
-                                //
-                              }
-                            }
-                          : undefined
-                      }
-                    />
-                  </section>
-                )}
-                {(item.content || !hasVideoPreview) && (
-                  <section
-                    className="rounded-xl bg-slate-50/80 dark:bg-slate-800/50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50"
-                    aria-label={tr("视频引用文本内容")}
-                  >
-                    {!hasVideoPreview && (
-                      <p className="mb-2 text-xs font-medium text-sky-700 dark:text-sky-300" role="status">
-                        {tr("未返回可播放视频，已展示文本内容")}</p>
-                    )}
-                    <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap max-h-[180px] overflow-y-auto">
-                      {item.content || tr("无内容")}
-                    </div>
-                  </section>
-                )}
-                {/* 关键帧是视频 Shot 的内部视觉证据，不在聊天引用详情中渲染。
-                    这样历史会话也不会因预签名帧图而撑满回答。 */}
-              </>
-            )}
-
-            {item.type === 'image' ? (
-              item.content && (
-                <section
-                  className="rounded-xl bg-purple-50/80 dark:bg-purple-900/20 p-4 text-sm text-slate-700 dark:text-slate-200 border border-purple-100/80 dark:border-purple-800/40"
-                  aria-label={tr("图片 VLM Caption")}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <Eye size={14} className="text-purple-600 dark:text-purple-400 shrink-0" aria-hidden />
-                    <span className="font-semibold text-purple-700 dark:text-purple-300">VLM Caption</span>
-                  </div>
-                  <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap max-h-[160px] overflow-y-auto">
-                    {item.content}
-                  </div>
-                </section>
-              )
-            ) : item.type !== 'audio' && item.type !== 'video' ? (
-              <section
-                className="rounded-xl bg-slate-100/50 dark:bg-slate-800/30 p-4 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed"
-                aria-label={tr("文本引用内容")}
-              >
-                {item.content || tr("无内容")}
-              </section>
-            ) : null}
-          </div>
-
-          <footer
-            className="flex-shrink-0 flex items-center justify-between gap-3 px-5 py-3.5 border-t border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-900/30"
-            aria-label={tr("引用来源与操作")}
-          >
-            <div
-              className="text-xs text-slate-500 dark:text-slate-400 truncate flex-1 min-w-0"
-              title={item.file_name || undefined}
-              aria-label={tr("引用来源：{{v0}}", { v0: sourceLabel })}
-            >
-              {sourceLabel}
-            </div>
-            <button
-              type="button"
-              onClick={onOpenInspector}
-              aria-label={tr("打开引用检查器：{{v0}}", { v0: item.file_name || tr("未知文件") })}
-              className="flex-shrink-0 rounded-xl bg-gradient-to-br from-indigo-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-fuchsia-500/20 transition-all duration-200 hover:brightness-110 hover:shadow-lg hover:shadow-fuchsia-500/25 active:scale-[0.98]"
-            >
-              {tr("打开检查器")}</button>
-          </footer>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  )
+  const source = sourceTypes[item.type] || sourceTypes.doc
+  const Icon = source.icon
+  const name = displayFileName(item.file_name)
+  const connector = layout?.connector
+  return <>
+    {connector && layout && <svg className="citation-connector" aria-hidden
+      viewBox={`${layout.clip.left} ${layout.clip.top} ${layout.clip.width} ${layout.clip.height}`}
+      style={{ left: layout.clip.left, top: layout.clip.top, width: layout.clip.width, height: layout.clip.height }}>
+      <defs><linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={connector.fromX} y1={connector.fromY} x2={connector.toX} y2={connector.toY}>
+        <stop offset="0" stopColor="currentColor" stopOpacity=".4" />
+        <stop offset=".55" stopColor="currentColor" stopOpacity=".7" />
+        <stop offset="1" stopColor="currentColor" stopOpacity=".9" />
+      </linearGradient></defs>
+      <path d={connector.path} stroke={`url(#${gradientId})`} />
+      <circle className="citation-connector__origin" cx={connector.fromX} cy={connector.fromY} r="2.5" />
+      <circle className="citation-connector__end" cx={connector.toX - 1} cy={connector.toY} r="2.5" />
+    </svg>}
+    <aside ref={panelRef} className="citation-rail" role="dialog" aria-modal="false" aria-labelledby={titleId}
+      data-wide={layout?.wide} data-kind={item.type}
+      style={layout ? { left: layout.left, top: layout.top, width: layout.width, maxHeight: layout.maxHeight } : { visibility: 'hidden' }}>
+      <header className="citation-rail__header">
+        <span className="citation-rail__number">{String(displayNumber ?? item.id).padStart(2, '0')}</span>
+        <div className="citation-rail__identity"><p><Icon size={13} aria-hidden />{tr(source.label)}<span>·</span>{tr('引用来源')}</p>
+          <h2 id={titleId} title={item.file_name}>{name}</h2></div>
+        <button ref={closeRef} type="button" className="citation-rail__close" onClick={onClose} aria-label={tr('关闭引用预览')}><X size={17} aria-hidden /></button>
+      </header>
+      <div className="citation-rail__body" key={`${item.id}:${item.attachment_id}:${item.file_path}:${item.debug_info?.chunk_id}`}>
+        {item.source === 'attachment' ? <AttachmentEvidence reference={item} displayNumber={displayNumber} preview />
+          : item.type !== 'doc' && <SourceMediaPreview key={`${item.type}:${item.debug_info?.kb_id}:${item.file_path}:${item.img_url}:${item.audio_url}:${item.video_url}`} item={item} type={item.type} name={name} />}
+        <div className="citation-rail__content-label">{tr(item.source === 'attachment' ? '回答依据的附件解析' : source.contentLabel)}</div>
+        <p className="citation-rail__excerpt">{item.content?.trim() || tr('该来源暂未提供文字内容。')}</p>
+      </div>
+      <footer className="citation-rail__footer">
+        <button type="button" className="citation-rail__locate" aria-label={tr('定位回答中的引用')} title={tr('定位回答中的引用')}
+          disabled={!anchor?.isConnected} onClick={() => { anchor?.scrollIntoView({ block: 'center', behavior: 'instant' }); anchor?.focus({ preventScroll: true }) }}><LocateFixed size={16} aria-hidden /></button>
+        <button type="button" className="citation-rail__details" onClick={onOpenInspector}>{tr('查看来源详情')}<ArrowUpRight size={16} aria-hidden /></button>
+      </footer>
+    </aside>
+  </>
 }
