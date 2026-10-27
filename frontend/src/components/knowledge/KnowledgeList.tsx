@@ -7,13 +7,20 @@ import { Plus, Upload, Search, Trash2, FileText, Image as ImageIcon, X, Pencil, 
 import { UploadPipeline, type UploadPipelineProgress, type UploadFileProgress } from './UploadPipeline'
 import { KnowledgeLibraryHeader } from './KnowledgeLibraryHeader'
 import { KnowledgeSpaceCard } from './KnowledgeSpaceCard'
+import { getKnowledgeDefaultCover } from './knowledgeDefaultCover'
 import { KnowledgeLibraryEmpty } from './KnowledgeLibraryEmpty'
 import { KnowledgeDetailHeader } from './KnowledgeDetailHeader'
+import { KnowledgeDetailNavigation, type KnowledgeDetailSection } from './KnowledgeDetailNavigation'
+import { FilePreviewNavigation, handleFilePreviewArrow, type FilePreviewNavigationProps } from './FilePreviewNavigation'
+import { AudioPreviewPlayer } from '@/components/ui/AudioPreviewPlayer'
 import { KnowledgeContentOverview } from './KnowledgeContentOverview'
+import { KnowledgeFileEmptyState } from './KnowledgeFileEmptyState'
+import { getKnowledgeFileKind, KNOWLEDGE_FILE_FILTERS, type KnowledgeFileFilter } from './knowledgeFileKinds'
 import { VideoFileCover } from './VideoFileCover'
 import { canRetryDocumentUpload, canRetryStoredUpload, canRetryVideoFromPreview, isUploadSourceUnavailable, readableUploadError, uploadFailureCopy, uploadFailureFields, uploadFailureKeys } from './uploadFailure'
 import type { UploadFailureFields } from '@/types/upload'
 import './knowledgeFileList.css'
+import './filePreviewModal.css'
 import { useKnowledgeUploadBatches, emptyUploadBatch, type KnowledgeUploadBatch, type UploadRemoval } from './useKnowledgeUploadBatches'
 import './importDialogs.css'
 import { WorkflowDialog } from '@/components/ui/WorkflowDialog'
@@ -52,37 +59,6 @@ const PortraitGraph = React.lazy(() =>
 const KnowledgeMarkdownPreview = React.lazy(() =>
   import('./KnowledgeMarkdownPreview').then((module) => ({ default: module.KnowledgeMarkdownPreview }))
 )
-
-const DEFAULT_KNOWLEDGE_COVERS = [
-  '/knowledge/knowledge-library-default-01.jpg',
-  '/knowledge/knowledge-library-default-02.jpg',
-  '/knowledge/knowledge-library-default-03.jpg',
-  '/knowledge/knowledge-library-default-04.jpg',
-  '/knowledge/knowledge-library-default-05.jpg',
-  '/knowledge/knowledge-library-default-06.jpg',
-] as const
-
-// 固定的洗牌顺序：同一知识库刷新时不换图，前六个默认空间也不会重复。
-const DEFAULT_KNOWLEDGE_COVER_ORDER = [4, 1, 5, 0, 3, 2] as const
-
-const DEFAULT_KNOWLEDGE_COVER_TINTS = [
-  'from-sky-50/90 via-white/80 to-white/35',
-  'from-rose-50/90 via-white/80 to-white/35',
-  'from-violet-50/90 via-white/80 to-white/35',
-  'from-amber-50/90 via-white/80 to-white/35',
-  'from-teal-50/90 via-white/80 to-white/35',
-  'from-indigo-50/90 via-white/80 to-white/35',
-  'from-orange-50/90 via-white/80 to-white/35',
-] as const
-
-function getKnowledgeBaseCoverSeed(knowledgeBaseId: string) {
-  let hash = 2166136261
-  for (let index = 0; index < knowledgeBaseId.length; index += 1) {
-    hash ^= knowledgeBaseId.charCodeAt(index)
-    hash = Math.imul(hash, 16777619)
-  }
-  return hash >>> 0
-}
 
 /** 预览区 / 分块区加载占位：居中、旋转指示与骨架，避免大片空白只有一行字 */
 function PreviewPaneLoading({
@@ -421,6 +397,22 @@ function getDirectoryPicker() {
   return (window as DirectoryPickerWindow).showDirectoryPicker
 }
 
+/** The media stage exists before decoding, so an image cannot resize the reader. */
+function FilePreviewImage({ src, name }: { src: string; name: string }) {
+  const imageRef = React.useRef<HTMLImageElement>(null)
+  const [state, setState] = React.useState<'loading' | 'ready' | 'failed'>('loading')
+  React.useLayoutEffect(() => {
+    if (imageRef.current?.complete && imageRef.current.naturalWidth > 0) setState('ready')
+  }, [src])
+  return <div className="file-preview-media-stage" data-state={state} aria-busy={state === 'loading'}>
+    <img ref={imageRef} src={src} alt={name} onLoad={() => setState('ready')} onError={() => setState('failed')} />
+    {state !== 'ready' && <div className="file-preview-media-stage__placeholder" role="status">
+      {state === 'loading' ? <Loader2 size={22} className="animate-spin motion-reduce:animate-none" aria-hidden /> : <ImageIcon size={26} aria-hidden />}
+      <span>{t(state === 'loading' ? '加载预览中…' : '图片预览暂不可用')}</span>
+    </div>}
+  </div>
+}
+
 // 文件预览模态框（支持图片描述、文档分块、MD 预览）
 function FilePreviewModal({
   file,
@@ -430,7 +422,9 @@ function FilePreviewModal({
   onEdit,
   onRetryFile,
   deleteError,
+  navigation,
 }: {
+  navigation?: FilePreviewNavigationProps
   file: KnowledgeFileView
   kbId: string | null
   onClose: () => void
@@ -465,7 +459,24 @@ function FilePreviewModal({
   const [excelError, setExcelError] = React.useState<string | null>(null)
   const [retryingFile, setRetryingFile] = React.useState(false)
   const [retryFileError, setRetryFileError] = React.useState<string | null>(null)
+  const [previewOwner, setPreviewOwner] = React.useState<string | null>(null)
   const retryPendingRef = React.useRef(false)
+  const previewContentRef = React.useRef<HTMLDivElement>(null)
+  const currentPreviewIdRef = React.useRef(file.id)
+  currentPreviewIdRef.current = file.id
+  React.useLayoutEffect(() => {
+    retryPendingRef.current = false
+    if (previewContentRef.current) previewContentRef.current.scrollTop = 0
+  }, [kbId, file.id])
+  const navigatePreview = (callback?: () => void) => {
+    if (!callback) return
+    previewContentRef.current?.querySelectorAll<HTMLMediaElement>('audio, video').forEach(media => {
+      if (!media.paused) media.pause()
+    })
+    callback()
+  }
+  const onPreviousPreview = navigation?.onPrevious ? () => navigatePreview(navigation.onPrevious) : undefined
+  const onNextPreview = navigation?.onNext ? () => navigatePreview(navigation.onNext) : undefined
 
   const rawFileType = String(file?.type || '').toLowerCase().split(';')[0].trim()
   const fileNameLower = String(file?.name || '').toLowerCase()
@@ -497,6 +508,29 @@ function FilePreviewModal({
   /** Excel/CSV：通过 stream 拉取 Blob 后由 SheetJS 在前端渲染 */
   const isExcel = ['xlsx', 'xls', 'csv'].includes(fileTypeLower)
   const isDoc = ['pdf', 'docx', 'doc', 'pptx', 'txt', 'md', 'xlsx', 'xls', 'csv'].includes(fileTypeLower)
+  const previewKey = `${kbId ?? ''}:${file.id}`
+  // Reset before children commit: a new title must never briefly show the
+  // previous file's text, chunks or media while its effects are starting.
+  if (previewOwner !== previewKey) {
+    setPreviewOwner(previewKey)
+    setTab('preview')
+    setDetails(null)
+    setRawContent(null)
+    setLoadingPreviewDetails(Boolean(kbId))
+    setLoadingRawText(Boolean(kbId && isTextFile))
+    setPdfObjectUrl(null)
+    setPdfLoading(Boolean(kbId && isPdfOrOfficeViewable))
+    setOfficePreviewError(null)
+    setExcelBlob(null)
+    setExcelLoading(Boolean(kbId && isExcel))
+    setExcelError(null)
+    setAudioObjectUrl(null)
+    setAudioLoading(Boolean(kbId && isAudio))
+    setVideoObjectUrl(null)
+    setVideoLoading(Boolean(kbId && isVideo))
+    setRetryFileError(null)
+    setRetryingFile(false)
+  }
   const canRetryFile = String(file.status || '').toLowerCase() === 'failed'
     && (isVideo ? canRetryVideoFromPreview(file) : canRetryDocumentUpload(file))
     && Boolean(file.processingId)
@@ -512,21 +546,25 @@ function FilePreviewModal({
   const previewTabId = `${modalDomId}-file-preview-tab`
   const chunksTabId = `${modalDomId}-file-chunks-tab`
   const activePanelId = `${modalDomId}-file-preview-active-panel`
-  const hasPreviewTabs = hasChunks || isDoc
+  const hasPreviewTabs = isDoc
   const activeTabId = tab === 'chunks' && isDoc ? chunksTabId : previewTabId
 
   const handleRetryFile = async () => {
     if (!onRetryFile || retryPendingRef.current) return
+    const retriedFileId = file.id
     retryPendingRef.current = true
     setRetryingFile(true)
     setRetryFileError(null)
     try {
       await onRetryFile()
     } catch (error) {
+      if (currentPreviewIdRef.current !== retriedFileId) return
       setRetryFileError(readableUploadError(getErrorMessage(error, ''), t('未能重新入队，请确认服务状态后再试。')))
     } finally {
-      retryPendingRef.current = false
-      setRetryingFile(false)
+      if (currentPreviewIdRef.current === retriedFileId) {
+        retryPendingRef.current = false
+        setRetryingFile(false)
+      }
     }
   }
 
@@ -730,7 +768,7 @@ function FilePreviewModal({
         : t("正在显示 {{value1}} 的预览内容", { value1: file.name })
 
   const renderTextPreviewCard = (extraHint?: React.ReactNode) => (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
+    <div key={previewKey} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4">
       <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
         {isMd ? t("Markdown 预览") : t("文本预览")}
       </div>
@@ -756,9 +794,10 @@ function FilePreviewModal({
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50" />
       <Dialog.Content
-        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white dark:bg-slate-950 rounded-2xl shadow-2xl w-[calc(100%_-_2rem)] max-w-3xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800"
+        className="file-preview-dialog fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white dark:bg-slate-950 rounded-2xl shadow-2xl w-[calc(100%_-_2rem)] max-w-3xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800"
         aria-labelledby={titleId}
         aria-describedby={`${metaId} ${statusId}`}
+        onKeyDown={event => handleFilePreviewArrow(event, onPreviousPreview, onNextPreview)}
         onOpenAutoFocus={() => {
           returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
         }}
@@ -773,10 +812,12 @@ function FilePreviewModal({
             className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_80%_at_100%_-30%,rgba(99,102,241,0.11),transparent)] dark:bg-[radial-gradient(ellipse_90%_80%_at_100%_-30%,rgba(129,140,248,0.14),transparent)]"
             aria-hidden
           />
+          {navigation && <FilePreviewNavigation {...navigation} onPrevious={onPreviousPreview} onNext={onNextPreview} />}
           <div className="relative flex justify-between items-start gap-4">
             <div className="min-w-0 flex gap-3.5">
               {isImg && file.previewUrl ? (
                 <img
+                  key={`${previewKey}:${file.previewUrl}`}
                   src={file.previewUrl}
                   alt=""
                   className="h-11 w-11 shrink-0 rounded-xl object-cover border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
@@ -799,9 +840,9 @@ function FilePreviewModal({
                 >
                   {file.name}
                 </Dialog.Title>
-                <div id={metaId} className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
+                <div id={metaId} className="file-preview-dialog__meta mt-2 flex items-center gap-x-2 text-xs">
                   <span className="inline-flex items-center rounded-full border border-indigo-200/70 bg-white/60 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-indigo-800 shadow-[0_1px_2px_rgba(99,102,241,0.06)] backdrop-blur-[2px] dark:border-indigo-500/30 dark:bg-indigo-950/35 dark:text-indigo-200 dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
-                    {String(file.type || '').toUpperCase() || 'FILE'}
+                    {fileTypeLower.toUpperCase() || 'FILE'}
                   </span>
                   <span className="hidden sm:inline text-slate-300 dark:text-slate-600" aria-hidden>
                     ·
@@ -828,7 +869,7 @@ function FilePreviewModal({
           </div>
         </div>
 
-        {(hasChunks || isDoc) && (
+        {hasPreviewTabs && (
           <div className="px-6 pt-3.5 pb-3 flex-shrink-0 bg-slate-50/95 dark:bg-slate-900/85 border-b border-slate-100 dark:border-slate-800/90">
             <div
               className="inline-flex items-center gap-0.5 rounded-xl bg-slate-200/50 dark:bg-slate-800/90 p-1 ring-1 ring-inset ring-slate-300/40 dark:ring-slate-700/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
@@ -914,7 +955,8 @@ function FilePreviewModal({
 
         <div
           id={activePanelId}
-          className="flex-1 overflow-y-auto p-6 min-h-0"
+          ref={previewContentRef}
+          className="file-preview-dialog__body flex-1 overflow-y-auto p-6 min-h-0"
           role={hasPreviewTabs ? 'tabpanel' : 'region'}
           aria-labelledby={hasPreviewTabs ? activeTabId : titleId}
           aria-describedby={statusId}
@@ -953,9 +995,7 @@ function FilePreviewModal({
             )
           ) : isImg && file.previewUrl ? (
             <div className="space-y-4">
-              <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
-                <img src={file.previewUrl} alt={file.name} className="w-full h-auto max-h-[50vh] object-contain" />
-              </div>
+              <FilePreviewImage key={`${previewKey}:${file.previewUrl}`} src={file.previewUrl} name={file.name} />
               <MediaDescriptionPanel
                 title={t("图片描述")}
                 icon={ImageIcon}
@@ -1028,16 +1068,7 @@ function FilePreviewModal({
             </div>
           ) : isAudio && audioObjectUrl ? (
             <div className="space-y-4">
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-6">
-                <audio
-                  controls
-                  src={audioObjectUrl}
-                  className="w-full max-w-md mx-auto"
-                  preload="metadata"
-                >
-                   {t("您的浏览器不支持音频播放。")} </audio>
-                <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 text-center">{file.name}</p>
-              </div>
+              <AudioPreviewPlayer src={audioObjectUrl} title={file.name} ariaLabel={file.name} />
               <MediaDescriptionPanel
                 title={t("音频描述")}
                 icon={Music}
@@ -1083,15 +1114,14 @@ function FilePreviewModal({
             </div>
           ) : isVideo && videoObjectUrl ? (
             <div className="space-y-4">
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-6">
+              <div className="file-preview-media-stage file-preview-media-stage--video">
                 <video
                   controls
                   src={videoObjectUrl}
-                  className="w-full max-w-full rounded-lg bg-black"
+                  className="w-full h-full object-contain bg-black"
                   preload="metadata"
                 >
                    {t("您的浏览器不支持视频播放。")} </video>
-                <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 text-center">{file.name}</p>
               </div>
               <MediaDescriptionPanel
                 title={t("视频描述")}
@@ -1109,7 +1139,7 @@ function FilePreviewModal({
               </MediaDescriptionPanel>
             </div>
           ) : isVideo && videoLoading ? (
-            <div className="h-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400" role="status" aria-live="polite">
+            <div className="file-preview-media-stage file-preview-media-stage--loading" role="status" aria-live="polite">
               <div className="animate-spin h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent" aria-hidden />
               <div className="mt-3 text-sm">{t("视频加载中…")}</div>
             </div>
@@ -1201,21 +1231,6 @@ function FilePreviewModal({
               {loadingRawText ? t("加载内容中…") : t("编辑内容")}
             </button>
           )}
-          <button
-            onClick={onClose}
-            aria-label={t("关闭文件预览：{{value1}}", { value1: file.name })}
-            className={cn(
-              'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold',
-              'border border-slate-200/95 bg-white text-slate-700 shadow-sm shadow-slate-200/50',
-              'dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:shadow-black/25',
-              'hover:bg-slate-50 hover:border-slate-300/90 hover:shadow-md dark:hover:bg-slate-700/90 dark:hover:border-slate-500',
-              'active:scale-[0.98] transition-all duration-200 ease-out',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-slate-900'
-            )}
-            type="button"
-          >
-            <X className="h-4 w-4 shrink-0 opacity-80" strokeWidth={2.25} aria-hidden />
-             {t("关闭")} </button>
           <button
             onClick={onDelete}
             aria-label={t("删除文件：{{value1}}", { value1: file.name })}
@@ -2142,6 +2157,14 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
   const statsRequestVersionRef = useRef(0)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [fileQuery, setFileQuery] = useState('')
+  const [fileFilter, setFileFilter] = useState<KnowledgeFileFilter>('all')
+  const [detailSection, setDetailSection] = useState<KnowledgeDetailSection>('materials')
+  const [topicsVisited, setTopicsVisited] = useState(false)
+  const [uploadExpanded, setUploadExpanded] = useState(false)
+  const detailScrollRef = useRef<HTMLDivElement>(null)
+  const uploadButtonRef = useRef<HTMLButtonElement>(null)
+  const allFileFilterRef = useRef<HTMLButtonElement>(null)
+  const fileSearchRef = useRef<HTMLInputElement>(null)
   const [fileView, setFileView] = useState<'grid' | 'table'>('grid')
   const fileListDomId = React.useId().replace(/:/g, '')
   const fileSearchInputId = `${fileListDomId}-file-search`
@@ -2230,6 +2253,11 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     setKbStats(null)
     setFileListRetry(null)
     setFileQuery('')
+    setFileFilter('all')
+    setDetailSection('materials')
+    setTopicsVisited(false)
+    setUploadExpanded(false)
+    if (detailScrollRef.current) detailScrollRef.current.scrollTop = 0
     setPreviewFile(null)
     setDragOverlay(false)
     setShowImportUrlModal(false)
@@ -2253,6 +2281,11 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     setKbStats(null)
     setFileListRetry(null)
     setFileQuery('')
+    setFileFilter('all')
+    setDetailSection('materials')
+    setTopicsVisited(false)
+    setUploadExpanded(false)
+    if (detailScrollRef.current) detailScrollRef.current.scrollTop = 0
     setPreviewFile(null)
     if (syncRoute && routeKnowledgeBaseId) {
       onRouteChange?.()
@@ -3170,15 +3203,6 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
   // --- KB 列表视图 ---
   if (viewState === 'list') {
     const emptyLibrary = !loading && !listFetchError && knowledgeBases.length === 0
-    const defaultCoverSlotByKnowledgeBaseId = new Map(
-      knowledgeBases
-        .map((knowledgeBase) => knowledgeBase.id)
-        .sort((left, right) => {
-          const seedDifference = getKnowledgeBaseCoverSeed(left) - getKnowledgeBaseCoverSeed(right)
-          return seedDifference || left.localeCompare(right)
-        })
-        .map((knowledgeBaseId, index) => [knowledgeBaseId, index])
-    )
 
     return (
       <div className={cn("flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative", emptyLibrary && 'knowledge-library--empty')}>
@@ -3223,17 +3247,11 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
           ) : (
             <div className="grid auto-rows-[11rem] grid-cols-1 items-stretch md:grid-cols-2 lg:grid-cols-3 gap-6">
               {knowledgeBases.map((kb) => {
-                // Every card keeps a stable fallback, including media still being parsed.
-                const defaultCoverSlot = defaultCoverSlotByKnowledgeBaseId.get(kb.id) ?? 0
-                const defaultCoverIndex = DEFAULT_KNOWLEDGE_COVER_ORDER[
-                  defaultCoverSlot % DEFAULT_KNOWLEDGE_COVER_ORDER.length
-                ] ?? 0
                 return (
                   <KnowledgeSpaceCard
                     key={kb.id}
                     knowledgeBase={kb}
-                    fallbackSrc={DEFAULT_KNOWLEDGE_COVERS[defaultCoverIndex]}
-                    fallbackTint={DEFAULT_KNOWLEDGE_COVER_TINTS[defaultCoverSlot % DEFAULT_KNOWLEDGE_COVER_TINTS.length]}
+                    fallbackSrc={getKnowledgeDefaultCover(kb.stats)}
                     menuOpen={menuOpenKbId === kb.id}
                     onOpen={() => activateKnowledgeBase(kb.id)}
                     onToggleMenu={() => setMenuOpenKbId(id => id === kb.id ? null : kb.id)}
@@ -3291,23 +3309,32 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
   if (viewState === 'detail' && activeKb) {
     const trimmedFileQuery = fileQuery.trim()
     const normalizedFileQuery = trimmedFileQuery.toLowerCase()
+    const fileFilterLabel = t(KNOWLEDGE_FILE_FILTERS.find(({ key }) => key === fileFilter)!.label)
     const filteredFiles = files.filter((f) => {
+      if (fileFilter !== 'all' && getKnowledgeFileKind(f) !== fileFilter) return false
       if (!trimmedFileQuery) return true
       return f.name.toLowerCase().includes(normalizedFileQuery)
     })
+    const previewFiles = filteredFiles.filter(file => !isUploadSourceUnavailable(file))
+    const previewIndex = livePreviewFile ? previewFiles.findIndex(file => file.id === livePreviewFile.id) : -1
+    // Keep the browsing layout stable while existing materials are loading.
+    const hasMaterials = files.length > 0 || filesLoading
     const currentFileViewLabel = fileView === 'grid' ? t("画廊视图") : t("列表视图")
     const activeFilePanelId = `${fileListDomId}-file-active-panel`
     const fileResultBaseText = filesLoading
       ? t("{{currentFileViewLabel}}，正在读取「{{value2}}」的文件清单。", { currentFileViewLabel: currentFileViewLabel, value2: activeKb.name })
       : trimmedFileQuery
       ? t("{{currentFileViewLabel}}，搜索“{{trimmedFileQuery}}”命中 {{value3}} 个文件，共 {{value4}} 个文件。", { currentFileViewLabel: currentFileViewLabel, trimmedFileQuery: trimmedFileQuery, value3: filteredFiles.length, value4: files.length })
+      : fileFilter !== 'all'
+      ? t("{{fileFilterLabel}}，显示 {{count}} 个文件。", { fileFilterLabel, count: filteredFiles.length })
       : t("{{currentFileViewLabel}}，显示全部 {{value2}} 个文件。", { currentFileViewLabel: currentFileViewLabel, value2: files.length })
     const fileListRetryDelaySeconds = fileListRetry?.kbId === activeKbId
       ? Math.ceil(Math.min(30000, 1000 * (2 ** Math.max(0, fileListRetry.attempt - 1))) / 1000)
       : undefined
+    const fileResultWithFilter = trimmedFileQuery && fileFilter !== 'all' ? `${fileFilterLabel} · ${fileResultBaseText}` : fileResultBaseText
     const fileResultStatusText = fileDeleteError || (fileListRetryDelaySeconds != null
-      ? t("{{fileResultBaseText}} 文件状态同步暂不可用，将在约 {{fileListRetryDelaySeconds}} 秒后重试。", { fileResultBaseText: fileResultBaseText, fileListRetryDelaySeconds: fileListRetryDelaySeconds })
-      : fileResultBaseText)
+      ? t("{{fileResultBaseText}} 文件状态同步暂不可用，将在约 {{fileListRetryDelaySeconds}} 秒后重试。", { fileResultBaseText: fileResultWithFilter, fileListRetryDelaySeconds: fileListRetryDelaySeconds })
+      : fileResultWithFilter)
     const documentCount = kbStats?.documents ?? activeKb.stats?.documents ?? 0
     const textChunkCount = kbStats?.chunks ?? activeKb.stats?.chunks ?? 0
     const imageCount = kbStats?.images ?? activeKb.stats?.images ?? 0
@@ -3316,24 +3343,57 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     const textVectorDim = kbStats?.text_vector_dim ?? 4096
     const imageVectorDim = kbStats?.image_vector_dim ?? 768
     const audioVectorDim = kbStats?.audio_vector_dim ?? 512
+    const emptyFileContent = fileListRetry && files.length === 0 ? (
+      <div className="px-6 py-8">
+        <KnowledgeEmptyState compact icon={AlertCircle}
+          title={t("暂时无法读取素材")}
+          description={t("服务暂时繁忙，正在自动重试；这不表示素材已丢失。")}
+          tone="amber"
+        />
+      </div>
+    ) : (
+      <KnowledgeFileEmptyState
+        emptyLibrary={files.length === 0}
+        filter={fileFilter}
+        query={trimmedFileQuery}
+        onAdd={() => uploadButtonRef.current?.click()}
+        addDisabled={uploading}
+        onShowAll={() => {
+          setFileFilter('all')
+          setFileQuery('')
+          allFileFilterRef.current?.focus()
+        }}
+        onClearSearch={() => {
+          setFileQuery('')
+          fileSearchRef.current?.focus()
+        }}
+      />
+    )
 
     return (
-      <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative">
+      <div className="knowledge-detail-layout flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col h-full relative">
         <KnowledgeDetailHeader
           key={activeKb.id}
           name={activeKb.name}
           description={activeKb.description}
+          coverUrl={activeKb.cover_url}
+          fileCount={filesLoading ? undefined : files.length}
+          updatedAt={activeKb.updated_at}
           onBack={returnToKnowledgeList}
-          onEdit={() => setEditKb({ id: activeKb.id, name: activeKb.name, description: activeKb.description ?? '' })}
-          onDelete={() => void handleDeleteKb(activeKb.id)}
         />
 
         <div className="flex-1 flex overflow-hidden">
           {/* Main Area */}
-          <div className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+          <div ref={detailScrollRef} className="knowledge-detail-content min-w-0 flex-1 overflow-y-auto py-4 space-y-4">
+            <KnowledgeDetailNavigation id={fileListDomId} section={detailSection}
+              onSectionChange={section => { setDetailSection(section); if (section === 'topics') setTopicsVisited(true) }} collapsibleUpload={hasMaterials}
+              uploadExpanded={uploadExpanded} onToggleUpload={() => setUploadExpanded(value => !value)} />
+            <div id={`${fileListDomId}-upload`} hidden={hasMaterials && !uploadExpanded && !uploadProgress}>
             {/* 上传与导入：拖拽/选择上传与自动导入同框 */}
             <UploadPipeline
               key={activeKbId}
+              sourcesCollapsed={hasMaterials && !uploadExpanded}
+              uploadButtonRef={uploadButtonRef}
               onFileSelect={handleFileUpload}
               onRetryFile={handleRetryUploadFile}
               retryStates={activeKbId ? uploadRetryStates[activeKbId] : undefined}
@@ -3388,13 +3448,81 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                 </div>
               </div>
             </UploadPipeline>
+            </div>
 
             {/* File List */}
-            <div className="resource-files">
+            <div className="resource-files knowledge-detail-materials" id={`${fileListDomId}-materials-panel`}
+              role="tabpanel" aria-labelledby={`${fileListDomId}-materials-tab`} hidden={detailSection !== 'materials'}>
               <KnowledgeContentOverview
                 key={activeKb.id}
                 files={files}
                 loading={filesLoading}
+                activeFilter={fileFilter}
+                onFilterChange={setFileFilter}
+                resultsId={activeFilePanelId}
+                allFilterRef={allFileFilterRef}
+                controls={
+                  <div className="resource-files__controls">
+                    <div
+                      className="resource-files__view-switch"
+                      role="tablist"
+                      aria-label={t("文件视图")}
+                      aria-describedby={fileResultsStatusId}
+                    >
+                      <button
+                        id={fileGridTabId}
+                        ref={(node) => {
+                          fileViewTabRefs.current.grid = node
+                        }}
+                        onClick={() => setFileView('grid')}
+                        role="tab"
+                        aria-selected={fileView === 'grid'}
+                        aria-controls={fileView === 'grid' ? activeFilePanelId : undefined}
+                        aria-label={t("切换到画廊视图，{{value1}} 个结果", { value1: filteredFiles.length })}
+                        tabIndex={fileView === 'grid' ? 0 : -1}
+                        onKeyDown={handleFileViewTabKeyDown}
+                        className="resource-files__view-tab"
+                        type="button"
+                        title={t("画廊视图")}
+                      >
+                        <LayoutGrid size={14} strokeWidth={1.7} aria-hidden />
+                         {t("画廊")} </button>
+                      <button
+                        id={fileTableTabId}
+                        ref={(node) => {
+                          fileViewTabRefs.current.table = node
+                        }}
+                        onClick={() => setFileView('table')}
+                        role="tab"
+                        aria-selected={fileView === 'table'}
+                        aria-controls={fileView === 'table' ? activeFilePanelId : undefined}
+                        aria-label={t("切换到列表视图，{{value1}} 个结果", { value1: filteredFiles.length })}
+                        tabIndex={fileView === 'table' ? 0 : -1}
+                        onKeyDown={handleFileViewTabKeyDown}
+                        className="resource-files__view-tab"
+                        type="button"
+                        title={t("列表视图")}
+                      >
+                        <List size={14} strokeWidth={1.7} aria-hidden />
+                         {t("列表")} </button>
+                    </div>
+                    <label className="resource-files__search">
+                      <Search size={15} strokeWidth={1.7} aria-hidden />
+                      <input
+                        ref={fileSearchRef}
+                        id={fileSearchInputId}
+                        value={fileQuery}
+                        onChange={(e) => setFileQuery(e.target.value)}
+                        type="search"
+                        placeholder={t("搜索文件名称")}
+                        autoComplete="off"
+                        aria-label={t("搜索文件")}
+                        aria-describedby={fileResultsStatusId}
+                        aria-controls={activeFilePanelId}
+                      />
+                    </label>
+                  </div>
+                }
                 index={{
                   documents: documentCount,
                   chunks: textChunkCount,
@@ -3404,82 +3532,15 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                   dimensions: { text: textVectorDim, image: imageVectorDim, audio: audioVectorDim },
                 }}
               />
-              <div className="resource-files__toolbar">
-                <div className="resource-files__heading">
-                  <h3>
-                    <span className="resource-files__heading-icon"><Layers size={16} strokeWidth={1.7} aria-hidden /></span>
-                     {t("文件列表")} <span className="resource-files__count">{filesLoading ? '—' : files.length}</span>
-                  </h3>
-                  <p
-                    id={fileResultsStatusId}
-                    className={cn('resource-files__summary', !fileDeleteError && !trimmedFileQuery && !filesLoading && fileListRetryDelaySeconds == null && 'sr-only')}
-                    role="status"
-                    aria-live="polite"
-                    aria-atomic="true"
-                  >
-                    {fileResultStatusText}
-                  </p>
-                </div>
-                <div className="resource-files__controls">
-                  <div
-                    className="resource-files__view-switch"
-                    role="tablist"
-                    aria-label={t("文件视图")}
-                    aria-describedby={fileResultsStatusId}
-                  >
-                    <button
-                      id={fileGridTabId}
-                      ref={(node) => {
-                        fileViewTabRefs.current.grid = node
-                      }}
-                      onClick={() => setFileView('grid')}
-                      role="tab"
-                      aria-selected={fileView === 'grid'}
-                      aria-controls={fileView === 'grid' ? activeFilePanelId : undefined}
-                      aria-label={t("切换到画廊视图，{{value1}} 个结果", { value1: filteredFiles.length })}
-                      tabIndex={fileView === 'grid' ? 0 : -1}
-                      onKeyDown={handleFileViewTabKeyDown}
-                      className="resource-files__view-tab"
-                      type="button"
-                      title={t("画廊视图")}
-                    >
-                      <LayoutGrid size={14} strokeWidth={1.7} aria-hidden />
-                       {t("画廊")} </button>
-                    <button
-                      id={fileTableTabId}
-                      ref={(node) => {
-                        fileViewTabRefs.current.table = node
-                      }}
-                      onClick={() => setFileView('table')}
-                      role="tab"
-                      aria-selected={fileView === 'table'}
-                      aria-controls={fileView === 'table' ? activeFilePanelId : undefined}
-                      aria-label={t("切换到列表视图，{{value1}} 个结果", { value1: filteredFiles.length })}
-                      tabIndex={fileView === 'table' ? 0 : -1}
-                      onKeyDown={handleFileViewTabKeyDown}
-                      className="resource-files__view-tab"
-                      type="button"
-                      title={t("列表视图")}
-                    >
-                      <List size={14} strokeWidth={1.7} aria-hidden />
-                       {t("列表")} </button>
-                  </div>
-                  <label className="resource-files__search">
-                    <Search size={15} strokeWidth={1.7} aria-hidden />
-                    <input
-                      id={fileSearchInputId}
-                      value={fileQuery}
-                      onChange={(e) => setFileQuery(e.target.value)}
-                      type="search"
-                      placeholder={t("搜索文件名称")}
-                      autoComplete="off"
-                      aria-label={t("搜索文件")}
-                      aria-describedby={fileResultsStatusId}
-                      aria-controls={activeFilePanelId}
-                    />
-                  </label>
-                </div>
-              </div>
+              <p
+                id={fileResultsStatusId}
+                className={cn('resource-files__summary', !fileDeleteError && !trimmedFileQuery && fileFilter === 'all' && !filesLoading && fileListRetryDelaySeconds == null && 'sr-only')}
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {fileResultStatusText}
+              </p>
 
               {fileView === 'table' ? (
                 <div
@@ -3516,18 +3577,8 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                         </tr>
                       ) : filteredFiles.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="px-6 py-12">
-                            <KnowledgeEmptyState
-                              compact
-                              icon={files.length === 0 ? Upload : Search}
-                              title={fileListRetry && files.length === 0 ? t("暂时无法读取素材") : files.length === 0 ? t("上传第一份素材") : t("没有匹配的文件")}
-                              description={
-                                fileListRetry && files.length === 0 ? t("服务暂时繁忙，正在自动重试；这不表示素材已丢失。") : files.length === 0
-                                  ? t("从上方拖拽上传、URL 导入、文件夹导入或手动新建 Markdown，即可开始构建检索语料。")
-                                  : t("试试缩短关键词，或切回全部文件后再定位目标素材。")
-                              }
-                              tone={files.length === 0 ? 'indigo' : 'slate'}
-                            />
+                          <td colSpan={5}>
+                            {emptyFileContent}
                           </td>
                         </tr>
                       ) : (
@@ -3615,29 +3666,18 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                   {filesLoading ? (
                     <FileListLoadingState knowledgeBaseName={activeKb.name} />
                   ) : filteredFiles.length === 0 ? (
-                    <div className="py-8">
-                      <KnowledgeEmptyState
-                        compact
-                        icon={files.length === 0 ? Upload : Search}
-                        title={fileListRetry && files.length === 0 ? t("暂时无法读取素材") : files.length === 0 ? t("上传第一份素材") : t("没有匹配的文件")}
-                        description={
-                          fileListRetry && files.length === 0 ? t("服务暂时繁忙，正在自动重试；这不表示素材已丢失。") : files.length === 0
-                            ? t("上方的上传与导入入口已经准备好；添加素材后会自动进入解析、向量化与画像流程。")
-                            : t("当前搜索条件没有命中文件。清空搜索词即可回到完整文件列表。")
-                        }
-                        tone={files.length === 0 ? 'indigo' : 'slate'}
-                      />
-                    </div>
+                    emptyFileContent
                   ) : (
                     <div className="resource-files__gallery">
                       {filteredFiles.map((file) => {
                         const isAudio = isAudioType(file?.type)
                         const isVideo = isVideoType(file?.type)
                         const isMedia = isAudio || isVideo
+                        const isDocument = getKnowledgeFileKind(file) === 'documents'
                         const previewUnavailable = isUploadSourceUnavailable(file)
                         const previewHintId = `${fileListDomId}-preview-unavailable-${file.id}`
                         return (
-                          <div key={file.id} className="relative flex min-w-0">
+                          <div key={file.id} className="resource-file-card relative flex min-w-0">
                           <button
                             onClick={() => { if (!previewUnavailable) setPreviewFile(file) }}
                             disabled={previewUnavailable}
@@ -3672,41 +3712,33 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                                   <Play size={18} className="ml-0.5" fill="currentColor" aria-hidden />
                                 </div>
                               )}
-                            </div>
-                            <div className="p-3.5 w-full">
-                              <div className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate" title={file.name}>{file.name}</div>
-                              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between">
-                                <span>{file.size}</span>
-                                <span>{formatFileDate(file.date)}</span>
-                              </div>
-                              <div className="mt-2 flex items-center justify-between gap-2">
-                                <span className="flex min-w-0 flex-1">
-                                  <StatusBadge
-                                    {...uploadFailureFields(file)}
-                                    status={file.status}
-                                    stage={file.stage}
-                                    progress={file.progress}
-                                    message={file.message}
-                                    error={file.error}
-                                    updatedAt={file.updatedAt}
-                                    variant="subtle"
-                                  />
+                              {isDocument && !previewUnavailable && (
+                                <span className="resource-file-card__document-preview" aria-hidden>
+                                  <Eye size={16} strokeWidth={1.75} />
                                 </span>
-                                <span className={cn(
-                                  'shrink-0 text-xs inline-flex items-center gap-1 transition-colors',
-                                  isAudio ? 'text-violet-500 dark:text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300' : isVideo ? 'text-sky-500 dark:text-sky-400 group-hover:text-sky-600 dark:group-hover:text-sky-300' : 'text-slate-400 group-hover:text-fuchsia-600'
-                                )}>
-                                  {isMedia ? <Play size={12} aria-hidden /> : <Eye size={13} aria-hidden />}
-                                  <span className="resource-files__preview-label">{previewUnavailable ? t('暂不可预览') : isMedia ? t("播放") : t("预览")}</span>
-                                </span>
-                              </div>
-                              {previewUnavailable && <p id={previewHintId} className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{t('原文件尚未保存，暂时无法预览。')}</p>}
+                              )}
+                              <span className="resource-file-card__status">
+                                <StatusBadge
+                                  {...uploadFailureFields(file)}
+                                  status={file.status}
+                                  stage={file.stage}
+                                  progress={file.progress}
+                                  message={file.message}
+                                  error={file.error}
+                                  updatedAt={file.updatedAt}
+                                  variant="indicator"
+                                />
+                              </span>
                             </div>
+                            <div className="resource-file-card__caption">
+                              <span className="resource-file-card__name" title={file.name}>{file.name}</span>
+                            </div>
+                            {previewUnavailable && <p id={previewHintId} className="resource-file-card__unavailable">{t('原文件尚未保存，暂时无法预览。')}</p>}
                           </button>
                           {previewUnavailable && <button
                             type="button"
                             onClick={() => { void handleDeleteFile(file.id) }}
-                            className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-red-600 shadow-sm hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 dark:border-slate-700 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-950"
+                            className="absolute left-2 top-2 flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-red-600 shadow-sm hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 dark:border-slate-700 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-950"
                             aria-label={t('删除文件：{{value1}}', { value1: file.name })}
                             aria-describedby={previewHintId}
                             title={t('删除文件')}
@@ -3721,7 +3753,9 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
             </div>
 
             {/* Portrait Graph（使用从向量库获取的统计） */}
-            <Suspense fallback={<PortraitGraphLoading />}>
+            <div className="knowledge-detail-topics" id={`${fileListDomId}-topics-panel`}
+              role="tabpanel" tabIndex={0} aria-labelledby={`${fileListDomId}-topics-tab`} hidden={detailSection !== 'topics'}>
+            {topicsVisited && <Suspense fallback={<PortraitGraphLoading />}>
               <PortraitGraph
                 knowledgeBaseId={activeKb.id}
                 documentCount={documentCount}
@@ -3731,7 +3765,8 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                 videoShotCount={videoShotCount}
                 onClusterSelect={() => {}}
               />
-            </Suspense>
+            </Suspense>}
+            </div>
           </div>
         </div>
 
@@ -3747,6 +3782,12 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
         {livePreviewFile && !isUploadSourceUnavailable(livePreviewFile) && (
           <FilePreviewModal
             file={livePreviewFile}
+            navigation={{
+              position: previewIndex >= 0 ? previewIndex + 1 : 1,
+              total: previewIndex >= 0 ? previewFiles.length : 1,
+              onPrevious: previewIndex > 0 ? () => setPreviewFile(previewFiles[previewIndex - 1]) : undefined,
+              onNext: previewIndex >= 0 && previewIndex < previewFiles.length - 1 ? () => setPreviewFile(previewFiles[previewIndex + 1]) : undefined,
+            }}
             kbId={activeKbId}
             onClose={() => setPreviewFile(null)}
             onEdit={handleOpenManualEditor}

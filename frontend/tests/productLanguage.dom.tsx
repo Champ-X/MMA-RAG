@@ -73,15 +73,15 @@ test('knowledge labels and queued stage semantics update without translating sou
   await language('en-US')
   await mount(<><StatusBadge status="queued" stage="queued" variant="subtle" />
     <FileHero file={{ id: 'source', name: '用户原文.pdf', size: '1 KB', date: '2026-10-22', type: 'jpg', status: 'ready', previewUrl: '/source-image' }} />
-    <KnowledgeContentOverview files={[]} loading={false} index={{ documents: 0, chunks: 0, images: 0, audio: 0, videoShots: 0, dimensions: { text: 1024, image: 512, audio: 512 } }} /></>)
+    <KnowledgeContentOverview files={[]} loading={false} activeFilter="all" onFilterChange={() => {}} resultsId="files" index={{ documents: 0, chunks: 0, images: 0, audio: 0, videoShots: 0, dimensions: { text: 1024, image: 512, audio: 512 } }} /></>)
   assert.match(container!.textContent!, /Queued/)
   assert.doesNotMatch(container!.textContent!, /Waiting in queue/)
-  assert.match(container!.textContent!, /Content overview/)
+  assert.match(container!.textContent!, /All materials/)
   assert.match(container!.textContent!, /Documents/)
   assert.equal(container!.querySelector('img')?.getAttribute('alt'), '用户原文.pdf')
   await language('zh-CN')
   assert.match(container!.textContent!, /排队中/)
-  assert.match(container!.textContent!, /内容概览/)
+  assert.match(container!.textContent!, /全部素材/)
   assert.equal(container!.querySelector('img')?.getAttribute('alt'), '用户原文.pdf')
 })
 
@@ -156,10 +156,14 @@ test('source inspector translates labels while preserving source text that match
   assert.equal(document.querySelector('.source-inspector-title')?.textContent, '设置')
   assert.equal(document.querySelector('.source-inspector-prose')?.textContent, '显示更多模型')
   assert.equal(document.querySelector('.source-inspector-section-heading h3')?.textContent, 'Cited source text')
+  assert.equal(document.querySelector('.source-inspector-kicker')?.textContent, 'Source details')
+  assert.equal(document.querySelector('.source-inspector-close')?.getAttribute('aria-label'), 'Close source details')
   assert.match(document.querySelector('.source-inspector-description')!.textContent!, /Citation 1/)
   await language('zh-CN')
   assert.equal(document.querySelector('.source-inspector-prose')?.textContent, '显示更多模型')
   assert.equal(document.querySelector('.source-inspector-section-heading h3')?.textContent, '引用原文')
+  assert.equal(document.querySelector('.source-inspector-kicker')?.textContent, '来源详情')
+  assert.equal(document.querySelector('.source-inspector-close')?.getAttribute('aria-label'), '关闭来源详情')
 })
 
 test('model search recalculates translated provider labels without clearing query or focus', async () => {

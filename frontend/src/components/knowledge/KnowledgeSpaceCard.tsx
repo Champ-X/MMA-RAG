@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MoreVertical, Pencil, Trash2 } from 'lucide-react'
+import { FileText, Image, Music2, Film, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import { getLanguage, translate as t, useTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 import type { KnowledgeBase } from '@/store/useKnowledgeStore'
@@ -8,7 +8,6 @@ import './knowledgeSpaceCard.css'
 interface KnowledgeSpaceCardProps {
   knowledgeBase: KnowledgeBase
   fallbackSrc: string
-  fallbackTint: string
   menuOpen: boolean
   onOpen: () => void
   onToggleMenu: () => void
@@ -18,7 +17,7 @@ interface KnowledgeSpaceCardProps {
 
 /** Cover availability changes the background, never the card's content geometry. */
 export function KnowledgeSpaceCard({
-  knowledgeBase: kb, fallbackSrc, fallbackTint, menuOpen,
+  knowledgeBase: kb, fallbackSrc, menuOpen,
   onOpen, onToggleMenu, onEdit, onDelete,
 }: KnowledgeSpaceCardProps) {
   useTranslation()
@@ -27,10 +26,10 @@ export function KnowledgeSpaceCard({
   const hasMediaCover = Boolean(mediaSrc && coverState?.url === mediaSrc && coverState.status === 'ready')
   const coverFailed = coverState?.url === mediaSrc && coverState?.status === 'failed'
   const counts = [
-    { icon: '📄', count: kb.stats?.documents ?? 0, label: t('文件') },
-    { icon: '🖼️', count: kb.stats?.images ?? 0, label: t('图片') },
-    { icon: '🎵', count: kb.stats?.audio ?? 0, label: t('音频') },
-    { icon: '🎥', count: kb.stats?.video ?? 0, label: t('视频') },
+    { key: 'documents', Icon: FileText, count: kb.stats?.documents ?? 0, label: t('文件') },
+    { key: 'images', Icon: Image, count: kb.stats?.images ?? 0, label: t('图片') },
+    { key: 'audio', Icon: Music2, count: kb.stats?.audio ?? 0, label: t('音频') },
+    { key: 'video', Icon: Film, count: kb.stats?.video ?? 0, label: t('视频') },
   ]
 
   return (
@@ -47,7 +46,7 @@ export function KnowledgeSpaceCard({
       />
       <div
         aria-hidden="true"
-        className="absolute inset-0 bg-cover bg-center"
+        className="knowledge-space-card__default-cover absolute inset-0 bg-cover bg-center"
         style={{ backgroundImage: `url(${fallbackSrc})` }}
       />
       {mediaSrc && !coverFailed && (
@@ -68,10 +67,10 @@ export function KnowledgeSpaceCard({
       <div
         aria-hidden="true"
         className={cn(
-          'absolute inset-0 bg-gradient-to-t',
+          'absolute inset-0',
           hasMediaCover
-            ? 'from-slate-950/80 via-slate-950/30 to-transparent'
-            : [fallbackTint, 'dark:from-slate-950/95 dark:via-slate-950/75 dark:to-slate-950/35'],
+            ? 'bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-transparent'
+            : 'knowledge-space-card__default-scrim',
         )}
       />
       <div className="pointer-events-none relative z-30 flex h-full min-h-0 flex-col p-3">
@@ -96,11 +95,11 @@ export function KnowledgeSpaceCard({
               : 'border-slate-800/10 text-slate-600 dark:border-white/10 dark:text-slate-300',
           )}>
             <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden whitespace-nowrap">
-              {counts.map(({ icon, count, label }, index) => (
-                <span key={icon} className="inline-flex shrink-0 items-center gap-1.5">
+              {counts.map(({ key, Icon, count, label }, index) => (
+                <span key={key} className="inline-flex shrink-0 items-center gap-1.5">
                   {index > 0 && <span className="knowledge-space-card__count-separator opacity-80">·</span>}
-                  <span className="inline-flex items-center gap-1">
-                    <span className="text-[13px] leading-none" aria-hidden="true">{icon}</span>
+                  <span className={`knowledge-space-card__count knowledge-space-card__count--${key} inline-flex items-center gap-1`} title={`${count} ${label}`}>
+                    <Icon size={14} strokeWidth={1.8} className="knowledge-space-card__count-icon shrink-0" aria-hidden="true" />
                     {count}<span className="knowledge-space-card__count-label">{label}</span>
                   </span>
                 </span>

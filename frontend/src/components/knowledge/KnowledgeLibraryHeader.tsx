@@ -52,7 +52,7 @@ export function KnowledgeLibraryHeader({
             <dl className="knowledge-library-header__modalities" aria-label={t("素材类型统计")}>
               {modalities.map(({ key, label }) => (
                 <div key={key} className={`knowledge-library-header__modality knowledge-library-header__modality--${key}`}>
-                  <dt><span className="knowledge-library-header__modality-icon" aria-hidden="true"><img src={`/knowledge/material-${key}.webp`} width={44} height={44} alt="" decoding="async" /></span><span>{t(label)}</span></dt>
+                  <dt><span className="knowledge-library-header__modality-icon" aria-hidden="true"><img src={`/knowledge/material-${key}.webp`} width={32} height={32} alt="" decoding="async" /></span><span>{t(label)}</span></dt>
                   <dd>{formatCount(counts[key])}</dd>
                 </div>
               ))}
@@ -60,17 +60,18 @@ export function KnowledgeLibraryHeader({
           </div>}
         </div>
         {!empty && <button className="knowledge-library-header__create" type="button" onClick={onCreate}>
-          <svg className="knowledge-library-header__create-art" preserveAspectRatio="none" viewBox="0 0 184 62" fill="none" aria-hidden="true" focusable="false">
-            <path className="knowledge-library-header__create-back" d="M10 27V14a8 8 0 0 1 8-8h35c4 0 6 1 8 4l5 6h100a9 9 0 0 1 9 9v22a9 9 0 0 1-9 9H21a11 11 0 0 1-11-11Z" />
+          <svg className="knowledge-library-header__create-art" viewBox="0 0 52 44" fill="none" aria-hidden="true" focusable="false">
+            <path className="knowledge-library-header__create-back" d="M5 34V12a4 4 0 0 1 4-4h10l5 5h19a4 4 0 0 1 4 4v17a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4Z" />
+            <rect className="knowledge-library-header__create-insert" x="14" y="8" width="26" height="27" rx="3" />
             <g className="knowledge-library-header__create-paper">
-              <rect x="24" y="17" width="142" height="33" rx="5" />
-              <path d="M35 22h43m7 0h17" />
+              <rect x="10" y="11" width="28" height="26" rx="3" />
+              <path d="M15 16h12m-12 4h17" />
             </g>
-            <path className="knowledge-library-header__create-front" d="M13 25h157c6 0 9 4 8 10l-3 14c-1 5-4 8-10 8H24c-6 0-9-3-10-8l-5-15c-2-5 0-9 4-9Z" />
-            <path className="knowledge-library-header__create-edge" d="M15 26h152" />
+            <path className="knowledge-library-header__create-front" d="M6 22h39c3 0 4 2 3 5l-3 10c-.5 2-2 3-4 3H12c-3 0-4-1-5-4L3 27c-1-3 0-5 3-5Z" />
+            <path className="knowledge-library-header__create-edge" d="M8 24h33" />
           </svg>
           <span className="knowledge-library-header__create-label">{t("新建素材空间")}</span>
-          <span className="knowledge-library-header__create-symbol" aria-hidden="true"><Plus size={15} strokeWidth={1.7} /></span>
+          <span className="knowledge-library-header__create-symbol" aria-hidden="true"><Plus size={17} strokeWidth={1.8} /></span>
         </button>}
       </div>
     </header>

@@ -1,0 +1,15 @@
+.file-preview-navigation { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: -.375rem 0 .625rem; }
+.file-preview-navigation__label { color: #8995a6; font-size: .6875rem; letter-spacing: .1em; font-weight: 550; }
+.file-preview-navigation__controls { display: flex; align-items: center; gap: .375rem; }
+.file-preview-navigation button { display: grid; place-items: center; width: 2.125rem; height: 2.125rem; border: 1px solid transparent; border-radius: .625rem; color: #526b8e; transition: background-color .15s ease, border-color .15s ease; }
+.file-preview-navigation button:hover:enabled { border-color: #d7e1ee; background: #f0f4f9; }
+.file-preview-navigation button:disabled { color: #b6bfcc; cursor: default; }
+.file-preview-navigation button:focus-visible { outline: 2px solid #6d8fbd; outline-offset: 2px; }
+.file-preview-navigation__position { display: flex; align-items: baseline; justify-content: center; gap: .375rem; min-width: 3.375rem; color: #929eaf; font-size: .75rem; font-variant-numeric: tabular-nums; }
+.file-preview-navigation__position strong { color: #445e82; font-weight: 650; }
+.dark .file-preview-navigation__label { color: #9aaac0; }
+.dark .file-preview-navigation button { color: #b3c9e8; }
+.dark .file-preview-navigation button:disabled { color: #4f6077; }
+.dark .file-preview-navigation button:hover:enabled { border-color: #3b4f6d; background: #24344b; }
+.dark .file-preview-navigation__position strong { color: #c6d7f0; }
+@media (prefers-reduced-motion: reduce) { .file-preview-navigation button { transition: none; } }

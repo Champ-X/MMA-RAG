@@ -1,0 +1,37 @@
+/* Keep the reader and its navigation stationary across files and loading states. */
+.file-preview-dialog {
+  height: min(90vh, 60rem);
+  height: min(90dvh, 60rem);
+  max-height: calc(100dvh - 2rem);
+}
+.file-preview-dialog__body {
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+  scrollbar-gutter: stable;
+}
+.file-preview-dialog__meta { min-width: 0; overflow: hidden; white-space: nowrap; }
+.file-preview-dialog__meta > span { flex-shrink: 0; }
+.file-preview-dialog__meta > span:first-child { max-width: 8rem; overflow: hidden; text-overflow: ellipsis; }
+.file-preview-media-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: clamp(12rem, 42vh, 26rem);
+  height: clamp(12rem, 42dvh, 26rem);
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: .75rem;
+  background: #f3f5f8;
+}
+.file-preview-media-stage > img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.file-preview-media-stage[data-state="loading"] > img,
+.file-preview-media-stage[data-state="failed"] > img { visibility: hidden; }
+.file-preview-media-stage__placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .75rem; color: #8290a3; font-size: .875rem; }
+.file-preview-media-stage--video { background: #0f172a; }
+.file-preview-media-stage--loading { display: flex; flex-direction: column; justify-content: center; color: #8290a3; }
+.dark .file-preview-media-stage { border-color: #26364d; background: #111c2d; }
+.dark .file-preview-media-stage--video { background: #080d16; }
+@media (max-width: 480px) {
+  .file-preview-dialog__body { padding: 1rem; }
+}

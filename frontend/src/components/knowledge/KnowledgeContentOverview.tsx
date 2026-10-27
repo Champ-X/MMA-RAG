@@ -1,33 +1,19 @@
 import { translate as t, useTranslation, getLanguage } from '@/i18n'
-import { useId, useState } from 'react'
-import { ChevronDown, FileText, Image, Info, Layers, Music, Video } from 'lucide-react'
+import { useId, useState, type ReactNode, type Ref } from 'react'
+import { ChevronDown, Info } from 'lucide-react'
 import * as Tooltip from '@radix-ui/react-tooltip'
-import { isAudioType, isVideoType, type KnowledgeFileView } from './KnowledgeListHelpers'
+import type { KnowledgeFileView } from './KnowledgeListHelpers'
+import { getKnowledgeFileKind, KNOWLEDGE_FILE_FILTERS, type KnowledgeFileFilter, type KnowledgeFileKind } from './knowledgeFileKinds'
 import './knowledgeContentOverview.css'
-
-type FileKind = 'documents' | 'images' | 'audio' | 'video'
-
-const CONTENT_KINDS = [
-  { key: 'documents', label: '文档', icon: FileText },
-  { key: 'images', label: '图片', icon: Image },
-  { key: 'audio', label: '音频', icon: Music },
-  { key: 'video', label: '视频', icon: Video },
-] as const
-
-const IMAGE_TYPES = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'svg', 'bmp', 'tiff', 'tif', 'heic', 'heif'])
-
-function getFileKind(file: Pick<KnowledgeFileView, 'name' | 'type'>): FileKind {
-  const type = String(file.type || '').toLowerCase().split(';')[0].trim()
-  const extension = file.name.split('.').pop()?.toLowerCase() || ''
-  if (isAudioType(type) || isAudioType(extension)) return 'audio'
-  if (type.startsWith('video/') || isVideoType(type) || isVideoType(extension)) return 'video'
-  if (type.startsWith('image/') || IMAGE_TYPES.has(type) || IMAGE_TYPES.has(extension)) return 'images'
-  return 'documents'
-}
 
 interface KnowledgeContentOverviewProps {
   files: readonly Pick<KnowledgeFileView, 'name' | 'type'>[]
   loading: boolean
+  activeFilter: KnowledgeFileFilter
+  onFilterChange: (filter: KnowledgeFileFilter) => void
+  resultsId: string
+  allFilterRef?: Ref<HTMLButtonElement>
+  controls?: ReactNode
   index: {
     documents: number
     chunks: number
@@ -38,7 +24,7 @@ interface KnowledgeContentOverviewProps {
   }
 }
 
-export function KnowledgeContentOverview({ files, loading, index }: KnowledgeContentOverviewProps) {
+export function KnowledgeContentOverview({ files, loading, index, activeFilter, onFilterChange, resultsId, allFilterRef, controls }: KnowledgeContentOverviewProps) {
   useTranslation()
   const [expanded, setExpanded] = useState(false)
   const [showExplanation, setShowExplanation] = useState(false)
@@ -46,14 +32,10 @@ export function KnowledgeContentOverview({ files, loading, index }: KnowledgeCon
   const headingId = `${id}-heading`
   const detailsId = `${id}-index`
   // 文件清单与检索索引的统计口径不同，概览始终来自完整文件清单。
-  const counts = files.reduce<Record<FileKind, number>>((result, file) => {
-    result[getFileKind(file)] += 1
+  const counts = files.reduce<Record<KnowledgeFileKind, number>>((result, file) => {
+    result[getKnowledgeFileKind(file)] += 1
     return result
   }, { documents: 0, images: 0, audio: 0, video: 0 })
-  const populatedKinds = CONTENT_KINDS.filter(({ key }) => counts[key] > 0)
-  const summaryKind = !loading && populatedKinds.length === 1 ? populatedKinds[0] : null
-  const SummaryIcon = summaryKind?.icon ?? Layers
-
   const indexedContent = [
     { label: t("文本索引文件"), count: index.documents },
     { label: t("文本块"), count: index.chunks },
@@ -68,28 +50,45 @@ export function KnowledgeContentOverview({ files, loading, index }: KnowledgeCon
   ]
 
   return (
-    <section className="knowledge-overview" aria-labelledby={headingId} aria-busy={loading}>
+    <section className="knowledge-overview" aria-labelledby={headingId}>
       <div className="knowledge-overview__bar">
-        <div className="knowledge-overview__total">
-          <span className="knowledge-overview__mark" data-kind={summaryKind?.key} aria-hidden="true">
-            <SummaryIcon size={19} strokeWidth={1.65} />
-          </span>
-          <div className="knowledge-overview__summary">
-            <h3 id={headingId}>{t("内容概览")}</h3>
-            <p><strong>{loading ? '—' : files.length.toLocaleString(getLanguage())}</strong><span>{t("个文件")}</span></p>
-          </div>
+        <div className="knowledge-overview__total" aria-busy={loading}>
+          <h3 id={headingId}>{t("全部素材")}</h3>
+          <span className="knowledge-overview__count">{loading ? '—' : files.length.toLocaleString(getLanguage())}</span>
         </div>
-        <dl className="knowledge-overview__kinds" aria-label={t("文件分类统计")}>
-          {CONTENT_KINDS.map(({ key, label, icon: Icon }) => (
-            <div key={key} data-kind={key} data-active={!loading && counts[key] > 0}>
-              <dt><Icon size={15} strokeWidth={1.6} aria-hidden />{t(label)}</dt>
-              <dd>{loading ? '—' : counts[key].toLocaleString(getLanguage())}</dd>
-            </div>
+        <div className="knowledge-overview__filters" role="group" aria-label={t("按素材类型筛选")} aria-busy={loading}>
+          {KNOWLEDGE_FILE_FILTERS.map(({ key, label }) => (
+            <button
+              key={key}
+              ref={key === 'all' ? allFilterRef : undefined}
+              type="button"
+              className="knowledge-overview__filter"
+              aria-pressed={activeFilter === key}
+              aria-controls={resultsId}
+              disabled={loading}
+              onClick={() => onFilterChange(key)}
+            >
+              <img
+                className="knowledge-overview__filter-art"
+                src={key === 'all' ? '/knowledge/empty-collection.webp' : `/knowledge/material-${key}.webp`}
+                width={36}
+                height={36}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+              />
+              <span>{t(label)}</span>
+              <span className="knowledge-overview__filter-count">
+                {loading ? '—' : (key === 'all' ? files.length : counts[key]).toLocaleString(getLanguage())}
+              </span>
+            </button>
           ))}
-        </dl>
+        </div>
+        {controls && <div className="knowledge-overview__controls">{controls}</div>}
         <button
           type="button"
           className="knowledge-overview__toggle"
+          aria-label={t("索引详情")}
           aria-expanded={expanded}
           aria-controls={detailsId}
           onClick={() => {
@@ -97,7 +96,7 @@ export function KnowledgeContentOverview({ files, loading, index }: KnowledgeCon
             setShowExplanation(false)
           }}
         >
-           {t("索引详情")}<span className="knowledge-overview__toggle-icon" aria-hidden="true"><ChevronDown size={12} strokeWidth={1.7} /></span>
+           <span className="knowledge-overview__toggle-label">{t("索引详情")}</span><span className="knowledge-overview__toggle-icon" aria-hidden="true"><ChevronDown size={12} strokeWidth={1.7} /></span>
         </button>
       </div>
       <div id={detailsId} className="knowledge-overview__details" hidden={!expanded}>

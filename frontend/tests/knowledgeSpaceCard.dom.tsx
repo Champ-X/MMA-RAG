@@ -14,7 +14,7 @@ for (const key of ['window', 'document', 'HTMLElement', 'HTMLImageElement', 'HTM
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator })
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const requireFrontend = createRequire(`${process.cwd()}/package.json`)
-const fallbackSrc = '/knowledge/knowledge-library-default-01.jpg'
+const fallbackSrc = '/knowledge/covers-v2/documents.webp'
 let root: Root | undefined
 let container: HTMLDivElement
 
@@ -36,7 +36,7 @@ async function setup(initial: Partial<KnowledgeBase> = {}, dark = false) {
   const render = async (patch: Partial<KnowledgeBase> = {}, menuOpen = false) => {
     knowledgeBase = { ...knowledgeBase, ...patch }
     await act(async () => root!.render(<KnowledgeSpaceCard
-      knowledgeBase={knowledgeBase} fallbackSrc={fallbackSrc} fallbackTint="from-sky-50/90 via-white/48 to-white/10"
+      knowledgeBase={knowledgeBase} fallbackSrc={fallbackSrc}
       menuOpen={menuOpen} onOpen={() => { calls.open += 1 }} onToggleMenu={() => { calls.menu += 1 }}
       onEdit={() => { calls.edit += 1 }} onDelete={() => { calls.delete += 1 }}
     />))

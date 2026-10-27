@@ -6,6 +6,7 @@ import { WorkflowDialog } from '@/components/ui/WorkflowDialog'
 import './knowledgeCreateDialog.css'
 import { uploadProgressMessage } from './uploadProgress'
 import { uploadFailureCopy, uploadFailureFields } from './uploadFailure'
+import { getFileExtension, getFileMediaKind, getKnowledgeFileCover } from './knowledgeFileCover'
 import type { UploadFailureFields } from '@/types/upload'
 
 type StatusBadgeProps = UploadFailureFields & {
@@ -15,7 +16,7 @@ type StatusBadgeProps = UploadFailureFields & {
   message?: string
   error?: string
   updatedAt?: string
-  variant?: 'badge' | 'subtle'
+  variant?: 'badge' | 'subtle' | 'indicator'
 }
 
 const PROCESSING_STAGE_LABELS: Record<string, string> = {
@@ -84,7 +85,7 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
     .filter(Boolean)
     .join('\n') || undefined
 
-  if (variant === 'subtle') {
+  if (variant === 'subtle' || variant === 'indicator') {
     const labels: Record<string, string> = {
       ready: t("就绪"), processing: t("处理中"), queued: t("排队中"), failed: t("解析失败"), unindexed: t("未完成解析"),
     }
@@ -103,7 +104,7 @@ export function StatusBadge({ status, stage, progress, message, error, updatedAt
         {busy ? <Loader2 size={12} className="file-status-subtle__spinner" aria-hidden />
           : normalizedStatus === 'failed' || normalizedStatus === 'unindexed' ? <AlertCircle size={12} aria-hidden />
             : <span className="file-status-subtle__dot" aria-hidden />}
-        <span>{label}{visibleDetail ? ` · ${visibleDetail}` : ''}</span>
+        <span className={variant === 'indicator' ? 'sr-only' : undefined}>{label}{visibleDetail ? ` · ${visibleDetail}` : ''}</span>
       </span>
     )
   }
@@ -211,10 +212,6 @@ export function FileIcon({ type, size = FILE_ICON_SIZE_DEFAULT }: { type: string
   return <FileText size={s} className="text-slate-500 dark:text-slate-400" aria-hidden />
 }
 
-function isImageType(type: string): boolean {
-  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'tif'].includes(String(type || '').toLowerCase())
-}
-
 export function isAudioType(type: string): boolean {
   const lower = String(type || '').toLowerCase()
   return lower.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg', 'wma', 'opus'].includes(lower)
@@ -249,19 +246,18 @@ export interface KnowledgeFileView extends UploadFailureFields {
 export function FileThumb({ file }: { file: KnowledgeFileView }) {
   useTranslation()
   const [failedSrc, setFailedSrc] = useState<string>()
-  const kind = isImageType(file.type) ? 'image' : isVideoType(file.type) ? 'video' : isAudioType(file.type) ? 'audio' : 'document'
-  const src = kind === 'image' ? file.thumbnailUrl || file.previewUrl : kind === 'video' ? file.coverUrl : undefined
+  const kind = getFileMediaKind(file)
+  const artwork = getKnowledgeFileCover(file)
+  const src = kind === 'image' ? file.thumbnailUrl || file.previewUrl : kind === 'video' ? file.coverUrl : artwork?.src
   const showImage = Boolean(src && failedSrc !== src)
-  const extension = String(file.type || 'file').split('/').pop()?.toUpperCase() || 'FILE'
+  const extension = getFileExtension(file).toUpperCase()
   return (
     <span className="file-list-thumb" data-kind={kind} aria-hidden="true">
       {showImage ? (
         <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFailedSrc(src)} />
-      ) : kind === 'audio' ? (
-        <span className="file-list-thumb__record"><span /></span>
       ) : kind === 'document' ? (
         <span className="file-list-thumb__paper"><FileText size={18} strokeWidth={1.4} /><small>{extension.slice(0, 5)}</small></span>
-      ) : <FileIcon type={file.type} size={20} />}
+      ) : <FileIcon type={kind === 'audio' ? 'audio/' : extension} size={20} />}
       {kind === 'video' && showImage && <span className="file-list-thumb__play"><Play size={10} fill="currentColor" strokeWidth={1} /></span>}
     </span>
   )
@@ -288,69 +284,27 @@ function getFileHeroIconBg(type: string): string {
   return 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
 }
 
-function DocumentCover({ file }: { file: KnowledgeFileView }) {
+function FileArtworkCover({ file }: { file: KnowledgeFileView }) {
   useTranslation()
-  const extension = (file.name.match(/\.([^.]+)$/)?.[1] || file.type || 'FILE').toUpperCase()
-  const kind = ['XLS', 'XLSX', 'CSV', 'ODS'].includes(extension) ? 'table'
-    : ['PPT', 'PPTX', 'ODP'].includes(extension) ? 'slides'
-      : ['DOC', 'DOCX', 'ODT', 'RTF'].includes(extension) ? 'word'
-        : ['MD', 'MARKDOWN'].includes(extension) ? 'markdown'
-          : ['JSON', 'XML', 'HTML', 'HTM', 'YML', 'YAML'].includes(extension) ? 'code'
-            : extension === 'PDF' ? 'pdf' : 'text'
+  const [failedSrc, setFailedSrc] = useState<string>()
+  const artwork = getKnowledgeFileCover(file)
+  const extension = artwork?.extension || getFileExtension(file).toUpperCase()
+  const iconType = artwork?.kind === 'audio' ? 'audio/' : extension
 
-  // These shapes identify the format; document content is shown in the actual preview.
   return (
-    <div className="file-document-cover" data-kind={kind} role="img" aria-label={t("{{extension}} 文件类型封面", { extension: extension })}>
-      <div className="file-document-cover__sheet" aria-hidden="true">
-        <div className="file-document-cover__masthead">
-          <strong>{extension.slice(0, 8)}</strong>
-          <span className="file-document-cover__mark">{kind === 'markdown' ? '#' : kind === 'code' ? '</>' : <FileIcon type={extension} size={17} />}</span>
-        </div>
-        {kind === 'pdf' ? (
-          <div className="file-document-cover__editorial">
-            <div className="file-document-cover__headline"><i /><i /></div>
-            <div className="file-document-cover__abstract" />
-            <div className="file-document-cover__columns">
-              <div className="file-document-cover__rules"><i /><i /><i /><i /><i /></div>
-              <div className="file-document-cover__rules"><i /><i /><i /><i /><i /></div>
-            </div>
-          </div>
-        ) : kind === 'word' ? (
-          <div className="file-document-cover__manuscript">
-            <div className="file-document-cover__headline"><i /><i /></div>
-            <div className="file-document-cover__rules"><i /><i /><i /></div>
-            <div className="file-document-cover__quote"><i /><i /></div>
-            <div className="file-document-cover__rules"><i /><i /></div>
-          </div>
-        ) : kind === 'table' ? (
-          <>
-            <div className="file-document-cover__cells">
-              {Array.from({ length: 30 }, (_, i) => <i key={i} />)}
-            </div>
-            <div className="file-document-cover__tabs"><i /><i /><span>+</span></div>
-          </>
-        ) : kind === 'slides' ? (
-          <>
-            <div className="file-document-cover__presentation">
-              <div className="file-document-cover__slide-copy"><i /><i /><span /></div>
-              <div className="file-document-cover__slide-art"><i /><i /><i /></div>
-            </div>
-            <div className="file-document-cover__slide-progress"><i /><i /><i /></div>
-          </>
-        ) : kind === 'markdown' ? (
-          <div className="file-document-cover__markup">
-            <div className="file-document-cover__syntax"><b>#</b><i /></div>
-            <div className="file-document-cover__rules"><i /><i /></div>
-            <div className="file-document-cover__bullets"><i /><i /><i /></div>
-            <div className="file-document-cover__code-block"><span>```</span><i /><i /></div>
-          </div>
-        ) : kind === 'code' ? (
-          <div className="file-document-cover__source"><b>{'{'}</b><i /><i /><i /><i /><b>{'}'}</b></div>
-        ) : (
-          <div className="file-document-cover__plaintext"><i /><i /><i /><i /><i /><i /><i /></div>
-        )}
-        {kind !== 'table' && kind !== 'slides' && <span className="file-document-cover__folio" />}
-      </div>
+    <div className="file-artwork-cover" data-kind={artwork?.kind || 'generic'} role="img" aria-label={t("{{extension}} 文件类型封面", { extension })}>
+      {artwork && failedSrc !== artwork.src ? (
+        <img className="file-artwork-cover__image" src={artwork.src} alt="" width={800} height={600}
+          loading="lazy" decoding="async" onError={() => setFailedSrc(artwork.src)} />
+      ) : (
+        <span className="file-artwork-cover__fallback" aria-hidden="true">
+          <FileIcon type={iconType} size={48} />
+        </span>
+      )}
+      <span className="file-artwork-cover__format" aria-hidden="true">
+        <FileIcon type={iconType} size={13} />
+        {extension.slice(0, 8)}
+      </span>
     </div>
   )
 }
@@ -359,9 +313,10 @@ function DocumentCover({ file }: { file: KnowledgeFileView }) {
 export function FileHero({ file }: { file: KnowledgeFileView }) {
   useTranslation()
   const [failedThumbnail, setFailedThumbnail] = useState<string>()
-  const isImg = isImageType(file?.type)
-  const isAudio = isAudioType(file?.type)
-  const isVideo = isVideoType(file?.type)
+  const mediaKind = getFileMediaKind(file)
+  const isImg = mediaKind === 'image'
+  const isAudio = mediaKind === 'audio'
+  const isVideo = mediaKind === 'video'
   if (isImg && file?.previewUrl) {
     return (
       <img
@@ -374,8 +329,8 @@ export function FileHero({ file }: { file: KnowledgeFileView }) {
       />
     )
   }
-  if (!isImg && !isAudio && !isVideo) {
-    return <DocumentCover file={file} />
+  if (mediaKind === 'document' || isAudio) {
+    return <FileArtworkCover file={file} />
   }
   return (
     <div className="flex flex-col items-center justify-center text-slate-400" role="img" aria-label={t("文件类型：{{value1}}", { value1: isAudio ? t("音频") : isVideo ? t("视频") : String(file?.type || 'file').toUpperCase() })}>

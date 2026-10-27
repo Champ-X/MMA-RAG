@@ -1,4 +1,26 @@
 .knowledge-space-card { container-type: inline-size; }
+.knowledge-space-card__count-icon { flex: 0 0 14px; opacity: .9; }
+.knowledge-space-card[data-cover-kind="default"] .knowledge-space-card__count--documents .knowledge-space-card__count-icon { color: #526da1; }
+.knowledge-space-card[data-cover-kind="default"] .knowledge-space-card__count--images .knowledge-space-card__count-icon { color: #6d739c; }
+.knowledge-space-card[data-cover-kind="default"] .knowledge-space-card__count--audio .knowledge-space-card__count-icon { color: #347f79; }
+.knowledge-space-card[data-cover-kind="default"] .knowledge-space-card__count--video .knowledge-space-card__count-icon { color: #996440; }
+.dark .knowledge-space-card[data-cover-kind="default"] .knowledge-space-card__count--documents .knowledge-space-card__count-icon { color: #a8bce3; }
+.dark .knowledge-space-card[data-cover-kind="default"] .knowledge-space-card__count--images .knowledge-space-card__count-icon { color: #bdb4df; }
+.dark .knowledge-space-card[data-cover-kind="default"] .knowledge-space-card__count--audio .knowledge-space-card__count-icon { color: #8dc9c2; }
+.dark .knowledge-space-card[data-cover-kind="default"] .knowledge-space-card__count--video .knowledge-space-card__count-icon { color: #ddb18e; }
+
+/* Protect the copy while retaining the cover's color and material detail. */
+.knowledge-space-card__default-scrim {
+  background:
+    linear-gradient(to top, rgb(255 255 255 / .80), rgb(255 255 255 / .32) 30%, rgb(255 255 255 / 0) 65%),
+    linear-gradient(to right, rgb(255 255 255 / .48), rgb(255 255 255 / .10) 55%, rgb(255 255 255 / 0) 80%);
+}
+
+.dark .knowledge-space-card__default-scrim {
+  background:
+    linear-gradient(to top, rgb(2 6 23 / .94), rgb(2 6 23 / .60) 45%, rgb(2 6 23 / .16)),
+    linear-gradient(to right, rgb(2 6 23 / .65), rgb(2 6 23 / .20) 55%, rgb(2 6 23 / 0));
+}
 
 /* Keep every media count visible beside the date and menu on compact cards. */
 @container (max-width: 400px) {

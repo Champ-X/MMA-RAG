@@ -17,10 +17,34 @@ const requireFrontend = createRequire(`${process.cwd()}/package.json`)
 let root: Root | undefined
 let container: HTMLDivElement
 
-type Options = { isUploading?: boolean; retryStates?: Record<string, { pending?: boolean; error?: string }> }
+type Options = { isUploading?: boolean; sourcesCollapsed?: boolean; retryStates?: Record<string, { pending?: boolean; error?: string }> }
 const failure = (overrides: Partial<UploadFileProgress> = {}): UploadFileProgress => ({
   id: 'processing-video-1', name: '动物科普.mp4', status: 'failed', stage: 'error',
   error_code: 'video_model_error', retryable: true, storage_persisted: true, ...overrides,
+})
+
+test('collapsing upload sources preserves the file picker and keeps current batch progress visible', async () => {
+  const { act } = await setup([], { sourcesCollapsed: true })
+  const { UploadPipeline } = await import('../src/components/knowledge/UploadPipeline')
+  const uploadButton = React.createRef<HTMLButtonElement>()
+  const baseProps = { sourcesCollapsed: true, uploadButtonRef: uploadButton, onFileSelect: () => {} }
+  await act(async () => root!.render(<UploadPipeline {...baseProps} />))
+  assert.equal(container.querySelector<HTMLElement>('.upload-panel')!.hidden, true, 'idle compact uploads must not leave a blank panel')
+  const input = container.querySelector<HTMLInputElement>('input[type="file"]')!
+  assert.ok(input.isConnected)
+  assert.ok(uploadButton.current?.isConnected)
+  let pickerRequests = 0
+  input.click = () => { pickerRequests++ }
+  await act(async () => uploadButton.current!.click())
+  assert.equal(pickerRequests, 1, 'external upload buttons must still be able to open the preserved input')
+  await act(async () => root!.render(<UploadPipeline {...baseProps}
+    uploadProgress={{ stage: 'parsing', total: 1, completed: 0, failed: 0, submitted: true,
+      files: [{ id: 'compact-job', name: '正在解析.md', status: 'processing', progress: 30 }] }} />))
+  assert.equal(container.querySelector<HTMLElement>('.upload-panel')!.hidden, false)
+  assert.equal(container.querySelector<HTMLElement>('.upload-panel__header')!.hidden, true)
+  assert.equal(container.querySelector<HTMLElement>('.upload-panel__body')!.hidden, true)
+  assert.match(container.querySelector('.upload-batch')!.textContent!, /正在解析.md/)
+  assert.ok(container.querySelector('input[type="file"]') === input, 'the picker survives compact-state transitions')
 })
 
 async function setup(files: UploadFileProgress[], options: Options = {}) {
@@ -39,7 +63,7 @@ async function setup(files: UploadFileProgress[], options: Options = {}) {
     await act(async () => root!.render(<UploadPipeline
       onFileSelect={() => { throw new Error('This test must never select or upload a file') }}
       onRetryFile={async file => { retries.push(file) }}
-      uploadProgress={{ stage: 'done', total: files.length, completed: 0,
+      uploadProgress={{ stage: 'done', total: files.length, completed: files.filter(file => file.status === 'completed').length,
         failed: files.filter(file => file.status === 'failed').length, submitted: true, files }}
       {...options}
     />))
@@ -165,4 +189,37 @@ test('a document placeholder never offers retry even with contradictory saved ca
     failure({ id: 'unsupported-document', name: 'unsupported.pdf', retry_supported: false }),
   ])
   assert.equal(retryButtons().length, 0)
+})
+
+test('upload details prioritize active work and failures while completed items remain collapsed', async () => {
+  const { act } = await setup([
+    { id: 'finished', name: '完成.md', status: 'completed' },
+    { id: 'queued', name: '排队.md', status: 'queued' },
+    failure({ id: 'failed', name: '失败.mp4' }),
+    { id: 'working', name: '解析.md', status: 'processing', progress: 20 },
+  ])
+  const names = () => [...container.querySelectorAll('.upload-file__name')].map(node => node.textContent)
+  assert.deepEqual(names(), ['解析.md', '失败.mp4', '排队.md'])
+  assert.match(container.querySelector('.upload-batch__completed')!.textContent!, /已完成 1 项/)
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-state="failed"]')!.click())
+  assert.deepEqual(names(), ['失败.mp4'])
+  assert.equal(container.querySelector('[data-state="failed"]')!.getAttribute('aria-pressed'), 'true')
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-state="ready"]')!.click())
+  assert.deepEqual(names(), ['完成.md'])
+  await act(async () => container.querySelector<HTMLButtonElement>('.upload-batch__detail-heading button')!.click())
+  assert.deepEqual(names(), ['解析.md', '失败.mp4', '排队.md', '完成.md'])
+})
+
+test('a status filter keeps its context as files finish and can reopen collapsed details', async () => {
+  const working = { id: 'working', name: '解析.md', status: 'processing' }
+  const { act, render } = await setup([working])
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-state="processing"]')!.click())
+  await render([{ ...working, status: 'completed' }])
+  assert.equal(container.querySelector('[data-state="processing"]')!.getAttribute('aria-pressed'), 'true')
+  assert.match(container.querySelector('.upload-batch__empty')!.textContent!, /当前没有这类文件/)
+  await act(async () => container.querySelector<HTMLButtonElement>('.upload-batch__toggle')!.click())
+  assert.equal(container.querySelector('.upload-batch__detail'), null)
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-state="ready"]')!.click())
+  assert.equal(container.querySelector('.upload-file__name')!.textContent, '解析.md')
+  assert.equal(container.querySelector('.upload-batch__toggle')!.getAttribute('aria-expanded'), 'true')
 })

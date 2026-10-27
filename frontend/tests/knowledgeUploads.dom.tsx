@@ -471,7 +471,10 @@ test('a delayed successful deletion cleans only its space and exact original, pr
   assert.equal(saved.progress.failed, 1)
   await render('a') // The deliberately stale list response still includes the deleted original.
   assert.equal(container.querySelectorAll('[aria-label="删除文件：same.mp4"]').length, 1)
-  assert.equal(panel().querySelectorAll('.upload-file').length, 2)
+  assert.equal(panel().querySelectorAll('.upload-file').length, 1, 'completed siblings are collapsed behind the default attention filter')
+  const showAll = [...panel().querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '查看全部')!
+  await act(async () => showAll.click())
+  assert.equal(panel().querySelectorAll('.upload-file').length, 2, 'the completed sibling remains available in all files')
 })
 
 test('deleting the final upload removes its session snapshot and closes its preview only after success', async () => {
@@ -705,4 +708,168 @@ test('a delayed PDF queued receipt cannot reopen an already completed recovery',
   assert.equal(saved.progress.failed, 0)
   assert.equal(panel().dataset.busy, 'false')
   assert.doesNotMatch(panel().textContent!, /waiting|文本索引生成超时/)
+})
+
+test('existing materials own the first screen; add routes disclose without replacing the upload input', async () => {
+  const { act, render, files } = await setup()
+  files.a = [{ id: 'photo', name: '庭院.jpg', type: 'jpg', size: 100, date: '', status: 'completed' }]
+  await render('a')
+  const input = container.querySelector('input[type="file"]')!
+  const disclosure = container.querySelector('.knowledge-detail-navigation__add') as HTMLButtonElement
+  assert.equal(disclosure.getAttribute('aria-expanded'), 'false')
+  assert.ok(input.closest('[hidden]'))
+  assert.equal(container.querySelector('.knowledge-detail-materials')?.hasAttribute('hidden'), false)
+  assert.equal(container.querySelector('[aria-label="知识库画像概览"]'), null, 'topic requests stay off the material first screen')
+  await act(async () => disclosure.click())
+  assert.equal(disclosure.getAttribute('aria-expanded'), 'true')
+  assert.equal(container.querySelector('input[type="file"]'), input, 'expanding keeps input and upload ownership')
+  assert.equal(input.closest('[hidden]'), null)
+  assert.equal(container.querySelectorAll('.upload-source').length, 5, 'all six ingestion routes remain: upload plus five sources')
+  await act(async () => disclosure.click())
+  assert.equal(input.closest('[hidden]') != null, true)
+  await render('b')
+  assert.equal(container.querySelector('.knowledge-detail-navigation__add'), null, 'empty spaces retain a fully visible upload entrance')
+  assert.equal(container.querySelector('input[type="file"]')?.closest('[hidden]'), null)
+})
+
+test('material and topic navigation provides keyboard selection, panels and retained material filters', async () => {
+  const { act, render, files } = await setup()
+  files.a = [{ id: 'photo', name: '庭院.jpg', type: 'jpg', size: 100, date: '', status: 'completed' }]
+  await render('a')
+  const imageFilter = [...container.querySelectorAll<HTMLButtonElement>('.knowledge-overview__filter')].find(button => button.textContent?.includes('图片'))!
+  await act(async () => imageFilter.click())
+  const [materials, topics] = [...container.querySelectorAll<HTMLButtonElement>('.knowledge-detail-navigation [role="tab"]')]
+  await act(async () => { materials.focus(); materials.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })); await settle() })
+  assert.equal(document.activeElement, topics)
+  assert.equal(topics.getAttribute('aria-selected'), 'true')
+  assert.equal(container.querySelector('.knowledge-detail-materials')?.hasAttribute('hidden'), true)
+  assert.equal(container.querySelector('.knowledge-detail-topics')?.hasAttribute('hidden'), false)
+  assert.equal(document.getElementById(topics.getAttribute('aria-controls')!)?.getAttribute('aria-labelledby'), topics.id)
+  await act(async () => { topics.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true })); await settle() })
+  assert.equal(document.activeElement, materials)
+  assert.equal(materials.getAttribute('aria-selected'), 'true')
+  assert.equal(container.querySelector('.knowledge-detail-materials')?.hasAttribute('hidden'), false)
+  assert.equal(imageFilter.getAttribute('aria-pressed'), 'true', 'returning to materials retains the chosen filter')
+})
+
+test('preview traverses the current filtered available materials with bounded arrows and one close control', async () => {
+  const { act, render, files } = await setup()
+  files.a = [
+    { id: 'garden-a', name: '庭院-a.jpg', type: 'jpg', size: 100, date: '', status: 'completed' },
+    { id: 'processing:unsaved', name: '庭院-未保存.jpg', type: 'jpg', size: 100, date: '', status: 'failed', storage_persisted: false },
+    { id: 'garden-b', name: '庭院-b.jpg', type: 'jpg', size: 100, date: '', status: 'completed' },
+    { id: 'recording', name: '访谈.mp3', type: 'mp3', size: 100, date: '', status: 'completed' },
+  ]
+  await render('a')
+  const images = [...container.querySelectorAll<HTMLButtonElement>('.knowledge-overview__filter')].find(button => button.textContent?.includes('图片'))!
+  await act(async () => images.click())
+  const first = container.querySelector('[aria-label="预览文件：庭院-a.jpg"]') as HTMLButtonElement
+  await act(async () => { first.focus(); first.click(); await settle() })
+  const dialog = document.querySelector('[role="dialog"]') as HTMLElement
+  assert.ok(dialog)
+  const previous = () => dialog.querySelector('[aria-label="上一个素材"]') as HTMLButtonElement
+  const next = () => dialog.querySelector('[aria-label="下一个素材"]') as HTMLButtonElement
+  assert.equal(previous().disabled, true)
+  assert.equal(next().disabled, false)
+  assert.equal(dialog.querySelectorAll('[aria-label^="关闭文件预览"]').length, 1)
+  assert.equal(dialog.querySelector('.file-preview-navigation__position')?.getAttribute('aria-label'), '第 1 个素材，共 2 个')
+  await act(async () => { next().click(); await settle() })
+  assert.match(dialog.querySelector('[id$="file-preview-title"]')?.textContent ?? '', /庭院-b/)
+  assert.equal(next().disabled, true)
+  const boundary = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+  await act(async () => dialog.dispatchEvent(boundary))
+  assert.equal(boundary.defaultPrevented, false)
+  await act(async () => { dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true })); await settle() })
+  assert.match(dialog.querySelector('[id$="file-preview-title"]')?.textContent ?? '', /庭院-a/)
+  await act(async () => { (dialog.querySelector('[aria-label^="关闭文件预览"]') as HTMLButtonElement).click(); await settle() })
+  assert.equal(document.querySelector('[role="dialog"]'), null)
+})
+
+test('preview arrow navigation leaves media, editable controls and tab navigation to their own handlers', async () => {
+  const { act, render, files } = await setup()
+  files.a = ['a', 'b'].map(id => ({ id, name: `${id}.jpg`, type: 'jpg', size: 100, date: '', status: 'completed' }))
+  await render('a')
+  await act(async () => { (container.querySelector('.resource-files__gallery button') as HTMLButtonElement).click(); await settle() })
+  const dialog = document.querySelector('[role="dialog"]') as HTMLElement
+  for (const markup of ['<input type="range">', '<textarea></textarea>', '<video controls></video>', '<audio controls></audio>', '<div contenteditable="true"></div>', '<div role="slider"></div>', '<div role="tablist"><button>tab</button></div>']) {
+    const fixture = document.createElement('div')
+    fixture.innerHTML = markup
+    dialog.append(fixture)
+    const target = fixture.querySelector('button') ?? fixture.firstElementChild!
+    const key = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+    await act(async () => { target.dispatchEvent(key); await settle() })
+    assert.equal(key.defaultPrevented, false, markup)
+    assert.match(dialog.querySelector('[id$="file-preview-title"]')?.textContent ?? '', /a.jpg/, markup)
+    fixture.remove()
+  }
+})
+
+test('rapid document and image switching preserves the reader and rejects late descriptions', async () => {
+  const { act, render, files, knowledgeApi } = await setup()
+  files.a = [
+    { id: 'notes', name: 'notes.txt', type: 'txt', size: 100, date: '', status: 'completed' },
+    { id: 'image-one', name: 'image-one.jpg', type: 'jpg', size: 100, date: '', status: 'completed', preview_url: '/one.jpg' },
+    { id: 'image-two', name: 'image-two.jpg', type: 'jpg', size: 100, date: '', status: 'completed', preview_url: '/two.jpg' },
+  ]
+  const imageOne = deferred<Awaited<ReturnType<typeof knowledgeApi.getFilePreviewDetails>>>()
+  const imageTwo = deferred<Awaited<ReturnType<typeof knowledgeApi.getFilePreviewDetails>>>()
+  knowledgeApi.getFileTextContent = async () => ({ content: 'Document-only text from the first material.' })
+  knowledgeApi.getFilePreviewDetails = async (_kb, id) => id === 'notes'
+    ? { chunks: [{ index: 0, text: 'First document chunk' }] }
+    : id === 'image-one' ? imageOne.promise : imageTwo.promise
+  await render('a')
+  await act(async () => { (container.querySelector('[aria-label="预览文件：notes.txt"]') as HTMLButtonElement).click(); await settle() })
+  const dialog = document.querySelector('.file-preview-dialog') as HTMLElement
+  const next = dialog.querySelector('[aria-label="下一个素材"]') as HTMLButtonElement
+  const body = dialog.querySelector('.file-preview-dialog__body') as HTMLElement
+  assert.match(body.textContent!, /Document-only/)
+  body.scrollTop = 200
+  await act(async () => { next.focus(); next.click(); await settle() })
+  assert.equal(document.querySelector('.file-preview-dialog'), dialog, 'the dialog is never remounted during navigation')
+  assert.equal(dialog.querySelector('[aria-label="下一个素材"]'), next)
+  assert.equal(document.activeElement, next, 'navigation focus survives the cross-type switch')
+  assert.equal(body.scrollTop, 0)
+  assert.doesNotMatch(body.textContent!, /Document-only|First document chunk/)
+  assert.equal(dialog.querySelector('[aria-label="预览方式"]'), null, 'document controls do not leak into the image preview')
+  const firstStage = body.querySelector('.file-preview-media-stage')!
+  const firstThumbnail = [...dialog.querySelectorAll('img')].find(image => !body.contains(image))!
+  assert.equal(firstStage.getAttribute('data-state'), 'loading', 'the media stage exists before image decode')
+  await act(async () => { next.click(); await settle() })
+  const currentStage = body.querySelector('.file-preview-media-stage')!
+  const currentThumbnail = [...dialog.querySelectorAll('img')].find(image => !body.contains(image))!
+  assert.notEqual(currentStage, firstStage)
+  assert.notEqual(currentThumbnail, firstThumbnail, 'the header cannot retain a decoded thumbnail from the previous image')
+  assert.equal(currentThumbnail.getAttribute('src'), '/two.jpg')
+  await act(async () => { imageOne.resolve({ description: 'Stale caption for image one' }); await settle() })
+  assert.doesNotMatch(body.textContent!, /Stale caption/)
+  assert.equal(body.querySelector('.file-preview-media-stage'), currentStage)
+  await act(async () => { imageTwo.resolve({ description: 'Correct caption for image two', chunks: [{ index: 0, text: 'image OCR' }] }); await settle() })
+  assert.match(body.textContent!, /Correct caption/)
+  assert.equal(dialog.querySelector('[aria-label="预览方式"]'), null, 'an image response never inserts a redundant tab strip')
+  assert.equal(body.querySelector('.file-preview-media-stage'), currentStage, 'description completion does not replace the media stage')
+  await act(async () => { currentStage.querySelector('img')!.dispatchEvent(new Event('load')); await settle() })
+  assert.equal(currentStage.getAttribute('data-state'), 'ready')
+  assert.equal(document.querySelector('.file-preview-dialog'), dialog)
+  assert.equal(dialog.querySelector('[aria-label="下一个素材"]'), next)
+  assert.equal(dialog.querySelectorAll('[aria-label^="关闭文件预览"]').length, 1)
+})
+
+test('switching prefilled text previews resets their nested scroll without remounting navigation', async () => {
+  const { act, render, files, knowledgeApi } = await setup()
+  files.a = ['a', 'b'].map(id => ({ id, name: `${id}.txt`, type: 'txt', size: 100, date: '', status: 'completed',
+    text_preview: `${id}\n${'Long preview text line\n'.repeat(150)}` }))
+  knowledgeApi.getFileTextContent = () => new Promise(() => {})
+  await render('a')
+  await act(async () => { (container.querySelector('[aria-label="预览文件：a.txt"]') as HTMLButtonElement).click(); await settle() })
+  const dialog = document.querySelector('.file-preview-dialog')!
+  const previousScroll = dialog.querySelector('pre')!.parentElement!
+  const next = dialog.querySelector('[aria-label="下一个素材"]') as HTMLButtonElement
+  previousScroll.scrollTop = 157
+  await act(async () => { next.click(); await settle() })
+  const currentScroll = dialog.querySelector('pre')!.parentElement!
+  assert.notEqual(currentScroll, previousScroll, 'a new material owns a new internal text scroller')
+  assert.equal(currentScroll.scrollTop, 0)
+  assert.match(currentScroll.textContent!, /^b\n/)
+  assert.equal(document.querySelector('.file-preview-dialog'), dialog)
+  assert.equal(dialog.querySelector('[aria-label="下一个素材"]'), next)
 })

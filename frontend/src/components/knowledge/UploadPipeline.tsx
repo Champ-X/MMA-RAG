@@ -1,6 +1,6 @@
 import { translate as t, useTranslation } from '@/i18n'
-import { useId, useRef, useState } from 'react'
-import { Upload, FileUp, FileText, Image, Music2, Film, CheckCircle2, AlertCircle, Loader2, ChevronDown, Clock3, X, RotateCcw } from 'lucide-react'
+import { useId, useRef, useState, type Ref } from 'react'
+import { Upload, FileText, Image, Music2, Film, CheckCircle2, AlertCircle, Loader2, ChevronDown, Clock3, X, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { uploadBatchPercent, uploadProgressMessage, uploadStageLabel } from './uploadProgress'
 import { canRetryDocumentUpload, canRetryStoredUpload, readableUploadError, uploadFailureCopy } from './uploadFailure'
@@ -36,8 +36,21 @@ export interface UploadPipelineProgress {
   files?: UploadFileProgress[]
 }
 
+type DetailFilter = 'attention' | 'all' | 'completed' | 'processing' | 'queued' | 'failed'
+
+function isActiveFile(file: UploadFileProgress) {
+  return file.status === 'processing' || file.status === 'uploading'
+}
+
+function detailPriority(file: UploadFileProgress) {
+  return isActiveFile(file) ? 0 : file.status === 'failed' ? 1 : file.status === 'completed' ? 3 : 2
+}
+
 interface UploadPipelineProps {
   onFileSelect: (files: File[]) => void
+  uploadButtonRef?: Ref<HTMLButtonElement>
+  /** Keep the upload transport mounted while the material list is the primary view. */
+  sourcesCollapsed?: boolean
   isUploading?: boolean
   uploadProgress?: UploadPipelineProgress
   externalFiles?: File[] | null
@@ -101,7 +114,7 @@ function UploadFileTile({ file, onRetry, retryState, retryDisabled }: {
   )
 }
 
-export function UploadPipeline({ onFileSelect, isUploading = false, uploadProgress: progress,
+export function UploadPipeline({ onFileSelect, uploadButtonRef, sourcesCollapsed = false, isUploading = false, uploadProgress: progress,
   externalFiles, onDismissProgress, onRetryFile, retryStates, className, children }: UploadPipelineProps) {
   useTranslation()
   const input = useRef<HTMLInputElement>(null)
@@ -109,15 +122,29 @@ export function UploadPipeline({ onFileSelect, isUploading = false, uploadProgre
   const detailsId = useId()
   const [dragging, setDragging] = useState(false)
   const [expanded, setExpanded] = useState(true)
+  const [detailFilter, setDetailFilter] = useState<DetailFilter>('attention')
   const finished = (progress?.completed ?? 0) + (progress?.failed ?? 0)
   const done = progress?.stage === 'done'
   const entries: UploadFileProgress[] = progress?.files ?? (externalFiles ?? []).map((file, i) => ({ id: String(i), name: file.name, status: 'uploading' }))
   const pending = entries.filter(file => file.status === 'queued').length
-  const processing = entries.filter(file => file.status === 'processing').length
+  const processing = entries.filter(isActiveFile).length
+  const completedEntries = entries.filter(file => file.status === 'completed').length
+  const visibleEntries = entries.filter(file => detailFilter === 'all'
+    || (detailFilter === 'attention' ? file.status !== 'completed'
+      : detailFilter === 'processing' ? isActiveFile(file) : file.status === detailFilter))
+    .sort((a, b) => detailPriority(a) - detailPriority(b))
+  const detailLabels: Record<DetailFilter, string> = {
+    attention: t('待处理事项'), all: t('全部文件'), completed: t('已就绪'), processing: t('处理中'), queued: t('排队'), failed: t('失败'),
+  }
+  const showFilter = (filter: DetailFilter) => {
+    setDetailFilter(filter)
+    setExpanded(true)
+  }
   const displayedPercent = progress ? uploadBatchPercent(progress) : 0
   const select = (files: FileList | null) => {
     if (isUploading || !files?.length) return
     setExpanded(true)
+    setDetailFilter('attention')
     onFileSelect(Array.from(files))
   }
   const hint = (progress?.message && (done && progress.failed ? readableUploadError(progress.message, t('请查看各文件的失败原因和处理建议。')) : progress.message)) || (done
@@ -126,8 +153,8 @@ export function UploadPipeline({ onFileSelect, isUploading = false, uploadProgre
       : progress?.transferProgress === 100 ? t("文件传输完成，正在确认接收。") : t("正在传输文件，请保持页面打开。"))
 
   return (
-    <section className={cn('upload-panel', className)} aria-label={t("上传与导入")} data-busy={isUploading}>
-      <header className="upload-panel__header">
+    <section className={cn('upload-panel', className)} aria-label={t("上传与导入")} data-busy={isUploading} hidden={sourcesCollapsed && !progress}>
+      <header className="upload-panel__header" hidden={sourcesCollapsed}>
         <h3><Upload size={17} strokeWidth={1.8} aria-hidden />{t("添加素材")}</h3>
         <span className="upload-panel__caption">{t("支持批量上传 · 自动解析")}</span>
       </header>
@@ -146,20 +173,34 @@ export function UploadPipeline({ onFileSelect, isUploading = false, uploadProgre
               <span className="upload-batch__percentage">{displayedPercent}%</span>
             </div>
             <progress className="upload-batch__progress" max={100} value={displayedPercent} aria-label={progress.submitted || done ? t("整批文件处理进度") : t("文件传输进度")} />
-            <div className="upload-batch__counts">
-              <span data-state="ready"><i />{t("已就绪")} <b>{progress.completed}</b></span>
-              {processing > 0 && <span data-state="processing"><i />{t("处理中")} <b>{processing}</b></span>}
-              {pending > 0 && <span data-state="queued"><i />{t("排队")} <b>{pending}</b></span>}
-              {progress.failed > 0 && <span data-state="failed"><i />{t("失败")} <b>{progress.failed}</b></span>}
+            <div className="upload-batch__counts" role="group" aria-label={t('筛选上传明细')}>
+              <button type="button" data-state="ready" aria-pressed={detailFilter === 'completed' && expanded}
+                onClick={() => showFilter('completed')}><i aria-hidden />{t("已就绪")} <b>{progress.completed}</b></button>
+              {(processing > 0 || detailFilter === 'processing') && <button type="button" data-state="processing" aria-pressed={detailFilter === 'processing' && expanded}
+                onClick={() => showFilter('processing')}><i aria-hidden />{t("处理中")} <b>{processing}</b></button>}
+              {(pending > 0 || detailFilter === 'queued') && <button type="button" data-state="queued" aria-pressed={detailFilter === 'queued' && expanded}
+                onClick={() => showFilter('queued')}><i aria-hidden />{t("排队")} <b>{pending}</b></button>}
+              {(progress.failed > 0 || detailFilter === 'failed') && <button type="button" data-state="failed" aria-pressed={detailFilter === 'failed' && expanded}
+                onClick={() => showFilter('failed')}><i aria-hidden />{t("失败")} <b>{progress.failed}</b></button>}
             </div>
             {done && <span className="sr-only">{progress.completed + t(" 个成功") + (progress.failed ? ' · ' + progress.failed + t(" 个失败") : '')}</span>}
           </div>
           {entries.length > 0 && expanded && (
             <div className="upload-batch__detail" id={detailsId}>
-              <div className="upload-batch__detail-heading"><span>{t("本次上传")}</span><span>{t("逐个解析，完成后即可使用")}</span></div>
-              <ul className="upload-batch__files" aria-label={t("本次上传文件状态")}>
-                {entries.map(file => <UploadFileTile key={file.id} file={file} onRetry={onRetryFile} retryState={retryStates?.[file.id]} retryDisabled={isUploading} />)}
-              </ul>
+              <div className="upload-batch__detail-heading">
+                <span>{detailLabels[detailFilter]} <b>{visibleEntries.length}</b></span>
+                <button type="button" onClick={() => showFilter(detailFilter === 'all' ? 'attention' : 'all')}>
+                  {detailFilter === 'all' ? t('优先查看待处理') : t('查看全部')}
+                </button>
+              </div>
+              {visibleEntries.length > 0 ? <ul className="upload-batch__files" aria-label={t("本次上传文件状态")}>
+                {visibleEntries.map(file => <UploadFileTile key={file.id} file={file} onRetry={onRetryFile} retryState={retryStates?.[file.id]} retryDisabled={isUploading} />)}
+              </ul> : <p className="upload-batch__empty" role="status">
+                {detailFilter === 'attention' && done && !progress.failed ? <><CheckCircle2 size={20} aria-hidden />{t('本批素材已全部就绪')}</> : t('当前没有这类文件')}
+              </p>}
+              {detailFilter === 'attention' && completedEntries > 0 && <button type="button" className="upload-batch__completed" onClick={() => showFilter('completed')}>
+                <CheckCircle2 size={15} aria-hidden /><span>{t('已完成 {{count}} 项，展开查看', { count: completedEntries })}</span><ChevronDown size={14} aria-hidden />
+              </button>}
             </div>
           )}
           <div className="upload-batch__footer">
@@ -171,8 +212,8 @@ export function UploadPipeline({ onFileSelect, isUploading = false, uploadProgre
         </div>
       )}
 
-      <div className="upload-panel__body" data-has-sources={Boolean(children)}>
-        {!isUploading && <button type="button" className="upload-drop" data-dragging={dragging}
+      <div className="upload-panel__body" data-has-sources={Boolean(children)} hidden={sourcesCollapsed}>
+        {!isUploading && <button ref={uploadButtonRef} type="button" className="upload-drop" data-dragging={dragging}
           aria-label={t("选择本地文件，支持批量上传；也可拖拽文件到此处")}
           onClick={() => input.current?.click()}
           onDragEnter={event => {
@@ -197,9 +238,7 @@ export function UploadPipeline({ onFileSelect, isUploading = false, uploadProgre
             select(event.dataTransfer.files)
           }}>
           <span className="upload-drop__art" aria-hidden>
-            <span className="upload-sheet upload-sheet--audio"><Music2 size={24} strokeWidth={1.5} /><i /><i /></span>
-            <span className="upload-sheet upload-sheet--text"><FileText size={22} strokeWidth={1.5} /><i /><i /></span>
-            <span className="upload-sheet upload-sheet--front"><FileUp size={31} strokeWidth={1.3} /></span>
+            <img src="/knowledge/empty-collection.webp" width={512} height={341} alt="" draggable={false} />
           </span>
           <span className="upload-drop__copy">
             <strong>{dragging ? t("松开即可添加") : t("上传本地文件")}</strong>
@@ -207,7 +246,7 @@ export function UploadPipeline({ onFileSelect, isUploading = false, uploadProgre
           </span>
           <span className="upload-drop__action"><Upload size={16} aria-hidden />{t("选择文件")}</span>
           <span className="upload-drop__formats" aria-hidden>
-            <span><FileText size={12} />{t("文档与表格")}</span><span><Image size={12} />{t("图片")}</span><span><Music2 size={12} />{t("音频")}</span><span><Film size={12} />{t("视频")}</span>
+            <span><FileText size={16} />{t("文档与表格")}</span><span><Image size={16} />{t("图片")}</span><span><Music2 size={16} />{t("音频")}</span><span><Film size={16} />{t("视频")}</span>
           </span>
         </button>}
         <input ref={input} type="file" multiple disabled={isUploading} className="hidden" aria-label={t("选择知识库上传文件")}

@@ -214,7 +214,7 @@ export function AppLayout() {
           <ChatInterface />
         </div>
         <div
-          className={cn('flex-1 min-h-0 overflow-hidden p-2 md:p-3', !isKnowledgeActive && 'hidden')}
+          className={cn('flex-1 min-h-0 overflow-clip p-2 md:p-3', !isKnowledgeActive && 'hidden')}
           aria-hidden={!isKnowledgeActive}
           aria-label={t("知识库工作台")}
           hidden={!isKnowledgeActive}

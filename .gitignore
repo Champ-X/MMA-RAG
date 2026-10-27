@@ -104,8 +104,11 @@ backend/.env
 !.env.example
 
 # Local design proposals, generated intermediates and visual review captures.
-# Shipping architecture assets live under frontend/public/architecture/atlas/.
+# Keep shipping assets under frontend/public/ tracked; only local drafts and
+# review captures belong in these ignored directories.
 /output/
+/docs/previews/
+/frontend/design-previews/
 /.impeccable/review/
 /.impeccable/review-gallery/
 !backend/.env.example
