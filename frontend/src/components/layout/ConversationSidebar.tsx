@@ -67,11 +67,15 @@ const railTransition =
 
 const SIDEBAR_WIDTH_STORAGE_KEY = 'tessmora.sidebar.width.v1'
 const SIDEBAR_DEFAULT_WIDTH = 264
-const SIDEBAR_MIN_WIDTH = 224
+// The 31px wordmark needs ~127px, plus the 62px logo button, 6px gap,
+// 32px header padding and border. Keep breathing room instead of truncating it.
+const SIDEBAR_MIN_WIDTH = 256
 const SIDEBAR_MAX_WIDTH = 420
+const SIDEBAR_COMPACT_BREAKPOINT = 640
 
 function getSidebarMaxWidth() {
-  if (typeof window === 'undefined') return SIDEBAR_MAX_WIDTH
+  // Compact mode has a fixed 72px rail; preserve its remembered expanded width.
+  if (typeof window === 'undefined' || window.innerWidth <= SIDEBAR_COMPACT_BREAKPOINT) return SIDEBAR_MAX_WIDTH
   return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, window.innerWidth - 420))
 }
 
@@ -83,7 +87,7 @@ function getInitialSidebarWidth() {
   if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH
 
   const savedWidth = Number.parseInt(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY) ?? '', 10)
-  return Number.isFinite(savedWidth) ? clampSidebarWidth(savedWidth) : SIDEBAR_DEFAULT_WIDTH
+  return clampSidebarWidth(Number.isFinite(savedWidth) ? savedWidth : SIDEBAR_DEFAULT_WIDTH)
 }
 
 const brandWordmarkStyle = {
@@ -306,6 +310,7 @@ export function ConversationSidebar({
   const [searchQuery, setSearchQuery] = useState('')
   const [activeSearchResult, setActiveSearchResult] = useState<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(getInitialSidebarWidth)
+  const [sidebarMaxWidth, setSidebarMaxWidth] = useState(getSidebarMaxWidth)
   const [isResizing, setIsResizing] = useState(false)
   const normalizedSearchQuery = normalizeSearchText(searchQuery)
   const orderedSessions = useMemo(() => sortConversationSessions(sessions), [sessions])
@@ -418,14 +423,25 @@ export function ConversationSidebar({
       setSidebarWidth(clampSidebarWidth(event.clientX - resizeOriginRef.current))
     }
 
+    const handleViewportResize = () => {
+      setSidebarMaxWidth(getSidebarMaxWidth())
+      if (window.innerWidth <= SIDEBAR_COMPACT_BREAKPOINT) {
+        finishResize()
+      } else {
+        setSidebarWidth(current => clampSidebarWidth(current))
+      }
+    }
+
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', finishResize)
     window.addEventListener('pointercancel', finishResize)
+    window.addEventListener('resize', handleViewportResize)
 
     return () => {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', finishResize)
       window.removeEventListener('pointercancel', finishResize)
+      window.removeEventListener('resize', handleViewportResize)
       finishResize()
     }
   }, [])
@@ -547,7 +563,7 @@ export function ConversationSidebar({
   }
 
   const handleResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (collapsed || (event.pointerType === 'mouse' && event.button !== 0) || window.innerWidth <= 640) {
+    if (collapsed || (event.pointerType === 'mouse' && event.button !== 0) || window.innerWidth <= SIDEBAR_COMPACT_BREAKPOINT) {
       return
     }
 
@@ -567,7 +583,7 @@ export function ConversationSidebar({
   }
 
   const handleResizeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (collapsed) return
+    if (collapsed || window.innerWidth <= SIDEBAR_COMPACT_BREAKPOINT) return
 
     const step = event.shiftKey ? 32 : 16
     let nextWidth: number | null = null
@@ -801,7 +817,7 @@ export function ConversationSidebar({
             )}
           >
             <Avatar
-              src="/tessmora-avatar.png"
+              src="/tessmora-avatar-capybara.webp"
               alt="Tessmora"
               size="sm"
               fallback={<User className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />}
@@ -888,7 +904,7 @@ export function ConversationSidebar({
           aria-label={t("调整侧栏宽度")}
           aria-orientation="vertical"
           aria-valuemin={SIDEBAR_MIN_WIDTH}
-          aria-valuemax={getSidebarMaxWidth()}
+          aria-valuemax={sidebarMaxWidth}
           aria-valuenow={sidebarWidth}
           tabIndex={0}
           onPointerDown={handleResizeStart}
