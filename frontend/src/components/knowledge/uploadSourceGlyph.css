@@ -1,0 +1,108 @@
+/* Each symbol owns its palette, including when rendered outside the upload panel. */
+.upload-source-glyph {
+  --source-glyph-ink: #7960ad;
+  --source-glyph-wash: #e9dff8;
+  --source-glyph-detail: #7960ad;
+  --source-glyph-paper: #fffdf9;
+  --source-glyph-accent: #a8752d;
+  --source-glyph-accent-wash: #ffe4ac;
+  --source-glyph-frame: #a7b8d3;
+  --source-glyph-frame-wash: #f0f4fc;
+  --source-glyph-lens: #5476a3;
+  --source-glyph-lens-wash: #e4effb;
+  display: block;
+  flex-shrink: 0;
+  color: var(--source-glyph-ink);
+  stroke: var(--source-glyph-ink);
+  pointer-events: none;
+}
+
+.upload-source-glyph[data-source-glyph='document'],
+.upload-source-glyph[data-source-glyph='link'] {
+  --source-glyph-ink: #5576a8;
+  --source-glyph-wash: #e0eafb;
+  --source-glyph-detail: #5576a8;
+}
+.upload-source-glyph[data-source-glyph='folder'] {
+  --source-glyph-ink: #9d702d;
+  --source-glyph-wash: #ffe3aa;
+  --source-glyph-detail: #9d702d;
+}
+.upload-source-glyph[data-source-glyph='link'] {
+  --source-glyph-accent: #7960ad;
+  --source-glyph-accent-wash: #e9dff8;
+}
+.upload-source-glyph[data-source-glyph='image'] {
+  --source-glyph-ink: #347e6a;
+  --source-glyph-wash: #d2eddf;
+  --source-glyph-detail: #347e6a;
+}
+.upload-source-glyph[data-source-glyph='news'] {
+  --source-glyph-ink: #aa5b6d;
+  --source-glyph-wash: #f6e0e6;
+  --source-glyph-detail: #aa5b6d;
+}
+
+.dark .upload-source-glyph {
+  --source-glyph-ink: #c4a7ed;
+  --source-glyph-wash: #4d3c62;
+  --source-glyph-detail: #c4a7ed;
+  --source-glyph-paper: #303139;
+  --source-glyph-accent: #e9c282;
+  --source-glyph-accent-wash: #654e30;
+  --source-glyph-frame: #667fa3;
+  --source-glyph-frame-wash: #293342;
+  --source-glyph-lens: #adc9ed;
+  --source-glyph-lens-wash: #354b67;
+}
+.dark .upload-source-glyph[data-source-glyph='document'],
+.dark .upload-source-glyph[data-source-glyph='link'] {
+  --source-glyph-ink: #a9c4ed;
+  --source-glyph-wash: #354968;
+  --source-glyph-detail: #a9c4ed;
+}
+.dark .upload-source-glyph[data-source-glyph='folder'] {
+  --source-glyph-ink: #e9c282;
+  --source-glyph-wash: #654e30;
+  --source-glyph-detail: #e9c282;
+}
+.dark .upload-source-glyph[data-source-glyph='link'] {
+  --source-glyph-accent: #c4a7ed;
+  --source-glyph-accent-wash: #4d3c62;
+}
+.dark .upload-source-glyph[data-source-glyph='image'] {
+  --source-glyph-ink: #8fd6bd;
+  --source-glyph-wash: #2b5148;
+  --source-glyph-detail: #8fd6bd;
+}
+.dark .upload-source-glyph[data-source-glyph='news'] {
+  --source-glyph-ink: #e6a7b4;
+  --source-glyph-wash: #5b3d49;
+  --source-glyph-detail: #e6a7b4;
+}
+
+.upload-source-glyph-surface { fill: var(--source-glyph-wash); }
+.upload-source-glyph-paper { fill: var(--source-glyph-paper); }
+.upload-source-glyph-detail { stroke: var(--source-glyph-detail); }
+.upload-source-glyph-accent { fill: var(--source-glyph-accent-wash); stroke: var(--source-glyph-accent); }
+.upload-source-glyph-accent-line { stroke: var(--source-glyph-accent); }
+.upload-source-glyph-frame { fill: var(--source-glyph-frame-wash); stroke: var(--source-glyph-frame); }
+.upload-source-glyph-frame-line { stroke: var(--source-glyph-frame); }
+.upload-source-glyph-lens { fill: var(--source-glyph-lens-wash); stroke: var(--source-glyph-lens); }
+.upload-source-glyph-lens-line { stroke: var(--source-glyph-lens); }
+
+@media (forced-colors: active) {
+  .upload-source-glyph[data-source-glyph],
+  .dark .upload-source-glyph[data-source-glyph] {
+    --source-glyph-ink: CanvasText;
+    --source-glyph-wash: Canvas;
+    --source-glyph-detail: CanvasText;
+    --source-glyph-paper: Canvas;
+    --source-glyph-accent: CanvasText;
+    --source-glyph-accent-wash: Canvas;
+    --source-glyph-frame: CanvasText;
+    --source-glyph-frame-wash: Canvas;
+    --source-glyph-lens: CanvasText;
+    --source-glyph-lens-wash: Canvas;
+  }
+}

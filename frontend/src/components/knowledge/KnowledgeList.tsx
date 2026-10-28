@@ -5,6 +5,7 @@ import { flushSync } from 'react-dom'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Plus, Upload, Search, Trash2, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, ChevronDown, ChevronRight, AlertCircle, RotateCcw } from 'lucide-react'
 import { UploadPipeline, type UploadPipelineProgress, type UploadFileProgress } from './UploadPipeline'
+import { UploadSourceGlyph } from './UploadSourceGlyph'
 import { KnowledgeLibraryHeader } from './KnowledgeLibraryHeader'
 import { KnowledgeSpaceCard } from './KnowledgeSpaceCard'
 import { getKnowledgeDefaultCover } from './knowledgeDefaultCover'
@@ -3388,7 +3389,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
             <KnowledgeDetailNavigation id={fileListDomId} section={detailSection}
               onSectionChange={section => { setDetailSection(section); if (section === 'topics') setTopicsVisited(true) }} collapsibleUpload={hasMaterials}
               uploadExpanded={uploadExpanded} onToggleUpload={() => setUploadExpanded(value => !value)} />
-            <div id={`${fileListDomId}-upload`} hidden={hasMaterials && !uploadExpanded && !uploadProgress}>
+            <div className="knowledge-upload-disclosure" id={`${fileListDomId}-upload`} hidden={hasMaterials && !uploadExpanded && !uploadProgress}>
             {/* 上传与导入：拖拽/选择上传与自动导入同框 */}
             <UploadPipeline
               key={activeKbId}
@@ -3411,13 +3412,13 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                     <button type="button" className="upload-source" data-source="document" disabled={uploading}
                       onClick={() => setManualInputDraft({ mode: 'create', initialFilename: t("未命名文档.md"), initialContent: '' })}
                       aria-label={t("新建 Markdown 文档，输入文本后直接分块、向量化并入库")}>
-                      <span className="upload-source__icon"><Pencil size={19} strokeWidth={1.7} aria-hidden /></span>
+                      <span className="upload-source__icon"><UploadSourceGlyph name="document" size={32} /></span>
                       <span className="upload-source__copy"><strong>{t("新建文档")}</strong><small>{t("编写或粘贴内容")}</small></span>
                       <ChevronRight className="upload-source__arrow" size={14} aria-hidden />
                     </button>
                     <button type="button" className="upload-source" data-source="folder" disabled={uploading}
                       onClick={() => setShowImportFolderModal(true)} aria-label={t("从文件夹导入，支持本地或服务端路径")}>
-                      <span className="upload-source__icon"><FolderOpen size={19} strokeWidth={1.7} aria-hidden /></span>
+                      <span className="upload-source__icon"><UploadSourceGlyph name="folder" size={32} /></span>
                       <span className="upload-source__copy"><strong>{t("文件夹导入")}</strong><small>{t("批量添加目录素材")}</small></span>
                       <ChevronRight className="upload-source__arrow" size={14} aria-hidden />
                     </button>
@@ -3428,19 +3429,19 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                   <div className="upload-source-group__items upload-source-group__items--web">
                     <button type="button" className="upload-source" data-source="link" disabled={uploading}
                       onClick={() => setShowImportUrlModal(true)} aria-label={t("从 URL 导入，支持网页或文件直链")}>
-                      <span className="upload-source__icon"><Link2 size={19} strokeWidth={1.7} aria-hidden /></span>
+                      <span className="upload-source__icon"><UploadSourceGlyph name="link" size={28} /></span>
                       <span className="upload-source__copy"><strong>{t("链接导入")}</strong><small>{t("网页 / 文件")}</small></span>
                       <ChevronRight className="upload-source__arrow" size={14} aria-hidden />
                     </button>
                     <button type="button" className="upload-source" data-source="image" disabled={uploading}
                       onClick={() => setShowImportSearchModal(true)} aria-label={t("打开图片搜索导入，按关键词批量导入")}>
-                      <span className="upload-source__icon"><ImagePlus size={19} strokeWidth={1.7} aria-hidden /></span>
+                      <span className="upload-source__icon"><UploadSourceGlyph name="image" size={28} /></span>
                       <span className="upload-source__copy"><strong>{t("图片搜索")}</strong><small>{t("按关键词搜图")}</small></span>
                       <ChevronRight className="upload-source__arrow" size={14} aria-hidden />
                     </button>
                     <button type="button" className="upload-source" data-source="news" disabled={uploading}
                       onClick={() => setShowImportHotTopicsModal(true)} aria-label={t("导入热点资讯，自动抓取新闻素材")}>
-                      <span className="upload-source__icon"><Newspaper size={19} strokeWidth={1.7} aria-hidden /></span>
+                      <span className="upload-source__icon"><UploadSourceGlyph name="news" size={28} /></span>
                       <span className="upload-source__copy"><strong>{t("热点资讯")}</strong><small>{t("按话题收集")}</small></span>
                       <ChevronRight className="upload-source__arrow" size={14} aria-hidden />
                     </button>

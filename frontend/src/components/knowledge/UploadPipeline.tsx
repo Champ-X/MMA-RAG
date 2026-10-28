@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { uploadBatchPercent, uploadProgressMessage, uploadStageLabel } from './uploadProgress'
 import { canRetryDocumentUpload, canRetryStoredUpload, readableUploadError, uploadFailureCopy } from './uploadFailure'
 import type { UploadFailureFields } from '@/types/upload'
+import { UploadSourceGlyph } from './UploadSourceGlyph'
 import './uploadPipeline.css'
 
 export type PipelineStage = 'idle' | 'minio' | 'parsing' | 'vectorizing' | 'portrait' | 'done'
@@ -155,7 +156,7 @@ export function UploadPipeline({ onFileSelect, uploadButtonRef, sourcesCollapsed
   return (
     <section className={cn('upload-panel', className)} aria-label={t("上传与导入")} data-busy={isUploading} hidden={sourcesCollapsed && !progress}>
       <header className="upload-panel__header" hidden={sourcesCollapsed}>
-        <h3><Upload size={17} strokeWidth={1.8} aria-hidden />{t("添加素材")}</h3>
+        <h3><UploadSourceGlyph name="upload" size={27} />{t("添加素材")}</h3>
         <span className="upload-panel__caption">{t("支持批量上传 · 自动解析")}</span>
       </header>
 
@@ -239,6 +240,7 @@ export function UploadPipeline({ onFileSelect, uploadButtonRef, sourcesCollapsed
           }}>
           <span className="upload-drop__art" aria-hidden>
             <img src="/knowledge/empty-collection.webp" width={512} height={341} alt="" draggable={false} />
+            <span className="upload-drop__arrival"><UploadSourceGlyph name="upload" size={27} /></span>
           </span>
           <span className="upload-drop__copy">
             <strong>{dragging ? t("松开即可添加") : t("上传本地文件")}</strong>
