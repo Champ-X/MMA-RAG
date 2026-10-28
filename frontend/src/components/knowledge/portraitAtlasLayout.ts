@@ -129,8 +129,8 @@ export function layoutPortraitClusters(
 
   const safeWidth = positiveDimension(width)
   const safeHeight = positiveDimension(height)
-  // Keep 20px around a normal chart, while still handling a hidden/tiny host.
-  const margin = Math.min(20, safeWidth / 4, safeHeight / 4)
+  // Leave ~44px for orbit keyword chips around a normal chart.
+  const margin = Math.min(44, safeWidth / 4, safeHeight / 4)
   const innerWidth = safeWidth - margin * 2
   const innerHeight = safeHeight - margin * 2
   const gap = Math.min(14, Math.min(innerWidth, innerHeight) / 10)

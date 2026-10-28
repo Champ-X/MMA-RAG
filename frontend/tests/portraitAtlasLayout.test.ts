@@ -32,26 +32,27 @@ test('empty and single-topic atlases have finite, centered geometry', () => {
   assert.equal(nodes.length, 1)
   assert.equal(nodes[0].x, 320)
   assert.equal(nodes[0].y, 210)
-  assertContainedAndSeparate(nodes, 640, 420, 20)
+  assertContainedAndSeparate(nodes, 640, 420, 44)
 })
 
 test('the six-topic screenshot data stays within the chart at desktop and narrow sizes', () => {
   for (const [width, height] of [[680, 420], [320, 360], [180, 480], [1000, 240]]) {
     const nodes = layoutPortraitClusters(clusters([20, 7, 20, 19, 4, 2]), width, height)
     assert.equal(nodes.length, 6)
-    assertContainedAndSeparate(nodes, width, height, 20)
+    assertContainedAndSeparate(nodes, width, height, Math.min(44, width / 4, height / 4))
   }
 })
 
 test('four topics use a wide viewport without changing area ratios or consuming the margin', () => {
   const input = clusters([18, 6, 6, 5])
-  for (const [width, height, minimumDiameter] of [[600, 320, 190], [740, 340, 240]]) {
+  for (const [width, height, minimumDiameter] of [[600, 320, 150], [740, 340, 190]]) {
     const nodes = layoutPortraitClusters(input, width, height)
-    assertContainedAndSeparate(nodes, width, height, 20)
+    const edge = Math.min(44, width / 4, height / 4)
+    assertContainedAndSeparate(nodes, width, height, edge)
     assert.ok(nodes[0].r * 2 >= minimumDiameter, 'a circular envelope must not unnecessarily shrink this wide layout')
     const left = Math.min(...nodes.map(node => node.x - node.r))
     const right = Math.max(...nodes.map(node => node.x + node.r))
-    assert.ok(right - left >= (width - 40) * 0.98, 'the four-topic layout should use the available horizontal span')
+    assert.ok(right - left >= (width - edge * 2) * 0.98, 'the four-topic layout should use the available horizontal span')
     assert.ok(Math.abs((left + right) / 2 - width / 2) < 1e-7)
     for (let i = 0; i < nodes.length; i += 1) {
       assert.ok(Math.abs((nodes[i].r / nodes[0].r) ** 2 - input[i].cluster_size / input[0].cluster_size) < 1e-10)
@@ -71,14 +72,14 @@ test('circle area ratios match positive sample counts, including large dispariti
     const relativeError = Math.abs((node.r / first.r) ** 2 / cluster.cluster_size - 1)
     assert.ok(relativeError < 1e-10, `${node.id} lost its area ratio`)
   }
-  assertContainedAndSeparate(nodes, 680, 420, 20)
+  assertContainedAndSeparate(nodes, 680, 420, 44)
 })
 
 test('many equally sized topics neither overlap nor leave the viewport', () => {
   for (const [width, height] of [[640, 420], [220, 320]]) {
     const nodes = layoutPortraitClusters(clusters(Array.from({ length: 80 }, () => 1)), width, height)
     assert.equal(nodes.length, 80)
-    assertContainedAndSeparate(nodes, width, height, 20)
+    assertContainedAndSeparate(nodes, width, height, Math.min(44, width / 4, height / 4))
     assert.ok(nodes.every((node) => Math.abs(node.r - nodes[0].r) < 1e-10))
   }
 })
@@ -86,14 +87,14 @@ test('many equally sized topics neither overlap nor leave the viewport', () => {
 test('extreme finite positive counts do not underflow radii to zero', () => {
   const input = clusters([Number.MIN_VALUE, 1e-300, 1, 1e300, Number.MAX_VALUE])
   const nodes = layoutPortraitClusters(input, 680, 420)
-  assertContainedAndSeparate(nodes, 680, 420, 20)
+  assertContainedAndSeparate(nodes, 680, 420, 44)
   const scales = input.map(cluster => nodes.find(node => node.id === cluster.cluster_id)!.r / Math.sqrt(cluster.cluster_size))
   for (const scale of scales) assert.ok(Math.abs(scale / scales[2] - 1) < 1e-8)
 })
 
 test('uniformly subnormal positive counts retain finite equally scaled circles', () => {
   const nodes = layoutPortraitClusters(clusters([Number.MIN_VALUE, Number.MIN_VALUE, Number.MIN_VALUE]), 600, 320)
-  assertContainedAndSeparate(nodes, 600, 320, 20)
+  assertContainedAndSeparate(nodes, 600, 320, 44)
   assert.ok(nodes.every(node => node.r === nodes[0].r))
 })
 

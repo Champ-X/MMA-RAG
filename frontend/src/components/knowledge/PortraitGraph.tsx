@@ -11,6 +11,7 @@ import { ScatterChart, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { knowledgeApi } from '@/services/api_client'
 import { TopicAtlas } from './TopicAtlas'
+import { TopicAtlasGlyph } from './TopicAtlasGlyph'
 import { PortraitStatistics } from './PortraitStatistics'
 
 export interface PortraitCluster {
@@ -290,21 +291,23 @@ export function PortraitGraph({
         {portraitSummaryText}
       </span>
       <Card className="portrait-atlas-card">
-        <CardHeader className="portrait-atlas-header">
+        <CardHeader className="portrait-atlas-header space-y-0">
           <div className="portrait-atlas-heading">
             <span className="portrait-atlas-mark" aria-hidden="true">
-              <svg viewBox="0 0 36 36" fill="none">
-                <circle cx="14" cy="20" r="10" fill="#cce5de" stroke="#51978c" strokeWidth="1.2" />
-                <circle cx="28" cy="10" r="5" fill="#dce6f7" stroke="#7193c7" strokeWidth="1.2" />
-                <circle cx="29" cy="28" r="3.5" fill="#f0e2c6" stroke="#bca16a" strokeWidth="1.1" />
-                <circle cx="14" cy="20" r="2" fill="#378478" />
-              </svg>
+              <TopicAtlasGlyph name="constellation" size={29} />
             </span>
             <div>
               <CardTitle className="portrait-atlas-title">{t("主题星图")}</CardTitle>
-              <p>{t("从内容分布，发现主题与线索")}</p>
+              <p>{t("让分散的内容，聚成清晰的主题")}</p>
             </div>
           </div>
+          <PortraitStatistics
+            documentCount={documentCount}
+            textCount={textCount}
+            imageCount={imageCount}
+            audioCount={audioCount}
+            videoShotCount={videoShotCount}
+          />
           {clusters.length > 0 && (
             <button
               type="button"
@@ -322,18 +325,18 @@ export function PortraitGraph({
           {loading ? (
             <div className="flex h-80 items-center justify-center" role="status" aria-live="polite" aria-label={t("正在加载知识库主题画像")}>
               <div className="text-center">
-                <div className="mx-auto mb-2 h-8 w-8 motion-safe:animate-spin rounded-full border-2 border-indigo-400 border-t-fuchsia-400 dark:border-indigo-500 dark:border-t-fuchsia-500" aria-hidden />
+                <div className="mx-auto mb-2 h-8 w-8 motion-safe:animate-spin rounded-full border-2 border-emerald-100 border-t-emerald-700 dark:border-emerald-900 dark:border-t-emerald-300" aria-hidden />
                 <p className="text-muted-foreground">{t("正在加载画像…")}</p>
               </div>
             </div>
           ) : clusters.length === 0 ? (
-            <div className="flex h-80 flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-gradient-to-br from-indigo-50/40 via-transparent to-fuchsia-50/40 dark:from-indigo-950/30 dark:via-transparent dark:to-fuchsia-950/30" role={generating ? 'status' : 'region'} aria-label={generating ? t("正在生成主题画像") : t("主题画像空状态")}>
+            <div className="portrait-atlas-empty flex h-80 flex-col items-center justify-center gap-4" role={generating ? 'status' : 'region'} aria-label={generating ? t("正在生成主题画像") : t("主题画像空状态")}>
               {generating ? (
                 <>
                   <div className="relative">
-                    <div className="h-16 w-16 motion-safe:animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600 dark:border-indigo-800 dark:border-t-indigo-400" aria-hidden />
+                    <div className="h-16 w-16 motion-safe:animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-700 dark:border-emerald-900 dark:border-t-emerald-300" aria-hidden />
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <ScatterChart className="h-6 w-6 text-indigo-600 dark:text-indigo-400" strokeWidth={2} aria-hidden />
+                      <ScatterChart className="h-6 w-6 text-emerald-700 dark:text-emerald-300" strokeWidth={2} aria-hidden />
                     </div>
                   </div>
                   <div className="text-center space-y-2">
@@ -341,16 +344,16 @@ export function PortraitGraph({
                     <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm px-4">
                        {t("正在分析知识库内容并生成主题聚类，请稍候…")} </p>
                     <div className="flex items-center justify-center gap-2 text-xs text-slate-400 dark:text-slate-500">
-                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 motion-safe:animate-pulse" aria-hidden />
-                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 motion-safe:animate-pulse" style={{ animationDelay: '0.2s' }} aria-hidden />
-                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 motion-safe:animate-pulse" style={{ animationDelay: '0.4s' }} aria-hidden />
+                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 motion-safe:animate-pulse" aria-hidden />
+                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 motion-safe:animate-pulse" style={{ animationDelay: '0.2s' }} aria-hidden />
+                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 motion-safe:animate-pulse" style={{ animationDelay: '0.4s' }} aria-hidden />
                     </div>
                   </div>
                 </>
               ) : (
                 <>
                   <ScatterChart
-                    className="h-10 w-10 text-indigo-600 drop-shadow-[0_1px_2px_rgba(99,102,241,0.2)] dark:text-indigo-400 dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
+                    className="h-10 w-10 text-emerald-700 dark:text-emerald-300"
                     strokeWidth={2}
                     aria-hidden
                   />
@@ -396,21 +399,11 @@ export function PortraitGraph({
           {generating && clusters.length > 0 && (
             <p className="flex items-center gap-2 rounded-lg bg-teal-50 px-3 py-2 text-xs text-teal-700 dark:bg-teal-950/40 dark:text-teal-200" role="status">
               <RefreshCw className="h-3.5 w-3.5 motion-safe:animate-spin" aria-hidden />
-               {t("正在更新主题，完成前仍可浏览当前星图。")} </p>
+               {t("正在更新主题，完成前仍可浏览当前主题。")} </p>
           )}
           {genError && clusters.length > 0 && <p className="text-xs text-destructive" role="alert">{genError}</p>}
         </CardContent>
       </Card>
-
-      <PortraitStatistics
-        key={knowledgeBaseId}
-        topicCount={loading ? undefined : clusters.length}
-        documentCount={documentCount}
-        textCount={textCount}
-        imageCount={imageCount}
-        audioCount={audioCount}
-        videoShotCount={videoShotCount}
-      />
 
     </div>
   )

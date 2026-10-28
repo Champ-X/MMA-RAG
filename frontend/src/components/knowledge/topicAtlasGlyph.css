@@ -1,0 +1,55 @@
+.topic-atlas-glyph {
+  --topic-symbol-mint: #417c6c;
+  --topic-symbol-mint-wash: #d5ecdf;
+  --topic-symbol-mint-selected: #b9dfcc;
+  --topic-symbol-violet: #80659e;
+  --topic-symbol-violet-wash: #e9def3;
+  --topic-symbol-violet-selected: #d8c5eb;
+  --topic-symbol-amber: #a57335;
+  --topic-symbol-amber-wash: #f7e1b9;
+  --topic-symbol-connection: #87a69b;
+  --topic-symbol-paper: #fffefa;
+  display: block;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+.dark .topic-atlas-glyph {
+  --topic-symbol-mint: #9bd1b9;
+  --topic-symbol-mint-wash: #314f43;
+  --topic-symbol-mint-selected: #426753;
+  --topic-symbol-violet: #c7a9e7;
+  --topic-symbol-violet-wash: #4b3b5a;
+  --topic-symbol-violet-selected: #604b72;
+  --topic-symbol-amber: #e8be7f;
+  --topic-symbol-amber-wash: #654e30;
+  --topic-symbol-connection: #769a8c;
+  --topic-symbol-paper: #26372f;
+}
+.topic-atlas-glyph__connection { stroke: var(--topic-symbol-connection); stroke-width: 1.4; }
+.topic-atlas-glyph__mint { fill: var(--topic-symbol-mint-wash); stroke: var(--topic-symbol-mint); }
+.topic-atlas-glyph__violet { fill: var(--topic-symbol-violet-wash); stroke: var(--topic-symbol-violet); }
+.topic-atlas-glyph__amber { fill: var(--topic-symbol-amber-wash); stroke: var(--topic-symbol-amber); }
+.topic-atlas-glyph__junction { fill: var(--topic-symbol-mint); stroke: var(--topic-symbol-paper); stroke-width: 1; }
+.topic-atlas-glyph__sheet { fill: var(--topic-symbol-paper); stroke: var(--topic-symbol-violet); }
+.topic-atlas-glyph__line { stroke: var(--topic-symbol-violet); }
+.atlas-view-switch button[aria-pressed='true'] .topic-atlas-glyph {
+  --topic-symbol-mint-wash: var(--topic-symbol-mint-selected);
+  --topic-symbol-violet-wash: var(--topic-symbol-violet-selected);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .topic-atlas-glyph circle, .topic-atlas-glyph rect { transition: fill .16s ease-out; }
+}
+@media (forced-colors: active) {
+  .topic-atlas-glyph, .dark .topic-atlas-glyph {
+    --topic-symbol-mint: CanvasText;
+    --topic-symbol-mint-wash: Canvas;
+    --topic-symbol-mint-selected: Canvas;
+    --topic-symbol-violet: CanvasText;
+    --topic-symbol-violet-wash: Canvas;
+    --topic-symbol-violet-selected: Canvas;
+    --topic-symbol-amber: CanvasText;
+    --topic-symbol-amber-wash: Canvas;
+    --topic-symbol-connection: CanvasText;
+    --topic-symbol-paper: Canvas;
+  }
+}
