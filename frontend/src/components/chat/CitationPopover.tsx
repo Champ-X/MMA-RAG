@@ -93,13 +93,17 @@ export function CitationPopover({ open, rect, item, displayNumber, anchor, works
       viewBox={`${layout.clip.left} ${layout.clip.top} ${layout.clip.width} ${layout.clip.height}`}
       style={{ left: layout.clip.left, top: layout.clip.top, width: layout.clip.width, height: layout.clip.height }}>
       <defs><linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={connector.fromX} y1={connector.fromY} x2={connector.toX} y2={connector.toY}>
-        <stop offset="0" stopColor="currentColor" stopOpacity=".4" />
-        <stop offset=".55" stopColor="currentColor" stopOpacity=".7" />
-        <stop offset="1" stopColor="currentColor" stopOpacity=".9" />
+        <stop offset="0" stopColor="var(--citation-line-start)" stopOpacity=".8" />
+        <stop offset=".55" stopColor="currentColor" />
+        <stop offset="1" stopColor="var(--citation-line-end)" stopOpacity=".9" />
       </linearGradient></defs>
-      <path d={connector.path} stroke={`url(#${gradientId})`} />
-      <circle className="citation-connector__origin" cx={connector.fromX} cy={connector.fromY} r="2.5" />
-      <circle className="citation-connector__end" cx={connector.toX - 1} cy={connector.toY} r="2.5" />
+      <path className="citation-connector__soft-edge" d={connector.path} />
+      <path className="citation-connector__stroke" d={connector.path} stroke={`url(#${gradientId})`} />
+      <circle className="citation-connector__halo" cx={connector.fromX} cy={connector.fromY} r="6" />
+      <circle className="citation-connector__origin" cx={connector.fromX} cy={connector.fromY} r="3" />
+      <circle className="citation-connector__pin" cx={connector.fromX} cy={connector.fromY} r="1" />
+      <circle className="citation-connector__socket" cx={connector.toX - 1} cy={connector.toY} r="5" />
+      <circle className="citation-connector__end" cx={connector.toX - 1} cy={connector.toY} r="2" />
     </svg>}
     <aside ref={panelRef} className="citation-rail" role="dialog" aria-modal="false" aria-labelledby={titleId}
       data-wide={layout?.wide} data-kind={item.type}

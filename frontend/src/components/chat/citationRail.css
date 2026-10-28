@@ -10,17 +10,33 @@
   box-shadow: 0 3px 12px -8px #25304426;
 }
 .dark .answer-sheet { color: #e2e8f0; background: #172131; border-color: #303d50; box-shadow: 0 3px 12px -8px #0005; }
-[data-source-active='true'] { outline: 1.5px solid #9b8bb9 !important; outline-offset: 3px; border-radius: 5px; }
-::highlight(tessmora-citation-context) { background-color: #e9e1f5b3; }
-.dark ::highlight(tessmora-citation-context) { background-color: #65507a99; }
-.rag-markdown [data-source-context='true'] { background-color: #e9e1f580; border-radius: 4px; box-shadow: -3px 0 0 #a38bbf; }
-.dark .rag-markdown [data-source-context='true'] { background-color: #65507a66; box-shadow: -3px 0 0 #ad94ca; }
-.citation-connector { position: fixed; z-index: 1; pointer-events: none; overflow: hidden; color: #9a8cb4; }
-.citation-connector path { fill: none; stroke-width: 1.4; stroke-linecap: round; }
-.citation-connector__origin { fill: #fffefc; stroke: currentColor; stroke-width: 1.25; }
-.citation-connector__end { fill: currentColor; stroke: none; }
-.dark .citation-connector { color: #b5a0d1; }
-.dark .citation-connector__origin { fill: #172131; }
+[data-source-active='true'] { outline: 1px solid #a58cbd !important; outline-offset: 2px; border-radius: 5px; box-shadow: 0 0 0 5px #a58cbd12; }
+/* An annotation follows each line of prose, without changing text or line boxes. */
+::highlight(tessmora-citation-context) {
+  background-color: #e9dff44d;
+  text-decoration: underline solid #ab91c5b3 1.5px;
+  text-underline-offset: .18em;
+}
+.dark ::highlight(tessmora-citation-context) { background-color: #8c6caf26; text-decoration-color: #b59aceb3; }
+.rag-markdown [data-source-context='true'] {
+  background-color: #e9dff433; border-radius: 4px;
+  text-decoration: underline solid #ab91c5b3 1.5px;
+  text-underline-offset: .18em;
+}
+.dark .rag-markdown [data-source-context='true'] { background-color: #8c6caf26; text-decoration-color: #b59aceb3; }
+.dark [data-source-active='true'] { outline-color: #b69bce !important; box-shadow: 0 0 0 5px #b69bce14; }
+.citation-connector {
+  --citation-line-start: #b49bce; --citation-line-end: #827096; --citation-pin-surface: #fffefc;
+  position: fixed; z-index: 1; pointer-events: none; overflow: hidden; color: #9a82b4;
+}
+.citation-connector path { fill: none; stroke-linecap: round; }
+.citation-connector__soft-edge { stroke: currentColor; stroke-width: 5; opacity: .09; }
+.citation-connector__stroke { stroke-width: 1.4; }
+.citation-connector__halo { fill: currentColor; fill-opacity: .1; }
+.citation-connector__origin, .citation-connector__socket { fill: var(--citation-pin-surface); stroke: currentColor; stroke-width: 1; }
+.citation-connector__socket { stroke-opacity: .35; }
+.citation-connector__pin, .citation-connector__end { fill: currentColor; }
+.dark .citation-connector { --citation-line-start: #c2a6df; --citation-line-end: #aa90c4; --citation-pin-surface: #211f2d; color: #b59ace; }
 .citation-rail {
   --inspector-ink: #303047; --inspector-muted: #777383; --inspector-accent: #776891;
   --inspector-border: #e6e3eb; --inspector-surface: #fffefc; --inspector-soft: #f5f3f7;
