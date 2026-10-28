@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useId, type ReactNode } from 'react'
 import { Check, ChevronDown, Languages } from 'lucide-react'
 import { useTranslation, type Language } from './index'
 import { useConfigStore } from '@/store/useConfigStore'
@@ -64,7 +64,7 @@ export function LanguageSelect({ compact = false }: { compact?: boolean }) {
   )
 }
 
-export function LanguageToggle({ className }: { className?: string }) {
+export function LanguageToggle({ className, icon }: { className?: string; icon?: ReactNode }) {
   const { t } = useTranslation()
   const language = useConfigStore(state => state.config.language)
   const changeLanguage = useConfigStore(state => state.setLanguage)
@@ -80,7 +80,7 @@ export function LanguageToggle({ className }: { className?: string }) {
       title={label}
       onClick={() => changeLanguage(language === 'zh-CN' ? 'en-US' : 'zh-CN')}
     >
-      <Languages size={18} aria-hidden />
+      {icon ?? <Languages size={18} aria-hidden />}
     </button>
   )
 }

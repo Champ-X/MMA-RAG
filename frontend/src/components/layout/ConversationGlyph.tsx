@@ -13,7 +13,7 @@ export function ConversationGlyph() {
       aria-hidden="true"
       focusable="false"
     >
-      <path className="conversation-glyph-outline" d="M6.5 4.5h11a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H9l-5.5 3v-14a3 3 0 0 1 3-3Z" />
+      <path className="conversation-glyph-outline" d="M7 4h10a4 4 0 0 1 4 4v7a4 4 0 0 1-4 4H9l-5.5 2V8A4 4 0 0 1 7 4Z" />
       <path className="conversation-glyph-lines" d="M8 9.5h8M8 13.5h5" />
     </svg>
   )

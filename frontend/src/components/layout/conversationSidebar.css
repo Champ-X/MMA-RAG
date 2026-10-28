@@ -5,7 +5,9 @@
   --sidebar-icon-hover-surface: #ffffffb3;
   --sidebar-icon-active-surface: #fff;
   --sidebar-icon-active-line: #d5dfed;
-  --sidebar-conversation-ink: #718399;
+  --sidebar-conversation-ink: #637da3;
+  --sidebar-conversation-fill: #e4ecf8;
+  --sidebar-conversation-active-fill: #d6e2fa;
 }
 
 /* The compact controls already activate at 640px; keep the rail itself compact
@@ -26,7 +28,9 @@
   --sidebar-icon-hover-surface: #ffffff08;
   --sidebar-icon-active-surface: #35383e;
   --sidebar-icon-active-line: #515b6e;
-  --sidebar-conversation-ink: #969eac;
+  --sidebar-conversation-ink: #a3b5d5;
+  --sidebar-conversation-fill: #303c50;
+  --sidebar-conversation-active-fill: #40547a;
 }
 
 .sidebar-nav-icon {
@@ -40,29 +44,21 @@
   transition: color .16s ease-out, background-color .16s ease-out, box-shadow .16s ease-out;
 }
 
-.sidebar-glyph { display: block; flex-shrink: 0; }
-.sidebar-glyph-wash { fill: currentColor; fill-opacity: .08; stroke: none; }
-.sidebar-glyph-accent { stroke: var(--sidebar-icon-accent, currentColor); }
-
 .sidebar-nav-button:is(:hover, :focus-visible) .sidebar-nav-icon {
   color: var(--sidebar-icon-active);
   background: var(--sidebar-icon-hover-surface);
 }
 
 .sidebar-nav-button[aria-current="page"] .sidebar-nav-icon {
-  --sidebar-icon-accent: var(--sidebar-icon-active);
   color: var(--sidebar-icon-active);
   background: var(--sidebar-icon-active-surface);
   box-shadow: inset 0 0 0 1px var(--sidebar-icon-active-line), 0 1px 2px #14213808;
 }
 
 .sidebar-nav-button[aria-current="page"] { font-weight: 600; }
-.sidebar-utility-icon { color: var(--sidebar-icon-ink); transition: color .16s ease-out; }
-button:is(:hover, :focus-visible) > .sidebar-utility-icon { color: var(--sidebar-icon-active); }
-
 .conversation-sidebar-row-icon {
   --glyph-ink: var(--sidebar-conversation-ink);
-  --glyph-fill: transparent;
+  --glyph-fill: var(--sidebar-conversation-fill);
   display: grid;
   flex-shrink: 0;
   place-items: center;
@@ -72,14 +68,14 @@ button:is(:hover, :focus-visible) > .sidebar-utility-icon { color: var(--sidebar
 .conversation-sidebar-row:is(:hover, :focus-within) .conversation-sidebar-row-icon { --glyph-ink: var(--sidebar-icon-ink); }
 .conversation-sidebar-row .conversation-sidebar-row-icon[data-active="true"] {
   --glyph-ink: var(--sidebar-icon-active);
-  --glyph-fill: var(--sidebar-icon-active-surface);
+  --glyph-fill: var(--sidebar-conversation-active-fill);
 }
 .conversation-glyph { display: block; }
 .conversation-glyph path { transition: stroke .16s ease-out, fill .16s ease-out; }
 .conversation-glyph-outline { stroke: var(--glyph-ink); fill: var(--glyph-fill); }
 .conversation-glyph-lines { stroke: var(--glyph-ink); }
 
-.conversation-sidebar-pin { flex-shrink: 0; color: var(--sidebar-icon-accent); transform: rotate(25deg); }
+.conversation-sidebar-pin { flex-shrink: 0; transform: rotate(25deg); }
 .conversation-actions-trigger {
   position: absolute; right: 5px; top: 50%; z-index: 1;
   display: grid; place-items: center; width: 28px; height: 28px;
@@ -116,11 +112,10 @@ button:is(:hover, :focus-visible) > .sidebar-utility-icon { color: var(--sidebar
 }
 .conversation-actions-menu { z-index: 70; min-width: 174px; max-width: calc(100vw - 20px); padding: 5px; border-radius: 12px; box-shadow: 0 12px 32px -10px #14223830, 0 2px 7px #1422380a; }
 .dark .conversation-actions-menu { box-shadow: 0 16px 36px -10px #0008; }
-.conversation-actions-item { display: flex; align-items: center; gap: 10px; min-height: 35px; padding: 7px 10px; border-radius: 7px; font-size: 13px; line-height: 20px; cursor: pointer; outline: none; user-select: none; }
-.conversation-actions-item > svg { flex-shrink: 0; color: var(--conversation-action-muted); }
-.conversation-actions-item[data-highlighted] { background: var(--conversation-action-hover); }
-.conversation-actions-item[data-highlighted] > svg { color: currentColor; }
-.conversation-actions-item--danger, .conversation-actions-item--danger > svg { color: var(--conversation-action-danger); }
+.conversation-actions-item { --glyph-cutout: var(--conversation-action-surface); display: flex; align-items: center; gap: 10px; min-height: 35px; padding: 7px 10px; border-radius: 7px; font-size: 13px; line-height: 20px; cursor: pointer; outline: none; user-select: none; }
+.conversation-actions-item > svg { flex-shrink: 0; }
+.conversation-actions-item[data-highlighted] { --glyph-cutout: var(--conversation-action-hover); background: var(--conversation-action-hover); }
+.conversation-actions-item--danger { color: var(--conversation-action-danger); }
 .conversation-actions-separator { height: 1px; margin: 4px 5px; background: var(--conversation-action-line); }
 .conversation-rename-dialog { position: fixed; left: 50%; top: 50%; z-index: 90; width: min(420px, calc(100vw - 32px)); padding: 24px; border-radius: 18px; transform: translate(-50%, -50%); box-shadow: 0 24px 80px -24px #0f1e4280; }
 .conversation-rename-heading { display: flex; align-items: center; gap: 10px; }
@@ -215,8 +210,8 @@ button:is(:hover, :focus-visible) > .sidebar-utility-icon { color: var(--sidebar
 .conversation-selection-row[data-selected='true'] { background: #eaf0f6; }
 .conversation-selection-row label { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 7px 12px; cursor: pointer; }
 .conversation-selection-row input { flex-shrink: 0; width: 16px; height: 16px; margin: 0; accent-color: #5c71ae; cursor: pointer; }
-.conversation-selection-row label > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 20px; }
-.conversation-selection-row label > svg { flex-shrink: 0; color: var(--sidebar-icon-ink); }
+.conversation-selection-row label > span:not(.sr-only) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 20px; }
+.conversation-selection-row label > svg { flex-shrink: 0; }
 .conversation-selection-row:focus-within { outline: 2px solid var(--sidebar-icon-active); outline-offset: -2px; }
 .conversation-selection-trigger:focus-visible,
 .conversation-selection-toolbar button:focus-visible { outline: 2px solid var(--sidebar-icon-active); outline-offset: 2px; }
@@ -227,7 +222,7 @@ button:is(:hover, :focus-visible) > .sidebar-utility-icon { color: var(--sidebar
 .conversation-delete-targets .conversation-delete-target + .conversation-delete-target { margin-top: 6px; }
 .conversation-delete-error { margin-top: 16px; color: var(--delete-danger); font-size: 13px; line-height: 22px; overflow-wrap: anywhere; }
 .conversation-delete-actions button:disabled { opacity: .55; cursor: wait; }
-.conversation-sidebar .sidebar-language-toggle { width: 32px; height: 32px; color: var(--sidebar-icon-ink); }
+.conversation-sidebar .sidebar-language-toggle { width: 100%; height: 32px; color: var(--sidebar-icon-ink); }
 .conversation-sidebar .sidebar-language-toggle:hover { background: #eaf0f6; color: var(--sidebar-icon-active); }
 .dark .conversation-selection-trigger:hover,
 .dark .conversation-select-all:hover,
@@ -241,4 +236,14 @@ button:is(:hover, :focus-visible) > .sidebar-utility-icon { color: var(--sidebar
 @media (max-width: 640px) {
   .conversation-history-heading, .conversation-selection-toolbar { display: none; }
   .conversation-sidebar .sidebar-language-toggle { width: 100%; height: 36px; }
+}
+
+@media (forced-colors: active) {
+  .conversation-sidebar .conversation-sidebar-row .conversation-sidebar-row-icon {
+    --glyph-ink: CanvasText;
+    --glyph-fill: Canvas;
+  }
+  .sidebar-nav-button[aria-current="page"] .sidebar-nav-icon {
+    outline: 1px solid Highlight;
+  }
 }

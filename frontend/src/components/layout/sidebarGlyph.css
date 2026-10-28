@@ -1,0 +1,146 @@
+/* Palettes live on the symbols so portalled search results share the same colors. */
+.sidebar-glyph {
+  --glyph-ink: #576da3;
+  --glyph-wash: #dfe7fb;
+  --glyph-detail: #7289ba;
+  --glyph-accent: #ac6833;
+  --glyph-accent-wash: #ffe2b5;
+  --glyph-secondary: #368477;
+  --glyph-secondary-wash: #ccebe2;
+  --glyph-paper: #fff;
+  --glyph-on-solid: #fff;
+  display: block;
+  flex-shrink: 0;
+  color: var(--glyph-ink);
+  pointer-events: none;
+  transition: transform .18s ease-out;
+}
+
+.sidebar-glyph[data-glyph='new-conversation'],
+.sidebar-glyph[data-glyph='search'] {
+  --glyph-ink: #327e70;
+  --glyph-wash: #d0eee2;
+  --glyph-detail: #419482;
+}
+.sidebar-glyph[data-glyph='knowledge'],
+.sidebar-glyph[data-glyph='select'] {
+  --glyph-ink: #7960ad;
+  --glyph-wash: #e9dff8;
+  --glyph-detail: #7a61ae;
+}
+.sidebar-glyph[data-glyph='settings'],
+.sidebar-glyph[data-glyph='pin'],
+.sidebar-glyph[data-glyph='pin-off'] {
+  --glyph-ink: #ad6553;
+  --glyph-wash: #f9dcd0;
+  --glyph-detail: #ba7058;
+  --glyph-accent: #8668a9;
+  --glyph-accent-wash: #e8def4;
+}
+.sidebar-glyph[data-glyph='language'] {
+  --glyph-accent: #b3694f;
+  --glyph-accent-wash: #ffe5d7;
+}
+.sidebar-glyph[data-glyph='sun'] {
+  --glyph-ink: #a66c25;
+  --glyph-wash: #ffda8a;
+  --glyph-detail: #bb813a;
+}
+.sidebar-glyph[data-glyph='rename'] {
+  --glyph-ink: #a0752e;
+  --glyph-wash: #ffe5ac;
+  --glyph-accent: #8668a9;
+  --glyph-accent-wash: #e8def4;
+}
+.sidebar-glyph[data-glyph='delete'] {
+  --glyph-ink: #b44f59;
+  --glyph-wash: #f9dce1;
+  --glyph-detail: #b44f59;
+}
+
+.dark .sidebar-glyph {
+  --glyph-ink: #a7b9ef;
+  --glyph-wash: #374566;
+  --glyph-detail: #9fb4e9;
+  --glyph-accent: #e4b477;
+  --glyph-accent-wash: #624a30;
+  --glyph-secondary: #83cbbb;
+  --glyph-secondary-wash: #2d524b;
+  --glyph-paper: #34333e;
+  --glyph-on-solid: #182d27;
+}
+.dark .sidebar-glyph[data-glyph='new-conversation'],
+.dark .sidebar-glyph[data-glyph='search'] {
+  --glyph-ink: #8fd6bd;
+  --glyph-wash: #2b5148;
+  --glyph-detail: #8fd6bd;
+}
+.dark .sidebar-glyph[data-glyph='knowledge'],
+.dark .sidebar-glyph[data-glyph='select'] {
+  --glyph-ink: #c4a7ed;
+  --glyph-wash: #4d3c62;
+  --glyph-detail: #c4a7ed;
+}
+.dark .sidebar-glyph[data-glyph='settings'],
+.dark .sidebar-glyph[data-glyph='pin'],
+.dark .sidebar-glyph[data-glyph='pin-off'] {
+  --glyph-ink: #e5aa95;
+  --glyph-wash: #634438;
+  --glyph-detail: #e5aa95;
+  --glyph-accent: #c4a7ed;
+  --glyph-accent-wash: #4d3c62;
+}
+.dark .sidebar-glyph[data-glyph='language'] {
+  --glyph-accent: #edb29a;
+  --glyph-accent-wash: #614437;
+}
+.dark .sidebar-glyph[data-glyph='sun'] {
+  --glyph-ink: #f3c679;
+  --glyph-wash: #76572c;
+  --glyph-detail: #e6b465;
+}
+.dark .sidebar-glyph[data-glyph='rename'] {
+  --glyph-ink: #e9c282;
+  --glyph-wash: #654e30;
+  --glyph-accent: #c4a7ed;
+  --glyph-accent-wash: #4d3c62;
+}
+.dark .sidebar-glyph[data-glyph='delete'] {
+  --glyph-ink: #ec9aa2;
+  --glyph-wash: #633a44;
+  --glyph-detail: #ec9aa2;
+}
+
+.sidebar-glyph-surface { fill: var(--glyph-wash); }
+.sidebar-glyph-paper { fill: var(--glyph-paper); }
+.sidebar-glyph-detail { stroke: var(--glyph-detail); }
+.sidebar-glyph-accent { fill: var(--glyph-accent-wash); stroke: var(--glyph-accent); }
+.sidebar-glyph-accent-line { stroke: var(--glyph-accent); }
+.sidebar-glyph-secondary { fill: var(--glyph-secondary-wash); stroke: var(--glyph-secondary); }
+.sidebar-glyph-solid { fill: var(--glyph-ink); }
+.sidebar-glyph-knockout { stroke: var(--glyph-on-solid); }
+.sidebar-glyph-cutout { stroke: var(--glyph-cutout, var(--glyph-paper)); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .sidebar-nav-button:is(:hover, :focus-visible) .sidebar-glyph {
+    transform: translateY(-1px) rotate(-4deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-glyph { transition: none; }
+}
+@media (forced-colors: active) {
+  .sidebar-glyph[data-glyph],
+  .dark .sidebar-glyph[data-glyph] {
+    --glyph-ink: CanvasText;
+    --glyph-wash: Canvas;
+    --glyph-detail: CanvasText;
+    --glyph-accent: CanvasText;
+    --glyph-accent-wash: Canvas;
+    --glyph-secondary: CanvasText;
+    --glyph-secondary-wash: Canvas;
+    --glyph-paper: Canvas;
+    --glyph-on-solid: Canvas;
+    --glyph-cutout: Canvas;
+  }
+}

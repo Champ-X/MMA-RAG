@@ -15,15 +15,10 @@ import * as Dialog from '@radix-ui/react-dialog'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import {
   CornerDownLeft,
-  ListChecks,
   MessageSquare,
-  Moon,
   MoreHorizontal,
   Pencil,
-  Pin,
-  PinOff,
   Search,
-  Sun,
   Trash2,
   User,
   X,
@@ -222,7 +217,7 @@ function HistorySessionRow({ session, active, activeRef, theme, onSelect, onTogg
       <span className="conversation-sidebar-row-icon" data-active={active} aria-hidden><ConversationGlyph /></span>
       <span className={cn('min-w-0 flex-1 truncate text-[14px] leading-5 tracking-[-0.01em]',
         active ? 'font-semibold' : 'font-normal', theme.secondary)}>{title}</span>
-      {session.isPinned && <Pin size={12} strokeWidth={1.7} className="conversation-sidebar-pin" aria-hidden />}
+      {session.isPinned && <SidebarGlyph name="pin" size={14} className="conversation-sidebar-pin" />}
     </button>
     <DropdownMenu.Root open={menuOpen} modal={false} onOpenChange={(open) => {
       if (open) openingDialogRef.current = false
@@ -241,20 +236,20 @@ function HistorySessionRow({ session, active, activeRef, theme, onSelect, onTogg
           <DropdownMenu.Item className="conversation-actions-item" onSelect={() => {
             openingDialogRef.current = true
             onRename(session, triggerRef.current)
-          }}><Pencil size={16} strokeWidth={1.7} aria-hidden />{t("重命名")}</DropdownMenu.Item>
+          }}><SidebarGlyph name="rename" size={19} />{t("重命名")}</DropdownMenu.Item>
           <DropdownMenu.Item className="conversation-actions-item" onSelect={() => onTogglePinned(session.id)}>
-            {session.isPinned ? <PinOff size={16} strokeWidth={1.7} aria-hidden /> : <Pin size={16} strokeWidth={1.7} aria-hidden />}
+            <SidebarGlyph name={session.isPinned ? 'pin-off' : 'pin'} size={19} />
             {session.isPinned ? t("取消置顶") : t("置顶")}
           </DropdownMenu.Item>
           <DropdownMenu.Item className="conversation-actions-item" onSelect={() => {
             openingDialogRef.current = true
             onStartSelection(session.id)
-          }}><ListChecks size={16} strokeWidth={1.7} aria-hidden />{t("多选")}</DropdownMenu.Item>
+          }}><SidebarGlyph name="select" size={19} />{t("多选")}</DropdownMenu.Item>
           <DropdownMenu.Separator className="conversation-actions-separator" />
           <DropdownMenu.Item className="conversation-actions-item conversation-actions-item--danger" onSelect={() => {
             openingDialogRef.current = true
             onDelete(session, triggerRef.current)
-          }}><Trash2 size={16} strokeWidth={1.7} aria-hidden />{t("删除")}</DropdownMenu.Item>
+          }}><SidebarGlyph name="delete" size={19} />{t("删除")}</DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
@@ -742,7 +737,7 @@ export function ConversationSidebar({
           <button ref={selectionTriggerRef} type="button" className="conversation-selection-trigger" disabled={!sessions.length}
             aria-label={selecting ? t("取消多选") : t("多选会话")} title={selecting ? t("取消多选") : t("多选会话")}
             onClick={() => selecting ? cancelSelection() : startSelection()}>
-            {selecting ? <X size={16} strokeWidth={1.7} aria-hidden /> : <ListChecks size={16} strokeWidth={1.7} aria-hidden />}
+            {selecting ? <X size={16} strokeWidth={1.7} aria-hidden /> : <SidebarGlyph name="select" size={19} />}
           </button>
         </div>
 
@@ -780,7 +775,7 @@ export function ConversationSidebar({
                   <input type="checkbox" data-conversation-check value={session.id} checked={selectedIds.has(session.id)}
                     aria-label={t("选择会话：{{title}}", { title: getConversationTitle(session) })} onChange={() => toggleSelection(session.id)} />
                   <span title={getConversationTitle(session)}>{getConversationTitle(session)}</span>
-                  {session.isPinned && <Pin size={12} strokeWidth={1.7} aria-label={t("置顶")} />}
+                  {session.isPinned && <><SidebarGlyph name="pin" size={14} className="conversation-sidebar-pin" /><span className="sr-only">{t("置顶")}</span></>}
                 </label>
               </div>
               return <HistorySessionRow key={session.id} session={session} active={active}
@@ -859,18 +854,18 @@ export function ConversationSidebar({
             >
               ⌘K
             </kbd>
-            <Search
+            <SidebarGlyph
+              name="search"
+              size={20}
               className={cn(
-                'sidebar-utility-icon h-4 w-4 shrink-0',
+                'sidebar-utility-icon',
                 !collapsed && 'ml-auto',
                 'max-[640px]:ml-0'
               )}
-              strokeWidth={1.65}
-              aria-hidden
             />
           </button>
 
-          <LanguageToggle className="sidebar-language-toggle" />
+          <LanguageToggle className="sidebar-language-toggle" icon={<SidebarGlyph name="language" size={21} />} />
 
           <button
             type="button"
@@ -889,11 +884,7 @@ export function ConversationSidebar({
               'max-[640px]:h-9'
             )}
           >
-            {isDark ? (
-              <Sun className="sidebar-utility-icon h-[18px] w-[18px] shrink-0" strokeWidth={1.65} aria-hidden />
-            ) : (
-              <Moon className="sidebar-utility-icon h-[18px] w-[18px] shrink-0" strokeWidth={1.65} aria-hidden />
-            )}
+            <SidebarGlyph name={isDark ? 'sun' : 'moon'} size={21} className="sidebar-utility-icon" />
           </button>
         </div>
       </footer>
