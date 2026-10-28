@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from app.core.llm.manager import llm_manager
+from app.core.config import settings
 from app.core.llm.query_embeddings import QueryEmbeddingCache, QueryEmbeddingError, embed_queries
 from app.core.sparse_encoder import get_sparse_encoder
 from app.core.logger import get_logger, audit_log
@@ -1295,6 +1296,17 @@ class HybridSearchEngine:
             formatted_results: List[Dict[str, Any]] = []
             if shot_results:
                 shot_results.sort(key=lambda item: float(item.get("score", 0.0)), reverse=True)
+                if settings.video_semantic_anchors_enabled:
+                    # Optional visual enrichment must not discard the strong
+                    # caption/ASR candidates retained by the Shot retriever.
+                    anchors = [item for item in shot_results if item.get("semantic_evidence_anchor")][:limit]
+                    anchor_ids = {str(item["id"]) for item in anchors}
+                    selected_ids = set(anchor_ids)
+                    for item in shot_results:
+                        if len(selected_ids) >= limit:
+                            break
+                        selected_ids.add(str(item["id"]))
+                    shot_results = [item for item in shot_results if str(item["id"]) in selected_ids]
                 for result in shot_results[:limit]:
                     payload = result.get("payload") or {}
                     caption = payload.get("caption", "")
@@ -1349,6 +1361,7 @@ class HybridSearchEngine:
                             "shot_end_time": payload.get("shot_end_time"),
                             "asr_status": payload.get("asr_status", "no_speech"),
                             "matched_routes": result.get("matched_routes", []),
+                            "semantic_evidence_anchor": result.get("semantic_evidence_anchor"),
                             "key_frames": key_frames,
                             "manifest_path": payload.get("manifest_path"),
                         },

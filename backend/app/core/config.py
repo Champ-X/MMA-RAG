@@ -446,6 +446,16 @@ class Settings(BaseSettings):
     
     # 知识库配置（知识库列表与元数据仅从 MinIO 获取，不再使用本地 JSON）
     max_kb_portrait_size: int = Field(default=20, validation_alias="MAX_KB_PORTRAIT_SIZE")
+    # Provider experiments did not establish equivalent vectors or stable
+    # batch speedup; individual requests remain the conservative default.
+    portrait_embedding_batch_size: int = Field(default=1, ge=1, le=64, validation_alias="PORTRAIT_EMBEDDING_BATCH_SIZE")
+    # Projection changes transport only; ranking/filters remain identical.
+    knowledge_routing_compact_payload: bool = Field(default=True, validation_alias="KNOWLEDGE_ROUTING_COMPACT_PAYLOAD")
+    # Keep summary routing as the anchor; independently strong content may
+    # supplement it within the existing target budget. Legacy is reversible.
+    knowledge_routing_score_mode: Literal["legacy", "max", "coverage"] = Field(default="coverage", validation_alias="KNOWLEDGE_ROUTING_SCORE_MODE")
+    portrait_max_representatives: int = Field(default=3, ge=1, le=8, validation_alias="PORTRAIT_MAX_REPRESENTATIVES")
+    video_semantic_anchors_enabled: bool = Field(default=True, validation_alias="VIDEO_SEMANTIC_ANCHORS_ENABLED")
     portrait_update_threshold: int = Field(default=50, validation_alias="PORTRAIT_UPDATE_THRESHOLD")
     # 画像自动触发：Celery 投递失败时，后台通过该 API 回退同步画像接口；不阻塞上传/删除请求。
     portrait_sync_api_url: Optional[str] = Field(default=None, validation_alias="PORTRAIT_SYNC_API_URL")

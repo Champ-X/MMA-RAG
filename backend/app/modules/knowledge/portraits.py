@@ -3,10 +3,12 @@
 基于K-Means聚类算法生成知识库画像
 """
 
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, AsyncIterator, Callable
 import asyncio
+import hashlib
 import random
 import math
+import re
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
@@ -18,6 +20,7 @@ from app.core.logger import get_logger, audit_log
 from app.modules.ingestion.storage.vector_store import VectorStore
 from app.core.llm.manager import llm_manager
 from app.core.llm.prompt_engine import prompt_engine
+from app.modules.knowledge.topic_prototypes import build_topic_prototypes
 
 logger = get_logger(__name__)
 
@@ -85,10 +88,12 @@ class PortraitGenerator:
                 # 没有任何可用向量时才删除画像。少量 Shot / 短视频仍应形成一个路由主题，
                 # 否则纯视频知识库很容易长期没有画像。
                 try:
-                    await self.vector_store.delete_kb_portraits(kb_id)
+                    if not await self.vector_store.delete_kb_portraits(kb_id):
+                        raise RuntimeError("删除空知识库画像失败")
                     logger.info(f"知识库无可用向量，已删除该知识库画像: {kb_id}")
                 except Exception as del_err:
                     logger.warning(f"删除空知识库画像失败 kb_id={kb_id}: {del_err}")
+                    raise
                 return {
                     "status": "insufficient_data",
                     "message": "知识库没有可用于画像的文本、图片、音频或视频 Shot 向量",
@@ -100,9 +105,32 @@ class PortraitGenerator:
             
             # 4. 生成主题摘要
             portraits = await self._generate_topic_summaries(samples, clustering_result)
+
+            # A summary is useful for broad topic matching but can erase names,
+            # rare subtopics or speech details. Keep bounded, source-grounded
+            # alternative representations without additional model requests.
+            topics = await asyncio.to_thread(
+                build_topic_prototypes, samples, clustering_result,
+                max_representatives=settings.portrait_max_representatives,
+            )
+            by_cluster = {topic["cluster_id"]: topic for topic in topics}
+            for portrait in portraits:
+                topic = by_cluster.get(portrait["cluster_id"])
+                if topic:
+                    portrait["topic_prototypes"] = topic
+                    portrait["metadata"]["prototype_coverage"] = {
+                        key: value for key, value in topic.items()
+                        if key not in {"centroid_vector", "representatives"}
+                    }
+                    portrait["metadata"]["prototype_source_refs"] = [
+                        {key: value for key, value in ref.items() if key != "vector"}
+                        for ref in topic["representatives"]
+                    ]
             
             # 5. 向量化并存储画像
             storage_result = await self._store_portraits(kb_id, portraits)
+            if storage_result.get("status") != "success":
+                raise RuntimeError("知识库画像写入未成功")
             
             audit_log(
                 f"知识库画像更新完成: {kb_id}",
@@ -146,9 +174,9 @@ class PortraitGenerator:
             
             # 1. 获取当前知识库的数据量（按 kb 统计：文本、图片、音频、视频 Shot）。
             # 关键帧是 Shot 的从属视觉证据，不能再作为画像样本，否则会把同一视频放大数倍。
-            n_text, n_img = await self.vector_store.count_kb_chunks(kb_id)
-            n_audio = await self.vector_store.count_kb_audio(kb_id)
-            n_video = await self.vector_store.count_kb_video(kb_id)
+            n_text, n_img = await self.vector_store.count_kb_chunks(kb_id, strict=True)
+            n_audio = await self.vector_store.count_kb_audio(kb_id, strict=True)
+            n_video = await self.vector_store.count_kb_video(kb_id, strict=True)
             current_total = n_text + n_img + n_audio + n_video
             current_counts = {
                 "text": n_text,
@@ -275,6 +303,147 @@ class PortraitGenerator:
             if j < k:
                 out[j] = stream[i]
         return out
+
+    async def _sampling_batches(
+        self, scroll: Callable, kb_id: str, batch_size: int = 500,
+    ) -> AsyncIterator[List[Any]]:
+        """Read through the cursor, including pages with no usable vectors."""
+        offset = None
+        while True:
+            rows, next_offset = await scroll(kb_id, batch_size, offset, batch_size)
+            yield rows
+            if next_offset is None:
+                break
+            if next_offset == offset:
+                raise RuntimeError("画像采样游标没有前进")
+            offset = next_offset
+
+    async def _sample_vector_stream(
+        self, scroll: Callable, kb_id: str, budget: int, modality: str,
+    ) -> List[Tuple[str, List[float]]]:
+        """Full-stream reservoir with O(budget + page) live vectors.
+
+        A local RNG makes a fixed ordered snapshot reproducible without changing
+        process-global randomness. The budget must never limit how far we scan.
+        """
+        if budget <= 0:
+            return []
+        rng = random.Random(f"portrait-reservoir-v2:{kb_id}:{modality}")
+        chosen: List[Tuple[str, List[float]]] = []
+        seen = 0
+        async for rows in self._sampling_batches(scroll, kb_id):
+            for item in rows:
+                seen += 1
+                if len(chosen) < budget:
+                    chosen.append(item)
+                else:
+                    index = rng.randrange(seen)
+                    if index < budget:
+                        chosen[index] = item
+        return chosen
+
+    @staticmethod
+    def _video_sample_key(record: Dict[str, Any]) -> Tuple[str, str]:
+        point_id = str(record.get("id") or "")
+        return (
+            str(record.get("file_id") or point_id),
+            str(record.get("scene_id") or record.get("shot_id") or point_id),
+        )
+
+    async def _sample_video_stream(self, kb_id: str, budget: int) -> List[VectorSample]:
+        """Bounded, source-balanced Scene sampling over every Shot page.
+
+        Keep bottom-hash files and Scenes; each selected file gets at least one
+        Scene when the file count fits the budget. Limits only decrease as new
+        files arrive, so every finally selected Scene has accumulated all its
+        Shots, even when they are interleaved across pages. A second pass finds
+        its real nearest Shot for text readback without retaining Shot vectors.
+        At most ``budget`` Scene accumulators plus one page are kept in memory.
+        """
+        if budget <= 0:
+            return []
+
+        def rank(kind: str, value: str) -> bytes:
+            return hashlib.sha256(f"portrait-video-v2:{kb_id}:{kind}:{value}".encode()).digest()
+
+        files: Dict[str, Dict[str, Any]] = {}
+        worst_file: Optional[str] = None
+        async for rows in self._sampling_batches(self._run_scroll_video, kb_id):
+            for record in rows:
+                if not record.get("id"):
+                    continue
+                vector = self._video_semantic_vector(record)
+                if vector is None:
+                    continue
+                file_id, scene_id = self._video_sample_key(record)
+                if file_id not in files:
+                    file_rank = rank("file", file_id)
+                    if len(files) >= budget:
+                        worst_file = worst_file or max(files, key=lambda key: files[key]["rank"])
+                        if file_rank >= files[worst_file]["rank"]:
+                            continue
+                        del files[worst_file]
+                        worst_file = None
+                    files[file_id] = {"rank": file_rank, "scenes": {}}
+                    scene_limit = min(VIDEO_SCENES_PER_FILE_MAX, max(1, budget // len(files)))
+                    for file in files.values():
+                        scenes = file["scenes"]
+                        while len(scenes) > scene_limit:
+                            del scenes[max(scenes, key=lambda key: scenes[key]["rank"])]
+
+                scenes = files[file_id]["scenes"]
+                if scene_id not in scenes:
+                    scene_rank = rank("scene", f"{file_id}:{scene_id}")
+                    scene_limit = min(VIDEO_SCENES_PER_FILE_MAX, max(1, budget // len(files)))
+                    if len(scenes) >= scene_limit:
+                        worst_scene = max(scenes, key=lambda key: scenes[key]["rank"])
+                        if scene_rank >= scenes[worst_scene]["rank"]:
+                            continue
+                        del scenes[worst_scene]
+                    scenes[scene_id] = {"rank": scene_rank, "sum": vector.astype(np.float64),
+                                        "count": 1, "invalid": False}
+                else:
+                    state = scenes[scene_id]
+                    if vector.shape != state["sum"].shape:
+                        state["invalid"] = True
+                    else:
+                        state["sum"] += vector
+                        state["count"] += 1
+
+        selected = {}
+        for file_id, file in files.items():
+            for scene_id, state in file["scenes"].items():
+                center = self._normalized_vector(state["sum"] / state["count"])
+                if not state["invalid"] and center is not None:
+                    selected[(file_id, scene_id)] = {"center": center, "nearest": None}
+        # Release accumulated sums before reading the second pass.
+        files.clear()
+        if not selected:
+            return []
+        async for rows in self._sampling_batches(self._run_scroll_video, kb_id):
+            for record in rows:
+                state = selected.get(self._video_sample_key(record))
+                if state is None:
+                    continue
+                vector = self._video_semantic_vector(record)
+                if vector is None or vector.shape != state["center"].shape:
+                    continue
+                score = (float(np.linalg.norm(vector - state["center"])), str(record["id"]))
+                if state["nearest"] is None or score < state["nearest"][0]:
+                    state["nearest"] = (score, str(record["id"]), record.get("shot_start_time"))
+
+        samples = []
+        for (file_id, scene_id), state in selected.items():
+            if state["nearest"] is None:
+                continue
+            _, point_id, raw_time = state["nearest"]
+            try:
+                start_time = float(raw_time or 0.0)
+            except (TypeError, ValueError):
+                start_time = 0.0
+            samples.append(VectorSample(id=point_id, vector=state["center"].tolist(), source_type="video",
+                                        source_file_id=file_id, scene_id=scene_id, scene_start_time=start_time))
+        return sorted(samples, key=lambda sample: (sample.source_file_id, sample.scene_start_time, sample.scene_id))
 
     @staticmethod
     def _normalized_vector(vector: Any) -> Optional[np.ndarray]:
@@ -412,13 +581,13 @@ class PortraitGenerator:
         """
         采样向量数据（懒加载：仅 id / vector / source_type）。
         - N_text + N_img + N_audio + N_video < 5000：全量提取。
-        - 否则按比例 S 分配 S_text、S_img、S_audio、S_video，分别在四类集合蓄水池采样。
-        - 视频先融合 Shot 的 caption/ASR 向量，再按 Scene 聚合，并限制单视频的场景样本数。
+        - 否则按比例分配预算；文本、图片、音频做全流蓄水池采样。
+        - 视频先融合 caption/ASR，再按文件/Scene 有界采样并聚合完整场景，限制单视频样本数。
         """
         try:
-            n_text, n_img = await self.vector_store.count_kb_chunks(kb_id)
-            n_audio = await self.vector_store.count_kb_audio(kb_id)
-            n_video = await self.vector_store.count_kb_video(kb_id)
+            n_text, n_img = await self.vector_store.count_kb_chunks(kb_id, strict=True)
+            n_audio = await self.vector_store.count_kb_audio(kb_id, strict=True)
+            n_video = await self.vector_store.count_kb_video(kb_id, strict=True)
             total = n_text + n_img + n_audio + n_video
             if total <= 0:
                 logger.info(
@@ -433,29 +602,18 @@ class PortraitGenerator:
                 s_text, s_img, s_audio, s_video = n_text, n_img, n_audio, n_video
             else:
                 s = max(SAMPLE_MIN, min(SAMPLE_MAX, int(total * 0.2)))
-                if total > 0:
-                    s_text = max(0, int(s * n_text / total))
-                    s_img = max(0, int(s * n_img / total))
-                    s_audio = max(0, int(s * n_audio / total))
-                    s_video = s - s_text - s_img - s_audio
-                    # 有视频时至少给一个 Scene 样本预算；从样本数最多的其他模态让出一个名额。
-                    if n_video > 0 and s_video <= 0:
-                        donors = {
-                            "text": s_text,
-                            "image": s_img,
-                            "audio": s_audio,
-                        }
-                        donor = max(donors, key=donors.get)
-                        if donors[donor] > 0:
-                            if donor == "text":
-                                s_text -= 1
-                            elif donor == "image":
-                                s_img -= 1
-                            else:
-                                s_audio -= 1
-                        s_video = 1
-                else:
-                    s_text = s_img = s_audio = s_video = 0
+                counts = [n_text, n_img, n_audio, n_video]
+                # Preserve every present modality, without giving rounding
+                # remainder to a video collection that may not even exist.
+                budgets = [max(1, int(s * count / total)) if count else 0 for count in counts]
+                while sum(budgets) > s:
+                    donor = max((i for i in range(4) if budgets[i] > 1), key=lambda i: budgets[i])
+                    budgets[donor] -= 1
+                while sum(budgets) < s:
+                    recipient = max((i for i in range(4) if budgets[i] < counts[i]),
+                                    key=lambda i: s * counts[i] / total - budgets[i])
+                    budgets[recipient] += 1
+                s_text, s_img, s_audio, s_video = budgets
 
             samples: List[VectorSample] = []
             batch = 500
@@ -465,11 +623,14 @@ class PortraitGenerator:
                 off: Optional[Any] = None
                 remaining = max(0, lim)
                 while remaining > 0:
+                    previous_offset = off
                     chunk, off = await self._run_scroll_text(kb_id, remaining, off, batch)
                     out.extend(chunk)
                     remaining -= len(chunk)
-                    if off is None or not chunk:
+                    if off is None:
                         break
+                    if off == previous_offset:
+                        raise RuntimeError("画像采样游标没有前进")
                 return out
 
             async def drain_img(lim: int) -> List[Tuple[str, List[float]]]:
@@ -477,11 +638,14 @@ class PortraitGenerator:
                 off: Optional[Any] = None
                 remaining = max(0, lim)
                 while remaining > 0:
+                    previous_offset = off
                     chunk, off = await self._run_scroll_img(kb_id, remaining, off, batch)
                     out.extend(chunk)
                     remaining -= len(chunk)
-                    if off is None or not chunk:
+                    if off is None:
                         break
+                    if off == previous_offset:
+                        raise RuntimeError("画像采样游标没有前进")
                 return out
 
             async def drain_audio(lim: int) -> List[Tuple[str, List[float]]]:
@@ -489,11 +653,14 @@ class PortraitGenerator:
                 off: Optional[Any] = None
                 remaining = max(0, lim)
                 while remaining > 0:
+                    previous_offset = off
                     chunk, off = await self._run_scroll_audio(kb_id, remaining, off, batch)
                     out.extend(chunk)
                     remaining -= len(chunk)
-                    if off is None or not chunk:
+                    if off is None:
                         break
+                    if off == previous_offset:
+                        raise RuntimeError("画像采样游标没有前进")
                 return out
 
             async def drain_video(lim: int) -> List[Dict[str, Any]]:
@@ -501,11 +668,14 @@ class PortraitGenerator:
                 off: Optional[Any] = None
                 remaining = max(0, lim)
                 while remaining > 0:
+                    previous_offset = off
                     chunk, off = await self._run_scroll_video(kb_id, remaining, off, batch)
                     out.extend(chunk)
                     remaining -= len(chunk)
-                    if off is None or not chunk:
+                    if off is None:
                         break
+                    if off == previous_offset:
+                        raise RuntimeError("画像采样游标没有前进")
                 return out
 
             if use_full:
@@ -525,17 +695,10 @@ class PortraitGenerator:
                     samples.append(VectorSample(id=pid, vector=vec, source_type="audio"))
                 samples.extend(all_video)
             else:
-                stream_text = await drain_text(s_text + 1)
-                stream_img = await drain_img(s_img + 1)
-                stream_audio = await drain_audio(s_audio + 1)
-                stream_video = await drain_video(s_video + 1)
-                chosen_text = self._reservoir_sample(stream_text, s_text)
-                chosen_img = self._reservoir_sample(stream_img, s_img)
-                chosen_audio = self._reservoir_sample(stream_audio, s_audio)
-                chosen_video = self._select_video_scene_samples(
-                    self._collapse_video_shots_to_scenes(stream_video),
-                    budget=s_video,
-                )
+                chosen_text = await self._sample_vector_stream(self._run_scroll_text, kb_id, s_text, "doc")
+                chosen_img = await self._sample_vector_stream(self._run_scroll_img, kb_id, s_img, "image")
+                chosen_audio = await self._sample_vector_stream(self._run_scroll_audio, kb_id, s_audio, "audio")
+                chosen_video = await self._sample_video_stream(kb_id, s_video)
                 for pid, vec in chosen_text:
                     samples.append(VectorSample(id=pid, vector=vec, source_type="doc"))
                 for pid, vec in chosen_img:
@@ -544,6 +707,8 @@ class PortraitGenerator:
                     samples.append(VectorSample(id=pid, vector=vec, source_type="audio"))
                 samples.extend(chosen_video)
 
+            if not samples:
+                raise ValueError("知识库仍有索引数据，但未读取到可用于画像的向量")
             logger.info(
                 f"向量采样完成: {kb_id}, 样本数: {len(samples)} "
                 f"(text={n_text}, img={n_img}, audio={n_audio}, video_units={n_video})"
@@ -602,6 +767,11 @@ class PortraitGenerator:
         self,
         samples: List[VectorSample]
     ) -> Dict[str, Any]:
+        # The synchronous HTTP fallback can execute in the API process. KMeans,
+        # deduplication and silhouette must not block its retrieval event loop.
+        return await asyncio.to_thread(self._perform_clustering_sync, samples)
+
+    def _perform_clustering_sync(self, samples: List[VectorSample]) -> Dict[str, Any]:
         """执行 K-Means 聚类，并安全处理小型/纯视频知识库。
 
         视频按 Scene 聚合后，一个短视频往往只剩 1–6 个样本。旧实现强制 K>=2 且无条件
@@ -635,7 +805,7 @@ class PortraitGenerator:
             n = len(samples)
             # 对近似重复向量，KMeans 可能产生空簇，silhouette 也没有意义。
             unique_count = int(np.unique(np.round(vectors, decimals=6), axis=0).shape[0])
-            optimal_k = await self._find_optimal_k(vectors)
+            optimal_k = self._find_optimal_k_sync(vectors)
             optimal_k = min(optimal_k, unique_count, max(1, n - 1)) if n > 1 else 1
 
             if optimal_k <= 1:
@@ -680,6 +850,9 @@ class PortraitGenerator:
             raise
 
     async def _find_optimal_k(self, vectors: np.ndarray) -> int:
+        return self._find_optimal_k_sync(vectors)
+
+    def _find_optimal_k_sync(self, vectors: np.ndarray) -> int:
         """确定画像簇数；小语料稳定使用单主题，大语料使用 sqrt(N/2) 并保证可计算 silhouette。"""
         try:
             n = len(vectors)
@@ -702,8 +875,8 @@ class PortraitGenerator:
     ) -> List[Dict[str, Any]]:
         """
         生成主题摘要。
-        对每个簇取距离中心最近的 5–10 个样本，按 id + source_type 回查文本（懒加载），
-        再以 [文档片段] / [图片描述] 前缀构造 content_pieces，调用 LLM 生成摘要并向量化入库。
+        对每个簇取距离中心最近的至多 15 个样本，按 id + source_type 回查文本（懒加载），
+        生成有效摘要后按配置批量向量化；摘要或 embedding 不可用时保留真实内容中心。
         """
         try:
             labels = clustering_result["labels"]
@@ -761,23 +934,75 @@ class PortraitGenerator:
                     if not (t and t.strip()):
                         continue
                     content_pieces.append(f"{prefix} {t.strip()}")
-                if not content_pieces:
-                    content_pieces = ["该聚类包含向量数据，但缺少文本内容用于主题生成。"]
-
-                topic_summary = await self._generate_single_topic_summary(content_pieces)
-                vectorization_result = await self.llm_manager.embed(texts=[topic_summary])
-                if vectorization_result.success and vectorization_result.data:
-                    topic_vector = vectorization_result.data[0]
-                else:
-                    topic_vector = center.tolist()
+                topic_summary = await self._generate_single_topic_summary(content_pieces) if content_pieces else ""
+                usable_summary = self._usable_topic_summary(topic_summary)
+                # A failed summary is optional enrichment, not an instruction
+                # to embed the same generic placeholder for unrelated topics.
+                fallback_center = self._normalized_vector(center)
+                if fallback_center is None:
+                    fallback_center = self._normalized_vector(cluster_samples[0].vector)
+                if fallback_center is None:
+                    raise ValueError("主题没有有效的原始语义向量")
+                topic_vector = fallback_center.tolist()
 
                 portraits.append({
-                    "topic_summary": topic_summary,
+                    "topic_summary": topic_summary if usable_summary else "主题摘要暂不可用，已保留原始内容语义。",
                     "cluster_size": cluster_size,
                     "vector": topic_vector,
                     "cluster_id": cluster_id,
                     "sample_count": cluster_size,
+                    "metadata": {
+                        "portrait_vector_source": "centroid",
+                        # Historical source vectors do not carry a proven
+                        # model identity here; never label a fallback center
+                        # as if it had been embedded by the requested model.
+                        "embedding_space": None,
+                        "summary_status": "pending_embedding" if usable_summary else (
+                            "summary_unavailable" if content_pieces else "missing_source_text"
+                        ),
+                    },
                 })
+
+            # Group only valid summaries in stable order. Individual requests
+            # remain the default: real-provider batching has not established
+            # equivalent vectors and stable latency on the validation sample.
+            pending = [p for p in portraits if p["metadata"]["summary_status"] == "pending_embedding"]
+            if pending:
+                registry = getattr(self.llm_manager, "registry", None)
+                model = registry.get_task_model("embedding") if registry else None
+                config = registry.get_model_config(model) if registry and model else {}
+                batch_size = settings.portrait_embedding_batch_size
+                for start in range(0, len(pending), batch_size):
+                    batch = pending[start:start + batch_size]
+                    if model:
+                        for portrait in batch:
+                            portrait["metadata"]["requested_summary_embedding_model"] = model
+                    try:
+                        result = await self.llm_manager.embed(
+                            texts=[p["topic_summary"] for p in batch], fallback=False,
+                            **({"model": model} if model else {}),
+                            **config.get("embedding_options", {}),
+                        )
+                        vectors = result.data if result.success and isinstance(result.data, list) else []
+                        model_matches = not model or not result.model_used or result.model_used == model
+                        batch_valid = len(vectors) == len(batch) and model_matches
+                        for index, portrait in enumerate(batch):
+                            vector = vectors[index] if batch_valid else None
+                            if not isinstance(vector, list) or any(not isinstance(v, (int, float)) for v in vector):
+                                vector = None
+                            normalized = self._normalized_vector(vector)
+                            if normalized is not None and normalized.size == len(portrait["vector"]):
+                                portrait["vector"] = list(vector)
+                                portrait["metadata"].update(portrait_vector_source="summary", summary_status="ready")
+                                if model:
+                                    portrait["metadata"]["embedding_model"] = model
+                                    portrait["metadata"]["embedding_space"] = config.get("embedding_space")
+                            else:
+                                portrait["metadata"]["summary_status"] = "embedding_unavailable"
+                    except Exception as exc:
+                        logger.warning("画像摘要向量化失败，保留原始聚类语义: {}", type(exc).__name__)
+                        for portrait in batch:
+                            portrait["metadata"]["summary_status"] = "embedding_unavailable"
 
             logger.info(f"主题摘要生成完成: {len(portraits)} 个主题")
             return portraits
@@ -785,6 +1010,15 @@ class PortraitGenerator:
             logger.error(f"生成主题摘要失败: {str(e)}")
             raise
     
+    @staticmethod
+    def _usable_topic_summary(summary: Any) -> bool:
+        if not isinstance(summary, str) or not summary.strip():
+            return False
+        return not re.fullmatch(
+            r"(?:基于\d+个内容片段的主题聚类|主题聚类\s*[(（]基于\d+个内容片段[)）])",
+            summary.strip(),
+        )
+
     async def _generate_single_topic_summary(self, content_pieces: List[str]) -> str:
         """生成单个主题摘要"""
         try:
@@ -816,14 +1050,13 @@ class PortraitGenerator:
             
             if result.success:
                 summary = (result.data or {}).get("choices", [{}])[0].get("message", {}).get("content", "")
-                return summary.strip()
+                return summary.strip() if self._usable_topic_summary(summary) else ""
             else:
-                # 如果LLM调用失败，生成简单的摘要
-                return f"基于{len(content_pieces)}个内容片段的主题聚类"
+                return ""
                 
         except Exception as e:
             logger.error(f"生成单个主题摘要失败: {str(e)}")
-            return f"主题聚类 (基于{len(content_pieces)}个内容片段)"
+            return ""
     
     async def _store_portraits(
         self, 
@@ -832,9 +1065,9 @@ class PortraitGenerator:
     ) -> Dict[str, Any]:
         """存储画像到向量数据库（Replace 策略：先删旧再插入）"""
         try:
-            n_text, n_img = await self.vector_store.count_kb_chunks(kb_id)
-            n_audio = await self.vector_store.count_kb_audio(kb_id)
-            n_video = await self.vector_store.count_kb_video(kb_id)
+            n_text, n_img = await self.vector_store.count_kb_chunks(kb_id, strict=True)
+            n_audio = await self.vector_store.count_kb_audio(kb_id, strict=True)
+            n_video = await self.vector_store.count_kb_video(kb_id, strict=True)
             total_count = n_text + n_img + n_audio + n_video
             text_count, image_count, audio_count, video_count = n_text, n_img, n_audio, n_video
             
@@ -900,9 +1133,18 @@ if _celery_app is not None:
         retry_backoff=True,
         retry_kwargs={"max_retries": 2},
     )
-    def build_kb_portrait_task(self, kb_id: str, force_update: bool = False):  # type: ignore[misc]
+    def build_kb_portrait_task(
+        self, kb_id: str, force_update: bool = False, trigger_token: Optional[str] = None,
+    ):  # type: ignore[misc]
         """Celery 任务：在 Worker 中执行知识库画像构建（异步流水线）。"""
         import asyncio
+
+        if trigger_token:
+            from app.core.portrait_trigger import begin_portrait_trigger
+
+            if not begin_portrait_trigger(kb_id, trigger_token):
+                logger.info("画像任务已被后续任务替代，跳过构建 kb_id={}", kb_id)
+                return {"status": "superseded", "kb_id": kb_id}
         
         gen = PortraitGenerator()
         
@@ -922,7 +1164,12 @@ if _celery_app is not None:
                 asyncio.set_event_loop(loop)
             
             # 使用 run_until_complete 执行异步代码
-            return loop.run_until_complete(gen.update_kb_portrait(kb_id, force_update=force_update))
+            result = loop.run_until_complete(gen.update_kb_portrait(kb_id, force_update=force_update))
+            if trigger_token:
+                from app.core.portrait_trigger import complete_portrait_trigger
+
+                complete_portrait_trigger(kb_id, trigger_token, result)
+            return result
         except Exception as e:
             logger.error(f"Celery 任务执行失败 (kb_id={kb_id}): {str(e)}", exc_info=True)
             raise

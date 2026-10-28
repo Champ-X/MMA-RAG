@@ -9,6 +9,7 @@ import math
 import time
 from datetime import datetime
 
+from app.core.config import settings
 from app.core.llm.manager import llm_manager
 from app.core.llm.jev import JevError, JevRequiredError, get_jev_client
 from app.core.jev_settings import get_jev_config
@@ -73,9 +74,9 @@ class Reranker:
             
             # 1. 第一阶段：合并和粗排（已在HybridSearchEngine中完成RRF）
             if (getattr(self, "jev_mode", None) or get_jev_config().rerank_mode) == "force":
-                coarse_ranking = self._prepare_coarse_ranking(raw_results, strict=True)
+                coarse_ranking = self._prepare_coarse_ranking(raw_results, strict=True, context=context)
             else:
-                coarse_ranking = self._prepare_coarse_ranking(raw_results)
+                coarse_ranking = self._prepare_coarse_ranking(raw_results, context=context)
             
             # 2. 第二阶段：Cross-Encoder精排
             reranked_results, scorer_info = await self._rank_with_optional_jev(query, coarse_ranking, context)
@@ -406,14 +407,106 @@ class Reranker:
         coarse_candidates: List[Dict[str, Any]],
         context: Optional[Any],
     ) -> List[Dict[str, Any]]:
-        return self._ensure_modality_minimums(
+        requirements = self._protected_modality_minimums(context)
+        selected = self._ensure_modality_minimums(
             coarse_candidates,
             limit=self.top_k,
-            requirements=self._protected_modality_minimums(context),
+            requirements=requirements,
         )
+        return self._retain_semantic_video_anchors(
+            coarse_candidates, selected, limit=self.top_k, requirements=requirements,
+        )
+
+    def _retain_semantic_video_anchors(
+        self,
+        ranked_results: List[Dict[str, Any]],
+        selected: List[Dict[str, Any]],
+        *,
+        limit: int,
+        requirements: Dict[str, int],
+    ) -> List[Dict[str, Any]]:
+        """Let at most two strong video view winners reach the learned scorer.
+
+        This preserves the existing budget, scores and relative coarse order.
+        Prefer replacing another video; other replacements cannot reduce a
+        modality below its existing minimum. Final ranking is deliberately not
+        protected by this rule: the scorer still decides relevance.
+        """
+        if not settings.video_semantic_anchors_enabled or not selected or limit <= 0:
+            return selected
+
+        def key(item):
+            return (self._result_modality(item), str(item.get("id") or id(item)))
+
+        def strength(item):
+            if self._result_modality(item) != "video":
+                return None
+            metadata = item.get("metadata") or {}
+            anchor = metadata.get("semantic_evidence_anchor") if isinstance(metadata, dict) else None
+            if not isinstance(anchor, dict):
+                return None
+            views, scores = anchor.get("views"), anchor.get("scores")
+            if not isinstance(views, (list, tuple)) or not isinstance(scores, dict):
+                return None
+            valid = [
+                float(scores[view]) for view in ("caption_dense", "asr_dense")
+                if view in views and type(scores.get(view)) in (int, float)
+                and math.isfinite(scores[view]) and scores[view] >= 0.5
+            ]
+            return max(valid) if valid else None
+
+        ranked_anchors = [(item, strength(item)) for item in ranked_results]
+        ranked_anchors = [(item, score) for item, score in ranked_anchors if score is not None]
+        ranked_anchors.sort(key=lambda pair: pair[1], reverse=True)
+        anchors = []
+        protected_keys = set()
+        for candidate, _ in ranked_anchors:
+            candidate_key = key(candidate)
+            if candidate_key not in protected_keys:
+                anchors.append(candidate)
+                protected_keys.add(candidate_key)
+            if len(anchors) >= min(2, limit):
+                break
+        if not anchors:
+            return selected
+
+        kept = list(selected[:limit])
+        selected_keys = {key(item) for item in kept}
+        for candidate in anchors:
+            candidate_key = key(candidate)
+            if candidate_key in selected_keys:
+                continue
+            if len(kept) < limit:
+                kept.append(candidate)
+                selected_keys.add(candidate_key)
+                continue
+            # A video-for-video replacement always preserves modality quotas.
+            replace_index = next((
+                index for index in range(len(kept) - 1, -1, -1)
+                if key(kept[index]) not in protected_keys and self._result_modality(kept[index]) == "video"
+            ), None)
+            if replace_index is None:
+                counts = {}
+                for item in kept:
+                    modality = self._result_modality(item)
+                    counts[modality] = counts.get(modality, 0) + 1
+                replace_index = next((
+                    index for index in range(len(kept) - 1, -1, -1)
+                    if key(kept[index]) not in protected_keys
+                    and counts[self._result_modality(kept[index])] > requirements.get(self._result_modality(kept[index]), 0)
+                ), None)
+            if replace_index is not None:
+                selected_keys.discard(key(kept[replace_index]))
+                kept[replace_index] = candidate
+                selected_keys.add(candidate_key)
+
+        rank_index = {key(item): index for index, item in enumerate(ranked_results)}
+        kept.sort(key=lambda item: rank_index.get(key(item), len(ranked_results)))
+        return kept
     
     def _prepare_coarse_ranking(
-        self, raw_results: Dict[str, List[Dict[str, Any]]], *, strict: bool = False
+        self, raw_results: Dict[str, List[Dict[str, Any]]], *, strict: bool = False,
+        context: Optional[Any] = None,
     ) -> List[Dict[str, Any]]:
         """准备粗排候选列表"""
         try:
@@ -493,7 +586,12 @@ class Reranker:
             
             # 限制候选数量
             max_candidates = 50
-            return unique_candidates[:max_candidates]
+            return self._retain_semantic_video_anchors(
+                unique_candidates, unique_candidates[:max_candidates],
+                limit=max_candidates, requirements=(
+                    self._protected_modality_minimums(context) if settings.video_semantic_anchors_enabled else {}
+                ),
+            )
             
         except Exception as e:
             if strict:

@@ -16,6 +16,7 @@ from app.modules.ingestion.storage.vector_store import VectorStore
 from app.modules.knowledge.service import KnowledgeBaseService
 from app.core.llm.manager import llm_manager
 from app.core.llm.query_embeddings import QueryEmbeddingCache, embed_queries
+from app.modules.knowledge.evidence_routing import select_prototype_routes
 
 logger = get_logger(__name__)
 
@@ -29,6 +30,7 @@ ROUTING_DOMINANT_RELATIVE_GAP = 0.12
 ROUTING_CANDIDATE_RATIO = 0.82
 ROUTING_MODALITY_CANDIDATE_RATIO = 0.35
 ROUTING_QUERY_WEIGHTS = (1.0, 0.72, 0.58, 0.48)
+ROUTING_PROTOTYPE_TIMEOUT_SECONDS = 0.075
 
 @dataclass
 class RoutingResult:
@@ -164,15 +166,22 @@ class KnowledgeRouter:
             query_vectors = list(query_vector_result.data)[: len(routing_queries)]
 
             # 2. 每个查询信号独立召回画像，再按信号权重和覆盖度聚合。
-            topn_by_query = await asyncio.gather(
-                *[
+            hints = routing_hints or {}
+            use_content_prototypes = settings.knowledge_routing_score_mode == "coverage" and not hints.get("agent_mode")
+            searches = [
                     self.vector_store.search_kb_portraits_topn(
                         query_vector=query_vector,
                         limit=ROUTING_TOP_N,
                     )
                     for query_vector in query_vectors
                 ]
-            )
+            if use_content_prototypes:
+                # Reuse the primary query embedding. Content evidence is an
+                # independent hypothesis, never averaged with topic summaries.
+                searches.append(self._search_content_prototypes(query_vectors[0]))
+            search_results = await asyncio.gather(*searches)
+            topn_by_query = search_results[:len(query_vectors)]
+            prototype_hits, prototype_status = search_results[-1] if use_content_prototypes else ([], "not_requested")
             
             if not any(topn_by_query):
                 return await self._default_routing(routing_method="no_portraits_default_all")
@@ -183,7 +192,6 @@ class KnowledgeRouter:
             _log_kb_scores_raw(kb_scores_raw)
             
             # 4. 相对置信度与路由决策
-            hints = routing_hints or {}
             if hints.get("agent_mode"):
                 inventory = await self._get_modality_inventory()
                 routing_result = await self._apply_agent_exploration_strategy(
@@ -199,6 +207,32 @@ class KnowledgeRouter:
                     kb_scores_raw,
                     max_targets=max_targets,
                 )
+                if use_content_prototypes and routing_result.routing_method in {
+                    "single_kb_dominant", "single_kb", "dual_kb", "multi_kb",
+                }:
+                    prototype_scores = {hit["kb_id"]: hit["score"] for hit in prototype_hits if hit.get("kb_id")}
+                    selection = select_prototype_routes(
+                        routing_result.target_kb_ids, prototype_scores,
+                        max_targets=max(1, min(int(max_targets or 1), 3)),
+                    )
+                    if hints.get("decision_requirements") and selection.details["evicted_kb_ids"]:
+                        # Multi-requirement plans preserve their existing
+                        # semantic sources; optional content can only fill gaps.
+                        selection.targets[:] = routing_result.target_kb_ids
+                        selection.details.update(reason="decision_source_preservation", inserted_kb_ids=[], evicted_kb_ids=[])
+                    if selection.targets != routing_result.target_kb_ids:
+                        combined = {**kb_scores_raw}
+                        for kb_id in selection.details["inserted_kb_ids"]:
+                            combined[kb_id] = prototype_scores[kb_id]
+                        confidence = self._normalize_scores(combined)
+                        routing_result.target_kb_ids = selection.targets
+                        routing_result.confidence_scores = {kb: confidence[kb] for kb in selection.targets}
+                        routing_result.routing_method = "content_prototype_coverage"
+                    routing_result.routing_details = {
+                        **(routing_result.routing_details or {}),
+                        "content_prototype_selection": selection.details,
+                        "content_prototype_hits": prototype_hits,
+                    }
                 modality_intents = hints.get("modality_intents") or {}
                 if "explicit_demand" in modality_intents.values():
                     routing_result = self._cover_requested_modalities(
@@ -210,6 +244,13 @@ class KnowledgeRouter:
                         append_only=bool(hints.get("decision_requirements")),
                     )
             routing_result.query_count = len(query_vectors)
+            routing_result.routing_details = {
+                **(routing_result.routing_details or {}),
+                "score_mode": settings.knowledge_routing_score_mode,
+                "candidate_scores": dict(kb_scores_raw),
+                "score_semantics": "relative_similarity_not_probability",
+                "content_prototype_status": prototype_status,
+            }
             
             # 5. 计算处理时间
             processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
@@ -237,6 +278,21 @@ class KnowledgeRouter:
             logger.error(f"知识库路由失败: {str(e)}")
             return await self._default_routing()
 
+    async def _search_content_prototypes(self, query_vector: List[float]):
+        """Optional content evidence has a short deadline on the critical path."""
+        try:
+            hits = await asyncio.wait_for(
+                self.vector_store.search_kb_topic_prototypes(query_vector=query_vector, limit=ROUTING_TOP_N),
+                timeout=ROUTING_PROTOTYPE_TIMEOUT_SECONDS,
+            )
+            return hits, "available" if hits else "unavailable"
+        except asyncio.TimeoutError:
+            logger.warning("真实内容画像查询超时，保留摘要选库")
+            return [], "timeout"
+        except Exception as exc:
+            logger.warning("真实内容画像查询失败，保留摘要选库: {}", exc)
+            return [], "error"
+
     def _cover_requested_modalities(
         self, result: RoutingResult, scores: Dict[str, float], *, max_targets: int,
         modality_intents: Dict[str, str], inventory: Dict[str, Dict[str, Any]],
@@ -259,7 +315,7 @@ class KnowledgeRouter:
         if requested <= set().union(*(coverage(kb_id) for kb_id in result.target_kb_ids)):
             return result
         # All-KB fallback must retain its original scope and presentation.
-        if result.routing_method not in {"single_kb_dominant", "single_kb", "dual_kb", "multi_kb"}:
+        if result.routing_method not in {"single_kb_dominant", "single_kb", "dual_kb", "multi_kb", "content_prototype_coverage"}:
             return result
         # Decision supplements source coverage without evicting the semantic
         # routes. Bound the total to three KBs; unresolved needs stay visible.
@@ -293,6 +349,7 @@ class KnowledgeRouter:
             total_candidates=result.total_candidates,
             processing_time=result.processing_time,
             routing_details={
+                **(result.routing_details or {}),
                 "base_routing_method": result.routing_method,
                 "anchor_kb_id": selected[0],
                 "modality_coverage_kb_ids": added,
@@ -635,6 +692,12 @@ class KnowledgeRouter:
             if not sims:
                 continue
             sorted_sims = sorted(sims, reverse=True)
+            if settings.knowledge_routing_score_mode == "max":
+                # Existence-oriented experimental score. This can introduce
+                # extreme-value bias in large KBs, so retain the summary
+                # aggregation unless explicitly opting into this score mode.
+                kb_scores[kb_id] = sorted_sims[0]
+                continue
             top_k = sorted_sims[:k]
             # w_i = α^(i-1)，i 从 1 开始
             weighted_sum = sum(s * (alpha ** i) for i, s in enumerate(top_k))

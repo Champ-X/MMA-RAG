@@ -26,6 +26,8 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.core.storage_health import StorageSchemaMismatch
 from .async_io import settled_write
+from app.modules.knowledge.topic_prototypes import NEAR_DUPLICATE_COSINE
+from app.modules.knowledge.evidence_routing import select_evidence_anchors
 
 logger = get_logger(__name__)
 
@@ -905,9 +907,6 @@ class VectorStore:
             插入结果
         """
         try:
-            # 先删除该知识库的旧画像
-            await self.delete_kb_portraits(kb_id)
-            
             points = []
             
             for portrait in portraits:
@@ -916,6 +915,8 @@ class VectorStore:
                 # 构建基础payload
                 payload = {
                     "kb_id": kb_id,
+                    "topic_id": str(portrait.get("cluster_id", len(points))),
+                    "portrait_role": "summary",
                     "topic_summary": portrait["topic_summary"],
                     "cluster_size": portrait["cluster_size"],
                     "created_at": datetime.now(timezone.utc).isoformat()
@@ -931,6 +932,55 @@ class VectorStore:
                     payload=payload
                 )
                 points.append(point)
+
+                topic = portrait.get("topic_prototypes") or {}
+                prototypes = [
+                    {"role": "centroid", "vector": topic.get("centroid_vector")},
+                    *topic.get("representatives", []),
+                ]
+                kept_vectors = []
+                kept_points = []
+                for prototype in prototypes:
+                    value = prototype.get("vector")
+                    if value is None:
+                        continue
+                    vector = np.asarray(value, dtype=np.float64)
+                    if (vector.ndim != 1 or len(vector) != len(portrait["vector"])
+                            or not np.isfinite(vector).all() or np.linalg.norm(vector) == 0):
+                        raise ValueError("Invalid topic prototype vector")
+                    vector = vector / np.linalg.norm(vector)
+                    source_ref = {key: prototype.get(key) for key in (
+                        "id", "source_type", "source_file_id", "scene_id", "role",
+                    )} if prototype.get("id") else None
+                    duplicate = next((i for i, other in enumerate(kept_vectors)
+                                      if float(vector @ other) >= NEAR_DUPLICATE_COSINE), None)
+                    if duplicate is not None:
+                        if source_ref:
+                            kept_points[duplicate].payload["source_refs"].append(source_ref)
+                        continue
+                    kept_vectors.append(vector)
+                    prototype_point = PointStruct(
+                        id=str(uuid.uuid4()), vector=vector.tolist(), payload={
+                            "kb_id": kb_id, "topic_id": payload["topic_id"],
+                            "portrait_role": "topic_prototype",
+                            "prototype_role": prototype["role"],
+                            "cluster_size": portrait["cluster_size"],
+                            "source_id": prototype.get("id"),
+                            "source_type": prototype.get("source_type"),
+                            "source_file_id": prototype.get("source_file_id"),
+                            "scene_id": prototype.get("scene_id"),
+                            "source_refs": [source_ref] if source_ref else [],
+                            "embedding_space": topic.get("embedding_space"),
+                            "schema_version": topic.get("schema_version"),
+                            "created_at": payload["created_at"],
+                        },
+                    )
+                    points.append(prototype_point)
+                    kept_points.append(prototype_point)
+
+            # Validate every representation before replacing the old portrait.
+            if not await self.delete_kb_portraits(kb_id):
+                raise RuntimeError("Cannot replace knowledge portraits: deletion failed")
             
             # 批量插入
             operation_info = self.client.upsert(
@@ -1523,8 +1573,14 @@ class VectorStore:
                 self.client.query_points,
                 collection_name="kb_portraits",
                 query=query_vector,
+                query_filter=Filter(must_not=[FieldCondition(
+                    key="portrait_role", match=MatchValue(value="topic_prototype"),
+                )]),
                 limit=limit,
-                with_payload=True,
+                # Routing consumes only these fields. Avoid transferring long
+                # summaries/build metadata for every query variant. Qdrant
+                # ranking is independent of payload projection.
+                with_payload=["kb_id", "cluster_size"] if settings.knowledge_routing_compact_payload else True,
             )
             raw = query_result.points if hasattr(query_result, "points") else list(query_result or [])
             out = []
@@ -1542,6 +1598,35 @@ class VectorStore:
             logger.error(f"kb_portraits TopN 检索失败: {str(e)}")
             return []
 
+    async def search_kb_topic_prototypes(
+        self, query_vector: List[float], limit: int = 30,
+    ) -> List[Dict[str, Any]]:
+        """One best content representation per KB; duplicates never add votes.
+
+        Grouping prevents a KB's many prototypes from crowding other KBs out
+        of a global point TopN. Existing summary-only indexes return no signals,
+        so the caller retains the established summary route during migration.
+        """
+        try:
+            result = await asyncio.to_thread(
+                self.client.query_points_groups,
+                collection_name="kb_portraits", query=query_vector,
+                group_by="kb_id", group_size=1, limit=limit,
+                timeout=1,
+                query_filter=Filter(must=[FieldCondition(
+                    key="portrait_role", match=MatchValue(value="topic_prototype"),
+                )]),
+                with_payload=["kb_id", "topic_id", "prototype_role", "source_id", "source_type", "source_refs"],
+                with_vectors=False,
+            )
+            return [{
+                "id": hit.id, "kb_id": (hit.payload or {}).get("kb_id", ""),
+                "score": float(hit.score), "payload": hit.payload or {},
+            } for group in result.groups for hit in group.hits]
+        except Exception as exc:
+            logger.warning("真实内容画像检索不可用，保留摘要路由: {}", exc)
+            return []
+
     async def search_kb_portraits(
         self,
         kb_id: str,
@@ -1554,7 +1639,8 @@ class VectorStore:
         """
         try:
             filter_condition = Filter(
-                must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))]
+                must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))],
+                must_not=[FieldCondition(key="portrait_role", match=MatchValue(value="topic_prototype"))],
             )
             scroll_results = self.client.scroll(
                 collection_name="kb_portraits",
@@ -1596,7 +1682,7 @@ class VectorStore:
             logger.error(f"获取集合统计失败: {str(e)}")
             return {}
 
-    def _text_chunks_uses_named_vector(self) -> bool:
+    def _text_chunks_uses_named_vector(self, *, strict: bool = False) -> bool:
         """判断 text_chunks 是否使用 Named Vector（dense）"""
         try:
             info = self.client.get_collection(TEXT_CHUNK_COLLECTION)
@@ -1604,32 +1690,35 @@ class VectorStore:
                 v = getattr(info.config.params, "vectors", None)
                 return isinstance(v, dict)
         except Exception:
-            pass
+            if strict:
+                raise
         return False
 
-    async def count_kb_chunks(self, kb_id: str) -> Tuple[int, int]:
+    async def count_kb_chunks(self, kb_id: str, *, strict: bool = False) -> Tuple[int, int]:
         """
         按 kb_id 统计文本块与图片向量数量。
         用于画像采样的 N_text、N_img 及按比例分配。
         """
         try:
             filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))])
-            n_text = self.client.count(
+            n_text = (await asyncio.to_thread(self.client.count,
                 collection_name=TEXT_CHUNK_COLLECTION,
                 count_filter=filt,
                 exact=True,
-            ).count
-            n_img = self.client.count(
+            )).count
+            n_img = (await asyncio.to_thread(self.client.count,
                 collection_name="image_vectors",
                 count_filter=filt,
                 exact=True,
-            ).count
+            )).count
             return (int(n_text), int(n_img))
         except Exception as e:
             logger.error(f"count_kb_chunks 失败: {str(e)}")
+            if strict:
+                raise
             return (0, 0)
 
-    async def count_kb_audio(self, kb_id: str) -> int:
+    async def count_kb_audio(self, kb_id: str, *, strict: bool = False) -> int:
         """
         按 kb_id 统计 audio_vectors 中的点数量。
         用于排查「有音频意图但检索为 0」时区分是知识库无音频数据还是检索/过滤问题。
@@ -1637,17 +1726,19 @@ class VectorStore:
         try:
             filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))])
             return int(
-                self.client.count(
+                (await asyncio.to_thread(self.client.count,
                     collection_name="audio_vectors",
                     count_filter=filt,
                     exact=True,
-                ).count
+                )).count
             )
         except Exception as e:
             logger.debug("count_kb_audio 失败: kb_id={}, e={}", kb_id, e)
+            if strict:
+                raise
             return 0
 
-    async def count_kb_video(self, kb_id: str) -> int:
+    async def count_kb_video(self, kb_id: str, *, strict: bool = False) -> int:
         """按 kb_id 统计视频主检索单元（Shot）数量。"""
         filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))])
 
@@ -1660,9 +1751,11 @@ class VectorStore:
                 ).count)
             except Exception as count_error:
                 logger.debug("统计 {} 视频点失败: kb_id={} e={}", collection_name, kb_id, count_error)
+                if strict:
+                    raise
                 return 0
 
-        return _count(VIDEO_SHOT_COLLECTION)
+        return await asyncio.to_thread(_count, VIDEO_SHOT_COLLECTION)
 
     async def scroll_text_chunks_for_sampling(
         self,
@@ -1677,7 +1770,7 @@ class VectorStore:
         """
         try:
             filt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(value=kb_id))])
-            use_named = self._text_chunks_uses_named_vector()
+            use_named = await asyncio.to_thread(self._text_chunks_uses_named_vector, strict=True)
             with_vec = ["dense"] if use_named else True
             scroll_limit = min(limit, batch_size)
             kwargs: Dict[str, Any] = {
@@ -1690,7 +1783,7 @@ class VectorStore:
             if offset is not None:
                 kwargs["offset"] = offset
             out: List[Tuple[str, List[float]]] = []
-            res = self.client.scroll(**kwargs)
+            res = await asyncio.to_thread(self.client.scroll, **kwargs)
             records, next_offset = res[0], res[1] if len(res) > 1 else None
             for r in records:
                 vid = str(r.id) if r.id is not None else ""
@@ -1705,7 +1798,9 @@ class VectorStore:
             return (out, next_offset)
         except Exception as e:
             logger.error(f"scroll_text_chunks_for_sampling 失败: {str(e)}")
-            return ([], None)
+            # A failed page is not EOF: publishing a prefix-only portrait or
+            # deleting the previous portrait would silently lose coverage.
+            raise
 
     async def scroll_image_vectors_for_sampling(
         self,
@@ -1731,7 +1826,7 @@ class VectorStore:
             if offset is not None:
                 kwargs["offset"] = offset
             out: List[Tuple[str, List[float]]] = []
-            res = self.client.scroll(**kwargs)
+            res = await asyncio.to_thread(self.client.scroll, **kwargs)
             records, next_offset = res[0], res[1] if len(res) > 1 else None
             for r in records:
                 vid = str(r.id) if r.id is not None else ""
@@ -1743,7 +1838,7 @@ class VectorStore:
             return (out, next_offset)
         except Exception as e:
             logger.error(f"scroll_image_vectors_for_sampling 失败: {str(e)}")
-            return ([], None)
+            raise
 
     async def scroll_audio_vectors_for_sampling(
         self,
@@ -1769,7 +1864,7 @@ class VectorStore:
             if offset is not None:
                 kwargs["offset"] = offset
             out: List[Tuple[str, List[float]]] = []
-            res = self.client.scroll(**kwargs)
+            res = await asyncio.to_thread(self.client.scroll, **kwargs)
             records, next_offset = res[0], res[1] if len(res) > 1 else None
             for r in records:
                 vid = str(r.id) if r.id is not None else ""
@@ -1781,7 +1876,7 @@ class VectorStore:
             return (out, next_offset)
         except Exception as e:
             logger.error(f"scroll_audio_vectors_for_sampling 失败: {str(e)}")
-            return ([], None)
+            raise
 
     async def scroll_video_shot_samples_for_portrait(
         self,
@@ -1808,7 +1903,7 @@ class VectorStore:
             }
             if offset is not None:
                 kwargs["offset"] = offset
-            records, next_offset = self.client.scroll(**kwargs)
+            records, next_offset = await asyncio.to_thread(self.client.scroll, **kwargs)
             for record in records:
                 vector_id = str(record.id) if record.id is not None else ""
                 vectors = record.vector if hasattr(record, "vector") and isinstance(record.vector, dict) else {}
@@ -1833,7 +1928,7 @@ class VectorStore:
             return out, next_offset
         except Exception as e:
             logger.error(f"scroll_video_shot_samples_for_portrait 失败: {str(e)}")
-            return ([], None)
+            raise
 
     async def fetch_texts_by_ids(
         self,
@@ -2348,6 +2443,7 @@ class VectorStore:
                 )))
 
             fused: Dict[str, Dict[str, Any]] = {}
+            view_hits: Dict[str, List[Dict[str, Any]]] = {}
             rrf_k = 60
             for route_name, query in routes:
                 try:
@@ -2373,6 +2469,9 @@ class VectorStore:
                         point_id = str(getattr(point, "id", ""))
                         if not point_id:
                             continue
+                        view_hits.setdefault(route_name, []).append({
+                            "id": point_id, "score": float(getattr(point, "score", 0.0)),
+                        })
                         item = fused.setdefault(point_id, {
                             "id": point_id,
                             "score": 0.0,
@@ -2391,6 +2490,8 @@ class VectorStore:
 
             results = list(fused.values())
             results.sort(key=lambda item: item["score"], reverse=True)
+            if settings.video_semantic_anchors_enabled:
+                return select_evidence_anchors(results, view_hits, limit).candidates
             return results[:limit]
         except Exception as e:
             logger.error("视频 Scene–Shot 检索失败: {}", e, exc_info=True)
