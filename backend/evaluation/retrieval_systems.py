@@ -51,10 +51,12 @@ def native_usage(attempts, observations):
 def system_fingerprint() -> dict:
     backend = Path(__file__).resolve().parents[1]
     files = [*backend.joinpath("app/modules/retrieval").rglob("*.py"),
+             *backend.joinpath("app/modules/knowledge").rglob("*.py"),
              *backend.joinpath("app/modules/agent").rglob("*.py"),
              *backend.joinpath("app/modules/pi_agent").rglob("*.py"),
              *backend.joinpath("app/core/llm").rglob("*.py"), backend / "app/core/config.py",
-             backend / "app/core/jev_settings.py"]
+             backend / "app/core/jev_settings.py", backend / "app/core/portrait_trigger.py",
+             backend / "app/modules/ingestion/storage/vector_store.py"]
     runtime = backend.parent / "agent-runtime"
     files += [p for p in runtime.joinpath("src").rglob("*") if p.is_file() and p.suffix in {".ts", ".js", ".mjs"}]
     files += [p for p in (runtime / "package.json", runtime / "package-lock.json") if p.exists()]
