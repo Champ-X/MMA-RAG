@@ -8,17 +8,17 @@ const clusters = (counts: number[]) => counts.map((cluster_size, index) => ({
 
 function assertGeometry(counts: number[], width: number, height: number, input = clusters(counts)) {
   const islands = layoutTopicConstellations(input, width, height)
-  const usesAbsoluteMap = width >= 600 && islands.every(island => island.rx >= 54 && island.ry >= 52)
   const epsilon = 1e-7
   for (const island of islands) {
-    assert.ok([island.x, island.y, island.rx, island.ry, island.labelY, island.countY, island.keywordY, island.dotScale].every(Number.isFinite))
+    assert.ok([island.x, island.y, island.rx, island.ry, island.labelY, island.countY, island.keywordY, island.dotScale, island.scale].every(Number.isFinite))
+    assert.ok(island.scale > 0 && island.scale <= 1)
     assert.ok(island.dotScale >= 1 && island.dotScale <= 1.18)
     assert.ok(island.rx > 0 && island.ry > 0)
     const bounds = island.hitBounds
     assert.ok([bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite))
-    if (usesAbsoluteMap || counts.length === 1) {
-      assert.ok(island.x + bounds.x >= -epsilon && island.x + bounds.x + bounds.width <= width + epsilon)
-      assert.ok(island.y + bounds.y >= -epsilon && island.y + bounds.y + bounds.height <= height + epsilon)
+    if (width >= 220 || counts.length === 1) {
+      assert.ok(island.x + bounds.x * island.scale >= -epsilon && island.x + (bounds.x + bounds.width) * island.scale <= width + epsilon)
+      assert.ok(island.y + bounds.y * island.scale >= -epsilon && island.y + (bounds.y + bounds.height) * island.scale <= height + epsilon)
     }
     if (island.points.length) assert.ok(island.outline.startsWith('M') && island.outline.endsWith('Z'))
     else assert.equal(island.outline, '', 'a topic without samples must not fabricate a cloud boundary')
@@ -34,11 +34,10 @@ function assertGeometry(counts: number[], width: number, height: number, input =
   for (let i = 0; i < islands.length; i += 1) {
     for (const b of islands.slice(i + 1)) {
       const a = islands[i]
-      if (!usesAbsoluteMap) continue // Dense and narrow hosts use the compact stream in document flow.
-      const ax = a.x + a.hitBounds.x, ay = a.y + a.hitBounds.y
-      const bx = b.x + b.hitBounds.x, by = b.y + b.hitBounds.y
-      const separated = ax + a.hitBounds.width <= bx + epsilon || bx + b.hitBounds.width <= ax + epsilon
-        || ay + a.hitBounds.height <= by + epsilon || by + b.hitBounds.height <= ay + epsilon
+      const ax = a.x + a.hitBounds.x * a.scale, ay = a.y + a.hitBounds.y * a.scale
+      const bx = b.x + b.hitBounds.x * b.scale, by = b.y + b.hitBounds.y * b.scale
+      const separated = ax + a.hitBounds.width * a.scale <= bx + epsilon || bx + b.hitBounds.width * b.scale <= ax + epsilon
+        || ay + a.hitBounds.height * a.scale <= by + epsilon || by + b.hitBounds.height * b.scale <= ay + epsilon
       assert.ok(separated, `${a.id} and ${b.id} have overlapping click targets`)
     }
   }
@@ -90,35 +89,54 @@ test('zero and invalid counts keep a text island without inventing sample dots',
 test('empty, single, narrow, and invalid hosts retain finite contained geometry', () => {
   assert.deepEqual(layoutTopicConstellations([], 730, 480), [])
   const single = assertGeometry([25], 200, 130)[0]
-  assert.ok(Math.abs(single.x + single.hitBounds.x + single.hitBounds.width / 2 - 100) < 1e-7)
-  assert.ok(Math.abs(single.y + single.hitBounds.y + single.hitBounds.height / 2 - 65) < 1e-7)
+  assert.ok(Math.abs(single.x + (single.hitBounds.x + single.hitBounds.width / 2) * single.scale - 100) < 1e-7)
+  assert.ok(Math.abs(single.y + (single.hitBounds.y + single.hitBounds.height / 2) * single.scale - 65) < 1e-7)
   assertGeometry([25, 22, 21, 20, 19, 19, 14, 4], 250, 520)
   const invalid = layoutTopicConstellations(clusters([4, 25]), NaN, -10)
   assert.ok(invalid.every(island => [island.x, island.y, island.rx, island.ry].every(Number.isFinite)))
   assert.ok(invalid.every(island => [island.hitBounds.x, island.hitBounds.y, island.hitBounds.width, island.hitBounds.height].every(Number.isFinite)))
 })
 
-test('recommended heights adapt to one, two, three, five, eight, and twenty topics without hiding desktop groups', () => {
+test('recommended heights adapt within a bounded canvas without hiding desktop groups', () => {
   for (const width of [730, 1140]) {
     const countsBySize = [[31], [31, 18], [31, 18, 12], [31, 18, 12, 4, 2],
       [25, 22, 21, 20, 19, 19, 14, 4], Array.from({ length: 20 }, (_, index) => index + 1)]
     let previousHeight = 0
     for (const counts of countsBySize) {
       const height = getTopicConstellationHeight(counts.length, width)
-      assert.ok(height >= 260 && height <= 560)
+      assert.ok(height >= 260 && height <= 520)
       assert.ok(height >= previousHeight)
       previousHeight = height
       const islands = assertGeometry(counts, width, height)
       assert.equal(islands.reduce((sum, island) => sum + island.points.reduce((total, point) => total + point.weight, 0), 0), counts.reduce((sum, count) => sum + count, 0))
-      if (counts.length <= 8) {
-        assert.ok(islands.every(island => island.rx >= 54 && island.ry >= 54), 'desktop groups must not collapse into a stream because the canvas was shortened')
-      }
+      assert.ok(islands.every(island => island.scale > 0 && island.scale <= 1), 'every complete topic is fitted within the canvas')
     }
   }
   assert.equal(getTopicConstellationHeight(5, 730), 440)
   assert.equal(getTopicConstellationHeight(5, 1140), 420)
   assert.equal(getTopicConstellationHeight(8, 1140), 480)
+  assert.equal(getTopicConstellationHeight(100, 1140), 520, 'more topics must not extend the canvas')
+  assert.equal(getTopicConstellationHeight(1000, 243), 520, 'narrow dense maps must also stay bounded')
   assert.equal(getTopicConstellationHeight(NaN, Infinity), 270)
+})
+
+test('dense and narrow maps scale all topics into separate targets inside the bounded canvas', () => {
+  for (const width of [220, 243, 280, 360, 500, 600, 730, 834, 1140]) {
+    for (const count of [7, 14, 30, 60, 100]) {
+      const input = clusters(Array.from({ length: count }, (_, index) => index % 9 === 0 ? 0 : 80 - index % 79))
+        .map(cluster => ({ ...cluster, keywords: ['完整的主题名称', '关键词说明', '长一些的关键词'] }))
+      const height = getTopicConstellationHeight(count, width)
+      assert.ok(height <= 520)
+      const islands = assertGeometry(input.map(cluster => cluster.cluster_size), width, height, input)
+      assert.equal(islands.length, count)
+      assert.equal(new Set(islands.map(island => island.id)).size, count)
+      assert.ok(islands.every(island => island.scale === islands[0].scale), 'labels and clouds share one consistent display scale')
+      if (count >= 14) assert.ok(islands[0].scale < 1, 'crowded topics must shrink rather than extending the canvas')
+      assert.equal(islands.reduce((sum, island) => sum + island.points.reduce((total, point) => total + point.weight, 0), 0),
+        input.reduce((sum, cluster) => sum + cluster.cluster_size, 0))
+      assert.deepEqual(layoutTopicConstellations([...input].reverse(), width, getTopicConstellationHeight(count, width)), islands)
+    }
+  }
 })
 
 test('adaptive canvas sizes preserve the original scattered centre relationships', () => {

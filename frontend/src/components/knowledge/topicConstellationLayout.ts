@@ -26,6 +26,8 @@ export interface TopicConstellation {
   y: number
   rx: number
   ry: number
+  /** Uniform display scale for the complete cloud, label, and click target. */
+  scale: number
   /** Text baselines, relative to the island's centre. */
   labelY: number
   countY: number
@@ -34,7 +36,7 @@ export interface TopicConstellation {
   dotScale: number
   points: TopicConstellationPoint[]
   outline: string
-  /** Visible geometry and click target, both relative to the island centre. */
+  /** Unscaled local bounds; displayed coordinates are centre + scale * bounds. */
   contentBounds: TopicConstellationBounds
   hitBounds: TopicConstellationBounds
 }
@@ -45,16 +47,63 @@ const dimension = (value: number) => Number.isFinite(value) ? Math.max(1, value)
 const sampleCount = (value: number) => Number.isFinite(value) && value > 0
   ? Math.min(Number.MAX_SAFE_INTEGER, Math.floor(value)) : 0
 
-/** Fit the exploration surface to its topic count instead of reserving 500px. */
+/** Keep the canvas bounded; dense maps scale their complete topic islands. */
 export function getTopicConstellationHeight(topicCount: number, width: number): number {
   const count = Number.isFinite(topicCount) ? Math.max(1, Math.floor(topicCount)) : 1
   const base = count <= 2 ? 250 + count * 20
     : count <= 4 ? 280 + count * 20
       : count === 5 ? 440
         : count <= 8 ? 480
-      : Math.min(560, count <= 11 ? Math.max(480, 280 + count * 20) : 500 + (count - 11) * 10)
+      : Math.min(520, Math.max(480, 280 + count * 20))
   const wideRelief = count <= 5 ? Math.round(Math.min(20, Math.max(0, dimension(width) - 960) / 12) / 10) * 10 : 0
   return Math.max(260, base - wideRelief)
+}
+
+/** Fit every complete island within the canvas without changing the oblique topology. */
+function fitIslands(islands: TopicConstellation[], width: number, height: number, margin: number) {
+  if (!islands.length) return islands
+  let scale = 1
+  const gap = 4
+  for (let i = 0; i < islands.length; i += 1) {
+    const a = islands[i], ab = a.hitBounds
+    for (let j = i + 1; j < islands.length; j += 1) {
+      const b = islands[j], bb = b.hitBounds
+      const dx = b.x - a.x, dy = b.y - a.y
+      const requiredX = dx >= 0 ? ab.x + ab.width - bb.x : bb.x + bb.width - ab.x
+      const requiredY = dy >= 0 ? ab.y + ab.height - bb.y : bb.y + bb.height - ab.y
+      // Rectangles are separate when either axis has clearance. Scaling the
+      // complete island keeps typography and SVG geometry in the same bounds.
+      scale = Math.min(scale, Math.max(Math.abs(dx) / (requiredX + gap), Math.abs(dy) / (requiredY + gap)))
+    }
+  }
+  const extent = (value: number) => {
+    let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity
+    for (const island of islands) {
+      const bounds = island.hitBounds
+      left = Math.min(left, island.x + bounds.x * value)
+      right = Math.max(right, island.x + (bounds.x + bounds.width) * value)
+      top = Math.min(top, island.y + bounds.y * value)
+      bottom = Math.max(bottom, island.y + (bounds.y + bounds.height) * value)
+    }
+    return { left, right, top, bottom }
+  }
+  const fits = (value: number) => {
+    const bounds = extent(value)
+    return bounds.right - bounds.left <= width - margin * 2 && bounds.bottom - bounds.top <= height - margin * 2
+  }
+  if (!fits(scale)) {
+    let low = 0, high = scale
+    for (let step = 0; step < 32; step += 1) {
+      const middle = (low + high) / 2
+      if (fits(middle)) low = middle
+      else high = middle
+    }
+    scale = low
+  }
+  const bounds = extent(scale)
+  const offsetX = (width - bounds.left - bounds.right) / 2
+  const offsetY = (height - bounds.top - bounds.bottom) / 2
+  return islands.map(island => ({ ...island, scale, x: island.x + offsetX, y: island.y + offsetY }))
 }
 
 function seededRandom(id: string) {
@@ -229,7 +278,8 @@ function gatherIslands(islands: TopicConstellation[], width: number, height: num
 /**
  * Deterministic decorative clustering, not an embedding projection or semantic
  * distance model. Integer samples are individual dots up to 80; larger groups
- * retain exact totals through integer point weights.
+ * retain exact totals through integer point weights. Local geometry remains
+ * unscaled; apply each island's display scale to its complete rendered button.
  */
 export function layoutTopicConstellations(
   clusters: TopicCluster[], width: number, height: number,
@@ -264,8 +314,9 @@ export function layoutTopicConstellations(
   const clusterById = new Map(clusters.map(cluster => [cluster.cluster_id, cluster]))
   const islands = nodes.map(node => {
     // The unused packing rim creates space between the organic islands.
-    const rx = node.r * scaleX * 0.9
-    const ry = node.r * scaleY * 0.9
+    const readableMap = safeWidth >= 220 && safeHeight >= 260 && (clusters.length > 8 || safeWidth < 600)
+    const rx = Math.max(readableMap ? Math.min(82, (safeWidth - margin * 2 - 10) / 2) : 0, node.r * scaleX * 0.9)
+    const ry = Math.max(readableMap ? 72 : 0, node.r * scaleY * 0.9)
     const textScale = Math.min(1, ry / 65)
     const dotScale = Math.max(1, Math.min(clusters.length <= 5 ? 1.18 : 1.1, Math.min(rx, ry) / 60))
     const expansion = clusters.length <= 5 ? 1.25 : 1.24
@@ -281,10 +332,11 @@ export function layoutTopicConstellations(
       id: node.id,
       x: horizontalInset + (node.x - left) * scaleX,
       y: margin + (node.y - top) * scaleY,
-      rx, ry, labelY,
+      rx, ry, scale: 1, labelY,
       countY, keywordY, dotScale, points,
     }
     return { ...island, outline: islandOutline(island), ...islandBounds(island, clusterById.get(node.id)!) }
   })
-  return gatherIslands(islands, safeWidth, safeHeight, margin)
+  const gathered = gatherIslands(islands, safeWidth, safeHeight, margin)
+  return fitIslands(gathered, safeWidth, safeHeight, margin)
 }
