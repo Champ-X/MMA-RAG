@@ -38,6 +38,13 @@ test('explicit UI translation keys have English catalog entries', () => {
   assert.deepEqual([...missing], [])
 })
 
+test('knowledge scope mode labels have English translations', () => {
+  setLanguage('en-US')
+  assert.equal(translate('智能路由'), 'Smart routing')
+  assert.equal(translate('全部知识库'), 'All knowledge bases')
+  assert.equal(translate('手动指定'), 'Manual selection')
+})
+
 test('language preference keeps model drafts and unsaved-change status intact', () => {
   const initial = useConfigStore.getState()
   useConfigStore.setState({ hasUnsavedChanges: true })

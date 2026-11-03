@@ -387,6 +387,7 @@ export const coreEnglish: Record<string, string> = {
   "检索全部 {{v0}} 个知识库": "Search all {{v0}} knowledge bases",
   "根据问题自动选择知识库": "Choose knowledge bases based on the question",
   "全部知识库": "All knowledge bases",
+  "手动指定": "Manual selection",
   "由 Agent 自主检索": "Let Agent search",
   "选择回答时参考的知识库，应用后对当前会话的新问题生效。": "Choose the knowledge bases to use for new questions in this conversation.",
   "应用知识库范围：{{v0}}": "Apply knowledge scope: {{v0}}",

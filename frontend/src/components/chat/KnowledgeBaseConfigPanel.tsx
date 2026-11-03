@@ -1,7 +1,8 @@
 import { translate as tr, useTranslation } from '@/i18n'
 import { useId, useState, useEffect } from 'react'
-import { Check, Database, Layers, Route, Search, SlidersHorizontal } from 'lucide-react'
+import { Check, Search } from 'lucide-react'
 import { WorkflowDialog } from '@/components/ui/WorkflowDialog'
+import { DialogGlyph } from '@/components/ui/DialogGlyph'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import { useConfigStore } from '@/store/useConfigStore'
 import { useChatStore, type KbMode } from '@/store/useChatStore'
@@ -13,9 +14,9 @@ interface KnowledgeBaseConfigPanelProps {
 }
 
 const modes = [
-  { value: 'auto', label: '智能路由', detail: '根据问题选择', Icon: Route },
-  { value: 'all', label: '全部知识库', detail: '检索全部内容', Icon: Layers },
-  { value: 'manual', label: '手动指定', detail: '选择检索范围', Icon: SlidersHorizontal },
+  { value: 'auto', label: '智能路由', detail: '根据问题选择', glyph: 'route' },
+  { value: 'all', label: '全部知识库', detail: '检索全部内容', glyph: 'library' },
+  { value: 'manual', label: '手动指定', detail: '选择检索范围', glyph: 'sliders' },
 ] as const
 const contentKinds = [
   { key: 'documents', label: '文档' },
@@ -71,18 +72,17 @@ export function KnowledgeBaseConfigPanel({ open, onOpenChange }: KnowledgeBaseCo
     ? tr("已选 {{v0}} 个知识库", { v0: selectedKbIds.size })
     : kbMode === 'all' || piMode ? tr("检索全部 {{v0}} 个知识库", { v0: knowledgeBases.length }) : tr("根据问题自动选择知识库")
   const visibleModes = piMode
-    ? [{ value: 'auto' as const, label: tr("全部知识库"), detail: tr("由 Agent 自主检索"), Icon: Layers }, modes[2]]
+    ? [{ value: 'auto' as const, label: tr("全部知识库"), detail: tr("由 Agent 自主检索"), glyph: 'library' as const }, modes[2]]
     : modes
   const visibleMode = piMode && kbMode === 'all' ? 'auto' : kbMode
 
   return (
     <WorkflowDialog
-      eyebrow={tr("对话设置")}
       open={open}
       onOpenChange={onOpenChange}
       title={tr("知识库范围")}
       description={tr("选择回答时参考的知识库，应用后对当前会话的新问题生效。")}
-      icon={<Database size={21} strokeWidth={1.7} aria-hidden />}
+      icon={<DialogGlyph name="knowledge" />}
       size="md"
       className="scope-dialog"
       footer={(
@@ -104,7 +104,7 @@ export function KnowledgeBaseConfigPanel({ open, onOpenChange }: KnowledgeBaseCo
       <fieldset className="scope-modes">
         <legend className="workflow-label">{tr("检索方式")}</legend>
         <div className="scope-modes__options" data-pi={piMode || undefined}>
-          {visibleModes.map(({ value, label, detail, Icon }) => (
+          {visibleModes.map(({ value, label, detail, glyph }) => (
             <label key={value} htmlFor={`${id}-${value}`} className="scope-mode" data-selected={visibleMode === value}>
               <input
                 id={`${id}-${value}`}
@@ -117,7 +117,7 @@ export function KnowledgeBaseConfigPanel({ open, onOpenChange }: KnowledgeBaseCo
                 data-autofocus={visibleMode === value ? true : undefined}
               />
               <span className="scope-mode__content">
-                <span className="scope-mode__top"><Icon size={20} strokeWidth={1.7} aria-hidden /><span className="scope-mode__indicator"><Check size={10} strokeWidth={2.5} aria-hidden /></span></span>
+                <span className="scope-mode__top"><DialogGlyph name={glyph} size={30} /><span className="scope-mode__indicator"><Check size={10} strokeWidth={2.5} aria-hidden /></span></span>
                 <span className="scope-mode__label">{tr(label)}</span>
                 <span className="scope-mode__detail">{tr(detail)}</span>
               </span>
@@ -145,7 +145,7 @@ export function KnowledgeBaseConfigPanel({ open, onOpenChange }: KnowledgeBaseCo
                     <label htmlFor={`${id}-kb-${kb.id}`} className="scope-knowledge-row" data-selected={selectedKbIds.has(kb.id)}>
                       <input id={`${id}-kb-${kb.id}`} type="checkbox" className="scope-checkbox" checked={selectedKbIds.has(kb.id)} onChange={() => toggleKb(kb.id)} />
                       <span className="scope-checkbox-fallback" aria-hidden />
-                      <span className="scope-knowledge-row__icon" aria-hidden><Database size={17} strokeWidth={1.6} /></span>
+                      <span className="scope-knowledge-row__icon" aria-hidden><DialogGlyph name="knowledge" size={23} /></span>
                       <span className="scope-knowledge-row__name" title={kb.name}>{kb.name}</span>
                       <span className="scope-knowledge-row__count">{kinds.length ? kinds.join(' · ') : tr("素材空间")}</span>
                     </label>
@@ -157,7 +157,7 @@ export function KnowledgeBaseConfigPanel({ open, onOpenChange }: KnowledgeBaseCo
         </section>
       ) : (
         <div className="scope-explanation">
-          {kbMode === 'auto' && !piMode ? <Route size={19} strokeWidth={1.7} aria-hidden /> : <Layers size={19} strokeWidth={1.7} aria-hidden />}
+          <DialogGlyph name={kbMode === 'auto' && !piMode ? 'route' : 'library'} size={24} />
           <div>
             <h3>{piMode ? tr("由 Agent 自主查找资料") : kbMode === 'auto' ? tr("让问题找到合适的知识库") : tr("在全部知识库中查找答案")}</h3>
             <p>{piMode ? tr("Agent 在可访问的知识库中自主检索和阅读资料。需要限定范围时，可以手动指定知识库或文件。") : kbMode === 'auto' ? tr("自动判断问题涉及的内容，选择相关知识库进行检索。适合跨主题提问。") : tr("将当前所有知识库作为检索范围，适合需要综合多个主题的问题。")}</p>

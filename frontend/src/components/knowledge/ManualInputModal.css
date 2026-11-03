@@ -1,30 +1,60 @@
-.manual-input-dialog .workflow-dialog-body { display: flex; flex-direction: column; gap: 24px; }
+.manual-input-dialog[data-size='xl'] { width: min(1080px, calc(100vw - 48px)); }
+.manual-input-dialog .workflow-dialog-body { display: flex; flex-direction: column; gap: 22px; }
 .manual-input-name { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 18px; flex-shrink: 0; }
 .manual-input-name .workflow-label { margin: 0; }
 .manual-input-name .workflow-help { grid-column: 1 / -1; margin: 0; overflow-wrap: anywhere; }
 .manual-input-name .workflow-field { grid-column: 1 / -1; }
-.manual-input-format { padding: 2px 8px; border: 1px solid var(--wf-line); border-radius: 5px; color: var(--wf-accent); background: var(--wf-tint); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; }
+.manual-input-format { color: var(--wf-muted); font-size: 11px; font-weight: 500; }
 .manual-input-editor { flex-shrink: 0; min-width: 0; }
 .manual-input-editor-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .manual-input-editor-heading h3 { font-size: 13px; font-weight: 600; }
 .manual-input-editor-heading > span { color: var(--wf-muted); font-size: 12px; }
-.manual-input-md-editor { min-height: 300px; flex-shrink: 0; overflow: hidden; border: 1px solid var(--wf-field-line); border-radius: 10px; }
-.manual-input-md-editor .md-editor { height: clamp(300px, 40dvh, 500px); border: 0; border-radius: 0; background: var(--wf-surface); color: var(--wf-ink); box-shadow: none; }
-.manual-input-md-editor .md-editor-toolbar-wrapper { padding: 6px 10px; border-bottom: 1px solid var(--wf-line); background: var(--wf-subtle); }
-.manual-input-md-editor .md-editor-toolbar { gap: 4px; }
-.manual-input-md-editor .md-editor-toolbar-item { border-radius: 5px; color: var(--wf-muted); transition: background-color .15s, color .15s; }
+.manual-input-md-editor { min-height: 280px; flex-shrink: 0; overflow: hidden; border: 1px solid var(--wf-field-line); border-radius: 12px; }
+.manual-input-md-editor .md-editor {
+  height: clamp(280px, 44dvh, 560px);
+  border: 0;
+  border-radius: 0;
+  background: var(--wf-surface);
+  color: var(--wf-ink);
+  box-shadow: none;
+  --md-bk-color: var(--wf-surface);
+  --md-color: var(--wf-ink);
+  --md-border-color: var(--wf-line);
+  --md-border-hover-color: var(--wf-accent);
+  --md-bk-color-outstand: var(--wf-subtle);
+  --md-bk-hover-color: var(--wf-tint);
+  --md-hover-color: var(--wf-accent);
+  --md-scrollbar-thumb-color: var(--wf-line);
+  --md-scrollbar-thumb-hover-color: var(--wf-muted);
+}
+.manual-input-md-editor .md-editor-toolbar-wrapper { padding: 7px 10px; border-bottom: 1px solid var(--wf-line); background: var(--wf-surface); }
+.manual-input-md-editor .md-editor-toolbar { gap: 3px; }
+.manual-input-md-editor .md-editor-toolbar-item { min-width: 29px; min-height: 29px; border-radius: 6px; color: var(--wf-muted); transition: background-color .15s, color .15s; }
 .manual-input-md-editor .md-editor-toolbar-item:hover, .manual-input-md-editor .md-editor-toolbar-item.active { background: var(--wf-tint); color: var(--wf-accent); }
-.manual-input-md-editor .md-editor-content, .manual-input-md-editor .md-editor-preview, .manual-input-md-editor .cm-editor { background: var(--wf-surface); }
-.manual-input-md-editor .md-editor { --md-bk-color: var(--wf-surface); --md-color: var(--wf-ink); --md-border-color: var(--wf-line); --md-border-hover-color: var(--wf-accent); --md-bk-color-outstand: var(--wf-subtle); }
-.manual-input-md-editor .md-editor-resize-operate { background: var(--wf-line); }
-.manual-input-md-editor .md-editor-input-wrapper { border-right: 1px solid var(--wf-line); }
-.manual-input-md-editor .md-editor-input-wrapper, .manual-input-md-editor .md-editor-preview-wrapper, .manual-input-md-editor .md-editor-catalog { padding-top: 5px; }
+.manual-input-md-editor .md-editor-toolbar-item:focus-visible { outline: 2px solid var(--wf-accent); outline-offset: 2px; }
+.manual-input-md-editor .md-editor-content, .manual-input-md-editor .md-editor-preview-wrapper, .manual-input-md-editor .md-editor-preview { background: var(--wf-surface); }
+.manual-input-md-editor .md-editor-input-wrapper, .manual-input-md-editor .cm-editor, .manual-input-md-editor .cm-gutters { background: var(--wf-subtle); }
+.manual-input-md-editor .md-editor-resize-operate { width: 3px; background: var(--wf-line); }
+.manual-input-md-editor .md-editor-resize-operate:hover { background: var(--wf-focus); }
+.manual-input-md-editor .md-editor-input-wrapper { border-right: 0; }
+.manual-input-md-editor .md-editor-input-wrapper, .manual-input-md-editor .md-editor-preview-wrapper, .manual-input-md-editor .md-editor-catalog { padding-top: 12px; }
 .manual-input-md-editor .cm-scroller, .manual-input-md-editor .md-editor-preview { font-size: 14px; line-height: 1.8; }
-.manual-input-md-editor .md-editor-footer { padding: 6px 10px; border-top: 1px solid var(--wf-line); background: var(--wf-subtle); color: var(--wf-muted); }
+.manual-input-md-editor .cm-editor { height: 100%; }
+.manual-input-md-editor .cm-focused { outline: none; }
+.manual-input-md-editor .cm-cursor { border-left-color: var(--wf-accent); }
+.manual-input-md-editor .cm-placeholder { color: var(--wf-muted); }
+.manual-input-md-editor .md-editor-footer { padding: 7px 12px; border-top: 1px solid var(--wf-line); background: var(--wf-surface); color: var(--wf-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .manual-input-error { padding: 10px 12px; border: 1px solid #ecc8cc; border-radius: 8px; background: #fff5f5; color: #a34450; font-size: 12px; }
 .dark .manual-input-error { border-color: #68404a; background: #34212a; color: #eda7af; }
 @media (max-width: 600px) {
-  .manual-input-md-editor .md-editor-toolbar-wrapper { padding-inline: 4px; }
-  .manual-input-editor-heading { align-items: flex-start; }
+  .manual-input-dialog .workflow-dialog-body { gap: 18px; }
+  .manual-input-md-editor .md-editor-toolbar-wrapper { padding: 5px; }
+  .manual-input-md-editor .md-editor-toolbar { gap: 2px; }
+  .manual-input-md-editor .md-editor-toolbar-item { min-width: 32px; min-height: 34px; }
+  .manual-input-md-editor .cm-scroller { font-size: 16px; }
+  .manual-input-editor-heading { flex-wrap: wrap; gap: 5px 10px; }
   .manual-input-editor-heading > span { font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .manual-input-md-editor .md-editor-toolbar-item { transition: none; }
 }

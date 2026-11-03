@@ -60,15 +60,20 @@ export function KnowledgeLibraryHeader({
           </div>}
         </div>
         {!empty && <button className="knowledge-library-header__create" type="button" onClick={onCreate}>
-          <svg className="knowledge-library-header__create-art" viewBox="0 0 52 44" fill="none" aria-hidden="true" focusable="false">
-            <path className="knowledge-library-header__create-back" d="M5 34V12a4 4 0 0 1 4-4h10l5 5h19a4 4 0 0 1 4 4v17a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4Z" />
-            <rect className="knowledge-library-header__create-insert" x="14" y="8" width="26" height="27" rx="3" />
+          <svg className="knowledge-library-header__create-art" viewBox="0 0 48 44" fill="none" aria-hidden="true" focusable="false">
+            <path className="knowledge-library-header__create-back" d="M6 34V13a3 3 0 0 1 3-3h10l4 4h16a3 3 0 0 1 3 3v17H6Z" />
             <g className="knowledge-library-header__create-paper">
-              <rect x="10" y="11" width="28" height="26" rx="3" />
-              <path d="M15 16h12m-12 4h17" />
+              <rect x="9" y="5" width="24" height="30" rx="3" />
+              <path d="M14 11h13m-13 4h13m-13 4h8" />
             </g>
-            <path className="knowledge-library-header__create-front" d="M6 22h39c3 0 4 2 3 5l-3 10c-.5 2-2 3-4 3H12c-3 0-4-1-5-4L3 27c-1-3 0-5 3-5Z" />
-            <path className="knowledge-library-header__create-edge" d="M8 24h33" />
+            <g className="knowledge-library-header__create-photo">
+              <rect className="knowledge-library-header__create-photo-frame" x="23" y="10" width="20" height="25" rx="2.5" />
+              <rect className="knowledge-library-header__create-photo-sky" x="25.5" y="12.5" width="15" height="15" rx="1" />
+              <circle className="knowledge-library-header__create-photo-sun" cx="36.5" cy="16.5" r="2" />
+              <path className="knowledge-library-header__create-photo-hill" d="m25.5 24 5-5 4 4 3-2 3 3v3.5h-15Z" />
+            </g>
+            <path className="knowledge-library-header__create-front" d="M6 25h36a3 3 0 0 1 3 3.5l-1.5 8A4 4 0 0 1 39.5 40h-29a4 4 0 0 1-4-3.5L3 28.5A3 3 0 0 1 6 25Z" />
+            <path className="knowledge-library-header__create-edge" d="M9 28h30" />
           </svg>
           <span className="knowledge-library-header__create-label">{t("新建素材空间")}</span>
           <span className="knowledge-library-header__create-symbol" aria-hidden="true"><Plus size={17} strokeWidth={1.8} /></span>

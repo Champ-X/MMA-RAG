@@ -25,6 +25,7 @@ import './filePreviewModal.css'
 import { useKnowledgeUploadBatches, emptyUploadBatch, type KnowledgeUploadBatch, type UploadRemoval } from './useKnowledgeUploadBatches'
 import './importDialogs.css'
 import { WorkflowDialog } from '@/components/ui/WorkflowDialog'
+import { DialogGlyph } from '@/components/ui/DialogGlyph'
 import { useKnowledgeStore } from '@/store/useKnowledgeStore'
 import {
   knowledgeApi,
@@ -927,7 +928,7 @@ function FilePreviewModal({
                       'ml-0.5 inline-flex h-[1.375rem] min-w-[1.375rem] items-center justify-center rounded-full px-2 text-[11px] font-semibold tabular-nums leading-none',
                       'transition-all duration-200 ease-out',
                       tab === 'chunks'
-                        ? 'bg-gradient-to-b from-indigo-100 to-indigo-50/90 text-indigo-700 shadow-[0_1px_2px_rgba(99,102,241,0.18)] border border-indigo-200/60 dark:from-indigo-950 dark:to-indigo-950/50 dark:text-indigo-200 dark:border-indigo-500/35 dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]'
+                        ? 'bg-indigo-100 text-indigo-700 shadow-[0_1px_2px_rgba(99,102,241,0.18)] border border-indigo-200/60 dark:bg-indigo-950 dark:text-indigo-200 dark:border-indigo-500/35 dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]'
                         : 'bg-slate-200/65 text-slate-600 border border-slate-300/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:bg-slate-700/65 dark:text-slate-300 dark:border-slate-500/25 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
                     )}
                     aria-label={
@@ -1425,7 +1426,6 @@ function ImportUrlModal({
     <WorkflowDialog
       open
       onOpenChange={(open) => { if (!open) onClose() }}
-      eyebrow={t("素材导入")}
       title={t("从 URL 导入")}
       description={t("把网页、文件或飞书文档，收进当前素材空间。")}
       icon={<Link2 size={20} />}
@@ -1592,7 +1592,6 @@ function ImportHotTopicsModal({
     <WorkflowDialog
       open
       onOpenChange={(open) => { if (!open) onClose() }}
-      eyebrow={t("素材导入")}
       title={t("热点资讯导入")}
       description={t("围绕你关注的话题，收集资讯并保存为可检索的文档。")}
       icon={<Newspaper size={20} />}
@@ -1855,10 +1854,9 @@ function ImportFolderModal({
     <WorkflowDialog
       open
       onOpenChange={(open) => { if (!open) onClose() }}
-      eyebrow={t("素材导入")}
       title={t("从文件夹导入")}
       description={t("一次添加整个文件夹，支持子文件夹与文件类型筛选。")}
-      icon={<FolderOpen size={20} />}
+      icon={<DialogGlyph name="folder" />}
       size="md"
       className="import-dialog import-dialog--folder"
       sourceTheme="folder"
@@ -1880,7 +1878,7 @@ function ImportFolderModal({
         <div>
           <p className="workflow-label">{t("选择文件来源")}</p>
           <button type="button" data-autofocus onClick={handleSelectLocalFolder} disabled={pickingFolder || loading} aria-describedby={selectedFiles?.length ? selectedFilesStatusId : undefined} className={cn('import-folder-picker', Boolean(selectedFiles?.length) && 'has-selection')}>
-            <span className="import-folder-symbol">{pickingFolder ? <Loader2 size={23} className="animate-spin" aria-hidden /> : <FolderOpen size={23} aria-hidden />}</span>
+            <span className="import-folder-symbol">{pickingFolder ? <Loader2 size={26} className="animate-spin" aria-hidden /> : <DialogGlyph name="folder" size={30} />}</span>
             <span><strong>{pickingFolder ? t("正在读取文件夹…") : selectedFiles?.length ? t("已选择 {{value1}} 个文件", { value1: selectedFiles.length }) : t("选择本地文件夹")}</strong><small>{selectedFiles?.length ? t("点击重新选择文件夹") : t("从电脑批量添加文档、图片等素材")}</small></span>
             <Plus size={17} aria-hidden />
           </button>
@@ -1893,7 +1891,7 @@ function ImportFolderModal({
           )}
         </div>
         <details className="import-disclosure">
-          <summary className="import-disclosure-trigger"><span>{t("使用服务端路径")}<small>{folderPath.trim() || t("素材已在服务器上时使用")}</small></span><ChevronDown size={16} aria-hidden /></summary>
+          <summary className="import-disclosure-trigger"><span className="import-disclosure-symbol"><DialogGlyph name="library" size={22} /></span><span>{t("使用服务端路径")}<small>{folderPath.trim() || t("素材已在服务器上时使用")}</small></span><ChevronDown size={16} aria-hidden /></summary>
           <div className="import-disclosure-body">
             <div>
               <label htmlFor={`${modalDomId}-path`} className="workflow-label">{t("服务端文件夹路径")}</label>
@@ -1903,7 +1901,7 @@ function ImportFolderModal({
           </div>
         </details>
         <details className="import-disclosure">
-          <summary className="import-disclosure-trigger"><span>{t("文件筛选")} <small>{recursive ? t("包含子文件夹") : t("仅当前文件夹")}  {t("· 最多")} {maxFiles}  {t("个")}</small></span><ChevronDown size={16} aria-hidden /></summary>
+          <summary className="import-disclosure-trigger"><span className="import-disclosure-symbol"><DialogGlyph name="sliders" size={22} /></span><span>{t("文件筛选")} <small>{recursive ? t("包含子文件夹") : t("仅当前文件夹")}  {t("· 最多")} {maxFiles}  {t("个")}</small></span><ChevronDown size={16} aria-hidden /></summary>
           <div className="import-disclosure-body import-form">
             <label className="import-check-row"><input id={`${modalDomId}-recursive`} name="recursive" type="checkbox" checked={recursive} onChange={(e) => setRecursive(e.target.checked)} /><span>{t("包含子文件夹")}</span></label>
             <div className="import-field-grid">
@@ -2058,7 +2056,6 @@ function ImportSearchModal({
     <WorkflowDialog
       open
       onOpenChange={(open) => { if (!open) onClose() }}
-      eyebrow={t("素材导入")}
       title={t("搜索图片导入")}
       description={t("按关键词查找图片，直接导入当前素材空间。")}
       icon={<ImagePlus size={20} />}

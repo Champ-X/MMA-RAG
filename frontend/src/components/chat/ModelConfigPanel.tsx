@@ -1,11 +1,12 @@
 import { translate as tr, useTranslation } from '@/i18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Cpu, RefreshCw } from 'lucide-react'
+import { Check, RefreshCw } from 'lucide-react'
 import { WorkflowDialog } from '@/components/ui/WorkflowDialog'
+import { DialogGlyph } from '@/components/ui/DialogGlyph'
 import { useConfigStore } from '@/store/useConfigStore'
 import { systemApi } from '@/services/api_client'
 import { getModelProvider } from '@/lib/modelVendors'
-import { getChatModelDisplayName, UnifiedChatModelSearch, type ChatCatalogItem } from './UnifiedChatModelSearch'
+import { CatalogRowIcon, getChatModelDisplayName, UnifiedChatModelSearch, type ChatCatalogItem } from './UnifiedChatModelSearch'
 import './modelConfigPanel.css'
 
 interface ModelConfigPanelProps {
@@ -104,12 +105,11 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
 
   return (
     <WorkflowDialog
-      eyebrow={tr("对话设置")}
       open={open}
       onOpenChange={onOpenChange}
       title={tr("对话模型")}
       description={tr("选择用于生成回答的模型，选择后立即生效。")}
-      icon={<Cpu size={20} aria-hidden />}
+      icon={<DialogGlyph name="model" />}
       size="md"
       className="model-config-dialog"
       footer={<>
@@ -120,13 +120,13 @@ export function ModelConfigPanel({ open, onOpenChange }: ModelConfigPanelProps) 
       </>}
     >
       <div className="model-current" aria-live="polite" aria-atomic="true">
-        <span className="model-current-symbol" aria-hidden>{currentChatModel ? <Check size={18} /> : <Cpu size={18} />}</span>
+        <span className="model-current-symbol" aria-hidden>{currentItem ? <CatalogRowIcon item={currentItem} /> : <DialogGlyph name="model" size={26} />}</span>
         <div className="model-current-copy">
           <p className="model-current-label">{tr("当前模型")}{currentProvider && <span> · {currentProvider === 'AliyunBailian' ? tr("阿里云百炼") : currentProvider}</span>}</p>
           <p className="model-current-name">{currentName || tr("尚未选择模型")}</p>
           {currentChatModel && currentName !== currentChatModel && <p className="model-current-id">{currentChatModel}</p>}
         </div>
-        <span className="model-current-state">{currentChatModel ? tr("使用中") : tr("待选择")}</span>
+        <span className="model-current-state">{currentChatModel && <Check size={12} aria-hidden />}{currentChatModel ? tr("使用中") : tr("待选择")}</span>
       </div>
 
       {catalogError && <div className="model-catalog-notice" role="status">

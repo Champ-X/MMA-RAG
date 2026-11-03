@@ -3,6 +3,7 @@ import { useId, useState, useEffect } from 'react'
 import { X, CheckCircle, Loader2, AlertCircle, Image as ImageIcon, FileText, FileCode, Presentation, FileSpreadsheet, FolderPlus, Type, Pencil, Check, Music, Video, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { WorkflowDialog } from '@/components/ui/WorkflowDialog'
+import { DialogGlyph } from '@/components/ui/DialogGlyph'
 import './knowledgeCreateDialog.css'
 import { uploadProgressMessage } from './uploadProgress'
 import { uploadFailureCopy, uploadFailureFields } from './uploadFailure'
@@ -379,10 +380,9 @@ export function CreateKbModal({ onClose, onCreate }: {
     <WorkflowDialog
       open
       onOpenChange={(open) => { if (!open) onClose() }}
-      eyebrow={t("素材空间")}
       title={t("新建素材空间")}
       description={t("把相关素材放在一起，方便整理、检索与对话。")}
-      icon={<FolderPlus />}
+      icon={<DialogGlyph name="space" />}
       size="sm"
       busy={creating}
       className="knowledge-create-dialog"
@@ -410,12 +410,12 @@ export function CreateKbModal({ onClose, onCreate }: {
         </div>
       </>}
     >
-      <div className="knowledge-create-types" aria-label={t("可添加的素材类型")}>
-        <span><FileText aria-hidden />{t("文档")}</span>
-        <span><ImageIcon aria-hidden />{t("图片")}</span>
-        <span><Music aria-hidden />{t("音频")}</span>
-        <span><Video aria-hidden />{t("视频")}</span>
-      </div>
+      <ul className="knowledge-create-types" aria-label={t("可添加的素材类型")}>
+        <li><DialogGlyph name="document" size={23} />{t("文档")}</li>
+        <li><DialogGlyph name="image" size={23} />{t("图片")}</li>
+        <li><DialogGlyph name="audio" size={23} />{t("音频")}</li>
+        <li><DialogGlyph name="video" size={23} />{t("视频")}</li>
+      </ul>
       <div className="knowledge-create-field">
         <label htmlFor={nameInputId} className="workflow-label">{t("空间名称")} <span className="knowledge-create-required">{t("必填")}</span></label>
         <input id={nameInputId} name="name" value={name} onChange={(event) => { setName(event.target.value); setError(null) }}

@@ -14,16 +14,18 @@ import {
 import * as Dialog from '@radix-ui/react-dialog'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import {
+  ArrowDown,
+  ArrowUp,
   CornerDownLeft,
   MessageSquare,
   MoreHorizontal,
   Pencil,
-  Search,
   Trash2,
   User,
   X,
 } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
+import { DialogGlyph } from '@/components/ui/DialogGlyph'
 import { cn } from '@/lib/utils'
 import type { ChatSession } from '@/store/useChatStore'
 import { getConversationTitle, sortConversationSessions } from '@/lib/conversationList'
@@ -649,8 +651,8 @@ export function ConversationSidebar({
           </button>
           <span
             className={cn(
-              'truncate bg-gradient-to-r from-slate-950 via-indigo-700 to-violet-600 bg-clip-text text-[31px] font-bold leading-none tracking-[0.015em] text-transparent drop-shadow-[0_1px_0_rgba(255,255,255,0.7)]',
-              'dark:from-slate-50 dark:via-indigo-300 dark:to-violet-300 dark:drop-shadow-none',
+              'truncate text-[31px] font-bold leading-none tracking-[0.015em] text-[#6d5ca7]',
+              'dark:text-[#c9b0f1]',
               collapsed && 'hidden',
               'max-[640px]:hidden'
             )}
@@ -1032,10 +1034,16 @@ export function ConversationSidebar({
                {t("搜索功能页面、会话标题、提问或回答。使用上下方向键选择结果，按 Enter 打开，按 Esc 关闭。")} </Dialog.Description>
             <div className="conversation-search-header">
               <div className="conversation-search-heading">
-                <Dialog.Title>{t("搜索")}</Dialog.Title>
+                <span className="conversation-search-title">
+                  <span className="conversation-search-title-icon" aria-hidden="true"><DialogGlyph name="search" size={21} /></span>
+                  <Dialog.Title>{t("搜索")}</Dialog.Title>
+                </span>
+                <Dialog.Close asChild>
+                  <button type="button" aria-label={t("关闭搜索")} className="conversation-search-close"><X size={18} strokeWidth={1.7} aria-hidden /></button>
+                </Dialog.Close>
               </div>
               <div className="conversation-search-input-row">
-                <Search size={19} strokeWidth={1.8} aria-hidden />
+                <DialogGlyph name="search" size={22} />
                 <input
                   ref={searchInputRef}
                   type="search"
@@ -1052,9 +1060,6 @@ export function ConversationSidebar({
                   aria-activedescendant={selectedSearchResult ? searchOptionId(selectedSearchResult) : undefined}
                 />
                 {searchQuery && <button type="button" className="conversation-search-clear" onClick={clearSearchQuery} aria-label={t("清空搜索内容")}><X size={14} aria-hidden /></button>}
-                <Dialog.Close asChild>
-                  <button type="button" aria-label={t("关闭搜索")} className="conversation-search-close">esc</button>
-                </Dialog.Close>
               </div>
             </div>
             <div ref={searchResultsRef} className="conversation-search-results" id={`${searchId}-results`} role="listbox" aria-label={t("页面与会话搜索结果")}>
@@ -1073,7 +1078,7 @@ export function ConversationSidebar({
                         onClick={() => activateSearchResult(id)}
                         className="conversation-search-option"
                       >
-                        <span className="conversation-search-option-icon"><SidebarGlyph name={item.id} size={18} /></span>
+                        <span className="conversation-search-option-icon"><SidebarGlyph name={item.id} size={22} /></span>
                         <span className="conversation-search-option-copy">
                           <span className="conversation-search-option-title"><span><HighlightedSearchText text={t(item.label)} query={normalizedSearchQuery} /></span>{activeView === item.id && <span className="conversation-search-result-tag">{t("当前")}</span>}</span>
                           <span className="conversation-search-option-description"><HighlightedSearchText text={t(item.description)} query={normalizedSearchQuery} /></span>
@@ -1100,10 +1105,10 @@ export function ConversationSidebar({
                         aria-label={t("打开会话：{{value1}}{{value2}}", { value1: result.title, value2: result.matches.length ? t("，匹配{{value1}}", { value1: result.matches.map(match => match.role === 'assistant' ? t("回答") : t("提问")).join('、') }) : '' })}
                         className="conversation-search-option"
                       >
-                        <span className="conversation-search-option-icon"><MessageSquare size={17} strokeWidth={1.7} aria-hidden /></span>
+                        <span className="conversation-search-option-icon conversation-search-option-icon--conversation"><DialogGlyph name="conversation" size={23} /></span>
                         <span className="conversation-search-option-copy">
                           <span className="conversation-search-option-title">
-                            <span><HighlightedSearchText text={result.title} query={normalizedSearchQuery} /></span>
+                            <span title={result.title}><HighlightedSearchText text={result.title} query={normalizedSearchQuery} /></span>
                             {result.session.id === activeSessionId && activeView === 'chat' && <span className="conversation-search-result-tag">{t("当前")}</span>}
                             {result.titleMatched && <span className="conversation-search-result-tag">{t("标题匹配")}</span>}
                           </span>
@@ -1127,12 +1132,20 @@ export function ConversationSidebar({
               )}
               {searchResultIds.length === 0 && (
                 <div className="conversation-search-empty">
-                  <span className="conversation-search-empty-icon"><Search size={21} strokeWidth={1.5} aria-hidden /></span>
+                  <span className="conversation-search-empty-icon"><DialogGlyph name="search" size={30} /></span>
                   <strong>{t("没有找到相关结果")}</strong>
                   <p>{t("试试更短的关键词，也可以搜索会话中的提问或回答。")}</p>
                 </div>
               )}
             </div>
+            <footer className="conversation-search-footer" aria-hidden="true">
+              <span>{searchResultIds.length ? t("{{value1}} 项结果", { value1: searchResultIds.length }) : t("暂无匹配")}</span>
+              <span className="conversation-search-shortcuts">
+                <span><kbd><ArrowUp size={12} /><ArrowDown size={12} /></kbd>{t("选择")}</span>
+                <span><kbd>Enter</kbd><CornerDownLeft size={13} /></span>
+                <span><kbd>esc</kbd>{t("关闭")}</span>
+              </span>
+            </footer>
             <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
               {searchResultIds.length ? t("{{value1}} 项结果", { value1: searchResultIds.length }) : t("暂无匹配")}
             </span>

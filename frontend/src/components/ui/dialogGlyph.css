@@ -1,0 +1,13 @@
+.dialog-glyph { --dg-fill: #e9defa; --dg-secondary: #3f927e; flex-shrink: 0; color: #7350b5; }
+.dialog-glyph[data-glyph='folder'], .dialog-glyph[data-glyph='audio'] { --dg-fill: #f8e7c8; --dg-secondary: #bd7950; color: #a96f2f; }
+.dialog-glyph[data-glyph='image'], .dialog-glyph[data-glyph='route'] { --dg-fill: #def0e7; --dg-secondary: #9a68bc; color: #368c74; }
+.dialog-glyph[data-glyph='video'], .dialog-glyph[data-glyph='sliders'] { --dg-fill: #dcebf7; --dg-secondary: #c18743; color: #477fa9; }
+.dialog-glyph[data-glyph='conversation'], .dialog-glyph[data-glyph='search'] { --dg-fill: #e9e2f8; --dg-secondary: #8870bd; color: #6d5ca7; }
+.dark .dialog-glyph { --dg-fill: #46345f; --dg-secondary: #8bcdb6; color: #c5a9ed; }
+.dark .dialog-glyph[data-glyph='folder'], .dark .dialog-glyph[data-glyph='audio'] { --dg-fill: #503d27; --dg-secondary: #e0a675; color: #e0b478; }
+.dark .dialog-glyph[data-glyph='image'], .dark .dialog-glyph[data-glyph='route'] { --dg-fill: #29483e; --dg-secondary: #c69ce0; color: #86cbb0; }
+.dark .dialog-glyph[data-glyph='video'], .dark .dialog-glyph[data-glyph='sliders'] { --dg-fill: #2b4156; --dg-secondary: #dfa55f; color: #94c3e6; }
+.dark .dialog-glyph[data-glyph='conversation'], .dark .dialog-glyph[data-glyph='search'] { --dg-fill: #403653; --dg-secondary: #c2a8e8; color: #bdade0; }
+@media (forced-colors: active) {
+  .dialog-glyph, .dark .dialog-glyph { --dg-fill: Canvas; --dg-secondary: CanvasText; color: CanvasText; }
+}

@@ -1,7 +1,8 @@
 import { translate as t, useTranslation, getLanguage } from '@/i18n'
 import { useEffect, useId, useMemo, useState } from 'react'
-import { FileText, Loader2, Pencil } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { WorkflowDialog } from '@/components/ui/WorkflowDialog'
+import { DialogGlyph } from '@/components/ui/DialogGlyph'
 import { MdEditor, type ToolbarNames } from 'md-editor-rt'
 import 'md-editor-rt/lib/style.css'
 import './ManualInputModal.css'
@@ -96,18 +97,18 @@ export function ManualInputModal({
     () => [
       'revoke',
       'next',
-      '=',
+      '-',
       'bold',
       'underline',
       'italic',
       'strikeThrough',
       'quote',
-      '=',
+      '-',
       'title',
       'unorderedList',
       'orderedList',
       'task',
-      '=',
+      '-',
       'codeRow',
       'code',
       'table',
@@ -141,12 +142,11 @@ export function ManualInputModal({
 
   return (
     <WorkflowDialog
-      eyebrow={t("素材创作")}
       open={open}
       onOpenChange={(next) => { if (!next) onClose() }}
       title={dialogTitle}
       description={helperText}
-      icon={mode === 'create' ? <FileText /> : <Pencil />}
+      icon={<DialogGlyph name="document" />}
       size="xl"
       sourceTheme="document"
       className="manual-input-dialog"

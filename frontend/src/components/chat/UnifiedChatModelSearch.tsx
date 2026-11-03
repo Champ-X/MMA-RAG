@@ -1,10 +1,11 @@
 import { getLanguage, translate as tr, useTranslation } from '@/i18n'
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { Search, AlertCircle, Check, Cpu, X } from 'lucide-react'
+import { Search, AlertCircle, Check, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { getModelProvider, PROVIDER_LOGOS, type ProviderKey } from '@/lib/modelVendors'
 import { OpenRouterModelBrandIcon } from './OpenRouterModelBrandIcon'
+import { DialogGlyph } from '@/components/ui/DialogGlyph'
 
 export type ChatCatalogItem = {
   registry_id: string
@@ -54,7 +55,7 @@ export function getChatModelDisplayName(item: ChatCatalogItem): string {
   return registryId.includes(':') ? registryId.slice(registryId.indexOf(':') + 1) : registryId
 }
 
-function CatalogRowIcon({ item }: { item: ChatCatalogItem }) {
+export function CatalogRowIcon({ item }: { item: ChatCatalogItem }) {
   useTranslation()
   if (item.provider === 'openrouter') {
     return <OpenRouterModelBrandIcon modelId={item.id} size={26} className="mt-0.5" ariaHidden />
@@ -64,7 +65,7 @@ function CatalogRowIcon({ item }: { item: ChatCatalogItem }) {
   if (src) {
     return <img src={src} alt="" className="mt-0.5 h-[26px] w-[26px] rounded object-contain" width={26} height={26} aria-hidden />
   }
-  return <div className="mt-0.5 h-[26px] w-[26px] rounded bg-slate-200/80 dark:bg-slate-600/80" aria-hidden />
+  return <DialogGlyph name="model" size={26} />
 }
 
 interface UnifiedChatModelSearchProps {
@@ -412,7 +413,7 @@ function DialogModelDirectory({ catalog, loading, currentChatModel, onSelect, cl
             onMouseEnter={() => setActiveIndex(index)}
             onClick={() => onSelect(item.registry_id)}
           >
-            <span className="model-directory-icon">{item.provider === 'openrouter' || getModelProvider(item.registry_id) ? <CatalogRowIcon item={item} /> : <Cpu size={22} aria-hidden />}</span>
+            <span className="model-directory-icon"><CatalogRowIcon item={item} /></span>
             <span className="model-directory-copy">
               <span className="model-directory-name">{modelName}</span>
               <span className="model-directory-id">{item.registry_id}</span>
@@ -424,7 +425,7 @@ function DialogModelDirectory({ catalog, loading, currentChatModel, onSelect, cl
       })}
     </ul>
     {visible.length === 0 && <div className="workflow-empty model-directory-empty" role="status">
-      <Cpu size={22} aria-hidden />
+      <DialogGlyph name="model" size={30} />
       <p>{loading ? tr("正在获取可选模型") : catalog.length > 0 ? tr("没有找到匹配的模型") : tr("暂无可选模型")}</p>
       <span>{loading ? tr("模型目录加载后会显示在这里。") : catalog.length > 0 ? tr("试试其他关键词，或切换到全部供应商。") : tr("请检查服务连接与供应商配置。")}</span>
     </div>}

@@ -153,6 +153,21 @@
 .import-dialog fieldset:disabled .import-mode-option,
 .import-dialog fieldset:disabled .import-segment,
 .import-dialog fieldset:disabled .import-check-row { cursor: default; opacity: .65; }
+/* The folder source leads; secondary settings share a compact disclosure rhythm. */
+.import-dialog--folder .import-form { gap: 18px; }
+.import-dialog--folder .import-folder-picker { min-height: 112px; padding: 19px 20px; gap: 16px; border: 1px solid var(--wf-emphasis); background: var(--wf-tint); border-radius: 12px; }
+.import-dialog--folder .import-folder-picker:hover { background: var(--wf-tint); border-color: var(--wf-accent); }
+.import-dialog--folder .import-folder-symbol { width: 48px; height: 48px; background: transparent; border-radius: 0; }
+.import-dialog--folder .import-folder-picker strong { font-size: 14px; }
+.import-dialog--folder .import-folder-picker small { margin-top: 5px; line-height: 1.6; }
+.import-dialog--folder .import-folder-picker > svg { width: 18px; height: 18px; color: var(--wf-accent); }
+.import-dialog--folder .import-disclosure { padding-inline: 16px; border-radius: 12px; background: var(--wf-surface); }
+.import-dialog--folder .import-disclosure-trigger { min-height: 68px; gap: 12px; padding-block: 14px; }
+.import-dialog--folder .import-disclosure-trigger > span:not(.import-disclosure-symbol) { flex: 1; }
+.import-dialog--folder .import-disclosure-symbol { display: flex; align-items: center; justify-content: center; flex: 0 0 30px; width: 30px; height: 30px; }
+.import-dialog--folder .import-disclosure-trigger small { font-size: 11px; margin-top: 4px; line-height: 1.5; }
+.import-dialog--folder .import-disclosure[open] { background: var(--wf-subtle); }
+.import-dialog--folder .import-disclosure-body { padding-top: 3px; }
 @media (max-width: 540px) {
   .import-dialog .import-form { gap: 17px; }
   .import-dialog .import-primary-field { padding: 14px; }
@@ -172,6 +187,10 @@
   .import-dialog .import-source-options .import-segment { padding: 10px 8px; }
   .import-dialog .import-source-options strong { min-height: 36px; }
   .import-dialog .import-source-options .import-radio-mark { top: auto; bottom: 12px; }
+  .import-dialog--folder .import-folder-picker { min-height: 108px; gap: 10px; }
+  .import-dialog--folder .import-folder-symbol { width: 38px; height: 42px; }
+  .import-dialog--folder .import-disclosure { padding-inline: 13px; }
+  .import-dialog--folder .import-disclosure-trigger { gap: 9px; }
 }
 @media (max-width: 360px) {
   .import-dialog .import-mode-grid { grid-template-columns: 1fr; }

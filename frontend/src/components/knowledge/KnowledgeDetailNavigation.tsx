@@ -57,7 +57,7 @@ export function KnowledgeDetailNavigation({ section, onSectionChange, id, upload
     {collapsibleUpload && <button type="button" className="knowledge-detail-navigation__add"
       aria-expanded={uploadExpanded} aria-controls={`${id}-upload`} onClick={onToggleUpload}>
       <span className="knowledge-detail-navigation__add-icon" aria-hidden="true">
-        <svg viewBox="0 0 40 36" fill="none" focusable="false" aria-hidden="true">
+        <svg width="32" height="30" viewBox="0 0 40 36" fill="none" focusable="false" aria-hidden="true">
           <path className="knowledge-detail-navigation__folder-back" d="M4 29V12a3 3 0 0 1 3-3h8l3 4h15a3 3 0 0 1 3 3v13a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3Z" />
           <g className="knowledge-detail-navigation__add-paper">
             <rect x="9" y="5" width="16" height="24" rx="2.5" />
@@ -75,8 +75,10 @@ export function KnowledgeDetailNavigation({ section, onSectionChange, id, upload
             <path className="knowledge-detail-navigation__add-plus" d="M26.5 26h6m-3-3v6" />
           </g>
         </svg>
-      </span><span>{t('添加素材')}</span>
-      <ChevronDown size={14} aria-hidden className="knowledge-detail-navigation__chevron" />
+      </span><span className="knowledge-detail-navigation__add-label">{t('添加素材')}</span>
+      <span className="knowledge-detail-navigation__add-toggle" aria-hidden="true">
+        <ChevronDown size={14} strokeWidth={1.75} focusable="false" className="knowledge-detail-navigation__chevron" />
+      </span>
     </button>}
   </div>
 }

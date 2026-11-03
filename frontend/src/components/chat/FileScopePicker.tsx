@@ -1,7 +1,8 @@
 import { translate as tr, useTranslation } from '@/i18n'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Folder, FolderTree, Search, X } from 'lucide-react'
+import { ChevronDown, Folder, Search, X } from 'lucide-react'
 import { WorkflowDialog } from '@/components/ui/WorkflowDialog'
+import { DialogGlyph } from '@/components/ui/DialogGlyph'
 import type { ChatScopeFile } from '@/store/useChatStore'
 import { fileScopeKey, formatScopedFileSize, useFileScopeOptions } from './useFileScopeOptions'
 import type { KnowledgeBaseFileItem } from './useFileScopeOptions'
@@ -101,12 +102,11 @@ export function FileScopePicker({ open, onOpenChange, value, onChange }: FileSco
 
   return (
     <WorkflowDialog
-      eyebrow={tr("对话设置")}
       open={open}
       onOpenChange={onOpenChange}
       title={tr("指定检索文件")}
       description={tr("仅在选定文件中检索。输入框中的 @ 引用作为分析材料，不会自动限定搜索范围。")}
-      icon={<FolderTree size={21} strokeWidth={1.7} aria-hidden />}
+      icon={<DialogGlyph name="folder" />}
       size="lg"
       className="scope-dialog scope-dialog--files"
       footer={(
@@ -156,7 +156,7 @@ export function FileScopePicker({ open, onOpenChange, value, onChange }: FileSco
                 <h4>
                   <button type="button" onClick={() => toggleKb(kb.id)} aria-expanded={isExpanded} aria-controls={`${id}-${kb.id}-files`} aria-label={tr("知识库：{{v0}}", { v0: kb.name })} className="scope-file-group__toggle" disabled={hasSearch}>
                     <ChevronDown size={15} strokeWidth={1.8} className="scope-file-group__chevron" aria-hidden />
-                    <Folder size={18} strokeWidth={1.6} aria-hidden />
+                    <span className="scope-file-group__icon" aria-hidden="true"><DialogGlyph name="folder" size={19} /></span>
                     <span className="scope-file-group__name" title={kb.name}>{kb.name}</span>
                     <span className="scope-file-group__count">{failed ? tr("加载失败") : !hasLoaded || isLoading ? tr("加载中…") : tr("{{v0}} 个文件", { v0: hasSearch ? matches.length : files.length })}</span>
                   </button>

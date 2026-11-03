@@ -10,7 +10,6 @@ interface WorkflowDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
-  eyebrow?: string
   description?: ReactNode
   icon?: ReactNode
   size?: 'sm' | 'md' | 'lg' | 'xl'
@@ -24,7 +23,7 @@ interface WorkflowDialogProps {
 
 /** Shared, accessible frame for the material and conversation workflows. */
 export function WorkflowDialog({
-  open, onOpenChange, title, eyebrow, description, icon, size = 'md', footer,
+  open, onOpenChange, title, description, icon, size = 'md', footer,
   children, className, busy = false, onSubmit, sourceTheme,
 }: WorkflowDialogProps) {
   useTranslation()
@@ -61,14 +60,11 @@ export function WorkflowDialog({
         >
           <header className="workflow-dialog-header">
             <div className="workflow-dialog-heading">
-              {eyebrow && <div className="workflow-dialog-eyebrow">{eyebrow}</div>}
               <Dialog.Title>{title}</Dialog.Title>
               {description && <Dialog.Description asChild><div className="workflow-dialog-description">{description}</div></Dialog.Description>}
             </div>
             {icon && <div className="workflow-dialog-art" aria-hidden="true">
-              <span className="workflow-dialog-sheet workflow-dialog-sheet--back" />
-              <span className="workflow-dialog-sheet workflow-dialog-sheet--middle" />
-              <span className="workflow-dialog-icon">{icon}<span className="workflow-dialog-icon-rule" /></span>
+              <span className="workflow-dialog-icon">{icon}</span>
             </div>}
             <Dialog.Close className="workflow-dialog-close" disabled={busy} aria-label={t("关闭{{title}}", { title: title })}>
               <X size={18} strokeWidth={1.7} aria-hidden="true" />
