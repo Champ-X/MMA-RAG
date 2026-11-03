@@ -1118,6 +1118,8 @@ class IngestionService:
         processing_id: Optional[str] = None,
         asset_map: Optional[Dict[str, bytes]] = None,
         source_type: Optional[str] = None,
+        source_metadata: Optional[Dict[str, Any]] = None,
+        file_id_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         处理文件上传完整流程
@@ -1130,10 +1132,14 @@ class IngestionService:
             processing_id: 可选，由流式上传接口传入以便前端轮询/流式读取进度
             asset_map: 可选，路径 -> 字节 映射，供 Markdown 解析相对路径图片（如文件夹导入时传入）
             source_type: 上传来源标记（如 manual_input），用于前端可编辑判定
+            source_metadata: 可追溯的网络采集来源，保留在状态及索引元数据中
+            file_id_override: 由可信宿主提供的稳定 UUID，使采集重试复用原对象和索引
             
         Returns:
             处理结果
         """
+        if file_id_override is not None:
+            file_id_override = str(uuid.UUID(file_id_override))
         if processing_id is None:
             processing_id = str(uuid.uuid4())
         logger.info(f"开始处理文件上传: {file_path}, 处理ID: {processing_id}")
@@ -1163,6 +1169,7 @@ class IngestionService:
             "source_kb_id": kb_id,
             "user_id": user_id,
             "source_type": source_type,
+            "source_metadata": source_metadata or previous_status.get("source_metadata"),
             "file_size": previous_status.get("file_size"),
             "submitted_at": previous_status.get("submitted_at") or datetime.utcnow().isoformat(),
             "started_at": datetime.utcnow().isoformat(),
@@ -1191,6 +1198,8 @@ class IngestionService:
             if source_type:
                 metadata = parse_result.get("metadata") or {}
                 parse_result["metadata"] = {**metadata, "source_type": source_type}
+            if source_metadata:
+                parse_result["metadata"] = {**(parse_result.get("metadata") or {}), "provenance": source_metadata}
             file_type = parse_result["file_type"]
 
             # 视频必须先拿到可信时长，才允许写入对象存储并进入 Scene–Shot 解析。
@@ -1238,11 +1247,16 @@ class IngestionService:
             else:
                 storage_file_type = "documents"  # 默认
             
+            stable_storage = ({
+                "custom_object_path": f"{storage_file_type}/{file_id_override}_{Path(upload_file_path).name}",
+                "file_id_override": file_id_override,
+            } if file_id_override else {})
             storage_result = await self.minio_adapter.upload_file(
                 file_content=file_content,
                 file_path=upload_file_path,
                 kb_id=kb_id,
-                file_type=storage_file_type
+                file_type=storage_file_type,
+                **stable_storage,
             )
 
             # 原文件一旦落到 MinIO，就把其稳定 file_id 写入任务状态。文件列表可据此区分
@@ -1678,6 +1692,9 @@ class IngestionService:
             chunk["file_path"] = object_path
             chunk["file_type"] = file_type
             chunk["file_id"] = file_id
+            provenance = (parse_result.get("metadata") or {}).get("provenance")
+            if provenance:
+                chunk["metadata"] = {**(chunk.get("metadata") or {}), "provenance": provenance}
             chunk["temp_id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"document:{file_id}:{i}"))
         
         # 填充context_window：存储前后相邻chunk的临时ID
@@ -1795,6 +1812,9 @@ class IngestionService:
         }]
         if markdown_ref is not None:
             image_data[0]["markdown_ref"] = markdown_ref
+        provenance = (parse_result.get("metadata") or {}).get("provenance")
+        if provenance:
+            image_data[0]["provenance"] = provenance
         
         vector_storage_result = await self.vector_store.upsert_image_vectors(
             kb_id=kb_id,
@@ -1913,6 +1933,9 @@ class IngestionService:
             }
             if sparse_vector:
                 audio_data["sparse_vector"] = sparse_vector
+            provenance = (parse_result.get("metadata") or {}).get("provenance")
+            if provenance:
+                audio_data["provenance"] = provenance
             
             vector_storage_result = await self.vector_store.upsert_audio_vectors(
                 kb_id=kb_id,
@@ -2228,6 +2251,11 @@ class IngestionService:
         if not vector_data["shot_points"]:
             raise RuntimeError("视频 Scene–Shot 解析未生成可检索 Shot，未写入向量。")
 
+        provenance = (parse_result.get("metadata") or {}).get("provenance")
+        if provenance:
+            for point in [*vector_data["shot_points"], *vector_data["keyframe_points"]]:
+                point["payload"] = {**(point.get("payload") or {}), "provenance": provenance}
+
         manifest = {
             "schema_version": SCHEMA_VERSION,
             "file_id": file_id,
@@ -2235,6 +2263,8 @@ class IngestionService:
             "duration": duration,
             "analysis": analysis,
         }
+        if provenance:
+            manifest["provenance"] = provenance
         await self.minio_adapter.upload_file(
             file_content=json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
             file_path=f"{file_id}_scene_shot_asr.json",
@@ -4330,6 +4360,8 @@ class IngestionService:
         user_id: Optional[str] = None,
         asset_map: Optional[Dict[str, bytes]] = None,
         source_type: Optional[str] = None,
+        source_metadata: Optional[Dict[str, Any]] = None,
+        file_id_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         """启动一个已通过 :meth:`prepare_file_upload` 登记的后台上传任务。"""
         existing_task = self._background_upload_tasks.get(processing_id)
@@ -4357,6 +4389,11 @@ class IngestionService:
                 }
                 semaphore = asyncio.Semaphore(1) if is_video else self._get_file_processing_semaphore()
                 async with semaphore:
+                    collection_options = {}
+                    if source_metadata is not None:
+                        collection_options["source_metadata"] = source_metadata
+                    if file_id_override is not None:
+                        collection_options["file_id_override"] = file_id_override
                     return await self.process_file_upload(
                         file_content=file_content,
                         file_path=file_path,
@@ -4365,6 +4402,7 @@ class IngestionService:
                         processing_id=processing_id,
                         asset_map=asset_map,
                         source_type=source_type,
+                        **collection_options,
                     )
             finally:
                 heartbeat_task.cancel()
@@ -4474,6 +4512,8 @@ class IngestionService:
         })
         file_content = await self.minio_adapter.get_file_content(bucket, object_path)
         parse_result = await self.parser_factory.parse_file(file_content, file_path)
+        if status.get("source_metadata"):
+            parse_result["metadata"] = {**(parse_result.get("metadata") or {}), "provenance": status["source_metadata"]}
         if parse_result.get("file_type") != "video":
             raise ValueError("原任务不是可重新处理的视频文件")
         try:
@@ -4556,6 +4596,8 @@ class IngestionService:
                     raise ValueError("保存的原文件不是可恢复的文档")
                 if status.get("source_type"):
                     parsed["metadata"] = {**(parsed.get("metadata") or {}), "source_type": status["source_type"]}
+                if status.get("source_metadata"):
+                    parsed["metadata"] = {**(parsed.get("metadata") or {}), "provenance": status["source_metadata"]}
                 await checkpoint.save("parsed", parsed)
         result = await self._process_document(parsed, storage, status["kb_id"], processing_id, status["file_path"])
         self._update_processing_status(processing_id, {

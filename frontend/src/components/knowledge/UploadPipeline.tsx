@@ -59,6 +59,8 @@ interface UploadPipelineProps {
   onRetryFile?: (file: UploadFileProgress) => Promise<void>
   retryStates?: Record<string, { pending?: boolean; error?: string }>
   className?: string
+  /** Related creation/import actions shown below the local upload target. */
+  localActions?: React.ReactNode
   children?: React.ReactNode
 }
 
@@ -116,7 +118,7 @@ function UploadFileTile({ file, onRetry, retryState, retryDisabled }: {
 }
 
 export function UploadPipeline({ onFileSelect, uploadButtonRef, sourcesCollapsed = false, isUploading = false, uploadProgress: progress,
-  externalFiles, onDismissProgress, onRetryFile, retryStates, className, children }: UploadPipelineProps) {
+  externalFiles, onDismissProgress, onRetryFile, retryStates, className, localActions, children }: UploadPipelineProps) {
   useTranslation()
   const input = useRef<HTMLInputElement>(null)
   const dragDepth = useRef(0)
@@ -214,7 +216,8 @@ export function UploadPipeline({ onFileSelect, uploadButtonRef, sourcesCollapsed
       )}
 
       <div className="upload-panel__body" data-has-sources={Boolean(children)} hidden={sourcesCollapsed}>
-        {!isUploading && <button ref={uploadButtonRef} type="button" className="upload-drop" data-dragging={dragging}
+        {!isUploading && <div className="upload-panel__local">
+        <button ref={uploadButtonRef} type="button" className="upload-drop" data-dragging={dragging}
           aria-label={t("选择本地文件，支持批量上传；也可拖拽文件到此处")}
           onClick={() => input.current?.click()}
           onDragEnter={event => {
@@ -250,7 +253,9 @@ export function UploadPipeline({ onFileSelect, uploadButtonRef, sourcesCollapsed
           <span className="upload-drop__formats" aria-hidden>
             <span><FileText size={16} />{t("文档与表格")}</span><span><Image size={16} />{t("图片")}</span><span><Music2 size={16} />{t("音频")}</span><span><Film size={16} />{t("视频")}</span>
           </span>
-        </button>}
+        </button>
+        {localActions}
+        </div>}
         <input ref={input} type="file" multiple disabled={isUploading} className="hidden" aria-label={t("选择知识库上传文件")}
           accept=".pdf,.docx,.doc,.pptx,.txt,.md,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.gif,.webp,.tiff,.tif,.mp3,.wav,.m4a,.flac,.aac,.ogg,.wma,.opus,.mp4,.avi,.mov,.mkv,.webm,.flv,.wmv,.m4v"
           onChange={event => { select(event.target.files); event.target.value = '' }} />

@@ -48,9 +48,12 @@ async def _app_lifespan(app: FastAPI):
     catalog_task = asyncio.create_task(maintain_llm_catalog(llm_manager.registry), name="llm-catalog")
     from app.core.setup_service import get_setup_service
     get_setup_service()  # Recover a persisted interrupted preparation immediately.
+    from app.modules.collection.service import get_collection_service, stop_collection_service
+    get_collection_service()  # Retain receipts and mark interrupted collection runs.
     try:
         yield
     finally:
+        await stop_collection_service()
         await get_setup_service().shutdown()
         catalog_task.cancel()
         await asyncio.gather(catalog_task, return_exceptions=True)
@@ -84,7 +87,7 @@ app.add_middleware(LegacyPriorityMiddleware)
 
 # 导入路由模块
 from app.api import chat, knowledge, upload, debug, import_api, feishu, retrieval, jev
-from app.api import pi_agent, setup
+from app.api import pi_agent, setup, collection
 from app.core.logger import setup_logger
 
 # 设置日志
@@ -105,6 +108,7 @@ app.include_router(feishu.router, prefix="/api/feishu", tags=["feishu"])
 app.include_router(retrieval.router, prefix="/api/v1/retrieval", tags=["retrieval"])
 app.include_router(pi_agent.router, prefix="/api/pi", tags=["pi-agent"])
 app.include_router(setup.router, prefix="/api/setup", tags=["setup"])
+app.include_router(collection.router, prefix="/api/collection", tags=["collection"])
 
 # Validation errors normally include rejected inputs; setup carries credentials.
 from fastapi.exceptions import RequestValidationError

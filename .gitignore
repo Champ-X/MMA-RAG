@@ -44,6 +44,8 @@ minio_data/
 # 推荐问题 LLM 缓存（服务端）
 backend/data/suggestion_cache/
 backend/data/jev_settings.json
+# Durable network collection runs, staged downloads and ingestion receipts
+/backend/data/collection/
 qdrant_storage/
 minio.pid
 qdrant.pid
@@ -106,6 +108,7 @@ backend/.env
 # Local design proposals, generated intermediates and visual review captures.
 # Keep shipping assets under frontend/public/ tracked; only local drafts and
 # review captures belong in these ignored directories.
+/.agent-tasks/
 /output/
 /docs/previews/
 /frontend/design-previews/

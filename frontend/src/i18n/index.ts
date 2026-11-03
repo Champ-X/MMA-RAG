@@ -8,6 +8,7 @@ import { chatEnglish } from './chat.en'
 import { languageControlsEnglish } from './languageControls.en'
 import { conversationActionsEnglish } from './conversationActions.en'
 import { knowledgeEmptyEnglish } from './knowledgeEmpty.en'
+import { collectionEnglish } from './collection.en'
 
 export type Language = 'zh-CN' | 'en-US'
 export const normalizeLanguage = (value: unknown): Language => value === 'en-US' ? 'en-US' : 'zh-CN'
@@ -19,7 +20,7 @@ function savedLanguage(): Language {
   } catch { return 'zh-CN' }
 }
 
-export const englishMessages: Record<string, string> = { ...uiEnglish, ...coreEnglish, ...piEnglish, ...decisionEnglish, ...chatEnglish, ...languageControlsEnglish, ...conversationActionsEnglish, ...knowledgeEmptyEnglish }
+export const englishMessages: Record<string, string> = { ...uiEnglish, ...coreEnglish, ...piEnglish, ...decisionEnglish, ...chatEnglish, ...languageControlsEnglish, ...conversationActionsEnglish, ...knowledgeEmptyEnglish, ...collectionEnglish }
 const chineseMessages = Object.fromEntries(Object.keys(englishMessages).map(key => [key, key]))
 
 // Source-language keys keep existing Chinese copy authoritative. Only explicit

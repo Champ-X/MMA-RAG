@@ -6,6 +6,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { Plus, Upload, Search, Trash2, FileText, Image as ImageIcon, X, Pencil, Link2, ImagePlus, Loader2, FolderOpen, Layers, Zap, Newspaper, Play, Music, Video, Eye, LayoutGrid, List, ChevronDown, ChevronRight, AlertCircle, RotateCcw } from 'lucide-react'
 import { UploadPipeline, type UploadPipelineProgress, type UploadFileProgress } from './UploadPipeline'
 import { UploadSourceGlyph } from './UploadSourceGlyph'
+import { CollectionAgent } from './CollectionAgent'
 import { KnowledgeLibraryHeader } from './KnowledgeLibraryHeader'
 import { KnowledgeSpaceCard } from './KnowledgeSpaceCard'
 import { getKnowledgeDefaultCover } from './knowledgeDefaultCover'
@@ -3401,8 +3402,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
               isUploading={uploading}
               uploadProgress={uploadProgress}
               externalFiles={currentUploadFiles}
-            >
-              <div className="upload-sources">
+              localActions={
                 <div className="upload-source-group" role="group" aria-label={t("直接添加")}>
                   <h4>{t("直接添加")}</h4>
                   <div className="upload-source-group__items">
@@ -3421,28 +3421,19 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                     </button>
                   </div>
                 </div>
-                <div className="upload-source-group" role="group" aria-label={t("从网络导入")}>
-                  <h4>{t("从网络导入")}</h4>
-                  <div className="upload-source-group__items upload-source-group__items--web">
-                    <button type="button" className="upload-source" data-source="link" disabled={uploading}
-                      onClick={() => setShowImportUrlModal(true)} aria-label={t("从 URL 导入，支持网页或文件直链")}>
-                      <span className="upload-source__icon"><UploadSourceGlyph name="link" size={28} /></span>
-                      <span className="upload-source__copy"><strong>{t("链接导入")}</strong><small>{t("网页 / 文件")}</small></span>
-                      <ChevronRight className="upload-source__arrow" size={14} aria-hidden />
-                    </button>
-                    <button type="button" className="upload-source" data-source="image" disabled={uploading}
-                      onClick={() => setShowImportSearchModal(true)} aria-label={t("打开图片搜索导入，按关键词批量导入")}>
-                      <span className="upload-source__icon"><UploadSourceGlyph name="image" size={28} /></span>
-                      <span className="upload-source__copy"><strong>{t("图片搜索")}</strong><small>{t("按关键词搜图")}</small></span>
-                      <ChevronRight className="upload-source__arrow" size={14} aria-hidden />
-                    </button>
-                    <button type="button" className="upload-source" data-source="news" disabled={uploading}
-                      onClick={() => setShowImportHotTopicsModal(true)} aria-label={t("导入热点资讯，自动抓取新闻素材")}>
-                      <span className="upload-source__icon"><UploadSourceGlyph name="news" size={28} /></span>
-                      <span className="upload-source__copy"><strong>{t("热点资讯")}</strong><small>{t("按话题收集")}</small></span>
-                      <ChevronRight className="upload-source__arrow" size={14} aria-hidden />
-                    </button>
-                  </div>
+              }
+            >
+              <div className="upload-sources">
+                <div className="upload-source-group upload-source-group--network" role="group" aria-label={t("从网络导入")}>
+                  <CollectionAgent kbId={activeKb.id} onImported={refreshKbDetail}
+                    onActive={() => setUploadExpanded(true)}
+                    onViewCollected={() => {
+                      setDetailSection('materials')
+                      setFileQuery('')
+                      setFileFilter('all')
+                      setUploadExpanded(false)
+                      requestAnimationFrame(() => document.getElementById(`${fileListDomId}-materials-panel`)?.scrollIntoView({ block: 'start', behavior: 'auto' }))
+                    }} />
                 </div>
               </div>
             </UploadPipeline>

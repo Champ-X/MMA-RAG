@@ -693,6 +693,8 @@ class VectorStore:
                     payload["source_file_id"] = image["source_file_id"]
                 if image.get("markdown_ref"):
                     payload["markdown_ref"] = image["markdown_ref"]
+                if image.get("provenance"):
+                    payload["provenance"] = image["provenance"]
 
                 point = PointStruct(
                     id=point_id,
@@ -738,7 +740,8 @@ class VectorStore:
             points = []
             
             for audio in audios:
-                point_id = str(uuid.uuid4())
+                point_id = (str(uuid.uuid5(uuid.NAMESPACE_URL, f"audio:{kb_id}:{audio['file_id']}"))
+                            if audio.get("file_id") else str(uuid.uuid4()))
                 
                 # 准备向量：同一 Point 挂载 text_vec（描述性文本嵌入）+ clap_vec（CLAP 声学特征）+ sparse
                 vectors = {
@@ -771,6 +774,8 @@ class VectorStore:
                 }
                 if audio.get("source_file_id"):
                     payload["source_file_id"] = audio["source_file_id"]
+                if audio.get("provenance"):
+                    payload["provenance"] = audio["provenance"]
 
                 point = PointStruct(
                     id=point_id,

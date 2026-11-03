@@ -30,12 +30,16 @@ async function setup() {
   const { createRoot } = requireFrontend('react-dom/client') as typeof import('react-dom/client')
   const { act } = requireFrontend('react') as typeof import('react')
   const { knowledgeApi, importApi } = await import('../src/services/api_client')
+  const { collectionApi } = await import('../src/services/collection')
   const { useKnowledgeStore } = await import('../src/store/useKnowledgeStore')
   const { setLanguage } = await import('../src/i18n')
   const { default: KnowledgeList } = await import('../src/components/knowledge/KnowledgeList')
   setLanguage('zh-CN')
   const originals = { ...knowledgeApi }
   const originalImports = { ...importApi }
+  const originalCollection = { ...collectionApi }
+  collectionApi.list = async () => ({ runs: [] })
+  collectionApi.capabilities = async () => ({ channels: {}, limits: { max_items: 20, max_search_calls: 4, max_total_bytes: 52428800 } })
   const originalConfirm = window.confirm
   window.confirm = () => true
   const kbs = ['a', 'b'].map(id => ({ id, name: `Space ${id}`, description: '', stats: { documents: 0, chunks: 0, images: 0 } }))
@@ -58,7 +62,7 @@ async function setup() {
   }
   knowledgeApi.getUploadProgressBatch = async ids => { polls.push([...ids]); return { statuses: ids.map(id => statuses.get(id) ?? { processing_id: id, status: 'queued', progress: 25 }) } }
   useKnowledgeStore.setState({ knowledgeBases: kbs, loading: false, error: null })
-  restore = () => { Object.assign(knowledgeApi, originals); Object.assign(importApi, originalImports); window.confirm = originalConfirm }
+  restore = () => { Object.assign(knowledgeApi, originals); Object.assign(importApi, originalImports); Object.assign(collectionApi, originalCollection); window.confirm = originalConfirm }
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
@@ -76,7 +80,7 @@ async function setup() {
     return { kb_id: request.kbId, total_files: 1, accepted_count: 1, failed_count: 0, results: [{ filename: request.files[0].name, status: 'queued' as const, processing_id: id }] }
   }
   const panel = () => container.querySelector('.upload-panel') as HTMLElement
-  return { act, render, select, statuses, submissions, accepted, polls, panel, files, knowledgeApi, importApi }
+  return { act, render, select, statuses, submissions, accepted, polls, panel, files, knowledgeApi, importApi, collectionApi }
 }
 
 afterEach(async () => {
@@ -197,36 +201,39 @@ test('retry keeps the failed task identity when its receipt arrives after switch
   assert.doesNotMatch(panel().textContent!, /provider timeout/)
 })
 
-test('an import receipt from A cannot close B’s dialog or release B’s pending submission', async () => {
-  const { act, render, importApi, panel } = await setup()
-  const requests: Array<{ kbId: string; response: ReturnType<typeof deferred<Awaited<ReturnType<typeof importApi.importHotTopicsStart>>>> }> = []
-  importApi.importHotTopicsStart = body => {
-    const response = deferred<Awaited<ReturnType<typeof importApi.importHotTopicsStart>>>()
+test('a collection receipt from A cannot replace B’s request or release B’s pending submission', async () => {
+  const { act, render, collectionApi, panel } = await setup()
+  const requests: Array<{ kbId: string; response: ReturnType<typeof deferred<Awaited<ReturnType<typeof collectionApi.create>>>> }> = []
+  collectionApi.create = body => {
+    const response = deferred<Awaited<ReturnType<typeof collectionApi.create>>>()
     requests.push({ kbId: body.kb_id, response })
     return response.promise
   }
   const submit = async () => {
     await act(async () => {
-      (container.querySelector('button[data-source="news"]') as HTMLButtonElement).click()
+      container.querySelector<HTMLButtonElement>('.collection-agent__examples button')!.click()
       await settle()
     })
     await act(async () => {
-      document.querySelector('.import-dialog--news form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+      document.querySelector('.collection-agent form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
       await settle()
     })
   }
   await render('a'); await submit()
   await render('b'); await submit()
   assert.deepEqual(requests.map(request => request.kbId), ['a', 'b'])
-  await act(async () => { requests[0].response.resolve({ processing_id: 'import-a', filename: 'a-news.md', status: 'queued' }); await settle() })
-  assert.ok(document.querySelector('.import-dialog--news'), 'B dialog remains open')
-  assert.equal(panel().dataset.busy, 'true', 'B keeps its submission lock')
+  const receipt = (kbId: string): Awaited<ReturnType<typeof collectionApi.create>> => ({
+    id: `collection-${kbId}`, kb_id: kbId, prompt: `${kbId}-news`, mode: 'review', max_items: 5,
+    status: 'review', candidates: [], counts: { found: 0, ready: 0, failed: 0, duplicate: 0, selected: 0 },
+    warnings: [], created_at: '2026-10-29T01:00:00Z', updated_at: '2026-10-29T01:00:00Z',
+  })
+  await act(async () => { requests[0].response.resolve(receipt('a')); await settle() })
+  assert.equal(container.querySelector<HTMLButtonElement>('.collection-agent button[type="submit"]')!.disabled, true, 'B keeps its submission lock')
   assert.doesNotMatch(panel().textContent!, /a-news/)
-  assert.equal(JSON.parse(sessionStorage.getItem('tessmora:upload-batch:a')!).tasks[0].processingId, 'import-a')
-  await act(async () => { requests[1].response.resolve({ processing_id: 'import-b', filename: 'b-news.md', status: 'queued' }); await settle() })
-  assert.equal(document.querySelector('.import-dialog--news'), null)
-  assert.match(panel().textContent!, /b-news/)
-  assert.doesNotMatch(panel().textContent!, /a-news/)
+  await act(async () => { requests[1].response.resolve(receipt('b')); await settle() })
+  assert.equal(container.querySelector<HTMLButtonElement>('.collection-agent button[type="submit"]')!.disabled, false)
+  assert.match(document.querySelector('[role="dialog"]')!.textContent!, /b-news/)
+  assert.doesNotMatch(document.body.textContent!, /a-news/)
 })
 
 test('server reports a new retry for an already-terminal task', async () => {
@@ -724,7 +731,9 @@ test('existing materials own the first screen; add routes disclose without repla
   assert.equal(disclosure.getAttribute('aria-expanded'), 'true')
   assert.equal(container.querySelector('input[type="file"]'), input, 'expanding keeps input and upload ownership')
   assert.equal(input.closest('[hidden]'), null)
-  assert.equal(container.querySelectorAll('.upload-source').length, 5, 'all six ingestion routes remain: upload plus five sources')
+  assert.equal(container.querySelectorAll('.upload-source').length, 2, 'direct document and folder actions remain')
+  assert.equal(container.querySelectorAll('.collection-agent').length, 1, 'network material has one request-driven entrance')
+  assert.ok(container.querySelector('.collection-agent textarea[name="prompt"]'))
   await act(async () => disclosure.click())
   assert.equal(input.closest('[hidden]') != null, true)
   await render('b')
