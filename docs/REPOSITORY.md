@@ -24,6 +24,7 @@ git clone --filter=blob:none --single-branch https://github.com/Champ-X/MMA-RAG.
 | --- | --- |
 | 产品源码、测试与最小夹具 | Git 跟踪 |
 | 当前 UI 必需图片及文档示例 | Git 跟踪；复用资源，避免同时提交重复原图/副本 |
+| README 中英文介绍视频 | `docs/media/tessmora-intro/` 仅分发两份 720p 轻量版及封面/字幕；视频各约 21 MiB，来源与哈希见该目录清单 |
 | 启动及可复用运维工具 | Git 跟踪，记录参数与运行前提 |
 | 生成的前端、依赖、模型权重 | 本地生成或独立发布，不放 Git |
 | 用户配置与知识数据 | `backend/.env`、本地配置、`data/`、MinIO/Qdrant 持久目录；忽略 |
@@ -59,6 +60,8 @@ git show 28d639b:docs/PI_AGENT_VERIFICATION.md > /tmp/pi-agent-verification.md
 ## 持续检查
 
 `python3 scripts/check_repository.py` 校验 Git 跟踪范围、Markdown 本地链接和单文件大小。CI 执行同一检查，防止本地存在而 clone 缺失的文件被误判为可用。新增大文件应先考虑独立发布和下载缓存；实际需要时明确评审并调整检查规则。
+
+默认单文件上限仍为 **5 MiB**。README 需要随仓库分发的 `docs/media/tessmora-intro/tessmora-intro-zh.mp4` 与 `tessmora-intro-en.mp4` 各有 **24 MiB** 的精确路径例外，合计约增加 42 MiB 的当前 checkout 内容。1080p 母片、制作工程和逐次验收记录继续保留在忽略的 `video-production/` 中；不要把例外扩大到整个目录或所有 MP4。视频更新时同步 [媒体清单](media/tessmora-intro/manifest.json)，超出上限时优先改用外部发布资产。
 
 维护者可以分别测量当前树与历史：
 

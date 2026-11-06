@@ -1,0 +1,243 @@
+1
+00:00:00,000 --> 00:00:04,500
+More sources. Where does the answer begin?
+
+2
+00:00:04,500 --> 00:00:07,800
+Files pile up. Evidence gets scattered.
+
+3
+00:00:07,800 --> 00:00:11,600
+Add documents, images, audio and video to a Space.
+
+4
+00:00:11,600 --> 00:00:15,400
+Parse by format. Keep each source connected.
+
+5
+00:00:15,400 --> 00:00:20,600
+Extract document content, then split it into chunks.
+
+6
+00:00:20,600 --> 00:00:25,800
+Index text by meaning and keywords; retain its source.
+
+7
+00:00:25,800 --> 00:00:31,000
+CLIP turns the image into a visual embedding.
+
+8
+00:00:31,000 --> 00:00:36,200
+Caption the image, then index the description.
+
+9
+00:00:36,200 --> 00:00:41,400
+Transcribe and describe audio, then index the text.
+
+10
+00:00:41,400 --> 00:00:46,600
+CLAP indexes sound alongside the text route.
+
+11
+00:00:46,600 --> 00:00:52,400
+Omni reads visuals and sound to organize scenes.
+
+12
+00:00:52,400 --> 00:00:58,200
+Shots retain descriptions, timing and any transcript.
+
+13
+00:00:58,200 --> 00:01:04,000
+Retrieve mainly by shot; add visual cues as needed.
+
+14
+00:01:04,000 --> 00:01:09,200
+MinIO stores originals and reusable parsed artifacts.
+
+15
+00:01:09,200 --> 00:01:14,400
+Qdrant stores indexes and linked source information.
+
+16
+00:01:14,400 --> 00:01:18,400
+Once parsing and indexing finish, sources can be found.
+
+17
+00:01:18,400 --> 00:01:22,000
+Start with a question. Look for traceable evidence.
+
+18
+00:01:22,000 --> 00:01:25,700
+A quick lookup, or a question to investigate?
+
+19
+00:01:25,700 --> 00:01:29,400
+Standard search first interprets your question.
+
+20
+00:01:29,400 --> 00:01:34,200
+With no library selected, topic profiles guide scope.
+
+21
+00:01:34,200 --> 00:01:37,900
+Select a library or files to define the search scope.
+
+22
+00:01:37,900 --> 00:01:42,700
+Auto uses complexity signals to choose a mode.
+
+23
+00:01:42,700 --> 00:01:47,700
+Direct runs one retrieval round for a quick lookup.
+
+24
+00:01:47,700 --> 00:01:52,700
+Standard Agent searches in rounds within set limits.
+
+25
+00:01:52,700 --> 00:01:57,700
+Pi takes its own path and chooses its own tools.
+
+26
+00:01:57,700 --> 00:02:02,700
+Search, read sources and expand nearby context.
+
+27
+00:02:02,700 --> 00:02:07,700
+Inspect images, PDF pages or media when needed.
+
+28
+00:02:07,700 --> 00:02:11,400
+Use the gathered evidence to build a cited answer.
+
+29
+00:02:11,400 --> 00:02:15,100
+Next: how standard search finds relevant evidence.
+
+30
+00:02:15,100 --> 00:02:18,900
+Standard search selects paths for your question.
+
+31
+00:02:18,900 --> 00:02:23,700
+Dense retrieval finds text with related meaning.
+
+32
+00:02:23,700 --> 00:02:28,500
+Sparse retrieval picks up keyword clues.
+
+33
+00:02:28,500 --> 00:02:33,300
+CLIP matches images by visual meaning.
+
+34
+00:02:33,300 --> 00:02:38,100
+CLAP matches audio by sound and meaning.
+
+35
+00:02:38,100 --> 00:02:42,900
+Video search finds relevant shots and moments.
+
+36
+00:02:42,900 --> 00:02:47,700
+Combine needed paths; not every path runs each time.
+
+37
+00:02:47,700 --> 00:02:52,500
+Fusion and reranking bring relevant results forward.
+
+38
+00:02:52,500 --> 00:02:56,300
+Pass selected evidence and source details to the model.
+
+39
+00:02:56,300 --> 00:03:00,100
+Keep a route back to where the evidence came from.
+
+40
+00:03:00,100 --> 00:03:03,900
+Numbered citations link answers to their sources.
+
+41
+00:03:03,900 --> 00:03:08,700
+Open a citation for its file name and excerpt.
+
+42
+00:03:08,700 --> 00:03:12,500
+Relevance scores rank results; they do not prove claims.
+
+43
+00:03:12,500 --> 00:03:17,300
+Open the inspector to review the cited material.
+
+44
+00:03:17,300 --> 00:03:22,500
+Read the passage with available surrounding context.
+
+45
+00:03:22,500 --> 00:03:27,700
+Open an image preview to check visual details.
+
+46
+00:03:27,700 --> 00:03:32,900
+Revisit video timestamps or open the audio source.
+
+47
+00:03:32,900 --> 00:03:36,700
+Compare the answer with text, images or sound.
+
+48
+00:03:36,700 --> 00:03:40,500
+The link finds the source. You assess the claim.
+
+49
+00:03:40,500 --> 00:03:44,300
+State what this search found, and where gaps remain.
+
+50
+00:03:44,300 --> 00:03:47,800
+Before using an answer, check the evidence.
+
+51
+00:03:47,800 --> 00:03:51,300
+No match this time does not prove absence.
+
+52
+00:03:51,300 --> 00:03:54,800
+Refine the question or scope, then check again.
+
+53
+00:03:54,800 --> 00:03:58,300
+Self-hosted for one user on a trusted network.
+
+54
+00:03:58,300 --> 00:04:01,800
+Offline use depends on models and configuration.
+
+55
+00:04:01,800 --> 00:04:07,000
+Start with sources. Extract text, visuals and sound.
+
+56
+00:04:07,000 --> 00:04:12,200
+Connect original files, parsed content and indexes.
+
+57
+00:04:12,200 --> 00:04:17,400
+Follow a query path to gather relevant evidence.
+
+58
+00:04:17,400 --> 00:04:22,600
+Build the answer from evidence. Keep citations attached.
+
+59
+00:04:22,600 --> 00:04:28,800
+Return to the source and check what supports the answer.
+
+60
+00:04:28,800 --> 00:04:31,600
+Tessmora
+
+61
+00:04:31,600 --> 00:04:35,800
+Answers you can trace

@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "project": "MMA-RAG / Tessmora",
+  "persistedAt": "2026-11-06T14:59:15.535402+00:00",
+  "source": {
+    "project": "MMA-RAG / Tessmora",
+    "branch": "main",
+    "commit": "658b0d1",
+    "snapshotDate": "2026-11-05"
+  },
+  "scope": "Existing bilingual architecture snapshot; not refreshed against subsequent code changes.",
+  "layout": {
+    "sectionsPerCanvas": 5,
+    "nodesPerCanvas": 102,
+    "arrowsPerCanvas": 93,
+    "elementsPerCanvas": 400,
+    "textElementsPerCanvas": 170
+  },
+  "font": {
+    "editable": "Excalifont (fontFamily 5), with Xiaolai CJK fallback supplied by Excalidraw",
+    "portable": "SVG text converted to vector outlines; PNG rasterized from the outlined SVG. No installed fonts required."
+  },
+  "editableScenes": {
+    "zh-CN": "MMA-RAG-cn.excalidraw",
+    "en": "MMA-RAG-en.excalidraw"
+  },
+  "files": [
+    {
+      "path": "MMA-RAG-cn.excalidraw",
+      "bytes": 471302,
+      "sha256": "9ad883e4555cf51100926817fda3bb8b4f520a612f344ad1527a6cb50e379d5b"
+    },
+    {
+      "path": "MMA-RAG-cn-handwritten.svg",
+      "bytes": 1748775,
+      "sha256": "0925c65ea3789595d044e39468869ce18a54a0fe76ea7a5e97b52b0f9d1a49a0"
+    },
+    {
+      "path": "MMA-RAG-cn-handwritten.png",
+      "bytes": 3867304,
+      "sha256": "2b64ad43b5c2b118966eda5f9bf422eb7e8e4b1e6b62af636a90a3894207a636"
+    },
+    {
+      "path": "MMA-RAG-en.excalidraw",
+      "bytes": 473565,
+      "sha256": "83ca9a1d1397f00d3d53bd8cd7518be4e6702bed11bd5d3b39e57c6c3a33dbcf"
+    },
+    {
+      "path": "MMA-RAG-en-handwritten.svg",
+      "bytes": 1549467,
+      "sha256": "88d88792be3062dac53a43977087496eb8df8ca5fdeeb454c56e60f07b4b9fd1"
+    },
+    {
+      "path": "MMA-RAG-en-handwritten.png",
+      "bytes": 4096506,
+      "sha256": "ee4eeb990be7353d61de9bddac9ed78540eaf1755431e2758a2e61158f73e387"
+    },
+    {
+      "path": "architecture-text-source.json",
+      "bytes": 49266,
+      "sha256": "4fcea1af05a14ad5acc5ec4ecaf3afcd4545342a6f12af3f9cb356caf4ee70ba"
+    }
+  ]
+}

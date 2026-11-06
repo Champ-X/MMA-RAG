@@ -8,6 +8,12 @@ from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_FILE_BYTES = 5 * 1024 * 1024
+# README introductions are deliberate distribution assets, not production drafts.
+# Keep the larger allowance scoped to these two reviewed 720p exports.
+FILE_SIZE_LIMITS = {
+    'docs/media/tessmora-intro/tessmora-intro-zh.mp4': 24 * 1024 * 1024,
+    'docs/media/tessmora-intro/tessmora-intro-en.mp4': 24 * 1024 * 1024,
+}
 FORBIDDEN = (
     'static/', 'ops/', 'data/', 'logs/', 'docs/research/', 'docs/qa/',
     'docs/verification/', 'backend/experiments/', 'frontend/dist/',
@@ -36,8 +42,9 @@ def main():
             continue
         size = path.stat().st_size
         total += size
-        if size > MAX_FILE_BYTES:
-            errors.append(f'{name}: {size} bytes exceeds 5 MiB; use an external artifact or review the limit')
+        limit = FILE_SIZE_LIMITS.get(name, MAX_FILE_BYTES)
+        if size > limit:
+            errors.append(f'{name}: {size} bytes exceeds {limit // (1024 * 1024)} MiB; use an external artifact or review the limit')
         if path.suffix != '.md':
             continue
         # Fenced examples are not rendered links. Validate inline Markdown and HTML links.

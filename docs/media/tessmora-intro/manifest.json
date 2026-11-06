@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "purpose": "Bilingual README media assets",
+  "original_production_directory": "video-production/tessmora-intro/deliverables",
+  "original_production_directory_tracked": false,
+  "video_revision": "V5 official Lite exports; unchanged",
+  "diagram_source_snapshot": {
+    "commit": "658b0d1",
+    "date": "2026-11-05"
+  },
+  "assets": [
+    {
+      "path": "docs/media/tessmora-intro/tessmora-intro-zh.mp4",
+      "source": "video-production/tessmora-intro/deliverables/Tessmora-ZH-Lite.mp4",
+      "transformation": "bit-for-bit copy",
+      "sha256": "912b3f063b6d30b8e05b5fcae3b1559b3853a33cf2031260c13badee5b5c9f1d",
+      "source_sha256": "912b3f063b6d30b8e05b5fcae3b1559b3853a33cf2031260c13badee5b5c9f1d",
+      "bytes": 21966141,
+      "duration_seconds": 275.8,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "codec_type": "video",
+          "width": 1280,
+          "height": 720,
+          "r_frame_rate": "30/1"
+        },
+        {
+          "codec_name": "aac",
+          "codec_type": "audio",
+          "r_frame_rate": "0/0"
+        }
+      ],
+      "mp4_box_order": [
+        "ftyp",
+        "moov",
+        "free",
+        "mdat"
+      ]
+    },
+    {
+      "path": "docs/media/tessmora-intro/cover-zh.jpg",
+      "source": "video-production/tessmora-intro/deliverables/covers/Tessmora-ZH-cover.png",
+      "transformation": "JPEG encoding at original dimensions, quality 88, progressive; no artwork changes",
+      "sha256": "d02720d59f3ab1b74a6866ad9ddc917f80d6d02b781899db1a5d493cd7362832",
+      "source_sha256": "c7faaf83ecd416ec520c5451f6c5ab7892e524f8af0be041820ec3439c01fa26",
+      "bytes": 264359,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "path": "docs/media/tessmora-intro/zh.srt",
+      "source": "video-production/tessmora-intro/deliverables/subtitles/Tessmora-ZH.srt",
+      "transformation": "bit-for-bit copy",
+      "sha256": "05f9c4b9c6f4cc04cc426f2d1c52bc7f4ce5a7846b30738dbe1c5b4052019675",
+      "source_sha256": "05f9c4b9c6f4cc04cc426f2d1c52bc7f4ce5a7846b30738dbe1c5b4052019675",
+      "bytes": 5133
+    },
+    {
+      "path": "docs/diagrams/mma-rag/overview-cn.png",
+      "source": "docs/diagrams/mma-rag/MMA-RAG-cn-handwritten.png",
+      "transformation": "System-overview crop only; source pixels preserved",
+      "crop_xyxy": [
+        50,
+        500,
+        1540,
+        2290
+      ],
+      "sha256": "5ccf17ed31bf5d953670c54f19960ebcc7a4ddedb1d871893d554876d6aacf54",
+      "source_sha256": "2b64ad43b5c2b118966eda5f9bf422eb7e8e4b1e6b62af636a90a3894207a636",
+      "bytes": 293060,
+      "width": 1490,
+      "height": 1790,
+      "source_snapshot": "658b0d1",
+      "source_date": "2026-11-05"
+    },
+    {
+      "path": "docs/media/tessmora-intro/tessmora-intro-en.mp4",
+      "source": "video-production/tessmora-intro/deliverables/Tessmora-EN-Lite.mp4",
+      "transformation": "bit-for-bit copy",
+      "sha256": "72f54afe0f558853fbe771d88ae417375bced1811801aa8982f099076453f999",
+      "source_sha256": "72f54afe0f558853fbe771d88ae417375bced1811801aa8982f099076453f999",
+      "bytes": 21940073,
+      "duration_seconds": 275.8,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "codec_type": "video",
+          "width": 1280,
+          "height": 720,
+          "r_frame_rate": "30/1"
+        },
+        {
+          "codec_name": "aac",
+          "codec_type": "audio",
+          "r_frame_rate": "0/0"
+        }
+      ],
+      "mp4_box_order": [
+        "ftyp",
+        "moov",
+        "free",
+        "mdat"
+      ]
+    },
+    {
+      "path": "docs/media/tessmora-intro/cover-en.jpg",
+      "source": "video-production/tessmora-intro/deliverables/covers/Tessmora-EN-cover.png",
+      "transformation": "JPEG encoding at original dimensions, quality 88, progressive; no artwork changes",
+      "sha256": "7c5b7d8b6472786693b4bb36ff2381ada34e953317290d31dabd281b821ed903",
+      "source_sha256": "105150c591f26142adb802d04c9dc56dda9654378ae8507c965dbadb6d8f560d",
+      "bytes": 270958,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "path": "docs/media/tessmora-intro/en.srt",
+      "source": "video-production/tessmora-intro/deliverables/subtitles/Tessmora-EN.srt",
+      "transformation": "bit-for-bit copy",
+      "sha256": "41b78f92046b25d73148985d4b13ef57bd3cbfd5b8559772de7f29dc501ca472",
+      "source_sha256": "41b78f92046b25d73148985d4b13ef57bd3cbfd5b8559772de7f29dc501ca472",
+      "bytes": 5024
+    },
+    {
+      "path": "docs/diagrams/mma-rag/overview-en.png",
+      "source": "docs/diagrams/mma-rag/MMA-RAG-en-handwritten.png",
+      "transformation": "System-overview crop only; source pixels preserved",
+      "crop_xyxy": [
+        50,
+        500,
+        1540,
+        2290
+      ],
+      "sha256": "3d72f228c59ad210285b4fff0035c7abdbb71388960356acc00f0c72647d7434",
+      "source_sha256": "ee4eeb990be7353d61de9bddac9ed78540eaf1755431e2758a2e61158f73e387",
+      "bytes": 323251,
+      "width": 1490,
+      "height": 1790,
+      "source_snapshot": "658b0d1",
+      "source_date": "2026-11-05"
+    }
+  ]
+}

@@ -1,0 +1,1010 @@
+[
+  {
+    "id": "shape:mma-overview-title",
+    "section": 1,
+    "zh": "MMA-RAG / Tessmora",
+    "en": "MMA-RAG / Tessmora"
+  },
+  {
+    "id": "shape:mma-overview-sub",
+    "section": 1,
+    "zh": "01  系统全景  ·  多模态知识与自主研究工作台\n源码快照：main · 658b0d1 · 2026-11-05",
+    "en": "01  System overview · Multimodal knowledge & autonomous research\nSource snapshot: main · 658b0d1 · 2026-11-05"
+  },
+  {
+    "id": "shape:mma-overview-guide",
+    "section": 1,
+    "zh": "阅读顺序  02 入库与索引 → 03 检索与问答 → 04 Pi 运行时 → 05 部署与数据",
+    "en": "Read across: 02 Ingestion & indexes → 03 Retrieval & answers → 04 Pi runtime → 05 Deployment & data"
+  },
+  {
+    "id": "shape:h_zWlMKiOnJM62ymJ0bdG",
+    "section": 1,
+    "zh": "使用入口\nReact Web · mma-rag CLI · API · 飞书",
+    "en": "Entry points\nReact Web · mma-rag CLI · API · Feishu"
+  },
+  {
+    "id": "shape:D1oDKyP5y1rfeRbu_Ky0P",
+    "section": 1,
+    "zh": "请求与检索范围",
+    "en": "Request & scope"
+  },
+  {
+    "id": "shape:EGOs575RGkS5Yutys0wPq",
+    "section": 1,
+    "zh": "FastAPI 应用边界\n请求校验 · HTTP / SSE · 配置与会话",
+    "en": "FastAPI boundary\nValidation · HTTP / SSE\nConfiguration & sessions"
+  },
+  {
+    "id": "shape:TpSbcjPn6h9lncT_Ghix_",
+    "section": 1,
+    "zh": "A · 资料进入知识库",
+    "en": "A · Knowledge ingestion"
+  },
+  {
+    "id": "shape:8cxIyi2ny0v7eAnIa-av5",
+    "section": 1,
+    "zh": "B · Direct / 常规 Agent",
+    "en": "B · Direct / bounded Agent"
+  },
+  {
+    "id": "shape:PiVSlFq6Wmv9GnOnHja6g",
+    "section": 1,
+    "zh": "C · 自主 Pi",
+    "en": "C · Autonomous Pi"
+  },
+  {
+    "id": "shape:U_drq8fo_gb1GYco_yGIJ",
+    "section": 1,
+    "zh": "资料接入\n上传 / URL / 文件夹 / 飞书\nCollection 自动搜集",
+    "en": "Source intake\nUploads / URLs / folders / Feishu\nCollection discovery"
+  },
+  {
+    "id": "shape:_1-JEJzEcs_-YpPdn1uh6",
+    "section": 1,
+    "zh": "模式选择\ndirect 单次 / agent 有界循环\nauto 按复杂度选择",
+    "en": "Mode selection\nDirect: one pass · Agent: bounded loop\nAuto: choose by complexity"
+  },
+  {
+    "id": "shape:CzFFnzTUvxCh1DV21VlOm",
+    "section": 1,
+    "zh": "Python 宿主\n来源范围 · 排队准入 · 进程监督\n持久任务与事件",
+    "en": "Python host\nSource scope · admission · supervision\nDurable runs & events"
+  },
+  {
+    "id": "shape:gu7eOKDo70QwmS4-dlCI2",
+    "section": 1,
+    "zh": "stdio JSONL",
+    "en": "stdio JSONL"
+  },
+  {
+    "id": "shape:Vl9mEY49O7unfyPDm7QV8",
+    "section": 1,
+    "zh": "IngestionService\n解析 → 无损分块 → 多模态编码\n写入 MinIO / Qdrant",
+    "en": "IngestionService\nParse → lossless chunks → encodings\nWrite MinIO / Qdrant"
+  },
+  {
+    "id": "shape:OfQMuy3kJ8PmmWCarPYzZ",
+    "section": 1,
+    "zh": "RetrievalService\n意图 → 画像路由 → 混合召回\nQdrant 查询 → 两阶段重排",
+    "en": "RetrievalService\nIntent → KB routing → hybrid search\nQdrant → two-stage ranking"
+  },
+  {
+    "id": "shape:k2JENU4-NmWCJWnLoAX5G",
+    "section": 1,
+    "zh": "单任务 Node 子进程\nPi SDK 规划 / 工具选择 / 生成",
+    "en": "One Node process per run\nPi SDK planning / tools / generation"
+  },
+  {
+    "id": "shape:iqr-cMhD203oFFONeqaFj",
+    "section": 1,
+    "zh": "Knowledge 模块\n元数据 · 主题画像 · 推荐问题\n画像供常规路由使用",
+    "en": "Knowledge module\nMetadata · topic portraits · questions\nPortraits guide standard routing"
+  },
+  {
+    "id": "shape:kitk0XQjzMDtOM2OCamVY",
+    "section": 1,
+    "zh": "公共生成链\n上下文 · 稳定引用 ID\nLLM 生成 / SSE",
+    "en": "Shared generation chain\nContext · stable citation IDs\nLLM generation / SSE"
+  },
+  {
+    "id": "shape:E5Hygr-LeKKou0NDEUsMv",
+    "section": 1,
+    "zh": "宿主执行只读工具\n独立检索 / 深读 / 媒体 / 表格\n读取 Qdrant / MinIO",
+    "en": "Host-executed read-only tools\nSearch / deep reading / media / tables\nRead Qdrant / MinIO"
+  },
+  {
+    "id": "shape:SJRG8H_2ndi-yoIpk5K0_",
+    "section": 1,
+    "zh": "工具 / 证据",
+    "en": "Tools / evidence"
+  },
+  {
+    "id": "shape:mma-overview-ingestion-foot",
+    "section": 1,
+    "zh": "02 展开解析、五类索引和自动搜集\n\n03 / 04 展开两条独立执行链",
+    "en": "02 expands parsing, five content indexes\nand automated collection.\n\n03 / 04 expand the independent paths."
+  },
+  {
+    "id": "shape:Xp4zQ-Fbazhfbi6sVG_0q",
+    "section": 1,
+    "zh": "回答与可追溯引用\n文本 / 图片 / 音视频时间区间",
+    "en": "Answers with traceable citations\nText / images / audio-video ranges"
+  },
+  {
+    "id": "shape:cKaDVHiZa8E2ljh4rIsgy",
+    "section": 1,
+    "zh": "submit_answer\n校验交付项、证据版本与引用身份",
+    "en": "submit_answer\nValidate deliverables, source versions\nand citation identity"
+  },
+  {
+    "id": "shape:zWY5lkVPLaKNAmGfBVz8n",
+    "section": 1,
+    "zh": "Pi 生成后提交",
+    "en": "Pi submits answer"
+  },
+  {
+    "id": "shape:jnSYRKzvkZXKp9yocs9h-",
+    "section": 1,
+    "zh": "共享数据底座 · 集合与持久化关系详见 05",
+    "en": "Shared data foundation · Indexes and persistence in 05"
+  },
+  {
+    "id": "shape:Q4qC5ObVqWgzfK_8kXYUC",
+    "section": 1,
+    "zh": "MinIO\n原件 · 解析文本 · 媒体派生物\n知识库与文件元数据",
+    "en": "MinIO\nOriginals · parsed text · derived media\nKnowledge-base & file metadata"
+  },
+  {
+    "id": "shape:7ub_mXLdZu8OVfB46fLAy",
+    "section": 1,
+    "zh": "Qdrant\n五类内容索引 + kb_portraits\n向量 / payload / 来源定位",
+    "en": "Qdrant\nFive content indexes + kb_portraits\nVectors / payloads / source locations"
+  },
+  {
+    "id": "shape:V0v5g3kRODDWc8lD_Afeo",
+    "section": 1,
+    "zh": "Pi SQLite + 文件目录\n任务 · 事件 · 证据 · 产物\n私有附件与历史预览",
+    "en": "Pi SQLite + files\nRuns · events · evidence · artifacts\nPrivate attachments & previews"
+  },
+  {
+    "id": "shape:mma-overview-notes",
+    "section": 1,
+    "zh": "读写关系：入库写 MinIO / Qdrant；常规检索读 Qdrant；Pi 读取索引与原件，并向独立账本存证。\n共享能力：LLMManager / 模型路由；BGE-M3、CLIP、CLAP；FFmpeg 与 LibreOffice。\nDecision：常规链路的可选需求核验 / 引用诊断，默认关闭。\n图例：蓝＝交互与常规链路  橙＝入库  紫＝Pi  绿＝持久数据；各分图使用虚线表示可选 / 辅助关系。",
+    "en": "Data flow: ingestion writes MinIO / Qdrant; standard retrieval reads Qdrant; Pi reads indexes and originals, and records evidence in its own ledger.\nShared capabilities: LLMManager / model routing; BGE-M3, CLIP, CLAP; FFmpeg and LibreOffice.\nDecision: optional requirement checks and citation diagnostics for the standard path; off by default.\nLegend: blue = interaction / standard path; orange = ingestion; purple = Pi; green = persistent data. Dashed links indicate optional or supporting relationships."
+  },
+  {
+    "id": "shape:mma-ingestion-title",
+    "section": 2,
+    "zh": "02 / 多模态入库与索引",
+    "en": "02 / Multimodal ingestion & indexes"
+  },
+  {
+    "id": "shape:mma-ingestion-subtitle",
+    "section": 2,
+    "zh": "从原始资料到可检索证据：保留正文、模态和来源定位\nmain · 658b0d1 · 2026-11-05",
+    "en": "Turn raw sources into retrievable evidence, preserving content, modality and location\nmain · 658b0d1 · 2026-11-05"
+  },
+  {
+    "id": "shape:_mCUQ_IgMvtJnmGz0dv31",
+    "section": 2,
+    "zh": "资料来源\n文件上传 / URL / 文件夹\n飞书 Docx 与 Wiki",
+    "en": "Source inputs\nFile uploads / URLs / folders\nFeishu Docx & Wiki"
+  },
+  {
+    "id": "shape:iYTx0UpDABWXudsItj83o",
+    "section": 2,
+    "zh": "接入与任务登记\n/api/upload · /api/import\nprocessing_id / 文件身份",
+    "en": "Intake & task registration\n/api/upload · /api/import\nprocessing_id / file identity"
+  },
+  {
+    "id": "shape:GyijJIMzqC81MFunHUhFa",
+    "section": 2,
+    "zh": "Collection 搜集\n自然语言计划 → 发现 → 选择\n下载与复用入库流程",
+    "en": "Collection discovery\nPlan → discover → select\nDownload through the ingestion chain"
+  },
+  {
+    "id": "shape:4SgcNTcjeb2NSq55jVjt5",
+    "section": 2,
+    "zh": "MinIO 对象存储\n先保存原件，再回写解析产物\n按知识库 bucket 管理",
+    "en": "MinIO object storage\nSave originals, then derived artifacts\nOne bucket per knowledge base"
+  },
+  {
+    "id": "shape:mma-ingestion-note-status",
+    "section": 2,
+    "zh": "任务与恢复\n\n批量先登记，再启动后台 asyncio 任务。\nRedis 保存进度、租约 / 心跳与失联状态。\n浏览器刷新后可查询 processing_id。\n文档解析、分块、Dense 批次设检查点。",
+    "en": "Tasks & recovery\n\nRegister the batch before background asyncio tasks start.\nRedis stores progress, leases, heartbeats and lost-worker status.\nRefresh can resume polling by processing_id.\nDocument parsing, chunks and Dense batches have checkpoints."
+  },
+  {
+    "id": "shape:mma-ingestion-note-runtime",
+    "section": 2,
+    "zh": "执行支撑\n\nLLMManager：分块 / 描述 / Embedding。\n本地共享：BGE-M3 / CLIP / CLAP。\nFFmpeg：音视频处理。\nLibreOffice：Office 预览与转换。",
+    "en": "Execution support\n\nLLMManager: chunks / captions / embeddings.\nShared local models: BGE-M3 / CLIP / CLAP.\nFFmpeg: audio-video processing.\nLibreOffice: Office conversion & previews."
+  },
+  {
+    "id": "shape:X2RJoxufEZZNDuznaVas2",
+    "section": 2,
+    "zh": "ParserFactory / 类型分派\nIngestionService 编排\n文档 · 图片 · 音频 · 视频",
+    "en": "ParserFactory / type dispatch\nIngestionService orchestration\nDocuments · images · audio · video"
+  },
+  {
+    "id": "shape:mma-ingestion-group-modality",
+    "section": 2,
+    "zh": "四条处理通道 · 五类内容索引",
+    "en": "Four processing channels · Five content indexes"
+  },
+  {
+    "id": "shape:GSZYF59umPg4puZF7x3g8",
+    "section": 2,
+    "zh": "原件 / 解析派生物",
+    "en": "Originals / artifacts"
+  },
+  {
+    "id": "shape:b5gXh72uad5cY9UJHt6yV",
+    "section": 2,
+    "zh": "文档与表格\nTXT / MD / PDF / Office\n本地 / MinerU / PaddleOCR",
+    "en": "Documents & tables\nTXT / MD / PDF / Office\nLocal / MinerU / PaddleOCR"
+  },
+  {
+    "id": "shape:uqi43boRVPB2KL8V39oSV",
+    "section": 2,
+    "zh": "图片\n原图 + 文档抽取图片\n保留父文档与文件身份",
+    "en": "Images\nOriginals + document images\nPreserve parent-document identity"
+  },
+  {
+    "id": "shape:jLC4CqPb-2ENhJfP_1dFC",
+    "section": 2,
+    "zh": "音频\nFFmpeg 探测 / 转码\n转写与声音描述",
+    "en": "Audio\nFFmpeg probing / transcoding\nTranscription & sound description"
+  },
+  {
+    "id": "shape:UDTVq2OG5XGi5iitIrfVB",
+    "section": 2,
+    "zh": "视频\nScene → Shot 结构\nMLLM 描述 + ASR + 选帧",
+    "en": "Video\nScene → Shot structure\nMLLM captions + ASR + frame choice"
+  },
+  {
+    "id": "shape:UBaPbMGWppyyUjdUu-BMt",
+    "section": 2,
+    "zh": "Agentic Chunking\n模型规划原始单元 ID\n服务端无损物化正文\n表格：表头与行块",
+    "en": "Agentic Chunking\nModel plans original unit IDs\nServer materializes lossless text\nTables: headers & row blocks"
+  },
+  {
+    "id": "shape:Er1wcwR3xEkLrsS-hdlVH",
+    "section": 2,
+    "zh": "语义描述与视觉表示\n图片 caption / OCR\n文本与 CLIP 双表示",
+    "en": "Semantic & visual representation\nImage caption / OCR\nText + CLIP representations"
+  },
+  {
+    "id": "shape:ZtNHq3UukKm-QO7NdHyuT",
+    "section": 2,
+    "zh": "音频语义与声学表示\ntranscript / description\nCLAP 音频特征",
+    "en": "Semantic & acoustic representation\nTranscript / description\nCLAP acoustic features"
+  },
+  {
+    "id": "shape:4eEQSqdcGIHbtZVyGHrqt",
+    "section": 2,
+    "zh": "Shot 是主语义单元\ncaption 与 ASR 独立编码\n关键帧从属于 Shot\n保留绝对时间与层级",
+    "en": "Shot is the main semantic unit\nEncode caption and ASR separately\nKeyframes belong to a Shot\nKeep absolute times & hierarchy"
+  },
+  {
+    "id": "shape:uJvtfC53hSsmEZmpTjgks",
+    "section": 2,
+    "zh": "文档编码\nDense 4096 + BGE-M3 Sparse\n正文 / 上下文 / 来源定位",
+    "en": "Document encoding\nDense 4096 + BGE-M3 Sparse\nText / context / source locations"
+  },
+  {
+    "id": "shape:XbNUCqUygRzf2eRlVjlg_",
+    "section": 2,
+    "zh": "图片编码\ntext_vec 4096\nclip_vec 768",
+    "en": "Image encoding\ntext_vec 4096\nclip_vec 768"
+  },
+  {
+    "id": "shape:rNyQH0qeh28-MHkxKiCEw",
+    "section": 2,
+    "zh": "音频编码\ntext_vec 4096 + Sparse\nclap_vec 512",
+    "en": "Audio encoding\ntext_vec 4096 + Sparse\nclap_vec 512"
+  },
+  {
+    "id": "shape:Or3kWRf42xmzKuOKW9vju",
+    "section": 2,
+    "zh": "视频编码\nShot：两路 Dense / Sparse\nFrame：文本 4096 / CLIP 768",
+    "en": "Video encoding\nShot: two Dense / Sparse paths\nFrame: text 4096 / CLIP 768"
+  },
+  {
+    "id": "shape:mqRzxfEArVyv7IYdzpXOM",
+    "section": 2,
+    "zh": "text_chunks_agentic\n正文块与定位 payload",
+    "en": "text_chunks_agentic\nText chunks + location payload"
+  },
+  {
+    "id": "shape:vKRpz-DcHZyTWEnf32ZVP",
+    "section": 2,
+    "zh": "image_vectors\n图片 + caption + 视觉向量",
+    "en": "image_vectors\nImages + captions + visual vectors"
+  },
+  {
+    "id": "shape:th7bPJSs3Aphpdo9lrmD5",
+    "section": 2,
+    "zh": "audio_vectors\n转写 / 描述 / 音频向量",
+    "en": "audio_vectors\nTranscripts / descriptions / audio"
+  },
+  {
+    "id": "shape:yiXFuk9a1HnhnqBidPiEB",
+    "section": 2,
+    "zh": "video_shot_vectors\nvideo_keyframe_vectors\nShot 主索引 + 关键帧增强",
+    "en": "video_shot_vectors\nvideo_keyframe_vectors\nShot index + keyframe enhancement"
+  },
+  {
+    "id": "shape:mma-ingestion-note-portrait",
+    "section": 2,
+    "zh": "画像调度\nRedis 计数 / 待处理租约。\n优先投递 Celery；投递失败时按实现回退。\n开发启动默认不拉起 Celery。",
+    "en": "Portrait scheduling\nRedis counters & pending leases.\nPrefer Celery; fallback on dispatch failure.\nDevelopment startup does not start Celery."
+  },
+  {
+    "id": "shape:JLJv1XZIV8Kt9-ZaME6r-",
+    "section": 2,
+    "zh": "画像更新与文件收尾\n多模态采样 → 内容原型 / 主题\n更新 kb_portraits 与文件元数据",
+    "en": "Portrait update & file completion\nMultimodal sampling → topics / prototypes\nUpdate kb_portraits & file metadata"
+  },
+  {
+    "id": "shape:mma-ingestion-note-semantic",
+    "section": 2,
+    "zh": "索引契约\nkb_id / file_id / 位置随证据保留。\n图示向量维数来自当前 VectorStore 配置。\n更换模型须维护向量空间兼容性。",
+    "en": "Index contract\nKeep kb_id / file_id / locations with evidence.\nDimensions shown match current VectorStore.\nModel changes require compatible vector spaces."
+  },
+  {
+    "id": "shape:mma-ingestion-group-collect",
+    "section": 2,
+    "zh": "Collection 自动搜集 · /api/collection",
+    "en": "Automated Collection · /api/collection"
+  },
+  {
+    "id": "shape:a43ngnKG-2BirV9ROYJLl",
+    "section": 2,
+    "zh": "CollectionPlanner\n拆解查询 / 素材类型\n默认 review，可选 auto",
+    "en": "CollectionPlanner\nPlan queries & material types\nDefault: review; optional: auto"
+  },
+  {
+    "id": "shape:CLsvNEATY6WnybxLQLBqC",
+    "section": 2,
+    "zh": "渠道发现与排序\nTavily / Pixabay / SerpAPI\nInternet Archive / 公开链接",
+    "en": "Discovery & ranking\nTavily / Pixabay / SerpAPI\nInternet Archive / public links"
+  },
+  {
+    "id": "shape:IxmJIZk34wGrJ_scgfLNF",
+    "section": 2,
+    "zh": "候选与选择\nreview 等待选择\nauto 自动进入下载",
+    "en": "Candidates & selection\nReview: wait for selection\nAuto: proceed to downloads"
+  },
+  {
+    "id": "shape:gBYfVpDEypeYMWVe7hlXr",
+    "section": 2,
+    "zh": "Ingestion Bridge\n去重 / 下载 / 原格式校验\n按单素材记录入库回执",
+    "en": "Ingestion Bridge\nDeduplicate / download / validate format\nRecord one receipt per material"
+  },
+  {
+    "id": "shape:mma-ingestion-note-collectstore",
+    "section": 2,
+    "zh": "Collection 持久化：backend/data/collection/runs.sqlite3 保存任务与候选回执；重启将未完成任务标为 interrupted。\n文档正文与生成式描述分开保留；视频关键帧仅增强视觉匹配，不能替代 Shot 的完整语义与时间范围。\n源码定位使用仓库相对路径；各卡片和箭头均为可编辑 tldraw 对象。",
+    "en": "Collection persistence: backend/data/collection/runs.sqlite3 stores runs and candidate receipts. Restart marks unfinished runs as interrupted.\nOriginal document text remains separate from generated descriptions. Keyframes enhance visual matching; they do not replace Shot semantics or time ranges.\nSource locations are relative to the repository. Native diagram objects retain their source text."
+  },
+  {
+    "id": "shape:mma-ingestion-source",
+    "section": 2,
+    "zh": "源码定位  backend/app/modules/ingestion/ · modules/knowledge/ · modules/collection/ · core/portrait_trigger.py",
+    "en": "Source  backend/app/modules/ingestion/ · modules/knowledge/ · modules/collection/ · core/portrait_trigger.py"
+  },
+  {
+    "id": "shape:mma-retrieval-title",
+    "section": 3,
+    "zh": "03 / 常规检索与问答",
+    "en": "03 / Standard retrieval & answers"
+  },
+  {
+    "id": "shape:mma-retrieval-subtitle",
+    "section": 3,
+    "zh": "Direct 与有界 Agent 共用证据链；Decision 是可选核验组件\nmain · 658b0d1 · 2026-11-05",
+    "en": "Direct and the bounded Agent share an evidence chain; Decision is optional\nmain · 658b0d1 · 2026-11-05"
+  },
+  {
+    "id": "shape:6q0P2qfG9b1rPSGivx7ju",
+    "section": 3,
+    "zh": "用户问题与会话\n正文 / 历史 / 本机附件\n@ 材料与显式检索范围",
+    "en": "Question & conversation\nMessage / history / local attachments\n@ materials & explicit search scope"
+  },
+  {
+    "id": "shape:XUy7MyXb9CnvPSBZdhLSZ",
+    "section": 3,
+    "zh": "常规模式选择\nDirect 单次检索\nAgent 循环 / Auto 按复杂度选择",
+    "en": "Standard mode selection\nDirect: one retrieval pass\nAgent loop / Auto by complexity"
+  },
+  {
+    "id": "shape:xvgtd2EGE4aDLLZIOpHgw",
+    "section": 3,
+    "zh": "公开检索 API\nPOST /api/v1/retrieval/search\n复用检索链；返回结构化证据",
+    "en": "Public retrieval API\nPOST /api/v1/retrieval/search\nReuse retrieval; return structured evidence"
+  },
+  {
+    "id": "shape:mma-retrieval-note-scope",
+    "section": 3,
+    "zh": "范围与材料契约\n\n知识库 / 文件选择器限定搜索范围。\n@ 材料提供阅读上下文，不能扩大权限。\n模态排除约束贯穿召回、文件绑定与 Agent 子查询。\n自动补充来源仍遵守显式范围。",
+    "en": "Scope & reference materials\n\nKB / file selectors limit search scope.\n@ materials add reading context, not access rights.\nModality exclusions apply to retrieval, file bindings and Agent subqueries.\nAutomatic source expansion respects explicit scope."
+  },
+  {
+    "id": "shape:Zs6b6l18whXiizcF5PqIt",
+    "section": 3,
+    "zh": "意图与查询准备\n任务类型 / 模态需求 / 排除项\n改写 · 关键词 · 多视角查询",
+    "en": "Intent & query preparation\nTask / required modalities / exclusions\nRewrite · keywords · multiple views"
+  },
+  {
+    "id": "shape:Pil9IZpkE-_ZEXY8976zT",
+    "section": 3,
+    "zh": "可选 Decision 需求核验\n对有出处的来源动作按用途准入\n默认关闭；失败保留原规划",
+    "en": "Optional Decision requirement check\nAdmit source actions by validated use\nOff by default; failures keep the original plan"
+  },
+  {
+    "id": "shape:9bqA4eAX70bVGR96mGYOM",
+    "section": 3,
+    "zh": "知识库与文件路由\n显式范围严格过滤\n无显式范围时按画像与内容原型路由",
+    "en": "Knowledge-base & file routing\nStrict filters for explicit scope\nOtherwise use portraits & content prototypes"
+  },
+  {
+    "id": "shape:RrE-bKJcIRgT_1ro3HxS9",
+    "section": 3,
+    "zh": "KnowledgeRouter\nkb_portraits / 多信号打分\n模态库存与覆盖补充",
+    "en": "KnowledgeRouter\nkb_portraits / multiple signals\nModality inventory & coverage"
+  },
+  {
+    "id": "shape:nBgw1EbI8cYOgAoIMWrCj",
+    "section": 3,
+    "zh": "核验",
+    "en": "Check"
+  },
+  {
+    "id": "shape:dreTq-zO76tPE5_XPG-sV",
+    "section": 3,
+    "zh": "路由",
+    "en": "Route"
+  },
+  {
+    "id": "shape:mma-retrieval-group-channels",
+    "section": 3,
+    "zh": "HybridSearchEngine · Qdrant 并行召回",
+    "en": "HybridSearchEngine · Parallel Qdrant retrieval"
+  },
+  {
+    "id": "shape:06TARF-nGxuXI7FWRov3n",
+    "section": 3,
+    "zh": "文本混合通道\nDense 语义 / 多视角查询\nBGE-M3 Sparse 词面召回",
+    "en": "Text hybrid channel\nDense semantics / multiple views\nBGE-M3 Sparse lexical retrieval"
+  },
+  {
+    "id": "shape:fpmg0h85V_Hs5zn_Joad9",
+    "section": 3,
+    "zh": "图片通道\ncaption Dense + CLIP\n按视觉意图启用",
+    "en": "Image channel\nCaption Dense + CLIP\nEnabled by visual intent"
+  },
+  {
+    "id": "shape:frgnqpgjBfR3GJqTfuBej",
+    "section": 3,
+    "zh": "音频通道\n语义文本 + Sparse + CLAP\n按声音 / 音频意图启用",
+    "en": "Audio channel\nSemantic text + Sparse + CLAP\nEnabled by audio intent"
+  },
+  {
+    "id": "shape:lNJtcKK1ROWeLhk7KFDYf",
+    "section": 3,
+    "zh": "视频通道\nShot caption / ASR\nDense / Sparse + 帧级视觉增强",
+    "en": "Video channel\nShot captions / ASR\nDense / Sparse + visual keyframes"
+  },
+  {
+    "id": "shape:mma-retrieval-note-rank",
+    "section": 3,
+    "zh": "检索与生成边界\n\nQdrant 提供向量与 payload；MinIO 提供原件及媒体。\nQueryEmbeddingCache 按模型与输入区分。\n覆盖记录区分未搜索、无候选、被筛选及未进上下文。\n无依据回答不附带未使用的候选引用。",
+    "en": "Retrieval & generation boundary\n\nQdrant serves vectors and payloads; MinIO serves originals and media.\nQueryEmbeddingCache separates model and input identities.\nCoverage distinguishes not searched, no candidates, filtered and not in context.\nUnsupported answers do not carry unused candidate citations."
+  },
+  {
+    "id": "shape:um3FNYaaYMkLZ6heeZGOg",
+    "section": 3,
+    "zh": "候选融合与粗排\n加权 RRF · 来源去重\n保留模态 / 选中文件约束",
+    "en": "Fusion & coarse ranking\nWeighted RRF · source deduplication\nRetain modality / selected-file constraints"
+  },
+  {
+    "id": "shape:mma-retrieval-note-agent",
+    "section": 3,
+    "zh": "常规 Agent 循环\n\n原问题锚定检索 → planner 决定 search / final。\n子查询仍走本图的意图、范围、召回和重排。\n达到轮次 / 查询 / 证据预算后汇合到公共生成链。\n图中预算为代码默认值，可配置。",
+    "en": "Bounded Agent loop\n\nAnchor on the original question; planner chooses search / final.\nSubqueries reuse intent, scope, retrieval and reranking.\nRound / query / evidence budgets converge into the shared generation chain.\nDisplayed budgets are configurable code defaults."
+  },
+  {
+    "id": "shape:fTMmxbqrXmX3dQWU3jb70",
+    "section": 3,
+    "zh": "Cross-Encoder 精排\nReranker\n分数融合 · 最终筛选 / 模态保护",
+    "en": "Cross-Encoder reranking\nReranker\nScore fusion · final filtering · modality protection"
+  },
+  {
+    "id": "shape:tZkMwNpc2plYpnCSn1KjB",
+    "section": 3,
+    "zh": "常规 Agent 规划器\n默认 3 轮 / 每轮最多 3 查询\n总查询 6 / 证据最多 30\n后续轮复用 RetrievalService",
+    "en": "Standard Agent planner\nDefault: 3 rounds / 3 queries per round\n6 queries total / at most 30 evidence items\nLater rounds reuse RetrievalService"
+  },
+  {
+    "id": "shape:ceuvXHWNtttJK0bWu6W18",
+    "section": 3,
+    "zh": "只检索响应\n结构化候选 / 来源 / 诊断\n不进入回答生成",
+    "en": "Retrieval-only response\nStructured candidates / sources / diagnostics\nNo answer generation"
+  },
+  {
+    "id": "shape:IpsBkaUt0FcdPefpB3tnt",
+    "section": 3,
+    "zh": "检索结果与覆盖记录\n候选 → 入选 → 进入上下文\nAgent 多轮证据去重合并",
+    "en": "Results & coverage ledger\nCandidates → selected → used in context\nMerge & deduplicate evidence across rounds"
+  },
+  {
+    "id": "shape:J8QoqBOsS23WhrGnikGhz",
+    "section": 3,
+    "zh": "Reference Materials\n@ 文件 / 附件可阅读与比较\n材料不自动改变搜索范围",
+    "en": "Reference materials\nRead / compare @ files and attachments\nMaterials do not change search scope"
+  },
+  {
+    "id": "shape:r5ETgOpaR0XwADJZUQLcx",
+    "section": 3,
+    "zh": "ContextBuilder\n证据 + 会话历史 + 引用材料\n分配稳定 citation ID 与来源映射",
+    "en": "ContextBuilder\nEvidence + history + reference materials\nStable citation IDs and source mapping"
+  },
+  {
+    "id": "shape:cDNfXq6BW7NLVktERr1Xw",
+    "section": 3,
+    "zh": "GenerationService\n按上下文生成与流式收尾\n仅保留回答实际采用的引用",
+    "en": "GenerationService\nContext-based generation & stream finalization\nKeep only citations actually used"
+  },
+  {
+    "id": "shape:4U5BNFhIFzwdFmCzLre3w",
+    "section": 3,
+    "zh": "可选 Decision 引用诊断\n支持 / 冲突 / 依据不足 / 未检查\n仅检查现有引用文本，默认关闭",
+    "en": "Optional Decision citation diagnostics\nSupport / conflict / insufficient / unchecked\nChecks existing citation text; off by default"
+  },
+  {
+    "id": "shape:yrW7d7GPIappBds9n4zfL",
+    "section": 3,
+    "zh": "循环",
+    "en": "Loop"
+  },
+  {
+    "id": "shape:lyxk0i7w9ZVeb0Wx9k1tV",
+    "section": 3,
+    "zh": "只检索",
+    "en": "Search only"
+  },
+  {
+    "id": "shape:97IJ6cvX-Zz7HqDVnC31Y",
+    "section": 3,
+    "zh": "SSE / 非流式响应\nthought · citation · message\nerror / done 与结构化 diagnostics",
+    "en": "SSE / non-streaming responses\nthought · citation · message\nerror / done + structured diagnostics"
+  },
+  {
+    "id": "shape:mma-retrieval-note-frontend",
+    "section": 3,
+    "zh": "前端消费：services/sse_stream.ts 处理分包，文本缓冲平滑显示；引用关联原文、图片及音视频时间区间。\nthought 是结构化执行阶段；诊断覆盖和引用身份不等于整份答案事实正确。\n常规 Chat 服务端会话主要在进程内，浏览器保存对话快照；Pi 事件与账本使用独立持久化。",
+    "en": "Frontend: services/sse_stream.ts handles chunks and text buffering. Citations link back to text, images and audio-video ranges.\nthought denotes structured execution stages. Diagnostic coverage and citation identity do not certify the whole answer.\nStandard Chat sessions are mainly in memory, with browser snapshots. Pi uses an independent durable event ledger."
+  },
+  {
+    "id": "shape:mma-retrieval-source",
+    "section": 3,
+    "zh": "源码定位  backend/app/api/chat.py · api/retrieval.py · modules/retrieval/ · modules/agent/ · modules/generation/",
+    "en": "Source  backend/app/api/chat.py · api/retrieval.py · modules/retrieval/ · modules/agent/ · modules/generation/"
+  },
+  {
+    "id": "shape:JYdueKIwygGMdyT0lFtLJ",
+    "section": 3,
+    "zh": "附加诊断",
+    "en": "Diagnostics"
+  },
+  {
+    "id": "shape:g_LPS3Ae_Gx0T2m1QCnIH",
+    "section": 4,
+    "zh": "先登记",
+    "en": "Plan first"
+  },
+  {
+    "id": "shape:eKx_yIhPshjRT-QAp0-aH",
+    "section": 4,
+    "zh": "stdio JSONL",
+    "en": "stdio JSONL"
+  },
+  {
+    "id": "shape:zI3XNikRot6cv18TqfA9K",
+    "section": 4,
+    "zh": "需澄清",
+    "en": "Clarify"
+  },
+  {
+    "id": "shape:mma-pi-title",
+    "section": 4,
+    "zh": "04 / Pi 自主运行时",
+    "en": "04 / Autonomous Pi runtime"
+  },
+  {
+    "id": "shape:mma-pi-subtitle",
+    "section": 4,
+    "zh": "Python 管来源与交付，Node 中的 Pi SDK 负责自主循环\nmain · 658b0d1 · 2026-11-05",
+    "en": "Python owns sources and delivery; the Pi SDK in Node runs the autonomous loop\nmain · 658b0d1 · 2026-11-05"
+  },
+  {
+    "id": "shape:zk9ORKzAlQWHA-NAWLAJM",
+    "section": 4,
+    "zh": "Pi Web / API\n/api/pi 创建运行 · 订阅 · 取消\n请求幂等键 / 会话身份",
+    "en": "Pi Web / API\n/api/pi create / subscribe / cancel\nIdempotency key / session identity"
+  },
+  {
+    "id": "shape:mma-pi-note-plan",
+    "section": 4,
+    "zh": "计划默认开启，先登记再研究。\nset_answer_requirements / check_answer\n属于默认关闭的 Answer Checks 实验。\n计划保留用户原句与交付缺口。",
+    "en": "Answer Plan is on by default; register before research.\nset_answer_requirements / check_answer\nbelong to experimental Answer Checks, off by default.\nKeep user quotes and delivery gaps in the plan."
+  },
+  {
+    "id": "shape:cgGaIu5H15Gi2YMvZFNyB",
+    "section": 4,
+    "zh": "RunStore · SQLite WAL\npi_runs / pi_events\npi_evidence / pi_artifacts",
+    "en": "RunStore · SQLite WAL\npi_runs / pi_events\npi_evidence / pi_artifacts"
+  },
+  {
+    "id": "shape:bUk1Q7pyWxM38sMv7Mr0I",
+    "section": 4,
+    "zh": "Supervisor · Python 宿主\n先持久化 queued，再准备来源\n并发准入与单任务进程监督",
+    "en": "Supervisor · Python host\nPersist queued before source preparation\nAdmission & per-run process supervision"
+  },
+  {
+    "id": "shape:mma-pi-note-admission",
+    "section": 4,
+    "zh": "资源准入（默认）\n\n运行 2 / 搜索 1 / 媒体 2。\n供应商请求并发按供应商共享。\n目录与索引读取给常规请求有限优先等待。\n单个数据目录只允许一个宿主持锁。\nPi token / trusted identity 独立校验。",
+    "en": "Resource admission (defaults)\n\nRuns 2 / searches 1 / media 2.\nPi model concurrency is shared per provider.\nCatalog / index reads grant bounded priority to standard requests.\nOne host lock per data directory.\nSeparate Pi token / trusted-identity checks."
+  },
+  {
+    "id": "shape:dUksWnFN-QX6eBUcHm6GM",
+    "section": 4,
+    "zh": "存证",
+    "en": "Persist"
+  },
+  {
+    "id": "shape:qiVLJSVavgfgqJjUaLj9E",
+    "section": 4,
+    "zh": "持久事件 → 前端\n按 seq / after 续接 SSE\n刷新与断线不取消任务",
+    "en": "Durable events → frontend\nResume SSE with seq / after\nRefresh / disconnect does not cancel"
+  },
+  {
+    "id": "shape:C-MwVA3TU9Uo1TQh7h_iS",
+    "section": 4,
+    "zh": "SourceCatalog 与 Scope\n服务端可访问库 ∩ 本次检索范围\n区分输入材料与可搜索文件",
+    "en": "SourceCatalog & Scope\nServer-allowed KBs ∩ requested scope\nDistinguish input materials from searchable files"
+  },
+  {
+    "id": "shape:mma-pi-note-independent",
+    "section": 4,
+    "zh": "独立于常规链路\n\nPi 的 KnowledgeGateway 直接访问索引。\nsearch 使用精确匹配，或 Dense 与词面融合。\n不复用常规 RetrievalService 的画像路由、RRF / Cross-Encoder 编排，也未接入原生 CLIP / CLAP 搜索。\n\n媒体观察、Embedding 使用 Pi 的 ModelTransport；主模型、观察模型与配置按运行确定。\nDecision 常规开关不控制 Pi。",
+    "en": "Independent from the standard path\n\nKnowledgeGateway accesses indexes directly.\nSearch is exact, or Dense + lexical fusion.\nIt does not reuse standard portrait routing, RRF / Cross-Encoder orchestration, or native CLIP / CLAP search.\n\nPi ModelTransport handles embeddings and media observation. Resolve models and config per run.\nStandard Decision switches do not control Pi."
+  },
+  {
+    "id": "shape:zvgNGNCUbldVACJnrR_iW",
+    "section": 4,
+    "zh": "Pi Agent SDK · Node 子进程\nruntime.mjs / worker.mjs\n规划 · 工具选择 · 最终生成",
+    "en": "Pi Agent SDK · Node process\nruntime.mjs / worker.mjs\nPlanning · tool choice · final generation"
+  },
+  {
+    "id": "shape:K2YcZMW-sgNCrycvMMg_B",
+    "section": 4,
+    "zh": "Pi 主模型调用\nNode 运行时直连供应商\n宿主准入与实际用量回执",
+    "en": "Pi main-model calls\nNode calls the provider directly\nHost admission & actual usage receipts"
+  },
+  {
+    "id": "shape:eVWgC6PagDYRKFNeLocpw",
+    "section": 4,
+    "zh": "ToolSet · 宿主工具边界\n参数 / 来源身份 / 版本 / 范围校验\nstdio JSONL 请求与结果回传",
+    "en": "ToolSet · host tool boundary\nValidate arguments / identity / version / scope\nstdio JSONL requests & result delivery"
+  },
+  {
+    "id": "shape:KW8vOWjV0KWj8Q28e5IOA",
+    "section": 4,
+    "zh": "update_answer_plan\n研究前登记用户原句与交付项\n研究中增量维护状态与证据选择",
+    "en": "update_answer_plan\nRegister user quotes and deliverables first\nUpdate state and evidence choices during research"
+  },
+  {
+    "id": "shape:-fydPuFF5EwJHED0QM5I_",
+    "section": 4,
+    "zh": "调用",
+    "en": "Call"
+  },
+  {
+    "id": "shape:mma-pi-group-tools",
+    "section": 4,
+    "zh": "只读来源工具 · 由 Python 执行，Node 不获得任意 Shell 或网络抓取工具",
+    "en": "Read-only source tools · Python executes; Node has no arbitrary Shell or web-fetch tool"
+  },
+  {
+    "id": "shape:pHM1lZncEiD0Wq-CjFqD4",
+    "section": 4,
+    "zh": "目录与搜索\nlist_sources / search\n精确短语 或 Dense + 词面\nQdrant 文本 / 媒体描述",
+    "en": "Catalog & search\nlist_sources / search\nExact phrases or Dense + lexical\nQdrant text / media descriptions"
+  },
+  {
+    "id": "shape:qfhslWiu_orIzEGdu3zgG",
+    "section": 4,
+    "zh": "深读与回忆\nread_source / expand_context\nrecall_evidence\n分页 / 相邻块 / 版本续读",
+    "en": "Deep reading & recall\nread_source / expand_context\nrecall_evidence\nPages / neighbors / versioned continuation"
+  },
+  {
+    "id": "shape:A32qUEA5D1JpiiR8K_JXQ",
+    "section": 4,
+    "zh": "原始媒体观察\ninspect_media\n图片 / PDF 页 / 音频 / 视频\n按通道与时间区间调用模型",
+    "en": "Original-media observation\ninspect_media\nImages / PDF pages / audio / video\nQuery by channel & time interval"
+  },
+  {
+    "id": "shape:_Et41sYpoddXCQcPJLsWG",
+    "section": 4,
+    "zh": "确定性表格工具\nquery_table\nCSV / TSV / XLSX\n过滤 / 分组 / 聚合 + 行号",
+    "en": "Deterministic tables\nquery_table\nCSV / TSV / XLSX\nFilter / group / aggregate + row IDs"
+  },
+  {
+    "id": "shape:mma-pi-note-media",
+    "section": 4,
+    "zh": "原始数据\nQdrant：索引片段与来源定位。\nMinIO：知识库原件与派生媒体。\n本地 Pi 目录：附件与历史预览。\n媒体精确缓存仅在单次运行内有效。",
+    "en": "Original data\nQdrant: indexed text & source positions.\nMinIO: KB originals & derived media.\nLocal Pi directory: attachments & previews.\nExact media caching is limited to one run."
+  },
+  {
+    "id": "shape:qQwbRqhWDUk81tf0pfgb6",
+    "section": 4,
+    "zh": "证据包与工具产物\n编号 / 来源版本 / 原文 / 位置\n完整记录入账；成功片段可逐包存证",
+    "en": "Evidence packages & tool artifacts\nIDs / source versions / originals / locations\nRecord complete results and successful partials"
+  },
+  {
+    "id": "shape:TZL3GKD2Qtpqr_dUfso1D",
+    "section": 4,
+    "zh": "研究循环与上下文管理\n工具结果回传 Pi，继续选工具\n归档旧结果并保留复读定位\n不设累计 Token / 总时长上限",
+    "en": "Research loop & context management\nReturn tools to Pi for further research\nArchive old results with reread locators\nNo cumulative token / elapsed-time cap"
+  },
+  {
+    "id": "shape:ANqqPVoDkxCsaFQCMdMSv",
+    "section": 4,
+    "zh": "ask_user\n提出澄清并结束当前运行\n状态 needs_input",
+    "en": "ask_user\nAsk for clarification and end the run\nStatus: needs_input"
+  },
+  {
+    "id": "shape:7C1RYFiJtOewlrQdBfEGE",
+    "section": 4,
+    "zh": "Pi 生成 → submit_answer\n宿主核对计划状态 / 实际引用编号\n有缺口用 partial；无依据保留空引用",
+    "en": "Pi generation → submit_answer\nCheck plan state and actual citation IDs\nUse partial for gaps; empty citations if unsupported"
+  },
+  {
+    "id": "shape:mma-pi-note-exit",
+    "section": 4,
+    "zh": "结束与恢复语义\n\n正常交付：completed / partial。\n澄清：needs_input。\n用户停止：cancelling → cancelled。\n异常：failed，保留证据与回执。\n宿主重启：未完任务 failed / cancelled，code=host_restarted；不自动重放付费请求。",
+    "en": "Termination & recovery\n\nDelivered: completed / partial.\nClarification: needs_input.\nUser stop: cancelling → cancelled.\nErrors: failed; retain evidence and receipts.\nHost restart: unfinished runs become failed / cancelled with code=host_restarted; no automatic paid-request replay."
+  },
+  {
+    "id": "shape:Qy087k9avEvLGhdAMgjKH",
+    "section": 4,
+    "zh": "正式结果与引用\ncompleted / partial / needs_input\n终态、产物与用量持续保留",
+    "en": "Final answer & citations\ncompleted / partial / needs_input\nRetain terminal state, artifacts and usage"
+  },
+  {
+    "id": "shape:XWy6Ss4R5c4JGe4V-nEh9",
+    "section": 4,
+    "zh": "续研",
+    "en": "Continue"
+  },
+  {
+    "id": "shape:-Eg6sN9-GVQvxtQI_jNGC",
+    "section": 4,
+    "zh": "组织答案并提交",
+    "en": "Compose & submit"
+  },
+  {
+    "id": "shape:mma-pi-note-footer",
+    "section": 4,
+    "zh": "持续事件：模型与工具开始 / 完成、证据、上下文归档、等待 / 恢复、答案与终态；实际 usage 未返回时记为未知。\n无进展保护覆盖重复失败、相同工具结果重复、持续只输出文字、上下文不足及模型流空闲；不限制持续取得新结果的长任务。\n引用校验确认已交付证据的编号、版本与位置，不证明每句陈述都被来源语义蕴含。离散视频采样不等于逐帧观察。",
+    "en": "Durable events cover model / tool starts and ends, evidence, context archives, resource waits, answers and terminal states. Missing usage receipts remain unknown.\nNo-progress guards cover repeated failures, repeated identical tool results, text-only turns, exhausted context and idle model streams; productive long tasks may continue.\nCitation checks establish delivered evidence identity, versions and positions, not semantic entailment. Discrete video samples do not prove frame-by-frame inspection."
+  },
+  {
+    "id": "shape:mma-pi-source",
+    "section": 4,
+    "zh": "源码定位  backend/app/api/pi_agent.py · modules/pi_agent/{supervisor,store,tools,gateway,media,plan}.py · agent-runtime/src/",
+    "en": "Source  backend/app/api/pi_agent.py · modules/pi_agent/{supervisor,store,tools,gateway,media,plan}.py · agent-runtime/src/"
+  },
+  {
+    "id": "shape:mma-deploy-title",
+    "section": 5,
+    "zh": "05 / 部署与数据契约",
+    "en": "05 / Deployment & data contracts"
+  },
+  {
+    "id": "shape:mma-deploy-subtitle",
+    "section": 5,
+    "zh": "完整容器分发拓扑、六个 Qdrant 集合与状态持久化边界\nmain · 658b0d1 · 2026-11-05",
+    "en": "Full-container topology, six Qdrant collections and persistence boundaries\nmain · 658b0d1 · 2026-11-05"
+  },
+  {
+    "id": "shape:SiBbGQFkTEApzYuGxCLNB",
+    "section": 5,
+    "zh": "浏览器 / Web 工作台\nReact 18 · TypeScript · Vite\nZustand / SSE 与引用预览",
+    "en": "Browser / Web workbench\nReact 18 · TypeScript · Vite\nZustand / SSE & citation previews"
+  },
+  {
+    "id": "shape:mma-deploy-group-compose",
+    "section": 5,
+    "zh": "完整安装 · deploy/compose.yaml · 本机绑定前端与对象存储端口",
+    "en": "Full install · deploy/compose.yaml · Frontend and object-storage ports bind to localhost"
+  },
+  {
+    "id": "shape:mma-deploy-note-dev",
+    "section": 5,
+    "zh": "源码开发拓扑\nstart-dev.sh：本机 Python + Node + Vite。\n根 docker-compose.yml：存储服务。\n开发启动默认不运行 Celery。",
+    "en": "Development topology\nstart-dev.sh: local Python + Node + Vite.\nRoot docker-compose.yml: storage services.\nDevelopment startup does not start Celery."
+  },
+  {
+    "id": "shape:oPCiOv30_JL6vsqRQPkAY",
+    "section": 5,
+    "zh": "frontend 容器 · Nginx\n127.0.0.1:3001 → :80\n静态 SPA + /api 反向代理",
+    "en": "frontend container · Nginx\n127.0.0.1:3001 → :80\nStatic SPA + /api reverse proxy"
+  },
+  {
+    "id": "shape:mma-deploy-note-models",
+    "section": 5,
+    "zh": "本地运行时\nBGE-M3 / CLIP / CLAP 共享加载。\nFFmpeg / LibreOffice 处理媒体与预览。\n缓存目录挂载到持久 volume。",
+    "en": "Local runtime\nShared BGE-M3 / CLIP / CLAP.\nFFmpeg / LibreOffice process media & previews.\nCache directories use persistent volumes."
+  },
+  {
+    "id": "shape:ys52ptQkqzfk69S1WgPSE",
+    "section": 5,
+    "zh": "安装器与设置入口\ntessmora CLI / Web setup\n能力选择 · 模型配置 · 本地模型准备",
+    "en": "Installer & setup entry\ntessmora CLI / Web setup\nCapabilities · models · local-model preparation"
+  },
+  {
+    "id": "shape:WaDMMXz8YuMWWvA1ChGdu",
+    "section": 5,
+    "zh": "backend 容器 · :8000\nFastAPI / Uvicorn + Python\n内置 Node，每个 Pi 任务派生子进程",
+    "en": "backend container · :8000\nFastAPI / Uvicorn + Python\nIncludes Node; one subprocess per Pi run"
+  },
+  {
+    "id": "shape:yt2oHATnYQHDB0ihj9VM-",
+    "section": 5,
+    "zh": "外部服务边界 · 按配置调用\n聊天 / Embedding / Rerank\n视觉 / 音频 / 解析 / 搜集供应商",
+    "en": "External services · as configured\nChat / embeddings / reranking\nVision / audio / parsing / discovery"
+  },
+  {
+    "id": "shape:gxxLH2CrpVqvCDn0KOADk",
+    "section": 5,
+    "zh": "HTTP / SSE · 关闭代理缓冲",
+    "en": "HTTP / SSE · no buffering"
+  },
+  {
+    "id": "shape:VV93DktgWrmDrGmYmYwuU",
+    "section": 5,
+    "zh": "模型 API",
+    "en": "Model API"
+  },
+  {
+    "id": "shape:nZBjgwfMhGa_msrQJ0iu-",
+    "section": 5,
+    "zh": "队列",
+    "en": "Queue"
+  },
+  {
+    "id": "shape:OJ3MPiOHEmxl_8igKu-aq",
+    "section": 5,
+    "zh": "MinIO\nS3 :9000 · 持久 volume\n原件与派生物",
+    "en": "MinIO\nS3 :9000 · persistent volume\nOriginals & derived artifacts"
+  },
+  {
+    "id": "shape:hRCNX4yJfTBS24ecABMoT",
+    "section": 5,
+    "zh": "Qdrant\n内部 :6333 · 持久 volume\n向量 / payload / 画像",
+    "en": "Qdrant\nInternal :6333 · persistent volume\nVectors / payloads / portraits"
+  },
+  {
+    "id": "shape:YFPQpidtBUH-ktKA8R9po",
+    "section": 5,
+    "zh": "Redis\n内部 :6379 · AOF volume\n进度 / 租约 / Broker",
+    "en": "Redis\nInternal :6379 · AOF volume\nProgress / leases / broker"
+  },
+  {
+    "id": "shape:KsufmAL9YlA-qo4knaDhR",
+    "section": 5,
+    "zh": "worker 容器\nCelery · concurrency=1\nknowledge / ingestion 等队列",
+    "en": "worker container\nCelery · concurrency=1\nknowledge / ingestion queues, etc."
+  },
+  {
+    "id": "shape:mma-deploy-group-schemas",
+    "section": 5,
+    "zh": "Qdrant 集合契约 · 当前代码配置；业务身份与定位在 payload 中保留",
+    "en": "Qdrant collections · Current configuration; payloads retain source identity and locations"
+  },
+  {
+    "id": "shape:QDgE6NeJ_zDqvnpM3S7dl",
+    "section": 5,
+    "zh": "text_chunks_agentic\nDense 4096 + Sparse\n正文 / chunk_index / metadata\nkb_id / file_id / context_window",
+    "en": "text_chunks_agentic\nDense 4096 + Sparse\nText / chunk_index / metadata\nkb_id / file_id / context_window"
+  },
+  {
+    "id": "shape:K86bH_PsjoonTw95TRtgr",
+    "section": 5,
+    "zh": "image_vectors\ntext_vec 4096 + clip_vec 768\ncaption / 图片路径 / 来源类型\n父文档 source_file_id",
+    "en": "image_vectors\ntext_vec 4096 + clip_vec 768\nCaption / path / source type\nParent-document source_file_id"
+  },
+  {
+    "id": "shape:Qjt05250hGkKqybxBUhgQ",
+    "section": 5,
+    "zh": "audio_vectors\ntext_vec 4096 + clap_vec 512\nSparse / transcript / description\n时长与文件身份",
+    "en": "audio_vectors\ntext_vec 4096 + clap_vec 512\nSparse / transcript / description\nDuration & file identity"
+  },
+  {
+    "id": "shape:NTpdg-T_WjemN3WtfqZGd",
+    "section": 5,
+    "zh": "video_shot_vectors\ncaption_dense / asr_dense 4096\ncaption_sparse / asr_sparse\nScene / Shot / 绝对时间范围",
+    "en": "video_shot_vectors\ncaption_dense / asr_dense 4096\ncaption_sparse / asr_sparse\nScene / Shot / absolute time ranges"
+  },
+  {
+    "id": "shape:E6UcA2v38kVxPfKAgukBI",
+    "section": 5,
+    "zh": "video_keyframe_vectors\nframe_vec 4096 + clip_vec 768\n父 Shot / frame_timestamp\nframe_image_path",
+    "en": "video_keyframe_vectors\nframe_vec 4096 + clip_vec 768\nParent Shot / frame_timestamp\nframe_image_path"
+  },
+  {
+    "id": "shape:aKdSe60a42wIcK9gkmG43",
+    "section": 5,
+    "zh": "kb_portraits\n主题语义向量 4096\n主题摘要 / cluster_size / kb_id\n常规跨库路由与主题展示",
+    "en": "kb_portraits\nTopic semantic vectors: 4096\nSummary / cluster_size / kb_id\nStandard cross-KB routing & topic UI"
+  },
+  {
+    "id": "shape:mma-deploy-group-persistence",
+    "section": 5,
+    "zh": "持久化分工 · 避免把会话、账本、原件与索引混为同一存储",
+    "en": "Persistence responsibilities · Sessions, ledgers, originals and indexes are distinct"
+  },
+  {
+    "id": "shape:xGsH-uuFSvDl8B4ZmynM2",
+    "section": 5,
+    "zh": "MinIO · 每知识库 bucket\n原文件 / 解析文本 / 抽取图片\n关键帧 / manifest / 预览\n知识库与文件元数据",
+    "en": "MinIO · one bucket per KB\nOriginals / parsed text / extracted images\nKeyframes / manifests / previews\nKnowledge-base & file metadata"
+  },
+  {
+    "id": "shape:k1O3qqiXVHfLZFMKqOicI",
+    "section": 5,
+    "zh": "Pi · 独立持久化\n数据目录下 runs.sqlite3\n任务 / 事件 / 证据 / 产物\n附件与预览存本地文件",
+    "en": "Pi · independent persistence\nruns.sqlite3 in the data directory\nRuns / events / evidence / artifacts\nLocal attachment & preview files"
+  },
+  {
+    "id": "shape:-wOtXFpOAMfGEFahyI54i",
+    "section": 5,
+    "zh": "常规 Chat · 状态边界\n服务端会话主要在进程内\n浏览器保存对话与附件快照\n显式快照恢复非共享会话数据库",
+    "en": "Standard Chat · state boundary\nServer sessions mainly live in memory\nBrowser conversation & attachment snapshots\nExplicit restore is not a shared session DB"
+  },
+  {
+    "id": "shape:0M7axyQhTOPhpEWbSwYPP",
+    "section": 5,
+    "zh": "Collection · 独立 SQLite\nbackend/data/collection/runs.sqlite3\n任务 / 候选 / 单素材回执\n重启保留结果并标记中断",
+    "en": "Collection · separate SQLite\nbackend/data/collection/runs.sqlite3\nRuns / candidates / per-material receipts\nRestart preserves results & marks interruption"
+  },
+  {
+    "id": "shape:DDXLwso1sNorMPQiPBgXS",
+    "section": 5,
+    "zh": "配置与本地缓存\nllm_task_overrides.json\njev_settings.json / 安装状态目录\nHugging Face 缓存 / 日志",
+    "en": "Configuration & local caches\nllm_task_overrides.json\njev_settings.json / installer state\nHugging Face cache / logs"
+  },
+  {
+    "id": "shape:3hKvClWAP3Sq4xRHfARsx",
+    "section": 5,
+    "zh": "Redis 与 Celery\n上传状态 / 租约 / 心跳\n画像增量计数与待处理状态\n后台队列，不是在线证据库",
+    "en": "Redis & Celery\nUpload status / leases / heartbeats\nPortrait delta counters & pending work\nBackground queues, not an evidence store"
+  },
+  {
+    "id": "shape:mma-deploy-note-footer",
+    "section": 5,
+    "zh": "模型层：常规 LLMManager 统一 chat / embed / rerank、任务路由、回退与健康冷却；Pi 使用独立主模型配置和 ModelTransport。\n完整 Compose 启动 worker；开发模式是否运行 worker 与 Redis 是否启动是两个不同条件。\n部署定位：当前主要面向单机可信工作区；Pi 范围与 token 校验不等于全站多租户 ACL。\n本图依据 main 工作树代码静态核对，描述实现拓扑与数据契约，不表示本机此刻所有容器或外部服务均在线。",
+    "en": "Model layer: standard LLMManager centralizes chat / embed / rerank, task routing, fallbacks and health cooldowns. Pi has independent main-model settings and ModelTransport.\nFull Compose starts a worker. In development, starting Redis does not imply a running worker.\nDeployment targets a single trusted workspace. Pi scope and token checks are not application-wide multi-tenant ACLs.\nThis is a static implementation map verified against main; it does not claim that every local container or external provider is currently online."
+  },
+  {
+    "id": "shape:mma-deploy-source",
+    "section": 5,
+    "zh": "源码定位  deploy/{compose.yaml,Dockerfile.backend,nginx.conf} · modules/ingestion/storage/vector_store.py · core/llm/manager.py",
+    "en": "Source  deploy/{compose.yaml,Dockerfile.backend,nginx.conf} · modules/ingestion/storage/vector_store.py · core/llm/manager.py"
+  }
+]
