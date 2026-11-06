@@ -11,7 +11,7 @@ This directory currently contains:
 | `deepseek.png` | DeepSeek |
 | `minimax.png` | MiniMax |
 | `moonshot.png` | Moonshot |
-| `zai.png`, `zhipu.png` | Z.AI / Zhipu assets |
+| `zai.png` | Z.AI / Zhipu |
 | `openrouter.png` | OpenRouter provider fallback |
 | `bailian.png` | Aliyun Bailian provider fallback |
 | `siliconcloud.png` | SiliconFlow provider fallback |
