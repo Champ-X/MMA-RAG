@@ -110,6 +110,7 @@ backend/.env
 # review captures belong in these ignored directories.
 /.agent-tasks/
 /output/
+/video-production/
 /docs/previews/
 /frontend/design-previews/
 /.impeccable/review/
