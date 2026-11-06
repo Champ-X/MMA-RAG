@@ -9,6 +9,7 @@
 | 理解模块边界、数据流与会话持久化 | [系统架构](MMA_ARCHITECTURE.md) |
 | 理解图片、音频、视频的索引与召回 | [多模态技术说明](MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) |
 | 配置自主研究与只读工具 | [Pi Agent](PI_AGENT_MODE.md) |
+| 配置 Pi 持续输入、崩溃恢复与运行时回退 | [Pi Durable](pi-agent-durable.md) |
 | 配置可选的需求核验与引用诊断 | [Decision 模型](DECISION_MODELS.md) |
 | 使用行内文件与本机附件 | [引用与附件协议](chat-inline-references.md) |
 | 排查服务商路由与连接 | [模型调用](MODEL_CALL_RELIABILITY.md) |
