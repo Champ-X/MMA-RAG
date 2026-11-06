@@ -5,6 +5,8 @@ BGE-M3 稀疏向量编码器
 
 from typing import Dict, List, Any, Optional
 from pathlib import Path
+from functools import wraps
+from threading import RLock
 import torch
 import numpy as np
 from FlagEmbedding import BGEM3FlagModel
@@ -15,6 +17,19 @@ from app.core.runtime_paths import state_dir
 from app.core.model_preparation import report_preparation, model_failure
 
 logger = get_logger(__name__)
+
+# Retrieval, ingestion and Pi can share the same lazily loaded BGE-M3 model.
+# Tokenization/inference must not overlap on that model. RLock also permits the
+# encode methods to call the guarded lazy initializer without deadlocking.
+_inference_lock = RLock()
+
+
+def _serialized_inference(method):
+    @wraps(method)
+    def invoke(*args, **kwargs):
+        with _inference_lock:
+            return method(*args, **kwargs)
+    return invoke
 
 
 class BGEM3SparseEncoder:
@@ -54,6 +69,7 @@ class BGEM3SparseEncoder:
             return str(local_candidate)
         return configured
     
+    @_serialized_inference
     def _ensure_initialized(self):
         """确保模型已初始化（懒加载）"""
         if self._model is None:
@@ -89,6 +105,7 @@ class BGEM3SparseEncoder:
                 logger.error(f"BGE-M3 模型加载失败: {err}")
                 raise
     
+    @_serialized_inference
     def encode_query(self, text: str) -> Dict[str, Any]:
         """
         编码查询文本，返回稀疏向量
@@ -141,6 +158,7 @@ class BGEM3SparseEncoder:
             logger.error(f"BGE-M3 查询编码失败: {str(e)}")
             raise
     
+    @_serialized_inference
     def encode_corpus(self, texts: List[str], batch_size: int = 32) -> List[Dict[str, Any]]:
         """
         编码文档文本列表，返回稀疏向量列表

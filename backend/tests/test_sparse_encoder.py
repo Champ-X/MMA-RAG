@@ -44,3 +44,40 @@ def test_sparse_corpus_encoding_supports_current_bge_m3_encode_api():
         {"sparse": {101: 0.8, 202: 0.3}},
     ]
     assert model.calls[0]["batch_size"] == 8
+
+
+def test_shared_query_and_corpus_inference_are_serialized_without_initializer_deadlock():
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, Lock
+    import time
+
+    class ConcurrentModel(_ModernBgeModel):
+        def __init__(self):
+            super().__init__()
+            self.active = self.maximum = 0
+            self.lock = Lock()
+
+        def encode(self, sentences, **kwargs):
+            with self.lock:
+                self.active += 1
+                self.maximum = max(self.maximum, self.active)
+            try:
+                time.sleep(.01)
+                return super().encode(sentences, **kwargs)
+            finally:
+                with self.lock:
+                    self.active -= 1
+
+    model, ready = ConcurrentModel(), Barrier(2)
+    encoder = _encoder_with(model)
+    def query():
+        ready.wait()
+        return encoder.encode_query("query")
+    def corpus():
+        ready.wait()
+        return encoder.encode_corpus(["source"])
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        a, b = pool.submit(query), pool.submit(corpus)
+        assert a.result(timeout=2) == {"sparse": {101: .8, 202: .3}}
+        assert b.result(timeout=2) == [{"sparse": {101: .8, 202: .3}}]
+    assert model.maximum == 1
