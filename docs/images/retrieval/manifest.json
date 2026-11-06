@@ -1,0 +1,115 @@
+{
+  "schema_version": 2,
+  "captured_date": "2026-11-07",
+  "source_commit": "d3656cf92327cd28244a2cc8475d1fe3089d301b",
+  "browser": "Existing Google Chrome profile, native CUA screenshots",
+  "conversation_origin": "Pre-existing conversations in the user browser; no new queries submitted for these captures.",
+  "processing": {
+    "source_dimensions": [
+      2560,
+      1410
+    ],
+    "crop": {
+      "left": 0,
+      "top": 122,
+      "width": 2560,
+      "height": 1288
+    },
+    "resize_scale": 0.75,
+    "output_dimensions": [
+      1920,
+      966
+    ],
+    "jpeg_quality": 90,
+    "chroma_subsampling": "4:4:4",
+    "content_edits": "None; browser chrome cropped and content proportionally resized only."
+  },
+  "language_scope": "Application UI toggled between Chinese and English; original Chinese queries, answers, source filenames and descriptions retained.",
+  "assets": [
+    {
+      "path": "image-search-zh.jpg",
+      "language": "zh-CN",
+      "scene": "image",
+      "source_route": "/chat/b1201620-ae4b-4075-89c0-84d100c9e98d",
+      "existing_query": "找一些可爱的小动物",
+      "captured_at": "2026-11-06T17:18:47.074029+00:00",
+      "width": 1920,
+      "height": 966,
+      "bytes": 253643,
+      "sha256": "9e8553c23d2747a23ac0626da644207a9006da6fcc8926dbf945985540c92afb",
+      "raw_capture_sha256": "3e710c2f5e3bd344c5e914ab4c34c13406f673cbcef04774126474a032ebeb58"
+    },
+    {
+      "path": "image-search-en.jpg",
+      "language": "en-US",
+      "scene": "image",
+      "source_route": "/chat/b1201620-ae4b-4075-89c0-84d100c9e98d",
+      "existing_query": "找一些可爱的小动物",
+      "captured_at": "2026-11-06T17:21:45.612700+00:00",
+      "width": 1920,
+      "height": 966,
+      "bytes": 204605,
+      "sha256": "23674fc9d0bf5d9f1fdf94a07ca942c3ef5516de6e59e712d154dfa5a8ac8c20",
+      "raw_capture_sha256": "3e4178212971c1a982e0fc59b16688e6d8423a982ba9f74161d90aeeb0244dc8"
+    },
+    {
+      "path": "audio-search-zh.jpg",
+      "language": "zh-CN",
+      "scene": "audio",
+      "source_route": "/chat/aa07f100-75b9-4163-a18c-fbc13ec900bc",
+      "existing_query": "中国古典乐器演奏的曲子",
+      "captured_at": "2026-11-06T17:34:04.167945+00:00",
+      "width": 1920,
+      "height": 966,
+      "bytes": 282851,
+      "sha256": "da84b041ae0c6f7fe46ea6b85afbaa82d56c7dccdb7614b29f86b83bee00011f",
+      "raw_capture_sha256": "333e69a47001d8f1eb6cb54a769f2aa4a3ab8d5eb8a22d84cc8ff32ffc91e3b0"
+    },
+    {
+      "path": "audio-search-en.jpg",
+      "language": "en-US",
+      "scene": "audio",
+      "source_route": "/chat/aa07f100-75b9-4163-a18c-fbc13ec900bc",
+      "existing_query": "中国古典乐器演奏的曲子",
+      "captured_at": "2026-11-06T17:25:49.502885+00:00",
+      "width": 1920,
+      "height": 966,
+      "bytes": 221670,
+      "sha256": "c392d9dc6dc13dc168aec2de639fead2333bd130944f07b9b0e933c22706d5f8",
+      "raw_capture_sha256": "eae4a5f72fad50d9ea5454a77d0bfec6385e48ec1d381717b1125ec1151eff23"
+    },
+    {
+      "path": "video-search-zh.jpg",
+      "language": "zh-CN",
+      "scene": "video",
+      "source_route": "/chat/d0cb0415-b127-46a3-9c88-1819215f8a13",
+      "existing_query": "体现自然之美的短片",
+      "captured_at": "2026-11-06T17:35:13.654187+00:00",
+      "width": 1920,
+      "height": 966,
+      "bytes": 325924,
+      "sha256": "daffb41a05a6ca5fdf8ccf18320dabbd543118f2155d6472a971720b1fc70755",
+      "raw_capture_sha256": "6693a401b3dfd6f94f5df31993d63a145f6cd657d9fdcca4dbe2b610cbc97f46"
+    },
+    {
+      "path": "video-search-en.jpg",
+      "language": "en-US",
+      "scene": "video",
+      "source_route": "/chat/d0cb0415-b127-46a3-9c88-1819215f8a13",
+      "existing_query": "体现自然之美的短片",
+      "captured_at": "2026-11-06T17:27:37.518536+00:00",
+      "width": 1920,
+      "height": 966,
+      "bytes": 331763,
+      "sha256": "2e5ce6377ebf4f5f34d3d90ae999559543e30d3b35ff6de7646ea19e7240ddbb",
+      "raw_capture_sha256": "4eee4050cdeebbc4e324aeca3c03584c4fae72fef85b694032e0070557342365"
+    }
+  ],
+  "validation": {
+    "all_images": "Visually reviewed for correct scene, UI language, loaded media previews and absence of browser chrome.",
+    "image": "Chinese view includes the citation panel; English view presents inline image results and citations.",
+    "audio": "Waveform players and source preview show loaded durations; this capture pass does not claim a new playback test.",
+    "video": "Loaded nature.mov preview with cited range 00:00–00:15; this capture pass does not claim a new playback test."
+  },
+  "limitations": "Existing generated answers are interaction examples, not factual-accuracy, retrieval-quality, or latency benchmarks. Historical run metrics were not rerun."
+}

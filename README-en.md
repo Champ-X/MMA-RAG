@@ -1,22 +1,11 @@
-<p align="center">
-  <img src="frontend/public/tessmora-logo.png" alt="Tessmora" height="88" />
-</p>
-
-<h1 align="center">Tessmora</h1>
-
-<p align="center"><strong>Turn scattered knowledge into answers you can trace.</strong></p>
-<p align="center">Every fragment finds its place.</p>
+<h1 align="center">
+  <img src="docs/images/readme-hero/hero-en.png" alt="Tessmora — Connected knowledge. Grounded answers." width="1280" />
+</h1>
 
 <p align="center">
   <a href="README.md">简体中文</a> · <strong>English</strong>
-</p>
-
-<p align="center">
-  <a href="#demo">Demo</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#agent-mode">Agent Mode</a> ·
-  <a href="#architecture">Architecture</a> ·
-  <a href="#documentation">Documentation</a>
+  <br />
+  <a href="#demo">Intro video</a> · <a href="#in-action">In action</a> · <a href="#quick-start">Quick start</a> · <a href="#agent-mode">Agent Mode</a> · <a href="#architecture">Architecture</a> · <a href="#documentation">Docs</a>
 </p>
 
 <p align="center">
@@ -25,9 +14,9 @@
   <img src="https://img.shields.io/badge/Node.js-%E2%89%A522.19-5FA04E?logo=nodedotjs&amp;logoColor=white" alt="Node.js 22.19 or later" />
 </p>
 
-**Tessmora is a self-hosted multimodal knowledge base and agent research workspace.** Bring documents, spreadsheets, images, audio, and video together. Search, compare, and ask questions in natural language, then follow citations back to source text, images, or media segments to check the answers.
+**Tessmora is a self-hosted multimodal knowledge base and agent research workspace.** Bring documents, spreadsheets, images, audio, and video together. Search, compare, and ask questions in natural language, then follow citations back to source text, images, or media segments.
 
-Use it to explore research materials, find visuals and music in a media library, or let an agent investigate a complex question through search, close reading, and evidence gathering. The Web UI supports Simplified Chinese and English. The repository retains the name `MMA-RAG`.
+Explore research materials, find visuals and music, or let Pi investigate a question through search, close reading, and evidence gathering. The Web UI supports Simplified Chinese and English; the repository retains the name `MMA-RAG`.
 
 ## Demo
 
@@ -48,26 +37,46 @@ https://github.com/user-attachments/assets/b3d5a990-115f-4508-a707-b99d2acc590e
 | **Control materials and scope** | Reference files or local attachments with `@`, and constrain search with knowledge-base and file selectors; referencing a material does not automatically expand search scope |
 | **Connect your workflow** | Use the bilingual Web UI, retrieval and chat APIs, installation CLI, knowledge-base CLI / Codex Skill, and optional Feishu IM and Docx/Wiki import |
 
+## In action
+
+Organize your materials, find a visual, audition music, or locate a moment in a video. The retrieval examples come from existing conversations in the running application; click an image for the full view. The English UI retains the original Chinese queries and source content. [Screenshot and example notes](docs/images/retrieval/README.md).
+
+### One space for different kinds of material
+
+Organize documents, images, audio, and video by topic, with content types and counts visible at a glance.
+
+[![Knowledge spaces organized by topic, with material types and counts](docs/images/current/knowledge-en.jpg)](docs/images/current/knowledge-en.jpg)
+
+### Describe a scene, find an image, follow its source
+
+Describe the visual you need in natural language and see images directly in the answer. Open a citation to compare the original image and its description beside the response.
+
+[![Cute-animal image retrieval with inline photos and source citations](docs/images/retrieval/image-search-en.jpg)](docs/images/retrieval/image-search-en.jpg)
+
+### Describe a sound and listen in the answer
+
+An existing request for Chinese instrumental music returns tracks such as “水墨兰亭” and “紫竹调”. Compare sound descriptions, then audition each result with the embedded player.
+
+[![Chinese instrumental music retrieval with waveform players and an audio source panel](docs/images/retrieval/audio-search-en.jpg)](docs/images/retrieval/audio-search-en.jpg)
+
+### Turn a question into a moment in a video
+
+An existing request for nature shorts retrieves forest and canyon scenes. Follow a citation to its time range, keeping the description and original segment together for review.
+
+[![Nature-video retrieval with a 00:00–00:15 excerpt linked to its source](docs/images/retrieval/video-search-en.jpg)](docs/images/retrieval/video-search-en.jpg)
+
 <details>
-<summary><strong>Explore the current UI: knowledge spaces, file gallery, citations, and Pi research</strong></summary>
+<summary><strong>More views: file gallery and document citations</strong></summary>
 
-Captured on November 6–7, 2026 in the running Web app using Tessmora project materials. The interface is in English; source titles, answers, and agent notes retain their original Chinese. These are real interactions, and the example documents may predate the current code. See [screenshot provenance](docs/images/current/README.md).
-
-**Knowledge spaces** — Organize documents, images, audio, and video by topic, with content types and counts for each space.
-
-![English knowledge spaces and content statistics](docs/images/current/knowledge-en.jpg)
-
-**File gallery** — Browse project documents and images together, filter by type, and open previews or index details.
+**File gallery** — Browse documents and images together, filter by type, and open previews or index details.
 
 ![English file gallery and material filters](docs/images/current/materials-en.jpg)
 
-**Check answers against sources** — Open cited text beside the answer while keeping the claim, citation, and supporting image in view.
+**Read the answer beside its source** — Open cited text in the source panel while keeping the claim, citation, and supporting image connected.
 
-![Pi answer with an image citation and English source-inspection controls](docs/images/current/citations-en.jpg)
+![Pi answer with an image citation and English source controls](docs/images/current/citations-en.jpg)
 
-**Pi research process** — Expand a completed task to inspect its tool calls, evidence, and execution record, tracing how search and reading support the answer.
-
-![English Pi research trace and evidence record](docs/images/current/trace-en.jpg)
+These project-material captures were taken on November 6–7, 2026; example documents may predate the current implementation. See the [original screenshot notes](docs/images/current/README.md).
 
 </details>
 
@@ -195,21 +204,48 @@ Pi can read long documents, expand adjacent passages, recall evidence, inspect i
 
 **The limits are visible.** Pi has no application-level cap on cumulative duration, tokens, or total tool calls. You can stop a run, and no-progress and error guards still terminate execution. Recovering an interrupted model request may incur additional charges. Citation checks validate source identity and numbering, not semantic correctness; video inspection uses sampling rather than observing every frame.
 
+**Open the research process.** Inspect a task's tool calls, evidence, and execution record to see how search and reading support the answer.
+
+[![Pi research process with tool calls and evidence records](docs/images/current/trace-en.jpg)](docs/images/current/trace-en.jpg)
+
 [Tools and configuration](docs/PI_AGENT_MODE.md) · [Durable recovery, ongoing input, and known limitations](docs/pi-agent-durable.md)
 
 ## Architecture
 
-[![Tessmora system overview: multimodal ingestion, two answering paths, and source citations](docs/diagrams/mma-rag/overview-en.png)](docs/diagrams/mma-rag/MMA-RAG-en-handwritten.svg)
+Follow three paths through Tessmora: **how materials are indexed, how a question finds evidence, and how Pi carries out research.** These diagrams are checked against the current code and include editable Excalidraw files. See the [architecture guide](docs/MMA_ARCHITECTURE.md) for detailed responsibilities and boundaries.
 
-[Full English architecture diagram](docs/diagrams/mma-rag/MMA-RAG-en-handwritten.svg) · [High-resolution PNG](docs/diagrams/mma-rag/MMA-RAG-en-handwritten.png) · [Editable Excalidraw](docs/diagrams/mma-rag/MMA-RAG-en.excalidraw) · [Bilingual diagram collection](docs/diagrams/mma-rag/README.md)
+### 01 · Multimodal ingestion: keep originals, index their sources
 
-This preview is cropped from the handwritten architecture diagram at **2026-11-05 / `658b0d1`**. The full diagram's descriptions of Pi restart behavior and native image/audio retrieval predate the Durable update. Refer to this page and the [system architecture guide](docs/MMA_ARCHITECTURE.md) for current behavior.
+Documents and tables retain their structure; images, audio, and video receive modality-specific search representations. MinIO stores originals and derived media, while Qdrant stores vectors, indexes, and source locations. Knowledge-base profiles support later routing.
 
-The current data flow has three parts:
+[![Modality-specific parsing and encoding linked to original assets and source indexes](docs/diagrams/mma-rag/readme-modules/ingestion-en.png)](docs/diagrams/mma-rag/readme-modules/ingestion-en.png)
 
-1. **Ingestion:** Parse each modality, preserve source text in document chunks and headers in table row blocks, and retain media descriptions, transcripts, and timestamps. MinIO stores original files; Qdrant stores vectors and indexes.
-2. **Answering:** The React / TypeScript frontend calls FastAPI. Standard retrieval uses hybrid recall and reranking; Pi's Python host and separate Node workers organize research.
-3. **Verification and continuation:** Answers carry source citations. Pi stores its run ledger and Durable sessions in local SQLite, while Redis supports task and cache infrastructure.
+[Edit this diagram](docs/diagrams/mma-rag/readme-modules/ingestion-en.excalidraw)
+
+### 02 · Hybrid retrieval: from a question to inspectable evidence
+
+Interpret the question and scope, then retrieve text, image, and audio/video candidates as needed. Fusion and reranking feed an answer with citations, linking each source back to text, an image, or a media time range.
+
+[![Intent and scope, conditional multimodal retrieval, fusion, reranking, and source citations](docs/diagrams/mma-rag/readme-modules/retrieval-en.png)](docs/diagrams/mma-rag/readme-modules/retrieval-en.png)
+
+[Edit this diagram](docs/diagrams/mma-rag/readme-modules/retrieval-en.excalidraw)
+
+### 03 · Pi Durable: preserve the research and its evidence
+
+Pi chooses search, reading, media inspection, and table tools within the source scope enforced by its host. The run ledger supports instructions during research, replies to clarification requests, and eligible recovery after interruption. This research path is independent of standard retrieval.
+
+[![Pi tool loop, source scope, persistent run ledger, ongoing input, and cited delivery](docs/diagrams/mma-rag/readme-modules/pi-durable-en.png)](docs/diagrams/mma-rag/readme-modules/pi-durable-en.png)
+
+[Edit this diagram](docs/diagrams/mma-rag/readme-modules/pi-durable-en.excalidraw) · [Bilingual modules and code references](docs/diagrams/mma-rag/readme-modules/README.md)
+
+<details>
+<summary>Earlier single-canvas overview and source directories</summary>
+
+[![Earlier system overview](docs/diagrams/mma-rag/overview-en.png)](docs/diagrams/mma-rag/MMA-RAG-en-handwritten.svg)
+
+[Full English overview](docs/diagrams/mma-rag/MMA-RAG-en-handwritten.svg) · [Editable Excalidraw](docs/diagrams/mma-rag/MMA-RAG-en.excalidraw) · [Original diagram collection](docs/diagrams/mma-rag/README.md)
+
+This overview dates to **November 5, 2026 / `658b0d1`**. Its Pi restart and native media retrieval descriptions predate later updates; the module diagrams above and current code describe today's behavior.
 
 | Source directory | Responsibility |
 | --- | --- |
@@ -218,6 +254,8 @@ The current data flow has three parts:
 | [`retrieval/`](backend/app/modules/retrieval/) · [`agent/`](backend/app/modules/agent/) · [`generation/`](backend/app/modules/generation/) | Standard retrieval, bounded multi-round evidence gathering, and answer generation |
 | [`pi_agent/`](backend/app/modules/pi_agent/) · [`agent-runtime/`](agent-runtime/) | Pi host, source tools, run ledger, and Durable loop |
 | [`core/llm/`](backend/app/core/llm/) · [`packages/cli/`](packages/cli/) | Model providers and task routing, installation, and instance management |
+
+</details>
 
 ## API and integrations
 
@@ -279,22 +317,3 @@ Technical guides are currently maintained mostly in Chinese. Both READMEs cover 
 | Configure Pi, recover tasks, or check execution limits | [Pi Agent](docs/PI_AGENT_MODE.md) · [Pi Durable](docs/pi-agent-durable.md) · [Decision models](docs/DECISION_MODELS.md) |
 | Adjust language, models, and attachment behavior | [English support](docs/ENGLISH_SUPPORT.md) · [Model troubleshooting](docs/MODEL_CALL_RELIABILITY.md) · [References and attachments](docs/chat-inline-references.md) |
 | Find other resources | [Documentation index](docs/README.md) · [Changelog](CHANGELOG.md) · [Repository maintenance](docs/REPOSITORY.md) |
-
-## Contributing
-
-Report problems through [Issues](https://github.com/Champ-X/MMA-RAG/issues) and submit changes through [Pull Requests](https://github.com/Champ-X/MMA-RAG/pulls). Chinese and English are both welcome.
-
-- Include the commit SHA, environment, selected mode, minimal reproduction, and redacted logs in bug reports.
-- Keep changes focused and report validation results. Include screenshots for UI changes and reproducible inputs and sources for retrieval changes.
-- Keep both READMEs aligned when changing documentation; do not describe experimental candidates as delivered features.
-- Do not commit credentials, user knowledge bases, or unredacted run records. Follow the [security reporting process](SECURITY-en.md#reporting) for security issues.
-
-See [CONTRIBUTING-en.md](CONTRIBUTING-en.md) for the full workflow.
-
-## License
-
-The repository does not currently include a `LICENSE` file or declare an open-source license. Confirm permission with the maintainers before using, modifying, or redistributing the code.
-
-## Acknowledgments
-
-Thanks to the maintainers and contributors of [Pi](https://github.com/earendil-works/pi), [Qdrant](https://github.com/qdrant/qdrant), [MinIO](https://github.com/minio/minio), [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding), [CLIP](https://github.com/openai/CLIP), [CLAP](https://github.com/LAION-AI/CLAP), [FastAPI](https://github.com/fastapi/fastapi), [React](https://github.com/facebook/react), and the other projects Tessmora builds on.

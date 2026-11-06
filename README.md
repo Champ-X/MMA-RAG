@@ -1,22 +1,11 @@
-<p align="center">
-  <img src="frontend/public/tessmora-logo.png" alt="Tessmora" height="88" />
-</p>
-
-<h1 align="center">Tessmora</h1>
-
-<p align="center"><strong>把散落的资料，变成有据可查的答案。</strong></p>
-<p align="center">Every fragment finds its place.</p>
+<h1 align="center">
+  <img src="docs/images/readme-hero/hero-zh.png" alt="Tessmora — 连接每份知识，找到有据的答案" width="1280" />
+</h1>
 
 <p align="center">
   <strong>简体中文</strong> · <a href="README-en.md">English</a>
-</p>
-
-<p align="center">
-  <a href="#演示">演示</a> ·
-  <a href="#快速开始">快速开始</a> ·
-  <a href="#agent-mode">Agent Mode</a> ·
-  <a href="#架构">架构</a> ·
-  <a href="#文档">文档</a>
+  <br />
+  <a href="#演示">介绍视频</a> · <a href="#交互演示">交互演示</a> · <a href="#快速开始">快速开始</a> · <a href="#agent-mode">Agent Mode</a> · <a href="#架构">架构图解</a> · <a href="#文档">文档</a>
 </p>
 
 <p align="center">
@@ -25,9 +14,9 @@
   <img src="https://img.shields.io/badge/Node.js-%E2%89%A522.19-5FA04E?logo=nodedotjs&amp;logoColor=white" alt="Node.js 22.19 或更高版本" />
 </p>
 
-**Tessmora 是可自托管的多模态知识库与 Agent 研究工作台。** 将文档、表格、图片、音频和视频放在一起，用自然语言搜索、比较和提问，再沿着引用回到原文、图片或媒体时间片段核对答案。
+**Tessmora 是可自托管的多模态知识库与 Agent 研究工作台。** 把文档、表格、图片、音频和视频放在一起，用自然语言搜索、比较和提问；从回答中的引用回到原文、图片或媒体片段，继续核对与探索。
 
-它适合阅读一组研究资料、在素材库里寻找画面与音乐，也适合让 Agent 围绕复杂问题逐步搜索、深读和整理证据。Web 界面支持简体中文与 English。仓库沿用 `MMA-RAG` 名称。
+阅读研究资料、寻找画面与配乐，或让 Pi 逐步搜索、深读并整理证据——每条路径都围绕你的素材展开。Web 界面支持中英文，仓库沿用 `MMA-RAG` 名称。
 
 ## 演示
 
@@ -48,26 +37,46 @@ https://github.com/user-attachments/assets/ba48b505-9b1b-4fd6-9d40-441092cdf8fc
 | **控制材料与范围** | 用 `@` 引用文件或本机附件作为分析材料，用知识库与文件选择器限定搜索范围；材料引用不会自动扩大检索范围 |
 | **接入自己的工作流** | 中英文 Web UI、检索与对话 API、安装管理 CLI、知识库 CLI / Codex Skill，以及可选的飞书 IM 与 Docx/Wiki 导入 |
 
+## 交互演示
+
+从管理素材，到找到画面、试听音乐、定位视频片段。以下检索示例选自浏览器中已有的真实对话，点击图片可查看大图。[截图与示例说明](docs/images/retrieval/README.md)。
+
+### 素材空间，让不同形式的资料放在一起
+
+按主题组织文档、图片与影音，一眼查看各空间的素材类型和数量。
+
+[![按主题组织的素材空间与内容统计](docs/images/current/knowledge-zh.jpg)](docs/images/current/knowledge-zh.jpg)
+
+### 描述画面，找到图片并追溯来源
+
+用自然语言描述要找的画面，直接在回答中查看图片；点击引用，把原图和描述留在侧栏对照。
+
+[![“找一些可爱的小动物”的图片结果、原图与来源描述](docs/images/retrieval/image-search-zh.jpg)](docs/images/retrieval/image-search-zh.jpg)
+
+### 描述听感，在回答里试听音乐
+
+从“中国古典乐器演奏的曲子”找到《水墨兰亭》《紫竹调》等素材，结合声音描述比较候选，再用内嵌播放器试听。
+
+[![中国古典乐器曲目检索、波形播放器与音频来源侧栏](docs/images/retrieval/audio-search-zh.jpg)](docs/images/retrieval/audio-search-zh.jpg)
+
+### 从一个问题，定位到视频片段
+
+用“体现自然之美的短片”寻找森林与峡谷画面，沿引用查看对应时间范围，把文字描述和原始片段放在一起核对。
+
+[![自然短片检索、00:00–00:15 视频片段与来源联动](docs/images/retrieval/video-search-zh.jpg)](docs/images/retrieval/video-search-zh.jpg)
+
 <details>
-<summary><strong>查看当前界面：素材空间、文件画廊、来源引用与 Pi 研究过程</strong></summary>
+<summary><strong>更多界面：文件画廊与文档引用</strong></summary>
 
-实拍于 2026-11-06–07，使用当前 Web 界面与 Tessmora 项目资料。截图展示真实交互；示例文档的内容版本不等同于当前源码。见[截图说明](docs/images/current/README.md)。
-
-**素材空间** — 按主题组织文档、图片与影音，查看各空间的素材类型与数量。
-
-![中文素材空间与内容统计](docs/images/current/knowledge-zh.jpg)
-
-**文件画廊** — 在同一个空间中浏览项目文档与图片，按类型筛选，并打开预览或索引详情。
+**文件画廊** — 在同一个空间中浏览文档与图片，按类型筛选，打开预览或索引详情。
 
 ![中文文件画廊与素材筛选](docs/images/current/materials-zh.jpg)
 
-**回答与来源并排核对** — 从正文引用打开原文侧栏，保持结论、引用位置与配图之间的联系。
+**回答与原文并排阅读** — 从正文引用打开来源侧栏，保留结论、引用位置与配图之间的联系。
 
 ![Pi 回答、图片引用与原文侧栏](docs/images/current/citations-zh.jpg)
 
-**Pi 研究过程** — 展开一次已完成任务的工具调用、证据和执行记录，检查检索与阅读如何支持回答。
-
-![中文 Pi 研究轨迹与证据记录](docs/images/current/trace-zh.jpg)
+这些项目资料截图拍摄于 2026-11-06–07，示例文档可能早于当前实现。详见[原始截图说明](docs/images/current/README.md)。
 
 </details>
 
@@ -195,21 +204,48 @@ Pi 能阅读长文、扩展相邻片段、恢复已读证据、观察图片/PDF 
 
 **边界也可见。** Pi 没有应用层累计时长、Token 或工具调用总量上限；用户可停止，无进展和异常保护仍会终止运行。恢复中断的模型请求可能产生额外费用。引用校验检查来源身份与编号，不保证语义正确；视频观察是采样，不是逐帧观看。
 
+**研究过程可以展开查看。** 在一次任务中追踪工具调用、证据与执行记录，核对搜索和阅读如何支撑回答。
+
+[![Pi 研究过程、工具调用与证据记录](docs/images/current/trace-zh.jpg)](docs/images/current/trace-zh.jpg)
+
 [工具与配置](docs/PI_AGENT_MODE.md) · [Durable 恢复、持续输入与已知限制](docs/pi-agent-durable.md)
 
 ## 架构
 
-[![Tessmora 系统全景：多模态入库、两条问答路径与来源引用](docs/diagrams/mma-rag/overview-cn.png)](docs/diagrams/mma-rag/MMA-RAG-cn-handwritten.svg)
+用三条路径理解 Tessmora：**素材如何入库，问题如何找到证据，Pi 如何完成一轮研究。** 下图按当前源码核对，提供可编辑的 Excalidraw 文件；详细职责与边界见 [系统架构](docs/MMA_ARCHITECTURE.md)。
 
-[查看完整中文架构图](docs/diagrams/mma-rag/MMA-RAG-cn-handwritten.svg) · [高清 PNG](docs/diagrams/mma-rag/MMA-RAG-cn-handwritten.png) · [可编辑 Excalidraw](docs/diagrams/mma-rag/MMA-RAG-cn.excalidraw) · [双语图集](docs/diagrams/mma-rag/README.md)
+### 01 · 多模态入库：保留原件，建立可检索的来源
 
-预览截取自 **2026-11-05 / `658b0d1`** 的手写架构图。完整图中的 Pi 重启行为与原生图片/音频检索说明早于 Durable 更新；当前行为以本页和 [系统架构](docs/MMA_ARCHITECTURE.md) 为准。
+文档与表格保留结构，图片、音频和视频生成各自的检索表示。MinIO 保存原件与派生媒体，Qdrant 保存向量、索引和来源定位；知识库画像支持后续选库。
 
-当前数据流可以概括为：
+[![文档、图片、音频、视频分别解析编码，并关联原件与来源索引](docs/diagrams/mma-rag/readme-modules/ingestion-zh.png)](docs/diagrams/mma-rag/readme-modules/ingestion-zh.png)
 
-1. **入库**：按模态解析；文档保留原文分块，表格保留表头与行块，媒体保存描述、转写和时间定位。原文件存入 MinIO，向量与索引存入 Qdrant。
-2. **问答**：React / TypeScript 前端调用 FastAPI；常规检索走混合召回与重排，Pi 由 Python 宿主和独立 Node 工作进程组织研究。
-3. **核验与续跑**：回答绑定来源引用；Pi 在本地 SQLite 中保存运行账本和 Durable 会话，Redis 支持任务与缓存等基础设施。
+[编辑此图](docs/diagrams/mma-rag/readme-modules/ingestion-zh.excalidraw)
+
+### 02 · 混合检索：从问题到可回看的证据
+
+先理解问题与检索范围，再按需召回文本、图片和音视频候选；融合与重排后生成带引用的回答。来源标识把答案连接回原文、图片或媒体时间片段。
+
+[![意图与范围、按需多通道召回、融合重排及来源引用的数据流](docs/diagrams/mma-rag/readme-modules/retrieval-zh.png)](docs/diagrams/mma-rag/readme-modules/retrieval-zh.png)
+
+[编辑此图](docs/diagrams/mma-rag/readme-modules/retrieval-zh.excalidraw)
+
+### 03 · Pi Durable：研究过程与证据一起保留
+
+Pi 在宿主约束的来源范围内选择搜索、阅读、媒体观察与表格工具，逐步积累证据。运行账本支持研究中补充要求、等待澄清后继续，以及符合条件的中断恢复；这是一条独立于常规检索的研究路径。
+
+[![Pi 自主工具循环、来源范围、持久运行账本、持续输入与引用交付](docs/diagrams/mma-rag/readme-modules/pi-durable-zh.png)](docs/diagrams/mma-rag/readme-modules/pi-durable-zh.png)
+
+[编辑此图](docs/diagrams/mma-rag/readme-modules/pi-durable-zh.excalidraw) · [双语模块图与代码依据](docs/diagrams/mma-rag/readme-modules/README.md)
+
+<details>
+<summary>查看早期单画布总览与源码目录</summary>
+
+[![早期系统全景预览](docs/diagrams/mma-rag/overview-cn.png)](docs/diagrams/mma-rag/MMA-RAG-cn-handwritten.svg)
+
+[完整中文总览](docs/diagrams/mma-rag/MMA-RAG-cn-handwritten.svg) · [可编辑 Excalidraw](docs/diagrams/mma-rag/MMA-RAG-cn.excalidraw) · [原图集](docs/diagrams/mma-rag/README.md)
+
+这张总览绘于 **2026-11-05 / `658b0d1`**，其中 Pi 重启行为与原生媒体检索的说明早于后续更新；当前行为以上方模块图及源码为准。
 
 | 源码入口 | 职责 |
 | --- | --- |
@@ -218,6 +254,8 @@ Pi 能阅读长文、扩展相邻片段、恢复已读证据、观察图片/PDF 
 | [`retrieval/`](backend/app/modules/retrieval/) · [`agent/`](backend/app/modules/agent/) · [`generation/`](backend/app/modules/generation/) | 常规检索、有界多轮补查与回答生成 |
 | [`pi_agent/`](backend/app/modules/pi_agent/) · [`agent-runtime/`](agent-runtime/) | Pi 宿主、来源工具、运行账本与 Durable 循环 |
 | [`core/llm/`](backend/app/core/llm/) · [`packages/cli/`](packages/cli/) | 模型服务与任务路由、安装和实例管理 |
+
+</details>
 
 ## API 与集成
 
@@ -277,22 +315,3 @@ CI 覆盖仓库规则、启动控制器、前端测试/构建、Pi 与安装器�
 | 配置 Pi、恢复任务或核对执行边界 | [Pi Agent](docs/PI_AGENT_MODE.md) · [Pi Durable](docs/pi-agent-durable.md) · [Decision 模型](docs/DECISION_MODELS.md) |
 | 调整语言、模型与附件行为 | [英语支持](docs/ENGLISH_SUPPORT.md) · [模型排查](docs/MODEL_CALL_RELIABILITY.md) · [引用与附件](docs/chat-inline-references.md) |
 | 查找其余资料 | [文档导航](docs/README.md) · [变更记录](CHANGELOG.md) · [仓库维护](docs/REPOSITORY.md) |
-
-## 参与贡献
-
-欢迎通过 [Issues](https://github.com/Champ-X/MMA-RAG/issues) 反馈问题，通过 [Pull Requests](https://github.com/Champ-X/MMA-RAG/pulls) 提交修改，中文和英文均可。
-
-- 报告问题时附提交 SHA、环境、使用模式、最小复现和脱敏日志。
-- 修改聚焦一个问题，说明验证结果；界面改动附截图，检索改动附可复现输入与来源。
-- 文档变更同步中英文 README，不将实验候选写成已交付能力。
-- 不提交密钥、用户知识库或未脱敏运行记录；安全问题按 [安全报告流程](SECURITY.md#reporting) 处理。
-
-详细流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-## 许可证
-
-当前仓库未提供 `LICENSE`，也未声明开源许可证。使用、修改或分发的授权范围请与维护者确认。
-
-## 致谢
-
-感谢 [Pi](https://github.com/earendil-works/pi)、[Qdrant](https://github.com/qdrant/qdrant)、[MinIO](https://github.com/minio/minio)、[FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding)、[CLIP](https://github.com/openai/CLIP)、[CLAP](https://github.com/LAION-AI/CLAP)、[FastAPI](https://github.com/fastapi/fastapi) 与 [React](https://github.com/facebook/react) 等项目的维护者和贡献者。

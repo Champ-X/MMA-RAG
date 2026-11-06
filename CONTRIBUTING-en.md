@@ -158,4 +158,4 @@ Open a focused PR from your branch against upstream `main`. Use the title and de
 
 An example report: “Frontend unit tests, DOM tests, and build passed. Checked light/dark themes and citation previews at 390px / 1280px. Complete backend and real-model evaluations were not run; this change only adjusts frontend layout.” Replace this with your actual results; do not copy claims for checks you did not perform.
 
-The repository does not currently provide an open-source license. This contribution workflow does not change existing permissions; see the [license note](README-en.md#license).
+The repository does not currently provide an open-source license. This contribution workflow does not change existing permissions.

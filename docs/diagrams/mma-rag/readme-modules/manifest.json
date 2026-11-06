@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-11-06T17:04:21.409048+00:00",
+  "source_commit": "d3656cf92327cd28244a2cc8475d1fe3089d301b",
+  "source_basis": "Working-tree code audit; exact source hashes recorded below. Not a new end-to-end runtime or performance result.",
+  "canvas_size": [
+    1800,
+    1000
+  ],
+  "png_size": [
+    2700,
+    1500
+  ],
+  "fonts": {
+    "native_font_family": 5,
+    "display_fonts": [
+      "Excalifont",
+      "Xiaolai"
+    ],
+    "origin": "@excalidraw/excalidraw 0.18.1 bundled font files",
+    "display_rendering": "Native Excalidraw SVG geometry; text glyphs outlined using bundled fonts; PNG rendered from outlined SVG with librsvg.",
+    "editable_text": ".excalidraw companions"
+  },
+  "verification": {
+    "pngs_visually_inspected": 6,
+    "native_text_preserved": true,
+    "source_json_parsed": true,
+    "native_images_used": false,
+    "scope": "Text, pictograms, whitespace, flow direction, bilingual correspondence, and source-code claims.",
+    "final_semantic_review": "Images use CLIP and text vectors, without Sparse encoding. Pi evidence label refers to retained source text, not original media stored in SQLite."
+  },
+  "source_files": [
+    {
+      "path": "agent-runtime/src/durable.mjs",
+      "sha256": "0b4d0e9056c569185f560c0859357118bc8a5879d2d3bdf96b8625da27c02f35",
+      "modules": [
+        "pi-durable"
+      ]
+    },
+    {
+      "path": "backend/app/modules/ingestion/service.py",
+      "sha256": "5f48d797a296f021af2ad9bd28f7537085943172df6bba152b9e0ce717af5184",
+      "modules": [
+        "ingestion"
+      ]
+    },
+    {
+      "path": "backend/app/modules/knowledge/router.py",
+      "sha256": "cf9819106d2cee3251df587a39f16b445f3cd5bb750b4656b46c254ba739d737",
+      "modules": [
+        "ingestion",
+        "retrieval"
+      ]
+    },
+    {
+      "path": "backend/app/modules/pi_agent/config.py",
+      "sha256": "3fb680a175672a5dbf19a1402eb245b130fee8a412969c7be3925fdb61875239",
+      "modules": [
+        "pi-durable"
+      ]
+    },
+    {
+      "path": "backend/app/modules/pi_agent/gateway.py",
+      "sha256": "6e3cb92618bd5e9f1f2dea88520599f9dd0cdadcc69dee239b939a0c2190e7f0",
+      "modules": [
+        "pi-durable"
+      ]
+    },
+    {
+      "path": "backend/app/modules/pi_agent/store.py",
+      "sha256": "e40c96ae52f72d0f956638bd39539365faa96b98db5eab81f9f0782906f96517",
+      "modules": [
+        "pi-durable"
+      ]
+    },
+    {
+      "path": "backend/app/modules/pi_agent/supervisor.py",
+      "sha256": "39e1142869b270a8f783fde5fe19675113fddce62bff2f147b9638c30cc4cb2e",
+      "modules": [
+        "pi-durable"
+      ]
+    },
+    {
+      "path": "backend/app/modules/pi_agent/tools.py",
+      "sha256": "b5f4320f11837de62d464bdec25ceedef386dcb6a65e05bbc74a9afba85757fb",
+      "modules": [
+        "pi-durable"
+      ]
+    },
+    {
+      "path": "backend/app/modules/retrieval/reranker.py",
+      "sha256": "41cf320bb05ef05e211e667e21d5265c8eb070ec22aed004e38c4f7dbd702173",
+      "modules": [
+        "retrieval"
+      ]
+    },
+    {
+      "path": "backend/app/modules/retrieval/search_engine.py",
+      "sha256": "395936b900e19e2329c01a78348da91835e67d45869f97916012282f17fafa8f",
+      "modules": [
+        "retrieval"
+      ]
+    },
+    {
+      "path": "backend/app/modules/retrieval/service.py",
+      "sha256": "3405c5a565e8f2f34decd4c9f23e66c87f62190029cbc4476090a7b15555b792",
+      "modules": [
+        "retrieval"
+      ]
+    },
+    {
+      "path": "backend/app/modules/ingestion/storage/vector_store.py",
+      "sha256": "0eb35b6daec9bfeb7064b77aee3c93899a9608dcd9b4ceec9cf9daa8099bcc6e",
+      "modules": [
+        "ingestion"
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "path": "ingestion-en.excalidraw",
+      "bytes": 93922,
+      "sha256": "83d0fdf236da58d3ae6c87450a5413b1de6855f35897234ac1fdcc881df6b131",
+      "elements": 107,
+      "native_text_elements": 30,
+      "embedded_images": 0
+    },
+    {
+      "path": "ingestion-en.png",
+      "bytes": 407888,
+      "sha256": "10235f352f6694cd481fe00b6dd4e20684972ed325d210271a9fe1f3ba958809"
+    },
+    {
+      "path": "ingestion-en.svg",
+      "bytes": 148845,
+      "sha256": "d7f55f548e5f24658e53288ba301ef7e51fb3edc8c548f42f9247fc1bdda0689"
+    },
+    {
+      "path": "ingestion-zh.excalidraw",
+      "bytes": 93716,
+      "sha256": "48dad98dadead74ef01e27034448aa69236262fb07cedd67b59c2769e9ccc50e",
+      "elements": 107,
+      "native_text_elements": 30,
+      "embedded_images": 0
+    },
+    {
+      "path": "ingestion-zh.png",
+      "bytes": 359352,
+      "sha256": "1ff0de22ceb0d50fc3863b6393467282e8d3bac42f64225d92a9502e25c9bd08"
+    },
+    {
+      "path": "ingestion-zh.svg",
+      "bytes": 187152,
+      "sha256": "ac1725e3b05c9a4f5f1e70446fa162258da76f38d2d9f248173b0b073f29bb2c"
+    },
+    {
+      "path": "pi-durable-en.excalidraw",
+      "bytes": 90744,
+      "sha256": "c290363d3ce092577f22ea6c51b2fe00fda6abe52f60ee4ca5ff11652c005927",
+      "elements": 102,
+      "native_text_elements": 28,
+      "embedded_images": 0
+    },
+    {
+      "path": "pi-durable-en.png",
+      "bytes": 382305,
+      "sha256": "56ce73ffa3ea742d6764e5a4c8e7992b0af4c85a44d662d8d26578f2b1a1329b"
+    },
+    {
+      "path": "pi-durable-en.svg",
+      "bytes": 153404,
+      "sha256": "3666cdf21e6454cf5c18841f403e709de1401c6dc3266c0fea8e481725f72783"
+    },
+    {
+      "path": "pi-durable-zh.excalidraw",
+      "bytes": 90565,
+      "sha256": "21596acc9875f6cbe5fd8d3d9119c227f74ed2ab10340d244fe288241021f714",
+      "elements": 102,
+      "native_text_elements": 28,
+      "embedded_images": 0
+    },
+    {
+      "path": "pi-durable-zh.png",
+      "bytes": 341425,
+      "sha256": "8a3d9250f32eb8f7513f6e5a2188d648b01176aca665b72fc072ffc29de35603"
+    },
+    {
+      "path": "pi-durable-zh.svg",
+      "bytes": 206595,
+      "sha256": "15c0131a83fb50712b1ab2326989fca5b2aeb5f027450ba1b0116037f555e0ca"
+    },
+    {
+      "path": "retrieval-en.excalidraw",
+      "bytes": 117785,
+      "sha256": "576d36f0d997174dea9ba1067ceeb3e039da8a0054a40ceb094bda74b95215f6",
+      "elements": 129,
+      "native_text_elements": 32,
+      "embedded_images": 0
+    },
+    {
+      "path": "retrieval-en.png",
+      "bytes": 382562,
+      "sha256": "0b6fa70551235a8882716ce21be47ce5dad713fdc4b3be0ea70c827ea53f173e"
+    },
+    {
+      "path": "retrieval-en.svg",
+      "bytes": 160352,
+      "sha256": "c62fd134e35fc67b75f25f823bf9518bb0fd63e4a735643f13acc7014df5f715"
+    },
+    {
+      "path": "retrieval-zh.excalidraw",
+      "bytes": 117620,
+      "sha256": "bfd5d994b8bc496fe3c3e632366cb9a51814b7bae6688e16ed44b5bd6e936866",
+      "elements": 129,
+      "native_text_elements": 32,
+      "embedded_images": 0
+    },
+    {
+      "path": "retrieval-zh.png",
+      "bytes": 330519,
+      "sha256": "a903ab38fc0ed1ce6f1767e535db79a2c1369bf0d2b82b5681e2f6bc480c272b"
+    },
+    {
+      "path": "retrieval-zh.svg",
+      "bytes": 206568,
+      "sha256": "142ee83a26f433a55a8c5e4c7ef09a20fe6bb46334a7ce7f3a99693310a45ec5"
+    }
+  ]
+}
