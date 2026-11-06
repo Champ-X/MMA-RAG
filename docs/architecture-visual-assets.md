@@ -1,6 +1,6 @@
 # Architecture illustration assets
 
-Generated on 2026-10-23 for the architecture page's illustration and spacing refinement.
+These conceptual illustrations belong to the retained `EditorialFigures.tsx` and `RetrievalVisuals.tsx` components. The current Color Atlas page uses its own assets; see [Color Atlas](architecture-color-atlas.md).
 
 ## Production record
 
@@ -11,18 +11,14 @@ Generated on 2026-10-23 for the architecture page's illustration and spacing ref
 - WebP alpha is losslessly encoded. Both outputs retain 256-level transparency and were reopened using `view_image` after conversion. `sips` reports 1254 × 1254 and `hasAlpha: yes` for each.
 - Illustrations are conceptual explanations. They do not encode real source data, benchmark results, implementation diagrams, or user documents. Interface captions provide their specific meaning.
 
-| Asset | Subject | Final bytes | Original generated file |
-| --- | --- | ---: | --- |
-| `frontend/public/architecture/illustrations/representation-layers.webp` | Original source and its separate searchable representations | 136316 | `/Users/champ/.codex/generated_images/01a167ae-607c-7001-a6fc-13c0b0baf5b9/exec-72045ada-ba3f-4f24-b4b8-46a9d2568787.png` |
-| `frontend/public/architecture/illustrations/evidence-lens.webp` | Selection of evidence with traceable links to an answer | 138180 | `/Users/champ/.codex/generated_images/01a167ae-607c-7001-a6fc-13c0b0baf5b9/exec-26e6a54d-3ee7-4a57-8b89-b40fbc32fc17.png` |
+| Asset | Subject | Bytes |
+| --- | --- | ---: |
+| `frontend/public/architecture/illustrations/representation-layers.webp` | Original source and its separate searchable representations | 136316 |
+| `frontend/public/architecture/illustrations/evidence-lens.webp` | Selection of evidence with traceable links to an answer | 138180 |
 
-## Provenance metadata verification
+## Provenance metadata
 
-The exact requirement is documented in the installed Impeccable skill's `reference/new-work.md` and `reference/visualize.md`: generated rasters retain the exact generation prompt, and shipping asset directories are scanned for missing provenance. The two images were processed with `/Users/champ/.agents/skills/impeccable/scripts/impeccable embed-prompt <image> --prompt <exact prompt>`.
-
-For WebP, this version of the tool reports **sidecar fallback for this format**. It created `representation-layers.webp.json` and `evidence-lens.webp.json` beside the images; it did not embed a metadata chunk inside the WebP or alter their image bytes. Each sidecar contains `prompt` and `createdAt`. `embed-prompt <image> --read` successfully recovered the exact original prompt for both images.
-
-`embed-prompt --scan frontend/public/architecture/illustrations` returned `SCAN: 2 rasters, 0 missing` on 2026-10-23. This scan verifies the tool's provenance records, not copyright, model origin cryptography, or visual correctness. The separate original overview illustration was retained unchanged and is outside this two-asset scan.
+Exact prompts and generation timestamps are retained in the adjacent `.webp.json` sidecars. They are external metadata; the WebP files do not embed those records. Keep the sidecars when moving or replacing assets. Metadata records the generation inputs, not copyright status, a model/seed guarantee, or factual correctness.
 
 ## Prompt: representation layers
 
@@ -52,11 +48,11 @@ Constraints: genuine transparent background with alpha, no white or colored back
 
 ## Retrieval illustrations refinement
 
-On 2026-10-23 the three initial SVG scatterplots were replaced at the user's request with a coherent soft 3D illustration set. The original overview sculpture and the two earlier editorial images remain unchanged.
+The retrieval set uses the same soft 3D visual family as the editorial illustrations.
 
 - Generated with the built-in `image_gen` tool, using native transparent backgrounds. No API/CLI image generation.
 - All three are 1536 × 1024 RGBA images. Converted with `cwebp -q 90 -m 6 -exact`, with no crop, repaint, composite or background removal. Alpha was checked against each original and matches exactly.
-- Only WebP and prompt provenance sidecars are published. Intermediate PNGs are retained in ignored `tmp/imagegen/architecture-retrieval/`; original generated files also remain under `$CODEX_HOME/generated_images`.
+- Only WebP and prompt provenance sidecars are published. Original generations and conversion intermediates remain local.
 - Art explains conceptual retrieval perspectives, not actual vector positions, distances, scores or measured results. CLIP and CLAP retain separate depicted query connections.
 
 | Asset | Subject | Bytes |
@@ -103,11 +99,3 @@ Composition/framing: orthographic three-quarter view, horizontally composed, two
 Avoid: pedestal, ground plane, cast shadow on an opaque background, axes, scatterplot, dotted plot, labels, text, letters, numbers, interface elements, watermark, decorative sparkles, extra media types, global shared connector.
 
 ```
-
-### Original generated retrieval files
-
-- Semantic: `/Users/champ/.codex/generated_images/01a1687c-6ef7-7da2-85b3-8eb0ab15c95a/exec-b57569f1-54b2-4cdc-bfa3-58b1ddce4f1c.png`
-- Lexical: `/Users/champ/.codex/generated_images/01a1687c-c28e-7970-93bc-6548560bf92c/exec-f528748d-f43f-452f-b217-375207faeeb1.png`
-- Media: `/Users/champ/.codex/generated_images/01a1687d-1385-7a52-aa59-d590f7ad569b/exec-9536d139-3934-41cd-b114-dc6c87cca8c6.png`
-
-Provenance scan after integration: `SCAN: 5 rasters, 0 missing` (the two earlier editorial illustrations plus these three).

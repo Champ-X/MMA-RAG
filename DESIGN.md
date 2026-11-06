@@ -65,11 +65,11 @@ components:
 
 ## Scope and direction
 
-Color Atlas explains how material becomes searchable clues and inspectable evidence through paper stacks, folder tabs, photographs, waveforms and film strips. It is the current design for `/architecture`, based on the approved C · 彩色图志 direction. It does not restyle the conversation sidebar, knowledge workspace or global language and theme controls.
+Color Atlas explains how material becomes searchable clues and inspectable evidence through paper stacks, folder tabs, photographs, waveforms and film strips. It is the current design for `/architecture`. It does not restyle the conversation sidebar, knowledge workspace or global language and theme controls.
 
 The eight chapters are Overview, Principles, Parsing, Storage, Retrieval, Research, Citations and Runtime. The route uses a light paper canvas in both application themes. This is an intentional page-specific treatment: surrounding application controls keep their own theme.
 
-The current implementation lives in `frontend/src/pages/ArchitecturePage.tsx` and `frontend/src/components/architecture/color-atlas/`. See [the implementation and asset notes](docs/architecture-color-atlas.md) for scope and recorded verification.
+The current implementation lives in `frontend/src/pages/ArchitecturePage.tsx` and `frontend/src/components/architecture/color-atlas/`. See [the implementation and asset notes](docs/architecture-color-atlas.md) for scope and maintenance checks.
 
 ## Colors and material
 

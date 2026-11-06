@@ -21,7 +21,7 @@
 
 ## 公开数据示例
 
-以下在仓库根目录、后端环境激活后运行。数据与输出不进入 Git；SciFact 下载需网络，BM25 评分不调用模型。
+以下在仓库根目录、后端环境激活后运行。输入和输出路径均需显式指定；示例使用被 Git 忽略的 `data/evaluation/` 与 `evals/runs/`，不要把下载语料或逐题结果放进维护中的 `evals/baseline_v1/`、`evals/baselines/`。SciFact 下载需网络，BM25 评分不调用模型。
 
 ```bash
 ./scripts/rag-eval retrieval prepare-scifact \

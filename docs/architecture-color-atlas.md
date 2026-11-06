@@ -1,6 +1,6 @@
 # Architecture: Color Atlas
 
-The architecture route implements the approved **C · 彩色图志** designs from 2026-10-25. The application sidebar, conversation state, knowledge workspace and theme/language controls are unchanged.
+The `/architecture` route uses a **Color Atlas · 彩色图志** reading layout. This document describes its maintained component and asset boundaries.
 
 ## Visual system
 
@@ -16,7 +16,7 @@ The route uses the approved light paper canvas even when the surrounding applica
 
 ## Assets and recorded examples
 
-The user authorized reuse of the current material spaces. Shipping assets live in `frontend/public/architecture/atlas/`; `provenance.json` records the original source filenames, transformations and hashes. These are existing user materials, not newly generated factual evidence.
+Shipping assets live in `frontend/public/architecture/atlas/`; `provenance.json` records the original source filenames, transformations and hashes. These are recorded presentation examples, not newly generated factual evidence. Provenance does not establish a general redistribution license for unrelated uses.
 
 - The concrete-library, botanical and architectural-plan illustrations come from the visual-style material space.
 - The garden document is an unmodified copy of `中国古典园林的意境与哲学.md`.
@@ -28,8 +28,10 @@ The user authorized reuse of the current material spaces. Shipping assets live i
 
 `ArchitecturePage.tsx` owns navigation and URL state. `color-atlas/` contains the overview, parsing views, storage/retrieval/runtime views, narrative views and shared paper/waveform primitives. Existing detailed system-map, module and runtime references are retained as disclosures on the runtime chapter.
 
-Local design drafts, original generations, downloaded font sources and review screenshots remain in ignored `output/` and `.impeccable/review*/` directories. Production assets are explicitly outside those ignored directories. No original material-space files are deleted or overwritten.
+Local design drafts, original generations, downloaded font sources and review screenshots remain in ignored `output/` and `.impeccable/review*/` directories. Production assets are explicitly outside those ignored directories. Raw material-space files are not part of these published presentation assets.
 
 ## Verification
 
-Verified on 2026-10-25: TypeScript checking, the production build and all 109 frontend DOM tests passed, including eight focused architecture regressions. Browser checks covered all eight chapters and five parsing states at a 390px viewport without content overflow, desktop comparison with the approved designs, working audio/video playback, and citation navigation. The polish pass also checked modality deep links, title wrapping, source selection and narrow-screen source labels. Shipping assets and the final 798-codepoint font subsets passed their manifest hash and coverage checks. Vite still reports the application's existing large-chunk advisory.
+Run `npm --prefix frontend run type-check`, `npm --prefix frontend test`, `npm --prefix frontend run test:dom`, and `npm --prefix frontend run build` after changing this page. Verify asset bytes against `provenance.json` and font bytes/coverage against `font-manifest.json` when replacing resources.
+
+Browser acceptance covers all eight chapters and five parsing states, desktop and narrow layouts, Chinese/English copy, keyboard navigation, audio/video playback, citation navigation, modality deep links and reduced motion. Local screenshots and test receipts belong in ignored directories; a build or historical test count is not current visual acceptance.

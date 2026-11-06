@@ -1,11 +1,10 @@
 # Material-space empty-state illustration
 
-Updated on 2026-10-23.
+Source and maintenance record for the material-space header and empty-state assets.
 
 ## Production record
 
 - Source: built-in `image_gen.imagegen`, generated with `transparent_background: true`.
-- Original generated PNG: `/Users/champ/.codex/generated_images/01a168f5-d088-76a0-9d2d-0f3edb00dc7d/exec-fd3e4657-b0aa-43cb-8100-89c6297876ad.png`.
 - Published asset: `frontend/public/knowledge/empty-collection.webp` (browser URL `/knowledge/empty-collection.webp`).
 - Verified output: 1536 × 1024 pixels, 159606 bytes, native alpha retained.
 - Conversion: `cwebp -q 90 -m 6 -exact`; the generated composition and transparent background are retained. Re-encoding the original with these options reproduces the published asset's SHA-256 exactly.
@@ -13,9 +12,9 @@ Updated on 2026-10-23.
 
 ## Layout and behavior
 
-The collection illustration is the centered main subject, followed by the calligraphic “创建第一个素材空间” headline and a folder-styled creation action. The introductory description and three setup steps were removed at the user's request. The four text-based material groups were replaced by four generated illustrations without visible captions; accessible alternative text remains.
+The collection illustration is the centered main subject, followed by the calligraphic “创建第一个素材空间” headline and a folder-styled creation action. Four generated material illustrations have accessible alternative text and no visible captions.
 
-The page header uses the same collection illustration at a larger size, with a coordinated calligraphic “素材空间” title and a readable sans-serif subtitle. The shared header applies this icon and typography to both empty and populated collection views, as explicitly requested by the user.
+The page header uses the same collection illustration at a larger size, with a coordinated calligraphic “素材空间” title and a readable sans-serif subtitle. The shared header applies this icon and typography to both empty and populated collection views.
 
 This is a presentation change to the existing empty state. Actual collection data and the existing empty, loading and error conditions determine when it appears; the illustration does not represent uploaded user files.
 
@@ -109,6 +108,6 @@ Constraints: no UI, words, letters, numbers, labels, logos, watermark, person, t
 
 ## Final interaction and header reuse
 
-The populated header reuses the four exact `material-*.webp` assets in its statistics row (44px, reducing to 36px in narrow headers), keeping text labels and counts separate. A temporary visual fixture was used to verify representative counts without writing knowledge data; it was removed after inspection.
+The populated header reuses the four exact `material-*.webp` assets in its statistics row (44px, reducing to 36px in narrow headers), keeping text labels and counts separate. Keep the labels and counts as accessible text when changing these assets.
 
 On hover-capable devices, each empty-state material illustration lifts 8px, scales to 1.045 and gently tilts; alternate items tilt in the other direction. The effect transitions over 320ms and returns smoothly. Under `prefers-reduced-motion: reduce` the images stay still. The folder action opens the existing creation dialog; cancellation restores focus to the action.

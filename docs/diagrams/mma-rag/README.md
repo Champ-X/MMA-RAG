@@ -21,21 +21,9 @@
 
 ## 打开与切换
 
-打开本地 Excalidraw（通常是 <http://localhost:3000>），从菜单选择“打开”，或将对应的 `.excalidraw` 文件拖入画布。需要英文就打开 `MMA-RAG-en.excalidraw`，需要中文就打开 `MMA-RAG-cn.excalidraw`。也可以使用兼容的 Excalidraw 编辑器打开这些文件。
+在 [Excalidraw](https://excalidraw.com/) 或兼容的本地编辑器中，从菜单选择“打开”，或将对应的 `.excalidraw` 文件拖入画布。英文打开 `MMA-RAG-en.excalidraw`，中文打开 `MMA-RAG-cn.excalidraw`；切换前先保存未归档的编辑。这些文件不依赖项目运行服务或特定的 MCP 会话。
 
-本地 MCP 服务使用一个活动画布，所以端口页面一次显示一个版本；只看到中文版不表示英文文件丢失。此服务当前的命名快照保存在进程内存中，独立的 `.excalidraw` 文件才是此处的磁盘归档。
-
-也可以在项目根目录用 Excalidraw CLI 切换。以下命令会替换活动画布，切换前先保存尚未归档的编辑：
-
-```bash
-# English
-npx -y mcp-excalidraw-server import docs/diagrams/mma-rag/MMA-RAG-en.excalidraw --replace
-
-# 中文
-npx -y mcp-excalidraw-server import docs/diagrams/mma-rag/MMA-RAG-cn.excalidraw --replace
-```
-
-后续编辑完成后，使用编辑器的“保存到文件”更新对应母版；载入到 localhost 并不会自动写回本目录的源文件。内容更新时同时更新预览与文件清单。
+编辑完成后，使用编辑器的“保存到文件”更新对应母版；载入画布不会自动写回仓库。内容更新时同时更新两语言文案、预览与文件清单。
 
 ## 手写字体
 

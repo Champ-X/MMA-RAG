@@ -12,7 +12,7 @@ Tessmora is a self-hostable multimodal retrieval and Agent research workspace. U
 
 ## Users
 
-The architecture page explains the project's design thinking and architecture. The user explicitly requested both substantive explanation and a more expressive, artistic design. The user confirmed a dual audience: first-time product visitors and technical peers/reviewers, with an overview first and technical depth afterward.
+The workspace serves people researching and organizing mixed source material. The architecture page serves first-time product visitors and technical reviewers, with an overview first and implementation detail afterward.
 
 ## Capabilities and Constraints
 
@@ -20,12 +20,12 @@ The architecture page explains the project's design thinking and architecture. T
 - Direct and bounded Agent share conventional retrieval and generation; Pi has an independent Node tool loop and generation path, supervised by Python.
 - Conventional Agent retrieves the original question before planning additional searches. Round and query limits stop the loop; evidence limits constrain the merged result.
 - Pi host constrains source access and persists task events and evidence. Identity validation does not establish semantic entailment.
-- Self-hosted storage does not imply offline model inference, complete multi-tenant authentication, or automatic task resumption after host restart.
+- Self-hosted storage does not imply offline model inference or complete multi-tenant authentication. Pi's default Durable runtime can resume eligible unfinished runs after host restart; the core compatibility runtime cannot.
 - Page demonstrations must be labeled as illustrative and must not imply actual knowledge-base reads or live service status.
 
 ## Brand Commitments
 
-Keep the Tessmora name and existing application shell. The user rejected the prior architecture page's monotonous appearance and authorized a substantial redesign of this surface. No new product-wide visual style is implied.
+Keep the Tessmora name and existing application shell. Color Atlas is the visual system for the architecture page; its palette and layout are scoped to that route. See [the design contract](DESIGN.md).
 
 ## Evidence on Hand
 

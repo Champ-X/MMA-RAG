@@ -34,7 +34,7 @@
 
 ## API 与状态
 
-基础路径为 `/api/collection`，沿用工作区访问规则：未配置访问令牌时只接受本机请求；远端部署需配置现有 `PI_AGENT_API_TOKEN`，支持工作区 Bearer/Cookie。采集不要求开启 Pi 问答模式。
+基础路径为 `/api/collection`，沿用工作区访问规则：未配置访问令牌时只接受本机请求；远端部署需配置现有 `PI_AGENT_API_TOKEN`，复用工作区 Bearer/Cookie 校验逻辑；浏览器 Pi 会话 cookie 的路径限定为 `/api/pi`，采集请求应携带工作区 Bearer token。采集不要求开启 Pi 问答模式。
 
 | 方法与路径 | 用途 |
 | --- | --- |
@@ -87,4 +87,4 @@ npm run type-check
 npm run test:dom
 ```
 
-真实供应商、浏览器和存储验收记录保存在忽略的 `output/network-collection/` 中，区别于上述无网络测试。
+真实供应商、浏览器和存储验收应另行执行；逐次回执保存在忽略的 `ops/` 或 `output/` 中。

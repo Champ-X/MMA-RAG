@@ -10,6 +10,9 @@ flowchart TB
   Ingestion --> MinIO[(MinIO 原件与派生物)]
   Ingestion --> Qdrant[(Qdrant 索引与画像)]
   Web[Web / CLI / API] --> API[FastAPI]
+  API --> Collection[网络素材发现、审核与下载]
+  Collection --> Ingestion
+  Collection --> CollectionState[(采集任务与下载检查点)]
   API --> Standard[Direct / 有界 Agent]
   Standard --> Retrieval[意图、路由、混合召回、重排]
   Retrieval --> Qdrant
@@ -29,6 +32,7 @@ flowchart TB
 | 常规 Agent | Chat 的 `agent`；`auto` 按复杂度选择 | 在轮数、查询数和证据预算内复用 `RetrievalService`，最后汇合到公共生成链 |
 | Pi | `/api/pi/*`、Web 的 `π` 开关 | Pi SDK 自主选择工具并生成，Python 宿主校验来源与交付，独立于常规编排 |
 | 只检索 | `POST /api/v1/retrieval/search` | 返回结构化证据，不生成回答 |
+| 网络素材采集 | `/api/collection/*` | 固定目标知识库，发现、筛选、下载后复用入库链；独立于 Pi 问答循环 |
 
 Decision 是常规链路的可选核验组件，不是第四种 Agent。默认关闭，启用后可核对来源需求或诊断回答引用；失败、跳过和未覆盖项有独立记录。详见 [Decision](DECISION_MODELS.md)。
 
@@ -40,6 +44,7 @@ Decision 是常规链路的可选核验组件，不是第四种 Agent。默认�
 | --- | --- |
 | `api/` | 请求校验、HTTP/SSE、会话上下文和公开证据契约 |
 | `modules/ingestion/` | 来源导入、解析、保留原文的 Agentic Chunking、媒体派生物和索引写入 |
+| `modules/collection/` | 公网素材发现、候选审核、安全下载、恢复检查点与入库去重 |
 | `modules/knowledge/` | 文件元数据、知识库画像、推荐问题和跨库路由 |
 | `modules/retrieval/` | 意图处理、多通道检索、融合、重排、范围和覆盖记录 |
 | `modules/agent/` | 常规 Agent 的模式选择、规划、只读工具与有界循环 |
@@ -64,7 +69,10 @@ ParserFactory 根据文件格式选择解析器。TXT/Markdown 直接读取；�
 | `video_keyframe_vectors` | Shot 下属关键帧的文本/CLIP 视觉增强 |
 | `kb_portraits` | 知识库主题画像与路由 |
 | Pi `data/pi-agent/` | SQLite 任务账本、Durable 会话、媒体观察缓存、证据产物、附件和预览；完整安装可由状态目录重定位 |
+| 采集 `backend/data/collection/` | SQLite 任务、下载检查点及入库回执；托管安装跟随应用状态目录 |
 | Redis / Celery | 可选任务控制，不作为在线证据来源 |
+
+网络采集在固定知识库内写入，自动/审核模式及中断恢复边界见[网络素材采集](NETWORK_COLLECTION.md)。
 
 视频以 Shot 为主要语义检索单元，关键帧不能算作独立的完整视频理解。更详细的字段与处理入口见 [多模态技术说明](MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)。更换 embedding 模型必须处理向量空间兼容性，不能直接复用不兼容的索引。
 

@@ -2,7 +2,7 @@
 
 这套基线用于发现检索、重排、上下文组装或生成链的回归。默认数据集只有 7 份合成文档和 8 个问题，不含用户资料；数据指纹会覆盖 manifest、用例和语料正文，任何改动都必须显式升级数据集版本。
 
-更完整的检索质量评估见 [检索评测 v2](RETRIEVAL_EVALUATION_V2.md)：公开 SciFact 全语料、现有多模态知识库只读抽样、证据级真值与成对不确定性分析。下文保留 v1 快速回归和生成评估的独立口径。
+更完整的检索质量评估工具见 [检索评测 v2](RETRIEVAL_EVALUATION_V2.md)：公开 SciFact 全语料、现有多模态知识库只读快照、证据级真值与成对不确定性分析。下文保留 v1 快速回归和生成评估的独立口径；这些工具和历史基线不构成当前模型质量承诺。
 
 ## 指标口径
 
@@ -38,7 +38,7 @@ docker compose -f docker-compose.eval.yml up -d
 curl http://127.0.0.1:18000/health
 ```
 
-Compose 会优先复用本机已有的 `mma-rag-backend:latest` 依赖镜像，并把当前 `backend/app` 只读挂载进去；本机没有该镜像时才按 `backend/Dockerfile` 构建。
+Compose 声明 `mma-rag-backend:latest` 镜像与 `backend/Dockerfile` 构建源，并把当前 `backend/app` 只读挂载进去。首次运行或 `backend/requirements.txt`、Dockerfile 变化后先运行 `docker compose -f docker-compose.eval.yml build backend`，避免旧依赖镜像与新源码不一致。
 
 先跑不调用最终生成模型的检索基线：
 
@@ -62,7 +62,7 @@ export TESSMORA_EVAL_JUDGE_API_KEY=replace-me
   --report-out evals/reports/direct-full.json
 ```
 
-judge 应使用明确版本而不是浮动别名。已生成答案可以离线换 judge 或升级 prompt，无需重新调用 Tessmora 的检索与生成链：
+judge 应使用明确版本而不是浮动别名。已生成答案可以换 judge 或升级 prompt，无需重新调用 Tessmora 的检索与生成链；这个步骤仍会调用 judge 服务并可能产生费用：
 
 ```bash
 export TESSMORA_EVAL_JUDGE_MODEL=judge-model-fixed-version
@@ -77,12 +77,12 @@ export TESSMORA_EVAL_JUDGE_MODEL=judge-model-fixed-version
 
 ## 离线复算与回归门禁
 
-当前有两份已确认基线：
+仓库保留两份历史基线，也用于验证报告比较器：
 
 - [`direct-hybrid-retrieval-v1.json`](../evals/baselines/direct-hybrid-retrieval-v1.json)：Direct 模式、Top 5、Dense + BGE-M3 Sparse + RRF + reranker；冻结检索指标和基于 qrel 的 Context Precision。
 - [`direct-generation-qwen35-20260420-v1.json`](../evals/baselines/direct-generation-qwen35-20260420-v1.json)：相同链路的完整生成基线；生成模型为 `Pro/moonshotai/Kimi-K2.6`，独立 judge 固定为 `qwen3.5-plus-2026-04-20` 与 `ragas-like-judge-v1` prompt。
 
-预测 JSONL 保存了检索结果、实际生成引用、回答、judge 判定和运行元数据。指标算法变化后可离线复算，不必再次调用模型：
+这两份报告不是当前默认模型栈的质量承诺，原始预测不随仓库分发。你自己的预测 JSONL 保存检索结果、实际生成引用、回答、judge 判定和运行元数据；指标算法变化后可离线复算，不必再次调用模型：
 
 ```bash
 ./scripts/rag-eval score \
@@ -90,7 +90,7 @@ export TESSMORA_EVAL_JUDGE_MODEL=judge-model-fixed-version
   --report-out evals/reports/direct-full-rescored.json
 ```
 
-确认模型、judge、Agent 模式和数据指纹一致后，把一份人工复核过的报告作为基线。`compare` 会拒绝数据指纹、Agent 模式、K、生成模型或 judge 配置不一致的报告；候选指标任一项下降超过容差时返回非零退出码：
+确认模型、judge、Agent 模式和数据指纹一致后，把一份人工复核过的报告作为基线。`compare` 拒绝数据指纹不同或基线已声明的配置字段不一致的报告，并检查指标覆盖数量；候选指标任一项下降超过容差时返回非零退出码。旧报告未记录的模型栈等字段仍需人工核对，不能把门禁通过理解为所有运行条件都相同：
 
 ```bash
 ./scripts/rag-eval compare \
@@ -109,4 +109,4 @@ export TESSMORA_EVAL_JUDGE_MODEL=judge-model-fixed-version
 - 指标与 runner：`backend/evaluation/`
 - 单一入口：`scripts/rag-eval`
 
-运行产物默认放在被 Git 忽略的 `evals/runs/` 和 `evals/reports/`。只有经过人工确认、用于回归比较的报告才应放入 `evals/baselines/` 并提交。
+CLI 要求显式指定预测输出路径；未指定 `--report-out` 时报告输出到标准输出。建议按上述示例把产物写入被 Git 忽略的 `evals/runs/` 和 `evals/reports/`。只有明确维护用途、记录完整配置且经过复核的小型报告才应放入 `evals/baselines/`；新增版本，不覆盖冻结记录。各保留目录的消费者见 [evals 索引](../evals/README.md)。

@@ -33,53 +33,16 @@
 - 若使用**卡片 JSON 2.0**、流式更新正文：需开通 **创建与更新卡片**（如 `cardkit:card:write`）等与 `FEISHU_RAG_CARD_STREAMING=true` 匹配的权限。
 - 若回复中带图、文件：需 **上传图片/文件** 等相关权限（与 `FEISHU_IMAGE_SEND_ENABLED`、代码中上传逻辑一致）。
 
-开放平台提供 **从 JSON 批量导入权限**（或「权限配置」中的等价入口），可使用下面配置一次性写入 `tenant` / `user` 侧 scope（与 IM、卡片、文件、机器人菜单等能力对齐；**具体菜单名称以当前飞书控制台为准**）。导入后仍需在控制台**保存并发布版本**，并完成可用范围配置。
+按启用的功能申请权限，不使用包含无关产品权限的通用导入清单：
 
-```json
-{
-  "scopes": {
-    "tenant": [
-      "aily:file:read",
-      "aily:file:write",
-      "application:application.app_message_stats.overview:readonly",
-      "application:application:self_manage",
-      "application:bot.menu:write",
-      "cardkit:card:read",
-      "cardkit:card:write",
-      "contact:user.employee_id:readonly",
-      "corehr:file:download",
-      "event:ip_list",
-      "im:chat.access_event.bot_p2p_chat:read",
-      "im:chat.members:bot_access",
-      "im:message",
-      "im:message.group_at_msg:readonly",
-      "im:message.group_msg",
-      "im:message.p2p_msg:readonly",
-      "im:message.pins:read",
-      "im:message.pins:write_only",
-      "im:message.reactions:read",
-      "im:message.reactions:write_only",
-      "im:message.urgent.status:write",
-      "im:message:readonly",
-      "im:message:recall",
-      "im:message:send_as_bot",
-      "im:message:send_multi_depts",
-      "im:message:send_multi_users",
-      "im:message:send_sys_msg",
-      "im:message:update",
-      "im:resource"
-    ],
-    "user": [
-      "aily:file:read",
-      "aily:file:write",
-      "contact:user.base:readonly",
-      "im:chat.access_event.bot_p2p_chat:read"
-    ]
-  }
-}
-```
+| 能力 | 权限配置 |
+| --- | --- |
+| 基础单聊与群内 @ 问答 | `im:message.p2p_msg:readonly`、`im:message.group_at_msg:readonly`、`im:message:send_as_bot`；按控制台要求补充对应消息读取权限 |
+| 图片、音频和文件收发 | `im:resource`，并核对所调用上传接口的权限要求 |
+| CardKit 流式卡片 | `cardkit:card:write` |
+| 进入单聊时展示入口 | `im:chat.access_event.bot_p2p_chat:read` |
 
-保存后按提示完成**版本发布**或**可用范围**，使机器人在目标租户/群可用。
+具体权限名称与审批要求以各接口及事件在开放平台的说明为准。启用后发布版本并限制应用可用范围；不需要为本项目授权人事文件、全员群发、消息加急、撤回或其他未使用的应用能力。
 
 ### 2.1 飞书文档链接导入权限
 
@@ -100,14 +63,13 @@
 
 1. 进入 **事件订阅**。
 2. 选择 **使用长连接接收事件**（不要仅依赖「请求 URL」的 HTTP 回调作为唯一收消息方式与本项目后端对接）。
-3. 在开放平台中**至少**订阅下表中的四个事件（名称以控制台展示为准；若存在 **v2.0** 版本选项，请按表内说明选择对应版本）。
+3. 订阅 `im.message.receive_v1` 作为问答入口；进入单聊与已读事件按需启用。当前后端注册的 IM 事件如下：
 
 | 事件名称 | 说明 |
 |------------------|------|
 | `im.chat.access_event.bot_p2p_chat_entered_v1` | **用户进入与机器人的会话**（v2.0 能力下对应「进入单聊」类事件；控制台若区分版本，选 **v2.0**） |
 | `im.message.message_read_v1` | **消息已读** |
 | `im.message.receive_v1` | **接收消息**（即时通讯消息接收，RAG 主入口） |
-| `application.bot.menu_v6` | **机器人自定义菜单事件** |
 
 4. 其他事件可按需追加（以业务为准）。
 
@@ -139,7 +101,7 @@
    - **名称**：设置为**「菜单」**。
    - **响应动作**：设置为 **发送文字消息**（用户点击后向会话注入一条文本，通常走 **`im.message.receive_v1`**，与手动输入消息同一套处理）。
 3. 控制台提示：**配置在版本发布成功后约 5 分钟内生效**，发布后请稍等再验证。
-4. 请在 **事件订阅**（见上文 **§2.3** 表格）中勾选 **`application.bot.menu_v6`**，与开放平台对「机器人自定义菜单」的要求保持一致。若后续需要单独解析菜单点击事件，需在长连接中增加对应事件注册（当前仓库 `feishu_ws.py` 已注册 IM 与 `card.action.trigger` 等；**未**单独注册菜单事件 handler 时，依赖「发送文字消息」走消息接收即可）。
+4. 当前实现没有注册 `application.bot.menu_v6` 处理器。使用「发送文字消息」动作，让菜单走已注册的 `im.message.receive_v1`；若改用自定义菜单事件，需先实现并验证相应后端处理器。
 
 **未配置自定义菜单时**：仍可在单聊输入框直接使用 **斜杠命令**（以 `/` 开头的指令），例如 **`/help`**、**`/kb`**、**`/菜单`**、**`/面板`** 等，与帮助文档及知识库面板逻辑一致（详见后端 `feishu_kb_commands` 中的 `/help` 与命令说明）。这些消息同样走 **`im.message.receive_v1`**；底部悬浮菜单只是可选入口，**不是**使用斜杠能力的前提。
 
@@ -212,4 +174,4 @@
 
 - 飞书开放平台：<https://open.feishu.cn/>
 - 应用管理与凭证：<https://open.feishu.cn/app>
-- 仓库架构说明：[MMA_ARCHITECTURE.md](./MMA_ARCHITECTURE.md)（若文中含飞书集成描述可交叉阅读）
+- 仓库架构说明：[MMA_ARCHITECTURE.md](./MMA_ARCHITECTURE.md)

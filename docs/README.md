@@ -6,10 +6,13 @@
 | --- | --- |
 | 观看中英文介绍视频或获取字幕 | [演示媒体](media/tessmora-intro/README.md) |
 | 启动、停止、排查环境和恢复数据 | [本地启动](LOCAL_STARTUP.md) |
+| 构建容器、安装和管理实例 | [容器分发](DISTRIBUTION.md) · [安装器 CLI](../packages/cli/README.md) |
+| 发现、预览和收录网络素材 | [网络素材收集](NETWORK_COLLECTION.md) |
 | 切换中英文界面与在线提示词 | [英语支持](ENGLISH_SUPPORT.md) |
 | 理解模块边界、数据流与会话持久化 | [系统架构](MMA_ARCHITECTURE.md) |
 | 查看和编辑中英文手写架构图（2026-11-05 快照） | [Excalidraw 双语架构图](diagrams/mma-rag/README.md) |
 | 理解图片、音频、视频的索引与召回 | [多模态技术说明](MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) |
+| 理解知识库选择、主题与概念地图 | [知识库路由](knowledge-routing-optimization.md) · [主题探索](topic-explorer.md) |
 | 配置自主研究与只读工具 | [Pi Agent](PI_AGENT_MODE.md) |
 | 配置 Pi 持续输入、崩溃恢复与运行时回退 | [Pi Durable](pi-agent-durable.md) |
 | 配置可选的需求核验与引用诊断 | [Decision 模型](DECISION_MODELS.md) |
@@ -18,6 +21,7 @@
 | 接入 CLI / Codex 或飞书 | [CLI](../skills/mma-rag/references/cli-reference.md) · [飞书](FEISHU_BOT_SETUP.md) |
 | 复现检索及生成评测 | [RAG 基线](RAG_EVALUATION.md) · [检索评测](RETRIEVAL_EVALUATION_V2.md) |
 | 修改代码、提交文件、控制仓库体积 | [贡献指南](../CONTRIBUTING.md) · [仓库维护](REPOSITORY.md) |
+| 维护页面设计、图片与字体来源 | [设计约定](../DESIGN.md) · [Color Atlas](architecture-color-atlas.md) · [架构图片](architecture-visual-assets.md) · [字体](architecture-typography-assets.md) · [知识库图片](knowledge-empty-visual-assets.md) |
 | 部署安全 | [安全说明](../SECURITY.md) |
 
 实验笔记、逐次验收记录和私人语料不属于使用文档。历史材料可按提交查阅；新实验输出应放在忽略目录中。更新行为时同步修改对应技术文档，中英文 README 只保留稳定能力和入门路径。

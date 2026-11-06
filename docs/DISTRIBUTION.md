@@ -2,7 +2,7 @@
 
 终端安装器使用 [`deploy/compose.yaml`](../deploy/compose.yaml) 启动完整安装：编译后的网页、Python API、Pi Node 运行时、Celery worker、MinIO、Qdrant 与 Redis。安装器的操作说明见 [CLI](../packages/cli/README.md)。现有根目录 `docker-compose.yml` 和开发启动流程保持独立。
 
-真实安装、异常恢复、示例问答及引用验收见 [首次安装与使用验收](ONBOARDING_VERIFICATION.md)。
+源码开发与已有存储恢复见 [本地启动](LOCAL_STARTUP.md)；安装和升级后的验证范围见本文末尾。
 
 ## 本地构建与安装
 
@@ -42,9 +42,9 @@ docker compose --env-file /path/to/private/runtime.env \
 
 ### MinIO 分发来源
 
-2026-10-12 检查时，原 `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` 无法公开获取，Docker Hub 同版本不可用，官方历史二进制下载返回 410。[上游 README](https://github.com/minio/minio#source-only-distribution) 已说明社区版改为源码分发。登录 Docker 或重复拉取不能保证修复这一默认来源。
+项目使用固定源码构建 MinIO，避免将首次安装依赖于历史官方镜像的持续公开供应。分发方式的上游说明见 [MinIO README](https://github.com/minio/minio#source-only-distribution)。
 
-新默认镜像为 `tessmora-minio:RELEASE.2025-09-07T16-13-09Z`。CLI 优先复用本机已存在的同版本旧官方镜像；没有缓存时，通过 [`Dockerfile.minio`](../deploy/Dockerfile.minio) 构建官方 commit `07c3a429bfed433e49018cb0f78a52145d4bedeb`。源码 archive 的 SHA256 固定为 `8819e3e7817e46b7b3798f8f200ead208562e571563c2e040352378031abe9f2`；镜像保留源码归档、LICENSE / CREDITS 和来源标签。构建使用容器内 Go 与 BuildKit 缓存；限制编译并行度，避免占满初次安装机器。
+默认镜像为 `tessmora-minio:RELEASE.2025-09-07T16-13-09Z`。CLI 优先复用本机已存在的同版本旧官方镜像；没有缓存时，通过 [`Dockerfile.minio`](../deploy/Dockerfile.minio) 构建官方 commit `07c3a429bfed433e49018cb0f78a52145d4bedeb`。源码 archive 的 SHA256 固定为 `8819e3e7817e46b7b3798f8f200ead208562e571563c2e040352378031abe9f2`；镜像保留源码归档、LICENSE / CREDITS 和来源标签。构建使用容器内 Go 与 BuildKit 缓存；限制编译并行度，避免占满初次安装机器。
 
 首次构建需要访问 GitHub、Go 模块源和 Docker 基础镜像仓库。先准备 MinIO / Qdrant / Redis，再构建应用，可以尽早发现基础下载问题。`--minio-image` / `TESSMORA_MINIO_IMAGE` 可指定已有可信镜像；CLI 不会为自定义镜像私自更换来源或降级。原有开发 Compose 与存储数据不由此安装流程迁移。
 
@@ -117,9 +117,3 @@ python3 deploy/smoke.py --backend-image tessmora-backend:review --frontend-image
 Smoke 还会给前端注入一个不可用代理，验证旧探针失败而新探针与网页/API 均可用；通过 Redis 投递并执行真实 Celery 测试任务，并用不响应的 Redis 替身验证单次连接超时。随后通过配置 API 保存合成凭证，在大小写代理绕过列表冲突时执行真实存储初始化，验证六个集合创建、同步/异步读取及外部请求仍使用代理。它还会暂时停止隔离 Qdrant，确认存储检查准确报告故障并能恢复。合成凭证不用于模型调用，不下载模型。代理覆盖文件保留在该次证据目录，便于复查。
 
 [Distribution images 工作流](../.github/workflows/distribution.yml)在原生 Linux amd64 / arm64 runner 上构建并执行此检查。该检查证明基础安装与重启；真实模型连接、下载恢复、资料入库、问答引用及浏览器视觉验收需要分别保留证据，不能用健康检查替代。
-
-### 本次本地验证
-
-2026-10-11 在 macOS / Colima 的 Linux arm64 环境实际构建并通过空安装检查：六个服务就绪；无模型凭证时网页和配置 API 可用；知识库为空；配置接口拒绝无 token 请求；Node 22.19、FFmpeg 5.1.9、LibreOffice 7.4.7、BGE-M3 / CLIP / CLAP 导入及文件类型检测可用；重启后持久目录标记保留。检查使用独立空目录和随机端口，结束后只移除测试项目容器，原有开发存储持续运行。
-
-构建检查发现并修正了 PyArrow 26 与 NumPy 1.x 不兼容，以及 `python-magic` 缺少系统 `libmagic1` 的问题；完整依赖约束与运行导入检查已纳入分发。镜像环境未包含模型密钥、安装 token 或构建代理。当前验证不等于已发布到 npm/镜像仓库；Linux amd64 与托管 CI 执行结果需在实际运行后确认。
