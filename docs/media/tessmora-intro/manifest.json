@@ -36,7 +36,23 @@
         "moov",
         "free",
         "mdat"
-      ]
+      ],
+      "github_attachment": {
+        "url": "https://github.com/user-attachments/assets/ba48b505-9b1b-4fd6-9d40-441092cdf8fc",
+        "upload_transformation": "Exact original Lite export; no editing, compression, or re-encoding",
+        "upload_sha256": "912b3f063b6d30b8e05b5fcae3b1559b3853a33cf2031260c13badee5b5c9f1d",
+        "verification": {
+          "date": "2026-11-06",
+          "authenticated_markdown_native_video": true,
+          "anonymous_markdown_native_video": true,
+          "content_type": "video/mp4",
+          "head_status": 200,
+          "range_status": 206,
+          "bytes": 21966141,
+          "downloaded_sha256": "912b3f063b6d30b8e05b5fcae3b1559b3853a33cf2031260c13badee5b5c9f1d",
+          "matches_repository_and_production_source": true
+        }
+      }
     },
     {
       "path": "docs/media/tessmora-intro/cover-zh.jpg",
@@ -101,7 +117,23 @@
         "moov",
         "free",
         "mdat"
-      ]
+      ],
+      "github_attachment": {
+        "url": "https://github.com/user-attachments/assets/b3d5a990-115f-4508-a707-b99d2acc590e",
+        "upload_transformation": "Exact original Lite export; no editing, compression, or re-encoding",
+        "upload_sha256": "72f54afe0f558853fbe771d88ae417375bced1811801aa8982f099076453f999",
+        "verification": {
+          "date": "2026-11-06",
+          "authenticated_markdown_native_video": true,
+          "anonymous_markdown_native_video": true,
+          "content_type": "video/mp4",
+          "head_status": 200,
+          "range_status": 206,
+          "bytes": 21940073,
+          "downloaded_sha256": "72f54afe0f558853fbe771d88ae417375bced1811801aa8982f099076453f999",
+          "matches_repository_and_production_source": true
+        }
+      }
     },
     {
       "path": "docs/media/tessmora-intro/cover-en.jpg",
@@ -139,5 +171,10 @@
       "source_snapshot": "658b0d1",
       "source_date": "2026-11-05"
     }
-  ]
+  ],
+  "github_playback": {
+    "readme_embedding": "Matching-language GitHub attachment URL alone in a Markdown paragraph, surrounded by blank lines",
+    "fallback": "Repository MP4 download link for other Markdown readers and local playback",
+    "temporary_signed_media_urls_stored": false
+  }
 }

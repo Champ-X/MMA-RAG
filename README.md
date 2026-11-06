@@ -31,9 +31,9 @@
 
 ## 演示
 
-[![观看 Tessmora 中文介绍视频](docs/media/tessmora-intro/cover-zh.jpg)](docs/media/tessmora-intro/tessmora-intro-zh.mp4?raw=1)
+https://github.com/user-attachments/assets/ba48b505-9b1b-4fd6-9d40-441092cdf8fc
 
-**点击封面打开视频** · 4 分 36 秒 · 720p · 约 21 MiB
+**中文介绍** · 4 分 36 秒 · 720p · 可在 GitHub 页面内播放
 
 [中文 MP4](docs/media/tessmora-intro/tessmora-intro-zh.mp4?raw=1) · [English MP4](docs/media/tessmora-intro/tessmora-intro-en.mp4?raw=1) · [中文字幕](docs/media/tessmora-intro/zh.srt) · [媒体文件说明](docs/media/tessmora-intro/README.md)
 
@@ -49,33 +49,25 @@
 | **接入自己的工作流** | 中英文 Web UI、检索与对话 API、安装管理 CLI、知识库 CLI / Codex Skill，以及可选的飞书 IM 与 Docx/Wiki 导入 |
 
 <details>
-<summary><strong>查看交互截图：文档、图片、音频、视频与飞书</strong></summary>
+<summary><strong>查看当前界面：素材空间、文件画廊、来源引用与 Pi 研究过程</strong></summary>
 
-以下是已有的中文 Web / 飞书交互示例，展示检索结果和媒体引用；Pi 的当前行为见 [Agent Mode](#agent-mode)。
+实拍于 2026-11-06–07，使用当前 Web 界面与 Tessmora 项目资料。截图展示真实交互；示例文档的内容版本不等同于当前源码。见[截图说明](docs/images/current/README.md)。
 
-**文档问答** — “介绍 DeepSeek OCR2 在训练过程各阶段的设计方案。”
+**素材空间** — 按主题组织文档、图片与影音，查看各空间的素材类型与数量。
 
-![文档问答与来源引用](docs/images/chat-document.jpg)
+![中文素材空间与内容统计](docs/images/current/knowledge-zh.jpg)
 
-**图片检索** — “分别找一张符合粗犷、婉约、惬意的风景图。”
+**文件画廊** — 在同一个空间中浏览项目文档与图片，按类型筛选，并打开预览或索引详情。
 
-![按语义检索图片](docs/images/chat-image.jpg)
+![中文文件画廊与素材筛选](docs/images/current/materials-zh.jpg)
 
-**音频检索** — “查找和该音频使用相同乐器的曲子。”
+**回答与来源并排核对** — 从正文引用打开原文侧栏，保持结论、引用位置与配图之间的联系。
 
-![音频检索与播放](docs/images/chat-audio.jpg)
+![Pi 回答、图片引用与原文侧栏](docs/images/current/citations-zh.jpg)
 
-**视频问答** — “《让子弹飞》中汤师爷的人物性格是怎样的？”
+**Pi 研究过程** — 展开一次已完成任务的工具调用、证据和执行记录，检查检索与阅读如何支持回答。
 
-![视频问答与时间片段引用](docs/images/chat-video.jpg)
-
-**跨模态选材** — “为《浴血黑帮》挑选合适的海报封面和主题曲。”
-
-![图片、音频与视频共同支持回答](docs/images/chat-mix.jpg)
-
-**飞书 IM** — 在已有沟通工具中提问和查看媒体引用。
-
-![飞书中的问答与媒体引用](docs/images/chat-feishu.jpg)
+![中文 Pi 研究轨迹与证据记录](docs/images/current/trace-zh.jpg)
 
 </details>
 
@@ -92,7 +84,7 @@ npm --prefix packages/cli ci
 node packages/cli/bin/tessmora.js setup --source .
 ```
 
-向导会选择能力、数据目录与模型服务，构建并启动应用和存储，实际验证模型连接，再按需准备本地模型。默认 Web 地址为 **http://localhost:3001**；请使用向导打开的页面完成工作区连接。端口冲突时可另选端口，中途退出后可重新运行同一命令继续。
+向导会选择能力、数据目录与模型服务，构建并启动应用和存储，实际验证模型连接，再按需准备本地模型。默认 Web 地址为 [http://localhost:3001](http://localhost:3001)；请使用向导打开的页面完成工作区连接。端口冲突时可另选端口，中途退出后可重新运行同一命令继续。
 
 先体验 Markdown / TXT 问答，可选择文本能力并配置 DeepSeek 与 SiliconFlow；默认图片、音频、视频能力还需要阿里云百炼。首次构建和模型下载需要时间、磁盘与内存；向导会显示进度和日志。
 

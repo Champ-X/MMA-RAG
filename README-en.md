@@ -31,9 +31,9 @@ Use it to explore research materials, find visuals and music in a media library,
 
 ## Demo
 
-[![Watch the Tessmora introduction in English](docs/media/tessmora-intro/cover-en.jpg)](docs/media/tessmora-intro/tessmora-intro-en.mp4?raw=1)
+https://github.com/user-attachments/assets/b3d5a990-115f-4508-a707-b99d2acc590e
 
-**Click the cover to open the video** · 4 min 36 sec · 720p · about 21 MiB
+**English introduction** · 4 min 36 sec · 720p · Plays inline on GitHub
 
 [English MP4](docs/media/tessmora-intro/tessmora-intro-en.mp4?raw=1) · [中文 MP4](docs/media/tessmora-intro/tessmora-intro-zh.mp4?raw=1) · [English subtitles](docs/media/tessmora-intro/en.srt) · [About the media files](docs/media/tessmora-intro/README.md)
 
@@ -49,33 +49,25 @@ Use it to explore research materials, find visuals and music in a media library,
 | **Connect your workflow** | Use the bilingual Web UI, retrieval and chat APIs, installation CLI, knowledge-base CLI / Codex Skill, and optional Feishu IM and Docx/Wiki import |
 
 <details>
-<summary><strong>View screenshots: documents, images, audio, video, and Feishu</strong></summary>
+<summary><strong>Explore the current UI: knowledge spaces, file gallery, citations, and Pi research</strong></summary>
 
-These existing examples use the Chinese Web / Feishu interface and show retrieval results and media citations. See [Agent Mode](#agent-mode) for Pi's current behavior.
+Captured on November 6–7, 2026 in the running Web app using Tessmora project materials. The interface is in English; source titles, answers, and agent notes retain their original Chinese. These are real interactions, and the example documents may predate the current code. See [screenshot provenance](docs/images/current/README.md).
 
-**Document questions** — “Summarize the design of each stage in DeepSeek OCR2 training.”
+**Knowledge spaces** — Organize documents, images, audio, and video by topic, with content types and counts for each space.
 
-![Document answers with source citations](docs/images/chat-document.jpg)
+![English knowledge spaces and content statistics](docs/images/current/knowledge-en.jpg)
 
-**Image search** — “Find one landscape image for each mood: rugged, delicate, and relaxed.”
+**File gallery** — Browse project documents and images together, filter by type, and open previews or index details.
 
-![Semantic image search](docs/images/chat-image.jpg)
+![English file gallery and material filters](docs/images/current/materials-en.jpg)
 
-**Audio search** — “Find music that uses the same instrument as this audio.”
+**Check answers against sources** — Open cited text beside the answer while keeping the claim, citation, and supporting image in view.
 
-![Audio search and playback](docs/images/chat-audio.jpg)
+![Pi answer with an image citation and English source-inspection controls](docs/images/current/citations-en.jpg)
 
-**Video questions** — “What is Tang Shiye's personality in Let the Bullets Fly?”
+**Pi research process** — Expand a completed task to inspect its tool calls, evidence, and execution record, tracing how search and reading support the answer.
 
-![Video answers with timestamped citations](docs/images/chat-video.jpg)
-
-**Cross-modal selection** — “Choose a suitable poster and theme song for Peaky Blinders.”
-
-![Images, audio, and video supporting one answer](docs/images/chat-mix.jpg)
-
-**Feishu IM** — Ask questions and inspect media citations in your existing messaging tool.
-
-![Answers and media citations in Feishu](docs/images/chat-feishu.jpg)
+![English Pi research trace and evidence record](docs/images/current/trace-en.jpg)
 
 </details>
 
@@ -92,7 +84,7 @@ npm --prefix packages/cli ci
 node packages/cli/bin/tessmora.js setup --source .
 ```
 
-The wizard walks through capabilities, data location, and model providers, builds and starts the application and storage, tests model connections, and prepares the local models you need. The default Web address is **http://localhost:3001**; use the page opened by the wizard to connect your workspace. Choose another port if needed. If setup is interrupted, run the same command again to continue.
+The wizard walks through capabilities, data location, and model providers, builds and starts the application and storage, tests model connections, and prepares the local models you need. The default Web address is [http://localhost:3001](http://localhost:3001); use the page opened by the wizard to connect your workspace. Choose another port if needed. If setup is interrupted, run the same command again to continue.
 
 For an initial Markdown / TXT question, select text capabilities and configure DeepSeek and SiliconFlow. The default image, audio, and video capabilities also require Alibaba Cloud Bailian. The first build and model downloads take time, disk space, and memory; the wizard displays progress and logs.
 

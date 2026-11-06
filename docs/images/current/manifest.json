@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "purpose": "Actual Tessmora UI screenshots for the bilingual READMEs",
+  "source_commit": "e2b58fa",
+  "capture_method": "Actual Safari screenshots captured through CUA; source PNGs kept in ignored ops/readme-inline/",
+  "transform_policy": "Remove browser toolbar only, resize proportionally, and encode JPEG; no UI content, text, or state edits.",
+  "assets": [
+    {
+      "path": "docs/images/current/knowledge-zh.jpg",
+      "screen": "knowledge",
+      "language": "zh-CN",
+      "capture_date": "2026-11-06",
+      "source_commit": "e2b58fa",
+      "source_route": "/knowledge",
+      "source": {
+        "path": "ops/readme-inline/knowledge-zh-raw.png",
+        "tracked": false,
+        "sha256": "6af802c71655a5400e4c48fcc00380a1d52bff40c08b2c592658cdba1c6f474f",
+        "bytes": 929001,
+        "width": 2648,
+        "height": 2168
+      },
+      "transformation": {
+        "crop_xyxy": [
+          0,
+          105,
+          2648,
+          2168
+        ],
+        "removed_region": "Safari toolbar and its bottom separator, source rows 0 through 104",
+        "resize": {
+          "width": 1920,
+          "height": 1496,
+          "resampling": "Lanczos",
+          "preserve_aspect_ratio": true
+        },
+        "encoding": {
+          "format": "JPEG",
+          "quality": 90,
+          "progressive": true
+        }
+      },
+      "sha256": "0eec01186a84eb8a97912adbedc39bfac960d88762d651650ceb0ff9a484ef66",
+      "bytes": 442004,
+      "width": 1920,
+      "height": 1496
+    },
+    {
+      "path": "docs/images/current/knowledge-en.jpg",
+      "screen": "knowledge",
+      "language": "en-US",
+      "capture_date": "2026-11-06",
+      "source_commit": "e2b58fa",
+      "source_route": "/knowledge",
+      "source": {
+        "path": "ops/readme-inline/knowledge-en-raw.png",
+        "tracked": false,
+        "sha256": "e383c874075aeba00e0b31ff1caf5791a98224dfe96b7502b586e49934c6c023",
+        "bytes": 950217,
+        "width": 2648,
+        "height": 2168
+      },
+      "transformation": {
+        "crop_xyxy": [
+          0,
+          105,
+          2648,
+          2168
+        ],
+        "removed_region": "Safari toolbar and its bottom separator, source rows 0 through 104",
+        "resize": {
+          "width": 1920,
+          "height": 1496,
+          "resampling": "Lanczos",
+          "preserve_aspect_ratio": true
+        },
+        "encoding": {
+          "format": "JPEG",
+          "quality": 90,
+          "progressive": true
+        }
+      },
+      "sha256": "d3978b210c01ea6285c743150f8d47f9bf51729f0f0933dc68c1ba656062a5f3",
+      "bytes": 449786,
+      "width": 1920,
+      "height": 1496
+    },
+    {
+      "path": "docs/images/current/materials-zh.jpg",
+      "screen": "materials",
+      "language": "zh-CN",
+      "capture_date": "2026-11-06",
+      "source_commit": "e2b58fa",
+      "source_route": "/knowledge/26ae114b-8243-476d-a2cc-1f306e5ab89b",
+      "source": {
+        "path": "ops/readme-inline/materials-zh-raw.png",
+        "tracked": false,
+        "sha256": "5d819a33257e21691fd732116994c65c970e70b6eaf89029ebf97b0ae72aa237",
+        "bytes": 755500,
+        "width": 2648,
+        "height": 2168
+      },
+      "transformation": {
+        "crop_xyxy": [
+          0,
+          105,
+          2648,
+          2168
+        ],
+        "removed_region": "Safari toolbar and its bottom separator, source rows 0 through 104",
+        "resize": {
+          "width": 1920,
+          "height": 1496,
+          "resampling": "Lanczos",
+          "preserve_aspect_ratio": true
+        },
+        "encoding": {
+          "format": "JPEG",
+          "quality": 90,
+          "progressive": true
+        }
+      },
+      "sha256": "a40db5d20ed758784dc67721517a5148a0ad504ad2ac4ec5b46b753d6f1195a7",
+      "bytes": 365065,
+      "width": 1920,
+      "height": 1496
+    },
+    {
+      "path": "docs/images/current/materials-en.jpg",
+      "screen": "materials",
+      "language": "en-US",
+      "capture_date": "2026-11-06",
+      "source_commit": "e2b58fa",
+      "source_route": "/knowledge/26ae114b-8243-476d-a2cc-1f306e5ab89b",
+      "source": {
+        "path": "ops/readme-inline/materials-en-raw.png",
+        "tracked": false,
+        "sha256": "785a185155a8bd2003e3d6a5c0e0af59d2c8b1ddb681f210ecd2ad46f6a9a056",
+        "bytes": 772864,
+        "width": 2648,
+        "height": 2168
+      },
+      "transformation": {
+        "crop_xyxy": [
+          0,
+          105,
+          2648,
+          2168
+        ],
+        "removed_region": "Safari toolbar and its bottom separator, source rows 0 through 104",
+        "resize": {
+          "width": 1920,
+          "height": 1496,
+          "resampling": "Lanczos",
+          "preserve_aspect_ratio": true
+        },
+        "encoding": {
+          "format": "JPEG",
+          "quality": 90,
+          "progressive": true
+        }
+      },
+      "sha256": "5697a059c66092445498135cce432fcb5dd1024c13b61327848a781f5b8a564f",
+      "bytes": 373566,
+      "width": 1920,
+      "height": 1496
+    },
+    {
+      "path": "docs/images/current/citations-zh.jpg",
+      "screen": "citations",
+      "language": "zh-CN",
+      "language_scope": "Interface labels only; source documents, answer, and agent-generated notes retain Chinese content.",
+      "capture_date": "2026-11-07",
+      "source_file_mtime": "2026-11-07T00:00:55.090899+08:00",
+      "source_commit": "e2b58fa",
+      "source_route": "/chat/4974dd07-f6e5-4bed-a7e5-ed9ac42f67f3",
+      "source": {
+        "path": "ops/readme-inline/citations-zh-raw.png",
+        "tracked": false,
+        "sha256": "68e177d4567096f76e5b2d32392370b3ec67d6756a2efcffc6bb03bccbee5d09",
+        "bytes": 968232,
+        "width": 2648,
+        "height": 2168
+      },
+      "transformation": {
+        "crop_xyxy": [
+          0,
+          105,
+          2648,
+          2168
+        ],
+        "removed_region": "Safari toolbar and its bottom separator, source rows 0 through 104",
+        "resize": {
+          "width": 1920,
+          "height": 1496,
+          "resampling": "Lanczos",
+          "preserve_aspect_ratio": true
+        },
+        "encoding": {
+          "format": "JPEG",
+          "quality": 90,
+          "progressive": true
+        }
+      },
+      "sha256": "6dcb2c76acbc7de6b22e198fdb57c643f0f7c1e80e1e01ae70ec4f4cd5191fcc",
+      "bytes": 453170,
+      "width": 1920,
+      "height": 1496
+    },
+    {
+      "path": "docs/images/current/citations-en.jpg",
+      "screen": "citations",
+      "language": "en-US",
+      "language_scope": "Interface labels only; source documents, answer, and agent-generated notes retain Chinese content.",
+      "capture_date": "2026-11-07",
+      "source_file_mtime": "2026-11-07T00:01:44.828406+08:00",
+      "source_commit": "e2b58fa",
+      "source_route": "/chat/4974dd07-f6e5-4bed-a7e5-ed9ac42f67f3",
+      "source": {
+        "path": "ops/readme-inline/citations-en-raw.png",
+        "tracked": false,
+        "sha256": "ac0dd8d30a4162e265229f4564a03e5006ace296ac3c28d62e5432529c250535",
+        "bytes": 983203,
+        "width": 2648,
+        "height": 2168
+      },
+      "transformation": {
+        "crop_xyxy": [
+          0,
+          105,
+          2648,
+          2168
+        ],
+        "removed_region": "Safari toolbar and its bottom separator, source rows 0 through 104",
+        "resize": {
+          "width": 1920,
+          "height": 1496,
+          "resampling": "Lanczos",
+          "preserve_aspect_ratio": true
+        },
+        "encoding": {
+          "format": "JPEG",
+          "quality": 90,
+          "progressive": true
+        }
+      },
+      "sha256": "71e5a7cedf6cc32f7aa94714c90d69cfcf4241676c417a5e7bb2f7f30cce6cde",
+      "bytes": 455673,
+      "width": 1920,
+      "height": 1496
+    },
+    {
+      "path": "docs/images/current/trace-zh.jpg",
+      "screen": "trace",
+      "language": "zh-CN",
+      "language_scope": "Interface labels only; source documents, answer, and agent-generated notes retain Chinese content.",
+      "capture_date": "2026-11-07",
+      "source_file_mtime": "2026-11-07T00:02:50.723015+08:00",
+      "source_commit": "e2b58fa",
+      "source_route": "/chat/4974dd07-f6e5-4bed-a7e5-ed9ac42f67f3",
+      "source": {
+        "path": "ops/readme-inline/trace-zh-raw.png",
+        "tracked": false,
+        "sha256": "cd6f0e88f2f04211dd83ed9f20718ed46c0eeadd4c1ef3c4336266fae647e448",
+        "bytes": 584032,
+        "width": 2648,
+        "height": 2168
+      },
+      "transformation": {
+        "crop_xyxy": [
+          0,
+          105,
+          2648,
+          2168
+        ],
+        "removed_region": "Safari toolbar and its bottom separator, source rows 0 through 104",
+        "resize": {
+          "width": 1920,
+          "height": 1496,
+          "resampling": "Lanczos",
+          "preserve_aspect_ratio": true
+        },
+        "encoding": {
+          "format": "JPEG",
+          "quality": 90,
+          "progressive": true
+        }
+      },
+      "sha256": "292c0291bb3180696767a9366c030ca7bd2ac00858ba0a49c9199594f5931d9e",
+      "bytes": 271743,
+      "width": 1920,
+      "height": 1496,
+      "displayed_run_summary": {
+        "status": "completed",
+        "tool_calls": 8,
+        "evidence_items": 20,
+        "elapsed_seconds": 23.1,
+        "scope": "This single example run, not a performance benchmark."
+      }
+    },
+    {
+      "path": "docs/images/current/trace-en.jpg",
+      "screen": "trace",
+      "language": "en-US",
+      "language_scope": "Interface labels only; source documents, answer, and agent-generated notes retain Chinese content.",
+      "capture_date": "2026-11-07",
+      "source_file_mtime": "2026-11-07T00:02:18.693063+08:00",
+      "source_commit": "e2b58fa",
+      "source_route": "/chat/4974dd07-f6e5-4bed-a7e5-ed9ac42f67f3",
+      "source": {
+        "path": "ops/readme-inline/trace-en-raw.png",
+        "tracked": false,
+        "sha256": "02a9dd2ca62ae7c5a48deb6a9ca08046afb38cdce0fb55d7487d6149a7fde40f",
+        "bytes": 613167,
+        "width": 2648,
+        "height": 2168
+      },
+      "transformation": {
+        "crop_xyxy": [
+          0,
+          105,
+          2648,
+          2168
+        ],
+        "removed_region": "Safari toolbar and its bottom separator, source rows 0 through 104",
+        "resize": {
+          "width": 1920,
+          "height": 1496,
+          "resampling": "Lanczos",
+          "preserve_aspect_ratio": true
+        },
+        "encoding": {
+          "format": "JPEG",
+          "quality": 90,
+          "progressive": true
+        }
+      },
+      "sha256": "96f8c755088b567047ac7a31d992a6c3777e7748d5c47dd279494e27c89fdb33",
+      "bytes": 287581,
+      "width": 1920,
+      "height": 1496,
+      "displayed_run_summary": {
+        "status": "completed",
+        "tool_calls": 8,
+        "evidence_items": 20,
+        "elapsed_seconds": 23.1,
+        "scope": "This single example run, not a performance benchmark."
+      }
+    }
+  ],
+  "capture_dates": [
+    "2026-11-06",
+    "2026-11-07"
+  ],
+  "content_context": "Current UI displaying existing project documents dated 2026-10-24; example source and answer content does not establish every detail of the current architecture."
+}
