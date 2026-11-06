@@ -23,43 +23,47 @@ git clone --filter=blob:none --single-branch https://github.com/Champ-X/MMA-RAG.
 | 内容 | 位置与策略 |
 | --- | --- |
 | 产品源码、测试与最小夹具 | Git 跟踪 |
-| 当前 UI 必需图片及文档示例 | Git 跟踪；复用资源，避免同时提交重复原图/副本 |
+| 当前 UI 必需图片、许可、来源清单及文档示例 | Git 跟踪；删除旧图前检查源码、动态路径、测试与持久数据引用 |
 | README 中英文介绍视频 | `docs/media/tessmora-intro/` 仅分发两份 720p 轻量版及封面/字幕；视频各约 21 MiB，来源与哈希见该目录清单 |
 | 启动及可复用运维工具 | Git 跟踪，记录参数与运行前提 |
 | 生成的前端、依赖、模型权重 | 本地生成或独立发布，不放 Git |
-| 用户配置与知识数据 | `backend/.env`、本地配置、`data/`、MinIO/Qdrant 持久目录；忽略 |
+| 用户配置与知识数据 | `backend/.env`、`backend/data/`、`data/`、MinIO/Qdrant 持久目录；忽略 |
 | 临时 QA、截图、实验脚本与模型回执 | `ops/` 或仓库外归档；忽略 |
 | 冻结实验与大语料 | 独立研究归档/发布资产；主仓库仅保留生产准入所需的小型证据 |
+
+`evals/` 不是评测输出目录。当前只保留 `baseline_v1/` 的合成语料与题集、`baselines/` 中用于比较器回归的报告，以及 `decision_plan_v2/`、`decision_plan_v2_holdout/` 的生产准入证据。后两者含哈希绑定的源快照；文件较旧不等于无用，不应随代码格式化或“更新日期”而改写。消费者与运行方式见 [评测目录](../evals/README.md)。新运行结果显式写到忽略的 `evals/runs/`、`evals/reports/` 或 `ops/`。
+
+共享的 `PRODUCT.md`、`DESIGN.md`、`.impeccable/design.json` 是产品与设计约定，应与实现同步；聊天过程、候选提案和逐次验收记录放到忽略目录。文档中的历史截图与架构图应标明源码版本和已知差异，当前行为以技术说明和实现为准。
 
 `.gitignore` 不能移除已跟踪文件，清理必须同时更新 Git 索引。删除当前文件也不会自动减少完整 clone 的历史对象。`git gc` 只能压缩本地对象，不能清理 GitHub 上仍被分支引用的历史。
 
 ## 历史与恢复
 
-整理前主分支为 `28d639b`，有 392 次提交，可达对象占用约 83 MiB。大对象主要来自旧构建、图片与实验语料，不是提交数量本身。当前树清理与浅克隆能够减少首次获取成本，保留历史便于定位回归与恢复研究依据。
+普通清理通过删除当前树中的过时文件完成，Git 历史仍可用于恢复。具有独立价值的本地记录可先移到忽略的 `ops/maintenance/`，保留原路径与 SHA-256，再从分发目录移除；不清空运行数据、模型缓存或用户资料。
 
-清理提交 `5ef8b9d` 的分发测量（2026-10-10）：
-
-| 范围 | 结果 |
-| --- | ---: |
-| 当前跟踪文件 | 625 个，22.51 MiB；整理前 1,152 个，92.18 MiB |
-| 完整 clone 的 Git pack | 80.57 MiB（本地 Git 传输，无硬链接） |
-| GitHub `--depth 1 --single-branch` 的 Git pack | 17.59 MiB |
-
-浅克隆的 Git 数据减少约 78%。以上是 pack 和跟踪文件体积，未包含 npm/Python 依赖、模型缓存、数据库或网络协议开销；以后新增资源会改变数值。
-
-本次采用普通提交，不改写共享分支历史。强制历史重写会改变后续提交 ID，并要求其他工作区和贡献者重新同步；只有大文件或泄密等需求确实值得承担迁移成本时才单独协调。旧研究分支也有各自的历史，不应未经确认删除。
+强制历史重写会改变后续提交 ID，并要求其他工作区和贡献者重新同步，应作为独立维护任务处理。当前树体积和 Git 历史体积需要分别测量；一次旧测量不能代表当前 clone 成本。
 
 恢复历史文件可先在外部目录检查：
 
 ```bash
-git show 28d639b:docs/PI_AGENT_VERIFICATION.md > /tmp/pi-agent-verification.md
+git log --all -- docs/ONBOARDING_VERIFICATION.md
+# 将 COMMIT 替换为仍包含所需文件的历史提交
+git show COMMIT:docs/ONBOARDING_VERIFICATION.md > /tmp/onboarding-verification.md
 ```
 
 浅克隆需先获取对应历史。旧记录用于解释当时实验，不代表当前实现或验证状态。归档恢复不应重新加入默认提交集合。
 
 ## 持续检查
 
-`python3 scripts/check_repository.py` 校验 Git 跟踪范围、Markdown 本地链接和单文件大小。CI 执行同一检查，防止本地存在而 clone 缺失的文件被误判为可用。新增大文件应先考虑独立发布和下载缓存；实际需要时明确评审并调整检查规则。
+`python3 scripts/check_repository.py` 以 Git 索引中的文件名检查当前工作区内容：分发边界、Markdown 本地链接和单文件大小。CI 在干净 checkout 中执行同一检查，防止本地存在而 clone 缺失的文件被误判为可用。未暂存的新增或删除可先用 `--worktree` 检查，它纳入未被忽略的新文件、排除待删除文件，不修改暂存区。精确暂存后仍需运行默认检查。
+
+```bash
+python3 scripts/check_repository.py --worktree
+python3 scripts/test_check_repository.py
+git diff --check
+```
+
+检查器同时拒绝运行数据、依赖、制作工程、临时设计和测试输出；即使使用 `git add -f` 也不能绕过 CI。`.gitignore` 用于日常排除，检查器用于检查实际分发集合，两者需同步维护。新增大文件应先考虑独立发布和下载缓存。
 
 默认单文件上限仍为 **5 MiB**。README 需要随仓库分发的 `docs/media/tessmora-intro/tessmora-intro-zh.mp4` 与 `tessmora-intro-en.mp4` 各有 **24 MiB** 的精确路径例外，合计约增加 42 MiB 的当前 checkout 内容。1080p 母片、制作工程和逐次验收记录继续保留在忽略的 `video-production/` 中；不要把例外扩大到整个目录或所有 MP4。视频更新时同步 [媒体清单](media/tessmora-intro/manifest.json)，超出上限时优先改用外部发布资产。
 

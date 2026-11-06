@@ -14,6 +14,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python scripts/check_repository.py
+      - run: python scripts/test_check_repository.py
       - run: python scripts/test_dev.py
       - run: python scripts/test_deploy_nginx.py
       - run: git diff --check

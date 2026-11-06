@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Check distributed files and local documentation links using only the Git index."""
+"""Check distribution paths and links, using indexed names or pending worktree files."""
+import argparse
 from pathlib import Path
 import re
 import subprocess
@@ -17,24 +18,37 @@ FILE_SIZE_LIMITS = {
 FORBIDDEN = (
     'static/', 'ops/', 'data/', 'logs/', 'docs/research/', 'docs/qa/',
     'docs/verification/', 'backend/experiments/', 'frontend/dist/',
-    'minio_data/', 'qdrant_storage/',
+    'minio_data/', 'qdrant_storage/', 'backend/data/', 'backend/logs/',
+    '.agent-tasks/', 'output/', 'video-production/', 'docs/previews/',
+    'frontend/design-previews/', '.impeccable/review/', '.impeccable/review-gallery/',
+    'frontend/coverage/', 'frontend/playwright-report/', 'frontend/test-results/',
+    'tmp/', 'temp/',
 )
 EVAL_INPUTS = {'README.md', 'baseline_v1', 'baselines', 'decision_plan_v2', 'decision_plan_v2_holdout'}
 
 
 def main():
-    files = set(subprocess.check_output(['git', 'ls-files', '-z'], cwd=ROOT).decode().split('\0')) - {''}
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--worktree', action='store_true', help='check pending additions/deletions without changing the Git index')
+    args = parser.parse_args()
+    command = ['git', 'ls-files', '-z']
+    if args.worktree:
+        command += ['--cached', '--others', '--exclude-standard']
+    files = set(subprocess.check_output(command, cwd=ROOT).decode().split('\0')) - {''}
+    if args.worktree:
+        deleted = set(subprocess.check_output(['git', 'ls-files', '--deleted', '-z'], cwd=ROOT).decode().split('\0'))
+        files -= deleted
     errors = []
     total = 0
     for name in sorted(files):
         parts = Path(name).parts
         path = ROOT / name
-        if name.startswith(FORBIDDEN) or 'node_modules' in parts or '__pycache__' in parts:
+        if (name.startswith(FORBIDDEN)
+                or any(part in {'node_modules', '__pycache__', '.pytest_cache', '.venv'} for part in parts)
+                or parts[0].startswith('.venv-')):
             errors.append(f'{name}: generated or local-only path')
         if Path(name).name.startswith('.env') and Path(name).name != '.env.example':
             errors.append(f'{name}: local environment file')
-        if name in {'backend/data/llm_task_overrides.json', 'backend/data/jev_settings.json'}:
-            errors.append(f'{name}: mutable user configuration')
         if parts[0] == 'evals' and (len(parts) < 2 or parts[1] not in EVAL_INPUTS):
             errors.append(f'{name}: evaluation input requires explicit review')
         if not path.is_file():
@@ -61,11 +75,12 @@ def main():
             except ValueError:
                 errors.append(f'{name}: link outside repository: {link}')
                 continue
-            if rel not in files and not any(f.startswith(rel.rstrip('/') + '/') for f in files):
+            if rel != '.' and rel not in files and not any(f.startswith(rel.rstrip('/') + '/') for f in files):
                 errors.append(f'{name}: link absent from distributed files: {link}')
     for error in errors:
         print(error, file=sys.stderr)
-    print(f'{len(files)} tracked files, {total / 1024 / 1024:.2f} MiB; {len(errors)} repository errors')
+    scope = 'worktree candidate' if args.worktree else 'tracked'
+    print(f'{len(files)} {scope} files, {total / 1024 / 1024:.2f} MiB; {len(errors)} repository errors')
     return bool(errors)
 
 

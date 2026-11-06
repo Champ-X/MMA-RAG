@@ -41,11 +41,9 @@ tmp/
 /data/
 minio_data/
 
-# 推荐问题 LLM 缓存（服务端）
-backend/data/suggestion_cache/
-backend/data/jev_settings.json
-# Durable network collection runs, staged downloads and ingestion receipts
-/backend/data/collection/
+# Mutable backend settings, caches, collection runs and ingestion receipts.
+# Maintained test inputs belong in backend/tests/fixtures/ or evals/.
+/backend/data/
 qdrant_storage/
 minio.pid
 qdrant.pid
@@ -129,7 +127,6 @@ docs/superpowers/
 
 # Alternate local environments, local model routing and generated reports
 /.venv-*/
-/backend/data/llm_task_overrides.json
 /frontend/coverage/
 /frontend/playwright-report/
 /frontend/test-results/
