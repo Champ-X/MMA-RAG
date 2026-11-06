@@ -4,9 +4,11 @@
 
 | 任务 | 文档 |
 | --- | --- |
+| 观看中英文介绍视频或获取字幕 | [演示媒体](media/tessmora-intro/README.md) |
 | 启动、停止、排查环境和恢复数据 | [本地启动](LOCAL_STARTUP.md) |
 | 切换中英文界面与在线提示词 | [英语支持](ENGLISH_SUPPORT.md) |
 | 理解模块边界、数据流与会话持久化 | [系统架构](MMA_ARCHITECTURE.md) |
+| 查看和编辑中英文手写架构图（2026-11-05 快照） | [Excalidraw 双语架构图](diagrams/mma-rag/README.md) |
 | 理解图片、音频、视频的索引与召回 | [多模态技术说明](MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) |
 | 配置自主研究与只读工具 | [Pi Agent](PI_AGENT_MODE.md) |
 | 配置 Pi 持续输入、崩溃恢复与运行时回退 | [Pi Durable](pi-agent-durable.md) |

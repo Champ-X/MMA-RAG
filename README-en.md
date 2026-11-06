@@ -4,7 +4,7 @@
 
 <h1 align="center">Tessmora</h1>
 
-<p align="center"><strong>Search every modality. Research with an agent. Follow the sources.</strong></p>
+<p align="center"><strong>Turn scattered knowledge into answers you can trace.</strong></p>
 <p align="center">Every fragment finds its place.</p>
 
 <p align="center">
@@ -12,72 +12,68 @@
 </p>
 
 <p align="center">
+  <a href="#demo">Demo</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#agent-mode">Agent Mode</a> ·
-  <a href="#documentation">Documentation</a> ·
-  <a href="#contributing">Contributing</a> ·
-  <a href="https://github.com/Champ-X/MMA-RAG/issues">Report an issue</a>
+  <a href="#architecture">Architecture</a> ·
+  <a href="#documentation">Documentation</a>
 </p>
 
 <p align="center">
+  <a href="https://github.com/Champ-X/MMA-RAG/actions/workflows/checks.yml"><img src="https://github.com/Champ-X/MMA-RAG/actions/workflows/checks.yml/badge.svg" alt="Repository checks" /></a>
   <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?logo=python&amp;logoColor=white" alt="Python 3.11 or 3.12" />
   <img src="https://img.shields.io/badge/Node.js-%E2%89%A522.19-5FA04E?logo=nodedotjs&amp;logoColor=white" alt="Node.js 22.19 or later" />
-  <a href="https://github.com/Champ-X/MMA-RAG/issues"><img src="https://img.shields.io/github/issues/Champ-X/MMA-RAG" alt="GitHub Issues" /></a>
 </p>
 
-**Tessmora is a self-hosted multimodal RAG workspace with an autonomous research agent.** Bring documents, spreadsheets, images, audio, and video into a knowledge base, search and compare them in natural language, then check answers against source text, image previews, and media segments. The repository and CLI retain the names `MMA-RAG` / `mma-rag`.
+**Tessmora is a self-hosted multimodal knowledge base and agent research workspace.** Bring documents, spreadsheets, images, audio, and video together. Search, compare, and ask questions in natural language, then follow citations back to source text, images, or media segments to check the answers.
 
-Use it to explore research materials, find images and music in a media library, or let an agent investigate a complex question through search, source reading, and evidence gathering.
+Use it to explore research materials, find visuals and music in a media library, or let an agent investigate a complex question through search, close reading, and evidence gathering. The Web UI supports Simplified Chinese and English. The repository retains the name `MMA-RAG`.
 
-![Documents, images, audio, and video in one knowledge workspace](docs/images/tessmora-omni-banner.png)
+## Demo
+
+[![Watch the Tessmora introduction in English](docs/media/tessmora-intro/cover-en.jpg)](docs/media/tessmora-intro/tessmora-intro-en.mp4?raw=1)
+
+**Click the cover to open the video** · 4 min 36 sec · 720p · about 21 MiB
+
+[English MP4](docs/media/tessmora-intro/tessmora-intro-en.mp4?raw=1) · [中文 MP4](docs/media/tessmora-intro/tessmora-intro-zh.mp4?raw=1) · [English subtitles](docs/media/tessmora-intro/en.srt) · [About the media files](docs/media/tessmora-intro/README.md)
 
 ## What you can do
 
-| Your workflow | How Tessmora supports it |
+| Workflow | Capabilities |
 | --- | --- |
-| **Search across formats** | Source-preserving Agentic Chunking for documents, header-preserving row blocks for spreadsheets, and dedicated semantic and vector indexes for images, audio, and video |
-| **Find more than keywords** | The standard retrieval pipeline combines Dense, BGE-M3 Sparse, CLIP, and CLAP channels with intent-aware fusion and reranking; topic profiles route queries when no knowledge base is selected |
-| **Research complex questions** | Independent Pi Agent Mode chooses when to search, read sources, expand context, inspect media, or calculate over tables before submitting an answer with citations |
-| **Check the sources** | Citations link to original files, text context, images, and audio/video time ranges; the agent trace shows actual tool calls, evidence, timing, and errors |
-| **Control materials and scope** | Reference knowledge-base files or local attachments with `@`; use knowledge-base and file selectors to constrain search |
-| **Connect existing workflows** | Web UI, retrieval and chat APIs, a bundled CLI / Codex Skill, and optional Feishu IM and Docx/Wiki import |
+| **Collect and organize materials** | Upload local files or discover materials through public URLs and configured web sources; preview candidates before importing them and track downloading, parsing, and indexing |
+| **Search across modalities** | Combine Dense, BGE-M3 Sparse, CLIP, and CLAP retrieval channels with intent-aware fusion and reranking; route queries by topic profiles when no knowledge base is selected |
+| **Investigate a question** | Let Pi search, read paginated source text, expand context, inspect media, and calculate over tables; add instructions during a run or answer a clarification to continue the task |
+| **Check the sources** | Follow citations to original files, text context, images, and audio/video time ranges; inspect actual tool calls, evidence, timing, and errors in the trace panel |
+| **Control materials and scope** | Reference files or local attachments with `@`, and constrain search with knowledge-base and file selectors; referencing a material does not automatically expand search scope |
+| **Connect your workflow** | Use the bilingual Web UI, retrieval and chat APIs, installation CLI, knowledge-base CLI / Codex Skill, and optional Feishu IM and Docx/Wiki import |
 
 <details>
-<summary><strong>View screenshots: documents, images, audio, video, and cross-modal answers</strong></summary>
+<summary><strong>View screenshots: documents, images, audio, video, and Feishu</strong></summary>
 
-These existing Web / Feishu examples show retrieval results and media citations. Pi Agent Mode is described separately below. The screenshots use the Chinese interface.
+These existing examples use the Chinese Web / Feishu interface and show retrieval results and media citations. See [Agent Mode](#agent-mode) for Pi's current behavior.
 
-### Document questions
-
-“Summarize the design of each stage in DeepSeek OCR2 training.”
+**Document questions** — “Summarize the design of each stage in DeepSeek OCR2 training.”
 
 ![Document answers with source citations](docs/images/chat-document.jpg)
 
-### Image search
-
-“Find one landscape image for each mood: rugged, delicate, and relaxed.”
+**Image search** — “Find one landscape image for each mood: rugged, delicate, and relaxed.”
 
 ![Semantic image search](docs/images/chat-image.jpg)
 
-### Audio search
-
-“Find music that uses the same instrument as this audio.”
+**Audio search** — “Find music that uses the same instrument as this audio.”
 
 ![Audio search and playback](docs/images/chat-audio.jpg)
 
-### Video questions
-
-“What is Tang Shiye's personality in Let the Bullets Fly?”
+**Video questions** — “What is Tang Shiye's personality in Let the Bullets Fly?”
 
 ![Video answers with timestamped citations](docs/images/chat-video.jpg)
 
-### Cross-modal selection
-
-“Choose a suitable poster and theme song for Peaky Blinders.”
+**Cross-modal selection** — “Choose a suitable poster and theme song for Peaky Blinders.”
 
 ![Images, audio, and video supporting one answer](docs/images/chat-mix.jpg)
 
-### Feishu IM
+**Feishu IM** — Ask questions and inspect media citations in your existing messaging tool.
 
 ![Answers and media citations in Feishu](docs/images/chat-feishu.jpg)
 
@@ -85,7 +81,9 @@ These existing Web / Feishu examples show retrieval results and media citations.
 
 ## Quick start
 
-For a first installation, use the **terminal wizard and complete Docker runtime**. Node.js 22.19+ is enough to enter the wizard; Python is provided inside the application container. If Docker is missing or unavailable, the wizard provides platform-specific instructions, official installation links, and recovery options:
+### Install locally
+
+For a first installation, use the **terminal wizard and complete Docker runtime**. You need Node.js **22.19+**, Docker, and Compose **2.20+**. The containers provide application dependencies such as Python and FFmpeg. If Docker is not ready, the wizard provides installation links and steps to check again. The installer currently runs primarily in Chinese.
 
 ```bash
 git clone --depth 1 --single-branch https://github.com/Champ-X/MMA-RAG.git
@@ -94,51 +92,66 @@ npm --prefix packages/cli ci
 node packages/cli/bin/tessmora.js setup --source .
 ```
 
-The wizard builds the frontend, backend and Pi runtime, starts storage, collects masked credentials, tests real model calls and prepares only the selected local models. Terminal and `/setup` share configuration; the web page offers an optional sample document. Interrupted setup resumes on the next invocation. No manual `.env` edits are required for this path.
+The wizard walks through capabilities, data location, and model providers, builds and starts the application and storage, tests model connections, and prepares the local models you need. The default Web address is **http://localhost:3001**; use the page opened by the wizard to connect your workspace. Choose another port if needed. If setup is interrupted, run the same command again to continue.
 
-Local operation requires Docker and Compose 2.20+. Complete system installation and authorization yourself, then retry or let the wizard wait for Docker and continue automatically. Permission failures and missing or outdated Compose receive separate recovery instructions.
+For an initial Markdown / TXT question, select text capabilities and configure DeepSeek and SiliconFlow. The default image, audio, and video capabilities also require Alibaba Cloud Bailian. The first build and model downloads take time, disk space, and memory; the wizard displays progress and logs.
 
-The npm package can be packed and installed locally. **Public npm packages and prebuilt images have not been published.** See the [CLI guide](packages/cli/README.md) and [distribution guide](docs/DISTRIBUTION.md) for packaging, lifecycle commands, remote connections and persistent data.
+**Data and models:** Original files, indexes, and run records are stored in the selected data directory. Default parsing and inference call your configured model providers, which may receive content and charge for usage. Self-hosting does not imply offline inference. The application currently targets a local single-user workspace or trusted network; read the [security policy](SECURITY.md) before exposing it publicly.
 
-### Source development
-
-For development, run **the frontend and backend locally, with storage services in Docker**. The commands below target macOS / Linux; Windows users can use WSL2. The root `docker-compose.yml` manages storage only; `deploy/compose.yaml` provides the separate complete installation.
-
-### 1. Prerequisites
-
-| Dependency | Requirement and purpose |
-| --- | --- |
-| Python | **3.11 or 3.12**; the commands below use 3.12 |
-| Node.js / npm | **Node.js ≥ 22.19**, meeting both Vite and Pi SDK requirements |
-| Docker + Compose | A running Docker daemon for MinIO, Qdrant, and Redis |
-| FFmpeg / ffprobe | Audio/video inspection, conversion, and frame extraction |
-| LibreOffice | DOCX/PPTX conversion to PDF and previews; `fonts-noto-cjk` is recommended for Chinese documents on Linux |
-
-### 2. Clone and configure providers
+<details>
+<summary>Daily management, command registration, and opening the app from WSL</summary>
 
 ```bash
-git clone --depth 1 --single-branch https://github.com/Champ-X/MMA-RAG.git
-cd MMA-RAG
+node packages/cli/bin/tessmora.js status
+node packages/cli/bin/tessmora.js stop
+node packages/cli/bin/tessmora.js start
+node packages/cli/bin/tessmora.js doctor
+```
+
+Run `npm --prefix packages/cli run register-command` to register the `tessmora` command, then verify it with `tessmora --version`. Until registration and PATH configuration are complete, use the Node entry point above.
+
+If WSL or a headless environment cannot open a browser automatically, run `node packages/cli/bin/tessmora.js open --print-url` and paste the complete URL into your browser. The link contains this instance's connection credential and is for your own use only.
+
+This guide uses a source build. See the [installer guide](packages/cli/README.md) and [container distribution guide](docs/DISTRIBUTION.md) for packaged installation, configuration changes, remote connections, and complete data backups.
+
+</details>
+
+### Get your first cited answer
+
+1. Open the Web UI and create a knowledge base.
+2. Upload your own document, or use the synthetic Chinese example [`ops-rollback.md`](evals/baseline_v1/corpus/ops-rollback.md). Wait for processing to finish.
+3. Select that knowledge base and use Direct retrieval to ask: **“When is rollback required, and how should it be verified?”** The equivalent question in the sample's language is “什么情况下必须回滚？回滚后如何验证？”
+4. Open the citations and check the source's trigger conditions, three `/ready` checks, and 15-minute observation period.
+5. Toggle `π` on the left of the composer to try deeper research, then expand the trace to see which sources and tools it used.
+
+An API health check only confirms that the service has started. Complete an upload, retrieval, and citation check to verify the path you intend to use.
+
+### Develop from source
+
+Run the frontend and backend locally, with storage in Docker. The commands below target macOS / Linux; Windows users can use WSL2.
+
+<details>
+<summary><strong>Expand development prerequisites, model configuration, and startup commands</strong></summary>
+
+You need Python **3.11 / 3.12**, Node.js **≥22.19**, and Docker / Compose. Audio/video processing requires **FFmpeg / ffprobe**. DOCX/PPTX conversion and previews require **LibreOffice**; install `fonts-noto-cjk` for Chinese documents on Linux.
+
+From the root of the cloned repository:
+
+```bash
 cp backend/.env.example backend/.env
 ```
 
-Edit `backend/.env` with the credentials you need. **Clear the `your_...` placeholder values for unused services.** The current default routes use:
+Edit `backend/.env` with your credentials and clear the `your_...` placeholders for unused services. The current default routes use:
 
-| Setting | Default use |
+| Environment variable | Purpose |
 | --- | --- |
-| `SILICONFLOW_API_KEY` | Text embeddings, reranking, and the default image-captioning model |
 | `DEEPSEEK_API_KEY` | Text answers, intent recognition, document chunking, and the Pi main model: `deepseek-flash` |
-| `ALIYUN_BAILIAN_API_KEY` | Default audio transcription, video parsing, and Pi media inspection |
-| `MINERU_TOKEN` | Optional MinerU cloud document parsing; local and alternative parsing paths depend on file type and installed dependencies |
-| `OPENROUTER_API_KEY` | Optional; required when selecting OpenRouter models |
+| `SILICONFLOW_API_KEY` | Text embeddings and reranking: Qwen3 Embedding / Reranker |
+| `ALIYUN_BAILIAN_API_KEY` | Image understanding, audio transcription, video parsing, and Pi media inspection |
+| `MINERU_TOKEN` | Optional MinerU cloud document parsing; other parsing paths depend on file type and installed dependencies |
+| `OPENROUTER_API_KEY` | Optional; used when selecting OpenRouter models |
 
-For a first Markdown / TXT document query, start with SiliconFlow and DeepSeek; add Bailian for default audio/video processing and Pi media inspection. The installation wizard determines the required providers from the selected capabilities and model routes. See the [environment example](backend/.env.example) for other parsers, import sources, and Feishu settings. Standard model routes can be changed in the settings UI; Pi uses [separate configuration](docs/PI_AGENT_MODE.md).
-
-**Self-hosted does not mean offline inference.** MinIO / Qdrant store your original files and indexes locally, while default parsing and model calls may send content to your configured providers and incur API charges.
-
-### 3. Install and start
-
-Run from the repository root. For Python 3.11, replace the first command with `python3.11 -m venv .venv`.
+Standard model routes can be changed in settings. Pi uses [separate configuration](docs/PI_AGENT_MODE.md). See the [environment example](backend/.env.example) for optional services such as web collection and Feishu.
 
 ```bash
 python3.12 -m venv .venv
@@ -150,106 +163,86 @@ npm --prefix agent-runtime ci
 ./start-dev.sh
 ```
 
-The script uses the repository `.venv` (or `MMA_PYTHON`), checks Python, Node.js and Pi dependencies, and runs `npm ci` if frontend or Pi dependencies are missing. Missing FFmpeg / LibreOffice tools produce installation guidance. It reuses existing storage containers and waits for MinIO / Qdrant / Redis, API health and the frontend API proxy. It automatically starts the selected `colima-mma-rag` profile when needed. Celery workers and Flower are excluded from the default path. First use downloads local models such as BGE-M3, CLIP, and CLAP; the example configuration enables startup preloading, so allow time, disk space, and memory for model loading.
+Replace the Python version in the first line if using 3.11. The script prefers `.venv` (or `MMA_PYTHON`), checks runtimes and dependencies, starts or reuses MinIO / Qdrant / Redis from the root Compose file, and waits for the API and frontend proxy to be ready. Celery workers and Flower are not part of this startup path. The complete container installation uses the separate `deploy/compose.yaml`.
+
+The example configuration enables local model preloading, which may download BGE-M3, CLIP, and CLAP on first startup. Set `PRELOAD_LOCAL_MODELS_ON_STARTUP=false` to defer loading until first use; this does not remove those dependencies.
 
 ```bash
-./start-dev.sh                       # foreground; Ctrl+C stops both app services
-./start-dev.sh restart --background  # restart and keep running after terminal exit
-./start-dev.sh status                # processes, API health and frontend proxy
+./start-dev.sh                       # foreground; Ctrl+C stops the frontend and backend
+./start-dev.sh restart --background  # restart and run in the background
+./start-dev.sh status                # processes, API health, and frontend proxy
 ./start-dev.sh logs                  # recent logs
-./start-dev.sh stop                  # stop app services; retain storage containers
-./start-dev.sh doctor                # check prerequisites without installing or starting
+./start-dev.sh stop                  # stop the app; retain storage containers
+./start-dev.sh doctor                # check the environment only
 ```
 
-The Web port defaults to **3001**, with the API fixed at **8000**. Add `--reload` for backend development. See the [local startup guide](docs/LOCAL_STARTUP.md) for ports and timeouts.
-
-| Entry point | Default URL |
+| Source development entry point | Default URL |
 | --- | --- |
 | Web UI | [localhost:3001](http://localhost:3001) |
-| API documentation | [localhost:8000/docs](http://localhost:8000/docs) |
-| Service health | [localhost:8000/health](http://localhost:8000/health) |
+| API / OpenAPI | [localhost:8000/docs](http://localhost:8000/docs) |
+| Health check | [localhost:8000/health](http://localhost:8000/health) |
 | MinIO Console | [localhost:9001](http://localhost:9001) |
 | Qdrant Dashboard | [localhost:6333/dashboard](http://localhost:6333/dashboard) |
 
-### 4. Get your first cited answer
-
-1. Open the Web UI and create a knowledge base.
-2. Upload your own document, or use the repository's synthetic Chinese example [`ops-rollback.md`](evals/baseline_v1/corpus/ops-rollback.md). Wait for processing to finish.
-3. Select that knowledge base and use Direct retrieval to ask: **“什么情况下必须回滚？回滚后如何验证？”** (“When is rollback required, and how should it be verified?”).
-4. Open the answer's citations and check the source's trigger conditions, three `/ready` checks, and 15-minute observation period.
-5. Toggle `π` on the left of the composer to try Agent Mode, then expand its trace to inspect the sources and tools it actually used.
-
-A successful `/health` response only confirms that the API has started. Complete an upload, retrieval, and citation check to verify the path you intend to use.
-
-<details>
-<summary>Startup troubleshooting and restored data</summary>
-
-- **The page does not open:** run `./start-dev.sh status` and `./start-dev.sh logs`. Port 3001 is fixed by default; an occupied port fails explicitly. Override the frontend port with `--port` or `FRONTEND_PORT`.
-- **A model or tool call fails:** check provider credentials, account balance, and model access. Pi also requires the `agent-runtime` dependencies and a supported Node.js version.
-- **The first startup is slow:** inspect model download logs and `HF_ENDPOINT`. Setting `PRELOAD_LOCAL_MODELS_ON_STARTUP=false` defers loading until first use; it does not remove the model dependencies.
-- **Media previews fail:** make sure `MINIO_PUBLIC_ENDPOINT` is reachable from the browser, rather than a container-only address such as `minio:9000`.
-- **Restoring an existing local dataset:** `./scripts/start-restored.sh` shares the same start/restart/stop/status management. It requires existing MinIO/Qdrant directories or all three storage containers and preserves the containers' original mounts, including data in another checkout. It never initializes an empty dataset or triggers re-ingestion. See the [data recovery guide](docs/LOCAL_STARTUP.md#数据与进程管理).
+The frontend defaults to 3001, configurable with `--port` / `FRONTEND_PORT`; the backend is fixed at 8000. Add `--reload` for backend development. See the [local startup guide](docs/LOCAL_STARTUP.md) for port conflicts, model downloads, media access, and restoring existing data.
 
 </details>
 
 ## Agent Mode
 
-Tessmora has two independent answering paths that can be switched within a conversation:
+Switch between two independent answering paths within a conversation:
 
-| Path | Behavior | Entry points |
+| Path | Best suited to | How it works |
 | --- | --- | --- |
-| **Standard retrieval** | `direct` retrieves in one round; `agent` gathers more evidence within round, query, and evidence budgets; `auto` chooses between them | Web, `/api/chat/*`, `mma-rag ask` |
-| **Pi Agent Mode** | Uses the [Pi Agent SDK](https://github.com/earendil-works/pi) to plan, select tools, and write answers independently of standard retrieval orchestration | Web composer `π`, `/api/pi/*` |
+| **Standard retrieval** | Finding materials quickly and asking questions within a known scope | `direct` retrieves once; `agent` gathers more evidence within round, query, and evidence budgets; `auto` chooses between them |
+| **Pi Agent** | Research that requires repeated search, close reading, comparison, and media inspection | An independent Pi loop selects tools, maintains a research plan, gathers evidence, and submits a cited answer; enable it with `π` in the Web composer |
 
-Pi can list sources, perform exact or hybrid search, read paginated source text, expand adjacent context, recall evidence, inspect images/PDF pages/audio/video segments, and perform deterministic filtering, grouping, and calculations on CSV/TSV/XLSX files. Source-access tools are read-only; arbitrary shell and code execution are not exposed.
+Pi can read long documents, expand adjacent passages, recall evidence, inspect images/PDF pages/audio/video segments, and perform deterministic filtering, grouping, and calculations on CSV/TSV/XLSX files. It reuses knowledge data with its own search orchestration and can add native CLIP image / CLAP audio retrieval as needed. Web collection is a separate ingestion feature; Pi's source tools do not expose arbitrary shell commands, code execution, or automatic web crawling.
 
-`@` materials support reading and comparison; **they do not automatically expand search scope**. A local ledger stores run events, evidence, and attachments for cancellation, event reconnection, and history recovery. A server restart marks unfinished runs as interrupted instead of automatically executing them again.
+**Research can continue.** The default Pi Durable runtime saves tasks, events, and evidence. It supports additional instructions during a run, clarification replies at `needs_input`, event reconnection after a page refresh, and recovery of eligible unfinished tasks after a service restart. Explicitly stopping a task or deleting its conversation cancels it. Changes to the model, materials, or search scope require a new task. The `core` compatibility mode does not offer the same execution recovery.
 
-Pi currently has **no application-level per-run cap on duration, tokens, or total tool calls**. Long tasks remain subject to model context, provider, and machine limits and can be stopped by the user. Repeated calls without progress, truncated output, exhausted context, and stalled connections stop automatically; deleting a conversation first stops its background tasks. Citation checks validate evidence identity and numbering; answer completeness and source support still need review. See the [Pi mode guide](docs/PI_AGENT_MODE.md) for configuration, tool contracts, and known limitations.
+**The limits are visible.** Pi has no application-level cap on cumulative duration, tokens, or total tool calls. You can stop a run, and no-progress and error guards still terminate execution. Recovering an interrupted model request may incur additional charges. Citation checks validate source identity and numbering, not semantic correctness; video inspection uses sampling rather than observing every frame.
+
+[Tools and configuration](docs/PI_AGENT_MODE.md) · [Durable recovery, ongoing input, and known limitations](docs/pi-agent-durable.md)
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    Files[Documents · Tables · Images · Audio · Video] --> Ingest[Parsing · Chunking · Multimodal indexing]
-    Ingest --> Storage[(MinIO originals + Qdrant indexes)]
-    Web[Web UI] --> API[FastAPI]
-    Integrations[CLI · Feishu · API clients] --> API
-    API --> Classic[Standard retrieval and generation]
-    API --> Host[Pi host and run ledger]
-    Host <--> Pi[Pi Agent · Node.js]
-    Classic --> Storage
-    Host --> Tools[Source reading · Search · Media inspection · Table operations]
-    Tools --> Storage
-    Classic --> Answer[Answers with source citations]
-    Host --> Answer
-```
+[![Tessmora system overview: multimodal ingestion, two answering paths, and source citations](docs/diagrams/mma-rag/overview-en.png)](docs/diagrams/mma-rag/MMA-RAG-en-handwritten.svg)
 
-The frontend uses React / TypeScript, the backend uses FastAPI / Python, and the Pi SDK runs in separate Node processes. Both answering paths reuse existing knowledge data while retaining their own orchestration and retrieval logic.
+[Full English architecture diagram](docs/diagrams/mma-rag/MMA-RAG-en-handwritten.svg) · [High-resolution PNG](docs/diagrams/mma-rag/MMA-RAG-en-handwritten.png) · [Editable Excalidraw](docs/diagrams/mma-rag/MMA-RAG-en.excalidraw) · [Bilingual diagram collection](docs/diagrams/mma-rag/README.md)
+
+This preview is cropped from the handwritten architecture diagram at **2026-11-05 / `658b0d1`**. The full diagram's descriptions of Pi restart behavior and native image/audio retrieval predate the Durable update. Refer to this page and the [system architecture guide](docs/MMA_ARCHITECTURE.md) for current behavior.
+
+The current data flow has three parts:
+
+1. **Ingestion:** Parse each modality, preserve source text in document chunks and headers in table row blocks, and retain media descriptions, transcripts, and timestamps. MinIO stores original files; Qdrant stores vectors and indexes.
+2. **Answering:** The React / TypeScript frontend calls FastAPI. Standard retrieval uses hybrid recall and reranking; Pi's Python host and separate Node workers organize research.
+3. **Verification and continuation:** Answers carry source citations. Pi stores its run ledger and Durable sessions in local SQLite, while Redis supports task and cache infrastructure.
 
 | Source directory | Responsibility |
 | --- | --- |
-| [`frontend/`](frontend/) | Knowledge bases, chat, media citations, and agent traces |
-| [`backend/app/modules/ingestion/`](backend/app/modules/ingestion/) | Parsing, source-preserving chunking, and multimodal vectorization |
-| [`backend/app/modules/retrieval/`](backend/app/modules/retrieval/) · [`agent/`](backend/app/modules/agent/) | Standard hybrid retrieval, reranking, and bounded multi-round agents |
-| [`backend/app/modules/pi_agent/`](backend/app/modules/pi_agent/) · [`agent-runtime/`](agent-runtime/) | Pi host, source tools, persistent ledger, and agent loop |
-| [`backend/app/modules/generation/`](backend/app/modules/generation/) · [`core/llm/`](backend/app/core/llm/) | Standard answer generation, providers, and task routing |
+| [`frontend/`](frontend/) | Knowledge bases, chat, media citations, research traces, and the bilingual UI |
+| [`ingestion/`](backend/app/modules/ingestion/) · [`collection/`](backend/app/modules/collection/) | File parsing, multimodal indexes, and web material collection |
+| [`retrieval/`](backend/app/modules/retrieval/) · [`agent/`](backend/app/modules/agent/) · [`generation/`](backend/app/modules/generation/) | Standard retrieval, bounded multi-round evidence gathering, and answer generation |
+| [`pi_agent/`](backend/app/modules/pi_agent/) · [`agent-runtime/`](agent-runtime/) | Pi host, source tools, run ledger, and Durable loop |
+| [`core/llm/`](backend/app/core/llm/) · [`packages/cli/`](packages/cli/) | Model providers and task routing, installation, and instance management |
 
 ## API and integrations
 
-Use the read-only retrieval API to obtain `doc | image | audio | video` evidence. Replace `KB_ID` with a real knowledge-base ID:
+Use the read-only retrieval API to obtain `doc | image | audio | video` evidence. Replace `KB_ID` with a real knowledge-base ID. This example uses the Web proxy available in both installation paths; adjust the port to your configuration:
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/retrieval/search \
+curl -X POST http://localhost:3001/api/v1/retrieval/search \
   -H 'Content-Type: application/json' \
-  -d '{"query":"什么情况下必须回滚？","knowledge_base_ids":["KB_ID"],"top_k":5}'
+  -d '{"query":"When is rollback required?","knowledge_base_ids":["KB_ID"],"top_k":5,"language":"en-US"}'
 ```
 
-Standard chat uses `/api/chat/message` or `/api/chat/stream`. Pi creates tasks through `/api/pi/runs` and exposes their progress through its event endpoint. Inspect the request schemas in [OpenAPI](http://localhost:8000/docs) after startup.
+Standard chat uses `/api/chat/message` or `/api/chat/stream`. Pi creates tasks through `/api/pi/runs`, streams progress through `/api/pi/runs/{run_id}/events`, and accepts additional input at `/api/pi/runs/{run_id}/inputs`. Pi has separate access controls; see the [Pi guide](docs/PI_AGENT_MODE.md). Source development also exposes port 8000 directly and [OpenAPI](http://localhost:8000/docs) for request schemas. The complete Docker installation does not publish port 8000 or the OpenAPI page by default.
 
-The bundled CLI runs directly from the repository. To install the Codex Skill, run `./scripts/install-codex-skill.sh`:
+`tessmora` manages installation and services; the bundled **`mma-rag`** CLI operates on knowledge bases, retrieval, and chat. The latter requires Python on the host. Run it directly, or install it as a Codex Skill with `./scripts/install-codex-skill.sh`:
 
 ```bash
+export MMA_RAG_BASE_URL=http://localhost:8000 # source development; use http://localhost:3001 for the complete Docker installation
 skills/mma-rag/scripts/mma-rag health
 skills/mma-rag/scripts/mma-rag kb list
 skills/mma-rag/scripts/mma-rag search --query "When is rollback required?" --kb-id KB_ID
@@ -258,43 +251,53 @@ skills/mma-rag/scripts/mma-rag ask --query "Summarize the rollback procedure" --
 
 The CLI's `--agent-mode` selects standard `direct / auto / agent` behavior, not Pi. Feishu IM currently uses Direct retrieval. See the [CLI reference](skills/mma-rag/references/cli-reference.md) and [Feishu setup guide](docs/FEISHU_BOT_SETUP.md).
 
-## Verification and evaluation
+## Development and verification
 
-The repository keeps product regression tests, a quick baseline of 7 synthetic documents and 8 questions, and evaluation tools for public corpora and your own knowledge bases. Run data, intermediate reports and experimental source snapshots stay outside the distributed source tree. Small regression datasets are not general quality benchmarks.
+After installing development dependencies, run from the repository root:
 
 ```bash
+python3 scripts/check_repository.py
+python3 scripts/test_dev.py
 npm --prefix frontend test
+npm --prefix frontend run test:dom
 npm --prefix frontend run build
 npm --prefix agent-runtime test
+npm --prefix packages/cli test
 ./scripts/rag-eval validate
-python3 scripts/test_dev.py
 ```
 
-See [Contributing](CONTRIBUTING.md) for backend checks and [Evaluation](docs/RAG_EVALUATION.md) for metrics and isolated runs. The shallow clone above downloads the current revision; run `git fetch --unshallow` when you need history. See [Repository maintenance](docs/REPOSITORY.md).
+CI covers repository rules, the startup controller, frontend tests/build, and Pi and installer regressions. See [Contributing](CONTRIBUTING.md) for the services required by backend tests. Real model, corpus, and browser acceptance checks must be run separately; a build or health check does not replace them.
+
+The quick evaluation uses **7 synthetic documents / 8 questions** for regression checks, not as a general quality benchmark. Tools for public corpora, your own knowledge bases, and Pi comparisons are covered in [RAG evaluation](docs/RAG_EVALUATION.md), [retrieval evaluation](docs/RETRIEVAL_EVALUATION_V2.md), and [Pi evaluation limits](docs/pi-agent-durable.md#对比评测与已知问题).
 
 ## Deployment boundaries
 
-- **Designed for a local single-user workspace or trusted network.** The application does not yet provide complete user authentication, tenant isolation, or knowledge-base ACLs; standard API CORS allows all origins. Public access requires an authentication gateway, TLS, origin restrictions, and rate limits. See [SECURITY.md](SECURITY.md).
-- **Pi has separate access controls.** It defaults to local access and supports a server-side access token and knowledge-base allowlist. These do not replace application-wide user authorization.
-- **Persistence differs by path.** Pi uses a local SQLite ledger with one host holding the lock per data directory. Standard backend sessions and some statistics remain in process memory; the application is not ready for stateless horizontal scaling.
-- **Retrieval and media interpretation can be wrong.** Traceable citations do not prove semantic correctness, and sampled video frames are not exhaustive observation. Check important conclusions against original sources.
+- **Single user and trusted networks:** The application does not yet provide complete user authentication, tenant isolation, or knowledge-base ACLs. Standard API CORS allows all origins. Pi / installer tokens do not replace application-wide authorization; public access requires additional protection. See [SECURITY.md](SECURITY.md).
+- **Single writer and backups:** Only one host may hold the lock on a Pi data directory; back up the complete runtime directory. Standard backend sessions and some statistics remain in process memory, so the application cannot simply be scaled into stateless replicas.
+- **Capabilities and quality:** Upstream Pi Durable is still Experimental. Pi does not currently support a native video-vector retrieval channel or include a semantic entailment verifier. Check media samples, retrieval results, and model conclusions against the original files.
+
 ## Documentation
 
-Technical guides are currently maintained in Chinese; both READMEs cover the same setup and product scope.
+Technical guides are currently maintained mostly in Chinese. Both READMEs cover the same product scope and installation paths.
 
-- [Documentation index](docs/README.md) and [Architecture](docs/MMA_ARCHITECTURE.md).
-- [Pi Agent](docs/PI_AGENT_MODE.md) and [Decision models](docs/DECISION_MODELS.md).
-- [Local startup](docs/LOCAL_STARTUP.md), [Model troubleshooting](docs/MODEL_CALL_RELIABILITY.md), and [Feishu](docs/FEISHU_BOT_SETUP.md).
-- [Contributing](CONTRIBUTING.md), [Security](SECURITY.md), and [Changelog](CHANGELOG.md).
+| I want to… | Read |
+| --- | --- |
+| Install, upgrade, back up, or troubleshoot startup | [Installer](packages/cli/README.md) · [Container distribution](docs/DISTRIBUTION.md) · [Local startup](docs/LOCAL_STARTUP.md) |
+| Understand the architecture and multimodal processing | [System architecture](docs/MMA_ARCHITECTURE.md) · [Multimodal technical guide](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) · [Handwritten diagrams](docs/diagrams/mma-rag/README.md) |
+| Configure Pi, recover tasks, or check execution limits | [Pi Agent](docs/PI_AGENT_MODE.md) · [Pi Durable](docs/pi-agent-durable.md) · [Decision models](docs/DECISION_MODELS.md) |
+| Adjust language, models, and attachment behavior | [English support](docs/ENGLISH_SUPPORT.md) · [Model troubleshooting](docs/MODEL_CALL_RELIABILITY.md) · [References and attachments](docs/chat-inline-references.md) |
+| Find other resources | [Documentation index](docs/README.md) · [Changelog](CHANGELOG.md) · [Repository maintenance](docs/REPOSITORY.md) |
 
 ## Contributing
 
-Use [Issues](https://github.com/Champ-X/MMA-RAG/issues) to report bugs or suggest improvements, and [Pull Requests](https://github.com/Champ-X/MMA-RAG/pulls) to submit changes. Chinese and English are both welcome.
+Report problems through [Issues](https://github.com/Champ-X/MMA-RAG/issues) and submit changes through [Pull Requests](https://github.com/Champ-X/MMA-RAG/pulls). Chinese and English are both welcome.
 
-- **Report a bug:** include the commit SHA, OS, runtime versions, selected mode, minimal reproduction, and redacted logs. Describe expected and actual behavior.
-- **Submit a change:** focus on one problem and explain the purpose, validation commands, and results. Include screenshots for UI changes and reproducible inputs and sources for model or retrieval changes.
-- **Improve documentation:** keep feature and setup instructions aligned across both READMEs; distinguish experimental candidates from delivered behavior.
-- **Protect data:** do not commit API keys, `.env` files, user knowledge bases, or unredacted run artifacts. Report security issues privately as described in the [security policy](SECURITY.md#reporting).
+- Include the commit SHA, environment, selected mode, minimal reproduction, and redacted logs in bug reports.
+- Keep changes focused and report validation results. Include screenshots for UI changes and reproducible inputs and sources for retrieval changes.
+- Keep both READMEs aligned when changing documentation; do not describe experimental candidates as delivered features.
+- Do not commit credentials, user knowledge bases, or unredacted run records. Follow the [security reporting process](SECURITY.md#reporting) for security issues.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
 
 ## License
 
@@ -302,4 +305,4 @@ The repository does not currently include a `LICENSE` file or declare an open-so
 
 ## Acknowledgments
 
-Tessmora builds on projects including [Pi](https://github.com/earendil-works/pi), [Qdrant](https://github.com/qdrant/qdrant), [MinIO](https://github.com/minio/minio), [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding), [CLIP](https://github.com/openai/CLIP), [CLAP](https://github.com/LAION-AI/CLAP), [FastAPI](https://github.com/fastapi/fastapi), and [React](https://github.com/facebook/react). Thanks to their maintainers and contributors.
+Thanks to the maintainers and contributors of [Pi](https://github.com/earendil-works/pi), [Qdrant](https://github.com/qdrant/qdrant), [MinIO](https://github.com/minio/minio), [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding), [CLIP](https://github.com/openai/CLIP), [CLAP](https://github.com/LAION-AI/CLAP), [FastAPI](https://github.com/fastapi/fastapi), [React](https://github.com/facebook/react), and the other projects Tessmora builds on.
