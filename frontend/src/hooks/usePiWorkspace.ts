@@ -10,6 +10,12 @@ export function usePiWorkspace(enabled: boolean) {
   const [loading, setLoading] = useState(false)
   const [revision, setRevision] = useState(0)
   const request = useRef(0)
+  useEffect(() => {
+    if (!enabled) return
+    const refresh = () => setRevision(value => value + 1)
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [enabled])
   const fail = useCallback((cause: unknown) => {
     const auth = cause instanceof PiApiError && cause.status === 401
     setConfig(null)

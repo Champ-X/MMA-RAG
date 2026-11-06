@@ -17,7 +17,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
 from app.modules.pi_agent.config import get_pi_settings
-from app.modules.pi_agent.contracts import RunRequest, TERMINAL_STATUSES
+from app.modules.pi_agent.contracts import RunRequest, RunInput, TERMINAL_STATUSES
 from app.modules.pi_agent.policy import ToolError
 from app.modules.pi_agent.store import RunConflict, RunNotFound
 
@@ -83,6 +83,12 @@ async def stop_pi_supervisor():
         _supervisor = None
 
 
+async def resume_pi_supervisor():
+    settings = get_pi_settings()
+    if settings.enabled and settings.runtime == "durable" and (settings.data_dir / "runs.sqlite3").exists():
+        await host().resume_pending()
+
+
 def translate(error):
     if isinstance(error, RunNotFound):
         return HTTPException(404, "任务或来源不存在")
@@ -107,7 +113,7 @@ async def configuration(request: Request, response: Response, owner=Depends(owne
     # only the explicitly configured Pi set; operators opt in additional models
     # after checking tool support instead of silently sharing the legacy list.
     models = list(dict.fromkeys(settings.allowed_models or [settings.model]))
-    return {"engine": "pi", "protocol_version": 1, "enabled": settings.enabled, "default_model": settings.model,
+    return {"engine": "pi", "runtime": settings.runtime, "protocol_version": 1, "enabled": settings.enabled, "default_model": settings.model,
             "thinking_enabled": settings.thinking_enabled,
             "answer_checks_enabled": settings.answer_checks_enabled,
             "answer_plan_enabled": settings.answer_plan_enabled,
@@ -164,6 +170,14 @@ async def read_run(run_id: str, owner=Depends(owner_for)):
     try:
         return host().store.get(run_id, owner=owner)
     except RunNotFound as error:
+        raise translate(error) from None
+
+
+@router.post("/runs/{run_id}/inputs")
+async def submit_input(run_id: str, value: RunInput, owner=Depends(owner_for)):
+    try:
+        return await host().submit_input(run_id, owner, value)
+    except (ToolError, RunNotFound, RunConflict) as error:
         raise translate(error) from None
 
 

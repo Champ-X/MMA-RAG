@@ -17,6 +17,7 @@ from .policy import AccessScope, ToolError
 from .store import fingerprint
 from .payloads import source_navigation
 from .text_origins import document_text_origin, TEXT_ORIGIN_VERSION
+from .query_vectors import LocalQueryVectors, QueryVectorUnavailable
 
 COLLECTIONS = {
     "doc": ("text_chunks_agentic", ["dense"]),
@@ -24,6 +25,8 @@ COLLECTIONS = {
     "audio": ("audio_vectors", ["text_vec"]),
     "video": ("video_shot_vectors", ["caption_dense", "asr_dense"]),
 }
+SPARSE_VECTORS = {"doc": ("sparse",), "audio": ("sparse",), "video": ("caption_sparse", "asr_sparse")}
+NATIVE_VECTORS = {"image": ("clip", "clip_vec"), "audio": ("clap", "clap_vec")}
 
 
 def point_text(payload: dict, modality: str) -> str:
@@ -110,10 +113,14 @@ def evidence_for(source: Source, modality: str, point, *, max_chars=6000, text_o
 
 class KnowledgeGateway:
     def __init__(self, catalog: SourceCatalog, scope: AccessScope, client, model_transport, search_gate, *,
-                 annotate_text_origins=False):
+                 annotate_text_origins=False, local_vectors=None):
         self.catalog, self.scope, self.client = catalog, scope, client
         self.models, self.search_gate = model_transport, search_gate
         self.annotate_text_origins = annotate_text_origins
+        settings = getattr(model_transport, "settings", None)
+        self.search_channels = max(1, int(getattr(settings, "max_concurrent_search_channels", 2)))
+        self.channel_gate = asyncio.Semaphore(self.search_channels)
+        self.local_vectors = local_vectors or LocalQueryVectors()
 
     def _evidence(self, source: Source, modality: str, point, **kwargs) -> Evidence:
         parent = self.catalog.parent_document(point.payload or {}, self.scope) if modality == "image" else None
@@ -156,7 +163,10 @@ class KnowledgeGateway:
         return points, cursor is not None
 
     async def search(self, *, query: str, mode: str, modalities: list[str], knowledge_base_ids: list[str],
-                     limit: int, span_id: str, source_ids: list[str] | None = None, result_unit="passage"):
+                     limit: int, span_id: str, source_ids: list[str] | None = None, result_unit="passage",
+                     retrieval_strategy="text"):
+        if retrieval_strategy not in {"text", "native"}:
+            raise ToolError("invalid_search_strategy", translate_prompt("未知检索策略"))
         kbs = self.scope.narrow_kbs(knowledge_base_ids)
         query_scope = self.scope
         if source_ids:
@@ -170,7 +180,194 @@ class KnowledgeGateway:
         sources = [s for s in self.catalog.visible(query_scope, search=True) if s.kb_id in kbs]
         if not sources:
             return [], {"status": "no_hits", "scope": query_scope.public(), "methods": [], "truncated": False}
-        errors, truncated, rankings, records = [], False, [], {}
+        errors, fallbacks, rankings, records, methods = [], [], [], {}, []
+        performance = {"index_requests": 0, "scroll_requests": 0, "scanned_points": 0,
+                       "query_requests": 0, "count_requests": 0, "capability_requests": 0,
+                       "max_concurrent_channels": self.search_channels}
+
+        async def request(operation, *args, **kwargs):
+            async with self.channel_gate:
+                performance["index_requests"] += 1
+                performance[{"scroll": "scroll_requests", "query_points": "query_requests", "query_points_groups": "query_requests",
+                             "count": "count_requests", "get_collection": "capability_requests"}[operation]] += 1
+                return await getattr(self.client, operation)(*args, **kwargs)
+
+        async def scan(collection, filt):
+            points, cursor = [], None
+            while True:
+                page, cursor = await request("scroll", collection, scroll_filter=filt, offset=cursor,
+                    limit=128, with_payload=True, with_vectors=False)
+                performance["scanned_points"] += len(page)
+                points.extend(page)
+                if cursor is None:
+                    return points
+
+        def bind(points, modality):
+            bound = {}
+            for point in points:
+                source = self.catalog.bind_point(point.payload or {}, query_scope, search=True)
+                if source and source.kb_id in kbs:
+                    bound[(modality, str(point.id))] = (source, point)
+            return bound
+
+        def lexical(points, modality):
+            bound, ranked = bind(points, modality), []
+            terms = lexical_terms(query)
+            for key, (source, point) in bound.items():
+                text = (source.name + "\n" + point_text(point.payload or {}, modality)).casefold()
+                score = float(query.casefold() in text) * 10
+                if mode != "exact":
+                    score += sum(term in text for term in terms) / max(1, len(terms))
+                if score > 0:
+                    ranked.append((score, key))
+            ordered = [key for _, key in sorted(ranked, key=lambda item: (-item[0], item[1]))]
+            if result_unit == "source":
+                ordered = distinct_sources(ordered, bound)
+            return bound, ordered[:limit * 3]
+
+        async def vector_query(collection, filt, modality, using, vector, method):
+            try:
+                if result_unit == "source" and modality != "image" and callable(getattr(self.client, "query_points_groups", None)):
+                    # A long document must not consume the entire candidate
+                    # window before source deduplication. Extracted images keep
+                    # their lexical route because file_id can name a child.
+                    result = await request("query_points_groups", collection, group_by="file_id", group_size=1,
+                        query=vector, using=using, query_filter=filt, limit=limit * 3,
+                        with_payload=True, with_vectors=False)
+                    points = [point for group in result.groups for point in group.hits]
+                else:
+                    result = await request("query_points", collection, query=vector, using=using,
+                        query_filter=filt, limit=limit * 3, with_payload=True, with_vectors=False)
+                    points = result.points
+                bound = bind(points, modality)
+                # Preserve provider rank, but never trust it to enforce scope.
+                return bound, list(bound), None, method
+            except Exception as error:
+                return {}, [], {"method": method, "modality": modality, "code": type(error).__name__,
+                    "message": translate_prompt("该模态向量检索失败")}, method
+
+        async def capabilities(collection):
+            if not callable(getattr(self.client, "get_collection", None)):
+                return None
+            try:
+                info = await request("get_collection", collection)
+                return info.config.params
+            except Exception:
+                # Capability inspection failing does not disable the established
+                # text routes. Never guess that an unseen native vector exists.
+                return None
+
+        async def local_vector(kind):
+            # Local inference has the same bounded channel admission as index
+            # work. Its own cache merges repeated exact queries within this run.
+            async with self.channel_gate:
+                try:
+                    return await self.local_vectors.encode(kind, query)
+                except QueryVectorUnavailable:
+                    raise
+                except Exception:
+                    raise QueryVectorUnavailable("local_encoding_failed") from None
+
+        async def modality_search(modality, selected, dense_vector):
+            collection, dense_names = COLLECTIONS[modality]
+            filt = self._filter(selected)
+            local_errors, local_fallbacks, local_rankings, local_records, local_methods = [], [], [], {}, []
+            dense_tasks = []
+            if dense_vector is not None:
+                dense_tasks = [asyncio.create_task(vector_query(collection, filt, modality, name, dense_vector, "dense"))
+                               for name in dense_names]
+            try:
+                params = await capabilities(collection) if mode == "hybrid" else None
+                sparse_names = [name for name in SPARSE_VECTORS.get(modality, ())
+                                if name in (getattr(params, "sparse_vectors", None) or {})]
+                sparse_ok = False
+                if mode == "hybrid" and SPARSE_VECTORS.get(modality):
+                    if not sparse_names:
+                        local_fallbacks.append({"method": "sparse", "modality": modality,
+                            "code": "sparse_index_unavailable", "fallback": "lexical"})
+                    else:
+                        try:
+                            sparse = await local_vector("sparse")
+                            sparse_vector = qm.SparseVector(indices=list(sparse), values=list(sparse.values()))
+                            results = await asyncio.gather(*(vector_query(collection, filt, modality, name, sparse_vector, "sparse")
+                                                             for name in sparse_names))
+                            for bound, ranking, error, method in results:
+                                if error:
+                                    local_errors.append(error)
+                                else:
+                                    local_records.update(bound); local_rankings.append(ranking); local_methods.append(method)
+                            # Any failed channel restores the complete lexical
+                            # route, including content lacking that sparse view.
+                            sparse_ok = all(error is None for _, _, error, _ in results)
+                            if not sparse_ok:
+                                local_fallbacks.append({"method": "sparse", "modality": modality,
+                                    "code": "sparse_query_failed", "fallback": "lexical"})
+                        except QueryVectorUnavailable as error:
+                            local_fallbacks.append({"method": "sparse", "modality": modality,
+                                "code": error.code, "fallback": "lexical"})
+
+                scan_filter = filt
+                if sparse_ok:
+                    # Some ingestion paths intentionally allow absent sparse
+                    # vectors. Query that uncovered subset, never assume a named
+                    # vector means every source has actually been indexed.
+                    missing = qm.Filter(must=[filt], must_not=[qm.Filter(must=[
+                        qm.HasVectorCondition(has_vector=name) for name in SPARSE_VECTORS[modality]])])
+                    try:
+                        missing_count = (await request("count", collection, count_filter=missing, exact=True)).count
+                        name_terms = lexical_terms(query)
+                        named_sources = [source for source in selected if query.casefold() in source.name.casefold()
+                                         or any(term in source.name.casefold() for term in name_terms)]
+                        filters = ([missing] if missing_count else []) + ([self._filter(named_sources)] if named_sources else [])
+                        scan_filter = qm.Filter(must=[filt], should=filters) if filters else None
+                        if missing_count:
+                            local_fallbacks.append({"method": "sparse", "modality": modality,
+                                "code": "sparse_coverage_incomplete", "fallback": "lexical_missing_vectors",
+                                "uncovered_points": missing_count})
+                    except Exception:
+                        local_fallbacks.append({"method": "sparse", "modality": modality,
+                            "code": "sparse_coverage_unverified", "fallback": "lexical"})
+                if scan_filter is not None:
+                    try:
+                        bound, ranking = lexical(await scan(collection, scan_filter), modality)
+                        local_records.update(bound); local_rankings.append(ranking)
+                        local_methods.append("exact" if mode == "exact" else "lexical")
+                    except Exception as error:
+                        local_errors.append({"method": "lexical", "modality": modality, "code": type(error).__name__,
+                                             "message": translate_prompt("该模态索引读取失败")})
+
+                if mode == "hybrid" and retrieval_strategy == "native" and modality in NATIVE_VECTORS:
+                    kind, name = NATIVE_VECTORS[modality]
+                    vectors = getattr(params, "vectors", None)
+                    specification = vectors.get(name) if isinstance(vectors, dict) else None
+                    try:
+                        if specification is None:
+                            raise QueryVectorUnavailable("native_index_unavailable")
+                        native = await local_vector(kind)
+                        if len(native) != getattr(specification, "size", None):
+                            raise QueryVectorUnavailable("native_vector_dimension_mismatch")
+                        bound, ranking, error, method = await vector_query(collection, filt, modality, name, native, kind)
+                        if error:
+                            local_errors.append(error)
+                            raise QueryVectorUnavailable("native_query_failed")
+                        local_records.update(bound); local_rankings.append(ranking); local_methods.append(method)
+                    except QueryVectorUnavailable as error:
+                        local_fallbacks.append({"method": kind, "modality": modality, "code": error.code,
+                                                "fallback": "text"})
+                elif mode == "hybrid" and retrieval_strategy == "native" and modality == "video":
+                    local_fallbacks.append({"method": "native", "modality": modality,
+                        "code": "native_video_not_supported", "fallback": "text"})
+                for bound, ranking, error, method in await asyncio.gather(*dense_tasks):
+                    if error:
+                        local_errors.append(error)
+                    else:
+                        local_records.update(bound); local_rankings.append(ranking); local_methods.append(method)
+                return local_records, local_rankings, local_errors, local_fallbacks, local_methods
+            finally:
+                for task in dense_tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*dense_tasks, return_exceptions=True)
         # Yield before acquiring the shared search slot, never while holding it.
         settings = getattr(self.models, "settings", None)
         if settings and settings.yield_to_legacy:
@@ -184,54 +381,22 @@ class KnowledgeGateway:
                     vector = await self.models.embed(query, span_id)
                 except ToolError as error:
                     errors.append({"method": "dense", "code": error.code, "message": str(error)})
+            tasks = []
             for modality in dict.fromkeys(modalities):
-                # Documents can also own extracted images.
                 selected = [s for s in sources if s.modality == modality or modality == "image" and s.modality == "doc"]
-                if not selected:
-                    continue
-                collection, vectors = COLLECTIONS[modality]
-                filt = self._filter(selected)
-                try:
-                    points, clipped = await self._scroll(collection, filt)
-                    truncated |= clipped
-                    ranked = []
-                    terms = lexical_terms(query)
-                    for point in points:
-                        source = self.catalog.bind_point(point.payload or {}, query_scope, search=True)
-                        if not source or source.kb_id not in kbs:
-                            continue
-                        text = (source.name + "\n" + point_text(point.payload or {}, modality)).casefold()
-                        score = float(query.casefold() in text) * 10
-                        if mode != "exact":
-                            score += sum(term in text for term in terms) / max(1, len(terms))
-                        if score > 0:
-                            key = (modality, str(point.id))
-                            records[key] = (source, point)
-                            ranked.append((score, key))
-                    ordered = [key for _, key in sorted(ranked, key=lambda x: (-x[0], x[1]))]
-                    if result_unit == "source":
-                        ordered = distinct_sources(ordered, records)
-                    rankings.append(ordered[:limit * 3])
-                except Exception as error:
-                    # No provider exception strings: they can contain credentials or URLs.
-                    errors.append({"method": "lexical", "modality": modality, "code": type(error).__name__,
-                                   "message": translate_prompt("该模态索引读取失败")})
-                if vector is not None:
-                    for using in vectors:
-                        try:
-                            result = await self.client.query_points(collection, query=vector, using=using,
-                                query_filter=filt, limit=limit * 3, with_payload=True, with_vectors=False)
-                            ranking = []
-                            for point in result.points:
-                                source = self.catalog.bind_point(point.payload or {}, query_scope, search=True)
-                                if source and source.kb_id in kbs:
-                                    key = (modality, str(point.id))
-                                    records[key] = (source, point)
-                                    ranking.append(key)
-                            rankings.append(ranking)
-                        except Exception as error:
-                            errors.append({"method": "dense", "modality": modality, "code": type(error).__name__,
-                                           "message": translate_prompt("该模态向量检索失败")})
+                if selected:
+                    tasks.append(asyncio.create_task(modality_search(modality, selected, vector)))
+            try:
+                # gather preserves declared modality order regardless of network
+                # completion order, so RRF and tie breaking remain reproducible.
+                for bound, ranked, failures, degraded, used_methods in await asyncio.gather(*tasks):
+                    records.update(bound); rankings.extend(ranked); errors.extend(failures)
+                    fallbacks.extend(degraded); methods.extend(used_methods)
+            finally:
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
         scores = defaultdict(float)
         for ranking in rankings:
             for rank, key in enumerate(ranking):
@@ -243,9 +408,11 @@ class KnowledgeGateway:
         evidence = [self._evidence(records[k][0], k[0], records[k][1], max_chars=1400) for k in keys]
         if not evidence and errors and not rankings:
             raise ToolError("search_unavailable", translate_prompt("搜索服务未能完成查询，请稍后重试；这不代表没有相关内容"), retryable=True)
-        return evidence, {"status": "partial" if errors or truncated else "ok" if evidence else "no_hits",
-                          "methods": ["exact" if mode == "exact" else "lexical", *(["dense"] if vector is not None else [])],
-                          "errors": errors, "truncated": truncated,
+        native_degraded = any(item["fallback"] == "text" for item in fallbacks)
+        return evidence, {"status": "partial" if errors or native_degraded else "ok" if evidence else "no_hits",
+                          "methods": list(dict.fromkeys(methods)),
+                          "errors": errors, "truncated": False, "retrieval_strategy": retrieval_strategy,
+                          "fallbacks": fallbacks, "performance": performance,
                           "result_unit": result_unit,
                           "returned_source_count": len({e.source_id for e in evidence}),
                           "scope": query_scope.public()}

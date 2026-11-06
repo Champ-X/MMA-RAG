@@ -166,5 +166,8 @@
   "按id更新要点：已有要点仅提交变化字段，省略字段与其他要点保留；数组用[]明确清空。新要点须提供requirement和quote。修正既有解释须填revision_reason，用户原句不可改写。": "Update items by ID using only changed fields; omitted fields and other items remain. Clear arrays explicitly with []. New items require requirement and quote. Correcting existing interpretations requires revision_reason; user quotes are immutable.",
   "新交付项须提供requirement和quote；更新已有项只需id与变化字段。新要点id：": "New deliverables require requirement and quote; existing items need only id and changed fields. New item ID: ",
   "文件名包含的原样子串，空字符串列出全部；不是关键词或语义搜索。": "Literal filename substring; an empty string lists all. This is not keyword or semantic search.",
-  "错配：": "Mismatches: "
+  "错配：": "Mismatches: ",
+  "text检索原文、转写与描述；native额外召回图片视觉或音频听觉特征，适合构图、色彩、音色等问题。原生索引或模型未就绪时回退文本；命中后仍须inspect_media核实。": "text searches originals, transcripts and descriptions; native additionally retrieves visual image or acoustic audio features, such as composition, color and timbre. Falls back to text when native indexes or models are not ready. Verify hits with inspect_media.",
+  "媒体观察在服务中断前未确认完成；已保存的观察仍可复用，本次不自动重复调用模型。": "The media observation was not confirmed before the interruption. Saved observations remain reusable; this call does not automatically repeat the model request.",
+  "用户已补充要求；请先读取并处理补充，再提交答案。": "The user has added instructions. Read and address them before submitting the answer."
 }

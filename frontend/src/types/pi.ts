@@ -2,6 +2,14 @@ import type { CitationReference } from './sse'
 import type { ChatMention } from '../lib/chatReferences'
 
 export type PiStatus = 'queued' | 'running' | 'cancelling' | 'completed' | 'partial' | 'needs_input' | 'cancelled' | 'failed'
+export interface PiInput {
+  request_id: string
+  message: string
+  mode: 'steer' | 'reply'
+  status: 'sending' | 'failed' | 'queued' | 'accepted' | 'applied' | 'rejected'
+  created_at?: number
+  reason?: string
+}
 export interface PiEvent {
   protocol_version: 1
   run_id: string
@@ -35,6 +43,11 @@ export interface PiTrace {
   seq: number
   startedAt: number
   model?: string
+  runtime?: 'core' | 'durable'
+  runtimePaused?: boolean
+  inputs?: PiInput[]
+  /** Highest server sequence known to exist; the stream still replays every event. */
+  replayThrough?: number
   steps: PiStep[]
   evidence: Array<{ id: number; file_name: string; modality: string; observation: string; locator: Record<string, unknown> }>
   draft: string
@@ -52,16 +65,17 @@ export interface PiRun {
   seq: number
   session_id: string
   created_at: number
-  config: { model: string }
+  config: { model: string; runtime?: 'core' | 'durable' }
   request: { client_request_id: string; message: string; mentions?: ChatMention[];
     selected_files?: Array<{ kb_id: string; file_id: string; name: string; type?: string; kb_name?: string }>;
     attachments?: Array<{ id: string; name: string; modality: 'image' | 'audio' | 'video'; size: number }> }
-  state: { answer?: string; citations?: CitationReference[]; limitations?: string[]; options?: string[]; message?: string; usage?: Record<string, number>; answer_plan?: unknown }
+  state: { answer?: string; citations?: CitationReference[]; limitations?: string[]; options?: string[]; message?: string; usage?: Record<string, number>; answer_plan?: unknown; inputs?: PiInput[]; runtime_paused?: boolean }
 }
 export interface PiConfig {
   enabled: boolean
   default_model: string
   models: string[]
+  runtime?: 'core' | 'durable'
 }
 export const piTerminal = (status: PiStatus) => ['completed', 'partial', 'needs_input', 'cancelled', 'failed'].includes(status)
 export const piStatusLabel: Record<PiStatus, string> = {

@@ -33,7 +33,7 @@ class ModelTransport:
             # Actual concurrent requests are bounded by shared provider gates;
             # a global HTTP pool cap would make unrelated providers block each other.
             limits=httpx.Limits(max_connections=None, max_keepalive_connections=2 * provider_limit))
-        self._call_id = 0
+        self._call_id = min({0, *ledger._settled})
         self._embeddings = {}
         self._routes = {}
         self.provider_capacity = provider_capacity or ProviderCapacity(provider_limit)

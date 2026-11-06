@@ -12,6 +12,7 @@ import sqlite3
 import time
 import uuid
 from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 from .contracts import Evidence, RunEvent, TERMINAL_STATUSES
@@ -37,6 +38,7 @@ def fingerprint(value: Any) -> str:
 class RunStore:
     def __init__(self, path: Path | str):
         self.path = Path(path)
+        self._transaction = ContextVar(f"pi_transaction_{id(self)}", default=None)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connection() as db:
             db.execute("PRAGMA journal_mode=WAL")
@@ -66,11 +68,30 @@ class RunStore:
                     run_id TEXT NOT NULL REFERENCES pi_runs(id) ON DELETE CASCADE,
                     id TEXT NOT NULL, artifact_json TEXT NOT NULL, PRIMARY KEY(run_id, id)
                 );
+                CREATE TABLE IF NOT EXISTS pi_operations (
+                    run_id TEXT NOT NULL REFERENCES pi_runs(id) ON DELETE CASCADE,
+                    call_id TEXT NOT NULL, request_hash TEXT NOT NULL, name TEXT NOT NULL,
+                    result_json TEXT, PRIMARY KEY(run_id, call_id)
+                );
+                CREATE TABLE IF NOT EXISTS pi_inputs (
+                    run_id TEXT NOT NULL REFERENCES pi_runs(id) ON DELETE CASCADE,
+                    request_id TEXT NOT NULL, message TEXT NOT NULL, mode TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'queued', created_at REAL NOT NULL,
+                    PRIMARY KEY(run_id, request_id)
+                );
+                CREATE TABLE IF NOT EXISTS pi_model_attempts (
+                    run_id TEXT NOT NULL REFERENCES pi_runs(id) ON DELETE CASCADE,
+                    turn INTEGER NOT NULL, usage_json TEXT, PRIMARY KEY(run_id, turn)
+                );
             """)
         self.path.chmod(0o600)
 
     @contextmanager
     def _connection(self, *, write=False):
+        current = self._transaction.get()
+        if current is not None:
+            yield current
+            return
         db = sqlite3.connect(self.path, timeout=10)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys=ON")
@@ -84,6 +105,16 @@ class RunStore:
             raise
         finally:
             db.close()
+
+    @contextmanager
+    def atomic(self):
+        """Group synchronous ledger writes; callers must never await inside."""
+        with self._connection(write=True) as db:
+            token = self._transaction.set(db)
+            try:
+                yield
+            finally:
+                self._transaction.reset(token)
 
     @staticmethod
     def _decode(row):
@@ -214,8 +245,9 @@ class RunStore:
                    data: dict | None = None, owner: str | None = None):
         allowed = {
             "queued": {"running", "cancelling", "cancelled", "failed"},
-            "running": {"cancelling", "completed", "partial", "needs_input", "cancelled", "failed"},
+            "running": {"queued", "cancelling", "completed", "partial", "needs_input", "cancelled", "failed"},
             "cancelling": {"cancelled", "failed"},
+            "needs_input": {"cancelled"},
         }
         with self._connection(write=True) as db:
             row = self._row(db, run_id, owner)
@@ -281,14 +313,178 @@ class RunStore:
                 raise RunNotFound(artifact_id)
             return json.loads(row[0])
 
-    def recover_interrupted(self) -> int:
+    def begin_operation(self, run_id, call_id, name, args):
+        """Return a prior receipt, or mark intent before any external I/O."""
+        digest = fingerprint({"name": name, "args": args})
+        with self._connection(write=True) as db:
+            if self._row(db, run_id)["status"] != "running":
+                raise RunConflict("任务不再运行")
+            old = db.execute("SELECT * FROM pi_operations WHERE run_id=? AND call_id=?", (run_id, call_id)).fetchone()
+            if old:
+                if old["request_hash"] != digest:
+                    raise RunConflict("工具调用标识不能用于不同的参数")
+                return {"replayed": True, "result": json.loads(old["result_json"]) if old["result_json"] else None}
+            db.execute("INSERT INTO pi_operations VALUES (?,?,?,?,NULL)", (run_id, call_id, digest, name))
+            return {"replayed": False, "result": None}
+
+    def complete_operation(self, run_id, call_id, result):
+        with self._connection(write=True) as db:
+            row = self._row(db, run_id)
+            if row["status"] != "running":
+                raise RunConflict("任务不再运行")
+            serialized = canonical(result)
+            old = db.execute("SELECT result_json FROM pi_operations WHERE run_id=? AND call_id=?", (run_id, call_id)).fetchone()
+            if old is None or old[0] is not None and old[0] != serialized:
+                raise RunConflict("工具执行收据不存在或已完成")
+            db.execute("UPDATE pi_operations SET result_json=? WHERE run_id=? AND call_id=?", (serialized, run_id, call_id))
+            state = json.loads(row["state_json"])
+            state["recovery_failures"] = 0
+            if result.get("details", {}).get("terminal") and not result.get("isError"):
+                state["accepted_result"] = result["details"]
+            db.execute("UPDATE pi_runs SET state_json=? WHERE id=?", (canonical(state), run_id))
+
+    def operation_results(self, run_id):
+        with self._connection() as db:
+            self._row(db, run_id)
+            return [json.loads(row[0]) for row in db.execute(
+                "SELECT result_json FROM pi_operations WHERE run_id=? AND result_json IS NOT NULL ORDER BY rowid", (run_id,))]
+
+    def add_input(self, run_id, owner, request_id, message, mode):
+        with self._connection(write=True) as db:
+            row = self._row(db, run_id, owner)
+            if db.execute("SELECT 1 FROM pi_closed_sessions WHERE owner=? AND session_id=?", (owner, row["session_id"])).fetchone():
+                raise RunConflict("此会话已删除")
+            old = db.execute("SELECT * FROM pi_inputs WHERE run_id=? AND request_id=?", (run_id, request_id)).fetchone()
+            if old:
+                if old["message"] != message or old["mode"] != mode:
+                    raise RunConflict("同一个请求标识不能用于不同的补充")
+                return dict(old), False
+            if json.loads(row["config_json"]).get("runtime") != "durable":
+                raise RunConflict("此任务使用旧运行时，请在新任务中继续")
+            if mode != "reply" and json.loads(row["state_json"]).get("accepted_result"):
+                raise RunConflict("当前结果已提交，请在下一轮继续")
+            if mode == "reply" and row["status"] != "needs_input" or mode != "reply" and row["status"] not in {"queued", "running"}:
+                raise RunConflict("任务状态已变化，请刷新后继续")
+            now = time.time()
+            db.execute("INSERT INTO pi_inputs VALUES (?,?,?,?,?,?)", (run_id, request_id, message, mode, "queued", now))
+            if mode == "reply":
+                state = json.loads(row["state_json"])
+                for key in ("answer", "question", "options", "terminal", "outcome", "citations", "limitations", "answer_requirements", "answer_checks", "code", "message", "accepted_result"):
+                    state.pop(key, None)
+                state["submission_id"] = request_id
+                db.execute("UPDATE pi_runs SET status='queued',state_json=? WHERE id=?", (canonical(state), run_id))
+                self._append(db, run_id, "run.queued", {"status": "queued", "reason": "user_reply"})
+            self._append(db, run_id, "input.queued", {"request_id": request_id, "message": message, "mode": mode})
+            self._publish_inputs(db, run_id)
+            return {"run_id": run_id, "request_id": request_id, "message": message, "mode": mode, "status": "queued", "created_at": now}, True
+
+    def inputs(self, run_id, *, pending=False):
+        with self._connection() as db:
+            self._row(db, run_id)
+            return [dict(row) for row in db.execute("SELECT * FROM pi_inputs WHERE run_id=?" +
+                (" AND status='queued'" if pending else "") + " ORDER BY created_at,rowid", (run_id,))]
+
+    def acknowledge_input(self, run_id, request_id, status="accepted"):
+        with self._connection(write=True) as db:
+            if self._row(db, run_id)["status"] != "running":
+                raise RunConflict("任务不再运行")
+            row = db.execute("SELECT * FROM pi_inputs WHERE run_id=? AND request_id=?", (run_id, request_id)).fetchone()
+            if row is None or row["status"] in {"applied", "rejected"} or row["status"] == status:
+                return
+            db.execute("UPDATE pi_inputs SET status=? WHERE run_id=? AND request_id=?", (status, run_id, request_id))
+            self._append(db, run_id, f"input.{status}", {"request_id": request_id, "message": row["message"], "mode": row["mode"]})
+            self._publish_inputs(db, run_id)
+
+    def _publish_inputs(self, db, run_id):
+        state = json.loads(self._row(db, run_id)["state_json"])
+        state["inputs"] = [dict(item) for item in db.execute(
+            "SELECT request_id,message,mode,status,created_at FROM pi_inputs WHERE run_id=? ORDER BY created_at,rowid", (run_id,))]
+        db.execute("UPDATE pi_runs SET state_json=? WHERE id=?", (canonical(state), run_id))
+
+    def effective_request(self, run_id):
+        request = self.get(run_id)["request"]
+        inputs = [item for item in self.inputs(run_id) if item["status"] == "applied"]
+        if inputs:
+            request = {**request, "message": "\n\n".join([request["message"], *(item["message"] for item in inputs)])}
+        return request
+
+    def model_attempt(self, run_id, turn, usage=None, *, started=False):
+        with self._connection(write=True) as db:
+            self._row(db, run_id)
+            if started:
+                try:
+                    db.execute("INSERT INTO pi_model_attempts VALUES (?,?,NULL)", (run_id, turn))
+                except sqlite3.IntegrityError:
+                    raise RunConflict("重复的模型请求标识") from None
+            else:
+                db.execute("UPDATE pi_model_attempts SET usage_json=? WHERE run_id=? AND turn=? AND usage_json IS NULL",
+                           (canonical(usage or {}), run_id, turn))
+
+    def model_attempts(self, run_id):
+        with self._connection() as db:
+            return [{"turn": row[0], "usage": json.loads(row[1]) if row[1] is not None else None}
+                    for row in db.execute("SELECT turn,usage_json FROM pi_model_attempts WHERE run_id=?", (run_id,))]
+
+    def save_usage(self, run_id, usage):
+        with self._connection(write=True) as db:
+            row = self._row(db, run_id)
+            if row["status"] in TERMINAL_STATUSES:
+                return
+            state = json.loads(row["state_json"])
+            state["usage"] = usage
+            db.execute("UPDATE pi_runs SET state_json=? WHERE id=?", (canonical(state), run_id))
+
+    def pending_runs(self):
+        """Private recovery records; trusted owners are never returned by the API."""
+        with self._connection() as db:
+            return [(self._decode(row), row["owner"]) for row in db.execute(
+                "SELECT r.* FROM pi_runs r WHERE r.status='queued' AND NOT EXISTS "
+                "(SELECT 1 FROM pi_closed_sessions s WHERE s.owner=r.owner AND s.session_id=r.session_id)")
+                if json.loads(row["config_json"]).get("runtime") == "durable"]
+
+    def requeue_worker(self, run_id, usage):
+        with self.atomic():
+            run = self.get(run_id)
+            failures = run["state"].get("recovery_failures", 0) + 1
+            state = {"usage": usage, "recovery_failures": failures}
+            if failures >= 5:
+                state.update(code="restart_limit", message="工作进程多次中断且没有取得进展，已停止自动恢复。")
+                return self.transition(run_id, "failed", state=state, data=state)
+            return self.transition(run_id, "queued", state=state,
+                data={"reason": "worker_recovery", "message": "工作进程中断，正在恢复已保存的任务。"})
+
+    def recover_interrupted(self, *, resume_durable=False) -> int:
         """Only call while holding the host's exclusive supervisor lock."""
         with self._connection(write=True) as db:
-            rows = db.execute("SELECT id,status,state_json FROM pi_runs WHERE status IN ('queued','running','cancelling')").fetchall()
+            rows = db.execute("SELECT * FROM pi_runs WHERE status IN ('queued','running','cancelling')").fetchall()
             for row in rows:
+                state = json.loads(row["state_json"])
+                durable = json.loads(row["config_json"]).get("runtime") == "durable"
+                resumable = resume_durable and durable
+                closed = db.execute("SELECT 1 FROM pi_closed_sessions WHERE owner=? AND session_id=?", (row["owner"], row["session_id"])).fetchone()
+                if durable and not resume_durable and row["status"] != "cancelling" and not closed:
+                    # A temporary core rollback must not destroy recoverable
+                    # work, or consume its crash retry allowance.
+                    if not state.get("runtime_paused") or row["status"] != "queued":
+                        state["runtime_paused"] = True
+                        db.execute("UPDATE pi_runs SET status='queued',state_json=? WHERE id=?", (canonical(state), row["id"]))
+                        self._append(db, row["id"], "run.queued", {"status": "queued", "reason": "runtime_paused", "runtime_paused": True,
+                            "message": "当前运行时已切回 core；此任务已保留，切回 durable 后继续。"})
+                    continue
+                if resumable and row["status"] != "cancelling" and not closed and state.get("recovery_failures", 0) < 5:
+                    state.pop("runtime_paused", None)
+                    state["recovery_failures"] = state.get("recovery_failures", 0) + 1
+                    db.execute("UPDATE pi_runs SET status='queued',state_json=? WHERE id=?", (canonical(state), row["id"]))
+                    self._append(db, row["id"], "run.queued", {"status": "queued", "reason": "host_recovery", "runtime_paused": False,
+                        "message": "服务已恢复，正在继续已保存的任务。"})
+                    continue
                 status = "cancelled" if row["status"] == "cancelling" else "failed"
+                if closed:
+                    status = "cancelled"
                 detail = {"code": "host_restarted", "message": "服务重启，原任务已中断；已完成的行动和证据仍可查看。"}
-                state = {**json.loads(row["state_json"]), **detail}
+                if resumable and not closed and status != "cancelled":
+                    detail = {"code": "restart_limit", "message": "任务多次恢复后仍未取得进展，已停止重复重启。"}
+                state = {**state, **detail}
                 db.execute("UPDATE pi_runs SET status=?,state_json=? WHERE id=?", (status, canonical(state), row["id"]))
                 self._append(db, row["id"], f"run.{status}", {"status": status, **detail})
             return len(rows)

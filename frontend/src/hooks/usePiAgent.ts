@@ -8,7 +8,8 @@ import { applyPiEvent, initialPiTrace } from '@/lib/piTrace'
 import { piApi, watchPiRun } from '@/services/piAgent'
 import { piTerminal, type PiConfig } from '@/types/pi'
 import { restorePiMessages } from '@/lib/piHistory'
-import { activePiRun } from '@/lib/piSession'
+import { activePiRun, waitingPiRun } from '@/lib/piSession'
+import { submitPiInput } from '@/lib/piInputs'
 import { registerSessionWork } from '@/lib/sessionWork'
 
 export function usePiAgent(workspaceConfig?: PiConfig | null) {
@@ -17,25 +18,30 @@ export function usePiAgent(workspaceConfig?: PiConfig | null) {
   const watchers = useRef(new Map<string, AbortController>())
   const submitting = useRef(new Set<string>())
   const [failure, setFailure] = useState<{ sessionId: string; message: string } | null>(null)
+  const [watchRevision, setWatchRevision] = useState(0)
   const active = activePiRun(sessions, activeSessionId)
+  const waiting = waitingPiRun(sessions, activeSessionId)
 
   useEffect(() => {
     if (!activeSessionId) return
     let cancelled = false
     // Load from the durable run ledger even if this browser lost its cached
     // messages. This never replaces or delays a legacy history/stream request.
-    void piApi.list(activeSessionId).then(({ runs }) => {
-      if (cancelled || !runs.length) return
-      useChatStore.setState(state => ({ sessions: state.sessions.map(session => session.id === activeSessionId
-        ? { ...session, messages: restorePiMessages(session.messages, runs) } : session) }))
-    }).catch(() => {})
-    return () => { cancelled = true }
+    const refresh = () => { void piApi.list(activeSessionId).then(({ runs }) => {
+        if (cancelled || !runs.length) return
+        useChatStore.setState(state => ({ sessions: state.sessions.map(session => session.id === activeSessionId
+          ? { ...session, messages: restorePiMessages(session.messages, runs) } : session) }))
+      }).catch(() => {}) }
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => { cancelled = true; window.removeEventListener('focus', refresh) }
   }, [activeSessionId, workspaceConfig])
 
   useEffect(() => {
     for (const session of sessions) for (const message of session.messages) {
       const trace = message.pi
-      if (!trace || piTerminal(trace.status) || trace.connectionError || watchers.current.has(trace.runId)) continue
+      const pendingReplay = trace?.status === 'needs_input' && (trace.replayThrough || 0) > trace.seq
+      if (!trace || piTerminal(trace.status) && !pendingReplay || trace.connectionError || watchers.current.has(trace.runId)) continue
       const controller = new AbortController()
       watchers.current.set(trace.runId, controller)
       const current = () => useChatStore.getState().getSessionById(session.id)?.messages.find(m => m.id === message.id)
@@ -50,9 +56,12 @@ export function usePiAgent(workspaceConfig?: PiConfig | null) {
         const pi = current()?.pi
         if (pi && !controller.signal.aborted) useChatStore.getState().updateMessage(session.id, message.id, {
           pi: { ...pi, connectionError: cause instanceof Error ? cause.message : tr("过程连接中断") } })
-      }).finally(() => { watchers.current.delete(trace.runId) })
+      }).finally(() => {
+        watchers.current.delete(trace.runId)
+        if (!controller.signal.aborted) setWatchRevision(value => value + 1)
+      })
     }
-  }, [sessions])
+  }, [sessions, watchRevision])
 
   useEffect(() => {
     const streams = watchers.current
@@ -110,6 +119,17 @@ export function usePiAgent(workspaceConfig?: PiConfig | null) {
       message: cause instanceof Error ? cause.message : tr("取消请求失败，请重试") }) }
   }, [active])
 
-  return { sendMessage, cancel, isStreaming: Boolean(active), active,
+  const sendInput = useCallback(async (message: string) => {
+    if (workspaceConfig?.runtime === 'core') throw new Error(tr('此任务已暂停；恢复持续运行模式后可继续补充。'))
+    const state = useChatStore.getState()
+    const running = activePiRun(state.sessions, state.activeSessionId)
+    const paused = waitingPiRun(state.sessions, state.activeSessionId)
+    const target = running?.pi.runtime === 'durable' ? running : paused
+    if (!target) throw new Error(tr('此任务不支持持续补充，请新建任务。'))
+    setFailure(null)
+    await submitPiInput(target.pi.runId, message, paused && !running ? 'reply' : 'steer')
+  }, [workspaceConfig?.runtime])
+
+  return { sendMessage, sendInput, cancel, isStreaming: Boolean(active), active, waiting,
     error: failure?.sessionId === activeSessionId ? failure.message : null }
 }

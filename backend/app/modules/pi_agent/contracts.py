@@ -44,6 +44,20 @@ class RunRequest(BaseModel):
         return normalize_language(value)
 
 
+class RunInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    request_id: str = Field(min_length=8, max_length=200)
+    message: str = Field(min_length=1)
+    mode: Literal["steer", "reply"] = "steer"
+
+    @field_validator("message")
+    @classmethod
+    def nonblank_message(cls, value):
+        if not value.strip():
+            raise ValueError("补充内容不能为空")
+        return value
+
+
 class RunEvent(BaseModel):
     protocol_version: Literal[1] = 1
     run_id: str

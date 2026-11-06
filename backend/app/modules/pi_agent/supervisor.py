@@ -20,8 +20,9 @@ from .config import ROOT, resolve_model
 from .contracts import RunRequest, TERMINAL_STATUSES
 from .gateway import KnowledgeGateway
 from .media import MediaInspector
+from .media_observation_store import MediaObservationStore
 from .models import ModelTransport
-from .policy import AccessScope, UsageLedger, ToolError
+from .policy import AccessScope, UsageLedger, PersistentUsageLedger, ToolError
 from .store import RunStore, RunConflict
 from .tools import ToolSet, definitions
 from .admission import ProviderCapacity
@@ -39,10 +40,10 @@ def _fingerprint(value):
 def runtime_fingerprints(settings, worker, tool_definitions, *, prompt=None, model=None):
     """Reproducibility metadata only: no credential, endpoint or content snapshots."""
     runtime_files = [worker, *(ROOT / "agent-runtime" / "src" / name for name in
-        ("runtime.mjs", "transport.mjs", "proxy.mjs")), ROOT / "agent-runtime" / "package-lock.json",
+        ("runtime.mjs", "durable.mjs", "schema.mjs", "transport.mjs", "proxy.mjs")), ROOT / "agent-runtime" / "package-lock.json",
         *(Path(__file__).parent / name for name in ("supervisor.py", "admission.py", "models.py", "media.py",
             "tools.py", "gateway.py", "catalog.py", "plan.py", "policy.py", "contracts.py",
-            "media_cache.py", "payloads.py", "prompt_translations.json"))]
+            "media_cache.py", "media_observation_store.py", "query_vectors.py", "store.py", "payloads.py", "prompt_translations.json"))]
     hashes = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in runtime_files if path.is_file()}
     prompt_source = ROOT / "agent-runtime" / "src" / "prompts.mjs"
     public_settings = settings.model_dump(exclude={"model_api_key", "model_base_url", "api_token",
@@ -77,13 +78,15 @@ class PiSupervisor:
             self.lock.close()
             raise ToolError("supervisor_busy", "已有服务进程持有 Pi 任务账本；请使用单实例或为不同实例设置独立目录") from None
         self.store = RunStore(settings.data_dir / "runs.sqlite3")
-        self.store.recover_interrupted()
+        self.store.recover_interrupted(resume_durable=settings.runtime == "durable")
+        self.media_observations = MediaObservationStore(settings.data_dir / "media-observations.sqlite3")
         self.io_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pi-source")
         self.run_gate = asyncio.Semaphore(settings.max_concurrent_runs)
         self.search_gate = asyncio.Semaphore(settings.max_concurrent_searches)
         self.provider_capacity = ProviderCapacity(settings.max_concurrent_provider_requests)
         self.creation_lock = asyncio.Lock()
         self.jobs, self.processes = {}, {}
+        self.senders = {}
         self.closed = False
         if storage is None or vector_client is None:
             from app.core.config import settings as app_settings
@@ -98,6 +101,61 @@ class PiSupervisor:
             vector_client = vector_client or AsyncQdrantClient(**app_settings.get_qdrant_config(), timeout=12,
                 limits=__import__("httpx").Limits(max_connections=4, max_keepalive_connections=2))
         self.storage, self.vectors = storage, vector_client
+
+    def _schedule(self, run, request, owner, model, key):
+        run_id = run["id"]
+        if run_id in self.jobs or self.closed:
+            return
+        task = asyncio.create_task(self._run(run_id, request, owner, model, key))
+        self.jobs[run_id] = task
+        def settled(done):
+            if self.jobs.get(run_id) is done:
+                self.jobs.pop(run_id, None)
+            current = self.store.get(run_id)
+            if done.cancelled() and current["status"] not in TERMINAL_STATUSES:
+                if not (self.closed and current["config"].get("runtime") == "durable" and current["status"] != "cancelling"):
+                    self.store.transition(run_id, "cancelled", data={"message": "排队中的任务已取消"})
+            elif not done.cancelled():
+                done.exception()
+                if not self.closed and self.store.get(run_id)["status"] == "queued":
+                    asyncio.create_task(self.resume_pending())
+        task.add_done_callback(settled)
+
+    async def resume_pending(self):
+        if self.closed or not self.settings.enabled or self.settings.runtime != "durable":
+            return
+        async with self.creation_lock:
+            for run, owner in self.store.pending_runs():
+                if run["id"] in self.jobs:
+                    continue
+                try:
+                    request = RunRequest.model_validate(run["request"])
+                    model, key = resolve_model(self.registry, run["config"].get("model") or request.model, self.settings)
+                    self._schedule(run, request, owner, model, key)
+                except (ValueError, ToolError):
+                    self.store.transition(run["id"], "failed", state={"code": "recovery_configuration", "message": "当前模型或访问配置无法恢复此任务。"},
+                                          data={"code": "recovery_configuration", "message": "当前模型或访问配置无法恢复此任务。"})
+
+    async def submit_input(self, run_id, owner, value):
+        if self.closed:
+            raise ToolError("pi_unavailable", "服务正在关闭，请稍后重试")
+        if not self.settings.enabled or self.settings.runtime != "durable":
+            raise ToolError("pi_unavailable", "此任务已保留；请启用 durable 运行时后继续补充。")
+        async with self.creation_lock:
+            item, created = self.store.add_input(run_id, owner, value.request_id, value.message, value.mode)
+            sender = self.senders.get(run_id)
+            if created and sender and value.mode == "steer":
+                try:
+                    await sender({"type": "input", "request_id": value.request_id, "message": value.message, "mode": value.mode})
+                except (BrokenPipeError, ConnectionResetError):
+                    pass  # The committed input is resent when the worker opens.
+        if value.mode == "reply":
+            # A settled frame may still be draining when the user replies.
+            old_job = self.jobs.get(run_id)
+            if old_job:
+                await asyncio.shield(old_job)
+            await self.resume_pending()
+        return {"run": self.store.get(run_id, owner=owner), "input": item}
 
     @staticmethod
     async def _settle_io(future):
@@ -163,7 +221,7 @@ class PiSupervisor:
             # durable preparation phase before tools or model calls can begin.
             if self.settings.allowed_kb_ids is not None:
                 AccessScope.from_request(request, set(self.settings.allowed_kb_ids))
-            public = {"language": request.language, "engine": "pi", "protocol_version": 1, "model": model["name"], "provider": model["provider"],
+            public = {"language": request.language, "engine": "pi", "runtime": self.settings.runtime, "protocol_version": 1, "model": model["name"], "provider": model["provider"],
                       "thinking_enabled": self.settings.thinking_enabled,
                       "answer_checks_enabled": self.settings.answer_checks_enabled,
                       "answer_plan_enabled": self.settings.answer_plan_enabled,
@@ -173,14 +231,7 @@ class PiSupervisor:
                 definitions(self.settings.answer_checks_enabled, self.settings.answer_plan_enabled, request.language), model=model)
             run, created = self.store.create(owner=owner, request=request.model_dump(), config=public)
             if created:
-                task = asyncio.create_task(self._run(run["id"], request, owner, model, key))
-                self.jobs[run["id"]] = task
-                def settled(done):
-                    # asyncio can cancel a queued task before its coroutine starts.
-                    self.jobs.pop(run["id"], None)
-                    if done.cancelled() and self.store.get(run["id"])["status"] not in TERMINAL_STATUSES:
-                        self.store.transition(run["id"], "cancelled", data={"message": "排队中的任务已取消"})
-                task.add_done_callback(settled)
+                self._schedule(run, request, owner, model, key)
             return run
 
     async def _admit_preparation(self, ledger, emit):
@@ -264,6 +315,20 @@ class PiSupervisor:
             await self._admit_preparation(ledger, emit)
             attachments.append(await self.blocking(attachment_source, item, owner, self.settings))
         catalog = SourceCatalog([*catalog.sources.values(), *attachments], catalog.knowledge_bases)
+        saved = self.store.get(run_id)
+        if saved["config"].get("scope_ready"):
+            originals = [Source(**item) for item in self.store.artifact(run_id, "_sources")]
+            for original in originals:
+                current = catalog.get(original.id, scope)
+                if (current.version, current.bucket, current.object_path, current.modality) != (
+                        original.version, original.bucket, original.object_path, original.modality):
+                    raise ToolError("source_changed", "任务来源已变化，不能将新内容与旧证据混合续跑。请创建新任务。")
+            # Retain the full catalog for duplicate-file identity checks, while
+            # freezing the readable/searchable file set admitted originally.
+            frozen = saved["config"]["scope"]
+            references = frozenset((item["kb_id"], item["file_id"]) for item in frozen["reference_files"])
+            files = frozenset((s.kb_id, s.file_id) for s in originals if not s.attachment and scope.can_search(s.kb_id, s.file_id))
+            scope = AccessScope(scope.allowed_kbs, frozenset(kb for kb, _ in files), files, references)
         from app.modules.chat.references import resolve_message_references
         refs = [catalog.get(source_id(f.kb_id, f.file_id), scope) for f in request.reference_files]
         try:
@@ -273,8 +338,12 @@ class PiSupervisor:
                 [{"id": s.attachment_id, "name": s.name, "type": s.modality, "index": i + 1} for i, s in enumerate(attachments)], max_mentions=None)
         except ValueError as error:
             raise ToolError("invalid_reference", str(error)) from None
-        self.store.finish_preparation(run_id, scope=scope.public(), sources=[asdict(s) for s in catalog.visible(scope)],
-                                      duration_ms=round((time.monotonic() - started) * 1000))
+        if saved["config"].get("scope_ready"):
+            emit("sources.completed", {"message": "已核验原任务来源版本，继续使用已保存的范围。", "scope": scope.public(),
+                "source_count": len(originals), "duration_ms": round((time.monotonic() - started) * 1000)}, span_id="sources")
+        else:
+            self.store.finish_preparation(run_id, scope=scope.public(), sources=[asdict(s) for s in catalog.visible(scope)],
+                                          duration_ms=round((time.monotonic() - started) * 1000))
         return catalog, scope, annotated, bindings
 
     async def _run(self, run_id, request, owner, model, key):
@@ -284,22 +353,36 @@ class PiSupervisor:
     async def _run_localized(self, run_id, request, owner, model, key):
         ledger, transport, process, media = None, None, None, None
         model_slots = {}
+        saved = self.store.get(run_id)
+        durable = saved["config"].get("runtime") == "durable"
+        run_settings = self.settings.model_copy(update={
+            name: saved["config"].get(name, getattr(self.settings, name))
+            for name in ("answer_checks_enabled", "answer_plan_enabled", "thinking_enabled")})
+        run_settings = run_settings.model_copy(update={
+            f"{purpose}_model": value for purpose, value in saved["config"].get("tool_models", {}).items()
+            if purpose in {"embedding", "vision", "audio"}})
         try:
             async with self.run_gate:
                 if self.store.get(run_id)["status"] == "cancelling":
                     raise asyncio.CancelledError
-                ledger = UsageLedger()
+                ledger = PersistentUsageLedger(self.store, run_id) if durable else UsageLedger()
                 self.store.transition(run_id, "running", data={"model": model["name"]})
                 def emit(event, data, **spans):
                     return self.store.append(run_id, event, self._redact(data), **spans)
+                if accepted := saved["state"].get("accepted_result"):
+                    state = {**accepted, "usage": ledger.snapshot()}
+                    self.store.transition(run_id, accepted["terminal"], state=state, data=state)
+                    return
                 catalog, scope, annotated, bindings = await self._prepare(run_id, request, owner, ledger, emit)
-                transport = ModelTransport(self.registry, self.settings, ledger, emit, provider_capacity=self.provider_capacity)
+                transport = ModelTransport(self.registry, run_settings, ledger, emit, provider_capacity=self.provider_capacity)
                 gateway = KnowledgeGateway(catalog, scope, self.vectors, transport, self.search_gate,
-                    annotate_text_origins=self.settings.answer_checks_enabled)
-                media = MediaInspector(catalog, self.storage, transport, ledger, self.settings, self.blocking)
+                    annotate_text_origins=run_settings.answer_checks_enabled)
+                media = MediaInspector(catalog, self.storage, transport, ledger, run_settings, self.blocking,
+                    observation_store=self.media_observations,
+                    cache_namespace=_fingerprint({"owner": owner, "scope": self.store.get(run_id)["config"]["scope"]}))
                 toolset = ToolSet(run_id, self.store, catalog, scope, ledger, gateway, media, emit, self.blocking,
-                                  answer_checks_enabled=self.settings.answer_checks_enabled,
-                                  answer_plan_enabled=self.settings.answer_plan_enabled)
+                                  answer_checks_enabled=run_settings.answer_checks_enabled,
+                                  answer_plan_enabled=run_settings.answer_plan_enabled)
                 inputs = [s.public(scope) for s in catalog.visible(scope) if s.attachment or (s.kb_id, s.file_id) in scope.references]
                 history = [{"role": h.get("role"), "content": str(h.get("content", ""))} for h in request.history
                            if h.get("role") in {"user", "assistant"}]
@@ -308,10 +391,18 @@ class PiSupervisor:
                     "accessible_knowledge_bases": [{"id": k, "name": v} for k, v in catalog.knowledge_bases.items() if k in scope.allowed_kbs],
                     "history_for_context_only_not_evidence": history}, ensure_ascii=False)
                 config = {"language": request.language, "run_id": run_id, "model": model, "api_key": key,
-                          "thinking_level": "medium" if self.settings.thinking_enabled else "off",
-                          "answer_checks_enabled": self.settings.answer_checks_enabled,
-                          "answer_plan_enabled": self.settings.answer_plan_enabled,
-                          "tools": definitions(self.settings.answer_checks_enabled, self.settings.answer_plan_enabled, request.language), "prompt": prompt}
+                          "thinking_level": "medium" if run_settings.thinking_enabled else "off",
+                          "answer_checks_enabled": run_settings.answer_checks_enabled,
+                          "answer_plan_enabled": run_settings.answer_plan_enabled,
+                          "tools": definitions(run_settings.answer_checks_enabled, run_settings.answer_plan_enabled, request.language), "prompt": prompt}
+                if durable:
+                    directory = self.settings.data_dir / "durable"
+                    directory.mkdir(mode=0o700, exist_ok=True)
+                    submission = saved["state"].get("submission_id", run_id)
+                    reply = next((item for item in self.store.inputs(run_id) if item["request_id"] == submission), None)
+                    config.update(runtime="durable", storage_path=str(directory / f"{run_id}.sqlite3"),
+                        submission_id=submission, model_turn_offset=max({0, *ledger._settled}),
+                        **({"prompt": reply["message"], "input_mode": "reply"} if reply else {}))
                 emit("runtime.configured", runtime_fingerprints(self.settings, self.worker, config["tools"], prompt=prompt, model=model))
                 env = _worker_environment()
                 process = await asyncio.create_subprocess_exec(self.settings.node_binary, str(self.worker),
@@ -321,8 +412,15 @@ class PiSupervisor:
                 result = await self._pipe(process, config, toolset, ledger, emit, model_slots=model_slots)
                 if self.store.get(run_id)["status"] == "cancelling":
                     raise asyncio.CancelledError
+                if durable and result.get("suspended"):
+                    state = {"usage": ledger.snapshot()}
+                    self.store.transition(run_id, "queued", state=state, data={"reason": "host_shutdown"})
+                    return
                 # A worker cannot invent an accepted final answer in its settled frame.
                 accepted = toolset.final_result
+                if not accepted and durable and result.get("code") == "worker_exit":
+                    self.store.requeue_worker(run_id, ledger.snapshot())
+                    return
                 if accepted:
                     status, state = accepted["terminal"], accepted
                 else:
@@ -335,7 +433,12 @@ class PiSupervisor:
                      "usage": ledger.snapshot() if ledger else {}}
             current = self.store.get(run_id)["status"]
             if current not in TERMINAL_STATUSES:
-                self.store.transition(run_id, "cancelled", state=state, data=state)
+                if self.closed and durable and current != "cancelling":
+                    self.store.save_usage(run_id, ledger.snapshot() if ledger else {})
+                    if current == "running":
+                        self.store.transition(run_id, "queued", data={"reason": "host_shutdown"})
+                else:
+                    self.store.transition(run_id, "cancelled", state=state, data=state)
         except Exception as error:
             code = error.code if isinstance(error, ToolError) else "runtime_failed"
             message = str(error) if isinstance(error, ToolError) else "Pi 运行服务未能完成任务，请查看已保存的过程并重试。"
@@ -363,8 +466,8 @@ class PiSupervisor:
                     if transport:
                         await transport.close()
                 finally:
-                    self.jobs.pop(run_id, None)
                     self.processes.pop(run_id, None)
+                    self.senders.pop(run_id, None)
 
     async def _pipe(self, process, config, toolset, ledger, emit, *, model_slots):
         write_lock, calls = asyncio.Lock(), set()
@@ -419,6 +522,11 @@ class PiSupervisor:
                 await send({"type": "response", "id": message["id"], "error": str(error)})
         try:
             await send({"type": "start", "config": config})
+            self.senders[config["run_id"]] = send
+            if config.get("runtime") == "durable":
+                for item in self.store.inputs(config["run_id"]):
+                    if item["status"] in {"queued", "accepted"} and item["mode"] == "steer":
+                        await send({"type": "input", **{key: item[key] for key in ("request_id", "message", "mode")}})
             async def frames():
                 # Streaming transport chunks are not a maximum response size.
                 pending = bytearray()
@@ -433,7 +541,11 @@ class PiSupervisor:
                     yield json.loads(pending)
             async for message in frames():
                 if message.get("type") == "event":
-                    if message.get("event_type") in WORKER_EVENTS:
+                    if message.get("event_type") in {"input.accepted", "input.applied", "input.rejected"}:
+                        data = message.get("data") or {}
+                        self.store.acknowledge_input(config["run_id"], data.get("request_id"),
+                            message["event_type"].split(".")[1])
+                    elif message.get("event_type") in WORKER_EVENTS:
                         event, data = message["event_type"], message.get("data") or {}
                         emit(event, data, span_id=f"model:{data['turn']}" if "turn" in data else None)
                 elif message.get("type") == "request":
@@ -450,6 +562,8 @@ class PiSupervisor:
                     if calls:
                         await asyncio.gather(*calls)
                     return message.get("result") or {}
+                elif message.get("type") == "suspended":
+                    return {"suspended": True}
             return {"code": "worker_exit", "message": "Pi 工作进程提前退出，未提交有效回答。"}
         finally:
             for task in calls:
@@ -460,6 +574,9 @@ class PiSupervisor:
 
     async def cancel(self, run_id, owner):
         run = self.store.get(run_id, owner=owner)
+        if run["status"] == "needs_input" and run["config"].get("runtime") == "durable":
+            self.store.transition(run_id, "cancelled", owner=owner)
+            return self.store.get(run_id, owner=owner)
         if run["status"] in TERMINAL_STATUSES or run["status"] == "cancelling":
             return run
         self.store.transition(run_id, "cancelling", owner=owner)
@@ -488,8 +605,14 @@ class PiSupervisor:
     async def close(self):
         self.closed = True
         jobs = list(self.jobs.values())
+        shutdowns = [sender({"type": "shutdown"}) for run_id, sender in list(self.senders.items())
+                     if self.store.get(run_id)["config"].get("runtime") == "durable"]
+        if shutdowns:
+            await asyncio.gather(*shutdowns, return_exceptions=True)
+            await asyncio.wait(jobs, timeout=2)
         for task in jobs:
-            task.cancel()
+            if not task.done():
+                task.cancel()
         await asyncio.gather(*jobs, return_exceptions=True)
         await self.vectors.close()
         self.io_pool.shutdown(wait=True, cancel_futures=True)

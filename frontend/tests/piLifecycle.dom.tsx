@@ -92,3 +92,43 @@ test('switching sessions while create completes preserves the original task and 
   assert.equal(store.getState().getSessionById(second)!.messages.length, 0)
   assert.equal(store.getState().activeSessionId, second)
 })
+
+test('reply restarts event watching on the same run and retains its evidence and messages', async t => {
+  const { initialPiTrace } = await import('../src/lib/piTrace')
+  let sessionId = ''
+  const paused: PiRun = { id: 'same-run', status: 'needs_input', seq: 2, session_id: 's', created_at: 1,
+    config: { model: 'fixture', runtime: 'durable' }, request: { message: 'Compare', client_request_id: 'first' },
+    state: { answer: 'Which year?', options: ['2026'] } }
+  let input: { request_id: string; message: string; mode: 'reply' | 'steer' }
+  const cursors: string[] = []
+  api.create = async () => { throw new Error('Continuing must not create another run') }
+  api.input = async (id, value) => {
+    assert.equal(id, 'same-run'); input = value
+    return { run: { ...paused, status: 'queued', seq: 4 }, input: { ...value, status: 'accepted' } }
+  }
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    cursors.push(url)
+    return new Response([
+      ['input.accepted', input], ['run.queued', { reason: 'user_reply' }], ['run.running', {}],
+      ['input.applied', input], ['run.completed', { answer: 'The 2026 answer', citations: [] }],
+    ].map(([type, data], index) => `data: ${JSON.stringify({ protocol_version: 1, run_id: 'same-run', event_id: String(index + 3),
+      seq: index + 3, timestamp: index + 3, type, data })}\n\n`).join(''))
+  })
+  await act(async () => {
+    sessionId = store.getState().createSession()
+    store.getState().addMessage(sessionId, { role: 'user', content: 'Compare' })
+    store.getState().addMessage(sessionId, { role: 'assistant', content: 'Which year?', pi: { ...initialPiTrace(paused),
+      status: 'needs_input', seq: 2, evidence: [{ id: 1, file_name: 'source', modality: 'doc', observation: 'parsed_text', locator: {} }] } })
+  })
+  assert.ok(hook.waiting)
+  await act(async () => { await hook.sendInput('2026') })
+  const messages = store.getState().getSessionById(sessionId)!.messages
+  assert.equal(messages.length, 2)
+  assert.equal(messages[1].pi!.runId, 'same-run')
+  assert.equal(messages[1].pi!.seq, 7)
+  assert.equal(messages[1].pi!.evidence.length, 1)
+  assert.equal(messages[1].content, 'The 2026 answer')
+  assert.equal(messages[1].pi!.inputs?.[0].status, 'applied')
+  assert.equal(cursors.length, 1)
+  assert.match(cursors[0], /after=2/)
+})

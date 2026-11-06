@@ -50,6 +50,8 @@ async def _app_lifespan(app: FastAPI):
     get_setup_service()  # Recover a persisted interrupted preparation immediately.
     from app.modules.collection.service import get_collection_service, stop_collection_service
     get_collection_service()  # Retain receipts and mark interrupted collection runs.
+    from app.api.pi_agent import resume_pi_supervisor
+    await resume_pi_supervisor()
     try:
         yield
     finally:

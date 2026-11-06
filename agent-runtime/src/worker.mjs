@@ -1,6 +1,7 @@
-/** One authenticated host pipe, one Pi run, no filesystem/shell/discovered tools. */
+/** One authenticated host pipe and Pi run; no filesystem, shell or discovered tools. */
 import { createInterface } from 'node:readline';
 import { createRuntime } from './runtime.mjs';
+import { createDurableRuntime } from './durable.mjs';
 import { installProxyFromEnv } from './proxy.mjs';
 
 installProxyFromEnv();
@@ -12,6 +13,9 @@ let launched = false;
 let output = Promise.resolve();
 let buffered;
 let flushTimer;
+let shuttingDown = false;
+let settled = false;
+let hostClosed = false;
 
 function write(value) {
   // Honor pipe backpressure and preserve events even when the browser is disconnected.
@@ -36,7 +40,7 @@ async function emit(eventType, data) {
     if (buffered) buffered.data.delta += data.delta;
     else buffered = { type: 'event', event_type: eventType, data: { ...data } };
     if (buffered.data.delta.length >= 100) await flushDelta();
-    else if (!flushTimer) flushTimer = setTimeout(() => { flushDelta().catch(() => runtime?.abort()); }, 70);
+    else if (!flushTimer) flushTimer = setTimeout(() => { flushDelta().catch(() => runtime?.shutdown()); }, 70);
     return;
   }
   await flushDelta();
@@ -44,6 +48,7 @@ async function emit(eventType, data) {
 }
 
 function callHost(method, params, signal) {
+  if (hostClosed) return Promise.reject(new Error('宿主连接已关闭'));
   if (signal?.aborted) return Promise.reject(new Error('任务已取消'));
   const id = String(++counter);
   return new Promise((resolve, reject) => {
@@ -71,20 +76,30 @@ lines.on('line', (line) => {
       if (message.error) request.reject(new Error(message.error));
       else request.resolve(message.result);
     } else if (message.type === 'cancel') {
-      runtime?.abort();
+      Promise.resolve(runtime?.abort()).catch(() => {});
+    } else if (message.type === 'shutdown') {
+      shuttingDown = true;
+      Promise.resolve(runtime?.shutdown()).catch(() => {});
+    } else if (message.type === 'input') {
+      Promise.resolve(runtime?.input(message)).catch(error => emit('input.rejected', {
+        request_id: message.request_id, message: String(error.message).slice(0, 1000),
+      })).catch(() => {});
     } else if (message.type === 'start' && !launched) {
       launched = true;
-      runtime = createRuntime(message.config, {
+      runtime = (message.config.runtime === 'durable' ? createDurableRuntime : createRuntime)(message.config, {
         callHost, emit,
       });
       runtime.run().then(async (result) => {
         await flushDelta();
-        await write({ type: 'settled', result });
+        settled = true;
+        await write(shuttingDown ? { type: 'suspended', run_id: message.config.run_id } : { type: 'settled', result });
         lines.close();
         process.stdin.destroy();
       }).catch(async (error) => {
         await flushDelta();
-        await write({ type: 'settled', result: { terminal: 'failed', code: 'worker_error', message: String(error.message).slice(0, 2000) } });
+        settled = true;
+        await write(shuttingDown ? { type: 'suspended', run_id: message.config.run_id }
+          : { type: 'settled', result: { terminal: 'failed', code: 'worker_error', message: String(error.message).slice(0, 2000) } });
         lines.close();
         process.stdin.destroy();
       });
@@ -96,9 +111,16 @@ lines.on('line', (line) => {
     process.stdin.destroy();
   }
 });
-lines.on('close', () => {
-  runtime?.abort();
+lines.on('close', async () => {
+  // Losing the host or stopping the service leaves durable tasks pending.
+  // Only the explicit cancel protocol is a permanent user cancellation.
+  hostClosed = true;
+  const closing = !settled ? (shuttingDown = true, runtime?.shutdown?.() ?? runtime?.abort()) : undefined;
   for (const request of pending.values()) request.reject(new Error('宿主连接已关闭'));
   pending.clear();
+  await closing;
 });
-process.on('SIGTERM', () => { runtime?.abort(); lines.close(); process.stdin.destroy(); });
+process.on('SIGTERM', () => {
+  shuttingDown = true;
+  Promise.resolve(runtime?.shutdown?.() ?? runtime?.abort()).finally(() => { lines.close(); process.stdin.destroy(); });
+});

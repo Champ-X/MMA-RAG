@@ -118,3 +118,51 @@ class UsageLedger:
                 "media_input_bytes": self.media_input_bytes, "media_seconds": self.media_seconds,
                 "tool_output_chars": self.tool_output_chars,
                 "duration_ms": round((time.monotonic() - self.started) * 1000)}
+
+
+class PersistentUsageLedger(UsageLedger):
+    """Keep attempt identities and unknown receipts across worker restarts."""
+    def __init__(self, store, run_id):
+        super().__init__()
+        self.store, self.run_id = store, run_id
+        previous = store.get(run_id)["state"].get("usage", {})
+        for key in ("tool_calls", "searches", "media_calls", "media_input_bytes", "media_seconds", "tool_output_chars"):
+            setattr(self, key, previous.get(key, 0))
+        self.started -= previous.get("duration_ms", 0) / 1000
+        for attempt in store.model_attempts(run_id):
+            self.model_requests += 1
+            self._settled.add(attempt["turn"])
+            total = (attempt["usage"] or {}).get("totalTokens")
+            if isinstance(total, (int, float)) and total > 0:
+                self.model_tokens += int(total)
+            else:
+                self.unknown_usage_requests += 1
+
+    def start_model(self, turn):
+        if turn in self._settled or turn in self._pending:
+            raise ToolError("duplicate_model_request", translate_prompt("重复的模型请求标识"))
+        with self.store.atomic():
+            self.store.model_attempt(self.run_id, turn, started=True)
+            result = super().start_model(turn)
+            self.store.save_usage(self.run_id, self.snapshot())
+        return result
+
+    def settle_model(self, turn, usage):
+        if turn not in self._pending:
+            return
+        with self.store.atomic():
+            self.store.model_attempt(self.run_id, turn, usage)
+            super().settle_model(turn, usage)
+            self.store.save_usage(self.run_id, self.snapshot())
+
+    def record_tool(self, name):
+        super().record_tool(name)
+        self.store.save_usage(self.run_id, self.snapshot())
+
+    def account_output(self, chars):
+        super().account_output(chars)
+        self.store.save_usage(self.run_id, self.snapshot())
+
+    def record_media(self, size, seconds):
+        super().record_media(size, seconds)
+        self.store.save_usage(self.run_id, self.snapshot())

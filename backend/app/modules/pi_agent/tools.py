@@ -16,7 +16,7 @@ from .language import translate_prompt, translate_schema
 from .answers import assess_answer, citation_errors, compact_assessment, media_target_errors, repair_feedback
 from .policy import ToolError
 from .requirements import apply_requirements, bind_requirements
-from .store import fingerprint
+from .store import fingerprint, RunConflict
 from .tables import query_table
 from .payloads import agent_evidence, source_navigation
 
@@ -42,6 +42,8 @@ class ListSources(Args):
 class Search(Args):
     query: str = Field(min_length=1)
     mode: Literal["hybrid", "exact"] = "hybrid"
+    retrieval_strategy: Literal["text", "native"] = Field(default="text",
+        description="text检索原文、转写与描述；native额外召回图片视觉或音频听觉特征，适合构图、色彩、音色等问题。原生索引或模型未就绪时回退文本；命中后仍须inspect_media核实。")
     modalities: list[Literal["doc", "image", "audio", "video"]] = Field(default_factory=lambda: ["doc", "image", "audio", "video"], min_length=1)
     knowledge_base_ids: list[str] = Field(default_factory=list)
     source_ids: list[Annotated[str, Field(min_length=1)]] = Field(default_factory=list,
@@ -268,6 +270,12 @@ class ToolSet:
         self.calls = set()
         self.answer_requirements = store.get(run_id)["state"].get("answer_requirements") if answer_checks_enabled else None
         self.answer_plan = store.get(run_id)["state"].get("answer_plan") if answer_plan_enabled else None
+        self.durable = store.get(run_id)["config"].get("runtime") == "durable"
+        if self.durable:
+            delivered_ids = {number for result in store.operation_results(run_id)
+                             for number in result.get("details", {}).get("evidence_ids", [])}
+            self.delivered = {e.id: e for e in store.evidence(run_id) if e.id in delivered_ids}
+            self.final_result = store.get(run_id)["state"].get("accepted_result")
 
     def citation(self, evidence):
         source = self.catalog.get(evidence.source_id, self.scope)
@@ -292,6 +300,32 @@ class ToolSet:
 
     async def execute(self, call_id, name, raw):
         span, started = f"tool:{call_id}", time.monotonic()
+        if self.durable:
+            try:
+                receipt = self.store.begin_operation(self.run_id, call_id, name, raw)
+            except RunConflict as error:
+                return self._error(name, span, started, ToolError("operation_conflict", str(error)), executed=False)
+            if receipt["result"] is not None:
+                return receipt["result"]
+            if call_id in self.calls:
+                return self._error(name, span, started, ToolError("invalid_tool", translate_prompt("未知工具或重复调用标识")), executed=False)
+            if receipt["replayed"] and name == "inspect_media" and call_id not in self.calls:
+                # The previous process may have paid for an unacknowledged
+                # provider request. Let the model decide its next action.
+                with self.store.atomic():
+                    result = self._error(name, span, started, ToolError("operation_interrupted",
+                        translate_prompt("媒体观察在服务中断前未确认完成；已保存的观察仍可复用，本次不自动重复调用模型。")), executed=False)
+                    self.store.complete_operation(self.run_id, call_id, result)
+                return result
+        return await self._execute(call_id, name, raw, span, started)
+
+    def _receipt(self, call_id, result):
+        if self.durable:
+            self.store.complete_operation(self.run_id, call_id, result)
+            self.store.save_usage(self.run_id, self.ledger.snapshot())
+        return result
+
+    async def _execute(self, call_id, name, raw, span, started):
         try:
             if self.final_result:
                 raise ToolError("already_submitted", translate_prompt("任务结果已经提交"))
@@ -308,47 +342,68 @@ class ToolSet:
             self.calls.add(call_id)
             self.ledger.record_tool(name)
         except (ToolError, ValidationError) as error:
-            return self._error(name, span, started, error, executed=False)
+            with self.store.atomic():
+                return self._receipt(call_id, self._error(name, span, started, error, executed=False))
         self.emit("tool.started", {"name": name, "args": args, "tool_call_id": call_id}, span_id=span)
+        committing = False
+        delivered_before = None
+        output_chars_before = None
         try:
             result, observations, terminal = await self._dispatch(name, args, span)
-            # No await between measuring prospective IDs and registration.
-            first_number = self.store.next_evidence_id(self.run_id) if observations else 0
-            size = self._output_size(result, observations, first_number)
-            self.ledger.account_output(size)
-            if name == "update_answer_plan":
-                self.answer_plan = self.store.record_answer_plan(self.run_id, result["answer_plan"], parent_span_id=span)
-            if name == "set_answer_requirements":
-                # No await between charging output and committing the immutable
-                # requirements. Failed/oversized tool results cannot register them.
-                self.answer_requirements = self.store.record_answer_requirements(self.run_id,
-                    result["answer_requirements"], parent_span_id=span)
-            assigned = [self.store.add_evidence(self.run_id, e) for e in observations]
-            output = {**result, **({"evidence": [self.evidence_payload(e) for e in assigned]} if assigned else {})}
-            artifact = "tool_" + fingerprint(call_id)[:24]
-            self.store.put_artifact(self.run_id, artifact, output)
-            self.delivered.update({e.id: e for e in assigned})
-            details = {"artifact_id": artifact, "evidence_ids": [e.id for e in assigned], **(terminal or {})}
-            if name == "set_answer_requirements":
-                details["answer_requirements"] = self.answer_requirements
-            self.emit("tool.completed", {"name": name, "tool_call_id": call_id, "artifact_id": artifact,
-                      "evidence_ids": [e.id for e in assigned], "status": result.get("status", "ok"),
-                      "duration_ms": round((time.monotonic() - started) * 1000)}, span_id=span)
-            if self.answer_checks_enabled and name == "check_answer":
-                # Both the full input and exact assessment are durable now.
-                # This attests storage, not semantic correctness or acceptance.
-                details["checked_answer_span_id"] = span
-            if terminal:
-                self.final_result = terminal
-                self.emit("answer.accepted" if name == "submit_answer" else "question.accepted", terminal, span_id=span)
-            return {"content": [{"type": "text", "text": json.dumps(output, ensure_ascii=False)}], "details": details}
+            committing = True
+            delivered_before = dict(self.delivered)
+            output_chars_before = self.ledger.tool_output_chars
+            with self.store.atomic():
+                # No await between measuring prospective IDs and registration.
+                first_number = self.store.next_evidence_id(self.run_id) if observations else 0
+                size = self._output_size(result, observations, first_number)
+                self.ledger.account_output(size)
+                if name == "update_answer_plan":
+                    self.answer_plan = self.store.record_answer_plan(self.run_id, result["answer_plan"], parent_span_id=span)
+                if name == "set_answer_requirements":
+                    # No await between charging output and committing the immutable
+                    # requirements. Failed/oversized tool results cannot register them.
+                    self.answer_requirements = self.store.record_answer_requirements(self.run_id,
+                        result["answer_requirements"], parent_span_id=span)
+                assigned = [self.store.add_evidence(self.run_id, e) for e in observations]
+                output = {**result, **({"evidence": [self.evidence_payload(e) for e in assigned]} if assigned else {})}
+                artifact = "tool_" + fingerprint(call_id)[:24]
+                self.store.put_artifact(self.run_id, artifact, output)
+                self.delivered.update({e.id: e for e in assigned})
+                details = {"artifact_id": artifact, "evidence_ids": [e.id for e in assigned], **(terminal or {})}
+                if name == "set_answer_requirements":
+                    details["answer_requirements"] = self.answer_requirements
+                self.emit("tool.completed", {"name": name, "tool_call_id": call_id, "artifact_id": artifact,
+                          "evidence_ids": [e.id for e in assigned], "status": result.get("status", "ok"),
+                          "duration_ms": round((time.monotonic() - started) * 1000)}, span_id=span)
+                if self.answer_checks_enabled and name == "check_answer":
+                    # Both the full input and exact assessment are durable now.
+                    # This attests storage, not semantic correctness or acceptance.
+                    details["checked_answer_span_id"] = span
+                if terminal:
+                    self.final_result = terminal
+                    self.emit("answer.accepted" if name == "submit_answer" else "question.accepted", terminal, span_id=span)
+                return self._receipt(call_id, {"content": [{"type": "text", "text": json.dumps(output, ensure_ascii=False)}], "details": details})
         except asyncio.CancelledError:
             self.emit("tool.cancelled", {"name": name, "duration_ms": round((time.monotonic() - started) * 1000)}, span_id=span)
             raise
         except (ToolError, ValidationError, asyncio.TimeoutError) as error:
-            return self._error(name, span, started, error, executed=True)
+            with self.store.atomic():
+                return self._receipt(call_id, self._error(name, span, started, error, executed=True))
         except Exception:
-            return self._error(name, span, started, ToolError("tool_failed", translate_prompt("工具执行失败，尚未取得有效结果"), retryable=True), executed=True)
+            if committing:
+                # A failed durable commit must stop the run, never turn an
+                # uncommitted answer into a host-accepted in-memory result.
+                state = self.store.get(self.run_id)["state"]
+                self.final_result = state.get("accepted_result")
+                self.answer_plan = state.get("answer_plan")
+                self.answer_requirements = state.get("answer_requirements")
+                self.delivered = delivered_before
+                self.ledger.tool_output_chars = output_chars_before
+                if self.durable:
+                    raise
+            with self.store.atomic():
+                return self._receipt(call_id, self._error(name, span, started, ToolError("tool_failed", translate_prompt("工具执行失败，尚未取得有效结果"), retryable=True), executed=True))
 
     def _error(self, name, span, started, error, *, executed):
         code = error.code if isinstance(error, ToolError) else "invalid_arguments" if isinstance(error, ValidationError) else "tool_timeout"
@@ -378,6 +433,9 @@ class ToolSet:
         return {"isError": True, "content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False)}], "details": details}
 
     async def _dispatch(self, name, args, span):
+        if self.durable and name in {"submit_answer", "ask_user"} and any(
+                item["mode"] == "steer" and item["status"] in {"queued", "accepted"} for item in self.store.inputs(self.run_id)):
+            raise ToolError("pending_user_input", translate_prompt("用户已补充要求；请先读取并处理补充，再提交答案。"))
         if name == "update_answer_plan":
             from .plan import bind_plan, plan_payload
             previous = {item["id"]: item for item in (self.answer_plan or {}).get("items", [])}
@@ -394,11 +452,11 @@ class ToolSet:
                 for identity in item.get("research_state", {}).get("current_candidates", []):
                     self.catalog.get(identity, self.scope)
                 complete.append(item)
-            plan = bind_plan(complete, self.store.get(self.run_id)["request"], self.answer_plan, self.delivered,
+            plan = bind_plan(complete, self.store.effective_request(self.run_id), self.answer_plan, self.delivered,
                              retained_spans=args["retained_spans"], revision_reason=args["revision_reason"])
             return plan_payload(plan, self.delivered, checked=self.answer_checks_enabled), [], None
         if name == "set_answer_requirements":
-            requirements = bind_requirements(args, self.store.get(self.run_id)["request"])
+            requirements = bind_requirements(args, self.store.effective_request(self.run_id))
             if self.answer_requirements is not None and self.answer_requirements != requirements:
                 raise ToolError("answer_requirements_locked", translate_prompt("本轮回答要求已经登记，不能因草稿超长而解除或提高上限。"))
             return {"status": "recorded", "answer_requirements": requirements}, [], None

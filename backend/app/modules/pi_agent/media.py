@@ -9,8 +9,10 @@ import base64
 import io
 import inspect as inspect_module
 import json
+import logging
 import math
 from pathlib import Path
+import sqlite3
 import tempfile
 
 from PIL import Image, ImageOps
@@ -22,6 +24,7 @@ from .policy import ToolError
 from .store import fingerprint
 
 FORMATS = "mov,matroska,webm,mp3,wav,flac,ogg,aac"
+logger = logging.getLogger(__name__)
 
 
 async def subprocess_bytes(*args):
@@ -67,13 +70,14 @@ def image_part(data):
 
 
 # Increment these identities when changing the corresponding observation prompt
-# or sampling/decoding policy. They are part of exact run-local cache keys.
+# or sampling/decoding policy. They are part of exact observation cache keys.
 MEDIA_PROMPT_VERSION = "2"
 MEDIA_SAMPLING_VERSION = "30s-6frames-768px-mono16k-v1"
 
 
 class MediaInspector:
-    def __init__(self, catalog, storage, models, ledger, settings, blocking):
+    def __init__(self, catalog, storage, models, ledger, settings, blocking, *,
+                 observation_store=None, cache_namespace=None):
         self.catalog, self.storage, self.models = catalog, storage, models
         self.ledger, self.settings, self.blocking = ledger, settings, blocking
         # Only local download/decode work holds this capacity. Remote provider
@@ -83,6 +87,10 @@ class MediaInspector:
         # Bound decoded/base64 payloads waiting for remote admission separately
         # from local I/O. Cache hits and shared waiters allocate no new payload.
         self.prepared_gate = asyncio.Semaphore(concurrency)
+        self.packet_concurrency = max(1, int(getattr(settings, "max_concurrent_media_packets", 2)))
+        if observation_store is not None and not cache_namespace:
+            raise ValueError("Persistent observations require a trusted cache namespace")
+        self.observation_store, self.cache_namespace = observation_store, cache_namespace
         self.cache = RunMediaCache()
         self._directory = None
         self._operations = set()
@@ -97,7 +105,9 @@ class MediaInspector:
     @staticmethod
     def _source_key(source):
         return {"id": source.id, "version": source.version, "size": getattr(source, "size", None),
-                "modality": source.modality, "suffix": Path(source.name).suffix.lower()}
+                "modality": source.modality, "suffix": Path(source.name).suffix.lower(),
+                **{field: getattr(source, field, "") for field in
+                   ("kb_id", "file_id", "bucket", "object_path", "attachment_id")}}
 
     async def _path(self, source):
         key = "file:" + fingerprint(self._source_key(source))
@@ -127,10 +137,17 @@ class MediaInspector:
             return value, duration
         return (await self.cache.get("probe:" + fingerprint(self._source_key(source)), probe))[0]
 
-    def _observation_key(self, source, *, channel, question, page=None, start=None, end=None):
+    def _observation_key(self, source, *, channel, question, page=None, start=None, end=None, local_only=False):
+        kind = "audio" if channel == "audio" else "vision"
+        model = getattr(self.settings, "audio_model" if channel == "audio" else "vision_model", None)
+        endpoint = getattr(self.models, "_endpoint", None)
+        # Model aliases can be retargeted between runs. Bind the effective route,
+        # while keeping credentials out of persistent keys and artifacts.
+        route = endpoint(model, kind) if endpoint and not local_only else {}
+        model_identity = {"name": model, **{k: route[k] for k in ("provider", "base_url", "model") if k in route}}
         return fingerprint({"source": self._source_key(source), "channel": channel, "question": question,
             "page": page, "start_sec": start, "end_sec": end, "language": get_prompt_language(),
-            "model": getattr(self.settings, "audio_model" if channel == "audio" else "vision_model", None),
+            "model": model_identity, "local_only": local_only,
             "prompt_version": MEDIA_PROMPT_VERSION, "sampling_version": MEDIA_SAMPLING_VERSION})
 
     @staticmethod
@@ -273,8 +290,29 @@ class MediaInspector:
             self._ensure_open()
 
             async def acquire():
+                if self.observation_store is not None:
+                    try:
+                        stored = self.observation_store.get(self.cache_namespace, key)
+                    except (sqlite3.Error, OSError):
+                        logger.warning("Persistent media observation cache lookup failed")
+                        stored = None
+                    if (stored is not None and stored.source_id == source.id
+                            and stored.provenance.get("source_version") == source.version):
+                        # Rebuild source/citation identity in this run. Neither a
+                        # prior run's numeric ID nor delivery status is reusable.
+                        value = self._evidence(source, stored.content, stored.locator, stored.provenance)
+                        value.provenance["cache_status"] = "reused"
+                        value.provenance["cache_origin"] = "persistent"
+                        return value
                 async with self.prepared_gate:
                     value = await create()
+                    if self.observation_store is not None:
+                        try:
+                            self.observation_store.put(self.cache_namespace, key, value)
+                        except (sqlite3.Error, OSError):
+                            # A failed optimization must not discard an already
+                            # completed paid observation or its run publication.
+                            logger.warning("Persistent media observation cache publication failed")
                     # Persist before publishing the cache result. Cancellation
                     # can win the race to resume the outer waiter even after a
                     # paid model call has successfully returned its observation.
@@ -284,26 +322,68 @@ class MediaInspector:
                     return value
 
             value, reused = await self.cache.get("observation:" + key, acquire)
+            reused = reused or value.provenance.get("cache_origin") == "persistent"
             packet = value.model_copy(deep=True)
             packet.provenance["cache_status"] = "reused" if reused else "fresh"
             if reused:
-                reused_keys.append(key)
                 if key in self._packet_ids:
                     packet.provenance["reused_from_evidence_id"] = self._packet_ids[key]
             number = self._packet_ids.get(key)
             if reused:
                 number = await persist(key, packet, reused=True)
-            if number:
-                packet_ids.append(number)
+            return key, packet, number, reused
+
+        def collected(results):
+            for key, packet, number, reused in results:
+                packets.append(packet)
                 if reused:
-                    reused_ids.append(number)
-            packets.append(packet)
+                    reused_keys.append(key)
+                if number:
+                    packet_ids.append(number)
+                    if reused:
+                        reused_ids.append(number)
+
+        async def receive_packets(specifications):
+            # At most N workers and N decoded payloads exist, even for very long
+            # inputs. A failure stops new scheduling; already-running packets
+            # settle and publish successes before partial coverage is returned.
+            pending = iter(enumerate(specifications))
+            completed, failures = {}, []
+
+            async def consume():
+                while not failures:
+                    try:
+                        index, (key, create) = next(pending)
+                    except StopIteration:
+                        return
+                    try:
+                        completed[index] = await receive(key, create)
+                    except Exception as error:
+                        failures.append(error)
+
+            workers = [asyncio.create_task(consume(), name="pi-media-packet")
+                       for _ in range(self.packet_concurrency)]
+            try:
+                await asyncio.gather(*workers)
+            finally:
+                for worker in workers:
+                    if not worker.done():
+                        worker.cancel()
+                cleanup = asyncio.ensure_future(asyncio.gather(*(settle_cancelled(worker) for worker in workers)))
+                try:
+                    await asyncio.shield(cleanup)
+                except asyncio.CancelledError:
+                    await settle_cancelled(cleanup)
+                    raise
+            collected(completed[index] for index in sorted(completed))
+            if failures:
+                raise failures[0]
         try:
             path = await self._path(source)
             if source.modality in {"image", "doc"}:
                 selected_question = visual_question or question
                 key = self._observation_key(source, channel="visual", question=selected_question, page=page)
-                await receive(key, lambda: self._image(source, path, question=selected_question, page=page, span_id=span_id, key=key))
+                collected([await receive(key, lambda: self._image(source, path, question=selected_question, page=page, span_id=span_id, key=key))])
                 result = packets[0].model_copy(deep=True)
             else:
                 probe, duration = await self._probe(source, path)
@@ -316,15 +396,19 @@ class MediaInspector:
                 if start_sec >= end:
                     raise ToolError("invalid_interval", translate_prompt("请指定原文件内起点小于终点的有效区间"))
                 channels = ["visual", "audio"] if view == "both" else [view]
-                start = float(start_sec)
-                while start < end:
-                    part_end = min(start + 30, end)
-                    for channel in channels:
-                        selected_question = (visual_question if channel == "visual" else audio_question) or question
-                        key = self._observation_key(source, channel=channel, question=selected_question, start=start, end=part_end)
-                        await receive(key, lambda: self._packet(source, path, question=selected_question, channel=channel,
-                            start=start, end=part_end, duration=duration, has_audio=has_audio, span_id=span_id, key=key))
-                    start = part_end
+                def specifications():
+                    start = float(start_sec)
+                    while start < end:
+                        part_end = min(start + 30, end)
+                        for channel in channels:
+                            selected_question = (visual_question if channel == "visual" else audio_question) or question
+                            key = self._observation_key(source, channel=channel, question=selected_question, start=start, end=part_end,
+                                local_only=channel == "audio" and not has_audio)
+                            yield key, lambda start=start, part_end=part_end, channel=channel, selected_question=selected_question, key=key: self._packet(
+                                source, path, question=selected_question, channel=channel, start=start, end=part_end,
+                                duration=duration, has_audio=has_audio, span_id=span_id, key=key)
+                        start = part_end
+                await receive_packets(specifications())
                 intervals = {}
                 for packet in packets:
                     loc = packet.locator

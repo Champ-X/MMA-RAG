@@ -5,7 +5,7 @@ import type { ChatScopeFile } from '@/store/useChatStore'
 import type { ChatMention } from '@/lib/chatReferences'
 import { persistMentions } from '@/lib/chatReferences'
 import { referenceFilesFromMentions } from '@/lib/chatReferenceScope'
-import type { PiConfig, PiEvent, PiRun } from '@/types/pi'
+import type { PiConfig, PiEvent, PiRun, PiInput } from '@/types/pi'
 import type { CitationReference } from '@/types/sse'
 
 const base = () => `${apiClient.getBaseURL()}/pi`
@@ -74,6 +74,20 @@ export const piApi = {
   },
   async get(runId: string, signal?: AbortSignal): Promise<PiRun> { return (await checked(await fetch(`${base()}/runs/${runId}`, { headers: headers(), signal }))).json() },
   async cancel(runId: string): Promise<PiRun> { return (await checked(await fetch(`${base()}/runs/${runId}/cancel`, { method: 'POST', headers: headers() }))).json() },
+  async input(runId: string, input: Pick<PiInput, 'request_id' | 'message' | 'mode'>): Promise<{ run: PiRun; input: PiInput }> {
+    const body = JSON.stringify(input)
+    let response: Response | undefined
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        response = await fetch(`${base()}/runs/${encodeURIComponent(runId)}/inputs`, {
+          method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' }, body,
+          signal: AbortSignal.timeout(15000),
+        })
+        break
+      } catch (error) { if (attempt === 1) throw error }
+    }
+    return (await checked(response!)).json()
+  },
   async artifact(runId: string, id: string): Promise<unknown> { return (await checked(await fetch(`${base()}/runs/${runId}/artifacts/${id}`, { headers: headers() }))).json() },
   async evidence(runId: string): Promise<{ evidence: Array<{ id: number; content: string; source_id: string; version: string }> }> {
     return (await checked(await fetch(`${base()}/runs/${runId}/evidence`, { headers: headers() }))).json()
@@ -132,7 +146,9 @@ export async function watchPiRun(runId: string, after: () => number, onEvent: (e
               if (event.protocol_version !== 1 || event.run_id !== runId) throw new Error(tr("Agent 事件协议不匹配"))
               onEvent(normalizeAssets(event))
               retries = 0
-              if (/^run\.(completed|partial|needs_input|cancelled|failed)$/.test(event.type)) return
+              // A replay can include an earlier clarification followed by its
+              // reply. Drain the stream before treating needs_input as idle.
+              if (/^run\.(completed|partial|cancelled|failed)$/.test(event.type)) return
             }
           }
           if (done) break

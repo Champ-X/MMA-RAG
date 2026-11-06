@@ -90,6 +90,54 @@ test('server history recovers Pi turns in order and never overwrites newer local
   assert.equal(restored[2].pi.seq, 50)
 })
 
+test('clarification resumes the same trace without discarding evidence or allowing completed runs to reopen', () => {
+  let trace = initialPiTrace({ ...run, config: { ...run.config, runtime: 'durable' } })
+  trace = applyPiEvent(trace, event(1, 'evidence.added', { id: 1, file_name: 'source', modality: 'doc' }))
+  trace = applyPiEvent(trace, event(2, 'answer.plan', { items: [{ requirement: 'compare', status: 'pending' }] }))
+  trace = applyPiEvent(trace, event(3, 'run.needs_input', { answer: 'Which year?', options: ['2026'] }))
+  trace = applyPiEvent(trace, event(4, 'input.accepted', { request_id: 'reply-1', mode: 'reply', message: '2026' }))
+  assert.equal(trace.status, 'needs_input')
+  trace = applyPiEvent(trace, event(5, 'run.queued', { reason: 'user_reply' }))
+  assert.equal(trace.status, 'queued')
+  assert.equal(trace.answer, undefined)
+  assert.equal(trace.options, undefined)
+  assert.equal(trace.evidence.length, 1)
+  assert.equal(trace.steps[0].label, '任务进度与依据')
+  trace = applyPiEvent(trace, event(6, 'input.applied', { request_id: 'reply-1', mode: 'reply', message: '2026' }))
+  assert.equal(trace.inputs?.length, 1)
+  assert.equal(trace.inputs?.[0].status, 'applied')
+  trace = applyPiEvent(trace, event(7, 'run.completed', { answer: 'Done' }))
+  assert.equal(applyPiEvent(trace, event(8, 'run.queued')), trace)
+})
+
+test('server reconciliation notices a resumed run already present in local history and preserves its cursor', () => {
+  const durable = { ...run, config: { ...run.config, runtime: 'durable' as const } }
+  const trace = applyPiEvent(initialPiTrace(durable), event(1, 'run.needs_input', { answer: 'Which year?' }))
+  const existing: Message[] = [{ id: 'known', role: 'assistant', content: 'Which year?', timestamp: 1, pi: trace }]
+  const restored = restorePiMessages(existing, [{ ...durable, seq: 4, status: 'running', state: {
+    inputs: [{ request_id: 'reply-1', message: '2026', mode: 'reply', status: 'applied' }],
+  } }])
+  assert.equal(restored.length, 1)
+  assert.equal(restored[0].pi?.seq, 1)
+  assert.equal(restored[0].pi?.replayThrough, 4)
+  assert.equal(restored[0].pi?.inputs?.[0].message, '2026')
+  assert.equal(activePiRun([{ id: 's', messages: restored }], 's')?.pi.runId, run.id)
+})
+
+test('runtime fallback pause survives snapshots and queued events and clears on durable resumption', () => {
+  const durable = { ...run, config: { ...run.config, runtime: 'durable' as const }, state: { runtime_paused: true } }
+  let trace = initialPiTrace(durable)
+  assert.equal(trace.runtimePaused, true)
+  trace = applyPiEvent(trace, event(1, 'run.queued', { runtime_paused: true, message: 'Task retained while core is active.' }))
+  assert.equal(trace.runtimePaused, true)
+  assert.equal(trace.message, 'Task retained while core is active.')
+  trace = applyPiEvent(trace, event(2, 'run.queued', { runtime_paused: false, reason: 'host_recovery' }))
+  assert.equal(trace.runtimePaused, false)
+  assert.equal(trace.message, undefined)
+  trace = applyPiEvent(trace, event(3, 'run.running'))
+  assert.equal(trace.status, 'running')
+})
+
 test('durable Pi attachment previews require a source URL bound to the cited run', () => {
   const reference: CitationReference = { id: 1, type: 'image', source: 'attachment', attachment_id: 'att',
     file_name: '原图.png', content: '观察', pi_run_id: 'run-1', file_path: '/api/pi/runs/run-1/sources/src_1/content' }
@@ -309,6 +357,34 @@ test('separate Pi transport reconstructs fragmented Unicode events without legac
     if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage)
     else Reflect.deleteProperty(globalThis, 'localStorage')
   }
+})
+
+test('SSE replay drains earlier clarification and its reply before the final answer', async t => {
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => null } })
+  const events = [event(1, 'run.needs_input', { answer: 'Which year?' }), event(2, 'run.queued', { reason: 'user_reply' }),
+    event(3, 'input.applied', { request_id: 'reply', mode: 'reply', message: '2026' }), event(4, 'run.completed', { answer: '2026 answer' })]
+  t.mock.method(globalThis, 'fetch', async () => new Response(events.map(value => `data: ${JSON.stringify(value)}\n\n`).join('')))
+  try {
+    let trace = initialPiTrace({ ...run, config: { ...run.config, runtime: 'durable' } })
+    await watchPiRun(run.id, () => trace.seq, value => { trace = applyPiEvent(trace, value) }, new AbortController().signal)
+    assert.equal(trace.seq, 4)
+    assert.equal(trace.answer, '2026 answer')
+    assert.equal(trace.inputs?.[0].status, 'applied')
+  } finally {
+    if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage)
+    else Reflect.deleteProperty(globalThis, 'localStorage')
+  }
+})
+
+test('rejected input is visible and cannot be mistaken for an applied instruction', () => {
+  let trace = initialPiTrace(run)
+  const input = { request_id: 'steering', mode: 'steer', message: 'Compare 2026' }
+  trace = applyPiEvent(trace, event(1, 'input.accepted', input))
+  trace = applyPiEvent(trace, event(2, 'input.rejected', { ...input, reason: 'run_ended' }))
+  trace = applyPiEvent(trace, event(3, 'run.completed', { answer: 'Original answer' }))
+  assert.equal(trace.inputs?.[0].status, 'rejected')
+  assert.equal(trace.inputs?.[0].reason, 'run_ended')
 })
 
 test('Pi reconnects after more than four transient failures and resumes the persisted event cursor', { timeout: 5000 }, async t => {

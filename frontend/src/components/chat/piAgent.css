@@ -89,6 +89,28 @@
 .pi-composer-status { display: inline-flex; align-items: center; gap: 6px; color: #82739e; font-size: .6875rem; }
 .pi-status-dot { inline-size: 5px; block-size: 5px; border-radius: 50%; background: #9a7cf3; box-shadow: 0 0 6px #9a7cf380; }
 .pi-composer-config-error { padding: 0 24px 8px; color: #a55555; font-size: .75rem; }
+.pi-continuation-hint { margin: 0; padding: 0 24px 10px; color: #6b6485; font-size: .75rem; line-height: 1.6; }
+.pi-input-receipts { margin: 0; padding: 10px 18px; list-style: none; display: grid; gap: 8px; }
+.pi-input-receipts li { padding: 10px 12px; border: 1px solid #e4dfef; border-radius: 10px; background: #faf9fd; }
+.pi-input-receipts li > div { display: flex; justify-content: space-between; gap: 12px; font-size: .6875rem; color: #74688b; }
+.pi-input-receipts p { margin: 5px 0 0; font-size: .8125rem; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pi-input-receipts button { margin-top: 6px; color: #7256ae; font-size: .75rem; text-decoration: underline; text-underline-offset: 3px; }
+.pi-reply-form { display: grid; gap: 10px; padding: 14px 18px; border-top: 1px solid #e4dfef; }
+.pi-reply-form label { font-size: .8125rem; font-weight: 600; }
+.pi-reply-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.pi-reply-options button, .pi-reply-form button[type='submit'] { min-height: 36px; padding: 7px 12px; border: 1px solid #d7cde7; border-radius: 9px; color: #68508f; background: #f5f1fb; font-size: .75rem; }
+.pi-reply-options button[aria-pressed='true'] { border-color: #8a6ab7; background: #eae1f7; }
+.pi-reply-form textarea { width: 100%; min-height: 64px; resize: vertical; border: 1px solid #d7cde7; border-radius: 9px; padding: 9px 11px; background: transparent; font: inherit; font-size: 1rem; }
+.pi-reply-form > div:last-child { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.pi-reply-form p { margin: 0; font-size: .75rem; color: #74688b; }
+.pi-reply-form :is(button, textarea):focus-visible, .pi-input-receipts button:focus-visible { outline: 2px solid #8174d2; outline-offset: 3px; }
+.pi-reply-form button:disabled { opacity: .5; cursor: not-allowed; }
+.dark .pi-input-receipts li { background: #242333; border-color: #464053; }
+.dark .pi-continuation-hint, .dark .pi-input-receipts li > div, .dark .pi-reply-form p { color: #b8accb; }
+.dark .pi-reply-form { border-color: #464053; }
+.dark .pi-reply-form textarea { border-color: #625373; }
+.dark .pi-reply-options button, .dark .pi-reply-form button[type='submit'] { background: #30283f; border-color: #625373; color: #d8c7ed; }
+@media (max-width: 640px) { .pi-reply-options button, .pi-reply-form button[type='submit'] { min-height: 44px; } }
 .pi-scope-trigger {
   display: inline-flex;
   align-items: center;

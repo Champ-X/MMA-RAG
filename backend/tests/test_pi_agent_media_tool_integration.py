@@ -12,11 +12,12 @@ import pytest
 
 from app.modules.pi_agent import media
 from app.modules.pi_agent.catalog import SourceCatalog
+from app.modules.pi_agent.media_observation_store import MediaObservationStore
 from app.modules.pi_agent.policy import AccessScope, ToolError
 from test_pi_agent_tools import fixture_tools, request, source
 
 
-def media_tools(tmp_path, monkeypatch, observe):
+def media_tools(tmp_path, monkeypatch, observe, *, observation_store=None, cache_namespace=None):
     tools, store, run_id, events = fixture_tools(tmp_path, answer_checks_enabled=False)
     original = replace(source(), modality="audio", name="song.mp3")
     catalog = SourceCatalog([original], {"a": "A"})
@@ -38,7 +39,8 @@ def media_tools(tmp_path, monkeypatch, observe):
     catalog.download = download
     monkeypatch.setattr(media, "subprocess_bytes", decode)
     inspector = media.MediaInspector(catalog, object(), SimpleNamespace(observe=model), tools.ledger,
-        SimpleNamespace(audio_model="fixture-audio", vision_model="fixture-vision", max_concurrent_media=2), tools.blocking)
+        SimpleNamespace(audio_model="fixture-audio", vision_model="fixture-vision", max_concurrent_media=2), tools.blocking,
+        observation_store=observation_store, cache_namespace=cache_namespace)
     tools.catalog, tools.media = catalog, inspector
     args = {"source_id": original.id, "question": "Describe the audible instruments.",
             "start_sec": 0.0, "end_sec": 60.0, "view": "audio"}
@@ -207,6 +209,42 @@ async def test_scope_validation_happens_before_any_cached_observation_is_returne
         denied = await tools.execute("denied", "inspect_media", args)
         assert denied["isError"] and denied["details"]["code"] == "scope_denied"
         assert "evidence" not in body(denied) and len(calls) == 2
+    finally:
+        await inspector.close()
+
+
+@pytest.mark.asyncio
+async def test_cross_run_cache_still_checks_scope_and_builds_current_run_citations(tmp_path, monkeypatch):
+    async def observe(number, _parts, _kwargs):
+        return f"packet {number}", {"model": "fixture-audio"}
+    cache_path = tmp_path / "media.sqlite3"
+    first = media_tools(tmp_path / "first", monkeypatch, observe,
+        observation_store=MediaObservationStore(cache_path), cache_namespace="trusted-owner-and-scope")
+    tools, _, old_run, _, _, inspector, args, calls, _ = first
+    try:
+        result = await tools.execute("first-read", "inspect_media", args)
+        assert not result.get("isError") and len(calls) == 2
+    finally:
+        await inspector.close()
+    second = media_tools(tmp_path / "second", monkeypatch, observe,
+        observation_store=MediaObservationStore(cache_path), cache_namespace="trusted-owner-and-scope")
+    tools, store, new_run, _, _, inspector, args, calls, downloads = second
+    allowed = tools.scope
+    try:
+        tools.scope = AccessScope.from_request(request(), set())
+        denied = await tools.execute("denied", "inspect_media", args)
+        assert denied["isError"] and denied["details"]["code"] == "scope_denied"
+        assert not calls and not downloads and not store.evidence(new_run)
+        tools.scope = allowed
+        returned = await tools.execute("read", "inspect_media", args)
+        assert not returned.get("isError") and len(downloads) == 1 and not calls
+        assert returned["details"]["evidence_ids"] == [1, 2]
+        assert body(returned)["reused_evidence_ids"] == [1, 2]
+        answer = await tools.execute("answer", "submit_answer", {
+            "answer": "The first passage is audible.[1] The second is audible.[2]", "evidence_ids": [1, 2]})
+        assert new_run != old_run and answer["details"]["terminal"] == "completed"
+        assert {citation["pi_run_id"] for citation in answer["details"]["citations"]} == {new_run}
+        assert all(old_run not in citation["audio_url"] for citation in answer["details"]["citations"])
     finally:
         await inspector.close()
 

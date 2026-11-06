@@ -1,5 +1,15 @@
 import { translate as tr, getLanguage } from '../i18n'
-import { piTerminal, type PiEvent, type PiRun, type PiStep, type PiTrace } from '../types/pi'
+import { piTerminal, type PiEvent, type PiRun, type PiStep, type PiTrace, type PiInput } from '../types/pi'
+
+export function mergePiInputs(existing: PiInput[] = [], incoming: PiInput[] = []): PiInput[] {
+  const order: Record<PiInput['status'], number> = { failed: 0, sending: 1, queued: 2, accepted: 3, rejected: 4, applied: 5 }
+  const inputs = new Map(existing.map(input => [input.request_id, input]))
+  for (const input of incoming) {
+    const old = inputs.get(input.request_id)
+    inputs.set(input.request_id, old && order[old.status] > order[input.status] ? old : { ...old, ...input })
+  }
+  return [...inputs.values()]
+}
 
 export function submissionFeedback(step: Pick<PiStep, 'kind' | 'label' | 'status' | 'text' | 'errorCode'>): { summary: string; detail: string } | undefined {
   if (step.kind !== 'tool' || step.label !== 'submit_answer' || step.status !== 'failed'
@@ -32,12 +42,16 @@ export function submissionFeedback(step: Pick<PiStep, 'kind' | 'label' | 'status
 
 export function initialPiTrace(run: PiRun): PiTrace {
   return { runId: run.id, requestId: run.request.client_request_id, status: 'queued',
-    seq: 0, startedAt: run.created_at * 1000, model: run.config.model, steps: [], evidence: [], draft: '' }
+    seq: 0, startedAt: run.created_at * 1000, model: run.config.model, runtime: run.config.runtime || 'core',
+    runtimePaused: run.state.runtime_paused === true,
+    inputs: run.state.inputs || [], replayThrough: run.seq, steps: [], evidence: [], draft: '' }
 }
 
 export function applyPiEvent(previous: PiTrace, event: PiEvent): PiTrace {
   if (event.protocol_version !== 1 || event.run_id !== previous.runId || event.seq <= previous.seq) return previous
-  if (previous.seq > 0 && piTerminal(previous.status)) return previous
+  if (previous.seq > 0 && piTerminal(previous.status) && previous.status !== 'needs_input') return previous
+  if (previous.seq > 0 && previous.status === 'needs_input'
+    && !['input.queued', 'input.accepted', 'input.applied', 'input.rejected', 'run.queued', 'run.cancelled', 'run.failed'].includes(event.type)) return previous
   // The transport replays missing events before allowing the cursor to advance.
   if (event.seq !== previous.seq + 1) throw new Error(tr('Agent 过程事件存在缺口，正在重新同步'))
   const next = { ...previous, seq: event.seq, connectionError: undefined }
@@ -50,6 +64,18 @@ export function applyPiEvent(previous: PiTrace, event: PiEvent): PiTrace {
   }
   if (event.type.startsWith('run.')) {
     next.status = String(data.status || event.type.slice(4)) as PiTrace['status']
+    if (typeof data.runtime_paused === 'boolean' || event.type === 'run.running') {
+      next.runtimePaused = data.runtime_paused === true && event.type !== 'run.running'
+      if (next.runtimePaused && typeof data.message === 'string') next.message = data.message
+      else if (previous.runtimePaused) next.message = undefined
+    }
+    if (event.type === 'run.queued' && previous.status === 'needs_input') {
+      next.answer = undefined
+      next.options = undefined
+      next.message = undefined
+      next.draft = ''
+      next.usage = undefined
+    }
     if (piTerminal(next.status)) {
       next.answer = typeof data.answer === 'string' ? data.answer : undefined
       next.citations = Array.isArray(data.citations) ? data.citations as PiTrace['citations'] : []
@@ -61,6 +87,12 @@ export function applyPiEvent(previous: PiTrace, event: PiEvent): PiTrace {
       next.steps = previous.steps.map(s => s.status === 'running' ? { ...s,
         status: next.status === 'cancelled' ? 'cancelled' : 'failed' } : s)
     }
+  } else if (['input.queued', 'input.accepted', 'input.applied', 'input.rejected'].includes(event.type)
+    && typeof data.request_id === 'string' && typeof data.message === 'string'
+    && (data.mode === 'steer' || data.mode === 'reply')) {
+    next.inputs = mergePiInputs(previous.inputs, [{ request_id: data.request_id, message: data.message,
+      mode: data.mode, status: event.type.slice(6) as PiInput['status'], created_at: event.timestamp,
+      ...(typeof data.reason === 'string' ? { reason: data.reason } : {}) }])
   } else if (event.type === 'answer.delta') next.draft += String(data.delta || '')
   else if (event.type === 'answer.reset') next.draft = ''
   else if (event.type === 'answer.requirements') {

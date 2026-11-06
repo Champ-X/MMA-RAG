@@ -7,6 +7,7 @@ import { estimateContextTokens, estimateMessageTokens } from '@earendil-works/pi
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { createHash } from 'node:crypto';
 import { fetchWithIdleTimeout } from './transport.mjs';
+import { strictArguments } from './schema.mjs';
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -252,7 +253,13 @@ function projectWorkingContext(context, window, planIndex, plan, recordedDrafts,
   }
   // Large recent batches also live durably in the ledger. Archive as needed,
   // without removing tools, changing the plan, or declaring the task finished.
-  for (let index = Math.max(0, messages.length - 6); index < messages.length; index++) archive(index);
+  // A just-reread source must get a chance to inform the next decision. The
+  // softer 65% working target must not immediately archive it again when the
+  // complete request still fits with a 10% answer/estimation reserve.
+  const newestResearch = messages.findLastIndex(message => message.role === 'toolResult' && RESEARCH_TOOLS.has(message.toolName));
+  for (let index = Math.max(0, messages.length - 6); index < messages.length; index++) {
+    if (index !== newestResearch || tokens > Math.floor(window * 0.9)) archive(index);
+  }
   return { context: { ...context, messages }, tokens, archived, indexes, retainedIds };
 }
 
@@ -284,7 +291,8 @@ function providerStreamDefault(model, context, options) {
     reasoningEffort: options.reasoning === 'off' ? undefined : options.reasoning });
 }
 
-export function createRuntime(config, { callHost, emit, providerStream = providerStreamDefault }) {
+export function createRuntime(config, { callHost, emit, providerStream = providerStreamDefault,
+  agentFactory = options => new Agent(options) }) {
   const language = config.language === 'en-US' ? 'en-US' : 'zh-CN';
   const t = (zh, en) => language === 'en-US' ? en : zh;
   const { SYSTEM_PROMPT, ANSWER_CHECKS_PROMPT, ANSWER_PLAN_PROMPT, ANSWER_COMPOSITION_PROMPT } = promptsFor(language);
@@ -298,7 +306,7 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
   let answerPlanIdentity;
   let researchBatchesWithoutPlanChange = 0;
   let reviewPending = false;
-  let turn = 0;
+  let turn = config.model_turn_offset || 0;
   let activeModelCall = null;
   const repeatedFailures = new Map();
   const deterministicFailures = new Map();
@@ -311,9 +319,42 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
   const dispatched = new Set();
   const recordedDrafts = new Map();
   const reportedArchives = new Set();
+  // These policy values complement the durable transcript. They never contain
+  // credentials; provider configuration is supplied afresh by the host.
+  const policy = {
+    persist: async () => {},
+    snapshot: () => JSON.parse(JSON.stringify({ finalResult, answerRequirements, answerPlan, answerPlanIdentity,
+      researchBatchesWithoutPlanChange, reviewPending, turn, unsubmittedTurns, failedRounds, unchangedRounds,
+      repeatedFailures: [...repeatedFailures], deterministicFailures: [...deterministicFailures].map(([key, values]) => [key, [...values]]),
+      successfulOutcomes: [...successfulOutcomes], observedEvidence: [...observedEvidence],
+      recordedDrafts: [...recordedDrafts], reportedArchives: [...reportedArchives], dispatched: [...dispatched] })),
+    restore: (value = {}, { freshSubmission = false } = {}) => {
+      finalResult = freshSubmission ? undefined : value.finalResult;
+      answerRequirements = freshSubmission ? undefined : value.answerRequirements;
+      answerPlan = value.answerPlan;
+      answerPlanIdentity = value.answerPlanIdentity;
+      turn = Math.max(config.model_turn_offset || 0, value.turn || 0);
+      researchBatchesWithoutPlanChange = freshSubmission ? 0 : value.researchBatchesWithoutPlanChange || 0;
+      reviewPending = freshSubmission ? false : !!value.reviewPending;
+      unsubmittedTurns = freshSubmission ? 0 : value.unsubmittedTurns || 0;
+      failedRounds = freshSubmission ? 0 : value.failedRounds || 0;
+      unchangedRounds = freshSubmission ? 0 : value.unchangedRounds || 0;
+      for (const [collection, key] of [[repeatedFailures, 'repeatedFailures'], [successfulOutcomes, 'successfulOutcomes'],
+        [observedEvidence, 'observedEvidence'], [reportedArchives, 'reportedArchives'], [dispatched, 'dispatched'],
+        [recordedDrafts, 'recordedDrafts']]) {
+        collection.clear();
+        if (!freshSubmission || ['observedEvidence', 'recordedDrafts', 'dispatched'].includes(key))
+          for (const item of value[key] || []) collection instanceof Map ? collection.set(...item) : collection.add(item);
+      }
+      deterministicFailures.clear();
+      if (!freshSubmission) for (const [key, values] of value.deterministicFailures || []) deterministicFailures.set(key, new Map(values));
+      drafts.clear();
+    },
+  };
   const tools = config.tools.map((definition) => ({
     ...definition,
     label: definition.label || definition.name,
+    prepareArguments: strictArguments(definition),
     // Terminal operations settle in order, after other outstanding calls.
     executionMode: ['set_answer_requirements', 'update_answer_plan', 'submit_answer', 'ask_user'].includes(definition.name) ? 'sequential' : 'parallel',
     execute: async (toolCallId, args, signal) => {
@@ -349,13 +390,15 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
       }
       if (!result.isError && result.details?.terminal) {
         finalResult = result.details;
+        await policy.persist();
         return { ...result, terminate: true };
       }
+      await policy.persist();
       return result;
     },
   }));
 
-  const agent = new Agent({
+  const agent = agentFactory({
     initialState: { model, systemPrompt: SYSTEM_PROMPT + (config.answer_checks_enabled ? '\n' + ANSWER_CHECKS_PROMPT : '')
       + (config.answer_plan_enabled ? '\n' + ANSWER_PLAN_PROMPT : ''), tools, thinkingLevel: config.thinking_level || 'off' },
     sessionId: config.run_id,
@@ -381,6 +424,7 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
     streamFn: async (requestedModel, context, options) => {
       activeModelCall = null;
       try {
+        if (finalResult) return errorStream(requestedModel, finalResult.message || 'The task has already settled.');
         const planIndex = config.answer_plan_enabled && answerPlan ? context.messages.length : -1;
         if (planIndex >= 0) {
           context = { ...context, messages: [...context.messages, { role: 'user', timestamp: Date.now(),
@@ -434,6 +478,8 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
           return errorStream(requestedModel, finalResult.message);
         }
         const requestTurn = ++turn;
+        // Reserve this attempt durably before the host admits or bills it.
+        await policy.persist();
         // Host accounting and resource scheduling are independent of duration,
         // cumulative usage and the number of previous tool/model calls.
         const inputBytes = Buffer.byteLength(JSON.stringify(context), 'utf8');
@@ -565,7 +611,7 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
       }
       unsubmittedTurns = 0;
     },
-  });
+  }, policy);
 
   agent.subscribe(async (event) => {
     if (event.type === 'message_update') {
@@ -622,6 +668,8 @@ export function createRuntime(config, { callHost, emit, providerStream = provide
 
   return {
     abort: () => agent.abort(),
+    shutdown: () => agent.shutdown ? agent.shutdown() : agent.abort(),
+    input: input => agent.input?.(input),
     async run() {
       await agent.prompt(config.prompt);
       if (finalResult) return { ...finalResult, model: model.id, provider: model.provider, turns: turn };

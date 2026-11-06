@@ -265,6 +265,10 @@ export function ChatInterface() {
   const piState = pi.active?.sessionId === activeSessionId ? pi.active.pi.status : 'ready'
   const piModelId = activeSession?.piModel || piConfig?.default_model || ''
   const piModelLogo = piModelId ? VENDOR_LOGOS[getModelVendor(piModelId)] : undefined
+  const piInputTarget = pi.active?.pi.runtime === 'durable' ? pi.active.pi : pi.waiting?.pi
+  const piRuntimePaused = Boolean(piInputTarget && (piInputTarget.runtimePaused || piConfig?.runtime === 'core'))
+  const piCanSteer = piEnabled && !piRuntimePaused && pi.active?.pi.runtime === 'durable' && ['queued', 'running'].includes(pi.active.pi.status)
+  const piContinuing = Boolean(piEnabled && !piRuntimePaused && (piCanSteer || pi.waiting))
   useLayoutEffect(() => {
     const workspace = chatWorkspaceRef.current
     const dock = composerDockRef.current
@@ -287,6 +291,7 @@ export function ChatInterface() {
     })
   }, [messages])
   const isLoading = isStreaming || isPreparing
+  const composerBusy = isPreparing || legacyChain.isStreaming || pi.isStreaming && !piCanSteer || piEnabled && piRuntimePaused
 
   const cycleAgentMode = () => {
     if (!activeSessionId || isLoading) return
@@ -447,7 +452,31 @@ export function ChatInterface() {
   const submitMessage = useCallback(async (nextInput?: string) => {
     const submission = trimComposerValue(nextInput === undefined ? draft : { text: nextInput, mentions: [] })
     const text = submission.text
-    if ((!text && attachments.length === 0) || isLoading || preparingRef.current || !activeSessionId || (piEnabled && !piConfig)) return
+    if ((!text && attachments.length === 0) || composerBusy || preparingRef.current || !activeSessionId || (piEnabled && !piConfig)) return
+    if (piContinuing) {
+      if (attachments.length || submission.mentions.length) {
+        setAttachmentError(tr('补充仅支持文字；如需添加材料或更改检索范围，请新建任务。'))
+        return
+      }
+      const epoch = composerEpoch.current
+      preparingRef.current = true
+      setIsPreparing(true)
+      setAttachmentError('')
+      try {
+        await pi.sendInput(text)
+        if (epoch === composerEpoch.current) {
+          setInput('')
+          setEditorRevision(value => value + 1)
+          setMentionState(null)
+        }
+      } catch (cause) {
+        if (epoch === composerEpoch.current) setAttachmentError(cause instanceof Error ? cause.message : tr('补充发送失败，请重试。'))
+      } finally {
+        preparingRef.current = false
+        setIsPreparing(false)
+      }
+      return
+    }
     followLatestMessage()
     preparingRef.current = true
     setIsPreparing(true)
@@ -503,7 +532,7 @@ export function ChatInterface() {
       setIsPreparing(false)
       setLoading(false)
     }
-  }, [draft, attachments, questionEdit, isLoading, activeSessionId, setLoading, requestScopeFiles, selectedScopeFiles, activeSession, sendMessage, followLatestMessage, piEnabled, piConfig, failWorkspace])
+  }, [draft, attachments, questionEdit, composerBusy, piContinuing, pi.sendInput, activeSessionId, setLoading, requestScopeFiles, selectedScopeFiles, activeSession, sendMessage, followLatestMessage, piEnabled, piConfig, failWorkspace])
 
   const handleSend = useCallback(() => {
     void submitMessage()
@@ -626,7 +655,7 @@ export function ChatInterface() {
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (isLoading) { e.target.value = ''; return }
+    if (isLoading || piContinuing) { e.target.value = ''; return }
     const picked = Array.from(e.target.files || [])
     if (picked.length === 0) return
     const next: Array<{ id: string; file: File; previewUrl?: string }> = []
@@ -808,6 +837,7 @@ export function ChatInterface() {
               const isLastMessage = m.role === 'assistant' && i === messages.length - 1
               const isThisTabStreaming = isStreaming && activeSessionId === (pi.active?.sessionId ?? streamingSessionId)
               const isLastAndStreaming = isLastMessage && isThisTabStreaming
+                && !(m.pi?.runtime === 'durable' && (m.pi.runtimePaused || piConfig?.runtime === 'core'))
               return (
                 <Suspense key={m.id ?? i} fallback={<MessageBubbleLoading role={m.role} />}>
                   <MessageBubble
@@ -827,6 +857,7 @@ export function ChatInterface() {
                       error: m.error,
                     }}
                     isStreaming={isLastAndStreaming}
+                    piRuntime={piConfig?.runtime}
                     liveThinking={
                       isLastAndStreaming && !m.pi
                         ? {
@@ -962,8 +993,8 @@ export function ChatInterface() {
               ref={inputRef}
               value={draft}
               onChange={setDraft}
-              onMentionChange={setMentionState}
-              disabled={isLoading || !activeSessionId}
+              onMentionChange={state => setMentionState(piContinuing ? null : state)}
+              disabled={composerBusy || !activeSessionId}
               listboxId={mentionState ? mentionListboxId : undefined}
               activeOptionId={mentionActiveOptionId}
               onKeyDown={(e) => {
@@ -984,6 +1015,14 @@ export function ChatInterface() {
               }}
             />
             </Suspense>
+            {piEnabled && piRuntimePaused && <div className="pi-composer-connection" role="status">
+              <span>{tr('此任务已保留并暂停；恢复持续运行模式后可继续。')}</span>
+              <button type="button" disabled={workspace.loading} onClick={workspace.retry}>{tr('刷新状态')}</button>
+            </div>}
+            {piContinuing && <p className="pi-continuation-hint">
+              {pi.waiting ? tr('回复后继续原任务，保留已有证据与进度。') : tr('可在研究过程中补充要求，Agent 会按顺序接收。')}
+              {' '}{tr('添加材料或更改检索范围请新建任务。')}
+            </p>}
             {attachmentError && <p className="composer-attachment-error" role="alert">{attachmentError}</p>}
             {piEnabled && piConfigError && <div className="pi-composer-connection" role="alert">
               <span>{piConfigError}</span>
@@ -1131,7 +1170,7 @@ export function ChatInterface() {
 
                 {piEnabled && <label className="pi-model-picker" title={piConfigError || (piModelId ? tr("Pi 模型：{{v0}}", { v0: piModelId }) : tr("读取 Pi 模型配置"))}>
                   {piModelLogo ? <img src={piModelLogo} alt="" width={16} height={16} /> : <Zap size={15} aria-hidden />}
-                  <select aria-label={tr("纯 Agent 独立模型")} disabled={isLoading || !piConfig} value={piConfig ? piModelId : ''}
+                  <select aria-label={tr("纯 Agent 独立模型")} disabled={isLoading || piContinuing || !piConfig} value={piConfig ? piModelId : ''}
                     onChange={event => activeSessionId && updateSessionPiModel(activeSessionId, event.target.value)}>
                     {!piConfig ? <option value="">{workspace.loading ? tr("读取模型…") : workspace.needsAuth ? tr("待连接工作区") : tr("模型加载失败")}</option> : piConfig.models.map(model => <option key={model} value={model}>{piModelDisplayName(model)}</option>)}
                   </select>
@@ -1178,7 +1217,7 @@ export function ChatInterface() {
 
               <div className="ml-auto flex shrink-0 items-center gap-2">
                 {piEnabled && <button type="button" className="pi-scope-trigger"
-                  onClick={() => setKbConfigPanelOpen(true)} disabled={isLoading || !activeSessionId}
+                  onClick={() => setKbConfigPanelOpen(true)} disabled={isLoading || piContinuing || !activeSessionId}
                   title={activeSession?.kbMode === 'manual' ? tr("检索范围：指定 {{v0}} 个知识库", { v0: activeSession.knowledgeBaseIds.length }) : tr("检索范围：全部可访问的知识库")}
                   aria-label={tr("打开知识库范围配置")} aria-haspopup="dialog" aria-expanded={kbConfigPanelOpen}>
                   <Database size={15} strokeWidth={1.7} aria-hidden />
@@ -1187,7 +1226,7 @@ export function ChatInterface() {
                 <button
                   type="button"
                   onClick={() => setFileScopePickerOpen(true)}
-                  disabled={isLoading || !activeSessionId}
+                  disabled={isLoading || piContinuing || !activeSessionId}
                   title={tr("指定检索文件")}
                   aria-label={tr("打开指定检索文件选择器，当前已选 {{v0}} 个文件", { v0: requestScopeFiles.length })}
                   aria-haspopup="dialog"
@@ -1209,7 +1248,7 @@ export function ChatInterface() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={isLoading || !activeSessionId}
+                  disabled={isLoading || piContinuing || !activeSessionId}
                   title={piEnabled ? tr("添加图片、音频或视频附件") : tr("添加附件：图片/音频 10MB，视频 30MB 且 60 秒以内")}
                   aria-label={tr("添加图片、音频或视频附件")}
                   className="flex h-8 w-8 items-center justify-center text-slate-700 transition-all duration-200 hover:text-slate-900 hover:scale-110 active:scale-95 dark:text-slate-300 dark:hover:text-slate-100"
@@ -1217,7 +1256,7 @@ export function ChatInterface() {
                   <Paperclip className="h-5 w-5" strokeWidth={2} aria-hidden />
                 </button>
 
-                {isStreaming ? (
+                {isStreaming && (
                   <button
                     type="button"
                     onClick={handleStop}
@@ -1229,16 +1268,17 @@ export function ChatInterface() {
                   >
                     <Square className="h-3.5 w-3.5 fill-current" aria-hidden />
                   </button>
-                ) : (
+                )}
+                {(!isStreaming || piCanSteer) && (
                   <button
                     type="button"
                     onClick={handleSend}
-                    title={questionEdit ? tr("重新检索生成") : tr("发送")}
-                    aria-label={questionEdit ? tr("重新检索生成") : tr("发送消息")}
+                    title={piContinuing ? pi.waiting ? tr('继续原任务') : tr('发送补充') : questionEdit ? tr("重新检索生成") : tr("发送")}
+                    aria-label={piContinuing ? pi.waiting ? tr('继续原任务') : tr('发送补充') : questionEdit ? tr("重新检索生成") : tr("发送消息")}
                     className={cn(
                       "flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-purple-600 text-white shadow-md shadow-purple-500/30 transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/40 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
                     )}
-                    disabled={(!input.trim() && attachments.length === 0) || isLoading || !activeSessionId || (piEnabled && !piConfig)}
+                    disabled={(!input.trim() && attachments.length === 0) || composerBusy || !activeSessionId || (piEnabled && !piConfig)}
                   >
                     <Send className="h-4 w-4" aria-hidden />
                   </button>

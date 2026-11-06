@@ -3,11 +3,12 @@ import { useId, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Check, AlertCircle, Loader2, ArrowUpRight, RotateCcw, ArrowUp, ArrowDown,
   Search, Files, FileText, ScanEye, Table2, MessageCircle, Sparkles, Braces, Cpu, Clock3,
   Layers, ListChecks, Archive, Image, Music2, Video, type LucideIcon } from 'lucide-react'
-import { piStatusLabel, piTerminal, type PiTrace, type PiStep } from '@/types/pi'
+import { piStatusLabel, piTerminal, type PiTrace, type PiStep, type PiInput } from '@/types/pi'
 import { piApi } from '@/services/piAgent'
 import { useChatStore } from '@/store/useChatStore'
 import { submissionFeedback, piStepText } from '@/lib/piTrace'
 import { isRoutinePiModel, piModelDisplayName, piStepFocus } from '@/lib/piTraceView'
+import { submitPiInput } from '@/lib/piInputs'
 import './piAgent.css'
 import './piProcess.css'
 
@@ -132,7 +133,55 @@ function Step({ step, runId, evidence, selectedEvidenceId, onEvidenceSelect }: {
   </li>
 }
 
-export function PiProcess({ trace }: { trace: PiTrace }) {
+const inputStatusLabels: Record<PiInput['status'], string> = {
+  sending: '正在发送', failed: '发送未确认', queued: '补充已排队', accepted: '等待应用', applied: '补充已生效', rejected: '补充未应用',
+}
+
+function PiContinuation({ trace, runtimePaused }: { trace: PiTrace; runtimePaused: boolean }) {
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const fieldId = useId()
+  const field = useRef<HTMLTextAreaElement>(null)
+  const paused = !runtimePaused && trace.runtime === 'durable' && trace.status === 'needs_input'
+    && (trace.replayThrough || 0) <= trace.seq
+  const submit = async (message: string, mode: PiInput['mode']) => {
+    setBusy(true); setError('')
+    try { await submitPiInput(trace.runId, message, mode); setText('') }
+    catch (cause) { setError(cause instanceof Error ? cause.message : tr('补充发送失败，请重试。')) }
+    finally { setBusy(false) }
+  }
+  return <>
+    {!!trace.inputs?.length && <ol className="pi-input-receipts" aria-label={tr('任务补充记录')} aria-live="polite">
+      {trace.inputs.map(input => <li key={input.request_id} data-input-status={input.status}>
+        <div><span>{tr(input.mode === 'reply' ? '补充回复' : '研究补充')}</span><span>{tr(inputStatusLabels[input.status])}</span></div>
+        <p>{input.message}</p>
+        {input.status === 'rejected' && <p>{tr('任务未接收这条补充，可在任务可接收输入时重新发送。')}</p>}
+        {['failed', 'sending', 'rejected'].includes(input.status) && !busy && !runtimePaused && (paused || ['queued', 'running'].includes(trace.status))
+          && <button type="button" onClick={() => { void submit(input.message, input.mode) }}>{tr('重试发送补充')}</button>}
+      </li>)}
+    </ol>}
+    {runtimePaused && <p className="pi-continuation-hint" role="status">{tr('此任务已保留并暂停；恢复持续运行模式后可继续。')}</p>}
+    {paused && <form className="pi-reply-form" onSubmit={event => { event.preventDefault(); if (!busy && text.trim()) void submit(text, 'reply') }}>
+      <label htmlFor={fieldId}>{tr('补充回复')}</label>
+      {!!trace.options?.length && <div className="pi-reply-options" role="group" aria-label={tr('选择补充内容')}>
+        {trace.options.map((option, index) => <button type="button" key={index} disabled={busy}
+          aria-pressed={text === option} onClick={() => { setText(option); field.current?.focus() }}>{option}</button>)}
+      </div>}
+      <textarea id={fieldId} name="reply" ref={field} value={text} required disabled={busy} rows={2}
+        onChange={event => setText(event.target.value)} aria-describedby={`${fieldId}-hint`}
+        onKeyDown={event => {
+          if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
+          event.preventDefault(); event.currentTarget.form?.requestSubmit()
+        }} />
+      <div><p id={`${fieldId}-hint`}>{tr('回复后继续原任务，保留已有证据与进度。')}</p>
+        <button type="submit" disabled={busy || !text.trim()}>{tr(busy ? '正在发送' : '继续原任务')}</button></div>
+    </form>}
+    {error && <p className="pi-connection-error" role="alert">{error}</p>}
+  </>
+}
+
+export function PiProcess({ trace, currentRuntime }: { trace: PiTrace; currentRuntime?: 'core' | 'durable' }) {
   useTranslation()
   const [expanded, setOpen] = useState<boolean | null>(null)
   const [showModels, setShowModels] = useState(false)
@@ -142,6 +191,9 @@ export function PiProcess({ trace }: { trace: PiTrace }) {
   const timelineRef = useRef<HTMLDivElement>(null)
   const bodyId = useId()
   const open = expanded ?? !piTerminal(trace.status)
+  const runtimePaused = trace.runtime === 'durable' && (!piTerminal(trace.status) || trace.status === 'needs_input')
+    && (currentRuntime === 'core' || trace.runtimePaused === true)
+  const statusLabel = runtimePaused ? tr('任务已暂停') : tr(piStatusLabel[trace.status])
   const tools = trace.steps.filter(step => step.kind === 'tool')
   const hiddenModels = trace.steps.filter(isRoutinePiModel).length
   const visibleSteps = showModels ? trace.steps : trace.steps.filter(step => !isRoutinePiModel(step))
@@ -170,7 +222,7 @@ export function PiProcess({ trace }: { trace: PiTrace }) {
   }
   return <section className="pi-process process-summary" data-status={trace.status} data-expanded={open} aria-label={tr("Agent Mode 研究过程")}>
     <button type="button" className="pi-process-header process-summary__trigger" aria-expanded={open} aria-controls={bodyId}
-      aria-label={tr("Agent Mode 研究过程，{{status}}，{{tools}} 次工具，{{evidence}} 条证据", { status: tr(piStatusLabel[trace.status]), tools: tools.length, evidence: trace.evidence.length })
+      aria-label={tr("Agent Mode 研究过程，{{status}}，{{tools}} 次工具，{{evidence}} 条证据", { status: statusLabel, tools: tools.length, evidence: trace.evidence.length })
         + (duration != null ? tr("，耗时 {{seconds}} 秒", { seconds: (duration / 1000).toFixed(1) }) : '')} onClick={() => setOpen(!open)}>
       <span className="pi-mark process-summary__mark" aria-hidden>π</span>
       <span className="process-summary__identity">
@@ -179,7 +231,7 @@ export function PiProcess({ trace }: { trace: PiTrace }) {
           {trace.status === 'completed' ? <Check size={12} aria-hidden />
             : ['failed', 'partial', 'needs_input'].includes(trace.status) ? <AlertCircle size={12} aria-hidden />
             : <span className="pi-run-status-dot" aria-hidden />}
-          {tr(piStatusLabel[trace.status])}
+          {statusLabel}
         </span>
       </span>
       <span className="pi-process-count process-summary__metrics"><span><Braces size={13} aria-hidden /><b>{tools.length}</b> <span className="process-summary__metric-label">{tr("工具调用")}</span></span>
@@ -197,7 +249,7 @@ export function PiProcess({ trace }: { trace: PiTrace }) {
           <button type="button" aria-pressed={showModels} onClick={() => setShowModels(true)}>{tr("完整记录")}<span>{trace.steps.length}</span></button>
         </div>
       </div>
-      {!piTerminal(trace.status) && <div className="pi-live-activity" role="status"><Loader2 size={13} className="pi-spin" aria-hidden />
+      {!piTerminal(trace.status) && !runtimePaused && <div className="pi-live-activity" role="status"><Loader2 size={13} className="pi-spin" aria-hidden />
         {trace.status === 'queued' ? tr("等待可用执行名额") : trace.status === 'cancelling' ? tr("正在取消任务")
           : activeStep ? stepLabel(activeStep) : tr("正在同步任务记录")}
       </div>}
@@ -231,9 +283,10 @@ export function PiProcess({ trace }: { trace: PiTrace }) {
       {trace.usage && <div className="pi-usage"><span><Cpu size={12} aria-hidden />{tr("模型调用")}{trace.usage.model_requests ?? tr("未知")} {tr("次")}</span>
         <span>Token {trace.usage.model_tokens?.toLocaleString() ?? tr("未知")}{trace.usage.unknown_usage_requests ? tr("（部分调用用量未知）") : ''}</span></div>}
       {trace.message && <p className="pi-process-message">{trace.message}</p>}
-      {!!trace.options?.length && <p className="pi-process-message">{tr("可补充：")}{trace.options.join(' / ')}</p>}
+      {trace.runtime !== 'durable' && !!trace.options?.length && <p className="pi-process-message">{tr("可补充：")}{trace.options.join(' / ')}</p>}
     </div>}
-    {trace.draft && !piTerminal(trace.status) && <details className="pi-draft"><summary><ChevronRight size={13} aria-hidden />
+    <PiContinuation trace={trace} runtimePaused={runtimePaused} />
+    {trace.draft && !piTerminal(trace.status) && !runtimePaused && <details className="pi-draft"><summary><ChevronRight size={13} aria-hidden />
       {tr("正在形成回答 · 引用待确认")}</summary><p>{trace.draft}</p></details>}
   </section>
 }

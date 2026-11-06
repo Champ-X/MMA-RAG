@@ -127,6 +127,7 @@ interface MessageBubbleProps {
   onEditRetry?: () => void
   onEdit?: () => void
   regenerationDisabled?: boolean
+  piRuntime?: 'core' | 'durable'
 }
 
 // 从文本中提取引用标记并转换为可点击按钮；originalIdToDisplayIndex 用于连续编号展示
@@ -788,6 +789,7 @@ export function MessageBubble({
   onEditRetry,
   onEdit,
   regenerationDisabled = false,
+  piRuntime,
 }: MessageBubbleProps) {
   useTranslation()
   const fallbackKbId = useChatStore((s) => s.getActiveSession()?.knowledgeBaseIds?.[0])
@@ -1006,7 +1008,7 @@ export function MessageBubble({
         <>
 
 
-          {message.pi && <div className="relative z-[1] mb-5"><Suspense fallback={<ThinkingCapsuleFallback />}><PiProcess trace={message.pi} /></Suspense></div>}
+          {message.pi && <div className="relative z-[1] mb-5"><Suspense fallback={<ThinkingCapsuleFallback />}><PiProcess trace={message.pi} currentRuntime={piRuntime} /></Suspense></div>}
           {showThinking && !message.pi && (
             <div className="relative z-[1]">
               <Suspense fallback={<ThinkingCapsuleFallback />}>

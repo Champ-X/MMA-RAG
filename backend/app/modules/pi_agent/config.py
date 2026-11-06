@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[4]
 class PiSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="PI_AGENT_", env_file=None if state_dir() else ROOT / "backend" / ".env", extra="ignore")
     enabled: bool = True
+    runtime: str = "durable"
     model: str = "deepseek:deepseek-flash"
     thinking_enabled: bool = False
     answer_checks_enabled: bool = False
@@ -36,9 +37,18 @@ class PiSettings(BaseSettings):
     max_concurrent_runs: int = Field(default=2, ge=1)
     max_concurrent_searches: int = Field(default=1, ge=1)
     max_concurrent_media: int = Field(default=2, ge=1)
+    max_concurrent_media_packets: int = Field(default=2, ge=1, le=8)
+    max_concurrent_search_channels: int = Field(default=2, ge=1, le=8)
     max_concurrent_provider_requests: int = Field(default=2, ge=1)
     # Ordinary retrieval gets an admission head start, not an unbounded veto.
     legacy_priority_grace_seconds: float = Field(default=1.0, ge=0, allow_inf_nan=False)
+
+    @field_validator("runtime")
+    @classmethod
+    def validate_runtime(cls, value):
+        if value not in {"core", "durable"}:
+            raise ValueError("Pi runtime must be core or durable")
+        return value
 
     @field_validator("vision_model", "audio_model", mode="before")
     @classmethod
