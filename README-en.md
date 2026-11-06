@@ -88,7 +88,7 @@ The wizard walks through capabilities, data location, and model providers, build
 
 For an initial Markdown / TXT question, select text capabilities and configure DeepSeek and SiliconFlow. The default image, audio, and video capabilities also require Alibaba Cloud Bailian. The first build and model downloads take time, disk space, and memory; the wizard displays progress and logs.
 
-**Data and models:** Original files, indexes, and run records are stored in the selected data directory. Default parsing and inference call your configured model providers, which may receive content and charge for usage. Self-hosting does not imply offline inference. The application currently targets a local single-user workspace or trusted network; read the [security policy](SECURITY.md) before exposing it publicly.
+**Data and models:** Original files, indexes, and run records are stored in the selected data directory. Default parsing and inference call your configured model providers, which may receive content and charge for usage. Self-hosting does not imply offline inference. The application currently targets a local single-user workspace or trusted network; read the [security policy](SECURITY-en.md) before exposing it publicly.
 
 <details>
 <summary>Daily management, command registration, and opening the app from WSL</summary>
@@ -258,13 +258,13 @@ npm --prefix packages/cli test
 ./scripts/rag-eval validate
 ```
 
-CI covers repository rules, the startup controller, frontend tests/build, and Pi and installer regressions. See [Contributing](CONTRIBUTING.md) for the services required by backend tests. Real model, corpus, and browser acceptance checks must be run separately; a build or health check does not replace them.
+CI covers repository rules, the startup controller, frontend tests/build, and Pi and installer regressions. See [Contributing](CONTRIBUTING-en.md) for the services required by backend tests. Real model, corpus, and browser acceptance checks must be run separately; a build or health check does not replace them.
 
 The quick evaluation uses **7 synthetic documents / 8 questions** for regression checks, not as a general quality benchmark. Tools for public corpora, your own knowledge bases, and Pi comparisons are covered in [RAG evaluation](docs/RAG_EVALUATION.md), [retrieval evaluation](docs/RETRIEVAL_EVALUATION_V2.md), and [Pi evaluation limits](docs/pi-agent-durable.md#对比评测与已知问题).
 
 ## Deployment boundaries
 
-- **Single user and trusted networks:** The application does not yet provide complete user authentication, tenant isolation, or knowledge-base ACLs. Standard API CORS allows all origins. Pi / installer tokens do not replace application-wide authorization; public access requires additional protection. See [SECURITY.md](SECURITY.md).
+- **Single user and trusted networks:** The application does not yet provide complete user authentication, tenant isolation, or knowledge-base ACLs. Standard API CORS allows all origins. Pi / installer tokens do not replace application-wide authorization; public access requires additional protection. See [SECURITY-en.md](SECURITY-en.md).
 - **Single writer and backups:** Only one host may hold the lock on a Pi data directory; back up the complete runtime directory. Standard backend sessions and some statistics remain in process memory, so the application cannot simply be scaled into stateless replicas.
 - **Capabilities and quality:** Upstream Pi Durable is still Experimental. Pi does not currently support a native video-vector retrieval channel or include a semantic entailment verifier. Check media samples, retrieval results, and model conclusions against the original files.
 
@@ -287,9 +287,9 @@ Report problems through [Issues](https://github.com/Champ-X/MMA-RAG/issues) and 
 - Include the commit SHA, environment, selected mode, minimal reproduction, and redacted logs in bug reports.
 - Keep changes focused and report validation results. Include screenshots for UI changes and reproducible inputs and sources for retrieval changes.
 - Keep both READMEs aligned when changing documentation; do not describe experimental candidates as delivered features.
-- Do not commit credentials, user knowledge bases, or unredacted run records. Follow the [security reporting process](SECURITY.md#reporting) for security issues.
+- Do not commit credentials, user knowledge bases, or unredacted run records. Follow the [security reporting process](SECURITY-en.md#reporting) for security issues.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
+See [CONTRIBUTING-en.md](CONTRIBUTING-en.md) for the full workflow.
 
 ## License
 

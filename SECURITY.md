@@ -1,55 +1,95 @@
-# Security
+# Tessmora 安全说明
 
-## Current security posture
+**简体中文** · [English](SECURITY-en.md) · [项目首页](README.md)
 
-Tessmora's default configuration is intended for local development or a trusted private network.
+Tessmora 当前面向**本机单用户工作区与可信网络**。部分接口已有独立访问控制，但应用尚不具备完整用户认证、多租户隔离和知识库权限体系。默认部署不能直接作为面向不可信用户的公网服务。
 
-- The FastAPI application does not currently provide built-in user authentication, tenant authorization, or per-knowledge-base ACLs.
-- CORS currently allows every origin.
-- `POST /api/v1/retrieval/search` is read-only, but it has no built-in authentication or rate limit.
-- MinIO, Qdrant, and Redis use development-oriented defaults unless operators replace them.
-- Chat sessions and some runtime statistics are stored in process memory.
+本页说明当前源码的安全边界、部署者需要配置的保护，以及漏洞报告方式。
 
-Do not expose the default deployment directly to the public internet.
+<a id="reporting"></a>
 
-## Secrets and environment files
+## 报告安全问题
 
-- Never commit `backend/.env` or real API keys, tokens, MinIO credentials, Qdrant keys, or Feishu credentials.
-- Copy [`backend/.env.example`](backend/.env.example) to `backend/.env` and provide only the credentials needed by the selected providers.
-- Keep frontend code and Vite variables free of server-side secrets; anything shipped to the browser must be considered public.
-- If a credential was committed or pushed, rotate it immediately and treat the old value as compromised.
-- Use separate credentials and least-privilege scopes for development, CI, staging, and production.
+**请勿在公开 Issue、PR 或 Discussion 中发布漏洞利用步骤、真实密钥、私有资料或未脱敏日志。**
 
-## Production deployment checklist
+截至 **2026-11-07**，本仓库尚未启用 GitHub Private Vulnerability Reporting，也未公布专用安全邮箱。请按以下步骤确认可用的私密渠道：
 
-Before making the service reachable outside a trusted network:
+1. 先查看仓库的 [Security 页面](https://github.com/Champ-X/MMA-RAG/security)。若已出现 **Report a vulnerability**，使用该入口提交私密报告。
+2. 若入口仍不可用，优先使用维护者已向你提供的私密联系方式。没有私密渠道时，可以在 [Issues](https://github.com/Champ-X/MMA-RAG/issues) 中仅请求建立私密联系，例如标题写“Request a private security reporting channel”；先不要附带漏洞类型、受影响接口、复现材料或攻击细节。
+3. 确认私密渠道后，再发送下列信息。普通功能问题与安装问题请按[贡献指南](CONTRIBUTING.md)公开反馈。
 
-1. Put the API behind TLS and an authenticated reverse proxy or gateway.
-2. Enforce user, tenant, knowledge-base, and file-level authorization on every read and write route.
-3. Replace wildcard CORS with an explicit allowlist.
-4. Add request rate limits, upload size/count quotas, concurrent ingestion limits, and model-cost budgets.
-5. Keep MinIO, Qdrant, and Redis on private networks; replace default credentials and enable their supported authentication controls.
-6. Persist sessions in a shared store if multiple API replicas are used, and define retention/deletion rules.
-7. Restrict upload types, scan untrusted files where appropriate, and keep parser/codec dependencies patched.
-8. Restrict outbound network access for URL import, model providers, MinerU, and Feishu; defend URL fetch paths against SSRF.
-9. Review whether `/docs`, `/redoc`, debug routes, verbose errors, and infrastructure consoles should be disabled or separately protected.
-10. Centralize audit logs for KB mutations, imports, uploads, Agent tool calls, approvals, and credential changes.
+有效的安全报告应包含：
 
-## CLI and Skill safety
+- 受影响的提交 SHA、操作系统，以及源码开发或完整 Docker 安装方式。
+- 攻击前提、访问范围、预期行为与实际行为，以及可能影响的数据或权限。
+- 使用自建实例和最小合成数据的复现步骤；必要时附脱敏请求、日志或修复建议。
+- 是否已公开相关信息，以及便于后续联系的方式。
 
-The bundled `mma-rag` CLI keeps uploads within configured safe roots:
+请只在自己拥有或获准测试的实例中验证，避免访问他人资料、破坏数据或造成持续资源消耗。维护者尚未公布响应时限、安全维护周期或赏金计划；本页不承诺这些服务。
 
-- Set `MMA_RAG_ALLOWED_ROOTS` to explicit approved directories in shared or automated environments.
-- Keep `MMA_RAG_BASE_URL` pointed at a trusted Tessmora instance.
-- Treat retrieved content as untrusted input; it must not grant permission to run commands, disclose secrets, or perform external actions.
-- The current Agent runtime automatically executes only tools marked read-only. Future network or write tools require separate approval, scope, sandbox, and audit controls.
+## 版本与修复范围
 
-## Feishu
+仓库[尚未采用语义版本发布](CHANGELOG.md)，目前没有正式发布标签或受支持版本矩阵。报告中请提供 `git rev-parse HEAD` 的结果，不要只写“最新版”。能够安全复现时，可核对当前 `main` 是否仍受影响；不要为复现问题直接升级或修改正在使用的数据目录。
 
-- Grant only the scopes needed by enabled bot, document import, card, and media features.
-- Limit the application's availability to intended users and groups.
-- Rotate `FEISHU_APP_SECRET` if exposed, and do not log access tokens or message contents unnecessarily.
+评估修复时应保留对应代码与依赖锁文件。历史提交、旧分支及实验运行记录不代表持续获得安全更新。
 
-## Reporting
+## 当前访问控制
 
-If you discover a security issue, open a private GitHub Security Advisory or contact the maintainers through an appropriate private channel. Do not publish exploit details in a public issue.
+| 范围 | 已有机制 | 仍需注意 |
+| --- | --- | --- |
+| 普通知识库、上传、导入、对话与检索 API | 各路由执行自己的输入与业务校验 | 没有统一用户鉴权、租户隔离或每个知识库的 ACL；只读检索也可能泄露资料 |
+| Pi 与网络素材采集 | 共用工作区访问检查。未配置 token 时检查本机连接、请求主机及可选 Origin；配置后校验工作区凭证 | 这是单工作区身份，不是全站登录系统。Pi 的浏览器会话 cookie 仅适用于 `/api/pi` |
+| 安装配置 API | 写配置、模型测试和模型准备等操作要求 `X-Tessmora-Setup-Token` | `status`、`storage`、`progress` 是公开状态接口；安装令牌不保护所有业务路由 |
+| Pi 来源工具 | 宿主校验允许访问的知识库、文件及引用材料；工具不能扩大本轮搜索范围 | 引用材料可用于读取，但不会自动扩大搜索范围；这些限制不替代其他 API 的授权检查 |
+| 浏览器跨域与接口文档 | 当前 FastAPI CORS 允许任意来源，开发 API 提供 OpenAPI、`/docs` 与 `/redoc` | CORS 不是认证；不要据此认定资料仅能被前端访问 |
+
+实现入口：[API 注册与 CORS](backend/app/main.py)、[工作区凭证](backend/app/api/pi_agent.py)、[采集接口](backend/app/api/collection.py)、[安装配置](backend/app/api/setup.py)、[Pi 来源范围](backend/app/modules/pi_agent/policy.py)。
+
+## 两种运行方式的网络边界
+
+| 运行方式 | 默认宿主机端口与凭证 |
+| --- | --- |
+| CLI 完整 Docker 安装 | [分发 Compose](deploy/compose.yaml)仅向 `127.0.0.1` 发布 Web `3001` 和 MinIO 对象端口 `9000`，端口可配置。后端、Qdrant、Redis 和 MinIO Console 不发布宿主端口；安装器生成实例令牌与随机存储密码 |
+| 从源码开发 | `start-dev.sh` 启动的 API 与 Vite 绑定本机地址，但[根目录 Compose](docker-compose.yml)发布的存储端口没有限定为 loopback，并使用开发用 MinIO 默认凭证。启动完整根 Compose 还会发布后端与监控端口 |
+
+完整安装的 Nginx 代理 `/api/` 与 `/health`，不代理 FastAPI 的文档路由；它没有附带公网 TLS 或用户认证网关。修改端口绑定、反向代理、隧道或容器网络，都可能改变上述边界。源码环境也应检查防火墙与 Docker 实际监听地址。
+
+## 数据、凭证与模型服务
+
+- **本地存储不等于离线处理。** 嵌入、重排、回答生成、媒体观察及所选云解析服务可能将问题、文本片段、图片或音视频内容发送给配置的服务商。使用敏感材料前，确认实际模型路由、服务商数据政策与授权范围。
+- **配置文件不是加密保险库。** CLI 的 `runtime.env`、服务端 `state/setup.json` 及源码环境的 `backend/.env` 可能包含凭证。安装器使用受限文件权限保存配置，但不提供静态加密；保护配置目录及其备份，不要提交到 Git。
+- **连接链接也是凭证。** 对于 CLI 管理的本地实例，`tessmora open --print-url` 输出的完整链接含实例 token。网页会移除 URL fragment 并在标签页内使用凭证，但原始链接仍不可放进截图、Issue、聊天或公开日志。完整安装中该令牌也用于 Pi 访问。
+- **浏览器保存会话资料。** 对话快照与附件分别使用浏览器本地存储和 IndexedDB。共用浏览器配置文件的人员可能接触这些内容；清除浏览器数据也不等于删除服务端原件或运行账本。
+- **日志需要人工复核。** 已知凭证有部分脱敏处理，但原始资料、问题、工具输出、异常和带签名的媒体链接仍可能敏感。分享之前按最小必要范围删去这些内容。
+- 前端代码及 `VITE_*` 变量会进入浏览器，不可存放服务端密钥。使用独立、最小权限的模型与飞书凭证；飞书应用仅向预期用户和群组开放。
+
+数据位置与备份范围见[安装器说明](packages/cli/README.md#配置与数据)和[分发指南](docs/DISTRIBUTION.md)。
+
+## 文件、外部链接与 Agent
+
+上传文件、网页、转写、图片文字和检索结果都是不可信输入。它们不能授予执行命令、读取其他目录、泄露凭证或扩大访问范围的权限。
+
+**外部链接有不同处理路径。** 网络素材采集的[下载器](backend/app/modules/collection/providers.py)限制公网 HTTP(S) 的 80/443 端口，校验 DNS 地址、固定连接 IP，并在重定向时重新检查，同时限制下载体积与时间。这些防护不能推及整个项目：旧 URL 导入与解析器中的网络图片下载没有同等的统一公网地址校验。接收不可信链接前，部署者仍需限制服务的出站网络，阻止访问内网、回环地址与云元数据端点。
+
+**本机路径必须明确授权。** 服务端文件夹导入默认关闭，启用时配置 `IMPORT_FOLDER_ALLOWED_BASE_PATHS`；保留 Markdown 本地图片白名单校验。`mma-rag` CLI 的 `MMA_RAG_ALLOWED_ROOTS` 只约束该 CLI 的上传路径，不是服务端文件系统沙箱。共享或自动化环境应显式配置根目录，详见 [CLI 参考](skills/mma-rag/references/cli-reference.md)。
+
+**Pi 的工具集有限，但运行并非恶意文件沙箱。** Pi 不提供任意 Shell、Python 或 SQL 执行工具；表格计算使用受限操作，网络采集是独立入库功能。宿主仍会调用解析器、FFmpeg、LibreOffice 等程序，需使用受限系统权限并维护依赖。普通 Agent 的只读工具门禁也不能解释为 Pi 不写运行状态、不调用外部模型或不产生费用。
+
+**资源和费用需要单独约束。** Pi 没有累计 Token、总时长或工具调用次数上限；并发槽和异常停止不等于费用配额。Durable 重启恢复可能重新请求中断的模型调用并产生额外费用。完整安装的 Nginx 有请求体上限，但不能替代所有接口的文件大小、数量、内存与解析限额；直连开发 API 也不继承这个代理限制。
+
+## 扩大部署范围前
+
+以下是部署者需要实现和验证的措施，不是当前产品已提供的能力清单：
+
+1. 在 TLS 和认证网关后部署，并在所有读写、下载和流式接口上实施所需的用户、知识库与文件权限。仅持有 Pi 或安装 token 不够。
+2. 使用明确的 CORS allowlist；隔离存储、管理接口、调试接口和控制台，替换开发凭证。需要共享对象链接时，核对有效期与访问范围。
+3. 配置请求速率、请求体、存储、并发解析和模型费用限制；对上传及外部链接实施网络和进程隔离，保持解析器与镜像更新。
+4. 制定数据保留、删除、访问审计和加密备份策略，验证恢复过程。Pi 与采集服务使用独占数据目录锁，普通后端会话仍有进程内状态；不能简单添加共享同一目录的 API worker 来横向扩容。
+
+相关运行边界见 [Pi Agent](docs/PI_AGENT_MODE.md)、[Pi Durable](docs/pi-agent-durable.md)与[系统架构](docs/MMA_ARCHITECTURE.md)。
+
+## 凭证泄露或实例暴露后
+
+先撤销或轮换受影响的凭证，必要时暂停外部访问；不要等到清理 Git 历史后才处理密钥。检查访问记录与服务商用量，保留私密、脱敏的调查证据。删除文件或撤回提交不能使已泄露的密钥重新安全。
+
+涉及共享 Git 历史、备份或数据清理时，与维护者协调恢复和通知范围；不要用不可逆删除替代调查。需要报告漏洞时按[安全报告流程](#reporting)联系。
