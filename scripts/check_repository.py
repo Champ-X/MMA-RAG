@@ -22,6 +22,7 @@ FORBIDDEN = (
     '.agent-tasks/', 'output/', 'video-production/', 'docs/previews/',
     'frontend/design-previews/', '.impeccable/review/', '.impeccable/review-gallery/',
     'frontend/coverage/', 'frontend/playwright-report/', 'frontend/test-results/',
+    'frontend/demo-assets/', 'frontend/.demo-public/',
     'tmp/', 'temp/',
 )
 EVAL_INPUTS = {'README.md', 'baseline_v1', 'baselines', 'decision_plan_v2', 'decision_plan_v2_holdout'}
@@ -44,7 +45,7 @@ def main():
         parts = Path(name).parts
         path = ROOT / name
         if (name.startswith(FORBIDDEN)
-                or any(part in {'node_modules', '__pycache__', '.pytest_cache', '.venv'} for part in parts)
+                or any(part in {'node_modules', '__pycache__', '.pytest_cache', '.venv', '.vercel'} for part in parts)
                 or parts[0].startswith('.venv-')):
             errors.append(f'{name}: generated or local-only path')
         if Path(name).name.startswith('.env') and Path(name).name != '.env.example':

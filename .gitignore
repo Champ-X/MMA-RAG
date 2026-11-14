@@ -23,6 +23,10 @@ build/
 node_modules/
 frontend/dist/
 frontend/node_modules/
+# Local demo source media, prepared public copies and deployment state.
+/frontend/demo-assets/
+/frontend/.demo-public/
+.vercel/
 *.tsbuildinfo
 .npm
 .yarn/

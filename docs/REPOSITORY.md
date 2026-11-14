@@ -27,6 +27,7 @@ git clone --filter=blob:none --single-branch https://github.com/Champ-X/MMA-RAG.
 | README 中英文介绍视频 | `docs/media/tessmora-intro/` 仅分发两份 720p 轻量版及封面/字幕；视频各约 21 MiB，来源与哈希见该目录清单 |
 | 启动及可复用运维工具 | Git 跟踪，记录参数与运行前提 |
 | 生成的前端、依赖、模型权重 | 本地生成或独立发布，不放 Git |
+| Demo 原始媒体、准备副本与部署状态 | `frontend/demo-assets/`、`frontend/.demo-public/`、`.vercel/`；忽略并由分发检查器拒绝强制跟踪 |
 | 用户配置与知识数据 | `backend/.env`、`backend/data/`、`data/`、MinIO/Qdrant 持久目录；忽略 |
 | 临时 QA、截图、实验脚本与模型回执 | `ops/` 或仓库外归档；忽略 |
 | 冻结实验与大语料 | 独立研究归档/发布资产；主仓库仅保留生产准入所需的小型证据 |
@@ -40,6 +41,10 @@ git clone --filter=blob:none --single-branch https://github.com/Champ-X/MMA-RAG.
 ## 历史与恢复
 
 普通清理通过删除当前树中的过时文件完成，Git 历史仍可用于恢复。具有独立价值的本地记录可先移到忽略的 `ops/maintenance/`，保留原路径与 SHA-256，再从分发目录移除；不清空运行数据、模型缓存或用户资料。
+
+本地清理先区分可再生成的输出和唯一输入。`frontend/.demo-public/` 是 demo 准备脚本生成的副本，`frontend/demo-assets/` 是其源材料；前者可重建，后者应保留。`.vercel/output/` 是构建产物，旁边的项目关联与环境文件仍有用途。视频制作工程、母片、图片提示词与来源记录不按缓存处理。
+
+`logs/dev/` 除了日志还保存进程状态、原存储目录和恢复记录，不应整目录清空。删除安装验收或 smoke 目录前，核对包括已停止容器在内的全部挂载；只删除不再挂载、可复现的临时数据，保留验收报告和恢复信息。`data/pi-agent/`、`backend/data/` 及外部 MinIO/Qdrant/Redis 持久目录不是测试缓存。
 
 强制历史重写会改变后续提交 ID，并要求其他工作区和贡献者重新同步，应作为独立维护任务处理。当前树体积和 Git 历史体积需要分别测量；一次旧测量不能代表当前 clone 成本。
 
