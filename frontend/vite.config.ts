@@ -43,7 +43,7 @@ function manualChunks(id: string) {
   if (/node_modules\/(xlsx|cfb|codepage|crc-32|ssf|wmf|word)\//.test(id)) {
     return 'spreadsheet'
   }
-  if (/node_modules\/(recharts|d3|d3-|victory-vendor|framer-motion|motion-dom|motion-utils)\//.test(id)) {
+  if (/node_modules\/(d3|d3-)\//.test(id)) {
     return 'charts'
   }
 }

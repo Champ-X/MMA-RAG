@@ -118,9 +118,9 @@ Retrieval includes a fold-out source casebook using the existing saved architect
 
 Shipping Color Atlas assets live in `frontend/public/architecture/atlas/`. Keep `provenance.json`, `font-manifest.json`, saved retrieval examples and the referenced media together. Preserve source identities, transformations and file hashes. Font licenses are distributed in `frontend/public/architecture/fonts/`.
 
-Runtime retains `ArchitectureBlueprint`, `ArchitectureDetails` and `ArchitectureRuntime` inside native disclosure sections. Existing architecture components, illustrations, font fallbacks and legacy CSS remain available for those detailed references or older component exports; they are not the visual specification for the active Color Atlas chapter shell. The active route and `color-atlas/` styles are authoritative for the current presentation. Earlier asset records remain in [visual asset provenance](docs/architecture-visual-assets.md) and [legacy typography notes](docs/architecture-typography-assets.md).
+Runtime retains `ArchitectureBlueprint`, `ArchitectureDetails` and `ArchitectureRuntime` inside native disclosure sections. Other retained architecture components and styles have current runtime or regression-test consumers; unused earlier implementations and their artwork have been removed. The active route and `color-atlas/` styles are authoritative for the current presentation. Earlier artwork and its exact prompts remain in the [historical visual asset record](https://github.com/Champ-X/MMA-RAG/blob/ea4194f8ee905619647b202bfdcf359d18f5e03b/docs/architecture-visual-assets.md); current font fallbacks and their provenance are documented in the [typography notes](docs/architecture-typography-assets.md).
 
-Local proposals, downloaded source fonts, intermediate generations and review captures belong under ignored `output/` or `.impeccable/review*/` paths. The superseded Evidence Exhibition design documents and proposal briefs are preserved locally in `output/release-design-archive-20261025/`; they do not define the current route.
+Local proposals, downloaded source fonts, intermediate generations and review captures belong under ignored `output/` or `.impeccable/review*/` paths. Superseded Evidence Exhibition design documents and proposal briefs are historical material; they do not define the current route.
 
 ## Maintenance boundaries
 

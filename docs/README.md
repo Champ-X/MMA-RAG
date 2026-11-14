@@ -21,7 +21,7 @@
 | 接入 CLI / Codex 或飞书 | [CLI](../skills/mma-rag/references/cli-reference.md) · [飞书](FEISHU_BOT_SETUP.md) |
 | 复现检索及生成评测 | [RAG 基线](RAG_EVALUATION.md) · [检索评测](RETRIEVAL_EVALUATION_V2.md) |
 | 修改代码、提交文件、控制仓库体积 | [贡献指南](../CONTRIBUTING.md) · [仓库维护](REPOSITORY.md) |
-| 维护页面设计、图片与字体来源 | [设计约定](../DESIGN.md) · [Color Atlas](architecture-color-atlas.md) · [架构图片](architecture-visual-assets.md) · [字体](architecture-typography-assets.md) · [知识库图片](knowledge-empty-visual-assets.md) |
+| 维护页面设计、图片与字体来源 | [设计约定](../DESIGN.md) · [Color Atlas](architecture-color-atlas.md) · [字体](architecture-typography-assets.md) · [知识库图片](knowledge-empty-visual-assets.md) |
 | 部署安全 | [安全说明](../SECURITY.md) |
 
 实验笔记、逐次验收记录和私人语料不属于使用文档。历史材料可按提交查阅；新实验输出应放在忽略目录中。更新行为时同步修改对应技术文档，中英文 README 只保留稳定能力和入门路径。
