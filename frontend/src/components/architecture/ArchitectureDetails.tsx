@@ -40,7 +40,7 @@ const moduleDefinitions = [
     title: '多路检索，汇成一组证据',
     description: 'Direct 单次调用完整检索编排；常规 Agent 在补查时复用同一服务。Pi 的搜索工具有独立实现。',
     receives: '问题、明确的知识库或文件范围、模态需求与排除约束。',
-    does: '意图分析、多视角查询、画像路由；按需执行 Dense、Sparse、CLIP、CLAP 与视频检索，再用 RRF 融合和 Cross-Encoder 重排。',
+    does: '按意图和范围启用文本与媒体通道。媒体检索可用 RRF。常规重排器合并各通道候选，去重后筛选证据。',
     delivers: '去重证据、来源定位、检索范围与覆盖记录，交给公共上下文构建器。',
     sources: [
       { label: 'RetrievalService', path: 'backend/app/modules/retrieval/service.py' },

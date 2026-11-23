@@ -4,7 +4,8 @@ import { ArchitectureMode, architectureSourceUrl } from '@/data/architectureExpe
 import './architectureRuntime.css'
 
 export function ArchitectureRuntime({ mode }: { mode: ArchitectureMode }) {
-  useTranslation()
+  const { i18n } = useTranslation()
+  const english = i18n.language.startsWith('en')
   const isPi = mode === 'pi'
 
   return (
@@ -40,7 +41,7 @@ export function ArchitectureRuntime({ mode }: { mode: ArchitectureMode }) {
           <div><dt>MinIO</dt><dd>{t("原文件、解析文本与媒体派生物")}</dd><dd className="atlas-storage-scope">{t("共享来源")}</dd></div>
           <div><dt>Qdrant</dt><dd>{t("多模态向量、词面索引与知识库画像")}</dd><dd className="atlas-storage-scope">{t("共享索引")}</dd></div>
           <div className={isPi ? 'is-pi-store' : ''}><dt>{t("SQLite + 本地文件")}</dt><dd>{t("Pi 任务、事件、证据、附件与预览")}</dd><dd className="atlas-storage-scope">{t("Pi 独立持久化")}</dd></div>
-          <div><dt>Redis / Celery</dt><dd>{t("可选任务控制，不作为在线证据来源")}</dd><dd className="atlas-storage-scope">{t("启动器默认不启 Celery")}</dd></div>
+          <div><dt>Redis / Celery</dt><dd>{t("Redis 记录上传进度，Celery 处理画像等后台任务")}</dd><dd className="atlas-storage-scope">{t("完整安装含 worker，开发启动器默认不启动")}</dd></div>
         </dl>
         <p className="atlas-topology-caption">{t("开发环境推荐本机 Python / Node 配合 Docker 存储服务。以上为职责关系，并非实时服务状态。")}</p>
       </div>
@@ -62,8 +63,8 @@ export function ArchitectureRuntime({ mode }: { mode: ArchitectureMode }) {
             <h4>{t("Pi 任务")}</h4>
             <dl>
               <div><dt>{t("任务保存")}</dt><dd>{t("任务、事件与证据持续写入 SQLite 账本；附件和预览留在本地数据目录。")}</dd></div>
-              <div><dt>{t("浏览器断线")}</dt><dd>{t("后台任务继续，刷新可按事件序号续接。用户点击停止才取消任务与工作进程。")}</dd></div>
-              <div><dt>{t("服务重启")}</dt><dd>{t("未完成任务标为中断，不自动重放付费请求；继续提问创建关联的新运行。")}</dd></div>
+              <div><dt>{t("浏览器断线")}</dt><dd>{t("任务在后台继续。浏览器重连后按序号补收事件。点击停止会取消当前任务，删除会话会取消其中所有活动任务。")}</dd></div>
+              <div><dt>{t("服务重启")}</dt><dd>{t("默认的 Durable 运行时会将可恢复任务重新排队，沿用原任务 ID。已确认的工具回执可以复用，中断的主模型请求可能重试并再次计费。core 任务无法自动恢复。")}</dd></div>
             </dl>
           </article>
         </div>
@@ -80,7 +81,7 @@ export function ArchitectureRuntime({ mode }: { mode: ArchitectureMode }) {
             ) : (
               <p>{t("Direct 单次调用完整检索编排后进入公共生成链。范围、模态与排除约束在检索时生效；这条路径没有 Pi 的自主工具循环或持久任务账本。")}</p>
             )}
-            <a className="atlas-detail-link" href={architectureSourceUrl(isPi ? t("docs/PI_AGENT_MODE.md#配置与资源") : 'backend/app/modules/agent/service.py')} target="_blank" rel="noreferrer">{t(isPi ? t("Pi 资源与配置") : t("常规执行实现"))} <ArrowUpRight size={13} aria-hidden="true" /></a>
+            <a className="atlas-detail-link" href={architectureSourceUrl(isPi ? 'docs/PI_AGENT_MODE.md#配置与资源' : 'backend/app/modules/agent/service.py')} target="_blank" rel="noreferrer">{t(isPi ? 'Pi 资源与配置' : '常规执行实现')} <ArrowUpRight size={13} aria-hidden="true" /></a>
           </div>
         </details>
         <details className="atlas-runtime-disclosure">
@@ -100,10 +101,10 @@ export function ArchitectureRuntime({ mode }: { mode: ArchitectureMode }) {
             <p>{t("默认部署面向本机单用户或可信内网。应用尚无完整认证、租户隔离与知识库 ACL，CORS 默认开放；对外服务需要独立加固。Pi 的来源校验与远程 token 不替代应用级认证。")}</p>
             <p>{t("一个 Pi 数据目录只允许一个宿主持锁。完整 Docker 安装使用 deploy/compose.yaml，包含网页、后端与 Pi 运行时；开发模式也支持本机 Python / Node 配合 Docker 存储服务。")}</p>
             <div className="atlas-runtime-links">
-              <a className="atlas-detail-link" href={architectureSourceUrl("README.md#快速开始")} target="_blank" rel="noreferrer">{t("安装与部署")} <ArrowUpRight size={13} aria-hidden="true" /></a>
-              <a className="atlas-detail-link" href={architectureSourceUrl('SECURITY.md')} target="_blank" rel="noreferrer">{t("安全说明")} <ArrowUpRight size={13} aria-hidden="true" /></a>
+              <a className="atlas-detail-link" href={architectureSourceUrl(english ? 'README-en.md#quick-start' : 'README.md#快速开始')} target="_blank" rel="noreferrer">{t("安装与部署")} <ArrowUpRight size={13} aria-hidden="true" /></a>
+              <a className="atlas-detail-link" href={architectureSourceUrl(english ? 'SECURITY-en.md' : 'SECURITY.md')} target="_blank" rel="noreferrer">{t("安全说明")} <ArrowUpRight size={13} aria-hidden="true" /></a>
               <a className="atlas-detail-link" href={architectureSourceUrl("docs/MMA_ARCHITECTURE.md#运行边界")} target="_blank" rel="noreferrer">{t("运行架构")} <ArrowUpRight size={13} aria-hidden="true" /></a>
-              <a className="atlas-detail-link" href={architectureSourceUrl('CONTRIBUTING.md')} target="_blank" rel="noreferrer">{t("验证与贡献")} <ArrowUpRight size={13} aria-hidden="true" /></a>
+              <a className="atlas-detail-link" href={architectureSourceUrl(english ? 'CONTRIBUTING-en.md' : 'CONTRIBUTING.md')} target="_blank" rel="noreferrer">{t("验证与贡献")} <ArrowUpRight size={13} aria-hidden="true" /></a>
             </div>
           </div>
         </details>

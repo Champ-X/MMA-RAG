@@ -128,7 +128,7 @@ function VideoScene({ text }: TextProps) {
 function materialContent(text: Text): Record<AtlasMaterial, Material> {
   return {
     document: {
-      lead: text('文档里的原文、图片与表格，分别怎样保留？点按标记，沿结构展开。', 'How are text, images and tables retained? Select a marker to explore their structure.'),
+      lead: text('选择园林文档上的标记，查看正文、图片和表格的处理示例。', 'Select a marker on the garden document to see how text, images and tables are handled.'),
       motto: text('模型规划边界，程序切分原文。', 'The model plans. The program slices the source.'),
       boundary: text('原文保真针对解析后的文本，不等于 OCR 无损。', 'Source fidelity applies to parsed text, not to lossless OCR.'),
       notes: [
@@ -141,7 +141,7 @@ function materialContent(text: Text): Record<AtlasMaterial, Material> {
       sources: [{ path: 'backend/app/modules/ingestion/splitters/agentic.py', label: text('规划与原文切片', 'Planning and source slicing') }, { path: 'backend/app/modules/ingestion/parsers/factory.py', label: text('格式解析', 'Format parsing') }],
     },
     table: {
-      lead: text('数据分块以后，怎样仍能读懂表头与每一列？切换行块，查看结构。', 'How do row blocks keep their headers and column meaning? Switch blocks to inspect the structure.'),
+      lead: text('切换示例行块，查看每块保留的表头和行号。', 'Switch between row blocks to see the headers and row numbers each block carries.'),
       motto: text('找到一块数据，不等于完成整表计算。', 'Finding a row block is not a whole-table calculation.'),
       boundary: text('图中行号是解析后的数据行编号，不自动等于 Excel 物理行号。', 'The row numbers identify parsed data rows, not necessarily physical Excel rows.'),
       notes: [
@@ -154,7 +154,7 @@ function materialContent(text: Text): Record<AtlasMaterial, Material> {
       sources: [{ path: 'backend/app/modules/ingestion/parsers/factory.py', label: text('表格与列画像', 'Tables and column profiles') }, { path: 'backend/app/modules/ingestion/service.py', label: text('表格分块与入库', 'Table chunking and ingestion') }],
     },
     image: {
-      lead: text('一张图，怎样同时通过描述和画面被找到？选择一种表示，查看线索。', 'How is one image found through both words and vision? Select a representation to inspect its clues.'),
+      lead: text('选择图片描述或原图，查看各自对应的向量。', 'Select the caption or the original image to see the vector each produces.'),
       motto: text('描述提供线索，细节仍要回看原图。', 'Descriptions provide clues. Details live in the original.'),
       boundary: text('图片路径仍指向图片；source_file_id 用来关联抽图的母文档。', 'The image path still points to the image; source_file_id links it to its parent document.'),
       notes: [
@@ -167,7 +167,7 @@ function materialContent(text: Text): Record<AtlasMaterial, Material> {
       sources: [{ path: 'backend/app/modules/ingestion/service.py', label: text('描述与双向量入库', 'Caption and dual-vector ingestion') }, { path: 'backend/app/modules/ingestion/storage/vector_store.py', label: text('图片存储契约', 'Image storage schema') }],
     },
     audio: {
-      lead: text('怎样同时搜索音频说了什么、听起来像什么？', 'How can we search both what an audio file says and what it sounds like?'),
+      lead: text('试听片段，查看同一文件如何保存转写、声音描述和 CLAP 向量。', 'Play the excerpt and see how its file is indexed with a transcript, a description and a CLAP vector.'),
       motto: text('定位到音频文件，保留完整的听觉语境。', 'Return to the audio file, with its full listening context.'),
       boundary: text('独立音频当前是文件级索引，不承诺逐句时间定位。', 'Standalone audio is currently indexed by file, without guaranteed sentence-level timestamps.'),
       notes: [
@@ -180,7 +180,7 @@ function materialContent(text: Text): Record<AtlasMaterial, Material> {
       sources: [{ path: 'backend/app/modules/ingestion/service.py', label: text('音频入库与 CLAP', 'Audio ingestion and CLAP') }, { path: 'backend/app/modules/ingestion/storage/vector_store.py', label: text('音频存储契约', 'Audio storage schema') }],
     },
     video: {
-      lead: text('视频里的线索怎样回到具体时间？选择关键帧，查看真实画面。', 'How do video clues lead back to a time span? Select a keyframe to inspect the actual footage.'),
+      lead: text('选择关键帧，查看原片中的画面、时间和所属镜头。', 'Select a keyframe to see the original frame, its timestamp and its parent shot.'),
       motto: text('覆盖时间轴，不代表逐帧核验。', 'Timeline coverage is not frame-by-frame verification.'),
       boundary: text('帧图来自原视频；场景、镜头与向量展示为结构示意，不是本次解析结果。', 'Frames come from the original video; scene, shot and vector layouts illustrate the structure, not a live parsing result.'),
       notes: [
@@ -205,14 +205,14 @@ export function AtlasParsing({ text, kind: controlledKind, onKindChange }: TextP
   }
   const contents = materialContent(text)
   const headings: Record<AtlasMaterial, string> = {
-    document: text('把原文展开，\n让结构浮现。', 'Open the source.\nReveal the structure.'),
-    table: text('让数据成块，\n让关系保留。', 'Group the data.\nKeep its meaning.'),
-    image: text('描述之外，\n还有画面本身。', 'Beyond words,\nthere is the image.'),
-    audio: text('听见内容，\n也听见声音。', 'Hear the content.\nHear the sound.'),
-    video: text('按场景理解，\n沿镜头回看。', 'Read the scene.\nRevisit the shot.'),
+    document: text('文档解析与分块', 'Document parsing and chunking'),
+    table: text('表头与数据行', 'Table headers and rows'),
+    image: text('图片描述与 CLIP', 'Image captions and CLIP'),
+    audio: text('转写与声音特征', 'Transcripts and audio features'),
+    video: text('镜头与关键帧', 'Shots and keyframes'),
   }
   return <div className="ca-ps-root"><Tabs.Root value={kind} onValueChange={changeKind}>
-    <div className="ca-ps-opening"><h1 id="book-heading" className={text('', 'ca-ps-heading-en')} tabIndex={-1}>{headings[kind].split('\n').map((line, index) => <span key={index}>{line}</span>)}</h1><div className="ca-ps-opening-controls"><Tabs.List className="ca-ps-tabs" aria-label={text('按模态查看解析过程', 'Explore parsing by modality')}>{modalities.map(({ id, zh, en, icon: Icon }) => <Tabs.Trigger className="ca-ps-tab" key={id} value={id}><Icon size={22} strokeWidth={1.6} aria-hidden="true" /><span>{text(zh, en)}</span></Tabs.Trigger>)}</Tabs.List><p className="ca-ps-lead">{contents[kind].lead}</p></div></div>
+    <div className="ca-ps-opening"><h1 id="book-heading" className={text('', 'ca-ps-heading-en')} tabIndex={-1}>{headings[kind]}</h1><div className="ca-ps-opening-controls"><Tabs.List className="ca-ps-tabs" aria-label={text('按模态查看解析过程', 'Explore parsing by modality')}>{modalities.map(({ id, zh, en, icon: Icon }) => <Tabs.Trigger className="ca-ps-tab" key={id} value={id}><Icon size={22} strokeWidth={1.6} aria-hidden="true" /><span>{text(zh, en)}</span></Tabs.Trigger>)}</Tabs.List><p className="ca-ps-lead">{contents[kind].lead}</p></div></div>
     {modalities.map(({ id }) => { const content = contents[id]; return <Tabs.Content className="ca-ps-panel" key={id} value={id}>
       {id === 'document' && <DocumentScene text={text} />}{id === 'table' && <TableScene text={text} />}{id === 'image' && <ImageScene text={text} />}{id === 'audio' && <AudioScene text={text} />}{id === 'video' && <VideoScene text={text} />}
       <div className="ca-ps-takeaway"><h3>{content.motto}</h3><p>{content.boundary}</p></div>

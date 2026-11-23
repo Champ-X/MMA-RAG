@@ -69,7 +69,7 @@ export function ArchitectureBlueprint() {
             <SourceLink path="backend/app/modules/retrieval/service.py">RetrievalService</SourceLink>
             <p>{t("理解问题、明确范围、画像路由")}</p>
             <div className="atlas-blueprint-modalities" aria-label={t("按需多路召回")}><span>Dense</span><span>Sparse</span><span>CLIP</span><span>CLAP</span><span>Video</span></div>
-            <div className="atlas-blueprint-rank"><span>{t("RRF 融合")}</span><ArrowRight size={14} aria-hidden="true" /><span>{t("Cross-Encoder 精排")}</span></div>
+            <div className="atlas-blueprint-rank"><span>{t("各通道候选合并去重")}</span><ArrowRight size={14} aria-hidden="true" /><span>{t("Cross-Encoder 精排")}</span></div>
           </div>
           <Connector />
           <div className="atlas-blueprint-context atlas-blueprint-node"><SourceLink path="backend/app/modules/generation/context_builder.py">{t("上下文与引用映射")}</SourceLink></div>

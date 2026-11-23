@@ -34,7 +34,7 @@ typography:
     lineHeight: 1.4
 rounded:
   control: "3px"
-  chapter: "4px"
+  chapter: "3px"
 spacing:
   page-inline: "clamp(22px, 3.2cqi, 54px)"
   page-max: "1560px"
@@ -47,12 +47,12 @@ components:
     textColor: "#ffffff"
     rounded: "{rounded.control}"
     padding: "10px 24px"
-    minHeight: "45px"
+    minHeight: "46px"
   chapter-current:
     backgroundColor: "{colors.ca-purple}"
     textColor: "#18213d"
     rounded: "{rounded.chapter}"
-    padding: "9px 16px"
+    padding: "10px 16px"
   paper:
     backgroundColor: "#fffdf6"
   citation:
@@ -67,7 +67,7 @@ components:
 
 Color Atlas explains how material becomes searchable clues and inspectable evidence through paper stacks, folder tabs, photographs, waveforms and film strips. It is the current design for `/architecture`. It does not restyle the conversation sidebar, knowledge workspace or global language and theme controls.
 
-The eight chapters are Overview, Principles, Parsing, Storage, Retrieval, Research, Citations and Runtime. The route uses a light paper canvas in both application themes. This is an intentional page-specific treatment: surrounding application controls keep their own theme.
+The eight chapters are Overview, Principles, Parsing, Storage, Retrieval, Research, Citations and Runtime. The reading surface stays light in both themes. The surrounding controls follow the application theme.
 
 The current implementation lives in `frontend/src/pages/ArchitecturePage.tsx` and `frontend/src/components/architecture/color-atlas/`. See [the implementation and asset notes](docs/architecture-color-atlas.md) for scope and maintenance checks.
 
@@ -75,7 +75,7 @@ The current implementation lives in `frontend/src/pages/ArchitecturePage.tsx` an
 
 Chalk paper (`ca-paper`) and dark ink (`ca-ink`) carry the reading surface. Periwinkle (`ca-purple`) marks selected chapters and supporting objects; pale periwinkle (`ca-lilac`) and pistachio (`ca-green`) distinguish paper and folder layers. Mandarin (`ca-orange`) connects related objects and stages. Muted text (`ca-muted`) and fine rules (`ca-line`) provide hierarchy without competing with the source material.
 
-The primary action uses dark ink with white text. Source sheets use `#fffdf6`, a subtle inline SVG paper texture and small attached shadows. Rotations and overlaps belong to the explanatory objects; copy and controls remain real DOM elements. Component CSS also contains role-specific neutral and accent colors; the frontmatter records the shared palette rather than claiming to enumerate every literal color.
+The primary action uses dark ink with white text. Source sheets use `#fffdf6`, a subtle inline SVG paper texture and small attached shadows. Rotations and overlaps belong to the explanatory objects; copy and controls remain real DOM elements. The frontmatter records the shared palette and base control sizes. Chapter styles adjust those sizes by locale and available width.
 
 ## Typography
 
@@ -108,7 +108,7 @@ Explicit chapter navigation retains the route query and hash, starts the new cha
 
 ## Exploration and real examples
 
-Each chapter opening now poses the question its content answers. Compact arrow affordances identify interactive collage and journey objects, while existing technical disclosures keep detailed contracts readable without shrinking them into the core diagram.
+Chapter headings name the topic. Arrows identify interactive objects in the collage and the journey diagram. Readers can open the Runtime appendices for topology, source modules and recovery details.
 
 Source and keyframe images support an accessible Radix lightbox with focus containment, Escape, an explicit close control and focus restoration. The lightbox shows complete image proportions. Storage and runtime diagrams also have a dedicated enlarged reader: the same semantic diagram renders with its full composition and readable typography, with horizontal scrolling available on small screens. Returning leaves the chapter, source selection and reading position intact.
 
@@ -122,8 +122,6 @@ Runtime retains `ArchitectureBlueprint`, `ArchitectureDetails` and `Architecture
 
 Local proposals, downloaded source fonts, intermediate generations and review captures belong under the ignored `output/` directory. The current chapter controls, paper shadows and focus styles are defined in the [route stylesheet](frontend/src/components/architecture/color-atlas/colorAtlas.css).
 
-## Maintenance boundaries
+## Maintenance
 
-Keep the architecture scope, application shell, substantive mechanisms, source links, route state and accessible interactions intact. Source code and current manifests take precedence over an outdated design description. Do not turn conceptual diagrams, stored examples or preview controls into claims about live backend execution, measured retrieval quality or production acceptance.
-
-This document describes the checked source implementation. It does not itself establish a new browser or backend acceptance result; consult the implementation notes and run the checks appropriate to a future change.
+When changing copy or assets, check the Chinese and English pages, keyboard navigation, chapter deep links, and source links. Recorded examples include their capture date and provenance. The architecture page can display them without reading a live knowledge base. [Implementation and verification](docs/architecture-color-atlas.md)

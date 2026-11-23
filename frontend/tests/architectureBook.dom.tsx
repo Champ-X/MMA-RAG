@@ -86,11 +86,11 @@ test('chapters turn through next, contents and previous controls, and router his
     .map(link => new URL(link.href).hash || '#overview')
   assert.deepEqual(destinations, ['#overview', '#idea', '#materials', '#storage', '#retrieval', '#paths', '#evidence', '#system'])
   assert.equal(element<HTMLButtonElement>('.book-prev').disabled, true)
-  assert.match(element('#book-heading').textContent!, /知识有形/)
+  assert.match(element('#book-heading').textContent!, /Tessmora 系统架构/)
 
   await click(element('.book-start'))
   assert.equal(router!.state.location.hash, '#idea')
-  assert.match(element('#book-heading').textContent!, /能被找到/)
+  assert.match(element('#book-heading').textContent!, /从原件到可检索的证据/)
   assert.equal(document.activeElement, element('#book-heading'))
 
   await click(element('.book-next'))
@@ -120,7 +120,9 @@ test('chapters turn through next, contents and previous controls, and router his
 
 test('legacy module and journey links open their chapters and preserve the Pi path', async () => {
   await mountBook('/architecture?path=pi#modules')
-  assert.match(element('#book-heading').textContent!, /看清系统/)
+  assert.match(element('#book-heading').textContent!, /服务与任务恢复/)
+  assert.match(element('.ca-sys-runtime-boundaries').textContent!, /Durable.*沿用原任务 ID/)
+  assert.match(element('.atlas-lifecycle').textContent!, /主模型请求可能重试并再次计费/)
   const moduleAppendix = [...container!.querySelectorAll<HTMLDetailsElement>('.book-appendix')]
     .find(details => details.querySelector('summary')?.textContent?.includes('模块与源码'))
   assert.ok(moduleAppendix?.open, 'The old module deep link should reveal its appendix')
@@ -394,6 +396,11 @@ test('every chapter and its parsing, retrieval, path and citation variants have 
         await click(citation)
         assertEnglish(`source ${citation.textContent}`)
       }
+    }
+    if (chapter === '#system') {
+      assert.match(element('.ca-sys-runtime-boundaries').textContent!, /Durable.*same run ID/)
+      assert.match(element('.atlas-lifecycle').textContent!, /may be retried and billed again/)
+      assert.ok(container!.querySelector('a[href$="/README-en.md#quick-start"]'))
     }
   }
   assert.equal(document.title, 'System architecture · Tessmora')

@@ -1,6 +1,6 @@
 # Architecture: Color Atlas
 
-The `/architecture` route uses a **Color Atlas · 彩色图志** reading layout. This document describes its maintained component and asset boundaries.
+The `/architecture` page has eight chapters covering ingestion, storage, retrieval, research, citations, and recovery. Its examples use bundled source files and saved retrieval results.
 
 ## Visual system
 
@@ -12,7 +12,7 @@ The `/architecture` route uses a **Color Atlas · 彩色图志** reading layout.
 - Paper and photograph depth use separate shadow tokens. Controls share restrained hover, pressed and focus treatments. Inline citation numbers stay with their sentence ending, and narrow layouts wrap source names so the entries remain distinguishable.
 - Overview image, audio and video specimens link directly to the corresponding parsing view. The `material` query parameter preserves the selected modality alongside the existing `path` parameter.
 
-The route uses the approved light paper canvas even when the surrounding application uses a dark theme. This is a page-specific art direction; it does not change the global theme.
+The reading surface stays light in both application themes. The surrounding sidebar follows the global theme.
 
 ## Assets and recorded examples
 

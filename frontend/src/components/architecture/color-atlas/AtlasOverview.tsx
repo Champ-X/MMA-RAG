@@ -7,8 +7,8 @@ export function AtlasOverview({ text, onExplore }: { text: AtlasText; onExplore:
   return <>
     <section className="ca-cover">
       <div className="ca-cover-copy">
-        <h1 id="book-heading" tabIndex={-1}>{text('知识有形，', 'Knowledge takes shape.')}<br />{text('线索可循。', 'Every clue connects.')}</h1>
-        <p>{text('文档、图像与声音，各自保留结构。', 'Documents, images and sound keep their own structure.')}<br />{text('它们怎样一起参与寻找答案？', 'How do they help find an answer together?')}</p>
+        <h1 id="book-heading" tabIndex={-1}>Tessmora <br />{text('系统架构', 'architecture')}</h1>
+        <p>{text('从上传一份文件开始，看系统怎样建立索引、检索相关材料，以及怎样通过回答中的引用打开原件。', 'Follow an uploaded file through indexing and search, then use a citation in the answer to open the source.')}</p>
         <button type="button" className="ca-primary book-start" onClick={() => onExplore(1)}>{text('探索架构', 'Explore the architecture')}<ArrowRight size={20} aria-hidden="true" /></button>
       </div>
       <div className="ca-collage" role="group" aria-label={text('资料、搜索表示与引用的连接', 'Source material, searchable representations and citations')}>
@@ -39,12 +39,12 @@ export function AtlasOverview({ text, onExplore }: { text: AtlasText; onExplore:
       <button className="ca-journey-origin" onClick={() => onExplore(2)} type="button">
         {exploreMark}<span className="ca-journey-number">1</span>
         <div className="ca-mini-sources" aria-hidden="true"><AtlasPaper><b>{text('中国古典园林', 'Chinese gardens')}</b><span>{text('借一片远山，框一窗景致。', 'Borrow a view. Frame a scene.')}</span><i /><i /><i /></AtlasPaper><img src="/architecture/atlas/concrete-architecture.webp" width="1000" height="1000" alt="" loading="lazy" /><AtlasWaveform /></div>
-        <h2>{text('理解资料', 'Understand material')}</h2><p>{text('对文档、图像、文件级音频和视频片段进行分模态解析，在保留原始结构的同时，生成可检索的表示。', 'Parse each modality, keeping the original structure alongside searchable representations.')}</p>
+        <h2>{text('文件解析', 'File parsing')}</h2><p>{text('文档按结构分块，独立音频以文件为单位，视频按镜头索引。选择一种文件，查看索引保存的字段。', 'Documents are split into passages, standalone audio is indexed by file, and video by shot. Choose a file type to see which fields the index stores.')}</p>
       </button>
       <button className="ca-journey-search" onClick={() => onExplore(4)} type="button">
-        {exploreMark}<div className="ca-journey-heading"><span className="ca-journey-number">2</span><h2>{text('寻找线索', 'Find the clues')}</h2></div>
+        {exploreMark}<div className="ca-journey-heading"><span className="ca-journey-number">2</span><h2>{text('检索与排序', 'Retrieval and ranking')}</h2></div>
         <div className="ca-mini-search" aria-hidden="true"><ul>{[[FileText, text('文档片段', 'Passages')], [Image, text('图像内容', 'Images')], [Music2, text('音频文件', 'Audio files')], [Video, text('视频片段', 'Video shots')]].map(([Icon, label], index) => { const Glyph = Icon as typeof FileText; return <li key={index}><Glyph size={15} /><span>{label as string}</span></li> })}</ul><svg viewBox="0 0 155 108"><path d="M0 12 C90 12 45 42 130 42" /><path d="M0 40 C70 40 65 50 130 50" /><path d="M0 68 C75 68 70 58 130 58" /><path d="M0 96 C80 96 55 66 130 66" /><g fill="currentColor" stroke="none">{Array.from({length: 16},(_, i)=><circle key={i} cx={132+i%4*6} cy={42+Math.floor(i/4)*8} r="1.5" />)}</g></svg><div className="ca-mini-results">{[1,2,3,4].map(n=><i key={n}><b /></i>)}<span>{text('相关线索', 'Relevant clues')}</span></div></div>
-        <p>{text('基于多路检索，从不同模态的表示中寻找与问题相关的线索，形成可追溯的证据集合。', 'Search across modalities, combine relevant clues and retain their sources.')}</p>
+        <p>{text('用建筑采光和园林借景这两个查询，查看检索返回的图片和段落。', 'See the images and passages returned for two queries about architectural lighting and borrowed scenery in gardens.')}</p>
       </button>
       <button className="ca-journey-source" onClick={() => onExplore(6)} type="button">
         {exploreMark}<div className="ca-journey-heading"><span className="ca-journey-number">3</span><h2>{text('回到来源', 'Return to the source')}</h2></div>

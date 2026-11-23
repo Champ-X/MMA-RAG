@@ -8,25 +8,20 @@ web
 
 ## Product Purpose
 
-Tessmora is a self-hostable multimodal retrieval and Agent research workspace. Users ingest documents, spreadsheets, images, audio and video, search or ask questions, and return from citations to source material. These facts are grounded in README.md and current implementation.
+Tessmora is a self-hosted workspace for researching mixed source material. A user can upload a manual, spreadsheet, recording, or video, ask a question, and open the cited passage, image, or time range to check the answer.
 
 ## Users
 
-The workspace serves people researching and organizing mixed source material. The architecture page serves first-time product visitors and technical reviewers, with an overview first and implementation detail afterward.
+Researchers and teams use the workspace to organize source files and compare evidence across them. First-time visitors can explore the architecture page without connecting a knowledge base. Its examples use recorded material and illustrations.
 
 ## Capabilities and Constraints
 
-- Preserve original material and derived representations; MinIO and Qdrant have separate responsibilities.
-- Direct and bounded Agent share conventional retrieval and generation; Pi has an independent Node tool loop and generation path, supervised by Python.
-- Conventional Agent retrieves the original question before planning additional searches. Round and query limits stop the loop; evidence limits constrain the merged result.
-- Pi host constrains source access and persists task events and evidence. Identity validation does not establish semantic entailment.
-- Self-hosted storage does not imply offline model inference or complete multi-tenant authentication. Pi's default Durable runtime can resume eligible unfinished runs after host restart; the core compatibility runtime cannot.
-- Page demonstrations must be labeled as illustrative and must not imply actual knowledge-base reads or live service status.
+- MinIO keeps original files and derived media. Qdrant indexes searchable representations and knowledge-base profiles. Citations carry enough source information to open the underlying material.
+- Direct runs one retrieval pass. The conventional Agent starts with the original question, can search again within its round and query budgets, and shares the standard answer generator. Auto chooses between these paths.
+- Pi runs its own Node tool loop. The Python host restricts source access and records evidence. With the default Durable runtime, eligible interrupted runs can resume. The core compatibility runtime leaves interrupted runs stopped.
+- Users can verify claims against cited sources. The host validates evidence identity and location. A citation can still be attached to an unsupported claim.
+- The default deployment serves one trusted workspace. Data stays in the chosen storage directories, while configured cloud models receive the material required for their tasks.
 
 ## Brand Commitments
 
-Keep the Tessmora name and existing application shell. Color Atlas is the visual system for the architecture page; its palette and layout are scoped to that route. See [the design contract](DESIGN.md).
-
-## Evidence on Hand
-
-README.md; docs/MMA_ARCHITECTURE.md; docs/PI_AGENT_MODE.md; backend/app/modules/; agent-runtime/src/; existing architecture components. No benchmark or accuracy claims are authorized by these materials.
+Use the Tessmora name and existing application shell. The Color Atlas design applies to the architecture route. Label source material, captured examples, and interactive illustrations so readers can tell what they are inspecting. [Design guide](DESIGN.md) · [System architecture](docs/MMA_ARCHITECTURE.md) · [Pi runtime](docs/PI_AGENT_MODE.md)
