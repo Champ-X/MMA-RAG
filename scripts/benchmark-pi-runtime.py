@@ -285,12 +285,18 @@ def main(args):
     if args.trial:
         asyncio.run(run_trial(args))
         return
+    if not args.baseline:
+        raise SystemExit("Pass --baseline PATH to the baseline checkout")
     output = Path(args.output).resolve()
     if (output / "manifest.json").exists():
         raise ValueError("Use a fresh output directory so old run databases cannot affect the benchmark")
+    variants = []
+    for label, directory, runtime in (("baseline", args.baseline, "core"), ("candidate", args.candidate, "durable")):
+        repo = Path(directory).resolve()
+        lock = json.loads((repo / "agent-runtime/package-lock.json").read_text())
+        version = lock["packages"]["node_modules/@earendil-works/pi-agent-core"]["version"]
+        variants.append((f"{label}-{runtime}-{version}", repo, runtime))
     output.mkdir(parents=True, exist_ok=True)
-    variants = [("baseline-core-1.0.3", Path(args.baseline).resolve(), "core"),
-        ("candidate-durable-1.5.0", Path(args.candidate).resolve(), "durable")]
     source_files = sorted({"agent-runtime/package.json", "agent-runtime/package-lock.json", *(
         str(path.relative_to(repo)) for _, repo, _ in variants for directory, pattern in (
             ("agent-runtime/src", "*.mjs"), ("backend/app/modules/pi_agent", "*.py"),
@@ -314,10 +320,13 @@ def main(args):
             target = output / "sources" / variant / file
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(repo / file, target)
-    manifest["baseline_commit"] = "658b0d10080bdf2350e76be79e0bda1b461180f4"
+    manifest["baseline_commit"] = (
+        subprocess.check_output(["git", "-C", args.baseline, "rev-parse", "HEAD"], text=True).strip()
+        if (Path(args.baseline) / ".git").exists() else None
+    )
     manifest["candidate_base_commit"] = subprocess.check_output(["git", "-C", args.candidate, "rev-parse", "HEAD"], text=True).strip()
     write_json(output / "manifest.json", manifest)
-    (output / "candidate.patch").write_bytes(subprocess.check_output(["git", "-C", args.candidate, "diff", "--", "agent-runtime", "backend/app/modules/pi_agent"]))
+    (output / "candidate.patch").write_bytes(subprocess.check_output(["git", "-C", args.candidate, "diff", "HEAD", "--", "agent-runtime", "backend/app/modules/pi_agent"]))
     commands, records = [], []
     order = random.Random(20261106)
     plan = [("normal", i, True) for i in range(args.warmups)] + [("normal", i, False) for i in range(args.normal)]
@@ -356,7 +365,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--baseline", default="/tmp/tessmora-pi-baseline-658b0d1")
+    parser.add_argument("--baseline", help="Path to the prepared baseline checkout")
     parser.add_argument("--candidate", default=str(Path(__file__).resolve().parents[1]))
     parser.add_argument("--output", required=True)
     parser.add_argument("--normal", type=int, default=20)

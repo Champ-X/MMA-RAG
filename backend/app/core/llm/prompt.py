@@ -494,61 +494,6 @@ AUDIO_TRANSCRIPTION_AND_DESCRIPTION_TEMPLATE = """
 注意：不要用 ```json 包裹，不要在外层换行或缩进美化 JSON，不要添加任何说明。若听不清或无法处理，transcript 写能听清部分或「[无法听清]」并仍尽量保留类型与分段格式，description 仍尽量写出能推断的信息。
 """
 
-# 视频场景划分+关键帧提取（长视频 MLLM，与视频/帧图一起传入）— 与 docs/视频模态技术方案.md 3.2.1 一致
-VIDEO_SCENE_PARSING_TEMPLATE = """你是一名专业的视频内容分析师。你的任务仅有一个：观看输入的视频片段后，输出**唯一**一段合法的 JSON，且不包含任何 JSON 之外的文字、解释或 Markdown 标记。
-
-**语言要求（必须遵守）**：scene_summary 与所有 keyframe 的 description **必须且仅使用中文**书写，禁止使用英文或其他语言。
-
-规则概览：
-- 将本片段按「逻辑场景」切分为若干连续区间，每个区间一个场景。
-- 每个场景内由你根据「画面信息量」与「叙事代表性」自主决定选取 1～4 个关键帧：静态构图可只保留 1 帧；发生关键动作、主体/地点切换或前后对比时选取更多帧。不要为了凑数量选取重复画面，并给出精确到秒（可为小数）的时间戳与一句**中文**画面描述。
-- 所有时间戳均相对于**本段视频的 0 秒**。只输出一个 JSON 数组，不要用 ```json 包裹，不要输出其他任何内容。
-
----
-
-请对当前这条视频片段进行「场景划分 + 关键帧提取」，并严格按下列要求输出。
-
-## 一、输入说明
-- 本片段是长视频中的一段连续剪辑，时长约 {chunk_duration_seconds} 秒。
-- 若上游告知本段在完整视频中的起始偏移，仅用于你理解上下文；你输出的时间戳仍以本段 0 秒为起点。
-- **前文场景摘要（供理解连贯性）**：{previous_segments_summary}
-
-## 二、场景划分规则（满足其一即可考虑切分）
-- **空间/地点变化**：明显换景、转场（如从室内到街道）。
-- **时间或叙事跳跃**：闪回、切到另一条故事线、黑场/白场后重新开始。
-- **主体或事件转折**：主要人物变化、核心动作/事件结束并开启新事件。
-- **镜头语言突变**：景别或运镜风格明显改变且伴随语义转折（如从特写切到全景并换人）。
-不要因短暂切镜或同一场景内的小幅运镜就切分；单场景至少覆盖数秒以上。
-
-## 三、scene_summary 写作要求（重要：须尽可能详尽）
-- **scene_summary 是该视频片段的场景级描述，用于后续向量检索与 LLM 上下文，必须尽可能详尽、信息充分。**
-- 建议涵盖：**地点/环境**（室内/外、具体场所、时间氛围）、**出现的人物**（身份、穿着、数量、大致关系）、**主要动作与事件**（谁对谁做了什么、关键转折）、**情绪或氛围**（紧张、平静、冲突等）、若有明显**对白、字幕或旁白要点**可简要概括。
-- 长度：以 2～6 句话或 100～200 字为参考，宁详勿略；避免仅用一句笼统概括导致检索时信息不足。
-- 语言：**必须使用中文**，连贯段落、无换行、无多余引号；与 keyframe 的 description 区分——scene_summary 是「整段场景的完整叙述」，description 是「单帧画面的单句描述」。禁止用英文写 scene_summary 或 description。
-
-## 四、关键帧选取规则（由视觉证据决定 1～4 帧）
-- **信息量优先**：选择能代表该场景「谁、在哪、在做什么」的瞬间，避免模糊、黑屏、重复构图。
-- **时间分布**：在场景的 [start_time, end_time] 内尽量分散选取，避免多帧挤在同一秒。
-- **描述要求**：每个 keyframe 的 description 为一句话、**必须中文**、客观描述画面内容（人物/物体/动作/布局/氛围），不推测剧情或心理，不写“可能”“似乎”。时间戳为浮点数秒，且必须落在该场景的 start_time 与 end_time 之间。
-
-## 五、输出格式（必须严格遵守）
-输出**仅**一个 JSON 数组，每个元素形如：
-{{
-  "start_time": <浮点数，本场景起始秒数>,
-  "end_time": <浮点数，本场景结束秒数>,
-  "scene_summary": "<详尽场景描述：见上文「三、scene_summary 写作要求」，2～6 句话覆盖地点、人物、事件、氛围等，用于检索与上下文>",
-  "keyframes": [
-    {{ "timestamp": <浮点数>, "description": "<一句画面描述>" }},
-    ...
-  ]
-}}
-
-约束：
-- 数组按 start_time 严格递增；场景之间时间连续、不重叠（相邻场景的 end_time 等于下一场景的 start_time，或允许极小缝隙）。
-- **scene_summary 必须按第三节要求尽可能详尽**；description 为一句话、简洁。**scene_summary 与 description 必须且仅使用中文**，无换行、无多余引号，禁止英文。
-- 每个场景的 keyframes 数量为 1～4，timestamp 严格落在 [start_time, end_time] 内。
-- 不要输出任何 JSON 之外的字符（包括 ``` 或“以下是 JSON”等说明）。"""
-
 # Scene–Shot–ASR 分层视频解析（v4）。
 # 设计说明：Scene 负责语义上下文，Shot 才是检索单元；ASR 是直接观看视频时听到的原始语音，
 # 不以字幕/OCR 或画面推断替代。长视频窗口的物理切边通过 speech_boundary 显式标记，供服务端合并。
@@ -710,7 +655,6 @@ TEMPLATES = {
     "reranking": RERANKING_TEMPLATE,
     "audio_transcription": AUDIO_TRANSCRIPTION_TEMPLATE,
     "audio_transcription_with_description": AUDIO_TRANSCRIPTION_AND_DESCRIPTION_TEMPLATE,
-    "video_scene_parsing": VIDEO_SCENE_PARSING_TEMPLATE,
     "video_scene_shot_parsing": VIDEO_SCENE_SHOT_PARSING_TEMPLATE,
     "chat_attachment_image_summary": CHAT_ATTACHMENT_IMAGE_SUMMARY_TEMPLATE,
     "chat_attachment_audio_summary": CHAT_ATTACHMENT_AUDIO_SUMMARY_TEMPLATE,

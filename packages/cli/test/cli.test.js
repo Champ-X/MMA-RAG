@@ -86,7 +86,16 @@ test('incomplete setup and doctor both explain Docker recovery in JSON without h
   const fakeBin = join(home, 'bin'); await mkdir(fakeBin);
   const fakeDocker = join(fakeBin, 'docker');
   const callLog = join(home, 'calls.jsonl');
-  await writeFile(fakeDocker, `#!${process.execPath}\nimport { appendFileSync } from 'node:fs';\nconst args=process.argv.slice(2); appendFileSync(${JSON.stringify(callLog)},JSON.stringify(args)+'\\n');\nif(args[0]==='--version') console.log('Docker 29.0.0'); else if(args[0]==='context') console.log('default'); else { console.error('Cannot connect to the Docker daemon'); process.exitCode=1; }\n`);
+  await writeFile(fakeDocker, `#!${process.execPath}
+const args = process.argv.slice(2);
+process.getBuiltinModule('fs').appendFileSync(${JSON.stringify(callLog)}, JSON.stringify(args) + '\\n');
+if (args[0] === '--version') console.log('Docker 29.0.0');
+else if (args[0] === 'context') console.log('default');
+else {
+  console.error('Cannot connect to the Docker daemon');
+  process.exitCode = 1;
+}
+`);
   await chmod(fakeDocker, 0o755);
   const env = { PATH: `${fakeBin}:${process.env.PATH}`, DOCKER_HOST: '', DOCKER_CONTEXT: '' };
   const setup = await cli(['setup', '--home', home, '--yes', '--json', '--no-open'], env);

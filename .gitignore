@@ -113,6 +113,7 @@ backend/.env
 /.agent-tasks/
 /output/
 /video-production/
+/docs/diagrams/
 /docs/previews/
 /frontend/design-previews/
 /.impeccable/review/

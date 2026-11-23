@@ -1,8 +1,6 @@
 import asyncio
 import copy
-import importlib.util
 import json
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -11,6 +9,7 @@ import pytest
 
 from app.core.llm.jev import JevClient, JevError
 from app.modules.generation.jev_citation_batch import PROMPT_VERSION, audit_answer_batch
+from app.modules.generation.jev_citations import citation_questions
 
 
 def provider_response(payload, *, input_tokens=1500):
@@ -23,14 +22,6 @@ def provider_response(payload, *, input_tokens=1500):
             for key in payload['questions']
         },
     }
-
-
-def frozen_candidate():
-    path = Path(__file__).resolve().parent / 'fixtures' / 'jev_batch_candidate.py'
-    spec = importlib.util.spec_from_file_location('jev_frozen_batch_contract', path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 @pytest.mark.asyncio
@@ -55,9 +46,12 @@ async def test_single_request_matches_frozen_prompt_and_keeps_sources_per_questi
         {'claim': '项目上限600次', 'cited_sources': {'1': 'source-one-private'}},
         {'claim': 'Logs last 365 days', 'cited_sources': {'2': 'source-two-private'}},
     ]
-    candidate = frozen_candidate()
-    assert calls[0]['questions'] == candidate.build_questions(expected_units, with_background=False)
-    assert PROMPT_VERSION == candidate.VERSION + '-isolated'
+    relation = citation_questions()['relation']
+    assert calls[0]['questions'] == {
+        f'u{index}': {**relation, 'instructions': {'rule': relation['instructions'], **unit}}
+        for index, unit in enumerate(expected_units)
+    }
+    assert PROMPT_VERSION == 'citation-batch-choice-v5-frozen1-isolated'
     assert 'unrelated-never-send' not in json.dumps(calls)
     assert references == original
     assert result['strategy'] == 'batch_choice' and result['diagnostic_only']

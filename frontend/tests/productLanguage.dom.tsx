@@ -105,17 +105,13 @@ test('switching language keeps an unsaved knowledge-space draft and focus', asyn
   assert.match(document.body.textContent!, /新建素材空间/)
 })
 
-test('reachable architecture content and accessibility labels are English in every path', async () => {
-  const { ArchitecturePrinciples } = await import('../src/components/architecture/ArchitecturePrinciples')
+test('runtime appendix content and accessibility labels are English in every path', async () => {
   const { ArchitectureBlueprint } = await import('../src/components/architecture/ArchitectureBlueprint')
-  const { ArchitectureMap } = await import('../src/components/architecture/ArchitectureMap')
-  const { EvidenceJourney } = await import('../src/components/architecture/EvidenceJourney')
   const { ArchitectureDetails } = await import('../src/components/architecture/ArchitectureDetails')
   const { ArchitectureRuntime } = await import('../src/components/architecture/ArchitectureRuntime')
   await language('en-US')
   for (const mode of ['direct', 'agent', 'pi'] as const) {
-    const content = <><ArchitecturePrinciples /><ArchitectureBlueprint /><ArchitectureMap mode={mode} onModeChange={() => {}} />
-      <EvidenceJourney mode={mode} /><ArchitectureDetails mode={mode} /><ArchitectureRuntime mode={mode} /></>
+    const content = <><ArchitectureBlueprint /><ArchitectureDetails mode={mode} /><ArchitectureRuntime mode={mode} /></>
     if (!root) await mount(content)
     else await act(async () => root!.render(content))
     const copy = visibleProductCopy(container!)

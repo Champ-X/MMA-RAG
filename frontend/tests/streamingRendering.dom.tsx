@@ -1,16 +1,8 @@
-/**
- * React DOM/SSE integration replay, with no production dependency additions.
- * From frontend/:
- * npm run test:dom
- *
- * These measurements describe React/jsdom execution, not browser paint/FPS.
- */
+/** Replay SSE through the production hook, store and Markdown renderer in jsdom. */
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { createRequire } from 'node:module'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import React, { Profiler } from 'react'
+import React from 'react'
 import { JSDOM } from 'jsdom'
 import type { Root } from 'react-dom/client'
 import type { Message } from '../src/store/useChatStore'
@@ -35,17 +27,10 @@ Object.assign(globalThis, {
 dom.window.HTMLElement.prototype.scrollIntoView = () => {}
 
 const requireFrontend = createRequire(`${process.cwd()}/package.json`)
-const outputDirectory = resolve(process.cwd(), '../logs/stream-smoothing-20261009')
-const sourcePath = resolve(outputDirectory, 'reported-session.json')
-const useRecordedAnswer = existsSync(sourcePath)
-// Keep the regression runnable in a fresh checkout without private log artifacts.
-const fallbackAnswer = ('## 海报封面推荐\n\n- **主角海报**：冷色烟雾与人物剪影适合呈现剧情的紧张气氛。[1]\n\n'
+const answer = ('## 海报封面推荐\n\n- **主角海报**：冷色烟雾与人物剪影适合呈现剧情的紧张气氛。[1]\n\n'
   + '- **群像海报**：家族成员并列的构图体现权力关系。[2]\n\n## 主题曲推荐\n\n'
   + '- 吉他与鼓点可以强调角色行动的节奏。[5]\n\n- 低沉的旋律呼应人物的内心冲突。[7]\n\n'
   + '推荐依据：海报应突出人物关系，音乐应呼应剧情情绪，具体选择以素材为准。\n\n'.repeat(40)).slice(0, 1352)
-const answer = useRecordedAnswer
-  ? (JSON.parse(readFileSync(sourcePath, 'utf8')) as { messages: Message[] }).messages.find(message => message.role === 'assistant')!.content
-  : fallbackAnswer
 const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5ioAAAAASUVORK5CYII='
 const references: CitationReference[] = [1, 2, 5, 7].map(id => ({
   id, type: id < 3 ? 'image' : 'doc', file_name: `fixture-${id}.png`,
@@ -69,7 +54,6 @@ let sessionId: string
 let network: { emit: (events: unknown[]) => void; aborted: boolean } | undefined
 let unsubscribe: (() => void) | undefined
 let observer: MutationObserver | undefined
-let heartbeat: ReturnType<typeof setInterval> | undefined
 const originalFetch = globalThis.fetch
 const originalSetItem = dom.window.Storage.prototype.setItem
 const frame = globalThis.requestAnimationFrame
@@ -83,14 +67,9 @@ interface ReplayMetrics {
   receivedChunks: number
   received: string
   contentFlushes: number
-  reactCommits: number
-  reactRenderMs: number[]
   storageWrites: number
-  storageBytes: number[]
-  domGrowth: Array<{ elapsedMs: number; chars: number; complete: boolean }>
-  heartbeatGaps: number[]
+  domGrowthBeforeComplete: number
   imageNodes: Set<Element>
-  loadedImages: WeakSet<Element>
 }
 let metrics: ReplayMetrics
 
@@ -112,9 +91,8 @@ async function mount() {
   sessionId = useStore.getState().createSession({ title: 'DOM integration replay' })
   metrics = {
     started: performance.now(), firstReceived: null, firstDomText: null, terminalAt: null,
-    receivedChunks: 0, received: '', contentFlushes: 0, reactCommits: 0, reactRenderMs: [],
-    storageWrites: 0, storageBytes: [], domGrowth: [], heartbeatGaps: [],
-    imageNodes: new Set(), loadedImages: new WeakSet(),
+    receivedChunks: 0, received: '', contentFlushes: 0, storageWrites: 0,
+    domGrowthBeforeComplete: 0, imageNodes: new Set(),
   }
   function Harness() {
     hook = useThinkingChain({
@@ -129,14 +107,9 @@ async function mount() {
     const session = useStore(state => state.sessions.find(item => item.id === sessionId))
     const thinking = useStore(state => state.thinking)
     const message = session?.messages.findLast(item => item.role === 'assistant')
-    return <Profiler id="answer" onRender={(_id, _phase, duration) => {
-      metrics.reactCommits++
-      metrics.reactRenderMs.push(duration)
-    }}>
-      {message && <MessageBubble message={{ ...message, type: 'assistant', timestamp: String(message.timestamp) }}
-        isStreaming={hook.isStreaming}
-        liveThinking={{ thoughtData: thinking.thoughtData, stages: thinking.stages, currentStage: thinking.currentStage }} />}
-    </Profiler>
+    return message ? <MessageBubble message={{ ...message, type: 'assistant', timestamp: String(message.timestamp) }}
+      isStreaming={hook.isStreaming}
+      liveThinking={{ thoughtData: thinking.thoughtData, stages: thinking.stages, currentStage: thinking.currentStage }} /> : null
   }
   container = document.createElement('div')
   document.body.appendChild(container)
@@ -153,30 +126,20 @@ async function mount() {
   observer = new MutationObserver(() => {
     const chars = container.querySelector('.rag-markdown')?.textContent?.length ?? 0
     if (chars > 0) metrics.firstDomText ??= relativeNow()
-    if (chars > lastChars) {
-      metrics.domGrowth.push({ elapsedMs: relativeNow(), chars, complete: metrics.terminalAt !== null })
-    }
+    if (chars > lastChars && metrics.terminalAt === null) metrics.domGrowthBeforeComplete++
     lastChars = chars
     for (const image of container.querySelectorAll('img[src^="data:"]')) {
-      metrics.imageNodes.add(image)
-      if (!metrics.loadedImages.has(image)) {
-        metrics.loadedImages.add(image)
+      if (!metrics.imageNodes.has(image)) {
+        metrics.imageNodes.add(image)
         image.dispatchEvent(new Event('load'))
       }
     }
   })
   observer.observe(container, { subtree: true, childList: true, characterData: true })
   dom.window.Storage.prototype.setItem = function(name, value) {
-    if (name === 'chat-store') { metrics.storageWrites++; metrics.storageBytes.push(value.length) }
+    if (name === 'chat-store') metrics.storageWrites++
     return originalSetItem.call(this, name, value)
   }
-  let heartbeatAt = performance.now()
-  heartbeat = setInterval(() => {
-    const now = performance.now()
-    metrics.heartbeatGaps.push(now - heartbeatAt)
-    heartbeatAt = now
-  }, 10)
-
   globalThis.fetch = async (input, options) => {
     assert.equal(String(input), '/api/chat/stream', 'the fixture must never request remote media or APIs')
     assert.equal(options?.method, 'POST')
@@ -209,38 +172,7 @@ async function mount() {
   await delay(30)
 }
 
-function saveReport(name: string, extra: Record<string, unknown> = {}) {
-  const beforeComplete = metrics.domGrowth.filter(sample => !sample.complete)
-  const gaps = metrics.heartbeatGaps.slice().sort((a, b) => a - b)
-  const report = {
-    environment: 'React 18 + jsdom 26, Node event loop; not browser paint or FPS',
-    input: `${useRecordedAnswer ? 'reported-session.json assistant body' : 'deterministic Markdown fixture'}; synthesized chunk boundaries/timing; local data image references`,
-    receivedChunks: metrics.receivedChunks,
-    receivedCharacters: metrics.received.length,
-    firstReceivedMs: metrics.firstReceived,
-    firstDomTextMs: metrics.firstDomText,
-    firstReceivedToDomMs: metrics.firstDomText! - metrics.firstReceived!,
-    terminalMs: metrics.terminalAt,
-    contentFlushes: metrics.contentFlushes,
-    reactCommits: metrics.reactCommits,
-    maxReactRenderMs: Math.max(0, ...metrics.reactRenderMs),
-    storageWrites: metrics.storageWrites,
-    maxStorageCharacters: Math.max(0, ...metrics.storageBytes),
-    domGrowthBeforeComplete: beforeComplete.length,
-    distinctDataImageNodes: metrics.imageNodes.size,
-    maxHeartbeatGapMs: Math.max(0, ...gaps),
-    p95HeartbeatGapMs: gaps[Math.min(gaps.length - 1, Math.floor(gaps.length * 0.95))],
-    networkEqualsStore: metrics.received === lastAssistant().content,
-    storeEqualsPersistence: lastAssistant().content === persistedAssistant().content,
-    domGrowth: metrics.domGrowth,
-    ...extra,
-  }
-  mkdirSync(outputDirectory, { recursive: true })
-  writeFileSync(resolve(outputDirectory, `dom-${name}.json`), JSON.stringify(report, null, 2), { mode: 0o600 })
-}
-
 afterEach(async () => {
-  clearInterval(heartbeat)
   observer?.disconnect()
   unsubscribe?.()
   root?.unmount()
@@ -304,15 +236,11 @@ test('862 small SSE deltas progressively update the real Markdown DOM before com
   const imagesAfterComplete = [...container.querySelectorAll('img[src^="data:"]')]
   const completionPreservesImages = imagesBeforeComplete.length === 2
     && imagesBeforeComplete.every((image, index) => image === imagesAfterComplete[index])
-  saveReport('complete', {
-    expectedCharacters: answer.length, expectedChunks: chunks.length, completionPreservesImages,
-    mediaBoundary: 'Incomplete Markdown can change a tight list into a loose list and replace an image ancestor once.',
-  })
   assert.equal(metrics.receivedChunks, 862)
   assert.equal(metrics.received, answer)
   assert.equal(lastAssistant().content, answer)
   assert.equal(persistedAssistant().content, answer)
-  assert.ok(metrics.domGrowth.filter(sample => !sample.complete).length >= 30)
+  assert.ok(metrics.domGrowthBeforeComplete >= 30)
   assert.ok(metrics.firstDomText! < metrics.terminalAt! / 3, 'first visible text must precede completion substantially')
   assert.ok(metrics.firstDomText! - metrics.firstReceived! < 500, 'received text must appear promptly')
   assert.ok(metrics.contentFlushes < 400, 'multiple deltas must coalesce into each state update')
@@ -341,7 +269,6 @@ test('stopping immediately after receiving a pending tail preserves it in DOM, s
   hook.stopStreaming()
   metrics.terminalAt = relativeNow()
   await until(() => !!container.querySelector('.rag-markdown')?.textContent?.includes('最后尾字'))
-  saveReport('stop')
   assert.equal(lastAssistant().content, metrics.received)
   assert.equal(persistedAssistant().content, metrics.received)
   assert.equal(useStore.getState().streamingSessionId, null)
@@ -355,7 +282,6 @@ test('an SSE error in the final delta packet keeps all received text and ends th
     { type: 'error', message: 'fixture interrupted' },
   ])
   await until(() => metrics.terminalAt !== null && !!container.querySelector('.rag-markdown')?.textContent?.includes('最后尾字'))
-  saveReport('error')
   assert.equal(lastAssistant().content, metrics.received)
   assert.equal(persistedAssistant().content, metrics.received)
   assert.equal(lastAssistant().error, 'fixture interrupted')

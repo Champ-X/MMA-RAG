@@ -647,19 +647,6 @@ class KnowledgeBaseService:
             logger.error(f"删除知识库文件失败: {str(e)}")
             raise
     
-    def _scroll_kb_points_sync(self, candidate: str, collection: str, limit: int = 10000):
-        """同步 scroll 指定集合中某 kb_id 的点，供 run_in_executor 调用。"""
-        from qdrant_client.http.models import Filter, FieldCondition, MatchValue
-        filter_condition = Filter(
-            must=[FieldCondition(key="kb_id", match=MatchValue(value=candidate))]
-        )
-        res = self.vector_store.client.scroll(
-            collection_name=collection,
-            scroll_filter=filter_condition,
-            limit=limit,
-        )
-        return res[0] if res else []
-
     def _count_kb_points_sync(self, candidate: str) -> tuple:
         """同步按 kb_id 统计 text_chunks 与 image_vectors 数量（使用 count 避免 scroll limit 导致漏统）。"""
         from qdrant_client.http.models import Filter, FieldCondition, MatchValue

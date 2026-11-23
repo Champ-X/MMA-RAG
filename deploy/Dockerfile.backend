@@ -28,9 +28,6 @@ RUN pip install --no-cache-dir -c /tmp/constraints.txt torch==2.7.1 torchvision=
       --index-url https://download.pytorch.org/whl/cpu \
     && pip install --no-cache-dir -r /tmp/requirements.txt -c /tmp/constraints.txt \
     && pip check
-# python-magic (Unstructured file detection) needs the system shared library.
-RUN apt-get update && apt-get install -y --no-install-recommends libmagic1 \
-    && rm -rf /var/lib/apt/lists/*
 COPY --from=pi /usr/local/bin/node /usr/local/bin/node
 COPY --from=pi /app/agent-runtime /app/agent-runtime
 # Explicit copies exclude backend/.env and all developer data.

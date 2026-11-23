@@ -5,7 +5,7 @@
 ## 实现与数据边界
 
 - [TopicAtlas.tsx](../frontend/src/components/knowledge/TopicAtlas.tsx) 负责主题群落、目录、搜索与常驻阅读；[topicAtlas.css](../frontend/src/components/knowledge/topicAtlas.css) 是局部视觉值的来源。
-- [topicConstellationLayout.ts](../frontend/src/components/knowledge/topicConstellationLayout.ts) 根据主题 ID 和样本量生成确定性布局。原 [portraitAtlasLayout.ts](../frontend/src/components/knowledge/portraitAtlasLayout.ts) 的圆形算法仍保留，当前组件不调用它。
+- 星图按主题 ID 和样本量生成确定性布局。[布局实现](../frontend/src/components/knowledge/topicConstellationLayout.ts)
 - `cluster_size` 来自聚类样本数量，不表示文件数或知识库覆盖率。显示前将负值、非有限值归零，小数向下取整，最大值限制为 `Number.MAX_SAFE_INTEGER`；百分比分母为全部返回主题的规范化样本总量，搜索不改变分母。
 - 头部 [PortraitStatistics.tsx](../frontend/src/components/knowledge/PortraitStatistics.tsx) 使用 `buildPortraitSourceStats` 汇总文本块、图片、音频、视频片段四类已解析样本，分母与星图的已归类样本总量独立；视频数量为 Shot，不是文件数。文档数仅在正值时作小字附注，不进入总量，也不重复展示主题数。四类始终可见，零值淡化；全零显示 `0` 和“等待内容解析”，不生成虚构份额。
 - 每主题最多显示 80 个点符号。80 以内每点权重为 1；更大主题分配正整数 `weight`，权重总和保持该主题规范化样本量。零样本主题保留文字，不生成点或包络。
@@ -58,12 +58,12 @@
 在 `frontend` 目录执行：
 
 ```sh
-npx tsx --test tests/topicConstellationLayout.test.ts tests/portraitAtlasNavigation.test.ts tests/portraitAtlasLayout.test.ts tests/portraitSourceStats.test.ts
+npx tsx --test tests/topicConstellationLayout.test.ts tests/portraitAtlasNavigation.test.ts tests/portraitSourceStats.test.ts
 npm run test:dom
 npm run type-check
 ```
 
-[布局测试](../frontend/tests/topicConstellationLayout.test.ts) 验证权重总和、最多 80 点、零值不造点、确定性、几何边界与标签避让，以及有界高度、散落中心关系、密集/窄屏整体缩放和点击区分离；[方向导航测试](../frontend/tests/portraitAtlasNavigation.test.ts) 验证方向、边界与无效矩形。原圆形算法测试只验证保留代码。
+[布局测试](../frontend/tests/topicConstellationLayout.test.ts) 验证权重总和、最多 80 点、零值不造点、确定性、几何边界与标签避让，以及有界高度、散落中心关系、密集/窄屏整体缩放和点击区分离。[方向导航测试](../frontend/tests/portraitAtlasNavigation.test.ts) 验证方向、边界与无效矩形。
 
 [DOM 测试](../frontend/tests/topicAtlas.dom.tsx) 覆盖默认预览、重复点击、搜索原位禁用、关键词搜索、返回保留选择与焦点恢复，以及目录当前阅读与显式选择的区分、摘要节选来源；后续调整继续维护这些契约。DOM 测试不证明真实 CSS 布局或视觉质量。
 

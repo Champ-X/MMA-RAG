@@ -291,19 +291,6 @@ class PortraitGenerator:
             logger.error(f"检查更新需求失败: {str(e)}")
             return True  # 出错时默认更新
     
-    def _reservoir_sample(self, stream: List[Tuple[str, List[float]]], k: int) -> List[Tuple[str, List[float]]]:
-        """蓄水池采样：从 stream 中均匀采样 k 个（不足则全选）。"""
-        if k <= 0 or not stream:
-            return []
-        if len(stream) <= k:
-            return list(stream)
-        out = list(stream[:k])
-        for i in range(k, len(stream)):
-            j = random.randint(0, i)
-            if j < k:
-                out[j] = stream[i]
-        return out
-
     async def _sampling_batches(
         self, scroll: Callable, kb_id: str, batch_size: int = 500,
     ) -> AsyncIterator[List[Any]]:

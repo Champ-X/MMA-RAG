@@ -222,7 +222,12 @@ def orchestrate(args):
     frozen = output / "cases.json"
     save(frozen, spec)
     (output / "runner-executed.py").write_bytes(Path(__file__).read_bytes())
-    save(output / "protocol.json", {"baseline": "658b0d10080bdf2350e76be79e0bda1b461180f4", "repetitions": args.repetitions,
+    commits = {
+        label: subprocess.check_output(["git", "-C", repo, "rev-parse", "HEAD"], text=True).strip()
+        if (repo / ".git").exists() else None
+        for label, repo in (("baseline", before), ("candidate_base_commit", after))
+    }
+    save(output / "protocol.json", {**commits, "repetitions": args.repetitions,
         "cases_sha256": sha(cases.read_bytes()), "runner_sha256": sha(Path(__file__).read_bytes()),
         "model": "deepseek:deepseek-flash", "answer_plan_enabled": True, "answer_checks_enabled": False,
         "thinking_enabled": False, "yield_to_legacy": False, "per_sample_timeout_seconds": args.timeout,

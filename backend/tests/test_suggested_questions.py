@@ -15,8 +15,6 @@ from app.modules.knowledge import suggested_questions as suggestions
 from app.modules.knowledge.natural_questions import make_evidence
 
 from app.modules.knowledge.suggested_questions import (
-    _fallback_questions_from_context,
-    _format_file_block,
     _normalize_question_items,
     _readable_file_title,
 )
@@ -62,17 +60,6 @@ def test_readable_file_title_hides_temporary_upload_names():
     assert _readable_file_title("Annual_Report_2026.pdf") == "Annual Report 2026"
 
 
-def test_file_context_omits_temporary_name():
-    block = _format_file_block(
-        TEMP_IMAGE_NAME,
-        {"caption": "根系环绕的种子状结构，内部可见胚芽形态。"},
-    )
-
-    assert TEMP_IMAGE_NAME not in block
-    assert "上传图片（临时文件名已省略）" in block
-    assert "根系环绕的种子状结构" in block
-
-
 def test_normalization_removes_opaque_file_reference_but_keeps_topic():
     items = _normalize_question_items(
         [
@@ -93,19 +80,6 @@ def test_normalization_removes_opaque_file_reference_but_keeps_topic():
             "kb_name": "植物图谱",
         }
     ]
-
-
-def test_fallback_uses_caption_instead_of_temporary_file_name():
-    block = _format_file_block(
-        TEMP_IMAGE_NAME,
-        {"caption": "根系环绕的种子状结构，内部可见胚芽形态。"},
-    )
-
-    questions = _fallback_questions_from_context(["植物图谱"], [], [block], 3)
-
-    assert questions
-    assert TEMP_IMAGE_NAME not in questions[0]["text"]
-    assert "根系环绕的种子状结构" in questions[0]["text"]
 
 
 @pytest.fixture
@@ -266,13 +240,6 @@ async def test_explicit_generation_stores_provenance_without_polluting_kb_snapsh
     assert stored[0]['strategy'] == suggestions.SUGGESTION_STRATEGY_VERSION
     suggestions.sample_evidence_for_kb.assert_awaited_once_with(
         service, 'bio', '生物科普', file_ids=['tea'], limit=24)
-
-
-def test_context_fallback_does_not_treat_headings_as_topics():
-    questions = _fallback_questions_from_context(['生物科普'],
-        ['## 知识库: 生物科普', '### 主题聚类摘要', '- (5条) 茶树起源和驯化'], [], 3)
-    assert questions and '茶树起源和驯化' in questions[0]['text']
-    assert all('#' not in q['text'] for q in questions)
 
 
 @pytest.mark.asyncio

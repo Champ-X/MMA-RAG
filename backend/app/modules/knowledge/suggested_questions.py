@@ -37,13 +37,7 @@ PRECOMPUTED_DIR = CACHE_DIR / "precomputed_by_kb"
 BANK_DIR = CACHE_DIR / "question_bank_by_kb"
 CACHE_TTL_SECONDS_DEFAULT = 7 * 24 * 3600  # 7 天
 
-MAX_CONTEXT_CHARS = 14000
-MAX_CHUNK_SAMPLE = 3
-MAX_CHUNK_CHARS = 450
-MAX_CAPTION_CHARS = 600
 MAX_KB_SAMPLE_GLOBAL = 8
-MAX_FILES_PER_KB = 5
-PREVIEW_TIMEOUT_SEC = 18.0
 MAX_QUESTION_TEXT_CHARS = 96
 SUGGESTION_STRATEGY_VERSION = NATURAL_QUESTION_VERSION
 _background_tasks: Dict[str, asyncio.Task] = {}
@@ -73,9 +67,6 @@ _TEMP_FILE_PREFIX_RE = re.compile(
 _GENERIC_FILE_WORD_RE = re.compile(
     r"(?i)\b(?:at|copy|file|image|photo|picture|scan|new|final)\b"
 )
-_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".svg"}
-_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac"}
-_VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 
 
 def _sha256_text(s: str) -> str:
@@ -87,52 +78,6 @@ def _trim(s: str, max_len: int) -> str:
     if len(s) <= max_len:
         return s
     return s[: max_len - 1] + "…"
-
-
-def _payload(p: Any) -> Dict[str, Any]:
-    if p is None:
-        return {}
-    return p if isinstance(p, dict) else {}
-
-
-def _safe_json_loads_array(raw: str) -> List[str]:
-    text = (raw or "").strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"\s*```$", "", text)
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        m = re.search(r"\[[\s\S]*\]", text)
-        if not m:
-            return []
-        try:
-            data = json.loads(m.group(0))
-        except json.JSONDecodeError:
-            return []
-
-    out: List[str] = []
-    if isinstance(data, list):
-        for x in data:
-            if isinstance(x, str) and x.strip():
-                out.append(x.strip())
-            elif isinstance(x, dict) and x.get("text"):
-                t = str(x["text"]).strip()
-                if t:
-                    out.append(t)
-    elif isinstance(data, dict):
-        for key in ("questions", "items", "data"):
-            arr = data.get(key)
-            if isinstance(arr, list):
-                for x in arr:
-                    if isinstance(x, str) and x.strip():
-                        out.append(x.strip())
-                    elif isinstance(x, dict) and x.get("text"):
-                        t = str(x["text"]).strip()
-                        if t:
-                            out.append(t)
-                break
-    return out
 
 
 def _readable_file_title(file_name: str) -> str:
@@ -159,17 +104,6 @@ def _readable_file_title(file_name: str) -> str:
     if had_temp_prefix and len(semantic) < 3:
         return ""
     return _trim(cleaned, 48)
-
-
-def _generic_material_label(file_name: str) -> str:
-    suffix = Path(str(file_name or "")).suffix.lower()
-    if suffix in _IMAGE_EXTENSIONS:
-        return "上传图片"
-    if suffix in _AUDIO_EXTENSIONS:
-        return "上传音频"
-    if suffix in _VIDEO_EXTENSIONS:
-        return "上传视频"
-    return "上传材料"
 
 
 def _remove_opaque_file_references(text: str) -> str:
@@ -246,133 +180,6 @@ def _normalize_question_items(
         if len(out) >= max_q:
             break
     return out
-
-
-async def _preview_with_timeout(
-    kb_service: KnowledgeBaseService, kb_id: str, file_id: str
-) -> Dict[str, Any]:
-    try:
-        return await asyncio.wait_for(
-            kb_service.get_file_preview_details(kb_id, file_id),
-            timeout=PREVIEW_TIMEOUT_SEC,
-        )
-    except Exception as e:
-        logger.debug("get_file_preview_details 超时或失败 %s/%s: %s", kb_id, file_id, e)
-        return {"caption": None, "chunks": [], "transcript": None, "description": None}
-
-
-def _format_file_block(file_name: str, details: Dict[str, Any]) -> str:
-    lines: List[str] = []
-    readable_title = _readable_file_title(file_name)
-    if readable_title:
-        lines.append(f"### 素材主题: {readable_title}")
-    else:
-        lines.append(f"### 素材类型: {_generic_material_label(file_name)}（临时文件名已省略）")
-    chunks = details.get("chunks") or []
-    if isinstance(chunks, list) and chunks:
-        parts = []
-        for c in chunks[:MAX_CHUNK_SAMPLE]:
-            if not isinstance(c, dict):
-                continue
-            t = (c.get("text") or "").strip()
-            if t:
-                parts.append(_trim(t, MAX_CHUNK_CHARS))
-        if parts:
-            lines.append("- 文档分块摘录:\n" + "\n".join(f"  · {p}" for p in parts))
-
-    cap = details.get("caption") or ""
-    if isinstance(cap, str) and cap.strip():
-        lines.append(f"- 图片/视频画面说明:\n{_trim(cap.strip(), MAX_CAPTION_CHARS)}")
-
-    desc = details.get("description") or ""
-    tr = details.get("transcript") or ""
-    audio_bits = []
-    if isinstance(desc, str) and desc.strip():
-        audio_bits.append(f"概述: {_trim(desc.strip(), MAX_CAPTION_CHARS)}")
-    if isinstance(tr, str) and tr.strip():
-        audio_bits.append(f"转写摘录: {_trim(tr.strip(), MAX_CAPTION_CHARS)}")
-    if audio_bits:
-        lines.append("- 音频:\n" + "\n".join(f"  · {b}" for b in audio_bits))
-
-    if len(lines) == 1:
-        lines.append("(无可用分块或说明)")
-    return "\n".join(lines)
-
-
-def _portrait_summaries(portraits: List[Dict[str, Any]]) -> List[str]:
-    out: List[str] = []
-    for p in portraits:
-        pl = _payload(p.get("payload"))
-        summary = (pl.get("topic_summary") or "").strip()
-        if summary:
-            size = pl.get("cluster_size", 0)
-            out.append(f"- ({size}条) { _trim(summary, 500)}")
-    return out
-
-
-def _fallback_seed_from_file_block(block: str) -> str:
-    """优先从材料内容抽主题；仅在标题可读时才退回标题。"""
-    title_seed = ""
-    for raw_line in str(block or "").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("## 知识库:"):
-            continue
-        if line.startswith("### 素材主题:"):
-            title_seed = line.split(":", 1)[-1].strip()
-            continue
-        if line.startswith("###") or line in {
-            "- 文档分块摘录:",
-            "- 图片/视频画面说明:",
-            "- 音频:",
-        }:
-            continue
-        line = re.sub(r"^[·\-]\s*", "", line)
-        line = re.sub(r"^(?:概述|转写摘录)\s*[:：]\s*", "", line)
-        line = line.strip()
-        if len(line) >= 4:
-            return _trim(line, 30)
-    return _trim(title_seed, 24)
-
-
-def _fallback_questions_from_context(
-    kb_names: List[str],
-    portrait_lines: List[str],
-    file_lines: List[str],
-    max_q: int,
-) -> List[Dict[str, str]]:
-    """无 LLM 时的模板兜底。"""
-    seeds: List[str] = []
-    for line in portrait_lines[:6]:
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        m = re.search(r"\)\s*(.+)$", line)
-        if m:
-            seeds.append(_trim(m.group(1).strip(), 24))
-        else:
-            seeds.append(_trim(line.replace("- ", "").strip(), 24))
-    if not seeds and file_lines:
-        for block in file_lines[:3]:
-            seed = _fallback_seed_from_file_block(block)
-            if seed:
-                seeds.append(seed)
-    seeds = [s for s in seeds if s][:6]
-    if not seeds:
-        seeds = ["知识库内容"]
-
-    templates = [
-        lambda s: f"关于「{s}」，材料里有哪些结论或要点？",
-        lambda s: f"「{s}」相关的流程或注意事项是什么？",
-        lambda s: f"材料如何说明「{s}」的核心含义？",
-    ]
-    kb_label = kb_names[0] if len(kb_names) == 1 else "多个知识库"
-    out: List[Dict[str, str]] = []
-    for i in range(min(max_q, len(seeds) if seeds else max_q)):
-        seed = seeds[i % len(seeds)]
-        text = templates[i % len(templates)](seed)
-        out.append({"text": text, "kb_name": kb_label})
-        if len(out) >= max_q:
-            break
-    return out[:max_q]
 
 
 def _cache_path(cache_key: str) -> Path:

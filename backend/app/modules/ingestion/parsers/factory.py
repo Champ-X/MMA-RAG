@@ -743,39 +743,6 @@ class PDFParser(DocumentParser):
             logger.error(f"PDF解析失败: {str(e)}")
             raise
     
-    async def parse_with_pymupdf4llm(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
-        """使用pymupdf4llm解析（如果可用）"""
-        try:
-            import pymupdf4llm
-            
-            # 保存临时文件
-            temp_file = f"/tmp/{uuid.uuid4()}.pdf"
-            with open(temp_file, "wb") as f:
-                f.write(file_content)
-            
-            # 使用pymupdf4llm解析
-            md_text = pymupdf4llm.to_markdown(temp_file)
-            
-            # 清理临时文件
-            Path(temp_file).unlink(missing_ok=True)
-            
-            return {
-                "file_type": "pdf",
-                "markdown": md_text,
-                "pages": [{"page": 1, "text": md_text}],
-                "metadata": {
-                    "parser": "pymupdf4llm",
-                    "extracted_at": "2024-01-01T00:00:00Z"
-                }
-            }
-            
-        except ImportError:
-            logger.warning("pymupdf4llm不可用，使用PyMuPDF")
-            return await self.parse(file_content, file_path)
-        except Exception as e:
-            logger.error(f"pymupdf4llm解析失败: {str(e)}")
-            return await self.parse(file_content, file_path)
-
 class DocxParser(DocumentParser):
     """DOCX文档解析器：优先 MinerU API，失败则本地 MinerU2.5（需 LibreOffice），最后 python-docx"""
 
