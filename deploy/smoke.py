@@ -100,6 +100,26 @@ finally:
 """
 
 
+RUNTIME_DEPENDENCIES_PROBE = """
+import asyncio
+import pymupdf
+import torch
+import FlagEmbedding
+from transformers import CLIPModel, ClapModel
+from app.modules.ingestion.parsers.factory import PDFParser
+
+with pymupdf.open() as pdf:
+    pdf.new_page().insert_text((72, 72), 'Tessmora smoke')
+    content = pdf.tobytes()
+result = asyncio.run(PDFParser().parse(content, 'smoke.pdf'))
+assert result['metadata']['parser'] == 'pymupdf'
+assert result['pages'][0]['text'].strip() == 'Tessmora smoke'
+print('CPU PyTorch:', torch.__version__)
+print('BGE-M3 / CLIP / CLAP imports: ready')
+print('PyMuPDF text extraction: ready')
+"""
+
+
 def free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -228,11 +248,9 @@ def main() -> None:
         pi = compose_run("exec", "-T", "--workdir", "/app/agent-runtime", "backend", "node", "--input-type=module", "-e",
             "await import('@earendil-works/pi-agent-core'); await import('@earendil-works/pi-ai'); console.log('Pi SDK imports: ready')")
         report["checks"]["pi_sdk"] = pi.stdout.strip()
-        inference_imports = compose_run("exec", "-T", "backend", "python", "-c",
-            "import torch, FlagEmbedding, magic; from transformers import CLIPModel, ClapModel; "
-            "assert magic.from_buffer(b'Tessmora sample'); "
-            "print('CPU PyTorch:', torch.__version__); print('BGE-M3 / CLIP / CLAP imports: ready')")
-        report["checks"]["inference_dependencies"] = inference_imports.stdout.strip().splitlines()
+        dependencies = compose_run("exec", "-T", "-e", "MINERU_PDF_ENABLED=false",
+                                   "backend", "python", "-c", RUNTIME_DEPENDENCIES_PROBE)
+        report["checks"]["inference_dependencies"] = dependencies.stdout.strip().splitlines()
         # Exercise the rebuilt storage image through S3, including persistence.
         s3_client = (
             "import io, os; from minio import Minio; "
