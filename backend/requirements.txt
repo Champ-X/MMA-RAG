@@ -27,6 +27,7 @@ python-docx==1.1.0
 python-pptx>=0.6.21
 markdown==3.5.2
 openpyxl>=3.1.0           # Excel .xlsx 解析
+defusedxml>=0.7.1         # openpyxl 读取上传的 .xlsx 时使用的 XML 解析器
 xlrd>=2.0.1               # Excel .xls 解析（旧版二进制格式）
 
 # API 客户端

@@ -102,11 +102,16 @@ finally:
 
 RUNTIME_DEPENDENCIES_PROBE = """
 import asyncio
+from io import BytesIO
+
 import pymupdf
 import torch
 import FlagEmbedding
+from defusedxml.ElementTree import iterparse as guarded_iterparse
+from openpyxl import Workbook
+from openpyxl.xml.functions import iterparse as workbook_iterparse
 from transformers import CLIPModel, ClapModel
-from app.modules.ingestion.parsers.factory import PDFParser
+from app.modules.ingestion.parsers.factory import ExcelParser, PDFParser
 
 with pymupdf.open() as pdf:
     pdf.new_page().insert_text((72, 72), 'Tessmora smoke')
@@ -114,9 +119,22 @@ with pymupdf.open() as pdf:
 result = asyncio.run(PDFParser().parse(content, 'smoke.pdf'))
 assert result['metadata']['parser'] == 'pymupdf'
 assert result['pages'][0]['text'].strip() == 'Tessmora smoke'
+
+assert workbook_iterparse is guarded_iterparse, 'openpyxl must use defusedxml to read uploaded spreadsheets'
+workbook = Workbook()
+workbook.active.append(['title'])
+workbook.active.append(['Tessmora smoke'])
+content = BytesIO()
+workbook.save(content)
+workbook.close()
+sheet = asyncio.run(ExcelParser().parse(content.getvalue(), 'smoke.xlsx'))['sheets'][0]
+assert sheet['headers'] == ['title']
+assert sheet['rows'] == [['Tessmora smoke']]
+
 print('CPU PyTorch:', torch.__version__)
 print('BGE-M3 / CLIP / CLAP imports: ready')
 print('PyMuPDF text extraction: ready')
+print('XLSX parsing with defusedxml: ready')
 """
 
 

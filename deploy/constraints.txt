@@ -35,6 +35,7 @@ dashscope==1.27.4
 datasets==2.19.1
 dateparser==1.4.3
 decorator==5.3.1
+defusedxml==0.7.1
 dill==0.3.8
 distro==1.9.0
 et_xmlfile==2.0.0
