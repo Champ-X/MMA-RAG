@@ -67,7 +67,7 @@ class RepositoryChecks(unittest.TestCase):
     def test_forced_tracking_cannot_bypass_local_artifact_rules(self):
         names = (
             "ops/receipt.json", "backend/data/settings.json", "output/render.png",
-            "docs/qa/run.md", "frontend/test-results/result.json",
+            "docs/qa/run.md", "frontend/test-results/result.json", ".impeccable/design.json",
             "frontend/demo-assets/demo/source.pdf", "frontend/.demo-public/index.html",
             "frontend/.vercel/project.json", ".vercel/output/config.json",
             "packages/cli/node_modules/dependency/index.js", ".venv-local/bin/python",

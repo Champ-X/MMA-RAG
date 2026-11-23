@@ -120,7 +120,7 @@ Shipping Color Atlas assets live in `frontend/public/architecture/atlas/`. Keep 
 
 Runtime retains `ArchitectureBlueprint`, `ArchitectureDetails` and `ArchitectureRuntime` inside native disclosure sections. The active route and `color-atlas/` styles are authoritative for the current presentation. Earlier artwork and its exact prompts remain in the [historical visual asset record](https://github.com/Champ-X/MMA-RAG/blob/ea4194f8ee905619647b202bfdcf359d18f5e03b/docs/architecture-visual-assets.md); current font fallbacks and their provenance are documented in the [typography notes](docs/architecture-typography-assets.md).
 
-Local proposals, downloaded source fonts, intermediate generations and review captures belong under ignored `output/` or `.impeccable/review*/` paths. Superseded Evidence Exhibition design documents and proposal briefs are historical material; they do not define the current route.
+Local proposals, downloaded source fonts, intermediate generations and review captures belong under the ignored `output/` directory. The current chapter controls, paper shadows and focus styles are defined in the [route stylesheet](frontend/src/components/architecture/color-atlas/colorAtlas.css).
 
 ## Maintenance boundaries
 

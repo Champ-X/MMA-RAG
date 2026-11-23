@@ -28,7 +28,7 @@ Shipping assets live in `frontend/public/architecture/atlas/`; `provenance.json`
 
 `ArchitecturePage.tsx` owns navigation and URL state. `color-atlas/` contains the overview, parsing views, storage/retrieval/runtime views, narrative views and shared paper/waveform primitives. Existing detailed system-map, module and runtime references are retained as disclosures on the runtime chapter.
 
-Local design drafts, original generations, downloaded font sources and review screenshots remain in ignored `output/` and `.impeccable/review*/` directories. Production assets are explicitly outside those ignored directories. Raw material-space files are not part of these published presentation assets.
+Keep local design drafts, original generations, downloaded font sources and review screenshots under the ignored `output/` directory. The published design tokens and interaction rules are documented in [DESIGN.md](../DESIGN.md).
 
 ## Verification
 

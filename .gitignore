@@ -116,8 +116,7 @@ backend/.env
 /docs/diagrams/
 /docs/previews/
 /frontend/design-previews/
-/.impeccable/review/
-/.impeccable/review-gallery/
+/.impeccable/
 !backend/.env.example
 .env.local
 .env.*.local

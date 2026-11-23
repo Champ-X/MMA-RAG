@@ -20,7 +20,7 @@ FORBIDDEN = (
     'docs/verification/', 'backend/experiments/', 'frontend/dist/',
     'minio_data/', 'qdrant_storage/', 'backend/data/', 'backend/logs/',
     '.agent-tasks/', 'output/', 'video-production/', 'docs/previews/',
-    'frontend/design-previews/', '.impeccable/review/', '.impeccable/review-gallery/',
+    'frontend/design-previews/', '.impeccable/',
     'frontend/coverage/', 'frontend/playwright-report/', 'frontend/test-results/',
     'frontend/demo-assets/', 'frontend/.demo-public/',
     'tmp/', 'temp/',

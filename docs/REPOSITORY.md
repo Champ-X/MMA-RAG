@@ -34,7 +34,7 @@ git clone --filter=blob:none --single-branch https://github.com/Champ-X/MMA-RAG.
 
 `evals/` 不是评测输出目录。当前只保留 `baseline_v1/` 的合成语料与题集、`baselines/` 中用于比较器回归的报告，以及 `decision_plan_v2/`、`decision_plan_v2_holdout/` 的生产准入证据。后两者含哈希绑定的源快照；文件较旧不等于无用，不应随代码格式化或“更新日期”而改写。消费者与运行方式见 [评测目录](../evals/README.md)。新运行结果显式写到忽略的 `evals/runs/`、`evals/reports/` 或 `ops/`。
 
-共享的 `PRODUCT.md`、`DESIGN.md`、`.impeccable/design.json` 是产品与设计约定，应与实现同步；聊天过程、候选提案和逐次验收记录放到忽略目录。文档中的历史截图与架构图应标明源码版本和已知差异，当前行为以技术说明和实现为准。
+产品约定维护在 [PRODUCT.md](../PRODUCT.md)，架构页的设计约定维护在 [DESIGN.md](../DESIGN.md)。本地设计工具的导出、候选提案和逐次验收记录放到忽略目录。文档中的历史截图与架构图应标明源码版本和已知差异，当前行为以技术说明和实现为准。
 
 `.gitignore` 不能移除已跟踪文件，清理必须同时更新 Git 索引。删除当前文件也不会自动减少完整 clone 的历史对象。`git gc` 只能压缩本地对象，不能清理 GitHub 上仍被分支引用的历史。
 
