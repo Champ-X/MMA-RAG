@@ -21,6 +21,22 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 
+WORKER_TASK_PROBE = """
+from greenlet import greenlet
+from celery_app import celery_app, debug_task
+
+debug_task.push_request(id='parent-request')
+try:
+    assert debug_task.request.id == 'parent-request'
+    assert greenlet(lambda: debug_task.request.id).switch() is None, 'Celery request leaked into another greenlet'
+finally:
+    debug_task.pop_request()
+
+result = celery_app.send_task('celery_app.debug_task', queue='celery').get(timeout=20)
+assert result == {'hello': 'world'}
+print('Redis worker task and greenlet-local request context checks passed')
+"""
+
 # A TCP server that accepts Redis connections but never responds, like a stalled
 # container route. Exercise Kombu's real socket settings rather than asserting config.
 BROKER_TIMEOUT_PROBE = """
@@ -208,10 +224,7 @@ def main() -> None:
                     "if wget --quiet --spider http://127.0.0.1/health; then exit 1; fi; "
                     "wget -Y off -q -O /dev/null -T 3 http://127.0.0.1/health")
         report["checks"]["proxy_safe_healthcheck"] = True
-        task = compose_run("exec", "-T", "backend", "python", "-c",
-                           "from celery_app import celery_app; "
-                           "result=celery_app.send_task('celery_app.debug_task', queue='celery').get(timeout=20); "
-                           "assert result=={'hello':'world'}; print('Worker processed task through Redis')")
+        task = compose_run("exec", "-T", "backend", "python", "-c", WORKER_TASK_PROBE)
         report["checks"]["worker_task"] = task.stdout.strip()
         timeout_probe = compose_run("exec", "-T", "backend", "python", "-c", BROKER_TIMEOUT_PROBE)
         report["checks"]["broker_socket_timeout"] = timeout_probe.stdout.strip()

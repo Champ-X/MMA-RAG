@@ -7,6 +7,7 @@ python-multipart==0.0.6
 
 # 异步处理
 celery==5.3.4
+greenlet>=3.0             # Celery 的任务请求上下文按 greenlet 隔离
 redis==5.0.1
 
 # 数据库和存储
