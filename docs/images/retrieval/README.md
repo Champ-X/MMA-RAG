@@ -1,8 +1,8 @@
 # 检索演示截图 / Retrieval screenshots
 
-这组图片于 **2026-11-07** 实拍自当前 Chrome 中已有的 Tessmora 对话，代码基线为 `d3656cf`。没有为这些截图重新提问或改写回答。原始截图为 2560 × 1410；仅裁去顶部 122 像素浏览器工具栏，再等比缩放为 **1920 × 966、JPEG quality 90**，未拼接、替换素材或修饰运行状态。
+这组图片于 **2026-11-07** 截取自 Chrome 中已有的 Tessmora 对话，代码基线为 `d3656cf`。没有为这些截图重新提问或改写回答。原始截图为 2560 × 1410；仅裁去顶部 122 像素浏览器工具栏，再等比缩放为 **1920 × 966、JPEG quality 90**，未拼接、替换素材或修饰运行状态。
 
-Captured on **November 7, 2026**, from existing Tessmora conversations in the current Chrome profile, with code baseline `d3656cf`. No new questions were submitted or answers rewritten for these captures. The original 2560 × 1410 screenshots were cropped by 122 pixels at the top to remove browser chrome, then proportionally resized to **1920 × 966, JPEG quality 90**. Content was not composited, replaced, or retouched.
+Captured on **November 7, 2026**, from existing Tessmora conversations in Chrome, with code baseline `d3656cf`. No new questions were submitted or answers rewritten for these captures. The original 2560 × 1410 screenshots were cropped by 122 pixels at the top to remove browser chrome, then proportionally resized to **1920 × 966, JPEG quality 90**. Content was not composited, replaced, or retouched.
 
 | 已有对话 / Existing conversation | 中文界面 | English UI |
 | --- | --- | --- |

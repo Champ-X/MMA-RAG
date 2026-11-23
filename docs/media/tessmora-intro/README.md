@@ -1,8 +1,8 @@
 # Tessmora 介绍视频 / Introduction videos
 
-面向项目 README 的中英双语展示资源。两段视频均为已定版 V5 的 720p Lite 成片，直接复制，未重新剪辑、转码或修改配乐。原始 1080p 成片与制作工程保留在本地、被 Git 忽略的 `video-production/tessmora-intro/deliverables/`，不属于此目录的分发内容。
+面向项目 README 的中英双语展示资源。两段视频均为已定版 V5 的 720p Lite 成片，直接复制，未重新剪辑、转码或修改配乐。清单记录了原始交付目录 `video-production/tessmora-intro/deliverables/`。1080p 成片与制作工程由制作者本地管理。
 
-Bilingual presentation assets for the project READMEs. Both videos are exact copies of the finalized V5 720p Lite exports, with no editing, re-encoding, or soundtrack changes. Original 1080p exports and production files remain in the local, Git-ignored `video-production/tessmora-intro/deliverables/` directory.
+Bilingual presentation assets for the project READMEs. Both videos are exact copies of the finalized V5 720p Lite exports, with no editing, re-encoding, or soundtrack changes. The manifest records `video-production/tessmora-intro/deliverables/` as the original delivery directory. The producers manage the 1080p exports and production files locally.
 
 | 语言 / Language | GitHub 附件 / Attachment | MP4 下载 / Download | 封面 / Cover | 字幕 / Subtitles |
 | --- | --- | --- | --- | --- |

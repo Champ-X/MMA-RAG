@@ -1,27 +1,35 @@
 # Tessmora 文档
 
-从 [项目介绍与快速开始](../README.md) 安装并完成第一次带引用的问答。以下文档描述当前实现；API 请求字段以运行实例的 `/docs` 为准。
+**简体中文** · [English](README-en.md)
+
+第一次安装请从快速开始入手。知识库命令参考、语言切换、画像路由、评测输入索引和部分设计文档使用英文，视频、截图和模块图提供双语说明。
+
+## 使用与安装
 
 | 任务 | 文档 |
 | --- | --- |
-| 观看中英文介绍视频或获取字幕 | [演示媒体](media/tessmora-intro/README.md) |
-| 启动、停止、排查环境和恢复数据 | [本地启动](LOCAL_STARTUP.md) |
-| 构建容器、安装和管理实例 | [容器分发](DISTRIBUTION.md) · [安装器 CLI](../packages/cli/README.md) |
-| 发现、预览和收录网络素材 | [网络素材收集](NETWORK_COLLECTION.md) |
-| 切换中英文界面与在线提示词 | [英语支持](ENGLISH_SUPPORT.md) |
-| 理解模块边界、数据流与会话持久化 | [系统架构](MMA_ARCHITECTURE.md) |
-| 查看和编辑中英文手写架构图（2026-11-05 快照） | [Excalidraw 双语架构图](diagrams/mma-rag/README.md) |
-| 理解图片、音频、视频的索引与召回 | [多模态技术说明](MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) |
-| 理解知识库选择、主题与概念地图 | [知识库路由](knowledge-routing-optimization.md) · [主题探索](topic-explorer.md) |
-| 配置自主研究与只读工具 | [Pi Agent](PI_AGENT_MODE.md) |
-| 配置 Pi 持续输入、崩溃恢复与运行时回退 | [Pi Durable](pi-agent-durable.md) |
-| 配置可选的需求核验与引用诊断 | [Decision 模型](DECISION_MODELS.md) |
-| 使用行内文件与本机附件 | [引用与附件协议](chat-inline-references.md) |
-| 排查服务商路由与连接 | [模型调用](MODEL_CALL_RELIABILITY.md) |
-| 接入 CLI / Codex 或飞书 | [CLI](../skills/mma-rag/references/cli-reference.md) · [飞书](FEISHU_BOT_SETUP.md) |
-| 复现检索及生成评测 | [RAG 基线](RAG_EVALUATION.md) · [检索评测](RETRIEVAL_EVALUATION_V2.md) |
-| 修改代码、提交文件、控制仓库体积 | [贡献指南](../CONTRIBUTING.md) · [仓库维护](REPOSITORY.md) |
-| 维护页面设计、图片与字体来源 | [设计约定](../DESIGN.md) · [Color Atlas](architecture-color-atlas.md) · [字体](architecture-typography-assets.md) · [知识库图片](knowledge-empty-visual-assets.md) |
-| 部署安全 | [安全说明](../SECURITY.md) |
+| 第一次安装和提问 | [快速开始](../README.md#快速开始) |
+| 选择安装方式、更新和备份 | [安装器 CLI](../packages/cli/README.md) · [容器分发](DISTRIBUTION.md) · [源码开发启动器](LOCAL_STARTUP.md) |
+| 导入公开链接或接入飞书 | [网络素材采集](NETWORK_COLLECTION.md) · [飞书 IM、Docx 和 Wiki](FEISHU_BOT_SETUP.md) |
+| 从命令行管理知识库和检索 | [mma-rag 命令参考](../skills/mma-rag/references/cli-reference.md) |
+| 设置模型和语言 | [模型连接排查](MODEL_CALL_RELIABILITY.md) · [中英文界面与提示词](ENGLISH_SUPPORT.md) |
+| 查看示例与字幕 | [中英文视频和字幕](media/tessmora-intro/README.md) |
 
-实验笔记、逐次验收记录和私人语料不属于使用文档。历史材料可按提交查阅；新实验输出应放在忽略目录中。更新行为时同步修改对应技术文档，中英文 README 只保留稳定能力和入门路径。
+## 检索与研究
+
+| 任务 | 文档 |
+| --- | --- |
+| 了解入库、存储和检索 | [系统架构](MMA_ARCHITECTURE.md) · [图片、音频和视频](MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md) |
+| 理解选库和主题图 | [知识库画像](knowledge-routing-optimization.md) · [主题星图](topic-explorer.md) |
+| 控制搜索范围或引用附件 | [行内引用与本机附件](chat-inline-references.md) |
+| 配置和恢复 Pi 任务 | [Pi 工具和配置](PI_AGENT_MODE.md) · [Durable 运行时](pi-agent-durable.md) |
+| 核对常规问答的来源需求和引用 | [Decision 模型](DECISION_MODELS.md) |
+| 复现或比较评测 | [合成 RAG 基线](RAG_EVALUATION.md) · [检索评测](RETRIEVAL_EVALUATION_V2.md) · [评测输入](../evals/README.md) |
+
+## 贡献与维护
+
+| 任务 | 文档 |
+| --- | --- |
+| 准备改动或报告问题 | [贡献指南](../CONTRIBUTING.md) · [安全报告](../SECURITY.md) · [仓库维护](REPOSITORY.md) |
+| 维护架构页和素材 | [产品说明](../PRODUCT.md) · [设计说明](../DESIGN.md) · [架构页](architecture-color-atlas.md) · [字体](architecture-typography-assets.md) · [素材空间插画](knowledge-empty-visual-assets.md) |
+| 编辑介绍页图表或查找原图 | [模块图](diagrams/mma-rag/readme-modules/README.md) · [历史全景图](diagrams/mma-rag/README.md) · [界面截图](images/current/README.md) · [检索截图](images/retrieval/README.md) |

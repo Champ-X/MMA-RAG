@@ -4,11 +4,9 @@ Tessmora supports `zh-CN` and `en-US`. Choose **Interface language** in the side
 
 ## Scope
 
-The preference controls product UI copy and the language of Tessmora-authored instructions used by online retrieval and answer generation. Direct retrieval, conventional Agent research, and Pi Agent use equivalent English prompt variants when English is selected. Existing English Decision/Jev prompts keep their established versions.
+Changing the interface language switches Tessmora’s labels and the instructions used for online retrieval and answer generation in Direct, conventional Agent, and Pi. Decision uses its existing English prompts. The answer language still follows the user’s question and instructions.
 
-This does not introduce a separate answer-language preference or force English answers. Existing answer-language rules still apply. User questions, conversation history, document contents, filenames, source excerpts, and model-generated text retain their original language. Switching languages does not translate prior answers or research prose.
-
-Indexing and ingestion prompts, embeddings, retrieval/ranking algorithms, tool identifiers, JSON fields, citation identifiers, and source scopes are unchanged. No reindexing is needed.
+Questions, filenames, source excerpts, conversation history, and previous answers keep their original language. The setting applies to new requests immediately and uses the existing index.
 
 ## Request behavior
 

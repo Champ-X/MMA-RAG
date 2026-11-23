@@ -29,14 +29,15 @@ git clone --filter=blob:none --single-branch https://github.com/Champ-X/MMA-RAG.
 | 生成的前端、依赖、模型权重 | 本地生成或独立发布，不放 Git |
 | Demo 原始媒体、准备副本与部署状态 | `frontend/demo-assets/`、`frontend/.demo-public/`、`.vercel/`；忽略并由分发检查器拒绝强制跟踪 |
 | 用户配置与知识数据 | `backend/.env`、`backend/data/`、`data/`、MinIO/Qdrant 持久目录；忽略 |
-| 临时 QA、截图、实验脚本与模型回执 | `ops/` 或仓库外归档；忽略 |
+| 临时 QA、截图、实验脚本与模型回执 | `ops/` 或仓库外归档。 |
+| 图表与设计工具导出 | `docs/diagrams/` 下已发布的图继续跟踪，新增文件由 `.gitignore` 忽略。`.impeccable/` 为本地设计工具导出目录。 |
 | 冻结实验与大语料 | 独立研究归档/发布资产；主仓库仅保留生产准入所需的小型证据 |
 
 `evals/` 不是评测输出目录。当前只保留 `baseline_v1/` 的合成语料与题集、`baselines/` 中用于比较器回归的报告，以及 `decision_plan_v2/`、`decision_plan_v2_holdout/` 的生产准入证据。后两者含哈希绑定的源快照；文件较旧不等于无用，不应随代码格式化或“更新日期”而改写。消费者与运行方式见 [评测目录](../evals/README.md)。新运行结果显式写到忽略的 `evals/runs/`、`evals/reports/` 或 `ops/`。
 
 产品约定维护在 [PRODUCT.md](../PRODUCT.md)，架构页的设计约定维护在 [DESIGN.md](../DESIGN.md)。本地设计工具的导出、候选提案和逐次验收记录放到忽略目录。文档中的历史截图与架构图应标明源码版本和已知差异，当前行为以技术说明和实现为准。
 
-`.gitignore` 不能移除已跟踪文件，清理必须同时更新 Git 索引。删除当前文件也不会自动减少完整 clone 的历史对象。`git gc` 只能压缩本地对象，不能清理 GitHub 上仍被分支引用的历史。
+`.gitignore` 控制新文件是否出现。已提交的图表仍会显示后续修改。删除当前文件也不会自动减少完整 clone 的历史对象。`git gc` 只能压缩本地对象，不能清理 GitHub 上仍被分支引用的历史。
 
 ## 历史与恢复
 
@@ -60,7 +61,7 @@ git show COMMIT:docs/ONBOARDING_VERIFICATION.md > /tmp/onboarding-verification.m
 
 ## 持续检查
 
-`python3 scripts/check_repository.py` 以 Git 索引中的文件名检查当前工作区内容：分发边界、Markdown 本地链接和单文件大小。CI 在干净 checkout 中执行同一检查，防止本地存在而 clone 缺失的文件被误判为可用。未暂存的新增或删除可先用 `--worktree` 检查，它纳入未被忽略的新文件、排除待删除文件，不修改暂存区。精确暂存后仍需运行默认检查。
+`python3 scripts/check_repository.py` 以 Git 索引中的文件名检查当前工作区内容：分发边界、Markdown 本地链接和单文件大小。CI 在干净 checkout 中执行同一检查，防止本地存在而 clone 缺失的文件被误判为可用。未暂存的新增或删除可先用 `--worktree` 检查，它纳入未被忽略的新文件、排除待删除文件，不修改暂存区。准备提交时可用默认模式检查暂存区选定的文件名。
 
 ```bash
 python3 scripts/check_repository.py --worktree

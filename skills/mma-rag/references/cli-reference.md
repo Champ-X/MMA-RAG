@@ -1,6 +1,6 @@
 # Tessmora CLI reference (`mma-rag`)
 
-The executable and `MMA_RAG_*` environment variables retain their original names for compatibility.
+Run the examples below from the installed skill directory or from `skills/mma-rag/` in a source checkout. From the repository root, use `skills/mma-rag/scripts/mma-rag` as the executable. This CLI connects to a running Tessmora API. The separate `tessmora` installer manages the application and its containers.
 
 ## Environment
 
@@ -9,7 +9,7 @@ The executable and `MMA_RAG_*` environment variables retain their original names
 - `MMA_RAG_UPLOAD_TIMEOUT_SECONDS`: upload request timeout; default `1800`.
 - `MMA_RAG_ALLOWED_ROOTS`: comma- or path-separator-delimited upload roots.
 
-Without `MMA_RAG_ALLOWED_ROOTS`, uploads are allowed from the current working directory and the current user's `Desktop`, `Documents`, and `Downloads` directories.
+Use repeated `--allow-root DIRECTORY` options to specify upload roots on the command line. The CLI combines those roots with `MMA_RAG_ALLOWED_ROOTS`. When neither is set, it allows the current working directory and the current user's `Desktop`, `Documents`, and `Downloads` directories.
 
 ## Global options
 
@@ -19,7 +19,7 @@ Place global options before the command:
 scripts/mma-rag --base-url http://127.0.0.1:8000 --pretty health
 ```
 
-All commands write one JSON object to stdout:
+Successful operations and API or job errors write one JSON object to stdout. A successful response has this shape.
 
 ```json
 {"ok":true,"schema_version":"1","command":"health","data":{}}

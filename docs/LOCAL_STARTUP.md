@@ -1,6 +1,6 @@
 # 本地一键启动
 
-在仓库任意工作区使用根目录 `start-dev.sh`；脚本会自行定位仓库，调用路径也可为绝对路径。`scripts/start-restored.sh` 是同一控制器的恢复入口，额外要求已有存储数据。
+`start-dev.sh` 在宿主机运行 FastAPI 和 Vite，并启动或复用 Docker 中的 MinIO、Qdrant 和 Redis。先按[源码开发](../README.md#从源码开发)安装依赖、填写 `backend/.env`。以下命令从仓库根目录运行。要运行包含 Celery worker 的完整安装，请使用[安装器](../packages/cli/README.md)。
 
 ```bash
 ./start-dev.sh                       # 前台启动，Ctrl+C 停止前后端
@@ -40,22 +40,24 @@ FRONTEND_PORT=3010 MMA_START_TIMEOUT=600 ./start-dev.sh restart --background
 
 Colima 停止后可能移除 Docker context。启动器会通过只读的 `colima list --json` 识别已有 `mma-rag` Docker profile，正常启动时继续使用它，并在启动后再次校验 context 是本地 Unix socket。`doctor` 遇到这种状态会明确报告 profile 尚未启动或 context 不可用，不会启动它或修改全局 context。
 
-## 数据与进程管理
+## 启动或恢复知识库
 
-- 有效的 `mmrag_minio` / `mmrag_qdrant` / `mmrag_redis` 优先原样复用，保留实际挂载。已有 MinIO/Qdrant 数据通常通过 `.minio.sys` / `collections` 标识检查；这不等于完整的数据校验。
-- 普通 `./start-dev.sh` 不要求先恢复丢失的旧知识库。三个旧容器完整、但 MinIO/Qdrant 的 bind 源明确缺失或为空时，会停止并重命名保留这三个旧容器，再以独立 Compose project 创建新存储，随后启动前后端。旧容器、原卷和原 Redis 数据均不删除；原来启用的自动重启策略会禁用并记入恢复记录，避免旧容器再次抢占端口。新 Redis 也使用独立持久化目录，不继承旧任务队列。
-- 没有存储容器时，新实例默认使用上述稳定目录；若当前仓库仍有完整的 `minio_data` / `qdrant_storage`，优先复用它们。若新目录与被保留容器的源路径重叠，改用稳定根目录下独立的 `instances/<project>/`；检查会解析软链接并比较父子目录，如果仍有重叠则停止，要求选择独立的 `MMA_STORAGE_ROOT`，避免旧容器接触新数据。不会覆盖非空的未知目录。
-- `--restored` / `scripts/start-restored.sh` 严格要求已有数据，缺失时继续失败，不切换空库。未知挂载类型、非空但缺少标识的数据，以及不完整的旧容器组也会停止并给出诊断，普通入口不会盲目重置。
-- 新实例的 Compose overlay 和初始化记录保存在 `logs/dev/storage-compose-*.json`、`storage-bootstrap.json`。首次启动被打断后，只有 project、路径和已知容器 ID 与记录匹配的实例可以续接同一初始化。新 MinIO 尚无 bucket、因而缺少 `.minio.sys` 时，不会被反复当作旧库丢失。保留旧容器的 ID、原名称、挂载及重启策略记录位于 `logs/dev/storage-preserved-*.json`，不记录环境变量或凭证。
-- `doctor` 始终只读，报告具体挂载类型、宿主机 `Source` 和容器内 `Destination`，不启动或重命名容器，也不验证存储 API 健康。它报告旧挂载缺失，不代表普通启动无法创建独立的新实例。
-- Docker 命令使用同一指定 context，不修改用户的全局 context，也不继承 `DOCKER_HOST` / `COMPOSE_FILE` 等可能冲突的设置。存储健康检查使用 MinIO live、Qdrant healthz 和容器内 Redis `PING`。
-- 启动后检查 Tessmora `/health`、Vite 页面和经前端代理的 `/api/knowledge/` 真实响应；这不代表所有模型服务商、上传解析和检索路径都已通过验收。
-- 本地状态保存在忽略跟踪的 `logs/dev/`。停止前核对 PID、用户、启动时间和参数，避免误杀其他项目或 PID 复用后的进程；不使用全局 `pkill`。IPv4/IPv6 端口冲突会给出排查命令。
-- 前后端运行于各自进程组；启动中断、就绪超时或任一服务退出时会清理应用进程。清理不会操作存储容器，不启动 Celery、重新解析或重新向量化；停止提示不代表存储容器当前已运行。
+| 当前存储 | 普通启动 | `--restored` |
+| --- | --- | --- |
+| 已有完整容器和有效数据 | 复用挂载与数据。 | 复用已有数据。 |
+| 没有存储容器 | 优先使用仓库内完整的原存储目录，否则在稳定目录初始化。 | 要求已有可识别的存储数据。 |
+| 原来三个容器完整，但 MinIO 或 Qdrant 的 bind 源已丢失或为空 | 停止并重命名旧容器，记录原路径及重启策略，另建独立实例和 Redis。 | 停止并提示恢复原数据。 |
+| 旧容器不完整、挂载类型未知，或非空目录缺少预期标识 | 停止并报告冲突。 | 停止并报告冲突。 |
 
-Docker 容器保留创建时的绝对挂载路径；删除旧工作区会使其 bind 源失效，部分 Docker 检查还可能重新创建同名空目录。要继续使用应用，直接运行普通启动入口；要恢复原知识库，先根据 `storage-preserved-*.json` 找到旧容器和数据路径，核对备份完整性后再恢复。不要创建空目录或伪造初始化标识来冒充旧数据。新空库启动成功不代表原数据已经恢复。
+`doctor` 可查看挂载类型、宿主路径和容器内路径。它只读检查本机配置。普通启动还会读取 MinIO live、Qdrant healthz、Redis PING、后端 `/health` 及经前端代理的 `/api/knowledge/`。若要验证模型连通或引用，需发起相应的模型测试或问答。
 
-已有旧脚本或手动启动的服务不会被自动接管。若启动报告端口占用，先用提示中的 `lsof` 检查 PID 和命令，停止确认属于该项目的旧进程，再启动新入口。
+旧容器的绝对挂载路径可能随旧工作区删除而失效。需要找回原知识库时，先从 `logs/dev/storage-preserved-*.json` 确认原挂载和容器身份，再从备份恢复。MinIO 的 `.minio.sys` 与 Qdrant 的 `collections` 用于识别目录，完整性仍需用实际资料核对。新建的空知识库只提供新的工作空间。
+
+控制器把 Compose 覆盖文件和初始化记录放在 `logs/dev/`。重试会比对项目、路径和已知容器身份。若新旧路径重叠，需提供独立的 `MMA_STORAGE_ROOT`。请保留这些记录，后续恢复需要它们。
+
+## 进程与端口
+
+重复启动会检查本实例的进程身份与健康状态。端口已由其他程序使用时，按报错中的 `lsof` 命令核对 PID，再决定如何处理。停止、启动中断或就绪超时会清理本次管理的前后端进程组。存储容器独立运行。启动器选用指定的本地 Docker context，并在使用已有 Colima profile 时保持全局 context 设置。
 
 ## 日志与脚本验证
 
