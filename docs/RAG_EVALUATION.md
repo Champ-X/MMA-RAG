@@ -40,7 +40,7 @@ curl http://127.0.0.1:18000/health
 
 Compose 声明 `mma-rag-backend:latest` 镜像与 `backend/Dockerfile` 构建源，并把当前 `backend/app` 只读挂载进去。首次运行或 `backend/requirements.txt`、Dockerfile 变化后先运行 `docker compose -f docker-compose.eval.yml build backend`，避免旧依赖镜像与新源码不一致。
 
-先跑不调用最终生成模型的检索基线：
+先运行只检索的基线。按配置，意图分析、向量化和重排仍可能发起服务商请求。
 
 ```bash
 ./scripts/rag-eval run \
@@ -49,12 +49,11 @@ Compose 声明 `mma-rag-backend:latest` 镜像与 `backend/Dockerfile` 构建源
   --report-out evals/reports/direct-retrieval.json
 ```
 
-完整生成评测使用一个独立的 OpenAI-compatible judge。不要把密钥写入命令历史或仓库；推荐在当前 shell 临时注入：
+要对生成结果评分，请配置支持 OpenAI 兼容协议的独立 judge。先通过本机密钥管理器设置 `TESSMORA_EVAL_JUDGE_API_KEY`，然后在同一个终端指定地址和固定模型版本。
 
 ```bash
 export TESSMORA_EVAL_JUDGE_BASE_URL=https://judge.example.com/v1
 export TESSMORA_EVAL_JUDGE_MODEL=judge-model-version
-export TESSMORA_EVAL_JUDGE_API_KEY=replace-me
 
 ./scripts/rag-eval run \
   --judge openai-compatible \
@@ -101,7 +100,7 @@ export TESSMORA_EVAL_JUDGE_MODEL=judge-model-fixed-version
 
 建议分别维护 `direct` 和 `agent` 基线，不在同一门禁中混比；检索配置或模型版本发生预期变化时，先保存候选报告和逐题差异，再人工决定是否更新基线。
 
-## 文件合同
+## 数据与输出文件
 
 - 数据清单：`evals/baseline_v1/manifest.json`
 - 问题、参考回答与 qrels：`evals/baseline_v1/cases.jsonl`

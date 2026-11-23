@@ -1,10 +1,6 @@
 # Knowledge portraits and routing
 
-This document describes the maintained automatic KB-routing path in
-`backend/app/modules/knowledge/`. Explicit user KB/file scopes remain binding.
-Conventional Agent exploration and Pi use their own orchestration paths.
-Defaults come from `backend/app/core/config.py`; process-local overrides and
-existing portrait versions determine a running instance's behavior.
+When a user leaves the knowledge-base selector empty, standard retrieval can use stored topic profiles to choose where to search. Explicit knowledge-base and file selections take precedence. Agent exploration and Pi have their own routing paths. [Router](../backend/app/modules/knowledge/router.py) · [Default settings](../backend/app/core/config.py)
 
 ## Core topic representation and routing
 
@@ -19,11 +15,7 @@ model request is made.
 
 The existing summary remains independently searchable. Prototype points share
 the `kb_portraits` collection with `portrait_role=topic_prototype`; legacy
-Top-30 queries and portrait display explicitly exclude them. A new grouped
-query returns only the highest scoring prototype for each KB. Consequently
-copies of one prototype cannot add votes or crowd other KBs out of point TopN.
-This does not eliminate the statistical advantage of a genuinely more diverse
-large KB; the supplementary decision rule is needed as well.
+Top-30 queries and portrait display explicitly exclude them. A grouped query returns the highest-scoring prototype per knowledge base. Duplicate prototypes therefore contribute only one score. A larger, more diverse collection may still have a higher maximum.
 
 For `coverage` routing, the original summary route remains the anchor. A new
 KB can occupy another existing slot only if its content-prototype score is at
@@ -40,7 +32,7 @@ prototype supplementation only into unused slots; Agent exploration and Pi
 retain their separate routing behavior. Diagnostics retain the chosen source,
 raw score, gaps, inserted/evicted KBs and fallback status.
 
-`evidence_routing.py` also protects strong caption/ASR first hits from being
+[Evidence routing](../backend/app/modules/knowledge/evidence_routing.py) also protects strong caption/ASR first hits from being
 discarded by four-way RRF before reranking. A semantic winner must score at
 least 0.50 and at least 90% of the strongest semantic winner; at most two unique
 winners replace the tail within the same candidate limit. The same protection

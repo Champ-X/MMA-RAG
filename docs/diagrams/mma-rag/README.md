@@ -6,6 +6,8 @@
 
 此后 Pi 已默认使用 Durable 恢复符合条件的未完成任务，并支持可选的原生图片 CLIP / 音频 CLAP 召回。完整图中“重启后中断任务”和“未接入原生 CLIP/CLAP”的描述属于旧快照；当前配置、恢复与检索边界见 [Pi Durable](../../pi-agent-durable.md)。
 
+The Chinese and English canvases show five parts of the system at commit `658b0d1` on November 5, 2026. The current Pi runtime can resume eligible interrupted Durable runs and optionally retrieve images with CLIP or audio with CLAP. The canvases predate these changes. [Current architecture](../../MMA_ARCHITECTURE.md) · [Pi Durable](../../pi-agent-durable.md)
+
 ## 文件
 
 | 版本 | 可编辑源文件 | 矢量预览 | PNG 预览 |

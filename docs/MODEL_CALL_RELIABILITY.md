@@ -34,7 +34,7 @@
 | 图片理解 | 百炼 `qwen3.8-flash` | 百炼 `qwen3-vl-plus`、SiliconFlow `Qwen/Qwen3-Omni-30B-A3B-Captioner` |
 | 音频转写、视频解析 | 百炼 `qwen3.8-omni-flash` | 百炼 `qwen3.5-omni-plus`、`qwen3.5-omni-flash` |
 
-Pi 的独立媒体默认配置和前端旧媒体默认配置同步迁移。视频任务候选必须支持项目的本地视频传输及音轨理解；Realtime 模型使用不同协议，不作为这些 HTTP 任务的候选。文本与向量模型继续分别使用 `deepseek:deepseek-flash` 和 `Qwen/Qwen3-Embedding-8B`，现有索引无需重建。
+Pi 单独配置媒体模型。常规视频任务要求模型支持项目使用的视频传输方式并能读取音轨。默认聊天模型为 `deepseek:deepseek-flash`，文本向量模型为 `Qwen/Qwen3-Embedding-8B`。单独更新媒体理解路由可以复用现有索引，已有图注和转写会保留到下次解析。[模型迁移映射](../backend/app/core/llm/model_lifecycle.py) · [Pi 配置](../backend/app/modules/pi_agent/config.py)
 
 维护生命周期清单时需核对官方公告与实际接入端点；地域差异、目录缺失和单次调用失败不能单独证明模型已全球下架。参考 [SiliconFlow 下架公告](https://docs.siliconflow.cn/docs/release-notes/overview)、[百炼生命周期](https://help.aliyun.com/zh/model-studio/model-depreciation)、[百炼视觉模型](https://help.aliyun.com/zh/model-studio/vision-model)、[Omni 能力](https://help.aliyun.com/zh/model-studio/omni/)及 [OpenRouter 目录](https://openrouter.ai/api/v1/models?output_modalities=all)。逐次探测回执放在本地忽略目录，不能作为当前可用性的长期保证。
 

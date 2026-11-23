@@ -70,9 +70,12 @@ ParserFactory 根据文件格式选择解析器。TXT/Markdown 直接读取；�
 | `kb_portraits` | 知识库主题画像与路由 |
 | Pi `data/pi-agent/` | SQLite 任务账本、Durable 会话、媒体观察缓存、证据产物、附件和预览；完整安装可由状态目录重定位 |
 | 采集 `backend/data/collection/` | SQLite 任务、下载检查点及入库回执；托管安装跟随应用状态目录 |
-| Redis / Celery | 可选任务控制，不作为在线证据来源 |
+| Redis | 上传任务进度、租约、画像更新计数及 Celery 队列 |
+| Celery worker | 执行已入队的画像等后台任务。批量上传由 API 先登记每个文件的任务，再调度入库处理。 |
 
-网络采集在固定知识库内写入，自动/审核模式及中断恢复边界见[网络素材采集](NETWORK_COLLECTION.md)。
+入库达到画像更新阈值后，触发器优先向 Celery 投递任务，未能投递时尝试同步构建接口。Redis 中的待处理计数在构建得到确认后扣除。[画像更新触发器](../backend/app/core/portrait_trigger.py)
+
+网络采集写入创建任务时选定的知识库。自动收录、先审核再收录和中断恢复见[网络素材采集](NETWORK_COLLECTION.md)。
 
 视频以 Shot 为主要语义检索单元，关键帧不能算作独立的完整视频理解。更详细的字段与处理入口见 [多模态技术说明](MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)。更换 embedding 模型必须处理向量空间兼容性，不能直接复用不兼容的索引。
 
@@ -81,7 +84,7 @@ ParserFactory 根据文件格式选择解析器。TXT/Markdown 直接读取；�
 1. Chat 校验消息、附件、行内引用与明确选择的知识库/文件范围。
 2. 意图模型生成改写、关键词、多视角查询和模态需求；Decision 开启时按用途准入核验提案。
 3. 显式范围严格生效；未指定时通过知识库画像路由，可为明确模态需求补充范围内的来源。
-4. Dense、BGE-M3 Sparse、图片 CLIP、音频 CLAP 与视频路径按意图和排除约束执行，RRF 融合并进行 Cross-Encoder 重排。
+4. 常规搜索按意图和排除条件启用稠密、稀疏、图片、音频及视频通道。媒体通道内部可用 RRF 合并命中。搜索引擎同时计算全局融合排名，常规重排器实际读取各通道的 `raw_results`，自行合并、去重并筛选。[检索服务](../backend/app/modules/retrieval/service.py)
 5. 常规 Agent 可重复调用同一检索服务，去重后交给公共上下文构建器。具体轮数与预算见 `modules/agent/models.py` 和配置。
 6. 生成器收到上下文与稳定引用编号；只向最终回答保留实际采用的引用。无依据回答不能附带候选引用。
 
@@ -108,6 +111,8 @@ Pi 默认没有应用层累计 Token、时长或工具次数上限。并发槽�
 
 ## 运行边界
 
-推荐拓扑为本机 Python/Node + Docker MinIO/Qdrant/Redis。`start-dev.sh` 验证 API 和前端代理就绪，默认不启动 Celery；根 Compose 不包含完整前端及 Pi Node 环境。前端生产产物由 `npm --prefix frontend run build` 生成到 `frontend/dist/`，应由静态服务器部署并代理 `/api`。
+完整安装使用安装器和发行 Compose。Nginx 提供编译后的网页并代理 API，后端镜像包含 Pi Node 运行时，另有 Celery worker、MinIO、Qdrant 和 Redis。[容器分发](DISTRIBUTION.md)
+
+源码开发使用 `./start-dev.sh`，由宿主机运行 FastAPI 和 Vite，由 Docker 提供三项存储服务。启动器检查 API 和前端代理，Celery 需另行启动。`npm --prefix frontend run build` 将静态网页写入 `frontend/dist/`。[本地启动](LOCAL_STARTUP.md)
 
 默认面向本机单用户或可信内网。应用尚无完整认证、租户隔离和知识库 ACL，CORS 默认开放；对外部署需要独立加固。存储健康、模型连通、实际问答与引用正确性是不同的检查层级，参见 [安全说明](../SECURITY.md) 与 [贡献指南](../CONTRIBUTING.md)。

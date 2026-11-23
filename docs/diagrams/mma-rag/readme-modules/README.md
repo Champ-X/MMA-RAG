@@ -1,8 +1,8 @@
 # README 模块图 / README module diagrams
 
-三组中英文图展示当前入库、常规检索和 Pi Durable 研究路径。图中图标、箭头与文字均有原生 Excalidraw 源文件，便于随代码更新。
+三组图记录 2026-11-07 工作树中的入库、检索和 Pi 研究流程。每张图都有中英文版和可编辑的 Excalidraw 源文件。
 
-Three bilingual diagrams explain ingestion, standard retrieval, and Pi Durable research. The companion Excalidraw files retain native shapes, arrows, and editable text.
+These diagrams show ingestion, retrieval, and Pi research in the November 7, 2026 working tree. Each comes with Chinese and English artwork and an editable Excalidraw source.
 
 | 模块 / Module | 中文 | English |
 | --- | --- | --- |
@@ -10,26 +10,21 @@ Three bilingual diagrams explain ingestion, standard retrieval, and Pi Durable r
 | 混合检索与引用 / Hybrid retrieval & citations | [PNG](retrieval-zh.png) · [SVG](retrieval-zh.svg) · [源文件](retrieval-zh.excalidraw) | [PNG](retrieval-en.png) · [SVG](retrieval-en.svg) · [Source](retrieval-en.excalidraw) |
 | Pi Durable 研究 / Pi Durable research | [PNG](pi-durable-zh.png) · [SVG](pi-durable-zh.svg) · [源文件](pi-durable-zh.excalidraw) | [PNG](pi-durable-en.png) · [SVG](pi-durable-en.svg) · [Source](pi-durable-en.excalidraw) |
 
-- **入库**：不同资料分别解析与编码，MinIO 保存原件及派生媒体，Qdrant 保存索引和来源位置，知识库画像异步更新。
-- **检索**：根据问题意图和允许范围组织多路候选，经加权 RRF 与重排序生成答案，再通过引用回看原文或媒体区间。
-- **Pi**：在允许范围内按需使用工具积累证据，由 Durable 与 SQLite 保存研究状态，并通过 `submit_answer` 提交答案。
-
-- **Ingestion:** each format follows its own parsing and encoding path; MinIO holds originals and derived media, Qdrant holds indexes and source locations, and knowledge-base profiles update asynchronously.
-- **Retrieval:** intent and scope guide candidate retrieval, followed by weighted RRF, reranking, answer generation, and source inspection.
-- **Pi:** tools gather evidence within the allowed scope; Durable and SQLite preserve research state, and `submit_answer` delivers the result.
-
 ## 来源与范围 / Sources and scope
 
-2026-11-07 对照工作树源码核对；当时 HEAD 为 `d3656cf92327cd28244a2cc8475d1fe3089d301b`。实际来源文件及 SHA-256 见 [manifest.json](manifest.json)。这是流程说明图，未作为一次新的端到端运行或性能评测记录。
+绘图时 HEAD 为 `d3656cf92327cd28244a2cc8475d1fe3089d301b`。清单记录当时工作树中参考文件的 SHA-256，当前流程见系统架构文档。[清单](manifest.json) · [系统架构](../../../MMA_ARCHITECTURE.md)
 
-Reviewed against the working-tree source on 2026-11-07, with HEAD at `d3656cf92327cd28244a2cc8475d1fe3089d301b`. [manifest.json](manifest.json) records the source files and their SHA-256 hashes. These diagrams describe implementation paths; they do not record a new end-to-end execution or performance evaluation.
+HEAD was `d3656cf92327cd28244a2cc8475d1fe3089d301b` when the diagrams were drawn. The manifest records hashes of the working-tree sources consulted at the time. The architecture guide describes the current implementation. [Manifest](manifest.json) · [Architecture](../../../MMA_ARCHITECTURE.md)
 
-- 入库图没有把 Dense、Sparse、CLIP、CLAP 画成所有文件都执行的统一管线；图片使用 CLIP 与文本向量，没有 Sparse 向量；视频以 Shot 为主要检索单元，关键帧增强所属 Shot 排序。失败处理与模型降级未逐一展开。
-- 常规检索图的媒体分支按意图启用；显式范围优先于知识库画像路由。Pi 研究使用独立工具路径，不经过这里的普通画像路由和 Reranker。
-- Pi 默认使用 Durable 与回答计划；图中工具由任务按需选择，循环箭头不代表固定调用次序。搜索默认采用文本混合检索；可选 native 图片 CLIP / 音频 CLAP 路径未展开，native 视频检索尚未实现。
-- `steer` 用于排队或运行中的研究，澄清 `reply` 用于 `needs_input`；已完成任务不能通过普通追问直接续跑。恢复不保证外部模型请求仅执行一次，用户取消为终态；提交校验不保证结论语义正确。
+| 模块 / Module | 读图说明 | Reading the diagram |
+| --- | --- | --- |
+| 入库 / Ingestion | MinIO 保存原件和派生物，Qdrant 保存索引和来源位置。图片使用文本与 CLIP 向量，视频关键帧从属于镜头。画像异步更新。 | MinIO holds originals and derived files. Qdrant holds indexes and source locations. Images use text and CLIP vectors. Video keyframes belong to their shots. Knowledge-base profiles update asynchronously. |
+| 检索 / Retrieval | 显式范围优先于画像路由。媒体通道可用 RRF，全局也计算融合排名。常规重排器读取各通道的候选，合并、去重后选出供生成器使用的证据。 | Explicit scopes take precedence over profile routing. Media channels can use RRF, and search also computes a global fusion ranking. The standard reranker merges and deduplicates each channel’s candidates and selects evidence for generation. |
+| Pi | Pi 在授权范围内自行选择工具，默认使用 Durable 和回答计划，通过 `submit_answer` 交付。搜索默认使用文本混合检索，也支持可选的原生图片与音频召回。原生视频检索尚未接入。 | Pi chooses tools within the allowed scope. It uses Durable and answer planning by default, then delivers via `submit_answer`. Search defaults to hybrid text retrieval with optional native image and audio retrieval. Native video retrieval is unavailable. |
 
-The diagrams omit error branches and model fallbacks. Images use CLIP and text vectors, without Sparse encoding. Standard media routes are intent-driven, and keyframes boost their parent shots. Pi uses a separate tool path, with Durable and answer planning enabled by default. Its tools are selected as needed, not called in a fixed order. Pi search defaults to text hybrid retrieval; optional native image/audio search and the current lack of native video search are not expanded. In-flight `steer` and clarification `reply` preserve a run, but completed runs do not accept ordinary follow-up input. Recovery is not exactly-once delivery, cancellation is final, and submission checks do not prove factual correctness.
+排队或运行中可用 `steer` 补充要求，`needs_input` 时用 `reply` 回复。已完成的任务不再接收这些输入。取消是终态，恢复中断的外部模型请求可能再次计费。宿主可校验引用身份，读者仍需核对来源是否支持结论。[Pi Durable](../../../pi-agent-durable.md)
+
+Use `steer` for queued or running work and `reply` for a run waiting in `needs_input`. Completed runs accept neither input. Cancellation is final. Retrying an interrupted model request may incur another charge. The host checks citation identity. Readers can open the source to assess whether it supports a claim. [Pi Durable](../../../pi-agent-durable.md)
 
 ## 编辑与导出 / Editing and export
 
