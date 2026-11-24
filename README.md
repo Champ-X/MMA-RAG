@@ -5,7 +5,7 @@
 <p align="center">
   <strong>简体中文</strong> · <a href="README-en.md">English</a>
   <br />
-  <a href="#特性">特性</a> · <a href="#快速开始">快速开始</a> · <a href="#从源码开发">开发</a> · <a href="#api">API</a> · <a href="#文档">文档</a>
+  <a href="#特性">特性</a> · <a href="#快速开始">快速开始</a> · <a href="#从源码开发">开发</a> · <a href="#api">API</a> · <a href="#架构">架构</a> · <a href="#文档">文档</a>
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@
 
 Tessmora 是一个可自托管的多模态知识库。上传文档、表格、图片、音频或视频，用自然语言检索，并从回答中的引用打开原文、图片或视频片段。
 
-<details>
+<details open>
 <summary>观看项目演示（4 分 36 秒）</summary>
 
 https://github.com/user-attachments/assets/ba48b505-9b1b-4fd6-9d40-441092cdf8fc
@@ -147,7 +147,10 @@ skills/mma-rag/scripts/mma-rag ask --query "总结回滚流程" --kb-id KB_ID --
 
 完整容器安装用 Nginx 提供网页，FastAPI 处理 API 请求，Pi 研究任务在独立的 Node 进程中运行。MinIO 保存原件和派生文件，Qdrant 保存检索索引。Redis 记录上传进度，Celery worker 执行知识库画像更新等后台任务。
 
-- [系统架构](docs/MMA_ARCHITECTURE.md)
+[![Tessmora 系统总览，从左到右展示资料入库、常规问答与 Pi 研究，底部列出各路径使用的存储。](docs/diagrams/mma-rag/overview-cn.png)](docs/diagrams/mma-rag/overview-cn.png)
+
+图为 2026-11-05 的架构快照。当前检索流程和 Pi 任务恢复机制见[系统架构](docs/MMA_ARCHITECTURE.md)。
+
 - [多模态解析与检索技术说明](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)
 - [模块图与可编辑图表](docs/diagrams/mma-rag/readme-modules/README.md)
 

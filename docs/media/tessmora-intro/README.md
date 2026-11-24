@@ -15,15 +15,15 @@ Bilingual presentation assets for the project READMEs. Both videos are exact cop
 
 ## GitHub 内嵌播放 / Inline playback on GitHub
 
-在首页的演示折叠区，将对应语言的 `github_attachment.url` 单独放一段，前后留空行，GitHub 会生成带控制栏的播放器。需要字幕时可打开上表中的播放页，离线观看可下载 MP4 并载入同语言的 SRT。附件地址和文件哈希见[媒体清单](manifest.json)。
+首页用 `<details open>` 默认展开演示区。将对应语言的 `github_attachment.url` 单独放一段，前后留空行，GitHub 会生成带控制栏的播放器。需要字幕时可打开上表中的播放页，离线观看可下载 MP4 并载入同语言的 SRT。附件地址和文件哈希见[媒体清单](manifest.json)。
 
-In each README’s demo section, place the matching `github_attachment.url` in its own paragraph with a blank line on either side. GitHub renders it as a video player. For captions, open the project page linked above. For offline playback, download the MP4 and load the matching SRT file. The [manifest](manifest.json) records attachment URLs and file hashes.
+Each README uses `<details open>` to show the demo by default. Place the matching `github_attachment.url` in its own paragraph with a blank line on either side so GitHub renders the video player. For captions, open the project page linked above. For offline playback, download the MP4 and load the matching SRT file. The [manifest](manifest.json) records attachment URLs and file hashes.
 
 ## 架构预览来源 / Architecture preview provenance
 
-早期 README 中的[中文系统全景](../../diagrams/mma-rag/overview-cn.png)与 [English overview](../../diagrams/mma-rag/overview-en.png) 裁自[双语手写架构图](../../diagrams/mma-rag/README.md)的 PNG 导出，保留了入库、常规检索、Pi 与共享存储的系统关系。
+中英文首页分别展示[中文系统全景](../../diagrams/mma-rag/overview-cn.png)与 [English overview](../../diagrams/mma-rag/overview-en.png)。两张图均裁自[双语手写架构图](../../diagrams/mma-rag/README.md)的 PNG 导出，展示入库、常规检索、Pi 与共享存储的关系。
 
-The overview images in earlier READMEs are pixel-preserving crops of the bilingual architecture exports. They show ingestion, standard retrieval, Pi, and shared storage.
+Each README displays its language’s overview, cropped from the bilingual architecture exports. The diagrams show ingestion, standard retrieval, Pi, and shared storage.
 
 原图对应 **2026-11-05、`658b0d1`** 源码快照。完整图中的 Pi 恢复和检索通道细节早于 Durable 更新；当前行为见 [系统架构](../../MMA_ARCHITECTURE.md) 与 [Pi Durable](../../pi-agent-durable.md)。图中的 `02`–`05` 指完整画布的其他分区。
 

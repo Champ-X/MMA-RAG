@@ -5,7 +5,7 @@
 <p align="center">
   <a href="README.md">简体中文</a> · <strong>English</strong>
   <br />
-  <a href="#features">Features</a> · <a href="#quick-start">Quick start</a> · <a href="#develop-from-source">Develop</a> · <a href="#api">API</a> · <a href="#documentation">Docs</a>
+  <a href="#features">Features</a> · <a href="#quick-start">Quick start</a> · <a href="#develop-from-source">Develop</a> · <a href="#api">API</a> · <a href="#architecture">Architecture</a> · <a href="#documentation">Docs</a>
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@
 
 Tessmora is a self-hosted multimodal knowledge base. Upload documents, spreadsheets, images, audio, or video, search in natural language, and open a citation to reach the original passage, image, or clip.
 
-<details>
+<details open>
 <summary>Watch the demo (4 min 36 sec)</summary>
 
 https://github.com/user-attachments/assets/b3d5a990-115f-4508-a707-b99d2acc590e
@@ -147,7 +147,10 @@ skills/mma-rag/scripts/mma-rag ask --query "Summarize the rollback procedure" --
 
 In the full Docker installation, Nginx serves the frontend, FastAPI handles API requests, and Pi runs research tasks in separate Node processes. MinIO stores originals and derived files, and Qdrant holds retrieval indexes. Redis tracks upload progress. A Celery worker handles background jobs such as updating knowledge-base profiles.
 
-- [System architecture](docs/MMA_ARCHITECTURE.md)
+[![Tessmora system overview showing ingestion, standard chat, and Pi research from left to right, with their storage below.](docs/diagrams/mma-rag/overview-en.png)](docs/diagrams/mma-rag/overview-en.png)
+
+This diagram shows the architecture on November 5, 2026. The [architecture guide](docs/MMA_ARCHITECTURE.md) covers the current retrieval flow and Pi task recovery.
+
 - [Multimodal parsing and retrieval](docs/MULTIMODAL_IMAGE_AUDIO_VIDEO_TECHNICAL_SPEC.md)
 - [Module diagrams and editable sources](docs/diagrams/mma-rag/readme-modules/README.md)
 
