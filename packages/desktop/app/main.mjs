@@ -7,6 +7,7 @@ import { access, mkdir } from 'node:fs/promises';
 import { WorkspaceStore, WorkspaceError, normalizeRemoteUrl, validateName } from './workspaces.mjs';
 import { CredentialStore } from './credentials.mjs';
 import { negotiateWorkspace } from './connection.mjs';
+import { detectLocalWeb, localWebOrigin } from './local-web.mjs';
 import { createWorkspaceHandler, workspaceOrigin, SCHEME } from './protocol.mjs';
 
 protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true, codeCache: true } }]);
@@ -16,6 +17,7 @@ app.setName('Tessmora');
 const single = app.requestSingleInstanceLock();
 if (!single) app.quit();
 let launcher, tray, quitting = false, shutdownStarted = false;
+let localWebWindow, openingLocalWeb;
 let store, credentials, historyExporter;
 const workspaceWindows = new Map();
 const connections = new Map();
@@ -54,14 +56,14 @@ function openExternal(url) {
     if (['https:', 'http:'].includes(target.protocol) && !target.username && !target.password) void shell.openExternal(target.href);
   } catch { /* Unknown schemes and local files are not opened. */ }
 }
-function restrictWindow(win, { origin, preview = false } = {}) {
+function restrictWindow(win, { origin, preview = false, servedPage = false } = {}) {
   win.webContents.setWindowOpenHandler(({ url }) => {
     try {
       const target = new URL(url);
       if (origin && (`${target.protocol}//${target.host}` === origin || url.startsWith(`blob:${origin}/`))) {
         const child = new BrowserWindow({ title: 'Tessmora · 原件', width: 1040, height: 780, show: false,
           webPreferences: { session: win.webContents.session, sandbox: true, contextIsolation: true, nodeIntegration: false } });
-        restrictWindow(child, { origin, preview: true });
+        restrictWindow(child, { origin, preview: true, servedPage });
         child.once('ready-to-show', () => child.show());
         void child.loadURL(url).catch(() => child.close());
       } else openExternal(url);
@@ -69,18 +71,23 @@ function restrictWindow(win, { origin, preview = false } = {}) {
     return { action: 'deny' };
   });
   win.webContents.on('will-attach-webview', event => event.preventDefault());
+  if (servedPage) {
+    win.webContents.on('will-redirect', event => {
+      if (event.isMainFrame && new URL(event.url).origin !== origin) event.preventDefault();
+    });
+  }
   win.webContents.on('will-navigate', (event, url) => {
     if (origin && (url.startsWith(`${origin}/`) || (preview && url.startsWith(`blob:${origin}/`)))) return;
     if (!origin && url === launcherUrl) return;
     event.preventDefault();
-    openExternal(url);
+    if (!servedPage) openExternal(url);
   });
   win.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   win.webContents.session.setPermissionCheckHandler(() => false);
 }
 async function showLauncher() {
   if (launcher && !launcher.isDestroyed()) { launcher.show(); launcher.focus(); return; }
-  launcher = new BrowserWindow({ title: 'Tessmora', width: 980, height: 720, minWidth: 760, minHeight: 580, backgroundColor: '#f5f7f5', show: false,
+  launcher = new BrowserWindow({ title: 'Tessmora', width: 980, height: 750, minWidth: 640, minHeight: 540, backgroundColor: '#f8f7fc', show: false,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: { preload: join(here, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, partition: 'persist:tessmora-launcher' } });
   restrictWindow(launcher);
@@ -91,6 +98,34 @@ async function showLauncher() {
 function frontendDirectory() {
   if (!app.isPackaged && process.env.TESSMORA_FRONTEND_DIR) return resolve(process.env.TESSMORA_FRONTEND_DIR);
   return app.isPackaged ? join(process.resourcesPath, 'frontend') : resolve(here, '../../../frontend/dist');
+}
+async function openLocalWeb() {
+  if (openingLocalWeb) return openingLocalWeb;
+  openingLocalWeb = (async () => {
+    const state = await detectLocalWeb();
+    if (state !== 'online') return { state };
+    if (localWebWindow && !localWebWindow.isDestroyed()) {
+      localWebWindow.show(); localWebWindow.focus(); launcher?.hide();
+      return { state };
+    }
+    const win = new BrowserWindow({ title: 'Tessmora · 本机服务', width: 1360, height: 900, minWidth: 740, minHeight: 540, show: false,
+      webPreferences: { partition: 'persist:tessmora-local-web-3001', sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true } });
+    localWebWindow = win;
+    restrictWindow(win, { origin: localWebOrigin, servedPage: true });
+    win.once('closed', () => {
+      localWebWindow = undefined;
+      if (!shutdownStarted) void showLauncher();
+    });
+    try {
+      await win.loadURL(localWebOrigin + '/knowledge');
+      win.show(); launcher?.hide();
+      return { state };
+    } catch {
+      if (!win.isDestroyed()) win.destroy();
+      return { state: 'unavailable' };
+    }
+  })();
+  try { return await openingLocalWeb; } finally { openingLocalWeb = undefined; }
 }
 async function openWorkspace(id, suppliedToken, remember = true) {
   if (shutdownStarted || maintenance) throw new WorkspaceError('WORKSPACE_BUSY', '应用正在备份或退出，请完成后再打开工作区。');
@@ -221,7 +256,13 @@ async function initialize() {
   store = new WorkspaceStore(data);
   credentials = new CredentialStore(join(data, 'credentials'), safeStorage);
   historyExporter = createHistoryExportManager({ ipcMain, isAuthorized: validWorkspace });
-  handle('list', async () => ({ ...(await store.read()), credentialStorageAvailable: credentials.available(), running: [...connections.keys()] }));
+  const artwork = app.isPackaged ? frontendDirectory() : resolve(here, '../../../frontend/public');
+  handle('list', async () => ({ ...(await store.read()), running: [...connections.keys()],
+    logo: pathToFileURL(join(artwork, 'tessmora-favicon.png')).href,
+    illustration: pathToFileURL(join(artwork, 'knowledge/empty-collection.webp')).href }));
+  handle('detect-local-web', () => detectLocalWeb());
+  handle('open-local-web', () => openLocalWeb());
+  handle('browse-local-web', () => shell.openExternal(localWebOrigin + '/'));
   handle('choose-directory', async () => {
     const result = await dialog.showOpenDialog(launcher, { title: '选择工作区资料目录', properties: ['openDirectory', 'createDirectory'] });
     const directory = result.canceled ? null : result.filePaths[0];
@@ -285,7 +326,13 @@ async function initialize() {
     ...(process.platform === 'darwin' ? [{ label: 'Tessmora', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { label: '退出 Tessmora', accelerator: 'Command+Q', click: () => app.quit() }] }] : []),
     { label: '工作区', submenu: [
       { label: '选择工作区…', accelerator: 'CmdOrCtrl+Shift+O', click: () => void showLauncher() },
-      { label: '导入或导出会话…', click: () => { const win = BrowserWindow.getFocusedWindow(); const entry = [...workspaceWindows].find(([, value]) => value === win); if (entry) void win.loadURL(`${workspaceOrigin(entry[0])}/settings?section=history`); else void showLauncher(); } },
+      { label: '导入或导出会话…', click: () => {
+        const win = BrowserWindow.getFocusedWindow();
+        if (win && win === localWebWindow) { desktopAction(() => win.loadURL(localWebOrigin + '/settings?section=history')); return; }
+        const entry = [...workspaceWindows].find(([, value]) => value === win);
+        if (entry) void win.loadURL(`${workspaceOrigin(entry[0])}/settings?section=history`);
+        else void showLauncher();
+      } },
       { label: '备份本地工作区…', click: () => desktopAction(async () => (await import('./transfer.mjs')).backupWorkspace({ app, dialog, store, stopLocalWorkspaces })) },
       { label: '从备份恢复…', click: () => desktopAction(async () => (await import('./transfer.mjs')).restoreWorkspace({ app, dialog, store, showLauncher })) },
       { type: 'separator' },

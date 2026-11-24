@@ -83,7 +83,7 @@ async function launch() {
   const app = await electron.launch({ args: [desktop], env: { ...process.env, TESSMORA_DESKTOP_USER_DATA: profile, TESSMORA_FRONTEND_DIR: join(repository, 'frontend/dist') }, timeout: 60000 });
   app.process().stderr.on('data', data => { const line = data.toString(); if (/Error|error/.test(line)) failures.push(line.replaceAll(tokens.A, '[redacted]').replaceAll(tokens.B, '[redacted]').slice(0, 1000)); });
   app.on('window', page => page.on('pageerror', error => failures.push(String(error))));
-  const launcher = await app.firstWindow(); await launcher.waitForSelector('#workspace-form');
+  const launcher = await app.firstWindow(); await launcher.waitForSelector('#local-tab');
   return { app, launcher };
 }
 async function add(launcher, name) {
@@ -106,9 +106,15 @@ async function add(launcher, name) {
 }
 try {
   let launched = await launch(); application = launched.app; let launcher = launched.launcher;
+  await launcher.waitForFunction(() => document.getElementById('library-art').naturalWidth > 0 && !document.getElementById('open-service').disabled);
+  await launcher.locator('#local-tab').click();
+  assert.equal(await launcher.locator('#workspace-dialog').isVisible(), true);
+  assert.equal(await launcher.locator('#credential-fields').isVisible(), false);
+  await launcher.keyboard.press('Escape');
+  assert.equal(await launcher.locator('#workspace-dialog').isVisible(), false);
   await launcher.screenshot({ path: join(output, 'launcher-zh.png') });
   await launcher.locator('#language').click();
-  assert.equal(await launcher.locator('#library-title').innerText(), 'A place for your knowledge');
+  assert.equal(await launcher.locator('#library-title').innerText(), 'Your local library');
   await launcher.screenshot({ path: join(output, 'launcher-en.png') });
   await launcher.locator('#language').click();
   const a = await add(launcher, 'A');

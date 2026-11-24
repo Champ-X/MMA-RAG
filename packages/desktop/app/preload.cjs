@@ -2,6 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 const invoke = (name, value) => ipcRenderer.invoke(`desktop:${name}`, value);
 contextBridge.exposeInMainWorld('tessmoraLauncher', Object.freeze({
   list: () => invoke('list'),
+  detectLocalWeb: () => invoke('detect-local-web'),
+  openLocalWeb: () => invoke('open-local-web'),
+  browseLocalWeb: () => invoke('browse-local-web'),
   chooseDirectory: () => invoke('choose-directory'),
   create: value => invoke('create', value),
   connect: value => invoke('connect', value),

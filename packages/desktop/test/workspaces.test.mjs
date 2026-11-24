@@ -32,16 +32,22 @@ test('remote addresses disallow cleartext, credentials, base paths and fragments
 });
 test('credentials stay isolated and unavailable system storage cannot write plaintext', async t => {
   const root = await temporary(t);
-  const safe = { isEncryptionAvailable: () => true, encryptString: value => Buffer.from([...value].reverse().join('')), decryptString: value => [...value.toString()].reverse().join('') };
+  const safe = { isAsyncEncryptionAvailable: async () => true, encryptStringAsync: async value => Buffer.from([...value].reverse().join('')), decryptStringAsync: async value => ({ result: [...value.toString()].reverse().join('') }) };
   const store = new CredentialStore(root, safe);
   await store.set('workspace-a', 'synthetic-secret');
   assert.ok(!(await readFile(join(root, 'workspace-a.json'), 'utf8')).includes('synthetic-secret'));
   assert.equal(await new CredentialStore(root, safe).get('workspace-a'), 'synthetic-secret');
   assert.equal(await store.get('workspace-b'), null);
-  const locked = new CredentialStore(root, { isEncryptionAvailable: () => false });
+  const locked = new CredentialStore(root, { isAsyncEncryptionAvailable: async () => false });
   await assert.rejects(locked.set('workspace-b', 'another-secret'), { code: 'KEYCHAIN_LOCKED' });
   await locked.set('workspace-b', 'another-secret', { persist: false });
   assert.equal(await locked.get('workspace-b'), 'another-secret');
   assert.equal(await new CredentialStore(root, safe).get('workspace-b'), null);
   await store.remove('workspace-a'); assert.equal(await store.get('workspace-a'), null);
+});
+test('session-only connections and missing saved credentials never request the OS vault', async t => {
+  const store = new CredentialStore(await temporary(t), {});
+  assert.equal(await store.get('workspace-a'), null);
+  await store.set('workspace-a', 'session-access', { persist: false });
+  assert.equal(await store.get('workspace-a'), 'session-access');
 });
