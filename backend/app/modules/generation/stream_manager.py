@@ -12,6 +12,7 @@ from enum import Enum
 
 from app.core.logger import get_logger
 from app.core.score_details import citation_score_fields
+from app.core.source_locators import source_locator_fields
 
 logger = get_logger(__name__)
 
@@ -43,6 +44,8 @@ def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
             **citation_score_fields(v.metadata or {}),
         }
         meta = v.metadata or {}
+        locator = source_locator_fields(meta)
+        item.update(locator)
         if ref_type == "video":
             # Scene–Shot 检索返回的最小有效单元是 Shot，播放器优先定位到 Shot；
             # 旧视频记录没有 Shot 边界时仍可回退到 Scene。
@@ -64,15 +67,18 @@ def _reference_map_to_frontend_refs(reference_map: Any) -> List[Dict[str, Any]]:
             item["debug_info"] = {
                 "chunk_id": str(chunk_id) if chunk_id is not None else None,
                 "kb_id": meta.get("kb_id"),
+                **locator,
             }
+            item["chunk_id"] = str(chunk_id) if chunk_id is not None else None
+            item["chunk_index"] = meta.get("chunk_index")
             if chunk_id is None:
                 logger.warning("引用缺少 chunk_id（应为检索 point id），检查器将无法拉取上下文")
         elif ref_type in ("audio", "video"):
             # 音频/视频引用带 kb_id，便于前端按需请求播放地址
-            item["debug_info"] = {"kb_id": meta.get("kb_id")}
+            item["debug_info"] = {"kb_id": meta.get("kb_id"), **locator}
         elif ref_type == "image":
             # 图片引用带 kb_id，便于前端在 URL 过期后按需刷新预览地址
-            item["debug_info"] = {"kb_id": meta.get("kb_id")}
+            item["debug_info"] = {"kb_id": meta.get("kb_id"), **locator}
         refs.append(item)
     return refs
 

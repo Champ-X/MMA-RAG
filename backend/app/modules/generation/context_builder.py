@@ -19,6 +19,7 @@ from app.modules.retrieval.decision_coverage import finalize_coverage
 from app.modules.generation.templates.multimodal_fmt import MultiModalFormatter
 from app.modules.generation.citation_selection import ordered_citation_ids
 from app.core.score_details import citation_score_fields, result_score_metadata
+from app.core.source_locators import source_locator_fields
 from app.modules.ingestion.storage.minio_adapter import MinIOAdapter
 
 logger = get_logger(__name__)
@@ -384,6 +385,7 @@ class ContextBuilder:
                     "cross_encoder_score": result.get("cross_encoder_score"),
                 }
                 metadata.update(result_score_metadata(result))
+                metadata.update(source_locator_fields(payload))
                 metadata["user_reference"] = bool((result.get("metadata") or {}).get("user_reference"))
                 if (result.get("metadata") or {}).get("decision_assist"):
                     metadata["decision_assist"] = result["metadata"]["decision_assist"]
@@ -486,7 +488,8 @@ class ContextBuilder:
                         "kb_id": doc["metadata"].get("kb_id"),
                         "file_type": doc["file_type"],
                         "chunk_id": doc.get("id"),  # 检索返回的 point id，直接用于 context_window 查询
-                        "chunk_index": doc["metadata"].get("chunk_index")  # chunk 在文档中的索引
+                        "chunk_index": doc["metadata"].get("chunk_index"),  # chunk 在文档中的索引
+                        **source_locator_fields(doc["metadata"]),
                     }
                 )
                 reference_map[ref_id] = reference
@@ -824,10 +827,10 @@ class ContextBuilder:
                 
                 if reference.content_type == "doc":
                     optimized_parts.append(
-                        localized(f"【材料 {ref_id}】 (类型: 文档 | 来源: {reference.file_path})", f'[Material {ref_id}] (Type: Document | Source: {reference.file_path})')
+                        self.formatter.format_document_chunk(
+                            ref_id, content, reference.file_path, reference.metadata,
+                        ) + "\n"
                     )
-                    optimized_parts.append(localized("内容片段：", 'Content excerpt:'))
-                    optimized_parts.append(f"{content}...\n")
                 else:
                     media_label = {"image": localized("图片", 'Image'), "audio": localized("音频", 'Audio'), "video": localized("视频", 'Video')}.get(reference.content_type, localized("媒体", 'Media'))
                     optimized_parts.append(
@@ -878,6 +881,7 @@ class ContextBuilder:
                 "content": reference.content[:200] + "..." if len(reference.content) > 200 else reference.content,
                 "metadata": reference.metadata
             }
+            preview.update(source_locator_fields(reference.metadata))
             
             # 按知识库划分 Bucket：同一知识库的文档与图片在同一 bucket，用 kb_id 解析 bucket
             if reference.content_type == "image":
@@ -993,6 +997,14 @@ class ContextBuilder:
                         "chunk_index": reference.metadata.get("chunk_index"),
                         "metadata": public_metadata
                     }
+                    locator = source_locator_fields(reference.metadata)
+                    ref_dict.update(locator)
+                    if reference.content_type == "doc":
+                        ref_dict["debug_info"] = {
+                            "chunk_id": str(chunk_id) if chunk_id is not None else None,
+                            "kb_id": reference.metadata.get("kb_id"),
+                            **locator,
+                        }
                     if reference.content_type == "video":
                         # 检索结果以 Shot 为单位；播放器应跳至命中的 Shot。兼容旧数据
                         # （只有 scene 时间）时再回退到 Scene 边界。
@@ -1006,7 +1018,7 @@ class ContextBuilder:
                             ref_dict["start_sec"] = float(st)
                         if en is not None:
                             ref_dict["end_sec"] = float(en)
-                        ref_dict["debug_info"] = {"kb_id": reference.metadata.get("kb_id")}
+                        ref_dict["debug_info"] = {"kb_id": reference.metadata.get("kb_id"), **locator}
                     valid_references.append(ref_dict)
                 else:
                     logger.warning(f"发现无效引用: [{ref_num}]")

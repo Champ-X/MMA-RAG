@@ -24,6 +24,7 @@ from app.core.decision_diagnostics import chat_diagnostics, failure_diagnostics,
 from app.core.llm.jev import JevRequiredError
 from app.core.stage_timing import StageTimings
 from app.core.score_details import citation_score_fields
+from app.core.source_locators import source_locator_fields
 from app.core.llm.manager import llm_manager
 from app.core.llm import TASK_MODEL_TYPES
 from app.core.llm.models_catalog import ensure_llm_catalog_fresh, get_llm_catalog_status
@@ -495,12 +496,18 @@ async def _chat_message(data):
         if references:
             for ref in references:
                 citations.append({
+                    **{key: ref[key] for key in (
+                        "file_path", "file_id", "kb_id", "page_number", "page_end", "debug_info",
+                        "chunk_id", "chunk_index", "img_url", "audio_url", "video_url", "start_sec", "end_sec",
+                        "source", "attachment_id", "media_info",
+                    ) if key in ref},
                     "id": ref.get("id", ""),
                     "type": ref.get("type", "doc"),
                     "file_name": ref.get("file_name", ""),
                     "content": ref.get("content", ""),
                     "score": ref.get("score", (ref.get("scores") or {}).get("final")),
                     **citation_score_fields(ref),
+                    **source_locator_fields(ref),
                     "metadata": ref.get("metadata", {})
                 })
         

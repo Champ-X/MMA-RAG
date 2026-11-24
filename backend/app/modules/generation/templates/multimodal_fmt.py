@@ -10,11 +10,12 @@ from app.core.prompt_language import localized
 from .answer_language import answer_language_instructions
 from .system_prompts_en import FORMATTER_INSTRUCTIONS
 from app.core.logger import get_logger
+from app.core.source_locators import source_locator_fields
 
 logger = get_logger(__name__)
 
 EN_TEMPLATES = {
-    "document_chunk": "[Material {index}] (Type: Document | Source: {file_path})\nContent excerpt:\n{content}",
+    "document_chunk": "[Material {index}] (Type: Document | Source: {file_path})\n{locator}\nContent excerpt:\n{content}",
     "image_content": "[Material {index}] (Type: Image | Source: {file_path})\n[Visual description]:\n{caption}",
     "audio_content": "[Material {index}] (Type: Audio | Source: {file_path})\nDuration: {duration}\nTranscript:\n{transcript}\nDescription: {description}",
     "video_content": "[Material {index}] (Type: Video | Source: {file_path})\nDuration: {duration}\nMatched segment: {shot_range}\nDescription: {description}\nSpeech transcript: {asr_text}\nKey visual evidence (for understanding only, not independent image citations):\n{key_frames}",
@@ -35,6 +36,7 @@ class MultiModalFormatter:
     def _get_document_chunk_template(self) -> str:
         """文档块模板"""
         return """【材料 {index}】 (类型: 文档 | 来源: {file_path})
+{locator}
 内容片段：
 {content}"""
     
@@ -80,10 +82,25 @@ class MultiModalFormatter:
                 cleaned_content = cleaned_content[:max_length] + "..."
             
             # 使用模板格式化
+            location = source_locator_fields(metadata)
+            page, page_end = location.get("page_number"), location.get("page_end")
+            if page_end is not None:
+                locator = localized(
+                    f"页码：第 {page}–{page_end} 页（片段跨页；无法仅凭此范围确定某句话的精确页码）",
+                    f"Pages: {page}–{page_end} (excerpt spans pages; this range does not identify the exact page of a specific statement)",
+                )
+            elif page is not None:
+                locator = localized(f"页码：第 {page} 页", f"Page: {page}")
+            else:
+                locator = localized("页码：未知；不得从片段编号推断页码", "Page: unavailable; do not infer it from the chunk number")
+            identities = [f"{key}={location[key]}" for key in ("kb_id", "file_id") if key in location]
+            if identities:
+                locator += "\n" + localized("来源标识：", "Source identity: ") + " | ".join(identities)
             formatted = localized(self.templates["document_chunk"], EN_TEMPLATES["document_chunk"]).format(
                 index=index,
                 file_path=file_path,
-                content=cleaned_content
+                content=cleaned_content,
+                locator=locator,
             )
             
             return formatted
