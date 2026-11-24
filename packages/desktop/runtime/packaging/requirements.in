@@ -1,0 +1,5 @@
+-r ../../../../backend/requirements.txt
+-c constraints.txt
+keyring>=25,<26
+torchvision
+torchaudio

@@ -1,0 +1,70 @@
+{
+  "darwin-arm64": {
+    "python": {
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261123/cpython-3.11.18%2B20261123-aarch64-apple-darwin-install_only_stripped.tar.gz",
+      "sha256": "2192f4345a5175d8c82f8580122e8ab2a6378437718fa013c243475d95894884"
+    },
+    "node": {
+      "url": "https://nodejs.org/dist/v22.19.0/node-v22.19.0-darwin-arm64.tar.gz",
+      "sha256": "c59006db713c770d6ec63ae16cb3edc11f49ee093b5c415d667bb4f436c6526d"
+    },
+    "qdrant": {
+      "url": "https://github.com/qdrant/qdrant/releases/download/v1.16.2/qdrant-aarch64-apple-darwin.tar.gz",
+      "sha256": "d409dbfb018aeab4ca056c45456303bd8d87cc136aeabe9b612f2e80f29319ab"
+    },
+    "ffmpeg": {
+      "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-arm64.gz",
+      "sha256": "8923876afa8db5585022d7860ec7e589af192f441c56793971276d450ed3bbfa"
+    },
+    "ffprobe": {
+      "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffprobe-darwin-arm64.gz",
+      "sha256": "d986a8ec7b030899fe66a8a288ed809a3543338705a3ce178cfb85869c5d80be"
+    },
+    "media-license": {
+      "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/darwin-arm64.LICENSE.gz",
+      "sha256": "5995e6d7b7fdb371505351fce50b9d6fd4d051f69d3468ed4dd4cbfc14a5b916"
+    },
+    "media-source": {
+      "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/darwin-arm64.README.gz",
+      "sha256": "527d4ea64a17e81a72ab57103b3817ee224261b5c07844d5a99af40758315154"
+    },
+    "qdrant-license": {
+      "url": "https://raw.githubusercontent.com/qdrant/qdrant/v1.16.2/LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    }
+  },
+  "win32-x64": {
+    "python": {
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261123/cpython-3.11.18%2B20261123-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+      "sha256": "b7822833fc5f6f317b79f189c15f923c4321773c087b50e535b39ee2472832b4"
+    },
+    "node": {
+      "url": "https://nodejs.org/dist/v22.19.0/node-v22.19.0-win-x64.zip",
+      "sha256": "ea3fad0e67a991d8477d8c01344b56e69c676ccb733f065b22436994b1253f86"
+    },
+    "qdrant": {
+      "url": "https://github.com/qdrant/qdrant/releases/download/v1.16.2/qdrant-x86_64-pc-windows-msvc.zip",
+      "sha256": "d6ce1139390ed464be40202b72a74f85f8cd8b8bdb8658673ba587c2d4cc9f7e"
+    },
+    "ffmpeg": {
+      "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-win32-x64.gz",
+      "sha256": "8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77"
+    },
+    "ffprobe": {
+      "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffprobe-win32-x64.gz",
+      "sha256": "f309e6223ad89d2fe54bccd420a7709b66fd27540674e92309578ed491a43c8d"
+    },
+    "media-license": {
+      "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/win32-x64.LICENSE.gz",
+      "sha256": "d751d40ef8ba97bf46964ae203bf88e7c0027b5459946ac758403c1bb032523f"
+    },
+    "media-source": {
+      "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/win32-x64.README.gz",
+      "sha256": "9910569b1b42c01b91dd03b85abc8472a15b5aa31188e41e9654ae08cc179d07"
+    },
+    "qdrant-license": {
+      "url": "https://raw.githubusercontent.com/qdrant/qdrant/v1.16.2/LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    }
+  }
+}
