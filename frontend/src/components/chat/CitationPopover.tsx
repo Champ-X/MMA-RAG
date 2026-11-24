@@ -4,6 +4,7 @@ import { useId, useLayoutEffect, useRef, useState } from 'react'
 import type { CitationReference } from '@/types/sse'
 import { AttachmentEvidence } from './AttachmentEvidence'
 import { SourceMediaPreview } from './SourceMediaPreview'
+import { DocumentCitationSource } from './DocumentCitationSource'
 import { displayFileName, sourceTypes } from './sourceIdentity'
 import { citationRailLayout } from './citationRailLayout'
 import { activateCitationContext } from './citationContextHighlight'
@@ -117,6 +118,7 @@ export function CitationPopover({ open, rect, item, displayNumber, anchor, works
       <div className="citation-rail__body" key={`${item.id}:${item.attachment_id}:${item.file_path}:${item.debug_info?.chunk_id}`}>
         {item.source === 'attachment' ? <AttachmentEvidence reference={item} displayNumber={displayNumber} preview />
           : item.type !== 'doc' && <SourceMediaPreview key={`${item.type}:${item.debug_info?.kb_id}:${item.file_path}:${item.img_url}:${item.audio_url}:${item.video_url}`} item={item} type={item.type} name={name} />}
+        <DocumentCitationSource reference={item} />
         <div className="citation-rail__content-label">{tr(item.source === 'attachment' ? '回答依据的附件解析' : source.contentLabel)}</div>
         <p className="citation-rail__excerpt">{item.content?.trim() || tr('该来源暂未提供文字内容。')}</p>
       </div>

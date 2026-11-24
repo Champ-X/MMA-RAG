@@ -24,6 +24,22 @@ async function listen(callback) {
 }
 const external = await listen((_req, res) => { leaked++; res.end('external'); });
 const bytes = Buffer.from('0123456789abcdef');
+function syntheticPdf() {
+  const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R 5 0 R 7 0 R] /Count 3 >>'];
+  for (let page = 1; page <= 3; page++) {
+    const content = `BT /F1 22 Tf 60 720 Td (Synthetic page ${page}) Tj 0 -50 Td (${page === 2 ? 'CEDAR-17 evidence on page TWO' : 'No recovery evidence on this page'}) Tj ET`;
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 9 0 R >> >> /Contents ${page * 2 + 2} 0 R >>`);
+    objects.push(`<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`);
+  }
+  objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+  let pdf = '%PDF-1.7\n', offsets = [0];
+  objects.forEach((object, index) => { offsets.push(Buffer.byteLength(pdf)); pdf += `${index + 1} 0 obj\n${object}\nendobj\n`; });
+  const xref = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n` + offsets.slice(1).map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('');
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(pdf);
+}
+const pdfBytes = syntheticPdf();
 const addresses = {};
 const serverRequests = { A: 0, B: 0 };
 for (const name of ['A', 'B']) addresses[name] = await listen((req, res) => {
@@ -35,6 +51,15 @@ for (const name of ['A', 'B']) addresses[name] = await listen((req, res) => {
     if (req.headers.range === 'bytes=5-8') res.writeHead(206, { 'content-type': 'video/mp4', 'content-range': 'bytes 5-8/16', 'accept-ranges': 'bytes', 'content-length': 4 }).end(bytes.subarray(5, 9));
     else if (req.headers.range) res.writeHead(416, { 'content-range': 'bytes */16' }).end();
     else res.writeHead(200, { 'content-type': 'video/mp4', 'content-length': bytes.length }).end(bytes);
+    return;
+  }
+  if (req.url === '/api/knowledge/fixture-kb/files/fixture-pdf/stream') {
+    const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range || '');
+    if (range) {
+      const start = Number(range[1]), end = range[2] ? Math.min(Number(range[2]), pdfBytes.length - 1) : pdfBytes.length - 1;
+      if (start > end) { res.writeHead(416, { 'content-range': `bytes */${pdfBytes.length}` }).end(); return; }
+      res.writeHead(206, { 'content-type': 'application/pdf', 'accept-ranges': 'bytes', 'content-range': `bytes ${start}-${end}/${pdfBytes.length}`, 'content-length': end - start + 1 }).end(pdfBytes.subarray(start, end + 1));
+    } else res.writeHead(200, { 'content-type': 'application/pdf', 'content-disposition': 'inline; filename="evidence.pdf"', 'accept-ranges': 'bytes', 'content-length': pdfBytes.length }).end(pdfBytes);
     return;
   }
   if (req.url === '/api/test/redirect') { res.writeHead(302, { location: `${external}/leak` }).end(); return; }
@@ -124,7 +149,7 @@ try {
   const historyManifest = { kind: 'tessmora-chat', version: 1, createdAt: new Date().toISOString(), source: { origin: addresses.A, workspaceId: 'synthetic-server-a' }, includesServerData: false,
     state: { sessions: [{ id: 'migration-session', title: 'Migrated CEDAR-17 research', createdAt: 100, updatedAt: 200, isActive: true, knowledgeBaseIds: [], messages: [
       { id: 'migrate-user', role: 'user', content: 'Synthetic archival prompt', timestamp: 100, attachments: [{ id: 'migrate-audio', kind: 'audio', name: 'same-name.wav', size: attachmentBytes.length }] },
-      { id: 'migrate-answer', role: 'assistant', content: 'CEDAR-17 reference retained', timestamp: 200 },
+      { id: 'migrate-answer', role: 'assistant', content: 'CEDAR-17 reference retained [1].', timestamp: 200, citations: [{ id: 1, type: 'doc', file_name: 'evidence.pdf', content: 'CEDAR-17 is the code on page 2.', page_number: 2, page_end: 3, kb_id: 'fixture-kb', file_id: 'fixture-pdf' }] },
     ] }], activeSessionId: 'migration-session' },
     attachments: [{ id: 'migrate-audio', size: attachmentBytes.length, type: 'audio/wav', chunkSize: 4194304, sha256: [createHash('sha256').update(attachmentBytes).digest('hex')] }], missingAttachmentIds: [] };
   const historyJson = Buffer.from(JSON.stringify(historyManifest)); const historyLength = Buffer.alloc(4); historyLength.writeUInt32BE(historyJson.length);
@@ -152,6 +177,24 @@ try {
   const exportedBytes = await readFile(exportedFile); assert.equal(exportedBytes.subarray(0, 14).toString(), 'TESSMORA-CHAT\n');
   assert.ok(exportedBytes.includes(attachmentBytes));
   assertions.push('normal Settings export downloads a single archive containing the exact imported attachment');
+  await a.goto(`${aOrigin.protocol}//${aOrigin.host}/`);
+  await a.getByText('Synthetic archival prompt', { exact: true }).click();
+  await a.locator('.rag-markdown button[data-source="knowledge"]').first().click();
+  const pdfLink = a.locator('.citation-rail .document-citation-source');
+  await pdfLink.waitFor();
+  assert.match(await pdfLink.innerText(), /第 2–3 页/);
+  assert.equal(await pdfLink.getAttribute('href'), '/api/knowledge/fixture-kb/files/fixture-pdf/stream#page=2');
+  await pdfLink.focus();
+  await a.screenshot({ path: join(output, 'pdf-citation.png'), animations: 'disabled' });
+  const pdfPending = application.waitForEvent('window'); await pdfLink.click(); const pdfPreview = await pdfPending;
+  await pdfPreview.waitForURL(/\/api\/knowledge\/fixture-kb\/files\/fixture-pdf\/stream#page=2$/);
+  await pdfPreview.waitForLoadState();
+  await pdfPreview.waitForTimeout(1800);
+  await pdfPreview.screenshot({ path: join(output, 'pdf-page-2.png') });
+  await writeFile(join(output, 'pdf-preview-dom.json'), JSON.stringify(await pdfPreview.evaluate(() => ({ url: location.href, body: document.body.outerHTML, bridge: typeof window.tessmoraDesktop })), null, 2));
+  assert.equal(await pdfPreview.evaluate(() => typeof window.tessmoraDesktop), 'undefined');
+  await pdfPreview.close();
+  assertions.push('a real Direct citation displays pages 2-3 and opens the authenticated original PDF at page 2 without a preload bridge');
   const automated = await application.evaluate(async (_electron, value) => {
     const require = process.getBuiltinModule('module').createRequire(value.module);
     const client = require(value.module); return client.stopLocalWorkspaces(value.directory);

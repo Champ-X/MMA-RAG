@@ -2,12 +2,13 @@ import { translate as tr, useTranslation } from '@/i18n'
 import { useState } from 'react'
 import React from 'react'
 import type { CitationReference } from '@/types/sse'
-import { FileText, Image, Music, Video, ExternalLink, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
+import { FileText, Image, Music, Video, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { DocumentCitationSource } from './DocumentCitationSource'
 
 interface InlineCitationProps {
   /** 引用列表：完整对象或 id。若为 id，需同时提供 citationMap */
@@ -597,9 +598,7 @@ function ReferenceDetailCard({
                 {tr("播放/下载")}</Button>
             </a>
           )}
-          <Button variant="outline" size="sm" className="flex-1">
-            <ExternalLink className="mr-2 h-3 w-3" />
-            {tr("原始文件")}</Button>
+          <DocumentCitationSource reference={reference} />
         </div>
       </CardContent>
     </Card>

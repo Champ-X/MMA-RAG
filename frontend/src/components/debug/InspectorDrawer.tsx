@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, ChevronDown, FileText, X } from 'lucide-react'
 import type { CitationReference } from '@/types/sse'
 import { citationScoreDetails } from '@/lib/citationScores'
 import { SourceMediaPreview } from '../chat/SourceMediaPreview'
+import { DocumentCitationSource } from '../chat/DocumentCitationSource'
 import { sourceTypes, displayFileName } from '../chat/sourceIdentity'
 import { AttachmentEvidence } from '../chat/AttachmentEvidence'
 import './inspectorDrawer.css'
@@ -109,6 +110,7 @@ export function InspectorDrawer({ isOpen, onClose, citations = [], returnFocusTa
             ) : (
               <div key={`${item.id}:${item.type}:${item.debug_info?.chunk_id || item.file_path || item.file_name}`}>
                 {item.source === 'attachment' ? <AttachmentEvidence reference={item} displayNumber={displayNumber} preview /> : (item.type === 'image' || item.type === 'audio' || item.type === 'video') && <SourceMediaPreview key={`${item.type}:${item.debug_info?.kb_id}:${item.file_path}:${item.img_url}:${item.audio_url}:${item.video_url}`} item={item} type={item.type} name={name} />}
+                <DocumentCitationSource reference={item} />
                 <section className="source-inspector-content">
                   <div className="source-inspector-section-heading"><h3>{tr(source.contentLabel)}</h3>{item.type === 'doc' && <span>{tr("检索命中的片段")}</span>}</div>
                   {item.content?.trim() ? <div className="source-inspector-prose">{item.content}</div> : <p className="source-inspector-no-content">{tr("该来源暂未提供文字内容。")}</p>}

@@ -1,0 +1,8 @@
+.document-citation-source { display: flex; align-items: center; gap: 9px; width: fit-content; max-width: 100%; margin: 0 0 16px; padding: 9px 11px; border: 1px solid #ded9e5; border-radius: 9px; background: #f7f4fa; color: #6f5989; font-size: 12px; text-decoration: none; }
+.document-citation-source span { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.document-citation-source strong { font-size: 11px; font-weight: 550; }
+.document-citation-source svg { flex: 0 0 auto; }
+.document-citation-source:hover { background: #eee7f5; border-color: #c9bad9; }
+.document-citation-source:focus-visible { outline: 2px solid #8c72aa; outline-offset: 3px; }
+.dark .document-citation-source { border-color: #4b4059; background: #302738; color: #d2bce9; }
+.dark .document-citation-source:hover { background: #3c3048; border-color: #6e577f; }

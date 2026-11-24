@@ -513,3 +513,17 @@ test('video evidence seeks to its cited segment and clamps a stale segment start
   await act(async () => video.dispatchEvent(new Event('loadedmetadata')))
   assert.ok(video.currentTime >= 0 && video.currentTime < 10)
 })
+
+test('verified PDF citations expose the physical page range and original URL in the source rail', async () => {
+  const { CitationPopover } = await import('../src/components/chat/CitationPopover')
+  const fixture = workspaceFixture()
+  const located = { ...doc, page_number: 2, page_end: 3, file_id: 'original-pdf', kb_id: 'source-kb' }
+  await mount(<CitationPopover open rect={rect(620, 200, 20, 20)} item={located} {...fixture} onClose={() => {}} onOpenInspector={() => {}} />)
+  const link = container.querySelector<HTMLAnchorElement>('.document-citation-source')!
+  assert.equal(link.getAttribute('href'), '/api/knowledge/source-kb/files/original-pdf/stream#page=2')
+  assert.match(link.textContent || '', /第 2–3 页/)
+  assert.equal(link.title, '从第 2 页打开原件')
+  assert.equal(link.target, '_blank')
+  await act(async () => { root!.render(<CitationPopover open rect={rect(620, 200, 20, 20)} item={doc} {...fixture} onClose={() => {}} onOpenInspector={() => {}} />); await settle() })
+  assert.equal(container.querySelector('.document-citation-source'), null, 'a legacy citation does not invent a page')
+})

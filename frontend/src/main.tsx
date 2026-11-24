@@ -5,6 +5,7 @@ import './index.css'
 import './components/chat/decisionRecord.css'
 import './components/chat/videoEvidenceCarousel.css'
 import './components/chat/mediaEvidenceCard.css'
+import './components/chat/documentCitationSource.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

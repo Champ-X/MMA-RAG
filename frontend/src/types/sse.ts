@@ -81,7 +81,15 @@ export interface CitationScore {
   final?: number | null;
 }
 
-export interface CitationDebugInfo {
+export interface CitationDocumentLocation {
+  /** Verified physical page numbers, 1-based. Omitted when the parser cannot locate a page. */
+  page_number?: number;
+  page_end?: number;
+  file_id?: string;
+  kb_id?: string;
+}
+
+export interface CitationDebugInfo extends CitationDocumentLocation {
   /** 向量库 point id，用于 context_window 查询 */
   chunk_id?: string;
   /** 知识库 id，检查器展示用 */
@@ -91,7 +99,8 @@ export interface CitationDebugInfo {
   context_window?: { prev: string; next: string };
 }
 
-export interface CitationReference {
+export interface CitationReference extends CitationDocumentLocation {
+  metadata?: CitationDocumentLocation & { page?: number };
   id: number;
   /** Omitted on older knowledge-base citations. Local originals resolve only by attachment_id. */
   source?: 'knowledge' | 'attachment';
