@@ -286,3 +286,41 @@ def test_directory_stages_sibling_images_and_stable_relative_ids(tmp_path, monke
             break
     else:
         pytest.fail("Markdown job not found")
+
+
+def test_deletion_removes_cached_provider_payload_and_provenance(tmp_path, monkeypatch):
+    from app.modules.ingestion.desktop_jobs import jobs
+    from app.modules.ingestion.desktop_service import DesktopIngestionService
+
+    monkeypatch.setenv("TESSMORA_RUNTIME_PROFILE", "desktop")
+    monkeypatch.setenv("TESSMORA_STATE_DIR", str(tmp_path))
+    queue = jobs()
+    receipt = queue.enqueue(
+        io.BytesIO(b"original"),
+        "private.txt",
+        "kb",
+        source_metadata={"title": "private"},
+    )
+    job = queue.claim()
+    owner = (job["id"], job["owner"])
+    queue.begin_call(owner, "paid-call")
+    queue.complete_call(owner, "paid-call", {"text": "private parsed material"})
+    queue.finish(job, ValueError("parse failed"))
+    reader = DesktopIngestionService(status_only=True)
+    fence = reader.begin_file_deletion(receipt["file_id"], "kb")
+    reader.commit_file_deletion(receipt["file_id"], "kb", fence["token"])
+    assert queue.status(job["id"])["status"] == "deleted"
+    assert not list(queue.spool.iterdir())
+    with queue.connection() as db:
+        assert (
+            db.execute(
+                "SELECT COUNT(*) FROM provider_calls WHERE task=?", (job["id"],)
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            db.execute("SELECT options FROM jobs WHERE id=?", (job["id"],)).fetchone()[
+                0
+            ]
+            == "{}"
+        )

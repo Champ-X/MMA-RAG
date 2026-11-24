@@ -323,6 +323,27 @@ class DesktopJobs:
 
     def _transition(self, conn, task, state, *, message=None, **updates):
         status = self._status(conn, task)
+        if state == "deleted":
+            # A tombstone needs scope and IDs, never old parse results or provider output.
+            status = {
+                key: status[key]
+                for key in (
+                    "processing_id",
+                    "file_id",
+                    "kb_id",
+                    "source_kb_id",
+                    "bucket",
+                )
+                if key in status
+            }
+            status.update(
+                source_staged=False,
+                storage_persisted=False,
+                retry_supported=False,
+                retryable=False,
+            )
+            conn.execute("DELETE FROM provider_calls WHERE task=?", (task,))
+            conn.execute("UPDATE jobs SET options='{}' WHERE id=?", (task,))
         status.update(status=state, stage=state, updated_at=now(), **updates)
         if message:
             status["message"] = message
