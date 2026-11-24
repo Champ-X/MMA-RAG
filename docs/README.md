@@ -8,7 +8,8 @@
 
 | 任务 | 文档 |
 | --- | --- |
-| 第一次安装和提问 | [快速开始](../README.md#快速开始) |
+| 部署自托管 Web 实例并首次提问 | [快速开始](../README.md#快速开始) |
+| 从桌面打开已有资料或迁移工作区 | [桌面端入门](../README.md#桌面端) · [数据迁移与备份](desktop/data-transfer.md) |
 | 选择安装方式、更新和备份 | [安装器 CLI](../packages/cli/README.md) · [容器分发](DISTRIBUTION.md) · [源码开发启动器](LOCAL_STARTUP.md) |
 | 导入公开链接或接入飞书 | [网络素材采集](NETWORK_COLLECTION.md) · [飞书 IM、Docx 和 Wiki](FEISHU_BOT_SETUP.md) |
 | 从命令行管理知识库和检索 | [mma-rag 命令参考](../skills/mma-rag/references/cli-reference.md) |

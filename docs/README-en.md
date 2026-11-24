@@ -8,7 +8,8 @@ Start with the quick start for a local installation. Most technical guides are i
 
 | Task | Guide |
 | --- | --- |
-| Install and ask your first question | [Quick start](../README-en.md#quick-start) |
+| Deploy the self-hosted web app and ask your first question | [Quick start](../README-en.md#quick-start) |
+| Open an existing library on desktop or move a workspace | [Desktop app](../README-en.md#desktop-app) · [Data transfer and backups](desktop/data-transfer.md) |
 | Build, configure, upgrade, or back up an instance | [Installer CLI](../packages/cli/README.md) · [Container distribution](DISTRIBUTION.md) · [Development launcher](LOCAL_STARTUP.md) |
 | Collect material from the web or connect Feishu | [Web collection](NETWORK_COLLECTION.md) · [Feishu IM, Docx, and Wiki](FEISHU_BOT_SETUP.md) |
 | Manage knowledge bases and retrieve evidence from the shell | [mma-rag CLI reference](../skills/mma-rag/references/cli-reference.md) |

@@ -5,7 +5,7 @@
 <p align="center">
   <a href="README.md">简体中文</a> · <strong>English</strong>
   <br />
-  <a href="#features">Features</a> · <a href="#quick-start">Quick start</a> · <a href="#develop-from-source">Develop</a> · <a href="#api">API</a> · <a href="#architecture">Architecture</a> · <a href="#documentation">Docs</a>
+  <a href="#features">Features</a> · <a href="#desktop-app">Desktop app</a> · <a href="#quick-start">Self-host</a> · <a href="#develop-from-source">Develop</a> · <a href="#api">API</a> · <a href="#architecture">Architecture</a> · <a href="#documentation">Docs</a>
 </p>
 
 <p align="center">
@@ -31,10 +31,31 @@ https://github.com/user-attachments/assets/b3d5a990-115f-4508-a707-b99d2acc590e
 - Search document passages, individual images and audio files, or specific shots in a video.
 - Standard chat offers Direct, Auto, and Agent modes. Pi can run follow-up searches, read sources, and perform calculations on tables.
 - Choose knowledge bases or use **Select search files** to limit the search. Use `@` in the composer to add material to read or compare for this question.
-- Web UI, retrieval API, knowledge-base CLI, and Feishu IM / Docx / Wiki integration.
+- Access knowledge bases through the desktop app or web UI. A retrieval API, knowledge-base CLI, and Feishu IM / Docx / Wiki integrations are also available.
 - English and Simplified Chinese interface.
 
+## Desktop app
+
+Tessmora Desktop 0.1.1 is an internal build for **Macs with Apple silicon**. If you have the internal DMG, drag `Tessmora.app` to Applications and open it. You can also build it from source. Developer ID signing, notarization, and Windows x64 desktop validation are pending. [Build instructions and acceptance results (Chinese)](docs/desktop/implementation-status.md)
+
+| Where your library lives | What to do in the launcher |
+| --- | --- |
+| Tessmora already running at `http://localhost:3001/` | Keep the service running. When the launcher shows **Service online**, click **Open existing library** to use the same files, indexes, and model settings. No desktop account or import is needed. If the service requires authentication, choose **Sign in via browser**. |
+| A separate desktop workspace on this Mac | Choose **Local folder**. Select an empty folder to start fresh or select an existing Tessmora desktop workspace folder. The bundled runtime works without Docker. You can browse originals without model API keys. |
+| Tessmora running on another machine | Choose **Connect to a server**. Enter the root HTTPS URL of a server with site-wide authentication and the access credential from its administrator. Files and tasks stay on the server. |
+
+To continue a **past browser conversation**, open the same address in the browser you used before. **Open in browser** launches your default browser. To move conversations into the desktop app, export them from the web settings if your instance supports it, then import the archive through the desktop **工作区 → 导入或导出会话…** menu (Workspace → Import or export conversations). [Data transfer and backups](docs/desktop/data-transfer.md)
+
+<details>
+<summary>View the desktop launcher</summary>
+
+![Tessmora detects the local service and offers Open existing library, Local folder, and Connect to a server.](docs/images/desktop/launcher-en.jpg)
+
+</details>
+
 ## Quick start
+
+Use the Docker installer below to deploy a self-hosted web instance.
 
 ### Requirements
 

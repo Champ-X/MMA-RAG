@@ -5,7 +5,7 @@
 <p align="center">
   <strong>简体中文</strong> · <a href="README-en.md">English</a>
   <br />
-  <a href="#特性">特性</a> · <a href="#快速开始">快速开始</a> · <a href="#从源码开发">开发</a> · <a href="#api">API</a> · <a href="#架构">架构</a> · <a href="#文档">文档</a>
+  <a href="#特性">特性</a> · <a href="#桌面端">桌面端</a> · <a href="#快速开始">自托管安装</a> · <a href="#从源码开发">开发</a> · <a href="#api">API</a> · <a href="#架构">架构</a> · <a href="#文档">文档</a>
 </p>
 
 <p align="center">
@@ -31,10 +31,31 @@ https://github.com/user-attachments/assets/ba48b505-9b1b-4fd6-9d40-441092cdf8fc
 - 文档按块检索，图片和独立音频按文件检索，视频结果可定位到具体镜头。
 - 常规问答提供 Direct、Auto 和 Agent 三种模式。Pi 可多轮检索、阅读原文和计算表格数据。
 - 选择知识库或使用「指定检索文件」限定搜索范围。在输入框中用 `@` 添加本轮要阅读或比较的材料。
-- 提供 Web 界面、检索 API、知识库 CLI，以及飞书 IM / Docx / Wiki 接入。
+- 可通过桌面端或 Web 界面使用知识库，也提供检索 API、知识库 CLI 和飞书 IM / Docx / Wiki 接入。
 - 支持简体中文和英文界面。
 
+## 桌面端
+
+Tessmora Desktop 0.1.1 是面向 **Apple 芯片 Mac** 的内部测试版。拿到内测 DMG 后，将 `Tessmora.app` 拖到「应用程序」并打开。也可以从源码构建。正式签名、公证和 Windows x64 桌面版验收仍待完成。[构建步骤与验收记录](docs/desktop/implementation-status.md)
+
+| 你的资料在哪里 | 在桌面首页如何打开 |
+| --- | --- |
+| 已在 `http://localhost:3001/` 运行的 Tessmora | 保持原服务运行。首页显示「本机服务在线」后，点 **「打开已有资料」**，即可使用网页版的文件、索引和模型配置，无需创建桌面账号或重新导入。若服务要求认证，选择「在浏览器登录」。 |
+| 这台 Mac 上的独立桌面工作区 | 点 **「本地文件夹」**，选空目录新建，或选择已有的 Tessmora 桌面工作区目录。应用自带运行环境，可免 Docker 启动。浏览原件无需模型密钥。 |
+| 另一台机器上的 Tessmora | 点 **「连接服务器」**，填写已启用全站认证的 HTTPS 服务根地址，以及管理员提供的访问凭证。资料和任务保存在服务器上。 |
+
+要继续**浏览器里的旧对话**，用之前的浏览器打开同一地址。首页的「在浏览器打开」会启动默认浏览器。要把会话带入桌面，可在支持会话导出的网页版设置中导出，再从桌面菜单「工作区 → 导入或导出会话…」导入。[数据迁移与备份](docs/desktop/data-transfer.md)
+
+<details>
+<summary>查看桌面首页</summary>
+
+![Tessmora 桌面首页检测到本机服务，提供打开已有资料、本地文件夹和连接服务器三个入口。](docs/images/desktop/launcher-zh.jpg)
+
+</details>
+
 ## 快速开始
+
+以下步骤使用 Docker 和安装向导部署一个自托管 Web 实例。
 
 ### 安装要求
 
