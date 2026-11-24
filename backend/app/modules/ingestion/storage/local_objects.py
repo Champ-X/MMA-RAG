@@ -134,20 +134,19 @@ class LocalObjectClient:
         self.database = self.metadata_root / "catalog.sqlite3"
         if self.database.is_symlink():
             raise PermissionError("Object catalog must not be a symbolic link")
-        with self._connection() as db:
+        with self._connection(write=True) as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in {0, 1}:
+            if version not in {0, 1, 2}:
                 raise ValueError("Unsupported object catalog version; migration is required")
-            db.executescript("""
-                CREATE TABLE IF NOT EXISTS buckets (
-                    name TEXT PRIMARY KEY, created REAL NOT NULL, tags TEXT NOT NULL DEFAULT '{}');
-                CREATE TABLE IF NOT EXISTS objects (
-                    bucket TEXT NOT NULL REFERENCES buckets(name), key TEXT NOT NULL,
-                    blob TEXT NOT NULL, size INTEGER NOT NULL, content_type TEXT NOT NULL,
-                    modified REAL NOT NULL, PRIMARY KEY(bucket, key));
-                CREATE INDEX IF NOT EXISTS objects_blob ON objects(bucket, blob);
-                PRAGMA user_version=1;
-            """)
+            db.execute("CREATE TABLE IF NOT EXISTS buckets (name TEXT PRIMARY KEY, created REAL NOT NULL, tags TEXT NOT NULL DEFAULT '{}')")
+            db.execute("CREATE TABLE IF NOT EXISTS objects (bucket TEXT NOT NULL REFERENCES buckets(name), key TEXT NOT NULL, "
+                       "blob TEXT NOT NULL, size INTEGER NOT NULL, content_type TEXT NOT NULL, "
+                       "modified REAL NOT NULL, etag TEXT, PRIMARY KEY(bucket, key))")
+            db.execute("CREATE INDEX IF NOT EXISTS objects_blob ON objects(bucket, blob)")
+            if "etag" not in {row[1] for row in db.execute("PRAGMA table_info(objects)")}:
+                db.execute("ALTER TABLE objects ADD COLUMN etag TEXT")
+            db.execute("UPDATE objects SET etag=blob WHERE etag IS NULL")
+            db.execute("PRAGMA user_version=2")
         os.chmod(self.database, 0o600)
 
     @contextmanager
@@ -196,7 +195,7 @@ class LocalObjectClient:
     @staticmethod
     def _info(row):
         return SimpleNamespace(bucket_name=row["bucket"], object_name=row["key"], size=row["size"],
-            etag=row["blob"], last_modified=datetime.fromtimestamp(row["modified"], timezone.utc),
+            etag=row["etag"], last_modified=datetime.fromtimestamp(row["modified"], timezone.utc),
             content_type=row["content_type"], metadata={}, version_id=None, is_dir=False)
 
     def bucket_exists(self, bucket_name: str) -> bool:
@@ -224,10 +223,12 @@ class LocalObjectClient:
             self._require_bucket(db, bucket_name)
             db.execute("UPDATE buckets SET tags=? WHERE name=?", (json.dumps(dict(tags), ensure_ascii=False), bucket_name))
 
-    def put_object(self, bucket_name: str, object_name: str, data, length: int, content_type="application/octet-stream", **_kwargs):
+    def put_object(self, bucket_name: str, object_name: str, data, length: int, content_type="application/octet-stream", *, source_etag=None, **_kwargs):
         bucket_name, object_name = _bucket(bucket_name), _key(object_name)
         if length < 0:
             raise ValueError("Local object writes require a known length")
+        if source_etag is not None and not re.fullmatch(r"[A-Za-z0-9-]{1,128}", source_etag):
+            raise ValueError("Invalid imported object version")
         digest = hashlib.sha256()
         descriptor, temporary_name = tempfile.mkstemp(prefix="write-", dir=self.staging)
         temporary = Path(temporary_name)
@@ -257,13 +258,13 @@ class LocalObjectClient:
                 else:
                     os.replace(temporary, destination)
                     _sync_directory(destination.parent)
-                db.execute("INSERT INTO objects(bucket,key,blob,size,content_type,modified) VALUES (?,?,?,?,?,?) "
+                db.execute("INSERT INTO objects(bucket,key,blob,size,content_type,modified,etag) VALUES (?,?,?,?,?,?,?) "
                            "ON CONFLICT(bucket,key) DO UPDATE SET blob=excluded.blob,size=excluded.size,"
-                           "content_type=excluded.content_type,modified=excluded.modified",
-                           (bucket_name, object_name, identity, length, content_type or "application/octet-stream", time.time()))
+                           "content_type=excluded.content_type,modified=excluded.modified,etag=excluded.etag",
+                           (bucket_name, object_name, identity, length, content_type or "application/octet-stream", time.time(), source_etag or identity))
             if old_blob and old_blob != identity:
                 self._collect_blob(bucket_name, old_blob)
-            return SimpleNamespace(bucket_name=bucket_name, object_name=object_name, etag=identity, version_id=None)
+            return SimpleNamespace(bucket_name=bucket_name, object_name=object_name, etag=source_etag or identity, version_id=None)
         finally:
             temporary.unlink(missing_ok=True)
 
@@ -293,7 +294,7 @@ class LocalObjectClient:
         with self._connection(write=True) as db:
             row = self._row(db, bucket_name, object_name)
             expected = (request_headers or {}).get("If-Match")
-            if expected and expected.strip('"') != row["blob"]:
+            if expected and expected.strip('"') != row["etag"]:
                 raise _error("PreconditionFailed", "Storage object version has changed")
             path = self._blob_path(bucket_name, row["blob"])
             if not path.is_file() or path.stat().st_size != row["size"]:

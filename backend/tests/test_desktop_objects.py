@@ -150,6 +150,23 @@ def test_future_catalog_version_is_preserved_and_refused(desktop):
         assert db.execute("PRAGMA user_version").fetchone()[0] == 99
 
 
+def test_initial_catalog_schema_upgrades_without_changing_object_versions(tmp_path):
+    import sqlite3
+    root = tmp_path / "objects"
+    metadata = tmp_path / "objects-metadata"
+    metadata.mkdir()
+    with sqlite3.connect(metadata / "catalog.sqlite3") as db:
+        db.executescript("CREATE TABLE buckets(name TEXT PRIMARY KEY,created REAL,tags TEXT);"
+            "CREATE TABLE objects(bucket TEXT,key TEXT,blob TEXT,size INTEGER,content_type TEXT,modified REAL,PRIMARY KEY(bucket,key));"
+            "PRAGMA user_version=1;")
+        db.execute("INSERT INTO buckets VALUES('kb-test',1,'{}')")
+        db.execute("INSERT INTO objects VALUES('kb-test','original',?,0,'text/plain',1)", ('a' * 64,))
+    LocalObjectClient(root)
+    with sqlite3.connect(metadata / "catalog.sqlite3") as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert db.execute("SELECT etag FROM objects").fetchone()[0] == 'a' * 64
+
+
 def test_failed_and_concurrent_writes_keep_committed_objects_readable(desktop):
     adapter, _, _ = desktop
     result = upload(adapter)
