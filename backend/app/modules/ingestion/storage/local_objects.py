@@ -134,8 +134,13 @@ class LocalObjectClient:
         self.database = self.metadata_root / "catalog.sqlite3"
         if self.database.is_symlink():
             raise PermissionError("Object catalog must not be a symbolic link")
+        with self._connection() as db:
+            if db.execute("PRAGMA user_version").fetchone()[0] == 2:
+                return
         with self._connection(write=True) as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
+            if version == 2:  # Another process completed the migration first.
+                return
             if version not in {0, 1, 2}:
                 raise ValueError("Unsupported object catalog version; migration is required")
             db.execute("CREATE TABLE IF NOT EXISTS buckets (name TEXT PRIMARY KEY, created REAL NOT NULL, tags TEXT NOT NULL DEFAULT '{}')")
