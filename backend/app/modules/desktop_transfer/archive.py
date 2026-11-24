@@ -17,6 +17,8 @@ import zipfile
 
 from app.core.file_lock import lock_file, unlock_file
 
+BLOCK_SIZE = 1024 * 1024
+ZERO_BLOCK = bytes(BLOCK_SIZE)
 FORMAT = "tessmora-workspace-backup"
 EXCLUDED_COMPONENTS = {"logs", "cache", "models", "credentials", ".staging", "__pycache__"}
 EXCLUDED_FILES = {"runtime.env", ".env", ".workspace.lock", "supervisor.lock", "runtime.json", "runtime-state.json"}
@@ -81,9 +83,19 @@ def _sanitize_config(value):
     return value
 
 
-def _sqlite_backup(source: Path, destination: Path):
-    # SQLite backup includes committed WAL pages without copying lock/SHM files.
-    original = sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)
+def _sqlite_backup(source: Path, destination: Path, *, frozen=False):
+    # SQLite's online backup includes committed WAL pages. In a frozen workspace an
+    # immutable base needs no source-side SHM file. Replay outstanding WAL in scratch.
+    if frozen:
+        wal = source.with_name(source.name + "-wal")
+        if wal.is_file() and wal.stat().st_size:
+            with tempfile.TemporaryDirectory(dir=destination.parent) as directory:
+                clone = Path(directory) / "source.sqlite"
+                shutil.copyfile(source, clone)
+                shutil.copyfile(wal, clone.with_name(clone.name + "-wal"))
+                _sqlite_backup(clone, destination)
+            return
+    original = sqlite3.connect(source.as_uri() + ("?immutable=1" if frozen else "?mode=ro"), uri=True)
     copied = sqlite3.connect(destination)
     try:
         original.backup(copied)
@@ -94,9 +106,8 @@ def _sqlite_backup(source: Path, destination: Path):
         original.close()
 
 
-def copy_data_tree(source: Path, destination: Path, *, excluded=True):
-    """Copy owned data only, rejecting links and devices instead of following them."""
-    if not source.exists():
+def _tree_entries(source: Path, *, excluded=True):
+    if not source.exists() and not source.is_symlink():
         return
     if source.is_symlink() or not source.is_dir():
         raise TransferError("Data root must be a real directory")
@@ -108,29 +119,38 @@ def copy_data_tree(source: Path, destination: Path, *, excluded=True):
                 raise TransferError(f"Symbolic links are not supported in workspace data: {relative / name}")
             if excluded and _excluded(relative / name):
                 directories.remove(name)
-        (destination / relative).mkdir(parents=True, exist_ok=True, mode=0o700)
+        yield relative, Path(directory), True
         for name in files:
             child, rel = Path(directory) / name, relative / name
             if excluded and _excluded(rel):
                 continue
             if child.is_symlink() or not stat.S_ISREG(child.stat(follow_symlinks=False).st_mode):
                 raise TransferError(f"Only ordinary files can be transferred: {rel}")
-            target = destination / rel
-            if target.exists():
-                if target.is_file() and sha256(target) == sha256(child):
-                    continue
-                raise TransferError(f"Conflicting migration data: {rel}")
-            with child.open("rb") as stream:
-                signature = stream.read(16)
-            if signature == b"SQLite format 3\x00":
-                _sqlite_backup(child.resolve(), target)
-            elif name == "setup.json":
-                target.write_bytes(json_bytes(_sanitize_config(json.loads(child.read_text()))))
-            else:
-                shutil.copyfile(child, target)
-            target.chmod(0o600)
-            with target.open("rb") as committed:
-                os.fsync(committed.fileno())
+            yield rel, child, False
+
+
+def copy_data_tree(source: Path, destination: Path, *, excluded=True):
+    """Copy owned data only, rejecting links and devices instead of following them."""
+    for rel, child, directory in _tree_entries(source, excluded=excluded):
+        if directory:
+            (destination / rel).mkdir(parents=True, exist_ok=True, mode=0o700)
+            continue
+        target = destination / rel
+        if target.exists():
+            if target.is_file() and sha256(target) == sha256(child):
+                continue
+            raise TransferError(f"Conflicting migration data: {rel}")
+        with child.open("rb") as stream:
+            signature = stream.read(16)
+        if signature == b"SQLite format 3\x00":
+            _sqlite_backup(child.resolve(), target)
+        elif rel.name == "setup.json":
+            target.write_bytes(json_bytes(_sanitize_config(json.loads(child.read_text()))))
+        else:
+            shutil.copyfile(child, target)
+        target.chmod(0o600)
+        with target.open("rb") as committed:
+            os.fsync(committed.fileno())
 
 
 def _publish_directory(staging: Path, destination: Path):
@@ -163,8 +183,9 @@ def _publish_directory(staging: Path, destination: Path):
         os.close(descriptor)
 
 
-def rewrite_owned_paths(workspace: Path, mappings: list[tuple[str, str]], destination: Path | None):
+def rewrite_owned_paths(workspace: Path, mappings: list[tuple[str, str]], destination: Path | None, *, source_files: Path | None = None):
     """Only host-owned attachment/payload fields are relocatable, never user text."""
+    files = source_files or workspace
     def rewrite(value):
         if isinstance(value, list):
             return [rewrite(item) for item in value]
@@ -181,10 +202,10 @@ def rewrite_owned_paths(workspace: Path, mappings: list[tuple[str, str]], destin
                         raise TransferError("A saved attachment points outside the transferred workspace")
                     relative = match[1] + item[len(match[0]):]
                 relative = relative.replace("\\", "/")
-                if not _safe_member(relative) or not (workspace / relative).is_file():
+                if not _safe_member(relative) or not (files / relative).is_file():
                     raise TransferError(f"Missing transferred attachment or collection payload: {relative}")
                 if key == "local_path" and value.get("attachment_id"):
-                    path = workspace / relative
+                    path = files / relative
                     if path.stat().st_size != value.get("size") or sha256(path) != value.get("version"):
                         raise TransferError(f"Attachment integrity check failed: {relative}")
                 result[key] = str(destination / relative) if destination else "workspace://" + relative
@@ -226,6 +247,28 @@ def new_workspace(destination: Path):
             shutil.rmtree(staging)
 
 
+def _stored_media(signature: bytes) -> bool:
+    return signature.startswith((b"PK\x03\x04", b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF8", b"OggS",
+                                 b"fLaC", b"\x1aE\xdf\xa3", b"\x1f\x8b")) or signature[4:8] == b"ftyp" or (
+        signature.startswith(b"RIFF") and signature[8:12] == b"WEBP")
+
+
+def _write_member(archive, name, path):
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as source:
+        signature = source.read(16)
+        source.seek(0)
+        # Named members inherit the archive's streaming DEFLATE level. ZipInfo defaults to STORED.
+        member = zipfile.ZipInfo(name) if not name.startswith("qdrant/") and _stored_media(signature) else name
+        with archive.open(member, "w", force_zip64=path.stat().st_size * 1.05 > zipfile.ZIP64_LIMIT) as target:
+            while block := source.read(BLOCK_SIZE):
+                target.write(block)
+                digest.update(block)
+                size += len(block)
+    return {"path": name, "size": size, "sha256": digest.hexdigest()}
+
+
 def backup(workspace: Path, output: Path, *, client_history: Path | None = None) -> dict:
     workspace, output = workspace.absolute(), output.absolute()
     if output.exists() or output.is_symlink():
@@ -237,31 +280,41 @@ def backup(workspace: Path, output: Path, *, client_history: Path | None = None)
         identity = workspace_identity(workspace)
         stage = Path(scratch)
         (stage / "workspace.json").write_bytes(json_bytes(identity))
+        # Only SQLite snapshots and sanitized/relocated metadata need writable scratch space.
+        # Immutable originals and stopped Qdrant files stream directly from the workspace.
+        sources = {"workspace.json": stage / "workspace.json"}
         for directory in ("state", "qdrant"):
-            copy_data_tree(workspace / directory, stage / directory, excluded=directory == "state")
-        rewrite_owned_paths(stage, [(str(workspace) + os.sep, "")], None)
-        validate_objects(stage)
+            for rel, source, is_directory in _tree_entries(workspace / directory, excluded=directory == "state"):
+                if is_directory:
+                    continue
+                name = f"{directory}/{rel.as_posix()}"
+                with source.open("rb") as stream:
+                    sqlite = stream.read(16) == b"SQLite format 3\x00"
+                if sqlite or rel.name == "setup.json":
+                    snapshot = stage / name
+                    snapshot.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                    if sqlite:
+                        _sqlite_backup(source.resolve(), snapshot, frozen=True)
+                    else:
+                        snapshot.write_bytes(json_bytes(_sanitize_config(json.loads(source.read_text()))))
+                    source = snapshot
+                sources[name] = source
+        rewrite_owned_paths(stage, [(str(workspace) + os.sep, "")], None, source_files=workspace)
         if client_history is not None:
             if client_history.is_symlink() or not client_history.is_file():
                 raise TransferError("Client history export must be an ordinary file")
-            (stage / "client").mkdir()
-            shutil.copyfile(client_history, stage / "client" / "history-export")
-        entries = []
-        for path in sorted(stage.rglob("*")):
-            if path.is_file():
-                entries.append({"path": path.relative_to(stage).as_posix(), "size": path.stat().st_size, "sha256": sha256(path)})
-        manifest = {"format": FORMAT, "version": 1, "workspace_id": identity["id"],
-                    "created_at": datetime.now(timezone.utc).isoformat(), "files": entries,
-                    "credentials_included": False, "client_history_included": client_history is not None,
-                    "client_history_name": client_history.name if client_history else None,
-                    "required_qdrant_version": identity.get("qdrant_version")}
+            sources["client/history-export"] = client_history
         descriptor, temporary = tempfile.mkstemp(prefix=".backup-", suffix=".zip", dir=output.parent)
         os.close(descriptor)
         try:
-            with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
+            with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1, allowZip64=True) as archive:
+                entries = [_write_member(archive, name, source) for name, source in sorted(sources.items())]
+                manifest = {"format": FORMAT, "version": 1, "workspace_id": identity["id"],
+                            "created_at": datetime.now(timezone.utc).isoformat(), "files": entries,
+                            "credentials_included": False, "client_history_included": client_history is not None,
+                            "client_history_name": client_history.name if client_history else None,
+                            "required_qdrant_version": identity.get("qdrant_version")}
                 archive.writestr("manifest.json", json_bytes(manifest))
-                for entry in entries:
-                    archive.write(stage / entry["path"], entry["path"])
             verify(Path(temporary))
             with open(temporary, "rb") as completed:
                 os.fsync(completed.fileno())
@@ -318,6 +371,11 @@ def _validated_manifest(archive):
 
 
 def verify(archive_path: Path) -> dict:
+    return _verify(archive_path)[0]
+
+
+def _verify(archive_path: Path, *, measure_sparse=False):
+    allocated = 0
     try:
         with zipfile.ZipFile(archive_path) as archive:
             manifest, entries = _validated_manifest(archive)
@@ -326,6 +384,8 @@ def verify(archive_path: Path) -> dict:
                 with archive.open(name) as source:
                     while block := source.read(1024 * 1024):
                         digest.update(block)
+                        if measure_sparse and block != ZERO_BLOCK[:len(block)]:
+                            allocated += len(block)
                 if digest.hexdigest() != entry["sha256"]:
                     raise TransferError(f"Backup checksum mismatch: {name}")
             identity = json.loads(archive.read("workspace.json"))
@@ -347,14 +407,20 @@ def verify(archive_path: Path) -> dict:
                         if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                             raise TransferError("Backup object catalog is damaged")
                         for bucket, key, blob, size in db.execute("SELECT bucket,key,blob,size FROM objects"):
-                            entry = entries.get(f"state/objects/{bucket}/{blob}")
+                            entry = entries.get(_object_member(bucket, blob))
                             if not entry or entry["size"] != size or entry["sha256"] != blob:
-                                raise TransferError(f"Backup is missing original object bytes: {bucket}/{key}")
+                                raise TransferError(f"Missing or damaged object in backup: {bucket}/{key}")
                     finally:
                         db.close()
-            return manifest
+            return manifest, allocated
     except (zipfile.BadZipFile, KeyError, TypeError, json.JSONDecodeError, UnicodeError) as error:
         raise TransferError("Backup archive is invalid or incomplete") from error
+
+
+def _object_member(bucket, blob):
+    if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", bucket) or ".." in bucket or not re.fullmatch(r"[a-f0-9]{64}", blob):
+        raise TransferError("Object catalog contains an invalid blob identity")
+    return f"state/objects/{bucket}/{blob}"
 
 
 def validate_objects(workspace: Path) -> dict:
@@ -368,9 +434,7 @@ def validate_objects(workspace: Path) -> dict:
         if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
             raise TransferError("Object catalog integrity check failed")
         for bucket, key, blob, size in db.execute("SELECT bucket,key,blob,size FROM objects"):
-            if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", bucket) or ".." in bucket or not re.fullmatch(r"[a-f0-9]{64}", blob):
-                raise TransferError("Object catalog contains an invalid blob identity")
-            path = workspace / "state" / "objects" / bucket / blob
+            path = workspace / _object_member(bucket, blob)
             if path.is_symlink() or not path.is_file() or path.stat().st_size != size or sha256(path) != blob:
                 raise TransferError(f"Missing or damaged object: {bucket}/{key}")
             total += size
@@ -380,11 +444,80 @@ def validate_objects(workspace: Path) -> dict:
     return {"objects": count, "bytes": total}
 
 
+def _enable_sparse(stream):
+    if os.name != "nt":
+        return True
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+    # NTFS requires FSCTL_SET_SPARSE before a seek beyond EOF creates unallocated ranges.
+    returned = wintypes.DWORD()
+    return bool(ctypes.windll.kernel32.DeviceIoControl(
+        wintypes.HANDLE(msvcrt.get_osfhandle(stream.fileno())), 0x900C4, None, 0, None, 0,
+        ctypes.byref(returned), None))
+
+
+def _sparse_volume(directory):
+    with tempfile.TemporaryFile(dir=directory) as stream:
+        if not _enable_sparse(stream):
+            return False
+        stream.seek(BLOCK_SIZE)
+        stream.write(b"1")
+        stream.flush()
+        info = os.fstat(stream.fileno())
+        return getattr(info, "st_blocks", None) is None or info.st_blocks * 512 < BLOCK_SIZE
+
+
+def _release_macos_hole(output, start, end):
+    # APFS can allocate interior gaps when a later buffered write extends an extent.
+    # F_PUNCHHOLE takes struct fpunchhole (sys/fcntl.h). Punch only observed zeros.
+    import errno
+    import fcntl
+    import struct
+    alignment = os.fstatvfs(output.fileno()).f_bsize
+    length = (end - start) // alignment * alignment
+    if not length:
+        return
+    output.flush()
+    try:
+        fcntl.fcntl(output.fileno(), 99, struct.pack("=IIqq", 0, 0, start, length))
+    except OSError as exc:
+        if exc.errno not in {errno.ENOTSUP, errno.EINVAL, errno.ENOTTY, errno.ENOSYS}:
+            raise
+
+
+def _extract_member(source, output, size, *, sparse):
+    sparse = sparse and _enable_sparse(output)
+    if sparse:
+        output.truncate(size)
+    hole_start = None
+    while block := source.read(BLOCK_SIZE):
+        if sparse and block == ZERO_BLOCK[:len(block)]:
+            if hole_start is None:
+                hole_start = output.tell()
+            output.seek(len(block), os.SEEK_CUR)
+        else:
+            start = output.tell()
+            output.write(block)
+            if hole_start is not None and sys.platform == "darwin":
+                _release_macos_hole(output, hole_start, start)
+            hole_start = None
+    length = output.tell()
+    if length != size:
+        raise TransferError("Archive changed while restoring")
+    output.truncate(length)
+    if hole_start is not None and sys.platform == "darwin":
+        _release_macos_hole(output, hole_start, length)
+    output.flush()
+    os.fsync(output.fileno())
+
+
 def restore(archive_path: Path, destination: Path) -> dict:
-    manifest = verify(archive_path)
-    required = sum(entry["size"] for entry in manifest["files"])
     destination = destination.absolute()
     destination.parent.mkdir(parents=True, exist_ok=True)
+    sparse = _sparse_volume(destination.parent)
+    manifest, allocated = _verify(archive_path, measure_sparse=sparse)
+    required = (allocated + len(manifest["files"]) * 8192) if sparse else sum(entry["size"] for entry in manifest["files"])
     if shutil.disk_usage(destination.parent).free < required + max(64 * 1024 * 1024, required // 20):
         raise TransferError("Not enough free space to restore this workspace")
     with new_workspace(destination) as staging:
@@ -393,9 +526,7 @@ def restore(archive_path: Path, destination: Path) -> dict:
                 target = staging / entry["path"]
                 target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
                 with archive.open(entry["path"]) as source, target.open("xb") as output:
-                    shutil.copyfileobj(source, output, length=1024 * 1024)
-                    output.flush()
-                    os.fsync(output.fileno())
+                    _extract_member(source, output, entry["size"], sparse=sparse)
                 target.chmod(0o600)
                 # Re-check extraction, including an archive changed after verify().
                 if sha256(target) != entry["sha256"]:

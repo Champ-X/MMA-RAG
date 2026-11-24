@@ -315,3 +315,41 @@ def test_native_qdrant_migration_backup_restore_and_real_queries(tmp_path):
         assert target.get_collection("video_shot_vectors").payload_schema["kb_id"].data_type == "keyword"
     restored_objects = LocalObjectClient(restored / "state" / "objects")
     assert restored_objects.stat_object("kb-native", object_path).etag == "original-etag-1"
+
+
+def test_preallocated_index_compresses_and_restores_sparse_for_both_v1_encodings(workspace, tmp_path):
+    import shutil
+    root, client = workspace
+    index = root / "qdrant" / "collection" / "vector-page"
+    amount = 32 * 1024 * 1024 + 111
+    with index.open("wb") as stream:
+        stream.write(b"head")
+        stream.seek(9 * 1024 * 1024 + 3)
+        stream.write(b"middle")
+        stream.truncate(amount)
+    catalog = root / "state" / "objects-metadata" / "catalog.sqlite3"
+    media = b"\x89PNG\r\n\x1a\n" + os.urandom(2048)
+    client.put_object("kb-test", "images/logo.png", io.BytesIO(media), len(media))
+    member = index.relative_to(root).as_posix()
+    fresh = tmp_path / "fresh.zip"
+    old = tmp_path / "legacy-stored.zip"
+    archive.backup(root, fresh)
+    assert fresh.stat().st_size < amount // 100
+    with zipfile.ZipFile(fresh) as current, zipfile.ZipFile(old, "w") as legacy:
+        assert current.getinfo(member).compress_type == zipfile.ZIP_DEFLATED
+        assert current.getinfo(catalog.relative_to(root).as_posix()).compress_type == zipfile.ZIP_DEFLATED
+        media_member = "state/objects/kb-test/" + hashlib.sha256(media).hexdigest()
+        assert current.getinfo(media_member).compress_type == zipfile.ZIP_STORED
+        for entry in current.infolist():
+            with current.open(entry) as src, legacy.open(entry.filename, "w") as dst:
+                shutil.copyfileobj(src, dst)
+    assert old.stat().st_size > amount
+    expected = archive.sha256(index)
+    for source in (fresh, old):
+        restored = tmp_path / (source.stem + "-workspace")
+        archive.restore(source, restored)
+        actual = restored / member
+        assert actual.stat().st_size == amount
+        assert archive.sha256(actual) == expected
+        if hasattr(actual.stat(), "st_blocks") and archive._sparse_volume(tmp_path):
+            assert actual.stat().st_blocks * 512 < amount // 4
