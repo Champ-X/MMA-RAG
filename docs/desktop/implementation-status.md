@@ -20,3 +20,26 @@ ops/desktop-qa/runtime/python/bin/python3.11 packages/desktop/qa/fixtures.py --r
 ```
 
 macOS 构建机已有 LibreOffice 时可传 `--office /Applications/LibreOffice.app`，Windows 接受含 `program/soffice.exe` 的安装目录。Windows 打包的解释器位于 `runtime/python/python.exe`。单机运行数据放在所选工作区，模型存于 `state/models`，原件与目录索引在 `state/objects` 和 `state/objects-metadata`，向量数据在 `qdrant`。正式签名、许可和干净系统验证结果单独记录。
+
+### 本机内测与交付范围
+
+使用者已确认先交付 macOS Apple Silicon 的本地可验收内部版。安装磁盘映像内有 Tessmora.app，可拖到应用目录，也可安装到当前用户有写权限的目录。首次打开选择空目录或已有的 Tessmora 桌面工作区；旧 CLI、Compose 数据按[数据迁移说明](data-transfer.md)导入。启动器的远程选项连接已有、全站受认证的 Tessmora 根地址。关闭工作区窗口可以继续后台入库，菜单栏提供重新打开和退出。
+
+本机通过 macOS 系统钥匙串实际执行了临时凭证新建、读取、轮换与删除。云端测试仅使用合成资料和隔离的工作区，完成后移除临时钥匙串项目。普通资料备份包含原件；诊断报告按白名单导出版本和组件状态。工作区菜单提供备份到新文件和恢复到新目录的入口。应用内「检查更新」仅在正式签名构建启用网络更新。内部版以替换应用安装，资料保存在独立工作区。
+
+在 macOS 上复建内部安装包，可在仓库根目录运行以下命令。包含 Office 转换时给上述 assemble 步骤传入 LibreOffice 应用路径。
+
+```sh
+npm --prefix frontend ci
+npm --prefix frontend run build
+npm --prefix packages/desktop ci
+TESSMORA_RUNTIME_DIR="$PWD/ops/desktop-qa/runtime" npm --prefix packages/desktop run dist
+```
+
+正式构建由发行者设置 `TESSMORA_SIGNED_RELEASE=1`、系统签名/公证参数和 `TESSMORA_UPDATE_TRUST_FILE`。信任文件仅含 HTTPS 渠道目录 `feed` 与 PEM 格式的 Ed25519 公钥 `publicKey`；Windows 另指定 `TESSMORA_WINDOWS_PUBLISHER`。原生签名成功后执行 `node packages/desktop/release/sign-manifest.mjs <产物目录> <darwin-arm64或win32-x64> <应用版本> <运行包版本> <私钥文件>`，由发布负责人分发平台更新元数据、签名清单和对应产物。构建命令默认禁止发布。正式签名身份、公开分发许可、Windows 真机和跨版本签名安装演练由后续发行阶段验收。
+
+### 数据和资源实测
+
+- 压力用例把 12 秒可播放视频用合法的 MP4 free box 填充到 128 MiB，分别提交一份和四份，在隔离工作区暂停入库 worker，采样 FastAPI 的 RSS。一次本机测量的峰值增量分别为 320 KiB 与 608 KiB，耗时 234 ms 与 1,003 ms。硬杀宿主后，五个已接收 ID 和完整的输入仍在 SQLite 与 spool 中。采样仅覆盖接收阶段，不包含后续解析或推理的峰值。
+- 从真实 MinIO 和原生 Qdrant 迁移合成旧实例，停机备份并恢复后，再通过 HTTP 打开 PDF、视频和原有 Pi 来源。转移前后原件 SHA-256、multipart ETag、知识库/point ID 与媒体定位一致。本地模型和 Office 另有真实图片、音频和中文 PDF 渲染验收。[取证和复测命令](native-acceptance-2026-11-24.md)
+- 授权的云端小样本采用本地原生运行包，真实测试 DeepSeek、SiliconFlow 和阿里云百炼模型连接，完成 PDF、视频入库并各做一次 Direct 问答。答案给出 `CEDAR-17` 以及蓝色矩形约在 0:06 出现。首轮 PDF 回答未给页码，此项单独跟踪修复。此两题只检验工作流，不作为与服务器等质的检索基准。

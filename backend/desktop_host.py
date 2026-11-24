@@ -40,6 +40,14 @@ def stop_on_eof():
         stop_requested.set()
 
 
+def write_marker(directory, contents):
+    with tempfile.NamedTemporaryFile(mode="w", dir=directory, encoding="utf-8", delete=False) as out:
+        json.dump(contents, out)
+        out.flush()
+        os.fsync(out.fileno())
+    os.replace(out.name, directory / "workspace.json")
+
+
 def workspace_identity(directory):
     if not directory.is_dir():
         raise StartupError("工作区目录不存在或不可访问。")
@@ -56,11 +64,7 @@ def workspace_identity(directory):
         except (OSError, KeyError, ValueError, TypeError) as exc:
             raise StartupError("工作区标识或格式无效，请选择兼容版本或从备份恢复。") from exc
     identity = str(uuid4())
-    with tempfile.NamedTemporaryFile(mode="w", dir=directory, encoding="utf-8", delete=False) as out:
-        json.dump({"format": 1, "id": identity}, out)
-        out.flush()
-        os.fsync(out.fileno())
-    os.replace(out.name, marker)
+    write_marker(directory, {"format": 1, "id": identity})
     return identity
 
 
@@ -166,6 +170,15 @@ def supervise(workspace, runtime, identity, manifest, scratch, cleanup):
         cleanup.callback(terminate, proc)
         return proc
 
+    # A raw Qdrant snapshot can be opened only by the storage version that produced it.
+    # Refuse incompatible versions before the service has a chance to alter any index files.
+    version = subprocess.check_output([executables["qdrant"], "--version"], cwd=scratch,
+                                      stderr=subprocess.DEVNULL, timeout=15, text=True).strip().split()[-1]
+    marker = json.loads((workspace / "workspace.json").read_text("utf-8"))
+    if marker.get("qdrant_version", version) != version:
+        raise StartupError("工作区索引版本与运行包不匹配。请使用匹配的运行包，或进行逻辑迁移。")
+    if "qdrant_version" not in marker:
+        write_marker(workspace, {**marker, "qdrant_version": version})
     emit("index", "正在打开本地向量索引。")
     # Qdrant takes a numeric port. Its authenticated identity is checked before accepting it.
     # Retry with fresh ports if a concurrent application wins the small bind race.

@@ -1,3 +1,4 @@
+import { WorkspaceError } from './workspaces.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
@@ -18,7 +19,7 @@ export async function transferCommand(app, args) {
   } catch (error) {
     let detail;
     try { detail = JSON.parse(String(error.stderr).trim().split('\n').at(-1)).message; } catch { /* Keep fallback below. */ }
-    throw new Error(detail || '工作区传输未完成，请检查目录、可用空间和归档完整性。');
+    throw new WorkspaceError('TRANSFER_FAILED', detail || '工作区传输未完成，请检查目录、可用空间和归档完整性。');
   }
 }
 
@@ -27,7 +28,7 @@ export async function backupWorkspace({ app, dialog, store, stopLocalWorkspaces 
   if (selection.canceled) return;
   const workspace = await realpath(selection.filePaths[0]);
   const profile = (await store.read()).workspaces.find(p => p.mode === 'local' && p.directory === workspace);
-  if (!profile) throw new Error('请先在启动器中打开一次要备份的本地工作区。');
+  if (!profile) throw new WorkspaceError('WORKSPACE_MISSING', '请先在启动器中打开一次要备份的本地工作区。');
   const target = await dialog.showSaveDialog({ title: '备份到新文件', defaultPath: 'Tessmora-' + profile.id + '.zip',
     filters: [{ name: 'Tessmora 工作区备份', extensions: ['zip'] }] });
   if (target.canceled) return;
