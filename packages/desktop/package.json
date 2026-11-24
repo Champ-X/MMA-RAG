@@ -1,0 +1,18 @@
+{
+  "name": "@tessmora/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tessmora desktop workspace",
+  "type": "module",
+  "main": "app/main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.mjs",
+    "test:electron": "node qa/electron-smoke.mjs"
+  },
+  "devDependencies": {
+    "electron": "45.4.1",
+    "playwright": "1.65.1"
+  },
+  "engines": { "node": ">=22.19" }
+}

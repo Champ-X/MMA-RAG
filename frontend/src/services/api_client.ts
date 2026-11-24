@@ -1,3 +1,4 @@
+import { desktopWorkspace, isDesktopWorkspace, normalizeWorkspaceResources } from '@/lib/desktopWorkspace'
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { translate as tr, getLanguage } from '@/i18n';
 import { getAuthToken, getSetupToken } from '@/lib/setupSession'
@@ -8,6 +9,7 @@ import type { UploadFailureFields } from '@/types/upload'
 
 /** 未设置 VITE_API_BASE_URL 时默认 /api：开发时由 Vite 代理到后端，避免浏览器直连 localhost:8000（WSL/端口转发下易失败或超时）；生产需同源反代或显式配置环境变量。 */
 function resolveDefaultApiBaseURL(): string {
+  if (isDesktopWorkspace()) return '/api';
   const fromEnv = import.meta.env?.VITE_API_BASE_URL;
   if (fromEnv != null && String(fromEnv).trim() !== '') {
     return String(fromEnv).replace(/\/$/, '');
@@ -63,13 +65,16 @@ class ApiClient {
     this.instance.interceptors.response.use(
       (response) => {
         console.log(`✅ API响应: ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
+        response.data = normalizeWorkspaceResources(response.data);
         return response;
       },
       (error) => {
         console.error('❌ 响应错误:', error.response?.data || error.message);
         
         // 处理常见错误
-        if (error.response?.status === 401 && !getSetupToken()) {
+        if (error.response?.status === 401 && isDesktopWorkspace()) {
+          void desktopWorkspace()?.chooseWorkspace();
+        } else if (error.response?.status === 401 && !getSetupToken()) {
           // 未授权，清除token并跳转到登录页
           localStorage.removeItem('auth_token');
           window.location.href = '/login';

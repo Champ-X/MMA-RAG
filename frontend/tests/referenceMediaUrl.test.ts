@@ -111,3 +111,10 @@ test('refresh never guesses a missing knowledge base or file path', async () => 
   await assert.rejects(getFreshReferenceMediaUrl({ type: 'image', kbId: 'known-kb', filePath: ' ' }), /缺少知识库或文件路径/)
   assert.equal(image.mock.callCount(), 0)
 })
+
+test('desktop relative object URLs use their signed Unix expiry for refresh', () => {
+  const future = Math.floor(Date.now() / 1000) + 3600
+  const expired = Math.floor(Date.now() / 1000) - 10
+  assert.equal(isReferenceMediaUrlFresh(`/api/objects/library/file?expires=${future}&signature=synthetic`), true)
+  assert.equal(isReferenceMediaUrlFresh(`/api/objects/library/file?expires=${expired}&signature=synthetic`), false)
+})

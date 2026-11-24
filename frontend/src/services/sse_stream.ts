@@ -1,3 +1,4 @@
+import { normalizeWorkspaceResources } from '@/lib/desktopWorkspace'
 import { apiClient } from './api_client';
 import { translate as tr, getLanguage, type Language } from '@/i18n';
 const getBaseURL = () => apiClient.getBaseURL();
@@ -155,7 +156,7 @@ class SSEStreamManager {
       if (!isCurrent()) return;
       let raw: Record<string, unknown>;
       try {
-        const parsed = JSON.parse(ev.data) as unknown;
+        const parsed = normalizeWorkspaceResources(JSON.parse(ev.data)) as unknown;
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(tr("无效的 SSE 响应"));
         raw = parsed as Record<string, unknown>;
       } catch (err) {
@@ -257,7 +258,7 @@ class SSEStreamManager {
               const jsonStr = line.replace(/^data:\s?/, '').trim();
               if (!jsonStr) continue;
               try {
-                const raw = JSON.parse(jsonStr) as Record<string, unknown>;
+                const raw = normalizeWorkspaceResources(JSON.parse(jsonStr)) as Record<string, unknown>;
                 if (raw.type === 'connected') continue;
                 if (['complete', 'done', 'error'].includes(String(raw.type ?? raw.event))) terminalReceived = true;
                 dispatchSseJsonPayload(raw, callbacks);

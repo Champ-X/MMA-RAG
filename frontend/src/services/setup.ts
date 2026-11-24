@@ -1,3 +1,4 @@
+import { isDesktopWorkspace } from '@/lib/desktopWorkspace'
 import { translate as tr } from '@/i18n'
 import { getSetupToken } from '@/lib/setupSession'
 
@@ -63,7 +64,7 @@ export class SetupError extends Error {
 // Deliberately separate from the general API client: no credential logging or login redirect.
 async function request<T>(path: string, data?: unknown): Promise<T> {
   const token = getSetupToken()
-  const base = String(import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
+  const base = String(isDesktopWorkspace() ? '/api' : import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
   const response = await fetch(`${base}/setup/${path}`, {
     method: data === undefined ? 'GET' : 'POST',
     headers: { ...(data === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { 'X-Tessmora-Setup-Token': token } : {}) },

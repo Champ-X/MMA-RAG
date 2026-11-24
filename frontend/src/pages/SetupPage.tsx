@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, AlertCircle, Eye, EyeOff, FileText, Loader2, Terminal, Image, Headphones, Film, Route, LayoutGrid, KeyRound } from 'lucide-react'
 import { getSetupToken, setSetupToken } from '@/lib/setupSession'
+import { desktopWorkspace, isDesktopWorkspace } from '@/lib/desktopWorkspace'
 import { SetupError, setupApi, type Capability, type ModelPreparation, type Provider, type SetupDraft, type SetupStatus, type SetupTest } from '@/services/setup'
 import { SetupSample } from '@/components/SetupSample'
 import './setupPage.css'
@@ -143,7 +144,7 @@ export default function SetupPage() {
   const [watchPreparation, setWatchPreparation] = useState(false)
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
-  const [authorized, setAuthorized] = useState(Boolean(getSetupToken()))
+  const [authorized, setAuthorized] = useState(Boolean(getSetupToken()) || isDesktopWorkspace())
   const [token, setToken] = useState('')
   const heading = useRef<HTMLHeadingElement>(null)
 
@@ -187,7 +188,10 @@ export default function SetupPage() {
   const invalidate = () => { setTest(null); setSaved(false); setError('') }
   const handleError = (reason: unknown) => {
     setError(errorMessage(reason))
-    if (reason instanceof SetupError && reason.status === 401) setAuthorized(false)
+    if (reason instanceof SetupError && reason.status === 401) {
+      if (isDesktopWorkspace()) void desktopWorkspace()?.chooseWorkspace()
+      else setAuthorized(false)
+    }
   }
   const draft = (): SetupDraft => ({ capabilities: selected, credentials: Object.fromEntries(Object.entries(credentials).filter(([, value]) => value?.trim()).map(([key, value]) => [key, value!.trim()])) })
   const mediaTasks = Array.from(new Set(selected.flatMap(capability => capability === 'image' ? ['image_captioning'] : capability === 'audio' ? ['audio_transcription'] : capability === 'video' ? ['video_parsing', 'image_captioning', 'audio_transcription'] : [])))

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>Tessmora</title><link rel="stylesheet" href="./style.css"></head>
+<body>
+<header class="titlebar"><div class="wordmark"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 5h20v5h-7v14h-6V10H4z" fill="currentColor"/></svg><span>Tessmora</span></div><button id="language" class="language" aria-label="Switch language">English</button></header>
+<main>
+  <section class="library" aria-labelledby="library-title">
+    <div class="intro"><span class="outline-book" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M10 7h22a5 5 0 0 1 5 5v29H14a5 5 0 0 1-5-5V12a5 5 0 0 1 5-5m0 26h23M17 7v26M22 17h9M22 22h7"/></svg></span><h1 id="library-title" data-i18n="title">让资料在这里相遇</h1><p data-i18n="intro">打开一个工作区，继续阅读、提问和探索。</p></div>
+    <div class="list-heading"><h2 data-i18n="workspaces">你的工作区</h2><span id="count">0</span></div>
+    <div id="workspace-list" class="workspace-list"></div>
+    <div id="empty" class="empty"><p data-i18n="empty">还没有连接工作区。</p><span data-i18n="emptyHint">在这台电脑上创建，或连接已有服务。</span></div>
+    <p class="background-note"><span class="status-dot"></span><span data-i18n="background">关窗后，本地任务仍可继续。从菜单栏可重新打开或退出。</span></p>
+  </section>
+  <section class="connect" aria-labelledby="connect-title">
+    <div class="panel-heading"><h2 id="connect-title" data-i18n="newWorkspace">添加工作区</h2><p data-i18n="choose">选择资料与任务运行的位置。</p></div>
+    <div class="mode-tabs" role="tablist" aria-label="Workspace type"><button id="local-tab" type="button" role="tab" aria-selected="true" data-mode="local" data-i18n="local">本地工作区</button><button id="remote-tab" type="button" role="tab" aria-selected="false" data-mode="remote" data-i18n="remote">连接服务器</button></div>
+    <form id="workspace-form">
+      <label for="name" data-i18n="name">工作区名称</label><input id="name" name="name" required maxlength="80" autocomplete="off" placeholder="我的资料库">
+      <div id="local-fields"><label data-i18n="directory">资料目录</label><button id="choose-directory" class="directory-picker" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 3h9v11H3z"/></svg><span id="directory-label" data-i18n="chooseDirectory">选择文件夹</span></button><p class="field-help" data-i18n="localHint">原件、索引与任务保存在这里。首次使用会检查并准备运行环境。</p></div>
+      <div id="remote-fields" hidden><label for="url" data-i18n="address">服务地址</label><input id="url" name="url" type="url" placeholder="https://tessmora.example.com" autocomplete="url" spellcheck="false"><p class="field-help" data-i18n="remoteHint">连接受信任且已启用全站认证的 Tessmora。资料保存在服务器。</p></div>
+      <div id="credential-fields" hidden><label for="token" data-i18n="credential">访问凭证</label><input id="token" name="token" type="password" autocomplete="off" spellcheck="false"><label class="checkbox"><input id="remember" type="checkbox" checked><span data-i18n="remember">使用系统凭证库记住此连接</span></label><p id="keychain-note" class="field-help" hidden data-i18n="keychainUnavailable">系统凭证库暂不可用。凭证仅用于本次应用会话。</p></div>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <div id="error" class="error" role="alert" hidden></div>
+      <button id="submit" type="submit" class="primary" data-i18n="createLocal">创建并打开</button><button id="cancel-reconnect" type="button" class="cancel" hidden data-i18n="cancelReconnect">返回添加工作区</button>
+    </form>
+  </section>
+</main>
+<footer><span data-i18n="footer">一个工作区，一份独立的资料与历史。</span><button id="quit" data-i18n="quit">退出 Tessmora</button></footer>
+<script src="./launcher.js"></script>
+</body></html>

@@ -23,7 +23,12 @@ const pendingMediaUrls = new Map<string, Promise<string>>()
 
 function getPresignedExpiry(url: string): number | null {
   try {
-    const parsed = new URL(url)
+    const parsed = new URL(url, typeof window === 'undefined' ? 'http://localhost' : window.location.href)
+    const desktopExpires = parsed.searchParams.get('expires')
+    if (parsed.pathname.startsWith('/api/objects/') && desktopExpires && /^\d+$/.test(desktopExpires)) {
+      const expiry = Number(desktopExpires) * 1000
+      return Number.isSafeInteger(expiry) ? expiry : null
+    }
     const signedAt = parsed.searchParams.get('X-Amz-Date')
     const expiresSeconds = Number(parsed.searchParams.get('X-Amz-Expires'))
     const match = signedAt?.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/)

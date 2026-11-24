@@ -1,3 +1,4 @@
+import { desktopWorkspace, isDesktopWorkspace, normalizeWorkspaceResources } from '@/lib/desktopWorkspace'
 import { apiClient } from './api_client'
 import { translate as tr, getLanguage, type Language } from '@/i18n'
 import { getAuthToken, setSetupToken } from '@/lib/setupSession'
@@ -62,6 +63,10 @@ export const piApi = {
     }
   },
   async connect(value: string): Promise<PiConfig> {
+    if (isDesktopWorkspace()) {
+      await desktopWorkspace()?.chooseWorkspace()
+      throw new Error(tr("请在桌面工作区窗口中更新访问凭证。"))
+    }
     let token = value.trim()
     if (/^https?:\/\//i.test(token)) {
       try { token = new URLSearchParams(new URL(token).hash.slice(1)).get('setup_token') || '' }
@@ -142,7 +147,7 @@ export async function watchPiRun(runId: string, after: () => number, onEvent: (e
             const frame = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 2)
             const data = frame.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n')
             if (data) {
-              const event = JSON.parse(data) as PiEvent
+              const event = normalizeWorkspaceResources(JSON.parse(data)) as PiEvent
               if (event.protocol_version !== 1 || event.run_id !== runId) throw new Error(tr("Agent 事件协议不匹配"))
               onEvent(normalizeAssets(event))
               retries = 0
