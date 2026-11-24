@@ -11,6 +11,7 @@ import shutil
 import socket
 import sqlite3
 import subprocess
+import tempfile
 import time
 from urllib.parse import unquote, urlsplit
 from uuid import uuid4
@@ -197,7 +198,9 @@ def temporary_qdrant(executable: Path, workspace: Path):
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         port = reservation.getsockname()[1]
-    config_path, log_path = workspace / ".transfer-qdrant.yaml", workspace / ".transfer-qdrant.log"
+    scratch = tempfile.TemporaryDirectory(prefix=".transfer-service-", dir=workspace)
+    service_root = Path(scratch.name)
+    config_path, log_path = service_root / "qdrant.yaml", service_root / "qdrant.log"
     config_path.write_text("service:\n  grpc_port: null\n  enable_cors: false\ncluster:\n  enabled: false\nlog_level: WARN\n")
     key = secrets.token_hex(32)
     environment = {name: value for name, value in os.environ.items() if name in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "LANG", "LC_ALL"}}
@@ -208,7 +211,7 @@ def temporary_qdrant(executable: Path, workspace: Path):
     process = None
     try:
         with log_path.open("wb") as output:
-            process = subprocess.Popen([str(executable), "--config-path", str(config_path)], cwd=workspace,
+            process = subprocess.Popen([str(executable), "--config-path", str(config_path)], cwd=service_root,
                                        env=environment, stdout=output, stderr=subprocess.STDOUT)
             deadline = time.monotonic() + 30
             while True:
@@ -233,6 +236,7 @@ def temporary_qdrant(executable: Path, workspace: Path):
                 process.wait(timeout=5)
         config_path.unlink(missing_ok=True)
         log_path.unlink(missing_ok=True)
+        scratch.cleanup()
 
 
 def _relocate_pi_attachments(staging: Path, destination: Path, source_data: Path):

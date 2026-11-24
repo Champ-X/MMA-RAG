@@ -139,6 +139,26 @@ TESSMORA_TEST_QDRANT=/absolute/runtime/bin/qdrant PYTHONPATH=backend \
   python -m pytest -q backend/tests/test_desktop_transfer.py backend/tests/test_desktop_objects.py
 ```
 
-The source object API contract is exercised with the deterministic MinIO-compatible
-local client. A live MinIO/Compose export and native Windows restore have not yet
-been claimed as accepted; they remain part of platform release verification.
+The source object API contract also has a real MinIO acceptance script:
+
+```sh
+python packages/desktop/qa/native-transfer.py \
+  --runtime /absolute/verified-runtime \
+  --fixtures /absolute/synthetic-fixtures \
+  --output /absolute/new-evidence-directory \
+  --docker-context existing-test-context \
+  --minio-image existing-minio-image
+```
+
+It creates and removes its own loopback-only MinIO container in the explicitly
+selected context, with synthetic credentials and an isolated data directory.
+It never changes Docker's current context or uses an existing container's data.
+On 2026-11-24 this passed on macOS Apple Silicon with real MinIO, native Qdrant
+1.16.2, and the restored FastAPI service. The checks include multipart ETags,
+source collection/configuration invariance, old presigned media refresh,
+signed Range/HEAD, original PDF page markers and saved Pi-source previews.
+See [native acceptance evidence](native-acceptance-2026-11-24.md).
+
+This synthetic acceptance does not claim that an existing user's complete
+Compose installation has been migrated. Native Windows restore and cross-OS
+physical Qdrant-index compatibility still need separate acceptance runs.

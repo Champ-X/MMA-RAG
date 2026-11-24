@@ -131,7 +131,11 @@ def _office_to_pdf_bytes(file_content: bytes, file_ext: str) -> Optional[bytes]:
                 config.write_text(
                     '<?xml version="1.0"?><fontconfig>'
                     + "".join("<dir>" + escape(str(path)) + "</dir>" for path in directories if path.is_dir())
-                    + "<cachedir>" + escape(str(Path(tmpdir) / "font-cache")) + "</cachedir></fontconfig>",
+                    + "<cachedir>" + escape(str(Path(tmpdir) / "font-cache")) + "</cachedir>"
+                    # Keep simplified Chinese together instead of mixing
+                    # Japanese and Latin fallbacks with incompatible metrics.
+                    + '<match target="pattern"><edit name="family" mode="append">'
+                    '<string>Heiti SC</string><string>Songti SC</string></edit></match></fontconfig>',
                     encoding="utf-8",
                 )
                 environment["FONTCONFIG_FILE"] = str(config)
