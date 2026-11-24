@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager, ExitStack
-import fcntl
+from app.core.file_lock import lock_file, unlock_file
 import hashlib
 import json
 import random
@@ -277,11 +277,11 @@ def _bank_lock(kb_id: str):
     BANK_DIR.mkdir(parents=True, exist_ok=True)
     # Keep lock files when deleting banks so another process cannot lock a new inode.
     with _bank_path(kb_id).with_suffix(".lock").open("a+") as stream:
-        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        lock_file(stream, wait=True)
         try:
             yield
         finally:
-            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+            unlock_file(stream)
 
 
 @contextmanager

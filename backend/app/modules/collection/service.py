@@ -8,7 +8,7 @@ requires an external worker/queue rather than multiple in-process supervisors.
 from __future__ import annotations
 
 import asyncio
-import fcntl
+from app.core.file_lock import lock_file
 import hashlib
 import inspect
 import json
@@ -46,7 +46,7 @@ class CollectionService:
         self.store = store
         self._supervisor_lock = store.path.with_suffix(".supervisor.lock").open("a")
         try:
-            fcntl.flock(self._supervisor_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_file(self._supervisor_lock)
         except OSError:
             self._supervisor_lock.close()
             raise CollectionConflict("已有服务进程持有采集任务账本；请使用单个 API worker，或为独立实例配置不同状态目录。") from None

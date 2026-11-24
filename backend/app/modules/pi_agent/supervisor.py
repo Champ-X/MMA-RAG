@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import asdict
 from contextvars import copy_context
 from app.core.prompt_language import prompt_language
-import fcntl
+from app.core.file_lock import lock_file, unlock_file
 import hashlib
 from functools import partial
 import json
@@ -73,7 +73,7 @@ class PiSupervisor:
         settings.data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.lock = (settings.data_dir / "supervisor.lock").open("a")
         try:
-            fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_file(self.lock)
         except OSError:
             self.lock.close()
             raise ToolError("supervisor_busy", "已有服务进程持有 Pi 任务账本；请使用单实例或为不同实例设置独立目录") from None
@@ -616,5 +616,5 @@ class PiSupervisor:
         await asyncio.gather(*jobs, return_exceptions=True)
         await self.vectors.close()
         self.io_pool.shutdown(wait=True, cancel_futures=True)
-        fcntl.flock(self.lock, fcntl.LOCK_UN)
+        unlock_file(self.lock)
         self.lock.close()

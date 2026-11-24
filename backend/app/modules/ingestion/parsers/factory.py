@@ -15,7 +15,6 @@ import shutil
 import subprocess
 from pathlib import Path
 from urllib.parse import unquote
-import uuid
 
 from app.core.logger import get_logger
 from datetime import datetime
@@ -680,69 +679,43 @@ class PDFParser(DocumentParser):
     
     async def _parse_with_pymupdf(self, file_content: bytes, file_path: str) -> Dict[str, Any]:
         """使用 PyMuPDF 解析 PDF（原有方法）"""
-        try:
-            import fitz  # PyMuPDF
-            
-            # 保存临时文件
-            temp_file = f"/tmp/{uuid.uuid4()}.pdf"
-            with open(temp_file, "wb") as f:
-                f.write(file_content)
-            
-            # 使用PyMuPDF解析
-            doc = fitz.open(temp_file)
-            total_pages = len(doc)
+        from contextlib import ExitStack
+        from io import BytesIO
+        import fitz
+
+        with ExitStack() as resources:
+            doc = resources.enter_context(fitz.open(stream=file_content, filetype="pdf"))
+            try:
+                import pdfplumber  # type: ignore
+                table_doc = resources.enter_context(pdfplumber.open(BytesIO(file_content)))
+            except Exception:
+                table_doc = None
+
             pages_content = []
             tables = []
-            
-            for page_num in range(total_pages):
-                page = doc.load_page(page_num)
-                
-                # 提取文本
-                text = page.get_text()
-                
-                # 尝试提取表格（使用pdfplumber，如果可用）
-                try:
-                    import pdfplumber  # type: ignore
-                    with pdfplumber.open(temp_file) as pdf:
-                        pdf_page = pdf.pages[page_num]
-                        tables_on_page = pdf_page.find_tables()
-                        for table in tables_on_page:
-                            table_data = table.extract()
-                            if table_data:
-                                tables.append(table_data)
-                except (ImportError, Exception):
-                    # pdfplumber不可用或提取失败，跳过表格提取
-                    pass
-                
+            for index, page in enumerate(doc):
                 pages_content.append({
-                    "page": page_num + 1,
-                    "text": text,
-                    "metadata": {
-                        "width": page.rect.width,
-                        "height": page.rect.height
-                    }
+                    "page": index + 1,
+                    "text": page.get_text(),
+                    "metadata": {"width": page.rect.width, "height": page.rect.height},
                 })
-            
-            doc.close()
-            
-            # 清理临时文件
-            Path(temp_file).unlink(missing_ok=True)
-            
+                if table_doc is not None:
+                    try:
+                        for table in table_doc.pages[index].find_tables():
+                            rows = table.extract()
+                            if rows:
+                                tables.append(rows)
+                    except Exception:
+                        # Text and page anchors remain useful when table detection fails.
+                        pass
+
             return {
-                "file_type": "pdf",
-                "pages": pages_content,
-                "tables": tables,
-                "total_pages": total_pages,
-                "metadata": {
-                    "parser": "pymupdf",
-                    "extracted_at": datetime.utcnow().isoformat() + "Z"
-                }
+                "file_type": "pdf", "pages": pages_content, "tables": tables,
+                "total_pages": len(doc),
+                "metadata": {"parser": "pymupdf", "extracted_at": datetime.utcnow().isoformat() + "Z"},
             }
-            
-        except Exception as e:
-            logger.error(f"PDF解析失败: {str(e)}")
-            raise
-    
+
+
 class DocxParser(DocumentParser):
     """DOCX文档解析器：优先 MinerU API，失败则本地 MinerU2.5（需 LibreOffice），最后 python-docx"""
 
