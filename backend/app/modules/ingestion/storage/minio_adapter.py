@@ -90,6 +90,11 @@ class MinIOAdapter:
         return canonical
 
     def __init__(self):
+        from .local_objects import LocalObjectClient, desktop_storage_enabled
+        if desktop_storage_enabled():
+            self.client = LocalObjectClient()
+            self._presign_client = self.client
+            return
         region = settings.minio_region or None
         self.client = minio.Minio(
             settings.minio_endpoint,
@@ -415,7 +420,7 @@ class MinIOAdapter:
     def get_file_url(self, bucket: str, object_path: str) -> str:
         """获取文件访问URL"""
         # 在实际部署中，这里应该返回CDN或负载均衡器的URL
-        return f"https://storage.example.com/{bucket}/{object_path}"
+        return self._presign_client.presigned_get_object(bucket, object_path, expires=timedelta(hours=1))
     
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""

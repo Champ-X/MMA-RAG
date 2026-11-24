@@ -21,7 +21,10 @@ def _normalize_media_file_path(file_path: str) -> str:
         parsed = urlparse(raw)
         raw = unquote(parsed.path or "")
     raw = raw.split("?", 1)[0].split("#", 1)[0].strip()
-    return raw.lstrip("/")
+    raw = raw.lstrip("/")
+    if raw.startswith("api/objects/"):
+        raw = raw[len("api/objects/"):]
+    return raw
 
 
 def _build_object_path_candidates(file_path: str, media_prefix: str) -> List[str]:

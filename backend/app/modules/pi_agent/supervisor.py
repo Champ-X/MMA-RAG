@@ -91,14 +91,19 @@ class PiSupervisor:
         if storage is None or vector_client is None:
             from app.core.config import settings as app_settings
             from minio import Minio
+            from app.modules.ingestion.storage.local_objects import LocalObjectClient, desktop_storage_enabled
             from qdrant_client import AsyncQdrantClient
             import urllib3
-            storage = storage or Minio(app_settings.minio_endpoint, access_key=app_settings.minio_access_key,
+            storage = storage or (LocalObjectClient() if desktop_storage_enabled() else Minio(app_settings.minio_endpoint, access_key=app_settings.minio_access_key,
                 secret_key=app_settings.minio_secret_key, secure=app_settings.minio_secure,
                 region=app_settings.minio_region or "us-east-1",
                 http_client=urllib3.PoolManager(num_pools=2, maxsize=2, block=True,
-                    timeout=urllib3.Timeout(connect=5, read=15), retries=False))
-            vector_client = vector_client or AsyncQdrantClient(**app_settings.get_qdrant_config(), timeout=12,
+                    timeout=urllib3.Timeout(connect=5, read=15), retries=False)))
+            vector_options = app_settings.get_qdrant_config()
+            if desktop_storage_enabled():
+                # API keys must not make the SDK infer HTTPS for our loopback sidecar.
+                vector_options["https"] = False
+            vector_client = vector_client or AsyncQdrantClient(**vector_options, timeout=12,
                 limits=__import__("httpx").Limits(max_connections=4, max_keepalive_connections=2))
         self.storage, self.vectors = storage, vector_client
 

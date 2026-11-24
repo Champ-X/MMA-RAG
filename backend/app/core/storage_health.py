@@ -70,6 +70,16 @@ def check_qdrant() -> dict:
 
 
 def check_minio() -> dict:
+    from app.modules.ingestion.storage.local_objects import LocalObjectClient, desktop_storage_enabled
+    if desktop_storage_enabled():
+        try:
+            LocalObjectClient().health_check()
+            # Keep the existing component name for setup/CLI capability contracts.
+            return {"name": "minio", "backend": "filesystem", "success": True, "message": "本地文件存储读写正常"}
+        except Exception as error:
+            return {"name": "minio", "backend": "filesystem", "success": False,
+                    "error_code": "local_storage", "error_type": type(error).__name__,
+                    "message": "本地文件存储不可用。", "hint": "请检查工作区目录权限、可用磁盘空间与存储诊断。"}
     # urllib3 PoolManager connects directly; no env proxy or SDK retry loop.
     pool = urllib3.PoolManager(timeout=urllib3.Timeout(connect=3, read=5), retries=False)
     try:
