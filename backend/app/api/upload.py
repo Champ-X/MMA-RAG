@@ -11,6 +11,7 @@ from typing import List, Optional
 import uuid
 from pydantic import BaseModel, Field
 from app.core.logger import get_logger
+from app.modules.ingestion.desktop_jobs import JobConflict, desktop_profile, jobs
 from app.modules.ingestion.service import get_ingestion_service, get_ingestion_status_reader
 
 router = APIRouter()
@@ -45,12 +46,48 @@ def _validate_source_type(source_type: Optional[str]) -> Optional[str]:
         raise HTTPException(status_code=400, detail=f"不支持的 source_type: {normalized}")
     return normalized
 
+def _request_ids(raw, count):
+    if raw is None:
+        return [None] * count
+    try:
+        values = json.loads(raw)
+        if not isinstance(values, list) or len(values) != count:
+            raise ValueError
+        ids = [str(uuid.UUID(key)) for key in values]
+        if len(set(ids)) != count:
+            raise ValueError
+        return ids
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise HTTPException(400, "每个文件需要一个独立的 UUID 请求标识") from exc
+
+
+async def _stage_upload(file, filename, kb_id, source_type, request_id):
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in ALLOWED_FILE_TYPES:
+        raise HTTPException(400, f"不支持的文件类型: {ext or '未知'}")
+    try:
+        receipt = await asyncio.to_thread(
+            jobs().enqueue, file.file, filename, kb_id, processing_id=request_id, source_type=source_type
+        )
+    except JobConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except OSError as exc:
+        import errno
+        if exc.errno == errno.ENOSPC:
+            raise HTTPException(507, "工作区空间不足，文件未接收") from exc
+        raise
+    return {**receipt, "file_type": ext}
+
+
 @router.post("/file")
 async def upload_file(
     kb_id: str = Form(...),
     file: UploadFile = File(...),
     file_type: str = Form(...),
     source_type: Optional[str] = Form(None),
+    request_id: Optional[str] = Form(None),
 ):
     """上传单个文件"""
     try:
@@ -59,32 +96,21 @@ async def upload_file(
             raise HTTPException(status_code=400, detail=f"不支持的文件类型: {file_type}")
         source_type = _validate_source_type(source_type)
         
-        # 读取文件内容
-        file_content = await file.read()
-        file_size = len(file_content)
-        
-        if file_size == 0:
-            raise HTTPException(status_code=400, detail="文件内容为空")
-        
-        # 获取文件名
         filename = file.filename or f"uploaded_file.{file_type}"
-        
-        logger.info(f"开始处理文件上传: {filename}, 大小: {file_size} bytes, kb_id: {kb_id}")
-        
-        # 调用 IngestionService 处理文件上传
-        # 该方法会自动完成：
-        # 1. 解析文件内容
-        # 2. 保存到MinIO
-        # 3. 生成向量
-        # 4. 存储到Qdrant
-        result = await _ingestion().process_file_upload(
-            file_content=file_content,
-            file_path=filename,
-            kb_id=kb_id,
-            user_id=None,  # 如果需要用户ID，可以从请求中获取
-            source_type=source_type,
-        )
-        
+        if desktop_profile():
+            receipt = await _stage_upload(file, filename, kb_id, source_type, request_id)
+            file_size = receipt["size"]
+            result = await jobs().wait(receipt["processing_id"])
+            result = {**result, "processing_id": receipt["processing_id"]}
+        else:
+            file_content = await file.read()
+            file_size = len(file_content)
+            if file_size == 0:
+                raise HTTPException(status_code=400, detail="文件内容为空")
+            result = await _ingestion().process_file_upload(
+                file_content=file_content, file_path=filename, kb_id=kb_id, user_id=None, source_type=source_type,
+            )
+
         logger.info(f"文件处理完成: {filename}, file_id: {result.get('file_id')}, status: {result.get('status')}")
         
         return {
@@ -123,29 +149,26 @@ async def upload_file_stream(
     file: UploadFile = File(...),
     file_type: str = Form(...),
     source_type: Optional[str] = Form(None),
+    request_id: Optional[str] = Form(None),
 ):
     """上传单个文件，响应为流式：先返回 processing_id，再持续推送 stage/progress/message，最后返回 result。"""
     try:
         if file_type not in ALLOWED_FILE_TYPES:
             raise HTTPException(status_code=400, detail=f"不支持的文件类型: {file_type}")
         source_type = _validate_source_type(source_type)
-        file_content = await file.read()
-        if len(file_content) == 0:
-            raise HTTPException(status_code=400, detail="文件内容为空")
         filename = file.filename or f"uploaded_file.{file_type}"
-        processing_id = str(uuid.uuid4())
-        logger.info("开始流式上传处理: {}, processing_id={}", filename, processing_id)
-
-        # 任务由 IngestionService 持有，而不是绑定在 StreamingResponse 的协程上。
-        # 用户刷新页面会断开流，但已接收的文件仍继续处理，状态可通过 Redis 恢复。
-        _ingestion().start_file_upload(
-            file_content=file_content,
-            file_path=filename,
-            kb_id=kb_id,
-            user_id=None,
-            processing_id=processing_id,
-            source_type=source_type,
-        )
+        if desktop_profile():
+            receipt = await _stage_upload(file, filename, kb_id, source_type, request_id)
+            processing_id = receipt["processing_id"]
+        else:
+            file_content = await file.read()
+            if not file_content:
+                raise HTTPException(status_code=400, detail="文件内容为空")
+            processing_id = str(uuid.uuid4())
+            _ingestion().start_file_upload(
+                file_content=file_content, file_path=filename, kb_id=kb_id,
+                user_id=None, processing_id=processing_id, source_type=source_type,
+            )
 
         async def stream_gen():
             yield json.dumps({"processing_id": processing_id}) + "\n"
@@ -155,7 +178,7 @@ async def upload_file_stream(
                 if status is None:
                     break
                 yield json.dumps(status) + "\n"
-                if status.get("status") in ("completed", "failed"):
+                if status.get("status") in ("completed", "failed", "cancelled", "deleted"):
                     break
             final = await _ingestion().get_processing_status(processing_id)
             if final and final.get("result") is not None:
@@ -178,6 +201,7 @@ async def start_upload_batch(
     kb_id: str = Form(...),
     files: List[UploadFile] = File(...),
     source_type: Optional[str] = Form(None),
+    request_ids: Optional[str] = Form(None),
 ):
     """一次接收全部文件并立即创建独立后台任务。
 
@@ -188,6 +212,17 @@ async def start_upload_batch(
     source_type = _validate_source_type(source_type)
     if not files:
         raise HTTPException(status_code=400, detail="至少需要一个文件")
+
+    if desktop_profile():
+        results = []
+        for file, request_id in zip(files, _request_ids(request_ids, len(files))):
+            filename = file.filename or "uploaded_file"
+            try:
+                results.append(await _stage_upload(file, filename, kb_id, source_type, request_id))
+            except (HTTPException, OSError) as exc:
+                message = exc.detail if isinstance(exc, HTTPException) else "无法写入工作区"
+                results.append({"filename": filename, "status": "failed", "error": message})
+        return _batch_receipt(kb_id, results)
 
     # 严格两阶段提交：在第一个后台任务可被调度前，先读取、校验并持久化登记
     # 所有有效文件。不能在循环内调用 start_file_upload；下一次 `await file.read()`
@@ -256,10 +291,14 @@ async def start_upload_batch(
                 "error": str(e),
             })
 
+    return _batch_receipt(kb_id, results)
+
+
+def _batch_receipt(kb_id, results):
     accepted_count = sum(1 for result in results if result.get("status") == "queued")
     return {
         "kb_id": kb_id,
-        "total_files": len(files),
+        "total_files": len(results),
         "accepted_count": accepted_count,
         "failed_count": len(results) - accepted_count,
         "results": results,
@@ -270,37 +309,29 @@ async def start_upload_batch(
 @router.post("/batch")
 async def upload_batch(
     kb_id: str = Form(...),
-    files: List[UploadFile] = File(...)
+    files: List[UploadFile] = File(...),
+    request_ids: Optional[str] = Form(None),
 ):
     """批量上传文件"""
     results = []
     
-    for file in files:
+    ids = _request_ids(request_ids, len(files)) if desktop_profile() else [None] * len(files)
+    for file, request_id in zip(files, ids):
         try:
-            # 读取文件内容
-            file_content = await file.read()
-            file_size = len(file_content)
-            
-            if file_size == 0:
-                results.append({
-                    "filename": file.filename,
-                    "status": "failed",
-                    "error": "文件内容为空"
-                })
-                continue
-            
             filename = file.filename or "uploaded_file"
-            
-            logger.info(f"批量上传处理文件: {filename}, 大小: {file_size} bytes")
-            
-            # 调用 IngestionService 处理文件上传
-            result = await _ingestion().process_file_upload(
-                file_content=file_content,
-                file_path=filename,
-                kb_id=kb_id,
-                user_id=None
-            )
-            
+            if desktop_profile():
+                item = await _stage_upload(file, filename, kb_id, None, request_id)
+                file_size = item["size"]
+                result = await jobs().wait(item["processing_id"])
+                result = {**result, "processing_id": item["processing_id"]}
+            else:
+                file_content = await file.read()
+                file_size = len(file_content)
+                if not file_size:
+                    raise ValueError("文件内容为空")
+                result = await _ingestion().process_file_upload(
+                    file_content=file_content, file_path=filename, kb_id=kb_id, user_id=None,
+                )
             results.append({
                 "file_id": result.get("file_id"),
                 "filename": filename,
@@ -372,3 +403,13 @@ async def retry_upload_video(task_id: str):
     except Exception as error:
         logger.exception("重新入队文件失败 task_id={}", task_id)
         raise HTTPException(status_code=500, detail=str(error)) from error
+
+
+@router.post("/cancel/{task_id}")
+async def cancel_upload(task_id: str):
+    if not desktop_profile():
+        raise HTTPException(409, "此工作区不支持取消入库任务")
+    try:
+        return await asyncio.to_thread(jobs().cancel, task_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc

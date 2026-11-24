@@ -1,4 +1,5 @@
 import { desktopWorkspace, isDesktopWorkspace, normalizeWorkspaceResources } from '@/lib/desktopWorkspace'
+import { prepareUploadReceipts } from '@/lib/desktopUploadReceipts'
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { translate as tr, getLanguage } from '@/i18n';
 import { getAuthToken, getSetupToken } from '@/lib/setupSession'
@@ -489,28 +490,36 @@ export const knowledgeApi = {
     kbId: string,
     files: File[],
     options?: { sourceType?: string; onProgress?: (progress: number) => void }
-  ) => apiClient.uploadFiles<{
-    kb_id: string
-    total_files: number
-    accepted_count: number
-    failed_count: number
-    results: Array<{
-      filename: string
-      size?: number
-      file_type?: string
-      processing_id?: string
-      status: 'queued' | 'failed'
-      error?: string
-    }>
-  }>(
-    `/upload/batch/start`,
-    files,
-    options?.onProgress,
-    {
-      kb_id: kbId,
-      ...(options?.sourceType ? { source_type: options.sourceType } : {}),
-    }
-  ),
+  ) => {
+    const workspace = desktopWorkspace()
+    const pending = workspace && prepareUploadReceipts(localStorage, workspace.workspaceId, kbId, files, options?.sourceType)
+    return apiClient.uploadFiles<{
+      kb_id: string
+      total_files: number
+      accepted_count: number
+      failed_count: number
+      results: Array<{
+        filename: string
+        size?: number
+        file_type?: string
+        processing_id?: string
+        status: 'queued' | 'failed'
+        error?: string
+      }>
+    }>(
+      `/upload/batch/start`,
+      files,
+      options?.onProgress,
+      {
+        kb_id: kbId,
+        ...(pending ? { request_ids: JSON.stringify(pending.ids) } : {}),
+        ...(options?.sourceType ? { source_type: options.sourceType } : {}),
+      }
+    ).then(receipt => {
+      pending?.acknowledge()
+      return receipt
+    })
+  },
 
   // 上传单个文件（用于精细进度）
   uploadSingleFile: (

@@ -45,6 +45,7 @@ from .storage.vector_store import (
     VectorStore,
 )
 from .splitters.agentic import AgenticDocumentChunker
+from .desktop_jobs import desktop_profile
 from .document_checkpoints import (DOCUMENT_TYPES, DocumentCheckpoints, DocumentProcessingError,
                                    retry_capabilities, usable_image_caption)
 from .embedding import IngestionEmbeddingConfig, IngestionEmbeddingError, embed_ingestion_texts
@@ -96,7 +97,11 @@ def get_ingestion_service() -> "IngestionService":
     if _ingestion_service_instance is None:
         with _ingestion_service_lock:
             if _ingestion_service_instance is None:
-                _ingestion_service_instance = IngestionService()
+                if desktop_profile():
+                    from .desktop_service import DesktopIngestionService
+                    _ingestion_service_instance = DesktopIngestionService()
+                else:
+                    _ingestion_service_instance = IngestionService()
     return _ingestion_service_instance
 
 
@@ -110,6 +115,10 @@ def get_ingestion_status_reader() -> "IngestionService":
     if _ingestion_service_instance is not None:
         return _ingestion_service_instance
     if _status_reader_instance is None:
+        if desktop_profile():
+            from .desktop_service import DesktopIngestionService
+            _status_reader_instance = DesktopIngestionService(status_only=True)
+            return _status_reader_instance
         reader = IngestionService.__new__(IngestionService)
         reader._processing_status = {}
         reader._processing_status_redis_client = None
@@ -1120,6 +1129,7 @@ class IngestionService:
         source_type: Optional[str] = None,
         source_metadata: Optional[Dict[str, Any]] = None,
         file_id_override: Optional[str] = None,
+        source_path: Optional[Path] = None,
     ) -> Dict[str, Any]:
         """
         处理文件上传完整流程
@@ -1194,6 +1204,8 @@ class IngestionService:
             
             # 1. 解析文件（asset_map 供 Markdown 相对路径图片解析，如文件夹导入时传入）
             parse_kwargs = dict(asset_map=asset_map) if asset_map else {}
+            if source_path is not None:
+                parse_kwargs["source_path"] = source_path
             parse_result = await self.parser_factory.parse_file(file_content, file_path, **parse_kwargs)
             if source_type:
                 metadata = parse_result.get("metadata") or {}
@@ -1257,6 +1269,7 @@ class IngestionService:
                 kb_id=kb_id,
                 file_type=storage_file_type,
                 **stable_storage,
+                **({"source_path": source_path} if source_path is not None else {}),
             )
 
             # 原文件一旦落到 MinIO，就把其稳定 file_id 写入任务状态。文件列表可据此区分
@@ -1341,6 +1354,7 @@ class IngestionService:
                         kb_id=actual_kb_id,
                         processing_id=processing_id,
                         file_content=file_content,
+                        **({"source_path": source_path} if source_path is not None else {}),
                     )
             else:
                 raise ValueError(f"不支持的文件类型: {file_type}")
@@ -1966,7 +1980,8 @@ class IngestionService:
         storage_result: Dict[str, Any],
         kb_id: str,
         processing_id: str,
-        file_content: bytes
+        file_content: bytes,
+        source_path: Optional[Path] = None,
     ) -> Dict[str, Any]:
         """处理视频文件：Omni 联合理解画面和音频，Shot 为主检索单元。"""
         try:
@@ -1976,6 +1991,7 @@ class IngestionService:
                 kb_id=kb_id,
                 processing_id=processing_id,
                 file_content=file_content,
+                **({"source_path": source_path} if source_path is not None else {}),
             )
         except Exception as e:
             logger.error("视频处理失败: {}", e, exc_info=True)
@@ -1988,6 +2004,7 @@ class IngestionService:
         kb_id: str,
         processing_id: str,
         file_content: bytes,
+        source_path: Optional[Path] = None,
     ) -> Dict[str, Any]:
         """Scene–Shot–ASR 视频入库。
 
@@ -2014,7 +2031,7 @@ class IngestionService:
         })
 
         video_bytes = file_content or b""
-        if len(video_bytes) < 1000:
+        if not source_path and len(video_bytes) < 1000:
             try:
                 bucket = storage_result.get("bucket")
                 object_path = storage_result.get("object_path")
@@ -2025,17 +2042,17 @@ class IngestionService:
 
         import tempfile
 
-        full_video_path: Optional[str] = None
+        full_video_path: Optional[str] = str(source_path) if source_path else None
         fd = -1
         try:
-            if video_bytes:
+            if not full_video_path and video_bytes:
                 fd, full_video_path = tempfile.mkstemp(suffix=f".{video_format or 'mp4'}")
                 # os.write 允许部分写入；视频文件较大时必须通过文件对象保证完整落盘。
                 with os.fdopen(fd, "wb") as temp_video:
                     fd = -1
                     temp_video.write(video_bytes)
         except Exception as e:
-            logger.warning("写入视频临时文件失败，将尝试 URL 解析: {}", e)
+            logger.warning("写入视频临时文件失败: {}", e)
             if full_video_path:
                 try:
                     os.unlink(full_video_path)
@@ -2051,6 +2068,8 @@ class IngestionService:
 
         video_url: Optional[str] = None
         if not full_video_path:
+            if desktop_profile():
+                raise OSError("无法准备本地视频原件。请检查工作区磁盘空间和临时目录权限，然后重新处理。")
             try:
                 bucket = storage_result.get("bucket")
                 object_path = storage_result.get("object_path")
@@ -2214,7 +2233,7 @@ class IngestionService:
                         ),
                     )
         finally:
-            if full_video_path and os.path.exists(full_video_path):
+            if not source_path and full_video_path and os.path.exists(full_video_path):
                 try:
                     os.unlink(full_video_path)
                 except OSError:
@@ -2235,6 +2254,7 @@ class IngestionService:
         manifest_path = f"videos/{file_id}/analysis/{SCHEMA_VERSION}.json"
         vector_data = await self._build_video_scene_shot_points(
             video_bytes=video_bytes,
+            **({"source_path": source_path} if source_path is not None else {}),
             analysis=analysis,
             file_id=file_id,
             file_path=file_path,
@@ -2525,6 +2545,7 @@ class IngestionService:
         fps: float,
         has_audio: bool,
         processing_id: str,
+        source_path: Optional[Path] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
         """由规范化分析构建 Shot 四路向量和其从属关键帧向量。"""
         shot_rows = list(iter_shots(analysis))
@@ -2591,8 +2612,8 @@ class IngestionService:
 
         # 所有关键帧共用同一个临时视频文件。此前每抽一帧都写一次完整视频，长视频会产生
         # 成倍的磁盘 I/O，且容易让入库耗时随 Shot 数量线性恶化。
-        frame_source_path: Optional[str] = None
-        if video_bytes:
+        frame_source_path: Optional[str] = str(source_path) if source_path else None
+        if video_bytes and not frame_source_path:
             try:
                 import tempfile
 
@@ -2692,7 +2713,7 @@ class IngestionService:
                 # 即使底层 I/O 极快，也给心跳、进度接口和其他请求一个调度机会。
                 await asyncio.sleep(0)
         finally:
-            if frame_source_path:
+            if not source_path and frame_source_path:
                 try:
                     os.unlink(frame_source_path)
                 except OSError:

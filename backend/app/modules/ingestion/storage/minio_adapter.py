@@ -158,6 +158,7 @@ class MinIOAdapter:
         *,
         custom_object_path: Optional[str] = None,
         file_id_override: Optional[str] = None,
+        source_path: Optional[Path] = None,
     ) -> Dict[str, Any]:
         """
         上传文件到 MinIO。同一知识库的所有数据（文档+图片+视频等）存于同一 Bucket。
@@ -184,13 +185,12 @@ class MinIOAdapter:
                 file_id = str(uuid.uuid4())
                 object_name = f"{file_type}/{file_id}_{Path(file_path).name}"
 
-            self.client.put_object(
-                bucket_name=bucket_name,
-                object_name=object_name,
-                data=io.BytesIO(file_content),
-                length=len(file_content),
-                content_type="application/octet-stream"
-            )
+            size = source_path.stat().st_size if source_path is not None else len(file_content)
+            with (source_path.open("rb") if source_path is not None else io.BytesIO(file_content)) as stream:
+                self.client.put_object(
+                    bucket_name=bucket_name, object_name=object_name, data=stream,
+                    length=size, content_type="application/octet-stream",
+                )
 
             presigned_url = self._presign_client.presigned_get_object(
                 bucket_name=bucket_name,
@@ -205,7 +205,7 @@ class MinIOAdapter:
                 "bucket": bucket_name,
                 "object_path": object_name,
                 "presigned_url": presigned_url,
-                "size": len(file_content),
+                "size": size,
                 "uploaded_at": datetime.utcnow().isoformat()
             }
 

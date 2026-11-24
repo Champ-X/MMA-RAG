@@ -1452,6 +1452,12 @@ class VideoParser(DocumentParser):
             logger.debug("OpenCV 视频元数据兜底失败: {}", error)
             return None
 
+    def _probe_path_sync(self, filename: str) -> Dict[str, Any]:
+        metadata = self._probe_with_ffprobe(filename) or self._probe_with_opencv(filename)
+        if not metadata:
+            raise ValueError("无法读取视频时长、帧率或视频流；请确认文件未损坏且服务端已安装 ffmpeg")
+        return metadata
+
     def _probe_bytes_sync(self, file_content: bytes, suffix: str) -> Dict[str, Any]:
         """在线程中写入临时视频并执行 ffprobe/OpenCV，避免阻塞 FastAPI 事件循环。"""
         import tempfile
@@ -1461,10 +1467,7 @@ class VideoParser(DocumentParser):
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
                 tmp_file.write(file_content)
                 tmp_path = tmp_file.name
-            metadata = self._probe_with_ffprobe(tmp_path) or self._probe_with_opencv(tmp_path)
-            if not metadata:
-                raise ValueError("无法读取视频时长、帧率或视频流；请确认文件未损坏且服务端已安装 ffmpeg")
-            return metadata
+            return self._probe_path_sync(tmp_path)
         finally:
             if tmp_path:
                 try:
@@ -1474,14 +1477,15 @@ class VideoParser(DocumentParser):
 
     async def parse(self, file_content: bytes, file_path: str, **kwargs: Any) -> Dict[str, Any]:
         """解析视频文件，提取供 Scene–Shot 管道使用的可靠元数据。"""
+        source = kwargs.get("source_path")
+        size = source.stat().st_size if source is not None else len(file_content)
         try:
-            if not file_content:
+            if not size:
                 raise ValueError("视频文件为空")
-            metadata = await asyncio.to_thread(
-                self._probe_bytes_sync,
-                file_content,
-                Path(file_path).suffix,
-            )
+            if source is not None:
+                metadata = await asyncio.to_thread(self._probe_path_sync, str(source))
+            else:
+                metadata = await asyncio.to_thread(self._probe_bytes_sync, file_content, Path(file_path).suffix)
             width = int(metadata.get("width") or 0)
             height = int(metadata.get("height") or 0)
             return {
@@ -1495,7 +1499,7 @@ class VideoParser(DocumentParser):
                 "format": Path(file_path).suffix.lower().lstrip("."),
                 "codec": str(metadata.get("codec") or "unknown"),
                 "has_audio": bool(metadata.get("has_audio")),
-                "file_size": len(file_content),
+                "file_size": size,
                 "metadata": {
                     "extracted_at": datetime.now().isoformat(),
                     "probe": metadata.get("probe"),
@@ -1515,7 +1519,7 @@ class VideoParser(DocumentParser):
                 "format": Path(file_path).suffix.lower().lstrip("."),
                 "codec": "unknown",
                 "has_audio": False,
-                "file_size": len(file_content),
+                "file_size": size,
                 "metadata": {
                     "extracted_at": datetime.now().isoformat(),
                     "parse_error": str(e)
@@ -1843,7 +1847,7 @@ class ParserFactory:
         result["file_info"] = {
             "file_path": file_path,
             "file_type": file_type.value,
-            "file_size": len(file_content)
+            "file_size": result.get("file_size", len(file_content))
         }
         
         return result
