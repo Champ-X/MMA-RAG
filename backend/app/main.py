@@ -117,6 +117,9 @@ app.include_router(setup.router, prefix="/api/setup", tags=["setup"])
 app.include_router(collection.router, prefix="/api/collection", tags=["collection"])
 
 if desktop_profile():
+    from app.api import objects
+    app.include_router(objects.router, prefix="/api/objects", tags=["workspace-media"])
+
     @app.get("/api/desktop/capabilities")
     async def desktop_capabilities():
         return {
