@@ -128,3 +128,41 @@ downloads, Windows native restore, cross-OS physical Qdrant-index restore,
 cloud answer quality, exact Office layout fidelity, application-wide memory
 budgets or public-release signing/notarization. The offline encoders themselves
 do not make cloud-backed chat, captions or speech transcription offline.
+
+## PDF citation repair after cloud acceptance
+
+The two-page synthetic manual exposed a separate provenance gap: existing
+chunks carried `metadata.page/page_end`, but generation prompts and the chat
+JSON serializer dropped those locators. The fix keeps observed `page_number`,
+`page_end`, `file_id` and `kb_id` through retrieval, ordinary/compressed prompts,
+streaming/non-streaming citations, `debug_info` and saved history.
+
+Existing multi-page chunks remain page ranges. The prompt explicitly says that
+a range alone cannot locate one statement to an exact page. Records without an
+observed page stay unlocated; chunk order is never used as a substitute.
+
+New PDF ingestion retains the semantic plan, intersects its chunks with actual
+physical page spans, and rebuilds each fragment's embedding input from its own
+text plus semantic headings/title. Markdown source text remains lossless.
+Page text must align exactly and unambiguously to a richer document Markdown
+representation to attach physical anchors; incompatible or unmapped content
+remains unlocated. Existing indexes are not silently rewritten and require
+re-ingestion to gain finer page-level evidence.
+
+The citation contract tests passed 56 checks. The physical-page/source and
+citation suite passed 53 checks, including a real generated PDF parsed by
+PyMuPDF and a deterministic encoder verifying that the production vectorization
+loop receives independent page-specific inputs. No cloud calls were made by
+these tests. A bundled-Python smoke check also verifies the existing synthetic
+`manual.pdf` via the real parser and both citation serializers:
+
+```sh
+ops/desktop-qa/runtime/python/bin/python3.11 packages/desktop/qa/pdf-citations.py \
+  --fixtures ops/desktop-qa/fixtures --output ops/desktop-qa/new-pdf-citation-check
+```
+
+Pass `--backend ops/desktop-qa/runtime/backend` to test the frozen backend after
+assembling it. The checker makes a deterministic cross-page planning decision,
+then requires two lossless page fragments and the `CEDAR-17` evidence to carry
+page 2 through the prompt and citation fields. It does not call a model to
+generate an answer or infer a dense embedding.

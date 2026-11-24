@@ -14,11 +14,13 @@ import json
 import math
 import re
 import time
-from dataclasses import dataclass, field
+from bisect import bisect_left, bisect_right
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.source_locators import positive_page
 
 
 logger = get_logger(__name__)
@@ -936,17 +938,10 @@ def _normalize_newlines(value: Any) -> str:
 def source_from_parse_result(parse_result: Dict[str, Any]) -> ParsedDocumentSource:
     """Choose the richest parser representation without inventing source text."""
 
-    markdown = _normalize_newlines(parse_result.get("markdown"))
-    if markdown.strip():
-        return ParsedDocumentSource(text=markdown, origin="markdown")
-
-    content = _normalize_newlines(parse_result.get("content"))
-    if content.strip():
-        return ParsedDocumentSource(text=content, origin="content")
-
     pages = parse_result.get("pages") or []
     page_parts: List[str] = []
     page_spans: List[Tuple[int, int, int]] = []
+    page_texts: List[Tuple[str, Optional[int]]] = []
     cursor = 0
     for item in pages:
         if not isinstance(item, dict):
@@ -961,11 +956,32 @@ def source_from_parse_result(parse_result: Dict[str, Any]) -> ParsedDocumentSour
         start = cursor
         page_parts.append(text)
         cursor += len(text)
-        try:
-            page_number = int(item.get("page"))
-        except (TypeError, ValueError):
-            page_number = len(page_spans) + 1
-        page_spans.append((start, cursor, page_number))
+        page_number = positive_page(item.get("page_number")) or positive_page(item.get("page"))
+        page_texts.append((text, page_number))
+        if page_number is not None:
+            page_spans.append((start, cursor, page_number))
+
+    # Keep rich Markdown (tables, headings and links). Attach physical page
+    # anchors only when the parser's page text matches it exactly and in order;
+    # an incompatible alternative representation cannot justify guessed pages.
+    for origin in ("markdown", "content"):
+        rich_text = _normalize_newlines(parse_result.get(origin))
+        if not rich_text.strip():
+            continue
+        aligned: List[Tuple[int, int, int]] = []
+        cursor = 0
+        for page_text, page_number in page_texts:
+            needle = page_text.strip()
+            start = rich_text.find(needle, cursor)
+            if start < 0 or rich_text.find(needle) != start or rich_text.find(needle, start + 1) != -1:
+                aligned = []
+                break
+            end = start + len(needle)
+            if page_number is not None:
+                aligned.append((start, end, page_number))
+            cursor = end
+        return ParsedDocumentSource(text=rich_text, origin=origin, page_spans=tuple(aligned))
+
     if page_parts:
         return ParsedDocumentSource(
             text="".join(page_parts), origin="pages", page_spans=tuple(page_spans)
@@ -980,6 +996,55 @@ def source_from_parse_result(parse_result: Dict[str, Any]) -> ParsedDocumentSour
     if paragraph_texts:
         return ParsedDocumentSource(text="\n\n".join(paragraph_texts), origin="paragraphs")
     return ParsedDocumentSource(text="", origin="empty")
+
+
+def _page_aligned_chunks(result: ChunkingResult, source: ParsedDocumentSource) -> List[DocumentChunk]:
+    """Intersect semantic chunks with observed physical spans, preserving bytes.
+
+    Whitespace between pages stays with a neighbour. Unmapped rich content stays
+    as its own unlocated fragment. Embeddings retain semantic headings/title but
+    must be rebuilt from each fragment, never the parent chunk's other pages.
+    """
+    if not source.page_spans:
+        return result.chunks
+    boundaries = sorted({position for start, end, _ in source.page_spans for position in (start, end)})
+    units = {unit.id: unit for unit in result.units}
+    chunks: List[DocumentChunk] = []
+    first_fragments: Dict[str, DocumentChunk] = {}
+    for original in result.chunks:
+        cuts = [original.start, *boundaries[bisect_right(boundaries, original.start):bisect_left(boundaries, original.end)], original.end]
+        ranges: List[Tuple[int, int]] = []
+        leading = original.start
+        for start, end in zip(cuts, cuts[1:]):
+            if not source.text[start:end].strip():
+                if ranges:
+                    ranges[-1] = (ranges[-1][0], end)
+                continue
+            ranges.append((start if ranges else leading, end))
+        if not ranges:
+            ranges = [(original.start, original.end)]
+        for start, end in ranges:
+            chunk = replace(
+                original, id=f"chunk_{len(chunks) + 1:04d}", start=start, end=end,
+                text=source.text[start:end],
+                unit_ids=[uid for uid in original.unit_ids if units[uid].start < end and units[uid].end > start],
+                forced_split=original.forced_split or len(ranges) > 1,
+                relations=[],
+            )
+            chunk.embedding_text = _build_embedding_text(chunk)
+            chunks.append(chunk)
+            first_fragments.setdefault(original.id, chunk)
+    # Relationships describe the original semantic group. Keep each once and
+    # update its local target after page subdivision renumbers the chunks.
+    for original in result.chunks:
+        for relation in original.relations:
+            target = first_fragments.get(relation["target_chunk_local_id"])
+            first = first_fragments[original.id]
+            if target is not None and target.id != first.id:
+                first.relations.append({**relation, "target_chunk_local_id": target.id})
+    if "".join(chunk.text for chunk in chunks) != source.text:
+        raise PlanningError("page-aligned chunks are not lossless")
+    return chunks
 
 
 class AgenticDocumentChunker:
@@ -1032,7 +1097,8 @@ class AgenticDocumentChunker:
         parser = metadata_root.get("parser")
         file_type = str(parse_result.get("file_type") or "unknown")
         chunks: List[Dict[str, Any]] = []
-        for chunk in result.chunks:
+        materialized = _page_aligned_chunks(result, source) if file_type.lower() == "pdf" else result.chunks
+        for chunk in materialized:
             if not chunk.text.strip():
                 continue
             chunk_metadata: Dict[str, Any] = {
@@ -1048,6 +1114,7 @@ class AgenticDocumentChunker:
                     "source_end": chunk.end,
                     "source_unit_ids": chunk.unit_ids,
                     "forced_split": chunk.forced_split,
+                    "page_aligned": file_type.lower() == "pdf" and bool(source.page_spans),
                     "repaired_ranges": result.repaired_ranges,
                     "fallback_windows": result.fallback_windows,
                     "planning_calls": result.planning_calls,
@@ -1067,6 +1134,7 @@ class AgenticDocumentChunker:
             pages = source.pages_for_range(chunk.start, chunk.end)
             if pages:
                 chunk_metadata["page"] = pages[0]
+                chunk_metadata["page_number"] = pages[0]
                 if len(pages) > 1:
                     chunk_metadata["page_end"] = pages[-1]
             chunks.append(
