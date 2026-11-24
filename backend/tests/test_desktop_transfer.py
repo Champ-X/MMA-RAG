@@ -85,6 +85,7 @@ def test_backup_restore_keeps_ids_bytes_and_wal_but_excludes_credentials(workspa
     result = archive.restore(tmp_path / "backup.zip", restored)
     assert result["workspace_id"] == json.loads((root / "workspace.json").read_text())["id"]
     assert result["objects"] == 1 and result["credentials_required"] is True
+    assert Path(result["client_history_path"]).suffix == ".tessmora-chat"
     assert Path(result["client_history_path"]).read_bytes() == history.read_bytes()
     with sqlite3.connect(restored / "state" / "jobs.sqlite3") as db:
         assert db.execute("SELECT id FROM jobs").fetchone()[0] == "durable-job"

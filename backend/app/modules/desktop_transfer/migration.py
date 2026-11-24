@@ -296,7 +296,7 @@ def migrate_from_clients(source_data: Path, destination: Path, source_objects, s
             if client_history.is_symlink() or not client_history.is_file():
                 raise TransferError("Client history export must be an ordinary file")
             (staging / "client").mkdir()
-            shutil.copyfile(client_history, staging / "client" / "history-export")
+            shutil.copyfile(client_history, staging / "client" / "history.tessmora-chat")
         (staging / "workspace.json").write_bytes(json_bytes({"format": 1, "id": workspace_id,
                                                             "qdrant_version": vector_result["qdrant_version"]}))
         counts = validate_objects(staging)

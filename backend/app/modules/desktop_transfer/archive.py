@@ -411,8 +411,15 @@ def restore(archive_path: Path, destination: Path) -> dict:
                             raise TransferError(f"Restored database is damaged: {database.name}")
                     finally:
                         db.close()
+        if manifest["client_history_included"]:
+            client = staging / "client"
+            exported = client / "history-export"
+            named = client / "history.tessmora-chat"
+            if not exported.is_file() or named.exists():
+                raise TransferError("Client history entry is missing or conflicts with its destination")
+            exported.rename(named)
         counts = validate_objects(staging)
         rewrite_owned_paths(staging, [], destination)
     return {"workspace": str(destination), "workspace_id": manifest["workspace_id"], **counts,
             "credentials_required": True, "client_history_included": manifest["client_history_included"],
-            "client_history_path": str(destination / "client" / "history-export") if manifest["client_history_included"] else None}
+            "client_history_path": str(destination / "client" / "history.tessmora-chat") if manifest["client_history_included"] else None}

@@ -60,7 +60,7 @@ python -m app.modules.desktop_transfer backup \
 ```
 
 The export is stored unchanged at `client/history-export` with its own archive
-checksum. Restore returns `client_history_path` for the client importer. Without
+checksum. Restore returns `client_history_path`, a `client/history.tessmora-chat` file selectable in the settings importer. Without
 that input, the receipt explicitly reports `client_history_included: false`;
 server-side Pi history is still included. The client bundle contains session
 snapshots and chunk-verified raw attachment bytes; it does not replace the
