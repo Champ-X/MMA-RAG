@@ -2,7 +2,7 @@ import { translate as t } from '@/i18n'
 import type { UploadFailureFields } from '@/types/upload'
 
 type Failure = UploadFailureFields & { id?: string; file_id?: string; error?: string; message?: string }
-export const uploadFailureKeys = ['error_code', 'retry_supported', 'retryable', 'failed_stage', 'storage_persisted', 'recovery_hint',
+export const uploadFailureKeys = ['error_code', 'retry_supported', 'retryable', 'failed_stage', 'storage_persisted', 'source_staged', 'recovery_hint',
   'provider_code', 'provider_request_id', 'model_used', 'failed_segment_start', 'failed_segment_end'] as const
 
 export function uploadFailureFields(value: UploadFailureFields): UploadFailureFields {
@@ -18,8 +18,10 @@ export function readableUploadError(value: string | undefined, fallback: string)
 }
 
 export function uploadFailureCopy(failure: Failure) {
-  const stored = isUploadSourceUnavailable(failure) ? false : failure.storage_persisted
+  const stored = failure.source_staged || (isUploadSourceUnavailable(failure) ? false : failure.storage_persisted)
   const reasons: Record<string, string> = {
+    cancelled: '已取消',
+    provider_interrupted: '提供商请求的完成情况未知，请核对账单后重试。',
     content_policy: '模型服务的内容审核未通过。',
     video_model_error: '视频解析服务未能完成处理。',
     video_invalid_json: '视频解析服务返回的结果不完整。',
@@ -55,7 +57,7 @@ export function isUploadSourceUnavailable(file: { id?: string; file_id?: string;
 }
 
 export function canRetryStoredUpload(failure: Failure): boolean {
-  return !isUploadSourceUnavailable(failure) && failure.storage_persisted === true && failure.retryable === true
+  return (failure.source_staged === true || (!isUploadSourceUnavailable(failure) && failure.storage_persisted === true)) && failure.retryable === true
     && failure.retry_supported !== false && failure.error_code !== 'content_policy'
 }
 
@@ -66,6 +68,6 @@ export function canRetryDocumentUpload(failure: Failure): boolean {
 
 /** The existing preview action remains available for legacy, unclassified tasks. */
 export function canRetryVideoFromPreview(failure: Failure): boolean {
-  return !isUploadSourceUnavailable(failure) && failure.retryable !== false
+  return (failure.source_staged === true || !isUploadSourceUnavailable(failure)) && failure.retryable !== false
     && failure.retry_supported !== false && failure.error_code !== 'content_policy'
 }

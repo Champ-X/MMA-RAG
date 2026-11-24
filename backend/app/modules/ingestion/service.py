@@ -1393,15 +1393,21 @@ class IngestionService:
                 generated_file_id = str(result.get("file_id") or "")
                 generated_file_name = str(file_path or "")
                 if generated_file_id:
-                    asyncio.create_task(
-                        generate_questions_for_file_and_store(
-                            actual_kb_id,
-                            generated_file_id,
-                            file_name=generated_file_name,
-                            max_questions=6,
-                            use_llm=True,
+                    # The optional follow-up task is not part of the completed ingestion lease.
+                    from .desktop_jobs import active_job
+                    previous_job = active_job.set(None)
+                    try:
+                        asyncio.create_task(
+                            generate_questions_for_file_and_store(
+                                actual_kb_id,
+                                generated_file_id,
+                                file_name=generated_file_name,
+                                max_questions=6,
+                                use_llm=True,
+                            )
                         )
-                    )
+                    finally:
+                        active_job.reset(previous_job)
             except Exception as e:
                 logger.warning("推荐问题入池触发失败 kb_id=%s: %s", actual_kb_id, e)
             

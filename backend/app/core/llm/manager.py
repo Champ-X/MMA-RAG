@@ -361,20 +361,29 @@ class LLMManager:
         if attempt_timeout is not None:
             attempt_deadline = started + attempt_timeout
             deadline = min(deadline, attempt_deadline) if deadline is not None else attempt_deadline
+        from app.modules.ingestion.desktop_jobs import ProviderOutcomeUnknown, active_job
         try:
-            if deadline is not None:
-                remaining = deadline - started
-                if remaining <= 0:
-                    return LLMCallResult(False, error="Model request total time budget exhausted",
-                                         model_used=model, error_category="budget", retryable=True)
-                data = await asyncio.wait_for(getattr(provider, method)(**params), timeout=remaining)
+            if deadline is not None and deadline <= started:
+                return LLMCallResult(False, error="Model request total time budget exhausted",
+                                     model_used=model, error_category="budget", retryable=True)
+
+            async def invoke():
+                if deadline is None:
+                    return await getattr(provider, method)(**params)
+                return await asyncio.wait_for(getattr(provider, method)(**params), timeout=max(0, deadline - time.monotonic()))
+
+            if active_job.get() is not None:
+                from app.modules.ingestion.provider_receipts import recorded_provider_call
+                data = await recorded_provider_call([provider_name,model,method], params, invoke)
             else:
-                data = await getattr(provider, method)(**params)
+                data = await invoke()
             if method == "chat_completion" and (not isinstance(data, dict) or not data.get("choices")):
                 raise ValueError("Provider returned no chat choices")
             duration = time.monotonic() - started
             self._health().record(provider_name, raw, method, duration=duration)
             return LLMCallResult(True, data=data, duration=duration, model_used=model)
+        except ProviderOutcomeUnknown:
+            raise
         except Exception as exc:
             duration = time.monotonic() - started
             evidence = self._health().record(provider_name, raw, method, duration=duration, error=exc)

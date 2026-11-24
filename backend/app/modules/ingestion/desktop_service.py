@@ -55,6 +55,10 @@ class DesktopIngestionService(IngestionService):
     @staticmethod
     def _public_status(status):
         result = retry_capabilities(status)
+        # Existing Web consumers group cancelled work with other terminal failures.
+        # The ledger and cancellation response retain the distinct cancelled state.
+        if status.get("status") == "cancelled":
+            result.update(status="failed", stage="cancelled", error_code="cancelled")
         if status.get("status") in {"failed", "cancelled"} and status.get(
             "retry_supported"
         ):
@@ -137,8 +141,8 @@ class DesktopIngestionService(IngestionService):
         )
         return await self.queue.wait(result["processing_id"])
 
-    def retry_file_processing(self, processing_id):
-        return self.queue.retry(processing_id)
+    def retry_file_processing(self, processing_id, *, confirm_provider_retry=False):
+        return self.queue.retry(processing_id, confirm_provider_retry=confirm_provider_retry)
 
     def _file_rows(self, conn, file_id, kb_id):
         rows = conn.execute(

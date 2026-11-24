@@ -526,6 +526,10 @@ async def regenerate_knowledge_base_portrait(
 
         # sync=True 时强制在 API 进程内同步执行，确保使用当前代码（含视频 Scene–Shot 统计）
         if not sync:
+            from app.modules.ingestion.desktop_jobs import desktop_profile, jobs
+            if desktop_profile():
+                await asyncio.to_thread(jobs().add_portrait_delta, effective_kb_id, force=True)
+                return {"status": "triggered", "message": "画像已加入本地队列。"}
             try:
                 from app.modules.knowledge.portraits import build_kb_portrait_task
                 build_kb_portrait_task.delay(effective_kb_id, True)

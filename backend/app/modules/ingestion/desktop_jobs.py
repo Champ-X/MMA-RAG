@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import hashlib
 import io
 import json
@@ -41,6 +42,11 @@ def encoded(value) -> str:
 
 class JobConflict(ValueError):
     pass
+
+
+class ProviderOutcomeUnknown(RuntimeError):
+    def __init__(self):
+        super().__init__("提供商请求的完成情况未知。请核对提供商账单，并确认可能再次计费后重试。")
 
 
 class JobCancelled(Exception):
@@ -94,12 +100,15 @@ class DesktopJobs:
                     file_id TEXT NOT NULL, kb TEXT NOT NULL, token TEXT NOT NULL, done INTEGER NOT NULL,
                     PRIMARY KEY(file_id,kb)
                 );
-                CREATE TABLE IF NOT EXISTS calls (
-                    task TEXT NOT NULL, call_id TEXT NOT NULL, PRIMARY KEY(task,call_id)
+                CREATE TABLE IF NOT EXISTS provider_calls (
+                    task TEXT NOT NULL, call_id TEXT NOT NULL, state TEXT NOT NULL, result BLOB, PRIMARY KEY(task,call_id)
                 );
                 CREATE TABLE IF NOT EXISTS portrait (
                     kb TEXT PRIMARY KEY, dirty INTEGER NOT NULL DEFAULT 0,
                     urgent INTEGER NOT NULL DEFAULT 0, retry_after REAL NOT NULL DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS portrait_claim (
+                    kb TEXT PRIMARY KEY, token TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS portrait_receipts (
                     operation TEXT PRIMARY KEY
@@ -168,6 +177,7 @@ class DesktopJobs:
         source_metadata=None,
         user_id=None,
         asset_map=None,
+        logical_path=None,
     ):
         """An explicit operation UUID identifies a request, independently of its content hash."""
         job_id = str(uuid.UUID(processing_id)) if processing_id else str(uuid.uuid4())
@@ -195,6 +205,8 @@ class DesktopJobs:
                 source_metadata=source_metadata,
                 assets=assets,
             )
+            if logical_path and logical_path != filename:
+                options["logical_path"] = logical_path
             identity = hashlib.sha256(
                 encoded([kb, file_id, digest, options]).encode()
             ).hexdigest()
@@ -220,6 +232,8 @@ class DesktopJobs:
                         file_id=file_id,
                         file_path=filename,
                         file_size=size,
+                        source_staged=True,
+                        storage_persisted=False,
                         source_kb_id=kb,
                         kb_id=kb,
                         submitted_at=stamp,
@@ -291,6 +305,10 @@ class DesktopJobs:
                     or row["state"] != "running"
                 ):
                     raise WorkerOwnershipLost("任务执行权已变更")
+                if status.get("status") == "completed" and self._unconfirmed(
+                    conn, task
+                ):
+                    raise ProviderOutcomeUnknown()
                 if row["cancelled"]:
                     raise JobCancelled("用户已取消入库")
                 status = {**current, **status, "file_id": row["file_id"]}
@@ -313,18 +331,115 @@ class DesktopJobs:
             "UPDATE jobs SET state=?,owner=NULL,cancelled=0 WHERE id=?", (state, task)
         )
 
+    @staticmethod
+    def _check_owner(conn, owner):
+        row = conn.execute(
+            "SELECT cancelled FROM jobs WHERE id=? AND owner=? AND state='running'",
+            owner,
+        ).fetchone()
+        if not row:
+            raise WorkerOwnershipLost("任务执行权已变更")
+        if row[0]:
+            raise JobCancelled("用户已取消入库")
+
+    def begin_call(self, owner, key):
+        from .document_checkpoints import _decode
+
+        with self.connection(write=True) as conn:
+            self._check_owner(conn, owner)
+            if conn.execute(
+                "SELECT 1 FROM provider_calls WHERE task=? AND state='unknown'",
+                (owner[0],),
+            ).fetchone():
+                raise ProviderOutcomeUnknown()
+            row = conn.execute(
+                "SELECT state,result FROM provider_calls WHERE task=? AND call_id=?",
+                (owner[0], key),
+            ).fetchone()
+            if row:
+                if row["state"] == "confirmed":
+                    return True, json.loads(
+                        gzip.decompress(row["result"]), object_hook=_decode
+                    )
+                raise ProviderOutcomeUnknown()
+            conn.execute(
+                "INSERT INTO provider_calls(task,call_id,state) VALUES(?,?,'inflight')",
+                (owner[0], key),
+            )
+            return False, None
+
+    def complete_call(self, owner, key, result):
+        from .document_checkpoints import _encode
+
+        packed = gzip.compress(
+            json.dumps(
+                result, default=_encode, ensure_ascii=False, separators=(",", ":")
+            ).encode()
+        )
+        with self.connection(write=True) as conn:
+            # A cancellation received during provider execution must still retain its confirmed result.
+            row = conn.execute(
+                "SELECT 1 FROM jobs WHERE id=? AND owner=?", owner
+            ).fetchone()
+            if not row:
+                raise WorkerOwnershipLost("任务执行权已变更")
+            conn.execute(
+                "UPDATE provider_calls SET state='confirmed',result=? WHERE task=? AND call_id=?",
+                (packed, owner[0], key),
+            )
+
+    def fail_call(self, owner, key, rejected):
+        with self.connection(write=True) as conn:
+            if not conn.execute(
+                "SELECT 1 FROM jobs WHERE id=? AND owner=?", owner
+            ).fetchone():
+                raise WorkerOwnershipLost("任务执行权已变更")
+            if rejected:
+                conn.execute(
+                    "DELETE FROM provider_calls WHERE task=? AND call_id=?",
+                    (owner[0], key),
+                )
+            else:
+                conn.execute(
+                    "UPDATE provider_calls SET state='unknown' WHERE task=? AND call_id=?",
+                    (owner[0], key),
+                )
+
+    def _unconfirmed(self, conn, task):
+        return bool(
+            conn.execute(
+                "SELECT 1 FROM provider_calls WHERE task=? AND state!='confirmed' LIMIT 1",
+                (task,),
+            ).fetchone()
+        )
+
+    def _uncertain_failure(self, conn, task):
+        reason = str(ProviderOutcomeUnknown())
+        self._transition(
+            conn,
+            task,
+            "failed",
+            error=reason,
+            message=reason,
+            error_code="provider_interrupted",
+            retry_supported=True,
+            retryable=True,
+        )
+
     def recover(self):
         """Call only under the OS worker lock, after the previous owner has exited."""
         with self.connection(write=True) as conn:
+            conn.execute("DELETE FROM portrait_claim")
             for row in conn.execute(
                 "SELECT * FROM jobs WHERE state='running'"
             ).fetchall():
                 task = row["id"]
                 status = self._status(conn, task)
-                unknown = conn.execute(
-                    "SELECT 1 FROM calls WHERE task=?", (task,)
-                ).fetchone()
-                if status["status"] == "completed" and status.get("result") is not None:
+                if self._unconfirmed(conn, task):
+                    self._uncertain_failure(conn, task)
+                elif (
+                    status["status"] == "completed" and status.get("result") is not None
+                ):
                     self._transition(conn, task, "completed")
                 elif row["cancelled"]:
                     self._transition(
@@ -337,8 +452,8 @@ class DesktopJobs:
                     )
                 elif status["status"] == "failed":
                     self._transition(conn, task, "failed")
-                elif unknown or row["attempts"] >= 3:
-                    reason = "提供商请求的完成情况未知，请确认后再试" if unknown else "连续恢复中断，请检查诊断后重试"
+                elif row["attempts"] >= 3:
+                    reason = "连续恢复中断，请检查诊断后重试"
                     self._transition(
                         conn,
                         task,
@@ -346,9 +461,7 @@ class DesktopJobs:
                         error=reason,
                         message=reason,
                         retry_supported=True,
-                        error_code="provider_interrupted"
-                        if unknown
-                        else "recovery_limit",
+                        error_code="recovery_limit",
                         retryable=True,
                     )
                 else:
@@ -378,6 +491,63 @@ class DesktopJobs:
                         continue
                     Path(lock_path).unlink(missing_ok=True)
 
+    def add_portrait_delta(self, kb, delta=0, *, force=False):
+        owner = active_job.get()
+        with self.connection(write=True) as conn:
+            add = True
+            if owner:
+                self._check_owner(conn, owner)
+                add = (
+                    conn.execute(
+                        "INSERT OR IGNORE INTO portrait_receipts(operation) VALUES(?)",
+                        (encoded([owner[0], kb]),),
+                    ).rowcount
+                    == 1
+                )
+            if add:
+                conn.execute(
+                    "INSERT INTO portrait(kb,dirty,urgent) VALUES(?,?,?) "
+                    "ON CONFLICT(kb) DO UPDATE SET dirty=dirty+excluded.dirty,urgent=urgent+excluded.urgent",
+                    (kb, delta, int(force)),
+                )
+            row = conn.execute(
+                "SELECT dirty FROM portrait WHERE kb=?", (kb,)
+            ).fetchone()
+            return row[0] if row else 0
+
+    def next_portrait(self):
+        from app.core.config import settings
+
+        with self.connection(write=True) as conn:
+            row = conn.execute(
+                "SELECT * FROM portrait WHERE retry_after<=? AND (urgent>0 OR dirty>=?) "
+                "AND kb NOT IN (SELECT kb FROM portrait_claim) ORDER BY retry_after,kb LIMIT 1",
+                (time.time(), max(1, settings.portrait_update_threshold)),
+            ).fetchone()
+            if row is None:
+                return None
+            token = uuid.uuid4().hex
+            conn.execute("INSERT INTO portrait_claim VALUES(?,?)", (row["kb"], token))
+            return {**dict(row), "token": token}
+
+    def finish_portrait(self, snapshot, success):
+        with self.connection(write=True) as conn:
+            if not conn.execute(
+                "DELETE FROM portrait_claim WHERE kb=? AND token=?",
+                (snapshot["kb"], snapshot["token"]),
+            ).rowcount:
+                return
+            if success:
+                conn.execute(
+                    "UPDATE portrait SET dirty=MAX(0,dirty-?),urgent=MAX(0,urgent-?),retry_after=0 WHERE kb=?",
+                    (snapshot["dirty"], snapshot["urgent"], snapshot["kb"]),
+                )
+            else:
+                conn.execute(
+                    "UPDATE portrait SET retry_after=? WHERE kb=?",
+                    (time.time() + 60, snapshot["kb"]),
+                )
+
     def claim(self):
         with self.connection(write=True) as conn:
             row = conn.execute(
@@ -401,7 +571,11 @@ class DesktopJobs:
             if not row:
                 raise WorkerOwnershipLost("任务执行权已变更")
             status = self._status(conn, task)
-            if status.get("status") == "completed" and status.get("result") is not None:
+            if self._unconfirmed(conn, task):
+                self._uncertain_failure(conn, task)
+            elif (
+                status.get("status") == "completed" and status.get("result") is not None
+            ):
                 self._transition(conn, task, "completed")
             elif row["cancelled"]:
                 self._transition(
@@ -425,7 +599,7 @@ class DesktopJobs:
             else:
                 raise RuntimeError("入库未返回持久完成回执")
 
-    def retry(self, task):
+    def retry(self, task, *, confirm_provider_retry=False):
         with self.connection(write=True) as conn:
             row = conn.execute("SELECT * FROM jobs WHERE id=?", (task,)).fetchone()
             if not row:
@@ -443,7 +617,13 @@ class DesktopJobs:
                 raise JobConflict("文件已进入删除流程")
             if not (self.spool / row["digest"]).is_file():
                 raise JobConflict("已接收的原件缺失，请从备份恢复")
-            conn.execute("DELETE FROM calls WHERE task=?", (task,))
+            if self._unconfirmed(conn, task):
+                if not confirm_provider_retry:
+                    raise JobConflict(str(ProviderOutcomeUnknown()))
+                conn.execute(
+                    "DELETE FROM provider_calls WHERE task=? AND state!='confirmed'",
+                    (task,),
+                )
             conn.execute("UPDATE jobs SET attempts=0 WHERE id=?", (task,))
             self._transition(
                 conn,

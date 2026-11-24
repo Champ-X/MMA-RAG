@@ -16,6 +16,7 @@ import subprocess
 from pathlib import Path
 from urllib.parse import unquote
 
+from app.modules.ingestion.desktop_jobs import ProviderOutcomeUnknown
 from app.core.logger import get_logger
 from datetime import datetime
 
@@ -74,11 +75,8 @@ async def _fetch_image_from_url(url: str, timeout: int, max_size: int) -> Option
 
 def _resolve_relative_path(file_path: str, ref_path: str) -> str:
     """将相对 ref_path 相对 file_path 所在目录解析为规范路径（与 asset_map 的 key 一致）。"""
-    base = Path(file_path).parent
-    # 去掉 ref 中的 leading ./
-    ref = ref_path.strip().lstrip("./")
-    resolved = (base / ref).as_posix()
-    return resolved
+    import posixpath
+    return posixpath.normpath(posixpath.join(posixpath.dirname(file_path.replace("\\", "/")), ref_path.strip()))
 
 
 def _strip_quotes(s: str) -> str:
@@ -515,6 +513,15 @@ class DocumentParser(ABC):
         """支持的文件类型"""
         pass
 
+async def _parse_cloud_document(parser, content, filename, token):
+    from app.modules.ingestion.provider_receipts import recorded_provider_call
+
+    async def invoke():
+        return await asyncio.to_thread(parser, content, filename, token)
+
+    return await recorded_provider_call(["mineru", parser.__name__], [filename, content], invoke, require_result=True)
+
+
 class PDFParser(DocumentParser):
     """PDF文档解析器"""
     
@@ -533,14 +540,12 @@ class PDFParser(DocumentParser):
         if token and getattr(settings, "mineru_pdf_enabled", True):
             try:
                 from .mineru_client import parse_pdf_via_api
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: parse_pdf_via_api(file_content, file_path, token),
-                )
+                result = await _parse_cloud_document(parse_pdf_via_api, file_content, file_path, token)
                 if result is not None:
                     logger.info("使用 MinerU API 解析 PDF")
                     return result
+            except ProviderOutcomeUnknown:
+                raise
             except Exception as e:
                 logger.warning("MinerU API 解析失败，尝试本地模型: {}", e)
 
@@ -730,14 +735,12 @@ class DocxParser(DocumentParser):
         if token and getattr(settings, "mineru_pdf_enabled", True):
             try:
                 from .mineru_client import parse_docx_via_api
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: parse_docx_via_api(file_content, file_path, token),
-                )
+                result = await _parse_cloud_document(parse_docx_via_api, file_content, file_path, token)
                 if result is not None:
                     logger.info("使用 MinerU API 解析 Word(docx)")
                     return result
+            except ProviderOutcomeUnknown:
+                raise
             except Exception as e:
                 logger.warning("MinerU API 解析 docx 失败，尝试本地 MinerU: {}", e)
 
@@ -812,14 +815,12 @@ class PptxParser(DocumentParser):
         if token and getattr(settings, "mineru_pdf_enabled", True):
             try:
                 from .mineru_client import parse_pptx_via_api
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: parse_pptx_via_api(file_content, file_path, token),
-                )
+                result = await _parse_cloud_document(parse_pptx_via_api, file_content, file_path, token)
                 if result is not None:
                     logger.info("使用 MinerU API 解析 PPTX")
                     return result
+            except ProviderOutcomeUnknown:
+                raise
             except Exception as e:
                 logger.warning("MinerU API 解析 pptx 失败，尝试本地 MinerU: {}", e)
 

@@ -61,14 +61,18 @@ def _request_ids(raw, count):
         raise HTTPException(400, "每个文件需要一个独立的 UUID 请求标识") from exc
 
 
-async def _stage_upload(file, filename, kb_id, source_type, request_id):
+async def _stage_upload(file, filename, kb_id, source_type, request_id, *, members=None, logical_path=None):
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext not in ALLOWED_FILE_TYPES:
         raise HTTPException(400, f"不支持的文件类型: {ext or '未知'}")
     try:
-        receipt = await asyncio.to_thread(
-            jobs().enqueue, file.file, filename, kb_id, processing_id=request_id, source_type=source_type
-        )
+        if members is None:
+            receipt = await asyncio.to_thread(
+                jobs().enqueue, file.file, filename, kb_id, processing_id=request_id, source_type=source_type)
+        else:
+            from app.modules.ingestion.desktop_folder import enqueue_member
+            receipt = await asyncio.to_thread(enqueue_member, members, logical_path, kb_id,
+                                             request_id=request_id, source_type=source_type)
     except JobConflict as exc:
         raise HTTPException(409, str(exc)) from exc
     except ValueError as exc:
@@ -202,6 +206,7 @@ async def start_upload_batch(
     files: List[UploadFile] = File(...),
     source_type: Optional[str] = Form(None),
     request_ids: Optional[str] = Form(None),
+    relative_paths: Optional[str] = Form(None),
 ):
     """一次接收全部文件并立即创建独立后台任务。
 
@@ -215,10 +220,26 @@ async def start_upload_batch(
 
     if desktop_profile():
         results = []
-        for file, request_id in zip(files, _request_ids(request_ids, len(files))):
+        members = None
+        paths = [None] * len(files)
+        if relative_paths is not None:
+            from app.modules.ingestion.desktop_folder import member_name
+            try:
+                raw = json.loads(relative_paths)
+                if not isinstance(raw, list) or len(raw) != len(files):
+                    raise ValueError
+                paths = [member_name(path) for path in raw]
+                if len(set(paths)) != len(paths):
+                    raise ValueError
+                if any(path.rsplit("/", 1)[-1] != (file.filename or "").replace("\\","/").rsplit("/", 1)[-1] for path, file in zip(paths, files)):
+                    raise ValueError
+                members = {path: file.file for path, file in zip(paths, files)}
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise HTTPException(400, "文件夹条目与上传文件不匹配") from exc
+        for file, request_id, logical_path in zip(files, _request_ids(request_ids, len(files)), paths):
             filename = file.filename or "uploaded_file"
             try:
-                results.append(await _stage_upload(file, filename, kb_id, source_type, request_id))
+                results.append(await _stage_upload(file, filename, kb_id, source_type, request_id, members=members, logical_path=logical_path))
             except (HTTPException, OSError) as exc:
                 message = exc.detail if isinstance(exc, HTTPException) else "无法写入工作区"
                 results.append({"filename": filename, "status": "failed", "error": message})
@@ -376,7 +397,7 @@ async def get_upload_progress_batch(body: UploadProgressBatchRequest):
               "updated_at", "file_id", "file_path", "file_size",
               "error_code", "retryable", "provider_code", "provider_request_id",
               "model_used", "recovery_hint", "storage_persisted",
-              "retry_supported", "failed_stage", "embedding_completed", "embedding_total", "embedding_retries",
+              "retry_supported", "source_staged", "failed_stage", "embedding_completed", "embedding_total", "embedding_retries",
               "failed_segment_start", "failed_segment_end"}
     return {"statuses": [{key: value for key, value in status.items() if key in fields}
                          for status in statuses]}
@@ -392,9 +413,11 @@ async def get_upload_progress(task_id: str):
 
 
 @router.post("/retry/{task_id}", status_code=202)
-async def retry_upload_video(task_id: str):
+async def retry_upload_video(task_id: str, confirm_provider_retry: bool = False):
     """从已保存的文档检查点或原视频恢复处理，保留原 file_id。"""
     try:
+        if desktop_profile():
+            return await asyncio.to_thread(jobs().retry, task_id, confirm_provider_retry=confirm_provider_retry)
         return _ingestion().retry_file_processing(task_id)
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error

@@ -1746,7 +1746,7 @@ function ImportFolderModal({
         if (!matchesExtension(name, extensions)) continue
         try {
           const file = await entry.getFile()
-          const fileWithPath = new File([file], relPath, { type: file.type })
+          const fileWithPath = new File([file], relPath, { type: file.type, lastModified: file.lastModified })
           collected.push(fileWithPath)
         } catch (_) {}
         continue
@@ -3102,6 +3102,8 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     if (!(video ? canRetryVideoFromPreview(failure) : canRetryDocumentUpload(failure))) {
       throw new Error(uploadFailureCopy(failure).recovery)
     }
+    const confirmProviderRetry = failure.error_code === 'provider_interrupted'
+    if (confirmProviderRetry && !window.confirm(t('提供商可能已处理并计费。确认重新提交这个请求吗？'))) return
     const retryKbId = activeKbId
     const previousBatch = uploadBatchesRef.current[retryKbId] ?? emptyUploadBatch()
     const beforeRetry = previousBatch.progress?.files?.find(item => item.id === processingId)
@@ -3113,7 +3115,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
     }))
     setRetryState({ pending: true })
     try {
-      const response = await (video ? knowledgeApi.retryVideoUpload(processingId) : knowledgeApi.retryUpload(processingId))
+      const response = await (video ? knowledgeApi.retryVideoUpload(processingId, confirmProviderRetry) : knowledgeApi.retryUpload(processingId, confirmProviderRetry))
       const taskId = response.processing_id || processingId
       const originalId = response.file_id || fileId
       if (isUploadRemoved(retryKbId, originalId, processingId) || isUploadRemoved(retryKbId, originalId, taskId)) {
@@ -3395,6 +3397,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
               uploadButtonRef={uploadButtonRef}
               onFileSelect={handleFileUpload}
               onRetryFile={handleRetryUploadFile}
+              onCancelFile={async file => { await knowledgeApi.cancelUpload(file.id) }}
               retryStates={activeKbId ? uploadRetryStates[activeKbId] : undefined}
               onDismissProgress={() => {
                 setUploadProgress(undefined)

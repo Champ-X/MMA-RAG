@@ -183,6 +183,11 @@ async def ingest_item(content: ContentSourceResult, kb_id: str, item_id: str,
 async def cancel_ingestion(kb_id: str, processing_id: str) -> dict:
     service = _service()
     record = await inspect_ingestion(kb_id, None, processing_id)
+    from app.modules.ingestion.desktop_jobs import desktop_profile, jobs
+    if desktop_profile():
+        if record.get('status') not in {'not_found', 'deleted'}:
+            await asyncio.to_thread(jobs().cancel, processing_id)
+        return await inspect_ingestion(kb_id, record.get('file_id'), processing_id)
     task = service._background_upload_tasks.get(processing_id)
     if task and not task.done():
         task.cancel()

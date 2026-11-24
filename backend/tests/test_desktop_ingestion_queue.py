@@ -155,3 +155,134 @@ def test_worker_child_is_exclusive_and_exits_on_host_eof(tmp_path):
         finally:
             if process.poll() is None:
                 process.kill()
+
+
+def test_paid_response_replays_after_crash_and_ambiguous_call_requires_consent(
+    tmp_path, monkeypatch
+):
+    from app.modules.ingestion.desktop_jobs import jobs, ProviderOutcomeUnknown
+    from app.modules.ingestion.provider_receipts import recorded_provider_call
+
+    monkeypatch.setenv("TESSMORA_RUNTIME_PROFILE", "desktop")
+    monkeypatch.setenv("TESSMORA_STATE_DIR", str(tmp_path))
+    q = jobs()
+    task = q.enqueue(io.BytesIO(b"pdf"), "a.pdf", "space")["processing_id"]
+    counter = []
+
+    async def answer():
+        counter.append(1)
+        return {"choices": [{"text": "confirmed"}], "asset": b"image"}
+
+    async def lost():
+        counter.append(2)
+        raise TimeoutError
+
+    first = q.claim()
+    token = active_job.set((task, first["owner"]))
+    try:
+        accepted = asyncio.run(
+            recorded_provider_call("model", {"prompt": "same"}, answer)
+        )
+    finally:
+        active_job.reset(token)
+    q.recover()
+    second = q.claim()
+    token = active_job.set((task, second["owner"]))
+    try:
+        assert accepted == asyncio.run(
+            recorded_provider_call("model", {"prompt": "same"}, answer)
+        )
+        with pytest.raises(ProviderOutcomeUnknown):
+            asyncio.run(recorded_provider_call("model", {"prompt": "other"}, lost))
+        with pytest.raises(ProviderOutcomeUnknown):
+            asyncio.run(
+                recorded_provider_call("fallback-model", {"prompt": "other"}, answer)
+            )
+    finally:
+        active_job.reset(token)
+    q.recover()
+    assert q.status(task)["error_code"] == "provider_interrupted"
+    with pytest.raises(JobConflict):
+        q.retry(task)
+    q.retry(task, confirm_provider_retry=True)
+    third = q.claim()
+    token = active_job.set((task, third["owner"]))
+    try:
+        assert accepted == asyncio.run(
+            recorded_provider_call("model", {"prompt": "same"}, answer)
+        )
+        assert accepted == asyncio.run(
+            recorded_provider_call("model", {"prompt": "other"}, answer)
+        )
+    finally:
+        active_job.reset(token)
+    assert counter == [1, 2, 1]
+
+
+def test_portrait_counts_survive_termination_concurrent_additions_and_redelivery(
+    tmp_path, monkeypatch
+):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "portrait_update_threshold", 3)
+    q = DesktopJobs(tmp_path)
+    task = q.enqueue(io.BytesIO(b"x"), "a.txt", "space")["processing_id"]
+    first = q.claim()
+    token = active_job.set((task, first["owner"]))
+    try:
+        assert q.add_portrait_delta("space", 3) == 3
+        assert q.add_portrait_delta("space", 3) == 3
+    finally:
+        active_job.reset(token)
+    claim = q.next_portrait()
+    assert claim["dirty"] == 3
+    assert q.add_portrait_delta("space", 2, force=True) == 5
+    q.recover()
+    assert q.next_portrait()["dirty"] == 5
+    q.finish_portrait(claim, True)  # stale claim after a process restart
+    q.recover()
+    renewed = q.next_portrait()
+    q.finish_portrait(renewed, False)
+    with q.connection(write=True) as conn:
+        assert conn.execute("SELECT dirty FROM portrait").fetchone()[0] == 5
+        conn.execute("UPDATE portrait SET retry_after=0")
+    renewed = q.next_portrait()
+    q.add_portrait_delta("space", 2, force=True)
+    q.finish_portrait(renewed, True)
+    q.finish_portrait(renewed, True)  # delayed duplicate ACK
+    next_work = DesktopJobs(tmp_path).next_portrait()
+    assert next_work["dirty"] == 2
+    assert next_work["urgent"] == 1
+    q.finish_portrait(next_work, True)
+    assert q.next_portrait() is None
+
+
+def test_directory_stages_sibling_images_and_stable_relative_ids(tmp_path, monkeypatch):
+    from app.modules.ingestion.desktop_folder import stage_directory
+    from app.modules.ingestion.desktop_jobs import jobs
+
+    monkeypatch.setenv("TESSMORA_RUNTIME_PROFILE", "desktop")
+    monkeypatch.setenv("TESSMORA_STATE_DIR", str(tmp_path / "state"))
+    root = tmp_path / "手册"
+    section = root / "part"
+    section.mkdir(parents=True)
+    (section / "notes.md").write_text("![graphic](../graphic.png)")
+    (root / "graphic.png").write_bytes(b"image")
+    with_external = root / "not-library"
+    try:
+        with_external.symlink_to(tmp_path)
+    except OSError:
+        pass
+    group = op()
+    entries = stage_directory(root, "kb", request_id=group)
+    assert len(entries) == 2
+    assert entries == stage_directory(root, "kb", request_id=group)
+    while job := jobs().claim():
+        if job["options"]["filename"] == "notes.md":
+            assert job["options"]["logical_path"] == "part/notes.md"
+            assert (
+                jobs().spool / job["options"]["assets"]["graphic.png"]
+            ).read_bytes() == b"image"
+            break
+    else:
+        pytest.fail("Markdown job not found")

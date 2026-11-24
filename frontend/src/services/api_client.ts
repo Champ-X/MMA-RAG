@@ -328,8 +328,8 @@ export type UploadRetryReceipt = UploadFailureFields & {
   message: string
   updated_at?: string
 }
-const retryStoredUpload = (taskId: string) =>
-  apiClient.post<UploadRetryReceipt>(`/upload/retry/${encodeURIComponent(taskId)}`)
+const retryStoredUpload = (taskId: string, confirmProviderRetry = false) =>
+  apiClient.post<UploadRetryReceipt>(`/upload/retry/${encodeURIComponent(taskId)}${confirmProviderRetry ? '?confirm_provider_retry=true' : ''}`)
 
 // 知识库相关API
 export const knowledgeApi = {
@@ -492,7 +492,9 @@ export const knowledgeApi = {
     options?: { sourceType?: string; onProgress?: (progress: number) => void }
   ) => {
     const workspace = desktopWorkspace()
-    const pending = workspace && prepareUploadReceipts(localStorage, workspace.workspaceId, kbId, files, options?.sourceType)
+    const paths = files.map(file => file.webkitRelativePath || file.name)
+    const folder = workspace?.mode === 'local' && paths.some(path => path.includes('/'))
+    const pending = workspace?.mode === 'local' ? prepareUploadReceipts(localStorage, workspace.workspaceId, kbId, files, options?.sourceType) : undefined
     return apiClient.uploadFiles<{
       kb_id: string
       total_files: number
@@ -513,6 +515,7 @@ export const knowledgeApi = {
       {
         kb_id: kbId,
         ...(pending ? { request_ids: JSON.stringify(pending.ids) } : {}),
+        ...(folder ? { relative_paths: JSON.stringify(paths) } : {}),
         ...(options?.sourceType ? { source_type: options.sourceType } : {}),
       }
     ).then(receipt => {
@@ -587,6 +590,7 @@ export const knowledgeApi = {
     }> }>('/upload/progress/batch', { processing_ids: taskIds }),
 
   /** 按服务端能力复用已保存原文件，不要求浏览器重新选择上传文件。 */
+  cancelUpload: (taskId: string) => apiClient.post(`/upload/cancel/${encodeURIComponent(taskId)}`),
   retryUpload: retryStoredUpload,
   retryVideoUpload: retryStoredUpload,
 };

@@ -1,4 +1,8 @@
 export const coreEnglish: Record<string, string> = {
+  "取消入库": "Cancel ingestion",
+  "取消请求未确认，请重试。": "Cancellation was not confirmed. Try again.",
+  "提供商可能已处理并计费。确认重新提交这个请求吗？": "The provider may already have processed and billed this request. Submit it again?",
+  "提供商请求的完成情况未知，请核对账单后重试。": "The provider outcome is unknown. Check your billing before retrying.",
   "试一份小文档": "Try a sample document",
   "导入一份回滚手册，用下面的问题试试回答，再点击引用查看原文。": "Import a rollback guide, try the question below, then open a citation to view its source.",
   "打开示例知识库": "Open the sample knowledge base",

@@ -5,6 +5,7 @@ import os
 import shutil
 import signal
 import sys
+import time
 import threading
 from pathlib import Path
 
@@ -24,6 +25,17 @@ async def execute_job(queue, job):
     task = job["id"]
     token = active_job.set((task, job["owner"]))
     local_path = None
+
+    async def heartbeat():
+        while True:
+            await asyncio.sleep(5)
+            with queue.connection(write=True) as conn:
+                conn.execute(
+                    "UPDATE jobs SET heartbeat=? WHERE id=? AND owner=?",
+                    (time.time(), task, job["owner"]),
+                )
+
+    pulse = asyncio.create_task(heartbeat())
     try:
         get_setup_service(recover_preparation=False).refresh_worker_config()
         service = get_ingestion_service()
@@ -63,7 +75,7 @@ async def execute_job(queue, job):
                 service,
                 file_content=b"" if local_path else source.read_bytes(),
                 source_path=local_path,
-                file_path=opts["filename"],
+                file_path=opts.get("logical_path", opts["filename"]),
                 kb_id=job["kb"],
                 processing_id=task,
                 asset_map=assets,
@@ -77,9 +89,31 @@ async def execute_job(queue, job):
         logger.error("Ingestion attempt failed (%s, %s)", task, type(error).__name__)
         queue.finish(job, error)
     finally:
+        pulse.cancel()
+        await asyncio.gather(pulse, return_exceptions=True)
         active_job.reset(token)
         if local_path is not None:
             local_path.unlink(missing_ok=True)
+
+
+async def execute_portrait(queue, snapshot):
+    from app.core.setup_service import get_setup_service
+    from app.modules.knowledge.portraits import PortraitGenerator
+
+    success = False
+    try:
+        get_setup_service(recover_preparation=False).refresh_worker_config()
+        result = await PortraitGenerator().update_kb_portrait(
+            snapshot["kb"], force_update=True
+        )
+        success = result.get("status") == "insufficient_data" or (
+            result.get("status") == "success"
+            and (result.get("storage_result") or {}).get("status") == "success"
+        )
+    except Exception as exc:
+        logger.error("Desktop portrait rebuild failed (%s)", type(exc).__name__)
+    finally:
+        queue.finish_portrait(snapshot, success)
 
 
 async def serve(queue, ready):
@@ -115,6 +149,13 @@ async def serve(queue, ready):
             job = queue.claim()
             if job:
                 await execute_job(queue, job)
+                queue.collect_spool()
+            if stop.is_set():
+                break
+            portrait = queue.next_portrait()
+            if portrait:
+                await execute_portrait(queue, portrait)
+            if job or portrait:
                 continue
             try:
                 await asyncio.wait_for(stop.wait(), timeout=0.4)

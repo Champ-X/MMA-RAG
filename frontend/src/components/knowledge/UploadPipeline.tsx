@@ -57,6 +57,7 @@ interface UploadPipelineProps {
   externalFiles?: File[] | null
   onDismissProgress?: () => void
   onRetryFile?: (file: UploadFileProgress) => Promise<void>
+  onCancelFile?: (file: UploadFileProgress) => Promise<void>
   retryStates?: Record<string, { pending?: boolean; error?: string }>
   className?: string
   /** Related creation/import actions shown below the local upload target. */
@@ -72,13 +73,28 @@ function fileKind(name: string) {
   return { Icon: FileText, kind: 'document' }
 }
 
-function UploadFileTile({ file, onRetry, retryState, retryDisabled }: {
+function UploadFileTile({ file, onRetry, onCancel, retryState, retryDisabled }: {
   file: UploadFileProgress
   onRetry?: (file: UploadFileProgress) => Promise<void>
+  onCancel?: (file: UploadFileProgress) => Promise<void>
   retryState?: { pending?: boolean; error?: string }
   retryDisabled?: boolean
 }) {
   useTranslation()
+  const [cancelError, setCancelError] = useState('')
+  const [cancelling, setCancelling] = useState(false)
+  async function cancel() {
+    if (!onCancel) return
+    setCancelling(true)
+    setCancelError('')
+    try {
+      await onCancel(file)
+    } catch {
+      setCancelError(t('取消请求未确认，请重试。'))
+    } finally {
+      setCancelling(false)
+    }
+  }
   const { Icon, kind } = fileKind(file.name)
   const complete = file.status === 'completed'
   const failed = file.status === 'failed'
@@ -96,6 +112,10 @@ function UploadFileTile({ file, onRetry, retryState, retryDisabled }: {
           {active && percent != null && <span className="upload-file__percent">{percent}%</span>}
         </div>
         {!complete && !failed && file.message && <p className="upload-file__message">{uploadProgressMessage(file.message)}</p>}
+        {onCancel && file.source_staged && (file.status === 'queued' || file.status === 'processing')
+          && <button type="button" className="upload-file__retry" disabled={cancelling || file.stage === 'cancelling'}
+            onClick={() => { void cancel() }}>{t('取消入库')}</button>}
+        {cancelError && <p className="upload-file__error" role="status">{cancelError}</p>}
         {failure ? <div className="upload-file__failure">
           <p className="upload-file__error">{failure.message}</p>
           <p className="upload-file__recovery">{failure.source} {failure.recovery}</p>
@@ -118,7 +138,7 @@ function UploadFileTile({ file, onRetry, retryState, retryDisabled }: {
 }
 
 export function UploadPipeline({ onFileSelect, uploadButtonRef, sourcesCollapsed = false, isUploading = false, uploadProgress: progress,
-  externalFiles, onDismissProgress, onRetryFile, retryStates, className, localActions, children }: UploadPipelineProps) {
+  externalFiles, onDismissProgress, onRetryFile, onCancelFile, retryStates, className, localActions, children }: UploadPipelineProps) {
   useTranslation()
   const input = useRef<HTMLInputElement>(null)
   const dragDepth = useRef(0)
@@ -197,7 +217,7 @@ export function UploadPipeline({ onFileSelect, uploadButtonRef, sourcesCollapsed
                 </button>
               </div>
               {visibleEntries.length > 0 ? <ul className="upload-batch__files" aria-label={t("本次上传文件状态")}>
-                {visibleEntries.map(file => <UploadFileTile key={file.id} file={file} onRetry={onRetryFile} retryState={retryStates?.[file.id]} retryDisabled={isUploading} />)}
+                {visibleEntries.map(file => <UploadFileTile key={file.id} file={file} onRetry={onRetryFile} onCancel={onCancelFile} retryState={retryStates?.[file.id]} retryDisabled={isUploading} />)}
               </ul> : <p className="upload-batch__empty" role="status">
                 {detailFilter === 'attention' && done && !progress.failed ? <><CheckCircle2 size={20} aria-hidden />{t('本批素材已全部就绪')}</> : t('当前没有这类文件')}
               </p>}

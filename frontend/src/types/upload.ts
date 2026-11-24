@@ -4,6 +4,7 @@ export interface UploadFailureFields {
   retry_supported?: boolean
   retryable?: boolean
   failed_stage?: string
+  source_staged?: boolean
   storage_persisted?: boolean
   recovery_hint?: string
   provider_code?: string

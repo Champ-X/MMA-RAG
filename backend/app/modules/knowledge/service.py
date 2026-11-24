@@ -44,6 +44,7 @@ _PUBLIC_UPLOAD_TASK_FIELDS = (
     "error_code",
     "retryable",
     "retry_supported",
+    "source_staged",
     "failed_stage",
     "embedding_completed",
     "embedding_total",
@@ -1731,7 +1732,8 @@ class KnowledgeBaseService:
                 file_id = str(task.get("file_id") or "")
                 if file_id and file_id in visible_ids:
                     continue
-                if file_id and str(task.get("status") or "") == "failed":
+                staged_only = task.get("source_staged") and not task.get("storage_persisted")
+                if file_id and str(task.get("status") or "") == "failed" and not staged_only:
                     # A completed MinIO scan is authoritative for stored files.
                     # Missing failed originals must not be recreated from stale
                     # task caches, even while Redis is temporarily unavailable.
@@ -1742,7 +1744,7 @@ class KnowledgeBaseService:
                 filename = str(task.get("file_path") or "正在上传的文件")
                 filename = filename.rsplit("/", 1)[-1] or "正在上传的文件"
                 ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "file"
-                placeholder_id = file_id or f"processing:{processing_id}"
+                placeholder_id = file_id if file_id and not staged_only else f"processing:{processing_id}"
                 if placeholder_id in visible_ids:
                     continue
                 placeholder = {

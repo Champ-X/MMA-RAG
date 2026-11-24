@@ -3,6 +3,7 @@ import type { UploadPipelineProgress } from './UploadPipeline'
 /** User-facing stages shared by every upload modality. Percentages come from the server. */
 export function uploadStageLabel(status: string, stage?: string): string {
   if (status === 'completed' || status === 'ready') return t("已就绪")
+  if (stage === 'cancelled') return t('已取消')
   if (status === 'failed') return t("处理失败")
   if (status === 'queued') return t("排队中")
   if (status === 'uploading') return t("上传中")

@@ -15,6 +15,7 @@ import redis
 import urllib.request
 import urllib.error
 import ssl
+from app.modules.ingestion.desktop_jobs import desktop_profile, jobs
 from app.core.config import settings
 from app.core.logger import get_logger
 
@@ -262,6 +263,8 @@ def increment_and_maybe_trigger(kb_id: str, delta: int) -> bool:
     """
     try:
         threshold = settings.portrait_update_threshold
+        if desktop_profile():
+            return jobs().add_portrait_delta(kb_id, delta) >= max(1, threshold)
         n = increment_portrait_delta(kb_id, delta)
         if n < threshold:
             return False
@@ -277,6 +280,9 @@ def trigger_portrait_rebuild(kb_id: str, reason: str = "data_changed") -> bool:
     优先投递 Celery；投递失败时才非阻塞地回退同步 API。
     返回是否成功触发。
     """
+    if desktop_profile():
+        jobs().add_portrait_delta(kb_id, force=True)
+        return True
     try:
         if _enqueue_portrait_task(kb_id, force_update=True):
             logger.info(f"画像重建已通过 Celery 触发 kb_id={kb_id} reason={reason}")

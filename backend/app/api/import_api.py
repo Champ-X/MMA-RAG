@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, HttpUrl
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.modules.ingestion.desktop_jobs import desktop_profile
 from app.modules.ingestion.service import get_ingestion_service
 from app.modules.ingestion.sources import UrlSource, MediaDownloaderSource, FolderSource
 from app.modules.ingestion.hot_topics_ingest import run_hot_topics_ingest
@@ -72,6 +73,7 @@ class ImportSearchBody(BaseModel):
 
 
 class ImportFolderBody(BaseModel):
+    request_id: Optional[uuid.UUID] = None
     folder_path: str = Field(..., min_length=1)
     kb_id: str = Field(..., min_length=1)
     recursive: bool = True
@@ -435,6 +437,14 @@ async def import_from_folder(body: ImportFolderBody):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    if desktop_profile():
+        from app.modules.ingestion.desktop_folder import stage_directory, directory_result
+        entries = await asyncio.to_thread(stage_directory, resolved_path, body.kb_id,
+                                          recursive=body.recursive, extensions=body.extensions,
+                                          exclude_patterns=body.exclude_patterns, max_files=body.max_files,
+                                          request_id=body.request_id)
+        return {"kb_id": body.kb_id, **await directory_result(entries)}
+
     try:
         folder_source = FolderSource()
         loop = asyncio.get_event_loop()
@@ -511,12 +521,36 @@ async def import_from_folder_stream(
     extensions: Optional[str] = None,
     exclude_patterns: Optional[str] = None,
     max_files: int = 500,
+    request_id: Optional[uuid.UUID] = None,
 ):
     """从指定本地文件夹导入知识库，通过 SSE 推送进度（scanning -> importing -> done）。"""
     try:
         resolved_path = _validate_folder_path_allowed(folder_path)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    if desktop_profile():
+        from app.modules.ingestion.desktop_folder import stage_directory, directory_result
+        async def desktop_events():
+            def event(body):
+                return f"data: {json.dumps(body)}\n\n"
+            yield event({"stage": "scanning", "message": "正在扫描文件夹…"})
+            entries = await asyncio.to_thread(
+                stage_directory, resolved_path, kb_id, recursive=recursive,
+                extensions=[item.strip() for item in extensions.split(",") if item.strip()] if extensions else None,
+                exclude_patterns=[item.strip() for item in exclude_patterns.split(",") if item.strip()] if exclude_patterns else None,
+                max_files=min(2000, max(1, max_files)), request_id=request_id,
+            )
+            yield event({"stage": "scan_complete", "total": len(entries)})
+            completed = 0
+            for i, entry in enumerate(entries, 1):
+                yield event({"stage": "importing", "current": i, "total": len(entries),
+                             "message": entry["filename"], "processing_id": entry.get("processing_id")})
+                completed += (await directory_result([entry]))["success_count"]
+            yield event({"stage": "done", "success_count": completed, "failed_count": len(entries)-completed,
+                         "total": len(entries), "message": "文件夹导入完成"})
+        return StreamingResponse(desktop_events(), media_type="text/event-stream",
+                                 headers={"Cache-Control":"no-cache", "X-Accel-Buffering":"no"})
 
     progress_queue: Queue = Queue()
     results_container: list = []
