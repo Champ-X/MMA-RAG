@@ -4,39 +4,26 @@
 
 Bilingual presentation assets for the project READMEs. Both videos are exact copies of the finalized V5 720p Lite exports, with no editing, re-encoding, or soundtrack changes. The manifest records `video-production/tessmora-intro/deliverables/` as the original delivery directory. The producers manage the 1080p exports and production files locally.
 
-| 语言 / Language | GitHub 附件 / Attachment | MP4 下载 / Download | 封面 / Cover | 字幕 / Subtitles |
+| 语言 / Language | 在线播放 / Watch with subtitles | MP4 下载 / Download | 封面 / Cover | 字幕 / Subtitles |
 | --- | --- | --- | --- | --- |
-| 简体中文 | [中文视频](https://github.com/user-attachments/assets/ba48b505-9b1b-4fd6-9d40-441092cdf8fc) | [20.95 MiB](tessmora-intro-zh.mp4?raw=1) | [JPEG](cover-zh.jpg) | [SRT](zh.srt) |
-| English | [English video](https://github.com/user-attachments/assets/b3d5a990-115f-4508-a707-b99d2acc590e) | [20.92 MiB](tessmora-intro-en.mp4?raw=1) | [JPEG](cover-en.jpg) | [SRT](en.srt) |
+| 简体中文 | [观看中文版](https://xiangqingping.com/zh/works/tessmora#tessmora-intro) | [20.95 MiB](tessmora-intro-zh.mp4?raw=1) | [JPEG](cover-zh.jpg) | [SRT](zh.srt) |
+| English | [Watch in English](https://xiangqingping.com/works/tessmora#tessmora-intro) | [20.92 MiB](tessmora-intro-en.mp4?raw=1) | [JPEG](cover-en.jpg) | [SRT](en.srt) |
 
 - **规格 / Format:** 1280 × 720, 30 fps, H.264 video + AAC audio, 275.8 seconds (4:35.8). 配乐与音效，无旁白 / Music and sound effects; no voice-over.
-- **播放 / Playback:** GitHub README 将对应语言的附件裸 URL 独立放在一段中，由 GitHub 渲染为带控制栏的原生播放器。其他 Markdown 阅读器可使用保留的 MP4 下载链接，在本地播放。Each GitHub README places its matching-language attachment URL alone in a paragraph, which GitHub renders as a native video player with controls. Other Markdown readers can use the MP4 download links for local playback.
 - **封面 / Covers:** 从对应的 1920 × 1080 PNG 封面转换为渐进式 JPEG，保留原尺寸、画面和文字。Converted from the matching 1920 × 1080 PNG covers to progressive JPEG, preserving dimensions, artwork, and text.
 - **字幕 / Subtitles:** SRT 与原始交付文件逐字节一致；播放器可作为外部字幕载入。SRT files are unchanged copies and can be loaded as external subtitles.
 
 ## GitHub 内嵌播放 / Inline playback on GitHub
 
-两段 GitHub 附件均直接上传原始 Lite 成片，未压缩或转码。已完整下载附件并核对 SHA-256：远端附件、此目录 MP4 与制作交付源文件三者一致；具体地址、大小和哈希见 [manifest.json](manifest.json)。
+在首页的演示折叠区，将对应语言的 `github_attachment.url` 单独放一段，前后留空行，GitHub 会生成带控制栏的播放器。需要字幕时可打开上表中的播放页，离线观看可下载 MP4 并载入同语言的 SRT。附件地址和文件哈希见[媒体清单](manifest.json)。
 
-Both GitHub attachments are exact uploads of the original Lite exports, without compression or re-encoding. Full attachment downloads were verified by SHA-256 against both the MP4s in this directory and the production exports; all three copies match. The [manifest](manifest.json) records URLs, sizes, and hashes.
-
-在对应语言 README 中使用单独一段的附件 URL，前后保留空行，例如：
-
-Use the attachment URL as its own paragraph, with blank lines before and after it:
-
-```markdown
-https://github.com/user-attachments/assets/ba48b505-9b1b-4fd6-9d40-441092cdf8fc
-```
-
-英文版使用上表的 English 附件。仓库 `blob` / `raw` MP4 链接只产生普通链接，手写 HTML `<video>` 会被 GitHub Markdown 过滤；它们不能替代附件播放器。不要把渲染后带时效签名的媒体 URL 写入 README。
-
-Use the English attachment from the table for the English README. Repository `blob` / `raw` MP4 URLs render as ordinary links, and GitHub Markdown removes handwritten HTML `<video>` tags. Keep the stable attachment URL in the README, rather than the temporary signed media URL produced during rendering.
+In each README’s demo section, place the matching `github_attachment.url` in its own paragraph with a blank line on either side. GitHub renders it as a video player. For captions, open the project page linked above. For offline playback, download the MP4 and load the matching SRT file. The [manifest](manifest.json) records attachment URLs and file hashes.
 
 ## 架构预览来源 / Architecture preview provenance
 
-README 使用的 [中文系统全景](../../diagrams/mma-rag/overview-cn.png) 与 [English overview](../../diagrams/mma-rag/overview-en.png) 从 [双语手写架构图](../../diagrams/mma-rag/README.md) 的 PNG 导出裁切，未改变原图内容。裁切保留入库、常规检索、Pi 与共享存储的系统关系；完整母版保持原样。
+早期 README 中的[中文系统全景](../../diagrams/mma-rag/overview-cn.png)与 [English overview](../../diagrams/mma-rag/overview-en.png) 裁自[双语手写架构图](../../diagrams/mma-rag/README.md)的 PNG 导出，保留了入库、常规检索、Pi 与共享存储的系统关系。
 
-The overview images are pixel-preserving crops of the existing bilingual architecture exports. They show ingestion, standard retrieval, Pi, and shared storage. The full original diagrams are unchanged.
+The overview images in earlier READMEs are pixel-preserving crops of the bilingual architecture exports. They show ingestion, standard retrieval, Pi, and shared storage.
 
 原图对应 **2026-11-05、`658b0d1`** 源码快照。完整图中的 Pi 恢复和检索通道细节早于 Durable 更新；当前行为见 [系统架构](../../MMA_ARCHITECTURE.md) 与 [Pi Durable](../../pi-agent-durable.md)。图中的 `02`–`05` 指完整画布的其他分区。
 
@@ -48,9 +35,9 @@ The source diagrams represent **2026-11-05, commit `658b0d1`**. Detailed Pi reco
 
 The manifest records repository-relative source paths, SHA-256 hashes, sizes, video metadata, and diagram crop bounds. Video and subtitle output hashes must match their source hashes. Each MP4 places `moov` before `mdat` for progressive loading. Production source paths in the manifest are local provenance records, not public download links.
 
-2026-11-06 检查中，两语言附件均通过已登录与匿名 GitHub Markdown 渲染，生成 `<video controls>`；实际媒体响应为 `video/mp4`，HEAD 返回 200，字节范围读取返回 206。该检查确认 GitHub 渲染和媒体传输，不代表所有第三方 Markdown 阅读器都能内嵌播放。
+2026-11-06 下载两份 GitHub 附件后，核对了附件、仓库 MP4 和制作源文件的 SHA-256，三者一致。2026-11-24 匿名复查时，直接访问两个附件地址均返回 HTTP 404。两份 GitHub README 里的播放器都能读取视频，字节范围请求均返回 HTTP 206。
 
-On 2026-11-06, both attachments rendered as `<video controls>` through authenticated and anonymous GitHub Markdown requests. The media returned `video/mp4`, HTTP 200 for HEAD, and HTTP 206 for byte-range reads. These checks verify GitHub rendering and media delivery, not inline playback in every third-party Markdown reader.
+On 2026-11-06, full downloads of both GitHub attachments matched the SHA-256 hashes of the repository MP4s and production exports. On 2026-11-24, opening either attachment URL directly while signed out returned HTTP 404. Both rendered GitHub README players served the video with HTTP 206 for byte-range requests.
 
 替换展示资源时，同步更新清单与对应语言的 README；不要将制作缓存、完整工程或 1080p 大文件一并加入仓库。
 
