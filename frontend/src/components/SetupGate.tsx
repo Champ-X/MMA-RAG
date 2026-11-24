@@ -2,6 +2,7 @@ import { translate as t, useTranslation } from '@/i18n'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { SetupError, setupApi, type SetupStatus } from '@/services/setup'
+import { desktopWorkspace } from '@/lib/desktopWorkspace'
 import { SetupStatusContext } from '@/hooks/useSetupStatus'
 
 export function SetupGate({ children }: { children: ReactNode }) {
@@ -28,7 +29,8 @@ export function SetupGate({ children }: { children: ReactNode }) {
     })
     return () => { active = false }
   }, [isSetup, attempt])
-  if (isSetup || state === 'ready') return <SetupStatusContext.Provider value={status}>{children}</SetupStatusContext.Provider>
+  const localLibrary = desktopWorkspace()?.mode === 'local' && /^\/knowledge(?:\/|$)/.test(location.pathname)
+  if (isSetup || state === 'ready' || (state === 'setup' && localLibrary)) return <SetupStatusContext.Provider value={status}>{children}</SetupStatusContext.Provider>
   if (state === 'setup') return <Navigate to="/setup" replace />
   return <main className="min-h-screen flex flex-col items-center justify-center gap-4 p-8 text-center">
     <p role="status">{state === 'error' ? t("暂时无法连接 Tessmora。确认服务已启动后重试。") : t("正在连接 Tessmora…")}</p>

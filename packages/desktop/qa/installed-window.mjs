@@ -13,8 +13,9 @@ const output = resolve(process.argv[3]);
 await mkdir(output, { recursive: true });
 const root = await mkdtemp(join(tmpdir(), 'Tessmora installed '));
 const userData = join(root, 'profile');
-const workspace = join(root, '测试 workspace');
-await mkdir(workspace);
+// An optional restored workspace must be a disposable result of the transfer QA.
+const workspace = process.argv[4] ? resolve(process.argv[4]) : join(root, '测试 workspace');
+if (!process.argv[4]) await mkdir(workspace);
 const store = new WorkspaceStore(userData);
 const profile = await store.add({ mode: 'local', directory: workspace, name: 'QA local' });
 const child = spawn(binary, ['--user-data-dir=' + userData, '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0'],
@@ -54,6 +55,49 @@ try {
   });
   assert(result.setupRequired && result.storage.success && result.kbFound);
   await ui.screenshot({ path: join(output, 'installed-workspace.png') });
+  await ui.locator('a[href="/knowledge"]').first().click();
+  await ui.getByText('Installed synthetic library', { exact: true }).first().waitFor({ timeout: 20000 });
+  await ui.screenshot({ path: join(output, 'installed-library.png') });
+  result.libraryOpenedWithoutProviderKeys = true;
+  if (process.argv[4]) {
+    const manifest = JSON.parse(await readFile(resolve(process.argv[5]), 'utf8'));
+    result.restored = await ui.evaluate(async () => {
+      const catalog = (await (await fetch('/api/knowledge/')).json()).knowledge_bases;
+      const hashes = {}, locators = {};
+      for (const name of ['manual.pdf', 'recording.mp4']) {
+        const kb = catalog.find(k => k.name === 'Synthetic ' + name);
+        const files = (await (await fetch('/api/knowledge/' + kb.id + '/files')).json()).files;
+        const original = files.find(f => f.name === name);
+        const path = '/api/knowledge/' + kb.id + '/files/' + original.id + '/stream';
+        const bytes = await (await fetch(path)).arrayBuffer();
+        hashes[name] = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), n => n.toString(16).padStart(2, '0')).join('');
+        if (name.endsWith('.pdf')) { locators.pdf = path + '#page=2'; continue; }
+        const response = await fetch('/api/chat/reference-video-url', { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ kb_id: kb.id, file_path: 'videos/' + original.id + '_' + name }) });
+        const url = (await response.json()).video_url;
+        const range = await fetch(url, { headers: { range: 'bytes=0-31' } });
+        if (range.status !== 206 || (await range.arrayBuffer()).byteLength !== 32) throw Error('Original media range was not served');
+        const video = document.createElement('video');
+        video.muted = true; video.preload = 'auto';
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(Error('Video seek timed out')), 10000);
+          video.onloadedmetadata = () => { video.currentTime = 7; };
+          video.onerror = () => { clearTimeout(timer); reject(Error('Bundled Chromium could not decode the original video')); };
+          video.onseeked = () => { clearTimeout(timer); resolve(); };
+          video.src = url;
+        });
+        const frame = document.createElement('canvas'); frame.width = 320; frame.height = 180;
+        const ctx = frame.getContext('2d'); ctx.drawImage(video, 0, 0, 320, 180);
+        const [red, green, blue] = ctx.getImageData(160, 90, 1, 1).data;
+        if (blue < 180 || red > 60 || green > 60) throw Error('Expected blue rectangle at seven seconds');
+        locators.videoTime = video.currentTime; locators.rgb = [red, green, blue];
+        video.removeAttribute('src'); video.load();
+      }
+      return { hashes, locators };
+    });
+    for (const [name, digest] of Object.entries(result.restored.hashes))
+      assert.equal(digest, manifest.files.find(f => f.path === name).sha256);
+  }
   await writeFile(join(output, 'report.json'), JSON.stringify({ platform: process.platform, arch: process.arch, ...result }, null, 2));
   await launcher.evaluate(() => document.getElementById('quit').click());
   const exit = await Promise.race([closed, delay(35000, 'timeout', { ref: false })]);

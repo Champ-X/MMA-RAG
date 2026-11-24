@@ -1,5 +1,9 @@
 // English product UI copy. Source content and filenames are not translated.
 export const uiEnglish: Record<string, string> = {
+  "第 {{start}}–{{end}} 页": "Pages {{start}}–{{end}}",
+  "第 {{page}} 页": "Page {{page}}",
+  "从第 {{page}} 页打开原件": "Open original at page {{page}}",
+  "打开 PDF 原件": "Open original PDF",
   "会话归档已生成，请保存下载的文件。": "Archive created. Save the downloaded file.",
   "导出失败，请重试。": "Export failed. Please try again.",
   "文件无法读取。": "The file could not be read.",
@@ -944,6 +948,7 @@ export const uiEnglish: Record<string, string> = {
   "即可重新启动。": "to start again.",
   "调整配置": "Adjust configuration",
   "进入工作台": "Open workspace",
+  "浏览本地资料": "Browse local files",
   "文档保存在所选安装目录。模型调用会将所需内容发送给配置的服务商。": "Documents are saved in the selected installation directory. Model calls send the required content to your configured providers.",
   "{{value1}} 表格": "{{value1}} spreadsheet",
   "正在解析表格预览：{{displayName}}": "Loading spreadsheet preview: {{displayName}}",

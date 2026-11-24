@@ -257,6 +257,7 @@ export default function SetupPage() {
         <span className="setup-brand-copy"><strong>Tessmora</strong><small>{status?.managed ? t("服务连接与能力") : t("你的知识工作台")}</small></span>
       </Link>
       <div className="setup-language"><LanguageSelect compact /></div>
+      {status?.setup_required && desktopMode === 'local' && <Link to="/knowledge" className="setup-back-link"><FileText size={15} aria-hidden />{t("浏览本地资料")}</Link>}
       {status && !status.setup_required && <Link to="/settings?section=models" className="setup-back-link"><ArrowLeft size={15} aria-hidden />{t("返回设置")}</Link>}
     </header>
     {status && !status.managed ? <SourceConfiguration /> : !status ? <main className="setup-loading" aria-busy={!error}>
