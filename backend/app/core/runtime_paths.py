@@ -24,8 +24,8 @@ def backend_data_dir() -> Path:
     return root / "data" if root else BACKEND_DIR / "data"
 
 
-def read_managed_config() -> dict:
-    root = state_dir()
+def read_managed_config(root: Path | None = None) -> dict:
+    root = root if root is not None else state_dir()
     path = root / "setup.json" if root else None
     if not path or not path.exists():
         return {}
@@ -33,6 +33,9 @@ def read_managed_config() -> dict:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict) or payload.get("version") != 1:
         raise ValueError("Unsupported Tessmora setup configuration; restore setup.json from backup")
+    if os.environ.get("TESSMORA_RUNTIME_PROFILE") == "desktop":
+        from app.core.desktop_credentials import hydrate
+        return hydrate(payload)
     return payload
 
 

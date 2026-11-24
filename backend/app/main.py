@@ -21,6 +21,7 @@ if not os.environ.get("TESSMORA_STATE_DIR"):
 
 from app.core.jev_settings import JevConfigMiddleware
 from app.core.access_log import QuietSuccessfulPolls
+from app.core.desktop_access import DesktopAccess, desktop_profile
 
 
 @asynccontextmanager
@@ -76,16 +77,19 @@ app = FastAPI(
 )
 
 # 配置 CORS 中间件
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 生产环境中应该设置为具体的域名
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if not desktop_profile():
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # 生产环境中应该设置为具体的域名
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 app.add_middleware(JevConfigMiddleware)
 from app.modules.pi_agent.admission import LegacyPriorityMiddleware
 app.add_middleware(LegacyPriorityMiddleware)
+if desktop_profile():
+    app.add_middleware(DesktopAccess)
 
 # 导入路由模块
 from app.api import chat, knowledge, upload, debug, import_api, feishu, retrieval, jev
@@ -111,6 +115,16 @@ app.include_router(retrieval.router, prefix="/api/v1/retrieval", tags=["retrieva
 app.include_router(pi_agent.router, prefix="/api/pi", tags=["pi-agent"])
 app.include_router(setup.router, prefix="/api/setup", tags=["setup"])
 app.include_router(collection.router, prefix="/api/collection", tags=["collection"])
+
+if desktop_profile():
+    @app.get("/api/desktop/capabilities")
+    async def desktop_capabilities():
+        return {
+            "protocol_version": 1,
+            "workspace_id": os.environ["TESSMORA_WORKSPACE_ID"],
+            "auth": {"required": True},
+            "capabilities": {"streaming": True, "media_range": True, "local_runtime": True},
+        }
 
 # Validation errors normally include rejected inputs; setup carries credentials.
 from fastapi.exceptions import RequestValidationError

@@ -15,7 +15,8 @@ import time
 from pathlib import Path
 from threading import RLock
 
-from app.core.runtime_paths import PROVIDER_FIELDS, state_dir
+from app.core.runtime_paths import PROVIDER_FIELDS, read_managed_config, state_dir
+from app.core.desktop_access import desktop_profile
 from app.core.storage_health import StorageUnavailable, check_storage, storage_failure
 from app.core.model_preparation import observe_preparation, report_preparation, model_failure
 from app.core.logger import get_logger
@@ -184,7 +185,17 @@ class SetupService:
         return json.loads(path.read_text(encoding="utf-8")) if path and path.exists() else default
 
     def _config(self) -> dict:
+        if desktop_profile() and self.root and (self.root / "setup.json").is_file():
+            return read_managed_config(self.root)
         return self._read("setup.json", {"version": 1, "capabilities": ["text"], "credentials": {}, "task_models": {}})
+
+    def _save_config(self, config: dict) -> None:
+        path = self.root / "setup.json"
+        if desktop_profile():
+            from app.core.desktop_credentials import save
+            save(path, config, atomic_private_json)
+        else:
+            atomic_private_json(path, config)
 
     def _persist_progress(self) -> None:
         if self.root:
@@ -373,7 +384,7 @@ class SetupService:
             draft.update(tested_fingerprint=fingerprint, tested_at=time.time() if receipt else old.get("tested_at"))
             if self._progress.get("state") not in {"running", "error", "interrupted"} and all(_artifacts_ready(self._progress.get("models", {}).get(name, {})) for name in required_local_models(draft["capabilities"])):
                 draft["completed_at"] = draft.get("completed_at", time.time())
-        atomic_private_json(self.root / "setup.json", draft)
+        self._save_config(draft)
         from app.core.config import settings
         from app.core.llm.manager import llm_manager
         for name, field in PROVIDER_FIELDS.items():
@@ -499,7 +510,7 @@ class SetupService:
             if self.status()["ready"]:
                 saved = self._config()
                 saved["completed_at"] = saved.get("completed_at", time.time())
-                atomic_private_json(self.root / "setup.json", saved)
+                self._save_config(saved)
         except asyncio.CancelledError:
             with self._lock:
                 self._progress["state"] = "interrupted"
