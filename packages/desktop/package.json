@@ -8,11 +8,20 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test test/*.test.mjs",
-    "test:electron": "node qa/electron-smoke.mjs"
+    "test:electron": "node qa/electron-smoke.mjs",
+    "pack": "electron-builder --config release/builder.cjs --dir --publish never",
+    "dist": "electron-builder --config release/builder.cjs --publish never"
   },
   "devDependencies": {
     "electron": "45.4.1",
+    "electron-builder": "26.18.0",
     "playwright": "1.65.1"
   },
-  "engines": { "node": ">=22.19" }
+  "engines": {
+    "node": ">=22.19"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11"
+  },
+  "author": "Tessmora contributors"
 }

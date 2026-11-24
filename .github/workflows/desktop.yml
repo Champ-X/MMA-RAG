@@ -1,0 +1,52 @@
+name: Native desktop acceptance
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/desktop.yml'
+      - 'packages/desktop/**'
+      - 'backend/desktop_host.py'
+      - 'backend/app/modules/desktop_transfer/**'
+      - 'backend/app/modules/ingestion/desktop*.py'
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: darwin-arm64
+            executable: mac-arm64/Tessmora.app/Contents/MacOS/Tessmora
+          - runner: windows-2022
+            target: win32-x64
+            executable: win-unpacked/Tessmora.exe
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      TESSMORA_RUNTIME_DIR: ${{ github.workspace }}/ops/desktop-qa/runtime
+      TESSMORA_DESKTOP_OUTPUT: ${{ github.workspace }}/ops/desktop-qa/installers
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+      - run: python -m pip install uv==0.13.5
+      - run: npm --prefix frontend ci --no-audit
+      - run: npm --prefix frontend run build
+      - run: npm --prefix packages/desktop ci --no-audit
+      - run: npm --prefix packages/desktop test
+      - run: python packages/desktop/runtime/packaging/assemble.py --cache ops/desktop-qa/downloads --output ops/desktop-qa/runtime
+      - run: node packages/desktop/qa/native-workspace.mjs ops/desktop-qa/runtime
+      - run: npm --prefix packages/desktop run pack
+      - run: node packages/desktop/qa/installed-window.mjs "ops/desktop-qa/installers/${{ matrix.executable }}" ops/desktop-qa/installed-window
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-${{ matrix.target }}-evidence
+          path: ops/desktop-qa/installed-window
+          if-no-files-found: ignore
