@@ -112,12 +112,36 @@ def _office_to_pdf_bytes(file_content: bytes, file_ext: str) -> Optional[bytes]:
         if not cmd:
             logger.debug("未找到 LibreOffice 可执行文件（PATH 或 macOS /Applications/LibreOffice.app）")
             return None
+        environment = os.environ.copy()
+        desktop_args: List[str] = []
+        if environment.get("TESSMORA_RUNTIME_PROFILE") == "desktop":
+            # Never join a user's existing Office session, or share a profile
+            # between simultaneous conversion jobs.
+            profile_uri = (Path(tmpdir) / "office-profile").resolve().as_uri()
+            desktop_args = ["-env:UserInstallation=" + profile_uri]
+            if sys.platform == "darwin":
+                # The bundled headless build uses fontconfig, whose default
+                # search path omits macOS system fonts. CJK text then survives
+                # PDF extraction but is rendered with empty fallback glyphs.
+                from xml.sax.saxutils import escape
+                executable = Path(cmd[0]).resolve()
+                directories = [executable.parent.parent / "Resources" / "fonts" / "truetype",
+                               Path("/System/Library/Fonts"), Path("/Library/Fonts")]
+                config = Path(tmpdir) / "fonts.conf"
+                config.write_text(
+                    '<?xml version="1.0"?><fontconfig>'
+                    + "".join("<dir>" + escape(str(path)) + "</dir>" for path in directories if path.is_dir())
+                    + "<cachedir>" + escape(str(Path(tmpdir) / "font-cache")) + "</cachedir></fontconfig>",
+                    encoding="utf-8",
+                )
+                environment["FONTCONFIG_FILE"] = str(config)
         try:
             subprocess.run(
-                cmd + ["--headless", "--convert-to", "pdf", "--outdir", tmpdir, src],
+                cmd + desktop_args + ["--headless", "--convert-to", "pdf", "--outdir", tmpdir, src],
                 capture_output=True,
                 timeout=120,
                 check=True,
+                env=environment,
             )
         except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
             logger.debug("LibreOffice 转换 Office 为 PDF 失败: {}", e)
@@ -508,22 +532,33 @@ def get_mineru_client(enable: bool = True) -> Optional[Any]:
     except Exception:
         pass
     try:
+        from app.core.desktop_access import desktop_profile
+        model_source = MODEL_ID
+        cached_only = desktop_profile()
+        if cached_only:
+            # A plain document import must not implicitly download another multi-GB model.
+            from huggingface_hub import snapshot_download
+            from huggingface_hub.errors import LocalEntryNotFoundError
+            try:
+                model_source = snapshot_download(MODEL_ID, local_files_only=True)
+            except LocalEntryNotFoundError:
+                return None
         from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
         from mineru_vl_utils import MinerUClient  # type: ignore[import-untyped]
 
         try:
             model = Qwen2VLForConditionalGeneration.from_pretrained(
-                MODEL_ID,
+                model_source, local_files_only=cached_only,
                 dtype="auto",
                 device_map="auto",
             )
         except TypeError:
             model = Qwen2VLForConditionalGeneration.from_pretrained(
-                MODEL_ID,
+                model_source, local_files_only=cached_only,
                 torch_dtype="auto",
                 device_map="auto",
             )
-        processor = AutoProcessor.from_pretrained(MODEL_ID, use_fast=True)
+        processor = AutoProcessor.from_pretrained(model_source, use_fast=True, local_files_only=cached_only)
         _mineru_client = MinerUClient(
             backend="transformers",
             model=model,
