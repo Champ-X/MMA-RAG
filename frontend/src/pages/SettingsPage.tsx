@@ -2,6 +2,7 @@ import { translate as tr, useTranslation } from '@/i18n'
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import type { TaskModelEntry } from '@/components/settings/ModelConfig'
+import ChatHistoryTransfer from '@/components/settings/ChatHistoryTransfer'
 import { DecisionSettings } from '@/components/settings/DecisionSettings'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -12,6 +13,7 @@ import { useConfigStore, type SystemConfig } from '@/store/useConfigStore'
 import { useToastStore } from '@/store/useToastStore'
 import {
   AlertCircle,
+  Archive,
   Brain,
   Check,
   ChevronRight,
@@ -128,6 +130,7 @@ const SETTINGS_SECTIONS = [
   { id: 'interface', label: '界面与显示', icon: Palette },
   { id: 'models', label: '模型与路由', icon: Route },
   { id: 'decision', label: 'Decision 模型', icon: Zap },
+  { id: 'history', label: '会话与附件', icon: Archive },
 ] as const
 
 type SettingsSection = typeof SETTINGS_SECTIONS[number]['id']
@@ -357,6 +360,7 @@ export function SettingsPage() {
 
   const sectionDirty: Record<SettingsSection, boolean> = {
     interface: false,
+    history: false,
     models: modelSettingsHaveChanges,
     decision: decisionSettingsHaveChanges,
   }
@@ -500,6 +504,10 @@ export function SettingsPage() {
             </div>
 
           </section>
+        </div>
+
+        <div id="settings-panel-history" role="tabpanel" aria-labelledby="settings-tab-history" hidden={activeSection !== 'history'} tabIndex={0} className="settings-tabpanel">
+          <ChatHistoryTransfer />
         </div>
 
         <div

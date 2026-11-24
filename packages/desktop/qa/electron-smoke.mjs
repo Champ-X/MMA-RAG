@@ -25,8 +25,11 @@ async function listen(callback) {
 const external = await listen((_req, res) => { leaked++; res.end('external'); });
 const bytes = Buffer.from('0123456789abcdef');
 const addresses = {};
+const serverRequests = { A: 0, B: 0 };
 for (const name of ['A', 'B']) addresses[name] = await listen((req, res) => {
-  if (req.headers.authorization !== `Bearer ${tokens[name]}`) { res.writeHead(401, { 'content-type': 'application/json' }).end('{"detail":"unauthorized"}'); return; }
+  serverRequests[name]++;
+  if (req.headers.authorization !== `Bearer ${tokens[name]}`) { if (req.headers.authorization) failures.push(`Synthetic ${name} authentication mismatch (${String(req.headers.authorization).length} bytes) at ${req.url}`); res.writeHead(401, { 'content-type': 'application/json' }).end('{"detail":"unauthorized"}'); return; }
+  if (req.url === '/api/decision/settings') { res.writeHead(503, { 'content-type': 'application/json' }).end('{"detail":"Synthetic server has no decision model"}'); return; }
   if (req.url.startsWith('/api/test/events')) { res.writeHead(200, { 'content-type': 'text/event-stream' }); res.write(`id: 1\ndata: ${name}-first\n\n`); setTimeout(() => res.end(`id: 2\ndata: ${name}-final\n\n`), 500); return; }
   if (req.url === '/api/test/media') {
     if (req.headers.range === 'bytes=5-8') res.writeHead(206, { 'content-type': 'video/mp4', 'content-range': 'bytes 5-8/16', 'accept-ranges': 'bytes', 'content-length': 4 }).end(bytes.subarray(5, 9));
@@ -54,15 +57,20 @@ for (const name of ['A', 'B']) addresses[name] = await listen((req, res) => {
 async function launch() {
   const app = await electron.launch({ args: [desktop], env: { ...process.env, TESSMORA_DESKTOP_USER_DATA: profile, TESSMORA_FRONTEND_DIR: join(repository, 'frontend/dist') }, timeout: 60000 });
   app.process().stderr.on('data', data => { const line = data.toString(); if (/Error|error/.test(line)) failures.push(line.replaceAll(tokens.A, '[redacted]').replaceAll(tokens.B, '[redacted]').slice(0, 1000)); });
+  app.on('window', page => page.on('pageerror', error => failures.push(String(error))));
   const launcher = await app.firstWindow(); await launcher.waitForSelector('#workspace-form');
   return { app, launcher };
 }
 async function add(launcher, name) {
   await launcher.locator('#remote-tab').click();
-  await launcher.locator('#name').fill(`Synthetic workspace ${name}`);
-  await launcher.locator('#url').fill(addresses[name]);
-  await launcher.locator('#token').fill(tokens[name]);
+  await launcher.evaluate(value => {
+    document.getElementById('name').value = `Synthetic workspace ${value.name}`;
+    document.getElementById('url').value = value.url;
+    document.getElementById('token').value = value.token;
+    document.activeElement?.blur();
+  }, { name, url: addresses[name], token: tokens[name] });
   await launcher.locator('#remember').uncheck();
+  assert.equal(await launcher.locator('#token').inputValue(), tokens[name]);
   const pending = application.waitForEvent('window');
   await launcher.locator('#submit').click();
   const page = await pending;
@@ -112,6 +120,46 @@ try {
   await b.evaluate(() => localStorage.setItem('qa-marker', 'workspace-B'));
   assertions.push('two actual workspace windows isolate credentials, localStorage and IndexedDB attachment history');
   await a.screenshot({ path: join(output, 'workspace-a.png') });
+  const attachmentBytes = Buffer.from('synthetic migrated audio bytes');
+  const historyManifest = { kind: 'tessmora-chat', version: 1, createdAt: new Date().toISOString(), source: { origin: addresses.A, workspaceId: 'synthetic-server-a' }, includesServerData: false,
+    state: { sessions: [{ id: 'migration-session', title: 'Migrated CEDAR-17 research', createdAt: 100, updatedAt: 200, isActive: true, knowledgeBaseIds: [], messages: [
+      { id: 'migrate-user', role: 'user', content: 'Synthetic archival prompt', timestamp: 100, attachments: [{ id: 'migrate-audio', kind: 'audio', name: 'same-name.wav', size: attachmentBytes.length }] },
+      { id: 'migrate-answer', role: 'assistant', content: 'CEDAR-17 reference retained', timestamp: 200 },
+    ] }], activeSessionId: 'migration-session' },
+    attachments: [{ id: 'migrate-audio', size: attachmentBytes.length, type: 'audio/wav', chunkSize: 4194304, sha256: [createHash('sha256').update(attachmentBytes).digest('hex')] }], missingAttachmentIds: [] };
+  const historyJson = Buffer.from(JSON.stringify(historyManifest)); const historyLength = Buffer.alloc(4); historyLength.writeUInt32BE(historyJson.length);
+  const archiveFile = join(output, 'synthetic-history.tessmora-chat');
+  await writeFile(archiveFile, Buffer.concat([Buffer.from('TESSMORA-CHAT\n'), historyLength, historyJson, attachmentBytes]));
+  const aOrigin = new URL(a.url());
+  await a.goto(`${aOrigin.protocol}//${aOrigin.host}/settings?section=history`);
+  await a.locator('#history-transfer-title').waitFor();
+  await a.locator('input[accept=".tessmora-chat"]').setInputFiles(archiveFile);
+  await a.locator('.chat-history-preview input[type=checkbox]').check();
+  await a.getByRole('button', { name: '导入到当前工作区', exact: true }).click();
+  await a.locator('.chat-history-status').filter({ hasText: '已导入 1 个会话和 1 个附件' }).waitFor();
+  const imported = await a.evaluate(async () => ({ state: JSON.parse(localStorage.getItem('chat-store')).state, bytes: await new Promise((resolve, reject) => { const open = indexedDB.open('mmaa-chat-attachments', 1); open.onerror = () => reject(open.error); open.onsuccess = () => { const db = open.result; const read = db.transaction('blobs').objectStore('blobs').get('migrate-audio'); read.onsuccess = async () => { resolve(await read.result.text()); db.close(); }; }; }) }));
+  assert.ok(imported.state.sessions.some(session => session.id === 'migration-session'));
+  assert.equal(imported.bytes, attachmentBytes.toString());
+  await a.screenshot({ path: join(output, 'history-import.png') });
+  assertions.push('normal Settings import preserves conversation IDs and exact IndexedDB attachment bytes');
+  const exportedFile = join(output, 'exported-history.tessmora-chat');
+  await application.evaluate(({ BrowserWindow }, file) => {
+    const target = BrowserWindow.getAllWindows().find(win => win.webContents.getURL().includes('/settings?section=history'));
+    globalThis.__historyDownload = new Promise((resolve, reject) => target.webContents.session.once('will-download', (_event, item) => { item.setSavePath(file); item.once('done', (_event, state) => state === 'completed' ? resolve(true) : reject(new Error(state))); }));
+  }, exportedFile);
+  await a.getByRole('button', { name: '导出会话与附件', exact: true }).click();
+  await application.evaluate(() => globalThis.__historyDownload);
+  const exportedBytes = await readFile(exportedFile); assert.equal(exportedBytes.subarray(0, 14).toString(), 'TESSMORA-CHAT\n');
+  assert.ok(exportedBytes.includes(attachmentBytes));
+  assertions.push('normal Settings export downloads a single archive containing the exact imported attachment');
+  const automated = await application.evaluate(async (_electron, value) => {
+    const require = process.getBuiltinModule('module').createRequire(value.module);
+    const client = require(value.module); return client.stopLocalWorkspaces(value.directory);
+  }, { module: join(desktop, 'app/main.mjs'), directory: join(output, 'update-client-history') });
+  assert.equal(Object.keys(automated).length, 2);
+  const autoBytes = await readFile(automated[idA]); assert.ok(autoBytes.includes(attachmentBytes));
+  assert.equal((await fetch(addresses.A + '/health', { headers: { Authorization: `Bearer ${tokens.A}` } })).status, 200);
+  assertions.push('update backup exports active workspace history through bounded IPC without stopping remote services');
   const invalidCaller = await application.evaluate(async ({ ipcMain, BrowserWindow }) => {
     const workspace = BrowserWindow.getAllWindows().find(win => win.webContents.getURL().startsWith('tessmora:'));
     return { sandbox: workspace.webContents.getLastWebPreferences().sandbox, nodeIntegration: workspace.webContents.getLastWebPreferences().nodeIntegration };
@@ -126,8 +174,19 @@ try {
   assert.equal((await fetch(addresses.A + '/health', { headers: { Authorization: `Bearer ${tokens.A}` } })).status, 200);
   assertions.push('quitting the desktop does not stop the remote server');
   launched = await launch(); application = launched.app; launcher = launched.launcher;
+  const requestsBeforeOffline = { ...serverRequests };
+  const dormantExport = await application.evaluate(async (_electron, value) => {
+    const require = process.getBuiltinModule('module').createRequire(value.module);
+    return require(value.module).stopLocalWorkspaces(value.directory, value.id);
+  }, { module: join(desktop, 'app/main.mjs'), directory: join(output, 'inactive-client-history'), id: idA });
+  assert.equal(Object.keys(dormantExport).length, 1);
+  assert.ok((await readFile(dormantExport[idA])).includes(attachmentBytes));
+  assert.deepEqual(serverRequests, requestsBeforeOffline);
+  assertions.push('an unopened workspace exports its saved history and attachments without starting or contacting a backend');
   await launcher.locator('.workspace-actions button').filter({ hasText: '更新凭证' }).first().click();
-  await launcher.locator('#token').fill(tokens.A); await launcher.locator('#remember').uncheck();
+  await launcher.evaluate(token => { document.getElementById('token').value = token; document.activeElement?.blur(); }, tokens.A);
+  await launcher.locator('#remember').uncheck();
+  assert.equal(await launcher.locator('#token').inputValue(), tokens.A);
   const pending = application.waitForEvent('window'); await launcher.locator('#submit').click(); const restarted = await pending;
   await restarted.waitForFunction(() => Boolean(window.tessmoraDesktop));
   const persisted = await restarted.evaluate(async () => ({ id: window.tessmoraDesktop.workspaceId, marker: localStorage.getItem('qa-marker'), attachment: await new Promise((resolve, reject) => { const request = indexedDB.open('qa-attachments', 1); request.onerror = () => reject(request.error); request.onsuccess = () => { const db = request.result; const read = db.transaction('files').objectStore('files').get('same-name.pdf'); read.onsuccess = async () => { resolve(await read.result.text()); db.close(); }; }; }) }));
@@ -138,6 +197,7 @@ try {
   await writeFile(join(output, 'report.json'), JSON.stringify({ passed: true, platform: `${platform()}-${arch()}`, assertions, stream: streamed, media, diagnostics: failures, limitations: ['Synthetic authenticated HTTP servers on loopback; no real-model or packaged-installer acceptance in this client test.'] }, null, 2));
   console.log(JSON.stringify({ passed: true, output, assertions: assertions.length }));
 } catch (error) {
+  if (application) { for (const [index, page] of application.windows().entries()) { await page.screenshot({ path: join(output, `failure-window-${index}.png`) }).catch(() => {}); } }
   await writeFile(join(output, 'report.json'), JSON.stringify({ passed: false, assertions, error: String(error), diagnostics: failures }, null, 2));
   console.error(error); process.exitCode = 1;
 } finally {

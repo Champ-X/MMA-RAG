@@ -79,13 +79,14 @@ function FragmentArtwork() {
 
 function SourceConfiguration() {
   useTranslation()
+  const remote = desktopWorkspace()?.mode === 'remote'
   return <main className="setup-source">
     <section className="setup-source-panel" aria-labelledby="source-title">
       <div className="setup-source-hero">
         <div className="setup-source-copy">
-          <span className="setup-mode-label"><Terminal size={15} aria-hidden />{t("项目环境配置")}</span>
-          <h1 id="source-title">{t("沿用项目配置，")}<br /><span>{t("继续你的工作。")}</span></h1>
-          <p>{t("当前服务沿用项目的环境配置。")}<br />{t("模型选择与检索偏好，可以直接在设置中调整。")}</p>
+          <span className="setup-mode-label"><Terminal size={15} aria-hidden />{t(remote ? "服务器配置" : "项目环境配置")}</span>
+          <h1 id="source-title">{t(remote ? "沿用服务器配置，" : "沿用项目配置，")}<br /><span>{t("继续你的工作。")}</span></h1>
+          <p>{t(remote ? "资料与模型凭证由所连接的服务器保存。" : "当前服务沿用项目的环境配置。")}<br />{t("模型选择与检索偏好，可以直接在设置中调整。")}</p>
         </div>
         <FragmentArtwork />
       </div>
@@ -101,7 +102,7 @@ function SourceConfiguration() {
       </div>
       <details className="setup-source-help">
         <summary><KeyRound size={15} aria-hidden />{t("需要更换 API Key？")}</summary>
-        <p>{t("请在项目环境配置中更新对应服务商的密钥，并按当前部署方式重启相关服务，再到「模型与路由」测试连接。")}</p>
+        <p>{t(remote ? "请由服务器管理员更新模型凭证，再到「模型与路由」测试连接。" : "请在项目环境配置中更新对应服务商的密钥，并按当前部署方式重启相关服务，再到「模型与路由」测试连接。")}</p>
       </details>
     </section>
     <p className="setup-source-caption">{t("此配置方式无需经过首次安装向导。")}</p>
@@ -131,6 +132,7 @@ function ModelProgress({ name, value }: { name: string; value: ModelPreparation 
 
 export default function SetupPage() {
   useTranslation()
+  const desktopMode = desktopWorkspace()?.mode
   const [searchParams] = useSearchParams()
   const editing = searchParams.get('edit') === 'services'
   const [status, setStatus] = useState<SetupStatus | null>(null)
@@ -268,13 +270,13 @@ export default function SetupPage() {
         <ol className="setup-steps" aria-label={t("配置进度")}>{steps.map((title, index) => <li key={title} aria-current={step === index ? 'step' : undefined} className={index === step ? 'current' : index < step ? 'complete' : ''}>
           <span className="setup-step-number">{index < step ? <Check size={15} /> : `0${index + 1}`}</span><span><strong>{t(title)}</strong><small>{t(stepDescriptions[index])}</small></span>
         </li>)}</ol>
-        <div className="setup-sidebar-note"><Terminal size={17} aria-hidden /><p>{t("与终端向导共用配置。")}<br />{t("已保存的密钥与模型缓存会保留。")}</p></div>
+        <div className="setup-sidebar-note"><Terminal size={17} aria-hidden /><p>{t(desktopMode === "local" ? "模型密钥由系统凭证库保存。" : desktopMode === "remote" ? "配置保存在所连接的服务器。" : "与终端向导共用配置。")}<br />{t("已保存的密钥与模型缓存会保留。")}</p></div>
       </aside>
       <section className="setup-main" aria-labelledby="setup-heading" aria-busy={Boolean(busy)}>
         <header className="setup-panel-header">
           <div className="setup-panel-position"><span>{t("步骤")} {step + 1} / 4</span><span className="setup-step-meter" aria-hidden>{steps.map((_, index) => <i key={index} className={index <= step ? 'filled' : ''} />)}</span></div>
           <h1 id="setup-heading" ref={heading} tabIndex={-1}>{[t("从你需要的能力开始"), t("连接你的模型服务"), t("确认一切准备就绪"), t("你的工作台已就绪")][step]}</h1>
-          <p className="setup-lead">{[t("文档与对话是起点。其他能力按需启用，之后也能添加。"), t("填写所需服务的 API Key。已保存的密钥留空即可保留。"), t("用真实请求检查连接，再准备本地检索模型。"), t("从一份小文档开始，体验提问、回答和证据引用。")][step]}</p>
+          <p className="setup-lead">{[t("文档与对话是起点。其他能力按需启用，之后也能添加。"), t("填写所需服务的 API Key。已保存的密钥留空即可保留。"), t(desktopMode === "remote" ? "用真实请求检查连接，再准备服务器检索模型。" : "用真实请求检查连接，再准备本地检索模型。"), t("从一份小文档开始，体验提问、回答和证据引用。")][step]}</p>
         </header>
         <div className="setup-panel-body">
           {!authorized && step < 3 && <form className="setup-unlock" method="post" onSubmit={unlock}>
@@ -292,7 +294,7 @@ export default function SetupPage() {
               <div className="setup-provider-heading"><label htmlFor={`key-${provider}`}>{t(providerNames[provider])}</label><a href={providerLinks[provider]} target="_blank" rel="noreferrer">{t("获取 API Key ↗")}</a></div>
               <p id={`key-${provider}-help`}>{t(providerHints[provider])}{status.providers[provider]?.configured && <span className="setup-saved">  {t("已保存")}</span>}</p>
               <div className="setup-key-input"><input id={`key-${provider}`} name={`key-${provider}`} aria-describedby={`key-${provider}-help`} autoCapitalize="none" autoCorrect="off" type={revealed[provider] ? 'text' : 'password'} autoComplete="off" spellCheck={false} required={!status.providers[provider]?.configured} value={credentials[provider] || ''} placeholder={status.providers[provider]?.configured ? t("留空保留已有密钥") : t("粘贴 API Key")} onChange={event => { setCredentials(current => ({ ...current, [provider]: event.target.value })); invalidate() }} /><button type="button" aria-label={t("{{value1}} {{value2}} 密钥", { value1: revealed[provider] ? t("隐藏") : t("显示"), value2: t(providerNames[provider]) })} aria-pressed={Boolean(revealed[provider])} onClick={() => setRevealed(current => ({ ...current, [provider]: !current[provider] }))}>{revealed[provider] ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
-            </div>)}</div><p className="setup-hint">{t("密钥只发送给当前 Tessmora 服务，并保存在安装目录。连接测试会产生少量模型调用费用。")}</p><div className="setup-actions"><button type="button" className="setup-button" onClick={() => setStep(0)}><ArrowLeft size={17} />{t("上一步")}</button><button className="setup-button primary">{t("继续")} <ArrowRight size={17} /></button></div>
+            </div>)}</div><p className="setup-hint">{t(desktopMode === "local" ? "模型密钥只发送给本地工作区，并由系统凭证库保存。连接测试会产生少量模型调用费用。" : desktopMode === "remote" ? "模型密钥发送给所连接的服务器并由服务器保存。连接测试会产生少量模型调用费用。" : "密钥只发送给当前 Tessmora 服务，并保存在安装目录。连接测试会产生少量模型调用费用。")}</p><div className="setup-actions"><button type="button" className="setup-button" onClick={() => setStep(0)}><ArrowLeft size={17} />{t("上一步")}</button><button className="setup-button primary">{t("继续")} <ArrowRight size={17} /></button></div>
           </form>}
 
           {step === 2 && <>
@@ -308,11 +310,11 @@ export default function SetupPage() {
             <div className="setup-actions"><button className="setup-button" disabled={locked} onClick={() => setStep(1)}><ArrowLeft size={17} />{t("上一步")}</button>{status.ready && <button className="setup-button primary" onClick={() => setStep(3)}>{t("完成")} <ArrowRight size={17} /></button>}</div>
           </>}
 
-          {step === 3 && <><div className="setup-ready"><CheckCircle2 size={24} /><div><strong>{t("连接已验证，模型已准备")}</strong><p>{t("以后运行")} <code>tessmora start</code>  {t("即可重新启动。")}</p></div></div><SetupSample /><div className="setup-actions"><button className="setup-button" onClick={() => setStep(0)}>{t("调整配置")}</button><Link className="setup-button primary" to="/">{t("进入工作台")} <ArrowRight size={17} /></Link></div></>}
+          {step === 3 && <><div className="setup-ready"><CheckCircle2 size={24} /><div><strong>{t("连接已验证，模型已准备")}</strong><p>{desktopMode ? t(desktopMode === "local" ? "下次打开桌面应用，选择此工作区即可继续。" : "下次打开桌面应用，连接此服务器即可继续。") : <>{t("以后运行")} <code>tessmora start</code> {t("即可重新启动。")}</>}</p></div></div><SetupSample /><div className="setup-actions"><button className="setup-button" onClick={() => setStep(0)}>{t("调整配置")}</button><Link className="setup-button primary" to="/">{t("进入工作台")} <ArrowRight size={17} /></Link></div></>}
           {busy && <p className="setup-live" role="status"><Loader2 size={17} className="setup-spin" />{busy}</p>}
           {error && <p className="setup-error" role="alert">{error}</p>}
         </div>
-        <footer className="setup-footer"><FileText size={14} aria-hidden /><span>{t("文档保存在所选安装目录。模型调用会将所需内容发送给配置的服务商。")}</span></footer>
+        <footer className="setup-footer"><FileText size={14} aria-hidden /><span>{t(desktopMode === "local" ? "资料保存在所选工作区。模型调用会将所需内容发送给配置的服务商。" : desktopMode === "remote" ? "资料保存在所连接的服务器。模型调用会将所需内容发送给服务器配置的服务商。" : "文档保存在所选安装目录。模型调用会将所需内容发送给配置的服务商。")}</span></footer>
       </section>
     </main>}
   </div>

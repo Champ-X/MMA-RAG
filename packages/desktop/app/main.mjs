@@ -1,4 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, protocol, safeStorage, session, shell, Tray } from 'electron';
+import { randomUUID } from 'node:crypto';
+import { createHistoryExportManager } from './history-export.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { access, mkdir } from 'node:fs/promises';
@@ -14,7 +16,7 @@ app.setName('Tessmora');
 const single = app.requestSingleInstanceLock();
 if (!single) app.quit();
 let launcher, tray, quitting = false, shutdownStarted = false;
-let store, credentials;
+let store, credentials, historyExporter;
 const workspaceWindows = new Map();
 const connections = new Map();
 const opening = new Map();
@@ -91,6 +93,7 @@ function frontendDirectory() {
   return app.isPackaged ? join(process.resourcesPath, 'frontend') : resolve(here, '../../../frontend/dist');
 }
 async function openWorkspace(id, suppliedToken, remember = true) {
+  if (shutdownStarted || maintenance) throw new WorkspaceError('WORKSPACE_BUSY', '应用正在备份或退出，请完成后再打开工作区。');
   if (suppliedToken) {
     if (opening.has(id)) throw new WorkspaceError('WORKSPACE_BUSY', '工作区正在打开，请稍后重试。');
     const profile = await store.get(id);
@@ -102,7 +105,10 @@ async function openWorkspace(id, suppliedToken, remember = true) {
     connections.set(id, { url: profile.url, token: suppliedToken, info });
   }
   const active = workspaceWindows.get(id);
-  if (active && !active.isDestroyed()) { active.show(); active.focus(); return { id }; }
+  if (active && !active.isDestroyed()) {
+    if (connections.has(id)) { active.show(); active.focus(); return { id }; }
+    active.destroy();
+  }
   if (opening.has(id)) return opening.get(id);
   const operation = (async () => {
     const profile = await store.get(id);
@@ -133,6 +139,18 @@ async function openWorkspace(id, suppliedToken, remember = true) {
         } catch (error) { await connection.stop?.(); throw error; }
       }
       connections.set(id, connection);
+      if (profile.mode === 'local' && connection.closed?.then) {
+        const ownedConnection = connection;
+        void connection.closed.then(async () => {
+          if (shutdownStarted || connections.get(id) !== ownedConnection) return;
+          connections.delete(id);
+          const stale = workspaceWindows.get(id);
+          // Hiding checkpoints renderer history; the next open replaces this stopped connection.
+          stale?.hide();
+          await showLauncher();
+          progress(id, { phase: 'stopped', message: '本地服务已停止。资料已保留，请重新打开工作区；若再次失败，请检查运行包与磁盘空间。' });
+        }).catch(() => {});
+      }
     }
     await access(join(frontendDirectory(), 'index.html')).catch(() => { throw new WorkspaceError('FRONTEND_MISSING', '桌面界面资源缺失。开发环境请先构建 frontend；已安装应用请重新安装。'); });
     const workspaceSession = session.fromPartition(`persist:tessmora-${id}`);
@@ -141,7 +159,7 @@ async function openWorkspace(id, suppliedToken, remember = true) {
       onAuthenticationFailure: () => progress(id, { phase: 'auth', message: '访问凭证已失效，请关闭此工作区窗口后重新连接。' }) }));
     const win = new BrowserWindow({ title: `${profile.name} — Tessmora`, width: 1440, height: 960, minWidth: 880, minHeight: 640,
       backgroundColor: '#f5f7f5', show: false,
-      webPreferences: { preload: join(here, 'workspace-preload.cjs'), session: workspaceSession, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, additionalArguments: [`--tessmora-api-origin=${connection.url}`] } });
+      webPreferences: { preload: join(here, 'workspace-preload.cjs'), session: workspaceSession, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, additionalArguments: [`--tessmora-api-origin=${connection.url}`, `--tessmora-server-id=${connection.info?.serverId || ''}`, `--tessmora-workspace-mode=${profile.mode}`] } });
     workspaceWindows.set(id, win);
     restrictWindow(win, { origin: workspaceOrigin(id) });
     win.on('page-title-updated', event => { event.preventDefault(); win.setTitle(`${profile.name} — Tessmora`); });
@@ -155,11 +173,54 @@ async function openWorkspace(id, suppliedToken, remember = true) {
   opening.set(id, operation);
   try { return await operation; } finally { opening.delete(id); }
 }
+let maintenance = false;
+async function exportProfileHistory(profile, directory) {
+  let win = workspaceWindows.get(profile.id), temporary = false;
+  const ses = session.fromPartition(`persist:tessmora-${profile.id}`);
+  if (!win || win.isDestroyed()) {
+    temporary = true;
+    if (await ses.protocol.isProtocolHandled(SCHEME)) ses.protocol.unhandle(SCHEME);
+    await ses.protocol.handle(SCHEME, createWorkspaceHandler({ id: profile.id, baseUrl: profile.url || 'http://127.0.0.1:1', token: '', frontendDir: frontendDirectory(), offline: true }));
+    win = new BrowserWindow({ show: false, webPreferences: { session: ses, preload: join(here, 'workspace-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false,
+      additionalArguments: [`--tessmora-api-origin=${profile.url || ''}`, `--tessmora-server-id=${profile.serverId || ''}`, `--tessmora-workspace-mode=${profile.mode}`] } });
+    workspaceWindows.set(profile.id, win);
+    restrictWindow(win, { origin: workspaceOrigin(profile.id) });
+  }
+  try {
+    if (temporary) await win.loadURL(`${workspaceOrigin(profile.id)}/`);
+    return await historyExporter.request(win, profile.id, join(directory, `${profile.id}-${randomUUID()}.tessmora-chat`));
+  } finally {
+    if (temporary) { win.destroy(); workspaceWindows.delete(profile.id); ses.protocol.unhandle(SCHEME); }
+  }
+}
+export async function stopLocalWorkspaces(backupDir, onlyId) {
+  if (opening.size || maintenance) throw new WorkspaceError('WORKSPACE_BUSY', '工作区正在启动或备份，请完成后再试。');
+  maintenance = true;
+  try {
+    const files = {};
+    const profiles = (await store.read()).workspaces.filter(profile => !onlyId || profile.id === onlyId);
+    if (backupDir) {
+      for (const profile of profiles) files[profile.id] = await exportProfileHistory(profile, backupDir);
+    }
+    for (const profile of profiles.filter(profile => profile.mode === 'local')) {
+      const connection = connections.get(profile.id);
+      connections.delete(profile.id);
+      workspaceWindows.get(profile.id)?.hide();
+      await connection?.stop?.();
+      workspaceWindows.get(profile.id)?.destroy();
+    }
+    return files;
+  } finally { maintenance = false; }
+}
+function desktopAction(action) {
+  void action().catch(error => dialog.showMessageBox({ type: 'error', title: 'Tessmora', message: publicError(error).message }));
+}
 async function initialize() {
   const data = app.getPath('userData');
   await mkdir(data, { recursive: true, mode: 0o700 });
   store = new WorkspaceStore(data);
   credentials = new CredentialStore(join(data, 'credentials'), safeStorage);
+  historyExporter = createHistoryExportManager({ ipcMain, isAuthorized: validWorkspace });
   handle('list', async () => ({ ...(await store.read()), credentialStorageAvailable: credentials.available(), running: [...connections.keys()] }));
   handle('choose-directory', async () => {
     const result = await dialog.showOpenDialog(launcher, { title: '选择工作区资料目录', properties: ['openDirectory', 'createDirectory'] });
@@ -195,8 +256,8 @@ async function initialize() {
     if (choice.response !== 1) return { removed: false };
     workspaceWindows.get(id)?.destroy();
     const connection = connections.get(id);
-    if (profile.mode === 'local') await connection?.stop?.();
     connections.delete(id);
+    if (profile.mode === 'local') await connection?.stop?.();
     await credentials.remove(id);
     const ses = session.fromPartition(`persist:tessmora-${id}`);
     ses.protocol.unhandle(SCHEME);
@@ -210,7 +271,11 @@ async function initialize() {
     if (!validWorkspace(event, value?.workspaceId)) return false;
     await showLauncher(); return true;
   });
-  const icon = nativeImage.createFromDataURL('data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22"><path fill="black" d="M3 3h16v4h-6v12H9V7H3z"/></svg>').toString('base64'));
+  const pixels = Buffer.alloc(22 * 22 * 4);
+  for (let y = 3; y < 19; y++) for (let x = 3; x < 19; x++) {
+    if (y < 7 || (x >= 9 && x < 13)) pixels[(y * 22 + x) * 4 + 3] = 255;
+  }
+  const icon = nativeImage.createFromBitmap(pixels, { width: 22, height: 22, scaleFactor: 1 });
   icon.setTemplateImage(true);
   tray = new Tray(icon);
   tray.setToolTip('Tessmora');
@@ -218,7 +283,15 @@ async function initialize() {
   tray.on('click', () => void showLauncher());
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ label: 'Tessmora', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { label: '退出 Tessmora', accelerator: 'Command+Q', click: () => app.quit() }] }] : []),
-    { label: '工作区', submenu: [{ label: '选择工作区…', accelerator: 'CmdOrCtrl+Shift+O', click: () => void showLauncher() }, { role: 'close' }, ...(process.platform !== 'darwin' ? [{ role: 'quit' }] : [])] },
+    { label: '工作区', submenu: [
+      { label: '选择工作区…', accelerator: 'CmdOrCtrl+Shift+O', click: () => void showLauncher() },
+      { label: '导入或导出会话…', click: () => { const win = BrowserWindow.getFocusedWindow(); const entry = [...workspaceWindows].find(([, value]) => value === win); if (entry) void win.loadURL(`${workspaceOrigin(entry[0])}/settings?section=history`); else void showLauncher(); } },
+      { label: '备份本地工作区…', click: () => desktopAction(async () => (await import('./transfer.mjs')).backupWorkspace({ app, dialog, store, stopLocalWorkspaces })) },
+      { label: '从备份恢复…', click: () => desktopAction(async () => (await import('./transfer.mjs')).restoreWorkspace({ app, dialog, store, showLauncher })) },
+      { type: 'separator' },
+      { label: '检查更新…', click: () => desktopAction(async () => (await import('./updates.mjs')).checkForUpdates({ app, dialog, store, stopLocalWorkspaces, beginInstall: () => { quitting = true; } })) },
+      { label: '导出诊断报告…', click: () => desktopAction(async () => (await import('./diagnostics.mjs')).exportDiagnostics({ app, dialog, store })) },
+      { type: 'separator' }, { role: 'close' }, ...(process.platform !== 'darwin' ? [{ role: 'quit' }] : [])] },
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
   ]));
   await showLauncher();

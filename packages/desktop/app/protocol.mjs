@@ -16,7 +16,7 @@ export const UI_CSP = "default-src 'self'; script-src 'self'; style-src 'self' '
 const failure = (status, detail) => Response.json({ detail }, { status, headers: { 'Cache-Control': 'no-store' } });
 const isApiPath = path => path.startsWith('/api/') || path === '/health';
 
-export function createWorkspaceHandler({ id, baseUrl, token, frontendDir, fetchImpl = fetch, onAuthenticationFailure }) {
+export function createWorkspaceHandler({ id, baseUrl, token, frontendDir, fetchImpl = fetch, onAuthenticationFailure, offline = false }) {
   const origin = workspaceOrigin(id);
   const backend = new URL(baseUrl);
   if (!['http:', 'https:'].includes(backend.protocol) || backend.username || backend.password || backend.pathname !== '/') throw new Error('Invalid backend origin');
@@ -28,6 +28,7 @@ export function createWorkspaceHandler({ id, baseUrl, token, frontendDir, fetchI
       if (request.headers.get('origin') && request.headers.get('origin') !== origin) return failure(403, '跨工作区请求已拒绝。');
       if (!['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'].includes(request.method)) return failure(405, '不支持此请求方法。');
       if (isApiPath(url.pathname)) {
+        if (offline) return failure(503, '此窗口仅用于导出客户端历史。');
         const headers = new Headers();
         for (const name of FORWARD_HEADERS) if (request.headers.has(name)) headers.set(name, request.headers.get(name));
         headers.set('accept-encoding', 'identity');

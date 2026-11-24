@@ -2,6 +2,11 @@
 export interface DesktopWorkspaceBridge {
   readonly workspaceId: string
   readonly apiOrigin?: string
+  readonly serverId?: string
+  readonly mode?: 'local' | 'remote'
+  onHistoryExport?(callback: (requestId: string) => Promise<void>): () => void
+  writeHistoryChunk?(requestId: string, sequence: number, bytes: Uint8Array): Promise<void>
+  finishHistoryExport?(requestId: string, error?: string): Promise<void>
   readonly hasWorkspaceCredential: boolean
   chooseWorkspace(): Promise<boolean>
 }

@@ -7,6 +7,7 @@ import { SetupGate } from '@/components/SetupGate'
 import { consumeSetupToken, getSetupToken } from '@/lib/setupSession'
 import { piApi } from '@/services/piAgent'
 import { useTranslation, setLanguage } from '@/i18n'
+import { installDesktopHistoryExport } from '@/lib/desktopHistoryExport'
 import { useConfigStore } from '@/store/useConfigStore'
 
 consumeSetupToken()
@@ -16,6 +17,7 @@ function App() {
   const { t } = useTranslation()
   const language = useConfigStore(state => state.config.language)
   useEffect(() => setLanguage(language), [language])
+  useEffect(() => installDesktopHistoryExport(), [])
   useEffect(() => {
     // Establish the HttpOnly workspace session on authenticated CLI entry,
     // including /setup, so another tab can open the plain workspace URL.

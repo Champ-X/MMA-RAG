@@ -84,3 +84,15 @@ test('only installed static resources are served with SPA deep links and travers
   assert.equal((await handler(request('/..%2fprivate.txt'))).status, 403);
   assert.equal((await handler(request('/chat', { method: 'POST', body: 'x' }))).status, 405);
 });
+
+test('offline archive windows serve installed UI but cannot contact any backend', async t => {
+  let calls = 0;
+  const root = await mkdtemp(join(tmpdir(), 'tessmora-offline-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, 'index.html'), '<p>Archive context</p>');
+  const handler = createWorkspaceHandler({ id, baseUrl: 'https://unused.example', token: 'must-not-send', frontendDir: root, offline: true, fetchImpl: () => { calls++; throw new Error('network forbidden'); } });
+  assert.match(await (await handler(request('/'))).text(), /Archive context/);
+  assert.equal((await handler(request('/api/knowledge/'))).status, 503);
+  assert.equal((await handler(request('/health'))).status, 503);
+  assert.equal(calls, 0);
+});

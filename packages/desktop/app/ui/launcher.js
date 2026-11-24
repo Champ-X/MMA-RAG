@@ -108,6 +108,7 @@ $('cancel-reconnect').addEventListener('click', () => { reconnectId = null; $('w
 $('quit').addEventListener('click', () => api.quit());
 api.onProgress(value => {
   if (busy) $('status').textContent = value.message;
+  else if (value.phase === 'stopped') showError({ message: value.message });
   else if (value.phase === 'auth') {
     const profile = profiles.find(item => item.id === value.id);
     if (profile?.mode === 'remote') { editCredential(profile); showError({ message: value.message }); }

@@ -94,3 +94,42 @@ export function collectUserAttachmentIds(
   }
   return out
 }
+
+/** Migration operations surface storage failures and close each database connection. */
+export async function getAttachmentBlobStrict(id: string): Promise<Blob | undefined> {
+  const db = await openAttachmentDB()
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readonly')
+      const request = tx.objectStore(STORE).get(id)
+      request.onsuccess = () => resolve(request.result as Blob | undefined)
+      request.onerror = () => reject(request.error)
+    })
+  } finally { db.close() }
+}
+export async function writeAttachmentBlobsStrict(items: Array<{ id: string; blob: Blob }>): Promise<void> {
+  if (!items.length) return
+  const db = await openAttachmentDB()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite')
+      for (const item of items) tx.objectStore(STORE).add(item.blob, item.id)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error ?? new Error('附件存储失败。'))
+      tx.onabort = () => reject(tx.error ?? new Error('附件写入已中止。'))
+    })
+  } finally { db.close() }
+}
+export async function deleteAttachmentBlobsStrict(ids: string[]): Promise<void> {
+  if (!ids.length) return
+  const db = await openAttachmentDB()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite')
+      for (const id of ids) tx.objectStore(STORE).delete(id)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error ?? new Error('附件回滚失败。'))
+      tx.onabort = () => reject(tx.error ?? new Error('附件回滚已中止。'))
+    })
+  } finally { db.close() }
+}
