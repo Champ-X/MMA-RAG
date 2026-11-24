@@ -1,6 +1,6 @@
 // Native internal acceptance driver. Every run owns a fresh report directory.
 import { spawn } from 'node:child_process';
-import { mkdir, open, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, open, readFile, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -34,10 +34,17 @@ try {
   if (runtime) env.TESSMORA_TEST_QDRANT = join(runtime, native.executables.qdrant);
   const qa = name => join(root, 'packages/desktop/qa', name);
   switch (values.case) {
-    case 'native':
+    case 'native': {
+      const runner = join(out, 'bundled-pi-test');
+      await mkdir(join(runner, 'test'), { recursive: true });
+      await copyFile(join(root, 'agent-runtime/test/durable-worker.test.mjs'), join(runner, 'test/durable-worker.test.mjs'));
+      // The test drives src/worker.mjs through its public JSON lines protocol. Use the installed worker and Node.
+      await symlink(join(runtime, 'agent-runtime/src'), join(runner, 'src'), process.platform === 'win32' ? 'junction' : 'dir');
+      await step(join(runtime, native.executables.node), ['--test', join(runner, 'test/durable-worker.test.mjs')], 'native-pi-worker');
       await step(py, [qa('fixtures.py'), '--runtime', runtime, '--output', join(out, 'fixtures')], 'fixtures');
       await step(process.execPath, [qa('native-workspace.mjs'), runtime, out], 'native-workspace');
       break;
+    }
     case 'remote':
       await step(process.execPath, [qa('electron-smoke.mjs'), '--out', join(out, 'windows')], 'electron-remote');
       break;
